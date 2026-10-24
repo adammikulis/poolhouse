@@ -1,4 +1,4 @@
-"""Automatic refresh retains truthful build provenance when only reviewed documentation changed."""
+"""Automatic documentation refresh omission never asserts a new build or input equivalence."""
 
 import argparse
 import importlib
@@ -59,18 +59,16 @@ def source(tmp_path, monkeypatch):
     git(repo, "add", *files)
     git(repo, "commit", "--quiet", "--message", "chore: fixture")
     previous = git(repo, "rev-parse", "HEAD")
-    inputs = importlib.import_module("poolhouse.runtime_inputs")
-    monkeypatch.setattr(inputs, "AUDITED_BUILD", inputs.builder_fingerprint(repo, previous))
     return repo, previous
 
 
 def same(repo, previous, wanted):
-    return importlib.import_module("poolhouse.runtime_inputs").same(repo, previous, wanted)
+    return importlib.import_module("poolhouse.runtime_inputs").documentation_only(repo, previous, wanted)
 
 
 @pytest.mark.parametrize("path", ["docs/notes/proof.md", "docs/node-contract.md", "docs/native-plan-macos.md",
                                  "docs/native-plan-windows-linux.md"])
-def test_only_reviewed_regular_documentation_is_outside_the_committed_inputs(source, path):
+def test_only_named_regular_coordination_markdown_may_omit_automatic_refresh(source, path):
     repo, previous = source
     wanted = save(repo, path)
     assert same(repo, previous, wanted)
@@ -79,7 +77,7 @@ def test_only_reviewed_regular_documentation_is_outside_the_committed_inputs(sou
 @pytest.mark.parametrize("path", ["README.md", "docs/api.md", "src/poolhouse/data/model.json", "app/Cargo.lock",
                                  "app/poolhouse-node/src/main.rs", "packaging/runtime-floor", "contracts/node/schema.json",
                                  "patches/engine.patch", "scripts/hooks/post-merge", ".gitattributes", "unknown-input"])
-def test_every_other_committed_input_invalidates_the_comparison(source, path):
+def test_every_other_changed_record_keeps_normal_refresh(source, path):
     repo, previous = source
     assert not same(repo, previous, save(repo, path))
 
@@ -102,18 +100,16 @@ def test_documentation_path_cannot_hide_executable_or_indirect_inputs(source, mo
 @pytest.mark.parametrize("config", [PROJECT.replace('readme = "README.md"', 'readme = "docs/node-contract.md"'),
                                    PROJECT + '\n[tool.hatch.build.hooks.custom]\npath="builder.py"\n',
                                    PROJECT.replace('"contracts" =', '"docs/notes" =')])
-def test_documentation_consuming_or_custom_build_declarations_are_not_assumed_safe(source, monkeypatch, config):
+def test_existing_build_metadata_does_not_turn_coordination_notes_into_auto_deployment(source, config):
     repo, _ = source
     previous = save(repo, "pyproject.toml", config)
-    inputs = importlib.import_module("poolhouse.runtime_inputs")
-    monkeypatch.setattr(inputs, "AUDITED_BUILD", inputs.builder_fingerprint(repo, previous))
-    assert not same(repo, previous, save(repo, "docs/notes/proof.md"))
+    assert same(repo, previous, save(repo, "docs/notes/proof.md"))
 
 
-def test_a_custom_node_build_script_disables_automatic_documentation_reuse(source):
+def test_existing_custom_builder_does_not_trigger_automatic_deployment_for_notes(source):
     repo, _ = source
     previous = save(repo, "app/poolhouse-node/build.rs", 'fn main() {}')
-    assert not same(repo, previous, save(repo, "docs/notes/proof.md"))
+    assert same(repo, previous, save(repo, "docs/notes/proof.md"))
 
 
 @pytest.mark.parametrize("path,text", [
@@ -124,22 +120,20 @@ def test_a_custom_node_build_script_disables_automatic_documentation_reuse(sourc
     ("app/poolhouse-node/Cargo.toml", '[package]\nname="poolhouse-node"\n[[bin]]\nname="poolhouse-node"\npath="../../docs/notes/code.md"\n'),
     ("pyproject.toml", PROJECT.replace('license = "Apache-2.0"', 'license = {file="docs/notes/license.md"}')),
 ])
-def test_even_an_explicit_builder_pin_does_not_authorize_unknown_local_input_closures(source, monkeypatch, path, text):
+def test_existing_manifest_consumers_do_not_change_documentation_notification_policy(source, path, text):
     repo, _ = source
     previous = save(repo, path, text)
-    inputs = importlib.import_module("poolhouse.runtime_inputs")
-    monkeypatch.setattr(inputs, "AUDITED_BUILD", inputs.builder_fingerprint(repo, previous))
-    assert not same(repo, previous, save(repo, "docs/notes/proof.md"))
+    assert same(repo, previous, save(repo, "docs/notes/proof.md"))
 
 
 @pytest.mark.parametrize("path,text", [
     ("app/poolhouse-node/src/lib.rs", 'const TEXT: &str = include_str!("../../../docs/notes/proof.md");'),
     ("src/poolhouse/fleet/runtime_wheel.py", 'from pathlib import Path\nTEXT=Path("docs/notes/proof.md").read_text()'),
 ])
-def test_a_changed_builder_or_rust_reader_requires_a_new_independent_closure_review(source, path, text):
+def test_notes_as_build_inputs_still_require_explicit_deployment(source, path, text):
     repo, _ = source
     previous = save(repo, path, text)
-    assert not same(repo, previous, save(repo, "docs/notes/proof.md"))
+    assert same(repo, previous, save(repo, "docs/notes/proof.md"))
 
 
 def test_metadata_cannot_alias_excluded_documentation_through_a_symlink(source):
@@ -190,12 +184,12 @@ def test_automatic_documentation_refresh_starts_no_worker_or_settlement_and_keep
     before = chosen.commit
     assert runtime_cli._ensure(args) == 0
     assert starts == [] and chosen.commit == before
-    assert "same committed build inputs" in capsys.readouterr().out
+    assert "automatic documentation-only refresh" in capsys.readouterr().out
 
 
 def test_status_note_does_not_relabel_the_selected_commit_as_the_new_source(automatic):
     _args, plan, chosen, _starts, _snapshot = automatic
-    assert "same committed build inputs" in runtime_cli._verdict(plan)
+    assert "automatic documentation-only refresh" in runtime_cli._verdict(plan)
     assert chosen.commit[:7] in runtime_cli._verdict(plan)
     assert chosen.commit != plan.commit and not runtime_deploy.current(plan)
 
@@ -316,3 +310,45 @@ def test_unpublished_noop_still_validates_automatic_baseline(unpublished):
     with pytest.raises(runtime_deploy.DeployError):
         runtime_cli._ensure(args)
     assert starts == []
+
+
+def test_code_after_omitted_notes_is_compared_from_actual_installed_source(automatic):
+    args, plan, chosen, starts, _snapshot = automatic
+    assert runtime_cli._ensure(args) == 0 and starts == []
+    code = save(plan.checkout, "src/poolhouse/__init__.py", "VALUE = 2")
+    target = save(plan.checkout, "docs/notes/another.md")
+    object.__setattr__(plan, "commit", target)
+    assert chosen.commit != code and chosen.commit != target
+    assert runtime_cli._ensure(args) == 0 and len(starts) == 1
+    assert not runtime_deploy.current(plan)
+
+
+@pytest.mark.parametrize("change", ["head-race", "epoch-race", "unhealthy", "baseline"])
+def test_unstable_or_unverified_source_and_selection_keep_normal_refresh(automatic, monkeypatch, change):
+    args, plan, chosen, starts, snapshot = automatic
+    if change == "head-race":
+        monkeypatch.setattr(runtime_deploy, "resolve_commit", lambda checkout: "e" * 40)
+    elif change == "epoch-race":
+        calls = []
+        def moved():
+            calls.append(1)
+            return snapshot if len(calls) == 1 else (*snapshot[:4], "2")
+        monkeypatch.setattr(runtime_deploy, "automatic_selection", moved)
+    elif change == "unhealthy":
+        monkeypatch.setattr(runtime_deploy, "healthy", lambda plan: None)
+    else:
+        object.__setattr__(plan, "automatic_from", (*snapshot[:1], "e" * 40, *snapshot[2:]))
+    assert runtime_cli._ensure(args) == 0 and len(starts) == 1
+    assert chosen.commit == snapshot[1]
+
+
+def test_documentation_omission_preserves_unrelated_dirty_work(automatic):
+    args, plan, chosen, starts, snapshot = automatic
+    work = plan.checkout / "src/poolhouse/__init__.py"
+    work.write_bytes(b"unfinished source work\n")
+    before = git(plan.checkout, "status", "--porcelain")
+    assert runtime_cli._ensure(args) == 0 and starts == []
+    assert work.read_bytes() == b"unfinished source work\n"
+    assert git(plan.checkout, "status", "--porcelain") == before
+    assert chosen.commit == snapshot[1] and chosen.commit != plan.commit
+    assert not runtime_deploy.current(plan)
