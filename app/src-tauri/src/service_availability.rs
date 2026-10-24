@@ -17,6 +17,12 @@ fn observe() -> Option<PassiveServiceData> {
     PassiveServiceData::decode(result, raw)
 }
 
+fn write_diagnostic(output: &mut impl std::io::Write, observation: &PassiveServiceData) {
+    // Finite generated names only. A missing/broken diagnostic sink has no effect.
+    let _ = writeln!(output, "poolhouse passive service: availability={:?} reason={:?}",
+        observation.availability, observation.reason);
+}
+
 pub(crate) struct OptionalDiagnostic(Arc<OnceLock<Option<PassiveServiceData>>>);
 impl OptionalDiagnostic {
     pub(crate) fn start() -> Self {
@@ -25,6 +31,9 @@ impl OptionalDiagnostic {
         // No join, dispatch to the UI thread, retry or error propagation into launch.
         if std::thread::Builder::new().name("passive-service-diagnostic".into()).spawn(move || {
             let _ = worker.set(observe());
+            if let Some(Some(observation)) = worker.get() {
+                write_diagnostic(&mut std::io::stderr(), observation);
+            }
         }).is_err() {
             let _ = state.set(None);
         }
@@ -40,6 +49,26 @@ impl OptionalDiagnostic {
 mod tests {
     use super::*;
     use data::{PassiveServiceAvailabilityTag, PassiveServiceReasonCode, PassiveServiceResult};
+
+    #[test]
+    fn diagnostic_is_finite_and_ignores_broken_sink() {
+        let observation = PassiveServiceData {
+            observed_at: 1,
+            availability: PassiveServiceAvailabilityTag::PlistAbsent,
+            reason: PassiveServiceReasonCode::PlistAbsent,
+        };
+        let mut bytes = Vec::new();
+        write_diagnostic(&mut bytes, &observation);
+        assert_eq!(bytes, b"poolhouse passive service: availability=PlistAbsent reason=PlistAbsent\n");
+        struct Broken;
+        impl std::io::Write for Broken {
+            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::ErrorKind::BrokenPipe.into())
+            }
+            fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+        }
+        write_diagnostic(&mut Broken, &observation);
+    }
 
     #[test]
     fn actual_swift_ffi_rejects_null_and_observes_outside_app() {

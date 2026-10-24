@@ -55,8 +55,7 @@ fn main() {{
                              '-o', str(binary), *arguments], env=environment,
                             capture_output=True, text=True, timeout=RUN_S)
     assert linked.returncode == 0, linked.stderr
-    observed = subprocess.run([str(binary), '--exact',
-                               'service_availability::tests::actual_swift_ffi_rejects_null_and_observes_outside_app'],
+    observed = subprocess.run([str(binary), 'service_availability::tests::'],
                               env=environment, capture_output=True, text=True, timeout=10)
     assert observed.returncode == 0, observed.stderr
-    assert '1 passed; 0 failed' in observed.stdout
+    assert '2 passed; 0 failed' in observed.stdout
