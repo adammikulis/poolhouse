@@ -1,0 +1,627 @@
+# Declaration proposal only. Helper runtime capabilities are never wire DTOs.
+# All governance mutations enter through approvals.request and the closed ApprovalIntent.
+version = 1
+status = "proposal"
+
+[[type]]
+name = "AuthorityRootId"
+kind = "scalar"
+visibility = "public"
+encoding = "hex32"
+issuer = "node"
+
+[[type]]
+name = "ApprovalSnapshotId"
+kind = "scalar"
+visibility = "public"
+encoding = "hex32"
+issuer = "node"
+
+[[type]]
+name = "ApprovalModelAssetId"
+kind = "scalar"
+visibility = "public"
+encoding = "hex32"
+issuer = "node"
+
+[[type]]
+name = "ApprovalRequesterId"
+kind = "scalar"
+visibility = "public"
+encoding = "hex32"
+issuer = "node"
+
+[[type]]
+name = "AuthorityDescriptorId"
+kind = "scalar"
+visibility = "public"
+encoding = "hex32"
+issuer = "node"
+
+[[type]]
+name = "GovernanceAnchor"
+kind = "scalar"
+visibility = "public"
+encoding = "hex32"
+issuer = "node"
+
+[[type]]
+name = "CharterDigest"
+kind = "scalar"
+visibility = "public"
+encoding = "hex32"
+issuer = "node"
+
+[[type]]
+name = "GovernanceActId"
+kind = "scalar"
+visibility = "public"
+encoding = "hex32"
+issuer = "node"
+
+[[type]]
+name = "ApprovalNonce"
+kind = "scalar"
+visibility = "public"
+encoding = "hex32"
+issuer = "node"
+
+[[type]]
+name = "ApprovalOperationDigest"
+kind = "scalar"
+visibility = "public"
+encoding = "hex32"
+issuer = "node"
+
+[[type]]
+name = "ApprovalEffectReceiptId"
+kind = "scalar"
+visibility = "public"
+encoding = "hex32"
+issuer = "node"
+
+[[type]]
+name = "ApprovalSignerId"
+kind = "scalar"
+visibility = "public"
+encoding = "hex32"
+issuer = "node"
+
+[[type]]
+name = "ApprovalPersonId"
+kind = "scalar"
+visibility = "public"
+encoding = "hex32"
+issuer = "node"
+
+[[type]]
+name = "GovernanceLogHead"
+kind = "scalar"
+visibility = "public"
+encoding = "hex32"
+issuer = "node"
+
+[[type]]
+name = "AuthorityGeneration"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "kernel-adapter"
+
+[[type]]
+name = "ApprovalCursor"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "node"
+min_bytes = 1
+max_bytes = 2048
+
+[[type]]
+name = "ApprovalDisplayText"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "node"
+min_bytes = 1
+max_bytes = 6000
+
+[[type]]
+name = "ApprovalSignature64"
+kind = "scalar"
+visibility = "public"
+encoding = "bytes"
+issuer = "kernel-adapter"
+min_bytes = 64
+max_bytes = 64
+
+[[type]]
+name = "ApprovalDurationMicros"
+kind = "scalar"
+visibility = "public"
+encoding = "u64"
+issuer = "node"
+minimum = 1
+maximum = 2592000000000
+
+[[type]]
+name = "ApprovalGrantUses"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "node"
+minimum = 1
+maximum = 1000
+
+[[type]]
+name = "ApprovalDescriptorIds"
+kind = "list"
+visibility = "public"
+item = "AuthorityDescriptorId"
+max_items = 16
+
+[[type]]
+name = "GovernanceActIds"
+kind = "list"
+visibility = "public"
+item = "GovernanceActId"
+max_items = 256
+
+[[type]]
+name = "ApprovalLogHeads"
+kind = "list"
+visibility = "public"
+item = "GovernanceLogHead"
+max_items = 256
+
+[[type]]
+name = "OptionalApprovalEffectReceiptId"
+kind = "optional"
+visibility = "public"
+item = "ApprovalEffectReceiptId"
+
+[[type]]
+name = "ApprovalResultIds"
+kind = "list"
+visibility = "public"
+item = "OperationId"
+max_items = 256
+
+[[type]]
+name = "OptionalApprovalCursor"
+kind = "optional"
+visibility = "public"
+item = "ApprovalCursor"
+
+[[type]]
+name = "OptionalGovernanceActId"
+kind = "optional"
+visibility = "public"
+item = "GovernanceActId"
+
+[[type]]
+name = "ApprovalJoinPolicy"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "secure", type = "Empty"}, {tag = "open", type = "Empty"}]
+
+[[type]]
+name = "ApprovalGovernanceMode"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "admins", type = "Empty"}, {tag = "members", type = "Empty"}]
+
+[[type]]
+name = "ApprovalThresholdUnit"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "distinct_people", type = "Empty"}, {tag = "distinct_keys", type = "Empty"}]
+
+[[type]]
+name = "ApprovalThresholds"
+kind = "record"
+visibility = "public"
+fields = [{name = "routine", type = "U32"}, {name = "sensitive", type = "U32"}, {name = "unit", type = "ApprovalThresholdUnit"}]
+
+[[type]]
+name = "ApprovalHolds"
+kind = "record"
+visibility = "public"
+fields = [{name = "admin_add", type = "ApprovalDurationMicros"}, {name = "admin_remove", type = "ApprovalDurationMicros"}, {name = "handoff", type = "ApprovalDurationMicros"}, {name = "dispute", type = "ApprovalDurationMicros"}]
+
+[[type]]
+name = "ApprovalFoundIntent"
+kind = "record"
+visibility = "public"
+fields = [{name = "name", type = "SafeMessage"}, {name = "policy", type = "ApprovalJoinPolicy"}, {name = "admins", type = "ApprovalDescriptorIds"}, {name = "thresholds", type = "ApprovalThresholds"}, {name = "holds", type = "ApprovalHolds"}, {name = "first_device", type = "DeviceId"}]
+
+[[type]]
+name = "ApprovalDeviceTarget"
+kind = "record"
+visibility = "public"
+fields = [{name = "device_id", type = "DeviceId"}, {name = "device_generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ApprovalAdminTarget"
+kind = "record"
+visibility = "public"
+fields = [{name = "descriptor_id", type = "AuthorityDescriptorId"}]
+
+[[type]]
+name = "ApprovalSignerTarget"
+kind = "record"
+visibility = "public"
+fields = [{name = "signer_id", type = "ApprovalSignerId"}]
+
+[[type]]
+name = "ApprovalActTarget"
+kind = "record"
+visibility = "public"
+fields = [{name = "act_id", type = "GovernanceActId"}]
+
+[[type]]
+name = "ApprovalCosignIntent"
+kind = "record"
+visibility = "public"
+fields = [{name = "act_id", type = "GovernanceActId"}, {name = "operation_digest", type = "ApprovalOperationDigest"}]
+
+[[type]]
+name = "ApprovalModeIntent"
+kind = "record"
+visibility = "public"
+fields = [{name = "mode", type = "ApprovalGovernanceMode"}]
+
+[[type]]
+name = "ApprovalDistrustIntent"
+kind = "record"
+visibility = "public"
+fields = [{name = "signer_id", type = "ApprovalSignerId"}, {name = "since", type = "UnixMicros"}, {name = "reason", type = "SafeMessage"}]
+
+[[type]]
+name = "ApprovalGrantRemoval"
+kind = "record"
+visibility = "public"
+fields = [{name = "grant_id", type = "OperationId"}]
+
+[[type]]
+name = "ApprovalBoardResource"
+kind = "record"
+visibility = "public"
+fields = [{name = "board_id", type = "BoardId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ApprovalProjectResource"
+kind = "record"
+visibility = "public"
+fields = [{name = "project_id", type = "ProjectId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ApprovalJobResource"
+kind = "record"
+visibility = "public"
+fields = [{name = "job_id", type = "JobId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ApprovalModelResource"
+kind = "record"
+visibility = "public"
+fields = [{name = "asset_id", type = "ApprovalModelAssetId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ApprovalGrantResource"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "board_read", type = "ApprovalBoardResource"}, {tag = "board_append", type = "ApprovalBoardResource"}, {tag = "job_submit", type = "ApprovalProjectResource"}, {tag = "job_cancel", type = "ApprovalJobResource"}, {tag = "model_use", type = "ApprovalModelResource"}]
+
+[[type]]
+name = "ApprovalGrantScope"
+kind = "record"
+visibility = "public"
+fields = [{name = "resource", type = "ApprovalGrantResource"}, {name = "target_device", type = "DeviceId"}, {name = "target_generation", type = "ResourceGeneration"}, {name = "duration", type = "ApprovalDurationMicros"}, {name = "uses", type = "ApprovalGrantUses"}]
+
+[[type]]
+name = "ApprovalGrantScopes"
+kind = "list"
+visibility = "public"
+item = "ApprovalGrantScope"
+max_items = 8
+
+[[type]]
+name = "ApprovalGrantsIntent"
+kind = "record"
+visibility = "public"
+fields = [{name = "scopes", type = "ApprovalGrantScopes"}]
+
+[[type]]
+name = "ApprovalIntent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "found", type = "ApprovalFoundIntent"}, {tag = "admit", type = "ApprovalDeviceTarget"}, {tag = "remove", type = "ApprovalDeviceTarget"}, {tag = "leave", type = "ApprovalDeviceTarget"}, {tag = "admin_add", type = "ApprovalAdminTarget"}, {tag = "admin_remove", type = "ApprovalSignerTarget"}, {tag = "veto", type = "ApprovalActTarget"}, {tag = "cancel_act", type = "ApprovalActTarget"}, {tag = "set_thresholds", type = "ApprovalThresholds"}, {tag = "set_holds", type = "ApprovalHolds"}, {tag = "set_governance_mode", type = "ApprovalModeIntent"}, {tag = "delegate", type = "ApprovalDeviceTarget"}, {tag = "delegate_end", type = "ApprovalDeviceTarget"}, {tag = "cosign", type = "ApprovalCosignIntent"}, {tag = "grants", type = "ApprovalGrantsIntent"}, {tag = "grant_remove", type = "ApprovalGrantRemoval"}, {tag = "distrust", type = "ApprovalDistrustIntent"}]
+
+[[type]]
+name = "ApprovalGovernanceContext"
+kind = "record"
+visibility = "public"
+fields = [{name = "pool_id", type = "PoolId"}, {name = "pool_generation", type = "ResourceGeneration"}, {name = "anchor", type = "GovernanceAnchor"}, {name = "charter_digest", type = "CharterDigest"}, {name = "epoch", type = "U64"}, {name = "revision", type = "U64"}, {name = "authority_root", type = "AuthorityRootId"}, {name = "authority_generation", type = "AuthorityGeneration"}]
+
+[[type]]
+name = "ApprovalGenesisContext"
+kind = "record"
+visibility = "public"
+fields = [{name = "installation_id", type = "InstallationId"}, {name = "device_id", type = "DeviceId"}, {name = "authority_root", type = "AuthorityRootId"}, {name = "authority_generation", type = "AuthorityGeneration"}, {name = "revision", type = "U64"}]
+
+[[type]]
+name = "ApprovalDomainContext"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "genesis", type = "ApprovalGenesisContext"}, {tag = "governed", type = "ApprovalGovernanceContext"}]
+
+[[type]]
+name = "ApprovalRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_context", type = "ApprovalDomainContext"}, {name = "intent", type = "ApprovalIntent"}, {name = "expires_at", type = "UnixMicros"}]
+
+[[type]]
+name = "ApprovalInspectRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "approval_id", type = "ApprovalId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ApprovalCancelRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "approval_id", type = "ApprovalId"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "authority_generation", type = "AuthorityGeneration"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "ApprovalImmutableOperation"
+kind = "record"
+visibility = "public"
+fields = [{name = "requester_id", type = "ApprovalRequesterId"}, {name = "requester_generation", type = "ResourceGeneration"}, {name = "operation_id", type = "OperationId"}, {name = "approval_id", type = "ApprovalId"}, {name = "generation", type = "ResourceGeneration"}, {name = "context", type = "ApprovalDomainContext"}, {name = "device_id", type = "DeviceId"}, {name = "installation_id", type = "InstallationId"}, {name = "intent", type = "ApprovalIntent"}, {name = "nonce", type = "ApprovalNonce"}, {name = "created_at", type = "UnixMicros"}, {name = "expires_at", type = "UnixMicros"}, {name = "digest", type = "ApprovalOperationDigest"}, {name = "presentation", type = "ApprovalDisplayText"}, {name = "result_ids", type = "ApprovalResultIds"}, {name = "log_heads", type = "ApprovalLogHeads"}]
+
+[[type]]
+name = "ApprovalState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "held", type = "Empty"}, {tag = "pending", type = "Empty"}, {tag = "awaiting_signers", type = "Empty"}, {tag = "hold_running", type = "Empty"}, {tag = "disputed", type = "Empty"}, {tag = "denied", type = "Empty"}, {tag = "cancelled", type = "Empty"}, {tag = "expired", type = "Empty"}, {tag = "committed", type = "Empty"}, {tag = "effect_pending", type = "Empty"}, {tag = "performed", type = "Empty"}, {tag = "failed", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "ApprovalDelivery"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "urgent", type = "Empty"}, {tag = "quiet", type = "Empty"}, {tag = "silent", type = "Empty"}, {tag = "held", type = "Empty"}]
+
+[[type]]
+name = "ApprovalSignerAssurance"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "presence_required", type = "Empty"}, {tag = "process_accessible", type = "Empty"}]
+
+[[type]]
+name = "ApprovalSignerObservation"
+kind = "record"
+visibility = "public"
+fields = [{name = "signer_id", type = "ApprovalSignerId"}, {name = "person_id", type = "ApprovalPersonId"}, {name = "descriptor_id", type = "AuthorityDescriptorId"}, {name = "assurance", type = "ApprovalSignerAssurance"}, {name = "counts", type = "Boolean"}]
+
+[[type]]
+name = "ApprovalSignerObservations"
+kind = "list"
+visibility = "public"
+item = "ApprovalSignerObservation"
+max_items = 16
+
+[[type]]
+name = "OptionalApprovalCount"
+kind = "optional"
+visibility = "public"
+item = "U32"
+
+[[type]]
+name = "ApprovalProgress"
+kind = "record"
+visibility = "public"
+fields = [{name = "have", type = "OptionalApprovalCount"}, {name = "need", type = "OptionalApprovalCount"}, {name = "signers", type = "ApprovalSignerObservations"}, {name = "remaining_awake_micros", type = "OptionalU64"}]
+
+[[type]]
+name = "ApprovalView"
+kind = "record"
+visibility = "public"
+fields = [{name = "operation", type = "ApprovalImmutableOperation"}, {name = "revision", type = "U64"}, {name = "state", type = "ApprovalState"}, {name = "delivery", type = "ApprovalDelivery"}, {name = "progress", type = "ApprovalProgress"}, {name = "reason", type = "SafeMessage"}, {name = "effect_receipt", type = "OptionalApprovalEffectReceiptId"}]
+
+[[type]]
+name = "ApprovalRequestResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "approval", type = "ApprovalView"}, {name = "deduplicated", type = "Boolean"}]
+
+[[type]]
+name = "ApprovalCancelOutcome"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "cancelled", type = "Empty"}, {tag = "already_terminal", type = "Empty"}, {tag = "commit_won", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "ApprovalCancelResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "approval", type = "ApprovalView"}, {name = "outcome", type = "ApprovalCancelOutcome"}]
+
+[[type]]
+name = "ApprovalWatchScope"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "own", type = "Empty"}, {tag = "pool_queue", type = "ApprovalGovernanceContext"}]
+
+[[type]]
+name = "ApprovalWatchRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "scope", type = "ApprovalWatchScope"}, {name = "after", type = "OptionalApprovalCursor"}]
+
+[[type]]
+name = "ApprovalWatchChange"
+kind = "record"
+visibility = "public"
+fields = [{name = "cursor", type = "ApprovalCursor"}, {name = "approval", type = "ApprovalView"}]
+
+[[type]]
+name = "ApprovalSnapshotItems"
+kind = "list"
+visibility = "public"
+item = "ApprovalView"
+max_items = 64
+
+[[type]]
+name = "ApprovalWatchSnapshot"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot_id", type = "ApprovalSnapshotId"}, {name = "revision", type = "U64"}, {name = "items", type = "ApprovalSnapshotItems"}, {name = "complete", type = "Boolean"}, {name = "next_cursor", type = "OptionalApprovalCursor"}, {name = "cursor", type = "ApprovalCursor"}]
+
+[[type]]
+name = "ApprovalWatchEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "ApprovalWatchSnapshot"}, {tag = "changed", type = "ApprovalWatchChange"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "ApprovalActStatus"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "effective", type = "Empty"}, {tag = "pending", type = "Empty"}, {tag = "short", type = "Empty"}, {tag = "void", type = "Empty"}, {tag = "stale", type = "Empty"}, {tag = "unknown", type = "Empty"}]
+
+[[type]]
+name = "ApprovalActObservation"
+kind = "record"
+visibility = "public"
+fields = [{name = "act_id", type = "GovernanceActId"}, {name = "status", type = "ApprovalActStatus"}, {name = "have", type = "OptionalApprovalCount"}, {name = "need", type = "OptionalApprovalCount"}, {name = "reason", type = "SafeMessage"}]
+
+[[type]]
+name = "ApprovalActObservations"
+kind = "list"
+visibility = "public"
+item = "ApprovalActObservation"
+max_items = 256
+
+[[type]]
+name = "ApprovalGovernanceInspectRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "pool_id", type = "PoolId"}, {name = "generation", type = "ResourceGeneration"}, {name = "act_id", type = "OptionalGovernanceActId"}]
+
+[[type]]
+name = "ApprovalGovernanceView"
+kind = "record"
+visibility = "public"
+fields = [{name = "context", type = "ApprovalGovernanceContext"}, {name = "policy", type = "ApprovalJoinPolicy"}, {name = "mode", type = "ApprovalGovernanceMode"}, {name = "thresholds", type = "ApprovalThresholds"}, {name = "holds", type = "ApprovalHolds"}, {name = "acts", type = "ApprovalActObservations"}, {name = "signers", type = "ApprovalSignerObservations"}, {name = "disputed", type = "Boolean"}, {name = "log_heads", type = "ApprovalLogHeads"}, {name = "revision", type = "U64"}]
+
+[[type]]
+name = "ApprovalGovernanceWatchRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "pool_id", type = "PoolId"}, {name = "generation", type = "ResourceGeneration"}, {name = "after", type = "OptionalApprovalCursor"}]
+
+[[type]]
+name = "ApprovalGovernanceWatchChange"
+kind = "record"
+visibility = "public"
+fields = [{name = "cursor", type = "ApprovalCursor"}, {name = "view", type = "ApprovalGovernanceView"}]
+
+[[type]]
+name = "ApprovalGovernanceWatchEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "ApprovalGovernanceWatchChange"}, {tag = "changed", type = "ApprovalGovernanceWatchChange"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "ApprovalErrorDetail"
+kind = "record"
+visibility = "public"
+fields = [{name = "message", type = "SafeMessage"}]
+
+[[type]]
+name = "ApprovalError"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "invalid_request", type = "ApprovalErrorDetail"}, {tag = "unauthenticated", type = "ApprovalErrorDetail"}, {tag = "forbidden", type = "ApprovalErrorDetail"}, {tag = "not_found", type = "ApprovalErrorDetail"}, {tag = "stale_generation", type = "ApprovalErrorDetail"}, {tag = "revision_conflict", type = "ApprovalErrorDetail"}, {tag = "authority_unavailable", type = "ApprovalErrorDetail"}, {tag = "root_mismatch", type = "ApprovalErrorDetail"}, {tag = "evidence_incomplete", type = "ApprovalErrorDetail"}, {tag = "rollback_detected", type = "ApprovalErrorDetail"}, {tag = "expired", type = "ApprovalErrorDetail"}, {tag = "cancelled", type = "ApprovalErrorDetail"}, {tag = "already_consumed", type = "ApprovalErrorDetail"}, {tag = "threshold_not_met", type = "ApprovalErrorDetail"}, {tag = "held", type = "ApprovalErrorDetail"}, {tag = "disputed", type = "ApprovalErrorDetail"}, {tag = "backoff", type = "ApprovalErrorDetail"}, {tag = "storage_failure", type = "ApprovalErrorDetail"}, {tag = "recovery_required", type = "ApprovalErrorDetail"}, {tag = "cursor_expired", type = "ApprovalErrorDetail"}, {tag = "unsupported", type = "ApprovalErrorDetail"}]
+
+[[operation]]
+name = "approvals.request"
+symbol = "ApprovalsRequest"
+request = "ApprovalRequest"
+response = "ApprovalRequestResult"
+error = "ApprovalError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "typed-intent-only", "request-is-not-person-approval", "authority-generation-and-governance-cas", "cross-resource-request-id-reuse-conflicts", "deny-wildcard-and-nondelegable-authority", "grant-recipient-is-exact-requester-id-and-principal-generation", "resolve-typed-resource-and-generation-before-review", "immutable-result-ids-before-review", "revalidate-authority-on-retry"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "approvals.inspect"
+symbol = "ApprovalsInspect"
+request = "ApprovalInspectRequest"
+response = "ApprovalView"
+error = "ApprovalError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "requester-or-protected-authorized-presentation", "redact-before-projection"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "approvals.cancel"
+symbol = "ApprovalsCancel"
+request = "ApprovalCancelRequest"
+response = "ApprovalCancelResult"
+error = "ApprovalError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "requester-only", "authority-generation-and-revision-cas", "durable-fatigue-on-notified-withdrawal", "persist-cancel-winner-before-helper-invalidation", "privileged-effect-reconciliation-required"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "approvals.watch"
+symbol = "ApprovalsWatch"
+request = "ApprovalWatchRequest"
+response = "ApprovalWatchEvent"
+error = "ApprovalError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "principal-scope-projection-generation-bound-cursor", "reauthorize-every-delivery-and-resume", "protected-helper-queue-never-agent-queue"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "governance.inspect"
+symbol = "GovernanceInspect"
+request = "ApprovalGovernanceInspectRequest"
+response = "ApprovalGovernanceView"
+error = "ApprovalError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "authorized-pool-governance-reader", "fold-signed-logs-and-monotonic-observations"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "governance.watch"
+symbol = "GovernanceWatch"
+request = "ApprovalGovernanceWatchRequest"
+response = "ApprovalGovernanceWatchEvent"
+error = "ApprovalError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "authorized-pool-governance-reader", "principal-scope-projection-generation-bound-cursor", "reauthorize-every-delivery-and-resume"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"

@@ -1,0 +1,284 @@
+{
+  "version": 1,
+  "status": "proposal; source evidence only; no runtime or K acceptance",
+  "source_commit": "57c991dbf448ab728e7e6d52b6b313cc03dfd95b",
+  "sources": [
+    {
+      "path": "app/poolhouse-node/src/approvals/calls.rs",
+      "sha256": "b0ef8d3eb10055bd0ebfce940762206e7716daaadec60dc476833847072e0ada"
+    },
+    {
+      "path": "app/poolhouse-node/src/approvals/challenge.rs",
+      "sha256": "dfca401fac052cdef27f657e8416fc811847de025952394392e897658ea5cc02"
+    },
+    {
+      "path": "app/poolhouse-node/src/approvals/decide.rs",
+      "sha256": "e2d5a229f7a2d2061049314b5bae795b66a94c476563cc4f59f9a7b5115b8299"
+    },
+    {
+      "path": "app/poolhouse-node/src/approvals/request.rs",
+      "sha256": "a59b0559651d5572ff6bed7e4cb97dedd827a674ca8034b14a368c4e0323cc98"
+    },
+    {
+      "path": "app/poolhouse-node/src/approvals/fatigue.rs",
+      "sha256": "f08f5548e79c41ed2170dad1ad25ae269a4c92a5b4a7ba332d7472064f39501e"
+    },
+    {
+      "path": "app/poolhouse-node/src/approvals/mod.rs",
+      "sha256": "6aade4abf403f078622bf7ae4ebc7ec3423c47b352ea0c9cfa9f93f670cc5adc"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/act.rs",
+      "sha256": "b5e8ce9691fd1a3acf13957b1d1bd27d58d3bed68f39e91acdb1d2499fc24412"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/body.rs",
+      "sha256": "7cde9446e1a12eb6ce394528f76a1322a5ff4ad5969be11979df8e64ddccffb3"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/ops.rs",
+      "sha256": "e0eb9e52686fdf55ae83cbd3a5c1aa1283dbbdde35b6e41e207c1654472b6963"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/pool.rs",
+      "sha256": "58b9789d7cc19bbfe83ee3b1fa87a6b06545cf7b130aa6f5ecee52d7e58e2b2d"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/chain.rs",
+      "sha256": "00102335c26947f69e47c7244aede1757eaa1e57f0f7623582f877f915dcf2c3"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/logs.rs",
+      "sha256": "38832f9f2e1c457c095a6667c9fae820e3db847db808ad8a80dbcd7acd7e1113"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/keys.rs",
+      "sha256": "9e986c9abb9e1f4ba22e934395a3d4a75ffaeb543e414a6c1797d290f7fed81a"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/signer.rs",
+      "sha256": "0d40523df7e2251f17ec5d071ecdcd31df5a8637326459d76f660c466c488d0f"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/phone_verify/mod.rs",
+      "sha256": "af6abddfa7e83d3b95b7b9846a434f2129b318f2a31114aebc9d6f1e47fffb35"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/phone_verify/checkpoint.rs",
+      "sha256": "168d6573a32455651a8fb2f9001205dc21dc44bb28bcbbd3f1a14e4801b3346a"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/phone_verify/request.rs",
+      "sha256": "e9beba8b876247e8b720eb0e3125ed6384195db6d95c6d43a61f6eb70d9034c2"
+    },
+    {
+      "path": "app/poolhouse-node/src/grants/calls.rs",
+      "sha256": "dcd5e6e903ef4771e0335fcbd4c360caa965499d166d4d6e575ae3b9a567f972"
+    },
+    {
+      "path": "src/poolhouse/board/approval.py",
+      "sha256": "2f2d0243dc35a3945940c072b5a56b57dc94a1543366f76dabd2a0b4b9f1daf0"
+    },
+    {
+      "path": "src/poolhouse/board/public.py",
+      "sha256": "25d9b554d12f9b402fb44449ae2e6dd761272c3774bcd79ea6b5f58c96326dfe"
+    },
+    {
+      "path": "src/poolhouse/board/founding.py",
+      "sha256": "ceedd9fb7fd5a2f02cdebae8699c112245d95a8416f1d491280da2fff136d822"
+    },
+    {
+      "path": "src/poolhouse/workspace/approval_cli.py",
+      "sha256": "f68b0ccb4658e6fa24527fce9a94039ed132dae7502e618e7e335f11f9286158"
+    },
+    {
+      "path": "src/poolhouse/requests/approvals.py",
+      "sha256": "64e073117d5840e64fe6ff2ca03224a92558fb0eebd770924f9a8af153adcb1e"
+    },
+    {
+      "path": "app/native-approval/CallerAdmission.swift",
+      "sha256": "d9813371892157ac881258ccd4dbe42214b6007c22f529013205b8f2373e3ac6"
+    },
+    {
+      "path": "docs/native-plan-windows-linux.md",
+      "sha256": "6695a56337b71104c27b00f5db126280dee6e240d85a97813b22a8c2f9db6df0"
+    },
+    {
+      "path": "contracts/node/retained-features.json",
+      "sha256": "3a99a8d4856851ff01e9082829a6a2a1d9e00177ea8f2595efa279af43e2a592"
+    }
+  ],
+  "sites": [
+    {
+      "path": "app/poolhouse-node/src/approvals/calls.rs",
+      "symbols": [
+        "METHODS",
+        "own",
+        "cancel",
+        "call"
+      ],
+      "preserve": "requester ownership, bounded grants, withdrawal fatigue; legacy decision relay is not retained as public authority"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/ops.rs",
+      "symbols": [
+        "with_cut",
+        "pool_draft",
+        "pool_cosign",
+        "gov_view"
+      ],
+      "preserve": "node-derived removal cuts, same unsigned act for co-signers, threshold and hold visibility"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/phone_verify/mod.rs",
+      "symbols": [
+        "Engine::review",
+        "Engine::recheck"
+      ],
+      "preserve": "independent fold and checkpoint before signing; recheck exact operation"
+    },
+    {
+      "path": "app/native-approval/CallerAdmission.swift",
+      "symbols": [
+        "CallerAdmission.receive",
+        "CallerAdmission.validate",
+        "AdmittedChallenge"
+      ],
+      "preserve": "opaque admission and invalidation; example is not cross-platform proof"
+    }
+  ],
+  "operation_mapping": [
+    {
+      "operation": "approvals.request",
+      "legacy": [
+        "approval_request",
+        "pool_draft_found",
+        "pool_draft",
+        "pool_propose",
+        "pool_cosign",
+        "grant_issue",
+        "grant_revoke",
+        "grant_distrust"
+      ],
+      "source_paths": [
+        "app/poolhouse-node/src/approvals/calls.rs",
+        "app/poolhouse-node/src/gov/ops.rs",
+        "app/poolhouse-node/src/grants/calls.rs"
+      ]
+    },
+    {
+      "operation": "approvals.inspect",
+      "legacy": [
+        "approval_status",
+        "approvals"
+      ],
+      "source_paths": [
+        "app/poolhouse-node/src/approvals/calls.rs",
+        "app/poolhouse-node/src/gov/ops.rs",
+        "app/poolhouse-node/src/grants/calls.rs"
+      ]
+    },
+    {
+      "operation": "approvals.cancel",
+      "legacy": [
+        "approval_cancel"
+      ],
+      "source_paths": [
+        "app/poolhouse-node/src/approvals/calls.rs",
+        "app/poolhouse-node/src/gov/ops.rs",
+        "app/poolhouse-node/src/grants/calls.rs"
+      ]
+    },
+    {
+      "operation": "approvals.watch",
+      "legacy": [
+        "approval_pending"
+      ],
+      "source_paths": [
+        "app/poolhouse-node/src/approvals/calls.rs",
+        "app/poolhouse-node/src/gov/ops.rs",
+        "app/poolhouse-node/src/grants/calls.rs"
+      ]
+    },
+    {
+      "operation": "governance.inspect",
+      "legacy": [
+        "pool_status",
+        "grants",
+        "grant_log",
+        "person_keys"
+      ],
+      "source_paths": [
+        "app/poolhouse-node/src/approvals/calls.rs",
+        "app/poolhouse-node/src/gov/ops.rs",
+        "app/poolhouse-node/src/grants/calls.rs"
+      ]
+    },
+    {
+      "operation": "governance.watch",
+      "legacy": [
+        "acts replication and pool_status polling"
+      ],
+      "source_paths": [
+        "app/poolhouse-node/src/approvals/calls.rs",
+        "app/poolhouse-node/src/gov/ops.rs",
+        "app/poolhouse-node/src/grants/calls.rs"
+      ]
+    }
+  ],
+  "helper_declaration": {
+    "public_wire": false,
+    "runtime_handles": [
+      "AuthorityChannel",
+      "OwnerSessionHandle",
+      "ReviewedOperationHandle",
+      "PresentationHandle"
+    ],
+    "serialization": "forbidden; private constructors; DTOs never create handles",
+    "methods": [
+      "admit_channel(kernel peer evidence, installed admitted root) -> AuthorityChannel",
+      "review(channel borrow, untrusted immutable operation plus evidence) -> ReviewedOperationHandle",
+      "present(review move, current owner session borrow) -> PresentationHandle",
+      "finish(presentation move) -> typed signed exact-operation envelope or denial/cancellation",
+      "invalidate(channel/session/process-start/authority-generation loss) -> invalidate all dependent handles"
+    ],
+    "requirements": [
+      "runtime and acceptance must preserve gov/charter.rs::check_numbers: routine threshold 1..16, sensitive 0..16 with zero retaining charter automatic distinct-people semantics; no more required people than admitted strong keys can supply; admin holds integral 1..720 hours, handoff integral 1..1440 minutes, dispute integral 1..30 days; DurationMicros conversion is exact and rejects fractions or out-of-range values; no agent raises bounds",
+      "performed requires a reconciled durable effect receipt; effect_receipt is absent before durable receipt exists, not a placeholder",
+      "unknown signer counts and remaining hold time are absent optional values; never invent zero",
+      "queue snapshots are atomic at snapshot_id/revision; zero items with complete=true represents empty; pages repeat snapshot_id/revision and use next_cursor until complete=true, which requires next_cursor absent; no changes delivered until snapshot complete; retention loss returns resync_required; cursors bind principal scope projection and generations",
+      "every grant recipient is exactly immutable requester_id plus requester_generation; requester cannot nominate another principal; typed resource family and exact generation are resolved by node before review and rechecked at consumption",
+      "requester_id is issued from the actual authenticated principal and lineage; requester cannot select it; immutable operation and consumption bind it",
+      "verify actual service and configured owner UID/SID at both endpoints including PID/start identity and lineage",
+      "verify descriptors against explicitly admitted roots; no self-signed or label-derived assurance",
+      "derive signer assurance and distinct-person identity from admitted descriptors; legacy AdminKey person/strength are not proof",
+      "fresh protected presentation and owner authentication for each exact operation; no presence reuse or desktop-as-phone",
+      "bind canonical versioned bytes to action pool anchor target signer context nonce expiry authority generation and result IDs",
+      "revalidate current authority operation and runtime handles immediately before signature and consumption",
+      "persist roots observed heads complete-first-sight awake times distrust fatigue and consumption outside node rollback domain; missing checkpoint refuses; no auto-repin",
+      "reinstall preserves authority root and monotonic checkpoint; archived authority never migrates",
+      "node commits signed logs and request consumption atomically; keep original signatures cuts disputes thresholds holds and cancellation semantics",
+      "privileged effects use durable prepare consume effect reconcile receipts; unknown outcome is recovery_required; committed or signed never implies performed",
+      "cancel and commit have one durable winner; if effect may have begun reconcile before reporting cancelled or performed",
+      "exact RequestId is bound to principal resource generation payload and authority generation; cross-resource reuse conflicts"
+    ]
+  },
+  "unresolved_gaps": [
+    "Platform protected presentation, fresh presence, actual endpoint authentication and root admission producers remain unimplemented and unproved.",
+    "Shared root/checkpoint storage must survive independent node rollback and reinstall; OS mechanism and atomic receipt protocol await platform review.",
+    "Closed grant actions are deliberately bounded; retained grant actions outside this subset require explicit typed scope review before retention can be claimed.",
+    "Founding/admit descriptor references require authenticated independent verification; references alone are untrusted. Node supplies transport identity and removal cuts.",
+    "Cryptographic encoding negotiation for retained P-256 keys and signatures needs a typed variant; ApprovalSignature64 alone does not replace P-256.",
+    "Handoff/reissue and shared-board charter authority require their own complete typed domains before they can be requested; no in-place join-policy change.",
+    "GovernanceMode members remains explicitly unsupported until its authority implementation is reviewed; join policy is a separate immutable field.",
+    "Legacy person enrollment, raw draft signing, approval_decide, typed confirmation, and requests.approved booleans confer no new authority and have no migration path.",
+    "Independent review and generator integration/drift checks remain required; source mapping is not complete feature retention or installed acceptance.",
+    "Legacy grants to other sessions, classes or accounts are outside the own-requester-only grant subset; mapping grant_issue records the family, not complete retention. They require separate reviewed recipient contracts before retention can be claimed."
+  ],
+  "independent_review": {
+    "reviewer": "approval_attack_review",
+    "scope": "final concrete declarations only",
+    "result": "approved after signed recipient/resource/snapshot and count/hold constraints corrections",
+    "acceptance": "no runtime, platform or K acceptance; integration validation belongs to common owner"
+  }
+}
