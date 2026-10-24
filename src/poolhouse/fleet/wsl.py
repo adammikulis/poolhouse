@@ -15,7 +15,7 @@ from pathlib import Path
 from poolhouse.log import say, warn
 from poolhouse.platform import end_child, launch
 
-from . import discovery, runtime_wheel, windows_firewall, wsl_network, wsl_ui
+from . import discovery, launch_health, runtime_wheel, windows_firewall, wsl_network, wsl_ui
 
 __all__ = ["WSLError", "command", "prepare", "start"]
 
@@ -117,6 +117,35 @@ print(json.dumps(dict(kernel=platform.release(), python=list(sys.version_info[:2
         _read(python, "-c", "import pathlib,sys; pathlib.Path(sys.argv[1]).write_text(sys.argv[2])",
               marker, fingerprint)
     return python
+
+
+def authenticated_health(arguments: list[str], port: int) -> dict | None:
+    """Read-only attach proof inside the existing legacy WSL runtime; never prepare it."""
+    executable = _read("python3", "-c", "import os; print(os.path.expanduser('~/.local/share/poolhouse/runtime/bin/python'))")
+    root = ""
+    for index, arg in enumerate(arguments):
+        if arg.startswith("--root="):
+            root = arg.partition("=")[2]
+        elif arg == "--root" and index + 1 < len(arguments):
+            root = arguments[index + 1]
+    if root and not root.startswith("/"):
+        root = _read("wslpath", "-a", "-u", str(Path(root).expanduser().resolve()))
+    environment = []
+    for key in ("POOLHOUSE_HOME", "POOLHOUSE_CACHE"):
+        if value := os.environ.get(key):
+            translated = _read("wslpath", "-a", "-u", str(Path(value).expanduser().resolve()))
+            environment.append(key + "=" + translated)
+    script = """import json, pathlib, sys
+from poolhouse.fleet.launch_health import authenticated
+from poolhouse.fleet.runtime_paths import default_root
+root = pathlib.Path(sys.argv[1]).expanduser() if sys.argv[1] else default_root()
+print(json.dumps(authenticated(int(sys.argv[2]), root)))
+"""
+    try:
+        value = json.loads(_read("env", *environment, executable, "-I", "-c", script, root, str(port)))
+    except (WSLError, subprocess.SubprocessError, ValueError):
+        return None
+    return value if launch_health.valid(value) else None
 
 
 def replace_running(arguments: list[str], port: int, running: dict, expected: str, *, restart: str = 'idle') -> None:

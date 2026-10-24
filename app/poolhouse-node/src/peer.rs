@@ -166,6 +166,9 @@ fn push(node: &mut Node, bfp: &str, req: &Value) -> Result<Value> {
 /// Answer one request from the device with certificate ``der``. The pool record is read here,
 /// under the node's lock, so the check and the work see the same record.
 fn dispatch(net: &Net, node: &mut Node, der: &[u8], ip: IpAddr, req: &Value) -> Result<Value> {
+    let _activity = if matches!(req["op"].as_str(), Some("join_open" | "join_exchange" | "shard_put" | "shard_start")) {
+        net.activity.new_effect(crate::node::update_activity::Source::Peer)
+    } else { net.activity.maintenance(crate::node::update_activity::Source::Peer) }.map_err(crate::net::activity_error)?;
     let fp = cert_fingerprint(der);
     let result = answer(net, node, der, ip, req)?;
     // A device that has just joined says which port it listens on; its address is where it called from.
@@ -222,6 +225,7 @@ pub enum Ended {
 /// Serve one accepted connection until the peer closes it or is refused; a member that sends `attach` hands the connection over to
 /// `Net::register_reverse`, which uses it to send that member requests.
 pub fn serve(net: &Net, tcp: TcpStream) -> Result<()> {
+    let handshake=net.activity.maintenance(crate::node::update_activity::Source::Peer).map_err(crate::net::activity_error)?;
     tcp.set_read_timeout(Some(IO_TIMEOUT))?;
     tcp.set_write_timeout(Some(IO_TIMEOUT))?;
     let ip = tcp.peer_addr()?.ip();
@@ -229,6 +233,7 @@ pub fn serve(net: &Net, tcp: TcpStream) -> Result<()> {
     let der = s.peer.clone();
     let fp = cert_fingerprint(&der);
     net.session_opened(&fp);
+    drop(handshake); // A waiting connection is not an in-flight handshake or storage writer.
     let result = serve_requests(net, &mut s, &der, ip, true);
     if matches!(result, Ok(Ended::Attached)) {
         net.register_reverse(PeerClient::accepted(s)?);
@@ -242,8 +247,10 @@ pub fn serve(net: &Net, tcp: TcpStream) -> Result<()> {
 /// device dialed: only the device that was dialed may be asked to hand the connection over.
 pub fn serve_requests<S: Read + Write>(net: &Net, s: &mut S, der: &[u8], ip: IpAddr, allow_attach: bool) -> Result<Ended> {
     while let Some(req) = read_frame_max(s, MAX_PEER_FRAME)? {
+        // Retain activity through reply I/O and postdispatch cleanup, outside the Node mutex.
+        let _request=net.activity.maintenance(crate::node::update_activity::Source::Peer).map_err(crate::net::activity_error)?;
         if allow_attach && req["op"] == "attach" {
-            let active = net.node.lock().map_err(|_| Error::Damaged("node poisoned".into()))?.members.is_active(&cert_fingerprint(der));
+            let active = crate::net::tracked_node(&net.node, crate::node::update_activity::Source::Peer)?.members.is_active(&cert_fingerprint(der));
             let reply = if active { reply_of(Ok(json!({"attached": true}))) } else { reply_of(Err(Error::Denied("only a member can be reached over its connection".into()))) };
             write_frame_max(s, &reply, MAX_PEER_FRAME)?;
             if active {
@@ -252,7 +259,7 @@ pub fn serve_requests<S: Read + Write>(net: &Net, s: &mut S, der: &[u8], ip: IpA
             continue;
         }
         let (result, revoked) = {
-            let mut node = net.node.lock().map_err(|_| Error::Damaged("node poisoned".into()))?;
+            let mut node = crate::net::tracked_node(&net.node, crate::node::update_activity::Source::Peer)?;
             let result = dispatch(net, &mut node, der, ip, &req);
             (result, node.members.standing(&cert_fingerprint(der)) == Standing::Revoked)
         };

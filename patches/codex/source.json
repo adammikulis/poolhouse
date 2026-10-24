@@ -30,6 +30,10 @@
     {
       "path": "0007-freeze-native-handler-selections.patch",
       "sha256": "3c777cea6dae063060b229b720d79e0cc17660224a6ffa4bd2762f2fbb1d3d1a"
+    },
+    {
+      "path": "0008-retain-source-configuration-observations.patch",
+      "sha256": "11621e74d9a13150100c3fa7a4ee32b9d6012e610da073f28868bc872bf159f8"
     }
   ],
   "rust_toolchain": "1.99.1",
@@ -551,6 +555,51 @@
       "Opaque custom callbacks remain unresolved source observations, not a finite measured plan or authority.",
       "The prior normal-runtime legacy child waiter limitation remains; no runtime-teardown custody guarantee.",
       "No seventh-patch package build, installation or active-host replacement; all earlier artifacts remain separate."
+    ],
+    "installed_proof": false,
+    "node_admission_proof": false,
+    "lock_sha256": "c043b6b7e67bb2f0ae4b1b8dd485cd6a24bd1cb7ef3a42752d303bc5e5ca4be1"
+  },
+  "configuration_observation_validation": {
+    "source_base": "02a46310f003b7142e915f27ce3db9fb414f061f",
+    "source_base_tree": "2d9a99911d10fbe3a7fa9f9d163f5860ba930321",
+    "source_commit": "110291a5839fe16701176b118de97c6a784fac8f",
+    "source_tree": "f00fa67bd184ee46554de790858a4b4a0d1cb745",
+    "patch_sha256": "11621e74d9a13150100c3fa7a4ee32b9d6012e610da073f28868bc872bf159f8",
+    "working_directory": "codex-rs",
+    "scope": "Actual immutable engine and legacy configuration-owner snapshot observations; source DATA only.",
+    "unit_test_command": [
+      "cargo",
+      "+1.99.1",
+      "test",
+      "--locked",
+      "--offline",
+      "-p",
+      "codex-hooks",
+      "--lib",
+      "source_configuration_"
+    ],
+    "unit_tests_passed": 2,
+    "selection_regression_checks_passed": 7,
+    "exit_code": 0,
+    "target": "aarch64-apple-darwin",
+    "mutation": {
+      "case": "reuse existing actor occurrence instead of allocating a fresh configuration observation",
+      "broken_exit": 101,
+      "restored_exit": 0,
+      "restored_native_configuration_sha256": "16c741d45d774b6f7fc870ce0f945548e21faabc3d588266cc8d21c9d9e9bf7d"
+    },
+    "invariants": [
+      "Every new engine or legacy configuration owner captures a checked launch-scoped source serial and its actual actor instance.",
+      "Clones retain the same immutable owner and observation; engine-only overlays do not replace the legacy owner.",
+      "Handlers have no mutable accessor; production changes construct new owner snapshots.",
+      "A first selection may observe a configuration created after original request capture; retries retain the first frozen selection."
+    ],
+    "limitations": [
+      "Observation IDs are source DATA, not Node configuration/resource generations or authentication.",
+      "No selection observation encoder, command-input rendering, transport, catalog admission, ledger mutation, permit or OS launch is added.",
+      "Private command environment and callback/executor internals remain unexported and unmeasured.",
+      "No eighth-patch package build, installation or H/K acceptance."
     ],
     "installed_proof": false,
     "node_admission_proof": false,
