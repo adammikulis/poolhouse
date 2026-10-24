@@ -10,6 +10,18 @@ from . import python
 
 
 def group(name: str) -> str:
+    if name.startswith("StudioControl"):
+        for words, owner in (
+            (("Artifact",), "studio_artifacts"),
+            (("Workflow",), "studio_workflows"),
+            (("Selection", "Selector"), "studio_selection"),
+            (("Run", "Custody", "Job"), "studio_runs"),
+            (("Catalog", "Template", "Availability"), "studio_catalogue"),
+            (("Graph", "Validation", "Validate", "Expanded", "Node", "Port"), "studio_graphs"),
+        ):
+            if any(word in name for word in words):
+                return owner
+        return "studio_documents"
     if name.startswith("Conversation"):
         if "Content" in name and not name.startswith("ConversationContext"):
             return "conversation_content"

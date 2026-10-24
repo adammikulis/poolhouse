@@ -1,4 +1,4 @@
-// Generated proposal. No dispatch or authority is implemented. Schema 233925948a2922d89dc9a08658d8b1c7aedae786a3da7b25371e289c866f51d2
+// Generated proposal. No dispatch or authority is implemented. Schema 5880390ae0bcac882832d89d7171971279d6883a62a3a361f690281fca74f591
 use super::contract::*;
 
 pub trait Operation { type Request; type Response; type Error; const NAME: &'static str; }
@@ -563,6 +563,90 @@ impl Operation for SettingsWindowCloseInspect { type Request = SettingsWindowClo
 
 pub struct SettingsWindowCloseChoose;
 impl Operation for SettingsWindowCloseChoose { type Request = SettingsWindowChooseRequest; type Response = SettingsWindowCloseView; type Error = SettingsError; const NAME: &'static str = "window.close.choose"; }
+
+pub struct StudioControlCatalogList;
+impl Operation for StudioControlCatalogList { type Request = StudioControlListRequest; type Response = StudioControlReadEvent; type Error = StudioControlError; const NAME: &'static str = "studio.catalog.list"; }
+
+pub struct StudioControlTemplatesList;
+impl Operation for StudioControlTemplatesList { type Request = StudioControlListRequest; type Response = StudioControlReadEvent; type Error = StudioControlError; const NAME: &'static str = "studio.templates.list"; }
+
+pub struct StudioControlAvailabilityInspect;
+impl Operation for StudioControlAvailabilityInspect { type Request = StudioControlInspectRequest; type Response = StudioControlAvailabilityView; type Error = StudioControlError; const NAME: &'static str = "studio.availability.inspect"; }
+
+pub struct StudioControlGraphStageBegin;
+impl Operation for StudioControlGraphStageBegin { type Request = StudioControlGraphStageBeginRequest; type Response = StudioControlUploadView; type Error = StudioControlError; const NAME: &'static str = "studio.graphs.stage.begin"; }
+
+pub struct StudioControlTitleStageBegin;
+impl Operation for StudioControlTitleStageBegin { type Request = StudioControlTitleStageBeginRequest; type Response = StudioControlUploadView; type Error = StudioControlError; const NAME: &'static str = "studio.titles.stage.begin"; }
+
+pub struct StudioControlStageWrite;
+impl Operation for StudioControlStageWrite { type Request = StudioControlStageWriteRequest; type Response = StudioControlUploadView; type Error = StudioControlError; const NAME: &'static str = "studio.documents.stage.write"; }
+
+pub struct StudioControlStageSeal;
+impl Operation for StudioControlStageSeal { type Request = StudioControlStageSealRequest; type Response = StudioControlUploadView; type Error = StudioControlError; const NAME: &'static str = "studio.documents.stage.seal"; }
+
+pub struct StudioControlDocumentRead;
+impl Operation for StudioControlDocumentRead { type Request = StudioControlDocumentReadRequest; type Response = StudioControlDocumentChunk; type Error = StudioControlError; const NAME: &'static str = "studio.documents.read"; }
+
+pub struct StudioControlGraphNodesList;
+impl Operation for StudioControlGraphNodesList { type Request = StudioControlGraphNodeListRequest; type Response = StudioControlReadEvent; type Error = StudioControlError; const NAME: &'static str = "studio.graphs.nodes.list"; }
+
+pub struct StudioControlGraphValidate;
+impl Operation for StudioControlGraphValidate { type Request = StudioControlValidateRequest; type Response = StudioControlValidationView; type Error = StudioControlError; const NAME: &'static str = "studio.graphs.validate"; }
+
+pub struct StudioControlWorkflowCreate;
+impl Operation for StudioControlWorkflowCreate { type Request = StudioControlWorkflowCreateRequest; type Response = StudioControlWorkflowSaveResult; type Error = StudioControlError; const NAME: &'static str = "studio.workflows.create"; }
+
+pub struct StudioControlWorkflowUpdate;
+impl Operation for StudioControlWorkflowUpdate { type Request = StudioControlWorkflowUpdateRequest; type Response = StudioControlWorkflowSaveResult; type Error = StudioControlError; const NAME: &'static str = "studio.workflows.update"; }
+
+pub struct StudioControlWorkflowGet;
+impl Operation for StudioControlWorkflowGet { type Request = StudioControlWorkflowGetRequest; type Response = StudioControlWorkflowView; type Error = StudioControlError; const NAME: &'static str = "studio.workflows.get"; }
+
+pub struct StudioControlWorkflowList;
+impl Operation for StudioControlWorkflowList { type Request = StudioControlListRequest; type Response = StudioControlReadEvent; type Error = StudioControlError; const NAME: &'static str = "studio.workflows.list"; }
+
+pub struct StudioControlSelectionCreate;
+impl Operation for StudioControlSelectionCreate { type Request = StudioControlSelectionCreateRequest; type Response = StudioControlSelectionView; type Error = StudioControlError; const NAME: &'static str = "studio.selections.create"; }
+
+pub struct StudioControlSelectionAppend;
+impl Operation for StudioControlSelectionAppend { type Request = StudioControlSelectionAppendRequest; type Response = StudioControlSelectionView; type Error = StudioControlError; const NAME: &'static str = "studio.selections.append"; }
+
+pub struct StudioControlSelectionSeal;
+impl Operation for StudioControlSelectionSeal { type Request = StudioControlSelectionSealRequest; type Response = StudioControlSelectionView; type Error = StudioControlError; const NAME: &'static str = "studio.selections.seal"; }
+
+pub struct StudioControlRunSubmit;
+impl Operation for StudioControlRunSubmit { type Request = StudioControlRunSubmitRequest; type Response = StudioControlRunView; type Error = StudioControlError; const NAME: &'static str = "studio.runs.submit"; }
+
+pub struct StudioControlRunGet;
+impl Operation for StudioControlRunGet { type Request = StudioControlRunGetRequest; type Response = StudioControlRunView; type Error = StudioControlError; const NAME: &'static str = "studio.runs.get"; }
+
+pub struct StudioControlRunList;
+impl Operation for StudioControlRunList { type Request = StudioControlListRequest; type Response = StudioControlReadEvent; type Error = StudioControlError; const NAME: &'static str = "studio.runs.list"; }
+
+pub struct StudioControlRunNodesList;
+impl Operation for StudioControlRunNodesList { type Request = StudioControlRunNodeListRequest; type Response = StudioControlReadEvent; type Error = StudioControlError; const NAME: &'static str = "studio.runs.nodes.list"; }
+
+pub struct StudioControlRunCancel;
+impl Operation for StudioControlRunCancel { type Request = StudioControlRunCancelRequest; type Response = StudioControlRunMutationResult; type Error = StudioControlError; const NAME: &'static str = "studio.runs.cancel"; }
+
+pub struct StudioControlRunResume;
+impl Operation for StudioControlRunResume { type Request = StudioControlRunResumeRequest; type Response = StudioControlRunMutationResult; type Error = StudioControlError; const NAME: &'static str = "studio.runs.resume"; }
+
+pub struct StudioControlArtifactList;
+impl Operation for StudioControlArtifactList { type Request = StudioControlArtifactListRequest; type Response = StudioControlReadEvent; type Error = StudioControlError; const NAME: &'static str = "studio.runs.artifacts.list"; }
+
+pub struct StudioControlArtifactInspect;
+impl Operation for StudioControlArtifactInspect { type Request = StudioControlArtifactInspectRequest; type Response = StudioControlArtifactView; type Error = StudioControlError; const NAME: &'static str = "studio.artifacts.inspect"; }
+
+pub struct StudioControlArtifactRead;
+impl Operation for StudioControlArtifactRead { type Request = StudioControlArtifactReadRequest; type Response = StudioControlArtifactChunk; type Error = StudioControlError; const NAME: &'static str = "studio.artifacts.read"; }
+
+pub struct StudioControlLogsRead;
+impl Operation for StudioControlLogsRead { type Request = StudioControlRunNodeDataRequest; type Response = StudioControlRunNodeDataView; type Error = StudioControlError; const NAME: &'static str = "studio.runs.logs.read"; }
+
+pub struct StudioControlMetricsRead;
+impl Operation for StudioControlMetricsRead { type Request = StudioControlRunNodeDataRequest; type Response = StudioControlRunNodeDataView; type Error = StudioControlError; const NAME: &'static str = "studio.runs.metrics.read"; }
 
 pub struct TaskExtensionScopeReplace;
 impl Operation for TaskExtensionScopeReplace { type Request = TaskExtensionScopeReplaceRequest; type Response = TaskExtensionScopeView; type Error = TaskContractError; const NAME: &'static str = "tasks.scope.replace"; }
