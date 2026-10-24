@@ -280,3 +280,40 @@ def test_manifest_loader_runs_without_installed_application_or_pythonpath():
               "assert load(root, schema(root)[1])['status']=='reference-only'")
     done = subprocess.run([sys.executable, "-I", "-S", "-c", source], capture_output=True, text=True, check=False)
     assert done.returncode == 0, done.stderr
+
+
+def test_reference_signature_input_policy_and_real_ephemeral_crypto(codec):
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec, ed25519, utils
+
+    # Test-only ephemeral keys remain in memory. No export, keystore or issuer.
+    ed = ed25519.Ed25519PrivateKey.generate()
+    p256 = ec.generate_private_key(ec.SECP256R1())
+    order = int("ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551", 16)
+    for vector in VECTORS:
+        purpose, payload = vector["purpose"], raw(vector["value"])
+        message = codec.signature_input(purpose, payload, "ed25519").value
+        assert message.hex() == vector["transcript_hex"]
+        ed.public_key().verify(ed.sign(message), message)
+        with pytest.raises(InvalidSignature):
+            ed.public_key().verify(ed.sign(bytes.fromhex(vector["digest_hex"])), message)
+        assert codec.signature_input(purpose, payload, "p256_sha256_low_s_der").value == message
+        digest = codec.signature_input(purpose, payload, "p256_sha256_low_s_der", "digest").value
+        assert digest.hex() == vector["digest_hex"]
+        signature = p256.sign(digest, ec.ECDSA(utils.Prehashed(hashes.SHA256())))
+        r, s = utils.decode_dss_signature(signature)
+        low = utils.encode_dss_signature(r, min(s, order - s))
+        p256.public_key().verify(low, message, ec.ECDSA(hashes.SHA256()))
+        p256.public_key().verify(low, digest, ec.ECDSA(utils.Prehashed(hashes.SHA256())))
+        wrong = p256.sign(digest, ec.ECDSA(hashes.SHA256()))
+        with pytest.raises(InvalidSignature):
+            p256.public_key().verify(wrong, message, ec.ECDSA(hashes.SHA256()))
+        for algorithm, mode in (("ed25519", "digest"), ("ed25519ph", "message"),
+                                ("p256_sha256_der", "message"), ("p256", "message")):
+            with pytest.raises(ValueError):
+                codec.signature_input(purpose, payload, algorithm, mode)
+        changed = copy.deepcopy(vector["value"])
+        changed[PROFILES[purpose][1]] = "ff" * 32
+        with pytest.raises(ValueError, match="digest mismatch"):
+            codec.signature_input(purpose, raw(changed), "ed25519")
