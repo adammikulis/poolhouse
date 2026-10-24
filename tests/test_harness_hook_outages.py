@@ -9,7 +9,7 @@ from poolhouse import coding_policy, harness_claims, harnesshook, node_launch
 from poolhouse.board.client import Client
 from poolhouse.errors import Denied
 from poolhouse.interventions import Call
-from poolhouse.workspace import harness_session
+from poolhouse.workspace import harness_session, worktree_lifecycle
 
 
 def unavailable(*args, **kwargs):
@@ -31,12 +31,12 @@ def test_stop_is_not_blocked_when_the_board_is_unavailable(monkeypatch):
     assert harnesshook.stop(harnesshook.Rail(coding_policy.Policy('ask-dangerous'), 'worker', ['/project'])) == {}
 
 
-def test_stop_stays_blocked_by_a_real_refusal(monkeypatch):
+def test_stop_does_not_run_explicit_cleanup_admission(monkeypatch):
     def refused(*args, **kwargs):
         raise Denied('completion refused')
-    monkeypatch.setattr(harnesshook.worktree_lifecycle, 'require_clean', refused)
+    monkeypatch.setattr(worktree_lifecycle, 'require_clean', refused)
     result = harnesshook.stop(harnesshook.Rail(coding_policy.Policy('ask-dangerous'), 'worker', ['/project']))
-    assert result['decision'] == 'block' and 'completion refused' in result['reason']
+    assert result == {}
 
 
 def test_pre_outage_degrades_to_a_warning_and_a_real_denial_still_denies(monkeypatch):
