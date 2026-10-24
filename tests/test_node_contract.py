@@ -428,3 +428,73 @@ def test_retained_operation_mapping_matches_current_declarations():
     output = mapped["jobs.output.read"]
     assert "member_metrics" not in output["retained_callers"]
     assert "member_metrics" in {item["site"] for item in output["related_unmapped"]}
+
+
+def domain_fixture(tmp_path):
+    source = tmp_path / "node"
+    shutil.copytree(ROOT / "contracts/node", source, ignore=shutil.ignore_patterns("domains"))
+    (source / "domains").mkdir()
+    return source
+
+
+def domain_value():
+    return ('version = 1\nstatus = "proposal"\noperation = []\n'
+            '[[type]]\nname = "DomainValue"\nkind = "scalar"\nvisibility = "public"\nencoding = "hex32"\nissuer = "data"\n')
+
+
+def test_domain_fragments_merge_before_global_type_validation(tmp_path):
+    source = domain_fixture(tmp_path)
+    (source / "domains" / "z_value.toml").write_text(domain_value())
+    (source / "domains" / "a_envelope.toml").write_text(
+        'version = 1\nstatus = "proposal"\noperation = []\n'
+        '[[type]]\nname = "DomainEnvelope"\nkind = "record"\nvisibility = "public"\n'
+        'fields = [{name = "value", type = "DomainValue"}]\n')
+    meta, rows, first = load(source)
+    assert [row["file"] for row in meta["domains"]] == ["a_envelope.toml", "z_value.toml"]
+    assert [row["name"] for row in rows].index("DomainValue") < [row["name"] for row in rows].index("DomainEnvelope")
+    assert load(source)[2] == first
+    value = source / "domains" / "z_value.toml"
+    value.write_text(value.read_text().replace('encoding = "hex32"', 'encoding = "uuid"'))
+    assert load(source)[2] != first
+
+
+@pytest.mark.parametrize("change", ["unknown", "empty", "missing_array", "version", "duplicate", "private", "cycle", "duplicate_operation", "unknown_entry"])
+def test_domain_fragments_refuse_ambiguous_and_escaping_data(tmp_path, change):
+    source = domain_fixture(tmp_path)
+    path = source / "domains" / "sample.toml"
+    text = domain_value()
+    if change == "unknown":
+        text = 'unexpected = true\n' + text
+    elif change == "empty":
+        text = 'version = 1\nstatus = "proposal"\noperation = []\ntype = []\n'
+    elif change == "missing_array":
+        text = text.replace('operation = []\n', '')
+    elif change == "version":
+        text = text.replace('version = 1', 'version = true')
+    elif change == "duplicate":
+        text = text.replace('name = "DomainValue"', 'name = "DeviceId"')
+    elif change in {"private", "cycle"}:
+        item = "SessionLease" if change == "private" else "DomainValue"
+        text = ('version = 1\nstatus = "proposal"\noperation = []\n'
+                '[[type]]\nname = "DomainValue"\nkind = "record"\nvisibility = "public"\n'
+                'fields = [{name = "value", type = "' + item + '"}]\n')
+    elif change == "duplicate_operation":
+        text = (source / "operations.toml").read_text().replace('authorization = "node-checked-code"\n', '')
+        text = text.replace('[[operation]]', 'type = []\n[[operation]]', 1)
+    elif change == "unknown_entry":
+        (source / "domains" / "nested").mkdir()
+    path.write_text(text)
+    with pytest.raises(ValueError):
+        load(source)
+
+
+@pytest.mark.parametrize("target", ["directory", "entry"])
+def test_domain_fragments_reject_symlink_metadata_before_reading(tmp_path, monkeypatch, target):
+    source = domain_fixture(tmp_path)
+    entry = source / "domains" / "sample.toml"
+    entry.write_text(domain_value())
+    selected = source / "domains" if target == "directory" else entry
+    original = Path.is_symlink
+    monkeypatch.setattr(Path, "is_symlink", lambda path: path == selected or original(path))
+    with pytest.raises(ValueError):
+        load(source)

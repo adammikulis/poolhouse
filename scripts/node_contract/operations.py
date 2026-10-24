@@ -10,12 +10,13 @@ from .common import GENERATED_TYPES, IDENTIFIER, keys
 from .lifecycle import CHECK
 
 
-def load_operations(root: Path, rows: list[dict]) -> list[dict]:
+def load_operations(root: Path, rows: list[dict], additional: list[dict] | None = None) -> list[dict]:
     source = tomllib.loads((root / "operations.toml").read_text())
     keys(source, {"version", "status", "authorization", "operation"}, {"version", "status", "authorization", "operation"})
     if (type(source["version"]) is not int or source["version"] != 1 or source["status"] != "proposal"
             or source["authorization"] != "node-checked-code" or not isinstance(source["operation"], list)):
         raise ValueError("unsupported operation contract")
+    source["operation"].extend(additional or [])
     definitions = {row["name"]: row for row in rows}
     names, symbols = set(), set(definitions) | GENERATED_TYPES | {"Operation", "OperationSpec", "OPERATION_TYPES"}
     fields = {"name", "symbol", "request", "response", "error", "authorization", "retry", "cancellation", "subscription"}
@@ -38,8 +39,8 @@ def load_operations(root: Path, rows: list[dict]) -> list[dict]:
                 or len(checks) != len(set(checks)) or "authenticated-current-principal" not in checks):
             raise ValueError("invalid operation authorization requirements")
         if (operation["retry"] not in {"read-current-state", "durable-principal-resource-generation-payload-bound"}
-                or operation["cancellation"] not in {"request-detach-only", "atomic-intent-versus-launch-and-completion", "atomic-pause-versus-task-admission", "atomic-stop-versus-launch-and-completion", "task-owned-stop-versus-execution"}
-                or operation["subscription"] != "none"):
+                or operation["cancellation"] not in {"request-detach-only", "atomic-intent-versus-launch-and-completion", "atomic-pause-versus-task-admission", "atomic-stop-versus-launch-and-completion", "task-owned-stop-versus-execution", "atomic-cancel-versus-domain-commit"}
+                or operation["subscription"] not in {"none", "ordered-resource-stream"}):
             raise ValueError("unsupported operation lifecycle")
         if operation["retry"] == "durable-principal-resource-generation-payload-bound":
             members = {field["name"]: field["type"] for field in definitions[operation["request"]]["fields"]}
