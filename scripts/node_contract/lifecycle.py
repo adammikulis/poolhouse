@@ -83,6 +83,9 @@ def _semantics(domain: str, value: dict, requirements: dict) -> None:
         "retire": {"invalidate-outstanding-descendants-and-invocations", "atomically-revoke-authorization-before-returning-physical-cleanup-obligations", "new-generation-to-reopen"},
         "invalidate": {"bind-failure-or-process-exit-or-lost-producer-or-lost-holder-or-restart", "no-process-reassignment"},
     }
+    declared_native_prerequisites = {'admit': {'durable-source-disposition-and-custody-fence-before-right', 'missing-or-rolled-back-occurrence-ledger-refuses-prior-source', 'native-source-view-has-no-node-issued-session-keys', 'source-occurrence-namespace-independent-of-node-boot-and-admission'}, 'reserve': {'durable-source-disposition-and-custody-fence-before-right', 'missing-or-rolled-back-occurrence-ledger-refuses-prior-source', 'source-occurrence-namespace-independent-of-node-boot-and-admission'}, 'bind': {'durable-custody-fence-before-spawn'}, 'release': {'durable-custody-fence-before-release'}, 'consume': {'unique-phase-obligation-and-full-resource-accounting', 'unknown-effect-retains-permit-operation-and-owner', 'durable-consumption-fence-before-effect', 'separate-sealed-domain-effect-owner'}, 'cancel': {'unresolved-cleanup-retains-original-holder-custody'}, 'retire': {'unresolved-cleanup-retains-original-holder-custody'}}
+    for event, checks in declared_native_prerequisites.items():
+        required_checks[event].update(checks)
     if any(set(requirements[event]) != checks for event, checks in required_checks.items()):
         raise ValueError("unsupported lifecycle v2 authorization requirements")
 

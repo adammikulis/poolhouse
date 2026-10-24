@@ -703,13 +703,14 @@ def test_native_adapter_refuses_lost_provenance_or_custody(tmp_path, method, cha
 
 
 def test_native_adapter_declarations_remain_private_and_without_proof_issuers():
-    source = (ROOT / "app/poolhouse-node/src/contract_lifecycle.rs").read_text()
-    assert "pub(crate) trait NativeCallerPlatform<Binding: NodeBinding" in source
-    assert "SpawnPlan: NodeSpawnPlan<Binding = Binding>" in source
+    from node_contract import adapters
+    source = adapters.render(adapters.load(ROOT / "contracts/node"))
+    assert "pub(crate) trait NativeCallerPlatform<G: NativeGraph>" in source
     assert ": native_seal::Platform" in source
     assert "pub trait NativeCallerPlatform" not in source
+    assert "pub(crate) trait NativeGraph: native_seal::Graph + Sized" in source
+    assert "type Binding: BindingProjection<Self>;" in source
     for name in ("VerifiedProducerLaunch", "AuthenticatedProducerMessage", "HolderCleanup", "OwnedCleanupFailure"):
-        assert f"type {name};" in source
         assert not hasattr(public, name)
     assert "impl NativeCallerPlatform" not in source
 
