@@ -25,3 +25,19 @@ The protected-code check requires thin ARM64/ARM64_ALL Mach-O executables, full 
 The maintained build produces the checker and library through CPU admission. Tests compile literal non-TESTING source and a private TESTING protocol with temporary inert fixtures. No private keys, signing, GUI, live XPC or OS authentication are exercised. A complete sealed helper/GUI/service candidate, authentic inventory pin, physical OS entry/PAM freshness, protected installation/readback, running actual-message admission, shared authority-core wiring and end-to-end person approval remain separate prerequisites. The accepted GUI source is `8adb037bb5729dfbd29d36849291784816b489fb`; integration into short development ancestry is required before bundle assembly. Existing `NativeSender` admission is reused then; this component does not implement a second caller policy or governance fold.
 
 Terminal bootstrap is an exceptional onboarding regression, not a normal product journey. No candidate report or self-selected hash supplies initial trust.
+
+## Historical Mach code observation
+
+`MachCode` performs one receive through `MachSender`, then immediately selects dynamic
+code using the complete kernel audit token with public `kSecGuestAttributeAudit`.
+The supplied requirement is a comparison input; validity uses `kSecCSNoNetworkAccess`.
+That documented mode omits online revocation/notarization work; a match is not proof of either.
+There is no PID/path fallback or admission from a matching hash. Success transfers a
+retained `SecCode` and historical sender data to the caller. Failures preserve output.
+Security queries may contact system services; these are not keychain or authentication calls.
+
+The receiver destroys message rights. This result does not retain message/body binding,
+receive incarnation or protected caller custody and does not prove current owner-session,
+liveness, protected launch, provider admission or authorization. A private authenticated
+receiver and independent current-owner issuer remain prerequisites for protected effects.
+No caller-provided UID, console UID, or copied audit observation substitutes for them.
