@@ -55,13 +55,6 @@ pub enum JobPreparationEffect {
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", content = "value", deny_unknown_fields)]
-pub enum JobPreparationIntent {
-    #[serde(rename = "agent_runtime_repair")]
-    AgentRuntimeRepair(Empty),
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "kind", content = "value", deny_unknown_fields)]
 pub enum JobPreparationOsConsent {
     #[serde(rename = "not_yet_determined")]
     NotYetDetermined(Empty),
@@ -130,6 +123,13 @@ pub struct JobRepairCandidateIdentity {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", content = "value", deny_unknown_fields)]
+pub(crate) enum JobRepairIntent {
+    #[serde(rename = "agent_runtime_repair")]
+    AgentRuntimeRepair(Empty),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct JobPreparationAuthority {
     pub protected: JobPreparationProtectedAuthority,
@@ -166,11 +166,76 @@ pub struct JobPreparationProgress {
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct JobRepairPreparationDetails {
+    #[serde(deserialize_with = "required_optional")]
+    pub candidate: JobPreparationOptionalCandidate,
+    pub effect: JobPreparationEffect,
+    pub authority: JobPreparationAuthority,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct JobPreparationWatchRequest {
+    pub preparation: JobPreparationRef,
+    #[serde(deserialize_with = "required_optional")]
+    pub after: InferenceOptionalCursor,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", content = "value", deny_unknown_fields)]
+pub enum JobPreparationIntent {
+    #[serde(rename = "agent_runtime_repair")]
+    AgentRuntimeRepair(Empty),
+    #[serde(rename = "train_classify_text")]
+    TrainClassifyText(JobTrainClassifyTextIntent),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct JobFrozenRepairPlan {
+    pub(crate) preparation: JobPreparationRef,
+    pub(crate) installation: JobInstallationRef,
+    pub(crate) job_id: JobId,
+    pub(crate) operation_id: OperationId,
+    pub(crate) transaction: StateTransactionBinding,
+    pub(crate) intent: JobRepairIntent,
+    pub(crate) candidate: JobRepairCandidateIdentity,
+    pub(crate) plan_digest: JobPreparationDigest,
+    pub(crate) source_generation: ResourceGeneration,
+    pub(crate) authority_generation: ResourceGeneration,
+    pub(crate) launcher_observation: ProcessObservation,
+    pub(crate) launcher_revision: U64,
+    pub(crate) expires_at: UnixMicros,
+    pub(crate) admission: ResourceAdmissionEnvelope,
+    pub(crate) commit: StateCommitState,
+    pub(crate) effect: StateEffectState,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct JobPrepareRequest {
     pub request_id: RequestId,
     pub generation: ResourceGeneration,
     pub installation: JobInstallationRef,
     pub intent: JobPreparationIntent,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", content = "value", deny_unknown_fields)]
+pub(crate) enum JobFrozenPlan {
+    #[serde(rename = "agent_runtime_repair")]
+    AgentRuntimeRepair(JobFrozenRepairPlan),
+    #[serde(rename = "train_classify_text")]
+    TrainClassifyText(JobFrozenClassifierPlan),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", content = "value", deny_unknown_fields)]
+pub enum JobPreparationDetails {
+    #[serde(rename = "agent_runtime_repair")]
+    AgentRuntimeRepair(JobRepairPreparationDetails),
+    #[serde(rename = "train_classify_text")]
+    TrainClassifyText(JobTrainingPreparationDetails),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -184,10 +249,7 @@ pub struct JobPreparationView {
     pub intent: JobPreparationIntent,
     pub phase: JobPreparationPhase,
     pub job_state: JobState,
-    pub effect: JobPreparationEffect,
-    #[serde(deserialize_with = "required_optional")]
-    pub candidate: JobPreparationOptionalCandidate,
-    pub authority: JobPreparationAuthority,
+    pub details: JobPreparationDetails,
     #[serde(deserialize_with = "required_optional")]
     pub expires_at: OptionalUnixMicros,
     pub progress: JobPreparationProgress,
@@ -198,33 +260,4 @@ pub struct JobPreparationView {
 pub struct JobPreparationEvent {
     pub cursor: InferenceCursor,
     pub view: JobPreparationView,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct JobPreparationWatchRequest {
-    pub preparation: JobPreparationRef,
-    #[serde(deserialize_with = "required_optional")]
-    pub after: InferenceOptionalCursor,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct JobFrozenRepairPlan {
-    pub(crate) preparation: JobPreparationRef,
-    pub(crate) installation: JobInstallationRef,
-    pub(crate) job_id: JobId,
-    pub(crate) operation_id: OperationId,
-    pub(crate) transaction: StateTransactionBinding,
-    pub(crate) intent: JobPreparationIntent,
-    pub(crate) candidate: JobRepairCandidateIdentity,
-    pub(crate) plan_digest: JobPreparationDigest,
-    pub(crate) source_generation: ResourceGeneration,
-    pub(crate) authority_generation: ResourceGeneration,
-    pub(crate) launcher_observation: ProcessObservation,
-    pub(crate) launcher_revision: U64,
-    pub(crate) expires_at: UnixMicros,
-    pub(crate) admission: ResourceAdmissionEnvelope,
-    pub(crate) commit: StateCommitState,
-    pub(crate) effect: StateEffectState,
 }
