@@ -323,12 +323,10 @@ def test_code_after_omitted_notes_is_compared_from_actual_installed_source(autom
     assert not runtime_deploy.current(plan)
 
 
-@pytest.mark.parametrize("change", ["dirty", "head-race", "epoch-race", "unhealthy", "baseline"])
+@pytest.mark.parametrize("change", ["head-race", "epoch-race", "unhealthy", "baseline"])
 def test_unstable_or_unverified_source_and_selection_keep_normal_refresh(automatic, monkeypatch, change):
     args, plan, chosen, starts, snapshot = automatic
-    if change == "dirty":
-        (plan.checkout / "README.md").write_text("dirty")
-    elif change == "head-race":
+    if change == "head-race":
         monkeypatch.setattr(runtime_deploy, "resolve_commit", lambda checkout: "e" * 40)
     elif change == "epoch-race":
         calls = []
@@ -342,3 +340,15 @@ def test_unstable_or_unverified_source_and_selection_keep_normal_refresh(automat
         object.__setattr__(plan, "automatic_from", (*snapshot[:1], "e" * 40, *snapshot[2:]))
     assert runtime_cli._ensure(args) == 0 and len(starts) == 1
     assert chosen.commit == snapshot[1]
+
+
+def test_documentation_omission_preserves_unrelated_dirty_work(automatic):
+    args, plan, chosen, starts, snapshot = automatic
+    work = plan.checkout / "src/poolhouse/__init__.py"
+    work.write_bytes(b"unfinished source work\n")
+    before = git(plan.checkout, "status", "--porcelain")
+    assert runtime_cli._ensure(args) == 0 and starts == []
+    assert work.read_bytes() == b"unfinished source work\n"
+    assert git(plan.checkout, "status", "--porcelain") == before
+    assert chosen.commit == snapshot[1] and chosen.commit != plan.commit
+    assert not runtime_deploy.current(plan)

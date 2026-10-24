@@ -174,8 +174,7 @@ def _ensure(args: argparse.Namespace) -> int:
 def _documentation_refresh(plan: runtime_deploy.Plan) -> runtime.Runtime | None:
     """A healthy unchanged selection eligible for documentation-only automatic refresh omission."""
     chosen = runtime_deploy.healthy(plan)
-    if (chosen is None or chosen.commit == plan.commit
-            or runtime_git.git(plan.checkout, "status", "--porcelain", "--untracked-files=no")):
+    if chosen is None or chosen.commit == plan.commit:
         return None
     before = runtime_deploy.automatic_selection()
     expected = (str(chosen.prefix), chosen.commit, chosen.version, chosen.identity, str(runtime_store.epoch_of(chosen.prefix)))
@@ -183,7 +182,6 @@ def _documentation_refresh(plan: runtime_deploy.Plan) -> runtime.Runtime | None:
             or not runtime_inputs.documentation_only(plan.checkout, chosen.commit, plan.commit)):
         return None
     if (runtime_deploy.resolve_commit(plan.checkout) != plan.commit
-            or runtime_git.git(plan.checkout, "status", "--porcelain", "--untracked-files=no")
             or runtime_deploy.automatic_selection() != before
             or runtime_deploy.healthy(plan) != chosen):
         return None
