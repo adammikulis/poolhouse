@@ -10,6 +10,13 @@ from . import python
 
 
 def group(name: str) -> str:
+    if name.startswith("ResourceLease"):
+        suffix = name.removeprefix("ResourceLease")
+        if any(word in suffix for word in ("Resource", "Capacity", "Family", "Unit", "Cpu", "Memory", "Exclusive", "Model", "Draft", "Named")):
+            return "lease_resources"
+        if any(word in name for word in ("Stream", "Event", "Snapshot", "List", "Watch")):
+            return "lease_streams"
+        return "leases"
     if name.startswith("StudioControl"):
         for words, owner in (
             (("Artifact",), "studio_artifacts"),

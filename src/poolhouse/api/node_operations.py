@@ -1,4 +1,4 @@
-# Generated proposal. No dispatch or authority is implemented. Schema 5880390ae0bcac882832d89d7171971279d6883a62a3a361f690281fca74f591
+# Generated proposal. No dispatch or authority is implemented. Schema 3d756ba80985d5e794adbfdc3724f25e203c11980579d0d6b4498df8f1f1843b
 from . import node_contract as data
 
 OPERATION_TYPES = {
@@ -162,6 +162,15 @@ OPERATION_TYPES = {
     "boards.inspect": (data.CatalogBoardInspectRequest, data.CatalogBoardView, data.ProjectCatalogError),
     "boards.resolve": (data.CatalogBoardResolveRequest, data.CatalogBoardView, data.ProjectCatalogError),
     "boards.open": (data.CatalogBoardInspectRequest, data.CatalogBoardView, data.ProjectCatalogError),
+    "leases.context.inspect": (data.ResourceLeaseContextInspectRequest, data.ResourceLeaseContextView, data.ResourceLeaseError),
+    "leases.resources.list": (data.ResourceLeaseResourcesListRequest, data.ResourceLeaseResourcesEvent, data.ResourceLeaseError),
+    "leases.acquire": (data.ResourceLeaseAcquireRequest, data.ResourceLeaseAcquireResult, data.ResourceLeaseError),
+    "leases.get": (data.ResourceLeaseGetRequest, data.ResourceLeaseView, data.ResourceLeaseError),
+    "leases.renew": (data.ResourceLeaseRenewRequest, data.ResourceLeaseView, data.ResourceLeaseError),
+    "leases.release": (data.ResourceLeaseReleaseRequest, data.ResourceLeaseReleaseView, data.ResourceLeaseError),
+    "leases.wait": (data.ResourceLeaseWaitRequest, data.ResourceLeaseWaitView, data.ResourceLeaseError),
+    "leases.list": (data.ResourceLeaseListRequest, data.ResourceLeaseEvent, data.ResourceLeaseError),
+    "leases.watch": (data.ResourceLeaseWatchRequest, data.ResourceLeaseEvent, data.ResourceLeaseError),
     "settings.local.inspect": (data.SettingsReadRequest, data.SettingsLocalDefaultsView, data.SettingsError),
     "settings.local.replace": (data.SettingsLocalDefaultsReplaceRequest, data.SettingsLocalDefaultsView, data.SettingsError),
     "settings.execution.inspect": (data.SettingsReadRequest, data.SettingsExecutionPolicyView, data.SettingsError),

@@ -28,6 +28,9 @@ from . import (
     _inference_results as _inference_results_module,
     _inference_streams as _inference_streams_module,
     _jobs as _jobs_module,
+    _lease_resources as _lease_resources_module,
+    _lease_streams as _lease_streams_module,
+    _leases as _leases_module,
     _model_assets as _model_assets_module,
     _model_catalogue as _model_catalogue_module,
     _model_fit as _model_fit_module,
@@ -69,7 +72,7 @@ from . import (
 from ._codec import _finalize
 
 CONTRACT_VERSION = 1
-SCHEMA_SHA256 = "5880390ae0bcac882832d89d7171971279d6883a62a3a361f690281fca74f591"
+SCHEMA_SHA256 = "3d756ba80985d5e794adbfdc3724f25e203c11980579d0d6b4498df8f1f1843b"
 _EXPORTS = ('CONTRACT_VERSION', 'SCHEMA_SHA256', 'U32', 'U64', 'AgentControlError', 'AgentControlRequest',
  'AgentControlSnapshot', 'AgentDisplayName', 'AgentGetRequest', 'AgentId', 'AgentPauseResult',
  'AgentState', 'AgentStopResult', 'AgentTaskExecution', 'AgentTaskStartRequest',
@@ -340,7 +343,28 @@ _EXPORTS = ('CONTRACT_VERSION', 'SCHEMA_SHA256', 'U32', 'U64', 'AgentControlErro
  'ProjectSelectionScopeId', 'ProjectSelectionStamp', 'ProjectSelectionView',
  'ProjectSelectionWatchRequest', 'ProjectSourceAddRequest', 'ProjectSourceId', 'ProjectSourceItems',
  'ProjectSourceKind', 'ProjectSourceRef', 'ProjectSourceSnapshot', 'ProjectSourceView',
- 'ProjectSourcesRequest', 'RequestId', 'ResourceDomainId', 'ResourceGeneration', 'SafeMessage',
+ 'ProjectSourcesRequest', 'RequestId', 'ResourceDomainId', 'ResourceGeneration',
+ 'ResourceLeaseAcquireRequest', 'ResourceLeaseAcquireResult', 'ResourceLeaseCapacity',
+ 'ResourceLeaseCapacityObservation', 'ResourceLeaseCapacityStreamItem', 'ResourceLeaseClass',
+ 'ResourceLeaseContextInspectRequest', 'ResourceLeaseContextView', 'ResourceLeaseCpuCount',
+ 'ResourceLeaseCpuRequest', 'ResourceLeaseDraftKey', 'ResourceLeaseEndReason', 'ResourceLeaseError',
+ 'ResourceLeaseErrorDetails', 'ResourceLeaseEvent', 'ResourceLeaseExclusiveRequest',
+ 'ResourceLeaseFamily', 'ResourceLeaseGetRequest', 'ResourceLeaseHeldResources', 'ResourceLeaseId',
+ 'ResourceLeaseListRequest', 'ResourceLeaseLogPolicy', 'ResourceLeaseLogicalState',
+ 'ResourceLeaseMemoryMiB', 'ResourceLeaseMemoryRequest', 'ResourceLeaseModelKey',
+ 'ResourceLeaseModelSlotHolding', 'ResourceLeaseModelSlotRequest', 'ResourceLeaseNamedRequest',
+ 'ResourceLeaseOptionalEndReason', 'ResourceLeaseOptionalTaskRef', 'ResourceLeaseOptionalView',
+ 'ResourceLeaseOwnerId', 'ResourceLeaseOwnerRef', 'ResourceLeaseOwnerView',
+ 'ResourceLeasePolicyStreamItem', 'ResourceLeasePolicyView', 'ResourceLeaseProcessIntent',
+ 'ResourceLeaseRef', 'ResourceLeaseReleaseRequest', 'ResourceLeaseReleaseView',
+ 'ResourceLeaseRenewProcessIntent', 'ResourceLeaseRenewRequest', 'ResourceLeaseRequestedResources',
+ 'ResourceLeaseResourceHolding', 'ResourceLeaseResourceId', 'ResourceLeaseResourceRef',
+ 'ResourceLeaseResourceRequest', 'ResourceLeaseResourceStreamItem', 'ResourceLeaseResourceView',
+ 'ResourceLeaseResourcesEvent', 'ResourceLeaseResourcesListRequest', 'ResourceLeaseScopeId',
+ 'ResourceLeaseScopeRef', 'ResourceLeaseSettlement', 'ResourceLeaseSnapshotBoundary',
+ 'ResourceLeaseSnapshotId', 'ResourceLeaseSourceId', 'ResourceLeaseStreamItem', 'ResourceLeaseTag',
+ 'ResourceLeaseTaskHolding', 'ResourceLeaseUnit', 'ResourceLeaseView', 'ResourceLeaseWaitOutcome',
+ 'ResourceLeaseWaitRequest', 'ResourceLeaseWaitView', 'ResourceLeaseWatchRequest', 'SafeMessage',
  'ServingId', 'ServingLeaseId', 'SettingsAppearance', 'SettingsAvailability',
  'SettingsAvailabilityReplaceRequest', 'SettingsAvailabilityView', 'SettingsAvailabilityWindow',
  'SettingsAvailabilityWindows', 'SettingsBaseTheme', 'SettingsChange', 'SettingsCloseBehavior',
@@ -452,6 +476,6 @@ _EXPORTS = ('CONTRACT_VERSION', 'SCHEMA_SHA256', 'U32', 'U64', 'AgentControlErro
  'TaskWatcherView', 'TransferId', 'TransportGeneration', 'UnixMicros', 'UpdatePolicyId',
  'Utf8Chunk')
 _finalize(tuple(name for name in _EXPORTS if name not in {"CONTRACT_VERSION", "SCHEMA_SHA256"}),
-          (globals(), _agents_module.__dict__, _approval_identity_module.__dict__, _approval_intent_module.__dict__, _approval_view_module.__dict__, _board_content_module.__dict__, _board_content_delivery_module.__dict__, _board_content_files_module.__dict__, _board_content_links_module.__dict__, _board_content_notes_module.__dict__, _board_content_read_module.__dict__, _board_content_rooms_module.__dict__, _connectivity_module.__dict__, _connectivity_discovery_module.__dict__, _connectivity_join_module.__dict__, _connectivity_membership_module.__dict__, _connectivity_transport_module.__dict__, _conversation_content_module.__dict__, _conversation_settings_module.__dict__, _conversations_module.__dict__, _core_module.__dict__, _inference_module.__dict__, _inference_chat_module.__dict__, _inference_content_module.__dict__, _inference_effects_module.__dict__, _inference_requests_module.__dict__, _inference_results_module.__dict__, _inference_streams_module.__dict__, _jobs_module.__dict__, _model_assets_module.__dict__, _model_catalogue_module.__dict__, _model_fit_module.__dict__, _model_observation_module.__dict__, _model_query_module.__dict__, _model_resources_module.__dict__, _model_serving_module.__dict__, _model_watch_module.__dict__, _projects_boards_module.__dict__, _projects_catalog_module.__dict__, _projects_creation_module.__dict__, _projects_locations_module.__dict__, _projects_selection_module.__dict__, _projects_sources_module.__dict__, _settings_appearance_module.__dict__, _settings_local_module.__dict__, _settings_policy_module.__dict__, _setup_module.__dict__, _startup_module.__dict__, _studio_artifacts_module.__dict__, _studio_catalogue_module.__dict__, _studio_documents_module.__dict__, _studio_graphs_module.__dict__, _studio_runs_module.__dict__, _studio_selection_module.__dict__, _studio_workflows_module.__dict__, _task_allocation_module.__dict__, _task_claims_module.__dict__, _task_extensions_module.__dict__, _task_records_module.__dict__, _task_requests_module.__dict__, _task_reservations_module.__dict__, _task_review_module.__dict__, _task_scope_module.__dict__, _task_specification_module.__dict__, _task_streams_module.__dict__, _tasks_module.__dict__,))
+          (globals(), _agents_module.__dict__, _approval_identity_module.__dict__, _approval_intent_module.__dict__, _approval_view_module.__dict__, _board_content_module.__dict__, _board_content_delivery_module.__dict__, _board_content_files_module.__dict__, _board_content_links_module.__dict__, _board_content_notes_module.__dict__, _board_content_read_module.__dict__, _board_content_rooms_module.__dict__, _connectivity_module.__dict__, _connectivity_discovery_module.__dict__, _connectivity_join_module.__dict__, _connectivity_membership_module.__dict__, _connectivity_transport_module.__dict__, _conversation_content_module.__dict__, _conversation_settings_module.__dict__, _conversations_module.__dict__, _core_module.__dict__, _inference_module.__dict__, _inference_chat_module.__dict__, _inference_content_module.__dict__, _inference_effects_module.__dict__, _inference_requests_module.__dict__, _inference_results_module.__dict__, _inference_streams_module.__dict__, _jobs_module.__dict__, _lease_resources_module.__dict__, _lease_streams_module.__dict__, _leases_module.__dict__, _model_assets_module.__dict__, _model_catalogue_module.__dict__, _model_fit_module.__dict__, _model_observation_module.__dict__, _model_query_module.__dict__, _model_resources_module.__dict__, _model_serving_module.__dict__, _model_watch_module.__dict__, _projects_boards_module.__dict__, _projects_catalog_module.__dict__, _projects_creation_module.__dict__, _projects_locations_module.__dict__, _projects_selection_module.__dict__, _projects_sources_module.__dict__, _settings_appearance_module.__dict__, _settings_local_module.__dict__, _settings_policy_module.__dict__, _setup_module.__dict__, _startup_module.__dict__, _studio_artifacts_module.__dict__, _studio_catalogue_module.__dict__, _studio_documents_module.__dict__, _studio_graphs_module.__dict__, _studio_runs_module.__dict__, _studio_selection_module.__dict__, _studio_workflows_module.__dict__, _task_allocation_module.__dict__, _task_claims_module.__dict__, _task_extensions_module.__dict__, _task_records_module.__dict__, _task_requests_module.__dict__, _task_reservations_module.__dict__, _task_review_module.__dict__, _task_scope_module.__dict__, _task_specification_module.__dict__, _task_streams_module.__dict__, _tasks_module.__dict__,))
 __all__: tuple[str, ...]
 globals().update(__all__=_EXPORTS)

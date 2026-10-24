@@ -1,4 +1,4 @@
-// Generated proposal. No dispatch or authority is implemented. Schema 5880390ae0bcac882832d89d7171971279d6883a62a3a361f690281fca74f591
+// Generated proposal. No dispatch or authority is implemented. Schema 3d756ba80985d5e794adbfdc3724f25e203c11980579d0d6b4498df8f1f1843b
 use super::contract::*;
 
 pub trait Operation { type Request; type Response; type Error; const NAME: &'static str; }
@@ -482,6 +482,33 @@ impl Operation for BoardsResolve { type Request = CatalogBoardResolveRequest; ty
 
 pub struct BoardsOpen;
 impl Operation for BoardsOpen { type Request = CatalogBoardInspectRequest; type Response = CatalogBoardView; type Error = ProjectCatalogError; const NAME: &'static str = "boards.open"; }
+
+pub struct ResourceLeasesContextInspect;
+impl Operation for ResourceLeasesContextInspect { type Request = ResourceLeaseContextInspectRequest; type Response = ResourceLeaseContextView; type Error = ResourceLeaseError; const NAME: &'static str = "leases.context.inspect"; }
+
+pub struct ResourceLeasesResourcesList;
+impl Operation for ResourceLeasesResourcesList { type Request = ResourceLeaseResourcesListRequest; type Response = ResourceLeaseResourcesEvent; type Error = ResourceLeaseError; const NAME: &'static str = "leases.resources.list"; }
+
+pub struct ResourceLeasesAcquire;
+impl Operation for ResourceLeasesAcquire { type Request = ResourceLeaseAcquireRequest; type Response = ResourceLeaseAcquireResult; type Error = ResourceLeaseError; const NAME: &'static str = "leases.acquire"; }
+
+pub struct ResourceLeasesGet;
+impl Operation for ResourceLeasesGet { type Request = ResourceLeaseGetRequest; type Response = ResourceLeaseView; type Error = ResourceLeaseError; const NAME: &'static str = "leases.get"; }
+
+pub struct ResourceLeasesRenew;
+impl Operation for ResourceLeasesRenew { type Request = ResourceLeaseRenewRequest; type Response = ResourceLeaseView; type Error = ResourceLeaseError; const NAME: &'static str = "leases.renew"; }
+
+pub struct ResourceLeasesRelease;
+impl Operation for ResourceLeasesRelease { type Request = ResourceLeaseReleaseRequest; type Response = ResourceLeaseReleaseView; type Error = ResourceLeaseError; const NAME: &'static str = "leases.release"; }
+
+pub struct ResourceLeasesWait;
+impl Operation for ResourceLeasesWait { type Request = ResourceLeaseWaitRequest; type Response = ResourceLeaseWaitView; type Error = ResourceLeaseError; const NAME: &'static str = "leases.wait"; }
+
+pub struct ResourceLeasesList;
+impl Operation for ResourceLeasesList { type Request = ResourceLeaseListRequest; type Response = ResourceLeaseEvent; type Error = ResourceLeaseError; const NAME: &'static str = "leases.list"; }
+
+pub struct ResourceLeasesWatch;
+impl Operation for ResourceLeasesWatch { type Request = ResourceLeaseWatchRequest; type Response = ResourceLeaseEvent; type Error = ResourceLeaseError; const NAME: &'static str = "leases.watch"; }
 
 pub struct SettingsLocalDefaultsInspect;
 impl Operation for SettingsLocalDefaultsInspect { type Request = SettingsReadRequest; type Response = SettingsLocalDefaultsView; type Error = SettingsError; const NAME: &'static str = "settings.local.inspect"; }
