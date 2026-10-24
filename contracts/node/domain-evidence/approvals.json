@@ -236,7 +236,7 @@
     ],
     "serialization": "forbidden; private constructors; DTOs never create handles",
     "methods": [
-      "admit_channel(kernel peer evidence, installed admitted root) -> AuthorityChannel",
+      "admit_channel(kernel-authenticated caller evidence, installed admitted root) -> AuthorityChannel",
       "review(channel borrow, untrusted immutable operation plus evidence) -> ReviewedOperationHandle",
       "present(review move, current owner session borrow) -> PresentationHandle",
       "finish(presentation move) -> typed signed exact-operation envelope or denial/cancellation",
