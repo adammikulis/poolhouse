@@ -247,3 +247,8 @@ These are generated data declarations only. Board anchor/catalogue identity,
 protected controller authority, transaction ordering, state transitions, native
 process proofs and resource release remain implementation obligations. Existing
 signed task/board records are preserved without importing legacy authority.
+
+The [fresh Linux/WSL rendezvous observation](notes/native-linux-rendezvous.md)
+records distinct public-key/certificate hashes, local API/socket readiness, the
+actual workspace response and exact reviewed caller/agent contract checkpoints.
+It supplies no endpoint trust or native Windows evidence and accepts no barrier.
