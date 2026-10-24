@@ -1,4 +1,4 @@
-"""Launcher-bound resource ownership for inspectable native harness mutations, kept as claims on the board."""
+"""Optional explicit Python helpers for launcher-bound claims; no automatic hook caller."""
 
 import os
 import shlex
