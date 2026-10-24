@@ -36,6 +36,11 @@ def header(home, identifier, parent, **extra):
 
 @pytest.fixture
 def node(workspace_node, monkeypatch, tmp_path):  # noqa: F811
+    project_owner = workspace_node.member("notification-project-owner")
+    workspace_node.allow(project_owner, "source_add")
+    workspace_node.client.call("project_add", "", project_owner.token, id=workspace_node.board,
+                               kind="folder", path=str(tmp_path))
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("CODEX_THREAD_ID", IDS["native-root"])
     monkeypatch.setenv("POOLHOUSE_BOARD", workspace_node.board)
     monkeypatch.setenv("POOLHOUSE_HOME", str(workspace_node.state.parent))
@@ -347,3 +352,20 @@ def test_cached_stop_needs_no_project_or_native_identity(monkeypatch, capsys):
     monkeypatch.setattr(sys, 'stdin', __import__('io').StringIO(json.dumps({'hook_event_name': 'Stop', 'cwd': '/no-project'})))
     assert lifecycle.run(argparse.Namespace(assigned='', completion=True, worker=True)) == 0
     assert capsys.readouterr() == ('', '')
+
+
+@pytest.mark.redteam
+def test_notification_in_unknown_git_project_leaves_running_node_projects_and_sessions_unchanged(workspace_node, tmp_path, monkeypatch):  # noqa: F811
+    from poolhouse.net import git
+
+    root = tmp_path / 'unregistered'
+    root.mkdir()
+    git.run(['init', '-q', '-b', 'development'], cwd=root)
+    probe = workspace_node.member('project-observer')
+    before_projects = workspace_node.client.call('project_list')
+    before_agents = workspace_node.session(probe).agents()
+    monkeypatch.setenv('CODEX_THREAD_ID', IDS['native-root'])
+    monkeypatch.setenv('POOLHOUSE_BOARD', workspace_node.board)
+    assert lifecycle.handle(event('SessionStart', cwd=str(root)), node=workspace_node.client) == {}
+    assert workspace_node.client.call('project_list') == before_projects
+    assert workspace_node.session(probe).agents() == before_agents

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import re
+import ast
 import subprocess
 from pathlib import Path
 
@@ -26,7 +26,8 @@ def test_the_shipped_hooks_are_the_ones_git_will_run() -> None:
 def test_the_installer_and_the_check_agree_on_which_hooks_there_are() -> None:
     """A hook the installer puts in place and the check does not look for is a hook that
     can go missing without anything saying so."""
-    installer = (REPO / "scripts" / "install-hooks.sh").read_text(encoding="utf-8")
-    pairs = re.findall(r'"([a-z-]+) [a-z-]+"', installer.split("for pair in", 1)[1])
+    installer = ast.parse((REPO / "scripts" / "install-hooks.py").read_text(encoding="utf-8"))
+    pairs = next(ast.literal_eval(row.value) for row in installer.body if isinstance(row, ast.Assign)
+                 and any(isinstance(name, ast.Name) and name.id == "HOOKS" for name in row.targets))
     assert pairs, "the installer names no hooks"
     assert sorted(pairs) == sorted(HOOKS), f"installer installs {sorted(pairs)}, check looks for {sorted(HOOKS)}"
