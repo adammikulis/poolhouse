@@ -15,6 +15,7 @@ REPO = Path(__file__).resolve().parent.parent
 SRC = REPO / "src" / "poolhouse"
 
 STANDALONE = {
+    "harness_claims": "explicit importable launcher-bound claim helpers; no automatic runtime caller",
     "coding": "called by the workspace runner as poolhouse.coding.launch_coding_agent",
     "coding_workspace": "the parent-owned snapshot runner for isolated coding tools; the isolated launcher that calls it "
                         "is what harnessing.require_isolated_execution refuses to start without",

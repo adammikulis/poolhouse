@@ -90,7 +90,6 @@ def pytest_sessionfinish(session, exitstatus) -> None:
 
 
 # ``src`` goes on the path above, so these cannot be imported with the rest.
-import githooks_ready  # noqa: E402  (``scripts`` is on the path above)
 import testslots  # noqa: E402
 import walkbound  # noqa: E402
 from daemon_guard import daemons_stop_with_the_test  # noqa: E402,F401  (an autouse fixture)
@@ -110,8 +109,6 @@ from poolhouse.testing.fakes import (  # noqa: E402
     fake_binary as fake_binary,
 )
 
-if not os.environ.get("PYTEST_XDIST_WORKER"):
-    githooks_ready.ensure(REPO)
 testslots.pin_slots_dir()
 """The machine-wide slot directory, fixed before the session moves ``HOME`` so every worker and
 every run shares one set of heavy lanes."""

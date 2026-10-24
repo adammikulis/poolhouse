@@ -1,4 +1,4 @@
-"""Missing absolute hook executables are removed atomically and reported by the doctor."""
+"""Normal installation preserves foreign hooks; explicit stale maintenance is separate."""
 
 from __future__ import annotations
 
@@ -71,31 +71,31 @@ def test_a_current_command_is_not_stale_based_on_its_arguments(line):
     assert not agent_hooks_stale.is_stale(line)
 
 
-def test_install_hooks_removes_the_stale_claude_entries_and_keeps_the_rest(machine, capsys):
+def test_install_hooks_preserves_missing_foreign_claude_programs(machine, capsys):
     path = machine / "s.json"
     path.write_text(json.dumps(STALE_CLAUDE))
     args = argparse.Namespace(settings=str(path), codex_config="", only=["claude-code"], agent="")
     assert hooks_cli.install(args) == 0
     data = json.loads(path.read_text())
-    assert commands(data, "PostToolUse") == ["other-tool", "poolhouse-workspace nudge --agent claude --hook post"]
-    assert commands(data, "Stop") == ["poolhouse-workspace nudge --agent claude --hook stop"]
-    assert "SessionStart" not in data["hooks"]
+    assert commands(data, "PostToolUse") == [f"{GONE} --hook post", "other-tool", "poolhouse-workspace nudge --agent claude --hook post"]
+    assert commands(data, "Stop") == [f"{GONE} --hook stop", "poolhouse-workspace nudge --agent claude --hook stop"]
+    assert data["hooks"]["SessionStart"] == STALE_CLAUDE["hooks"]["SessionStart"]
     out = capsys.readouterr().out
-    assert out.count("removed the hook") == 3 and GONE in out
+    assert "removed the hook" not in out
     backups = list(machine.glob("s.json.bak-*"))
-    assert len(backups) == 1 and json.loads(backups[0].read_text()) == STALE_CLAUDE
+    assert backups == []
 
 
-def test_install_hooks_removes_the_stale_codex_entries_and_keeps_the_rest(machine):
+def test_install_hooks_preserves_missing_foreign_codex_programs(machine):
     path = machine / "c.toml"
     path.write_text(STALE_CODEX)
     args = argparse.Namespace(settings="", codex_config=str(path), only=["codex"], agent="")
     assert hooks_cli.install(args) == 0
     data = tomllib.loads(path.read_text())
-    assert commands(data, "Stop") == ["keep-me", "poolhouse-workspace codex-hook", "poolhouse-workspace codex-stop"]
-    assert commands(data, "PostToolUse") == ["poolhouse-workspace codex-hook"]
-    assert data["agents"] == {"max_threads": 4} and GONE not in path.read_text()
-    assert len(list(machine.glob("c.toml.bak-*"))) == 1
+    assert commands(data, "Stop") == [f"{GONE} --hook stop", "keep-me", "poolhouse-workspace codex-hook"]
+    assert commands(data, "PostToolUse") == [f"{GONE} -m retired_module.hook post --agent codex", "poolhouse-workspace codex-hook"]
+    assert data["agents"] == {"max_threads": 4} and GONE in path.read_text()
+    assert not list(machine.glob("c.toml.bak-*"))
 
 
 def test_a_file_with_nothing_stale_is_not_rewritten_or_backed_up(machine):
@@ -106,11 +106,22 @@ def test_a_file_with_nothing_stale_is_not_rewritten_or_backed_up(machine):
     assert path.read_text() == before and not list(machine.glob("s.json.bak-*"))
 
 
-def test_the_doctor_check_flags_a_stale_entry_with_the_fix(machine):
+def test_the_doctor_does_not_offer_to_delete_foreign_missing_programs(machine):
     claude, codex = machine / "s.json", machine / "c.toml"
     claude.write_text(json.dumps(STALE_CLAUDE))
     codex.write_text(STALE_CODEX)
     found = agent_hooks.findings({"claude-code": claude, "codex": codex})
     assert [f.good for f in found] == [False, False]
-    assert all("missing program" in f.said and f.fix == ["poolhouse-workspace", "install-hooks"]
+    assert all("missing program" not in f.said and f.fix == ["poolhouse-workspace", "install-hooks"]
                for f in found)
+
+
+def test_install_report_preserves_foreign_missing_programs_without_generic_maintenance(machine, monkeypatch):
+    path = machine / 'settings.json'
+    path.write_text(json.dumps(STALE_CLAUDE))
+    monkeypatch.setattr(agent_hooks, 'paths', lambda: {'claude-code': path, 'codex': machine / 'absent/config.toml'})
+    monkeypatch.setattr(agent_hooks, 'present', lambda agent, path: agent == 'claude-code')
+    monkeypatch.setattr(agent_hooks, 'remove_stale', lambda *a, **k: pytest.fail('normal install ran generic stale maintenance'))
+    assert agent_hooks.install_report()
+    assert json.loads(path.read_text())['hooks']['SessionStart'] == STALE_CLAUDE['hooks']['SessionStart']
+    assert not list(machine.glob('*.bak-*'))

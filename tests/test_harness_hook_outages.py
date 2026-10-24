@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from poolhouse import coding_policy, harness_claims, harnesshook, node_launch
+from poolhouse import coding_policy, harness_claims, harnesshook
 from poolhouse.board.client import Client
 from poolhouse.errors import Denied
 from poolhouse.interventions import Call
@@ -39,30 +39,26 @@ def test_stop_does_not_run_explicit_cleanup_admission(monkeypatch):
     assert result == {}
 
 
-def test_pre_outage_degrades_to_a_warning_and_a_real_denial_still_denies(monkeypatch):
+def test_pre_does_not_consult_workspace_ownership(monkeypatch):
     payload = {'tool_name': 'Write', 'tool_input': {'file_path': '/project/test.py'}, 'cwd': '/project'}
     rail = harnesshook.Rail(coding_policy.Policy('ask-dangerous'), 'worker', ['/project'])
-    monkeypatch.setattr(harnesshook.harness_claims, 'conflict', unavailable)
-    monkeypatch.setattr(harnesshook.harness_claims, 'reserve', unavailable)
+    def forbidden(*args, **kwargs):
+        pytest.fail('ordinary writes must not query or reserve workspace ownership')
+    monkeypatch.setattr(harness_claims, 'conflict', forbidden)
+    monkeypatch.setattr(harness_claims, 'reserve', forbidden)
     answer = harnesshook.pre(payload, rail)['hookSpecificOutput']
     assert answer['permissionDecision'] == 'allow'
-    assert 'connection refused' in answer['permissionDecisionReason']
-
-    def refused(*args, **kwargs):
-        raise Denied('another agent owns this')
-    monkeypatch.setattr(harnesshook.harness_claims, 'conflict', refused)
-    answer = harnesshook.pre(payload, rail)['hookSpecificOutput']
-    assert answer['permissionDecision'] == 'deny' and 'another agent owns this' in answer['permissionDecisionReason']
+    assert 'ownership' not in answer['permissionDecisionReason']
 
 
-def test_an_unreachable_node_degrades_the_pre_hook_to_a_warning(monkeypatch, tmp_path):
+def test_an_ordinary_write_never_contacts_the_node(monkeypatch, tmp_path):
     def down(*args, **kwargs):
-        raise node_launch.NodeUnavailable('the node does not answer')
+        pytest.fail('ordinary write contacted the node')
     monkeypatch.setattr(Client, 'call', down)
     payload = {'tool_name': 'Write', 'tool_input': {'file_path': str(tmp_path / 'test.py')}, 'cwd': str(tmp_path)}
     answer = harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy('ask-dangerous'), 'worker', [str(tmp_path)]))['hookSpecificOutput']
     assert answer['permissionDecision'] == 'allow'
-    assert 'ownership not checked' in answer['permissionDecisionReason'] and 'does not answer' in answer['permissionDecisionReason']
+    assert 'ownership' not in answer['permissionDecisionReason']
 
 
 @pytest.mark.parametrize('secret', ['poolhouse-ws1.worker.' + 'a' * 43, 'poolhouse-ws1.worker.one/child.two.' + 'b' * 43,

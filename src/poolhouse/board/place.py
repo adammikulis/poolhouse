@@ -12,7 +12,7 @@ from pathlib import Path
 from poolhouse.board.client import Client, Denied, Invalid
 from poolhouse.board.terminal import terminal_id
 
-__all__ = ["BOARD_ENV", "PLACER", "board_id", "resolve"]
+__all__ = ["BOARD_ENV", "PLACER", "at_path", "board_id", "existing", "resolve"]
 
 BOARD_ENV = "POOLHOUSE_BOARD"
 PLACER = "poolhouse-place"
@@ -37,6 +37,22 @@ def board_id(path: Path) -> tuple[str, Path] | None:
     tree = common_dir.parent if common_dir.name == ".git" else common_dir
     word = re.sub(r"[^a-z0-9]+", "-", tree.name.lower()).strip("-")[:30] or "project"
     return f"{word}-{hashlib.sha256(str(common_dir).encode()).hexdigest()[:6]}", tree
+
+
+def at_path(client: Client, path: Path) -> str:
+    """Read the actual registered project of a path, ignoring every board selector."""
+    return str(client.call("project_resolve", path=str(path.resolve()))["board"])
+
+
+def existing(client: Client, path: Path | None = None, named: str = "") -> str:
+    """Select an existing board or resolve a known project, without registering either a project or a session.
+
+    Explicit names and the environment select a location, never authority; the caller's credentials still decide access.
+    """
+    explicit = named or os.environ.get(BOARD_ENV, "")
+    if explicit:
+        return explicit
+    return at_path(client, path or Path.cwd())
 
 
 def resolve(client: Client, path: Path | None = None, named: str = "") -> str:

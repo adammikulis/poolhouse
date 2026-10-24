@@ -30,6 +30,28 @@ def test_it_reports_rather_than_changes(capsys):
     assert all(f.name and f.said for f in findings)
 
 
+@pytest.mark.parametrize('arguments', [[], ['--quiet'], ['--quiet', '--yes']])
+def test_setup_diagnostics_never_install_optional_agent_hooks(tmp_path, monkeypatch, arguments):
+    from poolhouse import agent_hooks, setup
+
+    isolated = tmp_path / 'empty-home'
+    isolated.mkdir()
+    monkeypatch.setenv('HOME', str(isolated))
+    monkeypatch.setenv('CODEX_HOME', str(isolated / '.codex'))
+    monkeypatch.setattr(setup, 'look', lambda: [Finding(name='runtime', good=True, said='ready')])
+    monkeypatch.setattr(agent_hooks, 'install_report', lambda: pytest.fail('changed optional agent settings'))
+    assert setup.main(arguments) == 0
+    assert list(isolated.iterdir()) == []
+
+
+def test_runtime_readiness_never_requires_optional_agent_hook_settings(monkeypatch):
+    from poolhouse import agent_hooks
+
+    monkeypatch.setattr(agent_hooks, 'findings', lambda: pytest.fail('optional harness became required readiness'))
+    findings = look()
+    assert findings and all(isinstance(row, Finding) for row in findings)
+
+
 def test_a_machine_that_will_not_answer_says_so_rather_than_guessing(monkeypatch):
     """A wrong "supported" sends someone to debug a model that was never going to load."""
     import poolhouse.setup as setup

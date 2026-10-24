@@ -1,5 +1,4 @@
-"""The fixed cost of a `scripts/test` run stays small: a small run starts few workers, the hook check
-spawns nothing when the hooks are in place, and argument parsing imports no conftest."""
+"""Small test runs start few workers, never install Git hooks, and parse without conftest."""
 
 from __future__ import annotations
 
@@ -84,34 +83,23 @@ def git_repo(tmp_path: Path) -> tuple[Path, Path]:
     return hooks, tmp_path / "scripts" / "ran"
 
 
-def link_ours(hooks: Path, name: str) -> None:
-    (hooks / name).unlink(missing_ok=True)
-    (hooks / name).symlink_to(f"../../scripts/hooks/{name}")
-
-
-def test_hooks_that_are_ours_or_local_wrappers_run_no_installer(tmp_path):
+@pytest.mark.parametrize("shape", ["missing", "foreign-broken", "explicit-scope"])
+def test_legacy_collection_helper_preserves_hooks_and_repository_config(tmp_path, shape):
     hooks, ran = git_repo(tmp_path)
-    (hooks / "pre-commit").write_text("#!/bin/sh\nexec true\n")
-    (hooks / "commit-msg").write_text("#!/bin/sh\nexec true\n")
-    link_ours(hooks, "pre-push")
+    if shape != "missing":
+        (hooks / "pre-push").symlink_to("foreign-missing-hook")
+        (hooks / "commit-msg").write_text("#!/bin/sh\n# foreign hook\n")
+    if shape == "explicit-scope":
+        subprocess.run(["git", "-C", str(tmp_path), "config", "--local", "poolhouse.hooks.repository",
+                        str((tmp_path / ".git").resolve())], check=True)
+    before = {path.name: ("link", path.readlink().as_posix()) if path.is_symlink()
+              else (path.read_bytes(), path.stat().st_mode) for path in hooks.iterdir()}
+    config = (tmp_path / ".git/config").read_bytes()
     githooks_ready.ensure(tmp_path)
-    assert not ran.exists()
-
-
-def test_a_missing_hook_runs_the_installer(tmp_path):
-    hooks, ran = git_repo(tmp_path)
-    link_ours(hooks, "pre-commit")
-    link_ours(hooks, "commit-msg")
-    githooks_ready.ensure(tmp_path)
-    assert ran.exists()
-
-
-def test_a_symlink_to_another_script_runs_the_installer(tmp_path):
-    hooks, ran = git_repo(tmp_path)
-    for name in githooks_ready.HOOKS:
-        (hooks / name).symlink_to("/bin/true")
-    githooks_ready.ensure(tmp_path)
-    assert ran.exists()
+    after = {path.name: ("link", path.readlink().as_posix()) if path.is_symlink()
+             else (path.read_bytes(), path.stat().st_mode) for path in hooks.iterdir()}
+    assert not ran.exists(), "test collection must never invoke a Git hook installer"
+    assert after == before and (tmp_path / ".git/config").read_bytes() == config
 
 
 def test_the_conftest_adds_the_options_scripts_test_parses_with(request):

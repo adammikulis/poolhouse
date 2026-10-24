@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from git_template import copy_checkout
 
-from poolhouse import harnesshook, harnesspolicy, worktreerules
+from poolhouse import coding_policy, harness_claims, harnesshook, harnesspolicy, worktreerules
 
 HOOKS = Path(__file__).resolve().parent.parent / "scripts" / "hooks"
 BASH, EDIT = HOOKS / "claude-bash-guard", HOOKS / "claude-edit-guard"
@@ -275,14 +275,15 @@ def test_the_harness_policy_applies_the_same_rule_to_codex_and_local_sessions(re
         assert harnesspolicy.primary_decision(name, args, str(work)) is None
 
 
-def test_the_harness_hook_preserves_primary_checkout_ownership_checks(repo, monkeypatch):
+def test_the_harness_hook_uses_tool_policy_for_primary_development_writes(repo, monkeypatch):
     primary, work, _ = repo
-    event = {"tool_name": "Write", "cwd": str(work), "tool_input": {"file_path": str(primary / "a.py")}}
-    monkeypatch.setattr(harnesshook.harness_claims, "conflict",
-                        lambda *args: "file area is claimed by another worker")
-    out = harnesshook.pre(event, harnesshook.Rail("plan-and-go", "t"))["hookSpecificOutput"]
-    assert out["permissionDecision"] == "deny"
-    assert "claimed by another worker" in out["permissionDecisionReason"]
+    event = {"tool_name": "Write", "cwd": str(work),
+             "tool_input": {"file_path": str(primary / "a.py"), "content": "value = 2\n"}}
+    monkeypatch.setattr(harnesshook, "_ask", lambda *args, **kwargs: (True, "authorized test operation"))
+    monkeypatch.setattr(harness_claims, "conflict", lambda *args: pytest.fail("generic ownership lookup"))
+    out = harnesshook.pre(event, harnesshook.Rail(coding_policy.Policy("ask-dangerous"), "t",
+                                               roots=[str(primary)]))["hookSpecificOutput"]
+    assert out["permissionDecision"] == "allow"
 
 
 @pytest.mark.parametrize("name", ["a; touch pwned", "$(touch pwned)", "`touch pwned`", "-C", "a b\nc"])
@@ -329,18 +330,16 @@ def test_main_branch_edits_and_commits_are_refused(repo):
     assert edit(work / "a.py", work) == ALLOWED
 
 
-def test_claimed_primary_write_reaches_ownership_reservation(repo, monkeypatch):
+def test_primary_development_write_does_not_reserve_workspace_ownership(repo, monkeypatch):
     primary, _, _ = repo
-    reserved = []
     monkeypatch.setattr(harnesshook, "decide",
                         lambda *args, **kwargs: harnesspolicy.Decision("allow", "reversible", "owned write"))
-    monkeypatch.setattr(harnesshook.harness_claims, "conflict", lambda *args: "")
-    monkeypatch.setattr(harnesshook.harness_claims, "reserve", lambda *args: reserved.append(args))
+    monkeypatch.setattr(harness_claims, "conflict", lambda *args: pytest.fail("generic ownership lookup"))
+    monkeypatch.setattr(harness_claims, "reserve", lambda *args: pytest.fail("generic ownership reservation"))
     event = {"tool_name": "Write", "cwd": str(primary),
              "tool_input": {"file_path": str(primary / "a.py")}}
     out = harnesshook.pre(event, harnesshook.Rail("plan-and-go", "worker", roots=[str(primary)]))
     assert out["hookSpecificOutput"]["permissionDecision"] == "allow"
-    assert len(reserved) == 1 and reserved[0][3] == "worker"
 
 
 def test_linked_main_checkout_edits_and_staging_are_refused(repo):

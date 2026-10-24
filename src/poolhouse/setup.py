@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 
-from poolhouse import agent_hooks, home, runtime_identity
+from poolhouse import home, runtime_identity
 from poolhouse.checks import Finding, ask, checkout, tilde
 from poolhouse.installed import standard
 from poolhouse.log import say
@@ -187,7 +187,6 @@ def look() -> list[Finding]:
     out.append(_commands_finding())
     out.extend(_fleet_findings())
     out.append(_store_finding())
-    out.extend(agent_hooks.findings())
 
     if is_windows():
         out.append(_firewall_finding())
@@ -535,8 +534,6 @@ def main(argv: list[str] | None = None) -> int:
                          "still prompt for the password itself")
     args = ap.parse_args(argv)
     say("poolhouse: what this machine can do\n")
-    for line in agent_hooks.install_report():
-        say(line)
     findings = look()
     if args.checkouts:
         from poolhouse.doctor import look_checkouts, repositories

@@ -24,7 +24,7 @@ def _authenticated(actor, cwd) -> tuple[Session, str]:
     """Construct and authenticate this launcher actor on the project's board."""
     try:
         node = Client(node_launch.default_state())
-        board = place.resolve(node, Path(cwd))
+        board = place.at_path(node, Path(cwd))
     except (NodeError, OSError) as error:
         raise BoardUnavailable(f'the board of {Path(cwd).name} is not reachable as {actor}: {error}') from error
     try:

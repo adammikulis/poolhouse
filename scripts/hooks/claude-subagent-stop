@@ -1,82 +1,13 @@
 #!/usr/bin/env python3
-"""A SubagentStop hook: refuses a stop while the subagent's tree holds unlanded work; records the subagent's model from its transcript when it differs from the registered one and cancels the test jobs it left queued or running; keeps the identity of a subagent handed back with work unlanded; otherwise posts its done as itself (never its last chat line) for the sessions subscribed to it and retires its identity."""
+"""Compatibility notification: a subagent turn ending does not finish its task."""
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
-import stop_jobs
-import stop_landed
-import subagent_records
-import tool_count
-import tree_watch
 import workspace_hook
 
 
-def transcript_model(path: str) -> str:
-    """The model id on the last assistant line of a transcript, or an empty string."""
-    found = ""
-    try:
-        with Path(path).open() as lines:
-            for line in lines:
-                try:
-                    model = json.loads(line).get("message", {}).get("model", "")
-                except (ValueError, AttributeError):
-                    continue
-                if isinstance(model, str) and model.startswith("claude-"):
-                    found = model
-    except OSError:
-        return ""
-    return found
-
-
-def checkout_note(event: dict) -> str:
-    """` on BRANCH in WORKTREE at SHA` for the checkout the subagent stopped in, or an empty string when it is not a git checkout."""
-    where = str(event.get("cwd") or "")
-    if not where:
-        return ""
-    branch = workspace_hook.run(["git", "-C", where, "branch", "--show-current"], "SubagentStop")
-    where_head = workspace_hook.attempt(["git", "-C", where, "rev-parse", "--show-toplevel", "--short", "HEAD"], "SubagentStop")
-    top, _, head = where_head.stdout.strip().partition("\n") if where_head else ("", "", "")
-    if not branch or not top or not branch.stdout.strip():
-        return ""
-    sha = head if not where_head.returncode else ""
-    return f" on {branch.stdout.strip()} in {Path(top).name}" + (f" at {sha}" if sha else "")
-
-
 def main() -> int:
-    event = workspace_hook.event("SubagentStop")
-    if event is None:
-        return 0
-    environment = workspace_hook.own_environment(event, "SubagentStop")
-    verdict = stop_landed.check(event, environment)
-    if verdict.reason:
-        print(json.dumps({"decision": "block", "reason": verdict.reason}))
-        return 0
-    if event.get("agent_id"):
-        tool_count.clear(str(event["agent_id"]))
-    if environment is None:
-        return 0
-    path =event.get("agent_transcript_path") or ""
-    model = transcript_model(str(path)) if path else ""
-    if model and model != subagent_records.load(str(event.get("agent_id") or "")).get("model"):
-        workspace_hook.run(["poolhouse-workspace", "whoami", "--model", model, "--harness", "claude-code"],
-                           "SubagentStop", environment=environment)
-    stop_jobs.cancel("SubagentStop", str(event.get("cwd") or ""), environment.get("POOLHOUSE_WORKSPACE_AGENT", ""), environment)
-    if verdict.unfinished:
-        return 0
-    place = checkout_note(event)
-    tree_watch.stopped("SubagentStop", str(event.get("cwd") or ""), environment)
-    said = workspace_hook.run(["poolhouse-workspace", "board", "post", "#general", f"done: finished{place}"[:200],
-                               "--type", "status", "--subject", "done"],
-                              "SubagentStop", environment=environment)
-    agent = str(event.get("agent_id") or "")
-    if said is None:
-        workspace_hook.warning("SubagentStop", f"done post refused{place}; the identity stays until a stop posts it")
-        return 0
-    if workspace_hook.run(["poolhouse-workspace", "retire"], "SubagentStop", environment=environment) is not None:
-        subagent_records.next_identity(agent)
+    workspace_hook.event("SubagentStop")
     return 0
 
 

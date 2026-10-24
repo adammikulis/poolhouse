@@ -272,3 +272,39 @@ def test_migrate_owned_stop_command_preserves_unrelated_hooks_and_trust(machine)
     assert commands(after, 'Stop') == ['unrelated-stop', 'poolhouse-workspace codex-hook']
     assert after['hooks']['state'] == before
     assert all(item.good for item in agent_hooks.findings({'codex': path}) if item.name.startswith('codex:'))
+
+
+@pytest.mark.parametrize('foreign', ['echo "poolhouse-workspace nudge"',
+    'poolhouse-workspace nudge --agent claude --hook post && foreign-tool',
+    '/foreign/poolhouse-workspace nudge --agent claude --hook post',
+    'other-tool --note "claude-nudge.sh"', 'echo "poolhouse.codex_lifecycle"'])
+def test_install_preserves_foreign_commands_that_only_mention_owned_hooks(machine, foreign):
+    path = machine / 'settings.json'
+    path.write_text(json.dumps({'hooks': {'PostToolUse': [{'hooks': [{'type': 'command', 'command': foreign}]}]}}))
+    agent_hooks.install_claude(path)
+    assert commands(json.loads(path.read_text()), 'PostToolUse') == [foreign, agent_hooks.command('claude', 'post')]
+
+
+def test_install_preserves_foreign_notify_argv_that_mentions_our_binary(machine):
+    path = machine / 'config.toml'
+    original = 'notify = ["foreign-notifier", "poolhouse-workspace", "nudge"]\n'
+    path.write_text(original + CODEX_BEFORE)
+    agent_hooks.install_codex(path)
+    assert path.read_text().startswith(original)
+    assert tomllib.loads(path.read_text())['notify'] == ['foreign-notifier', 'poolhouse-workspace', 'nudge']
+
+
+@pytest.mark.parametrize('foreign', ['poolhouse-workspace nudge --hook unknown',
+    'poolhouse-workspace nudge --agent own --agent other',
+    'poolhouse-workspace codex-hook --assigned own extra', '"unterminated poolhouse-workspace nudge'])
+def test_unknown_or_malformed_command_shapes_are_not_owned(foreign):
+    assert not agent_hooks._own(foreign)
+
+
+def test_notify_data_inside_a_foreign_table_is_preserved(machine):
+    path = machine / 'config.toml'
+    foreign = '[mcp_servers.plugin]\nnotify = ["poolhouse-workspace", "nudge", "--agent", "codex"]\n'
+    path.write_text(foreign)
+    agent_hooks.install_codex(path)
+    assert path.read_text().startswith(foreign)
+    assert tomllib.loads(path.read_text())['mcp_servers']['plugin']['notify'][0] == 'poolhouse-workspace'

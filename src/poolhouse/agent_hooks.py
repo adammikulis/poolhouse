@@ -18,7 +18,6 @@ __all__ = ["AGENTS", "codex_hooks", "findings", "install", "install_report", "pa
 AGENTS = ("claude-code", "codex")
 IDS = {"claude-code": "claude", "codex": "codex"}
 BINARY = "poolhouse-workspace"
-OWN = (f"{BINARY} nudge", "claude-nudge.sh", "poolhouse.codex_lifecycle", "poolhouse-workspace codex-hook", "poolhouse-workspace codex-stop")
 CLAUDE_EVENTS = (("PostToolUse", "post", "*"), ("Stop", "stop", ""), ("UserPromptSubmit", "prompt", ""))
 CODEX_EVENTS = tuple((event, event, ".*" if event not in ("Stop", "UserPromptSubmit") else "")
                      for event in ("SessionStart", "SubagentStart", "SubagentStop", "SessionEnd",
@@ -28,7 +27,7 @@ BEGIN = "# >>> poolhouse nudge hooks (managed) >>>"
 END = "# <<< poolhouse nudge hooks <<<"
 CODEX_OTHER_POST = "poolhouse.harnesshook post"
 _MANAGED = re.compile(rf"\n*{re.escape(BEGIN)}.*?{re.escape(END)}\n?", re.S)
-_NOTIFY = re.compile(rf'(?m)^notify\s*=\s*\[[^\]\n]*"{re.escape(BINARY)}"[^\]\n]*\]\s*\n')
+_NOTIFY = re.compile(r"(?m)^notify[ \t]*=[^\n]*(?:\n|$)")
 _FEATURES = re.compile(r"(?m)^\[features\][^\n]*\n")
 _TABLE = re.compile(r"(?m)^\[")
 
@@ -54,7 +53,36 @@ def present(agent: str, path: Path) -> bool:
 
 
 def _own(command_line: str) -> bool:
-    return any(mark in command_line for mark in OWN)
+    """Recognize only standalone commands this installer actually generated."""
+    if not isinstance(command_line, str) or any(char in command_line for char in ';|&<>$`\r\n()#'):
+        return False
+    try:
+        words = shlex.split(command_line)
+    except ValueError:
+        return False
+    legacy = home.user_home() / home.DEFAULT_NAME / "hooks" / "claude-nudge.sh"
+    if ((words and words[:-1] in ([], ["sh"]) and home.expand(words[-1]) == legacy)
+            or words in (["python", "-m", "poolhouse.codex_lifecycle"], ["python3", "-m", "poolhouse.codex_lifecycle"])):
+        return True
+    if len(words) < 2 or words[0] != BINARY:
+        return False
+    options = {"nudge": {"--agent", "--hook"}, "codex-hook": {"--assigned"}, "codex-stop": {"--assigned"}}
+    allowed = options.get(words[1])
+    tail = words[2:]
+    return (allowed is not None and (words[1] != "nudge" or bool(tail))
+            and len(tail) % 2 == 0 and len(set(tail[::2])) == len(tail[::2])
+            and all(key in allowed and (value in {"post", "stop", "prompt"} if key == "--hook"
+                                        else re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", value))
+                    for key, value in zip(tail[::2], tail[1::2], strict=True)))
+
+
+def _owned_notify(match: re.Match) -> str:
+    try:
+        argv = tomllib.loads(match.group(0)).get("notify")
+    except ValueError:
+        return match.group(0)
+    return "" if (isinstance(argv, list) and all(isinstance(word, str) for word in argv)
+                  and _own(shlex.join(argv))) else match.group(0)
 
 
 def install_claude(settings: Path) -> list[str]:
@@ -125,7 +153,10 @@ def _owned_codex_post(line: str) -> bool:
 def install_codex(config: Path) -> list[str]:
     """Write native lifecycle hooks, replacing Poolhouse notifications and preserving other settings."""
     text = config.read_text() if config.exists() else ""
-    base = _NOTIFY.sub("", _MANAGED.sub("\n", text)).rstrip("\n")
+    base = _MANAGED.sub("\n", text)
+    table = _TABLE.search(base)
+    end = table.start() if table else len(base)
+    base = (_NOTIFY.sub(_owned_notify, base[:end]) + base[end:]).rstrip("\n")
     base, with_features = _enable_hooks(base)
     base, _ = agent_hooks_stale._codex(base, _owned_codex_post, "PostToolUse")
     new = (base + "\n\n" if base else "") + codex_hooks(True, with_features)
@@ -164,11 +195,10 @@ def removed_lines(removed: dict[str, list[str]], where: dict[str, Path] | None =
 def install_report() -> list[str]:
     """`install` for every agent on this machine, as the lines to show; a refusal is a line, not an error."""
     try:
-        gone = removed_lines(remove_stale())
         done = install()
     except (OSError, ValueError) as err:
         return [f"message-board hooks were not written: {err}"]
-    return gone + [f"{agent}: message-board hooks ({', '.join(events)}) are in {paths()[agent]}"
+    return [f"{agent}: message-board hooks ({', '.join(events)}) are in {paths()[agent]}"
                    for agent, events in done.items()]
 
 
@@ -205,7 +235,7 @@ def findings(where: dict[str, Path] | None = None) -> list[Finding]:
                 if path.exists() else {}
             problems = _problems(agent, data, events[agent])
             problems += [f"{command!r} is a missing program, so it fails on every event"
-                         for command in agent_hooks_stale.found(agent, path)]
+                         for command in agent_hooks_stale.found(agent, path) if _own(command)]
         except (OSError, ValueError) as err:
             problems = [f"{path} cannot be read ({err})"]
         if shutil.which(BINARY) is None:
