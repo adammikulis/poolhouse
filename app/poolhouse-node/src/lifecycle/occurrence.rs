@@ -126,6 +126,17 @@ impl<S: Store> Fence<S> {
     fn change(&mut self, source: &Source, event: Transition) -> Result<Committed, Error> {
         self.check(source)?;
         let old = self.records.get(source).ok_or(Error::State)?;
+        // Retirement is one durable admission tombstone. Every subsequent action-right
+        // transition resolves it under this coordinator/CAS revision: historical invocation
+        // phases alone never imply live authority. Cleanup/completion remain possible.
+        if matches!(&event, Transition::Spawn(_) | Transition::Bind(_) | Transition::FenceRelease(_)
+            | Transition::Released(_) | Transition::FenceEffect { .. }) {
+            if let Original::Invocation { admission, .. } = &old.original {
+                if !self.records.get(admission).is_some_and(|record| record.state == State::Admitted) {
+                    return Err(Error::State);
+                }
+            } else { return Err(Error::State); }
+        }
         let state = transition(&old.state, event)?;
         self.commit(source.clone(), Record { original: old.original.clone(), state })
     }
@@ -140,7 +151,7 @@ fn transition(old: &State, event: Transition) -> Result<State, Error> {
     use State::*;
     Ok(match (old, event) {
         (AdmissionFenced, Transition::Admit) => Admitted,
-        (Admitted, Transition::Retire) => Retired,
+        (AdmissionFenced | Admitted, Transition::Retire) => Retired,
         (Reserved, Transition::Spawn(c)) if valid_custody(&c) => SpawnFenced(c),
         (SpawnFenced(c), Transition::Bind(actual)) if c == &actual => Bound(actual),
         (Bound(c), Transition::FenceRelease(actual)) if c == &actual => ReleaseFenced(actual),

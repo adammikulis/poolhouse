@@ -134,3 +134,25 @@ fn overflow_and_wrong_continuity_refuse_without_store_write() {
     let mut foreign = source(1); foreign.continuity = [12; 32];
     assert!(matches!(f.admit(foreign, Original::Birth { context: context() }), Err(Error::Scope)));
 }
+
+#[test]
+fn retirement_fences_each_future_action_but_preserves_completion_and_cleanup() {
+    for boundary in 0..5 {
+        let mut f = reserved();
+        for step in transitions().into_iter().take(boundary) { f.change(&source(2), step).unwrap(); }
+        f.change(&source(1), Transition::Retire).unwrap();
+        let step = transitions().into_iter().nth(boundary).unwrap();
+        assert!(matches!(f.change(&source(2), step), Err(Error::State)));
+        // Cancellation keeps actual recorded resource responsibility, not a fake close.
+        f.change(&source(2), Transition::Stop).unwrap();
+    }
+    let mut f = reserved();
+    for step in transitions().into_iter().take(5) { f.change(&source(2), step).unwrap(); }
+    f.change(&source(1), Transition::Retire).unwrap();
+    for step in transitions().into_iter().skip(5) { f.change(&source(2), step).unwrap(); }
+    assert!(matches!(f.records[&source(2)].state, State::Completed { cleanup: Cleanup::Closed, .. }));
+    let mut opening = fence();
+    opening.admit(source(1), Original::Birth { context: context() }).unwrap();
+    opening.change(&source(1), Transition::Retire).unwrap();
+    assert!(matches!(opening.change(&source(1), Transition::Admit), Err(Error::State)));
+}
