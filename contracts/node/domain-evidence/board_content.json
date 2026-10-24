@@ -1,0 +1,1533 @@
+{
+  "version": 1,
+  "status": "proposal-only incomplete K retained declaration; no runtime/transport/caller migration or native proof",
+  "source_commit": "d8517468c4e92daccfb7a498f0ffadc315023da9",
+  "fragment": "contracts/node/domains/board_content.toml",
+  "fragment_sha256": "701910b6ccaa91b6b428d88d42f2f019a344d0bfb121ea4a78a24246d3d0ebb8",
+  "peer_projects_published_commit": "fccc737325c63555234129869ebe34beb6966d37",
+  "peer_ref_status": "Published CatalogBoardRef globally validated; no alias or duplicate catalog definition",
+  "peer_refs": [
+    "ProjectCatalogRef",
+    "CatalogBoardRef"
+  ],
+  "sources": [
+    {
+      "path": "app/poolhouse-node/src/api.rs",
+      "sha256": "334be05253eaa0aa24b3e557a00cb87b64498f7de521b4d0b9cccfe17995ac94"
+    },
+    {
+      "path": "app/poolhouse-node/src/board.rs",
+      "sha256": "ee919439c331c2edab8b5b94b5394555f2570d1e2bc974af12213322de496f75"
+    },
+    {
+      "path": "app/poolhouse-node/src/files.rs",
+      "sha256": "aef40878da51146cf6ddf3304300ac503325cb556ff8e5de67cab191df8ea5b7"
+    },
+    {
+      "path": "app/poolhouse-node/src/fold.rs",
+      "sha256": "4e5895aea6853cfd6edc094e8612d4d2ef2d17ef7a4e10d90382e8ddcad1a7c1"
+    },
+    {
+      "path": "app/poolhouse-node/src/grants/spec.rs",
+      "sha256": "8ce7748654f148f543066b675e02e2d315adb2be541daab329b6328f31fe3146"
+    },
+    {
+      "path": "app/poolhouse-node/src/landing.rs",
+      "sha256": "f6371a1ec05fe44ae23bad94ae3dd2ca4900c50bc07b6a4429cc873605ad5b50"
+    },
+    {
+      "path": "app/poolhouse-node/src/links.rs",
+      "sha256": "750c7ee50ae262080b08d9b500d07018f4516603d0bedcb0fbea4cc620ee476f"
+    },
+    {
+      "path": "app/poolhouse-node/src/log.rs",
+      "sha256": "0cca0a0eac1de081d1130812c2453be875ae8eeb3ad1e09a7dee60fd1ddfa9d9"
+    },
+    {
+      "path": "app/poolhouse-node/src/logbounds.rs",
+      "sha256": "0c1394cb53e1ca60816d05c67515308e80e77353997140a0a582d7ffff857113"
+    },
+    {
+      "path": "app/poolhouse-node/src/mail.rs",
+      "sha256": "99d46925c1a16829a311a99e7e87e1d942929b1e8b2c6f3d6a5c3f6eb2723184"
+    },
+    {
+      "path": "app/poolhouse-node/src/node.rs",
+      "sha256": "04be3e290afe71b2c96a453e5b96bded7b886860afe9ec22383755d5ca918069"
+    },
+    {
+      "path": "app/poolhouse-node/src/notes.rs",
+      "sha256": "2573c21d3fb1b3889a8a64fd8f12681da5365cd804411e7e0d8549361fee006b"
+    },
+    {
+      "path": "app/poolhouse-node/src/rooms.rs",
+      "sha256": "f4c0999bf9ca37ef23c234a03821dac8839fbdc6c93be2767abe8f5cdb9094cc"
+    },
+    {
+      "path": "app/poolhouse-node/src/row.rs",
+      "sha256": "0a3fb941e60ed9dc926f6459d340d3893d1c84fdac9f852af392bcb863cf3283"
+    },
+    {
+      "path": "app/poolhouse-node/src/subs.rs",
+      "sha256": "a55dac107c909275053c0b4ff5991a1e79dd0f5c81ddc8d2bb7fa82d1c6cef00"
+    },
+    {
+      "path": "app/poolhouse-node/src/tasks/mod.rs",
+      "sha256": "618000ba6d62270cd77a94939726df72682c24bd393e95ce19deb813fb552afd"
+    },
+    {
+      "path": "app/poolhouse-node/src/writes.rs",
+      "sha256": "b462998ee455d3a6f7b76cfd10a0d6ce9e10da393c9d8512b226fe4ca1b450cd"
+    },
+    {
+      "path": "src/poolhouse/board/public.py",
+      "sha256": "fe8898362fdcb30ae542efdda9b9c3cd136cba694b9e969609452c115390a42d"
+    },
+    {
+      "path": "src/poolhouse/board/sealed.py",
+      "sha256": "574e32daa17b3deb47bc9c97d2776250fe202145b306779c9e87f5a39ec9b12c"
+    },
+    {
+      "path": "src/poolhouse/board/session.py",
+      "sha256": "4055b11e0f8ed2dfa0396372fda3df84a0b315bae11f4eca1cca857fd1791f87"
+    },
+    {
+      "path": "src/poolhouse/fleet/board_routes.py",
+      "sha256": "b108502e81f323d11e4e256965397fd94fc6c9d8276dee0c3966d5f412aff92a"
+    },
+    {
+      "path": "src/poolhouse/fleet/same_page.py",
+      "sha256": "507a7309775b1797dcb8b1e33d11b4c6a8666f48c42fa3cad02df3040cd98729"
+    },
+    {
+      "path": "src/poolhouse/keystore.py",
+      "sha256": "78d638ddc42ea6e9ca8d072b9651425d1ca362cdb0d4764a97604552ed9ad7bf"
+    },
+    {
+      "path": "src/poolhouse/node_health.py",
+      "sha256": "60b8c301cff07c7e298c69d8c5d4938c9cd4c7184a78c1452355215545699a39"
+    },
+    {
+      "path": "src/poolhouse/ui/assets/board-focus.js",
+      "sha256": "68a9d097cc65c66d430241f0fbc32c4f1151ec532a26af60247303ece5c27d36"
+    },
+    {
+      "path": "src/poolhouse/ui/assets/board-pages.js",
+      "sha256": "f3cf15c758fd4ac9f2b1ff675beac2c1cd909c6c8de2ff14510c01eb517ecbdb"
+    },
+    {
+      "path": "src/poolhouse/ui/assets/board.js",
+      "sha256": "0c2cd22af936e13a9e5103e1e0d16ab6f24e3366fa1dd822e9a32bdd38ff6ea9"
+    },
+    {
+      "path": "src/poolhouse/workspace/board_cli.py",
+      "sha256": "c6d6874328cca0bef6815766d3cbdb35da042a4f4dfdaaba89a23c13e130db87"
+    },
+    {
+      "path": "src/poolhouse/workspace/board_page.py",
+      "sha256": "902e75080d3823c3727fa35697d1202103dc1ce1c17445f487825115e71cb336"
+    },
+    {
+      "path": "src/poolhouse/workspace/board_pages.py",
+      "sha256": "54940017ba26814560d2790f74c76f1cfe1525c35bb988e237094389d85c97b0"
+    },
+    {
+      "path": "src/poolhouse/workspace/boardroute.py",
+      "sha256": "db49f4ff7a97a104da7a21effe68a6d8c373a313f97e2e3c4838bd9d46862ed6"
+    },
+    {
+      "path": "src/poolhouse/workspace/filecli.py",
+      "sha256": "97709123e3edf67cf9aaa8445d907da5a40e680c6b6cac4092751dff9273a80a"
+    },
+    {
+      "path": "src/poolhouse/workspace/limits.py",
+      "sha256": "0a3e62d5f3c1df7aa6354ab16d00d144911c7bd197f811fda3dbfdc7c243ee0f"
+    },
+    {
+      "path": "src/poolhouse/workspace/mail_cli.py",
+      "sha256": "07c56448360d4435ae5b283f8bc7b4a4692f17fcd3d852f227a023684c7bb76f"
+    },
+    {
+      "path": "src/poolhouse/workspace/notes_cli.py",
+      "sha256": "7bc6197f7fc83c9524197e54f4d17eeb89d9e82097b7b4edca5040e2291c86fb"
+    },
+    {
+      "path": "src/poolhouse/workspace/rooms_cli.py",
+      "sha256": "0976fcd49f654709e3991461d73d4c59e6edd51f4af76aa4774cb45557c08a8a"
+    }
+  ],
+  "sites": [
+    {
+      "path": "app/poolhouse-node/src/api.rs",
+      "line": 114,
+      "symbol": "api::post",
+      "sha256": "334be05253eaa0aa24b3e557a00cb87b64498f7de521b4d0b9cccfe17995ac94",
+      "exact_line": "fn post(node: &mut Node, token: &str, board: &str, p: &Map<String, Value>) -> Result<Value> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/api.rs",
+      "line": 61,
+      "symbol": "api::read",
+      "sha256": "334be05253eaa0aa24b3e557a00cb87b64498f7de521b4d0b9cccfe17995ac94",
+      "exact_line": "fn read(node: &mut Node, token: &str, board: &str, p: &Map<String, Value>) -> Result<Value> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/api.rs",
+      "line": 56,
+      "symbol": "api::entry_json",
+      "sha256": "334be05253eaa0aa24b3e557a00cb87b64498f7de521b4d0b9cccfe17995ac94",
+      "exact_line": "pub fn entry_json(e: &Entry) -> Value {"
+    },
+    {
+      "path": "app/poolhouse-node/src/api.rs",
+      "line": 136,
+      "symbol": "api::link",
+      "sha256": "334be05253eaa0aa24b3e557a00cb87b64498f7de521b4d0b9cccfe17995ac94",
+      "exact_line": "fn link(node: &mut Node, token: &str, board: &str, p: &Map<String, Value>, make: bool) -> Result<Value> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/api.rs",
+      "line": 244,
+      "symbol": "api::dispatch links",
+      "sha256": "334be05253eaa0aa24b3e557a00cb87b64498f7de521b4d0b9cccfe17995ac94",
+      "exact_line": "        \"links\" => node.access(token, board, false).map(|_| json!(node.links.all().iter().filter(|l| l.from == board || l.to == board).collect::<Vec<_>>())),"
+    },
+    {
+      "path": "app/poolhouse-node/src/node.rs",
+      "line": 231,
+      "symbol": "Node::access",
+      "sha256": "04be3e290afe71b2c96a453e5b96bded7b886860afe9ec22383755d5ca918069",
+      "exact_line": "    pub fn access(&self, token: &str, board: &str, write: bool) -> Result<Access> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/node.rs",
+      "line": 420,
+      "symbol": "Node::post",
+      "sha256": "04be3e290afe71b2c96a453e5b96bded7b886860afe9ec22383755d5ca918069",
+      "exact_line": "    pub fn post(&mut self, token: &str, board: &str, kind: Kind, fields: &Map<String, Value>, idem: &str) -> Result<Value> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/row.rs",
+      "line": 94,
+      "symbol": "Row::id",
+      "sha256": "0a3fb941e60ed9dc926f6459d340d3893d1c84fdac9f852af392bcb863cf3283",
+      "exact_line": "    pub fn id(&self) -> String {"
+    },
+    {
+      "path": "app/poolhouse-node/src/row.rs",
+      "line": 104,
+      "symbol": "Row::operation",
+      "sha256": "0a3fb941e60ed9dc926f6459d340d3893d1c84fdac9f852af392bcb863cf3283",
+      "exact_line": "    pub fn operation(&self) -> Result<Row> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/row.rs",
+      "line": 116,
+      "symbol": "Row::size",
+      "sha256": "0a3fb941e60ed9dc926f6459d340d3893d1c84fdac9f852af392bcb863cf3283",
+      "exact_line": "    pub fn size(&self) -> usize {"
+    },
+    {
+      "path": "app/poolhouse-node/src/row.rs",
+      "line": 153,
+      "symbol": "row::check_body",
+      "sha256": "0a3fb941e60ed9dc926f6459d340d3893d1c84fdac9f852af392bcb863cf3283",
+      "exact_line": "pub fn check_body(body: &Value) -> Result<()> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/fold.rs",
+      "line": 292,
+      "symbol": "fold::entry",
+      "sha256": "4e5895aea6853cfd6edc094e8612d4d2ef2d17ef7a4e10d90382e8ddcad1a7c1",
+      "exact_line": "fn entry(row: &Row, ctx: &mut Context) -> Result<Entry> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/mail.rs",
+      "line": 88,
+      "symbol": "mail::call",
+      "sha256": "99d46925c1a16829a311a99e7e87e1d942929b1e8b2c6f3d6a5c3f6eb2723184",
+      "exact_line": "pub fn call(node: &mut Node, _method: &str, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/mail.rs",
+      "line": 39,
+      "symbol": "mail::link_reply",
+      "sha256": "99d46925c1a16829a311a99e7e87e1d942929b1e8b2c6f3d6a5c3f6eb2723184",
+      "exact_line": "pub fn link_reply(node: &mut Node, token: &str, board: &str, fields: &mut Map<String, Value>) -> Result<()> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/notes.rs",
+      "line": 120,
+      "symbol": "notes::list",
+      "sha256": "2573c21d3fb1b3889a8a64fd8f12681da5365cd804411e7e0d8549361fee006b",
+      "exact_line": "fn list(node: &mut Node, board: &str, p: &Map<String, Value>) -> Result<Value> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/notes.rs",
+      "line": 159,
+      "symbol": "notes::verify",
+      "sha256": "2573c21d3fb1b3889a8a64fd8f12681da5365cd804411e7e0d8549361fee006b",
+      "exact_line": "fn verify(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/notes.rs",
+      "line": 75,
+      "symbol": "notes::trust",
+      "sha256": "2573c21d3fb1b3889a8a64fd8f12681da5365cd804411e7e0d8549361fee006b",
+      "exact_line": "fn trust(n: &Note, now: u64) -> &'static str {"
+    },
+    {
+      "path": "app/poolhouse-node/src/notes.rs",
+      "line": 143,
+      "symbol": "notes::resolve_supersedes",
+      "sha256": "2573c21d3fb1b3889a8a64fd8f12681da5365cd804411e7e0d8549361fee006b",
+      "exact_line": "pub fn resolve_supersedes(node: &mut Node, board: &str, fields: &mut Map<String, Value>) -> Result<()> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/rooms.rs",
+      "line": 118,
+      "symbol": "rooms::list",
+      "sha256": "f4c0999bf9ca37ef23c234a03821dac8839fbdc6c93be2767abe8f5cdb9094cc",
+      "exact_line": "fn list(node: &mut Node, board: &str, token: &str) -> Result<Value> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/rooms.rs",
+      "line": 150,
+      "symbol": "rooms::op",
+      "sha256": "f4c0999bf9ca37ef23c234a03821dac8839fbdc6c93be2767abe8f5cdb9094cc",
+      "exact_line": "fn op(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/files.rs",
+      "line": 98,
+      "symbol": "files::put",
+      "sha256": "aef40878da51146cf6ddf3304300ac503325cb556ff8e5de67cab191df8ea5b7",
+      "exact_line": "fn put(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/files.rs",
+      "line": 156,
+      "symbol": "files::get",
+      "sha256": "aef40878da51146cf6ddf3304300ac503325cb556ff8e5de67cab191df8ea5b7",
+      "exact_line": "fn get(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/files.rs",
+      "line": 168,
+      "symbol": "files::delete",
+      "sha256": "aef40878da51146cf6ddf3304300ac503325cb556ff8e5de67cab191df8ea5b7",
+      "exact_line": "fn delete(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/files.rs",
+      "line": 44,
+      "symbol": "files::check_meta",
+      "sha256": "aef40878da51146cf6ddf3304300ac503325cb556ff8e5de67cab191df8ea5b7",
+      "exact_line": "pub fn check_meta(meta: &Value) -> Result<()> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/subs.rs",
+      "line": 202,
+      "symbol": "subs::subscribe",
+      "sha256": "a55dac107c909275053c0b4ff5991a1e79dd0f5c81ddc8d2bb7fa82d1c6cef00",
+      "exact_line": "fn subscribe(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/subs.rs",
+      "line": 248,
+      "symbol": "subs::unsubscribe",
+      "sha256": "a55dac107c909275053c0b4ff5991a1e79dd0f5c81ddc8d2bb7fa82d1c6cef00",
+      "exact_line": "fn unsubscribe(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/subs.rs",
+      "line": 272,
+      "symbol": "subs::call",
+      "sha256": "a55dac107c909275053c0b4ff5991a1e79dd0f5c81ddc8d2bb7fa82d1c6cef00",
+      "exact_line": "pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/subs.rs",
+      "line": 103,
+      "symbol": "subs::route",
+      "sha256": "a55dac107c909275053c0b4ff5991a1e79dd0f5c81ddc8d2bb7fa82d1c6cef00",
+      "exact_line": "pub fn route<'a>(e: &Entry, me: &str, subs: &'a [Sub]) -> (Option<&'a Sub>, &'static str) {"
+    },
+    {
+      "path": "app/poolhouse-node/src/links.rs",
+      "line": 64,
+      "symbol": "Links::add",
+      "sha256": "750c7ee50ae262080b08d9b500d07018f4516603d0bedcb0fbea4cc620ee476f",
+      "exact_line": "    pub fn add(&mut self, from: &str, to: &str, channels: Vec<String>, write: bool, by: &str) -> Result<Link> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/links.rs",
+      "line": 76,
+      "symbol": "Links::revoke",
+      "sha256": "750c7ee50ae262080b08d9b500d07018f4516603d0bedcb0fbea4cc620ee476f",
+      "exact_line": "    pub fn revoke(&mut self, from: &str, id: &str) -> Result<Link> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/links.rs",
+      "line": 87,
+      "symbol": "Links::grants",
+      "sha256": "750c7ee50ae262080b08d9b500d07018f4516603d0bedcb0fbea4cc620ee476f",
+      "exact_line": "    pub fn grants(&self, home: &str, target: &str, write: bool) -> Option<Vec<String>> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/board.rs",
+      "line": 251,
+      "symbol": "Board::write",
+      "sha256": "ee919439c331c2edab8b5b94b5394555f2570d1e2bc974af12213322de496f75",
+      "exact_line": "    fn write(&mut self, class: Class, kind: Kind, actor: &str, body: Value, idem: &str) -> Result<Row> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/board.rs",
+      "line": 628,
+      "symbol": "Board::status",
+      "sha256": "ee919439c331c2edab8b5b94b5394555f2570d1e2bc974af12213322de496f75",
+      "exact_line": "    pub fn status(&self, seq: u64, roster: &[String]) -> &'static str {"
+    },
+    {
+      "path": "app/poolhouse-node/src/writes.rs",
+      "line": 63,
+      "symbol": "writes::check_post",
+      "sha256": "b462998ee455d3a6f7b76cfd10a0d6ce9e10da393c9d8512b226fe4ca1b450cd",
+      "exact_line": "pub fn check_post(node: &mut Node, board: &str, actor: &str, kind: Kind, fields: &Map<String, Value>) -> Result<()> {"
+    },
+    {
+      "path": "src/poolhouse/board/public.py",
+      "line": 130,
+      "symbol": "Board.send",
+      "sha256": "fe8898362fdcb30ae542efdda9b9c3cd136cba694b9e969609452c115390a42d",
+      "exact_line": "    def send(self, to: str, body: str, *, kind: str = \"note\", subject: str = \"\", reply_to: str = \"\") -> str:"
+    },
+    {
+      "path": "src/poolhouse/board/public.py",
+      "line": 140,
+      "symbol": "Board.announce",
+      "sha256": "fe8898362fdcb30ae542efdda9b9c3cd136cba694b9e969609452c115390a42d",
+      "exact_line": "    def announce(self, kind: str, text: str) -> str:"
+    },
+    {
+      "path": "src/poolhouse/board/public.py",
+      "line": 168,
+      "symbol": "Board.wait",
+      "sha256": "fe8898362fdcb30ae542efdda9b9c3cd136cba694b9e969609452c115390a42d",
+      "exact_line": "    def wait(self, timeout_s: float = 30.0, *, ack: bool = False) -> list[Message]:"
+    },
+    {
+      "path": "src/poolhouse/board/public.py",
+      "line": 177,
+      "symbol": "Board.add_note",
+      "sha256": "fe8898362fdcb30ae542efdda9b9c3cd136cba694b9e969609452c115390a42d",
+      "exact_line": "    def add_note(self, kind: str, title: str, body: str, *, tags: tuple[str, ...] = ()) -> str:"
+    },
+    {
+      "path": "src/poolhouse/board/public.py",
+      "line": 182,
+      "symbol": "Board.notes",
+      "sha256": "fe8898362fdcb30ae542efdda9b9c3cd136cba694b9e969609452c115390a42d",
+      "exact_line": "    def notes(self, query: str = \"\", *, kind: str = \"\", limit: int = 10) -> list[Note]:"
+    },
+    {
+      "path": "src/poolhouse/board/public.py",
+      "line": 233,
+      "symbol": "Board.link",
+      "sha256": "fe8898362fdcb30ae542efdda9b9c3cd136cba694b9e969609452c115390a42d",
+      "exact_line": "    def link(self, to: str, *, channels: tuple[str, ...] = (), mode: str = \"ro\") -> dict[str, object]:"
+    },
+    {
+      "path": "src/poolhouse/board/public.py",
+      "line": 241,
+      "symbol": "Board.unlink",
+      "sha256": "fe8898362fdcb30ae542efdda9b9c3cd136cba694b9e969609452c115390a42d",
+      "exact_line": "    def unlink(self, link_id: str) -> None:"
+    },
+    {
+      "path": "src/poolhouse/board/public.py",
+      "line": 237,
+      "symbol": "Board.links",
+      "sha256": "fe8898362fdcb30ae542efdda9b9c3cd136cba694b9e969609452c115390a42d",
+      "exact_line": "    def links(self) -> list[dict[str, object]]:"
+    },
+    {
+      "path": "src/poolhouse/board/session.py",
+      "line": 206,
+      "symbol": "Session.post",
+      "sha256": "4055b11e0f8ed2dfa0396372fda3df84a0b315bae11f4eca1cca857fd1791f87",
+      "exact_line": "    def post(self, to: str, kind: str, body: str, subject: str = \"\", reply_id: str = \"\") -> dict[str, Any]:"
+    },
+    {
+      "path": "src/poolhouse/board/session.py",
+      "line": 213,
+      "symbol": "Session.post_file",
+      "sha256": "4055b11e0f8ed2dfa0396372fda3df84a0b315bae11f4eca1cca857fd1791f87",
+      "exact_line": "    def post_file(self, to: str, body: str, file: dict[str, Any], reply_id: str = \"\") -> dict[str, Any]:"
+    },
+    {
+      "path": "src/poolhouse/board/session.py",
+      "line": 220,
+      "symbol": "Session.read",
+      "sha256": "4055b11e0f8ed2dfa0396372fda3df84a0b315bae11f4eca1cca857fd1791f87",
+      "exact_line": "    def read(self, since: dict[str, int] | None = None, **filters: Any) -> Page:"
+    },
+    {
+      "path": "src/poolhouse/board/session.py",
+      "line": 234,
+      "symbol": "Session.read_all",
+      "sha256": "4055b11e0f8ed2dfa0396372fda3df84a0b315bae11f4eca1cca857fd1791f87",
+      "exact_line": "    def read_all(self, since: dict[str, int] | None = None, **filters: Any) -> list[Entry]:"
+    },
+    {
+      "path": "src/poolhouse/board/session.py",
+      "line": 245,
+      "symbol": "Session.store",
+      "sha256": "4055b11e0f8ed2dfa0396372fda3df84a0b315bae11f4eca1cca857fd1791f87",
+      "exact_line": "    def store(self, sealed: bytes) -> str:"
+    },
+    {
+      "path": "src/poolhouse/board/session.py",
+      "line": 255,
+      "symbol": "Session.fetch",
+      "sha256": "4055b11e0f8ed2dfa0396372fda3df84a0b315bae11f4eca1cca857fd1791f87",
+      "exact_line": "    def fetch(self, blob: str) -> bytes:"
+    },
+    {
+      "path": "src/poolhouse/board/session.py",
+      "line": 268,
+      "symbol": "Session.delete_file",
+      "sha256": "4055b11e0f8ed2dfa0396372fda3df84a0b315bae11f4eca1cca857fd1791f87",
+      "exact_line": "    def delete_file(self, handle: str) -> dict[str, Any]:"
+    },
+    {
+      "path": "src/poolhouse/board/session.py",
+      "line": 297,
+      "symbol": "Session.rooms",
+      "sha256": "4055b11e0f8ed2dfa0396372fda3df84a0b315bae11f4eca1cca857fd1791f87",
+      "exact_line": "    def rooms(self) -> list[dict[str, Any]]:"
+    },
+    {
+      "path": "src/poolhouse/board/session.py",
+      "line": 301,
+      "symbol": "Session.room",
+      "sha256": "4055b11e0f8ed2dfa0396372fda3df84a0b315bae11f4eca1cca857fd1791f87",
+      "exact_line": "    def room(self, op: str, name: str, who: str = \"\", title: str = \"\", private: bool = False) -> dict[str, Any]:"
+    },
+    {
+      "path": "src/poolhouse/board/session.py",
+      "line": 306,
+      "symbol": "Session.subscribe",
+      "sha256": "4055b11e0f8ed2dfa0396372fda3df84a0b315bae11f4eca1cca857fd1791f87",
+      "exact_line": "    def subscribe(self, stype: str, target: str = \"\", mode: str = \"inbox\", force: bool = False) -> dict[str, Any]:"
+    },
+    {
+      "path": "src/poolhouse/board/session.py",
+      "line": 310,
+      "symbol": "Session.unsubscribe",
+      "sha256": "4055b11e0f8ed2dfa0396372fda3df84a0b315bae11f4eca1cca857fd1791f87",
+      "exact_line": "    def unsubscribe(self, stype: str, target: str = \"\") -> dict[str, Any]:"
+    },
+    {
+      "path": "src/poolhouse/board/session.py",
+      "line": 314,
+      "symbol": "Session.subs",
+      "sha256": "4055b11e0f8ed2dfa0396372fda3df84a0b315bae11f4eca1cca857fd1791f87",
+      "exact_line": "    def subs(self) -> list[dict[str, Any]]:"
+    },
+    {
+      "path": "src/poolhouse/board/session.py",
+      "line": 318,
+      "symbol": "Session.outbox",
+      "sha256": "4055b11e0f8ed2dfa0396372fda3df84a0b315bae11f4eca1cca857fd1791f87",
+      "exact_line": "    def outbox(self, limit: int = 0) -> list[Sent]:"
+    },
+    {
+      "path": "src/poolhouse/board/session.py",
+      "line": 341,
+      "symbol": "Session.note_add",
+      "sha256": "4055b11e0f8ed2dfa0396372fda3df84a0b315bae11f4eca1cca857fd1791f87",
+      "exact_line": "    def note_add(self, kind: str, title: str, body: str, **extra: Any) -> dict[str, Any]:"
+    },
+    {
+      "path": "src/poolhouse/board/session.py",
+      "line": 346,
+      "symbol": "Session.notes",
+      "sha256": "4055b11e0f8ed2dfa0396372fda3df84a0b315bae11f4eca1cca857fd1791f87",
+      "exact_line": "    def notes(self, ref: str = \"\", query: str = \"\", kind: str = \"\", everything: bool = False, limit: int = 10) -> list[Note]:"
+    },
+    {
+      "path": "src/poolhouse/board/session.py",
+      "line": 350,
+      "symbol": "Session.note_verify",
+      "sha256": "4055b11e0f8ed2dfa0396372fda3df84a0b315bae11f4eca1cca857fd1791f87",
+      "exact_line": "    def note_verify(self, ref: str, exit_code: int, out_sha: str) -> Note:"
+    },
+    {
+      "path": "src/poolhouse/board/session.py",
+      "line": 398,
+      "symbol": "Session.keep",
+      "sha256": "4055b11e0f8ed2dfa0396372fda3df84a0b315bae11f4eca1cca857fd1791f87",
+      "exact_line": "    def keep(self, question: str, cursor: dict[str, int]) -> None:"
+    },
+    {
+      "path": "src/poolhouse/workspace/board_cli.py",
+      "line": 227,
+      "symbol": "board_cli.delivered",
+      "sha256": "c6d6874328cca0bef6815766d3cbdb35da042a4f4dfdaaba89a23c13e130db87",
+      "exact_line": "def delivered(s: Session, to: str, kind: str, body: str, **said: str) -> dict[str, Any]:"
+    },
+    {
+      "path": "src/poolhouse/workspace/board_cli.py",
+      "line": 248,
+      "symbol": "board_cli.inbox",
+      "sha256": "c6d6874328cca0bef6815766d3cbdb35da042a4f4dfdaaba89a23c13e130db87",
+      "exact_line": "def inbox(args: argparse.Namespace, s: Session) -> Any:"
+    },
+    {
+      "path": "src/poolhouse/workspace/mail_cli.py",
+      "line": 30,
+      "symbol": "mail_cli.thread",
+      "sha256": "07c56448360d4435ae5b283f8bc7b4a4692f17fcd3d852f227a023684c7bb76f",
+      "exact_line": "def thread(args: argparse.Namespace, s: Session) -> Any:"
+    },
+    {
+      "path": "src/poolhouse/workspace/mail_cli.py",
+      "line": 61,
+      "symbol": "mail_cli.wait",
+      "sha256": "07c56448360d4435ae5b283f8bc7b4a4692f17fcd3d852f227a023684c7bb76f",
+      "exact_line": "def wait(args: argparse.Namespace, s: Session) -> Any:"
+    },
+    {
+      "path": "src/poolhouse/workspace/mail_cli.py",
+      "line": 76,
+      "symbol": "mail_cli.outbox",
+      "sha256": "07c56448360d4435ae5b283f8bc7b4a4692f17fcd3d852f227a023684c7bb76f",
+      "exact_line": "def outbox(args: argparse.Namespace, s: Session) -> Any:"
+    },
+    {
+      "path": "src/poolhouse/workspace/mail_cli.py",
+      "line": 52,
+      "symbol": "mail_cli.ack",
+      "sha256": "07c56448360d4435ae5b283f8bc7b4a4692f17fcd3d852f227a023684c7bb76f",
+      "exact_line": "def ack(args: argparse.Namespace, s: Session) -> Any:"
+    },
+    {
+      "path": "src/poolhouse/workspace/notes_cli.py",
+      "line": 68,
+      "symbol": "notes_cli.add",
+      "sha256": "7bc6197f7fc83c9524197e54f4d17eeb89d9e82097b7b4edca5040e2291c86fb",
+      "exact_line": "def add(args: argparse.Namespace, s: Session) -> Any:"
+    },
+    {
+      "path": "src/poolhouse/workspace/notes_cli.py",
+      "line": 75,
+      "symbol": "notes_cli.search",
+      "sha256": "7bc6197f7fc83c9524197e54f4d17eeb89d9e82097b7b4edca5040e2291c86fb",
+      "exact_line": "def search(args: argparse.Namespace, s: Session) -> Any:"
+    },
+    {
+      "path": "src/poolhouse/workspace/notes_cli.py",
+      "line": 88,
+      "symbol": "notes_cli.verify",
+      "sha256": "7bc6197f7fc83c9524197e54f4d17eeb89d9e82097b7b4edca5040e2291c86fb",
+      "exact_line": "def verify(args: argparse.Namespace, s: Session) -> Any:"
+    },
+    {
+      "path": "src/poolhouse/workspace/rooms_cli.py",
+      "line": 105,
+      "symbol": "rooms_cli.board",
+      "sha256": "0976fcd49f654709e3991461d73d4c59e6edd51f4af76aa4774cb45557c08a8a",
+      "exact_line": "def board(args: argparse.Namespace, s: Session) -> Any:"
+    },
+    {
+      "path": "src/poolhouse/workspace/rooms_cli.py",
+      "line": 133,
+      "symbol": "rooms_cli.join",
+      "sha256": "0976fcd49f654709e3991461d73d4c59e6edd51f4af76aa4774cb45557c08a8a",
+      "exact_line": "def join(args: argparse.Namespace, s: Session) -> Any:"
+    },
+    {
+      "path": "src/poolhouse/workspace/rooms_cli.py",
+      "line": 140,
+      "symbol": "rooms_cli.leave",
+      "sha256": "0976fcd49f654709e3991461d73d4c59e6edd51f4af76aa4774cb45557c08a8a",
+      "exact_line": "def leave(args: argparse.Namespace, s: Session) -> Any:"
+    },
+    {
+      "path": "src/poolhouse/workspace/rooms_cli.py",
+      "line": 148,
+      "symbol": "rooms_cli.subscribe",
+      "sha256": "0976fcd49f654709e3991461d73d4c59e6edd51f4af76aa4774cb45557c08a8a",
+      "exact_line": "def subscribe(args: argparse.Namespace, s: Session) -> Any:"
+    },
+    {
+      "path": "src/poolhouse/workspace/rooms_cli.py",
+      "line": 153,
+      "symbol": "rooms_cli.unsubscribe",
+      "sha256": "0976fcd49f654709e3991461d73d4c59e6edd51f4af76aa4774cb45557c08a8a",
+      "exact_line": "def unsubscribe(args: argparse.Namespace, s: Session) -> Any:"
+    },
+    {
+      "path": "src/poolhouse/workspace/rooms_cli.py",
+      "line": 158,
+      "symbol": "rooms_cli.subs",
+      "sha256": "0976fcd49f654709e3991461d73d4c59e6edd51f4af76aa4774cb45557c08a8a",
+      "exact_line": "def subs(args: argparse.Namespace, s: Session) -> Any:"
+    },
+    {
+      "path": "src/poolhouse/workspace/filecli.py",
+      "line": 125,
+      "symbol": "filecli.post",
+      "sha256": "97709123e3edf67cf9aaa8445d907da5a40e680c6b6cac4092751dff9273a80a",
+      "exact_line": "def post(s: Session, to: str, data: bytes, name: str, **about: str) -> dict[str, Any]:"
+    },
+    {
+      "path": "src/poolhouse/workspace/filecli.py",
+      "line": 198,
+      "symbol": "filecli._content",
+      "sha256": "97709123e3edf67cf9aaa8445d907da5a40e680c6b6cac4092751dff9273a80a",
+      "exact_line": "def _content(s: Session, e: Entry) -> bytes:"
+    },
+    {
+      "path": "src/poolhouse/board/sealed.py",
+      "line": 46,
+      "symbol": "sealed.seal",
+      "sha256": "574e32daa17b3deb47bc9c97d2776250fe202145b306779c9e87f5a39ec9b12c",
+      "exact_line": "def seal(folder: Path, data: bytes, digest: str) -> bytes:"
+    },
+    {
+      "path": "src/poolhouse/board/sealed.py",
+      "line": 53,
+      "symbol": "sealed.open_sealed",
+      "sha256": "574e32daa17b3deb47bc9c97d2776250fe202145b306779c9e87f5a39ec9b12c",
+      "exact_line": "def open_sealed(folder: Path, sealed: bytes, digest: str) -> bytes:"
+    },
+    {
+      "path": "src/poolhouse/keystore.py",
+      "line": 515,
+      "symbol": "keystore.aead source only",
+      "sha256": "78d638ddc42ea6e9ca8d072b9651425d1ca362cdb0d4764a97604552ed9ad7bf",
+      "exact_line": "def aead(key: bytes) -> Any:"
+    },
+    {
+      "path": "src/poolhouse/workspace/boardroute.py",
+      "line": 61,
+      "symbol": "boardroute.respond",
+      "sha256": "db49f4ff7a97a104da7a21effe68a6d8c373a313f97e2e3c4838bd9d46862ed6",
+      "exact_line": "def respond(session: Callable[[], Session], req: Request) -> Reply:"
+    },
+    {
+      "path": "src/poolhouse/workspace/boardroute.py",
+      "line": 130,
+      "symbol": "boardroute._post",
+      "sha256": "db49f4ff7a97a104da7a21effe68a6d8c373a313f97e2e3c4838bd9d46862ed6",
+      "exact_line": "def _post(s: Session, raw: bytes) -> dict[str, Any]:"
+    },
+    {
+      "path": "src/poolhouse/workspace/boardroute.py",
+      "line": 152,
+      "symbol": "boardroute._ack",
+      "sha256": "db49f4ff7a97a104da7a21effe68a6d8c373a313f97e2e3c4838bd9d46862ed6",
+      "exact_line": "def _ack(s: Session, raw: bytes) -> dict[str, Any]:"
+    },
+    {
+      "path": "src/poolhouse/workspace/board_page.py",
+      "line": 69,
+      "symbol": "board_page._plain",
+      "sha256": "902e75080d3823c3727fa35697d1202103dc1ce1c17445f487825115e71cb336",
+      "exact_line": "def _plain(log: Log, who: Mapping[str, Agent], row: dict[str, Any], me: str) -> dict[str, Any]:"
+    },
+    {
+      "path": "src/poolhouse/workspace/board_page.py",
+      "line": 237,
+      "symbol": "board_page.ack",
+      "sha256": "902e75080d3823c3727fa35697d1202103dc1ce1c17445f487825115e71cb336",
+      "exact_line": "def ack(s: Session, doc: dict[str, Any]) -> dict[str, Any]:"
+    },
+    {
+      "path": "src/poolhouse/workspace/board_pages.py",
+      "line": 31,
+      "symbol": "board_pages.page",
+      "sha256": "54940017ba26814560d2790f74c76f1cfe1525c35bb988e237094389d85c97b0",
+      "exact_line": "def page(rows, show, limit=100, after=0, before=0):"
+    },
+    {
+      "path": "src/poolhouse/fleet/board_routes.py",
+      "line": 10,
+      "symbol": "BoardRoutes.route",
+      "sha256": "b108502e81f323d11e4e256965397fd94fc6c9d8276dee0c3966d5f412aff92a",
+      "exact_line": "    def route(self) -> bool:"
+    },
+    {
+      "path": "src/poolhouse/ui/assets/board.js",
+      "line": 187,
+      "symbol": "PoolhouseBoard.request",
+      "sha256": "0c2cd22af936e13a9e5103e1e0d16ab6f24e3366fa1dd822e9a32bdd38ff6ea9",
+      "exact_line": "  async request(route, params = {}, document = null) {"
+    },
+    {
+      "path": "src/poolhouse/ui/assets/board.js",
+      "line": 190,
+      "symbol": "PoolhouseBoard AbortController view cancellation",
+      "sha256": "0c2cd22af936e13a9e5103e1e0d16ab6f24e3366fa1dd822e9a32bdd38ff6ea9",
+      "exact_line": "      this.viewRequest?.abort(); this.viewRequest = controller;"
+    },
+    {
+      "path": "src/poolhouse/node_health.py",
+      "line": 21,
+      "symbol": "node_health.MAX_FRAME",
+      "sha256": "60b8c301cff07c7e298c69d8c5d4938c9cd4c7184a78c1452355215545699a39",
+      "exact_line": "MAX_FRAME = 1 << 20"
+    },
+    {
+      "path": "src/poolhouse/fleet/same_page.py",
+      "line": 13,
+      "symbol": "same_page.MAX_BODY",
+      "sha256": "507a7309775b1797dcb8b1e33d11b4c6a8666f48c42fa3cad02df3040cd98729",
+      "exact_line": "MAX_BODY = 512 * 1024"
+    },
+    {
+      "path": "app/poolhouse-node/src/fold.rs",
+      "line": 141,
+      "symbol": "fold::message",
+      "sha256": "4e5895aea6853cfd6edc094e8612d4d2ef2d17ef7a4e10d90382e8ddcad1a7c1",
+      "exact_line": "fn message(row: &Row, ctx: &mut Context, foreign: bool) -> Result<(String, Map<String, Value>)> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/fold.rs",
+      "line": 164,
+      "symbol": "fold::note",
+      "sha256": "4e5895aea6853cfd6edc094e8612d4d2ef2d17ef7a4e10d90382e8ddcad1a7c1",
+      "exact_line": "fn note(row: &Row, ctx: &mut Context, foreign: bool) -> Result<(String, Map<String, Value>)> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/fold.rs",
+      "line": 193,
+      "symbol": "fold::identity",
+      "sha256": "4e5895aea6853cfd6edc094e8612d4d2ef2d17ef7a4e10d90382e8ddcad1a7c1",
+      "exact_line": "fn identity(row: &Row, ctx: &mut Context, foreign: bool) -> Result<(String, Map<String, Value>)> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/fold.rs",
+      "line": 220,
+      "symbol": "fold::verify",
+      "sha256": "4e5895aea6853cfd6edc094e8612d4d2ef2d17ef7a4e10d90382e8ddcad1a7c1",
+      "exact_line": "fn verify(row: &Row, ctx: &mut Context, foreign: bool) -> Result<(String, Map<String, Value>)> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/fold.rs",
+      "line": 246,
+      "symbol": "fold::audit",
+      "sha256": "4e5895aea6853cfd6edc094e8612d4d2ef2d17ef7a4e10d90382e8ddcad1a7c1",
+      "exact_line": "fn audit(row: &Row, ctx: &mut Context, foreign: bool) -> Result<(String, Map<String, Value>)> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/fold.rs",
+      "line": 233,
+      "symbol": "fold::lease",
+      "sha256": "4e5895aea6853cfd6edc094e8612d4d2ef2d17ef7a4e10d90382e8ddcad1a7c1",
+      "exact_line": "fn lease(row: &Row, ctx: &mut Context, foreign: bool) -> Result<(String, Map<String, Value>)> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/fold.rs",
+      "line": 271,
+      "symbol": "fold::landing",
+      "sha256": "4e5895aea6853cfd6edc094e8612d4d2ef2d17ef7a4e10d90382e8ddcad1a7c1",
+      "exact_line": "fn landing(row: &Row, ctx: &mut Context, foreign: bool) -> Result<(String, Map<String, Value>)> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/fold.rs",
+      "line": 255,
+      "symbol": "fold::room",
+      "sha256": "4e5895aea6853cfd6edc094e8612d4d2ef2d17ef7a4e10d90382e8ddcad1a7c1",
+      "exact_line": "fn room(row: &Row, ctx: &mut Context, foreign: bool) -> Result<(String, Map<String, Value>)> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/fold.rs",
+      "line": 278,
+      "symbol": "fold::task",
+      "sha256": "4e5895aea6853cfd6edc094e8612d4d2ef2d17ef7a4e10d90382e8ddcad1a7c1",
+      "exact_line": "fn task(row: &Row, ctx: &mut Context, foreign: bool) -> Result<(String, Map<String, Value>)> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/fold.rs",
+      "line": 285,
+      "symbol": "fold::grant",
+      "sha256": "4e5895aea6853cfd6edc094e8612d4d2ef2d17ef7a4e10d90382e8ddcad1a7c1",
+      "exact_line": "fn grant(row: &Row, ctx: &mut Context, foreign: bool) -> Result<(String, Map<String, Value>)> {"
+    },
+    {
+      "path": "app/poolhouse-node/src/row.rs",
+      "line": 14,
+      "symbol": "row::MAX_ROW_BYTES",
+      "sha256": "0a3fb941e60ed9dc926f6459d340d3893d1c84fdac9f852af392bcb863cf3283",
+      "exact_line": "pub const MAX_ROW_BYTES: usize = 128 * 1024;"
+    },
+    {
+      "path": "app/poolhouse-node/src/fold.rs",
+      "line": 32,
+      "symbol": "fold::BODY_BYTES",
+      "sha256": "4e5895aea6853cfd6edc094e8612d4d2ef2d17ef7a4e10d90382e8ddcad1a7c1",
+      "exact_line": "pub const BODY_BYTES: usize = 64 * 1024;"
+    },
+    {
+      "path": "app/poolhouse-node/src/files.rs",
+      "line": 27,
+      "symbol": "files::CHUNK",
+      "sha256": "aef40878da51146cf6ddf3304300ac503325cb556ff8e5de67cab191df8ea5b7",
+      "exact_line": "pub const CHUNK: usize = 256 * 1024;"
+    },
+    {
+      "path": "app/poolhouse-node/src/files.rs",
+      "line": 25,
+      "symbol": "files::MAX_BLOB",
+      "sha256": "aef40878da51146cf6ddf3304300ac503325cb556ff8e5de67cab191df8ea5b7",
+      "exact_line": "pub const MAX_BLOB: usize = 9 * 1024 * 1024;"
+    },
+    {
+      "path": "app/poolhouse-node/src/links.rs",
+      "line": 15,
+      "symbol": "links::MOST_ACTIVE",
+      "sha256": "750c7ee50ae262080b08d9b500d07018f4516603d0bedcb0fbea4cc620ee476f",
+      "exact_line": "pub const MOST_ACTIVE: usize = 64;"
+    }
+  ],
+  "retained_legacy_methods": [
+    "post",
+    "read",
+    "outbox",
+    "notes",
+    "note_verify",
+    "rooms",
+    "room",
+    "file_put",
+    "file_get",
+    "file_delete",
+    "subscribe",
+    "unsubscribe",
+    "subs",
+    "link",
+    "unlink",
+    "links"
+  ],
+  "operation_mapping": [
+    {
+      "operation": "board.messages.post",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "post"
+      ],
+      "handlers": [
+        0,
+        6,
+        13,
+        31
+      ],
+      "retained_callers": [
+        34,
+        35,
+        42,
+        43,
+        59,
+        80,
+        86
+      ],
+      "transformation": "Legacy post(kind=message,fields) becomes closed message/file/announcement union; node derives sender/thread and retains original idempotency key separately. Proposed/unimplemented; no current caller migration proof."
+    },
+    {
+      "operation": "board.notes.post",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "post"
+      ],
+      "handlers": [
+        0,
+        6,
+        13,
+        31
+      ],
+      "retained_callers": [
+        34,
+        35,
+        42,
+        43,
+        59,
+        80,
+        86
+      ],
+      "transformation": "Legacy post(kind=note,fields) becomes exact typed note fields; node derives author, resolves supersedes and preserves command as data. Proposed/unimplemented; no current caller migration proof."
+    },
+    {
+      "operation": "board.notes.list",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "notes"
+      ],
+      "handlers": [
+        14,
+        16
+      ],
+      "retained_callers": [
+        38,
+        56,
+        66
+      ],
+      "transformation": "Legacy notes ref/query/kind/all/limit becomes typed filter, ranked source result plus complete opaque continuation; query chunks preserve original whole source frame limit. Proposed/unimplemented; no current caller migration proof."
+    },
+    {
+      "operation": "board.notes.verification.record",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "note_verify"
+      ],
+      "handlers": [
+        15,
+        16,
+        17
+      ],
+      "retained_callers": [
+        57,
+        67
+      ],
+      "transformation": "Legacy note_verify note/exit/out_sha becomes exact-i64 client evidence record, arbitrary legacy64byte output claim and explicit recorded-client provenance. Proposed/unimplemented; no current caller migration proof."
+    },
+    {
+      "operation": "board.entries.read",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "read"
+      ],
+      "handlers": [
+        1,
+        2,
+        11
+      ],
+      "retained_callers": [
+        36,
+        44,
+        45,
+        60,
+        61,
+        79,
+        82,
+        86
+      ],
+      "transformation": "Legacy read source vector/filters becomes exact typed filters and scoped snapshot page; original logical entry IDs/HLC/hash separate from immutable folded-fields document. Proposed/unimplemented; no current caller migration proof."
+    },
+    {
+      "operation": "board.entries.document.read",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "read"
+      ],
+      "handlers": [
+        1,
+        2,
+        11
+      ],
+      "retained_callers": [
+        36,
+        44,
+        45,
+        60,
+        61,
+        79,
+        82,
+        86
+      ],
+      "transformation": "New automatic output transport pages exact node-selected folded-fields-v1 JSON; no generic request payload, fixed kind validators and unsupported profiles explicit. Proposed/unimplemented; no current caller migration proof."
+    },
+    {
+      "operation": "board.entries.watch",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "read"
+      ],
+      "handlers": [
+        1,
+        2,
+        11
+      ],
+      "retained_callers": [
+        36,
+        44,
+        45,
+        60,
+        61,
+        79,
+        82,
+        86
+      ],
+      "transformation": "New ordered stream projection replaces retained Python/CLI polling only; no claim existing native subscription. Detach does not cancel domain mutations. Proposed/unimplemented; no current caller migration proof."
+    },
+    {
+      "operation": "board.outbox.list",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "outbox"
+      ],
+      "handlers": [
+        12,
+        32
+      ],
+      "retained_callers": [
+        54,
+        63
+      ],
+      "transformation": "Legacy outbox newest own-origin own-sender tail default50/max200 and provisional/synced status retained with complete continuation, no recipient-read inference. Proposed/unimplemented; no current caller migration proof."
+    },
+    {
+      "operation": "board.rooms.list",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "rooms"
+      ],
+      "handlers": [
+        18
+      ],
+      "retained_callers": [
+        49,
+        68
+      ],
+      "transformation": "Legacy rooms visible open/member-private plus general/announcements become complete typed view; everyone membership distinguished from explicit list. Proposed/unimplemented; no current caller migration proof."
+    },
+    {
+      "operation": "board.rooms.create",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "room"
+      ],
+      "handlers": [
+        19
+      ],
+      "retained_callers": [
+        50,
+        68,
+        69,
+        70
+      ],
+      "transformation": "Legacy room op=create becomes fixed create request, main-local-session checks, title60bytes, private flag and room/audit effect disposition. Proposed/unimplemented; no current caller migration proof."
+    },
+    {
+      "operation": "board.rooms.join",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "room"
+      ],
+      "handlers": [
+        19
+      ],
+      "retained_callers": [
+        50,
+        68,
+        69,
+        70
+      ],
+      "transformation": "Legacy room op=join becomes self-join with membership/open and capacity checks; no caller-selected actor. Proposed/unimplemented; no current caller migration proof."
+    },
+    {
+      "operation": "board.rooms.leave",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "room"
+      ],
+      "handlers": [
+        19
+      ],
+      "retained_callers": [
+        50,
+        68,
+        69,
+        70
+      ],
+      "transformation": "Legacy room op=leave becomes self-leave, durable room plus audit outcome retained. Proposed/unimplemented; no current caller migration proof."
+    },
+    {
+      "operation": "board.rooms.member.add",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "room"
+      ],
+      "handlers": [
+        19
+      ],
+      "retained_callers": [
+        50,
+        68,
+        69,
+        70
+      ],
+      "transformation": "Legacy room op=add becomes maker-authorized member reference; foreign labels cannot nominate authority. Proposed/unimplemented; no current caller migration proof."
+    },
+    {
+      "operation": "board.files.upload.start",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "file_put"
+      ],
+      "handlers": [
+        20,
+        23
+      ],
+      "retained_callers": [
+        46,
+        74,
+        76
+      ],
+      "transformation": "New automatic node-owned stage issuance replaces caller-selected shared staging filename. Sealed total9MiB cap separate from plaintext metadata and format overhead. Proposed/unimplemented; no current caller migration proof."
+    },
+    {
+      "operation": "board.files.upload.append",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "file_put"
+      ],
+      "handlers": [
+        20,
+        23
+      ],
+      "retained_callers": [
+        46,
+        74,
+        76
+      ],
+      "transformation": "Legacy file_put upload/offset/total/data becomes exact owned stage/CAS/offset and<=256KiB decoded data across4parts. Final append publication versus cancel atomic. Proposed/unimplemented; no current caller migration proof."
+    },
+    {
+      "operation": "board.files.upload.cancel",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "file_put"
+      ],
+      "handlers": [
+        20,
+        23
+      ],
+      "retained_callers": [
+        46,
+        74,
+        76
+      ],
+      "transformation": "New exact owned stage cancellation with durable final-publication race; old shared staging lacks this guarantee and remains explicit gap. Proposed/unimplemented; no current caller migration proof."
+    },
+    {
+      "operation": "board.files.read",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "file_get"
+      ],
+      "handlers": [
+        21
+      ],
+      "retained_callers": [
+        47,
+        75,
+        77,
+        79
+      ],
+      "transformation": "Legacy file_get blob/offset/limit retains opaque sealed chunk semantics with exact current entitling message, data parts and completeness. Proposed/unimplemented; no current caller migration proof."
+    },
+    {
+      "operation": "board.files.delete",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "file_delete"
+      ],
+      "handlers": [
+        22
+      ],
+      "retained_callers": [
+        48
+      ],
+      "transformation": "Legacy file_delete handle preserves scoped grant/local bytes removal+handle tombstone+audit; physical erasure or other-device deletion not claimed. Proposed/unimplemented; no current caller migration proof."
+    },
+    {
+      "operation": "board.delivery.subscribe",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "subscribe"
+      ],
+      "handlers": [
+        24,
+        27
+      ],
+      "retained_callers": [
+        51,
+        71
+      ],
+      "transformation": "Legacy subscribe stype/target/mode/force becomes closed delivery target/mode/cost acknowledgement; original source since vector/routing and current restriction retained. Proposed/unimplemented; no current caller migration proof."
+    },
+    {
+      "operation": "board.delivery.unsubscribe",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "unsubscribe"
+      ],
+      "handlers": [
+        25,
+        27
+      ],
+      "retained_callers": [
+        52,
+        72
+      ],
+      "transformation": "Legacy unsubscribe stype/target becomes closed target and removal outcome; announcements yield silent replacement, other targets no replacement. Proposed/unimplemented; no current caller migration proof."
+    },
+    {
+      "operation": "board.delivery.list",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "subs"
+      ],
+      "handlers": [
+        26
+      ],
+      "retained_callers": [
+        53,
+        73
+      ],
+      "transformation": "Legacy subs type/target/mode becomes complete current-principal preferences including observed source since vector, never authority. Proposed/unimplemented; no current caller migration proof."
+    },
+    {
+      "operation": "board.delivery.acknowledge",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "read"
+      ],
+      "handlers": [
+        1,
+        2,
+        11
+      ],
+      "retained_callers": [
+        58,
+        64,
+        83,
+        81,
+        86
+      ],
+      "transformation": "Legacy local Session.keep/CLI ack/UI visible synthetic-counter marker becomes own-node cursor effect bound exact visible original entry and immutable presentation snapshot; not automatic read/watch ack. Proposed/unimplemented; no current caller migration proof."
+    },
+    {
+      "operation": "board.links.create",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "link"
+      ],
+      "handlers": [
+        3,
+        28,
+        30
+      ],
+      "retained_callers": [
+        39
+      ],
+      "transformation": "Legacy link to/channels/mode becomes exact CatalogBoardRef destination, explicit wholeboard/channels union and link/grant/two-audit partial commit disposition. Proposed/unimplemented; no current caller migration proof."
+    },
+    {
+      "operation": "board.links.remove",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "unlink"
+      ],
+      "handlers": [
+        3,
+        29
+      ],
+      "retained_callers": [
+        40
+      ],
+      "transformation": "Legacy unlink id becomes exact current link reference+generation, tombstone and immediate future-access revocation; both-board audit/spend outcomes explicit. Proposed/unimplemented; no current caller migration proof."
+    },
+    {
+      "operation": "board.links.list",
+      "status": "proposed/unimplemented canonical operation; current transports remain legacy",
+      "legacy_methods": [
+        "links"
+      ],
+      "handlers": [
+        4
+      ],
+      "retained_callers": [
+        41
+      ],
+      "transformation": "Legacy links incoming/outgoing active/inactive history becomes complete paged typed view; active64 limit not lifetime cap. Proposed/unimplemented; no current caller migration proof."
+    }
+  ],
+  "folded_fields_profiles": {
+    "message": {
+      "profile": "folded-fields-v1/message",
+      "validator": 90,
+      "direction": "output-only",
+      "node_selected": true
+    },
+    "note": {
+      "profile": "folded-fields-v1/note",
+      "validator": 91,
+      "direction": "output-only",
+      "node_selected": true
+    },
+    "identity": {
+      "profile": "folded-fields-v1/identity",
+      "validator": 92,
+      "direction": "output-only",
+      "node_selected": true
+    },
+    "verify": {
+      "profile": "folded-fields-v1/verify",
+      "validator": 93,
+      "direction": "output-only",
+      "node_selected": true
+    },
+    "audit": {
+      "profile": "folded-fields-v1/audit",
+      "validator": 94,
+      "direction": "output-only",
+      "node_selected": true
+    },
+    "lease": {
+      "profile": "folded-fields-v1/lease",
+      "validator": 95,
+      "direction": "output-only",
+      "node_selected": true
+    },
+    "landing": {
+      "profile": "folded-fields-v1/landing",
+      "validator": 96,
+      "direction": "output-only",
+      "node_selected": true
+    },
+    "room": {
+      "profile": "folded-fields-v1/room",
+      "validator": 97,
+      "direction": "output-only",
+      "node_selected": true
+    },
+    "task": {
+      "profile": "folded-fields-v1/task",
+      "validator": 98,
+      "direction": "output-only",
+      "node_selected": true
+    },
+    "grant": {
+      "profile": "folded-fields-v1/grant",
+      "validator": 99,
+      "direction": "output-only",
+      "node_selected": true
+    }
+  },
+  "source_limits": [
+    {
+      "name": "row",
+      "value": 131072,
+      "unit": "serialized source Row bytes",
+      "site": 100,
+      "measurement": "Row::size serde_json::to_vec full source envelope, JSON escaping included; not new IDL wrapper size"
+    },
+    {
+      "name": "body",
+      "value": 65536,
+      "unit": "decoded UTF8 bytes",
+      "site": 101
+    },
+    {
+      "name": "RPC",
+      "value": 1048576,
+      "unit": "original serialized frame bytes",
+      "site": 88,
+      "measurement": "original client json frame; separately bounded IDL escaping overhead, not source allowance increase"
+    },
+    {
+      "name": "file_chunk",
+      "value": 262144,
+      "unit": "decoded SEALED bytes",
+      "site": 102,
+      "representation": "at most4 parts<=65536 decoded bytes; total must remain<=262144; hex wire double expansion separate"
+    },
+    {
+      "name": "blob",
+      "value": 9437184,
+      "unit": "SEALED opaque stored bytes",
+      "site": 103
+    },
+    {
+      "name": "metadata_size",
+      "value": 9437184,
+      "unit": "declared plaintext bytes",
+      "site": 23,
+      "measurement": "independent of sealed total; legacy node cannot prove actual decrypted size"
+    },
+    {
+      "name": "pbf1_overhead",
+      "value": 32,
+      "unit": "bytes for retained AES-GCM sealed format",
+      "sites": [
+        76,
+        78
+      ],
+      "measurement": "4magic+12nonce+16authenticationtag; actual opaque upload cap stays9437184, no increase; expanded plaintext nearcap may be refused by retained sealed cap"
+    },
+    {
+      "name": "person_post",
+      "value": 32768,
+      "unit": "raw JSON request bytes",
+      "site": 80
+    },
+    {
+      "name": "person_page",
+      "value": 262144,
+      "unit": "source projected JSON bytes",
+      "site": 84,
+      "measurement": "sum len(json.dumps(message,ensure_ascii=True,separators=(comma,colon)).encode())+1 each; <=200items; outer HTTP cap524288"
+    },
+    {
+      "name": "query_parts",
+      "value": 17,
+      "unit": "transport chunk-count ceiling",
+      "site": 88,
+      "measurement": "ceil(original1MiB requestcap /(65536-3) usable decoded bytes), UTF8 scalar boundary may leave up to3bytes, not new aggregate allowance; reconstruct original source serializer and whole envelope gate"
+    },
+    {
+      "name": "link_projection_page",
+      "value": 64,
+      "unit": "new bounded projection capacity, NOT history retention",
+      "site": 104,
+      "measurement": "reuse current active capacity for transport page; all inactive history remains navigable; native codec aggregate/profile proof absent"
+    }
+  ],
+  "semantic_requirements": [
+    "Every declared operation remains proposed/unimplemented; neither schema validation nor hashes prove current runtime authority, durability or retention.",
+    "Resolve actual current principal/install/lineage/project/pool/board generation before existence, lookup, idempotency disposition, projection and every returned/event byte. Foreign/display actor/session labels are untrusted data, never can nominate sender, person, room maker/member authority.",
+    "Original logical entry id board:origin:sequence, hash and HLC remain exact across signed-log carry/rotation. Canonical CatalogBoardRef maps catalog identity, does not rewrite original source board label/id. Original signed bytes and validated signatures retained separately from output projection JSON/digest; projection is never signature proof.",
+    "Entry fields are output-only semantic JSON under closed original entry kind and fixed pinned fold-v1 validator. Node selects exact kind/profile, caller cannot select parser, transport, handler or authority. Duplicate decoded keys, invalid UTF8/escaped lone surrogates, fractional/coerced integers, unknown fields/presence mismatches refused. Depth16 original row gate retained; bounded iterative parser/admission prerequisite, no recursive-bypass claim.",
+    "The ten accepted fold profiles are message/note/identity/verify/audit/lease/landing/room/task/grant; other Row enum kinds are filter observations only and have explicit unsupported profile if projection requested, never fabricated/dropped/complete. Fixed original signed-row/fields projection is actual content, not JSONRPC body escape; embedded grant/identity/task/landing fields cannot cause execution/authority mutation.",
+    "Entry DocumentRef is node-issued immutable finalized snapshot bound exact principal/entry/board/project/policy/generation and original row hash plus projection digest. Acquire/recheck exact byte order/length/digest, expiry/revocation, quota and custody. Blob unavailable/deleted yields tombstone/unavailable, never empty fabricated fields. Document page count bounds no lifetime/history clipping.",
+    "Acknowledgement requires exact own principal+installation scope and visible presented through entry under current auth; immutable PresentationRef binds page snapshot/projection generation. UI synthetic counter maps only through that exact snapshot; stale/missing mapping refuses, no cross-origin numeric guess. Monotonic merge advances earlier visible scope rows only, never global hidden/private rows; source inbox vector acknowledgement and UI conversation/channel marker scopes remain distinct. Read/head/watch never autoack; retry returns original durable cursor effect. Existing local cursor storage remains legacy until node implementation.",
+    "Source limits measure original logical/source serializer envelope including its escaping. IDL chunk/envelope/hex double escaping gets separately derived bounded transport profile; never shrink valid near-limit content or increase original allowance. Query17 chunks and file4 chunks are ceilings, not additive allowance. Unknown transport aggregate/paging/parser profiles prevent runtime enablement.",
+    "Read source vector<=64 origins, each32lowerhex and seq<=2^48, no repeated origin identities; byte/object equality unique alone does not ensure identity uniqueness. Source vector distinct from opaque snapshot cursor and own acknowledgement. Bind cursor to principal, exact filter/projection, original history generation; no filter switching/forged completeness. Head does not acknowledge output. Watch proposed only replaces polling; event delivery reauthorizes and bounded backpressure/resync explicit.",
+    "Post typed message/note/file/announcement requests never accept sender/author/threadid. Node resolves reply readable participant/channel/room and computes canonical thread root. Retired-session delivery exception only exact answer to original question sender. Named room membership and current crossboard channel grant applied independently. Source CLI source-specific announce/body/screening/quarantine policy retained; content never instruction/permission.",
+    "Legacy post source idempotency key<=128cleanbytes retained separately from canonical RequestId. Old Board::write returns first actor/key row without payload comparison; canonical runtime must atomically bind exact semantic payload and conflict changed reuse, never silently change original row or duplicate after lost acceptance. Additional durable request ledger not implemented.",
+    "Notes preserve exact legacy display agent-claimed/test-verified/stale fields but mandatory verification provenance recorded_client_claim and binding=false. Exit0/arbitrary64byte output string are caller recorded data, NOT node execution attestation/trusted authority/grant. Node copies command from note and needs exact note_verify grant; never executes command. Original supersession protection retained as legacy display policy and never promoted to independent trust.",
+    "Signed i64 note exit encoded exactly nonnegative0..2^63-1 or negative positive magnitude1..2^63; no i32 truncation, negativezero, wrap/clamp. Output64byte claim uses UTF8 allowing original controls; not cryptographic digest authority. Presentation must escape/screen untrusted content.",
+    "Client note verification CLI shlex/owner allowlist/quarantine/cwd/execution remains legacy client behavior, NOT new node arbitrarycommand endpoint. Native governed rederive execution/independent evidence issuer absent and explicitly outside this leaf.",
+    "Room operations source main ownboard session policy, private maker-add and128members/200rooms/16perlineage retained. Room+Audit currently separate appends; canonical Commit partial/recovery_required reports primary/grant/sourceaudit/destinationaudit/tombstone individually, no committed success until required effects durable/accounted. Same for link creation/spend and both-board audits.",
+    "Sealed upload total cap9MiB is ciphertext bytes; FileMeta.size separate declared plaintext<=9MiB and CLI dynamic plaintext/hour/recipient caps retained. PBF1 current AESGCM adds32bytes, so no assertion that9MiB plaintext fits sealed cap. Node cannot decrypt/prove plaintextsize from caller metadata; no opaque total bypass. File hash/handle/name/type/derived refs grant no read/decrypt/path/execution authority.",
+    "Stages node-issued, principal/board/generation/total-bound; max8staged original node policy, exact next offset/CAS/replayed range bytes. Final publish vs cancel atomic durable winner; no cancelled result after blob publication; detach not rollback. Existing client-chosen stage names/shared staging ownership are not secure stage proof. Granting staging does not publish file message or deliver bytes to another principal.",
+    "File read each chunk resolves currently readable message, direct participant, room membership, link channels and local deleted handle; unavailable not empty success. Delete exact ownedboard handle grant, preserve signed message and local tombstone. Local overwrite/removal is not guaranteed secure physical erase, not removal of other-device copies; partial destructive outcomes/reconciliation explicit.",
+    "Delivery preferences carry source since vectors and exact routing priority announcements/thread/mentions/room/agentinclchildren/kind;256subs and3free loud inbox policy retained, forced inbox cost is explicit policy acknowledgement not authority. Announcements digest/silent only; unsubscribe announcement silent; same target/mode retry does not reset since. Unsubscribe legacy auth differs from subscribe and must not silently grant escalation or invented new userstep. Delivery preference never makes unreadable content readable.",
+    "Links share only hosted distinct boards under own-sharing-board-session+exact link_read/link_write/link_remove grant. Explicit whole_board does not share direct messages/private rooms or bypass current policy. Inactive link tombstones retained;64active is not historical max. Revocation fences future read/write/delivery/final publication, not retract already-observed signed bytes. Spend/link/audits require actual atomic/reconciliation backend absent here."
+  ],
+  "omissions_and_unproved": [
+    "No implementation/generation/platform/bridge changes. K/H/P/I not accepted. New leaf does not migrate UI/CLI/Python or prove live caller/native behavior.",
+    "Tasks/claims22methods, scratch/quarantine/knowledge/datasets/project catalog/location/selection, governance/grant issuance and broader signed replication/storage mechanics excluded; read-only fixed historical task/grant fields are data projection only.",
+    "Exact original raw Row signed-byte retrieval and durable immutable document staging/custody, multi-effect transaction journal, request dedupe, native membership/principal/room/link generation reauthorization, expiry/backpressure, CAS stage and rollback protection unimplemented.",
+    "DisplaySender101 models source-generated actor<=97 plus at-sign plus d1..d64 label under MAX_ORIGINS64. Board::label reuses persisted labels without an independent syntax/length check; historical/non-generated persisted labels or a larger retained label index are an explicitly unsupported projection profile, never clipped, relabelled, silently omitted or interpreted as authority. Exact full retained display adaptation remains unproved.",
+    "Full fixed-fold semantic output validator runtime/profile, iterative parser admission and source-equivalent encoding accounting must exist before enablement. Unsupported/missing profile returns explicit gap/resync/error and cannot produce complete page.",
+    "UI synthetic HLC-based display numbers, human/agent display/quarantine/model metadata, draft/localStorage state and native window transport adapters remain presentation mapping work; original IDs never replaced by synthetic number. UI visible-entry acknowledgement requires exact page snapshot resolution; no arbitrary source cursor acts as authority.",
+    "Legacy raw error strings include dynamic policy refusals; canonical closed error codes proposed, no arbitrary diagnostic authority field. Exact user-visible error wording/limit observations adaptation remains implementation gap.",
+    "Bounded paging of historically unbounded links/query/output is proposed transport projection only; complete histories retained, no new workload cutoff. Actual serialized transport aggregate/frame overhead/source measurement proofs absent.",
+    "Client-side file plaintext encryption/decryption requires real existing protected key custody, never test/fake keys or user-visible extra steps. Source-read code inspection did not access actual keys/credentials.",
+    "Node legacy trust label test-verified is retained display over a recorded claim, not proof from current native producer, physical execution or system attestation."
+  ]
+}
