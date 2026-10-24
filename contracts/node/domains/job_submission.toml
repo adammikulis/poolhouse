@@ -1,0 +1,185 @@
+# Intended durable fixed repair design; declarations do not implement authority or replacement.
+version = 1
+status = "proposal"
+
+[[type]]
+name = "JobPreparationId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "JobPreparationDigest"
+kind = "scalar"
+visibility = "public"
+encoding = "hex32"
+issuer = "node"
+
+[[type]]
+name = "JobInstallationRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "InstallationId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "JobPreparationRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "JobPreparationId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "JobPreparationIntent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "agent_runtime_repair", type = "Empty"}]
+
+[[type]]
+name = "JobRepairCandidateIdentity"
+kind = "record"
+visibility = "public"
+fields = [{name = "artifact_digest", type = "JobPreparationDigest"}, {name = "manifest_digest", type = "JobPreparationDigest"}, {name = "source_digest", type = "JobPreparationDigest"}, {name = "toolchain_digest", type = "JobPreparationDigest"}, {name = "verification_policy_digest", type = "JobPreparationDigest"}, {name = "prior_effective_digest", type = "JobPreparationDigest"}]
+
+[[type]]
+name = "JobPreparationOptionalCandidate"
+kind = "optional"
+visibility = "public"
+item = "JobRepairCandidateIdentity"
+
+[[type]]
+name = "JobPreparationPhase"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "waiting_for_admission", type = "Empty"}, {tag = "preparing", type = "Empty"}, {tag = "prepared", type = "Empty"}, {tag = "awaiting_authority", type = "Empty"}, {tag = "draining", type = "Empty"}, {tag = "commit_fenced", type = "Empty"}, {tag = "verifying_replacement", type = "Empty"}, {tag = "reconciling", type = "Empty"}, {tag = "finished", type = "Empty"}]
+
+[[type]]
+name = "JobPreparationEffect"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "not_committed", type = "Empty"}, {tag = "cancelled_before_commit", type = "Empty"}, {tag = "failed_before_commit", type = "Empty"}, {tag = "commit_fenced", type = "Empty"}, {tag = "outcome_unknown", type = "Empty"}, {tag = "failed_after_commit", type = "Empty"}, {tag = "verified_installed", type = "Empty"}]
+
+[[type]]
+name = "JobPreparationProtectedAuthority"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "not_yet_determined", type = "Empty"}, {tag = "already_authorized", type = "Empty"}, {tag = "protected_approval_required", type = "Empty"}, {tag = "denied", type = "Empty"}]
+
+[[type]]
+name = "JobPreparationOsConsent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "not_yet_determined", type = "Empty"}, {tag = "not_required", type = "Empty"}, {tag = "required", type = "Empty"}, {tag = "satisfied", type = "Empty"}, {tag = "denied", type = "Empty"}]
+
+[[type]]
+name = "JobPreparationAuthority"
+kind = "record"
+visibility = "public"
+fields = [{name = "protected", type = "JobPreparationProtectedAuthority"}, {name = "os_consent", type = "JobPreparationOsConsent"}]
+
+[[type]]
+name = "JobPreparationProgress"
+kind = "record"
+visibility = "public"
+fields = [{name = "completed_bytes", type = "U64"}, {name = "total_bytes", type = "OptionalU64"}, {name = "message", type = "SafeMessage"}]
+
+[[type]]
+name = "JobPreparationView"
+kind = "record"
+visibility = "public"
+fields = [{name = "preparation", type = "JobPreparationRef"}, {name = "installation", type = "JobInstallationRef"}, {name = "job_id", type = "JobId"}, {name = "operation_id", type = "OperationId"}, {name = "revision", type = "U64"}, {name = "intent", type = "JobPreparationIntent"}, {name = "phase", type = "JobPreparationPhase"}, {name = "job_state", type = "JobState"}, {name = "effect", type = "JobPreparationEffect"}, {name = "candidate", type = "JobPreparationOptionalCandidate"}, {name = "authority", type = "JobPreparationAuthority"}, {name = "expires_at", type = "OptionalUnixMicros"}, {name = "progress", type = "JobPreparationProgress"}]
+
+[[type]]
+name = "JobPrepareRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "request_id", type = "RequestId"}, {name = "generation", type = "ResourceGeneration"}, {name = "installation", type = "JobInstallationRef"}, {name = "intent", type = "JobPreparationIntent"}]
+
+[[type]]
+name = "JobPreparationInspectRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "preparation", type = "JobPreparationRef"}]
+
+[[type]]
+name = "JobPreparationControlRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "request_id", type = "RequestId"}, {name = "generation", type = "ResourceGeneration"}, {name = "preparation", type = "JobPreparationRef"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "JobPreparationWatchRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "preparation", type = "JobPreparationRef"}, {name = "after", type = "InferenceOptionalCursor"}]
+
+[[type]]
+name = "JobPreparationEvent"
+kind = "record"
+visibility = "public"
+fields = [{name = "cursor", type = "InferenceCursor"}, {name = "view", type = "JobPreparationView"}]
+
+[[type]]
+name = "JobFrozenRepairPlan"
+kind = "record"
+visibility = "private"
+fields = [{name = "preparation", type = "JobPreparationRef"}, {name = "installation", type = "JobInstallationRef"}, {name = "job_id", type = "JobId"}, {name = "operation_id", type = "OperationId"}, {name = "transaction", type = "StateTransactionBinding"}, {name = "intent", type = "JobPreparationIntent"}, {name = "candidate", type = "JobRepairCandidateIdentity"}, {name = "plan_digest", type = "JobPreparationDigest"}, {name = "source_generation", type = "ResourceGeneration"}, {name = "authority_generation", type = "ResourceGeneration"}, {name = "launcher_observation", type = "ProcessObservation"}, {name = "launcher_revision", type = "U64"}, {name = "expires_at", type = "UnixMicros"}, {name = "admission", type = "ResourceAdmissionEnvelope"}, {name = "commit", type = "StateCommitState"}, {name = "effect", type = "StateEffectState"}]
+
+[[operation]]
+name = "jobs.prepare"
+symbol = "JobsPrepare"
+request = "JobPrepareRequest"
+response = "JobPreparationView"
+error = "JobError"
+authorization = ["authenticated-current-principal", "installation-local-scope-no-pool-join-prerequisite", "current-installation-incarnation-and-repair-permission", "no-existence-disclosure-before-authorization", "decoded-references-and-observations-confer-no-authority", "no-public-path-command-environment-url-or-secret-selection", "request-id-principal-installation-incarnation-operation-and-normalized-payload-bound", "reauthorize-before-replay-and-domain-commit", "durable-cancel-versus-domain-commit-single-winner", "no-cancelled-after-committed-effect", "generation-equals-installation-generation", "actual-cpu-memory-storage-admission-before-verification-or-staging", "node-resolves-one-fixed-agent-runtime-repair-intent", "retain-exact-immutable-candidate-manifest-source-toolchain-policy-and-prior-effective-state", "private-held-installation-and-launcher-identity-not-observation-dto-authority", "expiry-and-authority-generation-bound-no-renewal-on-replay", "one-unsettled-replacement-fence-per-installation", "same-preparation-request-never-reselects-candidate", "prepare-never-replaces-or-executes-workload", "release-owned-holds-on-failure-drop-or-cancel-only-after-settlement"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "jobs.submit"
+symbol = "JobsSubmit"
+request = "JobPreparationControlRequest"
+response = "JobPreparationView"
+error = "JobError"
+authorization = ["authenticated-current-principal", "installation-local-scope-no-pool-join-prerequisite", "current-installation-incarnation-and-repair-permission", "no-existence-disclosure-before-authorization", "decoded-references-and-observations-confer-no-authority", "no-public-path-command-environment-url-or-secret-selection", "request-id-principal-installation-incarnation-operation-and-normalized-payload-bound", "reauthorize-before-replay-and-domain-commit", "durable-cancel-versus-domain-commit-single-winner", "no-cancelled-after-committed-effect", "generation-equals-preparation-and-installation-generation", "compare-and-swap-preparation-revision", "same-plan-at-most-once-even-with-new-request-id", "same-installation-unresolved-operation-blocks-new-plan-bypass", "fresh-exact-plan-bound-protected-authority-and-separate-os-consent-where-required", "stale-approval-or-consent-callback-refuses", "recheck-retained-candidate-manifest-source-policy-launcher-prior-effective-state-and-expiry", "revalidate-resource-admission-and-drain-active-work-at-owned-boundary", "durable-intent-consumption-fence-before-irreversible-handoff", "fence-is-not-success-or-permission", "one-owned-existing-replacement-path-no-parallel-launcher-or-scheduler", "lost-ack-or-crash-retains-custody-and-reconciles-never-blind-retry", "unknown-effect-retains-candidate-backup-launcher-fence-until-protected-inspection", "verified-installed-artifact-health-source-and-runtime-before-success"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "jobs.preparations.inspect"
+symbol = "JobsPreparationsInspect"
+request = "JobPreparationInspectRequest"
+response = "JobPreparationView"
+error = "JobError"
+authorization = ["authenticated-current-principal", "installation-local-scope-no-pool-join-prerequisite", "current-installation-incarnation-and-repair-permission", "no-existence-disclosure-before-authorization", "decoded-references-and-observations-confer-no-authority", "no-public-path-command-environment-url-or-secret-selection", "current-authorization-before-each-observation", "exact-preparation-installation-generation-and-principal-binding", "inspect-recovery-evidence-not-reapply-replacement"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "jobs.preparations.cancel"
+symbol = "JobsPreparationsCancel"
+request = "JobPreparationControlRequest"
+response = "JobPreparationView"
+error = "JobError"
+authorization = ["authenticated-current-principal", "installation-local-scope-no-pool-join-prerequisite", "current-installation-incarnation-and-repair-permission", "no-existence-disclosure-before-authorization", "decoded-references-and-observations-confer-no-authority", "no-public-path-command-environment-url-or-secret-selection", "request-id-principal-installation-incarnation-operation-and-normalized-payload-bound", "reauthorize-before-replay-and-domain-commit", "durable-cancel-versus-domain-commit-single-winner", "no-cancelled-after-committed-effect", "generation-equals-preparation-and-installation-generation", "compare-and-swap-preparation-revision", "cancel-precommit-only-atomic-with-submit-fence", "commit-fenced-or-unknown-never-report-cancelled", "existing-jobs-cancel-delegates-same-owned-fence-and-settlement", "no-expiry-or-holder-loss-blind-resource-release", "release-owned-reservations-and-staging-only-after-actual-settlement"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "jobs.preparations.watch"
+symbol = "JobsPreparationsWatch"
+request = "JobPreparationWatchRequest"
+response = "JobPreparationEvent"
+error = "JobError"
+authorization = ["authenticated-current-principal", "installation-local-scope-no-pool-join-prerequisite", "current-installation-incarnation-and-repair-permission", "no-existence-disclosure-before-authorization", "decoded-references-and-observations-confer-no-authority", "no-public-path-command-environment-url-or-secret-selection", "current-authorization-before-each-event", "cursor-bound-principal-installation-preparation-and-generation", "bounded-ordered-redacted-events-with-reset-on-expired-cursor", "disconnect-detaches-not-cancels", "progress-is-observation-not-authority-or-installed-proof"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
