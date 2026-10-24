@@ -188,3 +188,26 @@ def test_identity_replaced_during_read_is_not_trusted(existing, monkeypatch):
     monkeypatch.setattr(launch_health.os, "read", replace_after_read)
     with pytest.raises(OSError):
         launch_health._read_existing(root)
+
+
+@pytest.mark.parametrize("trusted", [True, False])
+def test_bundled_launcher_settles_existing_host_before_runtime_forward(existing, monkeypatch, trusted):
+    root, port, modes = existing
+    if not trusted:
+        modes[0] = "wrong"
+    monkeypatch.setattr(launch.runtime, "forward", lambda *args: pytest.fail("forwarded to older runtime before attach"))
+    assert launch.main(["--port", str(port), "--root", str(root), "--no-browser"]) == (0 if trusted else 1)
+
+
+
+def test_explicit_restart_forwards_before_local_replacement(monkeypatch):
+    class Forwarded(Exception):
+        pass
+
+    def forward(*args):
+        raise Forwarded
+
+    monkeypatch.setattr(launch.runtime, "forward", forward)
+    monkeypatch.setattr(launch, "_settle", lambda *args: pytest.fail("replaced before runtime admission"))
+    with pytest.raises(Forwarded):
+        launch.main(["--restart", "--no-browser"])
