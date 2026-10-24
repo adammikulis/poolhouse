@@ -85,6 +85,8 @@ struct Job {
 
 pub struct Shards {
     node: Arc<Mutex<Node>>,
+    #[allow(dead_code)] // Mandatory production owner, wired into launch in the next reviewed batch.
+    pub(super) live_workers: Arc<super::worker::LiveWorkers>,
     root: PathBuf,
     stop: Arc<AtomicBool>,
     jobs: Mutex<BTreeMap<String, Job>>,
@@ -123,7 +125,8 @@ impl Shards {
         let root = dir.join(SHARDS);
         let _ = std::fs::remove_dir_all(&root);
         crate::fsutil::private_dir(&root)?;
-        Ok(Arc::new(Shards { node, root, stop, jobs: Mutex::new(BTreeMap::new()), refused: Mutex::new(BTreeMap::new()) }))
+        let live_workers=super::worker::LiveWorkers::new(node.clone())?;
+        Ok(Arc::new(Shards { node, live_workers, root, stop, jobs: Mutex::new(BTreeMap::new()), refused: Mutex::new(BTreeMap::new()) }))
     }
 
     pub fn handle(self: &Arc<Shards>, node: &mut Node, fp: &str, op: &str, req: &Value) -> Result<Value> {
