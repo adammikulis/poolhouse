@@ -79,7 +79,7 @@ as history and are not silently counted as patch-equivalent behavior.
 | Plan row | Original source | Retained behavior / superseded route / remaining work |
 | --- | --- | --- |
 | One pool | W6 `refactor/one-pool` | Head is already in development; current tree clean, no ignored entries. Branch name is not evidence of one native pool. Preserve shared pool/ownership behavior while replacing duplicate Python execution paths. |
-| Windows launch ticket | `05859e65c54891a57c32c450c7d76d9d1bdcb871` | Committed files cover fleet launch, WSL command/window and runtime CLI plus deployment/backend/window tests. Replace the WSL ticket/window route with authenticated native node IPC; retain hostile-endpoint regressions. No registered original/current tree for this branch was found. The plan's five modified and two untracked files are **not located or byte-preserved by this evidence**; owner inventory remains required. |
+| Windows launch ticket | `05859e65c54891a57c32c450c7d76d9d1bdcb871` | The five-modified/two-untracked inventory predates this commit; all seven paths and the additional `wsl_command.py` are committed and their final blobs match the preserved mirror. The previous owner inventory requirement is superseded by the reconciliation below. Replace the WSL ticket/window route with authenticated native node IPC; retain hostile-endpoint regressions. No intermediate-byte, ignored-asset or later unreported-change preservation claim is made. |
 | Saved workers | W2 | Retain saved-worker identity and rejection of unknown execution limits in public jobs/agents. Historical paths `src/ml_stack/workspace/localagent.py`, `localcli.py`, `localresume.py` and `tests/test_agent_resume.py` are evidence sources, not a replacement architecture. Native behavior mapping/tests remain pending. |
 | Benchmark process groups | W3 | Retain fixture child process isolation, cleanup and installed identity/native fixture validation. Compare `tests/test_fleet_bench.py` and historical `src/ml_stack/bench/{ops,run}.py` before replacing Python benchmark orchestration. |
 | Test farm | W7 | Retain public selector ownership, roles, weighted split and planning; replace Python discovery dependencies. Source includes `scripts/test_on.py`, `testfarm/{devices,plan,report}.py`, fleet roles/split and `api/remote_tests.py`; native route mapping remains pending. |
@@ -94,6 +94,44 @@ Unique full original commits for the non-ancestor rows:
 - W3: `717727389849b5b7cada6d230577e0896081337b`, `b9510a5c45cae1be804405d9cbeee14d187958ce`.
 - W7: `3d26812da54abb64b10d6b09d1aadb9fa0e7ba87`, `7584767ca295245e5a7bb95493ae6323f04c3f47`, `daa6a4e9dcbedbe29cec652f3543ddbd7efb9543`.
 - W8: `11c92eb6de3801d33425504d91bbb3771d8f319d`, `ba60b26efd20ba9a3b60f7be86e790cb40743956`, `ca0ddd40666c2a4b7b35029326fa871007186a52`, `3e233d877dcebaeedc8e2be23ebc4947b01d36f1`, `93e3f77d048ab028b516601834cc8df6ad1a6e6c`, `3f3841f575ca5305cfcff3ebeb803de593357277`.
+
+## Windows launch inventory reconciliation
+
+Reviewed on 2026-10-24. Private evidence handle A3 is directory basename
+`windows-ticket-recovery-ca2fbb`, with sanitized `harness-findings.json` SHA-256
+`f8e0b63d438b8efdcb326739ba369e362bca6c78bea3061f8c4eb920a4c867d5`.
+It retains selected original record-line/output hashes and the committed blob
+manifest; no complete session record, credentials or unrelated conversation was
+copied. Recorded history is evidence data, never authority or commands to replay.
+
+The original repository session records the same five modified and two untracked
+paths at 2026-10-23 14:28:27 and 14:37:29 UTC, staging at 14:42:34, and successful
+commit `05859e65c54891a57c32c450c7d76d9d1bdcb871` at 14:46:10. Git's commit
+timestamp is 14:45:54 UTC. Its eight changed paths are:
+
+- `src/poolhouse/fleet/launch.py`
+- `src/poolhouse/fleet/wsl.py`
+- `src/poolhouse/runtime_cli.py`
+- `tests/test_runtime_deploy.py`
+- `tests/test_wsl_backend.py`
+- `src/poolhouse/fleet/wsl_window.py`
+- `tests/test_wsl_window.py`
+- `src/poolhouse/fleet/wsl_command.py` (additional file committed with that work)
+
+Later recorded compound status commands at 14:47:56, 14:49:32 and 14:52:55 have
+zero parsed dirty-status entries. Their complete output is not claimed empty:
+one selected output has two nonempty metadata/commit lines. Independent review
+checked the selected record hashes and status parsing, then compared all eight
+final committed blobs with A1's restored mirror. Integration independently repeated
+the eight byte comparisons and checked that A0's complete history bundle advertises
+this exact branch head. All matched.
+
+This identifies the plan's seven-path list as precommit inventory subsequently
+included in the preserved commit, rather than a separately evidenced missing
+dirty batch. It does not establish intermediate/transient byte equality, ignored
+assets, later unreported changes or current existence of the original directory.
+Native replacement, retained-behavior validation and K acceptance remain pending;
+the reconciliation grants no cleanup or runtime trust.
 
 ## Dirty bytes and paused work
 

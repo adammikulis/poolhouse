@@ -184,7 +184,7 @@ state before mutation. Verify external bundles and artifact copies; never delete
 | Work | Disposition |
 |---|---|
 | refactor/one-pool | Head belongs to development; inspect dirty state/artifacts. Name proves no architectural unification. |
-| fix/windows-launch-ticket | Preserve five modified and two untracked files. Replace WSL ticket/window design with authenticated node IPC; port useful hostile-endpoint regressions. |
+| fix/windows-launch-ticket | The original five-modified/two-untracked inventory was subsequently committed in `05859e65c` with `wsl_command.py`; all eight final blobs match the preserved mirror ([reconciliation](notes/native-preserved-work.md#windows-launch-inventory-reconciliation)). Replace WSL ticket/window design with authenticated node IPC; port useful hostile-endpoint regressions. Historical intermediate/ignored state is not asserted preserved. |
 | fix/agent-resume | Preserve two unique original commits' saved-worker identity and execution-limit behavior in public jobs/agents. |
 | fix/fleet-bench-process-group | Compare two original commits to current code; preserve remaining process ownership, cleanup, and native-path tests. |
 | Test-farm tree a028… | Preserve three unique commits' public selector ownership/planning; replace Python discovery dependencies. |
