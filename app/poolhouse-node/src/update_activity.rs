@@ -1,6 +1,6 @@
 //! Local writer accounting only. Other sources remain uncovered; no production drain
 //! controller, complete inventory, quiescence result or cutover witness exists here.
-//! Sync has borrowed same-operation continuation. Join/add/attach/shard entry points
+//! Sync and Join/Add have borrowed same-operation continuation. Attach/shard entry points
 //! still need equivalent review before any production controller can be enabled.
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -27,7 +27,7 @@ pub(crate) struct Writer { state: Arc<Mutex<State>>, source: Source }
 
 /// Scheduling continuation only; never a domain principal, grant or cutover proof.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum EffectFlow { Sync, #[cfg(test)] Other }
+pub(crate) enum EffectFlow { Sync, AddDevice, Join, #[cfg(test)] Other }
 pub(crate) struct AdmittedEffect { writer: Writer, flow: EffectFlow, operation: u64 }
 pub(crate) struct ChildEffect<'parent> { _parent: &'parent AdmittedEffect, _writer: Writer }
 
@@ -209,6 +209,8 @@ mod tests {
         let parent=a.admit_effect(Source::Sync,EffectFlow::Sync).unwrap();
         assert!(matches!(b.continue_effect(&parent,Source::Sync,EffectFlow::Sync),Err(Refusal::WrongEffect)));
         assert!(matches!(a.continue_effect(&parent,Source::Sync,EffectFlow::Other),Err(Refusal::WrongEffect)));
+        assert!(matches!(a.continue_effect(&parent,Source::Network,EffectFlow::AddDevice),Err(Refusal::WrongEffect)));
+        assert!(matches!(a.continue_effect(&parent,Source::Network,EffectFlow::Join),Err(Refusal::WrongEffect)));
         let second=a.admit_effect(Source::Sync,EffectFlow::Sync).unwrap();
         assert_ne!(parent.operation,second.operation);
     }
