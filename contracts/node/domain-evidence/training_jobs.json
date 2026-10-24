@@ -1,0 +1,846 @@
+{
+  "version": 1,
+  "status": "Intended new fixed classifier-training contract proposal; no training, model build, scheduler, native admission, resume implementation or K acceptance.",
+  "source_commit": "045e55a9aa7e971300a42bc2682c80942bf9a575",
+  "sources": [
+    {
+      "path": "contracts/recipes/classify-text.json",
+      "sha256": "0fbd315b722374a545d23b6abb72e9ca953fe694cafae8c8e97ce555b11a4b36",
+      "sites": []
+    },
+    {
+      "path": "src/poolhouse/studio/worker.py",
+      "sha256": "348773855379e15bdde61aaf6badf51913dc8d36b78d7f64ff83259c4f7964a6",
+      "sites": [
+        {
+          "line": 85,
+          "text": "def _train(kind: str, parameters: dict, inputs: dict, out: Path) -> dict:"
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/train/run.py",
+      "sha256": "9b6095a6e5ff5b85f36eb0e8bddaf69a967d93c1a09b3d0cd15fb2b541c5fa80",
+      "sites": [
+        {
+          "line": 122,
+          "text": "def plan_for(recipe_id: str, config: dict[str, Any], data: Path, *,"
+        },
+        {
+          "line": 140,
+          "text": "def run(recipe_id: str, config: dict[str, Any], data: Path, out: Path,"
+        },
+        {
+          "line": 206,
+          "text": "        write_json(out / \"manifest.json\", versioned("
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/train/recipes/__init__.py",
+      "sha256": "1dbf20e38416fb4bc0cc0ffb38d286e8aa3ec4cfc7c340ebb28770f76c9d676b",
+      "sites": [
+        {
+          "line": 72,
+          "text": "def validate(recipe_id: str, config: dict[str, Any]) -> dict[str, Any]:"
+        },
+        {
+          "line": 120,
+          "text": "def build(recipe_id: str, config: dict[str, Any], data: Path | str | None,"
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/train/recipes/classify_text.py",
+      "sha256": "28ce892248ce39bfb2db17a011f33900121781dfc823b8931ae0d1d0569435df",
+      "sites": [
+        {
+          "line": 21,
+          "text": "def _classes(config: dict[str, Any], labels: list[str]) -> list[str]:"
+        },
+        {
+          "line": 33,
+          "text": "def build_classifier(spec: dict[str, Any], config: dict[str, Any], data: Path | None,"
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/train/recipes/data.py",
+      "sha256": "b64fef884ea9b7de5f3bb820bd32b81906d8d8de3020de68e3f3f06bb4395533",
+      "sites": [
+        {
+          "line": 37,
+          "text": "def read_labelled(path: Path | str, text_field: str = \"text\","
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/train/trainer.py",
+      "sha256": "5c9d484036d4e8ace13c010b292ea56f7414a199e0fce235cedef2a3235aba05",
+      "sites": [
+        {
+          "line": 134,
+          "text": "    def save_checkpoint(self, step: int, *, state: CheckpointState,"
+        },
+        {
+          "line": 145,
+          "text": "    def resume(self) -> CheckpointState | None:"
+        },
+        {
+          "line": 161,
+          "text": "    def _stop_reason(self, should_stop: Callable[[], bool] | None, max_seconds: float,"
+        },
+        {
+          "line": 171,
+          "text": "    def fit(self, data: Any, *, steps: int,"
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/train/checkpoint.py",
+      "sha256": "ac3c6b98ba1428f8254c5c14116e3483ce24abbec2b4b74ead329dbb42aaa68f",
+      "sites": []
+    }
+  ],
+  "exact_source_api": {
+    "entry": "studio.worker._train(kind=train.classify-text, parameters, inputs.dataset, out) validates named recipe, holds GPU, calls train.run.run with dry=(mode==smoke), materializes checkpoint/model only outside smoke.",
+    "request": "Seven Studio parameters steps/context/batch_size/learning_rate/size/framework/mode; canonical standalone reuses semantic enum choices and parameter order but not StudioGraphScalarRef/DraftRef contexts. Dataset native path and output path are existing implementation details, not public wire fields.",
+    "recipe": "contracts/recipes/classify-text.json exact defaults steps1000/context128/batch32/lr0.001; steps20..200000/context32..2048/batch1..512/lr1e-5..0.1; size small or medium; automatic resolution remains source-profile bound.",
+    "data": "read_labelled uses ordered .jsonl files, replacement decoding, skips blank/invalid JSON/nonobject/blank text, converts non-null labels with Python str; classifier sorts vocabulary and requires at least two labels. The recipe descriptive min_rows100 is not enforced by this handler; no invented minimum is imposed. Exact normalization/conversion/order profiles must be implemented, not replaced by generic JSON wire.",
+    "initial_model": "Source classifier constructs a new Torch/MLX classifier; no pretrained input. Split seed defaults0. Initialization is not explicitly seeded by current builder; new canonical init policy/seed and post-admission initial weight digest are NEW guarantees, not proven legacy determinism.",
+    "result": "train.run returns recipe,steps,final_loss,best_metric,checkpoint,parameters,seconds,dry_run,stop_reason,phases and manifest outside smoke. Checkpoint/manifest/model paths become node-owned refs; no LoRA/export gateway or arbitrary recipe registration/import in this intent.",
+    "cancel_resume": "Trainer checks should_stop before a step and normally saves final checkpoint on exit when write_checkpoints; smoke writes no checkpoint. Resume restores weights/optimizer, but current source does not prove full RNG/batch-cursor state. Complete resume witnesses below are intended NEW requirements."
+  },
+  "representation_revision": {
+    "wire": "JobPreparationView now contains closed per-intent details. This IS a proposed wire revision, NOT backward compatible; old flat repair-view fixture explicitly refuses. No active runtime consumers are migrated.",
+    "repair": "Original JobPreparationEffect/candidate/authority value types remain in mandatory JobRepairPreparationDetails. JobFrozenRepairPlan uses singleton JobRepairIntent. Repair-specific protected approval, cancel-before-replacement-fence and unknown-effect recovery requirements remain.",
+    "standalone": "Training dataset/checkpoint/output refs carry installation+incarnation and node-issued IDs, never project/workflow/Studio-run requirements. They are lookup DATA, not native access or provenance. Pure local Python training remains usable without node/workspace/project.",
+    "reuse": "Existing size/framework/mode choices, field-order keys, observed-number/optional-float/stop/phase types where semantics match; no fake StudioGraph draft or StudioControl run to reuse context-bound numeric/artifact refs. Optional real-Studio projection is deferred.",
+    "model": "Optional ModelRef is OUTPUT only after verified model publication; absence never means an input pretrained model. Source from-scratch constructor identity is explicit."
+  },
+  "intended_durable_design": {
+    "one_ledger": "Same five jobs.prepare/submit/preparations.inspect/cancel/watch operations and node-owned admission; no new operation, scheduler, launcher or arbitrary intent escape. Current authorization checks branch on the exact closed intent; repair checks stay repair-specific.",
+    "lookup_authority": "Before disclosure/replay/each event, verify actual principal, installation/incarnation and live dataset/checkpoint/output ownership. A project-free dataset snapshot must have node-retained native input handles or protected immutable custody issued from authorized local selection/import; no reference, digest, caller label or invented issuer callback establishes this. Issuing adapter integration is required before enablement. No pool membership/workspace/project prerequisite or blanket person prompt; genuinely protected resource permissions still apply.",
+    "prepare": "Real CPU/memory/storage/input-output admission before scan, normalization, verification, staging, retained metadata or resume tensor inspection. Freeze immutable file manifest+ordering/content/parser profile, accepted rows, vocabulary/split, resolved numeric defaults, size/framework, recipe/backend/toolchain/constructor digests, initialization policy/seed, expiry and revisions. Hold authorized dataset and output roots/descriptors privately; no public paths/secrets or hidden scan allocations. No model/weights allocation during preparation. Frozen resolved parameters have mandatory numeric fields and closed small/medium, Torch/MLX choices: omitted/automatic request preferences cannot survive as unresolved plan values.",
+    "estimates": "Source plan_for computes LoRA fit, not classifier fit. TrainingEstimate unknown/measured is intended measured classifier resource-profile data, not a fabricated source estimate. Known profile binds exact architecture/dataset/config/backend/resource generation; unknown memory/compute/output reservation or invalid finite learning rate refuses launch. No new throughput constants or arbitrary caps. Actual current aggregate admission remains authoritative and must be reacquired/revalidated at submit, including smoke20.",
+    "submit": "Reauthorize before replay and action; expected revision, exact plan/source/config/dataset/backend/profile/output/expiry and resource ownership must still match. RequestId/content replay attaches, conflict refuses; same plan new RequestId never launches twice; unresolved normalized intent/output fence prevents restart via reprepare without blocking unrelated admitted jobs. Consume launch-intent fence before one existing admitted worker path; record exact actual initial weights digest only after admitted construction and before first step. No deterministic replay claim without a proved init profile.",
+    "effects": "Training launch fence and later output-publication fence are distinct durable transactions; neither is an artifact success receipt. Repair replacement fence behavior is unchanged. Unknown effect stays unknown and retains node custody, never blind rerun.",
+    "cancel": "Before launch fence, atomic cancellation means no model execution. After launch, cooperative should_stop at step boundary, checkpoint if non-smoke/source permits, then verify owned holder/descendants stopped, immutable outputs/checkpoint reconciled and all resource/storage reservations settled before settled_cancelled. Output publication won or unknown means not cancelled. No PID-only kill, false stop, premature resource release or source repair cancellation semantics reused for running training.",
+    "recovery": "Crash/holder loss marks interrupted/reconciling; do not automatically restart. Reconcile exact worker generation, launch/publication fences and held output/checkpoint custody. Explicit new preparation with initialization=resume requires exact checkpoint/config/data/vocabulary/split/backend/toolchain/optimizer/RNG/batch-cursor witness and exclusive output allocation; unknown/incomplete legacy witness refuses exact resume. No guessed latest path or claimed legacy RNG fidelity.",
+    "result": "Node-owned output refs bind job+installation/incarnation+content digest+bytes and retained storage authority; checkpoint ref maps to protected manifest including all continuation state. Publish ModelRef only after independently verified immutable artifacts and model registry admission. Metrics preserve unavailable/nonfinite observations in existing typed forms, redact before persistence/events. Smoke has no checkpoint/manifest/model publication and still uses actual admission. Binary-output retrieval must use reviewed existing resource transport or explicit followup contract; references alone provide no access.",
+    "numeric_profiles": "Numeric request fields use canonical bounded U32 for integer recipe ranges and FiniteF64 bits; learning-rate range1e-5..0.1, exact defaults, duplicates/order consistency and source coercion differences require semantic validation. Wire decoding alone does not enforce relational/profile/runtime policy. No arbitrary scalar/JSON/CLI escape. The node must verify effective_steps equals resolved steps for train or min(resolved steps,20) for smoke, and that resolved values plus initialization/backend/architecture match the frozen constructor digest; changing any requires a new authorized plan."
+  },
+  "independent_review": {
+    "reviewer": "native_authority",
+    "design": "PASS one classifier intent with admission/init/resume/output-fence constraints; corrected project-free result and numeric params PASS.",
+    "limits": "Exact source review and independent codec/refusal probe still required; no runtime guarantee follows from DTOs."
+  },
+  "shape_vectors": {
+    "accepted": [
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "train_classify_text",
+            "value": {
+              "dataset": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "generation": "00000000-0000-4000-8000-000000000002",
+                "installation": {
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "generation": "00000000-0000-4000-8000-000000000002"
+                }
+              },
+              "parameters": {
+                "field_order": [],
+                "steps": null,
+                "context": null,
+                "batch_size": null,
+                "learning_rate": null,
+                "size": null,
+                "framework": null,
+                "mode": null
+              },
+              "initialization": {
+                "kind": "fresh",
+                "value": {}
+              }
+            }
+          }
+        }
+      },
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "agent_runtime_repair",
+            "value": {}
+          }
+        }
+      },
+      {
+        "type": "JobPreparationView",
+        "value": {
+          "preparation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "job_id": "00000000-0000-4000-8000-000000000001",
+          "operation_id": "00000000-0000-4000-8000-000000000001",
+          "revision": "1",
+          "phase": {
+            "kind": "waiting_for_admission",
+            "value": {}
+          },
+          "job_state": {
+            "kind": "queued",
+            "value": {}
+          },
+          "expires_at": null,
+          "progress": {
+            "completed_bytes": "0",
+            "total_bytes": null,
+            "message": "Waiting for admission"
+          },
+          "intent": {
+            "kind": "agent_runtime_repair",
+            "value": {}
+          },
+          "details": {
+            "kind": "agent_runtime_repair",
+            "value": {
+              "candidate": null,
+              "effect": {
+                "kind": "not_committed",
+                "value": {}
+              },
+              "authority": {
+                "protected": {
+                  "kind": "not_yet_determined",
+                  "value": {}
+                },
+                "os_consent": {
+                  "kind": "not_yet_determined",
+                  "value": {}
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "type": "JobPreparationView",
+        "value": {
+          "preparation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "job_id": "00000000-0000-4000-8000-000000000001",
+          "operation_id": "00000000-0000-4000-8000-000000000001",
+          "revision": "1",
+          "phase": {
+            "kind": "waiting_for_admission",
+            "value": {}
+          },
+          "job_state": {
+            "kind": "queued",
+            "value": {}
+          },
+          "expires_at": null,
+          "progress": {
+            "completed_bytes": "0",
+            "total_bytes": null,
+            "message": "Waiting for admission"
+          },
+          "intent": {
+            "kind": "train_classify_text",
+            "value": {
+              "dataset": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "generation": "00000000-0000-4000-8000-000000000002",
+                "installation": {
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "generation": "00000000-0000-4000-8000-000000000002"
+                }
+              },
+              "parameters": {
+                "field_order": [],
+                "steps": null,
+                "context": null,
+                "batch_size": null,
+                "learning_rate": null,
+                "size": null,
+                "framework": null,
+                "mode": null
+              },
+              "initialization": {
+                "kind": "fresh",
+                "value": {}
+              }
+            }
+          },
+          "details": {
+            "kind": "train_classify_text",
+            "value": {
+              "plan": null,
+              "effect": {
+                "kind": "not_launched",
+                "value": {}
+              },
+              "authority": {
+                "protected": {
+                  "kind": "not_yet_determined",
+                  "value": {}
+                },
+                "os_consent": {
+                  "kind": "not_yet_determined",
+                  "value": {}
+                }
+              },
+              "progress": {
+                "completed_steps": "0",
+                "total_steps": "1000",
+                "loss": {
+                  "kind": "unobserved",
+                  "value": {
+                    "reason": {
+                      "kind": "no_finite_loss_observed",
+                      "value": {}
+                    },
+                    "source_digest": "abababababababababababababababababababababababababababababababab"
+                  }
+                },
+                "elapsed_seconds": "0000000000000000"
+              },
+              "result": null
+            }
+          }
+        }
+      },
+      {
+        "type": "TrainingResolvedClassifyParameters",
+        "value": {
+          "steps": "1000",
+          "context": "128",
+          "batch_size": "32",
+          "learning_rate": "3f50624dd2f1a9fc",
+          "size": {
+            "kind": "small",
+            "value": {}
+          },
+          "framework": {
+            "kind": "torch",
+            "value": {}
+          },
+          "mode": {
+            "kind": "train",
+            "value": {}
+          }
+        }
+      }
+    ],
+    "refused": [
+      {
+        "type": "JobPreparationView",
+        "value": {
+          "preparation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "job_id": "00000000-0000-4000-8000-000000000001",
+          "operation_id": "00000000-0000-4000-8000-000000000001",
+          "revision": "1",
+          "phase": {
+            "kind": "waiting_for_admission",
+            "value": {}
+          },
+          "job_state": {
+            "kind": "queued",
+            "value": {}
+          },
+          "expires_at": null,
+          "progress": {
+            "completed_bytes": "0",
+            "total_bytes": null,
+            "message": "Waiting for admission"
+          },
+          "intent": {
+            "kind": "agent_runtime_repair",
+            "value": {}
+          },
+          "effect": {
+            "kind": "not_committed",
+            "value": {}
+          },
+          "candidate": null,
+          "authority": {
+            "protected": {
+              "kind": "not_yet_determined",
+              "value": {}
+            },
+            "os_consent": {
+              "kind": "not_yet_determined",
+              "value": {}
+            }
+          }
+        }
+      },
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "train_classify_text",
+            "value": {
+              "dataset": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "generation": "00000000-0000-4000-8000-000000000002",
+                "installation": {
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "generation": "00000000-0000-4000-8000-000000000002"
+                }
+              },
+              "parameters": {
+                "field_order": [],
+                "steps": null,
+                "context": null,
+                "batch_size": null,
+                "learning_rate": null,
+                "size": null,
+                "framework": null,
+                "mode": null
+              },
+              "initialization": {
+                "kind": "fresh",
+                "value": {}
+              }
+            }
+          },
+          "command": "train"
+        }
+      },
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "train_classify_text",
+            "value": {
+              "dataset": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "generation": "00000000-0000-4000-8000-000000000002",
+                "installation": {
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "generation": "00000000-0000-4000-8000-000000000002"
+                }
+              },
+              "parameters": {
+                "field_order": [],
+                "steps": null,
+                "context": null,
+                "batch_size": null,
+                "learning_rate": null,
+                "size": null,
+                "framework": null,
+                "mode": null
+              },
+              "initialization": {
+                "kind": "fresh",
+                "value": {}
+              }
+            }
+          },
+          "path": "/caller/path"
+        }
+      },
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "train_classify_text",
+            "value": {
+              "dataset": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "generation": "00000000-0000-4000-8000-000000000002",
+                "installation": {
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "generation": "00000000-0000-4000-8000-000000000002"
+                }
+              },
+              "parameters": {
+                "field_order": [],
+                "steps": null,
+                "context": null,
+                "batch_size": null,
+                "learning_rate": null,
+                "size": null,
+                "framework": null,
+                "mode": null
+              },
+              "initialization": {
+                "kind": "fresh",
+                "value": {}
+              }
+            }
+          },
+          "approved": true
+        }
+      },
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "train_classify_text",
+            "value": {
+              "dataset": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "generation": "00000000-0000-4000-8000-000000000002",
+                "installation": {
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "generation": "00000000-0000-4000-8000-000000000002"
+                }
+              },
+              "parameters": {
+                "field_order": [],
+                "steps": "19",
+                "context": null,
+                "batch_size": null,
+                "learning_rate": null,
+                "size": null,
+                "framework": null,
+                "mode": null
+              },
+              "initialization": {
+                "kind": "fresh",
+                "value": {}
+              }
+            }
+          }
+        }
+      },
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "train_classify_text",
+            "value": {
+              "dataset": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "generation": "00000000-0000-4000-8000-000000000002",
+                "installation": {
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "generation": "00000000-0000-4000-8000-000000000002"
+                }
+              },
+              "parameters": {
+                "field_order": [],
+                "steps": null,
+                "context": null,
+                "batch_size": null,
+                "learning_rate": "7ff8000000000000",
+                "size": null,
+                "framework": null,
+                "mode": null
+              },
+              "initialization": {
+                "kind": "fresh",
+                "value": {}
+              }
+            }
+          }
+        }
+      },
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "train_classify_text",
+            "value": {
+              "dataset": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "generation": "00000000-0000-4000-8000-000000000002",
+                "installation": {
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "generation": "00000000-0000-4000-8000-000000000002"
+                },
+                "project": "invented"
+              },
+              "parameters": {
+                "field_order": [],
+                "steps": null,
+                "context": null,
+                "batch_size": null,
+                "learning_rate": null,
+                "size": null,
+                "framework": null,
+                "mode": null
+              },
+              "initialization": {
+                "kind": "fresh",
+                "value": {}
+              }
+            }
+          }
+        }
+      },
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "train_classify_text",
+            "value": {
+              "dataset": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "generation": "00000000-0000-4000-8000-000000000002",
+                "installation": {
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "generation": "00000000-0000-4000-8000-000000000002"
+                }
+              },
+              "parameters": {
+                "field_order": [],
+                "steps": null,
+                "context": null,
+                "batch_size": null,
+                "learning_rate": null,
+                "size": null,
+                "framework": null,
+                "mode": null
+              },
+              "initialization": {
+                "kind": "resume",
+                "value": {
+                  "id": "abababababababababababababababab",
+                  "generation": "00000000-0000-4000-8000-000000000002",
+                  "installation": {
+                    "id": "00000000-0000-4000-8000-000000000001",
+                    "generation": "00000000-0000-4000-8000-000000000002"
+                  },
+                  "origin_job_id": "00000000-0000-4000-8000-000000000001"
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "type": "JobPreparationView",
+        "value": {
+          "preparation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "job_id": "00000000-0000-4000-8000-000000000001",
+          "operation_id": "00000000-0000-4000-8000-000000000001",
+          "revision": "1",
+          "phase": {
+            "kind": "waiting_for_admission",
+            "value": {}
+          },
+          "job_state": {
+            "kind": "queued",
+            "value": {}
+          },
+          "expires_at": null,
+          "progress": {
+            "completed_bytes": "0",
+            "total_bytes": null,
+            "message": "Waiting for admission"
+          },
+          "intent": {
+            "kind": "agent_runtime_repair",
+            "value": {}
+          },
+          "details": {
+            "kind": "agent_runtime_repair",
+            "value": {
+              "candidate": null,
+              "effect": {
+                "kind": "not_committed",
+                "value": {}
+              }
+            }
+          }
+        }
+      },
+      {
+        "type": "TrainingResolvedClassifyParameters",
+        "value": {
+          "steps": null,
+          "context": "128",
+          "batch_size": "32",
+          "learning_rate": "3f50624dd2f1a9fc",
+          "size": {
+            "kind": "small",
+            "value": {}
+          },
+          "framework": {
+            "kind": "torch",
+            "value": {}
+          },
+          "mode": {
+            "kind": "train",
+            "value": {}
+          }
+        }
+      },
+      {
+        "type": "TrainingResolvedClassifyParameters",
+        "value": {
+          "steps": "1000",
+          "context": "128",
+          "batch_size": "32",
+          "learning_rate": "3f50624dd2f1a9fc",
+          "size": {
+            "kind": "small",
+            "value": {}
+          },
+          "framework": {
+            "kind": "automatic",
+            "value": {}
+          },
+          "mode": {
+            "kind": "train",
+            "value": {}
+          }
+        }
+      }
+    ]
+  },
+  "required_runtime_vectors": [
+    {
+      "case": "same request or newID same consumed plan",
+      "expected": "attach prior outcome, no second launch",
+      "status": "runtime obligation; NOT executed by codec tests"
+    },
+    {
+      "case": "changed dataset/config/backend/profile or expired plan",
+      "expected": "refuse stale launch",
+      "status": "runtime obligation; NOT executed by codec tests"
+    },
+    {
+      "case": "foreign/stale dataset/checkpoint/output ref",
+      "expected": "deny before existence or scan",
+      "status": "runtime obligation; NOT executed by codec tests"
+    },
+    {
+      "case": "unknown estimate or no admission during smoke",
+      "expected": "no weights/hidden allocation",
+      "status": "runtime obligation; NOT executed by codec tests"
+    },
+    {
+      "case": "fresh init",
+      "expected": "freeze policy/seed before launch, observe actual weights only after admission",
+      "status": "runtime obligation; NOT executed by codec tests"
+    },
+    {
+      "case": "prelaunch cancel wins",
+      "expected": "no execution",
+      "status": "runtime obligation; NOT executed by codec tests"
+    },
+    {
+      "case": "cancel running training",
+      "expected": "checkpoint if applicable and verified descendant/resource settlement before terminal",
+      "status": "runtime obligation; NOT executed by codec tests"
+    },
+    {
+      "case": "publication wins or effect unknown",
+      "expected": "never claim cancelled",
+      "status": "runtime obligation; NOT executed by codec tests"
+    },
+    {
+      "case": "crash or lost ack",
+      "expected": "retain custody, inspect, no blind rerun",
+      "status": "runtime obligation; NOT executed by codec tests"
+    },
+    {
+      "case": "legacy checkpoint missing RNG/batchstate",
+      "expected": "refuse exact resume",
+      "status": "runtime obligation; NOT executed by codec tests"
+    },
+    {
+      "case": "verified smoke",
+      "expected": "metrics only, no checkpoint/model publication",
+      "status": "runtime obligation; NOT executed by codec tests"
+    },
+    {
+      "case": "repair intent replay/cancel/unknown",
+      "expected": "preserve existing exact-plan approval and replacement fence requirements",
+      "status": "runtime obligation; NOT executed by codec tests"
+    }
+  ],
+  "enablement_blockers": [
+    "No dataset snapshot/native issuing adapter, sealed held plan/worker/output capability, trainer port or canonical dispatcher is implemented.",
+    "Exact parser/default/RNG/optimizer/batch-cursor/resource/metric/semantic validators and source-equivalent scope adapters remain required; unknown profiles refuse.",
+    "No executed training/cancel/resume/recovery/artifact or hardware/native H/K/P/I evidence. Cross-language shape/drift tests are declaration checks only.",
+    "General training recipes, imported builders, arbitrary configs/export/LoRA and other retained domain gaps remain separate required work."
+  ]
+}

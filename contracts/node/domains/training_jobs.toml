@@ -1,0 +1,213 @@
+# Intended fixed classifier intent; no model execution, scheduler or authority is implemented.
+version = 1
+status = "proposal"
+operation = []
+
+[[type]]
+name = "TrainingSteps"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "data"
+minimum = 20
+maximum = 200000
+
+[[type]]
+name = "TrainingContext"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "data"
+minimum = 32
+maximum = 2048
+
+[[type]]
+name = "TrainingBatchSize"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "data"
+minimum = 1
+maximum = 512
+
+[[type]]
+name = "TrainingOptionalSteps"
+kind = "optional"
+visibility = "public"
+item = "TrainingSteps"
+
+[[type]]
+name = "TrainingOptionalContext"
+kind = "optional"
+visibility = "public"
+item = "TrainingContext"
+
+[[type]]
+name = "TrainingOptionalBatchSize"
+kind = "optional"
+visibility = "public"
+item = "TrainingBatchSize"
+
+[[type]]
+name = "TrainingClassifyTextParameters"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphTrainClassifyTextParameterOrder"}, {name = "steps", type = "TrainingOptionalSteps"}, {name = "context", type = "TrainingOptionalContext"}, {name = "batch_size", type = "TrainingOptionalBatchSize"}, {name = "learning_rate", type = "StudioValueOptionalF64"}, {name = "size", type = "StudioGraphTrainClassifyTextSizeOptional"}, {name = "framework", type = "StudioGraphTrainClassifyTextFrameworkOptional"}, {name = "mode", type = "StudioGraphTrainClassifyTextModeOptional"}]
+
+[[type]]
+name = "TrainingDatasetSnapshotId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "TrainingCheckpointId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "TrainingOutputId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "TrainingDatasetSnapshotRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "TrainingDatasetSnapshotId"}, {name = "generation", type = "ResourceGeneration"}, {name = "installation", type = "JobInstallationRef"}]
+
+[[type]]
+name = "TrainingCheckpointRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "TrainingCheckpointId"}, {name = "generation", type = "ResourceGeneration"}, {name = "installation", type = "JobInstallationRef"}, {name = "origin_job_id", type = "JobId"}]
+
+[[type]]
+name = "TrainingOutputRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "TrainingOutputId"}, {name = "generation", type = "ResourceGeneration"}, {name = "installation", type = "JobInstallationRef"}, {name = "job_id", type = "JobId"}, {name = "digest", type = "JobPreparationDigest"}, {name = "bytes", type = "U64"}]
+
+[[type]]
+name = "TrainingOptionalOutput"
+kind = "optional"
+visibility = "public"
+item = "TrainingOutputRef"
+
+[[type]]
+name = "TrainingOptionalCheckpoint"
+kind = "optional"
+visibility = "public"
+item = "TrainingCheckpointRef"
+
+[[type]]
+name = "TrainingInitialization"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "fresh", type = "Empty"}, {tag = "resume", type = "TrainingCheckpointRef"}]
+
+[[type]]
+name = "JobTrainClassifyTextIntent"
+kind = "record"
+visibility = "public"
+fields = [{name = "dataset", type = "TrainingDatasetSnapshotRef"}, {name = "parameters", type = "TrainingClassifyTextParameters"}, {name = "initialization", type = "TrainingInitialization"}]
+
+[[type]]
+name = "TrainingDatasetIdentity"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "TrainingDatasetSnapshotRef"}, {name = "file_manifest_digest", type = "JobPreparationDigest"}, {name = "parser_profile_digest", type = "JobPreparationDigest"}, {name = "ordered_records_digest", type = "JobPreparationDigest"}, {name = "vocabulary_digest", type = "JobPreparationDigest"}, {name = "split_digest", type = "JobPreparationDigest"}, {name = "raw_bytes", type = "U64"}, {name = "accepted_examples", type = "U64"}, {name = "label_count", type = "U64"}]
+
+[[type]]
+name = "TrainingConstructorIdentity"
+kind = "record"
+visibility = "public"
+fields = [{name = "recipe_digest", type = "JobPreparationDigest"}, {name = "resolved_parameters_digest", type = "JobPreparationDigest"}, {name = "architecture_digest", type = "JobPreparationDigest"}, {name = "backend_build_digest", type = "JobPreparationDigest"}, {name = "toolchain_digest", type = "JobPreparationDigest"}, {name = "initialization_policy_digest", type = "JobPreparationDigest"}, {name = "initialization_seed", type = "U64"}, {name = "split_seed", type = "U64"}]
+
+[[type]]
+name = "TrainingMeasuredEstimate"
+kind = "record"
+visibility = "public"
+fields = [{name = "profile_digest", type = "JobPreparationDigest"}, {name = "profile_generation", type = "ResourceGeneration"}, {name = "cpu_slots", type = "U32"}, {name = "memory_bytes", type = "U64"}, {name = "staging_bytes", type = "U64"}, {name = "output_reserve_bytes", type = "U64"}, {name = "accelerator_bytes", type = "OptionalU64"}, {name = "estimated_micros", type = "OptionalU64"}, {name = "model_parameters", type = "U64"}]
+
+[[type]]
+name = "TrainingEstimate"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "unknown", type = "Empty"}, {tag = "measured", type = "TrainingMeasuredEstimate"}]
+
+[[type]]
+name = "TrainingResolvedSize"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "small", type = "Empty"}, {tag = "medium", type = "Empty"}]
+
+[[type]]
+name = "TrainingResolvedFramework"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "torch", type = "Empty"}, {tag = "mlx", type = "Empty"}]
+
+[[type]]
+name = "TrainingResolvedClassifyParameters"
+kind = "record"
+visibility = "public"
+fields = [{name = "steps", type = "TrainingSteps"}, {name = "context", type = "TrainingContext"}, {name = "batch_size", type = "TrainingBatchSize"}, {name = "learning_rate", type = "FiniteF64"}, {name = "size", type = "TrainingResolvedSize"}, {name = "framework", type = "TrainingResolvedFramework"}, {name = "mode", type = "StudioGraphTrainClassifyTextModeChoice"}]
+
+[[type]]
+name = "TrainingPlanIdentity"
+kind = "record"
+visibility = "public"
+fields = [{name = "dataset", type = "TrainingDatasetIdentity"}, {name = "constructor", type = "TrainingConstructorIdentity"}, {name = "estimate", type = "TrainingEstimate"}, {name = "resolved_parameters", type = "TrainingResolvedClassifyParameters"}, {name = "effective_steps", type = "U64"}, {name = "initialization", type = "TrainingInitialization"}]
+
+[[type]]
+name = "TrainingOptionalPlan"
+kind = "optional"
+visibility = "public"
+item = "TrainingPlanIdentity"
+
+[[type]]
+name = "TrainingEffect"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "not_launched", type = "Empty"}, {tag = "cancelled_before_launch", type = "Empty"}, {tag = "launch_fenced", type = "Empty"}, {tag = "running", type = "Empty"}, {tag = "interrupted", type = "Empty"}, {tag = "output_unpublished", type = "Empty"}, {tag = "output_publication_fenced", type = "Empty"}, {tag = "outcome_unknown", type = "Empty"}, {tag = "verified_published", type = "Empty"}, {tag = "settled_cancelled", type = "Empty"}, {tag = "failed", type = "Empty"}]
+
+[[type]]
+name = "TrainingProgress"
+kind = "record"
+visibility = "public"
+fields = [{name = "completed_steps", type = "U64"}, {name = "total_steps", type = "U64"}, {name = "loss", type = "StudioValueObservedNumber"}, {name = "elapsed_seconds", type = "FiniteF64"}]
+
+[[type]]
+name = "TrainingResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "steps", type = "U64"}, {name = "final_loss", type = "StudioValueObservedNumber"}, {name = "best_metric", type = "StudioValueOptionalF64"}, {name = "parameters", type = "U64"}, {name = "seconds", type = "FiniteF64"}, {name = "dry_run", type = "Boolean"}, {name = "stop_reason", type = "StudioValueTrainStop"}, {name = "phases", type = "StudioValuePhases"}, {name = "checkpoint", type = "TrainingOptionalCheckpoint"}, {name = "manifest", type = "TrainingOptionalOutput"}, {name = "model_output", type = "TrainingOptionalOutput"}, {name = "model", type = "ModelOptionalRef"}]
+
+[[type]]
+name = "TrainingOptionalResult"
+kind = "optional"
+visibility = "public"
+item = "TrainingResult"
+
+[[type]]
+name = "JobTrainingPreparationDetails"
+kind = "record"
+visibility = "public"
+fields = [{name = "plan", type = "TrainingOptionalPlan"}, {name = "effect", type = "TrainingEffect"}, {name = "authority", type = "JobPreparationAuthority"}, {name = "progress", type = "TrainingProgress"}, {name = "result", type = "TrainingOptionalResult"}]
+
+[[type]]
+name = "JobFrozenClassifierPlan"
+kind = "record"
+visibility = "private"
+fields = [{name = "preparation", type = "JobPreparationRef"}, {name = "installation", type = "JobInstallationRef"}, {name = "job_id", type = "JobId"}, {name = "operation_id", type = "OperationId"}, {name = "intent", type = "JobTrainClassifyTextIntent"}, {name = "plan", type = "TrainingPlanIdentity"}, {name = "plan_digest", type = "JobPreparationDigest"}, {name = "source_generation", type = "ResourceGeneration"}, {name = "authority_generation", type = "ResourceGeneration"}, {name = "expires_at", type = "UnixMicros"}, {name = "admission", type = "ResourceAdmissionEnvelope"}, {name = "launch_transaction", type = "StateTransactionBinding"}, {name = "launch_commit", type = "StateCommitState"}, {name = "publication_transaction", type = "StateTransactionBinding"}, {name = "publication_commit", type = "StateCommitState"}, {name = "effect", type = "StateEffectState"}]
