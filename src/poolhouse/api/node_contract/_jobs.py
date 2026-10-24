@@ -9,6 +9,7 @@ from typing import (
 
 from ._codec import (
     _List,
+    _Optional,
     _Record,
     _register,
     _Scalar,
@@ -19,10 +20,13 @@ if TYPE_CHECKING:
     from ._core import (
         U64,
         Boolean,
+        InstallationId,
         ListSnapshotId,
+        OperationId,
         OperationName,
         OptionalExitCode,
         OptionalJobListCursor,
+        OptionalU64,
         OptionalUnixMicros,
         OutputGeneration,
         ProjectId,
@@ -30,6 +34,10 @@ if TYPE_CHECKING:
         ResourceGeneration,
         SafeMessage,
         UnixMicros,
+    )
+    from ._inference_streams import (
+        InferenceCursor,
+        InferenceOptionalCursor,
     )
 
 
@@ -86,6 +94,20 @@ class JobPageLimit(_Scalar):
 _register(JobPageLimit)
 
 
+class JobPreparationDigest(_Scalar):
+    _encoding = "hex32"
+
+
+_register(JobPreparationDigest)
+
+
+class JobPreparationId(_Scalar):
+    _encoding = "uuid"
+
+
+_register(JobPreparationId)
+
+
 @dataclass(frozen=True)
 class JobCancelRequest(_Record):
     job_id: JobId
@@ -127,6 +149,16 @@ _register(JobGetRequest)
 
 
 @dataclass(frozen=True)
+class JobInstallationRef(_Record):
+    id: InstallationId
+    generation: ResourceGeneration
+    _fields: ClassVar[dict[str, str]] = {'id': 'InstallationId', 'generation': 'ResourceGeneration'}
+
+
+_register(JobInstallationRef)
+
+
+@dataclass(frozen=True)
 class JobOutputChunk(_Record):
     job_id: JobId
     generation: ResourceGeneration
@@ -154,6 +186,91 @@ class JobOutputResume(_Record):
 
 
 _register(JobOutputResume)
+
+
+class JobPreparationEffect(_Union):
+    _variants: ClassVar[dict[str, str]] = {'not_committed': 'Empty',
+ 'cancelled_before_commit': 'Empty',
+ 'failed_before_commit': 'Empty',
+ 'commit_fenced': 'Empty',
+ 'outcome_unknown': 'Empty',
+ 'failed_after_commit': 'Empty',
+ 'verified_installed': 'Empty'}
+
+
+_register(JobPreparationEffect)
+
+
+class JobPreparationIntent(_Union):
+    _variants: ClassVar[dict[str, str]] = {'agent_runtime_repair': 'Empty'}
+
+
+_register(JobPreparationIntent)
+
+
+class JobPreparationOsConsent(_Union):
+    _variants: ClassVar[dict[str, str]] = {'not_yet_determined': 'Empty',
+ 'not_required': 'Empty',
+ 'required': 'Empty',
+ 'satisfied': 'Empty',
+ 'denied': 'Empty'}
+
+
+_register(JobPreparationOsConsent)
+
+
+class JobPreparationPhase(_Union):
+    _variants: ClassVar[dict[str, str]] = {'waiting_for_admission': 'Empty',
+ 'preparing': 'Empty',
+ 'prepared': 'Empty',
+ 'awaiting_authority': 'Empty',
+ 'draining': 'Empty',
+ 'commit_fenced': 'Empty',
+ 'verifying_replacement': 'Empty',
+ 'reconciling': 'Empty',
+ 'finished': 'Empty'}
+
+
+_register(JobPreparationPhase)
+
+
+class JobPreparationProtectedAuthority(_Union):
+    _variants: ClassVar[dict[str, str]] = {'not_yet_determined': 'Empty',
+ 'already_authorized': 'Empty',
+ 'protected_approval_required': 'Empty',
+ 'denied': 'Empty'}
+
+
+_register(JobPreparationProtectedAuthority)
+
+
+@dataclass(frozen=True)
+class JobPreparationRef(_Record):
+    id: JobPreparationId
+    generation: ResourceGeneration
+    _fields: ClassVar[dict[str, str]] = {'id': 'JobPreparationId', 'generation': 'ResourceGeneration'}
+
+
+_register(JobPreparationRef)
+
+
+@dataclass(frozen=True)
+class JobRepairCandidateIdentity(_Record):
+    artifact_digest: JobPreparationDigest
+    manifest_digest: JobPreparationDigest
+    source_digest: JobPreparationDigest
+    toolchain_digest: JobPreparationDigest
+    verification_policy_digest: JobPreparationDigest
+    prior_effective_digest: JobPreparationDigest
+    _fields: ClassVar[dict[str, str]] = {'artifact_digest': 'JobPreparationDigest',
+ 'manifest_digest': 'JobPreparationDigest',
+ 'source_digest': 'JobPreparationDigest',
+ 'toolchain_digest': 'JobPreparationDigest',
+ 'verification_policy_digest': 'JobPreparationDigest',
+ 'prior_effective_digest': 'JobPreparationDigest'}
+
+
+_register(JobRepairCandidateIdentity)
 
 
 class JobState(_Union):
@@ -206,6 +323,73 @@ _register(JobOutputPosition)
 
 
 @dataclass(frozen=True)
+class JobPreparationAuthority(_Record):
+    protected: JobPreparationProtectedAuthority
+    os_consent: JobPreparationOsConsent
+    _fields: ClassVar[dict[str, str]] = {'protected': 'JobPreparationProtectedAuthority', 'os_consent': 'JobPreparationOsConsent'}
+
+
+_register(JobPreparationAuthority)
+
+
+@dataclass(frozen=True)
+class JobPreparationControlRequest(_Record):
+    request_id: RequestId
+    generation: ResourceGeneration
+    preparation: JobPreparationRef
+    expected_revision: U64
+    _fields: ClassVar[dict[str, str]] = {'request_id': 'RequestId',
+ 'generation': 'ResourceGeneration',
+ 'preparation': 'JobPreparationRef',
+ 'expected_revision': 'U64'}
+
+
+_register(JobPreparationControlRequest)
+
+
+@dataclass(frozen=True)
+class JobPreparationInspectRequest(_Record):
+    preparation: JobPreparationRef
+    _fields: ClassVar[dict[str, str]] = {'preparation': 'JobPreparationRef'}
+
+
+_register(JobPreparationInspectRequest)
+
+
+class JobPreparationOptionalCandidate(_Optional):
+    _item = "JobRepairCandidateIdentity"
+
+
+_register(JobPreparationOptionalCandidate)
+
+
+@dataclass(frozen=True)
+class JobPreparationProgress(_Record):
+    completed_bytes: U64
+    total_bytes: OptionalU64
+    message: SafeMessage
+    _fields: ClassVar[dict[str, str]] = {'completed_bytes': 'U64', 'total_bytes': 'OptionalU64', 'message': 'SafeMessage'}
+
+
+_register(JobPreparationProgress)
+
+
+@dataclass(frozen=True)
+class JobPrepareRequest(_Record):
+    request_id: RequestId
+    generation: ResourceGeneration
+    installation: JobInstallationRef
+    intent: JobPreparationIntent
+    _fields: ClassVar[dict[str, str]] = {'request_id': 'RequestId',
+ 'generation': 'ResourceGeneration',
+ 'installation': 'JobInstallationRef',
+ 'intent': 'JobPreparationIntent'}
+
+
+_register(JobPrepareRequest)
+
+
+@dataclass(frozen=True)
 class JobSnapshot(_Record):
     job_id: JobId
     generation: ResourceGeneration
@@ -250,6 +434,39 @@ _register(JobOutputRequest)
 
 
 @dataclass(frozen=True)
+class JobPreparationView(_Record):
+    preparation: JobPreparationRef
+    installation: JobInstallationRef
+    job_id: JobId
+    operation_id: OperationId
+    revision: U64
+    intent: JobPreparationIntent
+    phase: JobPreparationPhase
+    job_state: JobState
+    effect: JobPreparationEffect
+    candidate: JobPreparationOptionalCandidate
+    authority: JobPreparationAuthority
+    expires_at: OptionalUnixMicros
+    progress: JobPreparationProgress
+    _fields: ClassVar[dict[str, str]] = {'preparation': 'JobPreparationRef',
+ 'installation': 'JobInstallationRef',
+ 'job_id': 'JobId',
+ 'operation_id': 'OperationId',
+ 'revision': 'U64',
+ 'intent': 'JobPreparationIntent',
+ 'phase': 'JobPreparationPhase',
+ 'job_state': 'JobState',
+ 'effect': 'JobPreparationEffect',
+ 'candidate': 'JobPreparationOptionalCandidate',
+ 'authority': 'JobPreparationAuthority',
+ 'expires_at': 'OptionalUnixMicros',
+ 'progress': 'JobPreparationProgress'}
+
+
+_register(JobPreparationView)
+
+
+@dataclass(frozen=True)
 class JobView(_Record):
     job: JobSnapshot
     cancellation: JobCancellation
@@ -257,6 +474,26 @@ class JobView(_Record):
 
 
 _register(JobView)
+
+
+@dataclass(frozen=True)
+class JobPreparationEvent(_Record):
+    cursor: InferenceCursor
+    view: JobPreparationView
+    _fields: ClassVar[dict[str, str]] = {'cursor': 'InferenceCursor', 'view': 'JobPreparationView'}
+
+
+_register(JobPreparationEvent)
+
+
+@dataclass(frozen=True)
+class JobPreparationWatchRequest(_Record):
+    preparation: JobPreparationRef
+    after: InferenceOptionalCursor
+    _fields: ClassVar[dict[str, str]] = {'preparation': 'JobPreparationRef', 'after': 'InferenceOptionalCursor'}
+
+
+_register(JobPreparationWatchRequest)
 
 
 class JobViewList(_List):

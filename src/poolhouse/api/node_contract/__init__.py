@@ -130,7 +130,7 @@ from . import (
 from ._codec import _finalize
 
 CONTRACT_VERSION = 1
-SCHEMA_SHA256 = "575792475bffa13c93c7ac14f1920e8fac048e2603cf84bddcd3b2c5cbd5bbcf"
+SCHEMA_SHA256 = "9e81d4a12278abfdb221b9bd9e61fb0d318477ce299e9a24909957a87465b0f4"
 _EXPORTS = ('CONTRACT_VERSION', 'SCHEMA_SHA256', 'U32', 'U64', 'AgentControlError', 'AgentControlRequest',
  'AgentControlSnapshot', 'AgentDisplayName', 'AgentGetRequest', 'AgentId', 'AgentPauseResult',
  'AgentState', 'AgentStopResult', 'AgentTaskExecution', 'AgentTaskStartRequest',
@@ -372,12 +372,17 @@ _EXPORTS = ('CONTRACT_VERSION', 'SCHEMA_SHA256', 'U32', 'U64', 'AgentControlErro
  'InferenceTurnSendRequest', 'InferenceTurnView', 'InferenceTurnWatchBatch',
  'InferenceTurnWatchRequest', 'InferenceUnknown', 'InferenceUsage', 'InferenceWatchBatch',
  'InferenceWatchRequest', 'InstallationId', 'InterpreterId', 'JobCancelRequest', 'JobCancellation',
- 'JobDisplayName', 'JobError', 'JobErrorDetails', 'JobGetRequest', 'JobId', 'JobListCursor',
- 'JobListRequest', 'JobListResponse', 'JobOutputByteLimit', 'JobOutputBytes', 'JobOutputChunk',
- 'JobOutputCursor', 'JobOutputPosition', 'JobOutputRequest', 'JobOutputResume', 'JobPageLimit',
- 'JobSnapshot', 'JobState', 'JobView', 'JobViewList', 'KnowledgeApplicationStoreItem',
- 'KnowledgeContextId', 'KnowledgeContextInspectRequest', 'KnowledgeContextRef',
- 'KnowledgeContextView', 'KnowledgeCountStreamItem', 'KnowledgeCounts',
+ 'JobDisplayName', 'JobError', 'JobErrorDetails', 'JobGetRequest', 'JobId', 'JobInstallationRef',
+ 'JobListCursor', 'JobListRequest', 'JobListResponse', 'JobOutputByteLimit', 'JobOutputBytes',
+ 'JobOutputChunk', 'JobOutputCursor', 'JobOutputPosition', 'JobOutputRequest', 'JobOutputResume',
+ 'JobPageLimit', 'JobPreparationAuthority', 'JobPreparationControlRequest', 'JobPreparationDigest',
+ 'JobPreparationEffect', 'JobPreparationEvent', 'JobPreparationId', 'JobPreparationInspectRequest',
+ 'JobPreparationIntent', 'JobPreparationOptionalCandidate', 'JobPreparationOsConsent',
+ 'JobPreparationPhase', 'JobPreparationProgress', 'JobPreparationProtectedAuthority',
+ 'JobPreparationRef', 'JobPreparationView', 'JobPreparationWatchRequest', 'JobPrepareRequest',
+ 'JobRepairCandidateIdentity', 'JobSnapshot', 'JobState', 'JobView', 'JobViewList',
+ 'KnowledgeApplicationStoreItem', 'KnowledgeContextId', 'KnowledgeContextInspectRequest',
+ 'KnowledgeContextRef', 'KnowledgeContextView', 'KnowledgeCountStreamItem', 'KnowledgeCounts',
  'KnowledgeDiagnosticSurrogate', 'KnowledgeDiagnosticTextEvent', 'KnowledgeDiagnosticTextFragment',
  'KnowledgeDiagnosticTextStart', 'KnowledgeDirectorySummary', 'KnowledgeError',
  'KnowledgeErrorDetails', 'KnowledgeEscapedSurrogateUnit', 'KnowledgeFieldBoundary',

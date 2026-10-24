@@ -1,5 +1,5 @@
 {
-  "schema_sha256": "575792475bffa13c93c7ac14f1920e8fac048e2603cf84bddcd3b2c5cbd5bbcf",
+  "schema_sha256": "9e81d4a12278abfdb221b9bd9e61fb0d318477ce299e9a24909957a87465b0f4",
   "decoded_values": "untrusted-data",
   "device_id": {
     "public_key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
@@ -465,6 +465,7 @@
     "WorkerDecisionStart",
     "WorkerResultCandidate",
     "CredentialPrivateActionData",
+    "JobFrozenRepairPlan",
     "LocalAuthorityCustodyDescription",
     "LocalAuthorityNativeInitiationDescription",
     "ResourceAdmissionAccountingRecord",
