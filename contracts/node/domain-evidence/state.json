@@ -1,0 +1,503 @@
+{
+  "version": 1,
+  "status": "private state metadata proposal and semantic requirements only; no runtime, storage-engine, OS or K acceptance",
+  "source_commit": "d26d47287c4e6393e2c085e2a5d9432c5116375f",
+  "sources": [
+    {
+      "path": "app/poolhouse-node/src/fsutil.rs",
+      "sha256": "f8ea7c5d6c29ed7ac62727966f913d6f074a13bde64c9646a8430c3b49d0dff2"
+    },
+    {
+      "path": "app/poolhouse-node/src/sys/unix.rs",
+      "sha256": "f2a2d846b59cf609898ca714a4b4cc2f84cc75c85ba56b9fbd1b3747a8133b8d"
+    },
+    {
+      "path": "app/poolhouse-node/src/node.rs",
+      "sha256": "04be3e290afe71b2c96a453e5b96bded7b886860afe9ec22383755d5ca918069"
+    },
+    {
+      "path": "app/poolhouse-node/src/board.rs",
+      "sha256": "ee919439c331c2edab8b5b94b5394555f2570d1e2bc974af12213322de496f75"
+    },
+    {
+      "path": "app/poolhouse-node/src/state.rs",
+      "sha256": "7c697a6e28311f8dd855764e7708069d770c286ea103fd14521f31617dc83ac9"
+    },
+    {
+      "path": "app/poolhouse-node/src/log.rs",
+      "sha256": "0cca0a0eac1de081d1130812c2453be875ae8eeb3ad1e09a7dee60fd1ddfa9d9"
+    },
+    {
+      "path": "app/poolhouse-node/src/row.rs",
+      "sha256": "0a3fb941e60ed9dc926f6459d340d3893d1c84fdac9f852af392bcb863cf3283"
+    },
+    {
+      "path": "app/poolhouse-node/src/board/rotate.rs",
+      "sha256": "1fb21c14789b41639a36157f815683431e3e6008f0998259f14c109db81cd1d5"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/pool.rs",
+      "sha256": "58b9789d7cc19bbfe83ee3b1fa87a6b06545cf7b130aa6f5ecee52d7e58e2b2d"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/chain.rs",
+      "sha256": "00102335c26947f69e47c7244aede1757eaa1e57f0f7623582f877f915dcf2c3"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/clock.rs",
+      "sha256": "d2f99f3c6114c5788932dc289cd7c76aec270bb76ce4a867d69f9562b19f52b8"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/logs.rs",
+      "sha256": "38832f9f2e1c457c095a6667c9fae820e3db847db808ad8a80dbcd7acd7e1113"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/phone_verify/mod.rs",
+      "sha256": "af6abddfa7e83d3b95b7b9846a434f2129b318f2a31114aebc9d6f1e47fffb35"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/phone_verify/checkpoint.rs",
+      "sha256": "168d6573a32455651a8fb2f9001205dc21dc44bb28bcbbd3f1a14e4801b3346a"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/phone_verify/clock.rs",
+      "sha256": "55e1bb3d6628c1a4a42551769f5a58319b0d86a3f1eff69b0ab9fc557f565f44"
+    },
+    {
+      "path": "app/poolhouse-node/src/approvals/mod.rs",
+      "sha256": "6aade4abf403f078622bf7ae4ebc7ec3423c47b352ea0c9cfa9f93f670cc5adc"
+    },
+    {
+      "path": "app/poolhouse-node/src/approvals/fatigue.rs",
+      "sha256": "f08f5548e79c41ed2170dad1ad25ae269a4c92a5b4a7ba332d7472064f39501e"
+    },
+    {
+      "path": "app/poolhouse-node/src/approvals/decide.rs",
+      "sha256": "e2d5a229f7a2d2061049314b5bae795b66a94c476563cc4f59f9a7b5115b8299"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/mod.rs",
+      "sha256": "dffcc27bc2fdb662a62cea62481d7137cfb840f6e59a45ca95bbdaf83518238f"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/holders.rs",
+      "sha256": "336c3fe788e5d215048ceee1ed4af55c22c9d71fc56c43a6979e170cdb425298"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/table.rs",
+      "sha256": "7e4643e0eaa6f1ec8652df89e49877cf93d4feb93dd0e63bf35f5a71881d299a"
+    },
+    {
+      "path": "app/poolhouse-authority/src/store.rs",
+      "sha256": "ddc99f086bb198823ba4b49bb421683019d0b8a032e18a6f2447322013918479"
+    },
+    {
+      "path": "app/poolhouse-authority/SOURCES.md",
+      "sha256": "4f855e194bf7be14d5185479eee526a50f0eff0a506ed8c48410391f3ef9b597"
+    },
+    {
+      "path": "src/poolhouse/fleet/settings.py",
+      "sha256": "55ad720b8eb0859cc71d47875bb7e469da2284dead10556648c71b8d60525cb9"
+    },
+    {
+      "path": "src/poolhouse/fleet/job_records.py",
+      "sha256": "98ec6a0a72b59a25891883af7bc91e5fc75e1b3eaa948e8fc2cf67f437107b54"
+    },
+    {
+      "path": "src/poolhouse/fleet/jobs.py",
+      "sha256": "0de0338d6e3653afcc84cfa7c0ad10da068d49b88c88e5980ea4bdcb7eb24d9f"
+    },
+    {
+      "path": "src/poolhouse/fleet/job_exit.py",
+      "sha256": "65f902549226a4d45ad85b2eff235e4854185789a6f780d69c7adfc9dab09db2"
+    },
+    {
+      "path": "src/poolhouse/files.py",
+      "sha256": "75bd930c6db31bd9dcde52ca66eda71c5cb84e68427cfcd58211529b5607069b"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/first-run.html",
+      "sha256": "fb3bd39f208df42f7b15546ff139c7e4894392919286e140d1c08728fe8f71bd"
+    },
+    {
+      "path": "contracts/node/types.toml",
+      "sha256": "a69c0924f3fa3deba8600242eacf2dd3990e07322ee046250ae76c3e5008cf19"
+    },
+    {
+      "path": "contracts/node/domains/approvals.toml",
+      "sha256": "463b02705992c3ca43eb3bbdf5bf6a711429d60f9aa6b2d9184787f8ca439ea9"
+    },
+    {
+      "path": "contracts/node/domains/settings.toml",
+      "sha256": "769f8536aa7a3945c4592a1b34e38d55e2fd27e97b4040adfca2f011344135a0"
+    },
+    {
+      "path": "contracts/node/domains/inference.toml",
+      "sha256": "a7e8fe21d08e535a8798c6a1035a90b7c35644c016566554635f3efc79cbce9c"
+    },
+    {
+      "path": "docs/native-plan-windows-linux.md",
+      "sha256": "c0f0e9d8fdb89bfa77a63adafa4f2bdff10767daf3ae88c8a7eb1af2cbb82241"
+    }
+  ],
+  "operation_mapping": [],
+  "api_scope": "No public storage read/write/debug/reset/restore operation. All new types private; metadata does not define replacement on-disk layout or confer authority.",
+  "sites": [
+    {
+      "path": "app/poolhouse-node/src/fsutil.rs",
+      "line": 14,
+      "match": "pub fn write_atomic",
+      "meaning": "single-file synced replacement; no multi-file transaction/rollback guarantee"
+    },
+    {
+      "path": "app/poolhouse-node/src/sys/unix.rs",
+      "line": 39,
+      "match": "pub fn private_dir",
+      "meaning": "current owner-only directory primitive, not proof of dedicated principal/no-follow protection"
+    },
+    {
+      "path": "app/poolhouse-node/src/node.rs",
+      "line": 161,
+      "match": "pub fn open_with",
+      "meaning": "current node opens separate local component files; no unified storage transaction"
+    },
+    {
+      "path": "app/poolhouse-node/src/board.rs",
+      "line": 132,
+      "match": "fn origin_of",
+      "meaning": "origin creation on missing file is existing behavior, not established-store reset authority"
+    },
+    {
+      "path": "app/poolhouse-node/src/state.rs",
+      "line": 27,
+      "match": "pub struct Tables",
+      "meaning": "pins/direct binding, damaged-origin, acks, HLC, cuts and diagnostic tables have different retention classes"
+    },
+    {
+      "path": "app/poolhouse-node/src/state.rs",
+      "line": 52,
+      "match": "pub fn open",
+      "meaning": "missing board tables currently default empty; unified established critical state must not silently reset"
+    },
+    {
+      "path": "app/poolhouse-node/src/log.rs",
+      "line": 55,
+      "match": "pub fn open",
+      "meaning": "torn unacknowledged final line differs from complete signed chain corruption"
+    },
+    {
+      "path": "app/poolhouse-node/src/log.rs",
+      "line": 139,
+      "match": "pub fn extend",
+      "meaning": "write/sync and attempted truncate failure does not prove absence of committed effects"
+    },
+    {
+      "path": "app/poolhouse-node/src/log.rs",
+      "line": 183,
+      "match": "pub fn replace",
+      "meaning": "archive plus validated signed carry/base installation, not unsigned view substitution"
+    },
+    {
+      "path": "app/poolhouse-node/src/row.rs",
+      "line": 104,
+      "match": "pub fn operation",
+      "meaning": "carry preserves original logical operation identity/hash/HLC"
+    },
+    {
+      "path": "app/poolhouse-node/src/board/rotate.rs",
+      "line": 39,
+      "match": "fn revokes_kept",
+      "meaning": "retains revocation/distrust multiplicity by original operation identity/hash"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/pool.rs",
+      "line": 234,
+      "match": "pub fn save",
+      "meaning": "acts/seen/refusals independently replaced; whole group atomicity remains gap"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/pool.rs",
+      "line": 101,
+      "match": "pub(super) ready:",
+      "meaning": "first-complete local awake timing retained separately from first sight"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/chain.rs",
+      "line": 29,
+      "match": "pub type Seen",
+      "meaning": "verifier-local first-sight/first-complete observations feed holds/cancellation/dispute"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/clock.rs",
+      "line": 24,
+      "match": "pub fn now_ms",
+      "meaning": "process monotonic time plus saved awake base; no downtime credit"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/phone_verify/clock.rs",
+      "line": 33,
+      "match": "pub fn earned_since",
+      "meaning": "boot count/uptime reversal refuses and changed boot earns zero retained elapsed"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/phone_verify/checkpoint.rs",
+      "line": 59,
+      "match": "pub fn check_current",
+      "meaning": "marker equality and files detect missing/mixed local checkpoints"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/phone_verify/checkpoint.rs",
+      "line": 131,
+      "match": "pub fn commit",
+      "meaning": "observation checkpoint before marker; same-domain hashes are not independent rollback witness"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/phone_verify/mod.rs",
+      "line": 86,
+      "match": "pub fn review",
+      "meaning": "retain observed acts/signatures, persist observations before signing material"
+    },
+    {
+      "path": "app/poolhouse-node/src/approvals/mod.rs",
+      "line": 236,
+      "match": "fn save",
+      "meaning": "approval state atomic per file, separate from fatigue and grants"
+    },
+    {
+      "path": "app/poolhouse-node/src/approvals/fatigue.rs",
+      "line": 188,
+      "match": "fn save",
+      "meaning": "durable fatigue history must survive request restarts and lineage changes"
+    },
+    {
+      "path": "app/poolhouse-node/src/approvals/decide.rs",
+      "line": 174,
+      "match": "pub fn decide",
+      "meaning": "decision persisted before downstream effects; partial effect/recovery gap"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/mod.rs",
+      "line": 56,
+      "match": "pub fn open",
+      "meaning": "local lease configuration/table/holders recovery is not authority to recreate live leases"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/holders.rs",
+      "line": 41,
+      "match": "pub fn open",
+      "meaning": "durable holder identity retains process ownership context"
+    },
+    {
+      "path": "app/poolhouse-authority/src/store.rs",
+      "line": 25,
+      "match": "fn checked",
+      "meaning": "native root-owned descriptor ACL/mode/link-count foundation"
+    },
+    {
+      "path": "app/poolhouse-authority/src/store.rs",
+      "line": 172,
+      "match": "fn replace",
+      "meaning": "serialized expected-generation/head CAS; failure poisons store"
+    },
+    {
+      "path": "app/poolhouse-authority/SOURCES.md",
+      "line": 5,
+      "match": "privileged disk rollback",
+      "meaning": "native foundation explicitly excludes privileged rollback; independent witness not implemented"
+    },
+    {
+      "path": "src/poolhouse/fleet/settings.py",
+      "line": 76,
+      "match": "def save",
+      "meaning": "device-local atomic settings rewrite and stale feature merge lock"
+    },
+    {
+      "path": "src/poolhouse/fleet/job_records.py",
+      "line": 49,
+      "match": "class Records",
+      "meaning": "single runner lock, private regular records and process-start ownership"
+    },
+    {
+      "path": "src/poolhouse/fleet/jobs.py",
+      "line": 104,
+      "match": "def _restore",
+      "meaning": "queued policy, verified process recovery, interrupted/unknown outcomes and uncertain capacity"
+    },
+    {
+      "path": "src/poolhouse/fleet/job_exit.py",
+      "line": 54,
+      "match": "def read",
+      "meaning": "launcher exit receipt ownership/identity checks; missing/torn outcome stays unknown"
+    },
+    {
+      "path": "src/poolhouse/files.py",
+      "line": 149,
+      "match": "def writing",
+      "meaning": "legacy same-filesystem temporary replacement helper, not cross-domain transaction"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/first-run.html",
+      "line": 209,
+      "match": "keepIntent()",
+      "meaning": "browser setup intent is disposable hint, not authoritative setup/job/membership"
+    },
+    {
+      "path": "contracts/node/domains/settings.toml",
+      "line": 362,
+      "match": "name = \"SettingsLocalDefaultsView\"",
+      "meaning": "existing scoped generation/revision settings projection"
+    },
+    {
+      "path": "contracts/node/types.toml",
+      "line": 298,
+      "match": "name = \"JobCancelRequest\"",
+      "meaning": "durable domain RequestId and generation ownership remain original job contract"
+    },
+    {
+      "path": "contracts/node/domains/approvals.toml",
+      "line": 445,
+      "match": "name = \"ApprovalImmutableOperation\"",
+      "meaning": "exact approval operation/authority context retained; private state receipt is not replacement"
+    }
+  ],
+  "state_classification": [
+    {
+      "record_class": "signed_governance",
+      "owner": "node_service",
+      "material": "founding charter, immutable acts and all merged signature sets, removal/admin cuts and dispute lineage",
+      "retention": "verified signed source plus nonderivable local observations; never unsigned roster replacement",
+      "source_sites": [
+        11,
+        12,
+        13
+      ]
+    },
+    {
+      "record_class": "signed_board",
+      "owner": "node_service",
+      "material": "origin logs, signed heads/base/carry chains, validated original logical operations and security tombstones",
+      "retention": "preserve exact signed transcripts/operation IDs/hash/HLC; approved compaction retains equivalent validated carries and required archive proofs",
+      "source_sites": [
+        4,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "record_class": "verifier_observation",
+      "owner": "node_service or protected_helper independently",
+      "material": "pins/direct owner binding, accepted heads/epochs, HLC maxima, first-seen/first-complete awake facts, cuts/distrust/conflict/damage/provenance, clock basis and checkpoint/root continuity",
+      "retention": "not reconstructible from newly supplied history; security projections are not disposable cache",
+      "source_sites": [
+        4,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18
+      ]
+    },
+    {
+      "record_class": "approval_control",
+      "owner": "protected_helper for authority and node_service for own domain receipts",
+      "material": "fatigue/notification/cancel history, immutable pending intent, consumed nonce/result identity, durable cancel-versus-commit and effect receipts",
+      "retention": "retain while any lineage/replay/effect depends on record; no reset by cache restore/new requester IDs",
+      "source_sites": [
+        19,
+        20,
+        21
+      ]
+    },
+    {
+      "record_class": "local_settings",
+      "owner": "node_service",
+      "material": "device-local saved choices split by existing authority domain with generations/revision CAS",
+      "retention": "persist authoritative saved values; revalidate all changed fields; governance edit never generic settings write",
+      "source_sites": [
+        27,
+        33
+      ]
+    },
+    {
+      "record_class": "durable_job",
+      "owner": "node_service",
+      "material": "job request/result/provenance/checkpoint/output generations and execution/cancel/recovery records",
+      "retention": "preserve allowed retry/attach/queue semantics under current authority; no archive auto-run or optimistic unknown completion",
+      "source_sites": [
+        28,
+        29,
+        30,
+        34
+      ]
+    },
+    {
+      "record_class": "resource_custody",
+      "owner": "node_service",
+      "material": "lease/worker ownership, process-start identity and capacity/release/publication fences",
+      "retention": "restore records for reconciliation, never recreate permission to use resources from old file/PID",
+      "source_sites": [
+        22,
+        23,
+        28,
+        29
+      ]
+    },
+    {
+      "record_class": "content_asset",
+      "owner": "node_service or confined worker private spool",
+      "material": "model/job/checkpoint assets and bounded worker output with original attribution and digests",
+      "retention": "asset presence alone grants no admission/execution; signed-publication and current custody/domain checks remain separate",
+      "source_sites": [
+        28,
+        29,
+        30
+      ]
+    },
+    {
+      "record_class": "ui_cache",
+      "owner": "disposable_ui_cache",
+      "material": "rendered projections/setup hints/disposable client cursors",
+      "retention": "may be deleted; node re-inspection/authentication required; saved settings/approval/job/membership never reconstructed from cache",
+      "source_sites": [
+        32
+      ]
+    }
+  ],
+  "requirements": [
+    "Every new State type is private proposal metadata only, not an implemented ledger, storage layout, DB engine, write capability or recovery API. UUIDs, digests, receipt enums, owner/class labels and deserialized state never prove authority or actual persistence.",
+    "Node alone commits current domain state; protected helper independently owns per-pool admin secrets/approval/verifier state; clients write disposable cache only; workers write confined private spool only. Native runtime verifies actual principals, descriptor-relative no-follow traversal, ACL/mode/link ownership, trusted installation lineage, exclusive writer and storage generations. No path or stored label grants authority.",
+    "Resolve every transaction/effect/checkpoint reference under exact store ID, installation/device, generation, scope and immutable intent. Copied UUID/digest/receipt cannot join another store or cause execution. Owning domain keeps actual principal/RequestId/resource/payload dedup; conflicting reuse remains conflict. New metadata IDs never replace original signed row/act IDs or clocks.",
+    "Preserve exact signed transcript bytes, canonical hash/domain rules, original operation IDs and HLC/millisecond values, signature sets, nonces/expiry and original low-S/generic DER purpose distinctions. Never normalize historical signed envelopes or migrate legacy trust. Unsigned storage/transport whitespace is distinct; original canonical signed message must remain identical.",
+    "Board rotation requires complete validated signed base/carry restatement preserving original logical operation identity/hash/HLC, required archives and every security tombstone/proof. Never replace signed history with visible unsigned fold. Corrupt relay content cannot fabricate origin damage or discard trusted prior observations.",
+    "Derived views rebuild from verified immutable records plus durable nonderivable observations. Pins, head/conflict/damage/provenance, HLC highwater, cuts/distrust, first-complete timing, nonce/consumption and fatigue are not UI caches. Display labels can rebuild; acknowledgment rewind permits conservative authenticated resync only and never erases security observations.",
+    "Established missing/damaged critical store/root/checkpoint refuses, never defaults empty or silently becomes genesis. Genuine genesis requires independently admitted authority and explicit creation; reinstall preserves root and monotonic state. Restoration never resurrects removed incarnations, stopped work or old capabilities. Useful archived jobs/assets retain attribution without auto-execution.",
+    "One logical mutation serializes concurrent writers, validates current principal/resource/authority/store generations and applicable CAS revision, persists immutable intent and deterministic effect identities, and atomically commits authoritative group+consumption+receipt or an explicitly recoverable group protocol before acknowledgment. Single-file fsync/rename is not multi-file atomicity; rename/fsync/truncation uncertainty is recovery_required, never safe retry.",
+    "Cancellation and domain commit have one durable winner; accepted signed logs are not rolled back. External effects use separate durable prepare/consume/effect/reconcile receipts. committed/performed/reconciled are observed results, never authority to dispatch/replay. outcome_unknown reconciles the same deterministic effect before retry, including effect-before-receipt crashes. Performed requires verified durable effect evidence.",
+    "Crash recovery validates full commit group and applicable independent witness before serving/signing/dispatch/publication. Unknown process/lease/outcome holds safe custody until verified reconciliation; domain-authorized queued retry/resume is preserved under original policy/current authority, not blanket discard. PID or restored lease file alone is no live ownership proof.",
+    "First-seen/first-complete/awake observations are verifier-local monotonic facts. Never import peer/backup/cache timestamps as newly earned local elapsed. Process checkpoint earns no downtime; boot transition earns zero where retained clock requires. Backwards counters/clocks and numeric conversion/addition/revision overflow refuse. SETTLED is only separately admitted join history, never arbitrary negative local time or accepted helper-settled input.",
+    "Monotonic security state retains observed heads/epochs, every accepted signature set, cuts/revocations/distrust/disputes, key/root/installation continuity, first-complete clock basis, fatigue/notification/cancel and consumption/effect identity. Hashes/checkpoints stored in same rollback domain cannot detect whole-state rollback; StateProtectionDomainId is not proof of independent protection.",
+    "Witness proof must originate outside protected states rollback domain under the applicable threat boundary. Node/helper/witness clone cannot be claimed detected without a real backend proving it; do not build circular witnesses. Missing/inconsistent witness refuses. Privileged whole-device rollback resistance and actual per-OS monotonic mechanism remain explicitly unproved; same-account ownership/hash checks alone do not satisfy them.",
+    "No retention/GC of tombstones, commit/effect/consumption receipts, revocation cuts, consumed nonces or first-complete observations while any retained lineage/replay/effect may depend on them. Unknown dependency retains or refuses, never silently truncates. Existing retention floors/quotas and replay windows require explicit domain reconciliation; no bounds or budgets raised or grandfathered.",
+    "Settings/jobs/resource state remain local under their existing scoped ownership/generation/CAS authority. Replicated signed pool/board records do not overwrite local settings or grant leases. Content assets require digest plus current authorization/admission and cache hints never recreate settings/job/membership. Helper state, secrets and worker spools remain separate custody domains.",
+    "No total collection cap, arbitrary payload/path or state dump is introduced. Private metadata references complete opaque commit/checkpoint sets; implementation cannot truncate to fit. Existing per-domain complete authorized pagination/limits remain unchanged. This artifact selects no migration or storage engine and grants no runtime/K acceptance."
+  ],
+  "mechanism_limits": [
+    "Current fsutil write_atomic and Log append/replace are source evidence of single-file mechanisms, not cross-file atomic receipt/consumption or platform ownership proofs.",
+    "GovPool saves acts/seen/refusals separately; phone marker hashes plus local files can be restored together. Independent monotonic witness and whole-group recovery backend remain unresolved.",
+    "Native authority store is inactive root-owned CAS foundation and explicitly excludes privileged disk rollback; it cannot stand in for a proven independent witness.",
+    "Current State::open missing-file defaults and Board::origin_of new origin on absence cannot authorize reset of an established unified store.",
+    "Existing approval decision-before-effects and partial grants require transaction/reconciliation implementation; this metadata does not fix or hide it.",
+    "Legacy Python settings/jobs and browser hints remain retained source behavior; native ownership and restart/custody implementation/migration are not supplied by declarations.",
+    "Signed transcript/rotation equivalence, monotonic observations, independent rollback backend, actual startup principal and all crash/cancel/fault interleavings require focused implementation proofs after reviewed common contracts."
+  ],
+  "independent_design_review": {
+    "reviewer": "approval_attack_review",
+    "result": "approved private-only metadata before edits with six explicit binding/receipt/clock/witness/retention/cache constraints incorporated",
+    "concrete_review": "approval_attack_review approved actual30-private-type zero-operation fragment and source evidence; exact binding/effect-before-receipt/local timing/witness/retention/cache constraints checked; declaration only, no tests/crypto/runtime"
+  }
+}
