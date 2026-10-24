@@ -7,6 +7,7 @@ import json
 import os
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from poolhouse import node_launch
@@ -22,6 +23,7 @@ from poolhouse.workspace import (
     attention,
     inbound,
     limits,
+    notification_context,
     nudge,
     onboard,
     render,
@@ -82,12 +84,17 @@ def guarded(run: Callable[[argparse.Namespace], int | None]) -> Callable[[argpar
     return wrapped
 
 
-def connect(args: argparse.Namespace, *, notification: bool = False) -> Session:
+def connect(args: argparse.Namespace, *, notification: bool = False) -> Session | None:
     """The caller's session on the board its directory belongs to. A person at a terminal who keeps a key allows what the
     node refuses for want of a grant."""
     state = node_launch.default_state()
-    node = Client(state, autostart=False, timeout=2.0) if notification else Client(
-        state, person=person_key.provider(state, acting=person.acting(state)))
+    if notification:
+        node = Client(state, autostart=False, timeout=2.0)
+        board = notification_context.existing_board(node, Path.cwd())
+        if not board:
+            return None
+        return session.connect(token_file=args.token_file, agent=args.agent, board=board, client=node)
+    node = Client(state, person=person_key.provider(state, acting=person.acting(state)))
     return session.connect(token_file=args.token_file, agent=args.agent, board=args.board, client=node)
 
 
@@ -366,6 +373,8 @@ def nudging(args: argparse.Namespace) -> int:
         if len(stdin) > 65536:
             raise ValueError("native hook event exceeds 64 KiB")
         actor = connect(args, notification=bool(args.hook))
+        if actor is None:
+            return 0
         summary = waiting(actor)
         if args.hook:
             nudge.deliver(actor, nudge.Waiting.of(summary), args.hook, stdin,
