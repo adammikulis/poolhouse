@@ -1,4 +1,4 @@
-// Generated proposal. No dispatch or authority is implemented. Schema db05823bde4a1279a820ff82e64ff50e042d392d2d75e688cc8d1e5efffb5de5
+// Generated proposal. No dispatch or authority is implemented. Schema 0465336ecb3d4754337ec3de5636a7cfde4fb23873da77d1f5a4190a7f1e1117
 use super::contract::*;
 
 pub trait Operation { type Request; type Response; type Error; const NAME: &'static str; }
@@ -50,6 +50,81 @@ impl Operation for GovernanceInspect { type Request = ApprovalGovernanceInspectR
 
 pub struct GovernanceWatch;
 impl Operation for GovernanceWatch { type Request = ApprovalGovernanceWatchRequest; type Response = ApprovalGovernanceWatchEvent; type Error = ApprovalError; const NAME: &'static str = "governance.watch"; }
+
+pub struct DevicesLocalInspect;
+impl Operation for DevicesLocalInspect { type Request = ConnectivityLocalRequest; type Response = ConnectivityLocalView; type Error = ConnectivityError; const NAME: &'static str = "devices.local.inspect"; }
+
+pub struct DevicesLocalWatch;
+impl Operation for DevicesLocalWatch { type Request = ConnectivityLocalRequest; type Response = ConnectivityLocalEvent; type Error = ConnectivityError; const NAME: &'static str = "devices.local.watch"; }
+
+pub struct DevicesInspect;
+impl Operation for DevicesInspect { type Request = ConnectivityDeviceInspectRequest; type Response = ConnectivityDeviceView; type Error = ConnectivityError; const NAME: &'static str = "devices.inspect"; }
+
+pub struct DevicesList;
+impl Operation for DevicesList { type Request = ConnectivityListRequest; type Response = ConnectivityDeviceSnapshot; type Error = ConnectivityError; const NAME: &'static str = "devices.list"; }
+
+pub struct DevicesWatch;
+impl Operation for DevicesWatch { type Request = ConnectivityListRequest; type Response = ConnectivityDeviceEvent; type Error = ConnectivityError; const NAME: &'static str = "devices.watch"; }
+
+pub struct PoolsInspect;
+impl Operation for PoolsInspect { type Request = ConnectivityPoolInspectRequest; type Response = ConnectivityPoolView; type Error = ConnectivityError; const NAME: &'static str = "pools.inspect"; }
+
+pub struct PoolsList;
+impl Operation for PoolsList { type Request = ConnectivityListRequest; type Response = ConnectivityPoolSnapshot; type Error = ConnectivityError; const NAME: &'static str = "pools.list"; }
+
+pub struct PoolsWatch;
+impl Operation for PoolsWatch { type Request = ConnectivityListRequest; type Response = ConnectivityPoolEvent; type Error = ConnectivityError; const NAME: &'static str = "pools.watch"; }
+
+pub struct DiscoveryCandidateSubmitHint;
+impl Operation for DiscoveryCandidateSubmitHint { type Request = ConnectivitySubmitHintRequest; type Response = ConnectivityCandidate; type Error = ConnectivityError; const NAME: &'static str = "discovery.candidate.submit.hint"; }
+
+pub struct DiscoveryCandidateInspect;
+impl Operation for DiscoveryCandidateInspect { type Request = ConnectivityCandidateInspectRequest; type Response = ConnectivityCandidate; type Error = ConnectivityError; const NAME: &'static str = "discovery.candidate.inspect"; }
+
+pub struct DiscoveryCandidatesList;
+impl Operation for DiscoveryCandidatesList { type Request = ConnectivityListRequest; type Response = ConnectivityCandidateSnapshot; type Error = ConnectivityError; const NAME: &'static str = "discovery.candidates.list"; }
+
+pub struct DiscoveryCandidatesWatch;
+impl Operation for DiscoveryCandidatesWatch { type Request = ConnectivityListRequest; type Response = ConnectivityCandidateEvent; type Error = ConnectivityError; const NAME: &'static str = "discovery.candidates.watch"; }
+
+pub struct PoolsJoinRequest;
+impl Operation for PoolsJoinRequest { type Request = ConnectivityJoinRequest; type Response = ConnectivityJoinView; type Error = ConnectivityError; const NAME: &'static str = "pools.join.request"; }
+
+pub struct PoolsJoinInspect;
+impl Operation for PoolsJoinInspect { type Request = ConnectivityJoinInspectRequest; type Response = ConnectivityJoinView; type Error = ConnectivityError; const NAME: &'static str = "pools.join.inspect"; }
+
+pub struct PoolsJoinCancel;
+impl Operation for PoolsJoinCancel { type Request = ConnectivityJoinCancelRequest; type Response = ConnectivityJoinCancelResult; type Error = ConnectivityError; const NAME: &'static str = "pools.join.cancel"; }
+
+pub struct PoolsJoinWatch;
+impl Operation for PoolsJoinWatch { type Request = ConnectivityJoinWatchRequest; type Response = ConnectivityJoinEvent; type Error = ConnectivityError; const NAME: &'static str = "pools.join.watch"; }
+
+pub struct TransportConnectionsList;
+impl Operation for TransportConnectionsList { type Request = ConnectivityListRequest; type Response = ConnectivityConnectionSnapshot; type Error = ConnectivityError; const NAME: &'static str = "transport.connections.list"; }
+
+pub struct TransportConnectionsWatch;
+impl Operation for TransportConnectionsWatch { type Request = ConnectivityListRequest; type Response = ConnectivityConnectionEvent; type Error = ConnectivityError; const NAME: &'static str = "transport.connections.watch"; }
+
+pub struct TransportConnectRequest;
+impl Operation for TransportConnectRequest { type Request = ConnectivityConnectRequest; type Response = ConnectivityConnectionInterest; type Error = ConnectivityError; const NAME: &'static str = "transport.connect.request"; }
+
+pub struct TransportDisconnect;
+impl Operation for TransportDisconnect { type Request = ConnectivityDisconnectRequest; type Response = ConnectivityConnectionInterest; type Error = ConnectivityError; const NAME: &'static str = "transport.disconnect"; }
+
+pub struct PoolsSyncRequest;
+impl Operation for PoolsSyncRequest { type Request = ConnectivitySyncRequest; type Response = ConnectivitySyncView; type Error = ConnectivityError; const NAME: &'static str = "pools.sync.request"; }
+
+pub struct PoolsSyncMembersList;
+impl Operation for PoolsSyncMembersList { type Request = ConnectivitySyncMemberListRequest; type Response = ConnectivityMemberSyncSnapshot; type Error = ConnectivityError; const NAME: &'static str = "pools.sync.members.list"; }
+
+pub struct PoolsSyncInspect;
+impl Operation for PoolsSyncInspect { type Request = ConnectivitySyncInspectRequest; type Response = ConnectivitySyncView; type Error = ConnectivityError; const NAME: &'static str = "pools.sync.inspect"; }
+
+pub struct PoolsSyncCancel;
+impl Operation for PoolsSyncCancel { type Request = ConnectivitySyncCancelRequest; type Response = ConnectivitySyncCancelResult; type Error = ConnectivityError; const NAME: &'static str = "pools.sync.cancel"; }
+
+pub struct PoolsSyncWatch;
+impl Operation for PoolsSyncWatch { type Request = ConnectivitySyncWatchRequest; type Response = ConnectivitySyncEvent; type Error = ConnectivityError; const NAME: &'static str = "pools.sync.watch"; }
 
 pub struct ModelsDomainModelsList;
 impl Operation for ModelsDomainModelsList { type Request = ModelListRequest; type Response = ModelListResponse; type Error = ModelDomainError; const NAME: &'static str = "models.list"; }

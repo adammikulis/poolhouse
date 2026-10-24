@@ -1,4 +1,4 @@
-# Generated proposal. No dispatch or authority is implemented. Schema db05823bde4a1279a820ff82e64ff50e042d392d2d75e688cc8d1e5efffb5de5
+# Generated proposal. No dispatch or authority is implemented. Schema 0465336ecb3d4754337ec3de5636a7cfde4fb23873da77d1f5a4190a7f1e1117
 from . import node_contract as data
 
 OPERATION_TYPES = {
@@ -18,6 +18,31 @@ OPERATION_TYPES = {
     "approvals.watch": (data.ApprovalWatchRequest, data.ApprovalWatchEvent, data.ApprovalError),
     "governance.inspect": (data.ApprovalGovernanceInspectRequest, data.ApprovalGovernanceView, data.ApprovalError),
     "governance.watch": (data.ApprovalGovernanceWatchRequest, data.ApprovalGovernanceWatchEvent, data.ApprovalError),
+    "devices.local.inspect": (data.ConnectivityLocalRequest, data.ConnectivityLocalView, data.ConnectivityError),
+    "devices.local.watch": (data.ConnectivityLocalRequest, data.ConnectivityLocalEvent, data.ConnectivityError),
+    "devices.inspect": (data.ConnectivityDeviceInspectRequest, data.ConnectivityDeviceView, data.ConnectivityError),
+    "devices.list": (data.ConnectivityListRequest, data.ConnectivityDeviceSnapshot, data.ConnectivityError),
+    "devices.watch": (data.ConnectivityListRequest, data.ConnectivityDeviceEvent, data.ConnectivityError),
+    "pools.inspect": (data.ConnectivityPoolInspectRequest, data.ConnectivityPoolView, data.ConnectivityError),
+    "pools.list": (data.ConnectivityListRequest, data.ConnectivityPoolSnapshot, data.ConnectivityError),
+    "pools.watch": (data.ConnectivityListRequest, data.ConnectivityPoolEvent, data.ConnectivityError),
+    "discovery.candidate.submit.hint": (data.ConnectivitySubmitHintRequest, data.ConnectivityCandidate, data.ConnectivityError),
+    "discovery.candidate.inspect": (data.ConnectivityCandidateInspectRequest, data.ConnectivityCandidate, data.ConnectivityError),
+    "discovery.candidates.list": (data.ConnectivityListRequest, data.ConnectivityCandidateSnapshot, data.ConnectivityError),
+    "discovery.candidates.watch": (data.ConnectivityListRequest, data.ConnectivityCandidateEvent, data.ConnectivityError),
+    "pools.join.request": (data.ConnectivityJoinRequest, data.ConnectivityJoinView, data.ConnectivityError),
+    "pools.join.inspect": (data.ConnectivityJoinInspectRequest, data.ConnectivityJoinView, data.ConnectivityError),
+    "pools.join.cancel": (data.ConnectivityJoinCancelRequest, data.ConnectivityJoinCancelResult, data.ConnectivityError),
+    "pools.join.watch": (data.ConnectivityJoinWatchRequest, data.ConnectivityJoinEvent, data.ConnectivityError),
+    "transport.connections.list": (data.ConnectivityListRequest, data.ConnectivityConnectionSnapshot, data.ConnectivityError),
+    "transport.connections.watch": (data.ConnectivityListRequest, data.ConnectivityConnectionEvent, data.ConnectivityError),
+    "transport.connect.request": (data.ConnectivityConnectRequest, data.ConnectivityConnectionInterest, data.ConnectivityError),
+    "transport.disconnect": (data.ConnectivityDisconnectRequest, data.ConnectivityConnectionInterest, data.ConnectivityError),
+    "pools.sync.request": (data.ConnectivitySyncRequest, data.ConnectivitySyncView, data.ConnectivityError),
+    "pools.sync.members.list": (data.ConnectivitySyncMemberListRequest, data.ConnectivityMemberSyncSnapshot, data.ConnectivityError),
+    "pools.sync.inspect": (data.ConnectivitySyncInspectRequest, data.ConnectivitySyncView, data.ConnectivityError),
+    "pools.sync.cancel": (data.ConnectivitySyncCancelRequest, data.ConnectivitySyncCancelResult, data.ConnectivityError),
+    "pools.sync.watch": (data.ConnectivitySyncWatchRequest, data.ConnectivitySyncEvent, data.ConnectivityError),
     "models.list": (data.ModelListRequest, data.ModelListResponse, data.ModelDomainError),
     "models.get": (data.ModelGetRequest, data.ModelView, data.ModelDomainError),
     "models.search": (data.ModelSearchRequest, data.ModelSearchResponse, data.ModelDomainError),

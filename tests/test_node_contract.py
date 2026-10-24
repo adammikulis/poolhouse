@@ -728,3 +728,14 @@ def test_utf8_content_preserves_controls_and_counts_bytes_without_normalization(
             public.Utf8Chunk(invalid)
     with pytest.raises(ValueError):
         public.JobDisplayName("line\nend")
+
+
+def test_connectivity_observations_preserve_prejoin_readiness_unknowns_and_paging():
+    vectors = json.loads((ROOT / "contracts/node/vectors.json").read_text())["connectivity"]
+    local = vectors["local"]
+    assert public.ConnectivityLocalView.from_wire(local).to_wire() == local
+    assert local["beacons_sent"] is None and local["beacons_heard"] == "0"
+    page = vectors["sync_members_page"]
+    assert public.ConnectivityMemberSyncSnapshot.from_wire(page).to_wire() == page
+    final_page = {**page, "complete": True, "next_cursor": None}
+    assert public.ConnectivityMemberSyncSnapshot.from_wire(final_page).to_wire() == final_page

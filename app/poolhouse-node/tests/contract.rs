@@ -270,6 +270,22 @@ fn utf8_content_vectors_preserve_controls_and_enforce_decoded_byte_bounds() {
 }
 
 #[test]
+fn connectivity_vectors_keep_prejoin_readiness_unknowns_and_paging_distinct() {
+    let vectors: Value = serde_json::from_str(include_str!("../../../contracts/node/vectors.json")).unwrap();
+    let local = &vectors["connectivity"]["local"];
+    let decoded: ConnectivityLocalView = serde_json::from_value(local.clone()).unwrap();
+    assert_eq!(serde_json::to_value(decoded).unwrap(), *local);
+    let page = &vectors["connectivity"]["sync_members_page"];
+    let decoded: ConnectivityMemberSyncSnapshot = serde_json::from_value(page.clone()).unwrap();
+    assert_eq!(serde_json::to_value(decoded).unwrap(), *page);
+    let mut final_page = page.clone();
+    final_page["complete"] = json!(true);
+    final_page["next_cursor"] = Value::Null;
+    let decoded: ConnectivityMemberSyncSnapshot = serde_json::from_value(final_page.clone()).unwrap();
+    assert_eq!(serde_json::to_value(decoded).unwrap(), final_page);
+}
+
+#[test]
 fn domain_numeric_observations_preserve_fractional_sign_and_unknown_state() {
     for margin in [json!({"kind": "surplus", "value": {"numerator": "17", "denominator": "2"}}),
                    json!({"kind": "shortfall", "value": {"numerator": "1", "denominator": "2"}})] {
