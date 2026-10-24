@@ -1,0 +1,646 @@
+{
+  "version": 1,
+  "status": "proposal",
+  "domain": "settings",
+  "source_commit": "57c991dbf448ab728e7e6d52b6b313cc03dfd95b",
+  "sources": [
+    {
+      "path": "src/poolhouse/fleet/settings.py",
+      "line": 25,
+      "symbol": "Settings and preference validators",
+      "sha256": "55ad720b8eb0859cc71d47875bb7e469da2284dead10556648c71b8d60525cb9"
+    },
+    {
+      "path": "src/poolhouse/fleet/ui.py",
+      "line": 306,
+      "symbol": "apply_prefs mixed effects",
+      "sha256": "8f5ed729e878369c8562e8a661fa5806c293ac47aaf623fd1f91457fcc2d9a34"
+    },
+    {
+      "path": "src/poolhouse/fleet/routes.py",
+      "line": 297,
+      "symbol": "SettingsRoutes",
+      "sha256": "509fd14062d13bb5a15777319e6291a63ac4528c462a450f395311d3e692d15d"
+    },
+    {
+      "path": "src/poolhouse/fleet/themes.py",
+      "line": 23,
+      "symbol": "appearance validators",
+      "sha256": "5b1531a371596ae879e38c0eca19e55abb26409152dc1b39a7b897ef95c3b5e8"
+    },
+    {
+      "path": "src/poolhouse/fleet/availability.py",
+      "line": 65,
+      "symbol": "Window overnight behavior",
+      "sha256": "80218a0c0ba33680243ae6733e13e05dc8ce4f575cb02f08149008ace347ccbc"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/settings-view.html",
+      "line": 93,
+      "symbol": "Settings controls",
+      "sha256": "65af33af137acf5079df2819b80016a886eccf9bab7c8ce238a46cf63ecf0d02"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/settings-state.html",
+      "line": 114,
+      "symbol": "Settings save",
+      "sha256": "9ad6b824d014389235e6d9cc4ed2340a5a6fcd5076fec37a1d1c26b43ac0f021"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/first-run.html",
+      "line": 59,
+      "symbol": "setup OS theme override",
+      "sha256": "fb3bd39f208df42f7b15546ff139c7e4894392919286e140d1c08728fe8f71bd"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/fleet-model.html",
+      "line": 129,
+      "symbol": "unresolved theme Light fallback",
+      "sha256": "7d0f38b19303f1eb0264a6cacb4a24eccf5950f4bda138de190948a18108752b"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/shell.html",
+      "line": 2,
+      "symbol": "first-frame Light",
+      "sha256": "bb287e87f0501768a35d80455e67a4b3335aea0ad1e70d1e7528bd5b54297bce"
+    },
+    {
+      "path": "src/poolhouse/fleet/initial_setup_routes.py",
+      "line": 76,
+      "symbol": "governance shortcut to replace",
+      "sha256": "783b19278f86edb2da70b76b686a4fd8529f60cf7eed8a6eacdbcc59c4653423"
+    },
+    {
+      "path": "src/poolhouse/fleet/setup_routes.py",
+      "line": 90,
+      "symbol": "setup preference/completion",
+      "sha256": "02be36a0d01fcae7a3aa18db247bf65c6a003795c26a43a95bc91cf9a5f5a5d0"
+    },
+    {
+      "path": "src/poolhouse/fleet/setup_preparation_routes.py",
+      "line": 26,
+      "symbol": "model request inspect cancel",
+      "sha256": "88541fb0f617dfe48885c5d6ad2d8706c9ad080dfd8f1d1026dd526f75c0295d"
+    },
+    {
+      "path": "app/src-tauri/src/main.rs",
+      "line": 45,
+      "symbol": "close choice and renewal",
+      "sha256": "be1e4d842b67e6c1817a83afa344a52bf95aee0da109f5efd2173a38a3ff157f"
+    },
+    {
+      "path": "app/src-tauri/src/settings.rs",
+      "line": 28,
+      "symbol": "independent settings writer",
+      "sha256": "d59241b8e18ab601b56e546b9037679aed980be9505cb31b219281a3f685e2f6"
+    },
+    {
+      "path": "app/src-tauri/src/window_size.rs",
+      "line": 38,
+      "symbol": "native frame clamp",
+      "sha256": "cceb87fea725c6efbf021385ac0e01f332b8de5bceacf576ea4e7de5ab6c6c70"
+    },
+    {
+      "path": "contracts/node/retained-features.json",
+      "line": 1,
+      "symbol": "retained inventory",
+      "sha256": "3a99a8d4856851ff01e9082829a6a2a1d9e00177ea8f2595efa279af43e2a592"
+    },
+    {
+      "path": "src/poolhouse/fleet/availability.py",
+      "line": 143,
+      "symbol": "Availability.open_at and may_start precedence",
+      "sha256": "80218a0c0ba33680243ae6733e13e05dc8ce4f575cb02f08149008ace347ccbc"
+    }
+  ],
+  "operations": [
+    {
+      "name": "settings.local.inspect",
+      "request": "SettingsReadRequest",
+      "response": "SettingsLocalDefaultsView",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "local-preferences-permission"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/settings.py",
+        "src/poolhouse/fleet/themes.py",
+        "src/poolhouse/fleet/web/components/settings-view.html"
+      ]
+    },
+    {
+      "name": "settings.local.replace",
+      "request": "SettingsLocalDefaultsReplaceRequest",
+      "response": "SettingsLocalDefaultsView",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "local-preferences-permission",
+        "compare-and-swap-resource-revision",
+        "validate-complete-value-before-atomic-commit",
+        "no-preference-grants-execution-authority",
+        "reauthorize-at-domain-commit"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/settings.py",
+        "src/poolhouse/fleet/themes.py",
+        "src/poolhouse/fleet/web/components/settings-view.html"
+      ]
+    },
+    {
+      "name": "settings.execution.inspect",
+      "request": "SettingsReadRequest",
+      "response": "SettingsExecutionPolicyView",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "device-execution-policy-permission"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/settings.py",
+        "src/poolhouse/fleet/themes.py",
+        "src/poolhouse/fleet/web/components/settings-view.html"
+      ]
+    },
+    {
+      "name": "settings.execution.replace",
+      "request": "SettingsExecutionPolicyReplaceRequest",
+      "response": "SettingsExecutionPolicyView",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "device-execution-policy-permission",
+        "compare-and-swap-resource-revision",
+        "validate-complete-value-before-atomic-commit",
+        "no-preference-grants-execution-authority",
+        "reauthorize-at-domain-commit"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/settings.py",
+        "src/poolhouse/fleet/themes.py",
+        "src/poolhouse/fleet/web/components/settings-view.html"
+      ]
+    },
+    {
+      "name": "settings.downloads.inspect",
+      "request": "SettingsReadRequest",
+      "response": "SettingsDownloadPolicyView",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "download-source-and-transfer-policy-permission"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/settings.py",
+        "src/poolhouse/fleet/themes.py",
+        "src/poolhouse/fleet/web/components/settings-view.html"
+      ]
+    },
+    {
+      "name": "settings.downloads.replace",
+      "request": "SettingsDownloadPolicyReplaceRequest",
+      "response": "SettingsDownloadPolicyView",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "download-source-and-transfer-policy-permission",
+        "compare-and-swap-resource-revision",
+        "validate-complete-value-before-atomic-commit",
+        "no-preference-grants-execution-authority",
+        "reauthorize-at-domain-commit"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/settings.py",
+        "src/poolhouse/fleet/themes.py",
+        "src/poolhouse/fleet/web/components/settings-view.html"
+      ]
+    },
+    {
+      "name": "settings.updates.inspect",
+      "request": "SettingsReadRequest",
+      "response": "SettingsUpdatePolicyView",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "packaging-update-policy-permission"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/settings.py",
+        "src/poolhouse/fleet/themes.py",
+        "src/poolhouse/fleet/web/components/settings-view.html"
+      ]
+    },
+    {
+      "name": "settings.updates.replace",
+      "request": "SettingsUpdatePolicyReplaceRequest",
+      "response": "SettingsUpdatePolicyView",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "packaging-update-policy-permission",
+        "compare-and-swap-resource-revision",
+        "validate-complete-value-before-atomic-commit",
+        "no-preference-grants-execution-authority",
+        "reauthorize-at-domain-commit"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/settings.py",
+        "src/poolhouse/fleet/themes.py",
+        "src/poolhouse/fleet/web/components/settings-view.html"
+      ]
+    },
+    {
+      "name": "settings.interpreters.inspect",
+      "request": "SettingsReadRequest",
+      "response": "SettingsInterpreterPolicyView",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "extension-interpreter-policy-permission"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/settings.py",
+        "src/poolhouse/fleet/themes.py",
+        "src/poolhouse/fleet/web/components/settings-view.html"
+      ]
+    },
+    {
+      "name": "settings.interpreters.replace",
+      "request": "SettingsInterpreterPolicyReplaceRequest",
+      "response": "SettingsInterpreterPolicyView",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "extension-interpreter-policy-permission",
+        "compare-and-swap-resource-revision",
+        "validate-complete-value-before-atomic-commit",
+        "no-preference-grants-execution-authority",
+        "reauthorize-at-domain-commit"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/settings.py",
+        "src/poolhouse/fleet/themes.py",
+        "src/poolhouse/fleet/web/components/settings-view.html"
+      ]
+    },
+    {
+      "name": "settings.features.inspect",
+      "request": "SettingsReadRequest",
+      "response": "SettingsFeaturesView",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "per-feature-policy-permission"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/settings.py",
+        "src/poolhouse/fleet/themes.py",
+        "src/poolhouse/fleet/web/components/settings-view.html"
+      ]
+    },
+    {
+      "name": "settings.features.replace",
+      "request": "SettingsFeaturesReplaceRequest",
+      "response": "SettingsFeaturesView",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "per-feature-policy-permission",
+        "compare-and-swap-resource-revision",
+        "validate-complete-value-before-atomic-commit",
+        "no-preference-grants-execution-authority",
+        "reauthorize-at-domain-commit"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/settings.py",
+        "src/poolhouse/fleet/themes.py",
+        "src/poolhouse/fleet/web/components/settings-view.html"
+      ]
+    },
+    {
+      "name": "settings.availability.inspect",
+      "request": "SettingsReadRequest",
+      "response": "SettingsAvailabilityView",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "device-admission-policy-permission"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/settings.py",
+        "src/poolhouse/fleet/themes.py",
+        "src/poolhouse/fleet/web/components/settings-view.html"
+      ]
+    },
+    {
+      "name": "settings.availability.replace",
+      "request": "SettingsAvailabilityReplaceRequest",
+      "response": "SettingsAvailabilityView",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "device-admission-policy-permission",
+        "compare-and-swap-resource-revision",
+        "validate-complete-value-before-atomic-commit",
+        "no-preference-grants-execution-authority",
+        "reauthorize-at-domain-commit"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/settings.py",
+        "src/poolhouse/fleet/themes.py",
+        "src/poolhouse/fleet/web/components/settings-view.html"
+      ]
+    },
+    {
+      "name": "settings.watch",
+      "request": "SettingsWatchRequest",
+      "response": "SettingsEvent",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "permission-filter-every-event",
+        "cursor-principal-resource-generation-bound",
+        "reauthorize-before-delivery"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/settings.py",
+        "src/poolhouse/fleet/themes.py",
+        "src/poolhouse/fleet/web/components/settings-view.html"
+      ]
+    },
+    {
+      "name": "settings.appearance.bootstrap",
+      "request": "SettingsReadRequest",
+      "response": "SettingsResolvedAppearance",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "authenticated-launch-channel-and-installation",
+        "local-preferences-permission",
+        "saved-appearance-before-first-visible-frame",
+        "exact-sanitized-palette-dark-default"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/settings.py",
+        "src/poolhouse/fleet/themes.py",
+        "src/poolhouse/fleet/web/components/settings-view.html"
+      ]
+    },
+    {
+      "name": "startup.inspect",
+      "request": "SettingsReadRequest",
+      "response": "StartupView",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "startup-read-permission"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/ui.py"
+      ]
+    },
+    {
+      "name": "startup.change.request",
+      "request": "StartupChangeRequest",
+      "response": "StartupChangeView",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "startup-configure-permission",
+        "compare-and-swap-resource-revision",
+        "protected-helper-exact-transaction-approval",
+        "same-service-identity-all-modes",
+        "reauthorize-at-domain-commit"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/ui.py"
+      ]
+    },
+    {
+      "name": "startup.change.inspect",
+      "request": "StartupChangeGetRequest",
+      "response": "StartupChangeView",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "startup-read-permission"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/ui.py"
+      ]
+    },
+    {
+      "name": "startup.change.cancel",
+      "request": "StartupChangeCancelRequest",
+      "response": "StartupChangeView",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "startup-transaction-controller",
+        "compare-and-swap-resource-revision",
+        "durable-single-terminal-winner",
+        "verify-previous-effective-configuration-before-cancelled",
+        "committed-never-reported-cancelled"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/ui.py"
+      ]
+    },
+    {
+      "name": "startup.watch",
+      "request": "SettingsWatchRequest",
+      "response": "StartupEvent",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "startup-read-permission",
+        "cursor-principal-resource-generation-bound",
+        "reauthorize-before-delivery"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/ui.py"
+      ]
+    },
+    {
+      "name": "setup.inspect",
+      "request": "SettingsReadRequest",
+      "response": "SetupView",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "local-setup-progress-permission"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/initial_setup_routes.py",
+        "src/poolhouse/fleet/setup_routes.py"
+      ]
+    },
+    {
+      "name": "setup.notice.acknowledge",
+      "request": "SetupMutationRequest",
+      "response": "SetupView",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "local-setup-progress-permission",
+        "compare-and-swap-resource-revision",
+        "progress-flags-confer-no-authority-or-readiness"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/initial_setup_routes.py",
+        "src/poolhouse/fleet/setup_routes.py"
+      ]
+    },
+    {
+      "name": "setup.section.review",
+      "request": "SetupSectionReviewRequest",
+      "response": "SetupView",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "local-setup-progress-permission",
+        "compare-and-swap-resource-revision",
+        "progress-flags-confer-no-authority-or-readiness"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/initial_setup_routes.py",
+        "src/poolhouse/fleet/setup_routes.py"
+      ]
+    },
+    {
+      "name": "setup.complete",
+      "request": "SetupMutationRequest",
+      "response": "SetupView",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "local-setup-progress-permission",
+        "compare-and-swap-resource-revision",
+        "progress-flags-confer-no-authority-or-readiness"
+      ],
+      "source_sites": [
+        "src/poolhouse/fleet/initial_setup_routes.py",
+        "src/poolhouse/fleet/setup_routes.py"
+      ]
+    },
+    {
+      "name": "window.close.inspect",
+      "request": "SettingsWindowCloseRequest",
+      "response": "SettingsWindowCloseView",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "actual-current-native-window",
+        "local-preferences-permission"
+      ],
+      "source_sites": [
+        "app/src-tauri/src/main.rs"
+      ]
+    },
+    {
+      "name": "window.close.choose",
+      "request": "SettingsWindowChooseRequest",
+      "response": "SettingsWindowCloseView",
+      "authorization": [
+        "authenticated-current-principal",
+        "exact-resource-generation",
+        "no-existence-disclosure-before-authorization",
+        "actual-current-native-window",
+        "local-preferences-permission",
+        "compare-and-swap-resource-revision",
+        "exit-window-never-stops-service-or-removes-membership"
+      ],
+      "source_sites": [
+        "app/src-tauri/src/main.rs"
+      ]
+    }
+  ],
+  "semantics": {
+    "authority": "Declarations generate data only; node checks real principal and exact installation/resource generation. Resource revision alone never prevents reinstall/clone ABA. Each setting domain has separate permission; changed fields commit atomically after all checks. Context/output are defaults only and never grant capacity or admission.",
+    "theme": "Dark default; authenticated node launch channel supplies saved resolved appearance with installation/resource generation before first visible frame. Palette exact fixed keys and six digit hex, custom IDs unique lowercase 1-32 and not builtins; active custom must exist; no CSS or URL values. No OS theme setup override.",
+    "startup": "Default neither. One dedicated unprivileged service identity/storage/DeviceId for boot, login and app/API demand. Owner approval is helper-verified exact immutable transaction, never a public approval flag. Cancellation and commit have one durable terminal winner. Cancelled only after previous effective OS configuration and identity are restored and verified. Failure to restore is recovery_required. After committed cancellation reports already_committed. Requested and effective remain distinct. Effective observations are known (verified mode and exact identity) or unknown (reason, observation time, optional explicitly last-known configuration). Failed probe/rollback never invents an effective mode. Cancelled requires known verified restored observation; unknown configuration is recovery_required. Before applying any change, require a verified known prior effective configuration and exact service identity; unknown baseline refuses mutation as recovery_required/unavailable, never blind overwrite.",
+    "schedule": "Node-observed IANA zone in protected settings; zone must be catalogued/validated. Recurring local wall-clock half-open intervals; end<=start wraps to following day with start day owning tail; equal endpoints means 24 hours. DST nonexistent occurrences skipped; repeated wall minutes covered in both occurrences. Day set nonempty and unique. Local clock/zone observation changes require recomputation before admission; client defaults cannot select zone silently. Matching explicit available windows override matching unavailable windows; no matching window defaults open. Manual pause denies admission; a live reservation denies admission to callers other than its node-authenticated holder before evaluating schedule and cannot be overridden by an available window. These local schedule choices never bypass node resource admission.",
+    "setup": "Progress flags/notice acknowledgement never authorize membership, approval, workload readiness or downloads. Rerun setup reads same settings operations; governance controls invoke governance operations.",
+    "streams": "Ordered resource stream; opaque cursors bind actual principal, permissions, resource and installation generation. Reauthorize every event; expired cursor produces cursor_expired and fresh inspect; disconnect detaches only.",
+    "durability": "Node sole writer; complete validation then atomic CAS commit; crash-safe principal/resource-generation/payload-bound request deduplication returns identical prior result. Unknown fields rejected. All borrowed observations are data, not authority. Reject duplicate semantic keys even if values differ: feature choices by feature_id, interpreter overrides by simulator, custom themes by id, setup sections by section. Generic full-item list uniqueness is insufficient."
+  },
+  "retained_mappings": {
+    "settings_controls": [
+      "appearance/custom themes",
+      "advanced visibility",
+      "Studio undo depth",
+      "context/output defaults",
+      "pause behavior",
+      "window close",
+      "automatic model downloads and sources",
+      "automatic update selection",
+      "startup modes",
+      "availability windows",
+      "display name and labels",
+      "download slots",
+      "simulator interpreter references",
+      "feature selections"
+    ],
+    "cross_domain": [
+      "pool_mode/initial automatic governance -> governance request/inspect/cancel/watch; no legacy trust migration",
+      "credentials -> credential list/put/remove protected domain",
+      "libraries -> extension install/remove jobs",
+      "model selection/download/readiness -> models/jobs domain",
+      "runtime status/install/repair -> packaging domain",
+      "updates check/install/channel/branch/source -> validated packaging UpdatePolicyId catalogue",
+      "uninstall inventory/selection/transaction -> packaging domain",
+      "project picker/default/create -> projects and protected picker domain",
+      "recovery -> protected recovery domain",
+      "renew_session launch ticket -> authenticated IPC reconnect; no retained ticket minting",
+      "native frame restore/clamp -> shell local presentation state; no authority handle"
+    ],
+    "actual_callers": [
+      "ui0045",
+      "ui0074",
+      "ui0137",
+      "ui0138",
+      "ui0207",
+      "ui0208",
+      "ui0044-ui0066",
+      "ui0029",
+      "ui0076"
+    ]
+  },
+  "unresolved_constraints": [
+    "No runtime dispatch, adapters, protected helper, source catalogue or authorization implementation supplied; H/K/P/I not accepted.",
+    "InterpreterId/FeatureId/UpdatePolicyId are node-issued catalogue references, not arbitrary paths, names, repository URLs or permission. Catalogue lifecycle and packaging source policy belong to owner domains.",
+    "Transfer count bound 1024 is wire bound only; admission applies actual device limits and no compute authority is implied.",
+    "Simulator identifier currently bounded label pending extensions canonical SimulatorId; interpreter override duplicates must be rejected.",
+    "Custom theme regex, RGB regex, reference integrity, unique IDs, visible label controls and bounded list aggregate semantics require validators/vectors in later integration.",
+    "Window geometry remains existing local shell presentation ownership; public frame operation proposal deferred pending typed signed coordinates/monitor representation.",
+    "Suggestions require typed per-section reason/choices and catalogue evidence; not encoded as an untyped bag.",
+    "Independent domain_attack_review found startup unknown-observation and schedule precedence gaps; corrected with known/unknown union, verified prior baseline and explicit precedence/semantic-key requirements. Reviewer approved declaration-only integration; full runtime attacks/regressions and platform proof remain outstanding."
+  ]
+}
