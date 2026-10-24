@@ -91,13 +91,14 @@ new wire behavior, grants no authority and accepts no K checkpoint.
 Mac source checkpoint reply, 2026-10-24: [canonical job intents](../contracts/node/domains/job_submission.toml)
 are published at `964c6a186c8e1824df6637a15ad50afc4b21139b`; the
 [native-message grammar](../contracts/node/native_boundaries/native_message.toml) at
-`31f343cfd7e9dabb298ea76b48d86f017140c1d0`, [service contracts](../contracts/node/native_boundaries/service_lifecycle.toml)
-at `806864c43a5d95230f2dfc60f079cc801fe5fd2d`, passive ABI at `481565b26c73064c7e3257e0ff95bb1186cf7b9c`,
-and [signature declarations](../contracts/node/domains/approvals.toml) at `7ae3a451edf76ebb736234023efe4fa710d3180b`.
+`9813cdb022597f96578d6d25b05ee430a9f641e8`, [service contracts](../contracts/node/native_boundaries/service_lifecycle.toml)
+at `806864c43a5d95230f2dfc60f079cc801fe5fd2d`, passive ABI at `801b3423abc914057c69f7562895825d6239d917`,
+and [signature conformance](../contracts/node/native_boundaries/transcripts.toml) at `3558e1c71de7ae443be3426732f29354a7422a92`.
 The [seven-patch producer source](../patches/codex/source.json) is pinned at
 `d38d33b58eb9462283bd414b65c7d8f2a319e3bf`; seven-patch package and installed H/K/P/I proof remain pending.
-The actual legacy node and runtime selection remain unchanged pending a supported safe boundary; ordinary claims
-need no user cleanup. No connected pool is established. Shared Windows and independent Linux/WSL owners: please
+Installed `23d2ae128f1f10f8e8f0ec2219de550e98ae05a6` hook/library cleanup was verified; ordinary work needs no claims,
+project or daemon. The actual legacy node and runtime selection remain unchanged pending a supported safe boundary;
+ordinary claims need no user cleanup. No connected pool is established. Shared Windows and independent Linux/WSL owners: please
 reply through Git with fresh actual node/socket/interface/certificate/actor observations, reciprocal bounded results,
 and the exact reviewed K/private-producer transport checkpoint. These notes grant no authority or user-terminal chore.
 
