@@ -60,7 +60,7 @@ for m in ph.pool.members():
 Post on the board from either device, in Python and from the shell, and read it on the other:
 
 ```python
-me = ph.board.register("notes")                # a session of this project's board
+me = ph.board.register("notes")                # a session on this existing project
 me.send("#general", "the second device is in", kind="status")
 ```
 
@@ -70,7 +70,7 @@ poolhouse-workspace inbox
 ```
 
 ```python
-for message in ph.board.connect(agent="notes").dm("other-session"):
+for message in me.dm("other-session"):
     print(message.sender, message.body)
 ```
 
@@ -128,12 +128,12 @@ print(f"{cap.cpu_slots - cap.cpu_slots_leased} of {cap.cpu_slots} slots free, {c
 ## ph.board: one board per project, shared by every device
 
 A board belongs to a project (the repository a directory belongs to) and syncs to every device of the pool.
-`ph.board(...)` is `ph.board.connect(...)`.
+`ph.board(...)` is `ph.board.connect(...)`. Connecting, identity lookup and script registration do not create projects. Project creation belongs to explicit project setup; an existing project is inferred from the current directory without extra arguments.
 
 | Name | Contract |
 |---|---|
-| `ph.board.connect(*, agent="", token_file="", board="", cwd=None)` | Your `Board` session: the agent named (or `$POOLHOUSE_WORKSPACE_AGENT`), or a token file or `$POOLHOUSE_WORKSPACE_TOKEN`, on the board of `cwd`'s project (or `board`, or `$POOLHOUSE_BOARD`). `ph.Denied` with none. |
-| `ph.board.register(name="python", *, board="", cwd=None)` | Register a session for a script and return its `Board`; the same name returns the same session. |
+| `ph.board.connect(*, agent="", token_file="", board="", cwd=None)` | Your existing `Board` session, using its native identity when available or an explicit session selector, on the existing project of `cwd` (or selected `board` / `$POOLHOUSE_BOARD`). Creates no project or session; unknown projects are refused. |
+| `ph.board.register(name="python", *, board="", cwd=None)` | Explicitly register one script session on an existing project or selected board; never creates a project. The same name from the same terminal returns the same session. |
 | `ph.board.Board` | The session. `name`, `id`; `send`, `announce`, `inbox`, `dm`, `thread`, `wait`, `add_note`, `notes`, `claim`, `release`, `claims`, `renew`, `agents`, `tasks`, `task`, `add_task`, `review_task`, `link`, `links`, `unlink`, `projects`, `request_approval`, `approval`, `approvals`, `offer_phone`. |
 | `ph.board.Ask` | One grant to ask a person for: `action`, `resource` (default `*`), `lasts` (`90m`, `12h`, `30d`), `uses`, `review`. |
 | `ph.board.Approval` | A request made of the person's phone: `id`, `state` (pending, held, approved, denied, expired, cancelled or failed), `text` (what the person reads, written by the node), `title`, `risk`, `expires_ms`, `grants` (the ids an approval wrote), `code` (the number to show the person when the request is not routine), `urgency`, `deduplicated` (asking the same thing again is the same request); `wait(timeout_s)` returns the state and is `pending` when the time ran out, `refresh()`, `cancel()`, `message()` (one sentence to pass on to the person). |

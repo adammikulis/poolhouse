@@ -430,10 +430,10 @@ def register(client: Client, board: str, native: Native, parent_token: str = "",
 
 def find(harness: str, native_id: str, *, cwd: Path | None = None, client: Client | None = None) -> str:
     """The name the node gave the native session ``native_id`` of ``harness`` on this directory's board,
-    or an empty string when it has none."""
+    or an empty string when it has none; never creates a project or session."""
     node = client or Client()
     try:
-        return str(node.call("session_lookup", place.resolve(node, cwd), harness=harness, session=native_id)["name"])
+        return str(node.call("session_lookup", place.existing(node, cwd), harness=harness, session=native_id)["name"])
     except Denied:
         return ""
 
@@ -515,12 +515,13 @@ def _codex(node: Client, where: str, native: str, agent: str, token_file: str) -
 
 def connect(*, token_file: str = "", agent: str = "", board: str = "", cwd: Path | None = None,
             client: Client | None = None) -> Session:
-    """The caller's session on this directory's board. Codex resolves its registered native thread first
+    """Connect on an existing project or selected board without creating a project or session.
+    Codex resolves its registered native thread first
     and requires supplied selectors to match. Other harnesses use their subagent context, token file,
     named workspace session, token environment or registered native session, in that order.
     """
     node = client or Client()
-    where = place.resolve(node, cwd, board)
+    where = place.existing(node, cwd, board)
     if native := os.environ.get("CODEX_THREAD_ID", "").strip():
         return _codex(node, where, native, agent, token_file)
     if native := os.environ.get(SUBAGENT_ENV, "").strip():
