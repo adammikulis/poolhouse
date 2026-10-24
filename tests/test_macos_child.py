@@ -28,11 +28,11 @@ def _logs(directory, arguments, pid, output):
 
 def _execute(arguments, directory, environment):
     """Bounded own group; retain the unreaped leader until group cleanup."""
+    import resource
+
     only_leader = runpy.run_path(str(ROOT / "patches/codex/macos/prepare_candidate.py"))["_only_unreaped_leader"]
 
     def no_core():
-        import resource
-
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
     process = subprocess.Popen(arguments, cwd=directory, env=environment, stdin=subprocess.DEVNULL,
