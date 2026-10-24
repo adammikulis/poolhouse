@@ -1,5 +1,7 @@
 //! Local writer accounting only. Other sources remain uncovered; no production drain
 //! controller, complete inventory, quiescence result or cutover witness exists here.
+//! Before enabling a controller, nested admitted network operations need reviewed
+//! same-operation continuation: another new_effect check must not spend approval twice.
 use std::sync::{Arc, Mutex, MutexGuard};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -37,6 +39,10 @@ impl Registry {
         // include read-side gov_tick/names.touch; production stays Running.
         self.enter(Source::LocalApi, Activity::NewEffect)
     }
+    pub(crate) fn maintenance(&self, source: Source) -> Result<Writer, Refusal> { self.enter(source, Activity::Maintenance) }
+    pub(crate) fn new_effect(&self, source: Source) -> Result<Writer, Refusal> { self.enter(source, Activity::NewEffect) }
+    #[cfg(test)]
+    pub(crate) fn active_writer_count_for_test(&self) -> usize { self.state.lock().unwrap().writers }
     pub(crate) fn local_maintenance(&self) -> Result<Writer, Refusal> { self.enter(Source::LocalApi, Activity::Maintenance) }
     pub(crate) fn lease_writer(&self) -> Result<Writer, Refusal> { self.enter(Source::LeaseScheduler, Activity::Maintenance) }
     pub(crate) fn reserve_grants(&self) -> Result<GrantReservation<'_>, Refusal> {
