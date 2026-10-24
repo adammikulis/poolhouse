@@ -1,5 +1,5 @@
 {
-  "schema_sha256": "3c70382d5bf16e569e58d124c43576425307cab9b8d726bae29f506cb13cc0bd",
+  "schema_sha256": "9c0f703a5e89806f0d0238f6b8433e8d5bb55b4b5a7ce40cb91d963cb082354a",
   "decoded_values": "untrusted-data",
   "device_id": {
     "public_key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
@@ -486,6 +486,8 @@
     "JobFrozenClassifierPlan",
     "JobFrozenRepairPlan",
     "JobFrozenRuntimeSelectionPlan",
+    "JobFrozenTestingCollectionPlan",
+    "JobFrozenTestingPlan",
     "LocalAuthorityCustodyDescription",
     "LocalAuthorityNativeInitiationDescription",
     "ResourceAdmissionAccountingRecord",
@@ -503,7 +505,7 @@
     "StudioWorkerToolCall",
     "WorkerEvent",
     "WorkerStartCommand",
-    "JobFrozenPlan",
+    "JobTestingPlanStages",
     "LocalAuthorityCredentialAction",
     "StudioWorkerDescriptorValue",
     "StudioWorkerNodeDescriptorValue",
@@ -513,6 +515,7 @@
     "StudioWorkerOptionalLora",
     "WorkerEventFrame",
     "WorkerNodeCommand",
+    "JobFrozenPlan",
     "LocalAuthorityCredentialOperation",
     "StudioWorkerDescriptor",
     "StudioWorkerNodeDescriptor",
