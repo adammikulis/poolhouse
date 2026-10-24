@@ -1,0 +1,305 @@
+version = 1
+status = "incomplete-proposal"
+visibility = "crate-private-sealed"
+serialization = "forbidden"
+native_graph = "NativeInstallationGraph"
+effect_graph = "EffectGraph"
+transcript_profile = "unresolved-no-production-validation"
+requirements = ["activate-does-not-implicitly-configure-startup-mode", "activation-authorization-is-installed-supervisor-native-os-caller-admission-not-a-public-boolean", "activation-only-starts-or-attaches-owned-service-and-grants-no-domain-or-installation-right", "activation-requires-admitted-native-os-launch-rights-not-raw-channel-facts-alone", "activation-unknown-retains-actual-attempt-channel-service-and-cleanup-owner", "authorization-alone-selects-owned-service-no-independent-target-argument", "cancel-and-commit-use-one-atomic-terminal-fence", "cancelled-requires-restored-and-verified-prior-effective-state", "cold-start-activation-needs-no-running-node-effect-permit-or-caller-message", "commit-winner-is-reported-committed-after-cancel-race", "configuration-and-protected-graphs-inherit-same-installation-type-and-owner-scope", "consume-and-cancel-are-atomic-and-one-shot", "consume-revalidates-current-installation-head-generation-nonce-and-expiry", "disconnect-owner-code-or-authority-change-retains-cancellation-custody", "drop-is-not-rollback-reap-or-domain-completion", "fresh-authentication-is-opaque-and-not-a-dialog-boolean", "helper-does-not-schedule-or-discover-product-work", "inspection-is-passive-and-does-not-create-projects-claims-identities-or-consent", "minimal-inspection-and-activation-have-no-producer-effect-or-protected-profile-prerequisite", "neither-allows-ordinary-authorized-attach-and-demand-activation-without-product-approval", "neither-controls-scheduling-not-authorized-demand-availability", "no-platform-implementation-issuer-or-native-acceptance-claim", "no-v1-fallback-no-json-proof-no-arbitrary-digest-signing", "normal-policy-authorization-does-not-imply-a-protected-presentation", "one-owned-service-installation-endpoint-storage-and-principal-for-all-modes", "one-pending-startup-change-per-owned-service", "only-node-owned-opaque-authorization-can-prepare-a-change", "os-consent-denial-withdrawal-and-storage-unavailability-remain-distinct", "os-consent-is-not-persisted-as-governed-approval", "os-registration-is-not-effective-mode-service-readiness-or-product-approval", "owned-recovery-origin-retains-original-phase-snapshot-authentication-and-native-resources", "passive-app-and-plist-binding-is-fixed-planned-and-currently-absent", "passive-inspection-resumes-existing-pending-operation-without-reprompt", "passive-observation-never-registers-starts-unregisters-prompts-or-grants-rights", "passive-preinstall-observation-needs-no-installation-or-service-capability", "passive-registration-eligibility-is-not-identity-principal-readiness-mode-or-authority", "passive-timestamp-is-not-freshness-authority-and-reason-is-bounded-value-free", "prepare-binds-original-operation-generation-request-revision-and-prior-effective-state", "protected-result-binds-current-owner-session-helper-code-and-visible-snapshot", "protected-result-binds-exact-original-scoped-operation-and-native-message", "requires-approval-os-status-does-not-distinguish-pending-denied-or-withdrawn-consent", "same-native-effect-and-invariant-owner-scope-through-every-handle", "service-scope-is-generative-invariant-and-identity-revalidated-before-effects", "storage-unavailability-cannot-project-ready", "unknown-retains-operation-service-custody-and-cleanup-obligation", "unresolved-drop-transfers-custody-to-owner-and-never-settles-domain-state", "unresolved-transcript-profile-forbids-production-validation"]
+
+[passive]
+trait = "NativeServiceAvailability"
+input = "none"
+authority = "untrusted-observation-only"
+containing_app_identifier = "app.poolhouse.app"
+bundled_plist = "Contents/Library/LaunchDaemons/app.poolhouse.node.plist"
+binding_status = "planned-currently-absent-not-installed-service-identity"
+fields = [{name = "availability", type = "PassiveServiceAvailability"}, {name = "observed_at", type = "UnixMicros"}, {name = "reason", type = "SafeMessage"}]
+os_status_mapping = {not_registered = "NotRegistered", enabled = "RegisteredEligible", requires_approval = "RequiresConsent", not_found = "NotFound", unrecognized_or_error = "Unknown"}
+
+[[graph]]
+name = "ActivationGraph"
+inherits = ""
+native = "NativeInstallationGraph"
+effect = false
+
+[[graph]]
+name = "StartupGraph"
+inherits = "ActivationGraph"
+native = "NativeGraph"
+effect = true
+
+[[graph]]
+name = "ProtectedGraph"
+inherits = "StartupGraph"
+native = "NativeGraph"
+effect = false
+
+[[role]]
+name = "ServiceRuntime"
+graph = "ActivationGraph"
+getters = [{name = "node_identity", type = "NodeIdentity"}, {name = "endpoint", type = "Endpoint"}, {name = "storage", type = "Storage"}, {name = "principal", type = "native.ConfiguredServicePrincipal"}]
+retains = []
+
+[[role]]
+name = "Endpoint"
+graph = "ActivationGraph"
+getters = []
+retains = []
+
+[[role]]
+name = "Storage"
+graph = "ActivationGraph"
+getters = []
+retains = []
+
+[[role]]
+name = "NormalAuthorization"
+graph = "StartupGraph"
+getters = [{name = "owner", type = "effect.Owner"}, {name = "permit", type = "effect.Permit"}, {name = "operation", type = "effect.Operation"}, {name = "caller", type = "native.Caller"}, {name = "message", type = "native.CallerMessage"}]
+retains = []
+
+[[role]]
+name = "StartupAuthorization"
+graph = "StartupGraph"
+getters = [{name = "normal", type = "NormalAuthorization"}, {name = "request", type = "StartupChangeRequest"}, {name = "operation_id", type = "OperationId"}, {name = "previous_effective", type = "StartupServiceObservation"}]
+retains = [{name = "normal", type = "NormalAuthorization"}]
+
+[[role]]
+name = "ServiceInspection"
+graph = "ActivationGraph"
+getters = [{name = "view", type = "StartupView"}, {name = "os_status", type = "OsServiceStatus"}, {name = "consent", type = "OsConsentState"}, {name = "readiness", type = "ServiceReadiness"}]
+retains = []
+
+[[role]]
+name = "InspectionUnknown"
+graph = "ActivationGraph"
+getters = [{name = "reason", type = "SafeMessage"}]
+retains = []
+
+[[role]]
+name = "ServiceActivation"
+graph = "ActivationGraph"
+getters = [{name = "authorization", type = "ActivationAuthorization"}, {name = "view", type = "StartupView"}, {name = "readiness", type = "ServiceReadiness"}]
+retains = [{name = "authorization", type = "ActivationAuthorization"}]
+
+[[role]]
+name = "ActivationRecovery"
+graph = "ActivationGraph"
+getters = [{name = "authorization", type = "ActivationAuthorization"}, {name = "attempt", type = "ActivationAttempt"}, {name = "reason", type = "SafeMessage"}]
+retains = [{name = "authorization", type = "ActivationAuthorization"}, {name = "attempt", type = "ActivationAttempt"}]
+
+[[role]]
+name = "StartupPending"
+graph = "StartupGraph"
+getters = [{name = "authorization", type = "StartupAuthorization"}, {name = "view", type = "StartupChangeView"}, {name = "consent", type = "OsConsentState"}, {name = "cleanup", type = "CleanupObligation"}]
+retains = [{name = "authorization", type = "StartupAuthorization"}]
+
+[[role]]
+name = "StartupRecovery"
+graph = "StartupGraph"
+getters = [{name = "authorization", type = "StartupAuthorization"}, {name = "view", type = "StartupChangeView"}, {name = "cleanup", type = "CleanupObligation"}, {name = "reason", type = "SafeMessage"}]
+retains = [{name = "original", type = "StartupRecoveryOrigin"}]
+
+[[role]]
+name = "StartupTerminal"
+graph = "StartupGraph"
+getters = [{name = "authorization", type = "StartupAuthorization"}, {name = "view", type = "StartupChangeView"}]
+retains = [{name = "authorization", type = "StartupAuthorization"}]
+
+[[role]]
+name = "CleanupObligation"
+graph = "StartupGraph"
+getters = [{name = "operation_id", type = "OperationId"}]
+retains = []
+
+[[role]]
+name = "ProtectedAuthorization"
+graph = "ProtectedGraph"
+getters = [{name = "normal", type = "NormalAuthorization"}, {name = "operation", type = "LocalAuthorityScopedOperation"}, {name = "owner_session", type = "OwnerSession"}]
+retains = [{name = "normal", type = "NormalAuthorization"}]
+
+[[role]]
+name = "OwnerSession"
+graph = "ProtectedGraph"
+getters = [{name = "caller", type = "native.Caller"}, {name = "message", type = "native.CallerMessage"}]
+retains = []
+
+[[role]]
+name = "VisibleSnapshot"
+graph = "ProtectedGraph"
+getters = [{name = "operation", type = "LocalAuthorityScopedOperation"}, {name = "owner_session", type = "OwnerSession"}, {name = "caller_message", type = "native.CallerMessage"}]
+retains = []
+
+[[role]]
+name = "FreshAuthentication"
+graph = "ProtectedGraph"
+getters = [{name = "helper_process", type = "native.Process"}, {name = "helper_code", type = "native.MeasuredAsset"}, {name = "owner_session", type = "OwnerSession"}, {name = "caller_message", type = "native.CallerMessage"}]
+retains = []
+
+[[role]]
+name = "ProtectedPrepared"
+graph = "ProtectedGraph"
+getters = [{name = "authorization", type = "ProtectedAuthorization"}, {name = "snapshot", type = "VisibleSnapshot"}, {name = "cleanup", type = "CleanupObligation"}]
+retains = [{name = "authorization", type = "ProtectedAuthorization"}, {name = "snapshot", type = "VisibleSnapshot"}]
+
+[[role]]
+name = "ProtectedAuthenticated"
+graph = "ProtectedGraph"
+getters = [{name = "prepared", type = "ProtectedPrepared"}, {name = "fresh_authentication", type = "FreshAuthentication"}]
+retains = [{name = "prepared", type = "ProtectedPrepared"}, {name = "fresh_authentication", type = "FreshAuthentication"}]
+
+[[role]]
+name = "ProtectedRecovery"
+graph = "ProtectedGraph"
+getters = [{name = "authorization", type = "ProtectedAuthorization"}, {name = "observation", type = "LocalAuthorityBoundObservation"}, {name = "cleanup", type = "CleanupObligation"}]
+retains = [{name = "original", type = "ProtectedRecoveryOrigin"}]
+
+[[role]]
+name = "ProtectedConsumed"
+graph = "ProtectedGraph"
+getters = [{name = "authorization", type = "ProtectedAuthorization"}, {name = "observation", type = "LocalAuthorityBoundObservation"}]
+retains = [{name = "original", type = "ProtectedAuthenticated"}]
+
+[[role]]
+name = "ProtectedCancelled"
+graph = "ProtectedGraph"
+getters = [{name = "authorization", type = "ProtectedAuthorization"}, {name = "observation", type = "LocalAuthorityBoundObservation"}]
+retains = [{name = "original", type = "ProtectedRecoveryOrigin"}]
+
+[[role]]
+name = "ActivationAuthorization"
+graph = "ActivationGraph"
+getters = [{name = "installation", type = "native.Installation"}, {name = "channel", type = "native.RawChannel"}, {name = "principal", type = "native.ConfiguredOwnerPrincipal"}]
+retains = []
+
+[[role]]
+name = "ActivationAttempt"
+graph = "ActivationGraph"
+getters = [{name = "channels", type = "slice.native.RawChannel"}, {name = "processes", type = "slice.native.Process"}, {name = "cleanup", type = "ActivationCleanup"}]
+retains = []
+
+[[role]]
+name = "ActivationCleanup"
+graph = "ActivationGraph"
+getters = []
+retains = []
+
+[[observation]]
+name = "OsServiceStatus"
+variants = ["NotRegistered", "RegisteredEligible", "RequiresConsent", "NotFound", "Unknown"]
+
+[[observation]]
+name = "OsConsentState"
+variants = ["NotRequired", "Pending", "Satisfied", "Denied", "Withdrawn", "Unavailable", "Unknown"]
+
+[[observation]]
+name = "ServiceReadiness"
+variants = ["Ready", "NotRunning", "StorageUnavailable", "Unknown"]
+
+[[observation]]
+name = "PassiveServiceAvailability"
+variants = ["BindingUnavailable", "PlistAbsent", "Unverified", "NotRegistered", "RegisteredEligible", "RequiresConsent", "NotFound", "Unknown"]
+
+[[outcome]]
+name = "ServiceProgress"
+graph = "StartupGraph"
+variants = [{name = "Pending", role = "StartupPending"}, {name = "Committed", role = "StartupTerminal"}, {name = "Unknown", role = "StartupRecovery"}]
+
+[[outcome]]
+name = "ServicePendingState"
+graph = "StartupGraph"
+variants = [{name = "Pending", role = "StartupPending"}, {name = "Unknown", role = "StartupRecovery"}]
+
+[[outcome]]
+name = "ServiceCancellation"
+graph = "StartupGraph"
+variants = [{name = "Committed", role = "StartupTerminal"}, {name = "RestoredCancelled", role = "StartupTerminal"}, {name = "Unknown", role = "StartupRecovery"}]
+
+[[outcome]]
+name = "ProtectedPresentation"
+graph = "ProtectedGraph"
+variants = [{name = "Pending", role = "ProtectedPrepared"}, {name = "Authenticated", role = "ProtectedAuthenticated"}, {name = "Cancelled", role = "ProtectedCancelled"}, {name = "Unknown", role = "ProtectedRecovery"}]
+
+[[outcome]]
+name = "ProtectedPendingState"
+graph = "ProtectedGraph"
+variants = [{name = "Prepared", role = "ProtectedPrepared"}, {name = "Authenticated", role = "ProtectedAuthenticated"}, {name = "Unknown", role = "ProtectedRecovery"}]
+
+[[outcome]]
+name = "ProtectedCancellation"
+graph = "ProtectedGraph"
+variants = [{name = "Committed", role = "ProtectedConsumed"}, {name = "Cancelled", role = "ProtectedCancelled"}, {name = "Unknown", role = "ProtectedRecovery"}]
+
+[[outcome]]
+name = "StartupRecoveryOrigin"
+graph = "StartupGraph"
+variants = [{name = "Authorization", role = "StartupAuthorization"}, {name = "Pending", role = "StartupPending"}]
+
+[[outcome]]
+name = "ProtectedRecoveryOrigin"
+graph = "ProtectedGraph"
+variants = [{name = "Authorization", role = "ProtectedAuthorization"}, {name = "Prepared", role = "ProtectedPrepared"}, {name = "Authenticated", role = "ProtectedAuthenticated"}]
+
+[[method]]
+owner = "inspection"
+name = "inspect"
+arguments = [{name = "service", type = "ServiceScope", ownership = "borrow"}]
+result = "ServiceInspection"
+failure = "InspectionUnknown"
+
+[[method]]
+owner = "activation"
+name = "activate"
+arguments = [{name = "authorization", type = "ActivationAuthorization", ownership = "move"}]
+result = "ServiceActivation"
+failure = "ActivationRecovery"
+
+[[method]]
+owner = "startup"
+name = "prepare"
+arguments = [{name = "authorization", type = "StartupAuthorization", ownership = "move"}]
+result = "StartupPending"
+failure = "StartupRecovery"
+
+[[method]]
+owner = "startup"
+name = "apply"
+arguments = [{name = "pending", type = "StartupPending", ownership = "move"}]
+result = "ServiceProgress"
+failure = ""
+
+[[method]]
+owner = "startup"
+name = "cancel"
+arguments = [{name = "pending", type = "ServicePendingState", ownership = "move"}]
+result = "ServiceCancellation"
+failure = ""
+
+[[method]]
+owner = "protected"
+name = "prepare"
+arguments = [{name = "authorization", type = "ProtectedAuthorization", ownership = "move"}]
+result = "ProtectedPrepared"
+failure = "ProtectedRecovery"
+
+[[method]]
+owner = "protected"
+name = "present"
+arguments = [{name = "prepared", type = "ProtectedPrepared", ownership = "move"}]
+result = "ProtectedPresentation"
+failure = ""
+
+[[method]]
+owner = "protected"
+name = "consume"
+arguments = [{name = "authenticated", type = "ProtectedAuthenticated", ownership = "move"}]
+result = "ProtectedConsumed"
+failure = "ProtectedRecovery"
+
+[[method]]
+owner = "protected"
+name = "cancel"
+arguments = [{name = "pending", type = "ProtectedPendingState", ownership = "move"}]
+result = "ProtectedCancellation"
+failure = ""

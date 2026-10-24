@@ -605,3 +605,467 @@ pub(crate) const UNRESOLVED_NATIVE_PROFILES: &[(&str, &[&str])] = &[
 ];
 }
 pub(crate) use native_projection::*;
+// Dormant service/helper proposal. No issuer, platform implementation or protected transcript codec.
+mod service_projection {
+use std::{marker::PhantomData, sync::Arc};
+use super::{ConfiguredOwnerPrincipal, ConfiguredServicePrincipal, EffectGraph, NativeGraph, NativeInstallationGraph};
+use super::super::contract::{LocalAuthorityBoundObservation, LocalAuthorityScopedOperation, NodeIdentity, OperationId, SafeMessage, StartupChangeRequest, StartupChangeView, StartupServiceObservation, StartupView, UnixMicros};
+mod seal {
+pub trait ActivationGraph {} pub trait StartupGraph {} pub trait ProtectedGraph {}
+pub trait Availability {} pub trait Inspection {} pub trait Activation {} pub trait Configuration {} pub trait Helper {}
+pub trait ServiceRuntime {}
+pub trait Endpoint {}
+pub trait Storage {}
+pub trait NormalAuthorization {}
+pub trait StartupAuthorization {}
+pub trait ServiceInspection {}
+pub trait InspectionUnknown {}
+pub trait ServiceActivation {}
+pub trait ActivationRecovery {}
+pub trait StartupPending {}
+pub trait StartupRecovery {}
+pub trait StartupTerminal {}
+pub trait CleanupObligation {}
+pub trait ProtectedAuthorization {}
+pub trait OwnerSession {}
+pub trait VisibleSnapshot {}
+pub trait FreshAuthentication {}
+pub trait ProtectedPrepared {}
+pub trait ProtectedAuthenticated {}
+pub trait ProtectedRecovery {}
+pub trait ProtectedConsumed {}
+pub trait ProtectedCancelled {}
+pub trait ActivationAuthorization {}
+pub trait ActivationAttempt {}
+pub trait ActivationCleanup {}
+}
+pub(crate) trait ActivationGraph: seal::ActivationGraph + Sized {
+type Native: NativeInstallationGraph;
+type ServiceRuntime: ServiceRuntimeProjection<Self>;
+type Endpoint: EndpointProjection<Self>;
+type Storage: StorageProjection<Self>;
+type ServiceInspection: ServiceInspectionProjection<Self>;
+type InspectionUnknown: InspectionUnknownProjection<Self>;
+type ServiceActivation: ServiceActivationProjection<Self>;
+type ActivationRecovery: ActivationRecoveryProjection<Self>;
+type ActivationAuthorization: ActivationAuthorizationProjection<Self>;
+type ActivationAttempt: ActivationAttemptProjection<Self>;
+type ActivationCleanup: ActivationCleanupProjection<Self>;
+}
+pub(crate) trait StartupGraph: ActivationGraph + seal::StartupGraph + Sized where Self::Native: NativeGraph {
+type Effect: EffectGraph<Self::Native>;
+type NormalAuthorization: NormalAuthorizationProjection<Self>;
+type StartupAuthorization: StartupAuthorizationProjection<Self>;
+type StartupPending: StartupPendingProjection<Self>;
+type StartupRecovery: StartupRecoveryProjection<Self>;
+type StartupTerminal: StartupTerminalProjection<Self>;
+type CleanupObligation: CleanupObligationProjection<Self>;
+}
+pub(crate) trait ProtectedGraph: StartupGraph + seal::ProtectedGraph + Sized where Self::Native: NativeGraph {
+type ProtectedAuthorization: ProtectedAuthorizationProjection<Self>;
+type OwnerSession: OwnerSessionProjection<Self>;
+type VisibleSnapshot: VisibleSnapshotProjection<Self>;
+type FreshAuthentication: FreshAuthenticationProjection<Self>;
+type ProtectedPrepared: ProtectedPreparedProjection<Self>;
+type ProtectedAuthenticated: ProtectedAuthenticatedProjection<Self>;
+type ProtectedRecovery: ProtectedRecoveryProjection<Self>;
+type ProtectedConsumed: ProtectedConsumedProjection<Self>;
+type ProtectedCancelled: ProtectedCancelledProjection<Self>;
+}
+pub(crate) trait ServiceRuntimeProjection<S: ActivationGraph>: seal::ServiceRuntime {
+fn node_identity(&self) -> &NodeIdentity;
+fn endpoint(&self) -> &S::Endpoint;
+fn storage(&self) -> &S::Storage;
+fn principal(&self) -> &ConfiguredServicePrincipal;
+}
+pub(crate) trait EndpointProjection<S: ActivationGraph>: seal::Endpoint {
+}
+pub(crate) trait StorageProjection<S: ActivationGraph>: seal::Storage {
+}
+pub(crate) trait NormalAuthorizationProjection<S: StartupGraph>: seal::NormalAuthorization where S::Native: NativeGraph {
+fn owner(&self) -> &<S::Effect as EffectGraph<S::Native>>::Owner;
+fn permit(&self) -> &<S::Effect as EffectGraph<S::Native>>::Permit;
+fn operation(&self) -> &<S::Effect as EffectGraph<S::Native>>::Operation;
+fn caller(&self) -> &<S::Native as NativeGraph>::Caller;
+fn message(&self) -> &<S::Native as NativeGraph>::CallerMessage;
+}
+pub(crate) trait StartupAuthorizationProjection<S: StartupGraph>: seal::StartupAuthorization where S::Native: NativeGraph {
+fn normal(&self) -> &S::NormalAuthorization;
+fn request(&self) -> &StartupChangeRequest;
+fn operation_id(&self) -> &OperationId;
+fn previous_effective(&self) -> &StartupServiceObservation;
+}
+pub(crate) trait ServiceInspectionProjection<S: ActivationGraph>: seal::ServiceInspection {
+fn view(&self) -> &StartupView;
+fn os_status(&self) -> &OsServiceStatus;
+fn consent(&self) -> &OsConsentState;
+fn readiness(&self) -> &ServiceReadiness;
+}
+pub(crate) trait InspectionUnknownProjection<S: ActivationGraph>: seal::InspectionUnknown {
+fn reason(&self) -> &SafeMessage;
+}
+pub(crate) trait ServiceActivationProjection<S: ActivationGraph>: seal::ServiceActivation {
+fn authorization(&self) -> &S::ActivationAuthorization;
+fn view(&self) -> &StartupView;
+fn readiness(&self) -> &ServiceReadiness;
+}
+pub(crate) trait ActivationRecoveryProjection<S: ActivationGraph>: seal::ActivationRecovery {
+fn authorization(&self) -> &S::ActivationAuthorization;
+fn attempt(&self) -> &S::ActivationAttempt;
+fn reason(&self) -> &SafeMessage;
+}
+pub(crate) trait StartupPendingProjection<S: StartupGraph>: seal::StartupPending where S::Native: NativeGraph {
+fn authorization(&self) -> &S::StartupAuthorization;
+fn view(&self) -> &StartupChangeView;
+fn consent(&self) -> &OsConsentState;
+fn cleanup(&self) -> &S::CleanupObligation;
+}
+pub(crate) trait StartupRecoveryProjection<S: StartupGraph>: seal::StartupRecovery where S::Native: NativeGraph {
+fn authorization(&self) -> &S::StartupAuthorization;
+fn view(&self) -> &StartupChangeView;
+fn cleanup(&self) -> &S::CleanupObligation;
+fn reason(&self) -> &SafeMessage;
+}
+pub(crate) trait StartupTerminalProjection<S: StartupGraph>: seal::StartupTerminal where S::Native: NativeGraph {
+fn authorization(&self) -> &S::StartupAuthorization;
+fn view(&self) -> &StartupChangeView;
+}
+pub(crate) trait CleanupObligationProjection<S: StartupGraph>: seal::CleanupObligation where S::Native: NativeGraph {
+fn operation_id(&self) -> &OperationId;
+}
+pub(crate) trait ProtectedAuthorizationProjection<S: ProtectedGraph>: seal::ProtectedAuthorization where S::Native: NativeGraph {
+fn normal(&self) -> &S::NormalAuthorization;
+fn operation(&self) -> &LocalAuthorityScopedOperation;
+fn owner_session(&self) -> &S::OwnerSession;
+}
+pub(crate) trait OwnerSessionProjection<S: ProtectedGraph>: seal::OwnerSession where S::Native: NativeGraph {
+fn caller(&self) -> &<S::Native as NativeGraph>::Caller;
+fn message(&self) -> &<S::Native as NativeGraph>::CallerMessage;
+}
+pub(crate) trait VisibleSnapshotProjection<S: ProtectedGraph>: seal::VisibleSnapshot where S::Native: NativeGraph {
+fn operation(&self) -> &LocalAuthorityScopedOperation;
+fn owner_session(&self) -> &S::OwnerSession;
+fn caller_message(&self) -> &<S::Native as NativeGraph>::CallerMessage;
+}
+pub(crate) trait FreshAuthenticationProjection<S: ProtectedGraph>: seal::FreshAuthentication where S::Native: NativeGraph {
+fn helper_process(&self) -> &<S::Native as NativeInstallationGraph>::Process;
+fn helper_code(&self) -> &<S::Native as NativeInstallationGraph>::MeasuredAsset;
+fn owner_session(&self) -> &S::OwnerSession;
+fn caller_message(&self) -> &<S::Native as NativeGraph>::CallerMessage;
+}
+pub(crate) trait ProtectedPreparedProjection<S: ProtectedGraph>: seal::ProtectedPrepared where S::Native: NativeGraph {
+fn authorization(&self) -> &S::ProtectedAuthorization;
+fn snapshot(&self) -> &S::VisibleSnapshot;
+fn cleanup(&self) -> &S::CleanupObligation;
+}
+pub(crate) trait ProtectedAuthenticatedProjection<S: ProtectedGraph>: seal::ProtectedAuthenticated where S::Native: NativeGraph {
+fn prepared(&self) -> &S::ProtectedPrepared;
+fn fresh_authentication(&self) -> &S::FreshAuthentication;
+}
+pub(crate) trait ProtectedRecoveryProjection<S: ProtectedGraph>: seal::ProtectedRecovery where S::Native: NativeGraph {
+fn authorization(&self) -> &S::ProtectedAuthorization;
+fn observation(&self) -> &LocalAuthorityBoundObservation;
+fn cleanup(&self) -> &S::CleanupObligation;
+}
+pub(crate) trait ProtectedConsumedProjection<S: ProtectedGraph>: seal::ProtectedConsumed where S::Native: NativeGraph {
+fn authorization(&self) -> &S::ProtectedAuthorization;
+fn observation(&self) -> &LocalAuthorityBoundObservation;
+}
+pub(crate) trait ProtectedCancelledProjection<S: ProtectedGraph>: seal::ProtectedCancelled where S::Native: NativeGraph {
+fn authorization(&self) -> &S::ProtectedAuthorization;
+fn observation(&self) -> &LocalAuthorityBoundObservation;
+}
+pub(crate) trait ActivationAuthorizationProjection<S: ActivationGraph>: seal::ActivationAuthorization {
+fn installation(&self) -> &<S::Native as NativeInstallationGraph>::Installation;
+fn channel(&self) -> &<S::Native as NativeInstallationGraph>::RawChannel;
+fn principal(&self) -> &ConfiguredOwnerPrincipal;
+}
+pub(crate) trait ActivationAttemptProjection<S: ActivationGraph>: seal::ActivationAttempt {
+fn channels(&self) -> &[<S::Native as NativeInstallationGraph>::RawChannel];
+fn processes(&self) -> &[<S::Native as NativeInstallationGraph>::Process];
+fn cleanup(&self) -> &S::ActivationCleanup;
+}
+pub(crate) trait ActivationCleanupProjection<S: ActivationGraph>: seal::ActivationCleanup {
+}
+#[must_use] pub(crate) struct ServiceScope<'owner, S: ActivationGraph> {
+native_installation: <S::Native as NativeInstallationGraph>::Installation,
+runtime: S::ServiceRuntime,
+invariant_owner: PhantomData<fn(&'owner mut ()) -> &'owner mut ()>,
+}
+impl<'owner, S: ActivationGraph> ServiceScope<'owner, S> {
+pub(crate) fn installation(&self) -> &<S::Native as NativeInstallationGraph>::Installation { &self.native_installation }
+pub(crate) fn runtime(&self) -> &S::ServiceRuntime { &self.runtime }
+}
+#[must_use] pub(crate) struct NormalAuthorization<'owner, S: StartupGraph> where S::Native: NativeGraph {
+inner: S::NormalAuthorization,
+scope: Arc<ServiceScope<'owner, S>>,
+}
+impl<'owner, S: StartupGraph> NormalAuthorization<'owner, S> where S::Native: NativeGraph {
+pub(crate) fn scope(&self) -> &ServiceScope<'owner, S> { &self.scope }
+pub(crate) fn description(&self) -> &S::NormalAuthorization { &self.inner }
+}
+#[must_use] pub(crate) struct StartupAuthorization<'owner, S: StartupGraph> where S::Native: NativeGraph {
+inner: S::StartupAuthorization,
+scope: Arc<ServiceScope<'owner, S>>,
+normal: NormalAuthorization<'owner, S>,
+}
+impl<'owner, S: StartupGraph> StartupAuthorization<'owner, S> where S::Native: NativeGraph {
+pub(crate) fn scope(&self) -> &ServiceScope<'owner, S> { &self.scope }
+pub(crate) fn description(&self) -> &S::StartupAuthorization { &self.inner }
+}
+#[must_use] pub(crate) struct ServiceInspection<'owner, S: ActivationGraph> {
+inner: S::ServiceInspection,
+scope: Arc<ServiceScope<'owner, S>>,
+}
+impl<'owner, S: ActivationGraph> ServiceInspection<'owner, S> {
+pub(crate) fn scope(&self) -> &ServiceScope<'owner, S> { &self.scope }
+pub(crate) fn description(&self) -> &S::ServiceInspection { &self.inner }
+}
+#[must_use] pub(crate) struct InspectionUnknown<'owner, S: ActivationGraph> {
+inner: S::InspectionUnknown,
+scope: Arc<ServiceScope<'owner, S>>,
+}
+impl<'owner, S: ActivationGraph> InspectionUnknown<'owner, S> {
+pub(crate) fn scope(&self) -> &ServiceScope<'owner, S> { &self.scope }
+pub(crate) fn description(&self) -> &S::InspectionUnknown { &self.inner }
+}
+#[must_use] pub(crate) struct ServiceActivation<'owner, S: ActivationGraph> {
+inner: S::ServiceActivation,
+scope: Arc<ServiceScope<'owner, S>>,
+authorization: ActivationAuthorization<'owner, S>,
+}
+impl<'owner, S: ActivationGraph> ServiceActivation<'owner, S> {
+pub(crate) fn scope(&self) -> &ServiceScope<'owner, S> { &self.scope }
+pub(crate) fn description(&self) -> &S::ServiceActivation { &self.inner }
+}
+#[must_use] pub(crate) struct ActivationRecovery<'owner, S: ActivationGraph> {
+inner: S::ActivationRecovery,
+scope: Arc<ServiceScope<'owner, S>>,
+authorization: ActivationAuthorization<'owner, S>,
+attempt: ActivationAttempt<'owner, S>,
+}
+impl<'owner, S: ActivationGraph> ActivationRecovery<'owner, S> {
+pub(crate) fn scope(&self) -> &ServiceScope<'owner, S> { &self.scope }
+pub(crate) fn description(&self) -> &S::ActivationRecovery { &self.inner }
+}
+#[must_use] pub(crate) struct StartupPending<'owner, S: StartupGraph> where S::Native: NativeGraph {
+inner: S::StartupPending,
+scope: Arc<ServiceScope<'owner, S>>,
+authorization: StartupAuthorization<'owner, S>,
+}
+impl<'owner, S: StartupGraph> StartupPending<'owner, S> where S::Native: NativeGraph {
+pub(crate) fn scope(&self) -> &ServiceScope<'owner, S> { &self.scope }
+pub(crate) fn description(&self) -> &S::StartupPending { &self.inner }
+}
+#[must_use] pub(crate) struct StartupRecovery<'owner, S: StartupGraph> where S::Native: NativeGraph {
+inner: S::StartupRecovery,
+scope: Arc<ServiceScope<'owner, S>>,
+original: StartupRecoveryOrigin<'owner, S>,
+}
+impl<'owner, S: StartupGraph> StartupRecovery<'owner, S> where S::Native: NativeGraph {
+pub(crate) fn scope(&self) -> &ServiceScope<'owner, S> { &self.scope }
+pub(crate) fn description(&self) -> &S::StartupRecovery { &self.inner }
+}
+#[must_use] pub(crate) struct StartupTerminal<'owner, S: StartupGraph> where S::Native: NativeGraph {
+inner: S::StartupTerminal,
+scope: Arc<ServiceScope<'owner, S>>,
+authorization: StartupAuthorization<'owner, S>,
+}
+impl<'owner, S: StartupGraph> StartupTerminal<'owner, S> where S::Native: NativeGraph {
+pub(crate) fn scope(&self) -> &ServiceScope<'owner, S> { &self.scope }
+pub(crate) fn description(&self) -> &S::StartupTerminal { &self.inner }
+}
+#[must_use] pub(crate) struct CleanupObligation<'owner, S: StartupGraph> where S::Native: NativeGraph {
+inner: S::CleanupObligation,
+scope: Arc<ServiceScope<'owner, S>>,
+}
+impl<'owner, S: StartupGraph> CleanupObligation<'owner, S> where S::Native: NativeGraph {
+pub(crate) fn scope(&self) -> &ServiceScope<'owner, S> { &self.scope }
+pub(crate) fn description(&self) -> &S::CleanupObligation { &self.inner }
+}
+#[must_use] pub(crate) struct ProtectedAuthorization<'owner, S: ProtectedGraph> where S::Native: NativeGraph {
+inner: S::ProtectedAuthorization,
+scope: Arc<ServiceScope<'owner, S>>,
+normal: NormalAuthorization<'owner, S>,
+}
+impl<'owner, S: ProtectedGraph> ProtectedAuthorization<'owner, S> where S::Native: NativeGraph {
+pub(crate) fn scope(&self) -> &ServiceScope<'owner, S> { &self.scope }
+pub(crate) fn description(&self) -> &S::ProtectedAuthorization { &self.inner }
+}
+#[must_use] pub(crate) struct OwnerSession<'owner, S: ProtectedGraph> where S::Native: NativeGraph {
+inner: S::OwnerSession,
+scope: Arc<ServiceScope<'owner, S>>,
+}
+impl<'owner, S: ProtectedGraph> OwnerSession<'owner, S> where S::Native: NativeGraph {
+pub(crate) fn scope(&self) -> &ServiceScope<'owner, S> { &self.scope }
+pub(crate) fn description(&self) -> &S::OwnerSession { &self.inner }
+}
+#[must_use] pub(crate) struct VisibleSnapshot<'owner, S: ProtectedGraph> where S::Native: NativeGraph {
+inner: S::VisibleSnapshot,
+scope: Arc<ServiceScope<'owner, S>>,
+}
+impl<'owner, S: ProtectedGraph> VisibleSnapshot<'owner, S> where S::Native: NativeGraph {
+pub(crate) fn scope(&self) -> &ServiceScope<'owner, S> { &self.scope }
+pub(crate) fn description(&self) -> &S::VisibleSnapshot { &self.inner }
+}
+#[must_use] pub(crate) struct FreshAuthentication<'owner, S: ProtectedGraph> where S::Native: NativeGraph {
+inner: S::FreshAuthentication,
+scope: Arc<ServiceScope<'owner, S>>,
+}
+impl<'owner, S: ProtectedGraph> FreshAuthentication<'owner, S> where S::Native: NativeGraph {
+pub(crate) fn scope(&self) -> &ServiceScope<'owner, S> { &self.scope }
+pub(crate) fn description(&self) -> &S::FreshAuthentication { &self.inner }
+}
+#[must_use] pub(crate) struct ProtectedPrepared<'owner, S: ProtectedGraph> where S::Native: NativeGraph {
+inner: S::ProtectedPrepared,
+scope: Arc<ServiceScope<'owner, S>>,
+authorization: ProtectedAuthorization<'owner, S>,
+snapshot: VisibleSnapshot<'owner, S>,
+}
+impl<'owner, S: ProtectedGraph> ProtectedPrepared<'owner, S> where S::Native: NativeGraph {
+pub(crate) fn scope(&self) -> &ServiceScope<'owner, S> { &self.scope }
+pub(crate) fn description(&self) -> &S::ProtectedPrepared { &self.inner }
+}
+#[must_use] pub(crate) struct ProtectedAuthenticated<'owner, S: ProtectedGraph> where S::Native: NativeGraph {
+inner: S::ProtectedAuthenticated,
+scope: Arc<ServiceScope<'owner, S>>,
+prepared: ProtectedPrepared<'owner, S>,
+fresh_authentication: FreshAuthentication<'owner, S>,
+}
+impl<'owner, S: ProtectedGraph> ProtectedAuthenticated<'owner, S> where S::Native: NativeGraph {
+pub(crate) fn scope(&self) -> &ServiceScope<'owner, S> { &self.scope }
+pub(crate) fn description(&self) -> &S::ProtectedAuthenticated { &self.inner }
+}
+#[must_use] pub(crate) struct ProtectedRecovery<'owner, S: ProtectedGraph> where S::Native: NativeGraph {
+inner: S::ProtectedRecovery,
+scope: Arc<ServiceScope<'owner, S>>,
+original: ProtectedRecoveryOrigin<'owner, S>,
+}
+impl<'owner, S: ProtectedGraph> ProtectedRecovery<'owner, S> where S::Native: NativeGraph {
+pub(crate) fn scope(&self) -> &ServiceScope<'owner, S> { &self.scope }
+pub(crate) fn description(&self) -> &S::ProtectedRecovery { &self.inner }
+}
+#[must_use] pub(crate) struct ProtectedConsumed<'owner, S: ProtectedGraph> where S::Native: NativeGraph {
+inner: S::ProtectedConsumed,
+scope: Arc<ServiceScope<'owner, S>>,
+original: ProtectedAuthenticated<'owner, S>,
+}
+impl<'owner, S: ProtectedGraph> ProtectedConsumed<'owner, S> where S::Native: NativeGraph {
+pub(crate) fn scope(&self) -> &ServiceScope<'owner, S> { &self.scope }
+pub(crate) fn description(&self) -> &S::ProtectedConsumed { &self.inner }
+}
+#[must_use] pub(crate) struct ProtectedCancelled<'owner, S: ProtectedGraph> where S::Native: NativeGraph {
+inner: S::ProtectedCancelled,
+scope: Arc<ServiceScope<'owner, S>>,
+original: ProtectedRecoveryOrigin<'owner, S>,
+}
+impl<'owner, S: ProtectedGraph> ProtectedCancelled<'owner, S> where S::Native: NativeGraph {
+pub(crate) fn scope(&self) -> &ServiceScope<'owner, S> { &self.scope }
+pub(crate) fn description(&self) -> &S::ProtectedCancelled { &self.inner }
+}
+#[must_use] pub(crate) struct ActivationAuthorization<'owner, S: ActivationGraph> {
+inner: S::ActivationAuthorization,
+scope: Arc<ServiceScope<'owner, S>>,
+}
+impl<'owner, S: ActivationGraph> ActivationAuthorization<'owner, S> {
+pub(crate) fn scope(&self) -> &ServiceScope<'owner, S> { &self.scope }
+pub(crate) fn description(&self) -> &S::ActivationAuthorization { &self.inner }
+}
+#[must_use] pub(crate) struct ActivationAttempt<'owner, S: ActivationGraph> {
+inner: S::ActivationAttempt,
+scope: Arc<ServiceScope<'owner, S>>,
+}
+impl<'owner, S: ActivationGraph> ActivationAttempt<'owner, S> {
+pub(crate) fn scope(&self) -> &ServiceScope<'owner, S> { &self.scope }
+pub(crate) fn description(&self) -> &S::ActivationAttempt { &self.inner }
+}
+#[must_use] pub(crate) struct ActivationCleanup<'owner, S: ActivationGraph> {
+inner: S::ActivationCleanup,
+scope: Arc<ServiceScope<'owner, S>>,
+}
+impl<'owner, S: ActivationGraph> ActivationCleanup<'owner, S> {
+pub(crate) fn scope(&self) -> &ServiceScope<'owner, S> { &self.scope }
+pub(crate) fn description(&self) -> &S::ActivationCleanup { &self.inner }
+}
+#[derive(Debug)] pub(crate) enum OsServiceStatus {
+NotRegistered,RegisteredEligible,RequiresConsent,NotFound,Unknown
+}
+#[derive(Debug)] pub(crate) enum OsConsentState {
+NotRequired,Pending,Satisfied,Denied,Withdrawn,Unavailable,Unknown
+}
+#[derive(Debug)] pub(crate) enum ServiceReadiness {
+Ready,NotRunning,StorageUnavailable,Unknown
+}
+#[derive(Debug)] pub(crate) enum PassiveServiceAvailability {
+BindingUnavailable,PlistAbsent,Unverified,NotRegistered,RegisteredEligible,RequiresConsent,NotFound,Unknown
+}
+#[must_use] pub(crate) enum ServiceProgress<'owner, S: StartupGraph> where S::Native: NativeGraph {
+Pending(StartupPending<'owner, S>),
+Committed(StartupTerminal<'owner, S>),
+Unknown(StartupRecovery<'owner, S>),
+}
+#[must_use] pub(crate) enum ServicePendingState<'owner, S: StartupGraph> where S::Native: NativeGraph {
+Pending(StartupPending<'owner, S>),
+Unknown(StartupRecovery<'owner, S>),
+}
+#[must_use] pub(crate) enum ServiceCancellation<'owner, S: StartupGraph> where S::Native: NativeGraph {
+Committed(StartupTerminal<'owner, S>),
+RestoredCancelled(StartupTerminal<'owner, S>),
+Unknown(StartupRecovery<'owner, S>),
+}
+#[must_use] pub(crate) enum ProtectedPresentation<'owner, S: ProtectedGraph> where S::Native: NativeGraph {
+Pending(ProtectedPrepared<'owner, S>),
+Authenticated(ProtectedAuthenticated<'owner, S>),
+Cancelled(ProtectedCancelled<'owner, S>),
+Unknown(ProtectedRecovery<'owner, S>),
+}
+#[must_use] pub(crate) enum ProtectedPendingState<'owner, S: ProtectedGraph> where S::Native: NativeGraph {
+Prepared(ProtectedPrepared<'owner, S>),
+Authenticated(ProtectedAuthenticated<'owner, S>),
+Unknown(ProtectedRecovery<'owner, S>),
+}
+#[must_use] pub(crate) enum ProtectedCancellation<'owner, S: ProtectedGraph> where S::Native: NativeGraph {
+Committed(ProtectedConsumed<'owner, S>),
+Cancelled(ProtectedCancelled<'owner, S>),
+Unknown(ProtectedRecovery<'owner, S>),
+}
+#[must_use] pub(crate) enum StartupRecoveryOrigin<'owner, S: StartupGraph> where S::Native: NativeGraph {
+Authorization(StartupAuthorization<'owner, S>),
+Pending(StartupPending<'owner, S>),
+}
+#[must_use] pub(crate) enum ProtectedRecoveryOrigin<'owner, S: ProtectedGraph> where S::Native: NativeGraph {
+Authorization(ProtectedAuthorization<'owner, S>),
+Prepared(ProtectedPrepared<'owner, S>),
+Authenticated(ProtectedAuthenticated<'owner, S>),
+}
+pub(crate) trait NativeServiceInspection<'owner, S: ActivationGraph>: seal::Inspection {
+fn inspect(&mut self, service: &ServiceScope<'owner, S>) -> Result<ServiceInspection<'owner, S>, InspectionUnknown<'owner, S>>;
+}
+pub(crate) trait NativeServiceActivation<'owner, S: ActivationGraph>: seal::Activation {
+fn activate(&mut self, authorization: ActivationAuthorization<'owner, S>) -> Result<ServiceActivation<'owner, S>, ActivationRecovery<'owner, S>>;
+}
+pub(crate) trait NativeStartupConfiguration<'owner, S: StartupGraph>: seal::Configuration where S::Native: NativeGraph {
+fn prepare(&mut self, authorization: StartupAuthorization<'owner, S>) -> Result<StartupPending<'owner, S>, StartupRecovery<'owner, S>>;
+fn apply(&mut self, pending: StartupPending<'owner, S>) -> ServiceProgress<'owner, S>;
+fn cancel(&mut self, pending: ServicePendingState<'owner, S>) -> ServiceCancellation<'owner, S>;
+}
+pub(crate) trait ProtectedAuthorityPresentation<'owner, S: ProtectedGraph>: seal::Helper where S::Native: NativeGraph {
+fn prepare(&mut self, authorization: ProtectedAuthorization<'owner, S>) -> Result<ProtectedPrepared<'owner, S>, ProtectedRecovery<'owner, S>>;
+fn present(&mut self, prepared: ProtectedPrepared<'owner, S>) -> ProtectedPresentation<'owner, S>;
+fn consume(&mut self, authenticated: ProtectedAuthenticated<'owner, S>) -> Result<ProtectedConsumed<'owner, S>, ProtectedRecovery<'owner, S>>;
+fn cancel(&mut self, pending: ProtectedPendingState<'owner, S>) -> ProtectedCancellation<'owner, S>;
+}
+pub(crate) struct PassiveServiceObservation {
+pub(crate) availability: PassiveServiceAvailability,
+pub(crate) observed_at: UnixMicros,
+pub(crate) reason: SafeMessage,
+}
+pub(crate) trait NativeServiceAvailability: seal::Availability {
+fn observe(&mut self) -> PassiveServiceObservation;
+}
+pub(crate) const PLANNED_CONTAINING_APP_IDENTIFIER: &str = "app.poolhouse.app";
+pub(crate) const PLANNED_BUNDLED_PLIST: &str = "Contents/Library/LaunchDaemons/app.poolhouse.node.plist";
+pub(crate) const PASSIVE_BINDING_STATUS: &str = "planned-currently-absent-not-installed-service-identity";
+pub(crate) const PRODUCTION_PROTECTED_VALIDATION_AVAILABLE: bool = false;
+}
+pub(crate) use service_projection::*;
