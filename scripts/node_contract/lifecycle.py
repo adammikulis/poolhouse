@@ -15,7 +15,7 @@ def lifecycle(root: Path) -> dict:
     value = tomllib.loads((root / "lifecycle.toml").read_text())
     fields = {"version", "authorization", "repeated_completion", "cancellation_race", "restart", "session", "invocation", "requirements"}
     keys(value, fields, fields)
-    if (value["version"] != 1 or type(value["version"]) is not int or value["authorization"] != "node-checked-code"
+    if (value["version"] != 2 or type(value["version"]) is not int or value["authorization"] != "node-checked-code"
             or value["repeated_completion"] != "return-identical-result-without-effects"
             or value["cancellation_race"] != "first-atomic-terminal-transition-wins"
             or value["restart"] != "invalidate-prior-ephemeral-generations"):
@@ -72,19 +72,19 @@ def _semantics(domain: str, value: dict, requirements: dict) -> None:
     actual = {(row["from"], row["event"], row["to"]) for row in value["transitions"]}
     if (set(value["states"]) != states or value["initial"] != initial or set(value["terminal"]) != terminal
             or len(value["terminal"]) != len(terminal) or actual != expected):
-        raise ValueError("unsupported lifecycle v1 state or transition semantics")
+        raise ValueError("unsupported lifecycle v2 state or transition semantics")
     required_checks = {
-        "admit": {"authenticated-producer", "actual-native-birth", "validated-root-and-direct-parent", "current-generations"},
-        "reserve": {"live-session", "current-generations", "immutable-actor-context", "event-and-purpose", "exact-payload-digest"},
+        "admit": {"authenticated-producer", "authenticated-native-birth-or-same-producer-resume", "stable-original-occurrence-identity", "producer-stream-global-event-deduplication", "current-producer-boot-and-admission", "validated-root-and-direct-parent", "current-generations"},
+        "reserve": {"live-session", "current-generations", "immutable-actor-context", "event-and-purpose", "exact-payload-digest", "authenticated-native-invocation", "stable-original-occurrence-identity", "producer-stream-global-event-deduplication", "current-producer-boot-and-admission"},
         "bind": {"actual-held-process", "live-exact-process-handle", "reservation-owner", "current-generations", "no-prior-binding"},
         "release": {"live-session", "current-generations", "unchanged-context-purpose-and-digest", "exact-live-bound-process", "single-use-hold"},
-        "consume": {"live-session", "current-generations", "exact-live-bound-caller", "matching-event-purpose-and-digest", "required-cleanup-evidence", "atomic-single-consumer"},
-        "cancel": {"authorized-caller", "atomic-terminal-race", "close-capabilities-before-termination"},
-        "retire": {"invalidate-outstanding-descendants-and-invocations", "close-channels-before-reaping", "new-generation-to-reopen"},
+        "consume": {"live-session", "current-generations", "exact-live-bound-caller", "matching-event-purpose-and-digest", "required-cleanup-evidence", "atomic-single-consumer", "one-effect-permit-pending-on-loss-or-crash-no-replacement"},
+        "cancel": {"authorized-caller", "atomic-terminal-race", "atomically-revoke-authorization-before-returning-physical-cleanup-obligations"},
+        "retire": {"invalidate-outstanding-descendants-and-invocations", "atomically-revoke-authorization-before-returning-physical-cleanup-obligations", "new-generation-to-reopen"},
         "invalidate": {"bind-failure-or-process-exit-or-lost-producer-or-lost-holder-or-restart", "no-process-reassignment"},
     }
     if any(set(requirements[event]) != checks for event, checks in required_checks.items()):
-        raise ValueError("unsupported lifecycle v1 authorization requirements")
+        raise ValueError("unsupported lifecycle v2 authorization requirements")
 
 def adapters(root: Path) -> dict:
     return native_adapters.load(root)

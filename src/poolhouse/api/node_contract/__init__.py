@@ -504,7 +504,7 @@ from ._startup import (
 )
 
 CONTRACT_VERSION = 1
-SCHEMA_SHA256 = "72441308bcd7f405891bbd68b8e8536b88be560d05b34b9b546c450be0b965ee"
+SCHEMA_SHA256 = "804adbd791f12425ab4d5664be5f62c2616e4a8e8ce6af3bfe9134303e5b0317"
 __all__ = ('CONTRACT_VERSION', 'SCHEMA_SHA256', 'U32', 'U64', 'AgentControlError', 'AgentControlRequest',
  'AgentControlSnapshot', 'AgentDisplayName', 'AgentGetRequest', 'AgentId', 'AgentPauseResult',
  'AgentState', 'AgentStopResult', 'AgentTaskExecution', 'AgentTaskStartRequest',

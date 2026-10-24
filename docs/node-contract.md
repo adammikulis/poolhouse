@@ -352,6 +352,19 @@ closed. Holder cleanup cannot assert domain effect completion.
 
 This independently reviewed increment is deliberately incomplete. The sealed
 read-only projection graph, unique obligation identity/resource scope, separate
-NodeEffectOwner completion interface, and lifecycle metadata alignment remain
-required before K. No platform implementation, trusted issuer, actual resource
+NodeEffectOwner completion interface remain required before K. No platform implementation, trusted issuer, actual resource
 closure, proof bridge or installed H/P evidence follows from these declarations.
+
+
+Lifecycle v2 retains the same states and edges while requiring authenticated birth
+or same-producer resume, native invocation, current producer boot/admission and
+producer-stream global event deduplication. The original occurrence identity must
+survive retransmission: minting another message ID cannot authorize that same
+native occurrence again. The producer guarantee and protected provenance remain
+unimplemented; metadata cannot establish either.
+
+Cancellation and retirement atomically revoke authorization before returning
+physical-cleanup obligations. They do not assert channel closure or process
+reaping. Consume issues one effect permit; permit loss or crash preserves unknown
+or Pending disposition without a replacement permit or repeated effect. Scoped
+cleanup and genuine effect recording still need their separate responsible owners.

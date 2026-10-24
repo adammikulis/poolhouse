@@ -674,3 +674,25 @@ def test_native_adapter_declarations_remain_private_and_without_proof_issuers():
         assert f"type {name};" in source
         assert not hasattr(public, name)
     assert "impl NativeCallerPlatform" not in source
+
+
+@pytest.mark.parametrize("requirement", [
+    "version", "authenticated-native-birth-or-same-producer-resume",
+    "authenticated-native-invocation", "stable-original-occurrence-identity",
+    "producer-stream-global-event-deduplication", "current-producer-boot-and-admission",
+    "one-effect-permit-pending-on-loss-or-crash-no-replacement",
+    "atomically-revoke-authorization-before-returning-physical-cleanup-obligations",
+])
+def test_lifecycle_v2_refuses_weakened_event_or_cleanup_semantics(tmp_path, requirement):
+    source = tmp_path / "node"
+    shutil.copytree(ROOT / "contracts/node", source)
+    path = source / "lifecycle.toml"
+    text = path.read_text()
+    if requirement == "version":
+        text = text.replace("version = 2", "version = 1")
+    else:
+        text = text.replace('"' + requirement + '"', '"unchecked-replacement"', 1)
+    assert text != path.read_text()
+    path.write_text(text)
+    with pytest.raises(ValueError):
+        load(source)
