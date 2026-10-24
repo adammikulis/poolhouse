@@ -73,7 +73,7 @@ fn each_real_budget_dimension_is_checked_and_overflow_never_wraps() {
 }
 #[test]
 fn windows_preserves_raw_units_but_cannot_complete_without_native_dependencies() {
-    let args:[&[u8];1]=[&[0xd8,0x00]]; // Unpaired surrogate retained as raw UTF16, not replacement Unicode.
+    let args:[&[u8];1]=[&[0xd8,0x00]]; // Isolated UTF-16 surrogate retained as raw units, without Unicode replacement.
     let mut value=data(&args,&[]);value.profile=LaunchAccountingProfile::WindowsNativeUnavailable;
     assert_eq!(validate(&value),Err(LaunchDataError::WindowsNativeUnavailable));
     let drive:[(&[u8],&[u8]);1]=[(&[0,b'=',0,b'C',0,b':'],&[0,b'C',0,b':'])];
