@@ -10,6 +10,12 @@ from . import python
 
 
 def group(name: str) -> str:
+    if name.startswith("Conversation"):
+        if "Content" in name and not name.startswith("ConversationContext"):
+            return "conversation_content"
+        if any(word in name for word in ("Settings", "Patch", "Temperature", "Tokens", "Permissions", "Effort", "ExecutionMode", "Hint", "RoleLabel", "HarnessLabel")):
+            return "conversation_settings"
+        return "conversations"
     if name.startswith("Inference"):
         return inference_group(name)
     if name.startswith("BoardContent"):

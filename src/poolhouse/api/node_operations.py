@@ -1,4 +1,4 @@
-# Generated proposal. No dispatch or authority is implemented. Schema 6dc8f654c0f2c143905475acbd851e2883fcfbe8ecf27ab1716a41dbbbf8222a
+# Generated proposal. No dispatch or authority is implemented. Schema 233925948a2922d89dc9a08658d8b1c7aedae786a3da7b25371e289c866f51d2
 from . import node_contract as data
 
 OPERATION_TYPES = {
@@ -71,6 +71,19 @@ OPERATION_TYPES = {
     "pools.sync.inspect": (data.ConnectivitySyncInspectRequest, data.ConnectivitySyncView, data.ConnectivityError),
     "pools.sync.cancel": (data.ConnectivitySyncCancelRequest, data.ConnectivitySyncCancelResult, data.ConnectivityError),
     "pools.sync.watch": (data.ConnectivitySyncWatchRequest, data.ConnectivitySyncEvent, data.ConnectivityError),
+    "conversations.defaults.inspect": (data.ConversationDefaultsInspectRequest, data.ConversationDefaultsView, data.ConversationError),
+    "conversations.list": (data.ConversationListRequest, data.ConversationListEvent, data.ConversationError),
+    "conversations.create": (data.ConversationCreateRequest, data.ConversationCreationView, data.ConversationError),
+    "conversations.creations.inspect": (data.ConversationCreationInspectRequest, data.ConversationCreationLookup, data.ConversationError),
+    "conversations.get": (data.ConversationGetRequest, data.ConversationSummaryView, data.ConversationError),
+    "conversations.messages.list": (data.ConversationMessagesListRequest, data.ConversationMessagesEvent, data.ConversationError),
+    "conversations.update": (data.ConversationUpdateRequest, data.ConversationSummaryView, data.ConversationError),
+    "conversations.remove": (data.ConversationRemoveRequest, data.ConversationRemovalView, data.ConversationError),
+    "conversations.content.begin": (data.ConversationContentBeginRequest, data.ConversationContentStageView, data.ConversationError),
+    "conversations.content.append": (data.ConversationContentAppendRequest, data.ConversationContentStageView, data.ConversationError),
+    "conversations.content.finalize": (data.ConversationContentFinalizeRequest, data.ConversationContentFinalizeView, data.ConversationError),
+    "conversations.content.read": (data.ConversationContentReadRequest, data.InferenceContentChunk, data.ConversationError),
+    "conversations.content.discard": (data.ConversationContentDiscardRequest, data.ConversationContentDiscardView, data.ConversationError),
     "inference.chat.start": (data.InferenceChatStartRequest, data.InferenceGenerationView, data.InferenceError),
     "inference.responses.start": (data.InferenceResponsesStartRequest, data.InferenceGenerationView, data.InferenceError),
     "inference.messages.start": (data.InferenceMessagesStartRequest, data.InferenceGenerationView, data.InferenceError),

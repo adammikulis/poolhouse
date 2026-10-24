@@ -1,4 +1,4 @@
-// Generated proposal. No dispatch or authority is implemented. Schema 6dc8f654c0f2c143905475acbd851e2883fcfbe8ecf27ab1716a41dbbbf8222a
+// Generated proposal. No dispatch or authority is implemented. Schema 233925948a2922d89dc9a08658d8b1c7aedae786a3da7b25371e289c866f51d2
 use super::contract::*;
 
 pub trait Operation { type Request; type Response; type Error; const NAME: &'static str; }
@@ -209,6 +209,45 @@ impl Operation for PoolsSyncCancel { type Request = ConnectivitySyncCancelReques
 
 pub struct PoolsSyncWatch;
 impl Operation for PoolsSyncWatch { type Request = ConnectivitySyncWatchRequest; type Response = ConnectivitySyncEvent; type Error = ConnectivityError; const NAME: &'static str = "pools.sync.watch"; }
+
+pub struct ConversationsDefaultsInspect;
+impl Operation for ConversationsDefaultsInspect { type Request = ConversationDefaultsInspectRequest; type Response = ConversationDefaultsView; type Error = ConversationError; const NAME: &'static str = "conversations.defaults.inspect"; }
+
+pub struct ConversationsList;
+impl Operation for ConversationsList { type Request = ConversationListRequest; type Response = ConversationListEvent; type Error = ConversationError; const NAME: &'static str = "conversations.list"; }
+
+pub struct ConversationsCreate;
+impl Operation for ConversationsCreate { type Request = ConversationCreateRequest; type Response = ConversationCreationView; type Error = ConversationError; const NAME: &'static str = "conversations.create"; }
+
+pub struct ConversationsCreationsInspect;
+impl Operation for ConversationsCreationsInspect { type Request = ConversationCreationInspectRequest; type Response = ConversationCreationLookup; type Error = ConversationError; const NAME: &'static str = "conversations.creations.inspect"; }
+
+pub struct ConversationsGet;
+impl Operation for ConversationsGet { type Request = ConversationGetRequest; type Response = ConversationSummaryView; type Error = ConversationError; const NAME: &'static str = "conversations.get"; }
+
+pub struct ConversationsMessagesList;
+impl Operation for ConversationsMessagesList { type Request = ConversationMessagesListRequest; type Response = ConversationMessagesEvent; type Error = ConversationError; const NAME: &'static str = "conversations.messages.list"; }
+
+pub struct ConversationsUpdate;
+impl Operation for ConversationsUpdate { type Request = ConversationUpdateRequest; type Response = ConversationSummaryView; type Error = ConversationError; const NAME: &'static str = "conversations.update"; }
+
+pub struct ConversationsRemove;
+impl Operation for ConversationsRemove { type Request = ConversationRemoveRequest; type Response = ConversationRemovalView; type Error = ConversationError; const NAME: &'static str = "conversations.remove"; }
+
+pub struct ConversationsContentBegin;
+impl Operation for ConversationsContentBegin { type Request = ConversationContentBeginRequest; type Response = ConversationContentStageView; type Error = ConversationError; const NAME: &'static str = "conversations.content.begin"; }
+
+pub struct ConversationsContentAppend;
+impl Operation for ConversationsContentAppend { type Request = ConversationContentAppendRequest; type Response = ConversationContentStageView; type Error = ConversationError; const NAME: &'static str = "conversations.content.append"; }
+
+pub struct ConversationsContentFinalize;
+impl Operation for ConversationsContentFinalize { type Request = ConversationContentFinalizeRequest; type Response = ConversationContentFinalizeView; type Error = ConversationError; const NAME: &'static str = "conversations.content.finalize"; }
+
+pub struct ConversationsContentRead;
+impl Operation for ConversationsContentRead { type Request = ConversationContentReadRequest; type Response = InferenceContentChunk; type Error = ConversationError; const NAME: &'static str = "conversations.content.read"; }
+
+pub struct ConversationsContentDiscard;
+impl Operation for ConversationsContentDiscard { type Request = ConversationContentDiscardRequest; type Response = ConversationContentDiscardView; type Error = ConversationError; const NAME: &'static str = "conversations.content.discard"; }
 
 pub struct InferenceDomainInferenceChatStart;
 impl Operation for InferenceDomainInferenceChatStart { type Request = InferenceChatStartRequest; type Response = InferenceGenerationView; type Error = InferenceError; const NAME: &'static str = "inference.chat.start"; }
