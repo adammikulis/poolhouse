@@ -40,7 +40,9 @@ CARGO_ENV = "DEV_TEST_CARGO_DIR"
 FIXTURES = ("tests/fixtures/phone-approval-vectors.json", "contracts/node/vectors.json",
             "contracts/node/native_boundaries/transcript-vectors.json")
 """Files of the repository, outside the Rust workspace, that a Rust test includes at compile time."""
-MEMBERS = ("Cargo.toml", "Cargo.lock", "poolhouse-node", "phone-governance-jni", "src-tauri", "poolhouse-authority")
+MEMBERS = ("Cargo.toml", "Cargo.lock", "poolhouse-node", "phone-governance-jni", "src-tauri", "poolhouse-authority",
+           "native-service/Inspection.swift", "native-service/Bridge.swift",
+           "native-service/generated/PassiveServiceData.swift", "native-service/generated/PassiveServiceData.h")
 KEY_LENGTH = 20
 IDLE_S = 3 * 24 * 3600
 BUILD_TIMEOUT_S = 1800.0
@@ -191,12 +193,13 @@ def workspace_wrapper(workspace: Path) -> None:
                 temporary.chmod(mode)
 
 
-def shared_build(app: Path, *, root: Path | None = None) -> SharedBuild:
+def shared_build(app: Path, *, root: Path | None = None, source_key_extra: str = "") -> SharedBuild:
     """The workspace of ``app`` staged at a fixed path and the target folder every run with the same ``Cargo.lock`` and compiler shares, so
-    only the crates whose files changed are compiled again; a run that stages different sources gets its own staged copy."""
+    only the crates whose files changed are compiled again; a run that stages different sources gets its own staged copy.
+    App-only native toolchain metadata may salt the source key without splitting Rust dependency targets."""
     toolchain = version("rustc", tool("rustc"), ["--version", "--verbose"])
     files = sources(app)
-    key = key_of(app, files, toolchain)
+    key = key_of(app, files, toolchain + ("\n" + source_key_extra if source_key_extra else ""))
     locked = hashlib.sha256(b"\n".join([(app / "Cargo.lock").read_bytes(), toolchain.encode()])).hexdigest()[:KEY_LENGTH]
     base = root or cargo_root()
     staged, target = base / "workspaces" / key / "app", base / "targets" / locked
