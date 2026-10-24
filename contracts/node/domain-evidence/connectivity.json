@@ -1,0 +1,894 @@
+{
+  "version": 1,
+  "status": "proposal; source inventory and declaration constraints only; no runtime/platform/K acceptance",
+  "source_commit": "066ee1e53a94351d4209383e7141d4cd71788477",
+  "sources": [
+    {
+      "path": "app/poolhouse-node/src/poolapi.rs",
+      "sha256": "59973fbd7e4d4fb01d898282665e462b9433473466a998800819dadc481345e8"
+    },
+    {
+      "path": "app/poolhouse-node/src/poolops.rs",
+      "sha256": "442f2b807986f256126f4aee4e5e375454b22d5429bbe2a074da5824f244a900"
+    },
+    {
+      "path": "app/poolhouse-node/src/net.rs",
+      "sha256": "890c7af1a83be9d7a15f1b863b282adb96466787f5607da0ab6adf33169485c6"
+    },
+    {
+      "path": "app/poolhouse-node/src/peer.rs",
+      "sha256": "fa88a4ff4d061c7117faa69f56f6473281fea6b4a8141af8e1484d678a614c3d"
+    },
+    {
+      "path": "app/poolhouse-node/src/beacon.rs",
+      "sha256": "45bf3c0dd31cc5a8b52b2198ade02526f482926a10c1daf218a6fe3c800b7dd1"
+    },
+    {
+      "path": "app/poolhouse-node/src/tls.rs",
+      "sha256": "e5bd183b4896803a77412979bdbce158eef4b5b2e0c3783f5e3ee82ba15e3691"
+    },
+    {
+      "path": "app/poolhouse-node/src/facts.rs",
+      "sha256": "92632f79c8003e52b9aff545f826a8375fdc53caf9a66f512e9ebb42e6fd07e5"
+    },
+    {
+      "path": "app/poolhouse-node/src/reach.rs",
+      "sha256": "258f8d7fc68df16792579d50eee82a097d465b765ef90227795bf7668a66105b"
+    },
+    {
+      "path": "app/poolhouse-node/src/membership.rs",
+      "sha256": "4394c28c08a424f9f89eb84a1c5bcc36a09a30ba37bbe25508703f77cdb070d6"
+    },
+    {
+      "path": "app/poolhouse-node/src/join_code.rs",
+      "sha256": "95dfbf2d3aa5eb2fb417d82c9ff3548bbb1d95d42b503922c4b3b7d9230f8624"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/ops.rs",
+      "sha256": "e0eb9e52686fdf55ae83cbd3a5c1aa1283dbbdde35b6e41e207c1654472b6963"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/logs.rs",
+      "sha256": "38832f9f2e1c457c095a6667c9fae820e3db847db808ad8a80dbcd7acd7e1113"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/roster.rs",
+      "sha256": "5ec64fb64800489a724dc9f81af2b106f63d3ced3667fcb2ab970d29a9a8434f"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/charter.rs",
+      "sha256": "c1aab014e367e29e03415987786d31c355a502e9bdd66d0411d86cef4b10a5a2"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/wire.rs",
+      "sha256": "1dd7815b5c8023efae45ff28c28200263fcfb6db55dac98fe6a626d26314ffff"
+    },
+    {
+      "path": "app/poolhouse-node/src/netsync.rs",
+      "sha256": "d30e3ebcdb9c263fec222a12979f59eeb8968848bacab6206ae94326fea993b1"
+    },
+    {
+      "path": "app/poolhouse-node/src/cert.rs",
+      "sha256": "695e8ad8ed1a1e06c900feadd6b97487a8e085fd93dd21941677af2a5234ee92"
+    },
+    {
+      "path": "src/poolhouse/api/pool.py",
+      "sha256": "65e5c814b685ad550d57ea67852851599778dfaf20bed9a192e4887317ada1da"
+    },
+    {
+      "path": "src/poolhouse/workspace/pool_cli.py",
+      "sha256": "17b23df362e06e3836bfc6fa1cd43dd01359f2fbc03f25870a41616adc7b33ed"
+    },
+    {
+      "path": "src/poolhouse/node_pool.py",
+      "sha256": "d41174a2643c3d758d4675d51dabb35b8fa7efd0a461b8683894c418bfd65f11"
+    },
+    {
+      "path": "src/poolhouse/node_join.py",
+      "sha256": "5b7ec9a91ec2ae50b585bff1d62ceb670527525301becde0d952d0aac75a7393"
+    },
+    {
+      "path": "src/poolhouse/fleet/routes.py",
+      "sha256": "509fd14062d13bb5a15777319e6291a63ac4528c462a450f395311d3e692d15d"
+    },
+    {
+      "path": "src/poolhouse/fleet/member_routes.py",
+      "sha256": "1162562495e24542c4fa196bd1725eca17bb7cd3bf7ee2fe0c30645ccfc3c571"
+    },
+    {
+      "path": "src/poolhouse/fleet/invite_routes.py",
+      "sha256": "29b58006594cc7d1f407a434c18ce4327dd851b735c3691a9bf734f4242d93ae"
+    },
+    {
+      "path": "src/poolhouse/fleet/discovery.py",
+      "sha256": "ce7ae3890ce8892436c09c8c3279fa011e06d8b65a4f63927792bfad378bb996"
+    },
+    {
+      "path": "src/poolhouse/fleet/join.py",
+      "sha256": "d38b32fa78f29c3f7927cfa3e6f4ddd7a059e6f3470fbe80cf032cf655618d1d"
+    },
+    {
+      "path": "src/poolhouse/fleet/pool_roster.py",
+      "sha256": "1816c7a0ff6501ee2e7bd976382cb6b19703047f1630350639e9054a5a80b5b2"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/pool-view.html",
+      "sha256": "6cdec6e8972ccd487bfffafadd3bc5d6777a579e58ec2ec36fd9bdd5f44f19f9"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/pool-actions.html",
+      "sha256": "fb03bdd394a2dc46e66c4e58816f60928b3b2632a3363dda3941b196bce8bd41"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/first-run.html",
+      "sha256": "fb3bd39f208df42f7b15546ff139c7e4894392919286e140d1c08728fe8f71bd"
+    },
+    {
+      "path": "docs/native-plan-windows-linux.md",
+      "sha256": "7bce2f24be640a042aa704404c4b7cb536a06af8bbc3c25be8710701df93a8d7"
+    },
+    {
+      "path": "contracts/node/retained-features.json",
+      "sha256": "3a99a8d4856851ff01e9082829a6a2a1d9e00177ea8f2595efa279af43e2a592"
+    }
+  ],
+  "sites": [
+    {
+      "path": "app/poolhouse-node/src/poolapi.rs",
+      "line": 21,
+      "match": "pub fn params",
+      "meaning": "retained local methods and accepted field names; not complete new shape authority"
+    },
+    {
+      "path": "app/poolhouse-node/src/poolops.rs",
+      "line": 60,
+      "match": "pub fn pool_status",
+      "meaning": "pool/members/readiness/reach/build/lease observations currently mixed"
+    },
+    {
+      "path": "app/poolhouse-node/src/net.rs",
+      "line": 204,
+      "match": "fn network_facts",
+      "meaning": "discovery counters and last join observation"
+    },
+    {
+      "path": "app/poolhouse-node/src/net.rs",
+      "line": 228,
+      "match": "fn heard",
+      "meaning": "beacon processing currently may trigger open join; do not retain implicit pool adoption"
+    },
+    {
+      "path": "app/poolhouse-node/src/net.rs",
+      "line": 350,
+      "match": "pub fn add_device",
+      "meaning": "join-code TTL and prior signed admission branch"
+    },
+    {
+      "path": "app/poolhouse-node/src/net.rs",
+      "line": 367,
+      "match": "pub fn join_pool",
+      "meaning": "legacy manual address, port, code, expected fingerprint"
+    },
+    {
+      "path": "app/poolhouse-node/src/net.rs",
+      "line": 409,
+      "match": "pub fn sync_once",
+      "meaning": "force sync with active member and backoff handling"
+    },
+    {
+      "path": "app/poolhouse-node/src/net.rs",
+      "line": 492,
+      "match": "pub fn drop_removed",
+      "meaning": "current direct/reverse shutdown; not proof of all work/stream/publication cleanup"
+    },
+    {
+      "path": "app/poolhouse-node/src/net.rs",
+      "line": 543,
+      "match": "pub fn call_member",
+      "meaning": "reverse or direct node-owned transport"
+    },
+    {
+      "path": "app/poolhouse-node/src/peer.rs",
+      "line": 243,
+      "match": "pub fn serve_requests",
+      "meaning": "actual handshake identity and per-request protocol; original signed board entries"
+    },
+    {
+      "path": "app/poolhouse-node/src/beacon.rs",
+      "line": 71,
+      "match": "pub fn decode",
+      "meaning": "self-signed advertisement parse; invalid pool-length expression must not survive"
+    },
+    {
+      "path": "app/poolhouse-node/src/tls.rs",
+      "line": 24,
+      "match": "pub type StandingFn",
+      "meaning": "TLS1.3 and current membership lookup; current certificate fingerprint identity needs canonical replacement"
+    },
+    {
+      "path": "app/poolhouse-node/src/facts.rs",
+      "line": 12,
+      "match": "pub struct PeerFacts",
+      "meaning": "cached addresses and historical reach facts confer no current authenticated status"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/logs.rs",
+      "line": 34,
+      "match": "fn apply_log_cuts",
+      "meaning": "signed removal cuts close board logs"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/ops.rs",
+      "line": 360,
+      "match": "pub fn pool_leave",
+      "meaning": "device self-signed leave must retain charter authority without invented person prompts"
+    },
+    {
+      "path": "src/poolhouse/api/pool.py",
+      "line": 121,
+      "match": "def status",
+      "meaning": "public pool/member/status caller"
+    },
+    {
+      "path": "src/poolhouse/api/pool.py",
+      "line": 141,
+      "match": "def listen",
+      "meaning": "legacy agreed boolean is no authority and independent node launch is superseded"
+    },
+    {
+      "path": "src/poolhouse/api/pool.py",
+      "line": 154,
+      "match": "def add_device",
+      "meaning": "retained secure add-device journey"
+    },
+    {
+      "path": "src/poolhouse/api/pool.py",
+      "line": 163,
+      "match": "def join",
+      "meaning": "retained advanced manual address/code/fingerprint inputs"
+    },
+    {
+      "path": "src/poolhouse/api/pool.py",
+      "line": 198,
+      "match": "def remove",
+      "meaning": "name is ambiguous display lookup only; new target resolved ID/generation"
+    },
+    {
+      "path": "src/poolhouse/api/pool.py",
+      "line": 208,
+      "match": "def sync",
+      "meaning": "public sync_now caller"
+    },
+    {
+      "path": "src/poolhouse/workspace/pool_cli.py",
+      "line": 38,
+      "match": "def command",
+      "meaning": "CLI founding retained through governed approval intent"
+    },
+    {
+      "path": "src/poolhouse/node_join.py",
+      "line": 163,
+      "match": "return _act(state, \"join_pool\"",
+      "meaning": "manual CLI address/code caller preserved as hint plus protected code journey"
+    },
+    {
+      "path": "src/poolhouse/node_pool.py",
+      "line": 44,
+      "match": "def rows",
+      "meaning": "member CLI/runtime doctor rendering of status, reach and build"
+    },
+    {
+      "path": "src/poolhouse/fleet/routes.py",
+      "line": 215,
+      "match": "def found_pools",
+      "meaning": "UI discovered pools read"
+    },
+    {
+      "path": "src/poolhouse/fleet/routes.py",
+      "line": 568,
+      "match": "class PoolRoutes",
+      "meaning": "UI pools/members/fleet/multiple pool/leave/join/pause retained inventory"
+    },
+    {
+      "path": "src/poolhouse/fleet/member_routes.py",
+      "line": 21,
+      "match": "def answer",
+      "meaning": "legacy unsigned roster union cannot confer native membership"
+    },
+    {
+      "path": "src/poolhouse/fleet/invite_routes.py",
+      "line": 38,
+      "match": "def ui_route",
+      "meaning": "invitation/QR/Android add/list/remove journey retained as explicit gap"
+    },
+    {
+      "path": "src/poolhouse/fleet/invite_routes.py",
+      "line": 97,
+      "match": "def public",
+      "meaning": "invitation challenge/redeem currently TLS+local-network gated; no native authority migration"
+    },
+    {
+      "path": "src/poolhouse/fleet/discovery.py",
+      "line": 103,
+      "match": "def adopt",
+      "meaning": "shared-secret and policy files are legacy state only"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/pool-view.html",
+      "line": 216,
+      "match": "api(\"/ui/pools\")",
+      "meaning": "actual pool list UI caller"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/pool-view.html",
+      "line": 311,
+      "match": "method: \"DELETE\"",
+      "meaning": "actual leave UI caller"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/pool-actions.html",
+      "line": 50,
+      "match": "/ui/pools/found",
+      "meaning": "actual discovered pool UI caller"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/pool-actions.html",
+      "line": 87,
+      "match": "/ui/fleet/join-invite",
+      "meaning": "actual invitation join UI caller"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/pool-actions.html",
+      "line": 116,
+      "match": "/ui/fleet/invites",
+      "meaning": "actual mint invitation/QR UI caller"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/pool-actions.html",
+      "line": 133,
+      "match": "/ui/fleet/android-devices",
+      "meaning": "actual Android list/remove caller"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/first-run.html",
+      "line": 112,
+      "match": "/ui/setup/join",
+      "meaning": "actual initial setup join caller"
+    }
+  ],
+  "operation_mapping": [
+    {
+      "operation": "devices.local.inspect",
+      "request": "ConnectivityLocalRequest",
+      "response": "ConnectivityLocalView",
+      "error": "ConnectivityError",
+      "legacy": [
+        "pool_status (local identity/listen/beacon)",
+        "node_join.status"
+      ],
+      "site_indices": [
+        1,
+        2,
+        15,
+        23
+      ],
+      "semantics": "new canonical proposal; no existing implementation claimed"
+    },
+    {
+      "operation": "devices.local.watch",
+      "request": "ConnectivityLocalRequest",
+      "response": "ConnectivityLocalEvent",
+      "error": "ConnectivityError",
+      "legacy": [
+        "pool_status (local identity/listen/beacon)",
+        "node_join.status"
+      ],
+      "site_indices": [
+        1,
+        2,
+        15,
+        23
+      ],
+      "semantics": "new canonical proposal; no existing implementation claimed"
+    },
+    {
+      "operation": "devices.inspect",
+      "request": "ConnectivityDeviceInspectRequest",
+      "response": "ConnectivityDeviceView",
+      "error": "ConnectivityError",
+      "legacy": [
+        "pool_status.members",
+        "ph.pool.members",
+        "/ui/members",
+        "node_pool.rows"
+      ],
+      "site_indices": [
+        1,
+        15,
+        23,
+        25
+      ],
+      "semantics": "new canonical proposal; no existing implementation claimed"
+    },
+    {
+      "operation": "devices.list",
+      "request": "ConnectivityListRequest",
+      "response": "ConnectivityDeviceSnapshot",
+      "error": "ConnectivityError",
+      "legacy": [
+        "pool_status.members",
+        "ph.pool.members",
+        "/ui/members",
+        "node_pool.rows"
+      ],
+      "site_indices": [
+        1,
+        15,
+        23,
+        25
+      ],
+      "semantics": "new canonical proposal; no existing implementation claimed"
+    },
+    {
+      "operation": "devices.watch",
+      "request": "ConnectivityListRequest",
+      "response": "ConnectivityDeviceEvent",
+      "error": "ConnectivityError",
+      "legacy": [
+        "pool_status.members",
+        "ph.pool.members",
+        "/ui/members",
+        "node_pool.rows"
+      ],
+      "site_indices": [
+        1,
+        15,
+        23,
+        25
+      ],
+      "semantics": "new canonical proposal; no existing implementation claimed"
+    },
+    {
+      "operation": "pools.inspect",
+      "request": "ConnectivityPoolInspectRequest",
+      "response": "ConnectivityPoolView",
+      "error": "ConnectivityError",
+      "legacy": [
+        "pool_status",
+        "ph.pool.status",
+        "ph.pool.policy",
+        "/ui/pools GET"
+      ],
+      "site_indices": [
+        1,
+        15,
+        25,
+        30
+      ],
+      "semantics": "new canonical proposal; no existing implementation claimed"
+    },
+    {
+      "operation": "pools.list",
+      "request": "ConnectivityListRequest",
+      "response": "ConnectivityPoolSnapshot",
+      "error": "ConnectivityError",
+      "legacy": [
+        "pool_status",
+        "ph.pool.status",
+        "ph.pool.policy",
+        "/ui/pools GET"
+      ],
+      "site_indices": [
+        1,
+        15,
+        25,
+        30
+      ],
+      "semantics": "new canonical proposal; no existing implementation claimed"
+    },
+    {
+      "operation": "pools.watch",
+      "request": "ConnectivityListRequest",
+      "response": "ConnectivityPoolEvent",
+      "error": "ConnectivityError",
+      "legacy": [
+        "pool_status",
+        "ph.pool.status",
+        "ph.pool.policy",
+        "/ui/pools GET"
+      ],
+      "site_indices": [
+        1,
+        15,
+        25,
+        30
+      ],
+      "semantics": "new canonical proposal; no existing implementation claimed"
+    },
+    {
+      "operation": "discovery.candidate.submit.hint",
+      "request": "ConnectivitySubmitHintRequest",
+      "response": "ConnectivityCandidate",
+      "error": "ConnectivityError",
+      "legacy": [
+        "join_pool.host/port",
+        "ph.pool.join(host,port)",
+        "node_join join-pool --host/--port"
+      ],
+      "site_indices": [
+        5,
+        18,
+        22
+      ],
+      "semantics": "preserves advanced address input as untrusted bounded hint; no dial/identity/admission authority"
+    },
+    {
+      "operation": "discovery.candidate.inspect",
+      "request": "ConnectivityCandidateInspectRequest",
+      "response": "ConnectivityCandidate",
+      "error": "ConnectivityError",
+      "legacy": [
+        "beacon",
+        "/ui/pools/found",
+        "known_pools"
+      ],
+      "site_indices": [
+        3,
+        10,
+        24,
+        32
+      ],
+      "semantics": "new canonical proposal; no existing implementation claimed"
+    },
+    {
+      "operation": "discovery.candidates.list",
+      "request": "ConnectivityListRequest",
+      "response": "ConnectivityCandidateSnapshot",
+      "error": "ConnectivityError",
+      "legacy": [
+        "beacon",
+        "/ui/pools/found",
+        "known_pools"
+      ],
+      "site_indices": [
+        3,
+        10,
+        24,
+        32
+      ],
+      "semantics": "new canonical proposal; no existing implementation claimed"
+    },
+    {
+      "operation": "discovery.candidates.watch",
+      "request": "ConnectivityListRequest",
+      "response": "ConnectivityCandidateEvent",
+      "error": "ConnectivityError",
+      "legacy": [
+        "beacon",
+        "/ui/pools/found",
+        "known_pools"
+      ],
+      "site_indices": [
+        3,
+        10,
+        24,
+        32
+      ],
+      "semantics": "new canonical proposal; no existing implementation claimed"
+    },
+    {
+      "operation": "pools.join.request",
+      "request": "ConnectivityJoinRequest",
+      "response": "ConnectivityJoinView",
+      "error": "ConnectivityError",
+      "legacy": [
+        "join_pool",
+        "ph.pool.join",
+        "node_join._join_pool",
+        "/ui/pools POST",
+        "/ui/setup/join"
+      ],
+      "site_indices": [
+        5,
+        18,
+        22,
+        25,
+        36
+      ],
+      "semantics": "new canonical proposal; no existing implementation claimed"
+    },
+    {
+      "operation": "pools.join.inspect",
+      "request": "ConnectivityJoinInspectRequest",
+      "response": "ConnectivityJoinView",
+      "error": "ConnectivityError",
+      "legacy": [
+        "join_pool",
+        "ph.pool.join",
+        "node_join._join_pool",
+        "/ui/pools POST",
+        "/ui/setup/join"
+      ],
+      "site_indices": [
+        5,
+        18,
+        22,
+        25,
+        36
+      ],
+      "semantics": "new canonical proposal; no existing implementation claimed"
+    },
+    {
+      "operation": "pools.join.cancel",
+      "request": "ConnectivityJoinCancelRequest",
+      "response": "ConnectivityJoinCancelResult",
+      "error": "ConnectivityError",
+      "legacy": [
+        "join_pool",
+        "ph.pool.join",
+        "node_join._join_pool",
+        "/ui/pools POST",
+        "/ui/setup/join"
+      ],
+      "site_indices": [
+        5,
+        18,
+        22,
+        25,
+        36
+      ],
+      "semantics": "new canonical proposal; no existing implementation claimed"
+    },
+    {
+      "operation": "pools.join.watch",
+      "request": "ConnectivityJoinWatchRequest",
+      "response": "ConnectivityJoinEvent",
+      "error": "ConnectivityError",
+      "legacy": [
+        "join_pool",
+        "ph.pool.join",
+        "node_join._join_pool",
+        "/ui/pools POST",
+        "/ui/setup/join"
+      ],
+      "site_indices": [
+        5,
+        18,
+        22,
+        25,
+        36
+      ],
+      "semantics": "new canonical proposal; no existing implementation claimed"
+    },
+    {
+      "operation": "transport.connections.list",
+      "request": "ConnectivityListRequest",
+      "response": "ConnectivityConnectionSnapshot",
+      "error": "ConnectivityError",
+      "legacy": [
+        "net.attach",
+        "net.register_reverse",
+        "net.call_member",
+        "pool_status reach/channel"
+      ],
+      "site_indices": [
+        7,
+        8,
+        12,
+        23
+      ],
+      "semantics": "canonical scoped inspection/logical interest proposal over existing internal transport paths; no legacy public transport controller claimed"
+    },
+    {
+      "operation": "transport.connections.watch",
+      "request": "ConnectivityListRequest",
+      "response": "ConnectivityConnectionEvent",
+      "error": "ConnectivityError",
+      "legacy": [
+        "net.attach",
+        "net.register_reverse",
+        "net.call_member",
+        "pool_status reach/channel"
+      ],
+      "site_indices": [
+        7,
+        8,
+        12,
+        23
+      ],
+      "semantics": "canonical scoped inspection/logical interest proposal over existing internal transport paths; no legacy public transport controller claimed"
+    },
+    {
+      "operation": "transport.connect.request",
+      "request": "ConnectivityConnectRequest",
+      "response": "ConnectivityConnectionInterest",
+      "error": "ConnectivityError",
+      "legacy": [
+        "net.attach",
+        "net.register_reverse",
+        "net.call_member",
+        "pool_status reach/channel"
+      ],
+      "site_indices": [
+        7,
+        8,
+        12,
+        23
+      ],
+      "semantics": "canonical scoped inspection/logical interest proposal over existing internal transport paths; no legacy public transport controller claimed"
+    },
+    {
+      "operation": "transport.disconnect",
+      "request": "ConnectivityDisconnectRequest",
+      "response": "ConnectivityConnectionInterest",
+      "error": "ConnectivityError",
+      "legacy": [
+        "net.attach",
+        "net.register_reverse",
+        "net.call_member",
+        "pool_status reach/channel"
+      ],
+      "site_indices": [
+        7,
+        8,
+        12,
+        23
+      ],
+      "semantics": "canonical scoped inspection/logical interest proposal over existing internal transport paths; no legacy public transport controller claimed"
+    },
+    {
+      "operation": "pools.sync.request",
+      "request": "ConnectivitySyncRequest",
+      "response": "ConnectivitySyncView",
+      "error": "ConnectivityError",
+      "legacy": [
+        "sync_now",
+        "ph.pool.sync"
+      ],
+      "site_indices": [
+        6,
+        20
+      ],
+      "semantics": "new canonical proposal; no existing implementation claimed"
+    },
+    {
+      "operation": "pools.sync.members.list",
+      "request": "ConnectivitySyncMemberListRequest",
+      "response": "ConnectivityMemberSyncSnapshot",
+      "error": "ConnectivityError",
+      "legacy": [
+        "sync_now",
+        "ph.pool.sync"
+      ],
+      "site_indices": [
+        6,
+        20
+      ],
+      "semantics": "new canonical proposal; no existing implementation claimed"
+    },
+    {
+      "operation": "pools.sync.inspect",
+      "request": "ConnectivitySyncInspectRequest",
+      "response": "ConnectivitySyncView",
+      "error": "ConnectivityError",
+      "legacy": [
+        "sync_now",
+        "ph.pool.sync"
+      ],
+      "site_indices": [
+        6,
+        20
+      ],
+      "semantics": "new canonical proposal; no existing implementation claimed"
+    },
+    {
+      "operation": "pools.sync.cancel",
+      "request": "ConnectivitySyncCancelRequest",
+      "response": "ConnectivitySyncCancelResult",
+      "error": "ConnectivityError",
+      "legacy": [
+        "sync_now",
+        "ph.pool.sync"
+      ],
+      "site_indices": [
+        6,
+        20
+      ],
+      "semantics": "new canonical proposal; no existing implementation claimed"
+    },
+    {
+      "operation": "pools.sync.watch",
+      "request": "ConnectivitySyncWatchRequest",
+      "response": "ConnectivitySyncEvent",
+      "error": "ConnectivityError",
+      "legacy": [
+        "sync_now",
+        "ph.pool.sync"
+      ],
+      "site_indices": [
+        6,
+        20
+      ],
+      "semantics": "new canonical proposal; no existing implementation claimed"
+    }
+  ],
+  "requirements": [
+    "Authenticated actual IPC principal and configured service/owner identity at both endpoints; DTO IDs names labels addresses claimed keys and caller-supplied expected generations assert no authority.",
+    "Every mutation binds durable RequestId to actual principal installation resource incarnation and immutable payload; updates additionally bind applicable CAS revision; hint creation has no prior revision; cross-resource payload/generation reuse conflicts. Retry reauthorizes and returns identical durable outcome without duplicate effects.",
+    "MembershipGeneration is scoped by PoolId plus pool generation plus DeviceId incarnation. Every channel stream work capability and publication repeats that binding. Removal in one pool cannot remove rights or work in another. Re-admission creates a new incarnation; no old TLS resumption/job/cursor rights revive.",
+    "Candidate observed_pool is absent until node verifies remote signed founding/governance context and binds the observation to candidate/endpoint generation; afterward it exposes the node-observed PoolId and generation so prejoin callers can supply expected_pool without authorized-member inspection. This is an expectation binding only and never admission; absent or changed observed context refuses join.",
+    "Candidate storage is bounded expiring untrusted data. Self-signature validates advertisement integrity only. Node recomputes DeviceId from actual handshake public key; CertificateDigest is separate. Certificate renewal with the same key re-verifies endpoint/certificate without creating a new member.",
+    "Submit_hint parses an address not URL/command: reject schemes userinfo paths malformed ports and unsupported scopes. Normalize IPv4-mapped IPv6; scope IDs resolve only through current node-owned interface refs. Provider/interface refs require actual caller authorization and exact generation and never relax egress policy.",
+    "Apply egress interface/provider policy before each dial/challenge and on every DNS resolved or actually connected address and reconnect. No DNS rebinding redirect provider callback or signed beacon can authorize prohibited destinations. Aggregate per-principal device provider rate/cache/TTL limits survive changing RequestIds. Hint submission triggers no person prompt and confers no membership.",
+    "Node-private endpoint challenge binds candidate/endpoint generation actual handshake key DeviceId certificate digest installation nonce direction expiry protocol provider and expected pool context. No trust on first use. Advertise actual listener before membership; do not suppress unfounded discovery or adopt a pool from its beacon/name/order.",
+    "Node alone owns unified TLS1.3 transport for replication capacity jobs files calls and reverse channels. Public DTOs expose no raw RPC op/args raw TLS handles identity controls or independent worker admission. Direct/reverse share current pool/device incarnation checks.",
+    "Keep service listener discovery-send discovery-receive candidate key-proof signed membership current authenticated connection replication and execution separate. Historical address/last-sync or a ready listener never implies a current authenticated or executable member. Unknown stays unknown, not false/zero.",
+    "Secure admission requires verified signed charter authority. Open admission requires genuinely accepted immutable open charter and verified same-segment rules. Join code proves exchange only; prior signed admission narrow valid delegates and device-self leave do not cause invented new person prompts. Public presigned/approved booleans are absent.",
+    "Joining emits verifying_endpoint/awaiting_authority/admission_pending then membership_effective only when signed membership actually effective. A completed request or protected owner review is not membership_effective; membership_effective implies neither connection nor execution readiness. Caller cannot choose active pool by missing/ambiguous context.",
+    "Persist signed removal and affected incarnation denial before reporting successful effective removal; close exact direct/reverse channels streams and capabilities, cancel queued/running work, release leases and gate result publication. Cleanup receipts survive restart; stale replies TLS resumption and re-admit cannot restore authority. Offline remote state remains unknown and old authority requires bounded renewal/expiry.",
+    "Disconnect atomically releases only actual callers logical connection interest. It never directly closes shared physical TLS, removes membership or cancels durable jobs. Node closes physical connection only when independently safe and policy permits.",
+    "Sync member outcomes are paginated in immutable ConnectivityMemberSyncSnapshot; SyncView carries the first bounded page, pools.sync.members.list resumes next_cursor for every remaining authorized member including beyond 256. Do not truncate outcomes, raise caps or fail a valid sync because total members exceed one page; pages preserve snapshot/revision and reauthorize principal/attempt/each-board-share. Unknown total stays unknown.",
+    "Sync authorizes each board and cross-pool share on every stage and delivery, verifies original signed entries, preserves removal cuts and first-sight observations. Corrupt relay data is quarantined without marking genuine origin damaged. Cancel stops owned future sync work but never removes already accepted signed rows; partial commit is explicit.",
+    "Watch cursors bind actual principal authorized pool/device incarnation scope projection generation immutable snapshot revision and expiry. Empty snapshots have zero items complete=true and absent next_cursor; incomplete pages have next_cursor; pages preserve snapshot/revision until complete. Changes follow snapshot completion, each item/page/delivery/resume reauthorizes; retention or generation loss emits resync_required. Observer disconnect only detaches.",
+    "Devices inspection may expose removed/left target state and cleanup to an authorized reader; current-membership authorization checks the caller, not a requirement that the inspected target remain active. No target existence disclosure before caller authorization."
+  ],
+  "retained_governance_mapping": [
+    {
+      "legacy": [
+        "pool_create",
+        "pool_found",
+        "pool_draft_found",
+        "workspace pool found"
+      ],
+      "replacement": "approvals.request found intent; genuine root establishment only"
+    },
+    {
+      "legacy": [
+        "member_remove",
+        "ph.pool.remove"
+      ],
+      "replacement": "approvals.request remove intent; node resolves cuts; device watch reports effective signed removal and cleanup independently"
+    },
+    {
+      "legacy": [
+        "pool_leave",
+        "/ui/pools DELETE"
+      ],
+      "replacement": "approvals.request leave intent; charter-authorized device self-signing needs no invented person prompt"
+    },
+    {
+      "legacy": [
+        "pool_propose",
+        "pool_cosign",
+        "pool_submit",
+        "pool_draft"
+      ],
+      "replacement": "closed approval intents and independently verified signed governance; no raw public arbitrary-sign/submit authority"
+    },
+    {
+      "legacy": [
+        "add_device(passphrase,ttl_s,presigned)",
+        "join_exchange",
+        "join_confirm"
+      ],
+      "replacement": "genuine charter-authorized admission and protected join-code journey; no public code/presigned boolean grants authority"
+    }
+  ],
+  "unmapped_gaps": [
+    "Multiple-pool declarations are scoped, but existing Rust membership storage and adoption supports one active pool. Cross-pool node state, routing, pool selection and sharing implementation remain unproved; legacy Python multiple pools are inventoried, not silently discarded.",
+    "Invitation mint/revoke/QR/redeem, Android device list/removal, and optional-phone onboarding require dedicated fresh authority-bound intents and protected transport. Existing invitation/shared-secret trust is not migrated. All actual UI callers remain inventoried until replacements work.",
+    "Protected SPAKE2 join-code display/entry and expiration/cancel adapter contracts remain unfinished. Advanced manual address input is preserved by submit_hint; code and phone workflows are not claimed implemented or removed.",
+    "Unfounded local service discovery is represented, but actual advertise-before-membership correctness and invalid beacon pool-length expression require runtime fixes after K/P.",
+    "Network-provider setup, DNS/interface parsing and policy enforcement, native firewall recovery, key challenge envelopes, TLS protocol/version negotiation, bounded framing flow control and resumable streams require reviewed node/platform contracts and proof; no WSL bridge/hints survive as native authority.",
+    "Open-join sentinel flags/caps, delegate rate limits and fatigue/holds/threshold behavior remain runtime invariants to retain. This declaration does not implement them.",
+    "Device build/wire compatibility/update hints and self key custody diagnostics from pool_status are retained inventory delegated to lifecycle/authority domains. Capacity telemetry, lease configuration, pause/resume scheduling and shard consent/jobs are delegated to resource/settings/jobs domains and are not represented by connection readiness.",
+    "Public legacy shard_call op/args, unsigned membership roster union, shared-secret pool files, agreed/persist/presigned booleans, manual pool switching and automatic adoption are not trusted compatibility routes. Equivalent legitimate workload and startup capabilities need their own typed reviewed domains.",
+    "No installed/UI/CLI/SDK callers use these declarations yet. No runtime/P/K acceptance, physical-device proof, membership cleanup or foreign-platform behavior is claimed."
+  ],
+  "independent_design_review": {
+    "reviewer": "approval_attack_review",
+    "scope": "read-only /tmp/connectivity-design-535b06.md and manual-hint refinement",
+    "result": "declaration work approved with requirements above",
+    "concrete_review": "approved final corrected 106-type/25-operation proposal after observable prejoin pool context, paginated sync results and creation-versus-update CAS corrections; no runtime/platform/K acceptance"
+  }
+}

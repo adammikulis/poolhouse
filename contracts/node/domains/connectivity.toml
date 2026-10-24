@@ -1,0 +1,966 @@
+# Source declarations only; candidates and DTO references never confer authority.
+version = 1
+status = "proposal"
+
+[[type]]
+name = "ConnectivityCandidateId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ConnectivityEndpointId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ConnectivityConnectionId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ConnectivityConnectionInterestId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ConnectivityJoinAttemptId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ConnectivitySyncAttemptId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ConnectivitySnapshotId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ConnectivityProviderId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ConnectivityInterfaceId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "MembershipGeneration"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "TransportGeneration"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ConnectivityCursor"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "node"
+min_bytes = 1
+max_bytes = 2048
+
+[[type]]
+name = "ConnectivityLabel"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 0
+max_bytes = 256
+
+[[type]]
+name = "ConnectivityAddressText"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 1
+max_bytes = 253
+
+[[type]]
+name = "ConnectivityPort"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "data"
+minimum = 1
+maximum = 65535
+
+[[type]]
+name = "ConnectivityOptionalCursor"
+kind = "optional"
+visibility = "public"
+item = "ConnectivityCursor"
+
+[[type]]
+name = "ConnectivityOptionalDeviceId"
+kind = "optional"
+visibility = "public"
+item = "DeviceId"
+
+[[type]]
+name = "ConnectivityOptionalPoolId"
+kind = "optional"
+visibility = "public"
+item = "PoolId"
+
+[[type]]
+name = "ConnectivityOptionalKey"
+kind = "optional"
+visibility = "public"
+item = "Ed25519PublicKey"
+
+[[type]]
+name = "ConnectivityOptionalCertificate"
+kind = "optional"
+visibility = "public"
+item = "CertificateDigest"
+
+[[type]]
+name = "ConnectivityOptionalApprovalId"
+kind = "optional"
+visibility = "public"
+item = "ApprovalId"
+
+[[type]]
+name = "ConnectivityOptionalConnectionId"
+kind = "optional"
+visibility = "public"
+item = "ConnectivityConnectionId"
+
+[[type]]
+name = "ConnectivityProviderRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "provider_id", type = "ConnectivityProviderId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ConnectivityInterfaceRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "interface_id", type = "ConnectivityInterfaceId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ConnectivityOptionalProvider"
+kind = "optional"
+visibility = "public"
+item = "ConnectivityProviderRef"
+
+[[type]]
+name = "ConnectivityOptionalInterface"
+kind = "optional"
+visibility = "public"
+item = "ConnectivityInterfaceRef"
+
+[[type]]
+name = "ConnectivityAddress"
+kind = "record"
+visibility = "public"
+fields = [{name = "address", type = "ConnectivityAddressText"}, {name = "port", type = "ConnectivityPort"}]
+
+[[type]]
+name = "ConnectivityAddressHint"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "ipv4", type = "ConnectivityAddress"}, {tag = "ipv6", type = "ConnectivityAddress"}, {tag = "dns", type = "ConnectivityAddress"}]
+
+[[type]]
+name = "ConnectivityEndpointHint"
+kind = "record"
+visibility = "public"
+fields = [{name = "address", type = "ConnectivityAddressHint"}, {name = "provider", type = "ConnectivityOptionalProvider"}, {name = "interface", type = "ConnectivityOptionalInterface"}]
+
+[[type]]
+name = "ConnectivitySubmitHintRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "hint", type = "ConnectivityEndpointHint"}]
+
+[[type]]
+name = "ConnectivityEndpointRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "endpoint_id", type = "ConnectivityEndpointId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ConnectivityEndpointObservation"
+kind = "record"
+visibility = "public"
+fields = [{name = "endpoint", type = "ConnectivityEndpointRef"}, {name = "hint", type = "ConnectivityEndpointHint"}, {name = "observed_at", type = "UnixMicros"}, {name = "expires_at", type = "UnixMicros"}]
+
+[[type]]
+name = "ConnectivityEndpointObservations"
+kind = "list"
+visibility = "public"
+item = "ConnectivityEndpointObservation"
+max_items = 16
+
+[[type]]
+name = "ConnectivityKeyProof"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "unproven", type = "Empty"}, {tag = "challenge_pending", type = "Empty"}, {tag = "key_possession_proven", type = "Empty"}, {tag = "failed", type = "Empty"}, {tag = "expired", type = "Empty"}]
+
+[[type]]
+name = "ConnectivityAdvertisement"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "unsigned", type = "Empty"}, {tag = "self_signature_valid", type = "Empty"}, {tag = "invalid", type = "Empty"}, {tag = "unknown", type = "Empty"}]
+
+[[type]]
+name = "ConnectivityCandidate"
+kind = "record"
+visibility = "public"
+fields = [{name = "candidate_id", type = "ConnectivityCandidateId"}, {name = "generation", type = "ResourceGeneration"}, {name = "label", type = "ConnectivityLabel"}, {name = "claimed_device_id", type = "ConnectivityOptionalDeviceId"}, {name = "claimed_pool_id", type = "ConnectivityOptionalPoolId"}, {name = "observed_pool", type = "ConnectivityOptionalPoolRef"}, {name = "claimed_key", type = "ConnectivityOptionalKey"}, {name = "certificate_digest", type = "ConnectivityOptionalCertificate"}, {name = "advertisement", type = "ConnectivityAdvertisement"}, {name = "key_proof", type = "ConnectivityKeyProof"}, {name = "endpoints", type = "ConnectivityEndpointObservations"}, {name = "observed_at", type = "UnixMicros"}, {name = "expires_at", type = "UnixMicros"}, {name = "revision", type = "U64"}]
+
+[[type]]
+name = "ConnectivityCandidateInspectRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "candidate_id", type = "ConnectivityCandidateId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ConnectivityPoolRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "pool_id", type = "PoolId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ConnectivityOptionalPoolRef"
+kind = "optional"
+visibility = "public"
+item = "ConnectivityPoolRef"
+
+[[type]]
+name = "ConnectivityMembershipRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "pool_id", type = "PoolId"}, {name = "pool_generation", type = "ResourceGeneration"}, {name = "device_id", type = "DeviceId"}, {name = "membership_generation", type = "MembershipGeneration"}]
+
+[[type]]
+name = "ConnectivityMembershipState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "active", type = "Empty"}, {tag = "removed", type = "Empty"}, {tag = "left", type = "Empty"}]
+
+[[type]]
+name = "ConnectivityReadiness"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "unknown", type = "Empty"}, {tag = "unavailable", type = "Empty"}, {tag = "starting", type = "Empty"}, {tag = "ready", type = "Empty"}, {tag = "degraded", type = "Empty"}, {tag = "failed", type = "Empty"}]
+
+[[type]]
+name = "ConnectivityReplicationState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "unknown", type = "Empty"}, {tag = "never_synced", type = "Empty"}, {tag = "syncing", type = "Empty"}, {tag = "current", type = "Empty"}, {tag = "behind", type = "Empty"}, {tag = "failed", type = "Empty"}]
+
+[[type]]
+name = "ConnectivityCleanupState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "unknown", type = "Empty"}, {tag = "not_required", type = "Empty"}, {tag = "pending", type = "Empty"}, {tag = "running", type = "Empty"}, {tag = "settled", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "ConnectivityCleanupObservation"
+kind = "record"
+visibility = "public"
+fields = [{name = "state", type = "ConnectivityCleanupState"}, {name = "channels", type = "ConnectivityCleanupState"}, {name = "streams", type = "ConnectivityCleanupState"}, {name = "work", type = "ConnectivityCleanupState"}, {name = "leases", type = "ConnectivityCleanupState"}, {name = "publication", type = "ConnectivityCleanupState"}, {name = "remote", type = "ConnectivityCleanupState"}, {name = "revision", type = "U64"}]
+
+[[type]]
+name = "ConnectivityDeviceView"
+kind = "record"
+visibility = "public"
+fields = [{name = "membership", type = "ConnectivityMembershipRef"}, {name = "label", type = "ConnectivityLabel"}, {name = "state", type = "ConnectivityMembershipState"}, {name = "is_local", type = "Boolean"}, {name = "service", type = "ConnectivityReadiness"}, {name = "listener", type = "ConnectivityReadiness"}, {name = "discovery", type = "ConnectivityReadiness"}, {name = "authenticated_connection", type = "ConnectivityReadiness"}, {name = "execution", type = "ConnectivityReadiness"}, {name = "replication", type = "ConnectivityReplicationState"}, {name = "last_seen", type = "OptionalUnixMicros"}, {name = "last_sync", type = "OptionalUnixMicros"}, {name = "cleanup", type = "ConnectivityCleanupObservation"}, {name = "revision", type = "U64"}]
+
+[[type]]
+name = "ConnectivityDeviceInspectRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "membership", type = "ConnectivityMembershipRef"}]
+
+[[type]]
+name = "ConnectivityPoolView"
+kind = "record"
+visibility = "public"
+fields = [{name = "pool", type = "ConnectivityPoolRef"}, {name = "governance", type = "ApprovalGovernanceView"}, {name = "local_device_id", type = "DeviceId"}, {name = "local_membership", type = "MembershipGeneration"}, {name = "listener", type = "ConnectivityReadiness"}, {name = "discovery_send", type = "ConnectivityReadiness"}, {name = "discovery_receive", type = "ConnectivityReadiness"}, {name = "authenticated_connection", type = "ConnectivityReadiness"}, {name = "replication", type = "ConnectivityReplicationState"}, {name = "execution", type = "ConnectivityReadiness"}, {name = "revision", type = "U64"}]
+
+[[type]]
+name = "ConnectivityPoolInspectRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "pool", type = "ConnectivityPoolRef"}]
+
+[[type]]
+name = "ConnectivityMembershipRefs"
+kind = "list"
+visibility = "public"
+item = "ConnectivityMembershipRef"
+max_items = 64
+
+[[type]]
+name = "ConnectivityLocalRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "after", type = "ConnectivityOptionalCursor"}]
+
+[[type]]
+name = "ConnectivityLocalView"
+kind = "record"
+visibility = "public"
+fields = [{name = "device_id", type = "DeviceId"}, {name = "installation_id", type = "InstallationId"}, {name = "generation", type = "ResourceGeneration"}, {name = "service", type = "ConnectivityReadiness"}, {name = "listener", type = "ConnectivityReadiness"}, {name = "discovery_send", type = "ConnectivityReadiness"}, {name = "discovery_receive", type = "ConnectivityReadiness"}, {name = "advertised_endpoints", type = "ConnectivityEndpointObservations"}, {name = "memberships", type = "ConnectivityMembershipRefs"}, {name = "beacons_sent", type = "OptionalU64"}, {name = "beacons_heard", type = "OptionalU64"}, {name = "beacons_rejected", type = "OptionalU64"}, {name = "revision", type = "U64"}]
+
+[[type]]
+name = "ConnectivityLocalChange"
+kind = "record"
+visibility = "public"
+fields = [{name = "cursor", type = "ConnectivityCursor"}, {name = "value", type = "ConnectivityLocalView"}]
+
+[[type]]
+name = "ConnectivityLocalEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "ConnectivityLocalChange"}, {tag = "changed", type = "ConnectivityLocalChange"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "ConnectivityListRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "pool", type = "ConnectivityOptionalPoolRef"}, {name = "after", type = "ConnectivityOptionalCursor"}]
+
+[[type]]
+name = "ConnectivityDevices"
+kind = "list"
+visibility = "public"
+item = "ConnectivityDeviceView"
+max_items = 64
+
+[[type]]
+name = "ConnectivityPools"
+kind = "list"
+visibility = "public"
+item = "ConnectivityPoolView"
+max_items = 64
+
+[[type]]
+name = "ConnectivityCandidates"
+kind = "list"
+visibility = "public"
+item = "ConnectivityCandidate"
+max_items = 64
+
+[[type]]
+name = "ConnectivityDeviceSnapshot"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot_id", type = "ConnectivitySnapshotId"}, {name = "revision", type = "U64"}, {name = "items", type = "ConnectivityDevices"}, {name = "complete", type = "Boolean"}, {name = "next_cursor", type = "ConnectivityOptionalCursor"}, {name = "cursor", type = "ConnectivityCursor"}]
+
+[[type]]
+name = "ConnectivityPoolSnapshot"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot_id", type = "ConnectivitySnapshotId"}, {name = "revision", type = "U64"}, {name = "items", type = "ConnectivityPools"}, {name = "complete", type = "Boolean"}, {name = "next_cursor", type = "ConnectivityOptionalCursor"}, {name = "cursor", type = "ConnectivityCursor"}]
+
+[[type]]
+name = "ConnectivityCandidateSnapshot"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot_id", type = "ConnectivitySnapshotId"}, {name = "revision", type = "U64"}, {name = "items", type = "ConnectivityCandidates"}, {name = "complete", type = "Boolean"}, {name = "next_cursor", type = "ConnectivityOptionalCursor"}, {name = "cursor", type = "ConnectivityCursor"}]
+
+[[type]]
+name = "ConnectivityDeviceChange"
+kind = "record"
+visibility = "public"
+fields = [{name = "cursor", type = "ConnectivityCursor"}, {name = "value", type = "ConnectivityDeviceView"}]
+
+[[type]]
+name = "ConnectivityDeviceEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "ConnectivityDeviceSnapshot"}, {tag = "changed", type = "ConnectivityDeviceChange"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "ConnectivityPoolChange"
+kind = "record"
+visibility = "public"
+fields = [{name = "cursor", type = "ConnectivityCursor"}, {name = "value", type = "ConnectivityPoolView"}]
+
+[[type]]
+name = "ConnectivityPoolEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "ConnectivityPoolSnapshot"}, {tag = "changed", type = "ConnectivityPoolChange"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "ConnectivityCandidateChange"
+kind = "record"
+visibility = "public"
+fields = [{name = "cursor", type = "ConnectivityCursor"}, {name = "value", type = "ConnectivityCandidate"}]
+
+[[type]]
+name = "ConnectivityCandidateEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "ConnectivityCandidateSnapshot"}, {tag = "changed", type = "ConnectivityCandidateChange"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "ConnectivityJoinRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "candidate", type = "ConnectivityCandidateInspectRequest"}, {name = "endpoint", type = "ConnectivityEndpointRef"}, {name = "expected_local_revision", type = "U64"}, {name = "expected_pool", type = "ConnectivityPoolRef"}]
+
+[[type]]
+name = "ConnectivityJoinState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "verifying_endpoint", type = "Empty"}, {tag = "awaiting_authority", type = "Empty"}, {tag = "admission_pending", type = "Empty"}, {tag = "membership_effective", type = "Empty"}, {tag = "cancelled", type = "Empty"}, {tag = "refused", type = "Empty"}, {tag = "expired", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "ConnectivityOptionalMembership"
+kind = "optional"
+visibility = "public"
+item = "ConnectivityMembershipRef"
+
+[[type]]
+name = "ConnectivityJoinView"
+kind = "record"
+visibility = "public"
+fields = [{name = "attempt_id", type = "ConnectivityJoinAttemptId"}, {name = "generation", type = "ResourceGeneration"}, {name = "operation_id", type = "OperationId"}, {name = "candidate", type = "ConnectivityCandidateInspectRequest"}, {name = "endpoint", type = "ConnectivityEndpointRef"}, {name = "expected_pool", type = "ConnectivityPoolRef"}, {name = "approval_id", type = "ConnectivityOptionalApprovalId"}, {name = "state", type = "ConnectivityJoinState"}, {name = "membership", type = "ConnectivityOptionalMembership"}, {name = "revision", type = "U64"}, {name = "reason", type = "SafeMessage"}]
+
+[[type]]
+name = "ConnectivityJoinInspectRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "attempt_id", type = "ConnectivityJoinAttemptId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ConnectivityJoinCancelRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "attempt_id", type = "ConnectivityJoinAttemptId"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "ConnectivityJoinWatchRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "attempt_id", type = "ConnectivityJoinAttemptId"}, {name = "generation", type = "ResourceGeneration"}, {name = "after", type = "ConnectivityOptionalCursor"}]
+
+[[type]]
+name = "ConnectivityJoinChange"
+kind = "record"
+visibility = "public"
+fields = [{name = "cursor", type = "ConnectivityCursor"}, {name = "value", type = "ConnectivityJoinView"}]
+
+[[type]]
+name = "ConnectivityJoinEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "ConnectivityJoinChange"}, {tag = "changed", type = "ConnectivityJoinChange"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "ConnectivityCancellationOutcome"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "cancelled_before_commit", type = "Empty"}, {tag = "commit_won", type = "Empty"}, {tag = "partial_commit", type = "Empty"}, {tag = "already_terminal", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "ConnectivityJoinCancelResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "attempt", type = "ConnectivityJoinView"}, {name = "outcome", type = "ConnectivityCancellationOutcome"}]
+
+[[type]]
+name = "ConnectivityDirection"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "direct", type = "Empty"}, {tag = "reverse", type = "Empty"}]
+
+[[type]]
+name = "ConnectivityConnectionView"
+kind = "record"
+visibility = "public"
+fields = [{name = "connection_id", type = "ConnectivityConnectionId"}, {name = "generation", type = "TransportGeneration"}, {name = "membership", type = "ConnectivityMembershipRef"}, {name = "endpoint", type = "ConnectivityEndpointRef"}, {name = "direction", type = "ConnectivityDirection"}, {name = "actual_device_id", type = "DeviceId"}, {name = "certificate_digest", type = "CertificateDigest"}, {name = "state", type = "ConnectivityReadiness"}, {name = "last_authenticated", type = "OptionalUnixMicros"}, {name = "revision", type = "U64"}]
+
+[[type]]
+name = "ConnectivityConnections"
+kind = "list"
+visibility = "public"
+item = "ConnectivityConnectionView"
+max_items = 64
+
+[[type]]
+name = "ConnectivityConnectionSnapshot"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot_id", type = "ConnectivitySnapshotId"}, {name = "revision", type = "U64"}, {name = "items", type = "ConnectivityConnections"}, {name = "complete", type = "Boolean"}, {name = "next_cursor", type = "ConnectivityOptionalCursor"}, {name = "cursor", type = "ConnectivityCursor"}]
+
+[[type]]
+name = "ConnectivityConnectionChange"
+kind = "record"
+visibility = "public"
+fields = [{name = "cursor", type = "ConnectivityCursor"}, {name = "value", type = "ConnectivityConnectionView"}]
+
+[[type]]
+name = "ConnectivityConnectionEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "ConnectivityConnectionSnapshot"}, {tag = "changed", type = "ConnectivityConnectionChange"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "ConnectivityConnectRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "membership", type = "ConnectivityMembershipRef"}, {name = "endpoint", type = "ConnectivityEndpointRef"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "ConnectivityInterestState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "pending", type = "Empty"}, {tag = "connected", type = "Empty"}, {tag = "released", type = "Empty"}, {tag = "failed", type = "Empty"}, {tag = "cancelled", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "ConnectivityConnectionInterest"
+kind = "record"
+visibility = "public"
+fields = [{name = "interest_id", type = "ConnectivityConnectionInterestId"}, {name = "generation", type = "ResourceGeneration"}, {name = "membership", type = "ConnectivityMembershipRef"}, {name = "connection_id", type = "ConnectivityOptionalConnectionId"}, {name = "state", type = "ConnectivityInterestState"}, {name = "revision", type = "U64"}]
+
+[[type]]
+name = "ConnectivityDisconnectRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "interest_id", type = "ConnectivityConnectionInterestId"}, {name = "membership", type = "ConnectivityMembershipRef"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "ConnectivityBoardRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "board_id", type = "BoardId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ConnectivityBoardRefs"
+kind = "list"
+visibility = "public"
+item = "ConnectivityBoardRef"
+max_items = 256
+
+[[type]]
+name = "ConnectivitySyncRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "pool", type = "ConnectivityPoolRef"}, {name = "boards", type = "ConnectivityBoardRefs"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "ConnectivitySyncState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "queued", type = "Empty"}, {tag = "running", type = "Empty"}, {tag = "completed", type = "Empty"}, {tag = "failed", type = "Empty"}, {tag = "cancelled_before_commit", type = "Empty"}, {tag = "partial_commit", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "ConnectivityMemberSyncState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "not_attempted", type = "Empty"}, {tag = "running", type = "Empty"}, {tag = "reached", type = "Empty"}, {tag = "failed", type = "Empty"}, {tag = "removed", type = "Empty"}, {tag = "cancelled", type = "Empty"}, {tag = "unknown", type = "Empty"}]
+
+[[type]]
+name = "ConnectivityMemberSync"
+kind = "record"
+visibility = "public"
+fields = [{name = "membership", type = "ConnectivityMembershipRef"}, {name = "state", type = "ConnectivityMemberSyncState"}, {name = "finished_at", type = "OptionalUnixMicros"}, {name = "accepted_rows", type = "OptionalU64"}, {name = "reason", type = "SafeMessage"}]
+
+[[type]]
+name = "ConnectivityMemberSyncs"
+kind = "list"
+visibility = "public"
+item = "ConnectivityMemberSync"
+max_items = 256
+
+[[type]]
+name = "ConnectivityMemberSyncSnapshot"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot_id", type = "ConnectivitySnapshotId"}, {name = "revision", type = "U64"}, {name = "items", type = "ConnectivityMemberSyncs"}, {name = "complete", type = "Boolean"}, {name = "next_cursor", type = "ConnectivityOptionalCursor"}, {name = "cursor", type = "ConnectivityCursor"}]
+
+[[type]]
+name = "ConnectivitySyncMemberListRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "attempt_id", type = "ConnectivitySyncAttemptId"}, {name = "generation", type = "ResourceGeneration"}, {name = "after", type = "ConnectivityOptionalCursor"}]
+
+[[type]]
+name = "ConnectivitySyncView"
+kind = "record"
+visibility = "public"
+fields = [{name = "attempt_id", type = "ConnectivitySyncAttemptId"}, {name = "generation", type = "ResourceGeneration"}, {name = "operation_id", type = "OperationId"}, {name = "pool", type = "ConnectivityPoolRef"}, {name = "state", type = "ConnectivitySyncState"}, {name = "members", type = "ConnectivityMemberSyncSnapshot"}, {name = "revision", type = "U64"}]
+
+[[type]]
+name = "ConnectivitySyncInspectRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "attempt_id", type = "ConnectivitySyncAttemptId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ConnectivitySyncCancelRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "attempt_id", type = "ConnectivitySyncAttemptId"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "ConnectivitySyncCancelResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "attempt", type = "ConnectivitySyncView"}, {name = "outcome", type = "ConnectivityCancellationOutcome"}]
+
+[[type]]
+name = "ConnectivitySyncWatchRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "attempt_id", type = "ConnectivitySyncAttemptId"}, {name = "generation", type = "ResourceGeneration"}, {name = "after", type = "ConnectivityOptionalCursor"}]
+
+[[type]]
+name = "ConnectivitySyncChange"
+kind = "record"
+visibility = "public"
+fields = [{name = "cursor", type = "ConnectivityCursor"}, {name = "value", type = "ConnectivitySyncView"}]
+
+[[type]]
+name = "ConnectivitySyncEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "ConnectivitySyncChange"}, {tag = "changed", type = "ConnectivitySyncChange"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "ConnectivityErrorDetail"
+kind = "record"
+visibility = "public"
+fields = [{name = "message", type = "SafeMessage"}]
+
+[[type]]
+name = "ConnectivityError"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "invalid_request", type = "ConnectivityErrorDetail"}, {tag = "unauthenticated", type = "ConnectivityErrorDetail"}, {tag = "forbidden", type = "ConnectivityErrorDetail"}, {tag = "not_found", type = "ConnectivityErrorDetail"}, {tag = "stale_generation", type = "ConnectivityErrorDetail"}, {tag = "revision_conflict", type = "ConnectivityErrorDetail"}, {tag = "identity_unavailable", type = "ConnectivityErrorDetail"}, {tag = "candidate_expired", type = "ConnectivityErrorDetail"}, {tag = "endpoint_changed", type = "ConnectivityErrorDetail"}, {tag = "challenge_failed", type = "ConnectivityErrorDetail"}, {tag = "authority_unavailable", type = "ConnectivityErrorDetail"}, {tag = "evidence_incomplete", type = "ConnectivityErrorDetail"}, {tag = "not_member", type = "ConnectivityErrorDetail"}, {tag = "removed", type = "ConnectivityErrorDetail"}, {tag = "already_in_pool", type = "ConnectivityErrorDetail"}, {tag = "incompatible_protocol", type = "ConnectivityErrorDetail"}, {tag = "provider_unavailable", type = "ConnectivityErrorDetail"}, {tag = "backoff", type = "ConnectivityErrorDetail"}, {tag = "cancelled", type = "ConnectivityErrorDetail"}, {tag = "already_committed", type = "ConnectivityErrorDetail"}, {tag = "partial_commit", type = "ConnectivityErrorDetail"}, {tag = "recovery_required", type = "ConnectivityErrorDetail"}, {tag = "storage_failure", type = "ConnectivityErrorDetail"}, {tag = "cursor_expired", type = "ConnectivityErrorDetail"}, {tag = "unsupported", type = "ConnectivityErrorDetail"}]
+
+[[operation]]
+name = "devices.local.inspect"
+symbol = "DevicesLocalInspect"
+request = "ConnectivityLocalRequest"
+response = "ConnectivityLocalView"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "authorized-local-device-reader", "node-issued-identity-or-explicit-identity-unavailable"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "devices.local.watch"
+symbol = "DevicesLocalWatch"
+request = "ConnectivityLocalRequest"
+response = "ConnectivityLocalEvent"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "authorized-local-device-reader", "node-issued-identity-or-explicit-identity-unavailable", "principal-scope-projection-generation-expiry-bound-cursor", "atomic-empty-and-paginated-snapshot", "reauthorize-every-item-page-delivery-and-resume", "disconnect-detaches-observer-only"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "devices.inspect"
+symbol = "DevicesInspect"
+request = "ConnectivityDeviceInspectRequest"
+response = "ConnectivityDeviceView"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "authorized-pool-reader", "exact-pool-generation-device-membership-incarnation", "caller-current-signed-membership-or-protected-local-owner-not-beacon-or-cache", "current-membership-at-every-effect-and-publication"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "devices.list"
+symbol = "DevicesList"
+request = "ConnectivityListRequest"
+response = "ConnectivityDeviceSnapshot"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "authorized-pool-reader", "authorized-pools-only"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "devices.watch"
+symbol = "DevicesWatch"
+request = "ConnectivityListRequest"
+response = "ConnectivityDeviceEvent"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "authorized-pool-reader", "authorized-pools-only", "principal-scope-projection-generation-expiry-bound-cursor", "atomic-empty-and-paginated-snapshot", "reauthorize-every-item-page-delivery-and-resume", "disconnect-detaches-observer-only"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "pools.inspect"
+symbol = "PoolsInspect"
+request = "ConnectivityPoolInspectRequest"
+response = "ConnectivityPoolView"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "authorized-pool-reader", "exact-pool-generation-device-membership-incarnation", "caller-current-signed-membership-or-protected-local-owner-not-beacon-or-cache", "current-membership-at-every-effect-and-publication"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "pools.list"
+symbol = "PoolsList"
+request = "ConnectivityListRequest"
+response = "ConnectivityPoolSnapshot"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "authorized-pool-reader", "authorized-pools-only"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "pools.watch"
+symbol = "PoolsWatch"
+request = "ConnectivityListRequest"
+response = "ConnectivityPoolEvent"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "authorized-pool-reader", "authorized-pools-only", "principal-scope-projection-generation-expiry-bound-cursor", "atomic-empty-and-paginated-snapshot", "reauthorize-every-item-page-delivery-and-resume", "disconnect-detaches-observer-only"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "discovery.candidate.submit.hint"
+symbol = "DiscoveryCandidateSubmitHint"
+request = "ConnectivitySubmitHintRequest"
+response = "ConnectivityCandidate"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "untrusted-address-only-no-authority-or-owner-prompt", "parse-normalize-and-enforce-egress-provider-interface-policy", "aggregate-principal-device-provider-rate-cache-ttl-bound", "recheck-every-resolved-and-connected-address", "authorized-current-provider-and-interface-generation"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "discovery.candidate.inspect"
+symbol = "DiscoveryCandidateInspect"
+request = "ConnectivityCandidateInspectRequest"
+response = "ConnectivityCandidate"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "authorized-local-discovery-reader", "candidate-expiry-and-generation", "self-signature-is-not-endpoint-proof"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "discovery.candidates.list"
+symbol = "DiscoveryCandidatesList"
+request = "ConnectivityListRequest"
+response = "ConnectivityCandidateSnapshot"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "authorized-local-discovery-reader", "bounded-expiring-untrusted-observations"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "discovery.candidates.watch"
+symbol = "DiscoveryCandidatesWatch"
+request = "ConnectivityListRequest"
+response = "ConnectivityCandidateEvent"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "authorized-local-discovery-reader", "bounded-expiring-untrusted-observations", "principal-scope-projection-generation-expiry-bound-cursor", "atomic-empty-and-paginated-snapshot", "reauthorize-every-item-page-delivery-and-resume", "disconnect-detaches-observer-only"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "pools.join.request"
+symbol = "PoolsJoinRequest"
+request = "ConnectivityJoinRequest"
+response = "ConnectivityJoinView"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "authorized-local-join-requester", "candidate-endpoint-generation-and-expiry", "actual-handshake-key-derived-device-id", "independent-signed-charter-admission", "no-auto-adoption-or-public-approval-boolean", "charter-authorized-path-no-invented-owner-prompt", "durable-principal-installation-resource-payload-bound", "deny-implicit-active-pool-selection"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "pools.join.inspect"
+symbol = "PoolsJoinInspect"
+request = "ConnectivityJoinInspectRequest"
+response = "ConnectivityJoinView"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "actual-attempt-owner"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "pools.join.cancel"
+symbol = "PoolsJoinCancel"
+request = "ConnectivityJoinCancelRequest"
+response = "ConnectivityJoinCancelResult"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "actual-attempt-owner", "expected-revision-cas", "durable-cancel-winner-versus-membership-commit"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "pools.join.watch"
+symbol = "PoolsJoinWatch"
+request = "ConnectivityJoinWatchRequest"
+response = "ConnectivityJoinEvent"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "actual-attempt-owner", "principal-scope-projection-generation-expiry-bound-cursor", "atomic-empty-and-paginated-snapshot", "reauthorize-every-item-page-delivery-and-resume", "disconnect-detaches-observer-only"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "transport.connections.list"
+symbol = "TransportConnectionsList"
+request = "ConnectivityListRequest"
+response = "ConnectivityConnectionSnapshot"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "authorized-pool-connection-reader", "exact-pool-generation-device-membership-incarnation", "caller-current-signed-membership-or-protected-local-owner-not-beacon-or-cache", "current-membership-at-every-effect-and-publication"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "transport.connections.watch"
+symbol = "TransportConnectionsWatch"
+request = "ConnectivityListRequest"
+response = "ConnectivityConnectionEvent"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "authorized-pool-connection-reader", "exact-pool-generation-device-membership-incarnation", "caller-current-signed-membership-or-protected-local-owner-not-beacon-or-cache", "current-membership-at-every-effect-and-publication", "principal-scope-projection-generation-expiry-bound-cursor", "atomic-empty-and-paginated-snapshot", "reauthorize-every-item-page-delivery-and-resume", "disconnect-detaches-observer-only"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "transport.connect.request"
+symbol = "TransportConnectRequest"
+request = "ConnectivityConnectRequest"
+response = "ConnectivityConnectionInterest"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "authorized-member-connection-requester", "expected-revision-cas", "endpoint-egress-key-proof-and-generation", "retry-reauthorizes-pool-device-incarnation", "exact-pool-generation-device-membership-incarnation", "caller-current-signed-membership-or-protected-local-owner-not-beacon-or-cache", "current-membership-at-every-effect-and-publication"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "transport.disconnect"
+symbol = "TransportDisconnect"
+request = "ConnectivityDisconnectRequest"
+response = "ConnectivityConnectionInterest"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "actual-logical-interest-owner", "expected-revision-cas", "release-only-owned-interest-never-shared-physical-channel", "no-membership-or-durable-job-side-effect", "exact-pool-generation-device-membership-incarnation", "caller-current-signed-membership-or-protected-local-owner-not-beacon-or-cache", "current-membership-at-every-effect-and-publication"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "pools.sync.request"
+symbol = "PoolsSyncRequest"
+request = "ConnectivitySyncRequest"
+response = "ConnectivitySyncView"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "authorized-pool-sync-requester", "expected-revision-cas", "each-board-and-share-authorization", "verify-original-signed-log-entries", "corrupt-relay-cannot-damage-origin", "exact-pool-generation-device-membership-incarnation", "caller-current-signed-membership-or-protected-local-owner-not-beacon-or-cache", "current-membership-at-every-effect-and-publication"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "pools.sync.members.list"
+symbol = "PoolsSyncMembersList"
+request = "ConnectivitySyncMemberListRequest"
+response = "ConnectivityMemberSyncSnapshot"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "actual-attempt-owner", "each-board-and-share-authorization", "principal-attempt-projection-bound-result-pages"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "pools.sync.inspect"
+symbol = "PoolsSyncInspect"
+request = "ConnectivitySyncInspectRequest"
+response = "ConnectivitySyncView"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "actual-attempt-owner", "each-board-and-share-authorization"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "pools.sync.cancel"
+symbol = "PoolsSyncCancel"
+request = "ConnectivitySyncCancelRequest"
+response = "ConnectivitySyncCancelResult"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "actual-attempt-owner", "expected-revision-cas", "signed-accepted-rows-never-rolled-back", "partial-commit-is-not-cancelled-before-commit"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "pools.sync.watch"
+symbol = "PoolsSyncWatch"
+request = "ConnectivitySyncWatchRequest"
+response = "ConnectivitySyncEvent"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "actual-attempt-owner", "each-board-and-share-authorization", "principal-scope-projection-generation-expiry-bound-cursor", "atomic-empty-and-paginated-snapshot", "reauthorize-every-item-page-delivery-and-resume", "disconnect-detaches-observer-only"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
