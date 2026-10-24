@@ -538,11 +538,10 @@
       "retained_callers": [
         "ui_detail",
         "member_log",
-        "member_metrics",
         "member_wait"
       ],
       "legacy_transport": "GET /ui/workspace/jobs/{id}; GET /jobs/{id}/log?tail=N; GET /jobs/{id}/metrics?since=N",
-      "semantic_transformation": "Replace tail-count/physical-line offsets with declared generation-bound bounded stream cursor; redact before chunking. Preserve logs and metrics as separate stream kinds.",
+      "semantic_transformation": "Replace legacy log tail-count/offset reads with the declared generation-bound bounded log-byte stream cursor; redact before chunking. Metrics read is a separate retained capability and remains uncontracted: OutputCursor does not cover metrics.",
       "authorization_and_lifecycle_delta": [
         "Workspace tail is last 100000 bytes and last 200 valid metrics; remote log tails lines. These are not stable byte cursor semantics.",
         "Remote metrics slices physical lines but advances by successful JSON rows, allowing replay around malformed lines.",
@@ -550,7 +549,13 @@
       ],
       "canonical_subscription": "none",
       "canonical_request_cancellation": "request-detach-only",
-      "actual_canonical_callers": []
+      "actual_canonical_callers": [],
+      "related_unmapped": [
+        {
+          "site": "member_metrics",
+          "reason": "Legacy metrics read is separate and remains uncontracted; jobs.output.read and its OutputCursor cover log bytes only."
+        }
+      ]
     },
     {
       "operation": "agents.get",
@@ -723,7 +728,8 @@
     "No attach or subscription operation is declared in these ten operations; current UI polling remains caller evidence only.",
     "All other retained CLI/UI/API/native domains in retained-features.json remain outside this mapping.",
     "All 33 built-in Command library families, optional training/Gym and installed extensions require typed per-operation mapping; no generic argv/env/cwd escape is accepted.",
-    "Every generated operation still requires reviewed handler implementation, caller migration, refusal/idempotency/race tests and relevant installed-device proof."
+    "Every generated operation still requires reviewed handler implementation, caller migration, refusal/idempotency/race tests and relevant installed-device proof.",
+    "Metrics read remains separate and uncontracted. member_metrics is related_unmapped evidence; jobs.output.read and OutputCursor cover log bytes only."
   ],
   "verification_limits": "Source hashes and line equality establish provenance, not behavioral enforcement. No product imports, runtime starts or network queries are needed for validation."
 }
