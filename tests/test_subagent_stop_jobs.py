@@ -96,7 +96,7 @@ def scene(tmp_path, monkeypatch, workspace_node):
             made.table.cancel(job, "someone")
 
 
-def test_a_stopped_subagent_has_its_queued_and_running_test_jobs_cancelled(scene):
+def test_a_turn_end_preserves_queued_and_running_test_jobs(scene):
     own = scene.job(scene.name, scene.primary)
     in_tree = scene.job("someone-else", scene.worktree)
     other = scene.job("another-agent", scene.primary)
@@ -105,8 +105,8 @@ def test_a_stopped_subagent_has_its_queued_and_running_test_jobs_cancelled(scene
     time.sleep(0.5)
     result = scene.stop(scene.worktree)
     assert result.returncode == 0, result.stderr
-    assert scene.state(own) == "cancelled"
-    assert scene.state(in_tree) == "cancelled"
+    assert scene.state(own) in ("queued", "running")
+    assert scene.state(in_tree) in ("queued", "running")
     assert scene.state(other) in ("queued", "running")
     assert not result.stderr
 
@@ -119,12 +119,12 @@ def test_stopping_twice_changes_nothing_more(scene):
     assert again.returncode == 0 and scene.table.read(job, "status.json") == first
 
 
-def test_a_job_that_cannot_be_cancelled_is_reported_loudly(scene, monkeypatch):
+def test_turn_end_does_not_attempt_to_cancel_or_report_a_job(scene, monkeypatch):
     job = scene.job(scene.name, scene.primary)
     log = scene.table.path(job) / "log"
     log.chmod(0o400)
     result = scene.stop(scene.worktree)
     log.chmod(0o600)
     assert result.returncode == 0
-    assert "could not cancel a test job" in result.stderr
-    assert any(call[:2] == ["announce", "blocked"] and job in call[2] for call in scene.announced())
+    assert not result.stderr and scene.announced() == []
+    assert scene.state(job) in ("queued", "running")

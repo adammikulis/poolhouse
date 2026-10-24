@@ -79,8 +79,8 @@ def scene(tmp_path, workspace_node, monkeypatch):
 
 
 def test_a_worker_that_hands_back_unlanded_work_is_resumed_with_its_own_token_to_claim(scene):
-    assert scene.refused() and scene.refused()
-    assert not scene.refused(), "the third stop goes through"
+    assert not scene.refused() and not scene.refused()
+    assert not scene.refused(), "turn ends never force continuation"
     assert scene.token_works()
     assert ("done", scene.child.name) not in scene.announcements()
     scene.start()
@@ -90,13 +90,13 @@ def test_a_worker_that_hands_back_unlanded_work_is_resumed_with_its_own_token_to
         assert claimed.returncode == 0 and scene.child.name in claimed.stdout, claimed.stderr
 
 
-def test_a_worker_is_retired_when_it_stops_with_its_branch_landed_and_not_before(scene):
-    assert scene.refused() and scene.refused()
+def test_a_worker_stays_registered_after_turn_end_even_when_work_is_landed(scene):
+    assert not scene.refused() and not scene.refused()
     assert not scene.refused() and scene.token_works()
     git(scene.tree, "push", "origin", f"agent-{AGENT}:{DEV}")
     assert not scene.refused()
-    assert not scene.token_works()
-    assert [kind for kind, _ in scene.announcements()] == ["blocked", "milestone"]
+    assert scene.token_works()
+    assert scene.announcements() == []
 
 
 def said(scene, who, *argv):
@@ -115,15 +115,15 @@ def test_the_parent_is_subscribed_to_its_subagent_and_the_roll_up_hears_no_join(
     assert scene.announcements() == []
 
 
-def test_a_finished_subagent_is_a_done_its_subscribers_learn_in_their_own_mode(scene):
+def test_a_turn_end_does_not_claim_done_to_its_subscribers(scene):
     watcher, stranger = scene.node.member("sess2"), scene.node.member("sess3")
     said(scene, watcher, "subscribe", "agent", scene.child.name, "--mode", "digest")
     land_and_stop(scene)
     heard = [m for m in said(scene, scene.lead, "inbox") if scene.child.name in json.dumps(m)]
-    assert len(heard) == 1 and "subject: done" in heard[0]["text"] and f"agent-{AGENT}" in heard[0]["text"]
+    assert heard == [] and scene.token_works()
     assert said(scene, stranger, "inbox") == []
     assert said(scene, watcher, "inbox") == []
-    assert scene.child.name in scene.node.cli("digest", who=watcher).stdout
+    assert "subject: done" not in scene.node.cli("digest", who=watcher).stdout
     assert scene.announcements() == []
 
 
