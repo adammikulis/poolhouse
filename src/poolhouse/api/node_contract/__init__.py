@@ -130,7 +130,7 @@ from . import (
 from ._codec import _finalize
 
 CONTRACT_VERSION = 1
-SCHEMA_SHA256 = "842546d2636403fc9a7e4a5d050db0211ac8302928b075e751b0fd760b64bd06"
+SCHEMA_SHA256 = "60018080b7a8b0a1ee5913825a539d27386f579a55d0a5c52d9c3c5ffc9e2b60"
 _EXPORTS = ('CONTRACT_VERSION', 'SCHEMA_SHA256', 'U32', 'U64', 'AgentControlError', 'AgentControlRequest',
  'AgentControlSnapshot', 'AgentDisplayName', 'AgentGetRequest', 'AgentId', 'AgentPauseResult',
  'AgentState', 'AgentStopResult', 'AgentTaskExecution', 'AgentTaskStartRequest',
@@ -375,14 +375,16 @@ _EXPORTS = ('CONTRACT_VERSION', 'SCHEMA_SHA256', 'U32', 'U64', 'AgentControlErro
  'JobDisplayName', 'JobError', 'JobErrorDetails', 'JobGetRequest', 'JobId', 'JobInstallationRef',
  'JobListCursor', 'JobListRequest', 'JobListResponse', 'JobOutputByteLimit', 'JobOutputBytes',
  'JobOutputChunk', 'JobOutputCursor', 'JobOutputPosition', 'JobOutputRequest', 'JobOutputResume',
- 'JobPageLimit', 'JobPreparationAuthority', 'JobPreparationControlRequest', 'JobPreparationDigest',
- 'JobPreparationEffect', 'JobPreparationEvent', 'JobPreparationId', 'JobPreparationInspectRequest',
- 'JobPreparationIntent', 'JobPreparationOptionalCandidate', 'JobPreparationOsConsent',
- 'JobPreparationPhase', 'JobPreparationProgress', 'JobPreparationProtectedAuthority',
- 'JobPreparationRef', 'JobPreparationView', 'JobPreparationWatchRequest', 'JobPrepareRequest',
- 'JobRepairCandidateIdentity', 'JobSnapshot', 'JobState', 'JobView', 'JobViewList',
- 'KnowledgeApplicationStoreItem', 'KnowledgeContextId', 'KnowledgeContextInspectRequest',
- 'KnowledgeContextRef', 'KnowledgeContextView', 'KnowledgeCountStreamItem', 'KnowledgeCounts',
+ 'JobPageLimit', 'JobPreparationAuthority', 'JobPreparationControlRequest', 'JobPreparationDetails',
+ 'JobPreparationDigest', 'JobPreparationEffect', 'JobPreparationEvent', 'JobPreparationId',
+ 'JobPreparationInspectRequest', 'JobPreparationIntent', 'JobPreparationOptionalCandidate',
+ 'JobPreparationOsConsent', 'JobPreparationPhase', 'JobPreparationProgress',
+ 'JobPreparationProtectedAuthority', 'JobPreparationRef', 'JobPreparationView',
+ 'JobPreparationWatchRequest', 'JobPrepareRequest', 'JobRepairCandidateIdentity',
+ 'JobRepairPreparationDetails', 'JobSnapshot', 'JobState', 'JobTrainClassifyTextIntent',
+ 'JobTrainingPreparationDetails', 'JobView', 'JobViewList', 'KnowledgeApplicationStoreItem',
+ 'KnowledgeContextId', 'KnowledgeContextInspectRequest', 'KnowledgeContextRef',
+ 'KnowledgeContextView', 'KnowledgeCountStreamItem', 'KnowledgeCounts',
  'KnowledgeDiagnosticSurrogate', 'KnowledgeDiagnosticTextEvent', 'KnowledgeDiagnosticTextFragment',
  'KnowledgeDiagnosticTextStart', 'KnowledgeDirectorySummary', 'KnowledgeError',
  'KnowledgeErrorDetails', 'KnowledgeEscapedSurrogateUnit', 'KnowledgeFieldBoundary',
@@ -841,8 +843,16 @@ _EXPORTS = ('CONTRACT_VERSION', 'SCHEMA_SHA256', 'U32', 'U64', 'AgentControlErro
  'TaskSpecificationLimits', 'TaskStreamAllocation', 'TaskStreamCheckpoint', 'TaskStreamProposal',
  'TaskStreamReview', 'TaskStreamTask', 'TaskStreamWatcher', 'TaskSubmission', 'TaskSubmitRequest',
  'TaskSummary', 'TaskTitle', 'TaskUsageSource', 'TaskView', 'TaskWatchSetRequest',
- 'TaskWatcherView', 'TransferId', 'TransportGeneration', 'UnixMicros', 'UpdatePolicyId',
- 'Utf8Chunk')
+ 'TaskWatcherView', 'TrainingBatchSize', 'TrainingCheckpointId', 'TrainingCheckpointRef',
+ 'TrainingClassifyTextParameters', 'TrainingConstructorIdentity', 'TrainingContext',
+ 'TrainingDatasetIdentity', 'TrainingDatasetSnapshotId', 'TrainingDatasetSnapshotRef',
+ 'TrainingEffect', 'TrainingEstimate', 'TrainingInitialization', 'TrainingMeasuredEstimate',
+ 'TrainingOptionalBatchSize', 'TrainingOptionalCheckpoint', 'TrainingOptionalContext',
+ 'TrainingOptionalOutput', 'TrainingOptionalPlan', 'TrainingOptionalResult',
+ 'TrainingOptionalSteps', 'TrainingOutputId', 'TrainingOutputRef', 'TrainingPlanIdentity',
+ 'TrainingProgress', 'TrainingResolvedClassifyParameters', 'TrainingResolvedFramework',
+ 'TrainingResolvedSize', 'TrainingResult', 'TrainingSteps', 'TransferId', 'TransportGeneration',
+ 'UnixMicros', 'UpdatePolicyId', 'Utf8Chunk')
 _finalize(tuple(name for name in _EXPORTS if name not in {"CONTRACT_VERSION", "SCHEMA_SHA256"}),
           (globals(), _agents_module.__dict__, _approval_identity_module.__dict__, _approval_intent_module.__dict__, _approval_view_module.__dict__, _board_content_module.__dict__, _board_content_delivery_module.__dict__, _board_content_files_module.__dict__, _board_content_links_module.__dict__, _board_content_notes_module.__dict__, _board_content_read_module.__dict__, _board_content_rooms_module.__dict__, _connectivity_module.__dict__, _connectivity_discovery_module.__dict__, _connectivity_join_module.__dict__, _connectivity_membership_module.__dict__, _connectivity_transport_module.__dict__, _conversation_content_module.__dict__, _conversation_settings_module.__dict__, _conversations_module.__dict__, _core_module.__dict__, _credentials_module.__dict__, _dataset_catalogue_module.__dict__, _dataset_imports_module.__dict__, _dataset_local_module.__dict__, _dataset_previews_module.__dict__, _dataset_selection_module.__dict__, _dataset_values_module.__dict__, _datasets_module.__dict__, _inference_module.__dict__, _inference_chat_module.__dict__, _inference_content_module.__dict__, _inference_effects_module.__dict__, _inference_requests_module.__dict__, _inference_results_module.__dict__, _inference_streams_module.__dict__, _jobs_module.__dict__, _knowledge_fields_module.__dict__, _knowledge_nodes_module.__dict__, _knowledge_stores_module.__dict__, _knowledge_text_module.__dict__, _lease_resources_module.__dict__, _lease_streams_module.__dict__, _leases_module.__dict__, _model_assets_module.__dict__, _model_catalogue_module.__dict__, _model_fit_module.__dict__, _model_observation_module.__dict__, _model_query_module.__dict__, _model_resources_module.__dict__, _model_serving_module.__dict__, _model_watch_module.__dict__, _projects_boards_module.__dict__, _projects_catalog_module.__dict__, _projects_creation_module.__dict__, _projects_locations_module.__dict__, _projects_selection_module.__dict__, _projects_sources_module.__dict__, _settings_appearance_module.__dict__, _settings_local_module.__dict__, _settings_policy_module.__dict__, _setup_module.__dict__, _startup_module.__dict__, _studio_artifacts_module.__dict__, _studio_catalogue_module.__dict__, _studio_documents_module.__dict__, _studio_graph_bindings_module.__dict__, _studio_graph_chart_module.__dict__, _studio_graph_compare_module.__dict__, _studio_graph_data_harvest_module.__dict__, _studio_graph_data_hf_preview_module.__dict__, _studio_graph_data_split_module.__dict__, _studio_graph_data_synthesize_module.__dict__, _studio_graph_data_validate_module.__dict__, _studio_graph_dataset_module.__dict__, _studio_graph_decision_predict_module.__dict__, _studio_graph_decision_route_module.__dict__, _studio_graph_evaluate_module.__dict__, _studio_graph_evaluate_decision_module.__dict__, _studio_graph_expansion_module.__dict__, _studio_graph_export_module.__dict__, _studio_graph_generate_module.__dict__, _studio_graph_generate_record_module.__dict__, _studio_graph_generate_structured_module.__dict__, _studio_graph_groups_module.__dict__, _studio_graph_guard_injection_module.__dict__, _studio_graph_gym_evaluate_module.__dict__, _studio_graph_gym_recordings_module.__dict__, _studio_graph_gym_train_module.__dict__, _studio_graph_literals_module.__dict__, _studio_graph_model_module.__dict__, _studio_graph_prompt_module.__dict__, _studio_graph_record_if_module.__dict__, _studio_graph_record_map_module.__dict__, _studio_graph_report_module.__dict__, _studio_graph_scalars_module.__dict__, _studio_graph_selection_module.__dict__, _studio_graph_stream_record_module.__dict__, _studio_graph_structure_module.__dict__, _studio_graph_tools_call_module.__dict__, _studio_graph_train_classify_text_module.__dict__, _studio_graph_train_decision_module.__dict__, _studio_graph_train_text_lm_module.__dict__, _studio_graph_train_tool_calls_module.__dict__, _studio_graph_transport_module.__dict__, _studio_graphs_module.__dict__, _studio_runs_module.__dict__, _studio_selection_module.__dict__, _studio_value_data_module.__dict__, _studio_value_decision_module.__dict__, _studio_value_generation_module.__dict__, _studio_value_history_module.__dict__, _studio_value_metrics_module.__dict__, _studio_value_outputs_module.__dict__, _studio_values_module.__dict__, _studio_workflows_module.__dict__, _task_allocation_module.__dict__, _task_claims_module.__dict__, _task_extensions_module.__dict__, _task_records_module.__dict__, _task_requests_module.__dict__, _task_reservations_module.__dict__, _task_review_module.__dict__, _task_scope_module.__dict__, _task_specification_module.__dict__, _task_streams_module.__dict__, _tasks_module.__dict__,))
 __all__: tuple[str, ...]

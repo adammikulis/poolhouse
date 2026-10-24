@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import (
+    TYPE_CHECKING,
     ClassVar,
     Self,
 )
@@ -16,7 +17,35 @@ from ._codec import (
     _Record,
     _register,
     _Scalar,
+    _Union,
 )
+
+if TYPE_CHECKING:
+    from ._jobs import (
+        JobId,
+        JobInstallationRef,
+        JobPreparationDigest,
+    )
+    from ._model_catalogue import (
+        ModelOptionalRef,
+    )
+    from ._studio_graph_train_classify_text import (
+        StudioGraphTrainClassifyTextFrameworkOptional,
+        StudioGraphTrainClassifyTextModeChoice,
+        StudioGraphTrainClassifyTextModeOptional,
+        StudioGraphTrainClassifyTextParameterOrder,
+        StudioGraphTrainClassifyTextSizeOptional,
+    )
+    from ._studio_value_data import (
+        StudioValueObservedNumber,
+    )
+    from ._studio_value_metrics import (
+        StudioValuePhases,
+        StudioValueTrainStop,
+    )
+    from ._studio_values import (
+        StudioValueOptionalF64,
+    )
 
 
 class Boolean(_Boolean):
@@ -177,6 +206,51 @@ class SafeMessage(_Scalar):
 _register(SafeMessage)
 
 
+class TrainingBatchSize(_Scalar):
+    _encoding = "u32"
+    _numeric_bounds = (1, 512)
+
+
+_register(TrainingBatchSize)
+
+
+class TrainingCheckpointId(_Scalar):
+    _encoding = "uuid"
+
+
+_register(TrainingCheckpointId)
+
+
+class TrainingContext(_Scalar):
+    _encoding = "u32"
+    _numeric_bounds = (32, 2048)
+
+
+_register(TrainingContext)
+
+
+class TrainingDatasetSnapshotId(_Scalar):
+    _encoding = "uuid"
+
+
+_register(TrainingDatasetSnapshotId)
+
+
+class TrainingOutputId(_Scalar):
+    _encoding = "uuid"
+
+
+_register(TrainingOutputId)
+
+
+class TrainingSteps(_Scalar):
+    _encoding = "u32"
+    _numeric_bounds = (20, 200000)
+
+
+_register(TrainingSteps)
+
+
 class U32(_Scalar):
     _encoding = "u32"
 
@@ -298,4 +372,327 @@ class OptionalUnixMicros(_Optional):
 
 
 _register(OptionalUnixMicros)
+
+
+@dataclass(frozen=True)
+class TrainingConstructorIdentity(_Record):
+    recipe_digest: JobPreparationDigest
+    resolved_parameters_digest: JobPreparationDigest
+    architecture_digest: JobPreparationDigest
+    backend_build_digest: JobPreparationDigest
+    toolchain_digest: JobPreparationDigest
+    initialization_policy_digest: JobPreparationDigest
+    initialization_seed: U64
+    split_seed: U64
+    _fields: ClassVar[dict[str, str]] = {'recipe_digest': 'JobPreparationDigest',
+ 'resolved_parameters_digest': 'JobPreparationDigest',
+ 'architecture_digest': 'JobPreparationDigest',
+ 'backend_build_digest': 'JobPreparationDigest',
+ 'toolchain_digest': 'JobPreparationDigest',
+ 'initialization_policy_digest': 'JobPreparationDigest',
+ 'initialization_seed': 'U64',
+ 'split_seed': 'U64'}
+
+
+_register(TrainingConstructorIdentity)
+
+
+class TrainingEffect(_Union):
+    _variants: ClassVar[dict[str, str]] = {'not_launched': 'Empty',
+ 'cancelled_before_launch': 'Empty',
+ 'launch_fenced': 'Empty',
+ 'running': 'Empty',
+ 'interrupted': 'Empty',
+ 'output_unpublished': 'Empty',
+ 'output_publication_fenced': 'Empty',
+ 'outcome_unknown': 'Empty',
+ 'verified_published': 'Empty',
+ 'settled_cancelled': 'Empty',
+ 'failed': 'Empty'}
+
+
+_register(TrainingEffect)
+
+
+class TrainingOptionalBatchSize(_Optional):
+    _item = "TrainingBatchSize"
+
+
+_register(TrainingOptionalBatchSize)
+
+
+class TrainingOptionalContext(_Optional):
+    _item = "TrainingContext"
+
+
+_register(TrainingOptionalContext)
+
+
+class TrainingOptionalSteps(_Optional):
+    _item = "TrainingSteps"
+
+
+_register(TrainingOptionalSteps)
+
+
+class TrainingResolvedFramework(_Union):
+    _variants: ClassVar[dict[str, str]] = {'torch': 'Empty', 'mlx': 'Empty'}
+
+
+_register(TrainingResolvedFramework)
+
+
+class TrainingResolvedSize(_Union):
+    _variants: ClassVar[dict[str, str]] = {'small': 'Empty', 'medium': 'Empty'}
+
+
+_register(TrainingResolvedSize)
+
+
+@dataclass(frozen=True)
+class TrainingCheckpointRef(_Record):
+    id: TrainingCheckpointId
+    generation: ResourceGeneration
+    installation: JobInstallationRef
+    origin_job_id: JobId
+    _fields: ClassVar[dict[str, str]] = {'id': 'TrainingCheckpointId',
+ 'generation': 'ResourceGeneration',
+ 'installation': 'JobInstallationRef',
+ 'origin_job_id': 'JobId'}
+
+
+_register(TrainingCheckpointRef)
+
+
+@dataclass(frozen=True)
+class TrainingDatasetSnapshotRef(_Record):
+    id: TrainingDatasetSnapshotId
+    generation: ResourceGeneration
+    installation: JobInstallationRef
+    _fields: ClassVar[dict[str, str]] = {'id': 'TrainingDatasetSnapshotId',
+ 'generation': 'ResourceGeneration',
+ 'installation': 'JobInstallationRef'}
+
+
+_register(TrainingDatasetSnapshotRef)
+
+
+@dataclass(frozen=True)
+class TrainingMeasuredEstimate(_Record):
+    profile_digest: JobPreparationDigest
+    profile_generation: ResourceGeneration
+    cpu_slots: U32
+    memory_bytes: U64
+    staging_bytes: U64
+    output_reserve_bytes: U64
+    accelerator_bytes: OptionalU64
+    estimated_micros: OptionalU64
+    model_parameters: U64
+    _fields: ClassVar[dict[str, str]] = {'profile_digest': 'JobPreparationDigest',
+ 'profile_generation': 'ResourceGeneration',
+ 'cpu_slots': 'U32',
+ 'memory_bytes': 'U64',
+ 'staging_bytes': 'U64',
+ 'output_reserve_bytes': 'U64',
+ 'accelerator_bytes': 'OptionalU64',
+ 'estimated_micros': 'OptionalU64',
+ 'model_parameters': 'U64'}
+
+
+_register(TrainingMeasuredEstimate)
+
+
+@dataclass(frozen=True)
+class TrainingOutputRef(_Record):
+    id: TrainingOutputId
+    generation: ResourceGeneration
+    installation: JobInstallationRef
+    job_id: JobId
+    digest: JobPreparationDigest
+    bytes: U64
+    _fields: ClassVar[dict[str, str]] = {'id': 'TrainingOutputId',
+ 'generation': 'ResourceGeneration',
+ 'installation': 'JobInstallationRef',
+ 'job_id': 'JobId',
+ 'digest': 'JobPreparationDigest',
+ 'bytes': 'U64'}
+
+
+_register(TrainingOutputRef)
+
+
+@dataclass(frozen=True)
+class TrainingResolvedClassifyParameters(_Record):
+    steps: TrainingSteps
+    context: TrainingContext
+    batch_size: TrainingBatchSize
+    learning_rate: FiniteF64
+    size: TrainingResolvedSize
+    framework: TrainingResolvedFramework
+    mode: StudioGraphTrainClassifyTextModeChoice
+    _fields: ClassVar[dict[str, str]] = {'steps': 'TrainingSteps',
+ 'context': 'TrainingContext',
+ 'batch_size': 'TrainingBatchSize',
+ 'learning_rate': 'FiniteF64',
+ 'size': 'TrainingResolvedSize',
+ 'framework': 'TrainingResolvedFramework',
+ 'mode': 'StudioGraphTrainClassifyTextModeChoice'}
+
+
+_register(TrainingResolvedClassifyParameters)
+
+
+@dataclass(frozen=True)
+class TrainingClassifyTextParameters(_Record):
+    field_order: StudioGraphTrainClassifyTextParameterOrder
+    steps: TrainingOptionalSteps
+    context: TrainingOptionalContext
+    batch_size: TrainingOptionalBatchSize
+    learning_rate: StudioValueOptionalF64
+    size: StudioGraphTrainClassifyTextSizeOptional
+    framework: StudioGraphTrainClassifyTextFrameworkOptional
+    mode: StudioGraphTrainClassifyTextModeOptional
+    _fields: ClassVar[dict[str, str]] = {'field_order': 'StudioGraphTrainClassifyTextParameterOrder',
+ 'steps': 'TrainingOptionalSteps',
+ 'context': 'TrainingOptionalContext',
+ 'batch_size': 'TrainingOptionalBatchSize',
+ 'learning_rate': 'StudioValueOptionalF64',
+ 'size': 'StudioGraphTrainClassifyTextSizeOptional',
+ 'framework': 'StudioGraphTrainClassifyTextFrameworkOptional',
+ 'mode': 'StudioGraphTrainClassifyTextModeOptional'}
+
+
+_register(TrainingClassifyTextParameters)
+
+
+@dataclass(frozen=True)
+class TrainingDatasetIdentity(_Record):
+    snapshot: TrainingDatasetSnapshotRef
+    file_manifest_digest: JobPreparationDigest
+    parser_profile_digest: JobPreparationDigest
+    ordered_records_digest: JobPreparationDigest
+    vocabulary_digest: JobPreparationDigest
+    split_digest: JobPreparationDigest
+    raw_bytes: U64
+    accepted_examples: U64
+    label_count: U64
+    _fields: ClassVar[dict[str, str]] = {'snapshot': 'TrainingDatasetSnapshotRef',
+ 'file_manifest_digest': 'JobPreparationDigest',
+ 'parser_profile_digest': 'JobPreparationDigest',
+ 'ordered_records_digest': 'JobPreparationDigest',
+ 'vocabulary_digest': 'JobPreparationDigest',
+ 'split_digest': 'JobPreparationDigest',
+ 'raw_bytes': 'U64',
+ 'accepted_examples': 'U64',
+ 'label_count': 'U64'}
+
+
+_register(TrainingDatasetIdentity)
+
+
+class TrainingEstimate(_Union):
+    _variants: ClassVar[dict[str, str]] = {'unknown': 'Empty', 'measured': 'TrainingMeasuredEstimate'}
+
+
+_register(TrainingEstimate)
+
+
+class TrainingInitialization(_Union):
+    _variants: ClassVar[dict[str, str]] = {'fresh': 'Empty', 'resume': 'TrainingCheckpointRef'}
+
+
+_register(TrainingInitialization)
+
+
+class TrainingOptionalCheckpoint(_Optional):
+    _item = "TrainingCheckpointRef"
+
+
+_register(TrainingOptionalCheckpoint)
+
+
+class TrainingOptionalOutput(_Optional):
+    _item = "TrainingOutputRef"
+
+
+_register(TrainingOptionalOutput)
+
+
+@dataclass(frozen=True)
+class TrainingPlanIdentity(_Record):
+    dataset: TrainingDatasetIdentity
+    constructor: TrainingConstructorIdentity
+    estimate: TrainingEstimate
+    resolved_parameters: TrainingResolvedClassifyParameters
+    effective_steps: U64
+    initialization: TrainingInitialization
+    _fields: ClassVar[dict[str, str]] = {'dataset': 'TrainingDatasetIdentity',
+ 'constructor': 'TrainingConstructorIdentity',
+ 'estimate': 'TrainingEstimate',
+ 'resolved_parameters': 'TrainingResolvedClassifyParameters',
+ 'effective_steps': 'U64',
+ 'initialization': 'TrainingInitialization'}
+
+
+_register(TrainingPlanIdentity)
+
+
+@dataclass(frozen=True)
+class TrainingProgress(_Record):
+    completed_steps: U64
+    total_steps: U64
+    loss: StudioValueObservedNumber
+    elapsed_seconds: FiniteF64
+    _fields: ClassVar[dict[str, str]] = {'completed_steps': 'U64',
+ 'total_steps': 'U64',
+ 'loss': 'StudioValueObservedNumber',
+ 'elapsed_seconds': 'FiniteF64'}
+
+
+_register(TrainingProgress)
+
+
+@dataclass(frozen=True)
+class TrainingResult(_Record):
+    steps: U64
+    final_loss: StudioValueObservedNumber
+    best_metric: StudioValueOptionalF64
+    parameters: U64
+    seconds: FiniteF64
+    dry_run: Boolean
+    stop_reason: StudioValueTrainStop
+    phases: StudioValuePhases
+    checkpoint: TrainingOptionalCheckpoint
+    manifest: TrainingOptionalOutput
+    model_output: TrainingOptionalOutput
+    model: ModelOptionalRef
+    _fields: ClassVar[dict[str, str]] = {'steps': 'U64',
+ 'final_loss': 'StudioValueObservedNumber',
+ 'best_metric': 'StudioValueOptionalF64',
+ 'parameters': 'U64',
+ 'seconds': 'FiniteF64',
+ 'dry_run': 'Boolean',
+ 'stop_reason': 'StudioValueTrainStop',
+ 'phases': 'StudioValuePhases',
+ 'checkpoint': 'TrainingOptionalCheckpoint',
+ 'manifest': 'TrainingOptionalOutput',
+ 'model_output': 'TrainingOptionalOutput',
+ 'model': 'ModelOptionalRef'}
+
+
+_register(TrainingResult)
+
+
+class TrainingOptionalPlan(_Optional):
+    _item = "TrainingPlanIdentity"
+
+
+_register(TrainingOptionalPlan)
+
+
+class TrainingOptionalResult(_Optional):
+    _item = "TrainingResult"
+
+
+_register(TrainingOptionalResult)
 

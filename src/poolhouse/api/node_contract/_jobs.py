@@ -33,6 +33,13 @@ if TYPE_CHECKING:
         RequestId,
         ResourceGeneration,
         SafeMessage,
+        TrainingClassifyTextParameters,
+        TrainingDatasetSnapshotRef,
+        TrainingEffect,
+        TrainingInitialization,
+        TrainingOptionalPlan,
+        TrainingOptionalResult,
+        TrainingProgress,
         UnixMicros,
     )
     from ._inference_streams import (
@@ -199,13 +206,6 @@ class JobPreparationEffect(_Union):
 
 
 _register(JobPreparationEffect)
-
-
-class JobPreparationIntent(_Union):
-    _variants: ClassVar[dict[str, str]] = {'agent_runtime_repair': 'Empty'}
-
-
-_register(JobPreparationIntent)
 
 
 class JobPreparationOsConsent(_Union):
@@ -375,21 +375,6 @@ _register(JobPreparationProgress)
 
 
 @dataclass(frozen=True)
-class JobPrepareRequest(_Record):
-    request_id: RequestId
-    generation: ResourceGeneration
-    installation: JobInstallationRef
-    intent: JobPreparationIntent
-    _fields: ClassVar[dict[str, str]] = {'request_id': 'RequestId',
- 'generation': 'ResourceGeneration',
- 'installation': 'JobInstallationRef',
- 'intent': 'JobPreparationIntent'}
-
-
-_register(JobPrepareRequest)
-
-
-@dataclass(frozen=True)
 class JobSnapshot(_Record):
     job_id: JobId
     generation: ResourceGeneration
@@ -434,36 +419,16 @@ _register(JobOutputRequest)
 
 
 @dataclass(frozen=True)
-class JobPreparationView(_Record):
-    preparation: JobPreparationRef
-    installation: JobInstallationRef
-    job_id: JobId
-    operation_id: OperationId
-    revision: U64
-    intent: JobPreparationIntent
-    phase: JobPreparationPhase
-    job_state: JobState
-    effect: JobPreparationEffect
+class JobRepairPreparationDetails(_Record):
     candidate: JobPreparationOptionalCandidate
+    effect: JobPreparationEffect
     authority: JobPreparationAuthority
-    expires_at: OptionalUnixMicros
-    progress: JobPreparationProgress
-    _fields: ClassVar[dict[str, str]] = {'preparation': 'JobPreparationRef',
- 'installation': 'JobInstallationRef',
- 'job_id': 'JobId',
- 'operation_id': 'OperationId',
- 'revision': 'U64',
- 'intent': 'JobPreparationIntent',
- 'phase': 'JobPreparationPhase',
- 'job_state': 'JobState',
+    _fields: ClassVar[dict[str, str]] = {'candidate': 'JobPreparationOptionalCandidate',
  'effect': 'JobPreparationEffect',
- 'candidate': 'JobPreparationOptionalCandidate',
- 'authority': 'JobPreparationAuthority',
- 'expires_at': 'OptionalUnixMicros',
- 'progress': 'JobPreparationProgress'}
+ 'authority': 'JobPreparationAuthority'}
 
 
-_register(JobPreparationView)
+_register(JobRepairPreparationDetails)
 
 
 @dataclass(frozen=True)
@@ -477,16 +442,6 @@ _register(JobView)
 
 
 @dataclass(frozen=True)
-class JobPreparationEvent(_Record):
-    cursor: InferenceCursor
-    view: JobPreparationView
-    _fields: ClassVar[dict[str, str]] = {'cursor': 'InferenceCursor', 'view': 'JobPreparationView'}
-
-
-_register(JobPreparationEvent)
-
-
-@dataclass(frozen=True)
 class JobPreparationWatchRequest(_Record):
     preparation: JobPreparationRef
     after: InferenceOptionalCursor
@@ -494,6 +449,19 @@ class JobPreparationWatchRequest(_Record):
 
 
 _register(JobPreparationWatchRequest)
+
+
+@dataclass(frozen=True)
+class JobTrainClassifyTextIntent(_Record):
+    dataset: TrainingDatasetSnapshotRef
+    parameters: TrainingClassifyTextParameters
+    initialization: TrainingInitialization
+    _fields: ClassVar[dict[str, str]] = {'dataset': 'TrainingDatasetSnapshotRef',
+ 'parameters': 'TrainingClassifyTextParameters',
+ 'initialization': 'TrainingInitialization'}
+
+
+_register(JobTrainClassifyTextIntent)
 
 
 class JobViewList(_List):
@@ -517,4 +485,90 @@ class JobListResponse(_Record):
 
 
 _register(JobListResponse)
+
+
+class JobPreparationIntent(_Union):
+    _variants: ClassVar[dict[str, str]] = {'agent_runtime_repair': 'Empty', 'train_classify_text': 'JobTrainClassifyTextIntent'}
+
+
+_register(JobPreparationIntent)
+
+
+@dataclass(frozen=True)
+class JobPrepareRequest(_Record):
+    request_id: RequestId
+    generation: ResourceGeneration
+    installation: JobInstallationRef
+    intent: JobPreparationIntent
+    _fields: ClassVar[dict[str, str]] = {'request_id': 'RequestId',
+ 'generation': 'ResourceGeneration',
+ 'installation': 'JobInstallationRef',
+ 'intent': 'JobPreparationIntent'}
+
+
+_register(JobPrepareRequest)
+
+
+@dataclass(frozen=True)
+class JobTrainingPreparationDetails(_Record):
+    plan: TrainingOptionalPlan
+    effect: TrainingEffect
+    authority: JobPreparationAuthority
+    progress: TrainingProgress
+    result: TrainingOptionalResult
+    _fields: ClassVar[dict[str, str]] = {'plan': 'TrainingOptionalPlan',
+ 'effect': 'TrainingEffect',
+ 'authority': 'JobPreparationAuthority',
+ 'progress': 'TrainingProgress',
+ 'result': 'TrainingOptionalResult'}
+
+
+_register(JobTrainingPreparationDetails)
+
+
+class JobPreparationDetails(_Union):
+    _variants: ClassVar[dict[str, str]] = {'agent_runtime_repair': 'JobRepairPreparationDetails',
+ 'train_classify_text': 'JobTrainingPreparationDetails'}
+
+
+_register(JobPreparationDetails)
+
+
+@dataclass(frozen=True)
+class JobPreparationView(_Record):
+    preparation: JobPreparationRef
+    installation: JobInstallationRef
+    job_id: JobId
+    operation_id: OperationId
+    revision: U64
+    intent: JobPreparationIntent
+    phase: JobPreparationPhase
+    job_state: JobState
+    details: JobPreparationDetails
+    expires_at: OptionalUnixMicros
+    progress: JobPreparationProgress
+    _fields: ClassVar[dict[str, str]] = {'preparation': 'JobPreparationRef',
+ 'installation': 'JobInstallationRef',
+ 'job_id': 'JobId',
+ 'operation_id': 'OperationId',
+ 'revision': 'U64',
+ 'intent': 'JobPreparationIntent',
+ 'phase': 'JobPreparationPhase',
+ 'job_state': 'JobState',
+ 'details': 'JobPreparationDetails',
+ 'expires_at': 'OptionalUnixMicros',
+ 'progress': 'JobPreparationProgress'}
+
+
+_register(JobPreparationView)
+
+
+@dataclass(frozen=True)
+class JobPreparationEvent(_Record):
+    cursor: InferenceCursor
+    view: JobPreparationView
+    _fields: ClassVar[dict[str, str]] = {'cursor': 'InferenceCursor', 'view': 'JobPreparationView'}
+
+
+_register(JobPreparationEvent)
 
