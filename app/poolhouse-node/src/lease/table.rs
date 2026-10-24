@@ -9,6 +9,7 @@ use super::live;
 use super::policy::{capped, default_estimate, sort_key};
 use super::types::{Config, Lease, Request, Resource, State, MAX_RESOURCES, MAX_TAG};
 use crate::error::{Error, Result};
+use crate::node::update_activity::GrantReservation;
 
 /// Pool-wide claims other devices hold, from the board: (board, resource key) to holder.
 pub type Foreign = BTreeMap<(String, String), String>;
@@ -125,7 +126,11 @@ impl Table {
 
     /// Add a request to the queue (or hand back the one this holder already has for the same
     /// resources). Refuses what could never be granted.
-    pub fn enqueue(&mut self, cfg: &Config, now: u64, req: &Request, (id, tree): (String, usize)) -> Result<String> {
+    pub(super) fn enqueue(&mut self, cfg: &Config, now: u64, req: &Request, (id, tree): (String, usize),
+        pid_start: Option<u64>, reservation: &GrantReservation<'_>) -> Result<String> {
+        if !reservation.allows_compute() && !super::types::claims_only(&req.resources) {
+            return Err(Error::say("update_pending", "new compute admission waits for the node update", "none", "retry"));
+        }
         if req.resources.is_empty() || req.resources.len() > MAX_RESOURCES {
             return Err(Error::Invalid(format!("a lease asks for one to {MAX_RESOURCES} resources")));
         }
@@ -157,7 +162,7 @@ impl Table {
         self.leases.push(Lease {
             id: id.clone(), holder, board: req.board.clone(), name: req.name.clone(), resources: req.resources.clone(), class: req.class,
             state: State::Queued, estimate_s, seq: self.next_seq, since_ms: now, granted_ms: 0,
-            expires_ms: now + cfg.queue_patience_s * 1000, pid: req.pid, pid_start: (req.pid != 0).then(|| live::start_of(req.pid)).flatten(),
+            expires_ms: now + cfg.queue_patience_s * 1000, pid: req.pid, pid_start,
             remote: req.remote, local: req.local, ttl_s, tag: req.tag.clone(), quiet: req.quiet,
         });
         Ok(id)
@@ -203,11 +208,13 @@ impl Table {
     /// Grant what can be granted, in queue order; a request never overtakes an earlier one
     /// that wants the same resource. ``ended`` are the leases just swept, so a grant onto
     /// resources a dead or expired holder had is recorded as a takeover.
-    pub fn schedule(&mut self, cfg: &Config, now: u64, foreign: &Foreign, ended: &[(Lease, Why)]) -> Vec<Event> {
+    pub(super) fn schedule(&mut self, cfg: &Config, now: u64, foreign: &Foreign, ended: &[(Lease, Why)],
+        reservation: &GrantReservation<'_>) -> Vec<Event> {
         let order: Vec<String> = self.queue(cfg, now).iter().map(|l| l.id.clone()).collect();
         let (mut ahead, mut events) = (Vec::new(), Vec::new());
         for id in order {
             let Some(l) = self.find(&id).cloned() else { continue };
+            if !reservation.allows_compute() && !super::types::claims_only(&l.resources) { continue; }
             if !self.free_for(&l, &ahead, cfg, now, foreign) {
                 if !capped(&l, &self.leases, cfg, now) {
                     ahead.push(l);

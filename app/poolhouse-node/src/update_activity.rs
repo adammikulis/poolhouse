@@ -1,6 +1,6 @@
 //! Local writer accounting only. Other sources remain uncovered; no production drain
 //! controller, complete inventory, quiescence result or cutover witness exists here.
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Source { LocalApi, Network, Peer, Sync, Beacon, Phone, Push, Shard, LeaseScheduler, DirectNode, DetachedStorage }
@@ -13,7 +13,7 @@ enum Phase { Running, Draining, Fenced }
 enum Activity { Maintenance, NewEffect }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Refusal { Unavailable, NewWorkPaused, Fenced, ActiveWriters, IncompleteInventory }
-struct State { phase: Phase, writers: usize, connections: usize }
+struct State { phase: Phase, writers: usize, local_writers: usize, connections: usize }
 
 #[derive(Clone)]
 pub(crate) struct Registry { state: Arc<Mutex<State>> }
@@ -28,15 +28,26 @@ enum ControlWitness { #[cfg(test)] TestOnly }
 
 impl Registry {
     #[cfg(test)]
-    pub(crate) fn writer_count(&self) -> usize { self.state.lock().unwrap().writers }
+    pub(crate) fn local_writer_count(&self) -> usize { self.state.lock().unwrap().local_writers }
     pub(crate) fn new() -> Self {
-        Self { state: Arc::new(Mutex::new(State { phase: Phase::Running, writers: 0, connections: 0 })) }
+        Self { state: Arc::new(Mutex::new(State { phase: Phase::Running, writers: 0, local_writers: 0, connections: 0 })) }
     }
     pub(crate) fn local_writer(&self) -> Result<Writer, Refusal> {
-        // Actual typed method/resource classification is a later dependency. All local calls
-        // are counted, including read-side gov_tick/names.touch; production stays Running.
+        // New effects use this gate; typed API maintenance uses local_maintenance. Both
+        // include read-side gov_tick/names.touch; production stays Running.
         self.enter(Source::LocalApi, Activity::NewEffect)
     }
+    pub(crate) fn local_maintenance(&self) -> Result<Writer, Refusal> { self.enter(Source::LocalApi, Activity::Maintenance) }
+    pub(crate) fn lease_writer(&self) -> Result<Writer, Refusal> { self.enter(Source::LeaseScheduler, Activity::Maintenance) }
+    pub(crate) fn reserve_grants(&self) -> Result<GrantReservation<'_>, Refusal> {
+        let state=self.state.lock().map_err(|_| Refusal::Unavailable)?;
+        if state.phase == Phase::Fenced { return Err(Refusal::Fenced); }
+        Ok(GrantReservation { state })
+    }
+    #[cfg(test)]
+    pub(crate) fn phase_available_for_test(&self) -> bool { self.state.try_lock().is_ok() }
+    #[cfg(test)]
+    pub(crate) fn drain_for_test(&self) { self.begin_drain(ControlWitness::TestOnly).unwrap(); }
     fn enter(&self, source: Source, activity: Activity) -> Result<Writer, Refusal> {
         let mut s=self.state.lock().map_err(|_| Refusal::Unavailable)?;
         match s.phase {
@@ -45,6 +56,7 @@ impl Registry {
             _ => {},
         }
         s.writers=s.writers.checked_add(1).ok_or(Refusal::Unavailable)?;
+        if source == Source::LocalApi { s.local_writers+=1; }
         Ok(Writer { state:self.state.clone(), source })
     }
     pub(crate) fn connection(&self) -> Result<Connection, Refusal> {
@@ -72,10 +84,17 @@ impl Registry {
     }
 }
 
+/// The same phase mutex is held only across pure table mutation; never clock/I/O/mirroring.
+pub(crate) struct GrantReservation<'a> { state: MutexGuard<'a, State> }
+impl GrantReservation<'_> {
+    pub(crate) fn allows_compute(&self) -> bool { self.state.phase == Phase::Running }
+}
+
 impl Drop for Writer {
     fn drop(&mut self) {
         if let Ok(mut s)=self.state.lock() {
             // A poisoned/inconsistent registry never becomes evidence of an empty writer set.
+            if self.source == Source::LocalApi { s.local_writers=s.local_writers.saturating_sub(1); }
             if let Some(left)=s.writers.checked_sub(1) { s.writers=left; }
             else { s.phase=Phase::Fenced; }
         }
