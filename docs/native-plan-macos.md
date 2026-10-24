@@ -84,14 +84,14 @@ state and actual authenticated workspace actor. Include the safe read-only hello
 reviewed common-contract checkpoint SHA. Reciprocal probes report source, destination, protocol, time and result;
 reachability alone proves no authenticated connection. Plan messages never admit a device or approve an operation.
 
-Request for common-owner review: expose the existing node-owned read-only TLS hello path through the public client;
-the CLI has no probe entry point. The native node TLS client's `connect` path uses resident node identity, endpoint and expected
-certificate pin with TLS 1.3/mTLS; derive the device ID from the certificate's Ed25519 public key and send only the existing
-length-framed `{"op":"hello"}`, cross-check returned `fingerprint`/`board_fingerprint`, then close. Export no private
-key, create no standalone agent identity, and never use `join_pool` as a probe: it can admit under open policy.
-No boards or work cross this probe. Candidate pins remain observations, not admitted trust roots. The unknown-beacon
-path at `net.rs:243–260` attempts automatic joining; the shared owner must provide bounded untrusted candidate
-observations rather than widen authority. This is a request to expose existing behavior, not a new wire definition.
+The [shared diagnostic seam request](native-plan-windows-linux.md#cross-device-agent-rendezvous) follows the
+[certificate preflight](notes/native-device-certificate-preflight.md). No safe local diagnostic entrypoint currently
+exposes resident-node TLS hello; network dispatch's wildcard synchronizes. Remote hello permits nonrevoked unknown
+callers but runs governance tick and build observation, so it is not globally read-only. Common-owner review must
+establish permission, schema and explicit dispatch for a dedicated authenticated, candidate-bound, certificate-pinned,
+bounded one-attempt diagnostic using resident node identity and certificate/key binding. Check revocation before/after
+dial; export no private key or standalone identity, grant no admission/trust/replication, and never substitute `join_pool`.
+No boards or work cross the diagnostic. Candidate observations remain untrusted; no new wire or K approval is implied.
 
 Mac H observation at installed source `33e7b2821` and native host `0.164.0`: genuine root PostToolUse completed with
 exit 0 and empty entries at `2026-10-23T19:42:11.033Z`; genuine child SubagentStop

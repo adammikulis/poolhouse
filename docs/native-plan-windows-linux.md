@@ -66,6 +66,15 @@ reviewed node-owned hello readiness/results. Recheck current observations before
 shutdown, firewall or key chore is requested from the user, and no fix or native connection is claimed.
 
 
+Common-owner diagnostic seam request, following the [certificate preflight](notes/native-device-certificate-preflight.md):
+`poolapi::NETWORK` exposes only `add_device`, `join_pool`, `sync_now` and `shard_call`; it has no safe diagnostic call,
+and the current network-dispatch wildcard performs synchronization. The resident-identity TLS client supports an
+expected-certificate pin, and nonrevoked unknown devices can send `hello`, but remote handling runs governance tick
+and build observation: this is not globally read-only. Agree and review the missing permission/schema and explicit
+dispatch before exposing a dedicated authenticated, candidate-bound, pinned, bounded one-attempt diagnostic.
+It must grant no join/trust or replication and require no firewall or user-terminal chore. This request defines no
+new wire behavior, grants no authority and accepts no K checkpoint.
+
 ## First prerequisite: truthful hooks and automatic caller identity
 
 Bind each lifecycle event to the actual native emitting session, including root and nested children. Missing,
