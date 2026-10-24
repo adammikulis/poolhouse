@@ -7,7 +7,9 @@
 //! owns it.
 
 use std::collections::BTreeMap;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::Mutex;
+use crate::node::update_activity::Source;
+use crate::net::{NodeWriteGuard, tracked_node, activity_error};
 
 use serde_json::{json, Value};
 
@@ -18,8 +20,8 @@ use crate::peer::PeerClient;
 use crate::row::Row;
 use crate::sync::{rows_since, seqs, take_from, Report, DIFFERENT_LOG, MAX_ROUNDS};
 
-fn locked(node: &Mutex<Node>) -> Result<MutexGuard<'_, Node>> {
-    node.lock().map_err(|_| Error::Damaged("node poisoned".into()))
+fn locked(node: &Mutex<Node>) -> Result<NodeWriteGuard<'_>> {
+    tracked_node(node, Source::Sync)
 }
 
 fn removed() -> Error {
@@ -28,7 +30,7 @@ fn removed() -> Error {
 
 /// The node's lock, taken only while the device ``peer`` is still an active member: once this device has recorded a removal, nothing more
 /// is sent to or taken from the removed device, on a connection opened before it or from a reply that arrives after it.
-fn locked_for<'a>(node: &'a Mutex<Node>, peer: &str) -> Result<MutexGuard<'a, Node>> {
+fn locked_for<'a>(node: &'a Mutex<Node>, peer: &str) -> Result<NodeWriteGuard<'a>> {
     let n = locked(node)?;
     if !n.members.is_active(peer) {
         return Err(removed());
@@ -49,6 +51,8 @@ fn tips(v: &Value, key: &str) -> Result<BTreeMap<String, Tip>> {
 /// Swap the builds members report with the peer. The peer's pool record is not asked for: who is in the pool does not change by
 /// what a member says.
 pub fn sync_members(node: &Mutex<Node>, c: &mut PeerClient) -> Result<()> {
+    let registry = locked(node)?.activity.clone();
+    let _activity = registry.new_effect(Source::Sync).map_err(activity_error)?;
     let ask = {
         let n = locked_for(node, &c.fingerprint)?;
         json!({"op": "members", "pool": n.members.id, "builds": n.builds_known()})
@@ -74,6 +78,8 @@ pub fn peer_boards(c: &mut PeerClient) -> Result<Vec<String>> {
 
 /// Make this device's copy of board ``id`` and the peer's hold the same rows.
 pub fn sync_board(node: &Mutex<Node>, c: &mut PeerClient, id: &str) -> Result<Report> {
+    let registry = locked(node)?.activity.clone();
+    let _activity = registry.new_effect(Source::Sync).map_err(activity_error)?;
     let mut report = Report::default();
     for _ in 0..MAX_ROUNDS {
         let (origin, vector) = with_board(node, &c.fingerprint, id, |h| {
@@ -141,6 +147,8 @@ pub fn refused_note(reports: &BTreeMap<String, Report>) -> String {
 
 /// Swap builds, then sync every board both devices hold; origin to refusal code per board.
 pub fn sync_all(node: &Mutex<Node>, c: &mut PeerClient) -> Result<BTreeMap<String, Report>> {
+    let registry = locked(node)?.activity.clone();
+    let _activity = registry.new_effect(Source::Sync).map_err(activity_error)?;
     sync_members(node, c)?;
     crate::gov::wire::sync_acts(node, c)?;
     let theirs = peer_boards(c)?;
