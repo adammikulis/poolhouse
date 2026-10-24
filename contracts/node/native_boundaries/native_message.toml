@@ -1,0 +1,211 @@
+# Closed original-request DATA grammar; no producer exporter, stream or proof issuer.
+version = 1
+status = "untrusted-data-only"
+source_feature = 1
+source_feature_name = "codex-serde-json-1.0.149-arbitrary-ordered"
+source_serde_features = ["arbitrary_precision", "preserve_order", "raw_value"]
+envelope = ["Version", "SourceFeature", "Platform", "Launch", "Occurrence", "Instance", "CapturedKind", "ActorContext", "OriginalRequest"]
+
+[[event_kind]]
+name = "PreToolUse"
+tag = 1
+
+[[event_kind]]
+name = "PermissionRequest"
+tag = 2
+
+[[event_kind]]
+name = "PostToolUse"
+tag = 3
+
+[[event_kind]]
+name = "PreCompact"
+tag = 4
+
+[[event_kind]]
+name = "PostCompact"
+tag = 5
+
+[[event_kind]]
+name = "UserPromptSubmit"
+tag = 6
+
+[[event_kind]]
+name = "SessionEnd"
+tag = 7
+
+[[event_kind]]
+name = "Interrupt"
+tag = 8
+
+[[event_kind]]
+name = "SessionStart"
+tag = 9
+
+[[event_kind]]
+name = "SubagentStart"
+tag = 10
+
+[[event_kind]]
+name = "Stop"
+tag = 11
+
+[[event_kind]]
+name = "SubagentStop"
+tag = 12
+
+[[event_kind]]
+name = "PreModelRequest"
+tag = 13
+
+[[event_kind]]
+name = "PostModelRequest"
+tag = 14
+
+[[event_kind]]
+name = "LegacyAfterAgent"
+tag = 15
+
+[[optional]]
+name = "OptionalString"
+item = "String"
+
+[[optional]]
+name = "OptionalPath"
+item = "Path"
+
+[[optional]]
+name = "OptionalSubagent"
+item = "Subagent"
+
+[[optional]]
+name = "OptionalMap"
+item = "ValueMap"
+
+[[optional]]
+name = "OptionalNumber"
+item = "Number"
+
+[[optional]]
+name = "OptionalTokenUsage"
+item = "TokenUsage"
+
+[[list]]
+name = "Strings"
+item = "String"
+
+[[list]]
+name = "Values"
+item = "Value"
+
+[[map]]
+name = "ValueMap"
+item = "Value"
+
+[[record]]
+name = "Subagent"
+fields = [{name = "agent_id", type = "String"}, {name = "agent_type", type = "String"}]
+
+[[record]]
+name = "PreToolUse"
+fields = [{name = "session_id", type = "Uuid"}, {name = "turn_id", type = "String"}, {name = "subagent", type = "OptionalSubagent"}, {name = "cwd", type = "Path"}, {name = "transcript_path", type = "OptionalPath"}, {name = "model", type = "String"}, {name = "permission_mode", type = "String"}, {name = "tool_name", type = "String"}, {name = "matcher_aliases", type = "Strings"}, {name = "tool_use_id", type = "String"}, {name = "tool_input", type = "Value"}]
+
+[[record]]
+name = "PermissionRequest"
+fields = [{name = "session_id", type = "Uuid"}, {name = "turn_id", type = "String"}, {name = "subagent", type = "OptionalSubagent"}, {name = "cwd", type = "Path"}, {name = "transcript_path", type = "OptionalPath"}, {name = "model", type = "String"}, {name = "permission_mode", type = "String"}, {name = "tool_name", type = "String"}, {name = "matcher_aliases", type = "Strings"}, {name = "run_id_suffix", type = "String"}, {name = "tool_input", type = "Value"}]
+
+[[record]]
+name = "PostToolUse"
+fields = [{name = "session_id", type = "Uuid"}, {name = "turn_id", type = "String"}, {name = "subagent", type = "OptionalSubagent"}, {name = "cwd", type = "Path"}, {name = "transcript_path", type = "OptionalPath"}, {name = "model", type = "String"}, {name = "permission_mode", type = "String"}, {name = "tool_name", type = "String"}, {name = "matcher_aliases", type = "Strings"}, {name = "tool_use_id", type = "String"}, {name = "tool_input", type = "Value"}, {name = "tool_response", type = "Value"}]
+
+[[record]]
+name = "PreCompact"
+fields = [{name = "session_id", type = "Uuid"}, {name = "turn_id", type = "String"}, {name = "subagent", type = "OptionalSubagent"}, {name = "cwd", type = "Path"}, {name = "transcript_path", type = "OptionalPath"}, {name = "model", type = "String"}, {name = "trigger", type = "String"}]
+
+[[record]]
+name = "PostCompact"
+fields = [{name = "session_id", type = "Uuid"}, {name = "turn_id", type = "String"}, {name = "subagent", type = "OptionalSubagent"}, {name = "cwd", type = "Path"}, {name = "transcript_path", type = "OptionalPath"}, {name = "model", type = "String"}, {name = "trigger", type = "String"}]
+
+[[record]]
+name = "UserPromptSubmit"
+fields = [{name = "session_id", type = "Uuid"}, {name = "turn_id", type = "String"}, {name = "subagent", type = "OptionalSubagent"}, {name = "cwd", type = "Path"}, {name = "transcript_path", type = "OptionalPath"}, {name = "model", type = "String"}, {name = "permission_mode", type = "String"}, {name = "prompt", type = "String"}]
+
+[[record]]
+name = "SessionEnd"
+fields = [{name = "session_id", type = "Uuid"}, {name = "turn_id", type = "String"}, {name = "cwd", type = "Path"}, {name = "transcript_path", type = "OptionalPath"}]
+
+[[record]]
+name = "Interrupt"
+fields = [{name = "session_id", type = "Uuid"}, {name = "turn_id", type = "String"}, {name = "cwd", type = "Path"}, {name = "transcript_path", type = "OptionalPath"}, {name = "model", type = "String"}, {name = "permission_mode", type = "String"}, {name = "request_metadata", type = "OptionalMap"}]
+
+[[union]]
+name = "SessionStartSource"
+cases = [{name = "Startup", tag = 1, type = "Unit"}, {name = "Resume", tag = 2, type = "Unit"}, {name = "Clear", tag = 3, type = "Unit"}, {name = "Compact", tag = 4, type = "Unit"}, {name = "Fork", tag = 5, type = "Unit"}]
+
+[[record]]
+name = "SessionStartTargetFields"
+fields = [{name = "source", type = "SessionStartSource"}]
+
+[[record]]
+name = "SubagentStartFields"
+fields = [{name = "turn_id", type = "String"}, {name = "agent_id", type = "String"}, {name = "agent_type", type = "String"}]
+
+[[union]]
+name = "SessionStartTarget"
+cases = [{name = "SessionStart", tag = 1, type = "SessionStartTargetFields", event_kind = "SessionStart"}, {name = "SubagentStart", tag = 2, type = "SubagentStartFields", event_kind = "SubagentStart"}]
+
+[[record]]
+name = "SessionStart"
+fields = [{name = "turn_id", type = "OptionalString"}, {name = "session_id", type = "Uuid"}, {name = "cwd", type = "Path"}, {name = "transcript_path", type = "OptionalPath"}, {name = "model", type = "String"}, {name = "permission_mode", type = "String"}, {name = "target", type = "SessionStartTarget"}]
+
+[[record]]
+name = "SubagentStopFields"
+fields = [{name = "agent_id", type = "String"}, {name = "agent_type", type = "String"}, {name = "agent_transcript_path", type = "OptionalPath"}]
+
+[[union]]
+name = "StopTarget"
+cases = [{name = "Stop", tag = 1, type = "Unit", event_kind = "Stop"}, {name = "MemoryConsolidation", tag = 2, type = "Unit", event_kind = "Stop"}, {name = "SubagentStop", tag = 3, type = "SubagentStopFields", event_kind = "SubagentStop"}]
+
+[[record]]
+name = "Stop"
+fields = [{name = "session_id", type = "Uuid"}, {name = "turn_id", type = "String"}, {name = "cwd", type = "Path"}, {name = "transcript_path", type = "OptionalPath"}, {name = "model", type = "String"}, {name = "permission_mode", type = "String"}, {name = "request_metadata", type = "OptionalMap"}, {name = "stop_hook_active", type = "Bool"}, {name = "last_assistant_message", type = "OptionalString"}, {name = "target", type = "StopTarget"}]
+
+[[union]]
+name = "ModelRequestStatus"
+cases = [{name = "Completed", tag = 1, type = "Unit"}, {name = "Failed", tag = 2, type = "Unit"}, {name = "Cancelled", tag = 3, type = "Unit"}]
+
+[[record]]
+name = "TokenUsage"
+fields = [{name = "input_tokens", type = "I64"}, {name = "cached_input_tokens", type = "I64"}, {name = "cache_write_input_tokens", type = "I64"}, {name = "output_tokens", type = "I64"}, {name = "reasoning_output_tokens", type = "I64"}, {name = "total_tokens", type = "I64"}, {name = "codex_rollout_budget_units", type = "OptionalNumber"}]
+
+[[record]]
+name = "PostModelRequestFields"
+fields = [{name = "status", type = "ModelRequestStatus"}, {name = "error", type = "OptionalString"}, {name = "token_usage", type = "OptionalTokenUsage"}]
+
+[[union]]
+name = "ModelRequestEvent"
+cases = [{name = "PreModelRequest", tag = 1, type = "Unit", event_kind = "PreModelRequest"}, {name = "PostModelRequest", tag = 2, type = "PostModelRequestFields", event_kind = "PostModelRequest"}]
+
+[[record]]
+name = "ModelRequest"
+fields = [{name = "session_id", type = "String"}, {name = "turn_id", type = "String"}, {name = "cwd", type = "Path"}, {name = "transcript_path", type = "OptionalPath"}, {name = "model", type = "String"}, {name = "agent_id", type = "OptionalString"}, {name = "agent_type", type = "OptionalString"}, {name = "event", type = "ModelRequestEvent"}]
+
+[[record]]
+name = "AfterAgent"
+fields = [{name = "thread_id", type = "Uuid"}, {name = "turn_id", type = "String"}, {name = "input_messages", type = "Strings"}, {name = "last_assistant_message", type = "OptionalString"}]
+
+[[union]]
+name = "LegacyEvent"
+cases = [{name = "AfterAgent", tag = 1, type = "AfterAgent"}]
+
+[[record]]
+name = "Legacy"
+fields = [{name = "session_id", type = "Uuid"}, {name = "cwd", type = "Path"}, {name = "client", type = "OptionalString"}, {name = "triggered_at", type = "Timestamp"}, {name = "hook_event", type = "LegacyEvent"}]
+
+[[union]]
+name = "Value"
+cases = [{name = "Null", tag = 1, type = "Unit"}, {name = "Bool", tag = 2, type = "Bool"}, {name = "String", tag = 3, type = "String"}, {name = "Number", tag = 4, type = "Number"}, {name = "Array", tag = 5, type = "Values"}, {name = "Object", tag = 6, type = "ValueMap"}]
+
+[[union]]
+name = "OriginalRequest"
+cases = [{name = "PreToolUse", tag = 1, type = "PreToolUse", event_kind = "PreToolUse"}, {name = "PermissionRequest", tag = 2, type = "PermissionRequest", event_kind = "PermissionRequest"}, {name = "PostToolUse", tag = 3, type = "PostToolUse", event_kind = "PostToolUse"}, {name = "PreCompact", tag = 4, type = "PreCompact", event_kind = "PreCompact"}, {name = "PostCompact", tag = 5, type = "PostCompact", event_kind = "PostCompact"}, {name = "UserPromptSubmit", tag = 6, type = "UserPromptSubmit", event_kind = "UserPromptSubmit"}, {name = "SessionEnd", tag = 7, type = "SessionEnd", event_kind = "SessionEnd"}, {name = "Interrupt", tag = 8, type = "Interrupt", event_kind = "Interrupt"}, {name = "SessionStart", tag = 9, type = "SessionStart"}, {name = "Stop", tag = 10, type = "Stop"}, {name = "ModelRequest", tag = 11, type = "ModelRequest"}, {name = "Legacy", tag = 12, type = "Legacy", event_kind = "LegacyAfterAgent"}]

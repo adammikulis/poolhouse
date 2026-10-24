@@ -8,7 +8,7 @@ import re
 import tomllib
 from pathlib import Path
 
-from . import service_lifecycle, transcripts
+from . import native_message, service_lifecycle, transcripts
 from .common import (
     ENCODINGS,
     FIELD,
@@ -56,6 +56,7 @@ def load_with_ownership(root: Path) -> tuple[dict, list[dict], str, dict[str, st
     meta["lifecycle"] = lifecycle(root)
     meta["adapters"] = adapters(root)
     meta["service_lifecycle"] = service_lifecycle.load(root, ordered)
+    meta["native_message"] = native_message.load(root)
     meta["transcripts"] = transcripts.load(root, ordered)
     meta["operations"] = load_operations(root, ordered, [row for _, fragment in fragments for row in fragment["operation"]])
     if fragments:

@@ -535,7 +535,7 @@ fields = [{name = "actor", result = "NativeActorId", ownership = "borrow", optio
 [[view]]
 name = "NativeInvocationView"
 kind = "borrowed-record"
-fields = [{name = "actor", result = "NativeActorId", ownership = "borrow", optional = false}, {name = "context", result = "bytes", ownership = "borrow-slice", optional = false}, {name = "root", result = "NativeActorId", ownership = "borrow", optional = false}, {name = "direct_parent", result = "NativeActorId", ownership = "borrow", optional = true}, {name = "event_kind", result = "NativeEventKind", ownership = "borrow", optional = false}, {name = "purpose", result = "OperationPurpose", ownership = "borrow", optional = false}, {name = "original_payload", result = "bytes", ownership = "borrow-slice", optional = false}]
+fields = [{name = "actor", result = "NativeActorId", ownership = "borrow", optional = false}, {name = "context", result = "bytes", ownership = "borrow-slice", optional = false}, {name = "root", result = "NativeActorId", ownership = "borrow", optional = false}, {name = "direct_parent", result = "NativeActorId", ownership = "borrow", optional = true}, {name = "event_kind", result = "NativeEventKind", ownership = "borrow", optional = false}, {name = "original_payload", result = "bytes", ownership = "borrow-slice", optional = false}]
 
 [[view]]
 name = "NativeContextView"
@@ -588,8 +588,9 @@ variant = "Running"
 
 [[profile]]
 name = "native-message"
+definition = "native_boundaries/native_message.toml"
 status = "unresolved-profile-evidence"
-fields = ["actor-bytes", "event-kind-bytes", "purpose-bytes", "context-bytes", "original-payload-bytes"]
+fields = ["actor-bytes", "event-kind-bytes", "context-bytes", "original-payload-bytes"]
 
 [[profile]]
 name = "launch-arguments"
