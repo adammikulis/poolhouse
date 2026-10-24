@@ -26,6 +26,10 @@
     {
       "path": "0006-encode-complete-native-invocations.patch",
       "sha256": "f83360d493f0b1fe1fc4bf9af4cf630813bc5fae25041665e7d92a46781551ab"
+    },
+    {
+      "path": "0007-freeze-native-handler-selections.patch",
+      "sha256": "3c777cea6dae063060b229b720d79e0cc17660224a6ffa4bd2762f2fbb1d3d1a"
     }
   ],
   "rust_toolchain": "1.99.1",
@@ -493,6 +497,60 @@
       "Returned complete bytes contain private source metadata and have no ordinary hook-channel caller. Existing executor-only disclosure remains unchanged.",
       "Unix raw-path encoding exercised on Mac; Windows UTF16 source branch remains unexecuted.",
       "No sixth-patch package build or installation; five-patch artifacts remain separate and unchanged."
+    ],
+    "installed_proof": false,
+    "node_admission_proof": false,
+    "lock_sha256": "c043b6b7e67bb2f0ae4b1b8dd485cd6a24bd1cb7ef3a42752d303bc5e5ca4be1"
+  },
+  "selection_validation": {
+    "source_base": "067e6ce849492fe1af750e6c7e0381958e1233ce",
+    "source_base_tree": "44f53cac269abfc029f46de914cbb3dea9593df0",
+    "source_commit": "02a46310f003b7142e915f27ce3db9fb414f061f",
+    "source_tree": "2d9a99911d10fbe3a7fa9f9d163f5860ba930321",
+    "patch_sha256": "3c777cea6dae063060b229b720d79e0cc17660224a6ffa4bd2762f2fbb1d3d1a",
+    "working_directory": "codex-rs",
+    "scope": "Actual complete source handler/config selection frozen once with original request; source observations only.",
+    "unit_test_command": [
+      "cargo",
+      "+1.99.1",
+      "test",
+      "--locked",
+      "--offline",
+      "-p",
+      "codex-hooks",
+      "--lib",
+      "native_selection_"
+    ],
+    "unit_tests_passed": 7,
+    "affected_existing_checks_passed": 9,
+    "exit_code": 0,
+    "target": "aarch64-apple-darwin",
+    "parent_red": {
+      "source_commit": "067e6ce849492fe1af750e6c7e0381958e1233ce",
+      "selector": "engine::tests::native_selection_retry_uses_original_handler_and_executor_after_reload",
+      "exit_code": 101
+    },
+    "mutation": {
+      "case": "truncate actual shared matcher result to first entry",
+      "selector": "native_manifest::tests::native_selection_duplicates_keep_distinct_ordinals_and_config_indices",
+      "broken_exit": 101,
+      "restored_exit": 0,
+      "restored_dispatcher_sha256": "43cbaa47fac7554f4dc5c553d338074f660dc7e731616d0463ede859ff9fe8c1"
+    },
+    "invariants": [
+      "One OnceLock result per original, including empty and concurrent captures; every caller uses stored winner.",
+      "Combined regular and MemoryConsolidation cleanup selection is captured before either Stop pass or projection.",
+      "Event-local ordinals and exact retained configuration indices keep duplicate configurations distinct.",
+      "Plans derive configuration and command/MCP handles from the frozen selection; retries do not use replacement configuration.",
+      "Legacy callbacks and maintained notify config retain exact original allocations; public callback API unchanged.",
+      "Selection retains no original back-reference; normal drop and losing-snapshot disposal checks passed."
+    ],
+    "limitations": [
+      "No catalog transport, canonical serialization of handler configuration, protected OperationPurpose, Node operation IDs, admitted catalog or permit issuer is added.",
+      "Command task state and remote MCP executor internals are not immutable or measured; only actual source configuration and handle allocation are retained.",
+      "Opaque custom callbacks remain unresolved source observations, not a finite measured plan or authority.",
+      "The prior normal-runtime legacy child waiter limitation remains; no runtime-teardown custody guarantee.",
+      "No seventh-patch package build, installation or active-host replacement; all earlier artifacts remain separate."
     ],
     "installed_proof": false,
     "node_admission_proof": false,

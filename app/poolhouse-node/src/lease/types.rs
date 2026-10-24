@@ -46,6 +46,11 @@ pub enum Resource {
     },
 }
 
+/// Invalid, empty or mixed lists never qualify for claim-only maintenance.
+pub(crate) fn claims_only(resources: &[Resource]) -> bool {
+    !resources.is_empty() && resources.iter().all(|r| matches!(r, Resource::Claim { .. }) && r.check().is_ok())
+}
+
 impl Resource {
     pub fn device(&self) -> &str {
         match self {

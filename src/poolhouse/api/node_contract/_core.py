@@ -198,6 +198,14 @@ class ResourceGeneration(_Scalar):
 _register(ResourceGeneration)
 
 
+class RuntimeSelectionSourceCommit(_Scalar):
+    _encoding = "bytes"
+    _bounds = (20, 20)
+
+
+_register(RuntimeSelectionSourceCommit)
+
+
 class SafeMessage(_Scalar):
     _encoding = "text"
     _bounds = (1, 2048)
@@ -374,6 +382,52 @@ class OptionalUnixMicros(_Optional):
 _register(OptionalUnixMicros)
 
 
+class RuntimeSelectionBoundaryObservation(_Union):
+    _variants: ClassVar[dict[str, str]] = {'unsupported': 'Empty',
+ 'pending': 'Empty',
+ 'draining': 'Empty',
+ 'writer_fence_pending': 'Empty',
+ 'outcome_unknown': 'Empty',
+ 'committed': 'Empty',
+ 'consumed': 'Empty',
+ 'cancelled': 'Empty',
+ 'recovery_required': 'Empty'}
+
+
+_register(RuntimeSelectionBoundaryObservation)
+
+
+class RuntimeSelectionEffect(_Union):
+    _variants: ClassVar[dict[str, str]] = {'not_published': 'Empty',
+ 'cancelled_before_fence': 'Empty',
+ 'handoff_pending': 'Empty',
+ 'handoff_fence_attempted': 'Empty',
+ 'outcome_unknown': 'Empty',
+ 'selection_published': 'Empty',
+ 'target_starting': 'Empty',
+ 'verified_running': 'Empty',
+ 'recovery_required': 'Empty',
+ 'failed_before_fence': 'Empty'}
+
+
+_register(RuntimeSelectionEffect)
+
+
+@dataclass(frozen=True)
+class RuntimeSelectionVersion(_Record):
+    source_commit: RuntimeSelectionSourceCommit
+    binary_digest: JobPreparationDigest
+    runtime_manifest_digest: JobPreparationDigest
+    epoch: U64
+    _fields: ClassVar[dict[str, str]] = {'source_commit': 'RuntimeSelectionSourceCommit',
+ 'binary_digest': 'JobPreparationDigest',
+ 'runtime_manifest_digest': 'JobPreparationDigest',
+ 'epoch': 'U64'}
+
+
+_register(RuntimeSelectionVersion)
+
+
 @dataclass(frozen=True)
 class TrainingConstructorIdentity(_Record):
     recipe_digest: JobPreparationDigest
@@ -447,6 +501,26 @@ class TrainingResolvedSize(_Union):
 
 
 _register(TrainingResolvedSize)
+
+
+class RuntimeSelectionOptionalVersion(_Optional):
+    _item = "RuntimeSelectionVersion"
+
+
+_register(RuntimeSelectionOptionalVersion)
+
+
+@dataclass(frozen=True)
+class RuntimeSelectionRunningIdentity(_Record):
+    runtime: RuntimeSelectionVersion
+    launch_generation: ResourceGeneration
+    storage_generation: ResourceGeneration
+    _fields: ClassVar[dict[str, str]] = {'runtime': 'RuntimeSelectionVersion',
+ 'launch_generation': 'ResourceGeneration',
+ 'storage_generation': 'ResourceGeneration'}
+
+
+_register(RuntimeSelectionRunningIdentity)
 
 
 @dataclass(frozen=True)
@@ -543,6 +617,39 @@ _register(TrainingResolvedClassifyParameters)
 
 
 @dataclass(frozen=True)
+class RuntimeSelectionPlanIdentity(_Record):
+    target: RuntimeSelectionVersion
+    prior_selected: RuntimeSelectionOptionalVersion
+    prior_selection_digest: JobPreparationDigest
+    prior_selection_revision: U64
+    source_floor: U64
+    source_policy_digest: JobPreparationDigest
+    owned_launchers_digest: JobPreparationDigest
+    owned_bridges_digest: JobPreparationDigest
+    _fields: ClassVar[dict[str, str]] = {'target': 'RuntimeSelectionVersion',
+ 'prior_selected': 'RuntimeSelectionOptionalVersion',
+ 'prior_selection_digest': 'JobPreparationDigest',
+ 'prior_selection_revision': 'U64',
+ 'source_floor': 'U64',
+ 'source_policy_digest': 'JobPreparationDigest',
+ 'owned_launchers_digest': 'JobPreparationDigest',
+ 'owned_bridges_digest': 'JobPreparationDigest'}
+
+
+_register(RuntimeSelectionPlanIdentity)
+
+
+class RuntimeSelectionRunningObservation(_Union):
+    _variants: ClassVar[dict[str, str]] = {'unobserved': 'Empty',
+ 'prior_runtime_observed': 'RuntimeSelectionRunningIdentity',
+ 'target_observed': 'RuntimeSelectionRunningIdentity',
+ 'target_verified': 'RuntimeSelectionRunningIdentity'}
+
+
+_register(RuntimeSelectionRunningObservation)
+
+
+@dataclass(frozen=True)
 class TrainingClassifyTextParameters(_Record):
     field_order: StudioGraphTrainClassifyTextParameterOrder
     steps: TrainingOptionalSteps
@@ -618,6 +725,28 @@ class TrainingOptionalOutput(_Optional):
 _register(TrainingOptionalOutput)
 
 
+class RuntimeSelectionOptionalPlan(_Optional):
+    _item = "RuntimeSelectionPlanIdentity"
+
+
+_register(RuntimeSelectionOptionalPlan)
+
+
+@dataclass(frozen=True)
+class RuntimeSelectionResult(_Record):
+    selected: RuntimeSelectionOptionalVersion
+    selection_revision: U64
+    running: RuntimeSelectionRunningObservation
+    held_prior: RuntimeSelectionOptionalVersion
+    _fields: ClassVar[dict[str, str]] = {'selected': 'RuntimeSelectionOptionalVersion',
+ 'selection_revision': 'U64',
+ 'running': 'RuntimeSelectionRunningObservation',
+ 'held_prior': 'RuntimeSelectionOptionalVersion'}
+
+
+_register(RuntimeSelectionResult)
+
+
 @dataclass(frozen=True)
 class TrainingPlanIdentity(_Record):
     dataset: TrainingDatasetIdentity
@@ -681,6 +810,13 @@ class TrainingResult(_Record):
 
 
 _register(TrainingResult)
+
+
+class RuntimeSelectionOptionalResult(_Optional):
+    _item = "RuntimeSelectionResult"
+
+
+_register(RuntimeSelectionOptionalResult)
 
 
 class TrainingOptionalPlan(_Optional):

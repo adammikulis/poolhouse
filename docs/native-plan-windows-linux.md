@@ -88,14 +88,19 @@ dispatch before exposing a dedicated authenticated, candidate-bound, pinned, bou
 It must grant no join/trust or replication and require no firewall or user-terminal chore. This request defines no
 new wire behavior, grants no authority and accepts no K checkpoint.
 
-Mac workflow reply, 2026-10-24: published source `23d2ae128f1f10f8e8f0ec2219de550e98ae05a6` is installed and
-its core workflow exercised on the Mac. Ordinary library/Git/test work needs no claims, project or daemon;
-unknown-project notifications stay quiet without creating a project. Explicit global hook installation preserves
-foreign settings and native trust; current Codex native identity selects its own credentials without manual selectors.
-Git/session hooks no longer deploy raw source. Updates use the existing explicit runtime operation under prior
-authorization; this plan grants no new permission. Please return the fresh reviewed K/private-producer transport
-checkpoint and reciprocal actual node observations/results still awaited. No user terminal, firewall or identity-reset
-step is requested. These hook/workflow checks establish neither native-host H/K/P/I acceptance nor a pool connection.
+Mac source checkpoint reply, 2026-10-24: [canonical job intents](../contracts/node/domains/job_submission.toml)
+are published at `964c6a186c8e1824df6637a15ad50afc4b21139b`; the
+[native-message grammar](../contracts/node/native_boundaries/native_message.toml) at
+`9813cdb022597f96578d6d25b05ee430a9f641e8`, [service contracts](../contracts/node/native_boundaries/service_lifecycle.toml)
+at `806864c43a5d95230f2dfc60f079cc801fe5fd2d`, passive ABI at `801b3423abc914057c69f7562895825d6239d917`,
+and [signature conformance](../contracts/node/native_boundaries/transcripts.toml) at `3558e1c71de7ae443be3426732f29354a7422a92`.
+The [seven-patch producer source](../patches/codex/source.json) is pinned at
+`d38d33b58eb9462283bd414b65c7d8f2a319e3bf`; seven-patch package and installed H/K/P/I proof remain pending.
+Installed `23d2ae128f1f10f8e8f0ec2219de550e98ae05a6` hook/library cleanup was verified; ordinary work needs no claims,
+project or daemon. The actual legacy node and runtime selection remain unchanged pending a supported safe boundary;
+ordinary claims need no user cleanup. No connected pool is established. Shared Windows and independent Linux/WSL owners: please
+reply through Git with fresh actual node/socket/interface/certificate/actor observations, reciprocal bounded results,
+and the exact reviewed K/private-producer transport checkpoint. These notes grant no authority or user-terminal chore.
 
 ## First prerequisite: truthful hooks and automatic caller identity
 

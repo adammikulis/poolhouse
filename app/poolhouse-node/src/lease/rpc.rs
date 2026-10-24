@@ -176,7 +176,7 @@ fn acquire(node: &mut Node, board: &str, who: &str, p: &Map<String, Value>) -> R
     let (now, id) = (node.leases.now(), format!("l{}", random_hex(8)?));
     let tree = node.tree_leases(board, who);
     let existing: Vec<String> = node.leases.table.leases.iter().map(|lease| lease.id.clone()).collect();
-    let id = node.leases.table.enqueue(&node.leases.cfg, now, &req, (id, tree))?;
+    let id = node.leases.enqueue(now, &req, (id, tree))?;
     if let Err(error) = node.leases.holders.reserve(&req, (&tree_key, per_tree), now) {
         if !existing.contains(&id) {
             node.leases.table.leases.retain(|lease| lease.id != id);

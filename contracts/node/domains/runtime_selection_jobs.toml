@@ -1,0 +1,101 @@
+# Dormant contract proposal: real owned handoff is required, never supplied by these observations.
+version = 1
+status = "proposal"
+operation = []
+
+[[type]]
+name = "RuntimeSelectionSourceCommit"
+kind = "scalar"
+visibility = "public"
+encoding = "bytes"
+issuer = "node"
+min_bytes = 20
+max_bytes = 20
+
+[[type]]
+name = "RuntimeSelectionVersion"
+kind = "record"
+visibility = "public"
+fields = [{name = "source_commit", type = "RuntimeSelectionSourceCommit"}, {name = "binary_digest", type = "JobPreparationDigest"}, {name = "runtime_manifest_digest", type = "JobPreparationDigest"}, {name = "epoch", type = "U64"}]
+
+[[type]]
+name = "RuntimeSelectionOptionalVersion"
+kind = "optional"
+visibility = "public"
+item = "RuntimeSelectionVersion"
+
+[[type]]
+name = "RuntimeSelectionPlanIdentity"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "RuntimeSelectionVersion"}, {name = "prior_selected", type = "RuntimeSelectionOptionalVersion"}, {name = "prior_selection_digest", type = "JobPreparationDigest"}, {name = "prior_selection_revision", type = "U64"}, {name = "source_floor", type = "U64"}, {name = "source_policy_digest", type = "JobPreparationDigest"}, {name = "owned_launchers_digest", type = "JobPreparationDigest"}, {name = "owned_bridges_digest", type = "JobPreparationDigest"}]
+
+[[type]]
+name = "RuntimeSelectionOptionalPlan"
+kind = "optional"
+visibility = "public"
+item = "RuntimeSelectionPlanIdentity"
+
+[[type]]
+name = "RuntimeSelectionBoundaryObservation"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "unsupported", type = "Empty"}, {tag = "pending", type = "Empty"}, {tag = "draining", type = "Empty"}, {tag = "writer_fence_pending", type = "Empty"}, {tag = "outcome_unknown", type = "Empty"}, {tag = "committed", type = "Empty"}, {tag = "consumed", type = "Empty"}, {tag = "cancelled", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "RuntimeSelectionRunningIdentity"
+kind = "record"
+visibility = "public"
+fields = [{name = "runtime", type = "RuntimeSelectionVersion"}, {name = "launch_generation", type = "ResourceGeneration"}, {name = "storage_generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "RuntimeSelectionRunningObservation"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "unobserved", type = "Empty"}, {tag = "prior_runtime_observed", type = "RuntimeSelectionRunningIdentity"}, {tag = "target_observed", type = "RuntimeSelectionRunningIdentity"}, {tag = "target_verified", type = "RuntimeSelectionRunningIdentity"}]
+
+[[type]]
+name = "RuntimeSelectionEffect"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "not_published", type = "Empty"}, {tag = "cancelled_before_fence", type = "Empty"}, {tag = "handoff_pending", type = "Empty"}, {tag = "handoff_fence_attempted", type = "Empty"}, {tag = "outcome_unknown", type = "Empty"}, {tag = "selection_published", type = "Empty"}, {tag = "target_starting", type = "Empty"}, {tag = "verified_running", type = "Empty"}, {tag = "recovery_required", type = "Empty"}, {tag = "failed_before_fence", type = "Empty"}]
+
+[[type]]
+name = "RuntimeSelectionResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "selected", type = "RuntimeSelectionOptionalVersion"}, {name = "selection_revision", type = "U64"}, {name = "running", type = "RuntimeSelectionRunningObservation"}, {name = "held_prior", type = "RuntimeSelectionOptionalVersion"}]
+
+[[type]]
+name = "RuntimeSelectionOptionalResult"
+kind = "optional"
+visibility = "public"
+item = "RuntimeSelectionResult"
+
+[[type]]
+name = "JobRuntimeSelectionDetails"
+kind = "record"
+visibility = "public"
+fields = [{name = "plan", type = "RuntimeSelectionOptionalPlan"}, {name = "boundary", type = "RuntimeSelectionBoundaryObservation"}, {name = "effect", type = "RuntimeSelectionEffect"}, {name = "authority", type = "JobPreparationAuthority"}, {name = "result", type = "RuntimeSelectionOptionalResult"}]
+
+[[type]]
+name = "RuntimeSelectionHandoffBinding"
+kind = "record"
+visibility = "private"
+fields = [{name = "operation_nonce", type = "JobPreparationDigest"}, {name = "old_boot_nonce", type = "JobPreparationDigest"}, {name = "old_pid", type = "U32"}, {name = "old_process_start", type = "U64"}, {name = "storage_identity", type = "JobPreparationDigest"}, {name = "lock_identity", type = "JobPreparationDigest"}, {name = "target_binary_digest", type = "JobPreparationDigest"}, {name = "target_source_commit", type = "RuntimeSelectionSourceCommit"}, {name = "source_floor", type = "U64"}, {name = "target_epoch", type = "U64"}, {name = "selection_digest", type = "JobPreparationDigest"}]
+
+[[type]]
+name = "JobPreviousVerifiedRuntimeIntent"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "runtime_previous_verified", type = "Empty"}]
+
+[[type]]
+name = "JobFrozenRuntimeSelectionPlan"
+kind = "record"
+visibility = "private"
+fields = [{name = "preparation", type = "JobPreparationRef"}, {name = "installation", type = "JobInstallationRef"}, {name = "job_id", type = "JobId"}, {name = "operation_id", type = "OperationId"}, {name = "intent", type = "JobPreviousVerifiedRuntimeIntent"}, {name = "plan", type = "RuntimeSelectionPlanIdentity"}, {name = "plan_digest", type = "JobPreparationDigest"}, {name = "handoff", type = "RuntimeSelectionHandoffBinding"}, {name = "source_generation", type = "ResourceGeneration"}, {name = "authority_generation", type = "ResourceGeneration"}, {name = "expires_at", type = "UnixMicros"}, {name = "admission", type = "ResourceAdmissionEnvelope"}, {name = "transaction", type = "StateTransactionBinding"}, {name = "commit", type = "StateCommitState"}, {name = "effect", type = "StateEffectState"}]

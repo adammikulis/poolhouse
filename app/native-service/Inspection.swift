@@ -1,42 +1,23 @@
 import Darwin
 import Foundation
-import Security
 import ServiceManagement
-
-// Mirrors the separate passive contract; no value is installation or caller proof.
-enum PassiveServiceAvailability: String {
-    case bindingUnavailable = "BindingUnavailable"
-    case plistAbsent = "PlistAbsent"
-    case unverified = "Unverified"
-    case notRegistered = "NotRegistered"
-    case registeredEligible = "RegisteredEligible"
-    case requiresConsent = "RequiresConsent"
-    case notFound = "NotFound"
-    case unknown = "Unknown"
-}
-
-struct PassiveServiceObservation {
-    let availability: PassiveServiceAvailability
-    let observedAt: UInt64
-    let reason: String
-}
 
 struct PassiveServiceObserver {
     private static let appIdentifier = "app.poolhouse.app"
     private static let plistName = "app.poolhouse.node.plist"
 
     // No path, service name, installation handle or authority is supplied by a caller.
-    func observe() -> PassiveServiceObservation {
+    func observe() -> PassiveServiceData {
         let bundle = Bundle.main
         guard bundle.bundleIdentifier == Self.appIdentifier,
               bundle.bundleURL.pathExtension == "app",
               let executable = bundle.executableURL,
               executable.deletingLastPathComponent() == bundle.bundleURL.appendingPathComponent("Contents/MacOS"),
               bundle.bundleURL.resolvingSymlinksInPath() == bundle.bundleURL.standardizedFileURL else {
-            return Self.result(.bindingUnavailable, "The designated containing app is unavailable.")
+            return Self.result(.bindingUnavailable, .containingAppUnavailable)
         }
         let directory = open(bundle.bundleURL.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-        guard directory >= 0 else { return Self.result(.unverified, "The containing app cannot be inspected.") }
+        guard directory >= 0 else { return Self.result(.unverified, .containingAppInspectionUnavailable) }
         var held = [directory]
         defer { for descriptor in held.reversed() { close(descriptor) } }
         var parent = directory
@@ -44,8 +25,8 @@ struct PassiveServiceObserver {
             let next = openat(parent, component, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
             guard next >= 0 else {
                 return errno == ENOENT
-                    ? Self.result(.plistAbsent, "The planned bundled service plist is absent.")
-                    : Self.result(.unverified, "The bundled service location is unverified.")
+                    ? Self.result(.plistAbsent, .plistAbsent)
+                    : Self.result(.unverified, .locationUnverified)
             }
             held.append(next)
             parent = next
@@ -53,8 +34,8 @@ struct PassiveServiceObserver {
         let descriptor = openat(parent, Self.plistName, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
         guard descriptor >= 0 else {
             return errno == ENOENT
-                ? Self.result(.plistAbsent, "The planned bundled service plist is absent.")
-                : Self.result(.unverified, "The bundled service plist is unverified.")
+                ? Self.result(.plistAbsent, .plistAbsent)
+                : Self.result(.unverified, .plistUnverified)
         }
         held.append(descriptor)
         // Bound allocation/parsing of untrusted bundled metadata. Oversize stays unverified;
@@ -63,7 +44,7 @@ struct PassiveServiceObserver {
         guard fstat(descriptor, &original) == 0,
               original.st_mode & S_IFMT == S_IFREG, original.st_nlink == 1,
               original.st_size > 0, original.st_size <= 65536 else {
-            return Self.result(.unverified, "The bundled service plist is unverified.")
+            return Self.result(.unverified, .plistUnverified)
         }
         var bytes = [UInt8](repeating: 0, count: Int(original.st_size))
         var offset = 0
@@ -72,45 +53,32 @@ struct PassiveServiceObserver {
             let count = bytes.withUnsafeMutableBytes { buffer in
                 pread(descriptor, buffer.baseAddress!.advanced(by: offset), length - offset, off_t(offset))
             }
-            guard count > 0 else { return Self.result(.unverified, "The bundled service plist cannot be read.") }
+            guard count > 0 else { return Self.result(.unverified, .plistReadUnavailable) }
             offset += count
         }
         guard let plist = try? PropertyListSerialization.propertyList(from: Data(bytes), format: nil) as? [String: Any],
               plist["Label"] as? String == "app.poolhouse.node" else {
-            return Self.result(.unverified, "The bundled service plist does not match its planned binding.")
+            return Self.result(.unverified, .plistBindingMismatch)
         }
-        // A consistent seal is not an approved signer, installed service, scope or launch right.
-        var code: SecStaticCode?
-        guard SecStaticCodeCreateWithPath(bundle.bundleURL as CFURL, [], &code) == errSecSuccess, let code else {
-            return Self.result(.unverified, "The containing app seal is unverified.")
-        }
-        let flags = SecCSFlags(rawValue: kSecCSStrictValidate | kSecCSCheckNestedCode).union(.noNetworkAccess)
-        guard SecStaticCodeCheckValidity(code, flags, nil) == errSecSuccess else {
-            return Self.result(.unverified, "The containing app seal is unverified.")
-        }
-        var information: CFDictionary?
-        guard SecCodeCopySigningInformation(code, [], &information) == errSecSuccess,
-              let values = information as? [String: Any],
-              values[kSecCodeInfoIdentifier as String] as? String == Self.appIdentifier else {
-            return Self.result(.unverified, "The containing app signing label is inconsistent.")
-        }
+        // Passive diagnostics deliberately do not scan or validate the whole app bundle.
+        // This fixed-context/plist observation cannot issue an installed scope or code proof.
         var current = stat()
         guard fstatat(parent, Self.plistName, &current, AT_SYMLINK_NOFOLLOW) == 0,
               current.st_dev == original.st_dev, current.st_ino == original.st_ino,
               current.st_size == original.st_size,
               current.st_mtimespec.tv_sec == original.st_mtimespec.tv_sec,
               current.st_mtimespec.tv_nsec == original.st_mtimespec.tv_nsec else {
-            return Self.result(.unverified, "The bundled service plist changed during inspection.")
+            return Self.result(.unverified, .plistChanged)
         }
         if #available(macOS 13.0, *) {
             return Self.result(Self.availability(for: SMAppService.daemon(plistName: Self.plistName).status),
-                               "Registration eligibility only; installation and runtime readiness are unverified.")
+                               .eligibilityOnly)
         }
-        return Self.result(.unknown, "Native service registration observation is unavailable.")
+        return Self.result(.unknown, .statusUnavailable)
     }
 
     @available(macOS 13.0, *)
-    static func availability(for status: SMAppService.Status) -> PassiveServiceAvailability {
+    static func availability(for status: SMAppService.Status) -> PassiveServiceAvailabilityTag {
         switch status {
         case .notRegistered: return .notRegistered
         case .enabled: return .registeredEligible
@@ -120,17 +88,17 @@ struct PassiveServiceObserver {
         }
     }
 
-    private static func result(_ availability: PassiveServiceAvailability, _ reason: String) -> PassiveServiceObservation {
+    private static func result(_ availability: PassiveServiceAvailabilityTag, _ reason: PassiveServiceReasonCode) -> PassiveServiceData {
         var clock = timespec()
         guard clock_gettime(CLOCK_REALTIME, &clock) == 0, clock.tv_sec >= 0,
               clock.tv_nsec >= 0, clock.tv_nsec < 1_000_000_000 else {
-            return PassiveServiceObservation(availability: .unknown, observedAt: 0, reason: "The observation clock is unavailable.")
+            return PassiveServiceData(observedAt: 0, availability: .unknown, reason: .clockUnavailable)
         }
         let (seconds, overflow) = UInt64(clock.tv_sec).multipliedReportingOverflow(by: 1_000_000)
         let (micros, additionOverflow) = seconds.addingReportingOverflow(UInt64(clock.tv_nsec / 1000))
         guard !overflow, !additionOverflow else {
-            return PassiveServiceObservation(availability: .unknown, observedAt: 0, reason: "The observation clock is unavailable.")
+            return PassiveServiceData(observedAt: 0, availability: .unknown, reason: .clockUnavailable)
         }
-        return PassiveServiceObservation(availability: availability, observedAt: micros, reason: reason)
+        return PassiveServiceData(observedAt: micros, availability: availability, reason: reason)
     }
 }

@@ -177,15 +177,16 @@ impl Node {
         let members = Pool::load(dir)?;
         let facts = Facts::open(&dir.join("peers.json"))?;
         let writes = crate::writes::WriteLimits::open(dir)?;
+        let activity = update_activity::Registry::new();
         let mut node = Node {
             dir: dir.into(), pool: String::new(), cert, members, persons: Persons::open(&dir.join("persons.json"))?,
             approvals: crate::approvals::Approvals::open(&dir.join("approvals.json"))?, fatigue: crate::approvals::fatigue::Fatigue::open(&dir.join("fatigue.json"))?,
             evidence: Box::new(crate::approvals::context::Unrecorded), phones: crate::phone::Phones::open(&dir.join("phones.json"))?,
             phone_cert: crate::phone::cert::load_or_create(dir)?, phone_port: 0, local_server: Weak::new(), firsts: crate::presence::Firsts::new(crate::presence::default_presence()), offer: None, pusher: Box::new(crate::phone::push::NoPusher), land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, custody, boards: BTreeMap::new(),
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
-            projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?, rates: Rates::default(), board_grace_ms: writes.board_grace_s * 1000, writes, log_bounds: crate::logbounds::Bounds::default(), log_rotate_percent: crate::logbounds::ROTATE_PERCENT, asking: Asking::default(),
+            projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir, activity.clone())?, rates: Rates::default(), board_grace_ms: writes.board_grace_s * 1000, writes, log_bounds: crate::logbounds::Bounds::default(), log_rotate_percent: crate::logbounds::ROTATE_PERCENT, asking: Asking::default(),
             stop: Arc::new(AtomicBool::new(false)), started: Instant::now(), folds: 0,
-            build: crate::build::Build::from_env(), network: crate::netif::network().into(), signer: None, key_binding: KeyBinding::File, declined: BTreeMap::new(), activity: update_activity::Registry::new(), _instance: instance,
+            build: crate::build::Build::from_env(), network: crate::netif::network().into(), signer: None, key_binding: KeyBinding::File, declined: BTreeMap::new(), activity, _instance: instance,
         };
         let root = dir.join("boards");
         if root.is_dir() {
