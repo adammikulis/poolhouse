@@ -1,0 +1,729 @@
+{
+  "mapping_version": 1,
+  "status": "partial discovery mapping for ten proposed operations; not complete K, implementation, acceptance or installed proof",
+  "source_commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487",
+  "contract_commit": "64f53f237ae0357e1d8d08e3f440ca4b6b170c4d",
+  "pinning": "legacy sites use source_commit; contract declarations use contract_commit. Each site also stores its own exact commit, full-file SHA256, one-based line and exact line text.",
+  "coverage": {
+    "declared_operation_count": 10,
+    "mapped_operation_count": 10,
+    "canonical_runtime_implementation": "not established; generated type/Operation markers do not constitute dispatch or enforcement",
+    "runtime_dispatch_evidence": "native_dispatch",
+    "retained_inventory": "full_inventory"
+  },
+  "sites": {
+    "workspace_jobs": {
+      "path": "src/poolhouse/fleet/workspace_routes.py",
+      "line": 95,
+      "symbol": "WorkspaceRoutes._workspace",
+      "sha256": "abe6084619b1da6eaad94161be9a608429b09deec1107cded7c26fadc742d396",
+      "line_text": "        if self.path == \"/ui/workspace/jobs\" and self.method == \"GET\":",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "workspace_stop": {
+      "path": "src/poolhouse/fleet/workspace_routes.py",
+      "line": 108,
+      "symbol": "WorkspaceRoutes._workspace",
+      "sha256": "abe6084619b1da6eaad94161be9a608429b09deec1107cded7c26fadc742d396",
+      "line_text": "                self.send(200, runner.stop(job.id).public())",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "workspace_detail": {
+      "path": "src/poolhouse/fleet/workspace_routes.py",
+      "line": 169,
+      "symbol": "WorkspaceRoutes._job_detail",
+      "sha256": "abe6084619b1da6eaad94161be9a608429b09deec1107cded7c26fadc742d396",
+      "line_text": "    def _job_detail(self, runner, job) -> bool:",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "remote_read": {
+      "path": "src/poolhouse/fleet/api.py",
+      "line": 488,
+      "symbol": "make_handler.Handler._read_jobs",
+      "sha256": "0777f8d5ae585e6297a6c7ed7de2064949ce06084ef5406ff29286b141c0a329",
+      "line_text": "        def _read_jobs(self, path, q):",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "remote_get": {
+      "path": "src/poolhouse/fleet/api.py",
+      "line": 522,
+      "symbol": "make_handler.Handler._read_jobs",
+      "sha256": "0777f8d5ae585e6297a6c7ed7de2064949ce06084ef5406ff29286b141c0a329",
+      "line_text": "            m = re.match(r\"^/jobs/([^/]+)(/log|/metrics)?$\", path)",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "remote_stop": {
+      "path": "src/poolhouse/fleet/api.py",
+      "line": 667,
+      "symbol": "make_handler.Handler._route_post",
+      "sha256": "0777f8d5ae585e6297a6c7ed7de2064949ce06084ef5406ff29286b141c0a329",
+      "line_text": "                    job = runner.stop(m.group(1))",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "runner_public": {
+      "path": "src/poolhouse/fleet/jobs.py",
+      "line": 54,
+      "symbol": "Job.public",
+      "sha256": "0de0338d6e3653afcc84cfa7c0ad10da068d49b88c88e5980ea4bdcb7eb24d9f",
+      "line_text": "    def public(self) -> dict[str, Any]:",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "runner_snapshot": {
+      "path": "src/poolhouse/fleet/jobs.py",
+      "line": 192,
+      "symbol": "JobRunner.snapshot",
+      "sha256": "0de0338d6e3653afcc84cfa7c0ad10da068d49b88c88e5980ea4bdcb7eb24d9f",
+      "line_text": "    def snapshot(self) -> list[dict[str, Any]]:",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "runner_stop": {
+      "path": "src/poolhouse/fleet/jobs.py",
+      "line": 285,
+      "symbol": "JobRunner.stop",
+      "sha256": "0de0338d6e3653afcc84cfa7c0ad10da068d49b88c88e5980ea4bdcb7eb24d9f",
+      "line_text": "    def stop(self, job_id: str, *, grace_s: float = 30.0) -> Job:",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "runner_status": {
+      "path": "src/poolhouse/fleet/jobs.py",
+      "line": 182,
+      "symbol": "JobRunner.status",
+      "sha256": "0de0338d6e3653afcc84cfa7c0ad10da068d49b88c88e5980ea4bdcb7eb24d9f",
+      "line_text": "    def status(self) -> dict[str, Any]:",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "member_jobs": {
+      "path": "src/poolhouse/fleet/remote.py",
+      "line": 215,
+      "symbol": "Member.jobs",
+      "sha256": "287e421c22f9532d1fd488df57ff6acd4dc2d45c54f21d0598fc988b94c43826",
+      "line_text": "    def jobs(self) -> list[dict]:",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "member_job": {
+      "path": "src/poolhouse/fleet/remote.py",
+      "line": 218,
+      "symbol": "Member.job",
+      "sha256": "287e421c22f9532d1fd488df57ff6acd4dc2d45c54f21d0598fc988b94c43826",
+      "line_text": "    def job(self, job_id: str) -> dict:",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "member_log": {
+      "path": "src/poolhouse/fleet/remote.py",
+      "line": 221,
+      "symbol": "Member.log",
+      "sha256": "287e421c22f9532d1fd488df57ff6acd4dc2d45c54f21d0598fc988b94c43826",
+      "line_text": "    def log(self, job_id: str, tail: int = 200) -> str:",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "member_metrics": {
+      "path": "src/poolhouse/fleet/remote.py",
+      "line": 224,
+      "symbol": "Member.metrics",
+      "sha256": "287e421c22f9532d1fd488df57ff6acd4dc2d45c54f21d0598fc988b94c43826",
+      "line_text": "    def metrics(self, job_id: str, since: int = 0) -> tuple[list[dict], int]:",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "member_stop": {
+      "path": "src/poolhouse/fleet/remote.py",
+      "line": 233,
+      "symbol": "Member.stop",
+      "sha256": "287e421c22f9532d1fd488df57ff6acd4dc2d45c54f21d0598fc988b94c43826",
+      "line_text": "    def stop(self, job_id: str) -> dict:",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "member_wait": {
+      "path": "src/poolhouse/fleet/remote.py",
+      "line": 236,
+      "symbol": "Member.wait",
+      "sha256": "287e421c22f9532d1fd488df57ff6acd4dc2d45c54f21d0598fc988b94c43826",
+      "line_text": "    def wait(self, job_id: str, *, poll_s: float = 20.0,",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "work_stop": {
+      "path": "src/poolhouse/fleet/work.py",
+      "line": 198,
+      "symbol": "run",
+      "sha256": "bd2ee2f35e52f71fe7d093bcc564964a49660e0e8cdf282b06472c2af60417a0",
+      "line_text": "                member.stop(job_id)",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "ui_jobs": {
+      "path": "src/poolhouse/fleet/web/components/workspace-jobs.html",
+      "line": 9,
+      "symbol": "WorkspaceJobs.refresh",
+      "sha256": "767d172f7826ad51e49acffc6f73e97b029fbd1254857b60f8e3008f828693ba",
+      "line_text": " async refresh(){if(this.loading)return;this.loading=true;try{const r=await W.api('/ui/workspace/jobs');this.note.textContent=`${r.capacity.running.length} running \u00b7 ${r.capacity.queued} queued \u00b7 ${r.capacity.slots} slots`;this.list.replaceChildren(...r.jobs.slice().reverse().map(j=>{const row=E('div',{class:'job-row','aria-selected':String(j.id===this.selected)},W.button(j.name||j.id,()=>{this.selected=j.id;this.details.open=true;this.output.textContent='Loading job output\u2026';this.detail();for(const node of this.list.children)node.setAttribute('aria-selected',String(node===row));}));row.firstChild.append(E('small',{},j.state));if(['queued','preparing','running'].includes(j.state)){const stop=W.button(this.stopping.has(j.id)?'Cancelling\u2026':'Cancel',async()=>{if(this.stopping.has(j.id))return;this.stopping.add(j.id);stop.disabled=true;try{await W.post(`/ui/workspace/jobs/${j.id}/stop`,{});this.note.textContent='Cancellation requested.';}catch(e){W.status(this.note,e);}finally{this.stopping.delete(j.id);stop.disabled=false;this.refresh();}});stop.disabled=this.stopping.has(j.id);row.append(stop);}return row;}));if(!r.jobs.length)this.list.append(E('p',{class:'hint'},'No jobs yet. Start a training run or a tool operation to see its progress here.'));if(this.selected)await this.detail();}catch(e){W.status(this.note,e);}finally{this.loading=false;}}",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "ui_detail": {
+      "path": "src/poolhouse/fleet/web/components/workspace-jobs.html",
+      "line": 10,
+      "symbol": "WorkspaceJobs.detail",
+      "sha256": "767d172f7826ad51e49acffc6f73e97b029fbd1254857b60f8e3008f828693ba",
+      "line_text": " async detail(){const selected=this.selected,request=this.detailRequest=(this.detailRequest||0)+1;if(!selected)return;try{const r=await W.api(`/ui/workspace/jobs/${encodeURIComponent(selected)}`);if(selected!==this.selected||request!==this.detailRequest)return;this.output.textContent=W.json({...r.job,workspace:r.metadata})+'\\n\\n'+(r.metrics.length?'Metrics\\n'+W.json(r.metrics)+'\\n\\n':'')+r.log;}catch(e){if(selected===this.selected&&request===this.detailRequest)W.status(this.note,e);}}",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "ui_poll": {
+      "path": "src/poolhouse/fleet/web/components/workspace-jobs.html",
+      "line": 7,
+      "symbol": "WorkspaceJobs.connectedCallback",
+      "sha256": "767d172f7826ad51e49acffc6f73e97b029fbd1254857b60f8e3008f828693ba",
+      "line_text": " connectedCallback(){if(this.wired)return;this.wired=true;this.heading=E('h2',{},'Job activity');this.list=E('div',{class:'job-list'});this.output=E('pre',{'aria-live':'polite'},'Select a job to inspect its output.');this.note=E('p',{class:'status',role:'status'});this.details=E('details',{class:'aside'},E('summary',{},'Selected job \u00b7 output and logs'),this.output);this.append(this.heading,E('p',{class:'hint'},'Follow queued work, inspect results, or cancel a job.'),this.note,this.list,this.details);this.stopping=new Set();this.refresh();this.timer=setInterval(()=>{if(!this.closest('[hidden]'))this.refresh();},2500);}",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "agent_adapter": {
+      "path": "src/poolhouse/workspace/agent_routes.py",
+      "line": 10,
+      "symbol": "route",
+      "sha256": "099b3866600b8a6b98128ef9856c244617d572cbc2ceadd4ced50e2a3de76e8f",
+      "line_text": "def route(request, *, root=None) -> bool:",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "agent_read": {
+      "path": "src/poolhouse/workspace/localroute.py",
+      "line": 68,
+      "symbol": "_read",
+      "sha256": "d15d30c018bfb3729974d57d11d2be11cfd24bef609c50152060f7efa9527517",
+      "line_text": "def _read(base: Path, route: str) -> Any:",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "agent_write": {
+      "path": "src/poolhouse/workspace/localroute.py",
+      "line": 94,
+      "symbol": "_write",
+      "sha256": "d15d30c018bfb3729974d57d11d2be11cfd24bef609c50152060f7efa9527517",
+      "line_text": "def _write(base: Path, session: Callable[[], Session], route: str, body: bytes) -> tuple[int, Any]:",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "agent_respond": {
+      "path": "src/poolhouse/workspace/localroute.py",
+      "line": 125,
+      "symbol": "respond",
+      "sha256": "d15d30c018bfb3729974d57d11d2be11cfd24bef609c50152060f7efa9527517",
+      "line_text": "def respond(base: Path, session: Callable[[], Session], req: Request, body: bytes = b\"\") -> Reply:",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "agent_post_guard": {
+      "path": "src/poolhouse/workspace/localroute.py",
+      "line": 46,
+      "symbol": "_post_refusal",
+      "sha256": "d15d30c018bfb3729974d57d11d2be11cfd24bef609c50152060f7efa9527517",
+      "line_text": "def _post_refusal(req: Request) -> Reply | None:",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "agent_pause_branch": {
+      "path": "src/poolhouse/workspace/localroute.py",
+      "line": 115,
+      "symbol": "_write",
+      "sha256": "d15d30c018bfb3729974d57d11d2be11cfd24bef609c50152060f7efa9527517",
+      "line_text": "    if route in (\"pause\", \"resume\"):",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "agent_listing": {
+      "path": "src/poolhouse/workspace/localstart.py",
+      "line": 272,
+      "symbol": "listing",
+      "sha256": "0854b59c7ed01ad3c2fc8109816cb982f89aaf78267c890712064e645dc4fb18",
+      "line_text": "def listing(base: Path) -> list[dict[str, Any]]:",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "agent_pause": {
+      "path": "src/poolhouse/workspace/localstart.py",
+      "line": 259,
+      "symbol": "pause",
+      "sha256": "0854b59c7ed01ad3c2fc8109816cb982f89aaf78267c890712064e645dc4fb18",
+      "line_text": "def pause(base: Path, name: str, paused: bool) -> dict[str, Any]:",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "agent_stop": {
+      "path": "src/poolhouse/workspace/localstart.py",
+      "line": 212,
+      "symbol": "stop",
+      "sha256": "0854b59c7ed01ad3c2fc8109816cb982f89aaf78267c890712064e645dc4fb18",
+      "line_text": "def stop(base: Path, name: str, *, release: Callable[[str], Any] | None = None,",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "agent_start": {
+      "path": "src/poolhouse/workspace/localstart.py",
+      "line": 150,
+      "symbol": "start",
+      "sha256": "0854b59c7ed01ad3c2fc8109816cb982f89aaf78267c890712064e645dc4fb18",
+      "line_text": "def start(s: Session, ask: Ask, **options: Unpack[StartOptions]) -> Started:",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "task_start": {
+      "path": "src/poolhouse/workspace/task_launch.py",
+      "line": 17,
+      "symbol": "start",
+      "sha256": "48f6582276a91ff73a4aec9df9cf24649f75678894008d7f011763eea3260a47",
+      "line_text": "def start(s: Session, base: Path, worker: str, task: str) -> localstart.Started:",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "task_stop": {
+      "path": "src/poolhouse/workspace/task_launch.py",
+      "line": 35,
+      "symbol": "stop",
+      "sha256": "48f6582276a91ff73a4aec9df9cf24649f75678894008d7f011763eea3260a47",
+      "line_text": "def stop(s: Session, base: Path, worker: str, task: str) -> localstart.Stopped:",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "task_auth": {
+      "path": "src/poolhouse/workspace/task_authority.py",
+      "line": 30,
+      "symbol": "authorize",
+      "sha256": "ee1165e4137a2df70944ad4127c26266ccd561b4c9dacfec4bb0687c165dacc1",
+      "line_text": "def authorize(s: Session, base: Path, worker: str, task: str, *, parent_may: bool = False) -> tuple[la.Agent, dict[str, Any]]:",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "cli_start": {
+      "path": "src/poolhouse/workspace/localcli.py",
+      "line": 133,
+      "symbol": "_start",
+      "sha256": "9c361a220972ef55e803f390b9da8d701baed89dbc185e78c755c42b542e1515",
+      "line_text": "        got = task_launch.start(s, base, args.name or args.target, args.task)",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "cli_stop": {
+      "path": "src/poolhouse/workspace/localcli.py",
+      "line": 183,
+      "symbol": "_stop",
+      "sha256": "9c361a220972ef55e803f390b9da8d701baed89dbc185e78c755c42b542e1515",
+      "line_text": "    done = (task_launch.stop(_session(args), base, args.target, args.task) if args.agent",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "cli_run": {
+      "path": "src/poolhouse/workspace/localcli.py",
+      "line": 211,
+      "symbol": "run",
+      "sha256": "9c361a220972ef55e803f390b9da8d701baed89dbc185e78c755c42b542e1515",
+      "line_text": "def run(args: argparse.Namespace, base: Path) -> int:",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "ui_agent_list": {
+      "path": "src/poolhouse/ui/assets/agents.js",
+      "line": 143,
+      "symbol": "PoolhouseAgents.load",
+      "sha256": "6f5f2efceb238e2e87c821a90676f5f582d41dfe3da76030b93703cd6ac28b51",
+      "line_text": "      const data = await this.call(\"list\");",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "ui_agent_stop": {
+      "path": "src/poolhouse/ui/assets/agents.js",
+      "line": 209,
+      "symbol": "PoolhouseAgents.stop",
+      "sha256": "6f5f2efceb238e2e87c821a90676f5f582d41dfe3da76030b93703cd6ac28b51",
+      "line_text": "      await this.call(\"stop\", { name });",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "ui_agent_embed": {
+      "path": "src/poolhouse/fleet/web/components/chat-model-picker.html",
+      "line": 277,
+      "symbol": "ConversationsWorkspace",
+      "sha256": "bef2ca5fc3b0e43790920db06e9f532e0ceb8e88a7d55fadc7f46917e56c8a86",
+      "line_text": "          this.localAgents = M.el('poolhouse-agents', {endpoint:'/ui/agents'});",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "ui_auth": {
+      "path": "src/poolhouse/fleet/routes.py",
+      "line": 723,
+      "symbol": "Router.run",
+      "sha256": "509fd14062d13bb5a15777319e6291a63ac4528c462a450f395311d3e692d15d",
+      "line_text": "        if not self.header(UI_HEADER):",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "remote_auth": {
+      "path": "src/poolhouse/fleet/api.py",
+      "line": 234,
+      "symbol": "make_handler.Handler._guard",
+      "sha256": "0777f8d5ae585e6297a6c7ed7de2064949ce06084ef5406ff29286b141c0a329",
+      "line_text": "        def _guard(self, body: bytes | None = None) -> bool:",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "native_dispatch": {
+      "path": "app/poolhouse-node/src/api.rs",
+      "line": 21,
+      "symbol": "params_for",
+      "sha256": "334be05253eaa0aa24b3e557a00cb87b64498f7de521b4d0b9cccfe17995ac94",
+      "line_text": "fn params_for(method: &str) -> Option<&'static [&'static str]> {",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "full_inventory": {
+      "path": "contracts/node/retained-features.json",
+      "line": 2,
+      "symbol": "inventory_version",
+      "sha256": "3a99a8d4856851ff01e9082829a6a2a1d9e00177ea8f2595efa279af43e2a592",
+      "line_text": "\"inventory_version\": 1,",
+      "commit": "4745a48de3f5ee7d6f1aefedf350d0ee88d5b487"
+    },
+    "contract_jobs.get": {
+      "path": "contracts/node/operations.toml",
+      "line": 6,
+      "symbol": "operation jobs.get",
+      "sha256": "4932c9c91510bc15b83fb3020b9312365d074d0bd2720b1d85315d1397954823",
+      "line_text": "name = \"jobs.get\"",
+      "commit": "64f53f237ae0357e1d8d08e3f440ca4b6b170c4d"
+    },
+    "contract_jobs.cancel": {
+      "path": "contracts/node/operations.toml",
+      "line": 17,
+      "symbol": "operation jobs.cancel",
+      "sha256": "4932c9c91510bc15b83fb3020b9312365d074d0bd2720b1d85315d1397954823",
+      "line_text": "name = \"jobs.cancel\"",
+      "commit": "64f53f237ae0357e1d8d08e3f440ca4b6b170c4d"
+    },
+    "contract_jobs.list": {
+      "path": "contracts/node/operations.toml",
+      "line": 28,
+      "symbol": "operation jobs.list",
+      "sha256": "4932c9c91510bc15b83fb3020b9312365d074d0bd2720b1d85315d1397954823",
+      "line_text": "name = \"jobs.list\"",
+      "commit": "64f53f237ae0357e1d8d08e3f440ca4b6b170c4d"
+    },
+    "contract_jobs.output.read": {
+      "path": "contracts/node/operations.toml",
+      "line": 39,
+      "symbol": "operation jobs.output.read",
+      "sha256": "4932c9c91510bc15b83fb3020b9312365d074d0bd2720b1d85315d1397954823",
+      "line_text": "name = \"jobs.output.read\"",
+      "commit": "64f53f237ae0357e1d8d08e3f440ca4b6b170c4d"
+    },
+    "contract_agents.get": {
+      "path": "contracts/node/operations.toml",
+      "line": 50,
+      "symbol": "operation agents.get",
+      "sha256": "4932c9c91510bc15b83fb3020b9312365d074d0bd2720b1d85315d1397954823",
+      "line_text": "name = \"agents.get\"",
+      "commit": "64f53f237ae0357e1d8d08e3f440ca4b6b170c4d"
+    },
+    "contract_agents.pause": {
+      "path": "contracts/node/operations.toml",
+      "line": 61,
+      "symbol": "operation agents.pause",
+      "sha256": "4932c9c91510bc15b83fb3020b9312365d074d0bd2720b1d85315d1397954823",
+      "line_text": "name = \"agents.pause\"",
+      "commit": "64f53f237ae0357e1d8d08e3f440ca4b6b170c4d"
+    },
+    "contract_agents.resume": {
+      "path": "contracts/node/operations.toml",
+      "line": 72,
+      "symbol": "operation agents.resume",
+      "sha256": "4932c9c91510bc15b83fb3020b9312365d074d0bd2720b1d85315d1397954823",
+      "line_text": "name = \"agents.resume\"",
+      "commit": "64f53f237ae0357e1d8d08e3f440ca4b6b170c4d"
+    },
+    "contract_agents.stop": {
+      "path": "contracts/node/operations.toml",
+      "line": 83,
+      "symbol": "operation agents.stop",
+      "sha256": "4932c9c91510bc15b83fb3020b9312365d074d0bd2720b1d85315d1397954823",
+      "line_text": "name = \"agents.stop\"",
+      "commit": "64f53f237ae0357e1d8d08e3f440ca4b6b170c4d"
+    },
+    "contract_agents.task.start": {
+      "path": "contracts/node/operations.toml",
+      "line": 94,
+      "symbol": "operation agents.task.start",
+      "sha256": "4932c9c91510bc15b83fb3020b9312365d074d0bd2720b1d85315d1397954823",
+      "line_text": "name = \"agents.task.start\"",
+      "commit": "64f53f237ae0357e1d8d08e3f440ca4b6b170c4d"
+    },
+    "contract_agents.task.stop": {
+      "path": "contracts/node/operations.toml",
+      "line": 105,
+      "symbol": "operation agents.task.stop",
+      "sha256": "4932c9c91510bc15b83fb3020b9312365d074d0bd2720b1d85315d1397954823",
+      "line_text": "name = \"agents.task.stop\"",
+      "commit": "64f53f237ae0357e1d8d08e3f440ca4b6b170c4d"
+    }
+  },
+  "operations": [
+    {
+      "operation": "jobs.get",
+      "canonical_status": "proposed; generated declarations are not runtime dispatch or installed enforcement",
+      "contract_declaration": "contract_jobs.get",
+      "request_type": "JobGetRequest",
+      "result_type": "JobView",
+      "error_type": "JobError",
+      "legacy_handlers": [
+        "workspace_detail",
+        "remote_read",
+        "remote_get",
+        "runner_public"
+      ],
+      "retained_callers": [
+        "ui_detail",
+        "member_job",
+        "member_wait"
+      ],
+      "legacy_transport": "GET /ui/workspace/jobs/{id}; GET /jobs/{id}",
+      "semantic_transformation": "Project full legacy Job.public record to JobView; require exact resource generation. Workspace detail bundles output/metrics/metadata, split output into jobs.output.read.",
+      "authorization_and_lifecycle_delta": [
+        "Legacy public() returns asdict including env/cwd/argv/process details; redact and use managed references.",
+        "Legacy HTTP routes lack declared per-job permission/generation model; add current principal/membership and authorization before existence disclosure.",
+        "Retain interrupted/preparing lifecycle; Member.wait queued/running predicate must not define canonical terminal states."
+      ],
+      "canonical_subscription": "none",
+      "canonical_request_cancellation": "request-detach-only",
+      "actual_canonical_callers": []
+    },
+    {
+      "operation": "jobs.cancel",
+      "canonical_status": "proposed; generated declarations are not runtime dispatch or installed enforcement",
+      "contract_declaration": "contract_jobs.cancel",
+      "request_type": "JobCancelRequest",
+      "result_type": "JobView",
+      "error_type": "JobError",
+      "legacy_handlers": [
+        "workspace_stop",
+        "remote_stop",
+        "runner_stop"
+      ],
+      "retained_callers": [
+        "ui_jobs",
+        "member_stop",
+        "work_stop"
+      ],
+      "legacy_transport": "POST /ui/workspace/jobs/{id}/stop; POST /jobs/{id}/stop",
+      "semantic_transformation": "Translate legacy stopped record into generation-bound durable cancellation intent and observed settlement. Request disconnection only detaches response; it does not undo accepted cancellation.",
+      "authorization_and_lifecycle_delta": [
+        "Bind request ID and payload to principal/resource generation; legacy stop has no durable request deduplication.",
+        "Verify exact process lifetime, exit and capacity release before reporting settled; uncertain ownership requires recovery, never PID-only authority.",
+        "Serialize cancellation versus admission/launch/completion and reauthorize after retries."
+      ],
+      "canonical_subscription": "none",
+      "canonical_request_cancellation": "atomic-intent-versus-launch-and-completion",
+      "actual_canonical_callers": []
+    },
+    {
+      "operation": "jobs.list",
+      "canonical_status": "proposed; generated declarations are not runtime dispatch or installed enforcement",
+      "contract_declaration": "contract_jobs.list",
+      "request_type": "JobListRequest",
+      "result_type": "JobListResponse",
+      "error_type": "JobError",
+      "legacy_handlers": [
+        "workspace_jobs",
+        "remote_read",
+        "runner_snapshot",
+        "runner_status"
+      ],
+      "retained_callers": [
+        "ui_jobs",
+        "ui_poll",
+        "member_jobs"
+      ],
+      "legacy_transport": "GET /ui/workspace/jobs; GET /jobs",
+      "semantic_transformation": "Project and authorize each legacy row into bounded project-filtered stable pagination. Workspace capacity summary is a separate retained requirement; do not silently invent it in JobListResponse.",
+      "authorization_and_lifecycle_delta": [
+        "Legacy snapshot lists every local runner job; no canonical project/member generation binding.",
+        "Canonical page cursor must bind authorized project, snapshot/order/filter and reauthorize each page and item.",
+        "Legacy whole-list snapshots have no canonical pagination cursor."
+      ],
+      "canonical_subscription": "none",
+      "canonical_request_cancellation": "request-detach-only",
+      "actual_canonical_callers": []
+    },
+    {
+      "operation": "jobs.output.read",
+      "canonical_status": "proposed; generated declarations are not runtime dispatch or installed enforcement",
+      "contract_declaration": "contract_jobs.output.read",
+      "request_type": "JobOutputRequest",
+      "result_type": "JobOutputChunk",
+      "error_type": "JobError",
+      "legacy_handlers": [
+        "workspace_detail",
+        "remote_get"
+      ],
+      "retained_callers": [
+        "ui_detail",
+        "member_log",
+        "member_metrics",
+        "member_wait"
+      ],
+      "legacy_transport": "GET /ui/workspace/jobs/{id}; GET /jobs/{id}/log?tail=N; GET /jobs/{id}/metrics?since=N",
+      "semantic_transformation": "Replace tail-count/physical-line offsets with declared generation-bound bounded stream cursor; redact before chunking. Preserve logs and metrics as separate stream kinds.",
+      "authorization_and_lifecycle_delta": [
+        "Workspace tail is last 100000 bytes and last 200 valid metrics; remote log tails lines. These are not stable byte cursor semantics.",
+        "Remote metrics slices physical lines but advances by successful JSON rows, allowing replay around malformed lines.",
+        "Bind cursor to principal/resource/stream generation and reauthorize before delivery; expose truncation/reset explicitly."
+      ],
+      "canonical_subscription": "none",
+      "canonical_request_cancellation": "request-detach-only",
+      "actual_canonical_callers": []
+    },
+    {
+      "operation": "agents.get",
+      "canonical_status": "proposed; generated declarations are not runtime dispatch or installed enforcement",
+      "contract_declaration": "contract_agents.get",
+      "request_type": "AgentGetRequest",
+      "result_type": "AgentControlSnapshot",
+      "error_type": "AgentControlError",
+      "legacy_handlers": [
+        "agent_adapter",
+        "agent_read",
+        "agent_listing"
+      ],
+      "retained_callers": [
+        "ui_agent_list",
+        "ui_agent_embed"
+      ],
+      "legacy_transport": "GET /agents/list; Fleet adapter GET /ui/agents/list",
+      "semantic_transformation": "Resolve exact managed agent/project generations then project one legacy listing row to AgentControlSnapshot. Legacy list also carries saved settings/roles/efforts/harnesses/defaults; those remain outside this operation.",
+      "authorization_and_lifecycle_delta": [
+        "Legacy listing scans shared local saved-agent state rather than enforcing exact requested agent/project generations.",
+        "Separate sensitive backlog/last-message/raw status from public control projection.",
+        "Do not claim canonical agents.list or settings/model discovery exists because agents.get is declared."
+      ],
+      "canonical_subscription": "none",
+      "canonical_request_cancellation": "request-detach-only",
+      "actual_canonical_callers": []
+    },
+    {
+      "operation": "agents.pause",
+      "canonical_status": "proposed; generated declarations are not runtime dispatch or installed enforcement",
+      "contract_declaration": "contract_agents.pause",
+      "request_type": "AgentControlRequest",
+      "result_type": "AgentPauseResult",
+      "error_type": "AgentControlError",
+      "legacy_handlers": [
+        "agent_adapter",
+        "agent_write",
+        "agent_pause_branch",
+        "agent_pause"
+      ],
+      "retained_callers": [],
+      "legacy_transport": "POST /agents/pause or /ui/agents/pause with {name}",
+      "semantic_transformation": "Translate saved-agent name to exact agent/project resource generations; set paused=true with compare-and-swap control revision. Pause affects new task admission; active work finishes.",
+      "authorization_and_lifecycle_delta": [
+        "No retained UI/CLI caller of pause/resume found in inspected maintained callers; handler capability is retained, caller gap explicit.",
+        "Legacy writes/unlinks a pause file; lacks atomic admission boundary, control revision and durable request-ID deduplication.",
+        "Native authenticated controller replaces browser-only origin/session transport checks; request fields do not grant authority."
+      ],
+      "canonical_subscription": "none",
+      "canonical_request_cancellation": "atomic-pause-versus-task-admission",
+      "actual_canonical_callers": []
+    },
+    {
+      "operation": "agents.resume",
+      "canonical_status": "proposed; generated declarations are not runtime dispatch or installed enforcement",
+      "contract_declaration": "contract_agents.resume",
+      "request_type": "AgentControlRequest",
+      "result_type": "AgentPauseResult",
+      "error_type": "AgentControlError",
+      "legacy_handlers": [
+        "agent_adapter",
+        "agent_write",
+        "agent_pause_branch",
+        "agent_pause"
+      ],
+      "retained_callers": [],
+      "legacy_transport": "POST /agents/resume or /ui/agents/resume with {name}",
+      "semantic_transformation": "Translate saved-agent name to exact agent/project resource generations; set paused=false with compare-and-swap control revision. Pause affects new task admission; active work finishes.",
+      "authorization_and_lifecycle_delta": [
+        "No retained UI/CLI caller of pause/resume found in inspected maintained callers; handler capability is retained, caller gap explicit.",
+        "Legacy writes/unlinks a pause file; lacks atomic admission boundary, control revision and durable request-ID deduplication.",
+        "Native authenticated controller replaces browser-only origin/session transport checks; request fields do not grant authority."
+      ],
+      "canonical_subscription": "none",
+      "canonical_request_cancellation": "atomic-pause-versus-task-admission",
+      "actual_canonical_callers": []
+    },
+    {
+      "operation": "agents.stop",
+      "canonical_status": "proposed; generated declarations are not runtime dispatch or installed enforcement",
+      "contract_declaration": "contract_agents.stop",
+      "request_type": "AgentControlRequest",
+      "result_type": "AgentStopResult",
+      "error_type": "AgentControlError",
+      "legacy_handlers": [
+        "agent_adapter",
+        "agent_write",
+        "agent_stop"
+      ],
+      "retained_callers": [
+        "ui_agent_stop",
+        "cli_stop"
+      ],
+      "legacy_transport": "POST /agents/stop or /ui/agents/stop with {name}; person CLI agent stop",
+      "semantic_transformation": "Resolve managed agent/project generation, record control revision and stop intent; retain session/preferences and return warnings. Separate from exact task-execution stop.",
+      "authorization_and_lifecycle_delta": [
+        "Legacy stop writes stop flag, sends signals and attempts owned lease release; must not overstate settled before verified process exit/capacity release.",
+        "CLI _stop chooses unrestricted person branch or task-authorized branch; canonical agents.stop must not grant agent callers person authority.",
+        "Legacy HTTP response drops internal was_running/notes; canonical projection must preserve required warnings without leaking paths."
+      ],
+      "canonical_subscription": "none",
+      "canonical_request_cancellation": "atomic-stop-versus-launch-and-completion",
+      "actual_canonical_callers": []
+    },
+    {
+      "operation": "agents.task.start",
+      "canonical_status": "proposed; generated declarations are not runtime dispatch or installed enforcement",
+      "contract_declaration": "contract_agents.task.start",
+      "request_type": "AgentTaskStartRequest",
+      "result_type": "AgentTaskStartResult",
+      "error_type": "AgentControlError",
+      "legacy_handlers": [
+        "task_start",
+        "task_auth",
+        "agent_start"
+      ],
+      "retained_callers": [
+        "cli_start"
+      ],
+      "legacy_transport": "poolhouse-workspace agent start --agent SESSION --task TASK WORKER",
+      "semantic_transformation": "Bind saved worker, task, project and resource generations to one durable execution admission; preserve saved model/session/limits, isolation and coding capability checks. Existing already-running return is not proof that this exact execution started.",
+      "authorization_and_lifecycle_delta": [
+        "Preserve creator/assignee authority, separate sessions, board checkout, orders relation, active task and no conflicting task; no inferred parent exception.",
+        "Legacy helper returns local worker Started, not generation-bound task execution identity.",
+        "Atomic request dedupe and authorization at admission/execution are proposed, not established by legacy handler."
+      ],
+      "canonical_subscription": "none",
+      "canonical_request_cancellation": "request-detach-only",
+      "actual_canonical_callers": []
+    },
+    {
+      "operation": "agents.task.stop",
+      "canonical_status": "proposed; generated declarations are not runtime dispatch or installed enforcement",
+      "contract_declaration": "contract_agents.task.stop",
+      "request_type": "AgentTaskStopRequest",
+      "result_type": "AgentTaskStopResult",
+      "error_type": "AgentControlError",
+      "legacy_handlers": [
+        "task_stop",
+        "task_auth",
+        "agent_stop"
+      ],
+      "retained_callers": [
+        "cli_stop"
+      ],
+      "legacy_transport": "poolhouse-workspace agent stop --agent SESSION --task TASK WORKER",
+      "semantic_transformation": "Narrow legacy worker-wide stop to exact task-owned execution ID and execution generation. Do not stop another task or persistent agent merely because the worker name matches.",
+      "authorization_and_lifecycle_delta": [
+        "Legacy task_launch.stop authorizes task then calls whole-worker localstart.stop; it does not bind cancellation to exact execution.",
+        "Recheck current task/worker/project authority at admission and execution and serialize task reassignment versus stop.",
+        "Durable request intent, exact process ownership and verified exit/capacity release required before settled."
+      ],
+      "canonical_subscription": "none",
+      "canonical_request_cancellation": "task-owned-stop-versus-execution",
+      "actual_canonical_callers": []
+    }
+  ],
+  "shared_legacy_authorization": {
+    "job_ui": "ui_auth",
+    "job_remote": "remote_auth",
+    "agent_browser": "agent_post_guard",
+    "agent_adapter": "agent_adapter",
+    "task_worker": "task_auth",
+    "warning": "These are legacy checks, not proof of proposed current-membership/resource-generation/refusal or durable idempotency guarantees."
+  },
+  "omissions": [
+    "jobs.submit and typed JobWork mapping, plan/preview, capacity status, job metadata/artifacts, startup/recovery/adoption and detached-kind job controls remain unmapped.",
+    "agents.start/list/model/settings discovery, backlog configuration/decisions, scheduler and durable task/issue watches remain unmapped.",
+    "No attach or subscription operation is declared in these ten operations; current UI polling remains caller evidence only.",
+    "All other retained CLI/UI/API/native domains in retained-features.json remain outside this mapping.",
+    "All 33 built-in Command library families, optional training/Gym and installed extensions require typed per-operation mapping; no generic argv/env/cwd escape is accepted.",
+    "Every generated operation still requires reviewed handler implementation, caller migration, refusal/idempotency/race tests and relevant installed-device proof."
+  ],
+  "verification_limits": "Source hashes and line equality establish provenance, not behavioral enforcement. No product imports, runtime starts or network queries are needed for validation."
+}
