@@ -2,21 +2,23 @@
 import json
 import time
 
+import pytest
 from native_cargo import native_node_units, native_targets_built  # noqa: F401
 
-NATIVE_TARGETS = ("contract", "lib")
+
+@pytest.mark.parametrize("target", ["contract"])
+def test_native_contract_vectors(target, native_targets_built):  # noqa: F811
+    native_targets_built.run_targets((target,))
 
 
-def test_native_contract_vectors(native_targets_built):  # noqa: F811
-    native_targets_built.run_targets(("contract",))
-
-
-def test_private_contract_vectors_stay_inside_the_node_crate(native_targets_built):  # noqa: F811
-    output = native_targets_built.start_built("lib", ["contract_private_tests::"])
+@pytest.mark.parametrize("target", ["lib"])
+def test_private_contract_vectors_stay_inside_the_node_crate(target, native_targets_built):  # noqa: F811
+    output = native_targets_built.start_built(target, ["contract_private_tests::"])
     assert "4 passed; 0 failed" in output, output
 
 
-def test_rust_consumer_can_use_public_contract_but_not_private_data(native_targets_built, tmp_path):  # noqa: F811
+@pytest.mark.parametrize("target", ["contract"])
+def test_rust_consumer_can_use_public_contract_but_not_private_data(target, native_targets_built, tmp_path):  # noqa: F811
     from pathlib import Path
 
     from native_cargo import RUN_S, testnode, testunits
@@ -24,7 +26,7 @@ def test_rust_consumer_can_use_public_contract_but_not_private_data(native_targe
     node = native_targets_built
     dependencies = node.target / "debug/deps"
     # Dep-info paths are workspace-relative; Cargo's receipt identifies the exact library.
-    output = node.build_output(testunits.build_argv(testnode.tool("cargo"), ["contract"]),
+    output = node.build_output(testunits.build_argv(testnode.tool("cargo"), [target]),
                                node.staged, node.environment)
     artifacts = [json.loads(line) for line in output.splitlines()]
     libraries = [Path(filename) for row in artifacts if row.get("reason") == "compiler-artifact"
@@ -49,6 +51,7 @@ def test_rust_consumer_can_use_public_contract_but_not_private_data(native_targe
     assert code != 0 and all(any(f"`{name}`" in message for message in refused) for name in private), errors
 
 
-def test_reference_transcript_signature_math_has_no_issuer(native_targets_built):  # noqa: F811
-    output = native_targets_built.start_built("lib", ["contract_transcripts::tests::"])
+@pytest.mark.parametrize("target", ["lib"])
+def test_reference_transcript_signature_math_has_no_issuer(target, native_targets_built):  # noqa: F811
+    output = native_targets_built.start_built(target, ["contract_transcripts::tests::"])
     assert "4 passed; 0 failed" in output, output
