@@ -407,3 +407,24 @@ def test_source_refuses_ambiguous_native_representations(tmp_path, change):
     path.write_text(text)
     with pytest.raises(ValueError):
         load(source)
+
+
+def test_retained_operation_mapping_matches_current_declarations():
+    import json
+    mapping = json.loads((ROOT / "contracts/node/operation-mapping.json").read_text())
+    meta, _, _ = load(ROOT / "contracts/node")
+    declared = {row["name"]: row for row in meta["operations"]}
+    mapped = {row["operation"]: row for row in mapping["operations"]}
+    assert len(mapped) == len(mapping["operations"])
+    assert set(mapped) == set(declared)
+    for name, operation in declared.items():
+        row = mapped[name]
+        for source, target in (("request", "request_type"), ("response", "result_type"), ("error", "error_type"),
+                               ("subscription", "canonical_subscription"), ("cancellation", "canonical_request_cancellation")):
+            assert row[target] == operation[source], name
+        references = [row["contract_declaration"], *row["legacy_handlers"], *row["retained_callers"],
+                      *(item["site"] for item in row.get("related_unmapped", []))]
+        assert all(reference in mapping["sites"] for reference in references), name
+    output = mapped["jobs.output.read"]
+    assert "member_metrics" not in output["retained_callers"]
+    assert "member_metrics" in {item["site"] for item in output["related_unmapped"]}

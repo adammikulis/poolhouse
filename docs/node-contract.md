@@ -272,3 +272,10 @@ MacProcessObservation keeps the field name birth_unix_microseconds and its
 existing decimal-string wire shape, now using nominal UnixMicros. Neither wall
 clock birth nor conversion creates process identity or monotonic ordering.
 The installed Mac observation/adapter proof remains required.
+
+The pinned [operation mapping](../contracts/node/operation-mapping.json) connects
+all ten declared operations to hashed legacy handlers and retained callers. It
+separates proposed behavior from current transport, records semantic differences
+and lists remaining omissions. Metrics callers remain explicitly uncontracted;
+the log OutputCursor does not cover metrics. A focused cross-artifact check keeps
+request/result/error and lifecycle declarations aligned with that mapping.
