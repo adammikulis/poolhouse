@@ -253,10 +253,10 @@ Message types are `task`, `status`, `handoff`, `question`, `answer`, `claim`, `r
 
 **What is owed.** `attention`, `inbox` and `digest --status` list a direct `question`, `task`, `handoff` or `blocked`
 sent to you, older than the owner's `owed_after_s`, that you have not answered (you wrote to its sender, or in reply,
-after it). A request from a session that was retired (a subagent that stopped) and that you have read, by `ack` or by
+after it). A request from an explicitly retired session and that you have read, by `ack` or by
 `dm` showing it, is closed and left out, so stale handoffs do not hide live questions; an unread one stays until you read
 it. A Codex turn ending does not retire its child or close its outstanding requests. Explicit retirement closes
-answered or acknowledged handoffs; the Claude SubagentStop hook also retires its child.
+answered or acknowledged handoffs; automatic SubagentStop does not retire its child.
 `send NAME answer TEXT --reply-to SEQ` to a retired sender is accepted and recorded as an answer on the
 thread, which closes the request whether or not it was read ([docs/node.md](node.md), "Replies, threads and held text");
 any other message to a retired session is refused.
@@ -343,15 +343,15 @@ message is a count.
 A notification hook prints nothing and exits 0 when nothing is unread. If the workspace cannot be reached it exits
 0 with a credential-redacted warning, without starting the daemon. An unknown project is quiet: notifications do not
 register it, start a daemon or mutate project state. Explicit authorization and task completion remain separate.
-`poolhouse-workspace install-hooks [--settings PATH] [--codex-config PATH] [--only claude-code|codex]` (the
-`workspace.setup` gate) writes three notification hooks into `~/.claude/settings.json`. For Codex it writes
-SessionStart, SubagentStart, SubagentStop, SessionEnd, PostToolUse, Stop and UserPromptSubmit into `~/.codex/config.toml` (a managed block and `hooks = true` under `[features]`; PostToolUse is
-left to the launcher's `harnesshook post` when that is configured). It replaces earlier nudge hooks, keeps every other
-setting and writes only for agents present on the device. `poolhouse-setup`, `poolhouse-doctor` and
-`poolhouse-workspace doctor` report a missing or stale hook per agent. The Claude `SessionStart` hook runs the same
-git-hooks check on its checkout, posts one board line when the problem changes and puts the repair in the agent's
-context. `hook-snippet claude-code|codex --agent NAME` prints the setting without writing it. The hooks read the
-board's unread rows (sender, kind and time of each, text only for the cases above).
+Global workspace harness hooks are optional. `poolhouse-setup`, including `--yes`, does not automatically install,
+remove or repair them, and missing optional hooks do not make product readiness fail. To request that integration,
+use `poolhouse-workspace install-hooks [--settings PATH] [--codex-config PATH] [--only claude-code|codex]`.
+It preserves unrelated settings and writes only for agents present on the device. `hook-snippet` prints settings
+without writing them. This explicit integration is separate from product setup and ordinary local development.
+
+The repository hooks are also explicit: the own-repository installer records the local scope marker. It refuses foreign
+checkouts or custom hook paths without modifying them. Unscoped or mismatched copied push hooks skip this repository's
+policy; they do not impose it on another project. Workspace-hook installation does not grant native hook trust.
 
 Codex reviews new or changed hook definitions through its native `/hooks` screen. Installation preserves existing
 trust records; it cannot grant that approval. Full Access does not replace hook trust. The SessionEnd command has
