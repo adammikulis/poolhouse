@@ -203,3 +203,29 @@ fn general_agent_control_requires_an_expected_control_revision() {
     request["expected_control_revision"] = json!("3");
     assert!(serde_json::from_value::<AgentControlRequest>(request).is_ok());
 }
+
+#[test]
+fn audit_token_words_roundtrip_little_endian_without_sign_loss() {
+    let vectors: Value = serde_json::from_str(include_str!("../../../contracts/node/vectors.json")).unwrap();
+    let vector = &vectors["audit_token"];
+    let words: [u32; 8] = std::array::from_fn(|i| u32::try_from(vector["words"][i].as_u64().unwrap()).unwrap());
+    let token = AuditToken::from_words(words);
+    assert_eq!(token.as_str(), vector["encoded"].as_str().unwrap());
+    assert_eq!(token.words(), words);
+    assert_eq!(AuditToken::try_from(token.as_str().to_owned()).unwrap().words(), words);
+    assert!(words[7] > i32::MAX as u32);
+}
+
+#[test]
+fn timestamp_component_vectors_check_carry_and_overflow() {
+    let vectors: Value = serde_json::from_str(include_str!("../../../contracts/node/vectors.json")).unwrap();
+    let convert = |row: &Value| -> Option<UnixMicros> {
+        let seconds = row[0].as_str()?.parse::<u64>().ok()?;
+        let micros = row[1].as_str()?.parse::<u64>().ok()?;
+        UnixMicros::try_from_parts(seconds, micros).ok()
+    };
+    for row in vectors["unix_microseconds"]["accepted"].as_array().unwrap() {
+        assert_eq!(convert(row).unwrap().as_str(), row[2].as_str().unwrap());
+    }
+    for row in vectors["unix_microseconds"]["refused"].as_array().unwrap() { assert!(convert(row).is_none()); }
+}

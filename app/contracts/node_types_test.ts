@@ -50,3 +50,9 @@ declare const taskStop: NodeOperations["agents.task.stop"]["request"];
 // @ts-expect-error task stop cannot become general agent control
 const generalStop: NodeOperations["agents.stop"]["request"] = { ...taskStop, task: taskStop.task };
 void generalStop;
+
+import { unixMicrosFromParts } from "./node";
+const timestamp = unixMicrosFromParts(1n, 999999n);
+void timestamp;
+// @ts-expect-error timestamp components require exact bigint values
+unixMicrosFromParts(1, 0n);

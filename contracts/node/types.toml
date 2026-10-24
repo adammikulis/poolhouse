@@ -108,7 +108,7 @@ visibility = "private"
 [[type]]
 name = "AuditToken"
 kind = "scalar"
-encoding = "hex32"
+encoding = "audit-token-le32"
 issuer = "kernel-adapter"
 visibility = "private"
 
@@ -147,7 +147,7 @@ fields = [{name = "pid", type = "U32"}, {name = "creation_filetime_100ns", type 
 name = "MacProcessObservation"
 kind = "record"
 visibility = "private"
-fields = [{name = "pid", type = "U32"}, {name = "pid_version", type = "U32"}, {name = "audit_token", type = "AuditToken"}, {name = "birth_unix_microseconds", type = "U64"}]
+fields = [{name = "pid", type = "U32"}, {name = "pid_version", type = "U32"}, {name = "audit_token", type = "AuditToken"}, {name = "birth_unix_microseconds", type = "UnixMicros"}]
 
 [[type]]
 name = "NoParent"
@@ -242,6 +242,8 @@ kind = "scalar"
 visibility = "public"
 encoding = "u64"
 issuer = "node"
+
+unit = "unix-microseconds"
 
 [[type]]
 name = "OptionalExitCode"

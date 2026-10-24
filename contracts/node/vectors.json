@@ -1,5 +1,5 @@
 {
-  "schema_sha256": "85edabd2d8785da6dd55700a1f5c58be18b75d44082505198120758d63b3f1ed",
+  "schema_sha256": "3f7ee4fb3ed4b13bff6301271c7add44ed4d8ac53aa52929ccf528f080b09fec",
   "decoded_values": "untrusted-data",
   "device_id": {
     "public_key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
@@ -29,6 +29,66 @@
     "NativeSessionContext",
     "ProcessObservation"
   ],
+  "audit_token": {
+    "word_order": "little-endian-u32",
+    "words": [
+      16909060,
+      270544960,
+      287454020,
+      1432778632,
+      2309737967,
+      324508639,
+      610839776,
+      4275878552
+    ],
+    "encoded": "04030201403020104433221188776655efcdab89df9b5713e0ac682498badcfe"
+  },
+  "unix_microseconds": {
+    "accepted": [
+      [
+        "0",
+        "0",
+        "0"
+      ],
+      [
+        "1",
+        "999999",
+        "1999999"
+      ],
+      [
+        "2",
+        "0",
+        "2000000"
+      ],
+      [
+        "18446744073709",
+        "551615",
+        "18446744073709551615"
+      ]
+    ],
+    "refused": [
+      [
+        "1",
+        "1000000"
+      ],
+      [
+        "18446744073709",
+        "551616"
+      ],
+      [
+        "18446744073710",
+        "0"
+      ],
+      [
+        "-1",
+        "0"
+      ],
+      [
+        "0",
+        "-1"
+      ]
+    ]
+  },
   "job_scalars": [
     {
       "type": "JobPageLimit",

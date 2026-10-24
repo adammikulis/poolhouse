@@ -143,7 +143,7 @@ def _encode(value: Any) -> object:
 
 
 CONTRACT_VERSION = 1
-SCHEMA_SHA256 = "85edabd2d8785da6dd55700a1f5c58be18b75d44082505198120758d63b3f1ed"
+SCHEMA_SHA256 = "3f7ee4fb3ed4b13bff6301271c7add44ed4d8ac53aa52929ccf528f080b09fec"
 
 
 class AgentDisplayName(_Scalar):
@@ -274,6 +274,12 @@ class U64(_Scalar):
 
 class UnixMicros(_Scalar):
     _encoding = "u64"
+
+    @classmethod
+    def from_parts(cls, seconds: int, microseconds: int) -> Self:
+        if type(seconds) is not int or type(microseconds) is not int or seconds < 0 or not 0 <= microseconds < 1_000_000:
+            raise ValueError("invalid timestamp components")
+        return cls(str(seconds * 1_000_000 + microseconds))
 
 
 @dataclass(frozen=True)
