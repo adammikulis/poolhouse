@@ -222,21 +222,26 @@ resource and worker capabilities, lifecycle, settings/setup, progress, model mem
 The integration owner lands concrete canonical schemas, generated clients/vectors, adapter signatures, drift checks,
 and authorization/cancellation/subscription tests. Record its SHA. Do not introduce a macOS-only wire shape or private
 UI domain API. Propose any required contract change to the integration owner with security/platform/test effects;
-merge its reviewed generated result before adapting macOS.
+merge its reviewed generated result before adapting macOS under the shared dormant implementation rule below.
 
 | Barrier | Evidence needed before proceeding |
 |---|---|
 | H: hooks | Reviewed producer/consumer identity binding, supported installation/trust, actual root and subagent completed turns, cleanup refusal, missing/forged/parent context refusal. Orchestration port/cutover waits; restricted H engineering follows the shared dependency rules below. |
-| K: contracts | Shared contract commit, resolved independent findings, native adapter signatures, and preserved-work ledger. Platform implementation waits. |
+| K: contracts | Shared contract commit, resolved independent findings, native adapter signatures, and preserved-work ledger. Full orchestration/cutover waits; scoped dormant modules follow the shared rule below. |
 | P: native prerequisites | Authenticated service IPC, service-owned protected storage, transaction-bound approval, native confined execution, and before-login proof on macOS. Orchestration port/cutover waits. |
 | I: installed integration | Actual native artifacts and joint bidirectional acceptance with Windows and independent Linux/WSL. Overall completion waits. |
 
 The [shared dependency rules](native-plan-windows-linux.md#deconfliction-and-integration) govern contract engineering
-and the restricted components needed to prove H while its acceptance is pending. K remains required before macOS
-platform adapters are implemented.
+and the restricted components needed to prove H while its acceptance is pending. A dormant capability-specific Mac
+module can proceed against its exact independently reviewed canonical interface and complete transitive dependency/
+profile checkpoint integrated and pushed to shared `0.3dev`, with Mac feasibility review and scope recorded there.
+Communicate and deconflict through the plans; unrelated unresolved profiles and remote approval waits are not gates.
+Required unresolved dependencies refuse, without fake issuers, placeholder proofs, alternate wire or fallback.
+This adds no public/production entrypoint or installed activation and accepts no barrier; relevant protection evidence
+and separate review still precede activation, and full orchestration/cutover still requires H, global K and relevant P.
 Read-only inspection, preservation, feasibility review and proof planning remain available while H/K are pending.
-After K, macOS P can run alongside Windows/Linux P without concurrent shared-file edits. After H/K and independent
-review, build the minimal production bounded computation admission/private-worker slice needed to establish P;
+Mac and Windows/Linux prerequisite work can proceed independently within that rule without concurrent shared-file
+edits. After H/K and independent review, build the minimal production bounded computation admission/private-worker slice needed to establish P;
 H caller admission does not satisfy this distinct computation proof or the later orchestration port. Python broker
 authority cannot stand in for node admission. Failed native proofs require native engineering, never unconfined
 execution or an alternate desktop authority.
