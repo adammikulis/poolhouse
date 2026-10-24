@@ -4,9 +4,9 @@
   "source_commit": "f213011b498c27cd53d2b1dca0bae6d1c9bb6bc4",
   "contract_peer_commit": "6cbc882f9923886d4961e77491607f3e68663f45",
   "fragment": "contracts/node/domains/datasets.toml",
-  "fragment_sha256": "b5956ad253fec1b52df2dc5815c925d94a18af81c9c018c8551f2d50b9a6651a",
+  "fragment_sha256": "3ff6e779119da32e982dd808d381fc46428b550ab7a333d0e3dd7d64e055b3a7",
   "counts": {
-    "types": 116,
+    "types": 125,
     "operations": 19
   },
   "operation_mapping": [
@@ -14,14 +14,14 @@
       "operation": "datasets.catalog.search",
       "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
       "legacy_handler_sites": [
-        0,
-        1,
-        4,
-        9,
-        11
+        2,
+        3,
+        6,
+        11,
+        13
       ],
       "actual_caller_sites": [
-        42
+        44
       ],
       "semantic_transformation": "GET search query/task/language/sort/sourcecursor becomes fixed typed query and node-bound opaque continuation; at most24summaries, no arbitraryURL."
     },
@@ -29,13 +29,13 @@
       "operation": "datasets.catalog.inspect",
       "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
       "legacy_handler_sites": [
-        1,
-        5,
-        6,
-        12
+        3,
+        7,
+        8,
+        14
       ],
       "actual_caller_sites": [
-        43
+        45
       ],
       "semantic_transformation": "GET details(repo) preserves summary/mainrevision/split sizes; split collection paged automatically without lowering4096source total."
     },
@@ -43,11 +43,11 @@
       "operation": "datasets.catalog.splits.list",
       "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
       "legacy_handler_sites": [
-        5,
-        6
+        7,
+        8
       ],
       "actual_caller_sites": [
-        43
+        45
       ],
       "semantic_transformation": "New automatic typed continuation of immutable details snapshot; not separate remote endpoint or new dataset selection authority."
     },
@@ -55,14 +55,14 @@
       "operation": "datasets.catalog.preview",
       "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
       "legacy_handler_sites": [
-        1,
-        7,
-        35,
-        10
+        3,
+        9,
+        37,
+        12
       ],
       "actual_caller_sites": [
-        44,
-        45
+        46,
+        47
       ],
       "semantic_transformation": "GET preview fixedsource tuple yields live<=10row512field snapshot and exact rows/schema digest; no pinnedcommit claimed."
     },
@@ -70,12 +70,12 @@
       "operation": "datasets.catalog.selection.create",
       "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
       "legacy_handler_sites": [
-        1,
-        8,
-        15
+        3,
+        10,
+        17
       ],
       "actual_caller_sites": [
-        44
+        46
       ],
       "semantic_transformation": "GET selection describes full complete data-only Parquet identities with distinctmain+converted revision; snapshotcreation durableID is proposed, no fulldownload/import implementation."
     },
@@ -83,10 +83,10 @@
       "operation": "datasets.catalog.selection.files.list",
       "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
       "legacy_handler_sites": [
-        8
+        10
       ],
       "actual_caller_sites": [
-        44
+        46
       ],
       "semantic_transformation": "Automatic complete typed fileidentity paging; fixednode-derived pinnedsource, relative names never grant OS/URL authority."
     },
@@ -94,12 +94,12 @@
       "operation": "datasets.local.choose",
       "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
       "legacy_handler_sites": [
-        17,
-        54
+        19,
+        56
       ],
       "actual_caller_sites": [
-        52,
-        50
+        54,
+        52
       ],
       "semantic_transformation": "Proposed real native picker managed source issuance replaces local-preview raw path authority, no additional normalpersonstep; heldsource implementation absent."
     },
@@ -107,10 +107,10 @@
       "operation": "datasets.local.choice.inspect",
       "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
       "legacy_handler_sites": [
-        17
+        19
       ],
       "actual_caller_sites": [
-        50
+        52
       ],
       "semantic_transformation": "New automatic native selector status, not proof from path/storedID."
     },
@@ -118,10 +118,10 @@
       "operation": "datasets.local.choice.cancel",
       "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
       "legacy_handler_sites": [
-        17
+        19
       ],
       "actual_caller_sites": [
-        50
+        52
       ],
       "semantic_transformation": "New exact selection-intent cancellation, cannot cancel a selected source while pretending selection did not commit."
     },
@@ -129,13 +129,13 @@
       "operation": "datasets.local.preview",
       "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
       "legacy_handler_sites": [
-        1,
-        17,
-        18,
-        20
+        3,
+        19,
+        20,
+        22
       ],
       "actual_caller_sites": [
-        50
+        52
       ],
       "semantic_transformation": "GET local-preview(path) becomes currentmanaged DatasetRef, exactheldsource plus frozen verified sample; source stat/reopen checks not immutablecustodyproof."
     },
@@ -143,12 +143,12 @@
       "operation": "datasets.managed.list",
       "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
       "legacy_handler_sites": [
-        21,
-        20,
-        30
+        23,
+        22,
+        32
       ],
       "actual_caller_sites": [
-        51
+        53
       ],
       "semantic_transformation": "Legacy DatasetImports.resources viaStudio resources becomes scoped managed inventory; authorized unavailable indices explicit, not silent emptycompleted list."
     },
@@ -156,13 +156,13 @@
       "operation": "datasets.managed.get",
       "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
       "legacy_handler_sites": [
-        20,
-        30,
-        37
+        22,
+        32,
+        39
       ],
       "actual_caller_sites": [
-        51,
-        50
+        53,
+        52
       ],
       "semantic_transformation": "Resolve registered managed DatasetRef only after original producer, bytes, manifest and epoch checks; no publicpath echo."
     },
@@ -170,16 +170,16 @@
       "operation": "datasets.import.preview.start",
       "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
       "legacy_handler_sites": [
-        2,
-        19,
-        33,
-        34,
-        26,
-        40
+        4,
+        21,
+        35,
+        36,
+        28,
+        42
       ],
       "actual_caller_sites": [
-        45,
-        46
+        47,
+        48
       ],
       "semantic_transformation": "POST preview-imports exactselection fields -> PreviewRef+digest+typedrow/columnselection+name/sourcekey/RequestId; same scoped immutableintent bound to one fixed dataset node/run beforewake."
     },
@@ -187,12 +187,12 @@
       "operation": "datasets.import.lookup",
       "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
       "legacy_handler_sites": [
-        2,
-        23,
-        27
+        4,
+        25,
+        29
       ],
       "actual_caller_sites": [
-        47
+        49
       ],
       "semantic_transformation": "GET imports?key queries original exactintent after unknownacceptance; canonicalRequestId/sourcekeyalias consistency, no freshsubmit."
     },
@@ -200,13 +200,13 @@
       "operation": "datasets.import.get",
       "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
       "legacy_handler_sites": [
-        2,
-        22,
-        28,
-        20
+        4,
+        24,
+        30,
+        22
       ],
       "actual_caller_sites": [
-        48
+        50
       ],
       "semantic_transformation": "GET imports/runid becomes ImportRef view; node retainsoriginalrun mapping and verifies managedready publication separatelyfromdoneflag."
     },
@@ -214,12 +214,12 @@
       "operation": "datasets.import.cancel",
       "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
       "legacy_handler_sites": [
-        2,
-        24,
-        39
+        4,
+        26,
+        41
       ],
       "actual_caller_sites": [
-        49
+        51
       ],
       "semantic_transformation": "POST imports/runid/cancel becomes generation/CAS/request-scoped durablecancel-versus-indexpublication; unknownoutcome custody blocksrelaunch."
     },
@@ -227,11 +227,11 @@
       "operation": "datasets.import.watch",
       "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
       "legacy_handler_sites": [
-        22,
-        32
+        24,
+        34
       ],
       "actual_caller_sites": [
-        48
+        50
       ],
       "semantic_transformation": "New ordered watch successor to750ms UIpolling; detach notcancel, exactcurrentauth/backpressure/resync prerequisite."
     },
@@ -239,15 +239,15 @@
       "operation": "datasets.values.read",
       "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
       "legacy_handler_sites": [
-        10,
-        7,
-        18,
-        34
+        12,
+        9,
+        20,
+        36
       ],
       "actual_caller_sites": [
-        43,
         45,
-        50
+        47,
+        52
       ],
       "semantic_transformation": "Automatic output-only typed tree paging retains actualschema/data JSON variants, exactintegers, null/unknown distinction, fixedsame-snapshot refs; no opaqueoperationbody."
     },
@@ -255,20 +255,34 @@
       "operation": "datasets.text.read",
       "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
       "legacy_handler_sites": [
-        10,
-        7,
-        18,
         12,
-        15
+        9,
+        20,
+        14,
+        17
       ],
       "actual_caller_sites": [
-        43,
-        50
+        45,
+        52
       ],
       "semantic_transformation": "Automatic output-only exactUTF8 text paging preserves sourcecodepoint caps, originalsourceaggregate andUnicodeboundaryloss; no URL/parser/path authority."
     }
   ],
   "sites": [
+    {
+      "path": "src/poolhouse/fleet/api.py",
+      "line": 179,
+      "symbol": "api.Handler._send",
+      "sha256": "0777f8d5ae585e6297a6c7ed7de2064949ce06084ef5406ff29286b141c0a329",
+      "exact_line": "            body = raw if raw is not None else json.dumps(payload).encode()"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_catalogue.py",
+      "line": 21,
+      "symbol": "dataset_catalogue._text",
+      "sha256": "2218a98e3e695462c249081706db30bb48f1f25fcecb9d3623b9a0082328de1b",
+      "exact_line": "def _text(value, limit=256, multiline=False):"
+    },
     {
       "path": "src/poolhouse/fleet/dataset_routes.py",
       "line": 30,
@@ -674,7 +688,7 @@
       "name": "remote_json",
       "limit": 8388608,
       "measure": "net.Ask(max_bytes) raw response body",
-      "site": 11
+      "site": 13
     },
     {
       "name": "whole_remote_envelope_values",
@@ -686,7 +700,7 @@
         "key_codepoints": 256
       },
       "measure": "_json calls _value on entire response BEFORE specialized validators",
-      "site": 10
+      "site": 12
     },
     {
       "name": "search",
@@ -697,8 +711,8 @@
         "link_header_characters": 16384
       },
       "sites": [
-        4,
-        9
+        6,
+        11
       ]
     },
     {
@@ -706,15 +720,17 @@
       "limit": {
         "codepoints": 50000,
         "utf8_upper_bound": 200000,
-        "boundary_safe_chunks": 4
+        "utf8_boundary_safe_chunks": 4,
+        "ascii_json_string_upper_bound": 600000,
+        "ascii_chunks": 10
       },
-      "site": 12,
+      "site": 14,
       "measure": "codepoints sourcegate preserved; UTF8derivedupper bound/chunks not extra allowance"
     },
     {
       "name": "splits",
       "limit": 4096,
-      "site": 6,
+      "site": 8,
       "measure": "effective specializedsource collection, pagedtransport1024 existing codecmax not workloadcap"
     },
     {
@@ -722,9 +738,9 @@
       "declared_later_check": 100000,
       "effective_earlier_list_limit": 10000,
       "sites": [
-        11,
-        10,
-        8
+        13,
+        12,
+        10
       ],
       "measure": "100000 is NOT admittedallowance; earlierwhole-envelope _value <=10000 governs"
     },
@@ -734,37 +750,37 @@
         "rows": 10,
         "columns": 512
       },
-      "site": 7
+      "site": 9
     },
     {
       "name": "local_sample",
       "limit": 1000000,
       "unit": "raw sampledbytes plus1read for truncation",
-      "site": 17
+      "site": 19
     },
     {
       "name": "import_data",
       "limit": 4194304,
       "unit": "exact JSONL bytes sort_keys=True separators comma/colon ensure_ascii=False allow_nan=False plusLF eachrow",
-      "site": 34
+      "site": 36
     },
     {
       "name": "manifest",
       "limit": 4194304,
       "unit": "separate json.dumps(manifest,sort_keys=True,separators comma/colon,allow_nan=False).encode bytes (defaultensure_ascii=True)",
-      "site": 36
+      "site": 38
     },
     {
       "name": "source_import_POST",
       "limit": 4194304,
       "unit": "originalencodedrequestbytes, not newIDLdoubleescapingwrapper",
-      "site": 2
+      "site": 4
     },
     {
       "name": "natural_decimal",
       "limit": 128,
       "unit": "ASCIIdecimalchunkcountceiling, max65536each",
-      "site": 11,
+      "site": 13,
       "measure": "8MiBoriginalJSONcap implies at most128ASCIIchunks; noUnicodeboundaryloss fordigits, exactsourcepayloadstillgate. Not a new integer range or bitwidth."
     }
   ],
@@ -772,18 +788,19 @@
     "Every type/operation remains data-only proposal; current_source_refs prove code observations, never executed/protected authority, native picker, storage durability or runtime migration.",
     "DatasetRef exact{dataset_id:DatasetId,generation:ResourceGeneration,project:ProjectCatalogRef}; DatasetPreviewRef/SelectionRef/ImportRef/LocalChoiceRef use own node-issuedID+generation+project. Node resolves exact current authenticated principal/installation/poolcontext/selectionepoch/project/resource generation; a copiedID/digest/text/path never grants authority.",
     "Authenticate before lookup, existence/error/idempotency observation and everypage/event; reauthorize afterremote calls andbeforeeffects/publication. Future native adapters onWindows/WSL/Mac must retain real source lifetime/rights. Current stat(dev,ino,size,mtime,ctime) plusreopen is sourceevidence ONLY, not immutablecustody or TOCTOU proof. Freeze verifiedsamplebytes under heldauthenticatedsource before publication, never reopenaftercheck asauthority.",
-    "HFcatalogue endpoints fixed. URLredirect/credential/egress/source policy validated byNode; cursorbound exactsource/filter/project/revision. Sourcepaths are immutabledataidentities only; never accept genericURL/path/cwd/query/code/parser or featuretype execution. Publicrepo two ASCIIparts1..96/no..; configsplit<=256codepoints nonempty/noleadingdot/slash/backslash/percent. Textcodecbytes1024 is UTF8upper bound, not256codepointallowanceincrease.",
-    "Source _text rejectsC0 exceptdescriptionLF/CR/TAB, allows C1; declaredUTF8 textpreserves this instead of sharedcontrolfree labelcodec shrinkingvaliddata. LocalCSVfieldnames/values maycontain quotedcontrols; retain asdata withsource-specificvalidation andescapedpresentation. Reject invalidUTF8/escapedlonesurrogates ratherthan fabricate validtext.",
+    "HFcatalogue endpoints fixed. URLredirect/credential/egress/source policy validated byNode; cursorbound exactsource/filter/project/revision. Sourcepaths are immutabledataidentities only; never accept genericURL/path/cwd/query/code/parser or featuretype execution. Publicrepo two ASCIIparts1..96/no..; configsplit<=256codepoints nonempty/noleadingdot/slash/backslash/percent. Source-string records carry deterministic encoding, encodedcontent and source_codepoints. Source256codepoints is unchanged: rawUTF8<=1024bytes, ASCIIJSONcontent<=3072bytes; licence1024codepoints rawUTF8<=4096/ASCII<=12288. Derivedencodedbounds are transport representation only, not workloadallowance.",
+    "Source _text rejectsC0 exceptdescriptionLF/CR/TAB, allows C1; declaredUTF8 textpreserves this instead of sharedcontrolfree labelcodec shrinkingvaliddata. LocalCSVfieldnames/values maycontain quotedcontrols; retain asdata withsource-specificvalidation andescapedpresentation. UTF8representation rejects invalidscalar text, but actualsource JSON escaped lone surrogate units remain preserved through fixed json_string_ascii_content in ASCII. Never reject/drop/replace solelybecause the source string needs that encoding.",
+    "Source-string encoding is PURE DATA, not parser/executable authority. DeterministicUTF8 for scalar-valid source strings; json_string_ascii_content only ifunpairedunits requireit. ASCIIcontent equals canonicalPython json.dumps(value,ensure_ascii=True)[1:-1] interior withoutquotes; reject alternateescape spellings afterdecode/reencode. Original decodedsourceunits determine objectkey equality/requestdigest, not wrapper bytes. Actualjson.loads coalesces valid surrogatepairs: no injectivityclaim forarbitraryinternalPythonstr outside retainedJSONprofile. Reassemblefullstring or useboundedstatefulescape parser before sourcevalidation, never perchunkJSONparse; no lossy replacement/normalization.",
     "Source _json uses unique_object, rejectsnonfinite andthen _value onWHOLE response: depth<=20/list<=10000/object<=512/string<=500000codepoints/key<=256codepoints. Later specialized siblings<=100000 is ineffective as allowance; actualupstreamlist<=10000. Details specializedsplits<=4096. Duplicate decodedkeys/fieldnames andnonfinite values refused; parseriterative boundedresource admission prerequisite, no recursivewalkprotection claimed.",
     "Public valuegraph is OUTPUT-ONLY typed Null/Boolean/Integer/FiniteF64/Text/List/Object. Everyref/cursor binds SAME immutable authorized snapshot/generation; acyclic, no conflictingnodeIDs, uniqueobjectnames/sourceorder, no crossscope/cursor substitution. Listpages<=1024 preserve full10000sourceitemtotal; objectpages<=512. Featuretypes are typedvalueDATA, never decoder/parser/schema authority. Caller cannot submit arbitrary graph/request payload or authorize tools/effects throughdata.",
     "Creation generation scopes: catalog.selection.create and local.choose top generation equals exact current request.project.generation; import.preview.start top generation equals exact PreviewRef.generation with PreviewRef.project identical to request.project. Choice/import cancel top generation equals exact existing choice/import generation and CASrevision. Every nested reference belongs to exact request.project; current membership/poolcontext validation separate.",
     "Use shared private ResourceAdmissionProfileRef/Binding/Envelope/AccountingRecord/TransferRecord from published resource_leases peer6cbc882f9 for content_stage/graph_transaction/bounded_worker ownership, memory/storage input/output/parser-snapshot charges, stage-to-consumer and worker-to-node transfers, physical alias nonadditivity and unknown settlement. No new public budgetAPI/framework; source byte caps are not measured peakmemory. Required policy/measurements/reservation/retainedresult/settlement proof absent, not authority from privateDTO or UUID.",
     "Natural counters/file size observations preserve arbitrary source nonnegative Pythoninteger as canonicalASCIIdecimalparts, unknownNone distinctfrom0. No U64/F64 truncation/coercion/rounding/clamp. Everydecimalpart nonempty ASCII digits; nonfinal chunks exactly65536bytes and final1..65536, concatenation grammar0or[1-9][0-9]* withoutleadingzeros. Zero is onepart0 and Integernegative false, no negativezero. Integernegative flag plusmagnitude exact. Digitsonly therefore128*65536 represents original8MiB ceilingwithoutUnicodeboundaryloss; wholeoriginalresponsecapincludingallfields/envelope stillapplies. Actualparser integerdigit-limit profile mustbereviewed beforeenablement, no unbounded-arithmeticclaim.",
-    "Descriptions50000codepoints<=200000UTF8bytes;4boundary-safechunks, exactcodepointlimit separatefromtransportrepresentation. Generic string500000codepoints handled TextRef/UTF8chunks, exactfrozenbytes/digest/codepoint/length/order validated. Chunk/page ceilings neveraddnewsourcebudget. No normalization. Source originalserializedrequest/response/data/manifest caps measured withretainedserializer, separatefrom newIDLwrapper/escaping/hextransport overhead, no nearlimit shrinkor sourceallowanceincrease.",
+    "Descriptions remain50000sourcecodepoints: validUTF8<=200000bytes/4boundarysafechunks; when unpaired units requireASCIIJSONstringcontent, safe12bytes per nonBMPsourcecodepoint upperbound600000bytes/10chunks. Generic source string500000codepoints remains bounded by originalsource8MiBenvelope, notexpandedwrapper. TextRef.encoding is immutable; encoded_bytes and digest count/hash exactencodedrepresentation, source_codepoints recomputedunderactualsourceJSONprofile, never encodedASCIIsize. Reader encoded_byte_offset/next_encoded_byte_offset areencodedbytes, notcodepointoffsets. Exactfrozenencodedbytes/order/digest and decodedsourcecounts checked. Chunk/page ceilings neveraddnewsourcebudget. No normalization. Source originalserializedrequest/response/data/manifest caps measured withretainedserializer, separatefrom newIDLwrapper/escaping/hextransport overhead, no nearlimit shrinkor sourceallowanceincrease.",
     "Catalogue summary title=repo/downloads/likes knownorunknown/licence/gated areobservations not trust/accessgrants. Details mainrevision40or64hex; immutableParquetselection main+convertedrevision pinnedseparately, eachrelativefile allowedsegments/sha256/LFSpositiveintsize andViewermatchingmetadata, duplicatepaths refused, partiallistingrefused. This is data-onlymanifest, not downloadedbytes or completefullsplitimport proof.",
     "LiveViewerpreview provenance binds ONLY exactrepo/config/split/columns/rows via existingdigest, pluspartial/live observations; no pinnedmain/convertedrevision invented. PreviewRef freezes these observations andschema; no truncatedcells accepted. Previewimport refetches exacttuple and recomputes samedigest beforeselection; changingrows/columns conflicts. Changingpartialflagalone is not claimed bound bylegacydigest. Previewimport ONLY selectedobserved<=10rows, not fullsplit or pinnedParquetexport.",
     "Localpreview sampleformat json/jsonl/csv/txt preserves1millionrawbyte window, strictUTF8 incrementalboundary, truncatedjsonnodata, incompleteJSONL/CSVtail exclusions, up-to10objectrows and512columns, totalfilebyte observation andtextfallback. DatasetRefnative_selected doesNOTclaimwholefileimmutable; onlycurrentauthorizedsource andfrozenverifiedsample. No publicrawfilesystempath returned aspermission.",
-    "Importsourcebody requires exactfields; rawname/sourcekey<=256codepoints(nonempty strippedcheck) preserve originaldata includinglegacycontrolsemantics, not authority. Rowindices<=9distinct andwithinactualpreview, source/outputcolumnidentitiesdistinct, everyselectedrow hascolumns. Preserve rowselectionorder, sortsourcecolumnkeys, exactrenaming/schemafeaturedata andJSONLserializer. SelectedJSONL<=4MiB, manifest<=4MiB separately; sourcePOST<=4MiB. Manifestconstantversion1/name dataset.jsonl, rows, exactcolumns, filebytes+sha andHFpreviewtuple/digest/rowindices/columnmap retained.",
+    "Importsourcebody requires exactfields; rawname/sourcekey<=256codepoints(nonempty strippedcheck) preserve originaldata includinglegacycontrolsemantics, not authority. Rowindices<=9distinct andwithinactualpreview, source/outputcolumnidentitiesdistinct, everyselectedrow hascolumns. Preserve rowselectionorder, sortsourcecolumnkeys, exactrenaming/schemafeaturedata andJSONLserializer. SelectedJSONL ensure_ascii=False strictUTF8 encoding retains source-specific refusal if selectedvalues/outputnames containunpairedunits; do notrewriteJSONL toASCIIescaping orassume alldisplayablepreviewstrings importable. Manifestdefaultensure_ascii=True mayretain schema/titlemetadata withunpairedunits. SelectedJSONL<=4MiB, manifest<=4MiB separately; sourcePOST<=4MiB. Manifestconstantversion1/name dataset.jsonl, rows, exactcolumns, filebytes+sha andHFpreviewtuple/digest/rowindices/columnmap retained.",
     "RequestId/source_idempotency_key aliases scoped exactprincipal+project+generation+body; conflictingreuse refuses. Durable requestbodydigest+payload(data+manifest)digest+runID+fixednode dataset and current context/epoch atomically boundbefore schedulerwake. Lookup sameoriginalrequest/key after lostacceptance, no newsubmit/relaunch. Actual source legacyrunID/opaque requesthash/resourcepath retained privately forcompatibility/provenance, DatasetImportId doesnoteraseoriginalidentity. Cross-view linkage to publicStudioRunRef needs actualimplicitworkflowmapping review, not fabricated publicworkflow creation.",
     "Managedreadyindex requiresoriginalproducer exactrun/node/principal/context/epoch, no reusedfrom, expectedoutputs/digests, exactdata+manifest verification andcurrentauthorizationbarrier. Worker doneflag/hash/path alone insufficient. Sourcepublic_run state andfixeddatasetnode preserved; genericfailed/blocked/interrupted error maps explicitpreview_rows_not_made_available, no inventedpaused/waitingstate. created/finished sourcePythonfloats retained exactly asFiniteF64seconds, not silentlyrounded micros; actualsourceclock/authpolicy checks separate.",
     "Cancellation/publication oneatomicdurablewinner; CancelledBeforePublication implies no usablepublishedindex, AlreadyPublishedneverCancelled. Unknowncleanup/custody retains sameoriginalwork andforbids freshlaunch. Detachread/watch doesnotcancelimport, deleteaccepteddataset orrollbacksignedhistory. Orderedwatch is proposal replacingcurrent750mspolling, requiresboundedbackpressure/resync andcurrentauth everyevent. No automaticpending retryfromfreshboot.",
@@ -794,52 +811,71 @@
       "surface": "Full immutable Parquet dataset materialization/download/import",
       "status": "not implemented by current preview-import; onlycompletepinnedselectiondescriptor preserved",
       "sites": [
-        8,
-        19
+        10,
+        21
       ]
     },
     {
       "surface": "Workspace local file/paste upload/list/rawread and managedstaging",
       "status": "retainedDataUI uses WorkspaceRoutes._workspace file/POST, currentlyrawpath. Thisleaf supplies nativechoice/managedpreview only; managedupload/pastestaging nextsegment, notsilentlydeclaredmigrated",
       "sites": [
-        52,
-        54
+        54,
+        56
       ]
     },
     {
       "surface": "Training/test recipes, typed jobsubmit/preview/cancel/progress/checkpoint/artifacts andconsent",
       "status": "next coherent executionadmissionsegment; no genericargv/env/cwd escape added",
       "sites": [
-        53,
         55,
-        54
+        57,
+        56
       ]
     },
     {
       "surface": "PublicStudio graph/workflow/run lifecycle anddurable sources/subscriptions/delivery",
       "status": "peerowner; reuse DatasetRef forbinding, outputDatasetValueRef/TextRef not genericgraphparameterinput blobs",
       "sites": [
-        51,
-        40
+        53,
+        42
       ]
     },
     {
       "surface": "Actualpicker/storage/parser/valuegraph/textpaging/sourceprofiles/egress/nativeownership/currentauth/rollback/atomicpublication",
       "status": "runtime prerequisites unresolved, no callerretention/K/H/P/I proof; no extra normalusersteps ormodeltests",
       "sites": [
-        17,
-        26,
-        36,
-        37
+        19,
+        28,
+        38,
+        39
       ]
     }
   ],
   "independent_review": {
     "reviewer": "hook_attack_review",
-    "stage": "writtenpre-edit and actualtwofile finalreview approved proposal-only; exact generation scopes and canonicaldecimalpart notes incorporated, TOML outside existing Python/component line gates; no runtime or reviewer tests",
+    "stage": "original approval retained; narrow surrogate follow-up pre-edit and actualtwofile review approved at fragment3ff6e779119da32e982dd808d381fc46428b550ab7a333d0e3dd7d64e055b3a7; no reviewer tests/runtime proof",
     "requirements": "heldsource/frozenverifiedsample, fixedoriginegress, acyclicsame-snapshotrefs, effectivewhole-envelopelimits, livepreviewnotpinnedcommit, cancelpublicationatomicwinner"
   },
+  "source_string_followup": {
+    "status": "source-preserving pureencoding declaration only",
+    "reviewer": "hook_attack_review",
+    "source_sites": [
+      1,
+      12,
+      0,
+      36
+    ],
+    "original_fragment_commit": "5fdcebc405c94c63e1632bb9069837283930ccf7",
+    "encoding": "utf8 forscalarvalid; otherwise canonicaljson_string_ascii_content underactual retainedJSON semantics",
+    "no_runtime_decoder_or_codec_proof": true,
+    "actual_review": "hook_attack_review approved exact fragment3ff6e779119da32e982dd808d381fc46428b550ab7a333d0e3dd7d64e055b3a7; domain crossfield/ASCII/canonical checks still implementation requirements",
+    "studio_coordination": "StudioGraph same canonicalJSONstring-interior/encodedoffset/digest/sourceJSONpair-coalescing semantics confirmed by settings_contracts; ownDatasetrefs only, no crossdomaincasts"
+  },
   "sources": [
+    {
+      "path": "src/poolhouse/fleet/api.py",
+      "sha256": "0777f8d5ae585e6297a6c7ed7de2064949ce06084ef5406ff29286b141c0a329"
+    },
     {
       "path": "src/poolhouse/fleet/dataset_catalogue.py",
       "sha256": "2218a98e3e695462c249081706db30bb48f1f25fcecb9d3623b9a0082328de1b"
