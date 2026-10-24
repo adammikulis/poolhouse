@@ -2,7 +2,7 @@
   "version": 1,
   "status": "proposal only; no native/runtime/caller migration/K acceptance",
   "source_commit": "f213011b498c27cd53d2b1dca0bae6d1c9bb6bc4",
-  "contract_peer_commit": "6cbc882f9923886d4961e77491607f3e68663f45",
+  "contract_checkpoint_commit": "6cbc882f9923886d4961e77491607f3e68663f45",
   "fragment": "contracts/node/domains/datasets.toml",
   "fragment_sha256": "b5956ad253fec1b52df2dc5815c925d94a18af81c9c018c8551f2d50b9a6651a",
   "counts": {
@@ -777,7 +777,7 @@
     "Source _json uses unique_object, rejectsnonfinite andthen _value onWHOLE response: depth<=20/list<=10000/object<=512/string<=500000codepoints/key<=256codepoints. Later specialized siblings<=100000 is ineffective as allowance; actualupstreamlist<=10000. Details specializedsplits<=4096. Duplicate decodedkeys/fieldnames andnonfinite values refused; parseriterative boundedresource admission prerequisite, no recursivewalkprotection claimed.",
     "Public valuegraph is OUTPUT-ONLY typed Null/Boolean/Integer/FiniteF64/Text/List/Object. Everyref/cursor binds SAME immutable authorized snapshot/generation; acyclic, no conflictingnodeIDs, uniqueobjectnames/sourceorder, no crossscope/cursor substitution. Listpages<=1024 preserve full10000sourceitemtotal; objectpages<=512. Featuretypes are typedvalueDATA, never decoder/parser/schema authority. Caller cannot submit arbitrary graph/request payload or authorize tools/effects throughdata.",
     "Creation generation scopes: catalog.selection.create and local.choose top generation equals exact current request.project.generation; import.preview.start top generation equals exact PreviewRef.generation with PreviewRef.project identical to request.project. Choice/import cancel top generation equals exact existing choice/import generation and CASrevision. Every nested reference belongs to exact request.project; current membership/poolcontext validation separate.",
-    "Use shared private ResourceAdmissionProfileRef/Binding/Envelope/AccountingRecord/TransferRecord from published resource_leases peer6cbc882f9 for content_stage/graph_transaction/bounded_worker ownership, memory/storage input/output/parser-snapshot charges, stage-to-consumer and worker-to-node transfers, physical alias nonadditivity and unknown settlement. No new public budgetAPI/framework; source byte caps are not measured peakmemory. Required policy/measurements/reservation/retainedresult/settlement proof absent, not authority from privateDTO or UUID.",
+    "Use shared private ResourceAdmissionProfileRef/Binding/Envelope/AccountingRecord/TransferRecord from published resource_leases checkpoint6cbc882f9 for content_stage/graph_transaction/bounded_worker ownership, memory/storage input/output/parser-snapshot charges, stage-to-consumer and worker-to-node transfers, physical alias nonadditivity and unknown settlement. No new public budgetAPI/framework; source byte caps are not measured peakmemory. Required policy/measurements/reservation/retainedresult/settlement proof absent, not authority from privateDTO or UUID.",
     "Natural counters/file size observations preserve arbitrary source nonnegative Pythoninteger as canonicalASCIIdecimalparts, unknownNone distinctfrom0. No U64/F64 truncation/coercion/rounding/clamp. Everydecimalpart nonempty ASCII digits; nonfinal chunks exactly65536bytes and final1..65536, concatenation grammar0or[1-9][0-9]* withoutleadingzeros. Zero is onepart0 and Integernegative false, no negativezero. Integernegative flag plusmagnitude exact. Digitsonly therefore128*65536 represents original8MiB ceilingwithoutUnicodeboundaryloss; wholeoriginalresponsecapincludingallfields/envelope stillapplies. Actualparser integerdigit-limit profile mustbereviewed beforeenablement, no unbounded-arithmeticclaim.",
     "Descriptions50000codepoints<=200000UTF8bytes;4boundary-safechunks, exactcodepointlimit separatefromtransportrepresentation. Generic string500000codepoints handled TextRef/UTF8chunks, exactfrozenbytes/digest/codepoint/length/order validated. Chunk/page ceilings neveraddnewsourcebudget. No normalization. Source originalserializedrequest/response/data/manifest caps measured withretainedserializer, separatefrom newIDLwrapper/escaping/hextransport overhead, no nearlimit shrinkor sourceallowanceincrease.",
     "Catalogue summary title=repo/downloads/likes knownorunknown/licence/gated areobservations not trust/accessgrants. Details mainrevision40or64hex; immutableParquetselection main+convertedrevision pinnedseparately, eachrelativefile allowedsegments/sha256/LFSpositiveintsize andViewermatchingmetadata, duplicatepaths refused, partiallistingrefused. This is data-onlymanifest, not downloadedbytes or completefullsplitimport proof.",
@@ -817,7 +817,7 @@
     },
     {
       "surface": "PublicStudio graph/workflow/run lifecycle anddurable sources/subscriptions/delivery",
-      "status": "peerowner; reuse DatasetRef forbinding, outputDatasetValueRef/TextRef not genericgraphparameterinput blobs",
+      "status": "collaborating owner; reuse DatasetRef forbinding, outputDatasetValueRef/TextRef not genericgraphparameterinput blobs",
       "sites": [
         51,
         40
@@ -913,7 +913,7 @@
       "sha256": "c09631b800ee6bfc973c8e158f631c068df9b2f11b51a70f2523d935f92841b1"
     }
   ],
-  "shared_peer_evidence": [
+  "shared_contract_evidence": [
     {
       "commit": "6cbc882f9923886d4961e77491607f3e68663f45",
       "path": "contracts/node/domains/resource_leases.toml",
