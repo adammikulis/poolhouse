@@ -18,6 +18,10 @@
     {
       "path": "0004-retain-actual-native-actor-context.patch",
       "sha256": "4bb99f601acad2fc31baf6c7d4263ddf6770815709861a55f5051b9203da9fcb"
+    },
+    {
+      "path": "0005-retain-complete-native-invocations.patch",
+      "sha256": "e454706fa291c141bf28069de98938422220208b7c09e680e2fac4133d5914cc"
     }
   ],
   "rust_toolchain": "1.99.1",
@@ -331,5 +335,105 @@
     "artifacts_executed": false,
     "installed": false,
     "installed_H_proof": false
+  },
+  "invocation_validation": {
+    "source_base": "745ed050bdd777914c9deee8ee2f1a56a8825970",
+    "source_base_tree": "64168edc27ec59e7d8d9fb9a4654a0352e1aec1b",
+    "source_commit": "bc94864ca90019c226d1e4c6af7679951be45095",
+    "source_tree": "c8b1a0f97f2cf06e94216a1c9c18edb7142974c3",
+    "patch_sha256s": [
+      "fa8b66bdc178b9649fc1f30dd9d65a6f626536f4f6d0bf1f3e4ee43fcd4ac022",
+      "8ab2fdc96d34ab5c8e5acf51b9b4addeb3a6c879b1a3dc76636669ab53200578",
+      "d9509ba0eee0715d2bed658bf72f8e7314ff2845728ebbe6bbc2d6f3f16f49bf",
+      "4bb99f601acad2fc31baf6c7d4263ddf6770815709861a55f5051b9203da9fcb",
+      "e454706fa291c141bf28069de98938422220208b7c09e680e2fac4133d5914cc"
+    ],
+    "working_directory": "codex-rs",
+    "scope": "Complete immutable original request retained with existing occurrence and actual native actor context; source data only.",
+    "unit_test_runs": [
+      {
+        "selector": "native_",
+        "source_commit": "44e3689003fac01d2ede2c372efb5b350e4af5ad",
+        "passed": 29,
+        "exit_code": 0
+      },
+      {
+        "selector": "native_original_request",
+        "source_commit": "bc94864ca90019c226d1e4c6af7679951be45095",
+        "passed": 6,
+        "exit_code": 0
+      },
+      {
+        "selector": "mcp_",
+        "source_commit": "bc94864ca90019c226d1e4c6af7679951be45095",
+        "passed": 14,
+        "exit_code": 0
+      }
+    ],
+    "unit_test_command_prefix": [
+      "cargo",
+      "+1.99.1",
+      "test",
+      "--locked",
+      "--offline",
+      "-p",
+      "codex-hooks",
+      "--lib"
+    ],
+    "unit_test_command_suffix": [
+      "--",
+      "--test-threads=1"
+    ],
+    "parent_red": [
+      {
+        "selector": "native_original_request_clone_keeps_one_complete_body_allocation",
+        "base": "four reviewed patches",
+        "exit_code": 101
+      },
+      {
+        "selector": "mcp_interrupt_hooks_expand_event_input_and_bound_timeout",
+        "source_commit": "44e3689003fac01d2ede2c372efb5b350e4af5ad",
+        "exit_code": 101,
+        "finding": "Request metadata reached a local MCP hook; corrected plan preserves ExecutorScoped-only disclosure."
+      }
+    ],
+    "mutation": {
+      "mutation": "rendered-cwd-substitution",
+      "broken_exit": 101,
+      "restored_exit": 0,
+      "restored_native_dispatch_sha256": "396c8143f2421fdd14e00a44fa84d1749378726dbea658cb39894e4a151c5ec5"
+    },
+    "entrypoint_compile": {
+      "command": [
+        "cargo",
+        "+1.99.1",
+        "check",
+        "--locked",
+        "--offline",
+        "-p",
+        "codex-cli",
+        "--bin",
+        "codex",
+        "-p",
+        "codex-app-server",
+        "--bin",
+        "codex-app-server"
+      ],
+      "source_commit": "bc94864ca90019c226d1e4c6af7679951be45095",
+      "exit_code": 0,
+      "target": "aarch64-apple-darwin",
+      "elapsed": "1m06s",
+      "tests_executed": false
+    },
+    "limitations": [
+      "No wire exporter, canonical payload hash, proof issuer, platform adapter, native Resume proof or Node admission is added.",
+      "Legacy spawned-child retention lasts through normal asynchronous wait completion. Tokio runtime teardown may abort the waiter while its OS child survives; this is not protected process-lifetime custody.",
+      "Existing original Birth, source epoch and actor context encodings remain unchanged.",
+      "The four-patch macOS packages remain separate measured build evidence; they do not contain this fifth patch."
+    ],
+    "installed_proof": false,
+    "node_admission_proof": false,
+    "lock_sha256": "c043b6b7e67bb2f0ae4b1b8dd485cd6a24bd1cb7ef3a42752d303bc5e5ca4be1",
+    "patch_application_tree": "c8b1a0f97f2cf06e94216a1c9c18edb7142974c3"
   }
 }

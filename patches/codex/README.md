@@ -19,7 +19,8 @@ git checkout --detach 6aaac694803004a63c6f393d153c96d22521a6b9
 for patch in 0001-harden-producer-entrypoints.patch \
              0002-retain-native-session-context.patch \
              0003-retain-original-native-occurrences.patch \
-             0004-retain-actual-native-actor-context.patch; do
+             0004-retain-actual-native-actor-context.patch \
+             0005-retain-complete-native-invocations.patch; do
   git apply --check "/path/to/poolhouse/patches/codex/$patch"
   git apply "/path/to/poolhouse/patches/codex/$patch"
 done
@@ -108,3 +109,16 @@ build adds no Windows binary or installed native authentication evidence.
 No context exporter, protected measured launch, authenticated producer transport,
 Node proof issuer/bridge or installed H/K acceptance is supplied. Unsupported
 native provenance and full caller preservation remain unfinished requirements.
+
+The fifth patch retains the complete original request in one immutable source envelope,
+before any handler projection. Clone, retry, command, asynchronous executor, MCP and
+legacy paths retain that same envelope and its existing occurrence and actor context.
+Finite internal renderers derive JSON, working directory, turn and metadata; selected
+handler plans preserve the existing executor-only request-metadata disclosure rule.
+SessionStart's internal turn is captured with its request without adding a JSON field.
+
+Legacy notification remains nonblocking. An owned asynchronous waiter retains the
+original envelope until its spawned child exits normally. Runtime teardown may abort
+that waiter while the OS child survives: this is not protected process-lifetime
+custody, an exporter, Node admission, or installed H acceptance. The four-patch macOS
+packages are separate evidence and do not contain this fifth patch.
