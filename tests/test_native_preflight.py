@@ -96,3 +96,14 @@ def test_parser_failure_cannot_skip_required_native_preflight(project, monkeypat
         raise RuntimeError('unavailable positional parser')
     monkeypatch.setattr(testoptions, 'explicit_positional', refused)
     assert testselectors.native_files(['tests/test_plain.py'], project) is None
+
+
+def test_symlinked_parent_cannot_hide_its_visible_conftest(project):
+    actual = project / 'actual'
+    actual.mkdir()
+    (actual / 'test_plain.py').write_text('def test_plain(): pass\n')
+    (project / 'tests/linked').symlink_to(actual, target_is_directory=True)
+    (project / 'tests/conftest.py').write_text('import ' + testnode.NODE_MARKERS[0] + '\n')
+    assert testnode.needed(project, ['tests/linked/test_plain.py'])
+    assert not testnode.needed(project, ['actual/test_plain.py'])
+    assert testselectors.native_files(['tests/linked/test_plain.py::test_plain'], project) is None

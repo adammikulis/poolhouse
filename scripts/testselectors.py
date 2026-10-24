@@ -96,7 +96,8 @@ def native_files(arguments: list[str], root: Path) -> list[str] | None:
             relative = target.resolve(strict=True).relative_to(root.resolve(strict=True))
         except (OSError, ValueError, RuntimeError):
             return None
-        if not target.is_file() or target.suffix != '.py' or target.is_symlink():
+        if (not target.is_file() or target.suffix != '.py' or target.is_symlink()
+                or any(parent.is_symlink() for parent in target.parents)):
             return None
         files.append(relative.as_posix())
     return list(dict.fromkeys(files)) or None
