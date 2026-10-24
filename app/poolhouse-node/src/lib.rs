@@ -29,6 +29,8 @@ pub mod landtrust;
 pub mod lease;
 pub mod limits;
 pub mod lineage;
+#[allow(dead_code)] // Dormant until independently reviewed native provenance can issue sealed proofs.
+mod lifecycle;
 pub mod links;
 pub mod log;
 pub mod logbounds;
