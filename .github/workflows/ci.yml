@@ -20,11 +20,11 @@ on:
 permissions:
   contents: read
 
-# A newer push cancels the older run of a pull request; a run on any other ref finishes, and
-# the newest push waits behind it.
+# Superseded pull requests and 0.3dev pushes stop; other runs finish.
+# Isolate development pushes so they cannot cancel a manual run on the same ref.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-${{ github.ref }}${{ github.event_name == 'push' && github.ref == 'refs/heads/0.3dev' && ':push' || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/0.3dev') }}
 
 jobs:
   # The `mcp` extra (mcp 2.3 or later, MCP revision 2026-07-28) is installed on every OS below;
