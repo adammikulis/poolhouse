@@ -21,7 +21,8 @@ for patch in 0001-harden-producer-entrypoints.patch \
              0003-retain-original-native-occurrences.patch \
              0004-retain-actual-native-actor-context.patch \
              0005-retain-complete-native-invocations.patch \
-             0006-encode-complete-native-invocations.patch; do
+             0006-encode-complete-native-invocations.patch \
+             0007-freeze-native-handler-selections.patch; do
   git apply --check "/path/to/poolhouse/patches/codex/$patch"
   git apply "/path/to/poolhouse/patches/codex/$patch"
 done
@@ -144,3 +145,23 @@ No production caller sends these private bytes. No transport, source admission, 
 resource reservation, dispatch catalog capture, purpose grant, issuer or installed H/K
 acceptance is supplied. Existing five-patch packages remain unchanged; no sixth-patch
 package has been built or installed.
+
+
+The seventh patch freezes the actual complete handler selection once per original,
+including empty selections and both regular/memory-cleanup Stop phases before projection
+or scheduling. Every concurrent caller uses the stored winner. Event-local ordinals and
+retained configuration indices distinguish identical duplicate configurations. Retries
+keep that selection, while a new original observes refreshed configuration. Previews remain
+ordinary current-configuration observations, not a source catalog or approval.
+
+Command and MCP runners receive configuration and exact launch/executor handles through
+the retained plan. Mutable task state and remote server internals are not frozen or
+measured. Legacy dispatch retains its exact callback list and maintained notify config;
+opaque callbacks remain unresolved data without new rights. Public callback compatibility
+and existing metadata disclosure, control gating and nonblocking behavior are preserved.
+
+Seven focused selection cases and nine affected Stop/MCP/async-command/legacy cases passed.
+The parent retry/reload regression failed before the patch; truncating the actual selector
+failed the duplicate-sibling test, followed by exact restoration. No catalog wire, protected
+purpose, operation ID, admitted Node catalog, permit, package build or installed H/K proof
+is supplied. Earlier built artifacts remain unchanged.

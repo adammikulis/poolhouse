@@ -287,7 +287,7 @@ impl Shards {
         rpc::tick(node, &[POOL_BOARD])?;
         let (now, id) = (node.leases.now(), format!("l{}", random_hex(8)?));
         let tree = node.tree_leases(POOL_BOARD, &name);
-        let id = node.leases.table.enqueue(&node.leases.cfg, now, &request, (id, tree))?;
+        let id = node.leases.enqueue(now, &request, (id, tree))?;
         rpc::tick(node, &[POOL_BOARD])?;
         let held = node.leases.table.find(&id).is_some_and(|l| l.state == State::Held);
         if !held {

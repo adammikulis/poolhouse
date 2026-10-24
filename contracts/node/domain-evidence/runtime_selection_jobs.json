@@ -1,0 +1,434 @@
+{
+  "version": 1,
+  "status": "Dormant intended contract proposal for one previous-verified-runtime selection intent; no updater, selector, control endpoint, actual quiescence witness, activation or K acceptance.",
+  "source_commit": "3725f6c1beb2e7e8a59e667e57464f103ca4ab12",
+  "sources": [
+    {
+      "path": "src/poolhouse/runtime_cli.py",
+      "sha256": "812ced1d379ceb225d8cd7213f026989a17557d062645e9c700c1eb9795659ec",
+      "sites": [
+        {
+          "line": 286,
+          "text": "def _rollback(args: argparse.Namespace) -> int:"
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/runtime_deploy.py",
+      "sha256": "bd4fe5a24d11791dfaeeb53ef6501fedd206988faa9c9954509365234481b848",
+      "sites": [
+        {
+          "line": 240,
+          "text": "def switch(chosen: runtime.Runtime, plan: Plan, *, claimed: frozenset[Path] = frozenset()) -> None:"
+        },
+        {
+          "line": 509,
+          "text": "def rollback(plan: Plan, to: str = \"\") -> Outcome:"
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/node_supervise.py",
+      "sha256": "06bec7f1f48d618f1c38c0637b6837a7d81af916a5acff8c7a9a89cb01dd6160",
+      "sites": [
+        {
+          "line": 103,
+          "text": "def signature(state: Path) -> tuple[bytes, bytes]:"
+        },
+        {
+          "line": 440,
+          "text": "def _replace(child: subprocess.Popen, plan: _Replacement, key: node_key.Released | None,"
+        },
+        {
+          "line": 472,
+          "text": "def _cutover(child: subprocess.Popen, state: Path, extra: list[str], binding: _Cutover,"
+        }
+      ]
+    },
+    {
+      "path": "app/poolhouse-node/src/update_handoff.rs",
+      "sha256": "beae63f968d222ebfa441fff4191ace88d8e02bd100573589a529a45fdc10789",
+      "sites": [
+        {
+          "line": 5,
+          "text": "struct Intent {"
+        },
+        {
+          "line": 20,
+          "text": "enum Phase {"
+        },
+        {
+          "line": 63,
+          "text": "enum CommitWitness {"
+        }
+      ]
+    },
+    {
+      "path": "app/poolhouse-node/src/node.rs",
+      "sha256": "d15be2d06a4f808d4ed2bbf7c2adc3d599921ac0f50b620c8ef08caff3b3ae99",
+      "sites": []
+    }
+  ],
+  "actual_source": {
+    "selection": "runtime_cli._rollback authorizes then runtime_deploy.rollback chooses an earlier verified owned candidate, validates source/floor, prepares owned launchers/bridges and publishes selected runtime. The source accepts optional commit prefix; the proposed intent deliberately does not.",
+    "indirect_effect": "node_supervise.signature includes selected.json and its selection-following cutover can call _replace/end. Lack of an explicit restart in runtime_deploy.rollback does NOT make selection harmless or independent of the running node. Selection publication is a disruptive effect.",
+    "handoff_checkpoints": "18c93f18ac0d86e08917179236e94b991f2e7c7d is a pure transition model; af28231cf36bb749a52e18014c658fd9ae5c8492 adds mandatory actual Node storage custody. Neither supplies the complete owned control/drain endpoint or production CommitWitness issuer.",
+    "model_limit": "update_handoff CommitWitness is uninhabited in production; test-only Simulated cannot become a live witness. Its Observation counts and Custody data do not own OS storage/locks or prove writer coverage."
+  },
+  "operation_mapping": {
+    "intent": "runtime_previous_verified with Empty value, added to existing closed JobPreparationIntent/Details/FrozenPlan sums.",
+    "operations": [
+      "jobs.prepare",
+      "jobs.submit",
+      "jobs.preparations.inspect",
+      "jobs.preparations.cancel",
+      "jobs.preparations.watch"
+    ],
+    "new_operations": 0,
+    "meaning": "NEW intended durability and handoff requirements, not runtime behavior or source equivalence; no parallel scheduler/updater/selector. Prior repair/classifier branches remain distinct."
+  },
+  "intended_design": {
+    "authority_and_lookup": "Installation-local actual current principal and intent permission; no project/workspace/pool/argv/manual agent selector prerequisite. Authorize before disclosure, replay and each observation. Public references, version/source digests, plan data, boundary states and authority observations grant nothing. Protected installation approval only where real policy requires, exact plan/nonce/expiry/generation bound; OS consent distinct. No new user flag or terminal/firewall/key step.",
+    "prepare": "Use actual common CPU/memory/storage admission before reading/verifying/staging. Node selects one earlier already owned verified candidate and freezes exact target binary/runtime manifest/source commit, source epoch/current floor+policy, prior selected revision+digest, owned launcher/bridge file identities, actual supervised old bootnonce/PID/birth, storage and held kernel-lock identity, operationnonce, expiry and authorization generation. Retain sealed private files/locks/control ownership; DTO JobFrozenRuntimeSelectionPlan is private observation only. Target must satisfy actual current source admission/floor and storage/handoff capability requirements; no downgrade exemption because it is older or locally verified. Replays never reselect newest candidate or renew expiry/leases.",
+    "one_owner": "Only the existing updater/supervisor owner may consume a real handoff and publish selection. Never call runtime.publish/switch independently while current selection watcher can take unsafe _replace. No private second updater, manual signals, kill-on-timeout, old-node bootstrap or declaration-based fallback.",
+    "submit": "Freshly recheck exact frozen plan/current floor/policy/candidate/prior selection/owned launcher bridges/old process+boot+storage bindings and admission. Same principal+installation incarnation+operation+RequestId+normalized payload attaches on exact match; mismatch conflicts before action. Same consumed plan cannot mint another handoff under new RequestIds, and an unresolved installation cutover blocks reprepare bypass. Source/selection changes need a new authorized plan after safe settlement.",
+    "unsupported": "Absent supported authenticated inherited supervisor control, old node without actual storage custody, incomplete writer coverage or unissued real witness stays pending with old runtime selection/node intact. Idle counts, a healthy HTTP reply, absent compute, a held claim or model Phase::Committed never authorize selection/termination. Claim-only reservations do not block drain.",
+    "drain": "The owned protocol stops new explicitly admitted compute and drains real compute leases, workers and effects; ordinary local tools and read/renew/release/claim operations are not globally blocked. Actual final fence accounts for EVERY mutating producer including gov_tick, names.touch, device/network, phone, push, shard and background writers; observational requests that write cannot pass as harmless reads. Retain all registry/store/kernel lock ownership through durable checkpoint and handoff; normal node exit releases storage lock last.",
+    "publication_order": "A real protected owned handoff/writer-fence receipt bound to the entire exact tuple is prerequisite, not a JSON/count boolean. Under one supervisor ownership verify normal exact old-process exit and last-lock release/exclusive custody transition before target process starts. Selection publication occurs only through that supported owner at its reviewed boundary, never an earlier selected.json write that triggers legacy unsafe replacement. Commit marker is durable intent, not success. Exact protocol ordering/issuer and target writer admission remain owned by the handoff implementation, not invented by this leaf.",
+    "cancel": "Only before actual writer-fence attempt can cancellation durably win and retain old selection/node. After fence attempt, acknowledgement loss, committed or consumed phase, timeout/cancel cannot report safe cancellation; retain exact custody and outcome_unknown/recovery_required until protected reconciliation. No automatic retry, fabricated no-effect, double consume or guessed rollback writer. A rollback/recovery writer needs proven prior exit, reacquired exclusive storage lock and source admission through the same owner.",
+    "completion": "Result.selected/selection_revision and Result.running are independent observations; neither implies the other. verified_running requires actual target node identity/source/artifact, generation, protected storage custody and health through the supported owner. A selected-file update or responding old runtime is not completion. Preserve held prior artifacts for owned recovery; no cleanup permission or remote-device connection follows.",
+    "streams": "Existing ordered resource stream/cursor binds principal+installation+preparation+generation; reauthorize/redact every event. Disconnect detaches, not cancellation. No public path/process PID/control socket/storage handle or secret is emitted."
+  },
+  "independent_review": {
+    "reviewer": "native_authority",
+    "design": "PASS dormant previous-verified intent after explicit indirect-effect correction and bootstrap owner coordination.",
+    "constraints": "Real owned durablehandoff plus all-writer fence, normalexit/lastlock/provenexclusive target custody; no model/count/claim witness, no unsupported fallback; pending oldstate, cancel prefence only, unknown retained, no manual choreography."
+  },
+  "shape_vectors": {
+    "accepted": [
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "runtime_previous_verified",
+            "value": {}
+          }
+        }
+      },
+      {
+        "type": "JobPreparationView",
+        "value": {
+          "preparation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "job_id": "00000000-0000-4000-8000-000000000001",
+          "operation_id": "00000000-0000-4000-8000-000000000001",
+          "revision": "1",
+          "intent": {
+            "kind": "runtime_previous_verified",
+            "value": {}
+          },
+          "phase": {
+            "kind": "draining",
+            "value": {}
+          },
+          "job_state": {
+            "kind": "preparing",
+            "value": {}
+          },
+          "details": {
+            "kind": "runtime_previous_verified",
+            "value": {
+              "plan": null,
+              "boundary": {
+                "kind": "unsupported",
+                "value": {}
+              },
+              "effect": {
+                "kind": "handoff_pending",
+                "value": {}
+              },
+              "authority": {
+                "protected": {
+                  "kind": "not_yet_determined",
+                  "value": {}
+                },
+                "os_consent": {
+                  "kind": "not_yet_determined",
+                  "value": {}
+                }
+              },
+              "result": {
+                "selected": {
+                  "source_commit": "abababababababababababababababababababab",
+                  "binary_digest": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+                  "runtime_manifest_digest": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+                  "epoch": "1"
+                },
+                "selection_revision": "1",
+                "running": {
+                  "kind": "prior_runtime_observed",
+                  "value": {
+                    "runtime": {
+                      "source_commit": "abababababababababababababababababababab",
+                      "binary_digest": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+                      "runtime_manifest_digest": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+                      "epoch": "1"
+                    },
+                    "launch_generation": "00000000-0000-4000-8000-000000000002",
+                    "storage_generation": "00000000-0000-4000-8000-000000000002"
+                  }
+                },
+                "held_prior": {
+                  "source_commit": "abababababababababababababababababababab",
+                  "binary_digest": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+                  "runtime_manifest_digest": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+                  "epoch": "1"
+                }
+              }
+            }
+          },
+          "expires_at": null,
+          "progress": {
+            "completed_bytes": "0",
+            "total_bytes": null,
+            "message": "Waiting for supported owned handoff"
+          }
+        }
+      },
+      {
+        "type": "RuntimeSelectionResult",
+        "value": {
+          "selected": {
+            "source_commit": "abababababababababababababababababababab",
+            "binary_digest": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+            "runtime_manifest_digest": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+            "epoch": "1"
+          },
+          "selection_revision": "1",
+          "running": {
+            "kind": "prior_runtime_observed",
+            "value": {
+              "runtime": {
+                "source_commit": "abababababababababababababababababababab",
+                "binary_digest": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+                "runtime_manifest_digest": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+                "epoch": "1"
+              },
+              "launch_generation": "00000000-0000-4000-8000-000000000002",
+              "storage_generation": "00000000-0000-4000-8000-000000000002"
+            }
+          },
+          "held_prior": {
+            "source_commit": "abababababababababababababababababababab",
+            "binary_digest": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+            "runtime_manifest_digest": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+            "epoch": "1"
+          }
+        }
+      }
+    ],
+    "refused": [
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "runtime_previous_verified",
+            "value": {
+              "target_commit": "abababababababababababababababababababab"
+            }
+          }
+        }
+      },
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "runtime_previous_verified",
+            "value": {
+              "path": "/caller/target"
+            }
+          }
+        }
+      },
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "runtime_previous_verified",
+            "value": {
+              "url": "https://invalid.example"
+            }
+          }
+        }
+      },
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "runtime_previous_verified",
+            "value": {
+              "argv": []
+            }
+          }
+        }
+      },
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "runtime_previous_verified",
+            "value": {
+              "ready": true
+            }
+          }
+        }
+      },
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "runtime_previous_verified",
+            "value": {
+              "handoff_committed": true
+            }
+          }
+        }
+      },
+      {
+        "type": "RuntimeSelectionBoundaryObservation",
+        "value": {
+          "kind": "idle",
+          "value": {}
+        }
+      },
+      {
+        "type": "RuntimeSelectionBoundaryObservation",
+        "value": {
+          "kind": "committed",
+          "value": {
+            "proof": true
+          }
+        }
+      },
+      {
+        "type": "RuntimeSelectionVersion",
+        "value": {
+          "source_commit": "ababababababababababababababababababab",
+          "binary_digest": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+          "runtime_manifest_digest": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+          "epoch": "1"
+        }
+      }
+    ]
+  },
+  "required_runtime_vectors": [
+    {
+      "case": "unsupported old node or incomplete registry",
+      "expected": "pending; selected and old node unchanged",
+      "status": "required runtime/OS proof; NOT executed by DTO tests"
+    },
+    {
+      "case": "claim-only live reservations",
+      "expected": "not an active-work blocker",
+      "status": "required runtime/OS proof; NOT executed by DTO tests"
+    },
+    {
+      "case": "real admitted worker/effect/writer still active",
+      "expected": "drain/fence pending; no publication or termination",
+      "status": "required runtime/OS proof; NOT executed by DTO tests"
+    },
+    {
+      "case": "same plan new RequestId or repeated request",
+      "expected": "attach same fenced outcome, no reminted handoff",
+      "status": "required runtime/OS proof; NOT executed by DTO tests"
+    },
+    {
+      "case": "changed old boot/storage/selection/target/source floor",
+      "expected": "refuse stale binding before effects",
+      "status": "required runtime/OS proof; NOT executed by DTO tests"
+    },
+    {
+      "case": "JSON ready/idle/model committed/counts only",
+      "expected": "no real witness; no publish",
+      "status": "required runtime/OS proof; NOT executed by DTO tests"
+    },
+    {
+      "case": "prefence cancellation wins",
+      "expected": "old selection/node intact",
+      "status": "required runtime/OS proof; NOT executed by DTO tests"
+    },
+    {
+      "case": "lost acknowledgement after fence attempt",
+      "expected": "unknown retained; no kill/retry/guessed rollback",
+      "status": "required runtime/OS proof; NOT executed by DTO tests"
+    },
+    {
+      "case": "normal old exit but no exclusive custody proof",
+      "expected": "no target writer/start",
+      "status": "required runtime/OS proof; NOT executed by DTO tests"
+    },
+    {
+      "case": "selection published but old node still answering",
+      "expected": "not verified running or complete",
+      "status": "required runtime/OS proof; NOT executed by DTO tests"
+    },
+    {
+      "case": "real owned consumed witness and exact target storage/source/health",
+      "expected": "verified running only after actual installed proof",
+      "status": "required runtime/OS proof; NOT executed by DTO tests"
+    }
+  ],
+  "enablement_blockers": [
+    "No real supported inherited supervisor-control endpoint, complete writer registry/fence, production commit witness issuer/consumer or updater integration is supplied by this contract. Unsupported old nodes stay live/pending; do not bootstrap them by terminating or publishing selection.",
+    "Private handoff/plan records are untrusted model data, not kernel handles or authority. The real updater owner must prove exact tuple, durable receipts, normal exit, last-lock release/exclusive transition and protected recovery on actual hardware.",
+    "No actual selection, node replacement, process signaling, installed verification, runtime activation, admission or native H/K/P/I proof was performed. Existing previous-runtime source is evidence, not a safe fallback to enable."
+  ]
+}

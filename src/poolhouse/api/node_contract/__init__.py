@@ -130,7 +130,7 @@ from . import (
 from ._codec import _finalize
 
 CONTRACT_VERSION = 1
-SCHEMA_SHA256 = "07250b3c4cdc7d3899f51e0b0467d1c2143ef69c57859c4eb2ab2906e4047113"
+SCHEMA_SHA256 = "3c5a052a35e9988af47163a4c305371fb67fcdf1e9c3e8ca1f22d197bdbf469e"
 _EXPORTS = ('CONTRACT_VERSION', 'SCHEMA_SHA256', 'U32', 'U64', 'AgentControlError', 'AgentControlRequest',
  'AgentControlSnapshot', 'AgentDisplayName', 'AgentGetRequest', 'AgentId', 'AgentPauseResult',
  'AgentState', 'AgentStopResult', 'AgentTaskExecution', 'AgentTaskStartRequest',
@@ -381,10 +381,10 @@ _EXPORTS = ('CONTRACT_VERSION', 'SCHEMA_SHA256', 'U32', 'U64', 'AgentControlErro
  'JobPreparationOsConsent', 'JobPreparationPhase', 'JobPreparationProgress',
  'JobPreparationProtectedAuthority', 'JobPreparationRef', 'JobPreparationView',
  'JobPreparationWatchRequest', 'JobPrepareRequest', 'JobRepairCandidateIdentity',
- 'JobRepairPreparationDetails', 'JobSnapshot', 'JobState', 'JobTrainClassifyTextIntent',
- 'JobTrainingPreparationDetails', 'JobView', 'JobViewList', 'KnowledgeApplicationStoreItem',
- 'KnowledgeContextId', 'KnowledgeContextInspectRequest', 'KnowledgeContextRef',
- 'KnowledgeContextView', 'KnowledgeCountStreamItem', 'KnowledgeCounts',
+ 'JobRepairPreparationDetails', 'JobRuntimeSelectionDetails', 'JobSnapshot', 'JobState',
+ 'JobTrainClassifyTextIntent', 'JobTrainingPreparationDetails', 'JobView', 'JobViewList',
+ 'KnowledgeApplicationStoreItem', 'KnowledgeContextId', 'KnowledgeContextInspectRequest',
+ 'KnowledgeContextRef', 'KnowledgeContextView', 'KnowledgeCountStreamItem', 'KnowledgeCounts',
  'KnowledgeDiagnosticSurrogate', 'KnowledgeDiagnosticTextEvent', 'KnowledgeDiagnosticTextFragment',
  'KnowledgeDiagnosticTextStart', 'KnowledgeDirectorySummary', 'KnowledgeError',
  'KnowledgeErrorDetails', 'KnowledgeEscapedSurrogateUnit', 'KnowledgeFieldBoundary',
@@ -497,8 +497,12 @@ _EXPORTS = ('CONTRACT_VERSION', 'SCHEMA_SHA256', 'U32', 'U64', 'AgentControlErro
  'ResourceLeaseScopeRef', 'ResourceLeaseSettlement', 'ResourceLeaseSnapshotBoundary',
  'ResourceLeaseSnapshotId', 'ResourceLeaseSourceId', 'ResourceLeaseStreamItem', 'ResourceLeaseTag',
  'ResourceLeaseTaskHolding', 'ResourceLeaseUnit', 'ResourceLeaseView', 'ResourceLeaseWaitOutcome',
- 'ResourceLeaseWaitRequest', 'ResourceLeaseWaitView', 'ResourceLeaseWatchRequest', 'SafeMessage',
- 'ServingId', 'ServingLeaseId', 'SettingsAppearance', 'SettingsAvailability',
+ 'ResourceLeaseWaitRequest', 'ResourceLeaseWaitView', 'ResourceLeaseWatchRequest',
+ 'RuntimeSelectionBoundaryObservation', 'RuntimeSelectionEffect', 'RuntimeSelectionOptionalPlan',
+ 'RuntimeSelectionOptionalResult', 'RuntimeSelectionOptionalVersion',
+ 'RuntimeSelectionPlanIdentity', 'RuntimeSelectionResult', 'RuntimeSelectionRunningIdentity',
+ 'RuntimeSelectionRunningObservation', 'RuntimeSelectionSourceCommit', 'RuntimeSelectionVersion',
+ 'SafeMessage', 'ServingId', 'ServingLeaseId', 'SettingsAppearance', 'SettingsAvailability',
  'SettingsAvailabilityReplaceRequest', 'SettingsAvailabilityView', 'SettingsAvailabilityWindow',
  'SettingsAvailabilityWindows', 'SettingsBaseTheme', 'SettingsChange', 'SettingsCloseBehavior',
  'SettingsContext', 'SettingsCursor', 'SettingsCustomTheme', 'SettingsCustomThemes',

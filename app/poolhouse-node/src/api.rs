@@ -308,7 +308,13 @@ pub fn parse(request: &Value) -> Result<Call> {
 
 fn run(node: &mut Node, request: &Value, peer: &Peer) -> Result<Value> {
     let c = parse(request)?;
-    let _activity = node.activity.local_writer()
+    let maintenance = matches!(c.method.as_str(), "hello" | "status" | "read" | "links" | "lineage" |
+        "project_list" | "project_resolve" | "whoami" | "agents" | "session_lookup" |
+        "lease_list" | "lease_wait" | "lease_renew" | "lease_release" | "claim" | "reserve" | "release" | "claims")
+        || (c.method == "lease_acquire" && serde_json::from_value::<Vec<crate::lease::types::Resource>>(
+            c.params.get("resources").cloned().unwrap_or(Value::Null))
+            .is_ok_and(|r| crate::lease::types::claims_only(&r)));
+    let _activity = (if maintenance { node.activity.local_maintenance() } else { node.activity.local_writer() })
         .map_err(|_| Error::say("unavailable", "node activity registry unavailable", "none", "retry"))?;
     node.gov_tick()?;
     node.asking = Asking::of(&c.token, peer);
@@ -337,14 +343,41 @@ mod activity_tests {
         let token=registered["result"]["token"].as_str().unwrap();
         let registry=node.activity.clone(); let observed=Arc::new(AtomicBool::new(false)); let seen=observed.clone();
         node.leases.clock=Box::new(move || {
-            assert_eq!(registry.writer_count(),1,"read-side lease tick must remain inside local writer custody");
+            assert_eq!(registry.local_writer_count(),1,"read-side lease tick must remain inside local writer custody");
             seen.store(true,Ordering::SeqCst); 1000
         });
         let reply=handle(&mut node,&json!({"v":1,"id":2,"method":"lease_renew","board":"work",
             "token":token,"params":{"id":"absent","ttl_s":30}}),&Peer::none());
         assert_eq!(reply["ok"],false); assert!(observed.load(Ordering::SeqCst));
-        assert_eq!(node.activity.writer_count(),0,"error path releases its exact guard");
+        assert_eq!(node.activity.local_writer_count(),0,"error path releases its exact guard");
         let reply=handle(&mut node,&json!({"v":1,"id":3,"method":"hello","params":{}}),&Peer::none());
-        assert_eq!(reply["ok"],true); assert_eq!(node.activity.writer_count(),0);
+        assert_eq!(reply["ok"],true); assert_eq!(node.activity.local_writer_count(),0);
     }
+    #[test]
+    fn draining_keeps_real_claim_read_renew_and_release_paths_without_compute_admission() {
+        fn call(node: &mut Node, token: &str, method: &str, params: Value) -> Value {
+            handle(node,&json!({"v":1,"id":1,"method":method,"board":"work","token":token,"params":params}),&Peer::none())
+        }
+        let dir=tempfile::tempdir().unwrap(); let mut node=Node::open(dir.path()).unwrap();
+        let registered=call(&mut node,"","register",json!({"model":"gpt-5","harness":"codex","session":"lease-drain"}));
+        let token=registered["result"]["token"].as_str().unwrap(); node.leases.clock=Box::new(||1000);
+        let cpu=json!({"resources":[{"type":"cpu_slots","count":1}],"tag":"existing","remote":true});
+        let held=call(&mut node,token,"lease_acquire",cpu.clone()); assert_eq!(held["ok"],true,"{held}");
+        let id=held["result"]["id"].as_str().unwrap(); node.activity.drain_for_test();
+        for (method,params) in [("lease_renew",json!({"id":id,"ttl_s":60})),("lease_list",json!({})),
+            ("read",json!({})),("claims",json!({}))] {
+            let reply=call(&mut node,token,method,params); assert_eq!(reply["ok"],true,"{method}: {reply}");
+        }
+        let claim=call(&mut node,token,"lease_acquire",json!({"resources":[{"type":"claim","kind":"branch","name":"work"}],"tag":"claim"}));
+        assert_eq!(claim["ok"],true,"{claim}");
+        let direct=call(&mut node,token,"claim",json!({"kind":"branch","key":"other"}));
+        assert_eq!(direct["ok"],true,"{direct}");
+        let mut new=cpu; new["tag"]=json!("new"); new["quiet"]=json!(true);
+        assert_eq!(call(&mut node,token,"lease_acquire",new)["ok"],false);
+        assert_eq!(call(&mut node,token,"lease_acquire",json!({"resources":[
+            {"type":"claim","kind":"branch","name":"mask"},{"type":"gpu"}],"tag":"mixed"}))["ok"],false);
+        assert_eq!(call(&mut node,token,"lease_release",json!({"id":id}))["ok"],true);
+        assert_eq!(node.activity.local_writer_count(),0);
+    }
+
 }

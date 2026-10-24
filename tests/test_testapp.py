@@ -16,7 +16,7 @@ def preparation(tmp_path, monkeypatch):
     staged.mkdir(parents=True)
     target.mkdir(parents=True)
     build = SimpleNamespace(staged=staged, target=target)
-    monkeypatch.setattr(testapp.testnode, 'shared_build', lambda root: build)
+    monkeypatch.setattr(testapp.testnode, 'shared_build', lambda root, **_kwargs: build)
     monkeypatch.setattr(testapp.testnode, 'account', lambda: tmp_path / 'toolchain')
     monkeypatch.setattr(testapp.testnode, 'tool', lambda name: name)
     calls = []
@@ -105,3 +105,20 @@ def test_cancelled_compilation_terminates_owned_process_group(monkeypatch):
     with pytest.raises(KeyboardInterrupt):
         testapp.run(['cargo'], '.', {})
     assert calls == ['communicate', 'terminated', 'communicate']
+
+
+def test_changed_swift_sdk_identity_rebuilds_app_without_changing_dependency_target(preparation, monkeypatch):
+    root, build, calls = preparation
+    target = build.target
+    metadata = ['swift-sdk-a']
+    monkeypatch.setattr(testapp.testswift, 'identity', lambda _app: metadata[0])
+    def staged(_app, *, source_key_extra):
+        build.staged = target.parent.parent / 'workspaces' / source_key_extra / 'app'
+        build.staged.mkdir(parents=True, exist_ok=True)
+        return build
+    monkeypatch.setattr(testapp.testnode, 'shared_build', staged)
+    first = testapp.ensure(root)
+    assert testapp.ensure(root) == first and len(calls) == 1
+    metadata[0] = 'swift-sdk-b'
+    second = testapp.ensure(root)
+    assert second != first and len(calls) == 2 and build.target == target

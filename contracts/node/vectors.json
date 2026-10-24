@@ -1,5 +1,5 @@
 {
-  "schema_sha256": "07250b3c4cdc7d3899f51e0b0467d1c2143ef69c57859c4eb2ab2906e4047113",
+  "schema_sha256": "3c5a052a35e9988af47163a4c305371fb67fcdf1e9c3e8ca1f22d197bdbf469e",
   "decoded_values": "untrusted-data",
   "device_id": {
     "public_key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
@@ -173,6 +173,7 @@
     "WorkerSlotId",
     "WorkerThresholdInteger",
     "CredentialProviderUsePurpose",
+    "JobPreviousVerifiedRuntimeIntent",
     "JobRepairIntent",
     "LinuxCredentials",
     "LocalAuthorityBoundActionState",
@@ -188,6 +189,7 @@
     "ResourceAdmissionProfileRef",
     "ResourceAdmissionState",
     "ResourceAdmissionTransferKind",
+    "RuntimeSelectionHandoffBinding",
     "StateBoardScope",
     "StateBootUptime",
     "StateCommitState",
@@ -468,6 +470,7 @@
     "CredentialPrivateActionData",
     "JobFrozenClassifierPlan",
     "JobFrozenRepairPlan",
+    "JobFrozenRuntimeSelectionPlan",
     "LocalAuthorityCustodyDescription",
     "LocalAuthorityNativeInitiationDescription",
     "ResourceAdmissionAccountingRecord",

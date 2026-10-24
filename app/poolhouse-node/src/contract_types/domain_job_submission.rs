@@ -188,6 +188,8 @@ pub enum JobPreparationIntent {
     AgentRuntimeRepair(Empty),
     #[serde(rename = "train_classify_text")]
     TrainClassifyText(JobTrainClassifyTextIntent),
+    #[serde(rename = "runtime_previous_verified")]
+    RuntimePreviousVerified(Empty),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -227,6 +229,8 @@ pub(crate) enum JobFrozenPlan {
     AgentRuntimeRepair(JobFrozenRepairPlan),
     #[serde(rename = "train_classify_text")]
     TrainClassifyText(JobFrozenClassifierPlan),
+    #[serde(rename = "runtime_previous_verified")]
+    RuntimePreviousVerified(JobFrozenRuntimeSelectionPlan),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -236,6 +240,8 @@ pub enum JobPreparationDetails {
     AgentRuntimeRepair(JobRepairPreparationDetails),
     #[serde(rename = "train_classify_text")]
     TrainClassifyText(JobTrainingPreparationDetails),
+    #[serde(rename = "runtime_previous_verified")]
+    RuntimePreviousVerified(JobRuntimeSelectionDetails),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -12,6 +12,7 @@ import tempfile
 from pathlib import Path
 
 import testnode
+import testswift
 
 from poolhouse.files import write_json, writing
 from poolhouse.lock import only_one
@@ -73,7 +74,7 @@ def executable(output, target):
 
 
 def ensure(root, *, admit=contextlib.nullcontext, say=lambda text: None):
-    build = testnode.shared_build(root / 'app')
+    build = testnode.shared_build(root / 'app', source_key_extra=testswift.identity(root / 'app'))
     key = hashlib.sha256((build.staged.parent.name + checksum(Path(__file__))).encode()).hexdigest()
     base = build.target.parent.parent / 'app-tests' / key
     binary, receipt = base / 'poolhouse-app-tests', base / 'receipt.json'
