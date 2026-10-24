@@ -1,4 +1,4 @@
-// Generated proposal. No dispatch or authority is implemented. Schema 68093866d7c6d52d95a3044fe00f8292c18823cce3538e1ebd13ae4963b31a4a
+// Generated proposal. No dispatch or authority is implemented. Schema 63c78a362a49656fade67b29ca07b469ad99b51b965a1f308c2c82a6af58ef8f
 use super::contract::*;
 
 pub trait Operation { type Request; type Response; type Error; const NAME: &'static str; }
@@ -731,6 +731,36 @@ impl Operation for StudioControlLogsRead { type Request = StudioControlRunNodeDa
 
 pub struct StudioControlMetricsRead;
 impl Operation for StudioControlMetricsRead { type Request = StudioControlRunNodeDataRequest; type Response = StudioControlRunNodeDataView; type Error = StudioControlError; const NAME: &'static str = "studio.runs.metrics.read"; }
+
+pub struct StudioGraphBegin;
+impl Operation for StudioGraphBegin { type Request = StudioGraphBeginRequest; type Response = StudioGraphDraftView; type Error = StudioControlError; const NAME: &'static str = "studio.ir.begin"; }
+
+pub struct StudioGraphAppend;
+impl Operation for StudioGraphAppend { type Request = StudioGraphAppendRequest; type Response = StudioGraphDraftView; type Error = StudioControlError; const NAME: &'static str = "studio.ir.append"; }
+
+pub struct StudioGraphSeal;
+impl Operation for StudioGraphSeal { type Request = StudioGraphSealRequest; type Response = StudioGraphSealResult; type Error = StudioControlError; const NAME: &'static str = "studio.ir.seal"; }
+
+pub struct StudioGraphRead;
+impl Operation for StudioGraphRead { type Request = StudioGraphReadRequest; type Response = StudioGraphReadEvent; type Error = StudioControlError; const NAME: &'static str = "studio.ir.read"; }
+
+pub struct StudioGraphScalarBegin;
+impl Operation for StudioGraphScalarBegin { type Request = StudioGraphScalarBeginRequest; type Response = StudioGraphScalarUploadView; type Error = StudioControlError; const NAME: &'static str = "studio.scalars.begin"; }
+
+pub struct StudioGraphScalarWrite;
+impl Operation for StudioGraphScalarWrite { type Request = StudioGraphScalarWriteRequest; type Response = StudioGraphScalarUploadView; type Error = StudioControlError; const NAME: &'static str = "studio.scalars.write"; }
+
+pub struct StudioGraphScalarSeal;
+impl Operation for StudioGraphScalarSeal { type Request = StudioGraphScalarSealRequest; type Response = StudioGraphScalarRef; type Error = StudioControlError; const NAME: &'static str = "studio.scalars.seal"; }
+
+pub struct StudioGraphScalarRead;
+impl Operation for StudioGraphScalarRead { type Request = StudioGraphScalarReadRequest; type Response = StudioGraphScalarChunk; type Error = StudioControlError; const NAME: &'static str = "studio.scalars.read"; }
+
+pub struct StudioGraphSelectionResolve;
+impl Operation for StudioGraphSelectionResolve { type Request = StudioGraphSelectionResolveRequest; type Response = StudioGraphSelectionSnapshot; type Error = StudioControlError; const NAME: &'static str = "studio.ir.selection.resolve"; }
+
+pub struct StudioGraphSelectionRead;
+impl Operation for StudioGraphSelectionRead { type Request = StudioGraphSelectionReadRequest; type Response = StudioGraphSelectionEvent; type Error = StudioControlError; const NAME: &'static str = "studio.ir.selection.read"; }
 
 pub struct TaskExtensionScopeReplace;
 impl Operation for TaskExtensionScopeReplace { type Request = TaskExtensionScopeReplaceRequest; type Response = TaskExtensionScopeView; type Error = TaskContractError; const NAME: &'static str = "tasks.scope.replace"; }

@@ -1,4 +1,4 @@
-# Generated proposal. No dispatch or authority is implemented. Schema 68093866d7c6d52d95a3044fe00f8292c18823cce3538e1ebd13ae4963b31a4a
+# Generated proposal. No dispatch or authority is implemented. Schema 63c78a362a49656fade67b29ca07b469ad99b51b965a1f308c2c82a6af58ef8f
 from . import node_contract as data
 
 OPERATION_TYPES = {
@@ -245,6 +245,16 @@ OPERATION_TYPES = {
     "studio.artifacts.read": (data.StudioControlArtifactReadRequest, data.StudioControlArtifactChunk, data.StudioControlError),
     "studio.runs.logs.read": (data.StudioControlRunNodeDataRequest, data.StudioControlRunNodeDataView, data.StudioControlError),
     "studio.runs.metrics.read": (data.StudioControlRunNodeDataRequest, data.StudioControlRunNodeDataView, data.StudioControlError),
+    "studio.ir.begin": (data.StudioGraphBeginRequest, data.StudioGraphDraftView, data.StudioControlError),
+    "studio.ir.append": (data.StudioGraphAppendRequest, data.StudioGraphDraftView, data.StudioControlError),
+    "studio.ir.seal": (data.StudioGraphSealRequest, data.StudioGraphSealResult, data.StudioControlError),
+    "studio.ir.read": (data.StudioGraphReadRequest, data.StudioGraphReadEvent, data.StudioControlError),
+    "studio.scalars.begin": (data.StudioGraphScalarBeginRequest, data.StudioGraphScalarUploadView, data.StudioControlError),
+    "studio.scalars.write": (data.StudioGraphScalarWriteRequest, data.StudioGraphScalarUploadView, data.StudioControlError),
+    "studio.scalars.seal": (data.StudioGraphScalarSealRequest, data.StudioGraphScalarRef, data.StudioControlError),
+    "studio.scalars.read": (data.StudioGraphScalarReadRequest, data.StudioGraphScalarChunk, data.StudioControlError),
+    "studio.ir.selection.resolve": (data.StudioGraphSelectionResolveRequest, data.StudioGraphSelectionSnapshot, data.StudioControlError),
+    "studio.ir.selection.read": (data.StudioGraphSelectionReadRequest, data.StudioGraphSelectionEvent, data.StudioControlError),
     "tasks.scope.replace": (data.TaskExtensionScopeReplaceRequest, data.TaskExtensionScopeView, data.TaskContractError),
     "tasks.scope.inspect": (data.TaskExtensionScopeInspectRequest, data.TaskExtensionOptionalScopeView, data.TaskContractError),
     "tasks.records.merge": (data.TaskExtensionRecordMergeRequest, data.TaskExtensionRecordReceipt, data.TaskContractError),

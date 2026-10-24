@@ -10,6 +10,8 @@ from . import python
 
 
 def group(name: str) -> str:
+    if name.startswith("StudioGraph"):
+        return studio_graph_group(name)
     if name.startswith("Dataset"):
         for words, owner in (
             (("Import", "Manifest", "Mapping", "Publication", "RunState", "StepState", "CancelOutcome"), "dataset_imports"),
@@ -169,6 +171,33 @@ def inference_group(name: str) -> str:
     if suffix.endswith(("Result", "Results")) or suffix.startswith(("Rank", "Logprob", "LogProbability", "TokenLogprob", "Timing", "Duration", "Known", "Unknown", "Observation", "Usage", "Result", "Partial", "Finish", "State")):
         return "inference_results"
     return "inference"
+
+
+def studio_graph_group(name: str) -> str:
+    suffix = name.removeprefix("StudioGraph")
+    families = (
+        "StreamRecord", "RecordMap", "RecordIf", "Dataset", "DataHfPreview", "Model",
+        "DataValidate", "DataSplit", "Prompt", "Generate", "Evaluate", "Compare", "Chart",
+        "Report", "Export", "ToolsCall", "DataSynthesize", "DataHarvest", "GymRecordings",
+        "GymTrain", "GymEvaluate", "GenerateRecord", "GenerateStructured", "TrainDecision",
+        "EvaluateDecision", "DecisionPredict", "DecisionRoute", "GuardInjection",
+        "TrainClassifyText", "TrainTextLm", "TrainToolCalls",
+    )
+    for family in sorted(families, key=len, reverse=True):
+        if suffix.startswith(family):
+            return "studio_graph_" + re.sub(r"(?<!^)(?=[A-Z])", "_", family).lower()
+    for words, owner in (
+        (("Scalar",), "studio_graph_scalars"),
+        (("Literal", "Number", "Boolean"), "studio_graph_literals"),
+        (("Expanded", "Expansion", "Variant"), "studio_graph_expansion"),
+        (("Selection", "Selected"), "studio_graph_selection"),
+        (("Group", "Interface", "Sweep", "Exposed", "Parameter"), "studio_graph_groups"),
+        (("Binding",), "studio_graph_bindings"),
+        (("Node", "Port", "Endpoint", "Edge", "Direction", "Scope", "TopField", "Header", "Execution", "Record"), "studio_graph_structure"),
+    ):
+        if any(word in suffix for word in words):
+            return owner
+    return "studio_graph_transport"
 
 
 def symbol_order(value: str, *, fold: bool = True) -> tuple:
