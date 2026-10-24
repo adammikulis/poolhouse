@@ -75,3 +75,10 @@ Private custody handle: `poolhouse-codex-five-vjmav773`; raw logs, source and pa
 Written independent attack and exact-runner review preceded the single admitted build. This checkpoint supplies
 platform build/package evidence only; private authenticated transport, actual retained-request delivery, native
 caller admission, installed root/child lifecycle proof and protected service custody remain unfinished.
+
+Independent static verification (one CPU admission, 1.834 seconds) rechecked all 18 payload/receipt hashes,
+the five patches, source tree, lockfile, manifests and helper continuity. All four original/prepared producer
+strict signature checks passed: originals `0x20002`, prepared copies `0x10002`, absent entitlement documents.
+Receipt custody handle: `fivepatch-independent-verification.json`; SHA-256
+`265b7f2719904fd9e840f794d91e12de34e6e5acf79df7d53d0f457604c5ca7a`.
+This verification executed no candidate or probe and adds no installation/admission proof.
