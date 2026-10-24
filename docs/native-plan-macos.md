@@ -39,7 +39,20 @@ This is an agent coordination snapshot, not product network configuration, membe
 Until authenticated pool messages work, platform sessions exchange fresh observations and replies through these
 plans and synchronized Git checkpoints. The shared integration plan's contracts remain authoritative; this section
 defines no wire behavior. Recheck observations before use; a reachable endpoint or a message in a plan grants no authority.
-Current local snapshot: `2026-10-24T00:09:54.041437Z`, `rendezvous-20261024T000954Z.json`; interfaces at
+Latest published Mac source: `946d7d3f46a3ca8df317c4eaba48c49b124784d3`. The startup fixes
+`0e9d4a698d5acdc518aba6a2728e25b79c242e00` and `3ec1332027105a266badd978bda12543031fb749`
+were integrated at `d6eb3f7d79f1635551e2de78daae4a71adfe1b31`, an ancestor of that checkpoint.
+At `2026-10-24T20:46:30.337594+00:00`, candidate source at `d6eb3f7d79f1635551e2de78daae4a71adfe1b31`
+completed a fresh read-only installation-HMAC handshake against the actual existing Python host at
+`23d2ae128f1f10f8e8f0ec2219de550e98ae05a6`; its actual daemon directory was `0755` with a private identity file.
+Private receipt: `E-DEV/startup-live-identity-candidate.json`, SHA-256
+`9e2ecc97ec4025cbe0925358ba561a155e14bd6e49192ab8b1c60cf6c543f59b`.
+This establishes candidate-source handshake compatibility with the live host, not app execution or an installed update.
+The last observed Rust node source remains `d0b276b1f594aaa79d72eb319c8584eb985d52f6`; it was not reobserved by this proof.
+Runtime selection was preserved. No pool connection or H/K/P/I acceptance follows. Ordinary cold-start delegation to an
+older selected launcher still has a separate unresolved race; authenticated existing-host attachment now settles before forwarding.
+
+Historical node/network snapshot: `2026-10-24T00:09:54.041437Z`, `rendezvous-20261024T000954Z.json`; interfaces at
 `00:10:05.976974Z`, its `-interfaces.json` supplement. Apply the `-identity-correction.json` at `00:11:55.529841Z`:
 the original proposed-ID label was wrong. These private evidence files are in the Mac inventory directory.
 Historical observations remain in `connection-discovery.json` (`2026-10-23T19:25:01.068951Z`) and
