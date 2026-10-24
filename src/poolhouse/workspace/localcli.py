@@ -113,9 +113,13 @@ def _wait(base: Path, name: str, seconds: float) -> int:
 
 
 def _session(args: argparse.Namespace) -> sessions.Session:
-    """The session that acts: the agent named (or the environment's), else a person's own session of this terminal on the
-    board of the project; an agent-marked process with no session of its own is refused."""
+    """The registered native Codex caller, an explicitly selected session, or the person on the board of its project.
+    Native lookup never creates a project or falls back to a person."""
     state = node_launch.default_state()
+    if os.environ.get("CODEX_THREAD_ID", "").strip():
+        client = Client(state, autostart=False)
+        board = args.board or str(client.call("project_resolve", path=str(Path(args.project or ".").resolve()))["board"])
+        return sessions.connect(token_file=args.token_file, agent=args.agent, board=board, client=client)
     client = Client(state, person=person_key.provider(state, acting=person.acting(state)))
     named = args.agent or args.token_file or os.environ.get(sessions.AGENT_ENV, "")
     if named:
@@ -177,10 +181,10 @@ def _start(args: argparse.Namespace, s: sessions.Session, base: Path) -> int:
     return 0 if args.no_wait else _wait(base, got.name, READY_WAIT_S)
 
 
-def _stop(args: argparse.Namespace, base: Path) -> int:
+def _stop(args: argparse.Namespace, base: Path, caller: sessions.Session | None = None) -> int:
     if not args.target:
         raise ValueError("agent stop needs the agent's name; `agent list` shows them")
-    done = (task_launch.stop(_session(args), base, args.target, args.task) if args.agent
+    done = (task_launch.stop(caller or _session(args), base, args.target, args.task) if args.agent
             else ls.stop(base, args.target))
     say(f"stopped {done.name}" + (" (it had to be killed)" if done.forced else "")
         + ("; its model lease is released" if done.lease_released else ""))
@@ -204,7 +208,7 @@ def _list(base: Path) -> int:
 
 
 def command(args: argparse.Namespace) -> int:
-    """Do the ``agent`` action; start and stop are for a person at a terminal."""
+    """Do the agent action; native callers manage existing assigned tasks."""
     return run(args, limits.root())
 
 
@@ -212,17 +216,20 @@ def run(args: argparse.Namespace, base: Path) -> int:
     """Do the ``agent`` action with the local agents' records in ``base``."""
     if args.action == "list":
         return _list(base)
+    caller = _session(args) if os.environ.get("CODEX_THREAD_ID", "").strip() else None
+    if caller is not None:
+        args.agent = caller.name  # Only the authenticated native session normalizes legacy dispatch.
     if args.action == 'schedule':
         if not args.target or not args.agent:
-            raise ValueError('agent schedule requires a worker name and --agent registered-parent')
-        return task_scheduler.watch(_session(args), base, la.check_name(args.target), task=args.task)
+            raise ValueError('agent schedule requires an existing worker and authenticated session')
+        return task_scheduler.watch(caller or _session(args), base, la.check_name(args.target), task=args.task)
     if args.action in ("supersede-issue", "resume-issue"):
         if not args.target:
             raise ValueError("supersede-issue needs the existing worker name")
         if not args.agent:
             authority.require("workspace.agents", "supersede a repository issue")
         decision = backlog.supersede if args.action == "supersede-issue" else backlog.resume
-        decision(_session(args), base, args.target, args.issue, args.reason)
+        decision(caller or _session(args), base, args.target, args.issue, args.reason)
         say(f"issue {args.issue}: {args.action} decision recorded")
         return 0
     if not (args.agent and args.action in ("start", "stop")):
@@ -233,12 +240,12 @@ def run(args: argparse.Namespace, base: Path) -> int:
         worker = la.load(base, args.target)
         project = args.project or (worker.project if worker else "")
         repo = args.repo or (backlog.repository(project) if project else "")
-        s = _session(args)
+        s = caller or _session(args)
         backlog.configure(s, base, args.target, repo, project)
         issuepump.start(s, base, args.target)
         say(f"{args.target} is pulling open issues from {repo} into its task queue")
         return 0
     provenance.told(args.lease_for)
     if args.action == "start":
-        return _start(args, _session(args), base)
-    return _stop(args, base)
+        return _start(args, caller or _session(args), base)
+    return _stop(args, base, caller=caller)
