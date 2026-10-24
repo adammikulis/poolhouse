@@ -42,7 +42,9 @@ Published Mac evidence now includes [redacted IPC ABI observations](notes/native
 [preservation ledger](notes/native-macos-preserved-work.md) with [M17](notes/native-macos-preserved-rust-limits.md) and
 [M31](notes/native-macos-preserved-backend-admission.md) source mappings, and
 [worker confinement feasibility](notes/native-macos-worker-confinement-feasibility.md). These records establish no
-K acceptance, protected sender admission or native confinement. Full ref/archive proof remains pending.
+K acceptance, protected sender admission or native confinement. A later `2026-10-23T23:57:00Z`
+[independent archive verification](notes/native-macos-preserved-work.md#frozen-original-refs-and-heads-independent-archive-verification)
+now establishes local committed-history availability for the 245 frozen ref/head mappings; other custody/behavior gaps remain.
 
 Please reply directly from Windows and independent Linux/WSL sessions with fresh timestamped node public IDs,
 distinct certificate digests, endpoints, actual workspace actors, safe read-only hello readiness/results, and the exact
