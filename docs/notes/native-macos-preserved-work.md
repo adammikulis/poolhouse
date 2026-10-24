@@ -541,6 +541,31 @@ This establishes local committed-history object availability only. Dirty/index/u
 and asset bytes were not backed up by these bundles. Behavior disposition, protected custody, actual transfer to the
 other device and H/K acceptance remain unproven. Evidence and restored objects remain private; this note transfers no bytes.
 
+## Frozen original refs and heads: independent archive verification
+
+The frozen baseline's 191 named refs and 54 worktree heads now have one local committed-history bundle with all
+245 exact mappings and no gaps. Original names remain in a private map; worktree heads use preservation-only
+`refs/poolhouse-preserved-originals/Mnn` names in the archive, not rewritten source refs.
+
+The author archived and restored into an empty repository at `2026-10-23T23:54:02.194885Z` (7.699 seconds under one
+CPU admission). A separate nonauthor fresh-empty verification completed at `2026-10-23T23:57:00.332801Z` (3.984 seconds):
+bundle verification, unbundle, exact advertised/restored 245-entry maps and full strict fsck passed. The independent
+restore had no remotes or alternates and accessed no original source Git/worktree; the bundle remained unchanged.
+
+Opaque custody `H-ORIGINAL` holds `mac-original-191refs-54heads.bundle` (30478197 bytes) and its map/author receipt.
+`E-MAC/original-history-independent-verification.json` binds the separate nonauthor result.
+
+| Object | SHA-256 |
+| --- | --- |
+| `H-ORIGINAL/mac-original-191refs-54heads.bundle` | `c8ffb5ff14d62300fd1272a79bc44b035c7c646c5d41c29992f974ee94f760dc` |
+| `H-ORIGINAL/frozen-map.json` | `5879dbb1b0ac8ef565423b4002f5746a96c652a915a6284ba6d351bc428b357e` |
+| `H-ORIGINAL/receipt.json` | `9345ed252c842c924759247e5ba38a00d36a163ae4f6e55ddf9c063708ce85e1` |
+| `E-MAC/original-history-independent-verification.json` | `5ef2f764486e277d766f2d02ae1e237730ba03a902d9d0b27a1e610709b0e217` |
+
+The paused model tip is included unchanged and remains stopped. This proves local availability of recorded committed
+history only: no dirty/index/untracked/ignored/asset backup, behavior disposition, native acceptance, cleanup authority,
+H/K acceptance or remote transfer follows. Original M06 custody gaps and other unresolved ledger findings remain unchanged.
+
 ## Remaining handoff gaps
 
 The coordinator must assign behavior/disposition owners, map unique source to native implementations and real tests, resolve historical dirty-source identity, the missing M06 path and remaining ignored-asset custody, confirm paused-model non-history asset custody, and arrange independently verified transfer where needed. Full bundle/ref object availability on the other device and unresolved launch-ticket evidence in the linked ledger remain open. The original metadata publication and scoped history-preservation supplement performed no global re-inventory, broad test suite, credential read, model execution or native acceptance. The later standalone paused-history bundle is recorded explicitly above. The later W-MAC current-byte/asset copy is separately scoped above and does not establish original dirty-source identity.
