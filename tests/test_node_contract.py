@@ -754,7 +754,8 @@ def test_native_adapter_declarations_remain_private_and_without_proof_issuers():
     assert "pub(crate) trait NativeCallerPlatform<G: NativeGraph>" in source
     assert ": native_seal::Platform" in source
     assert "pub trait NativeCallerPlatform" not in source
-    assert "pub(crate) trait NativeGraph: native_seal::Graph + Sized" in source
+    assert "pub(crate) trait NativeGraph: NativeInstallationGraph + native_seal::Graph + Sized" in source
+    assert "pub(crate) trait NativeInstallationGraph: native_seal::InstallationGraph + Sized" in source
     assert "type Binding: BindingProjection<Self>;" in source
     for name in ("VerifiedProducerLaunch", "AuthenticatedProducerMessage", "HolderCleanup", "OwnedCleanupFailure"):
         assert not hasattr(public, name)

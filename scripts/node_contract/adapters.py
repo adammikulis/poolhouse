@@ -125,7 +125,7 @@ def validate(value: dict) -> dict:
     fixed = {"version": 3, "trait": "NativeCallerPlatform", "binding": "node-owned-runtime-handle",
              "serialization": "forbidden", "spawn_plan": "node-owned-immutable-measured-plan",
              "visibility": "crate-private-sealed", "status": "incomplete-proposal"}
-    fields = {*fixed, "errors", "requirements", "method", "graph", "effect_owner", "projection", "leaf", "view", "representation", "phase", "profile"}
+    fields = {*fixed, "errors", "requirements", "method", "installation_graph", "graph", "effect_owner", "projection", "leaf", "view", "representation", "phase", "profile"}
     keys(value, fields, fields)
     if any(not _same(value[key], expected) for key, expected in fixed.items()) or not _same(value["errors"], ERRORS):
         raise ValueError("unsupported native adapter boundary")
@@ -133,8 +133,14 @@ def validate(value: dict) -> dict:
     if (not isinstance(requirements, list) or any(not isinstance(item, str) for item in requirements)
             or len(set(requirements)) != len(requirements) or set(requirements) != REQUIREMENTS | schema.NEW_REQUIREMENTS):
         raise ValueError("unsupported native adapter ownership requirements")
-    graph = {"name": "NativeGraph", "seal": "Graph", "associated": [
-        {"name": name, "projection": projection, "role": role} for name, projection, role in schema.ASSOCIATIONS]}
+    installation = {"name": "NativeInstallationGraph", "seal": "InstallationGraph", "associated": [
+        {"name": name, "projection": projection, "role": role}
+        for name, projection, role in schema.ASSOCIATIONS if name in schema.INSTALLATION_ROLES]}
+    if not _same(value["installation_graph"], installation):
+        raise ValueError("native installation graph loses exact nominal capability")
+    graph = {"name": "NativeGraph", "seal": "Graph", "inherits": "NativeInstallationGraph", "associated": [
+        {"name": name, "projection": projection, "role": role}
+        for name, projection, role in schema.ASSOCIATIONS if name not in schema.INSTALLATION_ROLES]}
     if not _same(value["graph"], graph):
         raise ValueError("native graph loses exact associated-type identity")
     effect = {"graph": "EffectGraph", "seal": "Graph", "trait": "NodeEffectOwner", "owner_seal": "Owner", "identity": schema.G("identity", "Owner"),
