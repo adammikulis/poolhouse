@@ -31,6 +31,9 @@ use crate::registry::Projects;
 use crate::row::{valid_name, Kind};
 use crate::subs::Subs;
 use crate::tally::Tally;
+use crate::sys::{try_lock, Lock};
+
+pub const INSTANCE_LOCK: &str = "node.lock";
 
 pub const READ_DEFAULT: usize = 200;
 pub const READ_MAX: usize = 1000;
@@ -121,6 +124,8 @@ pub struct Node {
     pub key_binding: KeyBinding,
     /// When a person last said no to a kind of act: the same kind is not asked again for ten minutes.
     pub declined: BTreeMap<String, Instant>,
+    /// Last field: exclusive storage custody outlives every writable field and shared Node owner.
+    _instance: Lock,
 }
 
 /// A native session as its harness names it: the model it says it runs, the harness and its own session id.
@@ -160,6 +165,8 @@ impl Node {
     /// Open the node of ``dir`` as the device ``supplied`` is the key of, or as the one its key file names when nothing is supplied.
     pub fn open_with(dir: &Path, supplied: Option<&Supplied>) -> Result<Node> {
         private_dir(dir)?;
+        let instance = try_lock(&dir.join(INSTANCE_LOCK))?
+            .ok_or_else(|| Error::Denied("a node already runs on this state directory".into()))?;
         let (key, custody) = device::load(dir, supplied)?;
         let cert = cert::load_or_create(dir, &key)?;
         let members = Pool::load(dir)?;
@@ -173,7 +180,7 @@ impl Node {
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
             projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?, rates: Rates::default(), board_grace_ms: writes.board_grace_s * 1000, writes, log_bounds: crate::logbounds::Bounds::default(), log_rotate_percent: crate::logbounds::ROTATE_PERCENT, asking: Asking::default(),
             stop: Arc::new(AtomicBool::new(false)), started: Instant::now(), folds: 0,
-            build: crate::build::Build::from_env(), network: crate::netif::network().into(), signer: None, key_binding: KeyBinding::File, declined: BTreeMap::new(),
+            build: crate::build::Build::from_env(), network: crate::netif::network().into(), signer: None, key_binding: KeyBinding::File, declined: BTreeMap::new(), _instance: instance,
         };
         let root = dir.join("boards");
         if root.is_dir() {
