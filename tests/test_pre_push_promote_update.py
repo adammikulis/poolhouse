@@ -52,6 +52,7 @@ def checkout(tmp_path):
 
 def push(hook: Path, where: Path, ref: str, sha: str, base: str) -> subprocess.CompletedProcess:
     installed = Path(git(where, "rev-parse", "--path-format=absolute", "--git-common-dir")) / "hooks" / "pre-push"
+    git(where, "config", "--local", "poolhouse.hooks.repository", str(installed.parent.parent.resolve()))
     installed.write_text("#!/bin/sh\nexec sh " + shlex.quote(hook.as_posix()) + ' "$@"\n', encoding="utf-8")
     installed.chmod(installed.stat().st_mode | 0o111)
     source = installed.parent.parent / "push-input"

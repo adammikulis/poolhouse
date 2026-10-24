@@ -35,14 +35,17 @@ def checkout(tmp_path):
     where = tmp_path / "repo"
     subprocess.run(["git", "init", "-q", "-b", "0.9dev", str(where)], check=True)
     commit(where, "README.md", "x\n")
+    git(where, "config", "--local", "poolhouse.hooks.repository", str((where / ".git").resolve()))
     return where
 
 
-def push(where: Path, *refs: str, sha: str = "", base: str = ZERO,
+def push(where: Path, *refs: str, sha: str = "", base: str = ZERO, scoped: bool = True,
          **env: str) -> subprocess.CompletedProcess:
     sha = sha or git(where, "rev-parse", "HEAD")
     lines = "".join(f"refs/heads/{r} {sha} refs/heads/{r} {base}\n" for r in refs)
     hook = Path(git(where, "rev-parse", "--path-format=absolute", "--git-common-dir")) / "hooks" / "pre-push"
+    if scoped:
+        git(where, "config", "--local", "poolhouse.hooks.repository", str(hook.parent.parent.resolve()))
     hook.write_text("#!/bin/sh\nexec sh " + shlex.quote(HOOK.as_posix()) + " \"$@\"\n",
                     encoding="utf-8", newline="\n")
     hook.chmod(hook.stat().st_mode | 0o111)
@@ -136,7 +139,17 @@ def test_a_person_is_not_stopped(checkout):
 
 def test_the_installer_wires_it_up():
     installer = HOOK.parent.parent / "install-hooks.sh"
-    assert "pre-push pre-push" in installer.read_text()
+    assert "install-hooks.py" in installer.read_text()
+
+
+@pytest.mark.parametrize("ref", ["main", "feature/library-user"])
+@pytest.mark.parametrize("scope", ["unset", "mismatch"])
+def test_a_copied_hook_does_not_apply_repository_policy_to_library_users(checkout, ref, scope):
+    git(checkout, "config", "--local", "--unset", "poolhouse.hooks.repository")
+    if scope == "mismatch":
+        git(checkout, "config", "--local", "poolhouse.hooks.repository", str(checkout / "foreign.git"))
+    done = push(checkout, ref, scoped=False, CLAUDECODE="1")
+    assert done.returncode == 0 and done.stderr == ""
 
 
 def test_python_validation_is_separate_from_the_ref_guard(checkout):
