@@ -144,6 +144,8 @@ def group(name: str) -> str:
         if any(word in name for word in ("Observed", "Known", "Quantity", "Ratio", "Margin", "Unknown", "Observation")):
             return "model_observation"
         return "model_catalogue"
+    if name.startswith("Testing"):
+        return "testing"
     if name.startswith("Job"):
         return "jobs"
     if name.startswith(("Agent", "Task")) or name == "BoardId":

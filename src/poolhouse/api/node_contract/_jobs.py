@@ -50,6 +50,14 @@ if TYPE_CHECKING:
         InferenceCursor,
         InferenceOptionalCursor,
     )
+    from ._testing import (
+        TestingEffect,
+        TestingExactSelector,
+        TestingOptionalPlan,
+        TestingOptionalResult,
+        TestingProgress,
+        TestingSourceRef,
+    )
 
 
 class JobDisplayName(_Scalar):
@@ -408,6 +416,16 @@ _register(JobSnapshot)
 
 
 @dataclass(frozen=True)
+class JobManagedTestUnitIntent(_Record):
+    source: TestingSourceRef
+    selector: TestingExactSelector
+    _fields: ClassVar[dict[str, str]] = {'source': 'TestingSourceRef', 'selector': 'TestingExactSelector'}
+
+
+_register(JobManagedTestUnitIntent)
+
+
+@dataclass(frozen=True)
 class JobOutputRequest(_Record):
     job_id: JobId
     generation: ResourceGeneration
@@ -494,7 +512,8 @@ _register(JobListResponse)
 class JobPreparationIntent(_Union):
     _variants: ClassVar[dict[str, str]] = {'agent_runtime_repair': 'Empty',
  'train_classify_text': 'JobTrainClassifyTextIntent',
- 'runtime_previous_verified': 'Empty'}
+ 'runtime_previous_verified': 'Empty',
+ 'managed_test_unit': 'JobManagedTestUnitIntent'}
 
 
 _register(JobPreparationIntent)
@@ -549,10 +568,28 @@ class JobTrainingPreparationDetails(_Record):
 _register(JobTrainingPreparationDetails)
 
 
+@dataclass(frozen=True)
+class JobTestingPreparationDetails(_Record):
+    plan: TestingOptionalPlan
+    effect: TestingEffect
+    authority: JobPreparationAuthority
+    progress: TestingProgress
+    result: TestingOptionalResult
+    _fields: ClassVar[dict[str, str]] = {'plan': 'TestingOptionalPlan',
+ 'effect': 'TestingEffect',
+ 'authority': 'JobPreparationAuthority',
+ 'progress': 'TestingProgress',
+ 'result': 'TestingOptionalResult'}
+
+
+_register(JobTestingPreparationDetails)
+
+
 class JobPreparationDetails(_Union):
     _variants: ClassVar[dict[str, str]] = {'agent_runtime_repair': 'JobRepairPreparationDetails',
  'train_classify_text': 'JobTrainingPreparationDetails',
- 'runtime_previous_verified': 'JobRuntimeSelectionDetails'}
+ 'runtime_previous_verified': 'JobRuntimeSelectionDetails',
+ 'managed_test_unit': 'JobTestingPreparationDetails'}
 
 
 _register(JobPreparationDetails)

@@ -190,6 +190,8 @@ pub enum JobPreparationIntent {
     TrainClassifyText(JobTrainClassifyTextIntent),
     #[serde(rename = "runtime_previous_verified")]
     RuntimePreviousVerified(Empty),
+    #[serde(rename = "managed_test_unit")]
+    ManagedTestUnit(JobManagedTestUnitIntent),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -231,6 +233,8 @@ pub(crate) enum JobFrozenPlan {
     TrainClassifyText(JobFrozenClassifierPlan),
     #[serde(rename = "runtime_previous_verified")]
     RuntimePreviousVerified(JobFrozenRuntimeSelectionPlan),
+    #[serde(rename = "managed_test_unit")]
+    ManagedTestUnit(JobTestingPlanStages),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -242,6 +246,8 @@ pub enum JobPreparationDetails {
     TrainClassifyText(JobTrainingPreparationDetails),
     #[serde(rename = "runtime_previous_verified")]
     RuntimePreviousVerified(JobRuntimeSelectionDetails),
+    #[serde(rename = "managed_test_unit")]
+    ManagedTestUnit(JobTestingPreparationDetails),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
