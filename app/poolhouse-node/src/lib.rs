@@ -74,3 +74,6 @@ pub mod tally;
 pub mod tls;
 pub mod wire;
 pub mod writes;
+
+#[allow(dead_code)] // Dormant model; no authenticated control or writer-registry witness issuer.
+mod update_handoff;
