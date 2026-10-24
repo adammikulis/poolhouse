@@ -32,3 +32,9 @@ Actual macOS 26.6 arm64 checks passed for the cheap observer (one test, 4.06 sec
 build plus real Swift/Rust FFI mapper (one test, 6.43 seconds). Only the null-output and genuine CLI negative paths ran.
 The existing macOS 12 deployment floor and the macOS 13 Service Management availability guard remain unchanged;
 current-hardware linking does not prove behavior on older macOS releases or a genuine installed containing app.
+
+The maintained staged real-app build also compiled and linked successfully with `cargo test --no-run --locked --offline`
+under one CPU admission (42.75 seconds); its executable was never launched. Production staging includes only the three
+Swift sources and C header consumed by the build. App-only Swift/SDK metadata changes the staged source key so Cargo
+reruns native compilation; the shared Rust dependency target and Node-only metadata behavior remain unchanged. This
+cache invalidation is not hermetic-build or custody evidence. In-app/service behavior still requires separate proof.
