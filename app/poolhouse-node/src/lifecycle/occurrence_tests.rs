@@ -24,13 +24,13 @@ fn birth(f: &mut Fence<TestStore>) {
     assert!(matches!(f.admit(source(1), Original::Birth { context: context() }), Ok(Admission::Committed(_))));
     f.change(&source(1), Transition::Admit).unwrap();
 }
-fn spec(n: u8) -> DispatchSpec { DispatchSpec { handler: [n; 32], measured_plan: vec![n], purpose: vec![n], operation: b"exact operation".to_vec(), owner: [7; 32] } }
+fn spec(n: u8) -> DispatchSpec { DispatchSpec { handler: [n; 32], measured_plan: vec![n], purpose: vec![n], operation: vec![n], owner: [7; 32] } }
 fn invocation() -> Original { Original::Invocation { context: context(), admission: source(1), kind: b"invoke".to_vec(), payload: b"actual bytes".to_vec(), catalog: DispatchCatalog { config_generation: [13; 32], entries: vec![spec(1), spec(2)] } } }
 fn dispatch_state(f: &Fence<TestStore>, n: usize) -> &State { match &f.records[&source(2)].state { State::Invocation(entries) => &entries[n].state, _ => panic!("invocation required") } }
 fn dispatch(f: &mut Fence<TestStore>, event: Transition) -> Result<Committed, Error> { f.change_dispatch(&source(2), &spec(1), event) }
 fn custody() -> Custody { Custody { owner: [7; 32], resources: vec![Resource { identity: [8; 32], action: Action::CloseChannel }, Resource { identity: [9; 32], action: Action::Preserve }] } }
 fn reserved() -> Fence<TestStore> { let mut f = fence(); birth(&mut f); f.admit(source(2), invocation()).unwrap(); f }
-fn transitions() -> Vec<Transition> { vec![Transition::Spawn(custody()), Transition::Bind(custody()), Transition::FenceRelease(custody()), Transition::Released(custody()), Transition::FenceEffect { custody: custody(), operation: b"exact operation".to_vec() }, Transition::Complete { operation: b"exact operation".to_vec(), outcome: Outcome::Success(b"result".to_vec()) }, Transition::Cleanup { custody: custody(), result: Cleanup::Closed }] }
+fn transitions() -> Vec<Transition> { vec![Transition::Spawn(custody()), Transition::Bind(custody()), Transition::FenceRelease(custody()), Transition::Released(custody()), Transition::FenceEffect { custody: custody(), operation: spec(1).operation }, Transition::Complete { operation: spec(1).operation, outcome: Outcome::Success(b"result".to_vec()) }, Transition::Cleanup { custody: custody(), result: Cleanup::Closed }] }
 #[test]
 fn original_namespace_is_shared_and_exact() {
     let mut f = fence(); birth(&mut f);
@@ -256,4 +256,18 @@ fn lost_ack_poison_covers_siblings_and_old_source_cannot_gain_new_dispatch_ident
     let mut rekeyed = invocation();
     if let Original::Invocation { catalog, .. } = &mut rekeyed { catalog.entries[0].handler = [88; 32]; }
     assert!(matches!(fresh.admit(source(2), rekeyed), Err(Error::Conflict)));
+}
+
+#[test]
+fn distinct_handlers_cannot_reserve_same_owner_operation_twice() {
+    let mut f = fence(); birth(&mut f);
+    let mut duplicate = invocation();
+    if let Original::Invocation { catalog, .. } = &mut duplicate {
+        catalog.entries[1].operation = catalog.entries[0].operation.clone();
+        catalog.entries[1].owner = catalog.entries[0].owner;
+    }
+    let count = f.store.committed.len();
+    assert!(matches!(f.admit(source(2), duplicate), Err(Error::Conflict)));
+    assert_eq!(f.store.committed.len(), count);
+    assert!(!f.records.contains_key(&source(2)));
 }

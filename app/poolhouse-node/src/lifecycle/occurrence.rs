@@ -10,6 +10,8 @@
 //! Original event admission grants no effects. A frozen Node-owned catalog separates
 //! sibling dispatch progress under that SAME source record; a config reload cannot
 //! append handlers or remint a consumed/uncertain dispatch. No catalog issuer exists.
+//! Catalog-local operation uniqueness is not a global domain-effect fence across
+//! different original events; that still belongs to the separate effect owner.
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -129,7 +131,8 @@ impl<S: Store> Fence<S> {
         let state = match &original {
             Original::Invocation { catalog, .. } => {
                 if catalog.entries.iter().enumerate().any(|(i, entry)|
-                    catalog.entries[..i].iter().any(|prior| prior.handler == entry.handler)) {
+                    catalog.entries[..i].iter().any(|prior| prior.handler == entry.handler
+                        || (prior.owner == entry.owner && prior.operation == entry.operation))) {
                     return Err(Error::Conflict);
                 }
                 State::Invocation(catalog.entries.iter().map(|spec|
