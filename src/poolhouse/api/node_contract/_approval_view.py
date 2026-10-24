@@ -108,6 +108,14 @@ class ApprovalOperationDigest(_Scalar):
 _register(ApprovalOperationDigest)
 
 
+class ApprovalP256PublicPoint(_Scalar):
+    _encoding = "bytes"
+    _bounds = (65, 65)
+
+
+_register(ApprovalP256PublicPoint)
+
+
 class ApprovalPersonId(_Scalar):
     _encoding = "hex32"
 

@@ -448,3 +448,13 @@ content confer no execution authority.
 This checkpoint defines contracts and matching SDKs. Runtime staging, bounded
 semantic parsing, endpoint adapters, complete vendor compatibility and actual
 model/resource scheduling remain implementation obligations; K is still pending.
+
+The approval proposal now carries paired signer-key and signature formats for
+Ed25519 and P256, with distinct ordinary DER and low-S DER policies. Signer
+observations retain the descriptor-derived public key. These are untrusted data
+shapes: byte-length validation neither parses DER nor verifies a signature.
+Admission must select the policy from the actual signed purpose and admitted
+descriptor, preserve the original transcript, and prevent duplicate effects across
+signature encodings. Existing requests and the six approval operations are unchanged.
+Protected platform signers, native verification and installed approval remain
+unproven; no Windows signer capability is inferred from these declarations.

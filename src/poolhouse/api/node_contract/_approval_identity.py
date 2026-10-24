@@ -17,11 +17,29 @@ from ._codec import (
 
 if TYPE_CHECKING:
     from ._approval_view import (
+        ApprovalP256PublicPoint,
         ApprovalPersonId,
     )
     from ._core import (
         Boolean,
+        Ed25519PublicKey,
     )
+
+
+class ApprovalP256LowSSignatureDer(_Scalar):
+    _encoding = "bytes"
+    _bounds = (8, 72)
+
+
+_register(ApprovalP256LowSSignatureDer)
+
+
+class ApprovalP256SignatureDer(_Scalar):
+    _encoding = "bytes"
+    _bounds = (8, 72)
+
+
+_register(ApprovalP256SignatureDer)
 
 
 class ApprovalSignature64(_Scalar):
@@ -68,11 +86,48 @@ class ApprovalDescriptorIds(_List):
 _register(ApprovalDescriptorIds)
 
 
+@dataclass(frozen=True)
+class ApprovalEd25519SignatureMaterial(_Record):
+    public_key: Ed25519PublicKey
+    signature: ApprovalSignature64
+    _fields: ClassVar[dict[str, str]] = {'public_key': 'Ed25519PublicKey', 'signature': 'ApprovalSignature64'}
+
+
+_register(ApprovalEd25519SignatureMaterial)
+
+
+@dataclass(frozen=True)
+class ApprovalP256LowSSignatureMaterial(_Record):
+    public_key: ApprovalP256PublicPoint
+    signature: ApprovalP256LowSSignatureDer
+    _fields: ClassVar[dict[str, str]] = {'public_key': 'ApprovalP256PublicPoint', 'signature': 'ApprovalP256LowSSignatureDer'}
+
+
+_register(ApprovalP256LowSSignatureMaterial)
+
+
+@dataclass(frozen=True)
+class ApprovalP256SignatureMaterial(_Record):
+    public_key: ApprovalP256PublicPoint
+    signature: ApprovalP256SignatureDer
+    _fields: ClassVar[dict[str, str]] = {'public_key': 'ApprovalP256PublicPoint', 'signature': 'ApprovalP256SignatureDer'}
+
+
+_register(ApprovalP256SignatureMaterial)
+
+
 class ApprovalSignerAssurance(_Union):
     _variants: ClassVar[dict[str, str]] = {'presence_required': 'Empty', 'process_accessible': 'Empty'}
 
 
 _register(ApprovalSignerAssurance)
+
+
+class ApprovalSignerPublicKey(_Union):
+    _variants: ClassVar[dict[str, str]] = {'ed25519': 'Ed25519PublicKey', 'p256': 'ApprovalP256PublicPoint'}
+
+
+_register(ApprovalSignerPublicKey)
 
 
 @dataclass(frozen=True)
@@ -84,15 +139,26 @@ class ApprovalSignerTarget(_Record):
 _register(ApprovalSignerTarget)
 
 
+class ApprovalSignatureMaterial(_Union):
+    _variants: ClassVar[dict[str, str]] = {'ed25519': 'ApprovalEd25519SignatureMaterial',
+ 'p256_sha256_der': 'ApprovalP256SignatureMaterial',
+ 'p256_sha256_low_s_der': 'ApprovalP256LowSSignatureMaterial'}
+
+
+_register(ApprovalSignatureMaterial)
+
+
 @dataclass(frozen=True)
 class ApprovalSignerObservation(_Record):
     signer_id: ApprovalSignerId
     person_id: ApprovalPersonId
+    public_key: ApprovalSignerPublicKey
     descriptor_id: AuthorityDescriptorId
     assurance: ApprovalSignerAssurance
     counts: Boolean
     _fields: ClassVar[dict[str, str]] = {'signer_id': 'ApprovalSignerId',
  'person_id': 'ApprovalPersonId',
+ 'public_key': 'ApprovalSignerPublicKey',
  'descriptor_id': 'AuthorityDescriptorId',
  'assurance': 'ApprovalSignerAssurance',
  'counts': 'Boolean'}
