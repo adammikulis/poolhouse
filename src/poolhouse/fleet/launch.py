@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -17,18 +18,23 @@ from poolhouse import runtime, spawned
 from poolhouse.http import Options, ServerError, request_json
 from poolhouse.log import say, warn
 
-from . import discovery, launch_open, wsl_network, wsl_registration, wsl_startup
+from . import discovery, launch_health, launch_open, wsl_network, wsl_registration, wsl_startup
 from .daemon_control import ControlError, launch_of, request_replacement
 from .discovery import (
     DEFAULT_PORT as DISCOVERY_PORT,  # noqa: F401  (keeps ports in view)
     memberships,
 )
 from .handover import claim, finish
-from .measuring import same_commit
 from .pool_modes import notice
 from .runtime_paths import default_root
 from .updates import state
-from .wsl import WSLError, prepare, replace_running, start
+from .wsl import (
+    WSLError,
+    authenticated_health as wsl_authenticated_health,
+    prepare,
+    replace_running,
+    start,
+)
 
 __all__ = ["already_running", "last_screen", "main", "wait_for_health"]
 
@@ -239,10 +245,18 @@ def _settle(known: argparse.Namespace, rest: list[str], release: Callable[[], No
             return 1
     if running is None:
         return None
-    expected = str(state().get("commit") or "")
-    if known.restart or not same_commit(str(running.get("commit") or ""), expected):
+    if known.restart:
+        expected = str(state().get("commit") or "")
         return _replace(known, rest, running, expected, release)
-    return _reuse(running, known, rest)
+    try:
+        authenticated = (wsl_authenticated_health(rest, known.port) if sys.platform == "win32"
+                         else launch_health.authenticated(known.port, _root(rest)))
+    except (WSLError, OSError, ValueError, subprocess.SubprocessError):
+        authenticated = None
+    if authenticated is None:
+        warn("The running daemon could not authenticate this installation; leaving it running.")
+        return 1
+    return _reuse(authenticated, known, rest)
 
 
 def main(argv: list[str] | None = None, *,
