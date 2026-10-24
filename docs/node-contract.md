@@ -274,7 +274,7 @@ clock birth nor conversion creates process identity or monotonic ordering.
 The installed Mac observation/adapter proof remains required.
 
 The pinned [operation mapping](../contracts/node/operation-mapping.json) connects
-all ten declared operations to hashed legacy handlers and retained callers. It
+the ten initial root operations to hashed legacy handlers and retained callers. It
 separates proposed behavior from current transport, records semantic differences
 and lists remaining omissions. Metrics callers remain explicitly uncontracted;
 the log OutputCursor does not cover metrics. A focused cross-artifact check keeps
@@ -300,3 +300,32 @@ null or their closed object encoding; nested optionals remain refused. Shared
 ApprovalId and OperationId are node-issued UUID data references, never approval
 or execution capabilities. Per-domain evidence pins retained handlers/callers
 and explicitly separates missing runtime behavior from declarations.
+
+
+## Integrated domain declaration checkpoint
+
+The combined proposal contains 460 types and 73 operations across the root,
+Settings/startup/setup, models/assets/serving/resources, and approval/governance
+files. All use the same generated Rust, TypeScript and Python definitions and
+schema digest `8d3b0f57c91c133db058fdd574c1f690e2f2c51ed984d82f819755a06785a7f4`.
+Per-domain evidence pins retained source sites, caller mappings and remaining
+omissions. The domain files were independently attack-reviewed before integration.
+
+Wire checks cover nonempty unique weekday sets, empty approval snapshots, explicit
+unknown startup observations, and exact fractional surplus/shortfall margins.
+The integration check caught stale Settings authorization metadata after final
+review constraints were added; its mappings now match the canonical declarations.
+These are representation and contract checks, not implemented policy, native
+assurance, rollback protection, atomic effects, downloads or model execution.
+K remains unaccepted. Remaining domains, retained variants, genuine provenance
+producers, cross-platform feasibility and installed H/P/I proofs stay required.
+
+The Python generator now emits a package grouped by API area, with the same public
+`poolhouse.api.node_contract` imports reexporting one exact class object per type.
+The former flat generated file exceeded the repository's file-size gate; no budget
+was raised. Shared codecs reject duplicate registration, verify public-reference
+closure, and freeze their registry after all groups load. Imports define data
+classes only and start no services. Type-hint resolution works across groups;
+fully qualified module/pickling paths changed within this proposal and require
+compatibility review before any installed SDK cutover. Generation refuses a stale
+flat file or unknown/symlink package entries and never deletes unrelated files.

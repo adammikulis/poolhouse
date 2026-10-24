@@ -7,7 +7,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from node_contract import lifecycle, operations, python, rust, typescript
+from node_contract import lifecycle, operations, python_package, rust, typescript
 from node_contract.load import load
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -38,24 +38,35 @@ def outputs(root: Path) -> dict[Path, str]:
                     "refused": ["-0", "+1", "01", "2147483648", "-2147483649", 1]},
                    {"type": "Boolean", "accepted": [True, False], "refused": [1, 0, "true", None]},
                ]}
-    return {
+    result = {
         root / "app/poolhouse-node/src/contract_operations.rs": operations.render_rust(meta["operations"], digest),
         root / "src/poolhouse/api/node_operations.py": operations.render_python(meta["operations"], digest),
         root / "app/contracts/node_operations.ts": operations.render_typescript(meta["operations"], digest),
         root / "app/poolhouse-node/src/contract.rs": rust.render(meta, rows, digest),
         root / "app/poolhouse-node/src/contract_lifecycle.rs": lifecycle.render(meta["lifecycle"], meta["adapters"]),
-        root / "src/poolhouse/api/node_contract.py": python.render(meta, rows, digest),
         root / "app/contracts/node.ts": typescript.render(meta, rows, digest),
         root / "contracts/node/vectors.json": json.dumps(vectors, indent=2) + "\n",
     }
+    result.update(python_package.render_package(root, meta, rows, digest))
+    return result
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
+    legacy = ROOT / "src/poolhouse/api/node_contract.py"
+    if legacy.exists() or legacy.is_symlink():
+        parser.exit(1, "former generated flat contract exists; review and remove that known artifact through Git before generation\n")
+    generated = outputs(ROOT)
+    package = ROOT / "src/poolhouse/api/node_contract"
+    if package.is_symlink():
+        parser.exit(1, "generated contract package cannot be a symlink\n")
+    for path in package.glob("*.py"):
+        if path.is_symlink() or path not in generated:
+            parser.exit(1, "unknown or stale generated contract package entry; review it through Git\n")
     changed = []
-    for path, content in outputs(ROOT).items():
+    for path, content in generated.items():
         if not path.is_file() or path.read_text() != content:
             changed.append(path.relative_to(ROOT).as_posix())
             if not args.check:

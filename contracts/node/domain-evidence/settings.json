@@ -141,6 +141,7 @@
         "local-preferences-permission",
         "compare-and-swap-resource-revision",
         "validate-complete-value-before-atomic-commit",
+        "reject-duplicate-semantic-keys",
         "no-preference-grants-execution-authority",
         "reauthorize-at-domain-commit"
       ],
@@ -177,6 +178,7 @@
         "device-execution-policy-permission",
         "compare-and-swap-resource-revision",
         "validate-complete-value-before-atomic-commit",
+        "reject-duplicate-semantic-keys",
         "no-preference-grants-execution-authority",
         "reauthorize-at-domain-commit"
       ],
@@ -213,6 +215,7 @@
         "download-source-and-transfer-policy-permission",
         "compare-and-swap-resource-revision",
         "validate-complete-value-before-atomic-commit",
+        "reject-duplicate-semantic-keys",
         "no-preference-grants-execution-authority",
         "reauthorize-at-domain-commit"
       ],
@@ -249,6 +252,7 @@
         "packaging-update-policy-permission",
         "compare-and-swap-resource-revision",
         "validate-complete-value-before-atomic-commit",
+        "reject-duplicate-semantic-keys",
         "no-preference-grants-execution-authority",
         "reauthorize-at-domain-commit"
       ],
@@ -285,6 +289,7 @@
         "extension-interpreter-policy-permission",
         "compare-and-swap-resource-revision",
         "validate-complete-value-before-atomic-commit",
+        "reject-duplicate-semantic-keys",
         "no-preference-grants-execution-authority",
         "reauthorize-at-domain-commit"
       ],
@@ -321,6 +326,7 @@
         "per-feature-policy-permission",
         "compare-and-swap-resource-revision",
         "validate-complete-value-before-atomic-commit",
+        "reject-duplicate-semantic-keys",
         "no-preference-grants-execution-authority",
         "reauthorize-at-domain-commit"
       ],
@@ -357,6 +363,7 @@
         "device-admission-policy-permission",
         "compare-and-swap-resource-revision",
         "validate-complete-value-before-atomic-commit",
+        "reject-duplicate-semantic-keys",
         "no-preference-grants-execution-authority",
         "reauthorize-at-domain-commit"
       ],
@@ -429,6 +436,8 @@
         "compare-and-swap-resource-revision",
         "protected-helper-exact-transaction-approval",
         "same-service-identity-all-modes",
+        "verified-known-prior-effective-configuration-and-identity",
+        "unknown-baseline-refuses-mutation",
         "reauthorize-at-domain-commit"
       ],
       "source_sites": [
@@ -508,7 +517,8 @@
         "no-existence-disclosure-before-authorization",
         "local-setup-progress-permission",
         "compare-and-swap-resource-revision",
-        "progress-flags-confer-no-authority-or-readiness"
+        "progress-flags-confer-no-authority-or-readiness",
+        "reject-duplicate-semantic-keys"
       ],
       "source_sites": [
         "src/poolhouse/fleet/initial_setup_routes.py",
@@ -525,7 +535,8 @@
         "no-existence-disclosure-before-authorization",
         "local-setup-progress-permission",
         "compare-and-swap-resource-revision",
-        "progress-flags-confer-no-authority-or-readiness"
+        "progress-flags-confer-no-authority-or-readiness",
+        "reject-duplicate-semantic-keys"
       ],
       "source_sites": [
         "src/poolhouse/fleet/initial_setup_routes.py",
@@ -542,7 +553,8 @@
         "no-existence-disclosure-before-authorization",
         "local-setup-progress-permission",
         "compare-and-swap-resource-revision",
-        "progress-flags-confer-no-authority-or-readiness"
+        "progress-flags-confer-no-authority-or-readiness",
+        "reject-duplicate-semantic-keys"
       ],
       "source_sites": [
         "src/poolhouse/fleet/initial_setup_routes.py",

@@ -67,7 +67,7 @@ def test_public_record_refuses_unknown_missing_and_wrongly_encoded_fields(change
         public.NodeIdentity.from_wire(claim)
 
 
-@pytest.mark.parametrize("change", ["unknown", "duplicate", "dangling", "private", "authority", "union", "version", "member_collision", "variant_collision"])
+@pytest.mark.parametrize("change", ["unknown", "duplicate", "dangling", "private", "authority", "union", "version", "member_collision", "variant_collision", "codec_collision"])
 def test_source_refuses_ambiguous_and_authority_bearing_definitions(tmp_path, change):
     source = tmp_path / "node"
     shutil.copytree(ROOT / "contracts/node", source)
@@ -87,6 +87,8 @@ def test_source_refuses_ambiguous_and_authority_bearing_definitions(tmp_path, ch
         text = text.replace('tag = "kind"', 'tag = "value"')
     elif change == "member_collision":
         text = text.replace('name = "contract_version"', 'name = "to_wire"')
+    elif change == "codec_collision":
+        text = text.replace('name = "NodeIdentity"', 'name = "ValueError"')
     elif change == "variant_collision":
         text = text.replace('{tag = "none", type = "NoParent"}, {tag = "thread", type = "ParentThread"}',
                             '{tag = "a_b", type = "NoParent"}, {tag = "a__b", type = "ParentThread"}')
@@ -564,3 +566,48 @@ def test_every_contract_domain_has_pinned_operation_evidence():
             for field in ("request", "response", "authorization"):
                 if field in row:
                     assert row[field] == operation[field], (name, operation["name"], field)
+
+
+def test_domain_observations_preserve_fractional_margin_and_unknown_startup():
+    for margin in ({"kind": "surplus", "value": {"numerator": "17", "denominator": "2"}},
+                   {"kind": "shortfall", "value": {"numerator": "1", "denominator": "2"}}):
+        assert public.ModelByteMargin.from_wire(margin).to_wire() == margin
+    with pytest.raises(ValueError):
+        public.ModelByteMargin.from_wire({"kind": "shortfall", "value": {"numerator": "0", "denominator": "2"}})
+    with pytest.raises(ValueError):
+        public.ModelExactRatio.from_wire({"numerator": "1", "denominator": "0"})
+    unknown = {"kind": "unknown", "value": {"reason": "service state unavailable", "observed_at": "1", "last_known": None}}
+    assert public.StartupServiceObservation.from_wire(unknown).to_wire() == unknown
+
+
+def test_domain_sets_and_empty_approval_snapshot_have_closed_wire_shapes():
+    monday = {"kind": "mon", "value": {}}
+    assert public.SettingsWeekdays.from_wire([monday]).to_wire() == [monday]
+    for days in ([], [monday, monday]):
+        with pytest.raises(ValueError):
+            public.SettingsWeekdays.from_wire(days)
+    snapshot = {"snapshot_id": "ab" * 32, "revision": "1", "items": [], "complete": True,
+                "next_cursor": None, "cursor": "cd" * 32}
+    assert public.ApprovalWatchSnapshot.from_wire(snapshot).to_wire() == snapshot
+    snapshot["approved"] = True
+    with pytest.raises(ValueError):
+        public.ApprovalWatchSnapshot.from_wire(snapshot)
+
+
+def test_python_package_facade_preserves_identity_and_freezes_codec():
+    import importlib
+    from typing import get_type_hints
+
+    from poolhouse.api.node_operations import OPERATION_TYPES
+    codec = importlib.import_module("poolhouse.api.node_contract._codec")
+    group = importlib.import_module(public.ModelFitBinding.__module__)
+    assert public.ModelFitBinding is group.ModelFitBinding
+    assert public.ModelView is OPERATION_TYPES["models.get"][1]
+    assert get_type_hints(public.ModelFitBinding)["model"] is public.ModelRef
+    with pytest.raises(TypeError):
+        codec._TYPES["InjectedType"] = str
+    with pytest.raises(RuntimeError):
+        codec._register(public.DeviceId)
+    assert not (ROOT / "src/poolhouse/api/node_contract.py").exists()
+    for path in (ROOT / "src/poolhouse/api/node_contract").glob("*.py"):
+        assert len(path.read_text().splitlines()) <= 900, path.name

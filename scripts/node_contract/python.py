@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, fields
+from types import MappingProxyType
 from typing import Any, ClassVar, Self
 
 
@@ -57,7 +58,7 @@ class _Record:
     _fields: ClassVar[dict[str, str]]
 
     def __post_init__(self) -> None:
-        if any(type(getattr(self, name)) is not globals()[kind] for name, kind in self._fields.items()):
+        if any(type(getattr(self, name)) is not _TYPES[kind] for name, kind in self._fields.items()):
             raise ValueError("invalid " + type(self).__name__)
 
     @classmethod
@@ -85,7 +86,7 @@ class _Optional:
     _item: ClassVar[str]
 
     def __post_init__(self) -> None:
-        if self.value is not None and type(self.value) is not globals()[self._item]:
+        if self.value is not None and type(self.value) is not _TYPES[self._item]:
             raise ValueError("invalid optional value")
 
     @classmethod
@@ -106,7 +107,7 @@ class _List:
 
     def __post_init__(self) -> None:
         if (type(self.items) is not tuple or not self._minimum <= len(self.items) <= self._maximum
-                or any(type(item) is not globals()[self._item] for item in self.items)):
+                or any(type(item) is not _TYPES[self._item] for item in self.items)):
             raise ValueError("invalid list")
         if self._unique and any(item in self.items[:index] for index, item in enumerate(self.items)):
             raise ValueError("duplicate list item")
@@ -128,7 +129,7 @@ class _Union:
     _variants: ClassVar[dict[str, str]]
 
     def __post_init__(self) -> None:
-        if type(self.kind) is not str or self.kind not in self._variants or type(self.value) is not globals()[self._variants[self.kind]]:
+        if type(self.kind) is not str or self.kind not in self._variants or type(self.value) is not _TYPES[self._variants[self.kind]]:
             raise ValueError("invalid union variant")
 
     @classmethod
@@ -143,7 +144,7 @@ class _Union:
 
 
 def _decode(kind: str, value: object) -> Any:
-    cls = globals()[kind]
+    cls = _TYPES[kind]
     return cls(value) if issubclass(cls, (_Scalar, _Boolean)) else cls.from_wire(value)
 
 
@@ -152,42 +153,76 @@ def _encode(value: Any) -> object:
 '''
 
 
-def render(meta: dict, rows: list[dict], digest: str) -> str:
-    output = [HEADER, f'CONTRACT_VERSION = {meta["version"]}\nSCHEMA_SHA256 = "{digest}"\n']
-    for row in rows:
-        if row["visibility"] != "public":
-            continue
-        name = row["name"]
-        if row["kind"] == "list":
-            constraints = (f'    _minimum = {row["min_items"]}\n' if "min_items" in row else "")
-            constraints += f'    _unique = {row["unique"]}\n' if "unique" in row else ""
-            output.append(f'class {name}(_List):\n    _item = "{row["item"]}"\n    _maximum = {row["max_items"]}\n{constraints}')
-        elif row["kind"] == "optional":
-            output.append(f'class {name}(_Optional):\n    _item = "{row["item"]}"\n')
-        elif row["kind"] == "scalar" and row["encoding"] == "bool":
-            output.append(f'class {name}(_Boolean):\n    pass\n')
-        elif row["kind"] == "scalar":
-            if row["encoding"] in {"sid-hex", "audit-token-le32"}:
-                raise ValueError("SID observations remain private")
-            bounds = f'    _bounds = ({row["min_bytes"]}, {row["max_bytes"]})\n' if row["encoding"] in {"text", "bytes"} else ""
-            if "minimum" in row:
-                bounds += f'    _numeric_bounds = ({row["minimum"]}, {row["maximum"]})\n'
-            if row.get("unit") == "unix-microseconds":
-                bounds += '''
-    @classmethod
-    def from_parts(cls, seconds: int, microseconds: int) -> Self:
-        if type(seconds) is not int or type(microseconds) is not int or seconds < 0 or not 0 <= microseconds < 1_000_000:
-            raise ValueError("invalid timestamp components")
-        return cls(str(seconds * 1_000_000 + microseconds))
-'''
-            output.append(f'class {name}(_Scalar):\n    _encoding = "{row["encoding"]}"\n{bounds}')
-        elif row["kind"] == "record":
-            fields = "\n".join(f'    {field["name"]}: {field["type"]}' for field in row["fields"])
-            mapping = pprint.pformat({field["name"]: field["type"] for field in row["fields"]}, width=100, sort_dicts=False)
-            output.append(f'@dataclass(frozen=True)\nclass {name}(_Record):\n{fields}\n    _fields: ClassVar[dict[str, str]] = {mapping}\n')
+REGISTRY = """
+_TYPES: dict[str, type] | MappingProxyType = {}
+
+
+def _register(cls: type) -> None:
+    if not isinstance(_TYPES, dict) or cls.__name__ in _TYPES:
+        raise RuntimeError("duplicate or finalized contract type")
+    _TYPES[cls.__name__] = cls
+
+
+def _finalize(expected: tuple[str, ...], namespaces: tuple[dict, ...]) -> None:
+    global _TYPES
+    if not isinstance(_TYPES, dict) or set(_TYPES) != set(expected):
+        raise RuntimeError("incomplete public contract registry")
+    for cls in _TYPES.values():
+        if issubclass(cls, _Record):
+            references = cls._fields.values()
+        elif issubclass(cls, _Union):
+            references = cls._variants.values()
+        elif issubclass(cls, (_Optional, _List)):
+            references = (cls._item,)
+        elif issubclass(cls, (_Scalar, _Boolean)):
+            references = ()
         else:
-            if row["tag"] != "kind":
-                raise ValueError("public unions require the canonical kind discriminator")
-            mapping = pprint.pformat({variant["tag"]: variant["type"] for variant in row["variants"]}, width=100, sort_dicts=False)
-            output.append(f'class {name}(_Union):\n    _variants: ClassVar[dict[str, str]] = {mapping}\n')
+            raise RuntimeError("unsupported public contract class")
+        if any(name not in _TYPES for name in references):
+            raise RuntimeError("private or missing public contract reference")
+    _TYPES = MappingProxyType(dict(_TYPES))
+    for namespace in namespaces:
+        namespace.update(_TYPES)
+"""
+
+
+def render(meta: dict, rows: list[dict], digest: str) -> str:
+    """Self-contained output for isolated codec fixtures; production uses render_package."""
+    public = [row for row in rows if row["visibility"] == "public"]
+    output = [HEADER, REGISTRY, f'CONTRACT_VERSION = {meta["version"]}\nSCHEMA_SHA256 = "{digest}"\n']
+    output.extend(render_type(row) for row in public)
+    output.append(f'_finalize({tuple(row["name"] for row in public)!r}, (globals(),))\n')
     return "\n\n".join(output) + "\n"
+
+
+def render_type(row: dict) -> str:
+    output = []
+    name = row['name']
+    if row['kind'] == 'list':
+        constraints = f"    _minimum = {row['min_items']}\n" if 'min_items' in row else ''
+        constraints += f"    _unique = {row['unique']}\n" if 'unique' in row else ''
+        output.append(f'''class {name}(_List):\n    _item = "{row['item']}"\n    _maximum = {row['max_items']}\n{constraints}''')
+    elif row['kind'] == 'optional':
+        output.append(f'''class {name}(_Optional):\n    _item = "{row['item']}"\n''')
+    elif row['kind'] == 'scalar' and row['encoding'] == 'bool':
+        output.append(f'class {name}(_Boolean):\n    pass\n')
+    elif row['kind'] == 'scalar':
+        if row['encoding'] in {'sid-hex', 'audit-token-le32'}:
+            raise ValueError('SID observations remain private')
+        bounds = f"    _bounds = ({row['min_bytes']}, {row['max_bytes']})\n" if row['encoding'] in {'text', 'bytes'} else ''
+        if 'minimum' in row:
+            bounds += f"    _numeric_bounds = ({row['minimum']}, {row['maximum']})\n"
+        if row.get('unit') == 'unix-microseconds':
+            bounds += '\n    @classmethod\n    def from_parts(cls, seconds: int, microseconds: int) -> Self:\n        if type(seconds) is not int or type(microseconds) is not int or seconds < 0 or not 0 <= microseconds < 1_000_000:\n            raise ValueError("invalid timestamp components")\n        return cls(str(seconds * 1_000_000 + microseconds))\n'
+        output.append(f'''class {name}(_Scalar):\n    _encoding = "{row['encoding']}"\n{bounds}''')
+    elif row['kind'] == 'record':
+        fields = '\n'.join(f"    {field['name']}: {field['type']}" for field in row['fields'])
+        mapping = pprint.pformat({field['name']: field['type'] for field in row['fields']}, width=100, sort_dicts=False)
+        output.append(f'@dataclass(frozen=True)\nclass {name}(_Record):\n{fields}\n    _fields: ClassVar[dict[str, str]] = {mapping}\n')
+    else:
+        if row['tag'] != 'kind':
+            raise ValueError('public unions require the canonical kind discriminator')
+        mapping = pprint.pformat({variant['tag']: variant['type'] for variant in row['variants']}, width=100, sort_dicts=False)
+        output.append(f'class {name}(_Union):\n    _variants: ClassVar[dict[str, str]] = {mapping}\n')
+    output.append(f'_register({name})\n')
+    return '\n\n'.join(output)

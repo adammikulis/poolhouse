@@ -229,3 +229,30 @@ fn timestamp_component_vectors_check_carry_and_overflow() {
     }
     for row in vectors["unix_microseconds"]["refused"].as_array().unwrap() { assert!(convert(row).is_none()); }
 }
+
+#[test]
+fn domain_numeric_observations_preserve_fractional_sign_and_unknown_state() {
+    for margin in [json!({"kind": "surplus", "value": {"numerator": "17", "denominator": "2"}}),
+                   json!({"kind": "shortfall", "value": {"numerator": "1", "denominator": "2"}})] {
+        let decoded: ModelByteMargin = serde_json::from_value(margin.clone()).unwrap();
+        assert_eq!(serde_json::to_value(decoded).unwrap(), margin);
+    }
+    assert!(serde_json::from_value::<ModelByteMargin>(json!({"kind": "shortfall", "value": {"numerator": "0", "denominator": "2"}})).is_err());
+    assert!(serde_json::from_value::<ModelExactRatio>(json!({"numerator": "1", "denominator": "0"})).is_err());
+    let unknown = json!({"kind": "unknown", "value": {"reason": "service state unavailable", "observed_at": "1", "last_known": null}});
+    let decoded: StartupServiceObservation = serde_json::from_value(unknown.clone()).unwrap();
+    assert_eq!(serde_json::to_value(decoded).unwrap(), unknown);
+}
+
+#[test]
+fn domain_sets_reject_duplicates_and_approval_queue_can_be_empty() {
+    let monday = json!({"kind": "mon", "value": {}});
+    assert!(serde_json::from_value::<SettingsWeekdays>(json!([monday.clone()])).is_ok());
+    assert!(serde_json::from_value::<SettingsWeekdays>(json!([])).is_err());
+    assert!(serde_json::from_value::<SettingsWeekdays>(json!([monday.clone(), monday])).is_err());
+    let mut snapshot = json!({"snapshot_id": "ab".repeat(32), "revision": "1", "items": [], "complete": true,
+                              "next_cursor": null, "cursor": "cd".repeat(32)});
+    assert!(serde_json::from_value::<ApprovalWatchSnapshot>(snapshot.clone()).is_ok());
+    snapshot["approved"] = json!(true);
+    assert!(serde_json::from_value::<ApprovalWatchSnapshot>(snapshot).is_err());
+}

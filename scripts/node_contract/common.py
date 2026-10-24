@@ -9,7 +9,7 @@ IDENTIFIER = re.compile(r"[A-Z][A-Za-z0-9]*\Z")
 FIELD = re.compile(r"[a-z][a-z0-9_]*\Z")
 RESERVED = {"self", "type", "match", "enum", "struct", "impl", "crate", "super", "pub", "ref", "mod", "move"}
 GENERATED_MEMBERS = {"to_wire", "from_wire"}
-GENERATED_TYPES = {"Self", "String", "Option", "Result", "Vec", "ClassVar", "From", "TryFrom", "Clone", "PartialEq", "Eq", "Hash", "Debug"}
+GENERATED_TYPES = {"Self", "String", "Option", "Result", "Vec", "ClassVar", "From", "TryFrom", "Clone", "PartialEq", "Eq", "Hash", "Debug", "Any", "MappingProxyType", "ValueError", "RuntimeError", "TypeError"}
 
 
 def variant_name(tag: str) -> str:
