@@ -12,9 +12,6 @@ import tomllib
 from pathlib import Path
 from types import MappingProxyType
 
-from poolhouse.api.node_contract._codec import _valid
-from poolhouse.json_objects import unique_object
-
 from .common import keys
 
 PROFILES = MappingProxyType({
@@ -87,6 +84,8 @@ def _frame(value: object) -> bytes:
 
 
 def _scalar(row: dict, value: object) -> bool:
+    from poolhouse.api.node_contract._codec import _valid
+
     encoding = row["encoding"]
     if encoding == "bool":
         return type(value) is bool
@@ -153,6 +152,8 @@ class ReferenceTranscripts:
         self._definitions = {row["name"]: row for row in rows}
 
     def _parsed(self, purpose: str, raw: bytes) -> tuple[dict, dict]:
+        from poolhouse.json_objects import unique_object
+
         if type(purpose) is not str or purpose not in self._profiles or type(raw) is not bytes:
             raise ValueError("unsupported transcript purpose or input")
         profile = self._profiles[purpose]

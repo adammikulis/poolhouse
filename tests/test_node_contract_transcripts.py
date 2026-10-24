@@ -268,3 +268,15 @@ def test_all_reachable_union_and_optional_shapes_are_closed(codec):
         expected = {(row["name"], variant["tag"]) for row in closure(rows, name)
                     for variant in row.get("variants", [])}
         assert expected <= covered
+
+
+def test_manifest_loader_runs_without_installed_application_or_pythonpath():
+    import subprocess
+    source = ("import sys; from pathlib import Path; "
+              f"sys.path.insert(0, {str(ROOT / 'scripts')!r}); "
+              "from node_contract.load import load as schema; "
+              "from node_contract.transcripts import load; "
+              f"root=Path({str(SOURCE)!r}); "
+              "assert load(root, schema(root)[1])['status']=='reference-only'")
+    done = subprocess.run([sys.executable, "-I", "-S", "-c", source], capture_output=True, text=True, check=False)
+    assert done.returncode == 0, done.stderr
