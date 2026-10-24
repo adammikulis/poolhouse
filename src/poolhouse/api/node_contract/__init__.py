@@ -130,7 +130,7 @@ from . import (
 from ._codec import _finalize
 
 CONTRACT_VERSION = 1
-SCHEMA_SHA256 = "3c5a052a35e9988af47163a4c305371fb67fcdf1e9c3e8ca1f22d197bdbf469e"
+SCHEMA_SHA256 = "09ff9ef218d0765ffa4c6e2479a2344c93132ac60e2b388522a3b3f1f9ff5b56"
 _EXPORTS = ('CONTRACT_VERSION', 'SCHEMA_SHA256', 'U32', 'U64', 'AgentControlError', 'AgentControlRequest',
  'AgentControlSnapshot', 'AgentDisplayName', 'AgentGetRequest', 'AgentId', 'AgentPauseResult',
  'AgentState', 'AgentStopResult', 'AgentTaskExecution', 'AgentTaskStartRequest',
