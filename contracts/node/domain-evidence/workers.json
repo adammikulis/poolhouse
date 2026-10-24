@@ -4,6 +4,7 @@
   "domain": "workers",
   "scope": "private-decision-data-declarations-only",
   "source_commit": "ec19317c2950ebf884a3e70954bc4200ad8c0c19",
+  "operation_mapping": [],
   "sources": [
     {
       "path": "src/poolhouse/serve/decision_process.py",

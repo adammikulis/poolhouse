@@ -25,8 +25,6 @@ fn nominal_identity_types_are_distinct_and_validate_encoding() {
     assert_ne!(std::any::TypeId::of::<DeviceId>(), std::any::TypeId::of::<CertificateDigest>());
     assert_ne!(std::any::TypeId::of::<DeviceId>(), std::any::TypeId::of::<PoolId>());
     assert!(DeviceId::try_from("AB".repeat(32)).is_err());
-    assert!(WindowsSid::try_from("010100000000000100000000".to_owned()).is_ok());
-    assert!(WindowsSid::try_from("011000000000000100000000".to_owned()).is_err());
 }
 
 #[test]
@@ -39,23 +37,6 @@ fn public_identity_rejects_unknown_and_missing_fields() {
     claim.as_object_mut().unwrap().remove("approved");
     claim.as_object_mut().unwrap().remove("installation_id");
     assert!(serde_json::from_value::<NodeIdentity>(claim).is_err());
-}
-
-#[test]
-fn private_union_rejects_unknown_platform_and_extra_fields() {
-    let parent: NativeParent = serde_json::from_value(json!({"kind": "none", "value": {}})).unwrap();
-    assert!(matches!(parent, NativeParent::None(_)));
-    assert!(serde_json::from_value::<NativeParent>(json!({"kind": "none", "value": {"thread_id": "forged"}})).is_err());
-    assert!(serde_json::from_value::<ProcessObservation>(json!({"platform": "forged", "value": {}})).is_err());
-}
-
-#[test]
-fn private_lease_diagnostics_do_not_expose_values() {
-    let secret = "ab".repeat(32);
-    let lease = SessionLease::try_from(secret.clone()).unwrap();
-    let display = format!("{lease:?}");
-    assert!(display.contains("redacted"));
-    assert!(!display.contains(&secret));
 }
 
 #[test]
@@ -202,18 +183,6 @@ fn general_agent_control_requires_an_expected_control_revision() {
     assert!(serde_json::from_value::<AgentControlRequest>(request.clone()).is_err());
     request["expected_control_revision"] = json!("3");
     assert!(serde_json::from_value::<AgentControlRequest>(request).is_ok());
-}
-
-#[test]
-fn audit_token_words_roundtrip_little_endian_without_sign_loss() {
-    let vectors: Value = serde_json::from_str(include_str!("../../../contracts/node/vectors.json")).unwrap();
-    let vector = &vectors["audit_token"];
-    let words: [u32; 8] = std::array::from_fn(|i| u32::try_from(vector["words"][i].as_u64().unwrap()).unwrap());
-    let token = AuditToken::from_words(words);
-    assert_eq!(token.as_str(), vector["encoded"].as_str().unwrap());
-    assert_eq!(token.words(), words);
-    assert_eq!(AuditToken::try_from(token.as_str().to_owned()).unwrap().words(), words);
-    assert!(words[7] > i32::MAX as u32);
 }
 
 #[test]

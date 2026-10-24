@@ -477,3 +477,23 @@ Raw native source views contain no node session keys. These crate-private
 interfaces expose no constructors, deserializers or production proof issuers.
 Actual platform custody, admission, durable occurrence fencing and source-backed
 variable-size profiles remain implementation and acceptance requirements.
+
+The initial worker fragment defines 47 private data types for decision load and
+decision execution, with separate node-command and worker-event variants. Fixed
+asset references and exact loaded-generation bindings preserve source ordering,
+numeric and text semantics. Decoded startup, result, cancellation and end messages
+remain observations. Directional transition enforcement, native pipe custody,
+complete workload profiles and the broader worker catalogue remain unfinished.
+Rust now honors canonical private visibility for all data shapes and helpers;
+external clients retain the public contract but cannot name private worker,
+state, lease or native observation types. Private codec vectors run inside the
+node crate rather than relying on an accidental public export.
+
+The dormant occurrence reducer implements original-source keys independent of
+node boot/admission, exact immutable event comparisons, closed progression and
+custody transitions, retirement refusal and unknown-commit poisoning. An exact
+storage acknowledgement is required before a transition receipt; a duplicate
+returns disposition data without another receipt. This component supplies no
+production storage implementation, recovery constructor, rollback witness or
+registry bridge. It cannot authenticate source data or issue execution rights;
+current native and transitive ancestry validation remain bridge prerequisites.

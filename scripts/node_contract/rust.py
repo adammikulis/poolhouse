@@ -38,12 +38,13 @@ def render(meta: dict, rows: list[dict], digest: str) -> str:
         output.append("fn required_optional<'de, D: serde::Deserializer<'de>, T: serde::Deserialize<'de>>(d: D) -> Result<T, D::Error> { T::deserialize(d) }\n")
     for row in rows:
         name = row["name"]
+        visibility = "pub" if row["visibility"] == "public" else "pub(crate)"
         if row["kind"] == "list":
             output.append(render_list(row))
         elif row["kind"] == "optional":
-            output.append(f'#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n#[serde(transparent)]\npub struct {name}(pub Option<{row["item"]}>);\n')
+            output.append(f'#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n#[serde(transparent)]\n{visibility} struct {name}({visibility} Option<{row["item"]}>);\n')
         elif row["kind"] == "scalar" and row["encoding"] == "bool":
-            output.append(f'#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n#[serde(transparent)]\npub struct {name}(pub bool);\n')
+            output.append(f'#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n#[serde(transparent)]\n{visibility} struct {name}({visibility} bool);\n')
         elif row["kind"] == "scalar":
             debug = "" if row.get("secret") else ", Debug"
             validation = f'valid("{row["encoding"]}", &value)'
@@ -57,8 +58,8 @@ def render(meta: dict, rows: list[dict], digest: str) -> str:
                 validation += f' && value.parse::<{row["encoding"]}>().is_ok_and(|n| ({row["minimum"]}..={row["maximum"]}).contains(&n))'
             output.append(f'''#[derive(Clone, PartialEq, Eq, Hash{debug}, serde::Serialize, serde::Deserialize)]
 #[serde(try_from = "String", into = "String")]
-pub struct {name}(String);
-impl {name} {{ pub fn as_str(&self) -> &str {{ &self.0 }} }}
+{visibility} struct {name}(String);
+impl {name} {{ {visibility} fn as_str(&self) -> &str {{ &self.0 }} }}
 impl TryFrom<String> for {name} {{
     type Error = &'static str;
     fn try_from(value: String) -> Result<Self, Self::Error> {{
@@ -75,11 +76,11 @@ impl From<{name}> for String {{ fn from(value: {name}) -> Self {{ value.0 }} }}
                 output.append(f'impl From<{primitive}> for {name} {{ fn from(value: {primitive}) -> Self {{ Self(value.to_string()) }} }}\n')
         elif row["kind"] == "record":
             fields = "\n".join(('    #[serde(deserialize_with = "required_optional")]\n' if field["type"] in optional else "")
-                               + f'    pub {field["name"]}: {field["type"]},' for field in row["fields"])
-            output.append(f'#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n#[serde(deny_unknown_fields)]\npub struct {name} {{\n{fields}\n}}\n')
+                               + f'    {visibility} {field["name"]}: {field["type"]},' for field in row["fields"])
+            output.append(f'#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n#[serde(deny_unknown_fields)]\n{visibility} struct {name} {{\n{fields}\n}}\n')
         else:
             variants = "\n".join(f'    #[serde(rename = "{variant["tag"]}")]\n    {variant_name(variant["tag"])}({variant["type"]}),' for variant in row["variants"])
-            output.append(f'#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n#[serde(tag = "{row["tag"]}", content = "value", deny_unknown_fields)]\npub enum {name} {{\n{variants}\n}}\n')
+            output.append(f'#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n#[serde(tag = "{row["tag"]}", content = "value", deny_unknown_fields)]\n{visibility} enum {name} {{\n{variants}\n}}\n')
     output.append('''pub fn device_id_for_public_key(key: &Ed25519PublicKey) -> DeviceId {
     use sha2::{Digest, Sha256};
     let mut hash = Sha256::new();
@@ -95,6 +96,7 @@ impl From<{name}> for String {{ fn from(value: {name}) -> Self {{ value.0 }} }}
 
 def render_list(row: dict) -> str:
     name, item, maximum = row["name"], row["item"], row["max_items"]
+    visibility = "pub" if row["visibility"] == "public" else "pub(crate)"
     check = f'value.len() <= {maximum}'
     if row.get("min_items", 0):
         check += f' && value.len() >= {row["min_items"]}'
@@ -102,8 +104,8 @@ def render_list(row: dict) -> str:
         check += ' && value.iter().enumerate().all(|(index, item)| !value[..index].contains(item))'
     return f'''#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(try_from = "Vec<{item}>", into = "Vec<{item}>")]
-pub struct {name}(Vec<{item}>);
-impl {name} {{ pub fn as_slice(&self) -> &[{item}] {{ &self.0 }} }}
+{visibility} struct {name}(Vec<{item}>);
+impl {name} {{ {visibility} fn as_slice(&self) -> &[{item}] {{ &self.0 }} }}
 impl TryFrom<Vec<{item}>> for {name} {{
     type Error = &'static str;
     fn try_from(value: Vec<{item}>) -> Result<Self, Self::Error> {{
@@ -116,14 +118,15 @@ impl From<{name}> for Vec<{item}> {{ fn from(value: {name}) -> Self {{ value.0 }
 
 def scalar_helpers(row: dict) -> str:
     name = row["name"]
+    visibility = "pub" if row["visibility"] == "public" else "pub(crate)"
     if row["encoding"] == "finite-f64-bits":
         return f'''impl {name} {{
     /// Exact finite binary64 representation, not domain validation or numeric ordering.
-    pub fn try_from_f64(value: f64) -> Result<Self, &'static str> {{
+    {visibility} fn try_from_f64(value: f64) -> Result<Self, &'static str> {{
         if !value.is_finite() {{ return Err("nonfinite binary64"); }}
         Ok(Self(format!("{{:016x}}", value.to_bits())))
     }}
-    pub fn to_f64(&self) -> f64 {{
+    {visibility} fn to_f64(&self) -> f64 {{
         f64::from_bits(u64::from_str_radix(&self.0, 16).expect("validated finite bits"))
     }}
 }}
@@ -131,7 +134,7 @@ def scalar_helpers(row: dict) -> str:
     if row.get("unit") == "unix-microseconds":
         return f'''impl {name} {{
     /// Checked representation conversion only; this establishes no native provenance.
-    pub fn try_from_parts(seconds: u64, microseconds: u64) -> Result<Self, &'static str> {{
+    {visibility} fn try_from_parts(seconds: u64, microseconds: u64) -> Result<Self, &'static str> {{
         if microseconds >= 1_000_000 {{ return Err("invalid microsecond component"); }}
         let value = seconds.checked_mul(1_000_000).and_then(|n| n.checked_add(microseconds)).ok_or("timestamp overflow")?;
         Ok(Self(value.to_string()))
@@ -141,13 +144,13 @@ def scalar_helpers(row: dict) -> str:
     if row["encoding"] == "audit-token-le32":
         return f'''impl {name} {{
     /// Untrusted data conversion, not authenticated sender evidence.
-    pub fn from_words(words: [u32; 8]) -> Self {{
+    {visibility} fn from_words(words: [u32; 8]) -> Self {{
         use std::fmt::Write;
         let mut value = String::with_capacity(64);
         for word in words {{ for byte in word.to_le_bytes() {{ write!(&mut value, "{{byte:02x}}").expect("write to string"); }} }}
         Self(value)
     }}
-    pub fn words(&self) -> [u32; 8] {{
+    {visibility} fn words(&self) -> [u32; 8] {{
         std::array::from_fn(|word| u32::from_le_bytes(std::array::from_fn(|byte| {{
             let offset = word * 8 + byte * 2;
             u8::from_str_radix(&self.0[offset..offset + 2], 16).expect("validated audit-token bytes")

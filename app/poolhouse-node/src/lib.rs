@@ -10,6 +10,8 @@ pub mod build;
 pub mod cert;
 pub mod claims;
 pub mod contract;
+#[cfg(test)]
+mod contract_private_tests;
 pub mod contract_lifecycle;
 pub mod contract_operations;
 pub mod client;
