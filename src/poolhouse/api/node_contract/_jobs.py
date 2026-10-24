@@ -32,6 +32,10 @@ if TYPE_CHECKING:
         ProjectId,
         RequestId,
         ResourceGeneration,
+        RuntimeSelectionBoundaryObservation,
+        RuntimeSelectionEffect,
+        RuntimeSelectionOptionalPlan,
+        RuntimeSelectionOptionalResult,
         SafeMessage,
         TrainingClassifyTextParameters,
         TrainingDatasetSnapshotRef,
@@ -488,7 +492,9 @@ _register(JobListResponse)
 
 
 class JobPreparationIntent(_Union):
-    _variants: ClassVar[dict[str, str]] = {'agent_runtime_repair': 'Empty', 'train_classify_text': 'JobTrainClassifyTextIntent'}
+    _variants: ClassVar[dict[str, str]] = {'agent_runtime_repair': 'Empty',
+ 'train_classify_text': 'JobTrainClassifyTextIntent',
+ 'runtime_previous_verified': 'Empty'}
 
 
 _register(JobPreparationIntent)
@@ -510,6 +516,23 @@ _register(JobPrepareRequest)
 
 
 @dataclass(frozen=True)
+class JobRuntimeSelectionDetails(_Record):
+    plan: RuntimeSelectionOptionalPlan
+    boundary: RuntimeSelectionBoundaryObservation
+    effect: RuntimeSelectionEffect
+    authority: JobPreparationAuthority
+    result: RuntimeSelectionOptionalResult
+    _fields: ClassVar[dict[str, str]] = {'plan': 'RuntimeSelectionOptionalPlan',
+ 'boundary': 'RuntimeSelectionBoundaryObservation',
+ 'effect': 'RuntimeSelectionEffect',
+ 'authority': 'JobPreparationAuthority',
+ 'result': 'RuntimeSelectionOptionalResult'}
+
+
+_register(JobRuntimeSelectionDetails)
+
+
+@dataclass(frozen=True)
 class JobTrainingPreparationDetails(_Record):
     plan: TrainingOptionalPlan
     effect: TrainingEffect
@@ -528,7 +551,8 @@ _register(JobTrainingPreparationDetails)
 
 class JobPreparationDetails(_Union):
     _variants: ClassVar[dict[str, str]] = {'agent_runtime_repair': 'JobRepairPreparationDetails',
- 'train_classify_text': 'JobTrainingPreparationDetails'}
+ 'train_classify_text': 'JobTrainingPreparationDetails',
+ 'runtime_previous_verified': 'JobRuntimeSelectionDetails'}
 
 
 _register(JobPreparationDetails)
