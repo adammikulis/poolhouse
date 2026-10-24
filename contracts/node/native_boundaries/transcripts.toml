@@ -1,8 +1,25 @@
-# Reference DATA only. No production signature input or native acceptance.
+# Mathematical data and signature inputs only; no issuer or native acceptance.
 version = 1
 status = "reference-only"
 encoding = "tagged-wire-tree-be32-v1"
-signature_input = "unresolved"
+signature_input = "reference-raw-transcript-v1"
+signature_issuer = "unresolved"
+
+# T is the validated full domain-separated transcript; H is SHA256(T).
+# Ed25519 is pure Ed25519(T), never Ed25519ph or Ed25519(H).
+# P256 message APIs consume T; digest APIs consume H exactly once, never H
+# through a message API. Only strict DER with low S is supported here.
+[[signature_algorithm]]
+name = "ed25519"
+message_api = "transcript-bytes"
+digest_api = "unsupported"
+format = "raw-64"
+
+[[signature_algorithm]]
+name = "p256_sha256_low_s_der"
+message_api = "transcript-bytes"
+digest_api = "sha256-transcript-bytes"
+format = "strict-der-low-s"
 
 # Wire values: N null; F/T boolean; S BE32 UTF8-byte-length + exact UTF8;
 # A BE32 item-count + ordered values; O BE32 field-count + ASCII-sorted

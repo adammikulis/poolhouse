@@ -47,3 +47,8 @@ def test_rust_consumer_can_use_public_contract_but_not_private_data(native_targe
     diagnostics = [json.loads(line) for line in errors.splitlines()]
     refused = [row["message"] for row in diagnostics if (row.get("code") or {}).get("code") == "E0603"]
     assert code != 0 and all(any(f"`{name}`" in message for message in refused) for name in private), errors
+
+
+def test_reference_transcript_signature_math_has_no_issuer(native_targets_built):  # noqa: F811
+    output = native_targets_built.start_built("lib", ["contract_transcripts::tests::"])
+    assert "4 passed; 0 failed" in output, output

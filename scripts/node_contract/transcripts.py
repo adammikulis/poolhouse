@@ -1,7 +1,8 @@
 """Reference-only transcript profile. No signing, authority or runtime acceptance.
 
 The domains below identify new DATA profiles, never native-authority operation v1.
-Production signature input, issuer and consumer byte agreement remain unresolved.
+Mathematical signature inputs are explicit; admitted descriptors, production issuer
+and native helper acceptance remain unresolved.
 """
 from __future__ import annotations
 
@@ -9,6 +10,7 @@ import hashlib
 import hmac
 import json
 import tomllib
+from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 
@@ -41,11 +43,16 @@ def schema_digest(rows: list[dict], root: str) -> str:
 def load(root: Path, rows: list[dict]) -> dict:
     """Load fixed reference profiles and refuse any unreviewed reachable schema drift."""
     value = tomllib.loads((root / "native_boundaries/transcripts.toml").read_text())
-    keys(value, {"version", "status", "encoding", "signature_input", "profile"},
-         {"version", "status", "encoding", "signature_input", "profile"})
+    fields = {"version", "status", "encoding", "signature_input", "signature_issuer", "signature_algorithm", "profile"}
+    keys(value, fields, fields)
     if (type(value["version"]) is not int or value["version"] != 1
             or value["status"] != "reference-only" or value["encoding"] != "tagged-wire-tree-be32-v1"
-            or value["signature_input"] != "unresolved" or type(value["profile"]) is not list
+            or value["signature_input"] != "reference-raw-transcript-v1" or value["signature_issuer"] != "unresolved"
+            or value["signature_algorithm"] != [
+                {"name": "ed25519", "message_api": "transcript-bytes", "digest_api": "unsupported", "format": "raw-64"},
+                {"name": "p256_sha256_low_s_der", "message_api": "transcript-bytes",
+                 "digest_api": "sha256-transcript-bytes", "format": "strict-der-low-s"}]
+            or type(value["profile"]) is not list
             or len(value["profile"]) != len(PROFILES)):
         raise ValueError("unsupported transcript profile")
     seen = set()
@@ -141,6 +148,15 @@ def _no_number(value: str) -> None:
     raise ValueError("transcript numbers must use their canonical wire representation")
 
 
+@dataclass(frozen=True)
+class ReferenceSignatureInput:
+    """Untrusted mathematical input, never signer admission or person approval."""
+
+    algorithm: str
+    mode: str
+    value: bytes
+
+
 class ReferenceTranscripts:
     """A tooling reference over fixed purposes; values and matching digests grant nothing."""
 
@@ -193,3 +209,18 @@ class ReferenceTranscripts:
         """Refuse a wrong root or nested digest; never repair the serialized input."""
         _, value = self._parsed(purpose, raw)
         self._check(purpose, value)
+
+
+    def signature_input(self, purpose: str, raw: bytes, algorithm: str, mode: str = "message") -> ReferenceSignatureInput:
+        """Map only a digest-checked operation to an exact algorithm/API input.
+
+        Future issuers must independently admit the descriptor/key, algorithm,
+        purpose/profile and native presentation. Matching bytes grant nothing.
+        """
+        if (type(algorithm) is not str or type(mode) is not str
+                or algorithm not in {"ed25519", "p256_sha256_low_s_der"} or mode not in {"message", "digest"}
+                or (algorithm == "ed25519" and mode != "message")):
+            raise ValueError("unsupported signature input profile")
+        self.verify_digest(purpose, raw)
+        message = self.transcript_bytes(purpose, raw)
+        return ReferenceSignatureInput(algorithm, mode, message if mode == "message" else hashlib.sha256(message).digest())

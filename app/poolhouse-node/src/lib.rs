@@ -10,6 +10,8 @@ pub mod build;
 pub mod cert;
 pub mod claims;
 pub mod contract;
+#[allow(dead_code)] // Reference mathematics only; no admitted descriptor or production issuer.
+mod contract_transcripts;
 #[cfg(test)]
 mod contract_private_tests;
 pub mod contract_lifecycle;
