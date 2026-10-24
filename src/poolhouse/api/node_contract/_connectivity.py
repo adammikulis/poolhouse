@@ -21,10 +21,10 @@ if TYPE_CHECKING:
         BoardId,
     )
     from ._connectivity_discovery import (
-        ConnectivityEndpointObservations,
+        ConnectivityEndpointSnapshot,
     )
     from ._connectivity_membership import (
-        ConnectivityMembershipRefs,
+        ConnectivityMembershipSnapshot,
         ConnectivityOptionalPoolRef,
     )
     from ._core import (
@@ -245,8 +245,8 @@ class ConnectivityLocalView(_Record):
     listener: ConnectivityReadiness
     discovery_send: ConnectivityReadiness
     discovery_receive: ConnectivityReadiness
-    advertised_endpoints: ConnectivityEndpointObservations
-    memberships: ConnectivityMembershipRefs
+    advertised_endpoints: ConnectivityEndpointSnapshot
+    memberships: ConnectivityMembershipSnapshot
     beacons_sent: OptionalU64
     beacons_heard: OptionalU64
     beacons_rejected: OptionalU64
@@ -258,8 +258,8 @@ class ConnectivityLocalView(_Record):
  'listener': 'ConnectivityReadiness',
  'discovery_send': 'ConnectivityReadiness',
  'discovery_receive': 'ConnectivityReadiness',
- 'advertised_endpoints': 'ConnectivityEndpointObservations',
- 'memberships': 'ConnectivityMembershipRefs',
+ 'advertised_endpoints': 'ConnectivityEndpointSnapshot',
+ 'memberships': 'ConnectivityMembershipSnapshot',
  'beacons_sent': 'OptionalU64',
  'beacons_heard': 'OptionalU64',
  'beacons_rejected': 'OptionalU64',

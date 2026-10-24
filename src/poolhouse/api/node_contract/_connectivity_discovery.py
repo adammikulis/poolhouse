@@ -151,6 +151,16 @@ class ConnectivityAddressHint(_Union):
 _register(ConnectivityAddressHint)
 
 
+@dataclass(frozen=True)
+class ConnectivityCandidateEndpointsRequest(_Record):
+    candidate: ConnectivityCandidateInspectRequest
+    after: ConnectivityOptionalCursor
+    _fields: ClassVar[dict[str, str]] = {'candidate': 'ConnectivityCandidateInspectRequest', 'after': 'ConnectivityOptionalCursor'}
+
+
+_register(ConnectivityCandidateEndpointsRequest)
+
+
 class ConnectivityOptionalInterface(_Optional):
     _item = "ConnectivityInterfaceRef"
 
@@ -213,6 +223,25 @@ _register(ConnectivityEndpointObservations)
 
 
 @dataclass(frozen=True)
+class ConnectivityEndpointSnapshot(_Record):
+    snapshot_id: ConnectivitySnapshotId
+    revision: U64
+    items: ConnectivityEndpointObservations
+    complete: Boolean
+    next_cursor: ConnectivityOptionalCursor
+    cursor: ConnectivityCursor
+    _fields: ClassVar[dict[str, str]] = {'snapshot_id': 'ConnectivitySnapshotId',
+ 'revision': 'U64',
+ 'items': 'ConnectivityEndpointObservations',
+ 'complete': 'Boolean',
+ 'next_cursor': 'ConnectivityOptionalCursor',
+ 'cursor': 'ConnectivityCursor'}
+
+
+_register(ConnectivityEndpointSnapshot)
+
+
+@dataclass(frozen=True)
 class ConnectivityCandidate(_Record):
     candidate_id: ConnectivityCandidateId
     generation: ResourceGeneration
@@ -224,7 +253,7 @@ class ConnectivityCandidate(_Record):
     certificate_digest: ConnectivityOptionalCertificate
     advertisement: ConnectivityAdvertisement
     key_proof: ConnectivityKeyProof
-    endpoints: ConnectivityEndpointObservations
+    endpoints: ConnectivityEndpointSnapshot
     observed_at: UnixMicros
     expires_at: UnixMicros
     revision: U64
@@ -238,7 +267,7 @@ class ConnectivityCandidate(_Record):
  'certificate_digest': 'ConnectivityOptionalCertificate',
  'advertisement': 'ConnectivityAdvertisement',
  'key_proof': 'ConnectivityKeyProof',
- 'endpoints': 'ConnectivityEndpointObservations',
+ 'endpoints': 'ConnectivityEndpointSnapshot',
  'observed_at': 'UnixMicros',
  'expires_at': 'UnixMicros',
  'revision': 'U64'}

@@ -403,3 +403,25 @@ raw UTF8 byte limit. No truncation or budget increase follows from this encoding
 Content validity does not sanitize HTML, commands, paths or tool arguments, grant
 authority, or replace rendering escapes and logging redaction. Domain operations
 and private worker framing still need their own complete declarations.
+
+
+The reviewed connectivity proposal defines 28 operations for local readiness,
+devices/pools, discovery candidates and manual address hints, join attempts,
+logical connection interests and sync attempts. Readiness, key possession,
+membership, authenticated connection, replication and execution stay distinct.
+Address hints remain untrusted and require Node policy plus actual endpoint/key
+verification; certificates and candidate signatures do not admit a member.
+Membership and cleanup references bind the exact pool and device incarnation.
+
+Endpoint and membership observations have bounded pages with explicit snapshot
+identity, completeness and continuation reads. Their page bounds do not cap the
+number of interfaces or pool memberships. Nested cursors bind the frozen parent,
+principal, generation and projection; watches preserve that snapshot across pages.
+Sync scope distinguishes all authorized mutual boards from a selected bounded
+subset, preserving governing/build synchronization in both cases. The Node freezes
+and reauthorizes that scope rather than asking clients to partition a full sync.
+
+Source inventory and exact caller mapping are in the connectivity domain evidence.
+K still requires full retained multi-pool and protected join-code contracts plus
+platform feasibility review. Runtime dispatch, native custody and installed
+connection evidence remain later implementation and proof obligations.

@@ -18,7 +18,6 @@ from ._codec import (
 
 if TYPE_CHECKING:
     from ._connectivity import (
-        ConnectivityBoardRefs,
         ConnectivityCursor,
         ConnectivityOptionalCursor,
         ConnectivityReadiness,
@@ -302,21 +301,11 @@ class ConnectivityMemberSyncs(_List):
 _register(ConnectivityMemberSyncs)
 
 
-@dataclass(frozen=True)
-class ConnectivitySyncRequest(_Record):
-    generation: ResourceGeneration
-    request_id: RequestId
-    pool: ConnectivityPoolRef
-    boards: ConnectivityBoardRefs
-    expected_revision: U64
-    _fields: ClassVar[dict[str, str]] = {'generation': 'ResourceGeneration',
- 'request_id': 'RequestId',
- 'pool': 'ConnectivityPoolRef',
- 'boards': 'ConnectivityBoardRefs',
- 'expected_revision': 'U64'}
+class ConnectivitySyncBoardScope(_Union):
+    _variants: ClassVar[dict[str, str]] = {'all_authorized': 'Empty', 'selected': 'ConnectivityBoardRefs'}
 
 
-_register(ConnectivitySyncRequest)
+_register(ConnectivitySyncBoardScope)
 
 
 @dataclass(frozen=True)
@@ -355,6 +344,23 @@ class ConnectivityMemberSyncSnapshot(_Record):
 
 
 _register(ConnectivityMemberSyncSnapshot)
+
+
+@dataclass(frozen=True)
+class ConnectivitySyncRequest(_Record):
+    generation: ResourceGeneration
+    request_id: RequestId
+    pool: ConnectivityPoolRef
+    boards: ConnectivitySyncBoardScope
+    expected_revision: U64
+    _fields: ClassVar[dict[str, str]] = {'generation': 'ResourceGeneration',
+ 'request_id': 'RequestId',
+ 'pool': 'ConnectivityPoolRef',
+ 'boards': 'ConnectivitySyncBoardScope',
+ 'expected_revision': 'U64'}
+
+
+_register(ConnectivitySyncRequest)
 
 
 class ConnectivityConnectionEvent(_Union):

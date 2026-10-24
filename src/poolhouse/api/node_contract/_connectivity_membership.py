@@ -168,6 +168,25 @@ _register(ConnectivityDeviceView)
 
 
 @dataclass(frozen=True)
+class ConnectivityMembershipSnapshot(_Record):
+    snapshot_id: ConnectivitySnapshotId
+    revision: U64
+    items: ConnectivityMembershipRefs
+    complete: Boolean
+    next_cursor: ConnectivityOptionalCursor
+    cursor: ConnectivityCursor
+    _fields: ClassVar[dict[str, str]] = {'snapshot_id': 'ConnectivitySnapshotId',
+ 'revision': 'U64',
+ 'items': 'ConnectivityMembershipRefs',
+ 'complete': 'Boolean',
+ 'next_cursor': 'ConnectivityOptionalCursor',
+ 'cursor': 'ConnectivityCursor'}
+
+
+_register(ConnectivityMembershipSnapshot)
+
+
+@dataclass(frozen=True)
 class ConnectivityDeviceChange(_Record):
     cursor: ConnectivityCursor
     value: ConnectivityDeviceView

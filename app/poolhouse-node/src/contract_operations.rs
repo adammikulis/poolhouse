@@ -1,4 +1,4 @@
-// Generated proposal. No dispatch or authority is implemented. Schema 0465336ecb3d4754337ec3de5636a7cfde4fb23873da77d1f5a4190a7f1e1117
+// Generated proposal. No dispatch or authority is implemented. Schema 3938b0cff02e5ade82509ff16914d6fd8cbe9b111bb514db6fa3bc8a7627edf9
 use super::contract::*;
 
 pub trait Operation { type Request; type Response; type Error; const NAME: &'static str; }
@@ -54,6 +54,12 @@ impl Operation for GovernanceWatch { type Request = ApprovalGovernanceWatchReque
 pub struct DevicesLocalInspect;
 impl Operation for DevicesLocalInspect { type Request = ConnectivityLocalRequest; type Response = ConnectivityLocalView; type Error = ConnectivityError; const NAME: &'static str = "devices.local.inspect"; }
 
+pub struct DevicesLocalEndpointsList;
+impl Operation for DevicesLocalEndpointsList { type Request = ConnectivityLocalRequest; type Response = ConnectivityEndpointSnapshot; type Error = ConnectivityError; const NAME: &'static str = "devices.local.endpoints.list"; }
+
+pub struct DevicesLocalMembershipsList;
+impl Operation for DevicesLocalMembershipsList { type Request = ConnectivityLocalRequest; type Response = ConnectivityMembershipSnapshot; type Error = ConnectivityError; const NAME: &'static str = "devices.local.memberships.list"; }
+
 pub struct DevicesLocalWatch;
 impl Operation for DevicesLocalWatch { type Request = ConnectivityLocalRequest; type Response = ConnectivityLocalEvent; type Error = ConnectivityError; const NAME: &'static str = "devices.local.watch"; }
 
@@ -77,6 +83,9 @@ impl Operation for PoolsWatch { type Request = ConnectivityListRequest; type Res
 
 pub struct DiscoveryCandidateSubmitHint;
 impl Operation for DiscoveryCandidateSubmitHint { type Request = ConnectivitySubmitHintRequest; type Response = ConnectivityCandidate; type Error = ConnectivityError; const NAME: &'static str = "discovery.candidate.submit.hint"; }
+
+pub struct DiscoveryCandidateEndpointsList;
+impl Operation for DiscoveryCandidateEndpointsList { type Request = ConnectivityCandidateEndpointsRequest; type Response = ConnectivityEndpointSnapshot; type Error = ConnectivityError; const NAME: &'static str = "discovery.candidate.endpoints.list"; }
 
 pub struct DiscoveryCandidateInspect;
 impl Operation for DiscoveryCandidateInspect { type Request = ConnectivityCandidateInspectRequest; type Response = ConnectivityCandidate; type Error = ConnectivityError; const NAME: &'static str = "discovery.candidate.inspect"; }

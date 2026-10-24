@@ -1,4 +1,4 @@
-# Generated proposal. No dispatch or authority is implemented. Schema 0465336ecb3d4754337ec3de5636a7cfde4fb23873da77d1f5a4190a7f1e1117
+# Generated proposal. No dispatch or authority is implemented. Schema 3938b0cff02e5ade82509ff16914d6fd8cbe9b111bb514db6fa3bc8a7627edf9
 from . import node_contract as data
 
 OPERATION_TYPES = {
@@ -19,6 +19,8 @@ OPERATION_TYPES = {
     "governance.inspect": (data.ApprovalGovernanceInspectRequest, data.ApprovalGovernanceView, data.ApprovalError),
     "governance.watch": (data.ApprovalGovernanceWatchRequest, data.ApprovalGovernanceWatchEvent, data.ApprovalError),
     "devices.local.inspect": (data.ConnectivityLocalRequest, data.ConnectivityLocalView, data.ConnectivityError),
+    "devices.local.endpoints.list": (data.ConnectivityLocalRequest, data.ConnectivityEndpointSnapshot, data.ConnectivityError),
+    "devices.local.memberships.list": (data.ConnectivityLocalRequest, data.ConnectivityMembershipSnapshot, data.ConnectivityError),
     "devices.local.watch": (data.ConnectivityLocalRequest, data.ConnectivityLocalEvent, data.ConnectivityError),
     "devices.inspect": (data.ConnectivityDeviceInspectRequest, data.ConnectivityDeviceView, data.ConnectivityError),
     "devices.list": (data.ConnectivityListRequest, data.ConnectivityDeviceSnapshot, data.ConnectivityError),
@@ -27,6 +29,7 @@ OPERATION_TYPES = {
     "pools.list": (data.ConnectivityListRequest, data.ConnectivityPoolSnapshot, data.ConnectivityError),
     "pools.watch": (data.ConnectivityListRequest, data.ConnectivityPoolEvent, data.ConnectivityError),
     "discovery.candidate.submit.hint": (data.ConnectivitySubmitHintRequest, data.ConnectivityCandidate, data.ConnectivityError),
+    "discovery.candidate.endpoints.list": (data.ConnectivityCandidateEndpointsRequest, data.ConnectivityEndpointSnapshot, data.ConnectivityError),
     "discovery.candidate.inspect": (data.ConnectivityCandidateInspectRequest, data.ConnectivityCandidate, data.ConnectivityError),
     "discovery.candidates.list": (data.ConnectivityListRequest, data.ConnectivityCandidateSnapshot, data.ConnectivityError),
     "discovery.candidates.watch": (data.ConnectivityListRequest, data.ConnectivityCandidateEvent, data.ConnectivityError),
