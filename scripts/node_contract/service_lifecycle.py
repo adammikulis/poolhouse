@@ -5,6 +5,8 @@ import json
 import tomllib
 from pathlib import Path
 
+from . import passive_ffi
+
 REQUIREMENTS = frozenset({'activate-does-not-implicitly-configure-startup-mode',
            'activation-authorization-is-installed-supervisor-native-os-caller-admission-not-a-public-boolean',
            'activation-only-starts-or-attaches-owned-service-and-grants-no-domain-or-installation-right',
@@ -303,7 +305,13 @@ def load(root: Path, rows: list[dict]) -> dict:
     if len(requirements) != len(set(requirements)):
         raise ValueError('native service requirements cannot repeat')
     source['requirements'] = sorted(requirements)
-    if json.dumps(source, sort_keys=True) != json.dumps(expected(), sort_keys=True):
+    passive = source.get('passive')
+    if not isinstance(passive, dict):
+        raise ValueError('native passive declaration is required')
+    ffi = passive.get('ffi')
+    passive_ffi.validate(ffi, OBSERVATIONS['PassiveServiceAvailability'])
+    compared = {**source, 'passive': {key: value for key, value in passive.items() if key != 'ffi'}}
+    if json.dumps(compared, sort_keys=True) != json.dumps(expected(), sort_keys=True):
         raise ValueError('unsupported native service declarations or authority relationships')
     known = {row['name'] for row in rows}
     required = {kind for getters in ROLES.values() for _, kind in getters
@@ -409,7 +417,13 @@ def _methods(source: dict, owner: str, trait: str, seal: str, graph: str) -> lis
 
 def render(source: dict) -> str:
     """Dormant Rust interfaces only: no constructor, codec, authorization bridge or OS execution."""
-    if json.dumps(source, sort_keys=True) != json.dumps(expected(), sort_keys=True):
+    passive = source.get('passive')
+    if not isinstance(passive, dict):
+        raise ValueError('native passive declaration is required')
+    ffi = passive.get('ffi')
+    passive_ffi.validate(ffi, OBSERVATIONS['PassiveServiceAvailability'])
+    compared = {**source, 'passive': {key: value for key, value in passive.items() if key != 'ffi'}}
+    if json.dumps(compared, sort_keys=True) != json.dumps(expected(), sort_keys=True):
         raise ValueError("native service rendering requires the validated closed grammar")
     canonical = sorted({kind for getters in ROLES.values() for _, kind in getters
                         if '.' not in kind and kind not in ROLES and kind not in OBSERVATIONS}
@@ -436,3 +450,7 @@ def render(source: dict) -> str:
                'pub(crate) const PRODUCTION_PROTECTED_VALIDATION_AVAILABLE: bool = false;',
                '}', 'pub(crate) use service_projection::*;', '']
     return '\n'.join(output)
+
+
+def render_passive_outputs(root: Path, source: dict) -> dict[Path, str]:
+    return passive_ffi.outputs(root, source['passive']['ffi'])

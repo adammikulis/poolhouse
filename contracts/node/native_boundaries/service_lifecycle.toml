@@ -17,6 +17,42 @@ binding_status = "planned-currently-absent-not-installed-service-identity"
 fields = [{name = "availability", type = "PassiveServiceAvailability"}, {name = "observed_at", type = "UnixMicros"}, {name = "reason", type = "SafeMessage"}]
 os_status_mapping = {not_registered = "NotRegistered", enabled = "RegisteredEligible", requires_approval = "RequiresConsent", not_found = "NotFound", unrecognized_or_error = "Unknown"}
 
+[passive.ffi]
+version = 1
+function = "ph_passive_service_observe_v1"
+representation = "in-process-untrusted-data-only"
+size = 16
+alignment = 8
+fields = [{name = "observed_at", type = "u64", offset = 0}, {name = "availability", type = "u32", offset = 8}, {name = "reason", type = "u32", offset = 12}]
+results = [{name = "Ok", code = 0}, {name = "InvalidOutput", code = 1}]
+# Explicit assignments are ABI semantics; changes require a reviewed versioned boundary.
+availability = [
+  {name = "Unknown", code = 0},
+  {name = "BindingUnavailable", code = 1},
+  {name = "PlistAbsent", code = 2},
+  {name = "Unverified", code = 3},
+  {name = "NotRegistered", code = 4},
+  {name = "RegisteredEligible", code = 5},
+  {name = "RequiresConsent", code = 6},
+  {name = "NotFound", code = 7},
+]
+reasons = [
+  {name = "Unknown", code = 0, message = "Service availability is unknown."},
+  {name = "ContainingAppUnavailable", code = 1, message = "The designated containing app is unavailable."},
+  {name = "ContainingAppInspectionUnavailable", code = 2, message = "The containing app cannot be inspected."},
+  {name = "PlistAbsent", code = 3, message = "The planned bundled service plist is absent."},
+  {name = "LocationUnverified", code = 4, message = "The bundled service location is unverified."},
+  {name = "PlistUnverified", code = 5, message = "The bundled service plist is unverified."},
+  {name = "PlistReadUnavailable", code = 6, message = "The bundled service plist cannot be read."},
+  {name = "PlistBindingMismatch", code = 7, message = "The bundled service plist does not match its planned binding."},
+  {name = "SealUnverified", code = 8, message = "The containing app seal is unverified."},
+  {name = "SigningLabelMismatch", code = 9, message = "The containing app signing label is inconsistent."},
+  {name = "PlistChanged", code = 10, message = "The bundled service plist changed during inspection."},
+  {name = "EligibilityOnly", code = 11, message = "Registration eligibility only; installation and runtime readiness are unverified."},
+  {name = "StatusUnavailable", code = 12, message = "Native service registration observation is unavailable."},
+  {name = "ClockUnavailable", code = 13, message = "The observation clock is unavailable."},
+]
+
 [[graph]]
 name = "ActivationGraph"
 inherits = ""
