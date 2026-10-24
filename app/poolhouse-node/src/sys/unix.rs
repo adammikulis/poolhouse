@@ -144,6 +144,41 @@ pub struct Lock {
     _file: File,
 }
 
+impl Lock {
+    /// Current private parent containing this exact held lock. This does not prove
+    /// original Node-root provenance if its owner moved the held lock file.
+    pub(crate) fn checked_parent(&self, parent: &Path, leaf: &str) -> std::io::Result<File> {
+        use std::ffi::CString;
+        use std::os::fd::FromRawFd;
+        use std::os::unix::fs::MetadataExt;
+        let invalid=||std::io::Error::other("pending storage does not match the held lock");
+        if leaf.is_empty() || leaf.contains('/') || leaf=="." || leaf==".." { return Err(invalid()); }
+        let dir=OpenOptions::new().read(true).custom_flags(libc::O_DIRECTORY|libc::O_NOFOLLOW|libc::O_CLOEXEC).open(parent)?;
+        let dm=dir.metadata()?;
+        // SAFETY: geteuid has no preconditions.
+        let uid=unsafe {libc::geteuid()};
+        if !dm.is_dir() || dm.uid()!=uid || dm.mode()&0o077!=0 { return Err(invalid()); }
+        let name=CString::new(leaf).map_err(|_|invalid())?;
+        // SAFETY: descriptor is live and name is a single NUL-terminated leaf.
+        let fd=unsafe{libc::openat(dir.as_raw_fd(),name.as_ptr(),libc::O_RDONLY|libc::O_NOFOLLOW|libc::O_CLOEXEC|libc::O_NONBLOCK)};
+        if fd<0 { return Err(std::io::Error::last_os_error()); }
+        // SAFETY: successful openat returned one new descriptor, owned exactly once.
+        let observed=unsafe{File::from_raw_fd(fd)};
+        let matches=|a:&std::fs::Metadata,b:&std::fs::Metadata| a.is_file() && b.is_file() &&
+            a.uid()==uid && b.uid()==uid && a.mode()&0o077==0 && b.mode()&0o077==0 &&
+            a.nlink()==1 && b.nlink()==1 && a.dev()==b.dev() && a.ino()==b.ino();
+        if !matches(&self._file.metadata()?,&observed.metadata()?) {return Err(invalid());}
+        // Reopen the directory entry after inspection to reject replacement during the check.
+        // SAFETY: same retained descriptor and validated leaf as above.
+        let fd=unsafe{libc::openat(dir.as_raw_fd(),name.as_ptr(),libc::O_RDONLY|libc::O_NOFOLLOW|libc::O_CLOEXEC|libc::O_NONBLOCK)};
+        if fd<0 {return Err(std::io::Error::last_os_error());}
+        // SAFETY: this second successful open transfers its descriptor exactly once.
+        let again=unsafe{File::from_raw_fd(fd)};
+        if !matches(&self._file.metadata()?,&again.metadata()?) {return Err(invalid());}
+        Ok(dir)
+    }
+}
+
 fn flock(path: &Path, blocking: bool) -> Result<Option<Lock>> {
     let file = private_file(OpenOptions::new().read(true).write(true).create(true).truncate(false)).open(path)?;
     let op = if blocking { libc::LOCK_EX } else { libc::LOCK_EX | libc::LOCK_NB };
