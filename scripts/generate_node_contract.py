@@ -88,6 +88,7 @@ def outputs(root: Path) -> dict[Path, str]:
                ]}
     result = {
         root / "app/poolhouse-node/src/contract_native_message.rs": native_message.render(meta["native_message"]),
+        root / "patches/codex/generated/native_original_fields.rs": native_message.render_producer(meta["native_message"]),
         root / "app/poolhouse-node/src/contract_operations.rs": operations.render_rust(meta["operations"], digest),
         root / "src/poolhouse/api/node_operations.py": operations.render_python(meta["operations"], digest),
         root / "app/contracts/node_operations.ts": operations.render_typescript(meta["operations"], digest),
