@@ -1,0 +1,877 @@
+{
+  "evidence_version": 1,
+  "status": "proposal declaration evidence only; incomplete retained-domain mapping, no runtime implementation or K acceptance",
+  "source_commit": "57c991dbf448ab728e7e6d52b6b313cc03dfd95b",
+  "contract_base_commit": "57c991dbf448ab728e7e6d52b6b313cc03dfd95b",
+  "declaration": {
+    "path": "contracts/node/domains/models.toml",
+    "sha256": "4c0b472a31c9e083cdac70d39cfecdd82088c53061ffa5e74cdc1021b82fbf3a",
+    "type_count": 193,
+    "operation_count": 30,
+    "external_shared_definitions_pending_root": [
+      "ApprovalId",
+      "OperationId"
+    ]
+  },
+  "source_reference_rule": "All source_sites and retained_caller_sites resolve through sites; each site is verified against source_commit by offline Git blob SHA256 and exact one-based line text. New declaration hash binds this working draft, not source_commit.",
+  "sites": {
+    "model_inventory": {
+      "path": "src/poolhouse/fleet/models.py",
+      "line": 183,
+      "symbol": "Models.all",
+      "sha256": "4b4d4b88cd67f9e093f5c68e601ede6315014adc940be616ed64a39fa3679443",
+      "line_text": "    def all(self) -> list[Model]:"
+    },
+    "model_ensure": {
+      "path": "src/poolhouse/fleet/models.py",
+      "line": 300,
+      "symbol": "Models.ensure",
+      "sha256": "4b4d4b88cd67f9e093f5c68e601ede6315014adc940be616ed64a39fa3679443",
+      "line_text": "    def ensure(self, name: str, *, source: str = \"\", key: bytes | None = None,"
+    },
+    "model_download_start": {
+      "path": "src/poolhouse/fleet/models.py",
+      "line": 573,
+      "symbol": "Downloads.start",
+      "sha256": "4b4d4b88cd67f9e093f5c68e601ede6315014adc940be616ed64a39fa3679443",
+      "line_text": "    def start(self, name: str, *, source: str = \"\", key: bytes | None = None,"
+    },
+    "model_download_worker": {
+      "path": "src/poolhouse/fleet/models.py",
+      "line": 589,
+      "symbol": "Downloads._run",
+      "sha256": "4b4d4b88cd67f9e093f5c68e601ede6315014adc940be616ed64a39fa3679443",
+      "line_text": "    def _run(self, row: Getting, key: bytes | None, autodownload: bool) -> None:"
+    },
+    "model_download_active": {
+      "path": "src/poolhouse/fleet/models.py",
+      "line": 642,
+      "symbol": "Downloads.active",
+      "sha256": "4b4d4b88cd67f9e093f5c68e601ede6315014adc940be616ed64a39fa3679443",
+      "line_text": "    def active(self) -> list[Getting]:"
+    },
+    "model_publish": {
+      "path": "src/poolhouse/fleet/models.py",
+      "line": 418,
+      "symbol": "Models._publish",
+      "sha256": "4b4d4b88cd67f9e093f5c68e601ede6315014adc940be616ed64a39fa3679443",
+      "line_text": "    def _publish(self, source: Path, target: Path, digest: str,"
+    },
+    "model_remove": {
+      "path": "src/poolhouse/fleet/models.py",
+      "line": 471,
+      "symbol": "Models.remove",
+      "sha256": "4b4d4b88cd67f9e093f5c68e601ede6315014adc940be616ed64a39fa3679443",
+      "line_text": "    def remove(self, name: str) -> bool:"
+    },
+    "partial_discard": {
+      "path": "src/poolhouse/fleet/models.py",
+      "line": 498,
+      "symbol": "Models.discard",
+      "sha256": "4b4d4b88cd67f9e093f5c68e601ede6315014adc940be616ed64a39fa3679443",
+      "line_text": "    def discard(self, name: str = \"\") -> list[str]:"
+    },
+    "partial_list": {
+      "path": "src/poolhouse/fleet/models.py",
+      "line": 478,
+      "symbol": "Models.unfinished",
+      "sha256": "4b4d4b88cd67f9e093f5c68e601ede6315014adc940be616ed64a39fa3679443",
+      "line_text": "    def unfinished(self, *, stale_s: float = STALE_PART_S) -> list[dict[str, Any]]:"
+    },
+    "model_locations": {
+      "path": "src/poolhouse/fleet/models.py",
+      "line": 286,
+      "symbol": "Models.where",
+      "sha256": "4b4d4b88cd67f9e093f5c68e601ede6315014adc940be616ed64a39fa3679443",
+      "line_text": "    def where(self, name: str, key: bytes, *, timeout_s: float = 2.0"
+    },
+    "model_components": {
+      "path": "src/poolhouse/fleet/model_components.py",
+      "line": 156,
+      "symbol": "catalogue",
+      "sha256": "03d3c870d5454e9848f1657296c8a86f0abaff9221a5d48d1defef69012e11f1",
+      "line_text": "def catalogue(models, name: str, source: str = \"\", key: bytes | None = None) -> dict:"
+    },
+    "component_route": {
+      "path": "src/poolhouse/fleet/component_routes.py",
+      "line": 26,
+      "symbol": "route",
+      "sha256": "459550c98a8e26a30df5a6acc5375a59e0caf4491249709402be19b548a09ab6",
+      "line_text": "def route(request) -> bool:"
+    },
+    "hosting_start": {
+      "path": "src/poolhouse/fleet/serving.py",
+      "line": 321,
+      "symbol": "Hosting.start",
+      "sha256": "f1cd5abbfc4f4c7296c7bcb8480cdc69fe59368a341fa0f0997bc92f3fa37ae6",
+      "line_text": "    def start(self, model_path: Path | str, settings: ServeSettings | None = None) -> Served:"
+    },
+    "hosting_stop": {
+      "path": "src/poolhouse/fleet/serving.py",
+      "line": 343,
+      "symbol": "Hosting.stop",
+      "sha256": "f1cd5abbfc4f4c7296c7bcb8480cdc69fe59368a341fa0f0997bc92f3fa37ae6",
+      "line_text": "    def stop(self, port: int) -> None:"
+    },
+    "hosting_fit": {
+      "path": "src/poolhouse/fleet/serving.py",
+      "line": 302,
+      "symbol": "Hosting.fits_in",
+      "sha256": "f1cd5abbfc4f4c7296c7bcb8480cdc69fe59368a341fa0f0997bc92f3fa37ae6",
+      "line_text": "    def fits_in(self, name: str, *, context: int, parallel: int, room: int) -> str:"
+    },
+    "serving_live": {
+      "path": "src/poolhouse/fleet/serving.py",
+      "line": 120,
+      "symbol": "Serving.live",
+      "sha256": "f1cd5abbfc4f4c7296c7bcb8480cdc69fe59368a341fa0f0997bc92f3fa37ae6",
+      "line_text": "    def live(self, *, force: bool = False) -> list[Served]:"
+    },
+    "serving_route": {
+      "path": "src/poolhouse/fleet/serving_routes.py",
+      "line": 9,
+      "symbol": "route",
+      "sha256": "46b5e4733af8af3aba71a3219b0370005c0ad92065e2de64e1a6f8c18f0bd008",
+      "line_text": "def route(handler, can_serve):"
+    },
+    "serving_route_start": {
+      "path": "src/poolhouse/fleet/serving_routes.py",
+      "line": 29,
+      "symbol": "_start",
+      "sha256": "46b5e4733af8af3aba71a3219b0370005c0ad92065e2de64e1a6f8c18f0bd008",
+      "line_text": "def _start(handler, can_serve):"
+    },
+    "model_library": {
+      "path": "src/poolhouse/fleet/model_library.py",
+      "line": 10,
+      "symbol": "library",
+      "sha256": "b6659f26d5f13717f886cad6ede239c57622dd723dabdceb0c7db34d19524605",
+      "line_text": "def library(roots):"
+    },
+    "startup_choices": {
+      "path": "src/poolhouse/fleet/setup_preparation.py",
+      "line": 342,
+      "symbol": "choices_for",
+      "sha256": "7d5689e7d7dc91aa5d9a3cb097c55850a0e467003f0278a3d5be442c600d8890",
+      "line_text": "def choices_for(ui):"
+    },
+    "ui_model_routes": {
+      "path": "src/poolhouse/fleet/routes.py",
+      "line": 450,
+      "symbol": "ModelRoutes._models_here",
+      "sha256": "509fd14062d13bb5a15777319e6291a63ac4528c462a450f395311d3e692d15d",
+      "line_text": "    def _models_here(self, key: Any, auto_models: bool) -> bool:"
+    },
+    "ui_download_route": {
+      "path": "src/poolhouse/fleet/routes.py",
+      "line": 474,
+      "symbol": "ModelRoutes._get_model",
+      "sha256": "509fd14062d13bb5a15777319e6291a63ac4528c462a450f395311d3e692d15d",
+      "line_text": "    def _get_model(self, key: Any, auto_models: bool) -> bool:"
+    },
+    "ui_fit_route": {
+      "path": "src/poolhouse/fleet/routes.py",
+      "line": 268,
+      "symbol": "MeasureRoutes.route",
+      "sha256": "509fd14062d13bb5a15777319e6291a63ac4528c462a450f395311d3e692d15d",
+      "line_text": "            self.send(200, self.ui.fit(room=_whole(self.asked(\"room\")),"
+    },
+    "ui_auth": {
+      "path": "src/poolhouse/fleet/routes.py",
+      "line": 723,
+      "symbol": "Router.run",
+      "sha256": "509fd14062d13bb5a15777319e6291a63ac4528c462a450f395311d3e692d15d",
+      "line_text": "        if not self.header(UI_HEADER):"
+    },
+    "remote_auth": {
+      "path": "src/poolhouse/fleet/api.py",
+      "line": 234,
+      "symbol": "make_handler.Handler._guard",
+      "sha256": "0777f8d5ae585e6297a6c7ed7de2064949ce06084ef5406ff29286b141c0a329",
+      "line_text": "        def _guard(self, body: bytes | None = None) -> bool:"
+    },
+    "remote_models": {
+      "path": "src/poolhouse/fleet/api.py",
+      "line": 462,
+      "symbol": "make_handler.Handler._read_models",
+      "sha256": "0777f8d5ae585e6297a6c7ed7de2064949ce06084ef5406ff29286b141c0a329",
+      "line_text": "        def _read_models(self, path):"
+    },
+    "remote_serve": {
+      "path": "src/poolhouse/fleet/api.py",
+      "line": 798,
+      "symbol": "make_handler.Handler._post_serve",
+      "sha256": "0777f8d5ae585e6297a6c7ed7de2064949ce06084ef5406ff29286b141c0a329",
+      "line_text": "        def _post_serve(self, body, parsed):"
+    },
+    "header_inventory": {
+      "path": "src/poolhouse/hub/discover.py",
+      "line": 219,
+      "symbol": "discover",
+      "sha256": "e0948e7c9997c8271a6735c7f517f18e14eb07d37d579c11a17b2420ee82bfcc",
+      "line_text": "def discover(  # noqa: PLR0913 - one more filter"
+    },
+    "machine_memory": {
+      "path": "src/poolhouse/hub/probe.py",
+      "line": 134,
+      "symbol": "machine_memory",
+      "sha256": "937ad393cda8ba42302501a3fd23f9ccab43982e3278280b0465b30e2b916187",
+      "line_text": "def machine_memory() -> MachineMemory:"
+    },
+    "hub_pull": {
+      "path": "src/poolhouse/hub/transfer.py",
+      "line": 285,
+      "symbol": "pull",
+      "sha256": "6a455e1c7b7723c60163f0beab8500695c80be9061dcec0c699f26746a919c46",
+      "line_text": "def pull(ref: str, dest: str | Path | None = None, on_progress: Report | None = None,"
+    },
+    "hub_pull_bring": {
+      "path": "src/poolhouse/hub/transfer.py",
+      "line": 338,
+      "symbol": "_bring",
+      "sha256": "6a455e1c7b7723c60163f0beab8500695c80be9061dcec0c699f26746a919c46",
+      "line_text": "def _bring(parsed: remote.Ref, chosen: list[RemoteFile], dest: str | Path | None,"
+    },
+    "hub_pull_fetch": {
+      "path": "src/poolhouse/hub/transfer.py",
+      "line": 228,
+      "symbol": "_fetch",
+      "sha256": "6a455e1c7b7723c60163f0beab8500695c80be9061dcec0c699f26746a919c46",
+      "line_text": "def _fetch(parsed: remote.Ref, one: RemoteFile, final: Path, meter: _Meter) -> None:"
+    },
+    "hub_progress": {
+      "path": "src/poolhouse/hub/transfer.py",
+      "line": 80,
+      "symbol": "Progress",
+      "sha256": "6a455e1c7b7723c60163f0beab8500695c80be9061dcec0c699f26746a919c46",
+      "line_text": "class Progress:"
+    },
+    "model_transfer_token": {
+      "path": "src/poolhouse/fleet/models.py",
+      "line": 76,
+      "symbol": "ModelTransfer",
+      "sha256": "4b4d4b88cd67f9e093f5c68e601ede6315014adc940be616ed64a39fa3679443",
+      "line_text": "class ModelTransfer(hub.CancelToken):"
+    },
+    "cli_list": {
+      "path": "src/poolhouse/serve/models_cli.py",
+      "line": 93,
+      "symbol": "_list",
+      "sha256": "60852bb9ec255149ae7a710b573679b86bc224462f41243dd5357d231503e654",
+      "line_text": "def _list(args: argparse.Namespace) -> int:"
+    },
+    "cli_where": {
+      "path": "src/poolhouse/serve/models_cli.py",
+      "line": 115,
+      "symbol": "_where",
+      "sha256": "60852bb9ec255149ae7a710b573679b86bc224462f41243dd5357d231503e654",
+      "line_text": "def _where(args: argparse.Namespace) -> int:"
+    },
+    "cli_info": {
+      "path": "src/poolhouse/serve/models_cli.py",
+      "line": 133,
+      "symbol": "_info",
+      "sha256": "60852bb9ec255149ae7a710b573679b86bc224462f41243dd5357d231503e654",
+      "line_text": "def _info(args: argparse.Namespace) -> int:"
+    },
+    "cli_search": {
+      "path": "src/poolhouse/serve/models_cli.py",
+      "line": 212,
+      "symbol": "_search",
+      "sha256": "60852bb9ec255149ae7a710b573679b86bc224462f41243dd5357d231503e654",
+      "line_text": "def _search(args: argparse.Namespace) -> int:"
+    },
+    "cli_recommend": {
+      "path": "src/poolhouse/serve/models_cli.py",
+      "line": 228,
+      "symbol": "_recommend",
+      "sha256": "60852bb9ec255149ae7a710b573679b86bc224462f41243dd5357d231503e654",
+      "line_text": "def _recommend(args: argparse.Namespace) -> int:"
+    },
+    "cli_fit": {
+      "path": "src/poolhouse/serve/models_cli.py",
+      "line": 165,
+      "symbol": "_fit",
+      "sha256": "60852bb9ec255149ae7a710b573679b86bc224462f41243dd5357d231503e654",
+      "line_text": "def _fit(args: argparse.Namespace) -> int:"
+    },
+    "cli_machine": {
+      "path": "src/poolhouse/serve/models_cli.py",
+      "line": 239,
+      "symbol": "_machine",
+      "sha256": "60852bb9ec255149ae7a710b573679b86bc224462f41243dd5357d231503e654",
+      "line_text": "def _machine(args: argparse.Namespace) -> int:"
+    },
+    "cli_snapshot": {
+      "path": "src/poolhouse/serve/models_cli.py",
+      "line": 255,
+      "symbol": "_snapshot",
+      "sha256": "60852bb9ec255149ae7a710b573679b86bc224462f41243dd5357d231503e654",
+      "line_text": "def _snapshot(args: argparse.Namespace) -> int:"
+    },
+    "cli_adopt": {
+      "path": "src/poolhouse/serve/models_cli.py",
+      "line": 251,
+      "symbol": "_adopt",
+      "sha256": "60852bb9ec255149ae7a710b573679b86bc224462f41243dd5357d231503e654",
+      "line_text": "def _adopt(args: argparse.Namespace) -> int:"
+    },
+    "cli_migrate": {
+      "path": "src/poolhouse/serve/models_cli.py",
+      "line": 245,
+      "symbol": "_migrate",
+      "sha256": "60852bb9ec255149ae7a710b573679b86bc224462f41243dd5357d231503e654",
+      "line_text": "def _migrate(args: argparse.Namespace) -> int:"
+    },
+    "memory_fit": {
+      "path": "src/poolhouse/serve/fit.py",
+      "line": 112,
+      "symbol": "Fit",
+      "sha256": "e7749380efc4d3d591d48c949a9c3b06d38c150bea4072e11ac28912912d5102",
+      "line_text": "class Fit:"
+    },
+    "header_estimate": {
+      "path": "src/poolhouse/serve/estimate.py",
+      "line": 79,
+      "symbol": "Estimate",
+      "sha256": "5de267a97a02fe232c347d12817f0dcc30a4f3c61fbfb97d46b363bb7b309388",
+      "line_text": "class Estimate:"
+    },
+    "broker_holds": {
+      "path": "src/poolhouse/serve/broker_holds.py",
+      "line": 27,
+      "symbol": "BrokerHolds",
+      "sha256": "3614025f61327ce15e1d66b3a41f73bebf29aa66167cc461a67781cf46656dce",
+      "line_text": "class BrokerHolds:"
+    },
+    "lease_table": {
+      "path": "src/poolhouse/leasetable.py",
+      "line": 156,
+      "symbol": "Table.acquire",
+      "sha256": "d6e5a59bfc285b6763b52e213fa83a522df0fc4f02163de29e6703809bd334c7",
+      "line_text": "    def acquire(self, resources: list[dict[str, Any]], terms: Terms = Terms()) -> dict[str, Any]:  # noqa: B008 - frozen"
+    },
+    "context_binding": {
+      "path": "src/poolhouse/fleet/serving.py",
+      "line": 184,
+      "symbol": "context_settings",
+      "sha256": "f1cd5abbfc4f4c7296c7bcb8480cdc69fe59368a341fa0f0997bc92f3fa37ae6",
+      "line_text": "def context_settings(model_path, context, default=0):"
+    },
+    "browser_models": {
+      "path": "src/poolhouse/fleet/web/components/models-view.html",
+      "line": 89,
+      "symbol": "ModelsView.draw",
+      "sha256": "728055bab25604ee303af1853063b7dd16259c2e23fa84b4f2955e1ff8a97d27",
+      "line_text": "        const [m, run] = await Promise.all([api(\"/ui/models\"), api(\"/ui/serving\")]);"
+    },
+    "browser_download": {
+      "path": "src/poolhouse/fleet/web/components/models-view.html",
+      "line": 226,
+      "symbol": "ModelsView.get",
+      "sha256": "728055bab25604ee303af1853063b7dd16259c2e23fa84b4f2955e1ff8a97d27",
+      "line_text": "            const result = await api(\"/ui/models\", {method: \"POST\", body: JSON.stringify({name, source, ...selected})});"
+    },
+    "browser_serve": {
+      "path": "src/poolhouse/fleet/web/components/models-view.html",
+      "line": 161,
+      "symbol": "ModelsView.serve",
+      "sha256": "728055bab25604ee303af1853063b7dd16259c2e23fa84b4f2955e1ff8a97d27",
+      "line_text": "        const r = await api(\"/ui/serving\", { method: \"POST\", body: JSON.stringify({path:found[0].path, ...(context === undefined ? {} : {context})}) });"
+    },
+    "browser_stop": {
+      "path": "src/poolhouse/fleet/web/components/models-view.html",
+      "line": 192,
+      "symbol": "ModelsView.halt",
+      "sha256": "728055bab25604ee303af1853063b7dd16259c2e23fa84b4f2955e1ff8a97d27",
+      "line_text": "        const stopped = await api(\"/ui/serving\", { method: \"DELETE\", body: JSON.stringify({ port }) });"
+    },
+    "browser_components": {
+      "path": "src/poolhouse/fleet/web/components/models-library.html",
+      "line": 100,
+      "symbol": "ModelsLibrary",
+      "sha256": "12710031b59cc025d865a906291c667779ad08714995e90365fe04ee1cbfc171",
+      "line_text": "      if(line.dataset.pending)return;line.dataset.pending='true';line.querySelector('button').disabled=true;try{const installed=await M.api('/ui/models/addons',{method:'POST',body:JSON.stringify({name:row.path,kind:component.kind})});"
+    },
+    "browser_chat_serve": {
+      "path": "src/poolhouse/fleet/web/components/chat-model-picker.html",
+      "line": 211,
+      "symbol": "ChatModelPicker.prepareInstalled",
+      "sha256": "bef2ca5fc3b0e43790920db06e9f532e0ceb8e88a7d55fadc7f46917e56c8a86",
+      "line_text": "          started = await M.api('/ui/serving', {method:'POST', body:JSON.stringify({path, ...(operation.options.context === undefined ? {} : {context:operation.options.context})})});"
+    },
+    "browser_startup": {
+      "path": "src/poolhouse/fleet/web/components/startup-models.html",
+      "line": 10,
+      "symbol": "M.startupModels",
+      "sha256": "8673ff42c0a4c64ace63c468a2db5bcae2f6856b1987cdf133afc683f300df2c",
+      "line_text": "      result = await M.api(\"/ui/models/startup\");"
+    },
+    "browser_offers": {
+      "path": "src/poolhouse/fleet/web/components/model-browser.html",
+      "line": 231,
+      "symbol": "ModelBrowser.loadHub",
+      "sha256": "30a44dad8d985e60b7df84e9950c117fde09a385375bbbd758bf76e2898f5874",
+      "line_text": "      try { [response, suggested] = await Promise.all([api(`/ui/models/popular?${query}`), api(\"/ui/models/startup\")]); } catch (error) {"
+    },
+    "lease_renew": {
+      "path": "src/poolhouse/leasetable.py",
+      "line": 166,
+      "symbol": "Table.renew",
+      "sha256": "d6e5a59bfc285b6763b52e213fa83a522df0fc4f02163de29e6703809bd334c7",
+      "line_text": "    def renew(self, lease: str, *, ttl_s: int = 0, pid: int = 0) -> dict[str, Any]:"
+    },
+    "raw_fit_coefficients": {
+      "path": "src/poolhouse/serve/loadlog.py",
+      "line": 352,
+      "symbol": "_cache_of",
+      "sha256": "a2e04d4a45f1ad0a5c08c9b57b2bd65196874544479b15144817795122e97848",
+      "line_text": "        per_token = kv_bytes // (cells * streams) if cells else 0"
+    },
+    "signed_fit_headroom": {
+      "path": "src/poolhouse/serve/estimate.py",
+      "line": 297,
+      "symbol": "headroom",
+      "sha256": "5de267a97a02fe232c347d12817f0dcc30a4f3c61fbfb97d46b363bb7b309388",
+      "line_text": "            worst = (name, budget - need, used)"
+    },
+    "whole_inventory": {
+      "path": "contracts/node/retained-features.json",
+      "line": 2,
+      "symbol": "inventory_version",
+      "sha256": "3a99a8d4856851ff01e9082829a6a2a1d9e00177ea8f2595efa279af43e2a592",
+      "line_text": "\"inventory_version\": 1,"
+    }
+  },
+  "operation_mapping": [
+    {
+      "operation": "models.list",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "model_inventory",
+        "model_library",
+        "ui_model_routes",
+        "header_inventory"
+      ],
+      "retained_caller_sites": [
+        "browser_models",
+        "cli_list"
+      ],
+      "legacy_behavior": "GET /ui/models returns here/library/elsewhere/free_gb/getting/unfinished; CLI lists installed models.",
+      "semantic_transformation_and_missing_guarantees": "Managed identities, paginated safe projection and explicit unknowns; legacy path-bearing metadata is not public canonical authority."
+    },
+    {
+      "operation": "models.get",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "model_library",
+        "header_inventory"
+      ],
+      "retained_caller_sites": [
+        "cli_info",
+        "browser_models"
+      ],
+      "legacy_behavior": "CLI info and library rows expose model metadata.",
+      "semantic_transformation_and_missing_guarantees": "Resolve exact model generation; do not promote default verified=true or metadata/header claims into execution trust."
+    },
+    {
+      "operation": "models.search",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "ui_model_routes"
+      ],
+      "retained_caller_sites": [
+        "cli_search",
+        "browser_offers"
+      ],
+      "legacy_behavior": "Popular catalogue/search returns builds selected by query.",
+      "semantic_transformation_and_missing_guarantees": "Current CLI/Hub source lookup is broader; canonical managed sources/offers and versioned policy replace arbitrary source selection. Search handler detail not fully mapped here."
+    },
+    {
+      "operation": "models.recommend",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "startup_choices"
+      ],
+      "retained_caller_sites": [
+        "cli_recommend",
+        "browser_offers"
+      ],
+      "legacy_behavior": "Rank suggestions using estimates and machine information.",
+      "semantic_transformation_and_missing_guarantees": "Retain ranking as estimated explanatory data; no model quality score or estimate proves fit/admission."
+    },
+    {
+      "operation": "models.locate",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "model_locations"
+      ],
+      "retained_caller_sites": [
+        "cli_where"
+      ],
+      "legacy_behavior": "Discover members holding a named model.",
+      "semantic_transformation_and_missing_guarantees": "Holdings are attributed observations, not trusted bytes, member authority or execution permission."
+    },
+    {
+      "operation": "models.components.list",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "model_components",
+        "component_route"
+      ],
+      "retained_caller_sites": [
+        "browser_components"
+      ],
+      "legacy_behavior": "GET addons offers MTP/vision and installed status.",
+      "semantic_transformation_and_missing_guarantees": "Exact managed base/component generations and compatibility; no external ref/path permits direct execution."
+    },
+    {
+      "operation": "models.fit",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "memory_fit",
+        "header_estimate",
+        "context_binding",
+        "raw_fit_coefficients",
+        "signed_fit_headroom"
+      ],
+      "retained_caller_sites": [
+        "cli_fit"
+      ],
+      "legacy_behavior": "Measured fit records or header-derived estimates supply cost/context guidance.",
+      "semantic_transformation_and_missing_guarantees": "Bind every measurement to exact digests/backend/build/config/context/slots/placement/freshness; missing/stale data remains unknown. Existing fallback estimates remain estimates."
+    },
+    {
+      "operation": "resources.models.get",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "machine_memory",
+        "lease_table",
+        "broker_holds"
+      ],
+      "retained_caller_sites": [
+        "cli_machine"
+      ],
+      "legacy_behavior": "Probe memory topology and observe node leases.",
+      "semantic_transformation_and_missing_guarantees": "Node-owned accounting; no Windows/WSL physical alias additivity or execution permission before relevant platform proof. GPU totals cannot establish one-device fit."
+    },
+    {
+      "operation": "assets.download.plan",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "model_ensure",
+        "hub_pull"
+      ],
+      "retained_caller_sites": [
+        "browser_download",
+        "cli_snapshot"
+      ],
+      "legacy_behavior": "Legacy transfer resolves reference, plans files, checks admission/space.",
+      "semantic_transformation_and_missing_guarantees": "New explicit plan endpoint; plan is not reservation, grant, publication or execution approval."
+    },
+    {
+      "operation": "assets.download.start",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "ui_download_route",
+        "model_download_start",
+        "model_download_worker",
+        "model_ensure",
+        "hub_pull",
+        "model_publish",
+        "component_route"
+      ],
+      "retained_caller_sites": [
+        "browser_download",
+        "browser_components",
+        "cli_snapshot"
+      ],
+      "legacy_behavior": "POST models/addons or CLI pull/snapshot fetch pinned files and publish selected components.",
+      "semantic_transformation_and_missing_guarantees": "Durable principal/scope-bound request id, exact managed offers, current source policy, storage reservation, component consistency and authorization at publication required."
+    },
+    {
+      "operation": "assets.download.get",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "model_download_active",
+        "ui_model_routes",
+        "hub_progress"
+      ],
+      "retained_caller_sites": [
+        "browser_models"
+      ],
+      "legacy_behavior": "GET models bundles active/recent getting rows; Hub callback carries richer phase/file progress.",
+      "semantic_transformation_and_missing_guarantees": "New exact transfer read endpoint. Fleet phase conflates component phase and drops Hub transfer phase; preserve separate state/stage and exact unknown totals/ETA. Current recent status expires after KEEP_S."
+    },
+    {
+      "operation": "assets.download.resume",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "hub_pull",
+        "hub_pull_fetch",
+        "hub_pull_bring",
+        "model_transfer_token",
+        "model_publish"
+      ],
+      "retained_caller_sites": [],
+      "legacy_behavior": "Hub supports resumable partials/cancellation checks; maintained Fleet background facade has no equivalent direct control route.",
+      "semantic_transformation_and_missing_guarantees": "New exact-generation control. Resume requires original pinned source/content and verified partial custody; changed source is a new generation. Cancellation/publication has one atomic winner; committed publication cannot be reported cancelled."
+    },
+    {
+      "operation": "assets.download.cancel",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "hub_pull",
+        "hub_pull_fetch",
+        "hub_pull_bring",
+        "model_transfer_token",
+        "model_publish"
+      ],
+      "retained_caller_sites": [],
+      "legacy_behavior": "Hub supports resumable partials/cancellation checks; maintained Fleet background facade has no equivalent direct control route.",
+      "semantic_transformation_and_missing_guarantees": "New exact-generation control. Resume requires original pinned source/content and verified partial custody; changed source is a new generation. Cancellation/publication has one atomic winner; committed publication cannot be reported cancelled."
+    },
+    {
+      "operation": "assets.list",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "model_library",
+        "partial_list"
+      ],
+      "retained_caller_sites": [
+        "browser_models",
+        "cli_list"
+      ],
+      "legacy_behavior": "Installed library includes files; unfinished lists stale parts.",
+      "semantic_transformation_and_missing_guarantees": "Separate installed asset projection from transfer partials, managed references and private-path redaction."
+    },
+    {
+      "operation": "assets.get",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "model_library",
+        "header_inventory"
+      ],
+      "retained_caller_sites": [
+        "cli_info"
+      ],
+      "legacy_behavior": "File metadata is discoverable through model info/library.",
+      "semantic_transformation_and_missing_guarantees": "New exact managed asset lookup; no file path selection or metadata-derived trust."
+    },
+    {
+      "operation": "assets.remove",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "model_remove"
+      ],
+      "retained_caller_sites": [],
+      "legacy_behavior": "Models.remove helper removes an installed named model; direct maintained UI DELETE models discards parts instead.",
+      "semantic_transformation_and_missing_guarantees": "New explicit asset lifecycle operation; preserve reference custody, active users and catalogue CAS. Do not mis-map partial discard to installed deletion."
+    },
+    {
+      "operation": "assets.partial.discard",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "partial_discard",
+        "partial_list"
+      ],
+      "retained_caller_sites": [
+        "browser_models"
+      ],
+      "legacy_behavior": "DELETE /ui/models currently discards stale partial files.",
+      "semantic_transformation_and_missing_guarantees": "Bind exact transfer generation/partial custody and revision, refuse concurrent transfer; never accept caller filesystem path."
+    },
+    {
+      "operation": "assets.import.plan",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "model_library"
+      ],
+      "retained_caller_sites": [
+        "cli_adopt",
+        "cli_migrate"
+      ],
+      "legacy_behavior": "CLI adopt/migrate plan and move legacy model storage.",
+      "semantic_transformation_and_missing_guarantees": "Managed discovered candidate and immutable content plan replace paths. Source-backed CLI entrypoint evidence only; detailed adoption/migration handlers and plan schemas need additional mapping. Protected native approval and no imported trust are mandatory."
+    },
+    {
+      "operation": "assets.import.commit",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "model_library"
+      ],
+      "retained_caller_sites": [
+        "cli_adopt",
+        "cli_migrate"
+      ],
+      "legacy_behavior": "CLI adopt/migrate plan and move legacy model storage.",
+      "semantic_transformation_and_missing_guarantees": "Managed discovered candidate and immutable content plan replace paths. Source-backed CLI entrypoint evidence only; detailed adoption/migration handlers and plan schemas need additional mapping. Protected native approval and no imported trust are mandatory."
+    },
+    {
+      "operation": "serving.list",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "serving_route",
+        "serving_live"
+      ],
+      "retained_caller_sites": [
+        "browser_models"
+      ],
+      "legacy_behavior": "GET /ui/serving returns observed live entries and can_serve.",
+      "semantic_transformation_and_missing_guarantees": "Project safe managed serving IDs; observed registry or live probe is not lease custody/tenant authority."
+    },
+    {
+      "operation": "serving.get",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "serving_live"
+      ],
+      "retained_caller_sites": [
+        "browser_models"
+      ],
+      "legacy_behavior": "Legacy listing carries served model/context/slots.",
+      "semantic_transformation_and_missing_guarantees": "New exact instance lookup, revision and generation; ports and aliases are labels/observations, never controller authority."
+    },
+    {
+      "operation": "serving.acquire",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "serving_route_start",
+        "context_binding",
+        "hosting_start",
+        "hosting_fit",
+        "broker_holds",
+        "lease_table",
+        "remote_serve"
+      ],
+      "retained_caller_sites": [
+        "browser_serve",
+        "browser_chat_serve"
+      ],
+      "legacy_behavior": "UI accepts installed canonical path/context; remote /serve accepts model/context/parallel; Hosting retains broker lease handles.",
+      "semantic_transformation_and_missing_guarantees": "Managed refs and typed settings, node-only atomic current admission/worker ownership, exact sharing compatibility, physical alias exclusion, orphan/expiry/restart reconciliation. Legacy missing fit record passes fits_in: not copied as canonical fits."
+    },
+    {
+      "operation": "serving.release",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "hosting_stop"
+      ],
+      "retained_caller_sites": [
+        "browser_stop"
+      ],
+      "legacy_behavior": "Legacy Stop releases all handles retained by Hosting for a port, then unregisters entry.",
+      "semantic_transformation_and_missing_guarantees": "Release exact caller-owned lease generation only; never port/global instance or other tenant holds. Legacy Stop caller also maps to separately authorized whole-server intent below; neither current branch proves canonical tenant ownership."
+    },
+    {
+      "operation": "serving.renew",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "lease_renew",
+        "lease_table"
+      ],
+      "retained_caller_sites": [],
+      "legacy_behavior": "Node resource lease wrapper supports renew; current UI serving controls expose no explicit lease renewal.",
+      "semantic_transformation_and_missing_guarantees": "New serving-lease renewal operation with exact custody/generation, current authorization, revision CAS and node-chosen expiry; no observer-derived keepalive authority."
+    },
+    {
+      "operation": "serving.stop",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "serving_route",
+        "hosting_stop"
+      ],
+      "retained_caller_sites": [
+        "browser_stop"
+      ],
+      "legacy_behavior": "DELETE UI serving is a retained whole-server Stop presentation, implemented through Hosting retained handles by port.",
+      "semantic_transformation_and_missing_guarantees": "Separately authorized instance generation/revision and required native approval; caller lease ownership alone never grants whole-server control. Verify exact owned process and all tenant/resource reconciliation before settled."
+    },
+    {
+      "operation": "models.watch",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "ui_model_routes"
+      ],
+      "retained_caller_sites": [
+        "browser_models"
+      ],
+      "legacy_behavior": "Legacy observations are polling snapshots or local progress callbacks, not canonical ordered subscriptions.",
+      "semantic_transformation_and_missing_guarantees": "New ordered stream; bind cursor to principal/scope/resource/projection generation/expiry, atomic snapshot-to-events handoff, reauthorize before every delivery, explicit resync on expiry. Observer detach never cancels durable work or releases leases."
+    },
+    {
+      "operation": "assets.download.watch",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "model_download_active",
+        "hub_progress"
+      ],
+      "retained_caller_sites": [
+        "browser_models"
+      ],
+      "legacy_behavior": "Legacy observations are polling snapshots or local progress callbacks, not canonical ordered subscriptions.",
+      "semantic_transformation_and_missing_guarantees": "New ordered stream; bind cursor to principal/scope/resource/projection generation/expiry, atomic snapshot-to-events handoff, reauthorize before every delivery, explicit resync on expiry. Observer detach never cancels durable work or releases leases."
+    },
+    {
+      "operation": "serving.watch",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "serving_live"
+      ],
+      "retained_caller_sites": [
+        "browser_models"
+      ],
+      "legacy_behavior": "Legacy observations are polling snapshots or local progress callbacks, not canonical ordered subscriptions.",
+      "semantic_transformation_and_missing_guarantees": "New ordered stream; bind cursor to principal/scope/resource/projection generation/expiry, atomic snapshot-to-events handoff, reauthorize before every delivery, explicit resync on expiry. Observer detach never cancels durable work or releases leases."
+    },
+    {
+      "operation": "resources.models.watch",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "machine_memory",
+        "ui_fit_route"
+      ],
+      "retained_caller_sites": [
+        "cli_machine"
+      ],
+      "legacy_behavior": "Legacy observations are polling snapshots or local progress callbacks, not canonical ordered subscriptions.",
+      "semantic_transformation_and_missing_guarantees": "New ordered stream; bind cursor to principal/scope/resource/projection generation/expiry, atomic snapshot-to-events handoff, reauthorize before every delivery, explicit resync on expiry. Observer detach never cancels durable work or releases leases."
+    },
+    {
+      "operation": "models.startup.choices",
+      "canonical_status": "proposal only; no dispatch, authorization, private worker or installed proof implemented",
+      "source_sites": [
+        "startup_choices"
+      ],
+      "retained_caller_sites": [
+        "browser_startup",
+        "browser_offers"
+      ],
+      "legacy_behavior": "GET /ui/models/startup supplies installed/offered first-model choices with estimates.",
+      "semantic_transformation_and_missing_guarantees": "Represent candidates as managed model/offer references, unknown estimates explicitly. Selecting a suggestion does not grant download, package installation, native approval or serving authority; preparation orchestration remains outside this declaration."
+    }
+  ],
+  "required_cross_operation_invariants": {
+    "generation_scope": "Every durable mutation has top-level generation:ResourceGeneration and request_id. Its operation authorization names the exact managed offer/model/transfer/asset/import-plan/serving-instance/owned-lease scope; nested reference generation must equal it. Catalogue/control revisions are CAS where declared.",
+    "idempotency": "Persist immutable principal, installation/membership/target generations, operation kind, canonical payload digest and one outcome; conflicting request ID reuse refuses; same ID after authority change must not regain effects.",
+    "transfer_commit": "Resume same pinned source/content and verified partial custody only. Cancel and publication compete atomically; a committed ready publication cannot return cancelled. Partial custody loss requires recovery; no silent fallback to changed source.",
+    "serving_custody": "Release exact owned lease+generation only. Whole-server Stop requires independent controller/native approval, never port or mere lease possession. Sharing requires exact asset/backend/config/context/placement compatibility.",
+    "lease_recovery": "Observer disconnect leaves durable lease unchanged. Node chooses expiries; renew reauthorizes. Orphan/restart paths reconcile exact native owner/process lifetime and lease/resource records before reuse/release, otherwise recovery-required.",
+    "fit_numeric_semantics": "Per-token/per-sequence/loaded/estimated-total coefficients use exact nonnegative numerator and strictly positive denominator observations; preserve fractional source ratios. Pool margins are tagged surplus/shortfall, never clamp negative headroom to zero. Canonical ratio normalization and checked arithmetic belong to node: reduce numerator/denominator by GCD, encode zero ratio only as 0/1, encode zero margin only as surplus 0, and require strictly positive shortfall magnitude. These normalization checks grant no authority. Legacy loadlog floors division (raw_fit_coefficients); raw byte/cell/sequence operands may recover a new exact observation, but absent operands require unknown rather than relabeling a rounded legacy coefficient exact. Physical whole-byte reservation may conservatively ceil only at explicit admission boundary, never silently alter displayed evidence. Auto request settings cannot stand in for measured effective context/slots/KV/placement.",
+    "fit": "Known measured facts bind exact content digests, backend build, settings/context/slots, placement and freshness/resource/policy revisions. Missing values stay unknown; estimates are marked estimates. No fit DTO grants admission.",
+    "physical_resources": "Windows and WSL may alias RAM/GPU/storage. Do not sum their capacity or grant concurrent hardware leases from separate advertised IDs. Node requires proven common accounting/exclusion; until P supplies proof, affected execution stays excluded, never inferred safe.",
+    "admission": "Only node computes topology/current policy, reserves resources atomically and starts private workers. Reauthorize at admission, execution, publication and every watch delivery. Client measurements, source labels, asset digests, member offers and IDs are untrusted data.",
+    "redaction": "No credentials, signed URLs, private paths, executable argv/env or arbitrary URL authority in public domain values. Safe message handling must redact before publication and chunking; hashes/content verification do not establish execution approval.",
+    "subscriptions": "Ordered resource streams bind cursors to current principal/scope/resource/projection generation and expiry; snapshot handoff has no event gap; stale cursor requires explicit resync. Request disconnect detaches observation only."
+  },
+  "retained_omissions": [
+    "Full CLI backend options/profile/probe/fit measurement acquisition and inference streaming operations remain unmapped; fixed cache enum is a proposal and installed backend compatibility must be checked, never silently substitute.",
+    "Startup model preparation/setup workflow, runtime installation, interpreter management, source policy changes and update policy changes require separate native/service contracts; startup choices here is read-only.",
+    "Adoption/migration detailed handlers, model filesystem export/copies and arbitrary installed extension semantics need further source mapping; there is no generic filesystem or executable escape.",
+    "No arbitrary source registration, credential acquisition or publisher trust approval API is introduced. Required approvals are governed by shared approval domain; data approval IDs are not grants.",
+    "Model/asset/resource identity issuance, content-pinning manifests, source catalogue custody, active-use removal locking, storage accounting and exact tenant mapping require reviewed node implementation.",
+    "Protocol list bounds are proposed declaration bounds, not measured physical capacities or permission to raise runtime budgets.",
+    "All ten prior jobs/agents declarations and other retained UI/CLI/API/native domains remain outside this fragment. Source inventory at whole_inventory remains incomplete discovery evidence."
+  ],
+  "validation_limits": "Offline source and closed-schema checks only. No models, fake models, product imports, model servers, generated SDK changes, installed adapters or device proof performed."
+}
