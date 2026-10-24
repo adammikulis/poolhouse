@@ -1,3 +1,5 @@
+#[cfg(target_os = "macos")]
+mod native_service_build;
 use std::{env, fs, path::Path};
 
 /// Tauri refuses to build while the sidecar named in `externalBin` is missing, so a fresh
@@ -26,6 +28,12 @@ fn ensure_sidecar() {
 }
 
 fn main() {
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        #[cfg(target_os = "macos")]
+        native_service_build::build();
+        #[cfg(not(target_os = "macos"))]
+        panic!("macOS app compilation requires the macOS public SDK");
+    }
     ensure_sidecar();
     let commands = tauri_build::AppManifest::new().commands(&["close_choice", "on_closing", "renew_session", "choose_studio_watch_source", "choose_coding_project"]);
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(commands))

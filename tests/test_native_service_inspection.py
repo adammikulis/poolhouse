@@ -14,8 +14,10 @@ def test_passive_service_rejects_outside_containing_app(tmp_path):
                    "TMPDIR": str(tmp_path), "LANG": "en_US.UTF-8"}
     compiled = subprocess.run(["/usr/bin/swiftc", "-j", "1", "-parse-as-library",
                     "-D", "SERVICE_INSPECTION_VERIFY", "-module-cache-path", str(tmp_path / "modules"),
+                    "-import-objc-header", str(source / "generated/PassiveServiceData.h"),
+                    str(source / "generated/PassiveServiceData.swift"),
                     str(source / "Inspection.swift"), str(source / "InspectionVerification.swift"),
-                    "-framework", "Security", "-framework", "ServiceManagement", "-o", str(binary)],
+                    "-framework", "ServiceManagement", "-o", str(binary)],
                    check=False, env=environment, timeout=120, capture_output=True, text=True)
     assert compiled.returncode == 0, compiled.stderr
     completed = subprocess.run([str(binary)], check=True, env=environment, timeout=10,

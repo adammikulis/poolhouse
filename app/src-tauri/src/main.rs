@@ -10,6 +10,8 @@ mod studio_watch;
 mod coding_project;
 mod native_picker;
 mod window_size;
+#[cfg(target_os = "macos")]
+mod service_availability;
 #[cfg(test)]
 mod security_tests;
 
@@ -196,6 +198,8 @@ fn main() {
             if let Some(at) = told_where() {
                 window.set_position(at)?;
             }
+            #[cfg(target_os = "macos")]
+            app.manage(service_availability::OptionalDiagnostic::start());
             Ok(())
         })
         .on_window_event(|window, event| {
