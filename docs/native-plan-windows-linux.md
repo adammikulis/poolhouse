@@ -166,7 +166,7 @@ are not independently implemented APIs. Record the exact contract commit in both
 Claim precise areas and independent sibling worktrees before edits. Mixed platform files, common manifests, Cargo
 lockfiles, shared SDK/schema files, and common Tauri files belong to the integration owner. macOS supplies a focused
 patch or review request for those; never have both sessions edit them concurrently. macOS can create isolated
-platform modules behind reviewed adapter signatures after the common contract checkpoint.
+platform modules under the capability-specific dormant implementation rule below.
 
 At every checkpoint both sessions fetch/merge origin/0.3dev and read inbox. Each author runs affected checks and pushes
 its own completed batch to 0.3dev; no shared mutable branch, force push, or owner publication chore. A contract change
@@ -176,15 +176,26 @@ it in the common contract, regenerate once, then refresh adapters. No local wire
 Use four commit barriers: H = installed hook proof; K = reviewed common contracts and preserved-work ledger;
 P = reviewed native prerequisite proofs for the relevant platform; I = installed cross-device acceptance.
 Shared contract/schema/generator definition, building and independent review may proceed while H proof is pending;
-K can be accepted from its required evidence before H. K still precedes platform adapter implementation.
+K can be accepted from its required evidence before H.
+
+A dormant capability-specific platform module may be implemented and tested once its exact canonical interface and
+complete transitive dependencies/profiles have independent attack/design and platform-feasibility review, and the
+coordinator has integrated and pushed that source to shared `0.3dev`. Record the exact source SHA, capability and
+dependency scope, unavailable paths and activation preconditions; communicate and deconflict the scope through these
+plans. Active shared-file ownership conflicts still require reconciliation, not a new remote or person approval step.
+Unrelated unresolved profiles do not block this scoped work. Missing required dependencies refuse; no placeholder
+proof, fake issuer, stubbed verified handle, alternate wire or runtime fallback may stand in. This permission adds
+no public/production entrypoint or installed activation and accepts no part of H, K or P. Activation requires its
+relevant protection evidence and separate review; full orchestration/cutover still requires global K.
 
 Engineering needed to prove H is limited to independently attack-reviewed protected producer/measured launch,
 immutable actor/root/direct-parent context, native caller/private node admission and single-consumer completion
-components. Coordinate this scope with the common owner behind reviewed canonical adapter contracts; K precedes any
-platform adapter implementation within it. This allowance establishes no accepted barrier and admits no broader
+components. Coordinate this scope through the reviewed canonical dependency checkpoint and dormant implementation
+rule above. This allowance establishes no accepted barrier and admits no broader
 orchestration or computation slice before its prerequisites.
 
-Full orchestration port/cutover requires H, K and the relevant P; platform proofs may proceed independently after K;
+Full orchestration port/cutover requires H, global K and the relevant P; scoped dormant engineering does not satisfy them.
+Platform proofs may proceed independently after their relevant dependency and protection prerequisites;
 H caller admission is distinct from the bounded computation/private-worker slice proved for P. No shipped cutover is
 complete before all required P and I evidence exists. Record each barrier SHA and actual installed proof artifact,
 never infer acceptance from branch names, a contract build or a prerequisite component.
