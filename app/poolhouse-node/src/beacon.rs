@@ -2,8 +2,8 @@
 //! a port. Never matched by name.
 //!
 //! The beacon is signed with the device key (its public key rides along), so a datagram cannot
-//! be altered or replayed after a minute; that proves it was not tampered with, not that its
-//! sender is a member. A member's beacon is further checked against the certificate in the
+//! be altered unnoticed, and datagrams older than a minute are rejected. In-window replay is possible;
+//! a carried-key signature does not prove membership. A member's beacon is checked against the certificate in the
 //! pool record (the key must be that certificate's), and the connection it leads to is pinned
 //! to the fingerprint it names. Loopback, unspecified and multicast addresses are never advertised.
 //!
@@ -82,7 +82,7 @@ pub fn decode(bytes: &[u8], now_ms: u64, allow_loopback: bool) -> Result<Beacon>
     let ts = v.get("ts").and_then(Value::as_u64).ok_or_else(|| Error::Invalid("beacon time".into()))?;
     let project = v.get("project").and_then(Value::as_str).unwrap_or("").to_string();
     let b = Beacon { pool: field(&v, "pool")?.into(), fingerprint: field(&v, "fp")?.into(), public, addr, port, ts, project };
-    if !crate::cert::valid_fingerprint(&b.fingerprint) || !b.pool.len() == 32 || !(b.project.is_empty() || crate::projectid::valid_key(&b.project)) {
+    if !crate::cert::valid_fingerprint(&b.fingerprint) || !(b.pool.is_empty() || (b.pool.len() == 32 && b.pool.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)))) || !(b.project.is_empty() || crate::projectid::valid_key(&b.project)) {
         return Err(Error::Invalid("beacon names".into()));
     }
     if !(advertisable(addr) || allow_loopback) {
@@ -192,8 +192,8 @@ fn join_all(socket: &Socket, group: Ipv4Addr, on: &[Iface]) -> Result<()> {
     }
 }
 
-/// What a node says of itself in a beacon, asked afresh each time. An empty ``pool`` says nothing
-/// (a node still listening for a pool to join stays quiet).
+/// What a node says of itself in a beacon, asked afresh each time. An empty ``pool``
+/// advertises an unfounded device as a discovery candidate, never as a pool member.
 #[derive(Clone, Debug, Default)]
 pub struct Advert {
     pub pool: String,
@@ -235,9 +235,6 @@ fn hear(inbound: &UdpSocket, cfg: &BeaconConfig, hooks: &Hooks, stats: &BeaconSt
 /// the broadcast address of its network, and to the explicit targets.
 fn send_round(out: &UdpSocket, cfg: &BeaconConfig, ifaces: &[Iface], key: &SigningKey, hooks: &Hooks, stats: &BeaconStats, now: fn() -> u64) {
     let Advert { pool, fingerprint, port, project } = (hooks.identity)();
-    if pool.is_empty() {
-        return;
-    }
     let public = key.verifying_key().to_bytes();
     let route = local_address();
     let ways: Vec<Option<Iface>> = if ifaces.is_empty() { vec![None] } else { ifaces.iter().copied().map(Some).collect() };

@@ -15,7 +15,7 @@ use serde_json::json;
 fn sample(addr: &str) -> (Beacon, ed25519_dalek::SigningKey) {
     let key = kit::key(7);
     let b = Beacon {
-        pool: "0123456789abcdef".into(), fingerprint: "a".repeat(64), public: key.verifying_key().to_bytes(),
+        pool: "0123456789abcdef0123456789abcdef".into(), fingerprint: "a".repeat(64), public: key.verifying_key().to_bytes(),
         addr: addr.parse().unwrap(), port: 4000, ts: wall_ms(), project: String::new(),
     };
     (b, key)
@@ -40,6 +40,37 @@ fn a_beacon_round_trips_and_any_change_to_it_is_caught() {
     let other = kit::key(8);
     let foreign = text.replace(&poolhouse_node::fsutil::hex(&b.public), &poolhouse_node::fsutil::hex(&other.verifying_key().to_bytes()));
     assert!(decode(foreign.as_bytes(), wall_ms(), false).is_err(), "a signature only verifies under its own key");
+}
+
+#[test]
+fn discovery_accepts_unfounded_or_current_pool_ids_only() {
+    let (mut b, key) = sample("192.0.2.7");
+    for pool in ["", "0123456789abcdef0123456789abcdef"] {
+        b.pool = pool.into();
+        assert_eq!(decode(&encode(&b, &key), wall_ms(), false).unwrap(), b);
+    }
+    for pool in ["0123456789abcdef", "a", &"a".repeat(31), &"a".repeat(33), &"g".repeat(32), &"A".repeat(32)] {
+        b.pool = pool.into();
+        assert!(decode(&encode(&b, &key), wall_ms(), false).is_err(), "invalid pool {pool}");
+    }
+}
+
+#[test]
+fn unfounded_nodes_advertise_without_joining_or_founding() {
+    let (pa, pb) = (udp_port(), udp_port());
+    let a = device_with(cfg_with(beacon(pa, &[pb])));
+    let b = device_with(cfg_with(beacon(pb, &[pa])));
+    eventually("unfounded nodes to hear each other", 5, || {
+        a.status()["beacon_heard"].as_u64().unwrap() > 0 && b.status()["beacon_heard"].as_u64().unwrap() > 0
+    });
+    for device in [&a, &b] {
+        let node = device.node.lock().unwrap();
+        assert!(node.members.is_unfounded());
+        assert!(node.members.id.is_empty());
+        assert_eq!(node.members.devices().len(), 1);
+    }
+    assert!(!a.is_member(&b.fp()) && !b.is_member(&a.fp()));
+    assert!(a.status()["last_join"].is_null() && b.status()["last_join"].is_null());
 }
 
 #[test]
