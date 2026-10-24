@@ -20,7 +20,8 @@ for patch in 0001-harden-producer-entrypoints.patch \
              0002-retain-native-session-context.patch \
              0003-retain-original-native-occurrences.patch \
              0004-retain-actual-native-actor-context.patch \
-             0005-retain-complete-native-invocations.patch; do
+             0005-retain-complete-native-invocations.patch \
+             0006-encode-complete-native-invocations.patch; do
   git apply --check "/path/to/poolhouse/patches/codex/$patch"
   git apply "/path/to/poolhouse/patches/codex/$patch"
 done
@@ -122,3 +123,24 @@ original envelope until its spawned child exits normally. Runtime teardown may a
 that waiter while the OS child survives: this is not protected process-lifetime
 custody, an exporter, Node admission, or installed H acceptance. The four-patch macOS
 packages are separate evidence and do not contain this fifth patch.
+
+
+The sixth patch adds a private finite encoder on that same retained original envelope.
+Tags, complete field order and envelope order come from the shared native-message grammar;
+`generated/native_original_fields.rs` is regenerated with the Node contract outputs.
+Exhaustive source destructures refuse newly added request fields until their binding is
+reviewed. Explicit serde features preserve observed number tokens and object order.
+Raw platform path units and exact UTC seconds/nanoseconds remain data, including invalid
+Unicode path units and supported leap-second values. No path becomes executable by decoding.
+
+The encoder uses only caller output/scratch and checked work. Cleanup is reserved before
+workspace access; Drop clears traversal references, and errors zero the written prefix and
+return no view or length. Five focused source tests passed. Twenty-two actual producer
+vectors passed the independent canonical Node decoder, which also refused every truncation.
+An omitted-alias mutation failed, and a parent regression reproduced uncharged scratch
+cleanup before correction. This is Mac source-test evidence, not Windows execution proof.
+
+No production caller sends these private bytes. No transport, source admission, protected
+resource reservation, dispatch catalog capture, purpose grant, issuer or installed H/K
+acceptance is supplied. Existing five-patch packages remain unchanged; no sixth-patch
+package has been built or installed.

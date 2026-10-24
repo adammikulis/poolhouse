@@ -21,6 +21,20 @@ def test_native_message_generated_parser_table_matches_authoritative_grammar():
     assert native_message.render(model) == (ROOT / "app/poolhouse-node/src/contract_native_message.rs").read_text()
 
 
+def test_native_producer_fields_use_canonical_tags_order_and_exhaustive_source_fields():
+    model = native_message.load(ROOT / "contracts/node")
+    rendered = native_message.render_producer(model)
+    assert rendered == (ROOT / "patches/codex/generated/native_original_fields.rs").read_text()
+    # A new complete-source field must enter the source destructure and encoding,
+    # causing Rust compile refusal until the actual source mapping is reviewed.
+    record = next(row for row in model["types"] if row["name"] == "PreToolUse")
+    record["fields"].append({"name": "future_private_field", "type": "String"})
+    changed = native_message.render_producer(model)
+    assert "future_private_field } = value" in changed
+    assert "self.string(future_private_field)?;" in changed
+    assert ".." not in rendered
+
+
 @pytest.mark.parametrize("change", ["duplicate-type", "unknown-reference", "duplicate-tag", "incomplete-envelope", "zero-width-list", "authority-status"])
 def test_native_message_grammar_refuses_ambiguous_or_unbounded_shapes(tmp_path, change):
     text = SOURCE.read_text()

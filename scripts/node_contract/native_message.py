@@ -141,3 +141,80 @@ def render(model: dict) -> str:
         out.append(f"    {expression}, // {row['name']}")
     out.extend(["];", "pub(super) const MINIMUM: &[usize] = &[" + ", ".join(str(model["minimum"][row["name"]]) for row in model["types"]) + "];", ""])
     return "\n".join(out)
+
+
+def render_producer(model: dict) -> str:
+    """Finite private Codex source binding; the canonical grammar owns tags/order."""
+    types = {row['name']: row for row in model['types']}
+    structs = {name: 'crate::' + name + 'Request' for name in ['PreToolUse', 'PostToolUse', 'PreCompact', 'PostCompact', 'UserPromptSubmit', 'SessionEnd', 'Interrupt', 'SessionStart', 'Stop']}
+    structs.update({'PermissionRequest': 'crate::PermissionRequestRequest', 'Subagent': 'crate::SubagentHookContext', 'ModelRequest': 'crate::ModelRequestHookInput', 'TokenUsage': 'codex_protocol::protocol::TokenUsage', 'Legacy': 'crate::HookPayload', 'AfterAgent': 'crate::HookEventAfterAgent'})
+    unions = {'SessionStartSource': 'crate::SessionStartSource', 'SessionStartTarget': 'crate::StartHookTarget', 'StopTarget': 'crate::StopHookTarget', 'ModelRequestStatus': 'crate::ModelRequestStatus', 'ModelRequestEvent': 'crate::ModelRequestHookEvent', 'LegacyEvent': 'crate::HookEvent', 'OriginalRequest': 'crate::native_occurrence::NativeRequest'}
+    def snake(name):
+        return re.sub(r'(?<!^)(?=[A-Z])', '_', name).lower()
+    def call(kind, value):
+        row = types[kind]
+        if row['kind'] == 'optional':
+            return f'self.flag({value}.is_some())?; if let Some(item) = {value}.as_ref() {{ {call(row["item"], "item")} }}'
+        if kind == 'Strings':
+            return f'self.count({value}.len())?; for item in {value} {{ self.string(item)?; }}'
+        if kind == 'Path':
+            return f'self.path({value}.as_path())?;'
+        if kind == 'I64':
+            return f'self.put(&{value}.to_be_bytes())?;'
+        if kind == 'Bool':
+            return f'self.flag(*{value})?;'
+        return f'self.{snake(kind)}({value})?;'
+    out = ['// Generated from native_boundaries/native_message.toml. Private DATA encoder only.', f'const VERSION: u16 = {model["version"]};', f'const SOURCE_FEATURE: u16 = {model["source_feature"]};', "impl<'o, 's, 'v> Encoder<'o, 's, 'v> {"]
+    for name, source in structs.items():
+        fields = types[name]['fields']
+        out += [f"fn {snake(name)}(&mut self, value: &'v {source}) -> Result<(), EncodeError> {{", f'let {source} {{ ' + ', '.join(f['name'] for f in fields) + ' } = value;']
+        out += [call(f['type'], f['name']) for f in fields]
+        out += ['Ok(())', '}']
+    for name, source in unions.items():
+        out += [f"fn {snake(name)}(&mut self, value: &'v {source}) -> Result<(), EncodeError> {{", 'match value {']
+        for case in types[name]['cases']:
+            item = case['type']
+            variant = source+'::'+case['name']
+            if name == 'OriginalRequest':
+                pattern = variant+'(item)'
+                actions = call(item, 'item')
+            elif name == 'LegacyEvent':
+                pattern = variant+' { event }'
+                actions = call(item, 'event')
+            elif item == 'Unit':
+                pattern = variant
+                actions = ''
+            else:
+                fields = types[item]['fields']
+                pattern = variant+' { '+', '.join(f['name'] for f in fields)+' }'
+                actions = ' '.join(call(f['type'], f['name']) for f in fields)
+            out += [f'{pattern} => {{ self.tag({case["tag"]})?; {actions} }}']
+        if name == 'OriginalRequest':
+            out += ['#[cfg(test)] crate::native_occurrence::NativeRequest::Test(_) => return Err(EncodeError::Unsupported),']
+        out += ['}', 'Ok(())', '}']
+    envelope = {
+        "Version": "self.tag(VERSION)?;", "SourceFeature": "self.tag(SOURCE_FEATURE)?;",
+        "Platform": "self.put(&[if cfg!(unix) {1} else if cfg!(windows) {2} else {return Err(EncodeError::Unsupported)}])?;",
+        "Launch": "self.put(&occurrence.id().canonical_launch_id())?;",
+        "Occurrence": "self.put(&occurrence.id().canonical_event_id())?;",
+        "Instance": "self.put(&occurrence.native_session_instance().canonical_event_id())?;",
+        "CapturedKind": "self.tag(captured_kind(kind))?;", "ActorContext": "self.context(context)?;",
+        "OriginalRequest": "self.original_request(invocation.original())?;",
+    }
+    out += ["fn invocation(&mut self, invocation: &'v std::sync::Arc<crate::NativeInvocation>) -> Result<(), EncodeError> {",
+            "let occurrence=invocation.occurrence();",
+            "let crate::NativeOccurrenceKind::Invocation(kind)=occurrence.kind() else { return Err(EncodeError::Context); };",
+            "let context=occurrence.actor_context().ok_or(EncodeError::Context)?;",
+            "if occurrence.native_session_instance()!=context.actor() { return Err(EncodeError::Context); }"]
+    out += [envelope[field] for field in model["envelope"]]
+    out += ['Ok(())', '}', '}', 'fn captured_kind(value: crate::NativeHookKind) -> u16 {', 'match value {']
+    for row in model['event_kind']:
+        pattern='crate::NativeHookKind::LegacyAfterAgent' if row['name']=='LegacyAfterAgent' else 'crate::NativeHookKind::Configured(codex_protocol::protocol::HookEventName::'+row['name']+')'
+        out += [f'{pattern} => {row["tag"]},']
+    out += ['}', '}']
+    out += ['fn value_tag(value: &serde_json::Value) -> u16 {', 'match value {']
+    for case in types['Value']['cases']:
+        pattern = 'serde_json::Value::'+case['name']+('' if case['name']=='Null' else '(_)')
+        out += [f'{pattern} => {case["tag"]},']
+    out += ['}', '}']
+    return '\n'.join(out)+'\n'
