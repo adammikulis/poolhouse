@@ -33,7 +33,7 @@ Counts: A 32, B 35, C 121, D 6 (a variable name counts once, a row naming no var
 | `POOLHOUSE_WINDOW_POSITION` | `poolhouse.scrape.browser.placed` | a headed browser opens on the primary display | `.claude/settings.json` | **left**: an agent that asks for a headed window without a position could take the primary screen. `scrape/browser.py` is being changed by the real-machine worker; the fix there is "an agent with no position is headless". Headless is the default of every driver |
 | `POOLHOUSE_SANDBOX_SERVE` | `poolhouse.serve.confined` | model servers run unconfined | `fleet/wsl.py`, a person | **left, risk named below**: confining by default needs a GPU lease to prove Metal and CUDA still load under the profile |
 | `POOLHOUSE_SHIM_LOG` | conftest, `testreuse_key` | desktop-tool shims record to nowhere | conftest | structural under pytest (shims on `PATH` fail the run) |
-| conftest import installs git hooks | `tests/conftest.py::_install_git_hooks` | (no variable: on) | nobody | writes the repository's own `.git/hooks` only; never the real home |
+| repository Git hook installation | `scripts/install-hooks.py` | no installation during test collection | explicit repository installer | testing preserves existing hooks and local configuration; only the explicit installer writes owned hooks |
 
 ## B: off switches and unlocks
 
