@@ -167,17 +167,61 @@ impl Access {
 }
 
 impl Node {
+    // No production caller/provider. A pending request never invokes migration.
+    #[allow(dead_code)]
+    fn prepare_local_allocation_format(&mut self)->std::result::Result<(),managed_jobs::Failure> {
+        if self.leases.allocation_fence.is_some() {return self.recover_local_allocations();}
+        let id=self.pending_jobs()?.initialize_allocation_authority()?;
+        if self.pending_jobs()?.allocation_identity()?.2 {return Err(managed_jobs::Failure::Invalid);}
+        let fence=crate::lease::allocation_format::Fence {authority:id,generation:1};
+        let bytes=crate::lease::allocation_format::encode(&self.leases.table,&fence).map_err(|_|managed_jobs::Failure::Invalid)?;
+        self.leases.allocation_parent=Some(self.pending_jobs()?.allocation_parent()?);
+        // Preserve the incompatible save mode even if publication acknowledgment is
+        // lost; no subsequent legacy save may erase a possibly committed fence.
+        self.leases.allocation_fence=Some(fence);
+        self.pending_jobs()?.write_allocation_format(&bytes)?;
+        self.leases.table.local_allocations_unresolved.store(false,std::sync::atomic::Ordering::Release);
+        Ok(())
+    }
+    fn recover_local_allocations(&mut self)->std::result::Result<(),managed_jobs::Failure> {
+        let fence=self.leases.allocation_fence.clone();
+        if fence.is_none() && !self.dir.join("managed-pending").try_exists().map_err(|e|managed_jobs::Failure::Io(e.kind()))? {return Ok(());}
+        #[cfg(unix)] {
+            let parent=self._instance.checked_parent(&self.dir,INSTANCE_LOCK).map_err(|e|managed_jobs::Failure::Io(e.kind()))?;
+            let mut book=managed_jobs::Book::open_existing(parent,self.activity.clone())?;
+            match book.allocation_identity() {
+                Ok((id,generation,unsettled))=> {
+                    if let Some(fence)=&fence {
+                        book.verify_allocation_format()?;
+                        if id!=fence.authority || generation!=fence.generation {return Err(managed_jobs::Failure::Invalid);}
+                    } else if unsettled {return Err(managed_jobs::Failure::Invalid);}
+                    // Without genuine providers every unsettled obligation is
+                    // unknown capacity, not a finite default or grant from DATA.
+                    self.leases.table.local_allocations_unresolved.store(unsettled,std::sync::atomic::Ordering::Release);
+                },
+                Err(managed_jobs::Failure::Invalid) if fence.is_none() && !book.has_allocation_authority()=>{},
+                Err(e)=>return Err(e),
+            }
+            book.bind_allocation_projection(self.leases.table.local_allocations_unresolved.clone());
+            if fence.is_some() {self.leases.allocation_parent=Some(book.allocation_parent()?);}
+            self.pending_jobs=Some(book);Ok(())
+        }
+        #[cfg(not(unix))] {Err(managed_jobs::Failure::Unavailable)}
+    }
     #[allow(dead_code)]
     fn pending_jobs(&mut self) -> std::result::Result<&mut managed_jobs::Book, managed_jobs::Failure> {
         if self.pending_jobs.is_none() {
             #[cfg(unix)] {
                 let parent=self._instance.checked_parent(&self.dir,INSTANCE_LOCK)
                     .map_err(|e|managed_jobs::Failure::Io(e.kind()))?;
-                self.pending_jobs=Some(managed_jobs::Book::open(parent,self.activity.clone())?);
+                self.pending_jobs=Some(if self.leases.allocation_fence.is_some() {
+                    managed_jobs::Book::open_existing(parent,self.activity.clone())?
+                } else {managed_jobs::Book::open(parent,self.activity.clone())?});
             }
             #[cfg(not(unix))] return Err(managed_jobs::Failure::Io(std::io::ErrorKind::Unsupported));
         }
-        self.pending_jobs.as_mut().ok_or(managed_jobs::Failure::Invalid)
+        let book=self.pending_jobs.as_mut().ok_or(managed_jobs::Failure::Invalid)?;
+        book.bind_allocation_projection(self.leases.table.local_allocations_unresolved.clone());Ok(book)
     }
 
     /// Open the node whose state lives in ``dir`` (a directory only its owner can enter).
@@ -206,6 +250,12 @@ impl Node {
             stop: Arc::new(AtomicBool::new(false)), started: Instant::now(), folds: 0,
             build: crate::build::Build::from_env(), network: crate::netif::network().into(), signer: None, key_binding: KeyBinding::File, declined: BTreeMap::new(), activity, pending_jobs:None, _instance: instance,
         };
+        if node.recover_local_allocations().is_err() {
+            // Keep other node services available, but never reset or grant compute
+            // while established allocation accounting cannot be reconstructed.
+            node.leases.table.local_allocations_unresolved.store(true,std::sync::atomic::Ordering::Release);
+            eprintln!("node: local allocation recovery unavailable; new compute remains unavailable");
+        }
         let root = dir.join("boards");
         if root.is_dir() {
             crate::reap::clear_trash(&root);

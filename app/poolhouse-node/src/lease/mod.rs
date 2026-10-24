@@ -6,6 +6,7 @@
 //! is also written to the holder's board as a `lease` entry, so peers see it; `merge` reads those entries back. A lease that holds
 //! claims of things on this device alone (`types::DEVICE_CLAIMS`) writes nothing.
 
+pub(crate) mod allocation_format;
 pub mod holders;
 pub mod live;
 pub mod merge;
@@ -34,6 +35,8 @@ fn wall_ms() -> u64 {
 
 pub struct Leases {
     activity: Registry,
+    pub(crate) allocation_fence:Option<allocation_format::Fence>,
+    pub(crate) allocation_parent:Option<std::fs::File>,
     pub cfg: Config,
     pub table: Table,
     /// Who held a claim on a worktree of this device.
@@ -63,13 +66,13 @@ impl Leases {
         };
         let config_raw = read(CONFIG_FILE)?;
         let cfg = config_raw.as_deref().and_then(Config::parse).unwrap_or_default();
-        let mut table: Table = match read(TABLE_FILE)? {
-            Some(bytes) => serde_json::from_slice(&bytes)?,
-            None => Table::default(),
+        let (mut table,allocation_fence)=match read(TABLE_FILE)? {
+            Some(bytes)=>allocation_format::decode(&bytes)?,
+            None=>(Table::default(),None),
         };
         table.next_seq = table.next_seq.max(table.leases.iter().map(|l| l.seq).max().map_or(0, |s| s + 1));
         let saved = serde_json::to_vec(&table.leases)?;
-        Ok(Leases { activity, cfg, table, holders: holders::Holders::open(dir)?, path: dir.join(TABLE_FILE), config_path: dir.join(CONFIG_FILE), config_raw, saved, clock: Box::new(wall_ms), deferred: false, pending: Vec::new() })
+        Ok(Leases { activity, allocation_fence, allocation_parent:None, cfg, table, holders: holders::Holders::open(dir)?, path: dir.join(TABLE_FILE), config_path: dir.join(CONFIG_FILE), config_raw, saved, clock: Box::new(wall_ms), deferred: false, pending: Vec::new() })
     }
 
     /// Take the settings from the configuration file again when its bytes are not the ones they came from: a file that is gone
@@ -108,8 +111,11 @@ impl Leases {
         if content == self.saved {
             return Ok(());
         }
-        let file = serde_json::to_vec(&json!({"leases": kept, "next_seq": self.table.next_seq}))?;
-        write_atomic(&self.path, &file)?;
+        let file=if let Some(fence)=&self.allocation_fence {allocation_format::encode(&self.table,fence)?}
+            else {serde_json::to_vec(&json!({"leases":kept,"next_seq":self.table.next_seq}))?};
+        if let Some(fence)=&self.allocation_fence {
+            allocation_format::write(self.allocation_parent.as_ref().ok_or_else(||Error::Invalid("allocation storage recovery is unavailable".into()))?,&self.table,fence)?;
+        } else {write_atomic(&self.path,&file)?;}
         self.saved = content;
         Ok(())
     }
