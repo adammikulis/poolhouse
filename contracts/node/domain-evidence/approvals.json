@@ -268,17 +268,417 @@
     "Shared root/checkpoint storage must survive independent node rollback and reinstall; OS mechanism and atomic receipt protocol await platform review.",
     "Closed grant actions are deliberately bounded; retained grant actions outside this subset require explicit typed scope review before retention can be claimed.",
     "Founding/admit descriptor references require authenticated independent verification; references alone are untrusted. Node supplies transport identity and removal cuts.",
-    "Cryptographic encoding negotiation for retained P-256 keys and signatures needs a typed variant; ApprovalSignature64 alone does not replace P-256.",
+    "Algorithm-specific Ed25519/P256 declaration shapes now represent retained formats. Semantic crypto verification, exact new helper transcript, registered issuer/subject algorithm roles and actual Windows/Linux/macOS protected issuance remain unimplemented/unproved; no runtime/platform/K acceptance.",
     "Handoff/reissue and shared-board charter authority require their own complete typed domains before they can be requested; no in-place join-policy change.",
     "GovernanceMode members remains explicitly unsupported until its authority implementation is reviewed; join policy is a separate immutable field.",
     "Legacy person enrollment, raw draft signing, approval_decide, typed confirmation, and requests.approved booleans confer no new authority and have no migration path.",
     "Independent review and generator integration/drift checks remain required; source mapping is not complete feature retention or installed acceptance.",
-    "Legacy grants to other sessions, classes or accounts are outside the own-requester-only grant subset; mapping grant_issue records the family, not complete retention. They require separate reviewed recipient contracts before retention can be claimed."
+    "Legacy grants to other sessions, classes or accounts are outside the own-requester-only grant subset; mapping grant_issue records the family, not complete retention. They require separate reviewed recipient contracts before retention can be claimed.",
+    "Actual Windows compatible protected signer remains unresolved: documented Hello KeyCredential RSA is not a retained Ed25519/P256 scheme. Do not add RSA or silently downgrade to a software key; unsupported capabilities fail closed pending separately reviewed platform engineering.",
+    "Generic legacy approval DER versus low-S governance is purpose-specific. Preserve old signed logs verbatim; no silent signature normalization, verifier fallback, evidence upgrade or trust migration.",
+    "Canonical general ApprovalImmutableOperation helper transcript is not yet defined; existing governance JSON, native certificate struct-order JSON and native operation binary codec must not be conflated. New signing integration needs explicit versioned exact-purpose vectors before acceptance."
   ],
   "independent_review": {
     "reviewer": "approval_attack_review",
     "scope": "final concrete declarations only",
     "result": "approved after signed recipient/resource/snapshot and count/hold constraints corrections",
     "acceptance": "no runtime, platform or K acceptance; integration validation belongs to common owner"
+  },
+  "algorithm_fidelity_evidence": {
+    "version": 1,
+    "status": "independent concrete declaration review approved; no runtime/platform/K acceptance",
+    "source_commit": "23d2ae128f1f10f8e8f0ec2219de550e98ae05a6",
+    "sources": [
+      {
+        "path": "app/poolhouse-node/src/gov/keys.rs",
+        "sha256": "9e986c9abb9e1f4ba22e934395a3d4a75ffaeb543e414a6c1797d290f7fed81a"
+      },
+      {
+        "path": "app/poolhouse-node/src/gov/act.rs",
+        "sha256": "b5e8ce9691fd1a3acf13957b1d1bd27d58d3bed68f39e91acdb1d2499fc24412"
+      },
+      {
+        "path": "app/poolhouse-node/src/gov/charter.rs",
+        "sha256": "c1aab014e367e29e03415987786d31c355a502e9bdd66d0411d86cef4b10a5a2"
+      },
+      {
+        "path": "app/poolhouse-node/src/row.rs",
+        "sha256": "0a3fb941e60ed9dc926f6459d340d3893d1c84fdac9f852af392bcb863cf3283"
+      },
+      {
+        "path": "app/poolhouse-node/src/grants/person.rs",
+        "sha256": "f060532acded7b7239062b41431d25d48ffffdc6a5f463b55c97a9436c9167e5"
+      },
+      {
+        "path": "app/poolhouse-node/src/approvals/challenge.rs",
+        "sha256": "dfca401fac052cdef27f657e8416fc811847de025952394392e897658ea5cc02"
+      },
+      {
+        "path": "app/poolhouse-node/src/approvals/decide.rs",
+        "sha256": "e2d5a229f7a2d2061049314b5bae795b66a94c476563cc4f59f9a7b5115b8299"
+      },
+      {
+        "path": "app/poolhouse-node/src/phone/admit.rs",
+        "sha256": "da25f2ddb63e9db2c96d0b2b591591bd1775ec642e4a857d62076121a92bd863"
+      },
+      {
+        "path": "app/poolhouse-node/src/phone/enrol.rs",
+        "sha256": "ab4e079c292cb3856a184cfe419a36271f57d103dac1d6f978ea56f0e1e2a7ce"
+      },
+      {
+        "path": "app/poolhouse-node/src/gov/phone_verify/request.rs",
+        "sha256": "e9beba8b876247e8b720eb0e3125ed6384195db6d95c6d43a61f6eb70d9034c2"
+      },
+      {
+        "path": "app/poolhouse-node/src/gov/phone_verify/mod.rs",
+        "sha256": "af6abddfa7e83d3b95b7b9846a434f2129b318f2a31114aebc9d6f1e47fffb35"
+      },
+      {
+        "path": "app/android/src/main/java/app/poolhouse/phone/P256Signature.java",
+        "sha256": "836bef15d8099a52b4fd598a7f19beb47a1c7fa04492cae2beaec9d929028793"
+      },
+      {
+        "path": "app/android/src/main/java/app/poolhouse/phone/ApprovalKey.java",
+        "sha256": "17058576035b40a709abcccf0bd8af0f5977d39ed4383afbfdf4f47d1f228bf6"
+      },
+      {
+        "path": "app/android/src/main/java/app/poolhouse/phone/PoolKey.java",
+        "sha256": "d6f9bef25c3338c095c0cbb5fa79c482179ec2a26726a766198a740c2971345d"
+      },
+      {
+        "path": "app/android/src/main/java/app/poolhouse/phone/Canonical.java",
+        "sha256": "be45a6b0b467a7a35dc08a54b1a0e3ec586c6294d6c88c1a0ef2df741481e855"
+      },
+      {
+        "path": "app/android/src/main/java/app/poolhouse/phone/Challenge.java",
+        "sha256": "8765b023cc9b9ed403739bc97cdbe9a0ad84a97ac02eeed6342dfdde8cf81fce"
+      },
+      {
+        "path": "app/android/src/main/java/app/poolhouse/phone/GovernanceAct.java",
+        "sha256": "70fdbbd05015820e02036a6201805cf1125431ded354a4bd457fc659094e1382"
+      },
+      {
+        "path": "app/android/src/main/java/app/poolhouse/phone/FoundingCharter.java",
+        "sha256": "c12816e928cb11fb23812f9685e3f40017f3308a58ef2865ce54a6abb833a54b"
+      },
+      {
+        "path": "app/android/src/main/java/app/poolhouse/phone/Decider.java",
+        "sha256": "01389adb6620488338978088c4d82901f6e9f76069c058151bd450c1a5089261"
+      },
+      {
+        "path": "app/android/src/main/java/app/poolhouse/phone/AdminAddAct.java",
+        "sha256": "57d32d94d552062d3d1ad0949ff74e954058e16180fc9af4ae8732d9a7e5ea85"
+      },
+      {
+        "path": "app/android/src/main/java/app/poolhouse/phone/AddRequest.java",
+        "sha256": "3a58869e4f748a6f87b1e9fa26d3cfa9f8ffc0e7a011903d44a457a29c2ec5c1"
+      },
+      {
+        "path": "src/poolhouse/board/grants.py",
+        "sha256": "252e2cc527191ce0f05ee2c80a1716591ed4c5712722a0228a3c825c5f8667a8"
+      },
+      {
+        "path": "src/poolhouse/board/person_key.py",
+        "sha256": "4518231ff2c02fe0874800ae24348f55f6185ae42dada0d7485d5661bef73bfa"
+      },
+      {
+        "path": "src/poolhouse/board/founding.py",
+        "sha256": "ceedd9fb7fd5a2f02cdebae8699c112245d95a8416f1d491280da2fff136d822"
+      },
+      {
+        "path": "src/poolhouse/fleet/onboard/signing.py",
+        "sha256": "8032e769a2fb14cdd0c64c2ac82a901fc6f06577eba3fc92425693fbc55ee392"
+      },
+      {
+        "path": "app/poolhouse-authority/src/certificate.rs",
+        "sha256": "54df963f47700d1431a168c6bb06235a224052d800b241bb449393e84b4b6283"
+      },
+      {
+        "path": "app/poolhouse-authority/src/lib.rs",
+        "sha256": "5fdb2cdb9c05df84573c383a48294347218300a9f82d9873ac9bb5c2758deda6"
+      },
+      {
+        "path": "app/poolhouse-authority/SOURCES.md",
+        "sha256": "4f855e194bf7be14d5185479eee526a50f0eff0a506ed8c48410391f3ef9b597"
+      },
+      {
+        "path": "app/native-approval/Helper.swift",
+        "sha256": "1da644f63437e1e8054e5b48f4abc7f1a28c05058cb89d45f17027376f688102"
+      },
+      {
+        "path": "app/native-approval/LocalPresence.swift",
+        "sha256": "1768699e48f15b4ae1d317805b12441b535ca06d8d92edfc8dc0ec355734891b"
+      },
+      {
+        "path": "docs/design-phone-free-pools.md",
+        "sha256": "5cf2afac25ef32b523175eac38d5216dfcd0f701f70cdfb98abb3ea8d2c9f473"
+      },
+      {
+        "path": "docs/design-pool-keys-and-custody.md",
+        "sha256": "4212e16bd67a8521e8c3abb4ee74c1613b7c00bdc24d7ef15eb8446c19d0a632"
+      },
+      {
+        "path": "docs/native-plan-windows-linux.md",
+        "sha256": "7bce2f24be640a042aa704404c4b7cb536a06af8bbc3c25be8710701df93a8d7"
+      },
+      {
+        "path": "docs/native-plan-macos.md",
+        "sha256": "b7bb07f90e9acf7368f9a689974019af2ee1e2c8f2913ac73690011fcef3842e"
+      }
+    ],
+    "sites": [
+      {
+        "path": "app/poolhouse-node/src/grants/person.rs",
+        "line": 65,
+        "match": "pub fn verifies(",
+        "meaning": "Ed25519 exact-message verify_strict; raw32 key and raw64 signature"
+      },
+      {
+        "path": "app/poolhouse-node/src/grants/person.rs",
+        "line": 72,
+        "match": "pub fn p256_point",
+        "meaning": "SEC1 uncompressed65 allocation/prefix check only; full crypto validation still needed"
+      },
+      {
+        "path": "app/poolhouse-node/src/grants/person.rs",
+        "line": 77,
+        "match": "pub fn verifies_p256",
+        "meaning": "P256 SHA256 ASN1 DER message verifier; no explicit governance low-S gate here"
+      },
+      {
+        "path": "app/poolhouse-node/src/grants/person.rs",
+        "line": 92,
+        "match": "pub fn fingerprint_of",
+        "meaning": "legacy signer fingerprint SHA256 canonical raw public bytes"
+      },
+      {
+        "path": "app/poolhouse-node/src/gov/keys.rs",
+        "line": 90,
+        "match": "fn canonical_p256",
+        "meaning": "strict minimal positive DER plus low-S; actual signature verification additionally required"
+      },
+      {
+        "path": "app/poolhouse-node/src/gov/keys.rs",
+        "line": 126,
+        "match": "pub fn verifies(self",
+        "meaning": "governance algorithm/purpose policy before cryptographic verification"
+      },
+      {
+        "path": "app/poolhouse-node/src/gov/keys.rs",
+        "line": 170,
+        "match": "pub fn acceptance_message",
+        "meaning": "pool-accept/v2 exact transcript; self-declared strength/person not assurance"
+      },
+      {
+        "path": "app/poolhouse-node/src/gov/act.rs",
+        "line": 96,
+        "match": "pub fn id",
+        "meaning": "unsigned canonical JSON hash excludes signatures and excludes signing-domain prefix"
+      },
+      {
+        "path": "app/poolhouse-node/src/gov/act.rs",
+        "line": 155,
+        "match": "pub fn add_signature",
+        "meaning": "one signature per SigKind+key, not signature-byte identity"
+      },
+      {
+        "path": "app/poolhouse-node/src/row.rs",
+        "line": 67,
+        "match": "pub fn canonical",
+        "meaning": "legacy recursive sorted-key compact JSON"
+      },
+      {
+        "path": "app/poolhouse-node/src/approvals/challenge.rs",
+        "line": 33,
+        "match": "pub fn bytes",
+        "meaning": "exact approval/v1 canonical challenge plus decision/key"
+      },
+      {
+        "path": "app/poolhouse-node/src/approvals/decide.rs",
+        "line": 194,
+        "match": "if !node.persons.signed",
+        "meaning": "generic legacy approval verifier does not call governance Alg low-S gate"
+      },
+      {
+        "path": "app/android/src/main/java/app/poolhouse/phone/P256Signature.java",
+        "line": 12,
+        "match": "static byte[] normalize",
+        "meaning": "new provider output strict DER/range low-S conversion"
+      },
+      {
+        "path": "app/android/src/main/java/app/poolhouse/phone/PoolKey.java",
+        "line": 349,
+        "match": "signed = P256Signature.normalize",
+        "meaning": "per-pool protected provider output normalized before publication"
+      },
+      {
+        "path": "app/android/src/main/java/app/poolhouse/phone/ApprovalKey.java",
+        "line": 78,
+        "match": "Signature.getInstance(\"SHA256withECDSA\")",
+        "meaning": "retained generic Android approval signing algorithm"
+      },
+      {
+        "path": "app/android/src/main/java/app/poolhouse/phone/Decider.java",
+        "line": 126,
+        "match": "this.approval = approval",
+        "meaning": "generic approval bytes retained; distinct normalized admin-listing bytes"
+      },
+      {
+        "path": "app/android/src/main/java/app/poolhouse/phone/Canonical.java",
+        "line": 16,
+        "match": "static String of",
+        "meaning": "Android supported ASCII/integer signing subset; not universal Unicode codec"
+      },
+      {
+        "path": "app/android/src/main/java/app/poolhouse/phone/GovernanceAct.java",
+        "line": 45,
+        "match": "signing = (\"poolhouse/pool-act/v2",
+        "meaning": "Android reconstructs exact governance domain transcript"
+      },
+      {
+        "path": "app/android/src/main/java/app/poolhouse/phone/FoundingCharter.java",
+        "line": 46,
+        "match": "signing = (\"poolhouse/pool-accept/v2",
+        "meaning": "Android exact acceptance transcript and original milliseconds"
+      },
+      {
+        "path": "src/poolhouse/board/grants.py",
+        "line": 52,
+        "match": "def canonical",
+        "meaning": "Python compact sorted JSON ensure_ascii=False; supported-subset comparison still required"
+      },
+      {
+        "path": "src/poolhouse/board/grants.py",
+        "line": 392,
+        "match": "def sign_approval",
+        "meaning": "retained Python actual approval transcript caller, not a new public signing authority"
+      },
+      {
+        "path": "src/poolhouse/board/founding.py",
+        "line": 154,
+        "match": "listed[\"acceptance\"] =",
+        "meaning": "retained Python actual charter acceptance caller"
+      },
+      {
+        "path": "app/poolhouse-authority/src/certificate.rs",
+        "line": 52,
+        "match": "fn validate(&self)",
+        "meaning": "current native descriptor P256 subject only and full SEC1 curve parsing"
+      },
+      {
+        "path": "app/poolhouse-authority/src/certificate.rs",
+        "line": 106,
+        "match": "pub fn verify(&self",
+        "meaning": "separate independently supplied Ed25519 issuer key and exact expected descriptor"
+      },
+      {
+        "path": "app/poolhouse-authority/src/certificate.rs",
+        "line": 137,
+        "match": "fn canonical<T:",
+        "meaning": "byte-equal typed struct reserialization; not sorted row::canonical"
+      },
+      {
+        "path": "app/poolhouse-authority/src/lib.rs",
+        "line": 109,
+        "match": "pub fn signing_bytes",
+        "meaning": "distinct native binary operation transcript, not general shared approval codec"
+      },
+      {
+        "path": "app/native-approval/Helper.swift",
+        "line": 8,
+        "match": "static func connect",
+        "meaning": "helper/signing unavailable foundation; presence GUI is not signing proof"
+      },
+      {
+        "path": "app/native-approval/LocalPresence.swift",
+        "line": 63,
+        "match": "reuse: 0",
+        "meaning": "fresh local presence only; no algorithm/custody/remote assurance proof"
+      }
+    ],
+    "requirements": [
+      "ApprovalSignature64 is Ed25519 raw64 only; shared device Ed25519PublicKey is not a universal person-key/native-helper algorithm. All bytes scalar values are bounded lowercase-hex strings; lengths alone confer no key validity, signature validity, assurance or admission.",
+      "ApprovalSignerObservation.public_key must equal the exact independently admitted descriptor/current signer-incarnation key; recompute signer ID from canonical raw key bytes. Union consistency or self-signing does not admit the key, prove person equality or establish strength.",
+      "Ed25519 is raw32 public and raw64 signature over exact message M with strict verification. Reject Ed25519ph/prehash substitution; do not truncate P256/DER/provider/RSA blobs into this shape.",
+      "P256 public is canonical SEC1 uncompressed65 04||X32||Y32, valid non-infinity point on secp256r1. Signature uses ECDSA SHA256(M), strict ASN1 DER minimal positive r,s integers, 1<=r,s<n and no trailing bytes. Canonical governance additionally enforces s<=floor(n/2). Generated bounds8..72 do not perform these semantic checks.",
+      "The two P256 material tags denote encoding/verification policy, not independent algorithms or assurance. Exact purpose plus admitted descriptor selects policy before parsing material; no caller tag fallback or alternate verifier on malformed, mismatched or unsupported input.",
+      "Generic legacy approval DER and strict low-S governance have distinct retained verifier boundaries. High-S observations are permitted only where the retained purpose verifier permits them; their bytes are not rewritten, relabeled as low-S or upgraded to governance authority. This is source-format fidelity, never legacy trust migration.",
+      "Normalize only newly generated trusted-provider ECDSA output after validating provider result and before record publication. Never normalize historical signed envelopes, IDs or stored observations. Mathematical low-S validity alone never supplies required admission, governance threshold or fresh presence.",
+      "Dedup both P256 tags and all valid randomized signatures by stable admitted signer/person plus exact purpose operation nonce and authority generation. Signature bytes or policy tags never create another vote/effect, reset holds/fatigue or alter immutable operation IDs. Preserve one-time consume and durable result/effect receipts.",
+      "All existing purpose transcripts and original integer millisecond fields remain exact. General shared unsigned decimal-string/UnixMicros wire representation is not historical signing input. Preserve domain prefixes and newline/NUL, original canonicalization, key/decision binding and issuer/subject role distinctions.",
+      "Native certificate currently verifies P256 subject descriptor through a separately admitted Ed25519 issuer. Issuer algorithm/root identity is independent from subject hardware/custody/presence assurance. Descriptor signature is not proof the platform can issue its subject algorithm or that root admission exists.",
+      "Protected helper derives exact message internally, selects admitted algorithm for purpose without caller negotiation, and never signs caller arbitrary digests. Hash-taking ECDSA API receives SHA256(M) exactly once inside protected boundary; avoid double hashing. Raw/DER/provider conversions are trusted adapter duties, never public authority.",
+      "No public operation accepts ApprovalSignatureMaterial or exposes arbitrary sign/decide. The added family describes paired key/signature transcript-format evidence only. All prior roots thresholds holds cancellation distrust first-complete observations fatigue distinct-people and generation constraints remain in force."
+    ],
+    "transcripts": [
+      {
+        "purpose": "governance_act_v2",
+        "source": "app/poolhouse-node/src/gov/act.rs",
+        "format": "UTF8 poolhouse/pool-act/v2\\n plus recursively sorted compact JSON of Act excluding signatures; original integer milliseconds",
+        "id": "SHA256 of unsigned canonical JSON without signing domain or signatures",
+        "policy": "Ed25519 strict or P256 strict DER low-S according to admitted key"
+      },
+      {
+        "purpose": "admin_acceptance_v2",
+        "source": "app/poolhouse-node/src/gov/keys.rs",
+        "format": "UTF8 poolhouse/pool-accept/v2\\n plus canonical {v,key,alg,role,strength,person,since,anchor,prev}",
+        "policy": "governance strict algorithm verification; self-declared person/strength are not independent assurance"
+      },
+      {
+        "purpose": "generic_approval_v1",
+        "source": "app/poolhouse-node/src/approvals/challenge.rs",
+        "format": "UTF8 poolhouse/approval/v1\\n plus canonical challenge with decision/key; original integer milliseconds",
+        "policy": "Persons::signed algorithm dispatch; no explicit governance low-S gate"
+      },
+      {
+        "purpose": "approval_list_v1",
+        "source": "app/poolhouse-node/src/approvals/challenge.rs",
+        "format": "UTF8 poolhouse/approval-list/v1\\n plus canonical {op,node,at_ms}",
+        "policy": "purpose/freshness/authority independent from algorithm"
+      },
+      {
+        "purpose": "native_certificate_descriptor_v1",
+        "source": "app/poolhouse-authority/src/certificate.rs",
+        "format": "poolhouse.native-certificate.0.v1 NUL plus serde_json typed struct-order bytes; parse-reserialize exact equality",
+        "policy": "P256 subject; Ed25519 issuer verification only; root admission independent"
+      },
+      {
+        "purpose": "native_authority_operation_v1",
+        "source": "app/poolhouse-authority/src/lib.rs",
+        "format": "poolhouse.native-authority.operation.v1 NUL; fixed binary version/binding/u32BE owner/fixed hashes/u64BE generations and times/action discriminator+fixed hashes",
+        "policy": "inactive foundation; not the general shared approval codec"
+      }
+    ],
+    "primary_documents": [
+      {
+        "url": "https://developer.apple.com/documentation/security/protecting-keys-with-the-secure-enclave",
+        "accessed": "2026-10-24",
+        "finding": "Secure Enclave uses NIST P256; not evidence for Ed25519 device key or installed app assurance"
+      },
+      {
+        "url": "https://developer.apple.com/documentation/cryptokit/p256/signing/ecdsasignature",
+        "accessed": "2026-10-24",
+        "finding": "distinct raw/DER forms and message-SHA256/digest overloads need exact protected adapter selection"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/windows/apps/develop/security/windows-hello",
+        "accessed": "2026-10-24",
+        "finding": "documented KeyCredential path uses RSA/SHA256/PKCS1 and may use software fallback; no Ed25519/P256 equivalence inferred"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/windows/win32/api/ncrypt/nf-ncrypt-ncryptsignhash",
+        "accessed": "2026-10-24",
+        "finding": "ECDSA API receives a prehash; provider API presence alone is no compatible signing/custody proof"
+      }
+    ],
+    "independent_design_review": {
+      "reviewer": "approval_attack_review",
+      "result": "approved before edits with six constraints incorporated in requirements"
+    },
+    "independent_concrete_review": {
+      "reviewer": "approval_attack_review",
+      "result": "approved actual92-type6-operation fragment after exact source/transcript/policy/dedup/assurance inspection; six operations and requests unchanged; no tests/crypto invoked",
+      "acceptance": "declarations only; protected signer/issuer admission/general helper transcript remain unproved"
+    }
   }
 }
