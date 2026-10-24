@@ -6,20 +6,29 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 fn event(producer: &Arc<Producer>, identity: &str, origin: Origin, placement: Placement, nonce: u8) -> proof::SessionEvent {
     issue::event(SessionEventBody { producer: producer.clone(), identity: identity.into(), context: vec![nonce],
-        origin, placement, event: [nonce; 32] })
+        origin, placement, stream_event_id: [nonce; 32] })
 }
 fn resume_event(registry: &Registry, producer: &Arc<Producer>, identity: &str, previous: Key,
                 placement: Placement, nonce: u8) -> proof::SessionEvent {
     let context = registry.lock().unwrap().sessions[&previous].context.data.clone();
     issue::event(SessionEventBody { producer: producer.clone(), identity: identity.into(), context,
-        origin: Origin::Resume(previous), placement, event: [nonce; 32] })
+        origin: Origin::Resume(previous), placement, stream_event_id: [nonce; 32] })
 }
 fn session(registry: &Registry, producer: &Arc<Producer>, name: &str, placement: Placement, nonce: u8) -> SessionRight {
     let right = registry.open(event(producer, name, Origin::Birth, placement, nonce)).unwrap();
     registry.admit(&right).unwrap(); right
 }
-fn request() -> Request { Request { event: "completion".into(), purpose: "record-result".into(),
-    digest: [7; 32], spawn_plan: b"immutable-plan".to_vec() } }
+fn invocation_body(registry: &Registry, owner: &SessionRight, nonce: u8) -> proof::InvocationEventBody {
+    let store = registry.lock().unwrap(); let session = &store.sessions[&owner.key];
+    proof::InvocationEventBody { producer: session.producer.clone(), session: owner.key,
+        admission: session.admission.clone(), context: session.context.clone(), stream_event_id: [nonce; 32],
+        kind: "completion".into(), purpose: "record-result".into(), payload: b"native-event-payload".to_vec(),
+        spawn_plan: b"immutable-plan".to_vec() }
+}
+fn invocation(registry: &Registry, owner: &SessionRight, nonce: u8) -> proof::InvocationEvent {
+    issue::invocation(invocation_body(registry, owner, nonce))
+}
+
 struct Fixture {
     registry: Registry, producer: Arc<Producer>, producer_live: Arc<AtomicBool>, owner: SessionRight,
     right: Reservation, binding: Binding, process: Arc<proof::Process>, process_live: Arc<AtomicBool>,
@@ -28,9 +37,9 @@ struct Fixture {
 impl Fixture {
     fn new() -> Self {
         let registry = Registry::new().unwrap();
-        let (producer, producer_live) = issue::producer();
+        let (producer, producer_live) = issue::producer(&registry);
         let owner = session(&registry, &producer, "root", Placement::Root, 1);
-        let right = registry.reserve(&owner, request()).unwrap();
+        let right = registry.reserve(&owner, invocation(&registry, &owner, 100)).unwrap();
         let binding = registry.binding(&right).unwrap();
         let (process, process_live) = issue::process();
         let (holder, holder_live) = issue::process();
@@ -56,21 +65,21 @@ impl Fixture {
 
 #[test]
 fn authenticated_opening_is_not_live_and_birth_is_not_resume() {
-    let registry = Registry::new().unwrap(); let (producer, _) = issue::producer();
+    let registry = Registry::new().unwrap(); let (producer, _) = issue::producer(&registry);
     let root = registry.open(event(&producer, "root", Origin::Birth, Placement::Root, 1)).unwrap();
-    assert!(matches!(registry.reserve(&root, request()), Err(Error::Stale)));
+    assert!(matches!(registry.reserve(&root, invocation(&registry, &root, 100)), Err(Error::Stale)));
     registry.admit(&root).unwrap();
     assert!(matches!(registry.open(event(&producer, "root", Origin::Birth, Placement::Root, 2)), Err(Error::Origin)));
     assert!(matches!(registry.open(event(&producer, "root", Origin::Resume(root.key), Placement::Root, 3)), Err(Error::Origin)));
     registry.retire(&root).unwrap();
     let resumed = registry.open(resume_event(&registry, &producer, "root", root.key, Placement::Root, 4)).unwrap();
     registry.admit(&resumed).unwrap(); assert_ne!(root.key, resumed.key);
-    assert!(matches!(registry.reserve(&root, request()), Err(Error::Stale)));
+    assert!(matches!(registry.reserve(&root, invocation(&registry, &root, 100)), Err(Error::Stale)));
 }
 
 #[test]
 fn exact_root_and_direct_parent_graph_and_event_replay_are_checked() {
-    let registry = Registry::new().unwrap(); let (producer, _) = issue::producer();
+    let registry = Registry::new().unwrap(); let (producer, _) = issue::producer(&registry);
     let root = session(&registry, &producer, "root", Placement::Root, 1);
     let other = session(&registry, &producer, "other", Placement::Root, 2);
     let child = session(&registry, &producer, "child", Placement::Child { root: root.key, parent: root.key }, 3);
@@ -100,7 +109,7 @@ fn bind_release_and_consume_require_order_exact_context_and_single_use() {
 fn every_immutable_binding_field_refuses_change() {
     for field in 0..8 {
         let f = Fixture::new(); f.ready(); let mut changed = f.binding.clone();
-        match field { 0 => changed.request.event.push('x'), 1 => changed.request.purpose.push('x'),
+        match field { 0 => changed.request.event.kind.push('x'), 1 => changed.request.purpose.push('x'),
             2 => changed.request.digest[0] ^= 1, 3 => changed.request.spawn_plan.push(1),
             4 => changed.context.data.push(1), 5 => changed.installation[0] ^= 1,
             6 => changed.launch_epoch[0] ^= 1, _ => changed.session.generation += 1 }
@@ -122,7 +131,7 @@ fn cleanup_requires_responsible_holder_and_exact_process_not_a_boolean() {
 
 #[test]
 fn foreign_producer_or_held_binding_invalidates_without_reassignment() {
-    let f = Fixture::new(); let (foreign, _) = issue::producer();
+    let f = Fixture::new(); let (foreign, _) = issue::producer(&f.registry);
     let held = issue::held(HeldBody { binding: f.binding.clone(), producer: foreign, process: f.process.clone(),
         holder: f.holder.clone(), completion_owner: f.completion_owner.clone() });
     assert_eq!(f.registry.bind(&f.owner, &f.right, held).map_err(|failure| failure.error), Err(Error::Mismatch));
@@ -174,14 +183,14 @@ fn retire_invalidates_descendants_and_resume_cannot_reuse_them() {
     let f = Fixture::new();
     let child = session(&f.registry, &f.producer, "child", Placement::Child { root: f.owner.key, parent: f.owner.key }, 2);
     let nested = session(&f.registry, &f.producer, "nested", Placement::Child { root: f.owner.key, parent: child.key }, 3);
-    let right = f.registry.reserve(&nested, request()).unwrap();
+    let right = f.registry.reserve(&nested, invocation(&f.registry, &nested, 101)).unwrap();
     f.bind(); let obligations = f.registry.retire(&f.owner).unwrap(); assert_eq!(obligations.len(), 1);
     let store = f.registry.lock().unwrap();
     assert_eq!(store.sessions[&child.key].state, SessionState::Retired);
     assert_eq!(store.invocations[&right.key].state, InvocationState::Invalidated); drop(store);
     let resumed = f.registry.open(resume_event(&f.registry, &f.producer, "root", f.owner.key, Placement::Root, 4)).unwrap();
     f.registry.admit(&resumed).unwrap();
-    assert!(f.registry.reserve(&child, request()).is_err());
+    assert!(f.registry.reserve(&child, invocation(&f.registry, &child, 100)).is_err());
     assert!(f.registry.bind(&f.owner, &f.right, f.held(f.binding.clone())).map_err(|failure| failure.error).is_err());
 }
 
@@ -206,7 +215,7 @@ fn fresh_boot_epoch_rejects_all_previous_rights_and_receipts() {
     let f = Fixture::new(); f.ready(); let restarted = Registry::new().unwrap();
     assert_ne!(f.right.key.boot, restarted.lock().unwrap().boot);
     assert_ne!(f.right.key.boot, f.binding.launch_epoch);
-    assert!(matches!(restarted.reserve(&f.owner, request()), Err(Error::Stale)));
+    assert!(matches!(restarted.reserve(&f.owner, invocation(&f.registry, &f.owner, 100)), Err(Error::Stale)));
     assert!(matches!(restarted.consume(&f.owner, &f.right, &f.caller(), &f.binding), Err(Error::Stale)));
     assert!(matches!(restarted.cleanup(issue::cleanup(f.binding.clone(), f.process.clone(), f.holder.clone(),
         CleanupPhase::BeforeConsume, CleanupOutcome::Closed)), Err(Error::Stale)));
@@ -227,13 +236,13 @@ fn foreign_owner_cannot_invalidate_a_reservation_and_rejected_child_is_returned(
 #[test]
 fn child_and_resume_require_same_admitted_producer_and_installation_scope() {
     for installation in [[1; 32], [9; 32]] {
-        let f = Fixture::new(); let (foreign, _) = issue::producer_for(installation);
+        let f = Fixture::new(); let (foreign, _) = issue::producer_for(&f.registry, installation);
         let placement = Placement::Child { root: f.owner.key, parent: f.owner.key };
         assert!(matches!(f.registry.open(event(&foreign, "child", Origin::Birth, placement, 2)), Err(Error::Graph)));
         f.registry.retire(&f.owner).unwrap();
         assert!(matches!(f.registry.open(event(&foreign, "root", Origin::Resume(f.owner.key), Placement::Root, 3)), Err(Error::Origin)));
     }
-    let f = Fixture::new(); let (other_installation, _) = issue::producer_for([9; 32]);
+    let f = Fixture::new(); let (other_installation, _) = issue::producer_for(&f.registry, [9; 32]);
     session(&f.registry, &other_installation, "root", Placement::Root, 2);
     assert_eq!(f.registry.lock().unwrap().identities.len(), 2);
 }
@@ -285,6 +294,9 @@ fn genuine_nested_resume_uses_new_generations_of_same_logical_ancestors() {
         Placement::Child { root: root.key, parent: child2.key }, 6)).unwrap();
     f.registry.admit(&nested2).unwrap();
     assert_ne!(child.key, child2.key); assert_ne!(nested.key, nested2.key);
-    assert!(f.registry.reserve(&nested, request()).is_err());
-    assert!(f.registry.reserve(&nested2, request()).is_ok());
+    assert!(f.registry.reserve(&nested, invocation(&f.registry, &nested, 101)).is_err());
+    assert!(f.registry.reserve(&nested2, invocation(&f.registry, &nested2, 101)).is_ok());
 }
+
+#[path = "event_tests.rs"]
+mod event_tests;

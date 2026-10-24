@@ -3,10 +3,12 @@
 //! Resume is deliberately restricted to the SAME admitted producer/process instance.
 //! Replacement-producer or replacement-process continuity has no proof interface in this increment.
 mod invocation;
+mod event;
 mod proof;
 #[cfg(test)] mod tests;
 use proof::{Origin, Producer, SessionEvent};
 use std::collections::{HashMap, HashSet};
+use event::{Admission, EventOrigin, EventRecord};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -16,17 +18,18 @@ enum Placement { Root, Child { root: Key, parent: Key } }
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Context { identity: String, data: Vec<u8>, root: Key, parent: Option<Key> }
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct Request { event: String, purpose: String, digest: [u8; 32], spawn_plan: Vec<u8> }
+struct Request { event: event::NativeInvocation, purpose: String, digest: [u8; 32], spawn_plan: Vec<u8> }
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Binding {
     invocation: Key, session: Key, context: Context, request: Request,
     installation: [u8; 32], launch_epoch: [u8; 32],
 }
 #[derive(Debug, PartialEq, Eq)]
-enum Error { Entropy, Exhausted, Poisoned, Stale, Graph, Origin, Mismatch, State, Cleanup, Pending }
+enum Error { Entropy, Exhausted, Poisoned, Stale, Graph, Origin, Mismatch, State, Cleanup, Pending, AlreadyReserved }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SessionState { Opening, Live, Retired }
-struct Session { state: SessionState, context: Context, producer: Arc<Producer> }
+struct Session { state: SessionState, context: Context, producer: Arc<Producer>,
+    admission: Admission, _event: SessionEvent }
 struct SessionRight { key: Key }
 struct Reservation { key: Key }
 /// The responsible holder retains its rejected child; failure never silently drops that duty.
@@ -43,12 +46,12 @@ enum CleanupPhase { BeforeConsume, Terminal }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum InvocationState { Reserved, Bound, Released, Consumed, Cancelled, Invalidated }
 struct Invocation {
-    binding: Binding, state: InvocationState, held: Option<Arc<proof::Held>>,
+    binding: Binding, _event: proof::InvocationEvent, state: InvocationState, held: Option<Arc<proof::Held>>,
     cleanup: CleanupState, cleanup_phase: CleanupPhase, permit: Option<Key>, result: Option<Vec<u8>>,
 }
 struct Store {
     boot: [u8; 32], next: u64, sessions: HashMap<Key, Session>, identities: HashMap<([u8; 32], String), Key>,
-    events: HashSet<[u8; 32]>, invocations: HashMap<Key, Invocation>,
+    producers: Vec<Arc<Producer>>, events: HashMap<event::StreamEvent, EventRecord>, invocations: HashMap<Key, Invocation>,
 }
 struct Registry { store: Mutex<Store> }
 impl Registry {
@@ -56,14 +59,15 @@ impl Registry {
         let mut boot = [0; 32];
         getrandom::fill(&mut boot).map_err(|_| Error::Entropy)?;
         Ok(Self { store: Mutex::new(Store { boot, next: 0, sessions: HashMap::new(),
-            identities: HashMap::new(), events: HashSet::new(), invocations: HashMap::new() }) })
+            identities: HashMap::new(), producers: Vec::new(), events: HashMap::new(), invocations: HashMap::new() }) })
     }
     fn lock(&self) -> Result<MutexGuard<'_, Store>, Error> { self.store.lock().map_err(|_| Error::Poisoned) }
     fn open(&self, event: SessionEvent) -> Result<SessionRight, Error> {
         let mut store = self.lock()?;
         let body = event.body();
-        if !body.producer.body().process.live() { return Err(Error::Stale); }
-        if store.events.contains(&body.event) { return Err(Error::Origin); }
+        store.register_producer(&body.producer)?;
+        let source = EventOrigin::new(&body.producer, &body.identity, body.stream_event_id);
+        if store.events.contains_key(&source.stream()) { return Err(Error::Origin); }
         let identity = (body.producer.body().installation, body.identity.clone());
         match (body.origin, store.identities.get(&identity).copied()) {
             (Origin::Birth, None) => (),
@@ -82,9 +86,11 @@ impl Registry {
         let (root, parent) = match body.placement { Placement::Root => (key, None),
             Placement::Child { root, parent } => (root, Some(parent)) };
         let context = Context { identity: body.identity.clone(), data: body.context.clone(), root, parent };
-        store.events.insert(body.event);
+        let admission = Admission { source: source.clone(), origin: body.origin };
+        store.events.insert(source.stream(), EventRecord::Admission);
         store.identities.insert(identity, key);
-        store.sessions.insert(key, Session { state: SessionState::Opening, context, producer: body.producer.clone() });
+        let producer = body.producer.clone();
+        store.sessions.insert(key, Session { state: SessionState::Opening, context, producer, admission, _event: event });
         Ok(SessionRight { key })
     }
     fn admit(&self, right: &SessionRight) -> Result<(), Error> {
@@ -98,18 +104,7 @@ impl Registry {
         store.sessions.get_mut(&right.key).unwrap().state = SessionState::Live;
         Ok(())
     }
-    fn reserve(&self, owner: &SessionRight, request: Request) -> Result<Reservation, Error> {
-        let mut store = self.lock()?;
-        let session = store.live(owner.key)?;
-        let context = session.context.clone();
-        let installation = session.producer.body().installation;
-        let launch_epoch = session.producer.body().launch_epoch;
-        let key = store.allocate()?;
-        let binding = Binding { invocation: key, session: owner.key, context, request, installation, launch_epoch };
-        store.invocations.insert(key, Invocation { binding, state: InvocationState::Reserved, held: None,
-            cleanup: CleanupState::Pending, cleanup_phase: CleanupPhase::BeforeConsume, permit: None, result: None });
-        Ok(Reservation { key })
-    }
+
 }
 impl Store {
     fn allocate(&mut self) -> Result<Key, Error> {
