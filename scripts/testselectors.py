@@ -73,3 +73,31 @@ def validate(arguments: list[str], root: Path) -> None:
             raise ValueError(f"test path is not a Python test file: {path} (a Rust test runs through the Python test that wraps it, "
                              "such as tests/test_governed_grants_native.py)")
         refuse_unrequested(target, str(path), arguments)
+
+
+def native_files(arguments: list[str], root: Path) -> list[str] | None:
+    """Containing files for native preflight, independent of whole-file pass reuse; None is conservative."""
+    if sys.platform == 'darwin' and os.environ.get('DEV_TEST_CONFINE') == '1':
+        return None  # This path deliberately avoids importing pytest's plugins before confinement admission.
+    import pytest
+    import testoptions
+
+    try:
+        selectors = testoptions.explicit_positional(arguments)
+    except (pytest.UsageError, ValueError, OSError, RuntimeError, TypeError, AttributeError, SystemExit):
+        return None
+    if not selectors:
+        return None
+    files = []
+    for selector in selectors:
+        path = Path(selector.split('::', 1)[0])
+        target = path if path.is_absolute() else root / path
+        try:
+            relative = target.resolve(strict=True).relative_to(root.resolve(strict=True))
+        except (OSError, ValueError, RuntimeError):
+            return None
+        if (not target.is_file() or target.suffix != '.py' or target.is_symlink()
+                or any(parent.is_symlink() for parent in target.parents)):
+            return None
+        files.append(relative.as_posix())
+    return list(dict.fromkeys(files)) or None

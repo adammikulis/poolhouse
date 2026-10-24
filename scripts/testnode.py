@@ -37,7 +37,8 @@ FOLDER = "test-node"
 CARGO_FOLDER = "test-cargo"
 CARGO_ENV = "DEV_TEST_CARGO_DIR"
 """Names the shared Rust build folder instead of the account's ``~/.cache/test-cargo``."""
-FIXTURES = ("tests/fixtures/phone-approval-vectors.json", "contracts/node/vectors.json")
+FIXTURES = ("tests/fixtures/phone-approval-vectors.json", "contracts/node/vectors.json",
+            "contracts/node/native_boundaries/transcript-vectors.json")
 """Files of the repository, outside the Rust workspace, that a Rust test includes at compile time."""
 MEMBERS = ("Cargo.toml", "Cargo.lock", "poolhouse-node", "phone-governance-jni", "src-tauri", "poolhouse-authority")
 KEY_LENGTH = 20

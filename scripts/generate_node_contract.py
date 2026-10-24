@@ -14,6 +14,7 @@ from node_contract import (
     python_package,
     rust,
     service_lifecycle,
+    transcript_rust,
     typescript,
 )
 from node_contract.load import load_with_ownership
@@ -87,6 +88,7 @@ def outputs(root: Path) -> dict[Path, str]:
                    {"type": "Boolean", "accepted": [True, False], "refused": [1, 0, "true", None]},
                ]}
     result = {
+        root / "app/poolhouse-node/src/contract_transcripts.rs": transcript_rust.render(meta["transcripts"]),
         root / "app/poolhouse-node/src/contract_native_message.rs": native_message.render(meta["native_message"]),
         root / "patches/codex/generated/native_original_fields.rs": native_message.render_producer(meta["native_message"]),
         root / "app/poolhouse-node/src/contract_operations.rs": operations.render_rust(meta["operations"], digest),
