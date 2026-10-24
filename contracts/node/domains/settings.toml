@@ -1,0 +1,953 @@
+version = 1
+status = "proposal"
+
+[[type]]
+name = "InterpreterId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "UpdatePolicyId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "FeatureId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "SettingsWindowId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "SettingsLabel"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 1
+max_bytes = 256
+
+[[type]]
+name = "SettingsNote"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 0
+max_bytes = 1024
+
+[[type]]
+name = "SettingsThemeId"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 1
+max_bytes = 32
+
+[[type]]
+name = "SettingsThemeName"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 1
+max_bytes = 192
+
+[[type]]
+name = "SettingsHexRgb"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 7
+max_bytes = 7
+
+[[type]]
+name = "SettingsTimeZone"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "node"
+min_bytes = 1
+max_bytes = 128
+
+[[type]]
+name = "SettingsCursor"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "node"
+min_bytes = 1
+max_bytes = 512
+
+[[type]]
+name = "SettingsPositiveTokens"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "data"
+minimum = 1
+maximum = 4294967295
+
+[[type]]
+name = "SettingsUndoSteps"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "data"
+minimum = 1
+maximum = 128
+
+[[type]]
+name = "SettingsFontSize"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "data"
+minimum = 12
+maximum = 20
+
+[[type]]
+name = "SettingsTransferCount"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "data"
+minimum = 1
+maximum = 1024
+
+[[type]]
+name = "SettingsStartMinute"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "data"
+minimum = 0
+maximum = 1439
+
+[[type]]
+name = "SettingsEndMinute"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "data"
+minimum = 0
+maximum = 1440
+
+[[type]]
+name = "SettingsBaseTheme"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "dark", type = "Empty"}, {tag = "light", type = "Empty"}]
+
+[[type]]
+name = "SettingsDensity"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "compact", type = "Empty"}, {tag = "comfortable", type = "Empty"}]
+
+[[type]]
+name = "SettingsCloseBehavior"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "ask", type = "Empty"}, {tag = "background", type = "Empty"}, {tag = "quit", type = "Empty"}]
+
+[[type]]
+name = "SettingsPauseBehavior"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "stop", type = "Empty"}, {tag = "finish_current", type = "Empty"}]
+
+[[type]]
+name = "SettingsSources"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "internet", type = "Empty"}, {tag = "lan", type = "Empty"}, {tag = "both", type = "Empty"}]
+
+[[type]]
+name = "StartupMode"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "boot", type = "Empty"}, {tag = "login", type = "Empty"}, {tag = "neither", type = "Empty"}]
+
+[[type]]
+name = "SettingsContext"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "largest_fit", type = "Empty"}, {tag = "tokens", type = "SettingsPositiveTokens"}]
+
+[[type]]
+name = "SettingsOutputLimit"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "model_default", type = "Empty"}, {tag = "tokens", type = "SettingsPositiveTokens"}]
+
+[[type]]
+name = "SettingsThemeColors"
+kind = "record"
+visibility = "public"
+fields = [{name = "pink", type = "SettingsHexRgb"}, {name = "orange", type = "SettingsHexRgb"}, {name = "yellow", type = "SettingsHexRgb"}, {name = "cyan", type = "SettingsHexRgb"}, {name = "navy", type = "SettingsHexRgb"}, {name = "background", type = "SettingsHexRgb"}, {name = "panel", type = "SettingsHexRgb"}, {name = "sunken", type = "SettingsHexRgb"}, {name = "text", type = "SettingsHexRgb"}, {name = "muted", type = "SettingsHexRgb"}, {name = "border", type = "SettingsHexRgb"}]
+
+[[type]]
+name = "SettingsCustomTheme"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "SettingsThemeId"}, {name = "name", type = "SettingsThemeName"}, {name = "base", type = "SettingsBaseTheme"}, {name = "colors", type = "SettingsThemeColors"}, {name = "font_size", type = "SettingsFontSize"}, {name = "density", type = "SettingsDensity"}]
+
+[[type]]
+name = "SettingsCustomThemes"
+kind = "list"
+visibility = "public"
+item = "SettingsCustomTheme"
+max_items = 16
+
+[[type]]
+name = "SettingsThemeSelection"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "dark", type = "Empty"}, {tag = "light", type = "Empty"}, {tag = "custom", type = "SettingsThemeId"}]
+
+[[type]]
+name = "SettingsAppearance"
+kind = "record"
+visibility = "public"
+fields = [{name = "active", type = "SettingsThemeSelection"}, {name = "saved", type = "SettingsCustomThemes"}]
+
+[[type]]
+name = "SettingsLocalDefaults"
+kind = "record"
+visibility = "public"
+fields = [{name = "appearance", type = "SettingsAppearance"}, {name = "always_show_advanced", type = "Boolean"}, {name = "studio_undo_steps", type = "SettingsUndoSteps"}, {name = "close_behavior", type = "SettingsCloseBehavior"}, {name = "context", type = "SettingsContext"}, {name = "max_output", type = "SettingsOutputLimit"}]
+
+[[type]]
+name = "SettingsLabels"
+kind = "list"
+visibility = "public"
+item = "SettingsLabel"
+max_items = 64
+
+[[type]]
+name = "SettingsExecutionPolicy"
+kind = "record"
+visibility = "public"
+fields = [{name = "display_name", type = "SettingsLabel"}, {name = "labels", type = "SettingsLabels"}, {name = "pause_behavior", type = "SettingsPauseBehavior"}]
+
+[[type]]
+name = "SettingsDownloadPolicy"
+kind = "record"
+visibility = "public"
+fields = [{name = "sources", type = "SettingsSources"}, {name = "automatic_models", type = "Boolean"}, {name = "concurrent_transfers", type = "SettingsTransferCount"}]
+
+[[type]]
+name = "SettingsUpdatePolicy"
+kind = "record"
+visibility = "public"
+fields = [{name = "policy_id", type = "UpdatePolicyId"}, {name = "automatic_install", type = "Boolean"}]
+
+[[type]]
+name = "SettingsInterpreterOverride"
+kind = "record"
+visibility = "public"
+fields = [{name = "simulator", type = "SettingsLabel"}, {name = "interpreter", type = "InterpreterId"}]
+
+[[type]]
+name = "SettingsInterpreterOverrides"
+kind = "list"
+visibility = "public"
+item = "SettingsInterpreterOverride"
+max_items = 128
+
+[[type]]
+name = "SettingsOptionalInterpreter"
+kind = "optional"
+visibility = "public"
+item = "InterpreterId"
+
+[[type]]
+name = "SettingsInterpreterPolicy"
+kind = "record"
+visibility = "public"
+fields = [{name = "default_interpreter", type = "SettingsOptionalInterpreter"}, {name = "overrides", type = "SettingsInterpreterOverrides"}]
+
+[[type]]
+name = "SettingsFeatureChoice"
+kind = "record"
+visibility = "public"
+fields = [{name = "feature_id", type = "FeatureId"}, {name = "enabled", type = "Boolean"}]
+
+[[type]]
+name = "SettingsFeatureChoices"
+kind = "list"
+visibility = "public"
+item = "SettingsFeatureChoice"
+max_items = 128
+
+[[type]]
+name = "SettingsWeekday"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "mon", type = "Empty"}, {tag = "tue", type = "Empty"}, {tag = "wed", type = "Empty"}, {tag = "thu", type = "Empty"}, {tag = "fri", type = "Empty"}, {tag = "sat", type = "Empty"}, {tag = "sun", type = "Empty"}]
+
+[[type]]
+name = "SettingsWeekdays"
+kind = "list"
+visibility = "public"
+item = "SettingsWeekday"
+max_items = 7
+min_items = 1
+unique = true
+
+[[type]]
+name = "SettingsAvailabilityWindow"
+kind = "record"
+visibility = "public"
+fields = [{name = "days", type = "SettingsWeekdays"}, {name = "start_minute", type = "SettingsStartMinute"}, {name = "end_minute", type = "SettingsEndMinute"}, {name = "unavailable", type = "Boolean"}, {name = "note", type = "SettingsNote"}]
+
+[[type]]
+name = "SettingsAvailabilityWindows"
+kind = "list"
+visibility = "public"
+item = "SettingsAvailabilityWindow"
+max_items = 128
+
+[[type]]
+name = "SettingsDstPolicy"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "skip_nonexistent_repeat_both", type = "Empty"}]
+
+[[type]]
+name = "SettingsOvernightPolicy"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "start_day_owns_tail", type = "Empty"}]
+
+[[type]]
+name = "SettingsAvailability"
+kind = "record"
+visibility = "public"
+fields = [{name = "time_zone", type = "SettingsTimeZone"}, {name = "dst_policy", type = "SettingsDstPolicy"}, {name = "overnight_policy", type = "SettingsOvernightPolicy"}, {name = "windows", type = "SettingsAvailabilityWindows"}]
+
+[[type]]
+name = "SettingsReadRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "SettingsLocalDefaultsView"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "revision", type = "U64"}, {name = "settings", type = "SettingsLocalDefaults"}]
+
+[[type]]
+name = "SettingsLocalDefaultsReplaceRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "settings", type = "SettingsLocalDefaults"}]
+
+[[type]]
+name = "SettingsExecutionPolicyView"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "revision", type = "U64"}, {name = "settings", type = "SettingsExecutionPolicy"}]
+
+[[type]]
+name = "SettingsExecutionPolicyReplaceRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "settings", type = "SettingsExecutionPolicy"}]
+
+[[type]]
+name = "SettingsDownloadPolicyView"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "revision", type = "U64"}, {name = "settings", type = "SettingsDownloadPolicy"}]
+
+[[type]]
+name = "SettingsDownloadPolicyReplaceRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "settings", type = "SettingsDownloadPolicy"}]
+
+[[type]]
+name = "SettingsUpdatePolicyView"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "revision", type = "U64"}, {name = "settings", type = "SettingsUpdatePolicy"}]
+
+[[type]]
+name = "SettingsUpdatePolicyReplaceRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "settings", type = "SettingsUpdatePolicy"}]
+
+[[type]]
+name = "SettingsInterpreterPolicyView"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "revision", type = "U64"}, {name = "settings", type = "SettingsInterpreterPolicy"}]
+
+[[type]]
+name = "SettingsInterpreterPolicyReplaceRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "settings", type = "SettingsInterpreterPolicy"}]
+
+[[type]]
+name = "SettingsFeaturesView"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "revision", type = "U64"}, {name = "settings", type = "SettingsFeatureChoices"}]
+
+[[type]]
+name = "SettingsFeaturesReplaceRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "settings", type = "SettingsFeatureChoices"}]
+
+[[type]]
+name = "SettingsAvailabilityView"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "revision", type = "U64"}, {name = "settings", type = "SettingsAvailability"}]
+
+[[type]]
+name = "SettingsAvailabilityReplaceRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "settings", type = "SettingsAvailability"}]
+
+[[type]]
+name = "SettingsErrorDetails"
+kind = "record"
+visibility = "public"
+fields = [{name = "message", type = "SafeMessage"}, {name = "retryable", type = "Boolean"}]
+
+[[type]]
+name = "SettingsError"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "invalid_field", type = "SettingsErrorDetails"}, {tag = "revision_conflict", type = "SettingsErrorDetails"}, {tag = "stale_generation", type = "SettingsErrorDetails"}, {tag = "unauthenticated", type = "SettingsErrorDetails"}, {tag = "forbidden", type = "SettingsErrorDetails"}, {tag = "unavailable", type = "SettingsErrorDetails"}, {tag = "request_id_conflict", type = "SettingsErrorDetails"}, {tag = "cursor_expired", type = "SettingsErrorDetails"}, {tag = "operation_not_found", type = "SettingsErrorDetails"}, {tag = "already_committed", type = "SettingsErrorDetails"}, {tag = "approval_denied", type = "SettingsErrorDetails"}, {tag = "os_configuration_failed", type = "SettingsErrorDetails"}, {tag = "recovery_required", type = "SettingsErrorDetails"}]
+
+[[type]]
+name = "SettingsOptionalCursor"
+kind = "optional"
+visibility = "public"
+item = "SettingsCursor"
+
+[[type]]
+name = "SettingsWatchRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "after_cursor", type = "SettingsOptionalCursor"}]
+
+[[type]]
+name = "SettingsChange"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "local_defaults", type = "SettingsLocalDefaultsView"}, {tag = "execution_policy", type = "SettingsExecutionPolicyView"}, {tag = "download_policy", type = "SettingsDownloadPolicyView"}, {tag = "update_policy", type = "SettingsUpdatePolicyView"}, {tag = "interpreter_policy", type = "SettingsInterpreterPolicyView"}, {tag = "features", type = "SettingsFeaturesView"}, {tag = "availability", type = "SettingsAvailabilityView"}]
+
+[[type]]
+name = "SettingsEvent"
+kind = "record"
+visibility = "public"
+fields = [{name = "cursor", type = "SettingsCursor"}, {name = "change", type = "SettingsChange"}]
+
+[[type]]
+name = "SettingsResolvedAppearance"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "revision", type = "U64"}, {name = "base", type = "SettingsBaseTheme"}, {name = "colors", type = "SettingsThemeColors"}, {name = "font_size", type = "SettingsFontSize"}, {name = "density", type = "SettingsDensity"}]
+
+[[type]]
+name = "StartupChangeState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "requested", type = "Empty"}, {tag = "awaiting_owner", type = "Empty"}, {tag = "applying", type = "Empty"}, {tag = "committed", type = "Empty"}, {tag = "cancelled", type = "Empty"}, {tag = "failed", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "SettingsOptionalApproval"
+kind = "optional"
+visibility = "public"
+item = "ApprovalId"
+
+[[type]]
+name = "SettingsErrorEnvelope"
+kind = "record"
+visibility = "public"
+fields = [{name = "error", type = "SettingsError"}]
+
+[[type]]
+name = "SettingsOptionalError"
+kind = "optional"
+visibility = "public"
+item = "SettingsErrorEnvelope"
+
+[[type]]
+name = "StartupKnownServiceObservation"
+kind = "record"
+visibility = "public"
+fields = [{name = "installation_id", type = "InstallationId"}, {name = "device_id", type = "DeviceId"}, {name = "service_generation", type = "ResourceGeneration"}, {name = "mode", type = "StartupMode"}, {name = "observed_at", type = "UnixMicros"}]
+
+[[type]]
+name = "StartupOptionalLastKnown"
+kind = "optional"
+visibility = "public"
+item = "StartupKnownServiceObservation"
+
+[[type]]
+name = "StartupUnknownServiceObservation"
+kind = "record"
+visibility = "public"
+fields = [{name = "reason", type = "SafeMessage"}, {name = "observed_at", type = "UnixMicros"}, {name = "last_known", type = "StartupOptionalLastKnown"}]
+
+[[type]]
+name = "StartupServiceObservation"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "known", type = "StartupKnownServiceObservation"}, {tag = "unknown", type = "StartupUnknownServiceObservation"}]
+
+[[type]]
+name = "StartupChangeView"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "revision", type = "U64"}, {name = "operation_id", type = "OperationId"}, {name = "requested", type = "StartupMode"}, {name = "previous_effective", type = "StartupServiceObservation"}, {name = "effective", type = "StartupServiceObservation"}, {name = "state", type = "StartupChangeState"}, {name = "approval_request", type = "SettingsOptionalApproval"}, {name = "error", type = "SettingsOptionalError"}]
+
+[[type]]
+name = "StartupOptionalChange"
+kind = "optional"
+visibility = "public"
+item = "StartupChangeView"
+
+[[type]]
+name = "StartupView"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "revision", type = "U64"}, {name = "requested", type = "StartupMode"}, {name = "effective", type = "StartupServiceObservation"}, {name = "transaction", type = "StartupOptionalChange"}]
+
+[[type]]
+name = "StartupChangeRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "mode", type = "StartupMode"}]
+
+[[type]]
+name = "StartupChangeGetRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "operation_id", type = "OperationId"}]
+
+[[type]]
+name = "StartupChangeCancelRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "operation_id", type = "OperationId"}]
+
+[[type]]
+name = "StartupEvent"
+kind = "record"
+visibility = "public"
+fields = [{name = "cursor", type = "SettingsCursor"}, {name = "startup", type = "StartupView"}]
+
+[[type]]
+name = "SettingsSection"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "appearance", type = "Empty"}, {tag = "availability", type = "Empty"}, {tag = "startup", type = "Empty"}, {tag = "models", type = "Empty"}, {tag = "downloads", type = "Empty"}, {tag = "updates", type = "Empty"}, {tag = "interpreters", type = "Empty"}, {tag = "features", type = "Empty"}, {tag = "credentials", type = "Empty"}, {tag = "projects", type = "Empty"}, {tag = "governance", type = "Empty"}, {tag = "maintenance", type = "Empty"}]
+
+[[type]]
+name = "SetupSectionState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "unvisited", type = "Empty"}, {tag = "reviewed", type = "Empty"}, {tag = "needs_action", type = "Empty"}]
+
+[[type]]
+name = "SetupSectionProgress"
+kind = "record"
+visibility = "public"
+fields = [{name = "section", type = "SettingsSection"}, {name = "state", type = "SetupSectionState"}]
+
+[[type]]
+name = "SetupSections"
+kind = "list"
+visibility = "public"
+item = "SetupSectionProgress"
+max_items = 32
+
+[[type]]
+name = "SetupView"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "revision", type = "U64"}, {name = "notice_acknowledged", type = "Boolean"}, {name = "completed", type = "Boolean"}, {name = "sections", type = "SetupSections"}]
+
+[[type]]
+name = "SetupMutationRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "SetupSectionReviewRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "section", type = "SettingsSection"}]
+
+[[type]]
+name = "SettingsWindowDisposition"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "hide", type = "Empty"}, {tag = "ask", type = "Empty"}, {tag = "close", type = "Empty"}]
+
+[[type]]
+name = "SettingsWindowCloseRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "window_id", type = "SettingsWindowId"}]
+
+[[type]]
+name = "SettingsWindowChoice"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "background", type = "Empty"}, {tag = "quit", type = "Empty"}]
+
+[[type]]
+name = "SettingsWindowChooseRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "window_id", type = "SettingsWindowId"}, {name = "choice", type = "SettingsWindowChoice"}, {name = "remember", type = "Boolean"}]
+
+[[type]]
+name = "SettingsWindowCloseView"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "revision", type = "U64"}, {name = "window_id", type = "SettingsWindowId"}, {name = "disposition", type = "SettingsWindowDisposition"}]
+
+[[operation]]
+name = "settings.local.inspect"
+symbol = "SettingsLocalDefaultsInspect"
+request = "SettingsReadRequest"
+response = "SettingsLocalDefaultsView"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "local-preferences-permission"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "settings.local.replace"
+symbol = "SettingsLocalDefaultsReplace"
+request = "SettingsLocalDefaultsReplaceRequest"
+response = "SettingsLocalDefaultsView"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "local-preferences-permission", "compare-and-swap-resource-revision", "validate-complete-value-before-atomic-commit", "reject-duplicate-semantic-keys", "no-preference-grants-execution-authority", "reauthorize-at-domain-commit"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "settings.execution.inspect"
+symbol = "SettingsExecutionPolicyInspect"
+request = "SettingsReadRequest"
+response = "SettingsExecutionPolicyView"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "device-execution-policy-permission"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "settings.execution.replace"
+symbol = "SettingsExecutionPolicyReplace"
+request = "SettingsExecutionPolicyReplaceRequest"
+response = "SettingsExecutionPolicyView"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "device-execution-policy-permission", "compare-and-swap-resource-revision", "validate-complete-value-before-atomic-commit", "reject-duplicate-semantic-keys", "no-preference-grants-execution-authority", "reauthorize-at-domain-commit"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "settings.downloads.inspect"
+symbol = "SettingsDownloadPolicyInspect"
+request = "SettingsReadRequest"
+response = "SettingsDownloadPolicyView"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "download-source-and-transfer-policy-permission"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "settings.downloads.replace"
+symbol = "SettingsDownloadPolicyReplace"
+request = "SettingsDownloadPolicyReplaceRequest"
+response = "SettingsDownloadPolicyView"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "download-source-and-transfer-policy-permission", "compare-and-swap-resource-revision", "validate-complete-value-before-atomic-commit", "reject-duplicate-semantic-keys", "no-preference-grants-execution-authority", "reauthorize-at-domain-commit"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "settings.updates.inspect"
+symbol = "SettingsUpdatePolicyInspect"
+request = "SettingsReadRequest"
+response = "SettingsUpdatePolicyView"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "packaging-update-policy-permission"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "settings.updates.replace"
+symbol = "SettingsUpdatePolicyReplace"
+request = "SettingsUpdatePolicyReplaceRequest"
+response = "SettingsUpdatePolicyView"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "packaging-update-policy-permission", "compare-and-swap-resource-revision", "validate-complete-value-before-atomic-commit", "reject-duplicate-semantic-keys", "no-preference-grants-execution-authority", "reauthorize-at-domain-commit"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "settings.interpreters.inspect"
+symbol = "SettingsInterpreterPolicyInspect"
+request = "SettingsReadRequest"
+response = "SettingsInterpreterPolicyView"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "extension-interpreter-policy-permission"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "settings.interpreters.replace"
+symbol = "SettingsInterpreterPolicyReplace"
+request = "SettingsInterpreterPolicyReplaceRequest"
+response = "SettingsInterpreterPolicyView"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "extension-interpreter-policy-permission", "compare-and-swap-resource-revision", "validate-complete-value-before-atomic-commit", "reject-duplicate-semantic-keys", "no-preference-grants-execution-authority", "reauthorize-at-domain-commit"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "settings.features.inspect"
+symbol = "SettingsFeaturesInspect"
+request = "SettingsReadRequest"
+response = "SettingsFeaturesView"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "per-feature-policy-permission"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "settings.features.replace"
+symbol = "SettingsFeaturesReplace"
+request = "SettingsFeaturesReplaceRequest"
+response = "SettingsFeaturesView"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "per-feature-policy-permission", "compare-and-swap-resource-revision", "validate-complete-value-before-atomic-commit", "reject-duplicate-semantic-keys", "no-preference-grants-execution-authority", "reauthorize-at-domain-commit"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "settings.availability.inspect"
+symbol = "SettingsAvailabilityInspect"
+request = "SettingsReadRequest"
+response = "SettingsAvailabilityView"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "device-admission-policy-permission"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "settings.availability.replace"
+symbol = "SettingsAvailabilityReplace"
+request = "SettingsAvailabilityReplaceRequest"
+response = "SettingsAvailabilityView"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "device-admission-policy-permission", "compare-and-swap-resource-revision", "validate-complete-value-before-atomic-commit", "reject-duplicate-semantic-keys", "no-preference-grants-execution-authority", "reauthorize-at-domain-commit"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "settings.watch"
+symbol = "SettingsWatch"
+request = "SettingsWatchRequest"
+response = "SettingsEvent"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "permission-filter-every-event", "cursor-principal-resource-generation-bound", "reauthorize-before-delivery"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "settings.appearance.bootstrap"
+symbol = "SettingsAppearanceBootstrap"
+request = "SettingsReadRequest"
+response = "SettingsResolvedAppearance"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "authenticated-launch-channel-and-installation", "local-preferences-permission", "saved-appearance-before-first-visible-frame", "exact-sanitized-palette-dark-default"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "startup.inspect"
+symbol = "StartupInspect"
+request = "SettingsReadRequest"
+response = "StartupView"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "startup-read-permission"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "startup.change.request"
+symbol = "StartupChangeStart"
+request = "StartupChangeRequest"
+response = "StartupChangeView"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "startup-configure-permission", "compare-and-swap-resource-revision", "protected-helper-exact-transaction-approval", "same-service-identity-all-modes", "verified-known-prior-effective-configuration-and-identity", "unknown-baseline-refuses-mutation", "reauthorize-at-domain-commit"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "startup.change.inspect"
+symbol = "StartupChangeInspect"
+request = "StartupChangeGetRequest"
+response = "StartupChangeView"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "startup-read-permission"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "startup.change.cancel"
+symbol = "StartupChangeCancel"
+request = "StartupChangeCancelRequest"
+response = "StartupChangeView"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "startup-transaction-controller", "compare-and-swap-resource-revision", "durable-single-terminal-winner", "verify-previous-effective-configuration-before-cancelled", "committed-never-reported-cancelled"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "startup.watch"
+symbol = "StartupWatch"
+request = "SettingsWatchRequest"
+response = "StartupEvent"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "startup-read-permission", "cursor-principal-resource-generation-bound", "reauthorize-before-delivery"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "setup.inspect"
+symbol = "SetupInspect"
+request = "SettingsReadRequest"
+response = "SetupView"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "local-setup-progress-permission"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "setup.notice.acknowledge"
+symbol = "SetupNoticeAcknowledge"
+request = "SetupMutationRequest"
+response = "SetupView"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "local-setup-progress-permission", "compare-and-swap-resource-revision", "progress-flags-confer-no-authority-or-readiness", "reject-duplicate-semantic-keys"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "setup.section.review"
+symbol = "SetupSectionReview"
+request = "SetupSectionReviewRequest"
+response = "SetupView"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "local-setup-progress-permission", "compare-and-swap-resource-revision", "progress-flags-confer-no-authority-or-readiness", "reject-duplicate-semantic-keys"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "setup.complete"
+symbol = "SetupComplete"
+request = "SetupMutationRequest"
+response = "SetupView"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "local-setup-progress-permission", "compare-and-swap-resource-revision", "progress-flags-confer-no-authority-or-readiness", "reject-duplicate-semantic-keys"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "window.close.inspect"
+symbol = "SettingsWindowCloseInspect"
+request = "SettingsWindowCloseRequest"
+response = "SettingsWindowCloseView"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "actual-current-native-window", "local-preferences-permission"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "window.close.choose"
+symbol = "SettingsWindowCloseChoose"
+request = "SettingsWindowChooseRequest"
+response = "SettingsWindowCloseView"
+error = "SettingsError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "actual-current-native-window", "local-preferences-permission", "compare-and-swap-resource-revision", "exit-window-never-stops-service-or-removes-membership"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
