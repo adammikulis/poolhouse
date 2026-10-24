@@ -55,10 +55,10 @@ def load(root: Path) -> tuple[dict, list[dict], str]:
 def _definition(row: dict, definitions: dict[str, dict]) -> None:
     kind = row.get("kind") if isinstance(row, dict) else None
     shape = {"name", "kind", "visibility"}
-    extra = {"scalar": {"encoding", "issuer", "secret", "min_bytes", "max_bytes", "minimum", "maximum"}, "record": {"fields"}, "union": {"tag", "variants"}, "optional": {"item"}, "list": {"item", "max_items"}}
+    extra = {"scalar": {"encoding", "issuer", "secret", "min_bytes", "max_bytes", "minimum", "maximum", "unit"}, "record": {"fields"}, "union": {"tag", "variants"}, "optional": {"item"}, "list": {"item", "max_items"}}
     if kind not in extra:
         raise ValueError("unsupported type kind")
-    keys(row, shape | extra[kind], shape | (extra[kind] - {"secret", "min_bytes", "max_bytes", "minimum", "maximum"}))
+    keys(row, shape | extra[kind], shape | (extra[kind] - {"secret", "min_bytes", "max_bytes", "minimum", "maximum", "unit"}))
     name = row["name"]
     if (not isinstance(name, str) or not IDENTIFIER.fullmatch(name) or name in definitions
                 or name in GENERATED_TYPES or keyword.iskeyword(name)
@@ -100,6 +100,10 @@ def _scalar(row: dict) -> None:
     encoding = row["encoding"]
     if encoding not in ENCODINGS or row["issuer"] not in ISSUERS or type(row.get("secret", False)) is not bool:
         raise ValueError("invalid scalar definition")
+    if encoding == "audit-token-le32" and row["visibility"] != "private":
+        raise ValueError("audit token observations remain private")
+    if "unit" in row and (row["unit"] != "unix-microseconds" or encoding != "u64" or "minimum" in row or "maximum" in row):
+        raise ValueError("unsupported timestamp unit or range")
     if row.get("secret") and row["visibility"] != "private":
         raise ValueError("secret data is not a public client type")
     if encoding in {"text", "bytes"}:

@@ -17,6 +17,15 @@ def render(meta: dict, rows: list[dict], digest: str) -> str:
         elif row["kind"] == "scalar":
             primitive = "boolean" if row["encoding"] == "bool" else "string"
             output.append(f'export type {name} = {primitive} & {{ readonly __{name}: unique symbol }};\n')
+            if row.get("unit") == "unix-microseconds":
+                function = name[0].lower() + name[1:] + "FromParts"
+                output.append(f'''export function {function}(seconds: bigint, microseconds: bigint): {name} {{
+  if (typeof seconds !== "bigint" || typeof microseconds !== "bigint" || seconds < 0n || microseconds < 0n || microseconds >= 1000000n) throw new RangeError("invalid timestamp components");
+  const value = seconds * 1000000n + microseconds;
+  if (value > 18446744073709551615n) throw new RangeError("timestamp overflow");
+  return value.toString() as {name};
+}}
+''')
         elif row["kind"] == "record":
             fields = "\n".join(f'  readonly {field["name"]}: {field["type"]};' for field in row["fields"])
             output.append(f'export interface {name} {{\n{fields}\n}}\n')

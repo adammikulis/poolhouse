@@ -374,3 +374,36 @@ def test_agent_operation_source_refuses_missing_control_revision(tmp_path):
     path.write_text(path.read_text().replace(', {name = "expected_control_revision", type = "U64"}', ''))
     with pytest.raises(ValueError, match="generation binding"):
         load(source)
+
+
+def test_shared_timestamp_conversion_vectors():
+    import json
+    vectors = json.loads((ROOT / "contracts/node/vectors.json").read_text())["unix_microseconds"]
+    for seconds, micros, expected in vectors["accepted"]:
+        assert public.UnixMicros.from_parts(int(seconds), int(micros)).value == expected
+    for seconds, micros in vectors["refused"]:
+        with pytest.raises(ValueError):
+            public.UnixMicros.from_parts(int(seconds), int(micros))
+    for seconds, micros in [(True, 0), (0, False), (1.0, 0), (0, "1")]:
+        with pytest.raises(ValueError):
+            public.UnixMicros.from_parts(seconds, micros)
+    assert not hasattr(public.U64, "from_parts")
+    assert not hasattr(public, "AuditToken")
+
+
+@pytest.mark.parametrize("change", ["unit_type", "unit_range", "public_token"])
+def test_source_refuses_ambiguous_native_representations(tmp_path, change):
+    source = tmp_path / "node"
+    shutil.copytree(ROOT / "contracts/node", source)
+    path = source / "types.toml"
+    text = path.read_text()
+    if change == "unit_type":
+        text = text.replace('unit = "unix-microseconds"', 'unit = "unix-seconds"')
+    elif change == "unit_range":
+        text = text.replace('unit = "unix-microseconds"', 'unit = "unix-microseconds"\nminimum = 0\nmaximum = 100')
+    else:
+        text = text.replace('name = "AuditToken"\nkind = "scalar"\nencoding = "audit-token-le32"\nissuer = "kernel-adapter"\nvisibility = "private"',
+                            'name = "AuditToken"\nkind = "scalar"\nencoding = "audit-token-le32"\nissuer = "kernel-adapter"\nvisibility = "public"')
+    path.write_text(text)
+    with pytest.raises(ValueError):
+        load(source)

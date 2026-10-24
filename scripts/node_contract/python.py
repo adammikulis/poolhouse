@@ -161,11 +161,19 @@ def render(meta: dict, rows: list[dict], digest: str) -> str:
         elif row["kind"] == "scalar" and row["encoding"] == "bool":
             output.append(f'class {name}(_Boolean):\n    pass\n')
         elif row["kind"] == "scalar":
-            if row["encoding"] == "sid-hex":
+            if row["encoding"] in {"sid-hex", "audit-token-le32"}:
                 raise ValueError("SID observations remain private")
             bounds = f'    _bounds = ({row["min_bytes"]}, {row["max_bytes"]})\n' if row["encoding"] in {"text", "bytes"} else ""
             if "minimum" in row:
                 bounds += f'    _numeric_bounds = ({row["minimum"]}, {row["maximum"]})\n'
+            if row.get("unit") == "unix-microseconds":
+                bounds += '''
+    @classmethod
+    def from_parts(cls, seconds: int, microseconds: int) -> Self:
+        if type(seconds) is not int or type(microseconds) is not int or seconds < 0 or not 0 <= microseconds < 1_000_000:
+            raise ValueError("invalid timestamp components")
+        return cls(str(seconds * 1_000_000 + microseconds))
+'''
             output.append(f'class {name}(_Scalar):\n    _encoding = "{row["encoding"]}"\n{bounds}')
         elif row["kind"] == "record":
             fields = "\n".join(f'    {field["name"]}: {field["type"]}' for field in row["fields"])

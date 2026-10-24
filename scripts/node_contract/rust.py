@@ -9,7 +9,7 @@ VALIDATE = r'''
 fn valid(kind: &str, value: &str) -> bool {
     let hex = |s: &str| s.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
     match kind {
-        "hex32" => value.len() == 64 && hex(value),
+        "hex32" | "audit-token-le32" => value.len() == 64 && hex(value),
         "uuid" => value.len() == 36 && value.bytes().enumerate().all(|(i, b)| {
             if [8, 13, 18, 23].contains(&i) { b == b'-' } else { b.is_ascii_digit() || (b'a'..=b'f').contains(&b) }
         }),
@@ -63,6 +63,7 @@ impl TryFrom<String> for {name} {{
 }}
 impl From<{name}> for String {{ fn from(value: {name}) -> Self {{ value.0 }} }}
 ''')
+            output.append(scalar_helpers(row))
             if row.get("secret"):
                 output.append(f'impl std::fmt::Debug for {name} {{ fn fmt(&self, f: &mut std::fmt::Formatter<\'_>) -> std::fmt::Result {{ f.write_str("{name}([redacted])") }} }}\n')
             if row["encoding"] in {"u32", "u64"} and "minimum" not in row:
@@ -102,3 +103,35 @@ impl TryFrom<Vec<{item}>> for {name} {{
 }}
 impl From<{name}> for Vec<{item}> {{ fn from(value: {name}) -> Self {{ value.0 }} }}
 '''
+
+
+def scalar_helpers(row: dict) -> str:
+    name = row["name"]
+    if row.get("unit") == "unix-microseconds":
+        return f'''impl {name} {{
+    /// Checked representation conversion only; this establishes no native provenance.
+    pub fn try_from_parts(seconds: u64, microseconds: u64) -> Result<Self, &'static str> {{
+        if microseconds >= 1_000_000 {{ return Err("invalid microsecond component"); }}
+        let value = seconds.checked_mul(1_000_000).and_then(|n| n.checked_add(microseconds)).ok_or("timestamp overflow")?;
+        Ok(Self(value.to_string()))
+    }}
+}}
+'''
+    if row["encoding"] == "audit-token-le32":
+        return f'''impl {name} {{
+    /// Untrusted data conversion, not authenticated sender evidence.
+    pub fn from_words(words: [u32; 8]) -> Self {{
+        use std::fmt::Write;
+        let mut value = String::with_capacity(64);
+        for word in words {{ for byte in word.to_le_bytes() {{ write!(&mut value, "{{byte:02x}}").expect("write to string"); }} }}
+        Self(value)
+    }}
+    pub fn words(&self) -> [u32; 8] {{
+        std::array::from_fn(|word| u32::from_le_bytes(std::array::from_fn(|byte| {{
+            let offset = word * 8 + byte * 2;
+            u8::from_str_radix(&self.0[offset..offset + 2], 16).expect("validated audit-token bytes")
+        }})))
+    }}
+}}
+'''
+    return ""

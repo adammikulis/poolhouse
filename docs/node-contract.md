@@ -252,3 +252,23 @@ The [fresh Linux/WSL rendezvous observation](notes/native-linux-rendezvous.md)
 records distinct public-key/certificate hashes, local API/socket readiness, the
 actual workspace response and exact reviewed caller/agent contract checkpoints.
 It supplies no endpoint trust or native Windows evidence and accepts no barrier.
+
+
+## Native representation review follow-up
+
+AuditToken now names `audit-token-le32` in the canonical source. Its wire data
+remains 32 bytes as lowercase hex: eight unsigned words serialized little-endian,
+including high bits. Generated Rust conversion round-trips words without making
+PID, code, principal or freshness claims. The shared non-palindromic vector
+contains high-bit words; only a native adapter can bind a received token to its
+actual ingress message and establish cross-field consistency.
+
+UnixMicros names its `unix-microseconds` unit in the canonical source. Rust,
+Python and TypeScript provide checked seconds/microseconds conversion: require
+0 <= microseconds < 1000000 and reject multiplication/addition overflow past
+U64. Python requires exact integers and TypeScript actual bigint inputs. Vectors
+cover carry, maximum, one-above overflow, negative and malformed components.
+MacProcessObservation keeps the field name birth_unix_microseconds and its
+existing decimal-string wire shape, now using nominal UnixMicros. Neither wall
+clock birth nor conversion creates process identity or monotonic ordering.
+The installed Mac observation/adapter proof remains required.
