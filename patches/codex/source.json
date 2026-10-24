@@ -250,5 +250,86 @@
     "bundle_sha256": "f949991d0eb37fd54d15e6b45acccee612a0b0aa9904d3c2b4e0f22ef12466a6",
     "installed_proof": false,
     "node_admission_proof": false
+  },
+  "binary_validation": {
+    "source_commit": "a50cb4ae3ed4665f18bbd6c3c2eaf8fd2eb76fd1",
+    "source_tree": "64168edc27ec59e7d8d9fb9a4654a0352e1aec1b",
+    "patches_applied": 4,
+    "platform": "linux-x86_64",
+    "compiler": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+    "command": [
+      "cargo",
+      "build",
+      "--locked",
+      "--offline",
+      "--jobs",
+      "1",
+      "-p",
+      "codex-cli",
+      "-p",
+      "codex-app-server",
+      "--bin",
+      "codex",
+      "--bin",
+      "codex-app-server",
+      "--message-format",
+      "json-render-diagnostics"
+    ],
+    "broker_workers": 1,
+    "returncode": 0,
+    "source_clean_before_and_after": true,
+    "artifacts": [
+      {
+        "target": "codex",
+        "relative_path": "target/debug/codex",
+        "bytes": 1237293872,
+        "sha256": "8566f69fcbaaed2c7dfe46d15298a40f1fa67a6a2ad591f3e285efc4157af91e",
+        "format": "ELF64-little-endian-x86-64-PIE",
+        "profile": {
+          "opt_level": "0",
+          "debuginfo": "line-tables-only",
+          "debug_assertions": true,
+          "overflow_checks": true,
+          "test": false
+        },
+        "cargo_artifact_fresh": false,
+        "elf_evidence_sha256": {
+          "header": "687d273cf726833d1a4b44078a7c9780dfb9e1c326226040827f89f726ae7131",
+          "dynamic": "4ed1dfb31ebc3d30d24900741f463676fa06b2378fc9fbc0eed87d4f6855205f",
+          "notes": "cc182a06d39967332fbd563c816fafafa40085ae2e90e9e4e04fc05884a24d7f"
+        }
+      },
+      {
+        "target": "codex-app-server",
+        "relative_path": "target/debug/codex-app-server",
+        "bytes": 980177800,
+        "sha256": "81abea04dbd8be0d6587c3125d7eb18970c1b07583b6000b18b2e28be8f1b723",
+        "format": "ELF64-little-endian-x86-64-PIE",
+        "profile": {
+          "opt_level": "0",
+          "debuginfo": "line-tables-only",
+          "debug_assertions": true,
+          "overflow_checks": true,
+          "test": false
+        },
+        "cargo_artifact_fresh": false,
+        "elf_evidence_sha256": {
+          "header": "04c21d385c6996cd94484d58849cf8052a59cfdca71f07fc7ca786f4b77a379a",
+          "dynamic": "b554dc5db59b6dcfe94e56ad6ad034be2584f5ba9c9e7e16adce7b0be307b43f",
+          "notes": "19353a259e58934c727830fa5cf3e2e2dc7a7a1699035165a06209be30a32cb4"
+        }
+      }
+    ],
+    "receipt_sha256": {
+      "prepared.json": "e50341ae260bcdfc1d77eadd453613df7eebb13167ce3090fbb3d5ce8046eb8a",
+      "toolchain.json": "ad038bd961f2d8ce228218bbc62296143b3c8383192b386d0205d3e7b79fb66c",
+      "result.json": "a9dbcbbd818935ea516a1004b515da90d38995bbf5dc6bc3d43fabfaec458e99",
+      "artifacts.json": "0c586fba0d3571ba82afef36f597a774fd7125e9ed65648fdbb6851998fd0f70"
+    },
+    "scope": "Actual four-patch native Linux development binaries; independently rehashed and ELF metadata checked. No binary execution, installation, protected producer transport or installed H proof.",
+    "tests_run": false,
+    "artifacts_executed": false,
+    "installed": false,
+    "installed_H_proof": false
   }
 }

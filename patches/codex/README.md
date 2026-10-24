@@ -97,6 +97,14 @@ object, status receiver, version and subject rather than looking up a replacemen
 by the same history ID. Parent notifications remain observations distinct from the
 actual child's Stop; serialized fragments reconstruct no native subject.
 
+Both current four-patch native Linux development binaries now build successfully
+with Rust 1.99.1, locked/offline dependencies and one broker build worker. The
+source stayed clean at `a50cb4ae3ed4665f18bbd6c3c2eaf8fd2eb76fd1` before and after.
+Integration independently rehashed both actual Cargo artifacts and checked their
+ELF64 x86-64 PIE metadata. `source.json` records exact binary sizes, SHA-256 values,
+profiles and receipt digests. Neither binary was executed or installed; this
+build adds no Windows binary or installed native authentication evidence.
+
 No context exporter, protected measured launch, authenticated producer transport,
 Node proof issuer/bridge or installed H/K acceptance is supplied. Unsupported
 native provenance and full caller preservation remain unfinished requirements.
