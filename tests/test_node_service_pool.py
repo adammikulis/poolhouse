@@ -231,3 +231,12 @@ def test_real_tls_member_removal_is_refused_on_existing_connection(services, tmp
         server.server_close()
         thread.join(timeout=5)
         runner.shutdown()
+
+
+def test_explicit_client_identity_does_not_resolve_global_service_key(services, monkeypatch):
+    from poolhouse.fleet.remote import Member
+    _pool, identities, rows = services
+    monkeypatch.setattr(tls, "local", lambda: pytest.fail("explicit service identity must be retained"))
+    member = Member(rows[1]["endpoint"], "ignored-shared-key", identity=identities[0])
+    member.check_current()
+    assert member.current_options().tls_context is not None
