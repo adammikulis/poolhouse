@@ -115,18 +115,19 @@ def _member_error(where: str, exc: ServerError) -> MemberError:
 
 class Member:
     def __init__(self, base_url: str, token: str, *, timeout: float = 60.0,
-                 beacon: Beacon | None = None) -> None:
+                 beacon: Beacon | None = None, identity: tls.Identity | None = None) -> None:
         if not secure_scheme(base_url):
             raise ValueError(f"a member is reached over https, or http on this machine only: {base_url}")
         self.base_url = base_url.rstrip("/")
         self.token = token
         self.timeout = timeout
         self.beacon = beacon
+        self._identity = identity
         self._binding: service_pool.Binding | None = None
         self._owner_service = False
         if urllib.parse.urlsplit(self.base_url).scheme == "https":
             rows = service_pool.Pool().services()
-            own = service_pool.Pool().own()
+            own = service_pool.Pool().own(self._identity)
             address = urllib.parse.urlsplit(self.base_url)
             own_address = urllib.parse.urlsplit(own.endpoint)
             try:
@@ -142,7 +143,7 @@ class Member:
                 raise PermissionError("This endpoint is not a current node-authorized compute service.")
             self._binding = matching[0]
             if not self._owner_service:
-                self.token = service_pool.Pool().secret(self._binding.fingerprint)
+                self.token = service_pool.Pool().secret(self._binding.fingerprint, self._identity)
 
     @property
     def name(self) -> str:
@@ -207,10 +208,10 @@ class Member:
         if current != self._binding:
             raise PermissionError("The selected compute service binding changed.")
         if self._owner_service:
-            if current != service_pool.Pool().own():
+            if current != service_pool.Pool().own(self._identity):
                 raise PermissionError("The local compute service binding changed.")
             return
-        secret = service_pool.Pool().secret(current.fingerprint)
+        secret = service_pool.Pool().secret(current.fingerprint, self._identity)
         if not hmac.compare_digest(secret, self.token):
             raise PermissionError("The local compute service binding changed.")
 
@@ -225,7 +226,7 @@ class Member:
             return previous(url) if previous is not None else url
         context = options.tls_context
         if self._binding is not None:
-            context = tls.pinned_context(self._binding.certificate, context_type=tls.ExactContext)
+            context = tls.pinned_context(self._binding.certificate, who=self._identity, context_type=tls.ExactContext)
             context.expected_der = bytes.fromhex(self._binding.cert)
         agent = {AGENT_HEADER: os.environ[AGENT_ENV]} if os.environ.get(AGENT_ENV) else {}
         return replace(options, headers={**options.headers, **agent}, token=self.token,
