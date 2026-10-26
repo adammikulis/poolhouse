@@ -121,7 +121,8 @@ fn members(node: &mut Node, fp: &str, req: &Value) -> Result<Value> {
     if let Some(builds) = req.get("builds") {
         node.take_builds(fp, builds);
     }
-    Ok(json!({"pool": node.members.id, "builds": node.builds_known()}))
+    node.take_service_binding(fp, req.get("service").unwrap_or(&Value::Null))?;
+    Ok(json!({"pool": node.members.id, "builds": node.builds_known(), "service": node.own_service_binding()}))
 }
 
 fn hosted<'a>(node: &'a mut Node, req: &Value, bfp: &str) -> Result<&'a mut crate::node::Hosted> {
@@ -200,6 +201,7 @@ fn answer(net: &Net, node: &mut Node, der: &[u8], ip: IpAddr, req: &Value) -> Re
         ("join_exchange" | "join_confirm", _) => net.join_code_step(node, der, op, req),
         (_, Standing::Unknown) => Err(Error::Denied("this device is not a member of the pool".into())),
         ("members", _) => members(node, &fp, req),
+        ("service_binding", _) => crate::services::peer_binding(node, req),
         ("acts", _) => crate::gov::wire::serve(node, req),
         ("boards", _) => Ok(json!({"boards": node.boards.keys().collect::<Vec<_>>()})),
         ("vector", _) => vector(node, &bfp, req),
