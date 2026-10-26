@@ -75,7 +75,7 @@ def test_sdk_denies_removed_service_and_closes_any_open_response(transport, stag
         client = sdk.FleetTransport(URL, "stale-pool-token", service=transport["service"])
         with pytest.raises(PermissionError, match="removed"):
             response = await client.handle_async_request(httpx2.Request("POST", URL, json={}))
-            await response.aread()
+            await anext(response.aiter_raw())
         assert transport["opened"] == (0 if stage == "before" else 1)
         assert transport["closed"] == (0 if stage == "before" else 1)
     asyncio.run(run())
