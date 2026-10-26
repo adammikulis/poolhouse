@@ -414,7 +414,7 @@ allows nothing. What gates a signature is the custody of the key: the operating-
 
 **The registry.** The actions in `grants::spec::ACTIONS` are `member_remove`, `add_device`, `join_pool`,
 `sync_now`, `shard_call`, `shard_consent`, `land_trust`, `task_authority`, `note_verify`, `quarantine_release`,
-`file_delete`, `link_read`, `link_write`, `link_remove`, `source_add`, `pool_create`, `pool_leave`, `admin_manage` and `service_bind`. Anything else is `invalid` to grant. A `service_bind` grant names one exact `service:<digest>` resource, the receiving device fingerprint and one use; it authorizes the compute certificate, endpoint and generation shown by `service_draft`. **The floors** are refused by name, at issue, in the fold and at every
+`file_delete`, `link_read`, `link_write`, `link_remove`, `source_add`, `pool_create`, `pool_leave`, `admin_manage` and `service_bind`. Anything else is `invalid` to grant. A `service_bind` grant names one exact `service:<digest>` resource, the receiving device fingerprint and one use; it authorizes the compute certificate and endpoint shown by `service_draft`. A fresh proof of the same service private key renews the current approved capability across restarts, with a new live generation. **The floors** are refused by name, at issue, in the fold and at every
 use, whoever signed: `push_main`, `merge_main`, `release_main`, `tag_release`, `force_push`, `act_as_person`, `agent_is_human`,
 `keystore`, `second_gpu`, `forge`, `grant_issue`, `grant_revoke`, `person_enroll` and `sudo`. Pushing `main` stays with the
 owner's release authorization (docs/person-delegation.md); the GPU is leased one holder at a time (the Leases section).

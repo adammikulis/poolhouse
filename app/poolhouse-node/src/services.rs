@@ -13,6 +13,8 @@ use crate::fsutil::{hex, unhex};
 use crate::node::Node;
 
 const DOMAIN: &[u8] = b"poolhouse/compute-service/v1\n";
+const CAPABILITY_DOMAIN: &[u8] = b"poolhouse/compute-service-capability/v1\n";
+const PROOF_DOMAIN: &[u8] = b"poolhouse/compute-service-possession/v1\n";
 pub const SERVICE: &str = "compute";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -36,6 +38,12 @@ pub struct Binding { pub body: Body, pub signature: String }
 fn denied() -> Error { Error::Denied("this certificate has no current compute service binding".into()) }
 fn short_hash(value: &str) -> bool {
     value.len() == 32 && value.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+}
+
+pub(crate) fn capability_marker(row: &crate::row::Row) -> bool {
+    row.kind == crate::row::Kind::Audit && row.actor == "node" && row.body["event"] == "service_capability"
+        && row.body["subject"].as_str().and_then(|resource| resource.strip_prefix("service:")).is_some_and(valid_fingerprint)
+        && row.body.as_object().is_some_and(|fields| fields.len() == 3 && fields.get("detail").is_some_and(Value::is_string))
 }
 
 fn bytes(body: &Body) -> Result<Vec<u8>> {
@@ -93,7 +101,34 @@ impl Binding {
     }
 
     pub fn resource(&self) -> Result<String> {
-        Ok(format!("service:{}", crate::fsutil::sha256_hex(&bytes(&self.body)?)))
+        let mut capability = serde_json::to_value(&self.body)?;
+        capability.as_object_mut().ok_or_else(denied)?.remove("generation");
+        let mut bytes = CAPABILITY_DOMAIN.to_vec();
+        bytes.extend(crate::row::canonical(&capability).as_bytes());
+        Ok(format!("service:{}", crate::fsutil::sha256_hex(&bytes)))
+    }
+}
+
+#[derive(Clone)]
+struct Challenge {
+    body: Body,
+    caller: crate::lineage::Anchor,
+    nonce: String,
+    at_ms: u64,
+}
+
+impl Challenge {
+    fn live(&self, now: u64) -> bool {
+        self.at_ms <= now && now - self.at_ms < crate::grants::spec::SKEW_MS
+            && crate::lease::live::inspect(self.caller.pid).is_some_and(|p| !p.zombie && p.start == self.caller.start)
+    }
+
+    fn bytes(&self, epoch: &str) -> Result<Vec<u8>> {
+        let mut bytes = PROOF_DOMAIN.to_vec();
+        let binding = Binding { body: self.body.clone(), signature: String::new() };
+        bytes.extend(crate::row::canonical(&json!({"capability": binding.resource()?, "binding": self.body,
+            "caller": self.caller, "epoch": epoch, "challenge": self.nonce})).as_bytes());
+        Ok(bytes)
     }
 }
 
@@ -101,10 +136,11 @@ pub struct Services {
     bindings: BTreeMap<String, Binding>,
     epoch: String,
     own_process: Option<crate::lineage::Anchor>,
+    challenges: BTreeMap<String, Challenge>,
 }
 
 impl Default for Services {
-    fn default() -> Self { Self { bindings: BTreeMap::new(), epoch: String::new(), own_process: None } }
+    fn default() -> Self { Self { bindings: BTreeMap::new(), epoch: String::new(), own_process: None, challenges: BTreeMap::new() } }
 }
 
 impl Services {
@@ -130,6 +166,7 @@ impl Node {
         if body.device == self.cert.fingerprint() && !self.services.own_process.is_some_and(|anchor| {
             crate::lease::live::inspect(anchor.pid).is_some_and(|p| !p.zombie && p.start == anchor.start)
         }) { return Err(denied()); }
+        if body.device == self.cert.fingerprint() && self.current_service_capability().as_deref() != Some(binding.resource()?.as_str()) { return Err(denied()); }
         let member = self.members.get(&body.device).filter(|_| self.members.is_active(&body.device)).ok_or_else(denied)?;
         binding.verify(&self.members.id, &body.device, &member.der().ok_or_else(denied)?, self.now_ms())?;
         Ok(json!({"pool": body.pool, "device": body.device, "service": body.service, "name": member.name,
@@ -186,23 +223,63 @@ impl Node {
         Ok((body, anchor))
     }
 
-    pub fn service_draft(&self, cert: &str, endpoint: &str) -> Result<Value> {
-        let (body, _) = self.service_draft_body(cert, endpoint)?;
-        let binding = Binding { body, signature: String::new() };
-        Ok(json!({"binding": binding.body, "resource": binding.resource()?}))
+    fn current_service_capability(&self) -> Option<String> {
+        let hosted = self.boards.get(crate::poolops::POOL_BOARD)?;
+        hosted.board.rows(hosted.board.origin()).iter().rev().find(|row| capability_marker(row))
+            .and_then(|row| row.body["subject"].as_str()).map(str::to_string)
     }
 
-    pub fn service_bind(&mut self, token: &str, cert: &str, endpoint: &str) -> Result<Value> {
+    pub fn service_draft(&mut self, cert: &str, endpoint: &str) -> Result<Value> {
+        let (body, anchor) = self.service_draft_body(cert, endpoint)?;
+        let now = self.now_ms();
+        self.services.challenges.retain(|_, challenge| challenge.live(now) && (challenge.caller != anchor || challenge.body == body));
+        if !self.services.challenges.contains_key(&body.generation) {
+            let queued = self.services.challenges.values().try_fold(0usize, |total, pending| {
+                serde_json::to_vec(&pending.body).map(|bytes| total.saturating_add(bytes.len()))
+            })?;
+            if self.services.challenges.len() >= crate::identity::MOST_TOKENS
+                || queued.saturating_add(serde_json::to_vec(&body)?.len()) > crate::wire::MAX_FRAME {
+                return Err(Error::Denied("pending service proofs fill the local API capacity".into()));
+            }
+            self.services.challenges.insert(body.generation.clone(), Challenge { body: body.clone(), caller: anchor,
+                nonce: crate::fsutil::random_hex(16)?, at_ms: now });
+        }
+        let challenge = self.services.challenges.get(&body.generation).ok_or_else(denied)?;
+        let generation = body.generation.clone();
+        let binding = Binding { body, signature: String::new() };
+        let draft = json!({"binding": binding.body, "resource": binding.resource()?, "challenge": challenge.nonce,
+            "proof_bytes": hex(&challenge.bytes(&self.services.epoch)?)});
+        if serde_json::to_vec(&draft)?.len() > crate::wire::MAX_FRAME {
+            self.services.challenges.remove(&generation);
+            return Err(crate::limits::refuse("the service proof exceeds the local frame", crate::wire::MAX_FRAME, "MAX_FRAME", "wire.rs"));
+        }
+        Ok(draft)
+    }
+
+    pub fn service_bind(&mut self, token: &str, cert: &str, endpoint: &str, nonce: &str, proof: &str) -> Result<Value> {
+        use x509_parser::prelude::{FromDer, X509Certificate};
         let (body, anchor) = self.service_draft_body(cert, endpoint)?;
         if self.services.binding(&body.device).is_some_and(|held| held.body == body) {
             return self.service_authorize(&body.fingerprint);
         }
+        let challenge = self.services.challenges.get(&body.generation).filter(|challenge| challenge.body == body
+            && challenge.caller == anchor && challenge.nonce == nonce && challenge.live(self.now_ms())).ok_or_else(denied)?;
+        let der = unhex(cert).ok_or_else(denied)?;
+        let (_, parsed) = X509Certificate::from_der(&der).map_err(|_| denied())?;
+        let proof = unhex(proof).ok_or_else(denied)?;
+        ring::signature::UnparsedPublicKey::new(&ring::signature::ECDSA_P256_SHA256_ASN1,
+            parsed.public_key().subject_public_key.data.as_ref()).verify(&challenge.bytes(&self.services.epoch)?, &proof).map_err(|_| denied())?;
         let binding = Binding::signed(body, &self.key)?;
         let resource = binding.resource()?;
-        let who = crate::poolapi::authorize(self, token, "service_bind", &resource)?;
+        if self.current_service_capability().as_deref() != Some(resource.as_str()) {
+            let who = crate::poolapi::authorize(self, token, "service_bind", &resource)?;
+            self.host(crate::poolops::POOL_BOARD)?.board.append_node(crate::row::Kind::Audit, "node",
+                json!({"event":"service_capability","subject":resource,"detail":format!("approved by {}/{}",who.board,who.name)}), "")?;
+        }
+        self.record_event("service_bind", &binding.body.fingerprint, &binding.body.endpoint)?;
         self.services.take(binding.clone(), &self.members.id, &self.cert.fingerprint(), &self.cert.der, self.now_ms())?;
         self.services.own_process = Some(anchor);
-        self.record_event("service_bind", &binding.body.fingerprint, &format!("{} by {}/{}", binding.body.endpoint, who.board, who.name))?;
+        self.services.challenges.remove(&binding.body.generation);
         self.service_authorize(&binding.body.fingerprint)
     }
 }
@@ -211,7 +288,7 @@ pub fn call(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) 
     let text = |key: &str| p.get(key).and_then(Value::as_str).ok_or_else(|| Error::Invalid(format!("{key} is text")));
     match method {
         "service_draft" => node.service_draft(text("cert")?, text("endpoint")?),
-        "service_bind" => node.service_bind(token, text("cert")?, text("endpoint")?),
+        "service_bind" => node.service_bind(token, text("cert")?, text("endpoint")?, text("challenge")?, text("proof")?),
         _ => Err(Error::Invalid("unknown service method".into())),
     }
 }
@@ -308,7 +385,7 @@ mod tests {
         let next = Binding::signed(next, &key).unwrap();
         services.take(next.clone(), &body.pool, &body.device, &cert, now).unwrap();
         assert_eq!(services.binding(&body.device), Some(&next));
-        assert_ne!(first.resource().unwrap(), next.resource().unwrap());
+        assert_eq!(first.resource().unwrap(), next.resource().unwrap());
     }
     fn service_cert() -> String {
         let key = rcgen::KeyPair::generate().unwrap();
@@ -329,7 +406,9 @@ mod tests {
         assert_ne!(first["resource"], endpoint["resource"]);
         drop(node);
         let mut restarted = Node::open(dir.path()).unwrap(); restarted.members.id = "a".repeat(32); restarted.asking.peer.pid = Some(std::process::id());
-        assert_ne!(first["resource"], restarted.service_draft(&cert, "https://localhost:8770").unwrap()["resource"]);
+        let next = restarted.service_draft(&cert, "https://localhost:8770").unwrap();
+        assert_eq!(first["resource"], next["resource"]);
+        assert_ne!(first["binding"]["generation"], next["binding"]["generation"]);
     }
     #[test]
     fn an_unapproved_local_process_cannot_publish_its_service_certificate() {
@@ -337,7 +416,7 @@ mod tests {
         node.members.id = "a".repeat(32);
         node.asking.peer.pid = Some(std::process::id());
         let cert = service_cert();
-        assert!(node.service_bind("", &cert, "https://localhost:8770").is_err());
+        assert!(node.service_bind("", &cert, "https://localhost:8770", "", "").is_err());
         assert_eq!(node.service_members().unwrap()["services"], json!([]));
         let cert_fp = cert_fingerprint(&unhex(&cert).unwrap());
         assert!(node.service_authorize(&cert_fp).is_err());
@@ -357,5 +436,31 @@ mod tests {
         }
         let mut changed = base; changed["uses"] = json!(2);
         assert!(crate::grants::spec::parse_issue(changed.as_object().unwrap()).is_err());
+    }
+    #[test]
+    fn proof_challenges_expire_and_one_caller_cannot_fill_pending_capacity() {
+        let dir = tempfile::tempdir().unwrap(); let mut node = Node::open(dir.path()).unwrap();
+        node.members.id = "a".repeat(32); node.asking.peer.pid = Some(std::process::id());
+        let cert = service_cert(); let first = node.service_draft(&cert,"https://localhost:8770").unwrap();
+        let generation = first["binding"]["generation"].as_str().unwrap();
+        node.services.challenges.get_mut(generation).unwrap().at_ms = node.now_ms() - crate::grants::spec::SKEW_MS;
+        let next = node.service_draft(&cert,"https://localhost:8770").unwrap();
+        assert_ne!(first["challenge"],next["challenge"]);
+        node.services.challenges.clear();
+        let key = rcgen::KeyPair::generate().unwrap();
+        let mut params = rcgen::CertificateParams::new(Vec::<String>::new()).unwrap();
+        params.custom_extensions.push(rcgen::CustomExtension::from_oid_content(&[1,2,3,4],vec![0;crate::wire::MAX_FRAME/16]));
+        let large = hex(params.self_signed(&key).unwrap().der());
+        let first = node.service_draft(&large,"https://localhost:8770").unwrap();
+        let slots = crate::wire::MAX_FRAME / serde_json::to_vec(&first["binding"]).unwrap().len();
+        for offset in 1..=slots {
+            assert!(node.service_draft(&large,&format!("https://localhost:{}",8770+offset)).is_ok());
+            assert_eq!(node.services.challenges.len(),1);
+        }
+        let mut params = rcgen::CertificateParams::new(Vec::<String>::new()).unwrap();
+        params.custom_extensions.push(rcgen::CustomExtension::from_oid_content(&[1,2,3,4],vec![0;crate::wire::MAX_FRAME/4]));
+        let oversized = hex(params.self_signed(&key).unwrap().der());
+        assert!(node.service_draft(&oversized,"https://localhost:8770").is_err());
+        assert!(node.services.challenges.is_empty());
     }
 }

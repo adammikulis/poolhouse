@@ -128,9 +128,12 @@ impl Board {
         let gid = |r: &Row| r.body.get("gid").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let limited: BTreeSet<String> = grant_rows.clone().filter(|r| op(r) == "issue" && r.body.get("uses").is_some()).map(gid).collect();
         let revoked: BTreeSet<String> = grant_rows.filter(|r| op(r) == "revoke").map(gid).collect();
+        let service = old.iter().rev().find(|r| crate::services::capability_marker(r)).map(Row::id);
+        let mandatory = |r: &Row| r.kind == Kind::Grant || service.as_deref() == Some(r.id().as_str());
         let live = |r: &Row| match r.kind {
             Kind::Grant if op(r) == "use" => limited.contains(&gid(r)) && !revoked.contains(&gid(r)),
             Kind::Grant | Kind::Room | Kind::Task => true,
+            Kind::Audit => service.as_deref() == Some(r.id().as_str()),
             Kind::Note => {
                 let ttl = r.body.get("ttl_days").and_then(|v| v.as_u64()).unwrap_or(0);
                 !superseded.contains(r.id().as_str()) && (ttl == 0 || now.saturating_sub(r.hlc.0) <= ttl * DAY_MS)
@@ -138,11 +141,11 @@ impl Board {
             _ => false,
         };
         let durable: Vec<usize> = (0..old.len()).filter(|i| live(&old[*i])).collect();
-        let grants = durable.iter().filter(|i| old[**i].kind == Kind::Grant).count();
-        let used: Held = durable.iter().filter(|i| old[**i].kind == Kind::Grant).fold(Held::default(), |mut h, i| { h.add(old[*i].size() as u64 + 1); h });
+        let grants = durable.iter().filter(|i| mandatory(&old[**i])).count();
+        let used: Held = durable.iter().filter(|i| mandatory(&old[**i])).fold(Held::default(), |mut h, i| { h.add(old[*i].size() as u64 + 1); h });
         let carry = self.bounds.carry();
         let (mut rows, mut bytes, mut chosen) = (used.rows, used.bytes, BTreeSet::new());
-        for i in durable.iter().rev().filter(|i| old[**i].kind != Kind::Grant) {
+        for i in durable.iter().rev().filter(|i| !mandatory(&old[**i])) {
             let size = old[*i].size() as u64 + 1;
             if rows + 1 > carry.rows || bytes + size > carry.bytes {
                 break;
@@ -150,7 +153,7 @@ impl Board {
             (rows, bytes) = (rows + 1, bytes + size);
             chosen.insert(*i);
         }
-        let kept: Vec<Row> = durable.iter().filter(|i| old[**i].kind == Kind::Grant || chosen.contains(*i)).map(|i| old[*i].clone()).collect();
+        let kept: Vec<Row> = durable.iter().filter(|i| mandatory(&old[**i]) || chosen.contains(*i)).map(|i| old[*i].clone()).collect();
         if kept.len() > self.bounds.rows / 2 || bytes > self.bounds.bytes / 2 {
             return Err(crate::limits::refuse("the grants of this log are more than a new segment may restate", self.bounds.rows / 2, "CARRY_PERCENT", "logbounds.rs"));
         }
