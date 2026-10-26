@@ -87,7 +87,7 @@ impl Drop for AttachCleanup<'_> {
 enum PeerOperation { Maintenance, Work(EffectFlow) }
 fn peer_operation(request: &Value) -> PeerOperation {
     match request["op"].as_str() {
-        Some("shard_caps" | "shard_status" | "shard_cancel" | "hello" | "boards") => PeerOperation::Maintenance,
+        Some("shard_caps" | "shard_status" | "shard_cancel" | "hello" | "boards" | "service_binding") => PeerOperation::Maintenance,
         Some("shard_put") => PeerOperation::Work(EffectFlow::ShardPut),
         Some("shard_start") => PeerOperation::Work(EffectFlow::ShardStart),
         // vector/pull and unknown operations can write checkpoints or begin work; never maintenance by default.
@@ -715,7 +715,7 @@ impl Net {
             let effect=self.activity.admit_effect(Source::Network,flow).map_err(activity_error)?;
             return self.join_request_admitted(c,peer,&effect);
         }
-        if c.method=="shard_call" { return self.shard_call(c,peer); }
+        if c.method=="shard_call" { return self.shard_call(c,peer); } else if c.method=="service_authorize" { return self.authorize_service(c.params.get("fingerprint").and_then(Value::as_str).unwrap_or("")); }
         Err(Error::Invalid("unknown network method".into()))
     }
 

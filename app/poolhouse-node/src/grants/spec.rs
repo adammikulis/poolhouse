@@ -8,8 +8,8 @@ use crate::error::{Error, Result};
 use crate::row::{canonical, valid_name};
 
 /// The actions of this node that need a grant. Anything else is refused by name.
-pub const ACTIONS: [&str; 18] = [
-    "member_remove", "add_device", "join_pool", "sync_now", "shard_call", "shard_consent", "land_trust",
+pub const ACTIONS: [&str; 19] = [
+    "member_remove", "add_device", "join_pool", "sync_now", "shard_call", "shard_consent", "land_trust", "service_bind",
     "task_authority", "note_verify", "quarantine_release", "file_delete", "link_read", "link_write", "link_remove", "source_add", "pool_create", "pool_leave", "admin_manage",
 ];
 /// The actions another device's grant may cover (when that device is trusted); every other action is this device's alone.
@@ -212,6 +212,10 @@ pub fn parse_issue(map: &Map<String, Value>) -> Result<Issue> {
         return bad("a grant's scope is the board it is on");
     }
     let uses = uses(map)?;
+    if action == "service_bind" && (uses != Some(1) || !valid_fingerprint(&place.device)
+        || !place.resource.strip_prefix("service:").is_some_and(valid_fingerprint)) {
+        return bad("a compute service binding grant names its exact resource and device, with one use");
+    }
     if uses.is_some() && PORTABLE.contains(&action) && place.device == "*" {
         return bad("a grant with a number of uses on an action another device may use names the one device it is used on");
     }

@@ -152,7 +152,7 @@ pub fn authority_person(dev: &Dev) -> Person {
 /// The pool's phone approves ``only`` (every action when empty) for the session ``token`` of ``board``, as one request for each eight.
 pub fn grant(dev: &Dev, board: &str, token: &str, only: &[&str]) {
     let approver = authority_person(dev);
-    let actions: Vec<&str> = ACTIONS.iter().copied().filter(|a| only.is_empty() || only.contains(a)).collect();
+    let actions: Vec<&str> = ACTIONS.iter().copied().filter(|a| *a != "service_bind" && (only.is_empty() || only.contains(a))).collect();
     approved(&mut |m, b, t, p| dev.call(m, b, t, p), board, token, &actions, &|made| approver.decision(made));
 }
 
@@ -199,6 +199,6 @@ pub fn approve_process(state: &std::path::Path, board: &str, token: &str, only: 
         Ok(v) => json!({"ok": true, "result": v}),
         Err(e) => json!({"ok": false, "error": {"code": e.code(), "message": e.to_string()}}),
     };
-    let actions: Vec<&str> = ACTIONS.iter().copied().filter(|a| only.is_empty() || only.contains(a)).collect();
+    let actions: Vec<&str> = ACTIONS.iter().copied().filter(|a| *a != "service_bind" && (only.is_empty() || only.contains(a))).collect();
     approved(&mut call, board, token, &actions, &|made| super::grants::person().decision(made));
 }

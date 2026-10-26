@@ -79,6 +79,7 @@ pub struct Node {
     pub cert: CertIdentity,
     /// The pool this device belongs to and its record of the devices in it.
     pub members: Pool,
+    pub services: crate::services::Services,
     /// The keys of the person, whose signature makes a grant count.
     pub persons: Persons,
     /// What agents asked of the person and what became of it (`approvals`), and the phones the person answers from (`phone`).
@@ -241,7 +242,7 @@ impl Node {
         let writes = crate::writes::WriteLimits::open(dir)?;
         let activity = update_activity::Registry::new();
         let mut node = Node {
-            dir: dir.into(), pool: String::new(), cert, members, persons: Persons::open(&dir.join("persons.json"))?,
+            dir: dir.into(), pool: String::new(), cert, members, services: crate::services::Services::new()?, persons: Persons::open(&dir.join("persons.json"))?,
             approvals: crate::approvals::Approvals::open(&dir.join("approvals.json"))?, fatigue: crate::approvals::fatigue::Fatigue::open(&dir.join("fatigue.json"))?,
             evidence: Box::new(crate::approvals::context::Unrecorded), phones: crate::phone::Phones::open(&dir.join("phones.json"))?,
             phone_cert: crate::phone::cert::load_or_create(dir)?, phone_port: 0, local_server: Weak::new(), firsts: crate::presence::Firsts::new(crate::presence::default_presence()), offer: None, pusher: Box::new(crate::phone::push::NoPusher), land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, custody, boards: BTreeMap::new(),

@@ -15,12 +15,15 @@ use crate::membership::Policy;
 use crate::node::Node;
 
 /// The methods that act on the network and so run without the node lock held.
-pub const NETWORK: [&str; 4] = ["add_device", "join_pool", "sync_now", "shard_call"];
+pub const NETWORK: [&str; 5] = ["add_device", "join_pool", "sync_now", "shard_call", "service_authorize"];
 
 /// The params each pool method accepts; None for any other method.
 pub fn params(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
         "pool_status" | "sync_now" => &[],
+        "service_members" => &[],
+        "service_authorize" => &["fingerprint"],
+        "service_draft" | "service_bind" => &["cert", "endpoint"],
         "member_remove" => &["fingerprint"],
         "pool_create" => &["title", "policy", "project"],
         "pool_leave" => &[],
@@ -85,6 +88,9 @@ fn text<'a>(p: &'a Map<String, Value>, key: &str) -> Result<&'a str> {
 
 pub fn dispatch(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     match method {
+        "service_members" => node.service_members(),
+        "service_authorize" => node.service_authorize_local(text(p, "fingerprint")?),
+        "service_draft" | "service_bind" => crate::services::call(node, method, token, p),
         "pool_status" => {
             node.gov_tick()?;
             Ok(node.pool_status())

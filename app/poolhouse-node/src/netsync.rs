@@ -60,7 +60,7 @@ pub(crate) fn sync_members_admitted(node: &Mutex<Node>, c: &mut PeerClient, effe
     let _child=registry.continue_effect(effect,Source::Sync,EffectFlow::Sync).map_err(activity_error)?;
     let ask = {
         let n = locked_for(node, &c.fingerprint)?;
-        json!({"op": "members", "pool": n.members.id, "builds": n.builds_known()})
+        json!({"op": "members", "pool": n.members.id, "builds": n.builds_known(), "service": n.own_service_binding()})
     };
     let reply = c.call(&ask)?;
     take_members(node, &c.fingerprint, &reply)
@@ -72,6 +72,7 @@ pub fn take_members(node: &Mutex<Node>, from: &str, reply: &Value) -> Result<()>
     if let Some(builds) = reply.get("builds") {
         n.take_builds(from, builds);
     }
+    n.take_service_binding(from, reply.get("service").unwrap_or(&Value::Null))?;
     Ok(())
 }
 

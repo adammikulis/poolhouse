@@ -68,6 +68,7 @@ pub mod rules;
 pub mod scratch;
 pub mod sessions;
 pub mod server;
+pub mod services;
 pub mod shard;
 pub mod state;
 pub mod subs;

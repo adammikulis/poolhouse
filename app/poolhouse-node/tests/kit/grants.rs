@@ -236,7 +236,7 @@ impl Person {
 
     /// Grant every action of the registry (`only` limits it) to the session ``name`` for an hour.
     pub fn allow(&self, call: Call, board: &str, token: &str, name: &str, only: &[&str]) {
-        for action in ACTIONS.iter().filter(|a| only.is_empty() || only.contains(a)) {
+        for action in ACTIONS.iter().filter(|a| **a != "service_bind" && (only.is_empty() || only.contains(a))) {
             let reply = self.issue(call, board, token, &gid_of(name, action), &Spec::session(name, action));
             assert_eq!(reply["ok"], true, "grant {action} to {name}: {reply}");
         }
