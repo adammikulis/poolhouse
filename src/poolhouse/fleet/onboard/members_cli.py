@@ -28,7 +28,7 @@ __all__ = ["add_members", "cmd_members"]
 
 
 def add_members(sub: Any, common: Any) -> None:
-    p = common(sub.add_parser("members", help="the members model downloads ask first"))
+    p = common(sub.add_parser("model-sources", help="the members model downloads ask first"))
     p.add_argument("action", nargs="?", default="list",
                    choices=("list", "add", "remove", "on", "off", "limit"))
     p.add_argument("name", nargs="?", default="")

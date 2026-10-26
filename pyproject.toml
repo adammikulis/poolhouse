@@ -172,7 +172,7 @@ poolhouse-node = "poolhouse.node_permission:main"
 poolhouse-device = "poolhouse.fleet.device_cli:main"
 poolhouse-members = "poolhouse.fleet.members:main"
 # one command makes this machine a member: checks, llama-server, passphrase, daemon, announce
-poolhouse-pool = "poolhouse.fleet.join:main"
+poolhouse-pool = "poolhouse.pool_cli:main"
 # the same functions the commands call, as MCP tools over stdio, for an agent to drive
 poolhouse-mcp = "poolhouse.mcp:main"
 # choose one of a named set of options and say how sure: ask, score, calibrate, compare

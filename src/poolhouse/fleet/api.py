@@ -26,7 +26,7 @@ from poolhouse import gate, sealing, sentinel, serverkeys
 from poolhouse.files import promote
 from poolhouse.graph.guard import MAX_BODY
 from poolhouse.http import _open
-from poolhouse.macauth import Verdict, parts
+from poolhouse.macauth import Verdict
 from poolhouse.sentinel.adapters import watch_authenticator
 from poolhouse.speech import service as speech
 from poolhouse.speech.protocols import ProviderError
@@ -44,6 +44,7 @@ from . import (
     studio_device_routes,
     studio_library,
     studio_webhooks,
+    tls,
 )
 from .availability import Availability, parse_window
 from .daemon_control import protected
@@ -73,7 +74,8 @@ from .measuring import BenchHost, Job as BenchJob, Refused
 from .member_routes import answer as member_answer
 from .models import Models
 from .onboard.joining import API as JOIN_API, Joining
-from .pool_roster import Pool
+from .service_guard import ServiceGuard
+from .service_pool import Pool
 from .serving import Hosting, NoRoom, ServeSettings, Serving
 from .ui import routes as ui_routes
 from .weights import ModelError
@@ -121,6 +123,7 @@ class Daemon:
     launcher_control: Callable[[], Any] | None = None
     joining: Joining | None = None
     """Answers a machine that asks to join with the passphrase; without it the join routes are off."""
+    service_identity: Callable[[], tls.Identity] | None = None
     members: Pool | None = None
     """Which devices are in this daemon's pools; by default the record beside ``pool_key_path``."""
     command: Callable[[list[str]], list[str]] = commands.allowed
@@ -141,7 +144,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
     bench, hosting, decide = daemon.bench, daemon.hosting, daemon.decide
     ui_from_lan = daemon.ui_from_lan
     joining, command = daemon.joining, daemon.command
-    roster = daemon.members or Pool(pool_key_path)
+    roster = daemon.members or Pool()
 
     def secrets_now() -> set[str]:
         """Every secret this machine answers to, read at request time."""
@@ -149,9 +152,10 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
         return {one for one in (own, *(tokens() if tokens else ())) if one}
 
     screen = callers.Screen(secrets_now, lambda: [device_auth.secret(device) for device in daemon.devices()],
-                            roster, pool_key_path, lambda auth: watch_authenticator(auth, sentinel.armed(), Verdict))
+                            roster, lambda auth: watch_authenticator(auth, sentinel.armed(), Verdict),
+                            identity=daemon.service_identity)
 
-    class Handler(Limited, BaseHTTPRequestHandler):
+    class Handler(ServiceGuard, Limited, BaseHTTPRequestHandler):
         server_version = "poolhouse-traind/0.1"
 
         def log_message(self, fmt: str, *args: Any) -> None:  # quieter
@@ -219,6 +223,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             with target.open("rb") as fh:
                 fh.seek(start)
                 while remaining > 0:
+                    self._service_current()
                     chunk = fh.read(min(FILE_CHUNK, remaining))
                     if not chunk:
                         break
@@ -228,48 +233,9 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                         return
                     remaining -= len(chunk)
 
-        _member = ""
-        _group = ""
-
-        def _guard(self, body: bytes | None = None) -> bool:
-            """Whether this request is signed by a secret this machine answers to, and when it
-            came over TLS from another machine, by a device that is a member; the answer is
-            sent when it is not. ``body`` is what the request carried."""
-            seen = screen.check(self, body)
-            verdict, self._member, self._group = seen.verdict, seen.member, ""
-            if seen.refusal is not None:
-                self.close_connection = seen.kind == callers.STRANGER
-                self._send(seen.refusal[0], {"error": seen.refusal[1]})
-                return False
-            if verdict.ok:
-                self._group = callers.pool_of(verdict.secret, pool_key_path) or ""
-                mode = self.headers.get(sealing.HEADER, "")
-                self._opening = (sealing.box_key(verdict.secret), verdict, mode == "2",
-                                 self.headers) if mode in ("1", "2") else None
-                return True
-            if verdict.locked:
-                self._send(429, {"error": verdict.reason}, headers={"Retry-After": "60"})
-            else:
-                self._send(401, {"error": verdict.reason})
-            return False
-
-        def _unsealed(self, body: bytes | None) -> bytes | None:
-            """What a signed request's body says, or None once a refusal has been sent: a body
-            is sealed under the key derived from the secret that signed it."""
-            if not body:
-                return body
-            opening = self._sealing()
-            if opening is None:
-                self._send(400, {"error": "a request body is sent sealed"})
-                return None
-            key, verdict, _ = opening
-            host, target = parts(f"//{self.headers.get('Host', '')}{self.path}")
-            try:
-                return sealing.open_(key, body, sealing.request_data(
-                    self.command, target, host, verdict.at, verdict.nonce))
-            except sealing.SealError:
-                self._send(400, {"error": "the body did not authenticate"})
-                return None
+        _screen = screen
+        _roster = roster
+        _service_secrets = staticmethod(secrets_now)
 
         def _body(self, most: int = MOST_BODY) -> bytes | None:
             """The request body, or None once a refusal for it has been sent."""
@@ -364,7 +330,9 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             read = getattr(response, "read1", response.read)
             try:
                 while True:
+                    self._service_current()
                     block = read(INFER_CHUNK)
+                    self._service_current()
                     if not block:
                         break
                     self.wfile.write(block)

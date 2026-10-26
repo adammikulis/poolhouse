@@ -32,13 +32,13 @@ from poolhouse.files import UNVERSIONED, read_json, version_of, versioned, write
 from poolhouse.http import Options, ServerError, ServerUnreachable, json_body, request_bytes
 from poolhouse.jobs import detach
 from poolhouse.log import say, warn
+from poolhouse.pool_cli import main
 from poolhouse.units import human_bytes
 
 from . import automatic_pools, pool_modes, recovery
 from .applying import apply_plan, serving_table
 from .discovery import (
     Beacon,
-    DiscoveryError,
     default_port,
     discover,
     in_pool,
@@ -56,8 +56,7 @@ from .join_request import (
     JoinRequest,
     LeaveRequest,
 )
-from .launch import HTTP_PORT, already_running, wait_for_health
-from .onboard.cli import COMMANDS as ONBOARD_COMMANDS, add_commands, run as run_onboarding
+from .launch import already_running, wait_for_health
 from .onboard.joining import JoinOptions, join_by_passphrase
 from .onboard.pools import format_pools, known_pools, pick_pool
 from .pausing import (
@@ -768,116 +767,6 @@ def cmd_leave(args: argparse.Namespace) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
-    from .plan import PREFERENCES
-
-    ap = argparse.ArgumentParser(
-        prog="poolhouse-pool",
-        description="Make this machine a member in one command, and see the devices in the pool.")
-    ap.add_argument("--pool-key", default=None,
-                    help="path to the pool key (default: ~/.poolhouse/pool.key)")
-    ap.add_argument("--root", default=str(default_root()),
-                    help="the daemon's root (default: traind under the state root)")
-    ap.add_argument("--port", type=int, default=HTTP_PORT,
-                    help=f"the daemon's HTTP port (default: {HTTP_PORT}); discovery is one "
-                         f"above it")
-    sub = ap.add_subparsers(dest="cmd", required=True)
-
-    join_p = sub.add_parser(
-        "join", help="check this machine, start the daemon, announce, and list pool devices")
-    join_p.add_argument("--name", default="",
-                        help="how this machine identifies itself (default: the hostname)")
-    join_p.add_argument("--persist", action="store_true",
-                        help="start the daemon at logon as well, so it comes back after "
-                             "a restart")
-    join_p.add_argument("--mode", choices=pool_modes.MODES, default=None,
-                        help="pool admission: dev automatically joins nearby devices; "
-                             "prod requires explicit admission (default: existing mode or dev)")
-    join_p.add_argument("--passphrase", default="",
-                        help="join a named pool with shared words (default mode: prod)")
-    join_p.add_argument("--group", default="",
-                        help="required pool name when joining with a passphrase")
-    join_p.add_argument("--track", default="",
-                        help="follow a branch instead of releases, e.g. 'main': this "
-                             "machine pulls, reinstalls if the packaging moved and "
-                             "restarts whenever no job, benchmark or model is running. "
-                             "Needs a git checkout with an editable install, and runs "
-                             "code nobody reviewed. Remembered; '--track off' undoes it.")
-    join_p.add_argument("--timeout", type=float, default=2.0,
-                        help="seconds to listen for members (default: 2)")
-    join_p.add_argument("--json", action="store_true", help="print what was done as JSON")
-
-    status_p = sub.add_parser("status", help="the members: what each serves, its room, its "
-                                             "lock, its commit")
-    status_p.add_argument("--timeout", type=float, default=2.0)
-    status_p.add_argument("--json", action="store_true")
-
-    list_p = sub.add_parser("list", help="the pools this machine is in and the ones "
-                                                 "other machines on the network offer, with "
-                                                 "who holds each")
-    list_p.add_argument("--timeout", type=float, default=2.0,
-                            help="seconds to listen for members (default: 2)")
-    list_p.add_argument("--json", action="store_true")
-
-    plan_p = sub.add_parser("plan", help="which model each member serves, and how many "
-                                         "slots, for a number of users at one context; "
-                                         "the best measured models go to the most users")
-    plan_p.add_argument("--users", type=int, required=True,
-                        help="how many conversations at once, across the pool")
-    plan_p.add_argument("--context", type=int, required=True,
-                        help="tokens each conversation gets (you say how much a conversation needs)")
-    plan_p.add_argument("--prefer", choices=sorted(PREFERENCES), default="quality",
-                        help="what each member serves: 'quality' the best measured model "
-                             "that fits there (default), 'slots' the model that slots "
-                             "the most users there")
-    plan_p.add_argument("--apply", action="store_true",
-                        help="serve the plan: each member runs its model with its slots")
-    plan_p.add_argument("--timeout", type=float, default=2.0,
-                        help="seconds to listen for members (default: 2)")
-    plan_p.add_argument("--json", action="store_true")
-
-    pause_p = sub.add_parser("pause", help="stop every machine in the pool taking "
-                                           "work; each is asked in turn, and any that "
-                                           "does not answer is named")
-    pause_p.add_argument("--for", dest="span", default="", metavar="DURATION",
-                         help="how long, e.g. '2h', '90m'; without it the pause holds "
-                              "until you resume")
-    pause_p.add_argument("--reason", default="", metavar="WORDS",
-                         help="what to show anyone who asks why a machine is not "
-                              "taking work")
-    pause_p.add_argument("--timeout", type=float, default=2.0,
-                         help="seconds to listen for members (default: 2)")
-    pause_p.add_argument("--json", action="store_true")
-
-    resume_p = sub.add_parser("resume", help="every machine in the pool takes work "
-                                             "again")
-    resume_p.add_argument("--timeout", type=float, default=2.0,
-                          help="seconds to listen for members (default: 2)")
-    resume_p.add_argument("--json", action="store_true")
-
-    leave_p = sub.add_parser("leave", help="drop the pool, the logon service and the "
-                                           "daemon join started")
-    leave_p.add_argument("--group", default="",
-                         help="leave only this pool (default: every one)")
-    leave_p.add_argument("--keep-running", action="store_true",
-                         help="leave the daemon up, just stop answering as a member")
-    add_commands(sub)
-    recovery.add_commands(sub)
-    args = ap.parse_args(argv)
-    if args.cmd in ONBOARD_COMMANDS:
-        try:
-            return run_onboarding(args)
-        except (OSError, SystemExit) as exc:
-            warn(f"error: {exc}")
-            return 2
-    fn = {"join": cmd_join, "status": cmd_status, "list": cmd_list, "plan": cmd_plan,
-          "pause": cmd_pause, "resume": cmd_pause, "leave": cmd_leave,
-          "passphrase": recovery.run, "recovery": recovery.run}[args.cmd]
-    try:
-        return fn(args)
-    except (JoinError, DiscoveryError, OSError) as exc:
-        warn(f"error: {exc}")
-        return 2
 
 
 if __name__ == "__main__":
