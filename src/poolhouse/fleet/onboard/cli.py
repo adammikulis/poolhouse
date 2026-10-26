@@ -146,6 +146,12 @@ def add_commands(sub: Any) -> None:
     p = common(sub.add_parser("remove", help="remove a member from the pool"))
     p.add_argument("device", help="its name or the first digits of its fingerprint")
 
+    add_service_commands(sub, common)
+    add_devices(sub, common)
+
+
+def add_service_commands(sub: Any, common: Any) -> None:
+    """Add file, source and installation commands without membership operations."""
     p = common(sub.add_parser("bootstrap", help="offer poolhouse to a machine that has none"))
     p.add_argument("--share", default="", help="a directory holding the wheel or archive to "
                                                "offer")
@@ -161,7 +167,6 @@ def add_commands(sub: Any) -> None:
                                                    "a wildcard)")
 
     add_share(sub, common)
-    add_devices(sub, common)
     add_members(sub, common)
     add_signing(sub, common)
 
