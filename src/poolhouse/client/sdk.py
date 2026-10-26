@@ -16,12 +16,20 @@ from poolhouse.http_cancel import Cancellation, scope
 
 
 class _Body(httpx2.AsyncByteStream):
-    def __init__(self, response: Any, limit: int | None = None) -> None:
+    def __init__(self, response: Any, limit: int | None = None, service: Any = None) -> None:
         self.response, self.limit, self.received = response, limit, 0
+        self.service, self.closed = service, False
 
     async def __aiter__(self):
         try:
-            while block := await asyncio.to_thread(self.response.read1, 4096):
+            while True:
+                if self.service is not None:
+                    await asyncio.to_thread(self.service.check_current)
+                block = await asyncio.to_thread(self.response.read1, 4096)
+                if self.service is not None:
+                    await asyncio.to_thread(self.service.check_current)
+                if not block:
+                    break
                 self.received += len(block)
                 if self.limit is not None and self.received > self.limit:
                     raise ValueError("SDK response exceeds its byte limit")
@@ -30,6 +38,9 @@ class _Body(httpx2.AsyncByteStream):
             await self.aclose()
 
     async def aclose(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
         fp = getattr(self.response, "fp", None)
         raw = getattr(fp, "raw", None)
         sock = getattr(raw, "_sock", None)
@@ -43,9 +54,19 @@ class _Body(httpx2.AsyncByteStream):
         self.response.close()
 
 
-def _open_response(url: str, data: bytes, cancelled: Cancellation, options: Options) -> Any:
+def _open_response(url: str, data: bytes, cancelled: Cancellation, options: Options, service: Any = None) -> Any:
+    if service is not None:
+        options = service.current_options(options)
     with scope(cancelled):
         response = open_stream(url, data=data, method="POST", options=options)
+    authorized = False
+    try:
+        if service is not None:
+            service.check_current()
+        authorized = True
+    finally:
+        if not authorized:
+            response.close()
     if cancelled.is_set():
         response.close()
     return response
@@ -54,10 +75,12 @@ def _open_response(url: str, data: bytes, cancelled: Cancellation, options: Opti
 class FleetTransport(httpx2.AsyncBaseTransport):
     """Send SDK requests with fleet signatures, server keys and pinned TLS."""
 
-    def __init__(self, url: str, token: str, timeout: float | None = None, *, response_limit: int | None = None) -> None:
+    def __init__(self, url: str, token: str, timeout: float | None = None, *,
+                 response_limit: int | None = None, service: Any = None) -> None:
         if response_limit is not None and (type(response_limit) is not int or response_limit < 1):
             raise ValueError("SDK response limit must be a positive integer")
         self.url, self.token, self.timeout, self.response_limit = url, token, timeout, response_limit
+        self.service = service
         self.options = Options(token=token, headers={"Content-Type": "application/json", "Accept": "text/event-stream",
                                                    "Accept-Encoding": "identity"}, timeout=timeout,
                                follow_redirects=False, error_body_limit=response_limit)
@@ -69,7 +92,7 @@ class FleetTransport(httpx2.AsyncBaseTransport):
         data = await request.aread()
         cancelled = Cancellation()
         opening = asyncio.create_task(asyncio.to_thread(
-            _open_response, self.url, data, cancelled, self.options))
+            _open_response, self.url, data, cancelled, self.options, self.service))
         try:
             response = await asyncio.shield(opening)
         except asyncio.CancelledError:
@@ -83,7 +106,7 @@ class FleetTransport(httpx2.AsyncBaseTransport):
         if encodings and (len(encodings) != 1 or encodings[0].strip().lower() != "identity"):
             await _Body(response).aclose()
             raise ValueError("SDK responses must use identity content encoding")
-        body = _Body(response, self.response_limit)
+        body = _Body(response, self.response_limit, self.service)
         self.bodies.append(body)
         return httpx2.Response(response.status, headers=dict(response.headers), stream=body,
                               request=request)
@@ -101,7 +124,9 @@ def local_client(target: Any, model: str, *, token: str = "", timeout: float | N
     url = str(target.url)
     if not url.endswith(suffix) or not model:
         raise ValueError("a model and complete chat endpoint are required")
-    transport = FleetTransport(url, token or target.token, timeout, response_limit=response_limit)
+    selected = getattr(target, "member_client", None)
+    service = selected() if selected is not None else None
+    transport = FleetTransport(url, token or target.token, timeout, response_limit=response_limit, service=service)
     return AsyncOpenAI(base_url=url[:-len(suffix)], api_key="local-transport",
                        max_retries=0, timeout=timeout, http_client=httpx2.AsyncClient(transport=transport,
                                                                   trust_env=False))
