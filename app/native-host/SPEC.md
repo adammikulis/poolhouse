@@ -44,3 +44,19 @@ receive incarnation or protected caller custody and does not prove current owner
 liveness, protected launch, provider admission or authorization. A private authenticated
 receiver and independent current-owner issuer remain prerequisites for protected effects.
 No caller-provided UID, console UID, or copied audit observation substitutes for them.
+
+`NativeIdentity` observes one code object's designated-requirement bytes, embedded
+entitlement bytes and, for certificate-signed code, the leaf certificate's public-key
+external representation. Each digest uses a distinct NUL-terminated versioned domain,
+a presence byte, an unsigned 64-bit big-endian byte count and the exact OS bytes.
+Absent and empty entitlements differ. RSA and EC keys have different domains and
+bounded key sizes; unsupported or inconsistent representations fail. These bytes
+are not described as SPKI. Ad-hoc code has no publisher-key observation.
+
+This observation does not validate a signature, certificate chain, publisher trust,
+entitlement policy, runtime hardening or installed/running process identity. The
+installer and receiver must independently perform those checks and bind results to
+the protected installation and actual received message. A locally authenticated
+ad-hoc publisher needs separate protected evidence; absence of a certificate is not
+that evidence. A changed OS representation must be explicitly reconciled rather than
+silently accepted.
