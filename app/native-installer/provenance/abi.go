@@ -14,24 +14,25 @@ typedef struct {
  const ph_oidc_key *keys; uint32_t key_count;
  ph_bytes san, repository_uri, repository_id, source_digest, source_ref;
  ph_bytes signer_uri, signer_digest, config_uri, config_digest, trigger, run_uri;
- ph_bytes repository, job_workflow_ref;
+ ph_bytes repository, job_workflow_ref, job_name;
  uint8_t installation[32], head[32], policy_digest[32], nonce[32];
  uint8_t source[20], workflow[20];
  ph_version root_version, timestamp_version, snapshot_version, targets_version;
- uint64_t generation, repository_number, run_number, attempt, check_run;
+ uint64_t generation, repository_number, run_number, attempt, check_run, artifact_id;
  int64_t previous_time, trusted_time;
- int artifact_fd;
+ int artifact_fd, archive_fd;
 } ph_provenance_input;
 typedef struct {
- uint8_t artifact_sha256[32], installation[32], head[32], policy_digest[32], nonce[32], target_sha256[32];
+ uint8_t artifact_sha256[32], archive_sha256[32], installation[32], head[32], policy_digest[32], nonce[32], target_sha256[32];
  ph_version root_version, timestamp_version, snapshot_version, targets_version;
- uint64_t generation, device, inode, size;
- int64_t trusted_time;
+ uint64_t generation, device, inode, size, archive_device, archive_inode, archive_size, artifact_id;
+ int64_t trusted_time, producer_expires;
 } ph_provenance_result;
 */
 import "C"
 
 import (
+	"context"
 	"crypto/rsa"
 	"crypto/sha256"
 	"golang.org/x/sys/unix"
@@ -98,7 +99,7 @@ func PhProvenanceVerify(input *C.ph_provenance_input, output *C.ph_provenance_re
 	if !nonzero(installation[:]) || !nonzero(head[:]) || !nonzero(policyDigest[:]) || !nonzero(nonce[:]) || !nonzero(source[:]) || !nonzero(workflow[:]) {
 		return 0
 	}
-	fields := []C.ph_bytes{input.bundle, input.oidc_token, input.prior_root, input.timestamp, input.snapshot, input.targets, input.target, input.san, input.repository_uri, input.repository_id, input.source_digest, input.source_ref, input.signer_uri, input.signer_digest, input.config_uri, input.config_digest, input.trigger, input.run_uri, input.repository, input.job_workflow_ref}
+	fields := []C.ph_bytes{input.bundle, input.oidc_token, input.prior_root, input.timestamp, input.snapshot, input.targets, input.target, input.san, input.repository_uri, input.repository_id, input.source_digest, input.source_ref, input.signer_uri, input.signer_digest, input.config_uri, input.config_digest, input.trigger, input.run_uri, input.repository, input.job_workflow_ref, input.job_name}
 	var aggregate uint64
 	for i, field := range fields {
 		limit := uint64(2048)
@@ -165,33 +166,39 @@ func PhProvenanceVerify(input *C.ph_provenance_input, output *C.ph_provenance_re
 	}
 	p := policy{san: string(vals[7]), repoURI: string(vals[8]), repoID: string(vals[9]), sourceDigest: string(vals[10]), sourceRef: string(vals[11]), signerURI: string(vals[12]), signerDigest: string(vals[13]), configURI: string(vals[14]), configDigest: string(vals[15]), trigger: string(vals[16]), runURI: string(vals[17])}
 	producer := producerPolicy{installation: installation, nonce: nonce, source: source, workflow: workflow, repositoryID: uint64(input.repository_number), runID: uint64(input.run_number), attempt: uint64(input.attempt), checkRunID: uint64(input.check_run), repository: string(vals[18]), ref: p.sourceRef, event: p.trigger, jobWorkflowRef: string(vals[19])}
-	fd, err := unix.FcntlInt(uintptr(input.artifact_fd), unix.F_DUPFD_CLOEXEC, 0)
-	if err != nil {
-		return 0
-	}
-	file := os.NewFile(uintptr(fd), "protected artifact")
-	if file == nil {
-		unix.Close(fd)
+	file, before, ok := openProtected(int(input.artifact_fd))
+	if !ok {
 		return 0
 	}
 	defer file.Close()
-	var before, after unix.Stat_t
-	flags, err := unix.FcntlInt(file.Fd(), unix.F_GETFL, 0)
-	if err != nil || flags&unix.O_ACCMODE != unix.O_RDONLY || unix.Fstat(fd, &before) != nil || before.Mode&unix.S_IFMT != unix.S_IFREG || before.Uid != 0 || before.Nlink != 1 || before.Mode&022 != 0 || before.Size < 0 || before.Size > maxArtifact {
+	archive, archiveBefore, ok := openProtected(int(input.archive_fd))
+	if !ok {
 		return 0
 	}
+	defer archive.Close()
 	verified, err := verifyBundle(vals[0], io.NewSectionReader(file, 0, before.Size), trust.material, p)
 	if err != nil {
 		return 0
 	}
-	if _, err = verifyProducer(string(vals[1]), keys, producer, verified, now); err != nil {
+	candidate, err := verifyProducer(string(vals[1]), keys, producer, verified, now)
+	if err != nil {
 		return 0
 	}
-	if unix.Fstat(fd, &after) != nil || before.Dev != after.Dev || before.Ino != after.Ino || before.Size != after.Size || before.Mode != after.Mode || before.Uid != after.Uid || before.Gid != after.Gid || before.Nlink != after.Nlink || before.Flags != after.Flags || before.Gen != after.Gen || before.Mtim != after.Mtim || before.Ctim != after.Ctim {
+	archiveDigest, err := verifyArchive(archive, archiveBefore.Size, verified.artifactSHA256)
+	if err != nil {
+		return 0
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if err = newProducerAPI().verify(ctx, candidate, uint64(input.artifact_id), archiveDigest, uint64(archiveBefore.Size), string(vals[20])); err != nil {
+		return 0
+	}
+	if !sameProtected(file, before) || !sameProtected(archive, archiveBefore) {
 		return 0
 	}
 	targetDigest := sha256.Sum256(vals[6])
 	copy(unsafe.Slice((*byte)(unsafe.Pointer(&output.artifact_sha256[0])), 32), verified.artifactSHA256[:])
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(&output.archive_sha256[0])), 32), archiveDigest[:])
 	copy(unsafe.Slice((*byte)(unsafe.Pointer(&output.installation[0])), 32), installation[:])
 	copy(unsafe.Slice((*byte)(unsafe.Pointer(&output.head[0])), 32), head[:])
 	copy(unsafe.Slice((*byte)(unsafe.Pointer(&output.policy_digest[0])), 32), policyDigest[:])
@@ -205,6 +212,37 @@ func PhProvenanceVerify(input *C.ph_provenance_input, output *C.ph_provenance_re
 	output.device = C.uint64_t(before.Dev)
 	output.inode = C.uint64_t(before.Ino)
 	output.size = C.uint64_t(before.Size)
+	output.archive_device = C.uint64_t(archiveBefore.Dev)
+	output.archive_inode = C.uint64_t(archiveBefore.Ino)
+	output.archive_size = C.uint64_t(archiveBefore.Size)
+	output.artifact_id = input.artifact_id
 	output.trusted_time = input.trusted_time
+	output.producer_expires = C.int64_t(candidate.expires.Unix())
 	return 1
+}
+
+func openProtected(fd int) (*os.File, unix.Stat_t, bool) {
+	var st unix.Stat_t
+	dup, err := unix.FcntlInt(uintptr(fd), unix.F_DUPFD_CLOEXEC, 0)
+	if err != nil {
+		return nil, st, false
+	}
+	file := os.NewFile(uintptr(dup), "protected artifact")
+	if file == nil {
+		unix.Close(dup)
+		return nil, st, false
+	}
+	flags, err := unix.FcntlInt(file.Fd(), unix.F_GETFL, 0)
+	if err != nil || flags&unix.O_ACCMODE != unix.O_RDONLY || unix.Fstat(dup, &st) != nil || st.Mode&unix.S_IFMT != unix.S_IFREG || st.Uid != 0 || st.Nlink != 1 || st.Mode&022 != 0 || st.Size < 0 || st.Size > maxArtifact {
+		file.Close()
+		return nil, st, false
+	}
+	return file, st, true
+}
+func sameProtected(file *os.File, before unix.Stat_t) bool {
+	var after unix.Stat_t
+	if unix.Fstat(int(file.Fd()), &after) != nil {
+		return false
+	}
+	return before.Dev == after.Dev && before.Ino == after.Ino && before.Size == after.Size && before.Mode == after.Mode && before.Uid == after.Uid && before.Gid == after.Gid && before.Nlink == after.Nlink && before.Flags == after.Flags && before.Gen == after.Gen && before.Mtim == after.Mtim && before.Ctim == after.Ctim
 }

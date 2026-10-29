@@ -24,6 +24,7 @@ type producerPolicy struct {
 type producerCandidate struct {
 	policy  producerPolicy
 	subject [32]byte
+	expires time.Time
 }
 type oidcClaims struct {
 	jwt.RegisteredClaims
@@ -109,7 +110,7 @@ func verifyProducer(raw string, keys map[string]*rsa.PublicKey, p producerPolicy
 		claims.JobWorkflowRef != p.jobWorkflowRef || claims.JobWorkflowSHA != hex.EncodeToString(p.workflow[:]) || claims.RunID != uintString(p.runID) || claims.Attempt != uintString(p.attempt) || claims.CheckRunID != uintString(p.checkRunID) || claims.Runner != "github-hosted" {
 		return nil, invalid
 	}
-	return &producerCandidate{policy: p, subject: subject.artifactSHA256}, nil
+	return &producerCandidate{policy: p, subject: subject.artifactSHA256, expires: claims.ExpiresAt.Time}, nil
 }
 
 func uintString(v uint64) string { return strconv.FormatUint(v, 10) }
