@@ -5,8 +5,10 @@
 //! the current offer, candidate, authority and governance before committing.
 
 use ed25519_dalek::{Signature, VerifyingKey};
+use sha2::{Digest, Sha256};
 
 const DOMAIN: &[u8] = b"poolhouse/native-authority/receipt/v4\0";
+const DECISION_DOMAIN: &[u8] = b"poolhouse/native-authority/phone-decision/v1\0";
 type Hash = [u8; 32];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -72,10 +74,10 @@ impl PhoneBootstrapReceipt {
         Ok(out)
     }
 
-    fn validate(&self) -> Result<(), ReceiptError> {
+    fn validate_effect(&self) -> Result<(), ReceiptError> {
         if [self.authority, self.installation, self.request, self.nonce, self.transcript,
             self.node, self.tls, self.phone_key, self.offer, self.token_hash, self.prepared_envelope_head].iter().any(|value| *value == [0; 32])
-            || self.phone_id == [0; 16] || self.installation_generation == 0 || self.prepared_envelope_generation == 0 || self.committed_at == 0 || self.committed_at >= self.offer_expires {
+            || self.phone_id == [0; 16] || self.installation_generation == 0 || self.prepared_envelope_generation == 0 || self.offer_expires == 0 {
             return Err(ReceiptError::Invalid);
         }
         if let Scope::Governed { anchor, head, .. } = &self.scope {
@@ -84,11 +86,28 @@ impl PhoneBootstrapReceipt {
         Ok(())
     }
 
+    fn validate(&self) -> Result<(), ReceiptError> {
+        self.validate_effect()?;
+        if self.committed_at == 0 || self.committed_at >= self.offer_expires { return Err(ReceiptError::Invalid); }
+        Ok(())
+    }
+
+    /// Digest the complete immutable person decision before commit time is known.
+    /// This is not a person approval or proof of an operating-system interaction.
+    pub fn decision_digest(&self) -> Result<Hash, ReceiptError> {
+        self.validate_effect()?;
+        Ok(Sha256::digest(self.fields(DECISION_DOMAIN, false)).into())
+    }
+
     /// Canonical domain-separated bytes, suitable for an independently held signer.
     pub fn encode(&self) -> Result<Vec<u8>, ReceiptError> {
         self.validate()?;
+        Ok(self.fields(DOMAIN, true))
+    }
+
+    fn fields(&self, domain: &[u8], include_commit_time: bool) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(512);
-        bytes.extend_from_slice(DOMAIN);
+        bytes.extend_from_slice(domain);
         bytes.extend_from_slice(&self.authority);
         bytes.extend_from_slice(&self.installation);
         bytes.extend_from_slice(&self.installation_generation.to_be_bytes());
@@ -110,10 +129,10 @@ impl PhoneBootstrapReceipt {
         bytes.extend_from_slice(&self.authority_generation.to_be_bytes());
         bytes.extend_from_slice(&self.prepared_envelope_head);
         bytes.extend_from_slice(&self.prepared_envelope_generation.to_be_bytes());
-        bytes.extend_from_slice(&self.committed_at.to_be_bytes());
+        if include_commit_time { bytes.extend_from_slice(&self.committed_at.to_be_bytes()); }
         bytes.extend_from_slice(&self.token_hash);
         bytes.extend_from_slice(&self.phone_id);
-        Ok(bytes)
+        bytes
     }
 
     /// Parse exactly one canonical receipt. Unknown variants and trailing bytes refuse.

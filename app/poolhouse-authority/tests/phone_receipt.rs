@@ -16,6 +16,40 @@ fn receipt_is_canonical_and_binds_every_field_to_its_signer() {
                   Scope::Governed { anchor: [13; 32], head: [14; 32], listing: Listing::Active },
                   Scope::Governed { anchor: [13; 32], head: [14; 32], listing: Listing::Pending }] {
         let original = receipt(scope);
+        let approved = original.decision_digest().unwrap();
+        let mut timed = original.clone(); timed.committed_at = 91;
+        assert_eq!(timed.decision_digest().unwrap(), approved);
+        timed.committed_at = 0;
+        assert_eq!(timed.decision_digest().unwrap(), approved, "commit time is not known at the decision");
+        assert!(timed.encode().is_err(), "a receipt still needs a real commit time");
+        let mut variants = Vec::new();
+        macro_rules! altered { ($field:ident) => {{ let mut v = original.clone(); v.$field[0] ^= 1; variants.push(v); }}; }
+        altered!(authority); altered!(installation); altered!(request); altered!(nonce); altered!(transcript);
+        altered!(node); altered!(tls); altered!(phone_key); altered!(offer); altered!(token_hash); altered!(phone_id);
+        altered!(authority_head); altered!(prepared_envelope_head);
+        for field in 0..4 { let mut v = original.clone(); match field { 0 => v.installation_generation += 1,
+            1 => v.offer_expires += 1, 2 => v.authority_generation += 1, _ => v.prepared_envelope_generation += 1 }; variants.push(v); }
+        let mut v = original.clone(); v.scope = match &original.scope { Scope::Unfounded => Scope::Governed { anchor: [21;32], head: [22;32], listing: Listing::Pending },
+            Scope::Governed { .. } => Scope::Unfounded }; variants.push(v);
+        if let Scope::Governed { anchor, head, listing } = &original.scope {
+            let mut changed_anchor = *anchor; changed_anchor[0] ^= 1;
+            let mut changed_head = *head; changed_head[0] ^= 1;
+            let changed_listing = if *listing == Listing::Unlisted { Listing::Active } else { Listing::Unlisted };
+            for scope in [Scope::Governed { anchor: changed_anchor, head: *head, listing: *listing },
+                          Scope::Governed { anchor: *anchor, head: changed_head, listing: *listing },
+                          Scope::Governed { anchor: *anchor, head: *head, listing: changed_listing }] {
+                let mut v = original.clone(); v.scope = scope; variants.push(v);
+            }
+        }
+        for v in variants { assert_ne!(v.decision_digest().unwrap(), approved); }
+        let mut changed = original.clone(); changed.phone_id[0] ^= 1;
+        assert_ne!(changed.decision_digest().unwrap(), approved);
+        let mut changed = original.clone(); changed.token_hash[0] ^= 1;
+        assert_ne!(changed.decision_digest().unwrap(), approved);
+        let mut changed = original.clone(); changed.prepared_envelope_head[0] ^= 1;
+        assert_ne!(changed.decision_digest().unwrap(), approved);
+        let mut changed = original.clone(); changed.authority_head[0] ^= 1;
+        assert_ne!(changed.decision_digest().unwrap(), approved);
         let id = original.phone_id_text().unwrap();
         assert_eq!(PhoneBootstrapReceipt::parse_phone_id(&id), Ok(original.phone_id));
         assert!(PhoneBootstrapReceipt::parse_phone_id(&id.to_uppercase()).is_err());
