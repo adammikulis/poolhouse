@@ -19,12 +19,9 @@ typedef enum {
     PH_MACH_CODE_UNKNOWN
 } ph_mach_code_result;
 
-/* One actual receive through MachSender, then immediate public audit-token code
- * lookup and no-network validity comparison. No PID/path or weaker fallback.
- * Output changes only on success; release any previous owned output separately.
- * buffer/output cannot alias. Message-right cleanup follows MachSender's contract.
- * This is not a token-injection API, verified sender or owner/provider admission. */
-ph_mach_code_result ph_mach_observe_code(mach_port_t receive, void *buffer,
-    mach_msg_size_t capacity, mach_msg_timeout_t timeout, SecRequirementRef requirement,
-    ph_mach_code_observation *output);
+/* Verify the actual sender of one still-owned kernel message. Success transfers a
+ * retained SecCodeRef; the caller keeps the message and releases the code itself.
+ * This is an observation, not owner, session or person admission. */
+ph_mach_code_result ph_mach_observe_code(const ph_mach_message *message,
+    SecRequirementRef requirement, ph_mach_code_observation *output);
 #endif

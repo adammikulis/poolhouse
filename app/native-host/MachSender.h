@@ -22,15 +22,15 @@ typedef enum {
     PH_MACH_INVALID_MESSAGE
 } ph_mach_observation_result;
 
-/* Trusted in-process caller supplies its owned receive right and writable allocation.
- * One receive, no retries. timeout must be finite/nonzero. This consumes one queued
- * message; on success all carried rights are destroyed after extraction. On error
- * the caller retains port custody and must settle/destroy its own queue/receive right.
- * buffer/output cannot alias. Output changes only on PH_MACH_OBSERVED.
- * kernel_error is optional; it receives the actual receive status, never body data. */
-ph_mach_observation_result ph_mach_observe_sender(mach_port_t receive,
-    void *buffer, mach_msg_size_t capacity, mach_msg_timeout_t timeout,
-    ph_mach_sender_observation *output, mach_msg_return_t *kernel_error);
+/* One kernel receive owns the actual message body, audit trailer and rights.
+ * Complex messages, reply rights and vouchers are refused. Accessors borrow
+ * data until destruction. An observation is not admission or a reply channel. */
+typedef struct ph_mach_message ph_mach_message;
+ph_mach_observation_result ph_mach_receive(mach_port_t receive, size_t maximum_body,
+    mach_msg_timeout_t timeout, ph_mach_message **output, mach_msg_return_t *kernel_error);
+const ph_mach_sender_observation *ph_mach_sender(const ph_mach_message *message);
+const void *ph_mach_body(const ph_mach_message *message, size_t *size);
+void ph_mach_message_destroy(ph_mach_message **message);
 #ifdef TESTING
 bool ph_mach_test_extract(const void *bytes, size_t capacity, ph_mach_sender_observation *output);
 #endif

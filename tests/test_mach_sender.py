@@ -53,6 +53,10 @@ static bool parser_attacks(void) {
     storage.align.msgh_size = sizeof(storage); REFUSE(sizeof(storage));
     storage.align.msgh_size = sizeof(message) + 1; REFUSE(sizeof(storage));
     storage.align.msgh_bits |= MACH_MSGH_BITS_COMPLEX; REFUSE(sizeof(storage));
+    storage.align.msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_PORT_SEND_ONCE, 0); REFUSE(sizeof(storage));
+    storage.align.msgh_bits = MACH_MSGH_BITS_SET_PORTS(0, 0, MACH_MSG_TYPE_PORT_SEND); REFUSE(sizeof(storage));
+    storage.align.msgh_remote_port = 99; REFUSE(sizeof(storage));
+    storage.align.msgh_voucher_port = 99; REFUSE(sizeof(storage));
     REFUSE(sizeof(mach_msg_header_t) - 1);
     REFUSE(offset + sizeof(mach_msg_trailer_t) - 1);
     REFUSE(offset + sizeof(trailer) - 1);
@@ -68,6 +72,7 @@ static bool parser_attacks(void) {
 
 int main(void) {
     int result = 0, status = 0;
+    ph_mach_message *owned = NULL;
     CHECK(parser_attacks());
     CHECK(mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &port) == KERN_SUCCESS);
     CHECK(mach_port_insert_right(mach_task_self(), port, port, MACH_MSG_TYPE_MAKE_SEND) == KERN_SUCCESS);
@@ -114,34 +119,52 @@ int main(void) {
     if (MACH_PORT_VALID(restored)) CHECK(mach_port_deallocate(mach_task_self(), restored) == KERN_SUCCESS);
     close(pipes[1]); pipes[1] = -1; close(ack[0]); ack[0] = -1;
     audit_token_t actual; CHECK(read(pipes[0], &actual, sizeof(actual)) == sizeof(actual));
-    union allocation storage = {0}; ph_mach_sender_observation observed = {0}; mach_msg_return_t error;
-    ph_mach_observation_result received = ph_mach_observe_sender(port, &storage, sizeof(storage), 1000, &observed, &error);
+    ph_mach_sender_observation observed = {0}; mach_msg_return_t error;
+    ph_mach_observation_result received = ph_mach_receive(port, sizeof(struct message), 1000, &owned, &error);
     if (received != PH_MACH_OBSERVED) fprintf(stderr, "receive result=%u kernel=%u\n", (unsigned)received, (unsigned)error);
     CHECK(received == PH_MACH_OBSERVED);
+    ph_mach_message *original = owned;
+    CHECK(ph_mach_receive(port, sizeof(struct message), 1, &owned, &error) == PH_MACH_INVALID_ARGUMENT
+        && owned == original);
+    observed = *ph_mach_sender(owned);
     CHECK(error == MACH_MSG_SUCCESS && observed.pid == (uint32_t)child
         && !memcmp(&observed.audit, &actual, sizeof(actual)));
-    struct message *body = (struct message *)storage.bytes;
-    CHECK(observed.pid != body->forged_pid && memcmp(&observed.audit, &body->forged_token, sizeof(actual)));
-    CHECK(ph_mach_observe_sender(port, &storage, sizeof(storage), 1, &observed, &error) == PH_MACH_RECEIVE_FAILED
+    size_t body_size = 0;
+    const unsigned char *body = ph_mach_body(owned, &body_size);
+    CHECK(body && body_size == sizeof(struct message) - sizeof(mach_msg_header_t));
+    uint32_t forged_pid; audit_token_t forged_token;
+    memcpy(&forged_pid, body, sizeof(forged_pid));
+    memcpy(&forged_token, body + sizeof(forged_pid), sizeof(forged_token));
+    CHECK(observed.pid != forged_pid && memcmp(&observed.audit, &forged_token, sizeof(actual)));
+    ph_mach_message_destroy(&owned);
+    CHECK(ph_mach_receive(port, sizeof(struct message), 1, &owned, &error) == PH_MACH_RECEIVE_FAILED
         && error == MACH_RCV_TIMED_OUT);
     struct { mach_msg_header_t header; mach_msg_body_t body; } complex = {0};
     complex.header.msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0) | MACH_MSGH_BITS_COMPLEX;
     complex.header.msgh_size = sizeof(complex); complex.header.msgh_remote_port = port;
     CHECK(mach_msg(&complex.header, MACH_SEND_MSG | MACH_SEND_TIMEOUT, sizeof(complex), 0,
         MACH_PORT_NULL, 1000, MACH_PORT_NULL) == MACH_MSG_SUCCESS);
-    CHECK(ph_mach_observe_sender(port, &storage, sizeof(storage), 1000, &observed, &error) == PH_MACH_INVALID_MESSAGE);
+    CHECK(ph_mach_receive(port, sizeof(struct message), 1000, &owned, &error) == PH_MACH_INVALID_MESSAGE);
     struct { mach_msg_header_t header; unsigned char body[sizeof(union allocation)]; } large = {0};
     large.header.msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0);
     large.header.msgh_size = sizeof(large); large.header.msgh_remote_port = port;
     CHECK(mach_msg(&large.header, MACH_SEND_MSG | MACH_SEND_TIMEOUT, sizeof(large), 0,
         MACH_PORT_NULL, 1000, MACH_PORT_NULL) == MACH_MSG_SUCCESS);
-    CHECK(ph_mach_observe_sender(port, &storage, sizeof(storage), 1000, &observed, &error) == PH_MACH_RECEIVE_FAILED
+    CHECK(ph_mach_receive(port, sizeof(struct message), 1000, &owned, &error) == PH_MACH_RECEIVE_FAILED
         && error == MACH_RCV_TOO_LARGE);
+    struct message after_large = {0};
+    after_large.header.msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0);
+    after_large.header.msgh_size = sizeof(after_large); after_large.header.msgh_remote_port = port;
+    CHECK(mach_msg(&after_large.header, MACH_SEND_MSG | MACH_SEND_TIMEOUT, sizeof(after_large), 0,
+        MACH_PORT_NULL, 1000, MACH_PORT_NULL) == MACH_MSG_SUCCESS);
+    CHECK(ph_mach_receive(port, sizeof(struct message), 1000, &owned, &error) == PH_MACH_OBSERVED);
+    ph_mach_message_destroy(&owned);
     CHECK(write(ack[1], "x", 1) == 1);
     CHECK(waitpid(child, &status, 0) == child); child = -1;
     CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
     /* Exited sender observation remains historical data, never current liveness. */
 cleanup:
+    ph_mach_message_destroy(&owned);
     if (child > 0) {
         pid_t exited = waitpid(child, &status, WNOHANG);
         if (exited == child) fprintf(stderr, "child completed status=%u\n", (unsigned)status);
