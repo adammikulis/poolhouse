@@ -1,0 +1,97 @@
+package main
+
+import (
+	"crypto/rand"
+	"crypto/rsa"
+	"encoding/hex"
+	"testing"
+	"time"
+
+	jwt "github.com/golang-jwt/jwt/v5"
+)
+
+func producerFixture(t *testing.T) (*rsa.PrivateKey, producerPolicy, *verified, jwt.MapClaims, time.Time) {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := producerPolicy{repositoryID: 123, runID: 456, attempt: 1, checkRunID: 789, repository: "example/project", ref: "refs/heads/development", event: "push", jobWorkflowRef: "example/project/.github/workflows/build.yml@refs/heads/development"}
+	p.installation[0] = 1
+	p.nonce[0] = 2
+	p.source[0] = 3
+	p.workflow[0] = 4
+	v := &verified{}
+	v.artifactSHA256[0] = 5
+	v.runURI = "https://github.com/example/project/actions/runs/456/attempts/1"
+	v.policy = policy{repoURI: "https://github.com/example/project", repoID: "123", sourceDigest: hex.EncodeToString(p.source[:]), sourceRef: p.ref, trigger: p.event, signerURI: "https://github.com/" + p.jobWorkflowRef, signerDigest: hex.EncodeToString(p.workflow[:]), runURI: v.runURI}
+	now := time.Now().UTC().Truncate(time.Second)
+	c := jwt.MapClaims{"iss": "https://token.actions.githubusercontent.com", "aud": producerAudience(p, v.artifactSHA256), "iat": now.Unix(), "nbf": now.Unix(), "exp": now.Add(5 * time.Minute).Unix(), "repository": p.repository, "repository_id": "123", "ref": p.ref, "event_name": p.event, "sha": hex.EncodeToString(p.source[:]), "job_workflow_ref": p.jobWorkflowRef, "job_workflow_sha": hex.EncodeToString(p.workflow[:]), "run_id": "456", "run_attempt": "1", "check_run_id": "789", "runner_environment": "github-hosted"}
+	return key, p, v, c, now
+}
+func tokenFor(t *testing.T, key *rsa.PrivateKey, c jwt.MapClaims) string {
+	t.Helper()
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, c)
+	token.Header["kid"] = "test-key"
+	s, err := token.SignedString(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+func TestProducerBindsSignedJobToVerifiedSubject(t *testing.T) {
+	key, p, v, claims, now := producerFixture(t)
+	keys := map[string]*rsa.PublicKey{"test-key": &key.PublicKey}
+	raw := tokenFor(t, key, claims)
+	got, err := verifyProducer(raw, keys, p, v, now)
+	if err != nil || got == nil {
+		t.Fatalf("valid token rejected: %v", err)
+	}
+	for _, name := range []string{"iss", "aud", "repository", "repository_id", "ref", "event_name", "sha", "job_workflow_ref", "job_workflow_sha", "run_id", "run_attempt", "check_run_id", "runner_environment"} {
+		t.Run(name, func(t *testing.T) {
+			c := jwt.MapClaims{}
+			for k, x := range claims {
+				c[k] = x
+			}
+			c[name] = "wrong"
+			if got, err := verifyProducer(tokenFor(t, key, c), keys, p, v, now); err == nil || got != nil {
+				t.Fatal("mismatched claim accepted")
+			}
+		})
+	}
+	if got, err = verifyProducer(raw, keys, p, v, now.Add(6*time.Minute)); err == nil || got != nil {
+		t.Fatal("expired token accepted")
+	}
+	p.nonce[0] ^= 1
+	if got, err = verifyProducer(raw, keys, p, v, now); err == nil || got != nil {
+		t.Fatal("installation nonce replay accepted")
+	}
+	p.nonce[0] ^= 1
+	v.runURI += "x"
+	if got, err = verifyProducer(raw, keys, p, v, now); err == nil || got != nil {
+		t.Fatal("cross-run provenance accepted")
+	}
+}
+
+func TestProducerAllowsGitHubThumbprintAndRejectsUnknownHeaders(t *testing.T) {
+	key, p, v, claims, now := producerFixture(t)
+	keys := map[string]*rsa.PublicKey{"test-key": &key.PublicKey}
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	token.Header["kid"] = "test-key"
+	token.Header["x5t"] = "test-thumbprint"
+	raw, err := token.SignedString(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := verifyProducer(raw, keys, p, v, now); err != nil || got == nil {
+		t.Fatalf("documented thumbprint header rejected: %v", err)
+	}
+	token.Header["jku"] = "https://example.invalid/keys"
+	raw, err = token.SignedString(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := verifyProducer(raw, keys, p, v, now); err == nil || got != nil {
+		t.Fatal("unrecognized key source accepted")
+	}
+}

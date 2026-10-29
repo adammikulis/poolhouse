@@ -35,6 +35,7 @@ type policy struct {
 type verified struct {
 	artifactSHA256 [32]byte
 	runURI         string
+	policy         policy
 }
 
 func verifyBundle(b []byte, artifact io.Reader, material root.TrustedMaterial, p policy) (*verified, error) {
@@ -83,7 +84,7 @@ func verifyBundle(b []byte, artifact io.Reader, material root.TrustedMaterial, p
 		c.RunnerEnvironment != "github-hosted" || c.RunInvocationURI != p.runURI {
 		return nil, invalid
 	}
-	return &verified{artifactSHA256: digest, runURI: c.RunInvocationURI}, nil
+	return &verified{artifactSHA256: digest, runURI: c.RunInvocationURI, policy: p}, nil
 }
 
 func matchesStatement(statement *intoto.Statement, digest [32]byte) bool {

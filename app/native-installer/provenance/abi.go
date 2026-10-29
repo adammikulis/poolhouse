@@ -5,45 +5,50 @@ package main
 /*
 #include <stdint.h>
 #include <stddef.h>
-
 typedef struct { const void *data; uint64_t size; } ph_bytes;
+typedef struct { ph_bytes kid, modulus; uint32_t exponent; } ph_oidc_key;
+typedef struct { int64_t version; uint8_t digest[32]; } ph_version;
 typedef struct {
-    ph_bytes bundle, trusted_root;
-    ph_bytes san, repository_uri, repository_id, source_digest, source_ref;
-    ph_bytes signer_uri, signer_digest, config_uri, config_digest, trigger, run_uri;
-    uint8_t installation[32];
-    uint8_t policy_digest[32];
-    uint64_t generation;
-    int artifact_fd;
+ ph_bytes bundle, oidc_token, prior_root, roots[32], timestamp, snapshot, targets, target;
+ uint32_t root_count;
+ const ph_oidc_key *keys; uint32_t key_count;
+ ph_bytes san, repository_uri, repository_id, source_digest, source_ref;
+ ph_bytes signer_uri, signer_digest, config_uri, config_digest, trigger, run_uri;
+ ph_bytes repository, job_workflow_ref;
+ uint8_t installation[32], head[32], policy_digest[32], nonce[32];
+ uint8_t source[20], workflow[20];
+ ph_version root_version, timestamp_version, snapshot_version, targets_version;
+ uint64_t generation, repository_number, run_number, attempt, check_run;
+ int64_t previous_time, trusted_time;
+ int artifact_fd;
 } ph_provenance_input;
 typedef struct {
-    uint8_t artifact_sha256[32];
-    uint8_t installation[32];
-    uint8_t policy_digest[32];
-    uint64_t generation;
-    uint64_t device, inode, size;
+ uint8_t artifact_sha256[32], installation[32], head[32], policy_digest[32], nonce[32], target_sha256[32];
+ ph_version root_version, timestamp_version, snapshot_version, targets_version;
+ uint64_t generation, device, inode, size;
+ int64_t trusted_time;
 } ph_provenance_result;
 */
 import "C"
 
 import (
-	"io"
-	"os"
-	"unsafe"
-
-	"github.com/sigstore/sigstore-go/pkg/root"
+	"crypto/rsa"
+	"crypto/sha256"
 	"golang.org/x/sys/unix"
+	"io"
+	"math/big"
+	"os"
+	"time"
+	"unsafe"
 )
 
 func main() {}
-
 func copyInput(value C.ph_bytes, limit uint64) ([]byte, bool) {
 	if value.data == nil || value.size == 0 || uint64(value.size) > limit {
 		return nil, false
 	}
 	return C.GoBytes(unsafe.Pointer(value.data), C.int(value.size)), true
 }
-
 func nonzero(b []byte) bool {
 	for _, x := range b {
 		if x != 0 {
@@ -52,12 +57,21 @@ func nonzero(b []byte) bool {
 	}
 	return false
 }
+func copy32(b *C.uint8_t) (out [32]byte) { copy(out[:], C.GoBytes(unsafe.Pointer(b), 32)); return }
+func copy20(b *C.uint8_t) (out [20]byte) { copy(out[:], C.GoBytes(unsafe.Pointer(b), 20)); return }
+func version(v C.ph_version) trustVersion {
+	return trustVersion{version: int64(v.version), digest: copy32(&v.digest[0])}
+}
+func setVersion(dst *C.ph_version, v trustVersion) {
+	dst.version = C.int64_t(v.version)
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(&dst.digest[0])), 32), v.digest[:])
+}
 
-// PhProvenanceVerify is a bounded cryptographic predicate, not an authorization.
-// Its input and output are private, immutable service memory, never an IPC request or capability.
-// The service serializes FD ownership, and holds and revalidates that FD through activation.
-// The service must authenticate root and policy, protect the artifact and revalidate
-// the held generation through its activation transaction before using this result.
+// PhProvenanceVerify prepares a candidate, not an authorization or a committed
+// witness. Only an authenticated service may call it with immutable private
+// buffers and an FD whose ownership is serialized. The service must retain and
+// revalidate that FD and atomically consume the nonce/advance the exact prior
+// checkpoint before treating the candidate as an effect.
 //
 //export PhProvenanceVerify
 func PhProvenanceVerify(input *C.ph_provenance_input, output *C.ph_provenance_result) (status C.int) {
@@ -74,33 +88,83 @@ func PhProvenanceVerify(input *C.ph_provenance_input, output *C.ph_provenance_re
 	if input == nil {
 		return 0
 	}
-	snapshot := *input
-	input = &snapshot
-	if input.generation == 0 || !nonzero(C.GoBytes(unsafe.Pointer(&input.installation[0]), 32)) || !nonzero(C.GoBytes(unsafe.Pointer(&input.policy_digest[0]), 32)) {
+	snap := *input
+	input = &snap
+	if input.generation == 0 || input.previous_time <= 0 || input.trusted_time < input.previous_time || input.root_count > 32 || input.key_count == 0 || input.key_count > 32 || input.keys == nil {
 		return 0
 	}
-	bundle, ok := copyInput(input.bundle, maxBundle)
-	if !ok {
+	installation, head, policyDigest, nonce := copy32(&input.installation[0]), copy32(&input.head[0]), copy32(&input.policy_digest[0]), copy32(&input.nonce[0])
+	source, workflow := copy20(&input.source[0]), copy20(&input.workflow[0])
+	if !nonzero(installation[:]) || !nonzero(head[:]) || !nonzero(policyDigest[:]) || !nonzero(nonce[:]) || !nonzero(source[:]) || !nonzero(workflow[:]) {
 		return 0
 	}
-	rootBytes, ok := copyInput(input.trusted_root, maxBundle)
-	if !ok {
-		return 0
-	}
-	fields := []C.ph_bytes{input.san, input.repository_uri, input.repository_id, input.source_digest, input.source_ref, input.signer_uri, input.signer_digest, input.config_uri, input.config_digest, input.trigger, input.run_uri}
-	values := make([]string, len(fields))
-	for i, f := range fields {
-		b, valid := copyInput(f, 2048)
-		if !valid {
+	fields := []C.ph_bytes{input.bundle, input.oidc_token, input.prior_root, input.timestamp, input.snapshot, input.targets, input.target, input.san, input.repository_uri, input.repository_id, input.source_digest, input.source_ref, input.signer_uri, input.signer_digest, input.config_uri, input.config_digest, input.trigger, input.run_uri, input.repository, input.job_workflow_ref}
+	var aggregate uint64
+	for i, field := range fields {
+		limit := uint64(2048)
+		if i <= 6 {
+			limit = maxBundle
+		}
+		if field.size == 0 || uint64(field.size) > limit || aggregate > 24*1024*1024-uint64(field.size) {
 			return 0
 		}
-		values[i] = string(b)
+		aggregate += uint64(field.size)
 	}
-	p := policy{san: values[0], repoURI: values[1], repoID: values[2], sourceDigest: values[3], sourceRef: values[4], signerURI: values[5], signerDigest: values[6], configURI: values[7], configDigest: values[8], trigger: values[9], runURI: values[10]}
-	tr, err := root.NewTrustedRootFromJSON(rootBytes)
+	for i := 0; i < int(input.root_count); i++ {
+		size := uint64(input.roots[i].size)
+		if size == 0 || size > maxBundle || aggregate > 24*1024*1024-size {
+			return 0
+		}
+		aggregate += size
+	}
+	vals := make([][]byte, len(fields))
+	for i, f := range fields {
+		limit := uint64(2048)
+		if i <= 6 {
+			limit = maxBundle
+		}
+		var ok bool
+		vals[i], ok = copyInput(f, limit)
+		if !ok {
+			return 0
+		}
+	}
+	if len(vals[1]) > 16384 {
+		return 0
+	}
+	roots := make([][]byte, int(input.root_count))
+	for i := range roots {
+		var ok bool
+		roots[i], ok = copyInput(input.roots[i], maxBundle)
+		if !ok {
+			return 0
+		}
+	}
+	keys := make(map[string]*rsa.PublicKey, int(input.key_count))
+	for _, k := range unsafe.Slice(input.keys, int(input.key_count)) {
+		kid, ok := copyInput(k.kid, 128)
+		if !ok {
+			return 0
+		}
+		mod, ok := copyInput(k.modulus, 512)
+		if !ok || len(mod) < 256 || mod[0] == 0 || k.exponent < 3 || k.exponent%2 == 0 {
+			return 0
+		}
+		name := string(kid)
+		if _, exists := keys[name]; exists {
+			return 0
+		}
+		keys[name] = &rsa.PublicKey{N: new(big.Int).SetBytes(mod), E: int(k.exponent)}
+	}
+	cp := trustCheckpoint{installation: installation, head: head, generation: uint64(input.generation), root: version(input.root_version), timestamp: version(input.timestamp_version), snapshot: version(input.snapshot_version), targets: version(input.targets_version), time: time.Unix(int64(input.previous_time), 0).UTC()}
+	update := trustUpdate{priorRoot: vals[2], roots: roots, timestamp: vals[3], snapshot: vals[4], targets: vals[5], target: vals[6]}
+	now := time.Unix(int64(input.trusted_time), 0).UTC()
+	trust, err := prepareTrust(cp, update, now)
 	if err != nil {
 		return 0
 	}
+	p := policy{san: string(vals[7]), repoURI: string(vals[8]), repoID: string(vals[9]), sourceDigest: string(vals[10]), sourceRef: string(vals[11]), signerURI: string(vals[12]), signerDigest: string(vals[13]), configURI: string(vals[14]), configDigest: string(vals[15]), trigger: string(vals[16]), runURI: string(vals[17])}
+	producer := producerPolicy{installation: installation, nonce: nonce, source: source, workflow: workflow, repositoryID: uint64(input.repository_number), runID: uint64(input.run_number), attempt: uint64(input.attempt), checkRunID: uint64(input.check_run), repository: string(vals[18]), ref: p.sourceRef, event: p.trigger, jobWorkflowRef: string(vals[19])}
 	fd, err := unix.FcntlInt(uintptr(input.artifact_fd), unix.F_DUPFD_CLOEXEC, 0)
 	if err != nil {
 		return 0
@@ -113,20 +177,34 @@ func PhProvenanceVerify(input *C.ph_provenance_input, output *C.ph_provenance_re
 	defer file.Close()
 	var before, after unix.Stat_t
 	flags, err := unix.FcntlInt(file.Fd(), unix.F_GETFL, 0)
-	if err != nil || flags&unix.O_ACCMODE != unix.O_RDONLY || unix.Fstat(fd, &before) != nil ||
-		before.Mode&unix.S_IFMT != unix.S_IFREG || before.Uid != 0 || before.Nlink != 1 || before.Mode&022 != 0 || before.Size < 0 || before.Size > maxArtifact {
+	if err != nil || flags&unix.O_ACCMODE != unix.O_RDONLY || unix.Fstat(fd, &before) != nil || before.Mode&unix.S_IFMT != unix.S_IFREG || before.Uid != 0 || before.Nlink != 1 || before.Mode&022 != 0 || before.Size < 0 || before.Size > maxArtifact {
 		return 0
 	}
-	verified, err := verifyBundle(bundle, io.NewSectionReader(file, 0, before.Size), tr, p)
-	if err != nil || unix.Fstat(fd, &after) != nil || before.Dev != after.Dev || before.Ino != after.Ino || before.Size != after.Size || before.Mode != after.Mode || before.Uid != after.Uid || before.Gid != after.Gid || before.Nlink != after.Nlink || before.Flags != after.Flags || before.Gen != after.Gen || before.Mtim != after.Mtim || before.Ctim != after.Ctim {
+	verified, err := verifyBundle(vals[0], io.NewSectionReader(file, 0, before.Size), trust.material, p)
+	if err != nil {
 		return 0
 	}
+	if _, err = verifyProducer(string(vals[1]), keys, producer, verified, now); err != nil {
+		return 0
+	}
+	if unix.Fstat(fd, &after) != nil || before.Dev != after.Dev || before.Ino != after.Ino || before.Size != after.Size || before.Mode != after.Mode || before.Uid != after.Uid || before.Gid != after.Gid || before.Nlink != after.Nlink || before.Flags != after.Flags || before.Gen != after.Gen || before.Mtim != after.Mtim || before.Ctim != after.Ctim {
+		return 0
+	}
+	targetDigest := sha256.Sum256(vals[6])
 	copy(unsafe.Slice((*byte)(unsafe.Pointer(&output.artifact_sha256[0])), 32), verified.artifactSHA256[:])
-	copy(unsafe.Slice((*byte)(unsafe.Pointer(&output.installation[0])), 32), C.GoBytes(unsafe.Pointer(&input.installation[0]), 32))
-	copy(unsafe.Slice((*byte)(unsafe.Pointer(&output.policy_digest[0])), 32), C.GoBytes(unsafe.Pointer(&input.policy_digest[0]), 32))
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(&output.installation[0])), 32), installation[:])
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(&output.head[0])), 32), head[:])
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(&output.policy_digest[0])), 32), policyDigest[:])
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(&output.nonce[0])), 32), nonce[:])
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(&output.target_sha256[0])), 32), targetDigest[:])
+	setVersion(&output.root_version, trust.next.root)
+	setVersion(&output.timestamp_version, trust.next.timestamp)
+	setVersion(&output.snapshot_version, trust.next.snapshot)
+	setVersion(&output.targets_version, trust.next.targets)
 	output.generation = input.generation
 	output.device = C.uint64_t(before.Dev)
 	output.inode = C.uint64_t(before.Ino)
 	output.size = C.uint64_t(before.Size)
+	output.trusted_time = input.trusted_time
 	return 1
 }
