@@ -35,38 +35,39 @@ func TestRejectUntrustedAndMismatchedEvidence(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			v, err := verifyBundle(tc.b, bytes.NewReader(tc.body), []byte("token"), tr, tc.policy)
+			v, err := verifyBundle(tc.b, bytes.NewReader(tc.body), []byte("token"), []byte("jwks"), tr, tc.policy)
 			if err == nil || v != nil {
 				t.Fatal("untrusted evidence accepted")
 			}
 		})
 	}
-	if v, err := verifyBundle(signed, bytes.NewReader(nil), []byte("token"), nil, candidatePolicy()); err == nil || v != nil {
+	if v, err := verifyBundle(signed, bytes.NewReader(nil), []byte("token"), []byte("jwks"), nil, candidatePolicy()); err == nil || v != nil {
 		t.Fatal("caller-selected missing root accepted")
 	}
 }
 
 func TestStatementBindsExactlyArtifactAndToken(t *testing.T) {
-	var artifact, token [32]byte
+	var artifact, token, jwks [32]byte
 	artifact[0] = 1
 	token[0] = 2
-	s := &intoto.Statement{Type: "https://in-toto.io/Statement/v1", PredicateType: "https://slsa.dev/provenance/v1", Subject: []*intoto.ResourceDescriptor{{Name: artifactEntry, Digest: map[string]string{"sha256": hex.EncodeToString(artifact[:])}}, {Name: "poolhouse-producer.jwt", Digest: map[string]string{"sha256": hex.EncodeToString(token[:])}}}}
-	if !matchesStatement(s, artifact, token) {
+	jwks[0] = 3
+	s := &intoto.Statement{Type: "https://in-toto.io/Statement/v1", PredicateType: "https://slsa.dev/provenance/v1", Subject: []*intoto.ResourceDescriptor{{Name: artifactEntry, Digest: map[string]string{"sha256": hex.EncodeToString(artifact[:])}}, {Name: "poolhouse-producer.jwt", Digest: map[string]string{"sha256": hex.EncodeToString(token[:])}}, {Name: "poolhouse-oidc-jwks.json", Digest: map[string]string{"sha256": hex.EncodeToString(jwks[:])}}}}
+	if !matchesStatement(s, artifact, token, jwks) {
 		t.Fatal("valid statement rejected")
 	}
 	for _, kind := range []string{"", "https://in-toto.io/Statement/v0.1"} {
 		s.Type = kind
-		if matchesStatement(s, artifact, token) {
+		if matchesStatement(s, artifact, token, jwks) {
 			t.Fatal("wrong statement accepted")
 		}
 	}
 	s.Type = "https://in-toto.io/Statement/v1"
 	s.Subject[1].Name = artifactEntry
-	if matchesStatement(s, artifact, token) {
+	if matchesStatement(s, artifact, token, jwks) {
 		t.Fatal("duplicate subject accepted")
 	}
 	s.Subject[1] = nil
-	if matchesStatement(s, artifact, token) {
+	if matchesStatement(s, artifact, token, jwks) {
 		t.Fatal("nil subject accepted")
 	}
 }

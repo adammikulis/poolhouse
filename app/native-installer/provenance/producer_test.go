@@ -24,7 +24,7 @@ func producerFixture(t *testing.T) (*rsa.PrivateKey, producerPolicy, *verified, 
 	v := &verified{}
 	v.artifactSHA256[0] = 5
 	v.runURI = "https://github.com/example/project/actions/runs/456/attempts/1"
-	v.policy = policy{repoURI: "https://github.com/example/project", repoID: "123", sourceDigest: hex.EncodeToString(p.source[:]), sourceRef: p.ref, trigger: p.event, signerURI: "https://github.com/" + p.jobWorkflowRef, signerDigest: hex.EncodeToString(p.workflow[:]), runURI: v.runURI}
+	v.policy = policy{repoURI: "https://github.com/example/project", repoID: "123", sourceDigest: hex.EncodeToString(p.source[:]), sourceRef: p.ref, trigger: p.event, signerURI: "https://github.com/example/project/.github/workflows/attest.yml@refs/heads/development", signerDigest: hex.EncodeToString(p.workflow[:]), runURI: v.runURI}
 	issued := time.Now().UTC().Truncate(time.Second)
 	v.logTimes = []time.Time{issued.Add(time.Minute)}
 	now := issued.Add(6 * time.Minute)
@@ -108,5 +108,15 @@ func TestProducerAllowsGitHubThumbprintAndRejectsUnknownHeaders(t *testing.T) {
 	}
 	if got, err := verifyProducer(raw, keys, p, v, now); err == nil || got != nil {
 		t.Fatal("unrecognized key source accepted")
+	}
+}
+
+func TestProducerCannotBeItsOwnJWKSAttester(t *testing.T) {
+	key, p, v, claims, now := producerFixture(t)
+	keys := map[string]*rsa.PublicKey{"test-key": &key.PublicKey}
+	raw := tokenFor(t, key, claims)
+	v.policy.signerURI = "https://github.com/" + p.jobWorkflowRef
+	if got, err := verifyProducer(raw, keys, p, v, now); err == nil || got != nil {
+		t.Fatal("producer self-attestation accepted")
 	}
 }

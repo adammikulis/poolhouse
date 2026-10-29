@@ -6,12 +6,11 @@ package main
 #include <stdint.h>
 #include <stddef.h>
 typedef struct { const void *data; uint64_t size; } ph_bytes;
-typedef struct { ph_bytes kid, modulus; uint32_t exponent; } ph_oidc_key;
 typedef struct { int64_t version; uint8_t digest[32]; } ph_version;
 typedef struct {
  ph_bytes bundle, oidc_token, prior_root, roots[32], timestamp, snapshot, targets, target;
  uint32_t root_count;
- const ph_oidc_key *keys; uint32_t key_count;
+ ph_bytes jwks;
  ph_bytes san, repository_uri, repository_id, source_digest, source_ref;
  ph_bytes signer_uri, signer_digest, config_uri, config_digest, trigger, run_uri;
  ph_bytes repository, job_workflow_ref, job_name;
@@ -23,7 +22,7 @@ typedef struct {
  int stage_fd, archive_fd;
 } ph_provenance_input;
 typedef struct {
- uint8_t artifact_sha256[32], archive_sha256[32], installation[32], head[32], policy_digest[32], nonce[32], target_sha256[32];
+ uint8_t artifact_sha256[32], archive_sha256[32], installation[32], head[32], policy_digest[32], nonce[32], target_sha256[32], jwks_sha256[32];
  ph_version root_version, timestamp_version, snapshot_version, targets_version;
  uint64_t generation, device, inode, size, archive_device, archive_inode, archive_size, artifact_id;
  int64_t trusted_time, producer_observed_time;
@@ -33,11 +32,9 @@ import "C"
 
 import (
 	"context"
-	"crypto/rsa"
 	"crypto/sha256"
 	"golang.org/x/sys/unix"
 	"io"
-	"math/big"
 	"os"
 	"time"
 	"unsafe"
@@ -91,7 +88,7 @@ func PhProvenanceVerify(input *C.ph_provenance_input, output *C.ph_provenance_re
 	}
 	snap := *input
 	input = &snap
-	if input.generation == 0 || input.previous_time <= 0 || input.trusted_time < input.previous_time || input.root_count > 32 || input.key_count == 0 || input.key_count > 32 || input.keys == nil {
+	if input.generation == 0 || input.previous_time <= 0 || input.trusted_time < input.previous_time || input.root_count > 32 {
 		return 0
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -101,12 +98,14 @@ func PhProvenanceVerify(input *C.ph_provenance_input, output *C.ph_provenance_re
 	if !nonzero(installation[:]) || !nonzero(head[:]) || !nonzero(policyDigest[:]) || !nonzero(nonce[:]) || !nonzero(source[:]) || !nonzero(workflow[:]) {
 		return 0
 	}
-	fields := []C.ph_bytes{input.bundle, input.oidc_token, input.prior_root, input.timestamp, input.snapshot, input.targets, input.target, input.san, input.repository_uri, input.repository_id, input.source_digest, input.source_ref, input.signer_uri, input.signer_digest, input.config_uri, input.config_digest, input.trigger, input.run_uri, input.repository, input.job_workflow_ref, input.job_name}
+	fields := []C.ph_bytes{input.bundle, input.oidc_token, input.prior_root, input.timestamp, input.snapshot, input.targets, input.target, input.san, input.repository_uri, input.repository_id, input.source_digest, input.source_ref, input.signer_uri, input.signer_digest, input.config_uri, input.config_digest, input.trigger, input.run_uri, input.repository, input.job_workflow_ref, input.job_name, input.jwks}
 	var aggregate uint64
 	for i, field := range fields {
 		limit := uint64(2048)
 		if i <= 6 {
 			limit = maxBundle
+		} else if i == 21 {
+			limit = 65536
 		}
 		if field.size == 0 || uint64(field.size) > limit || aggregate > 24*1024*1024-uint64(field.size) {
 			return 0
@@ -125,6 +124,8 @@ func PhProvenanceVerify(input *C.ph_provenance_input, output *C.ph_provenance_re
 		limit := uint64(2048)
 		if i <= 6 {
 			limit = maxBundle
+		} else if i == 21 {
+			limit = 65536
 		}
 		var ok bool
 		vals[i], ok = copyInput(f, limit)
@@ -142,22 +143,6 @@ func PhProvenanceVerify(input *C.ph_provenance_input, output *C.ph_provenance_re
 		if !ok {
 			return 0
 		}
-	}
-	keys := make(map[string]*rsa.PublicKey, int(input.key_count))
-	for _, k := range unsafe.Slice(input.keys, int(input.key_count)) {
-		kid, ok := copyInput(k.kid, 128)
-		if !ok {
-			return 0
-		}
-		mod, ok := copyInput(k.modulus, 512)
-		if !ok || len(mod) < 256 || mod[0] == 0 || k.exponent < 3 || k.exponent%2 == 0 {
-			return 0
-		}
-		name := string(kid)
-		if _, exists := keys[name]; exists {
-			return 0
-		}
-		keys[name] = &rsa.PublicKey{N: new(big.Int).SetBytes(mod), E: int(k.exponent)}
 	}
 	cp := trustCheckpoint{installation: installation, head: head, generation: uint64(input.generation), root: version(input.root_version), timestamp: version(input.timestamp_version), snapshot: version(input.snapshot_version), targets: version(input.targets_version), time: time.Unix(int64(input.previous_time), 0).UTC()}
 	update := trustUpdate{priorRoot: vals[2], roots: roots, timestamp: vals[3], snapshot: vals[4], targets: vals[5], target: vals[6]}
@@ -186,8 +171,12 @@ func PhProvenanceVerify(input *C.ph_provenance_input, output *C.ph_provenance_re
 	if unix.Fstat(int(file.Fd()), &stageAfter) != nil || stageAfter.Dev != before.Dev || stageAfter.Ino != before.Ino || stageAfter.Size != extractedSize || stageAfter.Mode != before.Mode || stageAfter.Uid != before.Uid || stageAfter.Gid != before.Gid || stageAfter.Nlink != before.Nlink || stageAfter.Flags != before.Flags || stageAfter.Gen != before.Gen {
 		return 0
 	}
-	verified, err := verifyBundle(vals[0], io.NewSectionReader(file, 0, stageAfter.Size), vals[1], trust.material, p)
+	verified, err := verifyBundle(vals[0], io.NewSectionReader(file, 0, stageAfter.Size), vals[1], vals[21], trust.material, p)
 	if err != nil || ctx.Err() != nil || verified.artifactSHA256 != extractedDigest {
+		return 0
+	}
+	keys, err := parseJWKS(vals[21])
+	if err != nil {
 		return 0
 	}
 	candidate, err := verifyProducer(string(vals[1]), keys, producer, verified, now)
@@ -201,6 +190,7 @@ func PhProvenanceVerify(input *C.ph_provenance_input, output *C.ph_provenance_re
 		return 0
 	}
 	targetDigest := sha256.Sum256(vals[6])
+	jwksDigest := sha256.Sum256(vals[21])
 	copy(unsafe.Slice((*byte)(unsafe.Pointer(&output.artifact_sha256[0])), 32), verified.artifactSHA256[:])
 	copy(unsafe.Slice((*byte)(unsafe.Pointer(&output.archive_sha256[0])), 32), archiveDigest[:])
 	copy(unsafe.Slice((*byte)(unsafe.Pointer(&output.installation[0])), 32), installation[:])
@@ -208,6 +198,7 @@ func PhProvenanceVerify(input *C.ph_provenance_input, output *C.ph_provenance_re
 	copy(unsafe.Slice((*byte)(unsafe.Pointer(&output.policy_digest[0])), 32), policyDigest[:])
 	copy(unsafe.Slice((*byte)(unsafe.Pointer(&output.nonce[0])), 32), nonce[:])
 	copy(unsafe.Slice((*byte)(unsafe.Pointer(&output.target_sha256[0])), 32), targetDigest[:])
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(&output.jwks_sha256[0])), 32), jwksDigest[:])
 	setVersion(&output.root_version, trust.next.root)
 	setVersion(&output.timestamp_version, trust.next.timestamp)
 	setVersion(&output.snapshot_version, trust.next.snapshot)

@@ -40,8 +40,8 @@ type verified struct {
 	logTimes       []time.Time
 }
 
-func verifyBundle(b []byte, artifact io.Reader, token []byte, material root.TrustedMaterial, p policy) (*verified, error) {
-	if len(b) == 0 || len(b) > maxBundle || len(token) == 0 || len(token) > 16384 || artifact == nil || material == nil ||
+func verifyBundle(b []byte, artifact io.Reader, token []byte, jwks []byte, material root.TrustedMaterial, p policy) (*verified, error) {
+	if len(b) == 0 || len(b) > maxBundle || len(token) == 0 || len(token) > 16384 || len(jwks) == 0 || len(jwks) > 65536 || artifact == nil || material == nil ||
 		p.san == "" || p.repoURI == "" || p.repoID == "" || p.sourceDigest == "" || p.sourceRef == "" ||
 		p.signerURI == "" || p.signerDigest == "" || p.configURI == "" || p.configDigest == "" ||
 		p.trigger == "" || p.runURI == "" {
@@ -71,13 +71,14 @@ func verifyBundle(b []byte, artifact io.Reader, token []byte, material root.Trus
 		return nil, invalid
 	}
 	tokenDigest := sha256.Sum256(token)
-	result, err := verifier.Verify(entity, verify.NewPolicy(verify.WithArtifactDigests([]verify.ArtifactDigest{{Algorithm: "sha256", Digest: digest[:]}, {Algorithm: "sha256", Digest: tokenDigest[:]}}), verify.WithCertificateIdentity(identity)))
+	jwksDigest := sha256.Sum256(jwks)
+	result, err := verifier.Verify(entity, verify.NewPolicy(verify.WithArtifactDigests([]verify.ArtifactDigest{{Algorithm: "sha256", Digest: digest[:]}, {Algorithm: "sha256", Digest: tokenDigest[:]}, {Algorithm: "sha256", Digest: jwksDigest[:]}}), verify.WithCertificateIdentity(identity)))
 	if err != nil || result == nil || result.Statement == nil || result.Signature == nil || result.Signature.Certificate == nil {
 		return nil, invalid
 	}
 	statement := result.Statement
-	// Exactly the artifact and producer token are bound by the signed statement.
-	if !matchesStatement(statement, digest, tokenDigest) {
+	// Exactly the artifact, producer token and historical key set are signed.
+	if !matchesStatement(statement, digest, tokenDigest, jwksDigest) {
 		return nil, invalid
 	}
 	c := result.Signature.Certificate
@@ -99,11 +100,11 @@ func verifyBundle(b []byte, artifact io.Reader, token []byte, material root.Trus
 	return &verified{artifactSHA256: digest, runURI: c.RunInvocationURI, policy: p, logTimes: logs}, nil
 }
 
-func matchesStatement(statement *intoto.Statement, artifact, token [32]byte) bool {
-	if statement == nil || statement.GetType() != "https://in-toto.io/Statement/v1" || statement.PredicateType != "https://slsa.dev/provenance/v1" || len(statement.Subject) != 2 {
+func matchesStatement(statement *intoto.Statement, artifact, token, jwks [32]byte) bool {
+	if statement == nil || statement.GetType() != "https://in-toto.io/Statement/v1" || statement.PredicateType != "https://slsa.dev/provenance/v1" || len(statement.Subject) != 3 {
 		return false
 	}
-	expected := map[string]string{artifactEntry: hex.EncodeToString(artifact[:]), "poolhouse-producer.jwt": hex.EncodeToString(token[:])}
+	expected := map[string]string{artifactEntry: hex.EncodeToString(artifact[:]), "poolhouse-producer.jwt": hex.EncodeToString(token[:]), "poolhouse-oidc-jwks.json": hex.EncodeToString(jwks[:])}
 	for _, s := range statement.Subject {
 		if s == nil || len(s.Digest) != 1 || expected[s.Name] == "" || s.Digest["sha256"] != expected[s.Name] {
 			return false

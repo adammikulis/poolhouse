@@ -64,7 +64,7 @@ func verifyProducer(raw string, keys map[string]*rsa.PublicKey, p producerPolicy
 		return nil, invalid
 	}
 	bound := subject.policy
-	if bound.repoURI != "https://github.com/"+p.repository || bound.repoID != uintString(p.repositoryID) || bound.sourceDigest != hex.EncodeToString(p.source[:]) || bound.sourceRef != p.ref || bound.trigger != p.event || bound.signerURI != "https://github.com/"+p.jobWorkflowRef || bound.signerDigest != hex.EncodeToString(p.workflow[:]) || bound.runURI != "https://github.com/"+p.repository+"/actions/runs/"+uintString(p.runID)+"/attempts/"+uintString(p.attempt) || subject.runURI != bound.runURI {
+	if bound.repoURI != "https://github.com/"+p.repository || bound.repoID != uintString(p.repositoryID) || bound.sourceDigest != hex.EncodeToString(p.source[:]) || bound.sourceRef != p.ref || bound.trigger != p.event || bound.signerURI == "https://github.com/"+p.jobWorkflowRef || bound.runURI != "https://github.com/"+p.repository+"/actions/runs/"+uintString(p.runID)+"/attempts/"+uintString(p.attempt) || subject.runURI != bound.runURI {
 		return nil, invalid
 	}
 	parts := strings.Split(raw, ".")
