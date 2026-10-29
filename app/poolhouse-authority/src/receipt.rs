@@ -6,13 +6,13 @@
 
 use ed25519_dalek::{Signature, VerifyingKey};
 
-const DOMAIN: &[u8] = b"poolhouse/native-authority/receipt/v1\0";
+const DOMAIN: &[u8] = b"poolhouse/native-authority/receipt/v3\0";
 type Hash = [u8; 32];
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Listing { Unlisted, Active, Pending }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Scope {
     Unfounded,
     Governed { anchor: Hash, head: Hash, listing: Listing },
@@ -31,10 +31,15 @@ pub struct PhoneBootstrapReceipt {
     pub tls: Hash,
     pub phone_key: Hash,
     pub offer: Hash,
+    /// SHA-256 of the exact 32-byte enrollment token held in protected custody.
+    pub token_hash: Hash,
     pub offer_expires: u64,
     pub scope: Scope,
     pub authority_head: Hash,
     pub authority_generation: u64,
+    /// Protected envelope after durable prepare and before the final commit CAS.
+    pub prepared_envelope_head: Hash,
+    pub prepared_envelope_generation: u64,
     pub committed_at: u64,
 }
 
@@ -44,8 +49,8 @@ pub enum ReceiptError { Invalid, Signature }
 impl PhoneBootstrapReceipt {
     fn validate(&self) -> Result<(), ReceiptError> {
         if [self.authority, self.installation, self.request, self.nonce, self.transcript,
-            self.node, self.tls, self.phone_key, self.offer].iter().any(|value| *value == [0; 32])
-            || self.installation_generation == 0 || self.committed_at == 0 || self.committed_at >= self.offer_expires {
+            self.node, self.tls, self.phone_key, self.offer, self.token_hash, self.prepared_envelope_head].iter().any(|value| *value == [0; 32])
+            || self.installation_generation == 0 || self.prepared_envelope_generation == 0 || self.committed_at == 0 || self.committed_at >= self.offer_expires {
             return Err(ReceiptError::Invalid);
         }
         if let Scope::Governed { anchor, head, .. } = &self.scope {
@@ -78,7 +83,10 @@ impl PhoneBootstrapReceipt {
         }
         bytes.extend_from_slice(&self.authority_head);
         bytes.extend_from_slice(&self.authority_generation.to_be_bytes());
+        bytes.extend_from_slice(&self.prepared_envelope_head);
+        bytes.extend_from_slice(&self.prepared_envelope_generation.to_be_bytes());
         bytes.extend_from_slice(&self.committed_at.to_be_bytes());
+        bytes.extend_from_slice(&self.token_hash);
         Ok(bytes)
     }
 
@@ -102,10 +110,12 @@ impl PhoneBootstrapReceipt {
             }
             _ => return Err(ReceiptError::Invalid),
         };
-        let (authority_head, authority_generation, committed_at) = (input.hash()?, input.number()?, input.number()?);
+        let (authority_head, authority_generation, prepared_envelope_head, prepared_envelope_generation, committed_at, token_hash) =
+            (input.hash()?, input.number()?, input.hash()?, input.number()?, input.number()?, input.hash()?);
         if input.at != bytes.len() { return Err(ReceiptError::Invalid); }
         let receipt = Self { authority, installation, installation_generation, request, nonce, transcript, node, tls,
-                             phone_key, offer, offer_expires, scope, authority_head, authority_generation, committed_at };
+                             phone_key, offer, token_hash, offer_expires, scope, authority_head, authority_generation,
+                             prepared_envelope_head, prepared_envelope_generation, committed_at };
         receipt.validate()?;
         Ok(receipt)
     }
