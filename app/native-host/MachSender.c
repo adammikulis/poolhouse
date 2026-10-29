@@ -1,8 +1,10 @@
 #include "MachSender.h"
+#include "NativeRequest.h"
 #include <bsm/libbsm.h>
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 _Static_assert(sizeof(audit_token_t) == 8 * sizeof(uint32_t), "eight SDK audit words");
 _Static_assert(sizeof(int) == sizeof(uint32_t), "lossless libbsm PID-version bits");
@@ -10,18 +12,18 @@ _Static_assert(sizeof(int) == sizeof(uint32_t), "lossless libbsm PID-version bit
 /* Factored from the measured own-process ABI fixture: check actual allocation and
  * returned message size BEFORE rounding, then check trailer format and extent.
  * The opaque message body is never a source of sender identity. */
-static bool extract(const void *bytes, size_t capacity, ph_mach_sender_observation *output) {
+static bool extract(const void *bytes, size_t capacity, bool reply, ph_mach_sender_observation *output) {
     if (!bytes || !output || capacity < sizeof(mach_msg_header_t)) return false;
     mach_msg_header_t header;
     memcpy(&header, bytes, sizeof(header));
     mach_msg_bits_t local = MACH_MSGH_BITS_LOCAL(header.msgh_bits);
     if (header.msgh_size < sizeof(header) || header.msgh_size > capacity
-        || MACH_MSGH_BITS_REMOTE(header.msgh_bits) != 0
+        || MACH_MSGH_BITS_REMOTE(header.msgh_bits) != (reply ? MACH_MSG_TYPE_PORT_SEND_ONCE : 0)
         || MACH_MSGH_BITS_VOUCHER(header.msgh_bits) != 0
         || MACH_MSGH_BITS_OTHER(header.msgh_bits) != 0
         || (local != 0 && local != MACH_MSG_TYPE_PORT_SEND
             && local != MACH_MSG_TYPE_PORT_SEND_ONCE)
-        || header.msgh_remote_port != MACH_PORT_NULL
+        || (reply ? !MACH_PORT_VALID(header.msgh_remote_port) : header.msgh_remote_port != MACH_PORT_NULL)
         || header.msgh_voucher_port != MACH_PORT_NULL) return false;
     size_t size = header.msgh_size, rounding = sizeof(natural_t) - 1;
     if (size > SIZE_MAX - rounding) return false;
@@ -52,8 +54,8 @@ struct ph_mach_message {
 /* Existing approval-card frame limit; this is a message bound, not authority. */
 #define PH_MACH_MAX_BODY 98304u
 
-ph_mach_observation_result ph_mach_receive(mach_port_t receive, size_t maximum_body,
-    mach_msg_timeout_t timeout, ph_mach_message **output, mach_msg_return_t *kernel_error) {
+static ph_mach_observation_result receive_message(mach_port_t receive, size_t maximum_body,
+    mach_msg_timeout_t timeout, ph_mach_message **output, mach_msg_return_t *kernel_error, bool reply) {
     if (kernel_error) *kernel_error = MACH_MSG_SUCCESS;
     if (!MACH_PORT_VALID(receive) || !output || *output || !timeout || maximum_body == 0 || maximum_body > PH_MACH_MAX_BODY)
         return PH_MACH_INVALID_ARGUMENT;
@@ -69,7 +71,7 @@ ph_mach_observation_result ph_mach_receive(mach_port_t receive, size_t maximum_b
         0, (mach_msg_size_t)capacity, receive, timeout, MACH_PORT_NULL);
     if (kernel_error) *kernel_error = result;
     if (result != MACH_MSG_SUCCESS) { free(buffer); free(message); return PH_MACH_RECEIVE_FAILED; }
-    bool okay = extract(buffer, capacity, &message->sender);
+    bool okay = extract(buffer, capacity, reply, &message->sender);
     if (okay) {
         message->body_size = buffer->msgh_size - sizeof(*buffer);
         okay = message->body_size <= maximum_body;
@@ -77,6 +79,16 @@ ph_mach_observation_result ph_mach_receive(mach_port_t receive, size_t maximum_b
     if (!okay) { mach_msg_destroy(buffer); free(buffer); free(message); return PH_MACH_INVALID_MESSAGE; }
     *output = message;
     return PH_MACH_OBSERVED;
+}
+
+ph_mach_observation_result ph_mach_receive(mach_port_t receive, size_t maximum_body,
+    mach_msg_timeout_t timeout, ph_mach_message **output, mach_msg_return_t *kernel_error) {
+    return receive_message(receive, maximum_body, timeout, output, kernel_error, false);
+}
+
+ph_mach_observation_result ph_mach_receive_request(mach_port_t receive, size_t maximum_body,
+    mach_msg_timeout_t timeout, ph_mach_message **output, mach_msg_return_t *kernel_error) {
+    return receive_message(receive, maximum_body, timeout, output, kernel_error, true);
 }
 
 const ph_mach_sender_observation *ph_mach_sender(const ph_mach_message *message) {
@@ -97,8 +109,40 @@ void ph_mach_message_destroy(ph_mach_message **message) {
     free(owned->buffer);
     free(owned);
 }
+
+#define PH_PUBLIC_REPLY_LIMIT 4096u
+#ifdef TESTING
+static mach_msg_return_t injected_reply_result = MACH_MSG_SUCCESS;
+void ph_mach_test_fail_public_reply(mach_msg_return_t result) { injected_reply_result = result; }
+#endif
+ph_public_reply_result ph_mach_reply_public(ph_mach_message **message, const uint8_t *bytes, size_t length) {
+    if (!message || !*message || !bytes || !length || length > PH_PUBLIC_REPLY_LIMIT) return PH_PUBLIC_REPLY_NOT_SENT;
+    ph_mach_message *owned = *message;
+    if (MACH_MSGH_BITS_REMOTE(owned->buffer->msgh_bits) != MACH_MSG_TYPE_PORT_SEND_ONCE
+        || !MACH_PORT_VALID(owned->buffer->msgh_remote_port)) return PH_PUBLIC_REPLY_NOT_SENT;
+    struct { mach_msg_header_t header; uint8_t size[4]; uint8_t body[PH_PUBLIC_REPLY_LIMIT]; } response = {0};
+    size_t rounded = (length + sizeof(natural_t) - 1) & ~(sizeof(natural_t) - 1);
+    response.header.msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_MOVE_SEND_ONCE, 0);
+    response.header.msgh_size = (mach_msg_size_t)(sizeof(response.header) + sizeof(response.size) + rounded);
+    response.header.msgh_remote_port = owned->buffer->msgh_remote_port;
+    for (unsigned i = 0; i < 4; i++) response.size[3 - i] = (uint8_t)(length >> (i * 8));
+    memcpy(response.body, bytes, length);
+    owned->buffer->msgh_remote_port = MACH_PORT_NULL;
+    ph_mach_message_destroy(message);
+    mach_msg_return_t result;
+#ifdef TESTING
+    if (injected_reply_result != MACH_MSG_SUCCESS) result = injected_reply_result;
+    else
+#endif
+    result = mach_msg(&response.header, MACH_SEND_MSG | MACH_SEND_TIMEOUT, response.header.msgh_size,
+        0, MACH_PORT_NULL, 1000, MACH_PORT_NULL);
+    if (result == MACH_MSG_SUCCESS) return PH_PUBLIC_REPLY_SENT_UNCONFIRMED;
+    /* A failed send may have consumed the right. Only an isolated service
+     * process may call this routine; task exit reclaims any remaining rights. */
+    _exit(70);
+}
 #ifdef TESTING
 bool ph_mach_test_extract(const void *bytes, size_t capacity, ph_mach_sender_observation *output) {
-    return extract(bytes, capacity, output);
+    return extract(bytes, capacity, false, output);
 }
 #endif
