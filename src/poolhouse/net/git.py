@@ -8,10 +8,12 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import urllib.parse
 from collections.abc import Sequence
 from pathlib import Path
 
+from poolhouse.activity.source_snapshot import git_environment
 from poolhouse.httpguard import Refused
 from poolhouse.net import policy as hosts, provenance
 from poolhouse.net.hold import staging_dir
@@ -95,9 +97,9 @@ def _execution_env(protocols):
     return environment(protocols, hooks)
 
 
-def commit_empty(cwd: Path, identity: tuple[str, str], message: str) -> subprocess.CompletedProcess[str]:
+def commit_empty(cwd: Path, identity: tuple[str, str], message: str, *, source: bool = False) -> subprocess.CompletedProcess[str]:
     """Record an empty local commit with explicit software identity and no signing or hooks."""
-    env = _execution_env('')
+    env = _source_environment(cwd) if source else _execution_env('')
     name, email = identity
     env.update(GIT_AUTHOR_NAME=name, GIT_AUTHOR_EMAIL=email,
                GIT_COMMITTER_NAME=name, GIT_COMMITTER_EMAIL=email)
@@ -114,6 +116,24 @@ def _execute(args, cwd, env):
     if done.returncode != 0:
         raise GitFailed(f"git {' '.join(args)} failed: {(done.stderr or '').strip()}")
     return done
+
+
+def _source_environment(cwd: Path) -> dict[str, str]:
+    """Exclude inherited Git configuration, selectors and external helpers for source materialization."""
+    env = git_environment()
+    if 'SYSTEMROOT' in env:
+        env.update(TEMP=str(cwd.parent), TMP=str(cwd.parent))
+    env.update(GIT_NO_REPLACE_OBJECTS='1', GIT_CONFIG_COUNT='3',
+               GIT_CONFIG_KEY_0='core.hooksPath', GIT_CONFIG_VALUE_0=os.devnull,
+               GIT_CONFIG_KEY_1='core.fsmonitor', GIT_CONFIG_VALUE_1='false',
+               GIT_CONFIG_KEY_2='commit.gpgsign', GIT_CONFIG_VALUE_2='false')
+    return env
+
+
+def source_init(cwd: Path) -> None:
+    """Initialize a private source checkout without ambient configuration or templates."""
+    with tempfile.TemporaryDirectory(prefix='empty-git-template-', dir=cwd.parent) as template:
+        _execute(['init', '--initial-branch=agent', f'--template={template}'], cwd, _source_environment(cwd))
 
 
 def blobs(digests: list[str], *, cwd: Path, limit: int, total: int) -> dict[str, bytes]:
@@ -175,8 +195,7 @@ def source_index(entries: list[dict], *, cwd: Path) -> None:
     """Add verified source files to a fresh index without filters."""
     if not entries:
         return
-    hooks = staging_dir() / "no-hooks"
-    env = environment("", hooks)
+    env = _source_environment(cwd)
     paths = ("\n".join(entry["path"] for entry in entries) + "\n").encode()
     hashed = subprocess.run([_git(), "hash-object", "-w", "--no-filters", "--stdin-paths"],
                             cwd=cwd, input=paths, capture_output=True, timeout=30, env=env, check=False)

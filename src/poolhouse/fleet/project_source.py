@@ -196,11 +196,10 @@ def checkout(packed: bytes, identifier: str, source_hash: str, base: Path, *, or
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(contents[entry["path"]])
             path.chmod(0o755 if entry["executable"] else 0o644)
-        git.run(["init", "--initial-branch=agent"], cwd=stage)
+        git.source_init(stage)
         git.source_index(manifest["files"], cwd=stage)
-        git.run(["-c", "user.name=poolhouse", "-c", "user.email=poolhouse@example.invalid",
-                 "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-m",
-                 "chore: initialize shared project snapshot"], cwd=stage)
+        git.commit_empty(stage, ("poolhouse", "poolhouse@example.invalid"),
+                         "chore: initialize shared project snapshot", source=True)
         origin = origin or {}
         metadata = {"kind": "project-checkout", "project_id": identifier, "source_hash": source_hash,
                     "source": {"machine": origin.get("source_machine", ""), "host": origin.get("source_host", "")}}
