@@ -7,7 +7,10 @@ fn candidate_requires_exact_canonical_proof_and_pinned_node() {
     let signature = "3045022100dbaf83ac5c22db9644229f455d054acae08d42f20ac29fde72f23f1eefe249c00220216ae6f222be85377ec450b7b4f20cc955c304aa6c19fde18419bb29f744d50f";
     let node = "3a05903849a971ff4d44654f2497d8f8a593691f56ca7af1c50c55bd03f5f0ba";
     let tls = "7777777777777777777777777777777777777777777777777777777777777777";
-    assert!(verify(transcript, signature, node, tls).is_ok());
+    let verified = verify(transcript, signature, node, tls).unwrap();
+    assert_eq!(verified.tls(), [0x77; 32]);
+    assert_eq!(verified.key()[0], 4);
+    assert_eq!(verified.expires(), 1790000300);
     assert!(verify(transcript, signature, tls, tls).is_err());
     for index in 0..transcript.len() {
         let mut changed = transcript.to_vec();
