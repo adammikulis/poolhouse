@@ -2,6 +2,7 @@
 #![deny(unsafe_code)]
 
 pub mod certificate;
+pub mod receipt;
 
 #[cfg(target_os = "macos")]
 #[allow(dead_code)]
