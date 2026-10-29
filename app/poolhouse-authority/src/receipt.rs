@@ -6,7 +6,7 @@
 
 use ed25519_dalek::{Signature, VerifyingKey};
 
-const DOMAIN: &[u8] = b"poolhouse/native-authority/receipt/v3\0";
+const DOMAIN: &[u8] = b"poolhouse/native-authority/receipt/v4\0";
 type Hash = [u8; 32];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -33,6 +33,8 @@ pub struct PhoneBootstrapReceipt {
     pub offer: Hash,
     /// SHA-256 of the exact 32-byte enrollment token held in protected custody.
     pub token_hash: Hash,
+    /// Fresh service-issued identifier, rendered as `ph-` followed by lowercase hex.
+    pub phone_id: [u8; 16],
     pub offer_expires: u64,
     pub scope: Scope,
     pub authority_head: Hash,
@@ -47,10 +49,33 @@ pub struct PhoneBootstrapReceipt {
 pub enum ReceiptError { Invalid, Signature }
 
 impl PhoneBootstrapReceipt {
+    /// Canonical public spelling of this service-issued phone identifier.
+    pub fn phone_id_text(&self) -> Result<String, ReceiptError> {
+        if self.phone_id == [0; 16] { return Err(ReceiptError::Invalid); }
+        let mut text = String::with_capacity(35);
+        text.push_str("ph-");
+        for byte in self.phone_id { use std::fmt::Write; let _ = write!(text, "{byte:02x}"); }
+        Ok(text)
+    }
+
+    /// Parse exactly the canonical spelling; no alternate encodings are accepted.
+    pub fn parse_phone_id(text: &str) -> Result<[u8; 16], ReceiptError> {
+        let bytes = text.as_bytes();
+        if bytes.len() != 35 || &bytes[..3] != b"ph-" { return Err(ReceiptError::Invalid); }
+        fn nibble(byte: u8) -> Option<u8> { match byte { b'0'..=b'9' => Some(byte - b'0'), b'a'..=b'f' => Some(byte - b'a' + 10), _ => None } }
+        let mut out = [0u8; 16];
+        for (index, byte) in out.iter_mut().enumerate() {
+            *byte = nibble(bytes[3 + 2 * index]).ok_or(ReceiptError::Invalid)? << 4
+                | nibble(bytes[4 + 2 * index]).ok_or(ReceiptError::Invalid)?;
+        }
+        if out == [0; 16] { return Err(ReceiptError::Invalid); }
+        Ok(out)
+    }
+
     fn validate(&self) -> Result<(), ReceiptError> {
         if [self.authority, self.installation, self.request, self.nonce, self.transcript,
             self.node, self.tls, self.phone_key, self.offer, self.token_hash, self.prepared_envelope_head].iter().any(|value| *value == [0; 32])
-            || self.installation_generation == 0 || self.prepared_envelope_generation == 0 || self.committed_at == 0 || self.committed_at >= self.offer_expires {
+            || self.phone_id == [0; 16] || self.installation_generation == 0 || self.prepared_envelope_generation == 0 || self.committed_at == 0 || self.committed_at >= self.offer_expires {
             return Err(ReceiptError::Invalid);
         }
         if let Scope::Governed { anchor, head, .. } = &self.scope {
@@ -87,6 +112,7 @@ impl PhoneBootstrapReceipt {
         bytes.extend_from_slice(&self.prepared_envelope_generation.to_be_bytes());
         bytes.extend_from_slice(&self.committed_at.to_be_bytes());
         bytes.extend_from_slice(&self.token_hash);
+        bytes.extend_from_slice(&self.phone_id);
         Ok(bytes)
     }
 
@@ -112,9 +138,10 @@ impl PhoneBootstrapReceipt {
         };
         let (authority_head, authority_generation, prepared_envelope_head, prepared_envelope_generation, committed_at, token_hash) =
             (input.hash()?, input.number()?, input.hash()?, input.number()?, input.number()?, input.hash()?);
+        let phone_id = input.take(16)?.try_into().map_err(|_| ReceiptError::Invalid)?;
         if input.at != bytes.len() { return Err(ReceiptError::Invalid); }
         let receipt = Self { authority, installation, installation_generation, request, nonce, transcript, node, tls,
-                             phone_key, offer, token_hash, offer_expires, scope, authority_head, authority_generation,
+                             phone_key, offer, token_hash, phone_id, offer_expires, scope, authority_head, authority_generation,
                              prepared_envelope_head, prepared_envelope_generation, committed_at };
         receipt.validate()?;
         Ok(receipt)
