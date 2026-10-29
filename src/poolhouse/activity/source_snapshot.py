@@ -1,7 +1,9 @@
 """Bounded source inventory and raw Git tree digests."""
 from __future__ import annotations
 
+import ctypes
 import hashlib
+import ntpath
 import os
 import selectors
 import shutil
@@ -87,9 +89,29 @@ def private_namespace(environment: dict[str, str], prefix: str) -> Path:
 
 
 def git_environment() -> dict[str, str]:
-    return {"PATH": os.defpath, "LC_ALL": "C", "GIT_CONFIG_NOSYSTEM": "1",
-            "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_SYSTEM": os.devnull,
-            "GIT_TERMINAL_PROMPT": "0", "GIT_ALLOW_PROTOCOL": ""}
+    env = {"PATH": os.defpath, "LC_ALL": "C", "GIT_CONFIG_NOSYSTEM": "1",
+           "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_SYSTEM": os.devnull,
+           "GIT_TERMINAL_PROMPT": "0", "GIT_ALLOW_PROTOCOL": ""}
+    if sys.platform == "win32":
+        windows = _windows_directory()
+        env.update(SYSTEMROOT=windows, WINDIR=windows, PATH=ntpath.join(windows, "System32") + ";" + windows)
+    return env
+
+
+def _windows_directory() -> str:
+    """Obtain the Windows system directory from the OS, not the inherited environment."""
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    function = kernel.GetWindowsDirectoryW
+    function.argtypes = [ctypes.POINTER(ctypes.c_wchar), ctypes.c_uint]
+    function.restype = ctypes.c_uint
+    buffer = ctypes.create_unicode_buffer(32768)
+    length = function(buffer, len(buffer))
+    if not length or length >= len(buffer):
+        raise OSError(ctypes.get_last_error(), "could not determine the Windows directory")
+    value = buffer.value
+    if not ntpath.isabs(value) or not ntpath.splitdrive(value)[0]:
+        raise ValueError("invalid Windows directory")
+    return value
 
 
 def _git_package(alias: Path, root: Path) -> Path:
