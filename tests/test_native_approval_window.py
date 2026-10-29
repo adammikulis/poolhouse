@@ -30,6 +30,7 @@ def test_native_approval_window_protocol_and_literal_build(tmp_path):
     assert "pure protocol and lifecycle checks passed" in result.stdout
     symbols = subprocess.run(["/usr/bin/nm", "-g", str(literal)], check=True, capture_output=True, text=True, env=env)
     assert "ph_manifest_fixture" not in symbols.stdout
+    assert "ph_requirements_test_hook" not in symbols.stdout
     imports = subprocess.run(["/usr/bin/nm", "-u", str(literal)], check=True, capture_output=True, text=True, env=env)
     assert "xpc_connection_create" not in imports.stdout
     assert "xpc_connection_activate" not in imports.stdout

@@ -51,6 +51,20 @@ int main(void) {
         SecCodeCopyDesignatedRequirement(code, kSecCSDefaultFlags, &requirement) != errSecSuccess ||
         SecRequirementCopyData(requirement, kSecCSDefaultFlags, &bytes) != errSecSuccess ||
         SecCodeCopySigningInformation(code, kSecCSSigningInformation, &info) != errSecSuccess) return 1;
+    SecRequirementRef decoded = NULL;
+    if (!ph_native_requirement_decode(bytes, observed.requirement_digest, &decoded) || !decoded ||
+        ph_native_requirement_decode(bytes, observed.requirement_digest, &decoded)) return 13;
+    CFRelease(decoded); decoded = NULL;
+    uint8_t wrong_digest[32]; memcpy(wrong_digest, observed.requirement_digest, sizeof(wrong_digest));
+    wrong_digest[0] ^= 1;
+    if (ph_native_requirement_decode(bytes, wrong_digest, &decoded) || decoded) return 14;
+    memset(wrong_digest, 0, sizeof(wrong_digest));
+    if (ph_native_requirement_decode(bytes, wrong_digest, &decoded) || decoded) return 16;
+    static const uint8_t invalid_digest[32] = {172,152,254,179,240,93,158,212,84,8,38,167,17,74,156,186,
+                                                203,234,63,45,33,6,169,30,112,84,122,97,213,124,19,155};
+    CFDataRef invalid = CFDataCreate(NULL, (const UInt8 *)"bad", 3);
+    if (!invalid || ph_native_requirement_decode(invalid, invalid_digest, &decoded) || decoded) return 15;
+    CFRelease(invalid);
     CFDataRef unique = (CFDataRef)CFDictionaryGetValue(info, kSecCodeInfoUnique);
     if (!unique || CFDataGetLength(unique) != 20 || memcmp(CFDataGetBytePtr(unique), observed.code_directory, 20)) return 12;
     show(CFDataGetBytePtr(bytes), (size_t)CFDataGetLength(bytes));

@@ -16,6 +16,9 @@ typedef struct {
     bool publisher_present;
 } ph_native_identity_observation;
 bool ph_native_identity_observe(SecStaticCodeRef code, ph_native_identity_observation *output);
+/* Decode and check bytes against a separately supplied digest. Neither input
+ * authenticates an installation or gives authority. Output must start NULL. */
+bool ph_native_requirement_decode(CFDataRef bytes, const uint8_t expected_digest[32], SecRequirementRef *output);
 #ifdef TESTING
 bool ph_native_identity_test_digest(CFDataRef data, bool present, uint8_t output[32]);
 bool ph_native_identity_test_publisher(CFDictionaryRef information, ph_native_identity_observation *output);

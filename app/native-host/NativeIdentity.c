@@ -93,6 +93,28 @@ bool ph_native_identity_observe(SecStaticCodeRef code, ph_native_identity_observ
     return okay;
 }
 
+bool ph_native_requirement_decode(CFDataRef bytes, const uint8_t expected_digest[32], SecRequirementRef *output) {
+    if (!bytes || CFGetTypeID(bytes) != CFDataGetTypeID() || !expected_digest || !output || *output) return false;
+    CFIndex length = CFDataGetLength(bytes);
+    if (length <= 0 || (uint64_t)length > MAX_IDENTITY_BYTES) return false;
+    uint8_t nonzero = 0;
+    for (size_t index = 0; index < 32; index++) nonzero |= expected_digest[index];
+    if (!nonzero) return false;
+    static const char domain[] = "poolhouse/native-code/requirement/v1";
+    uint8_t observed[32];
+    if (!digest(bytes, true, domain, sizeof(domain), observed) || memcmp(observed, expected_digest, sizeof(observed))) return false;
+    SecRequirementRef requirement = NULL;
+    CFDataRef copied = NULL;
+    bool okay = SecRequirementCreateWithData(bytes, kSecCSDefaultFlags, &requirement) == errSecSuccess && requirement
+        && SecRequirementCopyData(requirement, kSecCSDefaultFlags, &copied) == errSecSuccess && copied
+        && CFDataGetLength(copied) == length
+        && !memcmp(CFDataGetBytePtr(copied), CFDataGetBytePtr(bytes), (size_t)length);
+    if (copied) CFRelease(copied);
+    if (!okay) { if (requirement) CFRelease(requirement); return false; }
+    *output = requirement;
+    return true;
+}
+
 #ifdef TESTING
 bool ph_native_identity_test_digest(CFDataRef data, bool present, uint8_t output[32]) {
     static const char domain[] = "poolhouse/native-code/entitlements/v1";
