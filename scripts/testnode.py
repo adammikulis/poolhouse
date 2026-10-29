@@ -40,7 +40,7 @@ CARGO_ENV = "DEV_TEST_CARGO_DIR"
 FIXTURES = ("tests/fixtures/phone-approval-vectors.json", "contracts/node/vectors.json",
             "contracts/node/native_boundaries/transcript-vectors.json")
 """Files of the repository, outside the Rust workspace, that a Rust test includes at compile time."""
-MEMBERS = ("Cargo.toml", "Cargo.lock", "poolhouse-node", "phone-governance-jni", "src-tauri", "poolhouse-authority",
+MEMBERS = ("Cargo.toml", "Cargo.lock", "poolhouse-node", "phone-governance-jni", "src-tauri", "poolhouse-authority", "poolhouse-manifest",
            "native-service/Inspection.swift", "native-service/Bridge.swift",
            "native-service/generated/PassiveServiceData.swift", "native-service/generated/PassiveServiceData.h")
 KEY_LENGTH = 20

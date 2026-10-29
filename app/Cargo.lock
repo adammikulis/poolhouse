@@ -2670,11 +2670,21 @@ dependencies = [
  "getrandom 0.3.4",
  "libc",
  "p256",
+ "poolhouse-manifest",
  "ring",
  "serde",
  "serde_json",
  "sha2",
  "tempfile",
+]
+
+[[package]]
+name = "poolhouse-manifest"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

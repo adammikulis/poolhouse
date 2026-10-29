@@ -1,4 +1,5 @@
 """Compile the inactive native approval executable through CPU admission."""
+import os
 import subprocess
 import sys
 import tempfile
@@ -19,6 +20,15 @@ def main() -> int:
 
 def compile_sources(output: Path, temporary: Path, testing: bool = False, env=None) -> None:
     source = Path(__file__).parent
+    rust_env = dict(os.environ if env is None else env)
+    rust_env["CARGO_TARGET_DIR"] = str(temporary / "authority-target")
+    rust_env["CARGO_BUILD_JOBS"] = "1"
+    import testnode
+    rust_env.setdefault("RUSTUP_HOME", str(testnode.account() / ".rustup"))
+    rust_env.setdefault("CARGO_HOME", str(testnode.account() / ".cargo"))
+    subprocess.run([testnode.tool("cargo"), "build", "--offline", "--locked", "-p", "poolhouse-manifest", "--lib"],
+                   cwd=ROOT / "app", env=rust_env, check=True, timeout=600)
+    authority = temporary / "authority-target" / "debug" / "libpoolhouse_manifest.a"
     objects = []
     flags = ["-DTESTING"] if testing else []
     for path in sorted(source.glob("*.c")):
@@ -28,7 +38,7 @@ def compile_sources(output: Path, temporary: Path, testing: bool = False, env=No
         objects.append(compiled)
     subprocess.run(["/usr/bin/swiftc", "-j", "1", "-parse-as-library", "-module-name", "PoolhouseApproval",
                     *(["-D", "TESTING", "-Xcc", "-DTESTING"] if testing else []), "-import-objc-header", str(source / "NativeSender.h"),
-                    *map(str, sorted(source.glob("*.swift"))), *map(str, objects), "-lbsm", "-o", str(output)],
+                    *map(str, sorted(source.glob("*.swift"))), *map(str, objects), str(authority), "-lbsm", "-lresolv", "-o", str(output)],
                    check=True, env=env, timeout=120)
 
 

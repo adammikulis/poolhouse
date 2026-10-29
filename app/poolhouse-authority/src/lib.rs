@@ -5,6 +5,8 @@ pub mod certificate;
 pub mod receipt;
 pub mod phone_candidate;
 
+pub use poolhouse_manifest::manifest;
+
 #[cfg(target_os = "macos")]
 #[allow(dead_code)]
 mod auth;

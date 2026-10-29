@@ -8,10 +8,15 @@ The reader takes a bounded snapshot and checks file identity and metadata before
 The installer owns publication and replacement of this public file. No immutable filesystem flag
 is assumed. SHA256 entries describe installer-verified artifact bytes, not a runtime path lookup.
 
-The manifest schema is version 1, owner_uid, authority_id, helper {service, cdhash, sha256}, and
-gui {cdhash, sha256}. The service must equal `app.poolhouse.authority`. Pins are lowercase hex;
-cdhash is 20 bytes and SHA256/authority identity are 32 bytes. The parser rejects duplicate or
-unknown fields, coercions, escapes, and oversized input. The installer emits this ASCII schema.
+The manifest schema is version 2. It binds owner, authority and installation identifiers,
+generation, receipt verification key, policy digest, purpose and rotation policy, and exact
+helper, GUI and node code pins. Each pin includes code-directory and artifact hashes plus
+publisher kind, publisher-key, requirement and entitlement digests. The helper service must
+equal `app.poolhouse.authority`. The shared Rust parser rejects duplicate or unknown fields,
+coercions, escapes, noncanonical hex and oversized input; the native UI uses its C interface.
+The policy digest describes the code and purpose/rotation fields; it does not authenticate
+the separately encoded installation, owner, generation or key. Protected bootstrap and the
+authority store must bind the complete manifest before it can be used as authority.
 
 `SecCodeCreateWithXPCMessage` receives the actual incoming dictionary. Dynamic
 `SecCodeCheckValidity` and signing-information unique cdhash checks establish code identity;

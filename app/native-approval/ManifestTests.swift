@@ -6,17 +6,49 @@ import XPC
 struct ManifestTests {
     static func run() throws {
         let cd = String(repeating: "1", count: 40), hash = String(repeating: "2", count: 64)
-        let json = "{\"version\":1,\"owner_uid\":501,\"authority_id\":\"\(hash)\",\"helper\":{\"service\":\"app.poolhouse.authority\",\"cdhash\":\"\(cd)\",\"sha256\":\"\(hash)\"},\"gui\":{\"cdhash\":\"\(cd)\",\"sha256\":\"\(hash)\"}}"
+        let install = String(repeating: "3", count: 64), publicKey = String(repeating: "4", count: 64)
+        let requirement = String(repeating: "5", count: 64), entitlements = String(repeating: "6", count: 64)
+        let purpose = String(repeating: "7", count: 64), rotation = String(repeating: "8", count: 64)
+        let publisher = String(repeating: "9", count: 64)
+        let policy = "6d4d6a0199d218c49fca231d29665755af64bab10f463eb43f442d3c16462473"
+        let pin = "\"cdhash\":\"\(cd)\",\"sha256\":\"\(hash)\",\"publisher_kind\":1,\"publisher_digest\":\"\(publisher)\",\"requirement_digest\":\"\(requirement)\",\"entitlements_digest\":\"\(entitlements)\""
+        let json = "{\"version\":2,\"owner_uid\":501,\"authority_id\":\"\(hash)\",\"installation_id\":\"\(install)\",\"generation\":1,\"receipt_algorithm\":\"ed25519\",\"receipt_public_key\":\"\(publicKey)\",\"policy_digest\":\"\(policy)\",\"purpose_policy\":\"\(purpose)\",\"rotation_policy\":\"\(rotation)\",\"helper\":{\"service\":\"app.poolhouse.authority\",\(pin)},\"gui\":{\(pin)},\"node\":{\(pin)}}"
+
         let manifest = try ManifestFields.decode(Data(json.utf8))
-        precondition(manifest.owner == 501 && manifest.helper.cdhash == cd && manifest.authority == hash)
+        precondition(manifest.owner == 501 && manifest.helper.cdhash == cd && manifest.authority == hash
+                     && manifest.installation == install && manifest.generation == 1 && manifest.receiptPublicKey == publicKey
+                     && manifest.node.cdhash == cd && manifest.policyDigest == policy)
+        let localPolicy = "cef90319d5a94f35a4c03eae9c306a39558dbd987ee984537c19dbfb9c0fc424"
+        let local = json.replacingOccurrences(of: "\"publisher_kind\":1", with: "\"publisher_kind\":2")
+                        .replacingOccurrences(of: policy, with: localPolicy)
+        let localManifest = try ManifestFields.decode(Data(local.utf8))
+        precondition(localManifest.helper.publisherKind == 2 && localManifest.policyDigest == localPolicy)
+        let last = json.replacingOccurrences(of: "\"generation\":1", with: "\"generation\":18446744073709551615")
+        let lastManifest = try ManifestFields.decode(Data(last.utf8))
+        precondition(lastManifest.generation == UInt64.max)
         func refused(_ body: () throws -> Void) { do { try body(); preconditionFailure("Accepted bad manifest") } catch {} }
-        for changed in [json.replacingOccurrences(of: "\"version\":1", with: "\"version\":1,\"version\":1"),
+        for changed in [json.replacingOccurrences(of: "\"version\":2", with: "\"version\":2,\"version\":2"),
                         json.replacingOccurrences(of: "\"owner_uid\":501", with: "\"owner_uid\":true"),
                         json.replacingOccurrences(of: "\"owner_uid\":501", with: "\"owner_uid\":0"),
+                        json.replacingOccurrences(of: "\"owner_uid\":501", with: "\"owner_uid\":4294967295"),
                         json.replacingOccurrences(of: "app.poolhouse.authority", with: "app.poolhouse.user-service"),
-                        json.replacingOccurrences(of: "\"version\":1", with: "\"version\":1.0"),
-                        json.replacingOccurrences(of: "\"version\":1", with: "\"version\":01"),
-                        json.replacingOccurrences(of: "\"version\":1", with: "\"version\":1,\"namespace\":\"user\""),
+                        json.replacingOccurrences(of: "\"version\":2", with: "\"version\":2.0"),
+                        json.replacingOccurrences(of: "\"version\":2", with: "\"version\":02"),
+                        json.replacingOccurrences(of: "\"version\":2", with: "\"version\":2,\"namespace\":\"user\""),
+                        json.replacingOccurrences(of: "\"generation\":1", with: "\"generation\":0"),
+                        json.replacingOccurrences(of: "\"generation\":1", with: "\"generation\":18446744073709551616"),
+                        json.replacingOccurrences(of: "\"generation\":1", with: "\"generation\":-1"),
+                        json.replacingOccurrences(of: "\"generation\":1", with: "\"generation\":true"),
+                        json.replacingOccurrences(of: "ed25519", with: "p256"),
+                        json.replacingOccurrences(of: "\"publisher_kind\":1", with: "\"publisher_kind\":2"),
+                        json.replacingOccurrences(of: "\"publisher_kind\":1", with: "\"publisher_kind\":0"),
+                        json.replacingOccurrences(of: "\"publisher_kind\":1", with: "\"publisher_kind\":3"),
+                        json.replacingOccurrences(of: publisher, with: String(repeating: "0", count: 64)),
+                        json.replacingOccurrences(of: requirement, with: String(repeating: "9", count: 64)),
+                        json.replacingOccurrences(of: purpose, with: String(repeating: "0", count: 64)),
+                        json.replacingOccurrences(of: policy, with: String(repeating: "0", count: 64)),
+                        json.replacingOccurrences(of: publicKey, with: String(repeating: "0", count: 64)),
+                        json.replacingOccurrences(of: install, with: String(repeating: "0", count: 64)),
                         json.replacingOccurrences(of: cd, with: String(repeating: "A", count: 40)),
                         json + "{}", String(repeating: " ", count: 16385)] {
             refused { _ = try ManifestFields.decode(Data(changed.utf8)) }

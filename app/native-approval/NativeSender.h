@@ -3,6 +3,25 @@
 #include <stdint.h>
 #include <xpc/xpc.h>
 bool ph_manifest_read(uint8_t *bytes, size_t capacity, size_t *length);
+typedef struct {
+    uint8_t cdhash[20], sha256[32], publisher_kind;
+    uint8_t publisher_digest[32], requirement_digest[32], entitlements_digest[32];
+} ph_manifest_pin;
+typedef struct {
+    uint32_t owner_uid;
+    uint64_t generation;
+    uint8_t authority_id[32], installation_id[32], receipt_public_key[32];
+    uint8_t policy_digest[32], purpose_policy[32], rotation_policy[32];
+    ph_manifest_pin helper, gui, node;
+} ph_manifest_values;
+_Static_assert(sizeof(ph_manifest_pin) == 149, "manifest pin ABI");
+_Static_assert(sizeof(ph_manifest_values) == 656, "manifest result ABI");
+_Static_assert(offsetof(ph_manifest_values, generation) == 8, "manifest generation ABI");
+_Static_assert(offsetof(ph_manifest_values, helper) == 208, "manifest helper ABI");
+_Static_assert(offsetof(ph_manifest_values, gui) == 357, "manifest GUI ABI");
+_Static_assert(offsetof(ph_manifest_values, node) == 506, "manifest node ABI");
+/* Parse only. The caller must authenticate the protected source separately. */
+bool ph_native_manifest_decode(const uint8_t *bytes, size_t length, ph_manifest_values *output);
 #define PH_REQUIREMENT_LIMIT 16384
 typedef struct {
     uint8_t bytes[3][PH_REQUIREMENT_LIMIT];
