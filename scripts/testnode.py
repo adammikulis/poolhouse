@@ -117,10 +117,32 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def key_of(app: Path, files: list[str], toolchain: str) -> str:
-    """The key of these workspace files built by this compiler."""
-    rows = [f"{name} {digest(app / name)}" for name in files]
-    return hashlib.sha256("\n".join([*rows, toolchain]).encode()).hexdigest()[:KEY_LENGTH]
+def key_of(app: Path, files: list[str], toolchain: str, *, salts: tuple[str, ...] = ()) -> str:
+    """Hash a versioned, unambiguous inventory and compiler identity."""
+    encoded = [(os.fsencode(name), name) for name in files]
+    if (len({name for name, _ in encoded}) != len(encoded)
+            or any(not raw or b"\0" in raw or Path(name).is_absolute() or any(part in ("", ".", "..") for part in name.split("/"))
+                   or (os.name == "nt" and (Path(name).drive or "\\" in name)) for raw, name in encoded)):
+        raise BuildError("Invalid or duplicate native source path")
+    encoded.sort(key=lambda item: item[0])
+    value = hashlib.sha256(b"poolhouse-native-source-key-v2\0")
+    value.update(len(encoded).to_bytes(8, "big"))
+    for raw, name in encoded:
+        info = (app / name).lstat()
+        value.update(len(raw).to_bytes(8, "big"))
+        value.update(raw)
+        value.update((info.st_mode & 0o170111).to_bytes(4, "big"))
+        value.update(info.st_size.to_bytes(8, "big"))
+        value.update(bytes.fromhex(digest(app / name)))
+    identity = os.fsencode(toolchain)
+    value.update(len(identity).to_bytes(8, "big"))
+    value.update(identity)
+    value.update(len(salts).to_bytes(8, "big"))
+    for salt in salts:
+        identity = os.fsencode(salt)
+        value.update(len(identity).to_bytes(8, "big"))
+        value.update(identity)
+    return value.hexdigest()[:KEY_LENGTH]
 
 
 def stage(app: Path, files: list[str], work: Path) -> None:
@@ -199,7 +221,8 @@ def shared_build(app: Path, *, root: Path | None = None, source_key_extra: str =
     App-only native toolchain metadata may salt the source key without splitting Rust dependency targets."""
     toolchain = version("rustc", tool("rustc"), ["--version", "--verbose"])
     files = sources(app)
-    key = key_of(app, files, toolchain + ("\n" + source_key_extra if source_key_extra else ""))
+    salts = (("extra:" + source_key_extra,) if source_key_extra else ())
+    key = key_of(app, files, toolchain, salts=salts)
     locked = hashlib.sha256(b"\n".join([(app / "Cargo.lock").read_bytes(), toolchain.encode()])).hexdigest()[:KEY_LENGTH]
     base = root or cargo_root()
     staged, target = base / "workspaces" / key / "app", base / "targets" / locked
