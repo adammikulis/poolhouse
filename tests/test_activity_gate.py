@@ -50,7 +50,8 @@ def pytest_in(_root: Path) -> list[str]:
 
 def recorded(repo: Path, status: int = 0) -> bool:
     junit = repo.parent / "result.xml"
-    junit.write_text(f'<testsuite tests="{1 if status else 2}" failures="{status}"/>')
+    junit.write_text('<testsuite tests="1" failures="1"><testcase><failure/></testcase></testsuite>' if status else
+                     '<testsuite tests="2" failures="0"><testcase/><testcase/></testsuite>')
     return gate.record_run(gate.Run(repo, "full", pytest_in(repo), junit, status, 0.1))
 
 
@@ -161,7 +162,7 @@ def test_runner_writes_local_evidence_without_user_activity(repo, monkeypatch, c
 
     def execute(command, workers, *, env):
         junit = Path(next(x.split("=", 1)[1] for x in command if x.startswith("--junitxml=")))
-        junit.write_text('<testsuite tests="3" failures="1"/>')
+        junit.write_text('<testsuite tests="3" failures="1"><testcase/><testcase/><testcase><failure/></testcase></testsuite>')
         return 1
 
     def forbidden(*args, **kwargs):
@@ -220,3 +221,51 @@ def test_runner_refuses_pass_when_source_changes_during_execution(repo, monkeypa
         assert payload["run"]["tree_after"] != before
     finally:
         artifact.unlink(missing_ok=True)
+
+
+def test_runner_does_not_report_success_without_a_valid_junit(repo, monkeypatch, capsys):
+    runner = script()
+    runner.ROOT = repo
+    monkeypatch.setattr(runner.testslots_runner, "run_pytest", lambda *_args, **_kwargs: 0)
+    assert runner.run(runner.pytest_command(1, "test_a.py"), tier="quick") != 0
+    captured = capsys.readouterr()
+    artifact = Path(captured.out.split("test: evidence ", 1)[1].strip())
+    try:
+        assert json.loads(artifact.read_text())["outcome"] != "pass"
+    finally:
+        artifact.unlink(missing_ok=True)
+
+
+@pytest.mark.parametrize("xml", [
+    '<testsuite tests="1" failures="1"/>',
+    '<testsuite tests="1" errors="1"/>',
+    '<testsuite tests="0" failures="0"/>',
+    '<testsuites><testsuite tests="1" failures="0"><testcase/></testsuite>'
+    '<testsuite tests="1" failures="1"><testcase><failure/></testcase></testsuite></testsuites>',
+    '<testsuite tests="1" failures="0"><testcase><failure/></testcase></testsuite>',
+])
+def test_zero_exit_cannot_override_a_failing_or_empty_junit(repo, monkeypatch, capsys, xml):
+    runner = script()
+    runner.ROOT = repo
+
+    def execute(command, workers, *, env):
+        junit = Path(next(x.split("=", 1)[1] for x in command if x.startswith("--junitxml=")))
+        junit.write_text(xml)
+        return 0
+
+    monkeypatch.setattr(runner.testslots_runner, "run_pytest", execute)
+    assert runner.run(runner.pytest_command(1, "test_a.py"), tier="quick") != 0
+    captured = capsys.readouterr()
+    artifact = Path(captured.out.split("test: evidence ", 1)[1].strip())
+    try:
+        assert json.loads(artifact.read_text())["outcome"] != "pass"
+    finally:
+        artifact.unlink(missing_ok=True)
+
+
+def test_all_skipped_is_not_recorded_as_a_passing_execution(tmp_path):
+    junit = tmp_path / "result.xml"
+    junit.write_text('<testsuite tests="1" failures="0" skipped="1"><testcase><skipped/></testcase></testsuite>')
+    artifact = tmp_path / "evidence.json"
+    gate.record_run(gate.Run(tmp_path, "all", ["pytest"], junit, 0, 0.1), artifact)
+    assert json.loads(artifact.read_text())["outcome"] == "skipped"

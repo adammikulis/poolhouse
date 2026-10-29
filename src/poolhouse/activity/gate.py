@@ -23,7 +23,7 @@ from poolhouse.activity import writer
 from poolhouse.activity.schema import Entry, Said, build
 from poolhouse.files import write_json
 
-__all__ = ["Run", "evidence", "record_run", "tree_hash"]
+__all__ = ["Run", "evidence", "read_counts", "record_run", "tree_hash"]
 
 
 def _plain_index(root: Path) -> bool:
@@ -58,14 +58,38 @@ def tree_hash(root: Path) -> str:
         return done.stdout.strip()
 
 
-def _counts(junit: Path) -> dict[str, int | float]:
-    node = ET.parse(junit).getroot()  # noqa: S314 - the file pytest just wrote
-    suite = node if node.tag == "testsuite" else node.find("testsuite")
-    attrs = suite.attrib if suite is not None else {}
-    total, bad = int(attrs.get("tests", 0)), int(attrs.get("failures", 0))
-    errors, skipped = int(attrs.get("errors", 0)), int(attrs.get("skipped", 0))
-    return {"passed": total - bad - errors - skipped, "failed": bad, "errors": errors,
-            "skipped": skipped}
+def read_counts(junit: Path) -> dict[str, int]:
+    try:
+        node = ET.parse(junit).getroot()  # noqa: S314 - the file pytest just wrote
+    except ET.ParseError as error:
+        raise ValueError("invalid junit document") from error
+    suites = [node] if node.tag == "testsuite" else list(node) if node.tag == "testsuites" else []
+    if not suites or any(suite.tag != "testsuite" or suite.find("testsuite") is not None for suite in suites):
+        raise ValueError("missing junit test counts")
+    result = {"passed": 0, "failed": 0, "errors": 0, "skipped": 0}
+    for suite in suites:
+        attrs = suite.attrib
+        if "tests" not in attrs:
+            raise ValueError("missing junit test counts")
+        total, bad = int(attrs["tests"]), int(attrs.get("failures", 0))
+        errors, skipped = int(attrs.get("errors", 0)), int(attrs.get("skipped", 0))
+        if min(total, bad, errors, skipped) < 0 or bad + errors + skipped > total:
+            raise ValueError("invalid junit test counts")
+        cases = suite.findall("testcase")
+        seen = {"failure": 0, "error": 0, "skipped": 0}
+        for case in cases:
+            outcomes = [child.tag for child in case if child.tag in seen]
+            if len(outcomes) > 1:
+                raise ValueError("ambiguous junit testcase outcome")
+            if outcomes:
+                seen[outcomes[0]] += 1
+        if len(cases) != total or (seen["failure"], seen["error"], seen["skipped"]) != (bad, errors, skipped):
+            raise ValueError("junit testcase outcomes do not match suite counts")
+        result["passed"] += total - bad - errors - skipped
+        result["failed"] += bad
+        result["errors"] += errors
+        result["skipped"] += skipped
+    return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,13 +109,15 @@ def record_run(run: Run, artifact: Path | None = None, *, destination=None, boun
     """Record one pytest run: tree, tier, a hash of the command, counts and duration."""
     root, tier, exit_code = run.root, run.tier, run.exit_code
     try:
-        counts = _counts(run.junit)
+        counts = read_counts(run.junit)
     except (OSError, ET.ParseError, ValueError):
         counts = {}
     tree = run.tree or tree_hash(root)
     words = [w for w in run.command if not w.startswith("--junitxml") and not w.startswith("-n")]
     digest = hashlib.sha256(" ".join(words).encode()).hexdigest()[:16]
-    said: Said = {"subject": f"tree:{tree[:12]}", "outcome": "pass" if exit_code == 0 else "fail",
+    clean = bool(counts) and sum(counts.values()) > 0 and not counts["failed"] and not counts["errors"]
+    outcome = ("pass" if counts["passed"] else "skipped") if exit_code == 0 and clean else "fail"
+    said: Said = {"subject": f"tree:{tree[:12]}", "outcome": outcome,
                   "refs": {"tree": tree, "command": digest, "tier": tier},
                   "meta": {**counts, "seconds": round(run.seconds, 1), "exit": exit_code}}
     if artifact is not None:
