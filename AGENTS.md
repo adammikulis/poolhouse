@@ -11,6 +11,7 @@ Keep the requested outcome and order fixed. Complete it in the installed setup w
 - Security/access designs require a non-author attack pass before implementation and independent review before landing.
 - Keep real people's identifying information out of the repository, except legally required attribution.
 - Diagnose failures before retrying. Keep checks intact; budgets only fall. Minimize user steps and preserve authorization.
+- Fix root causes with complete refactors. Remove duplicate implementations; do not layer patches, shims, redirects, compatibility paths or migrations for old pools or state.
 - Workspace notifications are advisory and cannot block ordinary development. When coordinating, read your own inbox at session start and task boundaries.
 
 ## Load when needed
