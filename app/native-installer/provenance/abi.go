@@ -8,6 +8,7 @@ package main
 typedef struct { const void *data; uint64_t size; } ph_bytes;
 typedef struct { int64_t version; uint8_t digest[32]; } ph_version;
 typedef struct {
+ uint32_t version;
  ph_bytes bundle, oidc_token, prior_root, roots[32], timestamp, snapshot, targets, target;
  uint32_t root_count;
  ph_bytes jwks;
@@ -22,6 +23,7 @@ typedef struct {
  int stage_fd, archive_fd;
 } ph_provenance_input;
 typedef struct {
+ uint32_t version;
  uint8_t artifact_sha256[32], archive_sha256[32], installation[32], head[32], policy_digest[32], nonce[32], target_sha256[32], jwks_sha256[32], oidc_key_sha256[32];
  ph_version root_version, timestamp_version, snapshot_version, targets_version;
  uint64_t generation, device, inode, size, archive_device, archive_inode, archive_size, artifact_id;
@@ -72,10 +74,18 @@ func setVersion(dst *C.ph_version, v trustVersion) {
 // checkpoint before treating the candidate as an effect.
 //
 //export PhProvenanceVerify
-func PhProvenanceVerify(input *C.ph_provenance_input, output *C.ph_provenance_result) (status C.int) {
-	if output == nil {
+func PhProvenanceVerify(input *C.ph_provenance_input, inputSize C.uint64_t, output *C.ph_provenance_result, outputSize C.uint64_t) (status C.int) {
+	if output == nil || uint64(outputSize) != uint64(unsafe.Sizeof(C.ph_provenance_result{})) || uintptr(unsafe.Pointer(output))%unsafe.Alignof(C.ph_provenance_result{}) != 0 {
 		return 0
 	}
+	if input != nil && overlaps(unsafe.Pointer(input), unsafe.Sizeof(C.ph_provenance_input{}), unsafe.Pointer(output), unsafe.Sizeof(C.ph_provenance_result{})) {
+		return 0
+	}
+	if input == nil || uint64(inputSize) != uint64(unsafe.Sizeof(C.ph_provenance_input{})) || uintptr(unsafe.Pointer(input))%unsafe.Alignof(C.ph_provenance_input{}) != 0 {
+		*output = C.ph_provenance_result{}
+		return 0
+	}
+	snap := *input
 	*output = C.ph_provenance_result{}
 	defer func() {
 		if recover() != nil {
@@ -83,12 +93,8 @@ func PhProvenanceVerify(input *C.ph_provenance_input, output *C.ph_provenance_re
 			status = 0
 		}
 	}()
-	if input == nil {
-		return 0
-	}
-	snap := *input
 	input = &snap
-	if input.generation == 0 || input.previous_time <= 0 || input.trusted_time < input.previous_time || input.root_count > 32 {
+	if input.version != 1 || input.generation == 0 || input.previous_time <= 0 || input.trusted_time < input.previous_time || input.root_count > 32 {
 		return 0
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -204,6 +210,7 @@ func PhProvenanceVerify(input *C.ph_provenance_input, output *C.ph_provenance_re
 	setVersion(&output.timestamp_version, trust.next.timestamp)
 	setVersion(&output.snapshot_version, trust.next.snapshot)
 	setVersion(&output.targets_version, trust.next.targets)
+	output.version = 1
 	output.generation = input.generation
 	output.device = C.uint64_t(stageAfter.Dev)
 	output.inode = C.uint64_t(stageAfter.Ino)
@@ -260,4 +267,12 @@ func openStage(fd int) (*os.File, unix.Stat_t, bool) {
 		return nil, st, false
 	}
 	return file, st, true
+}
+
+// Pointers must refer to stable, private service-owned memory; this range check
+// catches aliasing/overflow but cannot validate a foreign address.
+func overlaps(a unsafe.Pointer, as uintptr, b unsafe.Pointer, bs uintptr) bool {
+	x, y := uintptr(a), uintptr(b)
+	max := ^uintptr(0)
+	return x > max-as || y > max-bs || (x < y+bs && y < x+as)
 }
