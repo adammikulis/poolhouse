@@ -3,6 +3,7 @@
 
 pub mod certificate;
 pub mod receipt;
+pub mod phone_candidate;
 
 #[cfg(target_os = "macos")]
 #[allow(dead_code)]
