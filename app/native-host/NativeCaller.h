@@ -14,4 +14,7 @@ typedef struct {
     uint32_t asid;
 } ph_native_caller_policy;
 bool ph_native_caller_matches(const ph_mach_message *message, const ph_native_caller_policy *policy);
+#ifdef TESTING
+bool ph_native_caller_test_status(CFTypeRef value);
+#endif
 #endif

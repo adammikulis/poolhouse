@@ -26,6 +26,22 @@ int main(void) {
         words != TASK_AUDIT_TOKEN_COUNT) return 1;
     policy.requirement = requirement; policy.euid = audit_token_to_euid(token);
     policy.auid = audit_token_to_auid(token); policy.asid = audit_token_to_asid(token);
+    CFDictionaryRef dynamic = NULL; int64_t status = 0;
+    if (SecCodeCopySigningInformation(self, kSecCSDynamicInformation, &dynamic) != errSecSuccess || !dynamic) return 18;
+    CFNumberRef status_value = (CFNumberRef)CFDictionaryGetValue(dynamic, kSecCodeInfoStatus);
+    if (!status_value || !CFNumberGetValue(status_value, kCFNumberSInt64Type, &status) ||
+        !(status & kSecCodeStatusValid) || (status & kSecCodeStatusDebugged)) return 19;
+    CFRelease(dynamic);
+#ifdef TESTING
+    int64_t fake = kSecCodeStatusValid | kSecCodeStatusDebugged;
+    CFNumberRef number = CFNumberCreate(NULL, kCFNumberSInt64Type, &fake);
+    if (!number || ph_native_caller_test_status(number) || ph_native_caller_test_status(CFSTR("bad")) ||
+        ph_native_caller_test_status(NULL)) return 20;
+    CFRelease(number);
+    fake = kSecCodeStatusValid; number = CFNumberCreate(NULL, kCFNumberSInt64Type, &fake);
+    if (!number || !ph_native_caller_test_status(number)) return 21;
+    CFRelease(number);
+#endif
     mach_port_t port = MACH_PORT_NULL;
     if (mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &port) != KERN_SUCCESS ||
         mach_port_insert_right(mach_task_self(), port, port, MACH_MSG_TYPE_MAKE_SEND) != KERN_SUCCESS) return 2;
@@ -90,6 +106,15 @@ def test_real_sender_and_explicit_policy_bindings(tmp_path):
     out, err = _execute([str(binary)], tmp_path, "run", environment, (15, 65536))
     assert out == "actual sender matched test policy; changed bindings refused\n"
     assert not err
+    testing = tmp_path / "testing"
+    _execute([compiler, "-isysroot", sdk, "-fno-modules", "-fno-implicit-modules", "-std=c11", "-Wall", "-Wextra",
+              "-Werror", "-DTESTING", "-I", str(root / "app/native-host"), *(str(path) for path in sources),
+              str(fixture), "-lbsm", "-framework", "Security", "-framework", "CoreFoundation", "-o", str(testing)],
+             tmp_path, "compile-testing", environment, (30, 1048576))
+    _execute(["/usr/bin/codesign", "--force", "--sign", "-", "--options", "runtime", str(testing)],
+             tmp_path, "sign-testing", environment, (30, 1048576))
+    test_out, test_err = _execute([str(testing)], tmp_path, "run-testing", environment, (15, 65536))
+    assert test_out == out and not test_err
     unhardened = tmp_path / "unhardened"
     _execute([compiler, "-isysroot", sdk, "-fno-modules", "-fno-implicit-modules", "-std=c11", "-Wall", "-Wextra",
               "-Werror", "-DEXPECT_UNHARDENED", "-I", str(root / "app/native-host"), *(str(path) for path in sources),
