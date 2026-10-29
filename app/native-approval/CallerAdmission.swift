@@ -35,7 +35,8 @@ struct ChallengeFields {
               let value = xpc_dictionary_get_value(message, "card"), xpc_get_type(value) == XPC_TYPE_DATA else { throw ApprovalFailure.invalid }
         let count = xpc_data_get_length(value)
         guard count > 0, count <= 98304, let bytes = xpc_data_get_bytes_ptr(value) else { throw ApprovalFailure.invalid }
-        let object = try JSONSerialization.jsonObject(with: Data(bytes: bytes, count: count))
+        var parser = try StrictCardJSON(Data(bytes: bytes, count: count))
+        let object = try parser.document()
         return try ApprovalCard.decode(object, requestedID: requestID, now: now)
     }
 }
