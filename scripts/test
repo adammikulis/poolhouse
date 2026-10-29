@@ -79,7 +79,7 @@ import testtime
 
 from poolhouse.activity import reuse
 from poolhouse.devbranch import development_branch
-from poolhouse.activity.gate import Run, record_run, tree_hash
+from poolhouse.activity.gate import Run, read_counts, record_run, tree_hash
 from poolhouse.board.tasks import Tasks
 from poolhouse.workspace import testboard, testruns
 
@@ -242,6 +242,14 @@ def execute_run(command, environment, tier, record: OutputRecord):
         report_run(record, "test: source tree changed during the run; the result does not describe the tree "
                    "(changed now: " + ", ".join(line[3:] for line in moved[:5] if line) + ")")
         status = 4
+    if status == 0:
+        try:
+            counts = read_counts(junit)
+            if not sum(counts.values()) or counts["failed"] or counts["errors"]:
+                raise ValueError("junit does not describe a passing run")
+        except (OSError, ValueError):
+            report_run(record, "test: the run produced no valid junit result")
+            status = 4
     wall = time.monotonic() - began
     phases = testphases.read(phases_file)
     phases_file.unlink(missing_ok=True)
