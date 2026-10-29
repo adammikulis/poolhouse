@@ -1,4 +1,4 @@
-package provenance
+package main
 
 import (
 	"bytes"

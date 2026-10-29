@@ -1,6 +1,6 @@
 // Package provenance verifies a Sigstore attestation; it does not authorize installation.
 // Its root and policy must come from an independently authenticated protected installer.
-package provenance
+package main
 
 import (
 	"crypto/sha256"
