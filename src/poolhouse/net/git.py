@@ -3,6 +3,7 @@ names it) is spoken, hooks and submodules are off, and the commit that came down
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import shutil
@@ -122,6 +123,10 @@ def blobs(digests: list[str], *, cwd: Path, limit: int, total: int) -> dict[str,
     identifiers = list(dict.fromkeys(digests))
     if not identifiers:
         return {}
+    object_format = run(["rev-parse", "--show-object-format"], cwd=cwd).stdout.strip()
+    lengths = {"sha1": 40, "sha256": 64}
+    if object_format not in lengths or any(len(value) != lengths[object_format] for value in identifiers):
+        raise GitFailed("Git source object identifiers do not match the repository format")
     query = ("\n".join(identifiers) + "\n").encode()
     hooks = staging_dir() / "no-hooks"
     env = environment("", hooks)
@@ -149,7 +154,14 @@ def blobs(digests: list[str], *, cwd: Path, limit: int, total: int) -> dict[str,
         if newline < offset or done.stdout[offset:newline] != expected:
             raise GitFailed("Git source blob changed while reading")
         offset = newline + 1
-        result[digest] = done.stdout[offset:offset + size]
+        content = done.stdout[offset:offset + size]
+        prefix = f"blob {size}\0".encode()
+        hasher = hashlib.sha1(usedforsecurity=False) if object_format == "sha1" else hashlib.sha256()
+        hasher.update(prefix)
+        hasher.update(content)
+        if hasher.hexdigest() != digest:
+            raise GitFailed("Git source blob does not match its object identity")
+        result[digest] = content
         offset += size
         if done.stdout[offset:offset + 1] != b"\n":
             raise GitFailed("Truncated Git source blob")
