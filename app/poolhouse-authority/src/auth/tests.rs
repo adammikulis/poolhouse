@@ -81,6 +81,23 @@ fn form() -> ExternalForm {
 }
 
 #[test]
+fn person_approval_is_bound_to_exact_phone_effect() {
+    let effect = crate::receipt::PhoneBootstrapReceipt { authority: [1;32], installation: [2;32], installation_generation: 3,
+        request: [4;32], nonce: [5;32], transcript: [6;32], node: [7;32], tls: [8;32], phone_key: [9;32], offer: [10;32],
+        token_hash: [11;32], phone_id: [12;16], offer_expires: 200, scope: crate::receipt::Scope::Unfounded,
+        authority_head: [13;32], authority_generation: 14, prepared_envelope_head: [15;32], prepared_envelope_generation: 16, committed_at: 100 };
+    let mut bound = context();
+    bound.digest = effect.decision_digest().unwrap(); bound.head = effect.prepared_envelope_head;
+    bound.generation = effect.prepared_envelope_generation; bound.nonce = effect.nonce; bound.expires_at = effect.offer_expires;
+    assert!(PersonApproval(bound.clone()).matches_phone_bootstrap(&effect, 100));
+    let mut changed = effect.clone(); changed.phone_id[0] ^= 1;
+    assert!(!PersonApproval(bound.clone()).matches_phone_bootstrap(&changed, 100));
+    let mut changed = effect.clone(); changed.authority_head[0] ^= 1;
+    assert!(!PersonApproval(bound.clone()).matches_phone_bootstrap(&changed, 100));
+    assert!(!PersonApproval(bound).matches_phone_bootstrap(&effect, 200));
+}
+
+#[test]
 fn exact_prepared_policy_and_known_normalization_only() {
     let mut value = policy::prepared(&policy::RuleIdentity::fixture());
     assert!(policy::verify(&value, &policy::RuleIdentity::fixture()).is_ok());

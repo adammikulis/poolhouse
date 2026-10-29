@@ -14,7 +14,15 @@ struct Transcript {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Verified {
-    pub digest: [u8; 32], pub key: [u8; 65], pub offer: [u8; 32], pub expires: u64,
+    digest: [u8; 32], key: [u8; 65], offer: [u8; 32], node: [u8; 32], tls: [u8; 32], expires: u64,
+}
+impl Verified {
+    pub fn digest(&self) -> [u8; 32] { self.digest }
+    pub fn key(&self) -> &[u8; 65] { &self.key }
+    pub fn offer(&self) -> [u8; 32] { self.offer }
+    pub fn node(&self) -> [u8; 32] { self.node }
+    pub fn tls(&self) -> [u8; 32] { self.tls }
+    pub fn expires(&self) -> u64 { self.expires }
 }
 
 fn hex(s: &str) -> Option<Vec<u8>> {
@@ -61,5 +69,6 @@ pub fn verify(bytes: &[u8], signature: &str, node: &str, tls: &str) -> Result<Ve
         || key[0] != 4 || push.len() != 65 || push[0] != 4 { return Err(()); }
     let sig = hex(signature).ok_or(())?;
     if !canonical_p256(&sig) || ring::signature::UnparsedPublicKey::new(&ring::signature::ECDSA_P256_SHA256_ASN1, key).verify(bytes, &sig).is_err() { return Err(()); }
-    Ok(Verified { digest: Sha256::digest(bytes).into(), key, offer, expires: t.expires })
+    Ok(Verified { digest: Sha256::digest(bytes).into(), key, offer,
+        node: hex(node).ok_or(())?.try_into().map_err(|_| ())?, tls: hex(tls).ok_or(())?.try_into().map_err(|_| ())?, expires: t.expires })
 }

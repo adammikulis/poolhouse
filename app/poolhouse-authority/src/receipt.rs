@@ -5,14 +5,16 @@
 //! the current offer, candidate, authority and governance before committing.
 
 use ed25519_dalek::{Signature, VerifyingKey};
+use sha2::{Digest, Sha256};
 
-const DOMAIN: &[u8] = b"poolhouse/native-authority/receipt/v1\0";
+const DOMAIN: &[u8] = b"poolhouse/native-authority/receipt/v4\0";
+const DECISION_DOMAIN: &[u8] = b"poolhouse/native-authority/phone-decision/v1\0";
 type Hash = [u8; 32];
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Listing { Unlisted, Active, Pending }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Scope {
     Unfounded,
     Governed { anchor: Hash, head: Hash, listing: Listing },
@@ -31,10 +33,17 @@ pub struct PhoneBootstrapReceipt {
     pub tls: Hash,
     pub phone_key: Hash,
     pub offer: Hash,
+    /// SHA-256 of the exact 32-byte enrollment token held in protected custody.
+    pub token_hash: Hash,
+    /// Fresh service-issued identifier, rendered as `ph-` followed by lowercase hex.
+    pub phone_id: [u8; 16],
     pub offer_expires: u64,
     pub scope: Scope,
     pub authority_head: Hash,
     pub authority_generation: u64,
+    /// Protected envelope after durable prepare and before the final commit CAS.
+    pub prepared_envelope_head: Hash,
+    pub prepared_envelope_generation: u64,
     pub committed_at: u64,
 }
 
@@ -42,10 +51,33 @@ pub struct PhoneBootstrapReceipt {
 pub enum ReceiptError { Invalid, Signature }
 
 impl PhoneBootstrapReceipt {
-    fn validate(&self) -> Result<(), ReceiptError> {
+    /// Canonical public spelling of this service-issued phone identifier.
+    pub fn phone_id_text(&self) -> Result<String, ReceiptError> {
+        if self.phone_id == [0; 16] { return Err(ReceiptError::Invalid); }
+        let mut text = String::with_capacity(35);
+        text.push_str("ph-");
+        for byte in self.phone_id { use std::fmt::Write; let _ = write!(text, "{byte:02x}"); }
+        Ok(text)
+    }
+
+    /// Parse exactly the canonical spelling; no alternate encodings are accepted.
+    pub fn parse_phone_id(text: &str) -> Result<[u8; 16], ReceiptError> {
+        let bytes = text.as_bytes();
+        if bytes.len() != 35 || &bytes[..3] != b"ph-" { return Err(ReceiptError::Invalid); }
+        fn nibble(byte: u8) -> Option<u8> { match byte { b'0'..=b'9' => Some(byte - b'0'), b'a'..=b'f' => Some(byte - b'a' + 10), _ => None } }
+        let mut out = [0u8; 16];
+        for (index, byte) in out.iter_mut().enumerate() {
+            *byte = nibble(bytes[3 + 2 * index]).ok_or(ReceiptError::Invalid)? << 4
+                | nibble(bytes[4 + 2 * index]).ok_or(ReceiptError::Invalid)?;
+        }
+        if out == [0; 16] { return Err(ReceiptError::Invalid); }
+        Ok(out)
+    }
+
+    fn validate_effect(&self) -> Result<(), ReceiptError> {
         if [self.authority, self.installation, self.request, self.nonce, self.transcript,
-            self.node, self.tls, self.phone_key, self.offer].iter().any(|value| *value == [0; 32])
-            || self.installation_generation == 0 || self.committed_at == 0 || self.committed_at >= self.offer_expires {
+            self.node, self.tls, self.phone_key, self.offer, self.token_hash, self.prepared_envelope_head].iter().any(|value| *value == [0; 32])
+            || self.phone_id == [0; 16] || self.installation_generation == 0 || self.prepared_envelope_generation == 0 || self.offer_expires == 0 {
             return Err(ReceiptError::Invalid);
         }
         if let Scope::Governed { anchor, head, .. } = &self.scope {
@@ -54,11 +86,28 @@ impl PhoneBootstrapReceipt {
         Ok(())
     }
 
+    fn validate(&self) -> Result<(), ReceiptError> {
+        self.validate_effect()?;
+        if self.committed_at == 0 || self.committed_at >= self.offer_expires { return Err(ReceiptError::Invalid); }
+        Ok(())
+    }
+
+    /// Digest the complete immutable person decision before commit time is known.
+    /// This is not a person approval or proof of an operating-system interaction.
+    pub fn decision_digest(&self) -> Result<Hash, ReceiptError> {
+        self.validate_effect()?;
+        Ok(Sha256::digest(self.fields(DECISION_DOMAIN, false)).into())
+    }
+
     /// Canonical domain-separated bytes, suitable for an independently held signer.
     pub fn encode(&self) -> Result<Vec<u8>, ReceiptError> {
         self.validate()?;
+        Ok(self.fields(DOMAIN, true))
+    }
+
+    fn fields(&self, domain: &[u8], include_commit_time: bool) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(512);
-        bytes.extend_from_slice(DOMAIN);
+        bytes.extend_from_slice(domain);
         bytes.extend_from_slice(&self.authority);
         bytes.extend_from_slice(&self.installation);
         bytes.extend_from_slice(&self.installation_generation.to_be_bytes());
@@ -78,8 +127,12 @@ impl PhoneBootstrapReceipt {
         }
         bytes.extend_from_slice(&self.authority_head);
         bytes.extend_from_slice(&self.authority_generation.to_be_bytes());
-        bytes.extend_from_slice(&self.committed_at.to_be_bytes());
-        Ok(bytes)
+        bytes.extend_from_slice(&self.prepared_envelope_head);
+        bytes.extend_from_slice(&self.prepared_envelope_generation.to_be_bytes());
+        if include_commit_time { bytes.extend_from_slice(&self.committed_at.to_be_bytes()); }
+        bytes.extend_from_slice(&self.token_hash);
+        bytes.extend_from_slice(&self.phone_id);
+        bytes
     }
 
     /// Parse exactly one canonical receipt. Unknown variants and trailing bytes refuse.
@@ -102,10 +155,13 @@ impl PhoneBootstrapReceipt {
             }
             _ => return Err(ReceiptError::Invalid),
         };
-        let (authority_head, authority_generation, committed_at) = (input.hash()?, input.number()?, input.number()?);
+        let (authority_head, authority_generation, prepared_envelope_head, prepared_envelope_generation, committed_at, token_hash) =
+            (input.hash()?, input.number()?, input.hash()?, input.number()?, input.number()?, input.hash()?);
+        let phone_id = input.take(16)?.try_into().map_err(|_| ReceiptError::Invalid)?;
         if input.at != bytes.len() { return Err(ReceiptError::Invalid); }
         let receipt = Self { authority, installation, installation_generation, request, nonce, transcript, node, tls,
-                             phone_key, offer, offer_expires, scope, authority_head, authority_generation, committed_at };
+                             phone_key, offer, token_hash, phone_id, offer_expires, scope, authority_head, authority_generation,
+                             prepared_envelope_head, prepared_envelope_generation, committed_at };
         receipt.validate()?;
         Ok(receipt)
     }
