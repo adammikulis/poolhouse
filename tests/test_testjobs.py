@@ -83,7 +83,7 @@ def test_cancel_stops_a_running_job_for_anyone_and_logs_who(table):
 @pytest.mark.parametrize("owner", [{}, {"id": ""}, {"id": []}, None, "alice"])
 def test_a_run_with_no_owner_is_not_recorded_or_started(table, owner):
     jobs, _, _ = table
-    with pytest.raises(testjobs.Refused, match="no workspace identity"):
+    with pytest.raises(testjobs.Refused, match="no valid local or workspace owner"):
         start(table, ["tests/x.py", "1", "0"], owner)
     assert jobs.ids() == []
 

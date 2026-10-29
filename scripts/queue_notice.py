@@ -31,7 +31,7 @@ def post(jobs: testjobs.Jobs, job: str, kind: str, what: str, say: Callable[[str
     """
     spec = jobs.read(job, "spec.json")
     owner = spec.get("owner", {}).get("id", "") if isinstance(spec, dict) else ""
-    if not owner or spec.get("owner", {}).get("source") == "terminal":
+    if not owner or spec.get("owner", {}).get("source") != "workspace-session":
         return False
     session = testboard.acting()
     if session is None:

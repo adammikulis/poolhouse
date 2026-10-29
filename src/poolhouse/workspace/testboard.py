@@ -14,6 +14,7 @@ from typing import Any
 from poolhouse import errors
 from poolhouse.board import session as sessions
 from poolhouse.log import warn
+from poolhouse.redact.secrets import env_secrets, redact
 
 __all__ = ["BoardEvents", "Events", "acting", "agent_process", "identity"]
 
@@ -29,7 +30,8 @@ def guarded(what: str, call: Callable[[], Any]) -> Any:
     try:
         return call()
     except BOARD_ERRORS as error:
-        warn(f"test: board notice ({what}) not sent: {error}")
+        reason, _ = redact(str(error), env_secrets(os.environ))
+        warn(f"test: board notice ({what}) not sent: {reason}")
         return None
 
 

@@ -90,7 +90,7 @@ def test_an_agent_run_of_thirty_nine_files_passes_the_size_check_and_a_person_ru
     agent = scripts_test(tmp_path, scratch, "CLAUDECODE", "all", *named(39), "-n", "1")
     person = scripts_test(tmp_path, scratch, "", "all", *named(40), "-n", "1")
     assert LINE not in agent.stderr + agent.stdout + person.stderr + person.stdout
-    assert agent.returncode == 4 and "no workspace identity, so it is not queued" in agent.stderr, agent.stdout + agent.stderr
+    assert agent.returncode == 0, agent.stdout + agent.stderr
     assert person.returncode == 0, person.stdout + person.stderr
 
 

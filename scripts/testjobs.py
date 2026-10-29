@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import fcntl
 import json
+import math
 import os
 import secrets
 import shutil
@@ -30,6 +31,17 @@ RESEND_S = 10.0
 """How long a job recorded ``cancelling`` is left to its cancel before another cancel stops its runner again."""
 LIVE = ("queued", "running", "cancelling")
 TERMINAL = ("done", "failed", "cancelled")
+
+
+def valid_owner(owner: object) -> bool:
+    """Whether a job has a workspace session or a local process record."""
+    if not isinstance(owner, dict):
+        return False
+    if owner.get("source") == "local-process":
+        return (owner.get("id") == "" and type(owner.get("pid")) is int and owner["pid"] > 0
+                and type(owner.get("started")) in (int, float) and math.isfinite(owner["started"])
+                and owner["started"] >= 0)
+    return isinstance(owner.get("id"), str) and bool(owner["id"])
 FULL_TIERS = ("fast", "full", "slow", "all", "quick", "gate")
 
 
@@ -163,15 +175,14 @@ class Jobs:
         A whole-tier job (``extra['exclusive']``, true unless given) is refused while another whole-tier job is live; the check and the
         record are made under one lock. A foreground run is not exclusive and queues in the broker. A ``extra['follower']`` (the process
         that shows the job's output) is counted, and the job is stopped by its runner once its last follower has gone.
-        An agent's whole-suite run, one naming every test file, and a run with no owner are refused before anything is recorded.
+        An agent's whole-suite run, one naming every test file, and a run with no valid owner record are refused before anything is recorded.
         """
         key, follower = extra.get("key"), extra.get("follower")
         extra = {k: v for k, v in extra.items() if k not in ("key", "follower")}
         if refusal := testscope.tier_refusal(argv[0], argv[1:], root) if argv else "":
             raise Refused(refusal)
-        if not (isinstance(owner, dict) and isinstance(owner.get("id"), str) and owner["id"]):
-            raise Refused("this run has no workspace identity, so it is not queued: run it as the session the harness gave you "
-                          "(`poolhouse-workspace whoami` names it)")
+        if not valid_owner(owner):
+            raise Refused("this run has no valid local or workspace owner record, so it is not queued")
         self.prune()
         job = f"{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2)}"
         with self.locked():

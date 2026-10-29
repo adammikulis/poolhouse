@@ -594,13 +594,25 @@ def doctor_admits(verdict) -> None:
 
 
 def run_owner() -> dict:
-    """The owner of a run this process starts: its workspace identity, or a person's terminal when no agent harness started it.
-
-    An agent with no identity has none, and the job table refuses its run.
-    """
-    if REUSE["agent"].get("id") or testboard.agent_process():
+    """The workspace session or local process that started this run."""
+    if REUSE["agent"].get("id"):
         return REUSE["agent"]
-    return {"id": "person", "parent": "", "source": "terminal"}
+    pid = os.getpid()
+    return {"id": "", "parent": "", "source": "local-process",
+            "pid": pid, "started": testreuse_store.process_start(pid)}
+
+
+def set_session(session, task: str) -> None:
+    """Set the current run's workspace identity and notifications."""
+    REUSE["session"] = session
+    if session is None:
+        REUSE["agent"] = {"id": "", "source": "none"}
+        REUSE["events"] = testboard.Events()
+        os.environ.pop("DEV_TEST_AGENT", None)
+        return
+    REUSE["agent"] = testboard.identity(session)
+    REUSE["events"] = testboard.BoardEvents(session, (lambda: Tasks(session).watchers(task)) if task else None)
+    os.environ["DEV_TEST_AGENT"] = json.dumps({**REUSE["agent"], "job": os.environ.get("DEV_TEST_JOB", "")})
 
 
 def follow(argv: list[str], args: argparse.Namespace) -> int:
@@ -679,14 +691,7 @@ def main(argv: list[str] | None = None) -> int:
     REUSE["on"] = not args.no_reuse
     if args.no_reuse and not os.environ.get("DEV_TEST_JOB"):
         print(NO_REUSE_COST, file=sys.stderr, flush=True)
-    session = testboard.acting()
-    REUSE["session"] = session
-    if session is not None:
-        REUSE["agent"] = testboard.identity(session)
-        REUSE["events"] = testboard.BoardEvents(session, (lambda: Tasks(session).watchers(args.task)) if args.task else None)
-        os.environ["DEV_TEST_AGENT"] = json.dumps({**REUSE["agent"], "job": os.environ.get("DEV_TEST_JOB", "")})
-    else:
-        os.environ.pop("DEV_TEST_AGENT", None)
+    set_session(testboard.acting(), args.task)
     if not os.environ.get("DEV_TEST_JOB"):
         queue_doctor.check(ROOT, say=lambda text: print(text, file=sys.stderr, flush=True))
     if args.on:

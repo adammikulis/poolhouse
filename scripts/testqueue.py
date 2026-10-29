@@ -128,7 +128,7 @@ def longest(runs: list[dict], now: float) -> str:
 
     run = max(runs, key=size)
     shown = f"{size(run)[0]:.0f}s" if run.get("estimate_s") is not None else "?"
-    return (f"longest run: {run['state']} {policy.run_class(run)} owner {run.get('owner') or 'person'} est {shown} "
+    return (f"longest run: {run['state']} {policy.run_class(run)} owner {run.get('owner') or 'unknown'} est {shown} "
             f"age {size(run)[1]:.0f}s; {run['label']}")
 
 
