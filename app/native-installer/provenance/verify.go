@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"time"
 
 	intoto "github.com/in-toto/attestation/go/v1"
 
@@ -36,10 +37,11 @@ type verified struct {
 	artifactSHA256 [32]byte
 	runURI         string
 	policy         policy
+	logTimes       []time.Time
 }
 
-func verifyBundle(b []byte, artifact io.Reader, material root.TrustedMaterial, p policy) (*verified, error) {
-	if len(b) == 0 || len(b) > maxBundle || artifact == nil || material == nil ||
+func verifyBundle(b []byte, artifact io.Reader, token []byte, material root.TrustedMaterial, p policy) (*verified, error) {
+	if len(b) == 0 || len(b) > maxBundle || len(token) == 0 || len(token) > 16384 || artifact == nil || material == nil ||
 		p.san == "" || p.repoURI == "" || p.repoID == "" || p.sourceDigest == "" || p.sourceRef == "" ||
 		p.signerURI == "" || p.signerDigest == "" || p.configURI == "" || p.configDigest == "" ||
 		p.trigger == "" || p.runURI == "" {
@@ -68,13 +70,14 @@ func verifyBundle(b []byte, artifact io.Reader, material root.TrustedMaterial, p
 	if err != nil {
 		return nil, invalid
 	}
-	result, err := verifier.Verify(entity, verify.NewPolicy(verify.WithArtifactDigest("sha256", digest[:]), verify.WithCertificateIdentity(identity)))
+	tokenDigest := sha256.Sum256(token)
+	result, err := verifier.Verify(entity, verify.NewPolicy(verify.WithArtifactDigests([]verify.ArtifactDigest{{Algorithm: "sha256", Digest: digest[:]}, {Algorithm: "sha256", Digest: tokenDigest[:]}}), verify.WithCertificateIdentity(identity)))
 	if err != nil || result == nil || result.Statement == nil || result.Signature == nil || result.Signature.Certificate == nil {
 		return nil, invalid
 	}
 	statement := result.Statement
-	// A single subject removes ambiguity; its digest is checked by the verifier.
-	if !matchesStatement(statement, digest) {
+	// Exactly the artifact and producer token are bound by the signed statement.
+	if !matchesStatement(statement, digest, tokenDigest) {
 		return nil, invalid
 	}
 	c := result.Signature.Certificate
@@ -84,12 +87,28 @@ func verifyBundle(b []byte, artifact io.Reader, material root.TrustedMaterial, p
 		c.RunnerEnvironment != "github-hosted" || c.RunInvocationURI != p.runURI {
 		return nil, invalid
 	}
-	return &verified{artifactSHA256: digest, runURI: c.RunInvocationURI, policy: p}, nil
+	var logs []time.Time
+	for _, observed := range result.VerifiedTimestamps {
+		if observed.Type == "Tlog" && !observed.Timestamp.IsZero() {
+			logs = append(logs, observed.Timestamp.UTC())
+		}
+	}
+	if len(logs) == 0 || len(logs) > 8 {
+		return nil, invalid
+	}
+	return &verified{artifactSHA256: digest, runURI: c.RunInvocationURI, policy: p, logTimes: logs}, nil
 }
 
-func matchesStatement(statement *intoto.Statement, digest [32]byte) bool {
-	return statement != nil && statement.GetType() == "https://in-toto.io/Statement/v1" &&
-		statement.PredicateType == "https://slsa.dev/provenance/v1" && len(statement.Subject) == 1 &&
-		statement.Subject[0] != nil && len(statement.Subject[0].Digest) == 1 &&
-		statement.Subject[0].Digest["sha256"] == hex.EncodeToString(digest[:])
+func matchesStatement(statement *intoto.Statement, artifact, token [32]byte) bool {
+	if statement == nil || statement.GetType() != "https://in-toto.io/Statement/v1" || statement.PredicateType != "https://slsa.dev/provenance/v1" || len(statement.Subject) != 2 {
+		return false
+	}
+	expected := map[string]string{artifactEntry: hex.EncodeToString(artifact[:]), "poolhouse-producer.jwt": hex.EncodeToString(token[:])}
+	for _, s := range statement.Subject {
+		if s == nil || len(s.Digest) != 1 || expected[s.Name] == "" || s.Digest["sha256"] != expected[s.Name] {
+			return false
+		}
+		delete(expected, s.Name)
+	}
+	return len(expected) == 0
 }

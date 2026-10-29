@@ -26,7 +26,7 @@ typedef struct {
  uint8_t artifact_sha256[32], archive_sha256[32], installation[32], head[32], policy_digest[32], nonce[32], target_sha256[32];
  ph_version root_version, timestamp_version, snapshot_version, targets_version;
  uint64_t generation, device, inode, size, archive_device, archive_inode, archive_size, artifact_id;
- int64_t trusted_time, producer_expires;
+ int64_t trusted_time, producer_observed_time;
 } ph_provenance_result;
 */
 import "C"
@@ -186,7 +186,7 @@ func PhProvenanceVerify(input *C.ph_provenance_input, output *C.ph_provenance_re
 	if unix.Fstat(int(file.Fd()), &stageAfter) != nil || stageAfter.Dev != before.Dev || stageAfter.Ino != before.Ino || stageAfter.Size != extractedSize || stageAfter.Mode != before.Mode || stageAfter.Uid != before.Uid || stageAfter.Gid != before.Gid || stageAfter.Nlink != before.Nlink || stageAfter.Flags != before.Flags || stageAfter.Gen != before.Gen {
 		return 0
 	}
-	verified, err := verifyBundle(vals[0], io.NewSectionReader(file, 0, stageAfter.Size), trust.material, p)
+	verified, err := verifyBundle(vals[0], io.NewSectionReader(file, 0, stageAfter.Size), vals[1], trust.material, p)
 	if err != nil || ctx.Err() != nil || verified.artifactSHA256 != extractedDigest {
 		return 0
 	}
@@ -221,7 +221,7 @@ func PhProvenanceVerify(input *C.ph_provenance_input, output *C.ph_provenance_re
 	output.archive_size = C.uint64_t(archiveBefore.Size)
 	output.artifact_id = input.artifact_id
 	output.trusted_time = input.trusted_time
-	output.producer_expires = C.int64_t(candidate.expires.Unix())
+	output.producer_observed_time = C.int64_t(candidate.observed.Unix())
 	return 1
 }
 

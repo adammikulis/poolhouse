@@ -25,8 +25,10 @@ func producerFixture(t *testing.T) (*rsa.PrivateKey, producerPolicy, *verified, 
 	v.artifactSHA256[0] = 5
 	v.runURI = "https://github.com/example/project/actions/runs/456/attempts/1"
 	v.policy = policy{repoURI: "https://github.com/example/project", repoID: "123", sourceDigest: hex.EncodeToString(p.source[:]), sourceRef: p.ref, trigger: p.event, signerURI: "https://github.com/" + p.jobWorkflowRef, signerDigest: hex.EncodeToString(p.workflow[:]), runURI: v.runURI}
-	now := time.Now().UTC().Truncate(time.Second)
-	c := jwt.MapClaims{"iss": "https://token.actions.githubusercontent.com", "aud": producerAudience(p, v.artifactSHA256), "iat": now.Unix(), "nbf": now.Unix(), "exp": now.Add(5 * time.Minute).Unix(), "repository": p.repository, "repository_id": "123", "ref": p.ref, "event_name": p.event, "sha": hex.EncodeToString(p.source[:]), "job_workflow_ref": p.jobWorkflowRef, "job_workflow_sha": hex.EncodeToString(p.workflow[:]), "run_id": "456", "run_attempt": "1", "check_run_id": "789", "runner_environment": "github-hosted"}
+	issued := time.Now().UTC().Truncate(time.Second)
+	v.logTimes = []time.Time{issued.Add(time.Minute)}
+	now := issued.Add(6 * time.Minute)
+	c := jwt.MapClaims{"iss": "https://token.actions.githubusercontent.com", "aud": producerAudience(p, v.artifactSHA256), "iat": issued.Unix(), "nbf": issued.Unix(), "exp": issued.Add(5 * time.Minute).Unix(), "repository": p.repository, "repository_id": "123", "ref": p.ref, "event_name": p.event, "sha": hex.EncodeToString(p.source[:]), "job_workflow_ref": p.jobWorkflowRef, "job_workflow_sha": hex.EncodeToString(p.workflow[:]), "run_id": "456", "run_attempt": "1", "check_run_id": "789", "runner_environment": "github-hosted"}
 	return key, p, v, c, now
 }
 func tokenFor(t *testing.T, key *rsa.PrivateKey, c jwt.MapClaims) string {
@@ -59,14 +61,27 @@ func TestProducerBindsSignedJobToVerifiedSubject(t *testing.T) {
 			}
 		})
 	}
-	if got, err = verifyProducer(raw, keys, p, v, now.Add(6*time.Minute)); err == nil || got != nil {
-		t.Fatal("expired token accepted")
+	if got, err = verifyProducer(raw, keys, p, v, now.Add(-2*time.Minute)); err == nil || got != nil {
+		t.Fatal("live bearer accepted before expiration")
 	}
 	p.nonce[0] ^= 1
+	if got, err = verifyProducer(raw, keys, p, v, now); err != nil || got == nil {
+		t.Fatal("reusable provenance incorrectly tied to local nonce")
+	}
+	v.logTimes = []time.Time{now}
 	if got, err = verifyProducer(raw, keys, p, v, now); err == nil || got != nil {
-		t.Fatal("installation nonce replay accepted")
+		t.Fatal("timestamp outside token validity accepted")
 	}
-	p.nonce[0] ^= 1
+	v.logTimes = []time.Time{now.Add(-5 * time.Minute)}
+	v.logTimes = nil
+	if got, err = verifyProducer(raw, keys, p, v, now); err == nil || got != nil {
+		t.Fatal("missing transparency timestamp accepted")
+	}
+	v.logTimes = []time.Time{now.Add(time.Second)}
+	if got, err = verifyProducer(raw, keys, p, v, now); err == nil || got != nil {
+		t.Fatal("future transparency timestamp accepted")
+	}
+	v.logTimes = []time.Time{now.Add(-5 * time.Minute)}
 	v.runURI += "x"
 	if got, err = verifyProducer(raw, keys, p, v, now); err == nil || got != nil {
 		t.Fatal("cross-run provenance accepted")
