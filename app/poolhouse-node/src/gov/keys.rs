@@ -22,12 +22,6 @@ pub const MOST_LABEL: usize = 40;
 const MOST_PERSON: usize = 64;
 /// How many verdicts of `accepted_memo` are kept.
 const MEMO_MOST: usize = 1024;
-/// Half the order of the P-256 group, rounded down: the largest `s` a canonical signature carries.
-const HALF_ORDER: [u8; 32] = [
-    0x7f, 0xff, 0xff, 0xff, 0x80, 0x00, 0x00, 0x00, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xde, 0x73, 0x7d, 0x56, 0xd3, 0x8b, 0xcf, 0x42, 0x79, 0xdc, 0xe5, 0x61, 0x7e, 0x31,
-    0x92, 0xa8,
-];
-
 /// Whether the key's every signature needs a presence the signing process cannot supply for itself (`Strong`) or any process of the
 /// account can use it (`Weak`).
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -53,43 +47,6 @@ pub enum Alg {
     Ed25519,
     #[serde(rename = "p256")]
     P256,
-}
-
-/// The `r` and `s` of a DER ECDSA signature, which must be exactly `SEQUENCE { INTEGER r, INTEGER s }` with each integer positive and
-/// as short as it can be.
-fn der_scalars(der: &[u8]) -> Option<(&[u8], &[u8])> {
-    let (&[0x30, len], body) = der.split_first_chunk::<2>()? else { return None };
-    if usize::from(len) != body.len() || len >= 0x80 {
-        return None;
-    }
-    let (r, rest) = der_integer(body)?;
-    let (s, rest) = der_integer(rest)?;
-    rest.is_empty().then_some((r, s))
-}
-
-fn der_integer(bytes: &[u8]) -> Option<(&[u8], &[u8])> {
-    let (&[0x02, n], rest) = bytes.split_first_chunk::<2>()? else { return None };
-    let n = usize::from(n);
-    if n == 0 || n >= 0x80 || rest.len() < n {
-        return None;
-    }
-    let (value, rest) = rest.split_at(n);
-    let padded = value[0] == 0 && value.get(1).is_some_and(|b| b & 0x80 == 0);
-    (value[0] & 0x80 == 0 && !padded).then_some((value, rest))
-}
-
-/// The bytes of ``scalar`` without its sign padding, as 32 big-endian bytes; none when it is zero or longer than 32 bytes.
-fn scalar32(scalar: &[u8]) -> Option<[u8; 32]> {
-    let digits = scalar.strip_prefix(&[0]).unwrap_or(scalar);
-    let mut out = [0u8; 32];
-    out.get_mut(32usize.checked_sub(digits.len())?..)?.copy_from_slice(digits);
-    (out != [0u8; 32]).then_some(out)
-}
-
-/// Whether ``der`` is the one canonical form of an ECDSA P-256 signature: strict DER, no scalar zero, and `s` in the lower half of the group.
-fn canonical_p256(der: &[u8]) -> bool {
-    let Some((r, s)) = der_scalars(der) else { return false };
-    scalar32(r).is_some() && scalar32(s).is_some_and(|s| s <= HALF_ORDER)
 }
 
 impl Alg {
@@ -118,7 +75,7 @@ impl Alg {
         let Some(bytes) = unhex(sig) else { return false };
         match self {
             Alg::Ed25519 => bytes.len() == 64,
-            Alg::P256 => canonical_p256(&bytes),
+            Alg::P256 => poolhouse_authority::phone_candidate::canonical_p256(&bytes),
         }
     }
 

@@ -19,6 +19,7 @@ chrono = { version = "=0.4.45", default-features = false, features = ["std"] }
 ed25519-dalek = { version = "2", default-features = false, features = ["std", "pkcs8"] }
 getrandom = "=0.3.4"
 hmac = "0.12.1"
+poolhouse-authority = { path = "../poolhouse-authority" }
 rcgen = { version = "0.14.7", default-features = false, features = ["ring", "pem"] }
 ring = "0.17.14"
 rustls = { version = "0.23.45", default-features = false, features = ["ring", "std", "logging"] }

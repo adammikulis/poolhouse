@@ -1,15 +1,11 @@
 #include "MachCode.h"
 
-ph_mach_code_result ph_mach_observe_code(mach_port_t receive, void *buffer,
-    mach_msg_size_t capacity, mach_msg_timeout_t timeout, SecRequirementRef requirement,
-    ph_mach_code_observation *output) {
-    if (!output || !requirement || CFGetTypeID(requirement) != SecRequirementGetTypeID())
+ph_mach_code_result ph_mach_observe_code(const ph_mach_message *message,
+    SecRequirementRef requirement, ph_mach_code_observation *output) {
+    const ph_mach_sender_observation *observed_sender = ph_mach_sender(message);
+    if (!observed_sender || !output || !requirement || CFGetTypeID(requirement) != SecRequirementGetTypeID())
         return PH_MACH_CODE_INVALID_ARGUMENT;
-    ph_mach_sender_observation sender;
-    ph_mach_observation_result received = ph_mach_observe_sender(receive, buffer, capacity,
-        timeout, &sender, NULL);
-    if (received == PH_MACH_INVALID_ARGUMENT) return PH_MACH_CODE_INVALID_ARGUMENT;
-    if (received != PH_MACH_OBSERVED) return PH_MACH_CODE_RECEIVE_FAILED;
+    ph_mach_sender_observation sender = *observed_sender;
     /* Use the complete native kernel token, including PID version. Never rebuild
      * it from independently obtained process/account data or message body fields. */
     CFDataRef token = CFDataCreate(kCFAllocatorDefault, (const UInt8 *)&sender.audit,

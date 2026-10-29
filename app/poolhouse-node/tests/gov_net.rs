@@ -28,6 +28,21 @@ fn status_of(dev: &Dev, id: &str) -> String {
     format!("{:?}", dev.node.lock().unwrap().members.gov().unwrap().status(id))
 }
 
+/// Stop the listener and wait for its node ownership to be released before reopening its state.
+fn stop_device(dev: Dev) -> tempfile::TempDir {
+    let Dev { dir, node, net, .. } = dev;
+    let weak = std::sync::Arc::downgrade(&node);
+    net.shutdown();
+    drop(net);
+    drop(node);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(35);
+    while weak.upgrade().is_some() {
+        assert!(std::time::Instant::now() < deadline, "node did not shut down");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    dir
+}
+
 
 // -- founding and joining ------------------------------------------------------------------------------------------------
 
@@ -98,7 +113,8 @@ fn a_fresh_node_is_the_unfounded_pool_of_one_and_needs_no_signer_to_exist() {
     assert_eq!(admit["error"]["say"], "This device is not in a pool yet; make one, or join one.", "it admits nobody");
     let propose = a.call("pool_propose", "", &a.token, json!({"kind": "remove", "body": {"fingerprint": "ab".repeat(32)}}));
     assert_eq!(propose["error"]["say"], "This device is not in a pool yet; make one, or join one.");
-    let reopened = Node::open(a.dir.path());
+    let dir = stop_device(a);
+    let reopened = Node::open(dir.path());
     assert!(reopened.is_ok(), "a fresh state directory opens again as it was");
 }
 
@@ -157,8 +173,8 @@ fn a_removal_signed_on_one_node_is_the_acts_of_a_pool_and_survives_a_restart() {
     a.node.lock().unwrap().enrol_device(&victim.der, "ghost", "join-code").unwrap();
     a.ok("member_remove", "", &a.token, json!({"fingerprint": victim.fingerprint()}));
     sync(&b);
-    let dir = a.dir.path().to_path_buf();
-    let reopened = poolhouse_node::node::Node::open(&dir).unwrap();
+    let dir = stop_device(a);
+    let reopened = poolhouse_node::node::Node::open(dir.path()).unwrap();
     assert_eq!(reopened.members.get(&victim.fingerprint()).map(|d| d.status), Some(poolhouse_node::membership::Status::Revoked));
     assert!(reopened.members.gov().is_some());
 }

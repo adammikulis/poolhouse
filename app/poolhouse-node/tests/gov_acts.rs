@@ -104,6 +104,105 @@ fn a_forged_act_is_refused_and_recorded_with_its_reason() {
 }
 
 #[test]
+fn persisted_forged_admin_signature_is_never_replayed_as_authority() {
+    let (dir, mut pool) = pool(&[strong(A, "ann")], Policy::Secure);
+    let device = ident(10);
+    assert_eq!(put_admit(&mut pool, &device, &[A]), Ingest::Accepted);
+    pool.save().unwrap();
+    let pool_dir = dir.path().join("pools").join(&pool.id);
+    drop(pool);
+    let acts_path = pool_dir.join("acts.json");
+    let mut saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&acts_path).unwrap()).unwrap();
+    saved["acts"][0]["signatures"][0]["sig"] = json!("ab".repeat(64));
+    std::fs::write(&acts_path, serde_json::to_vec(&saved).unwrap()).unwrap();
+    assert!(GovPool::load(&pool_dir).is_err(), "a forged signature on disk is not an admission");
+}
+
+#[test]
+fn persisted_forged_device_signature_is_never_replayed_as_authority() {
+    let (dir, mut pool) = pool(&[strong(A, "ann")], Policy::Secure);
+    let first = ident(FIRST);
+    let mut leave = pool.new_act("leave", json!({"fingerprint": first.fingerprint()}), wall_ms()).unwrap();
+    device_sign(&mut leave, FIRST);
+    assert_eq!(take(&mut pool, leave), Ingest::Accepted);
+    pool.save().unwrap();
+    let pool_dir = dir.path().join("pools").join(&pool.id);
+    drop(pool);
+    let acts_path = pool_dir.join("acts.json");
+    let mut saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&acts_path).unwrap()).unwrap();
+    saved["acts"][0]["signatures"][0]["sig"] = json!("cd".repeat(64));
+    std::fs::write(&acts_path, serde_json::to_vec(&saved).unwrap()).unwrap();
+    assert!(GovPool::load(&pool_dir).is_err(), "a forged device signature on disk is not a departure");
+}
+
+#[test]
+fn persisted_duplicate_acts_and_votes_are_rejected() {
+    let (dir, mut pool) = pool(&[strong(A, "ann")], Policy::Secure);
+    assert_eq!(put_admit(&mut pool, &ident(10), &[A]), Ingest::Accepted);
+    pool.save().unwrap();
+    let pool_dir = dir.path().join("pools").join(&pool.id);
+    drop(pool);
+    let path = pool_dir.join("acts.json");
+    let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    let mut duplicate = saved.clone();
+    let act = duplicate["acts"][0].clone();
+    duplicate["acts"].as_array_mut().unwrap().push(act);
+    std::fs::write(&path, serde_json::to_vec(&duplicate).unwrap()).unwrap();
+    assert!(GovPool::load(&pool_dir).is_err());
+    let mut duplicate_vote = saved;
+    let signature = duplicate_vote["acts"][0]["signatures"][0].clone();
+    duplicate_vote["acts"][0]["signatures"].as_array_mut().unwrap().push(signature);
+    std::fs::write(&path, serde_json::to_vec(&duplicate_vote).unwrap()).unwrap();
+    assert!(GovPool::load(&pool_dir).is_err());
+}
+
+#[test]
+fn valid_partial_governance_draft_survives_reload() {
+    let (dir, mut pool) = pool(&[strong(A, "ann"), strong(B, "ben")], Policy::Secure);
+    let proposal = add(&pool, strong(C, "cam"), &[A]);
+    let id = proposal.id();
+    assert_eq!(take(&mut pool, proposal), Ingest::Accepted);
+    pool.save().unwrap();
+    let pool_dir = dir.path().join("pools").join(&pool.id);
+    drop(pool);
+    let loaded = GovPool::load(&pool_dir).unwrap();
+    assert!(matches!(loaded.status(&id), ActStatus::Short(..)));
+}
+
+#[test]
+fn persisted_malformed_admission_certificate_is_rejected() {
+    let (dir, mut pool) = pool(&[strong(A, "ann")], Policy::Secure);
+    assert_eq!(put_admit(&mut pool, &ident(10), &[A]), Ingest::Accepted);
+    pool.save().unwrap();
+    let pool_dir = dir.path().join("pools").join(&pool.id);
+    drop(pool);
+    let path = pool_dir.join("acts.json");
+    let mut saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    saved["acts"][0]["body"]["cert"] = json!("00");
+    std::fs::write(&path, serde_json::to_vec(&saved).unwrap()).unwrap();
+    assert!(GovPool::load(&pool_dir).is_err());
+}
+
+#[test]
+fn a_valid_signature_by_an_unadmitted_device_cannot_self_admit_on_reload() {
+    let (dir, mut pool) = pool(&[strong(A, "ann")], Policy::Secure);
+    let stranger = ident(10);
+    let mut act = pool.new_act("admit", admit_body(&stranger, "stranger", "join-code", ""), wall_ms()).unwrap();
+    device_sign(&mut act, 10);
+    pool.save().unwrap();
+    let pool_dir = dir.path().join("pools").join(&pool.id);
+    drop(pool);
+    let path = pool_dir.join("acts.json");
+    let mut saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    saved["acts"].as_array_mut().unwrap().push(serde_json::to_value(act).unwrap());
+    std::fs::write(&path, serde_json::to_vec(&saved).unwrap()).unwrap();
+    match GovPool::load(&pool_dir) {
+        Ok(loaded) => assert!(!is_member(&loaded, &stranger)),
+        Err(_) => {} // Refusing inconsistent evidence also prevents admission.
+    }
+}
+
+#[test]
 fn a_replayed_act_is_a_no_op_and_a_signature_counted_twice_counts_once() {
     let (_d, mut g) = pool(&[strong(A, "ann"), strong(B, "ben")], Policy::Secure);
     let laptop = ident(10);

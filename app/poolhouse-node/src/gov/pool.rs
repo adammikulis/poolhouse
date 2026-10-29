@@ -164,6 +164,42 @@ pub fn founding(act: &Act) -> Result<Charter> {
     Ok(*charter)
 }
 
+/// Authenticate persisted signatures before the fold uses their signer names.
+/// Certificates found in admits only supply verification keys; they do not grant
+/// membership or authority, which the fold must determine separately.
+fn authenticate_saved(genesis: &Charter, pool: &str, acts: &[Act]) -> Result<()> {
+    let invalid = || Error::Invalid("saved acts contain invalid or ambiguous evidence".into());
+    let (der, fingerprint) = genesis.first.device().ok_or_else(invalid)?;
+    let mut certificates = BTreeMap::from([(fingerprint, der)]);
+    let mut ids = BTreeSet::new();
+    for act in acts {
+        act.check_shape()?;
+        if act.pool != pool || !ids.insert(act.id()) {
+            return Err(invalid());
+        }
+        if let Body::Admit(admit) = body::parse(act)? {
+            let (der, fingerprint) = body::cert_of(&admit)?;
+            if crate::fsutil::hex(&der) != admit.cert {
+                return Err(invalid());
+            }
+            if let Some(previous) = certificates.insert(fingerprint, der.clone()) {
+                if previous != der {
+                    return Err(invalid());
+                }
+            }
+        }
+    }
+    for act in acts {
+        for signature in &act.signatures {
+            let der = certificates.get(&signature.key).map(Vec::as_slice);
+            if !act.verifies(signature, der) {
+                return Err(invalid());
+            }
+        }
+    }
+    Ok(())
+}
+
 impl GovPool {
     fn assemble(dir: PathBuf, found: Act, clock: Arc<Awake>) -> Result<GovPool> {
         let genesis = founding(&found)?;
@@ -218,9 +254,7 @@ impl GovPool {
         let awake = saved["awake_ms"].as_i64().ok_or_else(|| damaged("seen.json holds no awake time"))?;
         let mut pool = GovPool::assemble(dir.into(), found, Arc::new(Awake::new(earned_base.unwrap_or(awake))))?;
         let acts: Vec<Act> = serde_json::from_value(held["acts"].clone()).map_err(|_| damaged("acts.json holds no list of acts"))?;
-        if acts.iter().any(|a| a.check_shape().is_err() || a.pool != pool.id) {
-            return Err(damaged("acts.json holds an act that is malformed or belongs to another pool"));
-        }
+        authenticate_saved(&pool.genesis, &pool.id, &acts).map_err(|_| damaged("acts.json holds invalid or ambiguous signed evidence"))?;
         pool.acts = acts.into_iter().map(|a| (a.id(), a)).collect();
         pool.seen = serde_json::from_value(saved["seen"].clone()).map_err(|_| damaged("seen.json holds no record of when acts were seen"))?;
         pool.joined = serde_json::from_value(saved["joined_ms"].clone()).map_err(|_| damaged("seen.json holds a join time that is not a number"))?;

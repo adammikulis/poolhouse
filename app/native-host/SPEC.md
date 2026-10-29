@@ -28,15 +28,18 @@ Terminal bootstrap is an exceptional onboarding regression, not a normal product
 
 ## Historical Mach code observation
 
-`MachCode` performs one receive through `MachSender`, then immediately selects dynamic
-code using the complete kernel audit token with public `kSecGuestAttributeAudit`.
+`MachSender` retains a bounded received message, its kernel audit trailer and its
+rights as one owned object. `MachCode` selects dynamic code using that object's
+complete kernel audit token with public `kSecGuestAttributeAudit`.
+The current observation primitive refuses complex messages, reply rights and
+vouchers; it is not an application request/reply transport.
 The supplied requirement is a comparison input; validity uses `kSecCSNoNetworkAccess`.
 That documented mode omits online revocation/notarization work; a match is not proof of either.
 There is no PID/path fallback or admission from a matching hash. Success transfers a
 retained `SecCode` and historical sender data to the caller. Failures preserve output.
 Security queries may contact system services; these are not keychain or authentication calls.
 
-The receiver destroys message rights. This result does not retain message/body binding,
+Destroying the owned message releases its rights. The object does not establish
 receive incarnation or protected caller custody and does not prove current owner-session,
 liveness, protected launch, provider admission or authorization. A private authenticated
 receiver and independent current-owner issuer remain prerequisites for protected effects.
