@@ -7,9 +7,11 @@
 /* OS-returned signing observations only. This does not validate code, publisher,
  * process, installation, entitlement policy, or authorize an effect. */
 typedef struct {
+    uint8_t code_directory[20];
     uint8_t requirement_digest[32];
     uint8_t entitlements_digest[32];
     uint8_t publisher_digest[32];
+    uint32_t signing_flags;
     bool entitlements_present;
     bool publisher_present;
 } ph_native_identity_observation;

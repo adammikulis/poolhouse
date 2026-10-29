@@ -60,3 +60,12 @@ the protected installation and actual received message. A locally authenticated
 ad-hoc publisher needs separate protected evidence; absence of a certificate is not
 that evidence. A changed OS representation must be explicitly reconciled rather than
 silently accepted.
+
+`NativeCaller` compares one held message's kernel audit identity and dynamically
+validated code against an explicitly supplied policy, including the pinned code
+directory, observed identity fields and hardened-runtime flag. A match is only a
+predicate over those inputs: it neither authenticates the policy nor creates a
+person decision or capability. Protected installation and current-session policy,
+role-specific entitlement validation, actual-message/connection custody and
+revalidation at effect commit are separate requirements. In particular, an absent
+publisher observation is not evidence authorizing ad-hoc code.

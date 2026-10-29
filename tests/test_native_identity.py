@@ -51,6 +51,8 @@ int main(void) {
         SecCodeCopyDesignatedRequirement(code, kSecCSDefaultFlags, &requirement) != errSecSuccess ||
         SecRequirementCopyData(requirement, kSecCSDefaultFlags, &bytes) != errSecSuccess ||
         SecCodeCopySigningInformation(code, kSecCSSigningInformation, &info) != errSecSuccess) return 1;
+    CFDataRef unique = (CFDataRef)CFDictionaryGetValue(info, kSecCodeInfoUnique);
+    if (!unique || CFDataGetLength(unique) != 20 || memcmp(CFDataGetBytePtr(unique), observed.code_directory, 20)) return 12;
     show(CFDataGetBytePtr(bytes), (size_t)CFDataGetLength(bytes));
     show(observed.requirement_digest, sizeof(observed.requirement_digest));
     CFDataRef entitlements = (CFDataRef)CFDictionaryGetValue(info, kSecCodeInfoEntitlements);

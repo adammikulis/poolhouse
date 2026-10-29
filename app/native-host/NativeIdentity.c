@@ -28,6 +28,7 @@ static bool publisher(CFDictionaryRef information, ph_native_identity_observatio
     int32_t flags = 0;
     if (!raw_flags || CFGetTypeID(raw_flags) != CFNumberGetTypeID()
         || !CFNumberGetValue((CFNumberRef)raw_flags, kCFNumberSInt32Type, &flags)) return false;
+    result->signing_flags = (uint32_t)flags;
     CFTypeRef raw_chain = CFDictionaryGetValue(information, kSecCodeInfoCertificates);
     if (!raw_chain) return (flags & kSecCodeSignatureAdhoc) != 0;
     if ((flags & kSecCodeSignatureAdhoc) || CFGetTypeID(raw_chain) != CFArrayGetTypeID()
@@ -74,11 +75,14 @@ bool ph_native_identity_observe(SecStaticCodeRef code, ph_native_identity_observ
         && SecCodeCopySigningInformation(code, kSecCSSigningInformation, &information) == errSecSuccess
         && information && CFGetTypeID(information) == CFDictionaryGetTypeID();
     if (okay) {
+        CFTypeRef unique = CFDictionaryGetValue(information, kSecCodeInfoUnique);
+        okay = unique && CFGetTypeID(unique) == CFDataGetTypeID() && CFDataGetLength((CFDataRef)unique) == 20;
+        if (okay) memcpy(result.code_directory, CFDataGetBytePtr((CFDataRef)unique), sizeof(result.code_directory));
         CFTypeRef entitlements = CFDictionaryGetValue(information, kSecCodeInfoEntitlements);
         result.entitlements_present = entitlements != NULL;
         static const char req_domain[] = "poolhouse/native-code/requirement/v1";
         static const char ent_domain[] = "poolhouse/native-code/entitlements/v1";
-        okay = digest(requirement_bytes, true, req_domain, sizeof(req_domain), result.requirement_digest)
+        okay = okay && digest(requirement_bytes, true, req_domain, sizeof(req_domain), result.requirement_digest)
             && digest((CFDataRef)entitlements, result.entitlements_present, ent_domain, sizeof(ent_domain), result.entitlements_digest)
             && publisher(information, &result);
     }
