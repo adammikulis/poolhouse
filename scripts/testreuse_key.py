@@ -122,7 +122,9 @@ def tree_digest(root: Path) -> str:
                 rows.append(f"{path.relative_to(root).as_posix()} {file_sha(path)}")
     app = root / "app"
     if app.exists():
-        for name in testnode.sources(app, existing_only=False):
+        # Spawned and dynamically loaded programs can consume any native app input,
+        # not only the subset used to build the shared Cargo test binary.
+        for name in testnode.sources(app, existing_only=False, members=(".",)):
             source = app / name
             try:
                 mode = source.lstat().st_mode
