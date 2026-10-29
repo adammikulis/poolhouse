@@ -38,6 +38,8 @@ int main(void) {
     ph_protected_requirements raw = {0}, changed; uint8_t expected[3][32] = {{0}};
     SecRequirementRef result[3] = {NULL, NULL, NULL};
     if (!prepare(&raw, expected) || !ph_policy_requirements_test_decode(&raw, expected, result)) return 1;
+    SecRequirementRef first = result[0];
+    if (ph_policy_requirements_test_decode(&raw, expected, result) || result[0] != first) return 8;
     for (unsigned i = 0; i < 3; i++) { if (!result[i]) return 2; CFRelease(result[i]); result[i] = NULL; }
     changed = raw; changed.bytes[1][0] ^= 1;
     if (ph_policy_requirements_test_decode(&changed, expected, result) || result[0] || result[1] || result[2]) return 3;
@@ -75,5 +77,6 @@ def test_policy_requirement_decoding_is_all_or_nothing(tmp_path):
     _execute([compiler, "-isysroot", sdk, "-fno-modules", "-fno-implicit-modules", "-std=c11", "-Wall", "-Wextra",
               "-Werror", "-I", str(root / "app/native-host"), "-c", str(sources[0]), "-o", str(production)],
              tmp_path, "compile-production", environment, (30, 1048576))
-    symbols, _ = _execute(["/usr/bin/nm", "-g", str(production)], tmp_path, "symbols", environment, (15, 65536))
+    nm = "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/nm"
+    symbols, _ = _execute([nm, "-g", str(production)], tmp_path, "symbols", environment, (15, 65536))
     assert "ph_policy_requirements_test_decode" not in symbols

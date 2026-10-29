@@ -1,8 +1,9 @@
+#ifndef PH_NATIVE_SENDER_H
+#define PH_NATIVE_SENDER_H
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <xpc/xpc.h>
-bool ph_manifest_read(uint8_t *bytes, size_t capacity, size_t *length);
 typedef struct {
     uint8_t cdhash[20], sha256[32], publisher_kind;
     uint8_t publisher_digest[32], requirement_digest[32], entitlements_digest[32];
@@ -29,13 +30,20 @@ typedef struct {
 } ph_protected_requirements;
 /* Fixed order: authority helper, approval GUI, node. A protected directory is
  * custody, not authentication or a rollback-resistant installation witness. */
-bool ph_requirements_read(uint64_t generation, ph_protected_requirements *output);
+typedef struct ph_policy_files ph_policy_files;
+/* One serialized owner retains the complete descriptor set until destruction.
+ * A valid snapshot is file custody only, not an authenticated installation. */
+bool ph_policy_files_begin(ph_policy_files **output, uint8_t *manifest, size_t capacity, size_t *length);
+bool ph_policy_files_requirements(ph_policy_files *files, uint64_t generation, ph_protected_requirements *output);
+bool ph_policy_files_validate(ph_policy_files *files);
+void ph_policy_files_destroy(ph_policy_files **files);
 bool ph_local_session(uint32_t owner, uint32_t *asid);
 bool ph_message_caller(xpc_object_t message, const char *cdhash);
 bool ph_self_code(const char *cdhash);
 #ifdef TESTING
 bool ph_manifest_fixture_acl(int fd, bool mutation);
-bool ph_manifest_fixture(int directory, uint32_t owner, uint8_t *bytes, size_t capacity, size_t *length);
-bool ph_requirements_fixture(int directory, uint32_t owner, uint64_t generation, ph_protected_requirements *output);
-void ph_requirements_test_hook(void (*hook)(void));
+bool ph_policy_files_fixture_begin(int root, uint32_t owner, ph_policy_files **output,
+    uint8_t *manifest, size_t capacity, size_t *length);
+void ph_policy_files_test_hook(void (*hook)(void));
+#endif
 #endif

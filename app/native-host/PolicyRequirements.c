@@ -19,10 +19,19 @@ static bool decode(const ph_protected_requirements *raw, const uint8_t expected[
     return true;
 }
 
-bool ph_policy_requirements_load(uint64_t generation, const uint8_t expected[3][32], SecRequirementRef output[3]) {
+bool ph_policy_requirements_load(ph_policy_files *files, uint64_t generation, const uint8_t expected[3][32],
+    SecRequirementRef output[3]) {
     if (!expected || !output || output[0] || output[1] || output[2]) return false;
     ph_protected_requirements raw = {0};
-    return ph_requirements_read(generation, &raw) && decode(&raw, expected, output);
+    SecRequirementRef result[3] = {NULL, NULL, NULL};
+    bool okay = ph_policy_files_requirements(files, generation, &raw) && decode(&raw, expected, result)
+        && ph_policy_files_validate(files);
+    if (!okay) {
+        for (size_t index = 0; index < 3; index++) if (result[index]) CFRelease(result[index]);
+        return false;
+    }
+    for (size_t index = 0; index < 3; index++) output[index] = result[index];
+    return true;
 }
 #ifdef TESTING
 bool ph_policy_requirements_test_decode(const ph_protected_requirements *raw, const uint8_t expected[3][32],

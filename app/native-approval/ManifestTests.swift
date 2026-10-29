@@ -56,7 +56,10 @@ struct ManifestTests {
         let folder = URL(fileURLWithPath: ProcessInfo.processInfo.environment["TMPDIR"]!).appendingPathComponent("manifest-fixture")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
         precondition(chmod(folder.path, 0o755) == 0)
-        let file = folder.appendingPathComponent("manifest.json")
+        let approval = folder.appendingPathComponent("Approval")
+        try FileManager.default.createDirectory(at: approval, withIntermediateDirectories: false)
+        precondition(chmod(approval.path, 0o755) == 0)
+        let file = approval.appendingPathComponent("manifest.json")
         try Data(json.utf8).write(to: file)
         precondition(chmod(file.path, 0o644) == 0)
         let fd = open(folder.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
@@ -64,15 +67,26 @@ struct ManifestTests {
         defer { close(fd) }
         func reads() -> Bool {
             var bytes = [UInt8](repeating: 0, count: 16384), length = 0
-            let result = ph_manifest_fixture(fd, getuid(), &bytes, bytes.count, &length)
-            if result { precondition(Data(bytes.prefix(length)) == Data(json.utf8)) }
+            var files: OpaquePointer?
+            let result = ph_policy_files_fixture_begin(fd, getuid(), &files, &bytes, bytes.count, &length)
+            if result { precondition(Data(bytes.prefix(length)) == Data(json.utf8) && ph_policy_files_validate(files)) }
+            ph_policy_files_destroy(&files)
             return result
         }
         precondition(reads())
+        var held: OpaquePointer?, heldBytes = [UInt8](repeating: 0, count: 16384), heldLength = 0
+        precondition(ph_policy_files_fixture_begin(fd, getuid(), &held, &heldBytes, heldBytes.count, &heldLength))
+        precondition(chmod(approval.path, 0o775) == 0 && !ph_policy_files_validate(held))
+        precondition(chmod(approval.path, 0o755) == 0 && !ph_policy_files_validate(held))
+        ph_policy_files_destroy(&held)
+        print("Manifest snapshot remains fenced after integrity failure")
         var wrongBytes = [UInt8](repeating: 0, count: 16384), wrongLength = 0
-        precondition(!ph_manifest_fixture(fd, getuid() ^ 1, &wrongBytes, wrongBytes.count, &wrongLength))
+        var wrongFiles: OpaquePointer?
+        precondition(!ph_policy_files_fixture_begin(fd, getuid() ^ 1, &wrongFiles, &wrongBytes, wrongBytes.count, &wrongLength))
         precondition(chmod(file.path, 0o664) == 0); precondition(!reads())
         precondition(chmod(file.path, 0o644) == 0)
+        precondition(chmod(approval.path, 0o775) == 0); precondition(!reads())
+        precondition(chmod(approval.path, 0o755) == 0)
         precondition(chmod(folder.path, 0o775) == 0); precondition(!reads())
         precondition(chmod(folder.path, 0o755) == 0)
         let alias = folder.appendingPathComponent("alias")

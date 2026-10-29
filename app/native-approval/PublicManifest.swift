@@ -25,8 +25,12 @@ struct PublicManifest: Equatable {
 
     static func loadFixed() throws -> PublicManifest {
         var bytes = [UInt8](repeating: 0, count: 16384), count = 0
-        guard ph_manifest_read(&bytes, bytes.count, &count) else { throw ApprovalFailure.unavailable }
-        return PublicManifest(fields: try ManifestFields.decode(Data(bytes.prefix(count))))
+        var files: OpaquePointer?
+        guard ph_policy_files_begin(&files, &bytes, bytes.count, &count) else { throw ApprovalFailure.unavailable }
+        defer { ph_policy_files_destroy(&files) }
+        let fields = try ManifestFields.decode(Data(bytes.prefix(count)))
+        guard ph_policy_files_validate(files) else { throw ApprovalFailure.unavailable }
+        return PublicManifest(fields: fields)
     }
 
     private init(fields: ManifestFields) {

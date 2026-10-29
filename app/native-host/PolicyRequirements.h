@@ -6,7 +6,8 @@
 /* The caller must independently authenticate the installation, policy and
  * generation. Fixed order: helper, GUI, node. Output entries must start NULL;
  * successful calls transfer three retained requirements to the caller. */
-bool ph_policy_requirements_load(uint64_t generation, const uint8_t expected[3][32], SecRequirementRef output[3]);
+bool ph_policy_requirements_load(ph_policy_files *files, uint64_t generation, const uint8_t expected[3][32],
+    SecRequirementRef output[3]);
 #ifdef TESTING
 bool ph_policy_requirements_test_decode(const ph_protected_requirements *raw, const uint8_t expected[3][32],
     SecRequirementRef output[3]);

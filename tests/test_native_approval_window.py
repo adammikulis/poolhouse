@@ -29,8 +29,11 @@ def test_native_approval_window_protocol_and_literal_build(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     assert "pure protocol and lifecycle checks passed" in result.stdout
     symbols = subprocess.run(["/usr/bin/nm", "-g", str(literal)], check=True, capture_output=True, text=True, env=env)
-    assert "ph_manifest_fixture" not in symbols.stdout
-    assert "ph_requirements_test_hook" not in symbols.stdout
+    assert "ph_policy_files_fixture_begin" not in symbols.stdout
+    assert "ph_policy_files_test_hook" not in symbols.stdout
+    assert "_ph_manifest_read" not in symbols.stdout
+    assert "_ph_requirements_read" not in symbols.stdout
+    assert "_ph_policy_files_begin" in symbols.stdout
     imports = subprocess.run(["/usr/bin/nm", "-u", str(literal)], check=True, capture_output=True, text=True, env=env)
     assert "xpc_connection_create" not in imports.stdout
     assert "xpc_connection_activate" not in imports.stdout
@@ -39,6 +42,7 @@ def test_native_approval_window_protocol_and_literal_build(tmp_path):
         assert symbol not in imports.stdout
     assert "LAContext" in imports.stdout
     assert "Fresh mock local presence" in result.stdout
+    assert "Manifest snapshot remains fenced after integrity failure" in result.stdout
     forged = tmp_path / "ForgedManifest.swift"
     forged.write_text("func forge(_ fields: ManifestFields) -> PublicManifest { PublicManifest(fields: fields) }", encoding="utf-8")
     rejection = subprocess.run(["/usr/bin/swiftc", "-j", "1", "-parse-as-library", "-typecheck",
