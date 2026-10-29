@@ -22,7 +22,23 @@ struct VerifiedCaller {
     audit_session: u32,
     gui_hash: Hash,
 }
-struct PersonApproval(Context);
+pub(crate) struct PersonApproval(Context);
+impl PersonApproval {
+    /// A sealed approval can authorize only the immutable phone effect displayed
+    /// for its exact prepared authority revision. This does not issue approvals.
+    pub(crate) fn matches_phone_bootstrap(self, receipt: &crate::receipt::PhoneBootstrapReceipt, now: u64) -> bool {
+        receipt.decision_digest().is_ok_and(|digest| digest == self.0.digest)
+            && self.0.head == receipt.prepared_envelope_head && self.0.generation == receipt.prepared_envelope_generation
+            && self.0.nonce == receipt.nonce && now > 0 && now < self.0.expires_at && self.0.expires_at <= receipt.offer_expires
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fixture_phone(receipt: &crate::receipt::PhoneBootstrapReceipt) -> Self {
+        Self(Context { digest: receipt.decision_digest().unwrap(), head: receipt.prepared_envelope_head,
+            generation: receipt.prepared_envelope_generation, nonce: receipt.nonce, expires_at: receipt.offer_expires,
+            owner_uid: 501, audit_session: 7, gui_hash: [8; 32] })
+    }
+}
 struct ExternalForm(Box<[u8; 32]>);
 impl Drop for ExternalForm {
     fn drop(&mut self) {
