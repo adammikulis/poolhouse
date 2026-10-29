@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
+	"math/big"
 	"strconv"
 	"strings"
 	"time"
@@ -22,9 +23,10 @@ type producerPolicy struct {
 	repository, ref, event, jobWorkflowRef   string
 }
 type producerCandidate struct {
-	policy   producerPolicy
-	subject  [32]byte
-	observed time.Time
+	policy    producerPolicy
+	subject   [32]byte
+	observed  time.Time
+	issuerKey [32]byte
 }
 type oidcClaims struct {
 	jwt.RegisteredClaims
@@ -82,6 +84,7 @@ func verifyProducer(raw string, keys map[string]*rsa.PublicKey, p producerPolicy
 			continue
 		}
 		claims := new(oidcClaims)
+		var selected *rsa.PublicKey
 		parsed, err := jwt.ParseWithClaims(raw, claims, func(token *jwt.Token) (any, error) {
 			if len(token.Header) < 3 || len(token.Header) > 4 || token.Header["alg"] != "RS256" || token.Header["typ"] != "JWT" {
 				return nil, invalid
@@ -105,6 +108,7 @@ func verifyProducer(raw string, keys map[string]*rsa.PublicKey, p producerPolicy
 			if key == nil || key.N == nil || key.N.BitLen() < 2048 || key.N.BitLen() > 4096 || key.E < 3 || key.E%2 == 0 {
 				return nil, invalid
 			}
+			selected = key
 			return key, nil
 		}, jwt.WithValidMethods([]string{"RS256"}), jwt.WithIssuer("https://token.actions.githubusercontent.com"), jwt.WithExpirationRequired(), jwt.WithIssuedAt(), jwt.WithTimeFunc(func() time.Time { return observed }))
 		if err != nil || parsed == nil || !parsed.Valid || claims.IssuedAt == nil || claims.NotBefore == nil || claims.ExpiresAt == nil || len(claims.Audience) != 1 || claims.Audience[0] != producerAudience(p, subject.artifactSHA256) ||
@@ -116,9 +120,33 @@ func verifyProducer(raw string, keys map[string]*rsa.PublicKey, p producerPolicy
 		if now.Before(claims.ExpiresAt.Time) {
 			continue
 		}
-		return &producerCandidate{policy: p, subject: subject.artifactSHA256, observed: observed}, nil
+		fingerprint, ok := oidcKeyDigest(selected)
+		if !ok {
+			continue
+		}
+		return &producerCandidate{policy: p, subject: subject.artifactSHA256, observed: observed, issuerKey: fingerprint}, nil
 	}
 	return nil, invalid
 }
 
 func uintString(v uint64) string { return strconv.FormatUint(v, 10) }
+
+// Bind the exact public key used for successful verification; a key ID alone
+// is not a key identity or evidence that its issuer is uncompromised.
+func oidcKeyDigest(key *rsa.PublicKey) ([32]byte, bool) {
+	var empty [32]byte
+	if key == nil || key.N == nil || key.N.BitLen() < 2048 || key.N.BitLen() > 4096 || key.E < 3 || key.E > 2147483647 || key.E%2 == 0 {
+		return empty, false
+	}
+	h := sha256.New()
+	h.Write([]byte("poolhouse/github-oidc/rsa-key/v1\x00"))
+	var lenbuf [8]byte
+	for _, value := range [][]byte{[]byte("https://token.actions.githubusercontent.com"), key.N.Bytes(), big.NewInt(int64(key.E)).Bytes()} {
+		binary.BigEndian.PutUint64(lenbuf[:], uint64(len(value)))
+		h.Write(lenbuf[:])
+		h.Write(value)
+	}
+	var out [32]byte
+	copy(out[:], h.Sum(nil))
+	return out, true
+}

@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/hex"
+	"math/big"
 	"testing"
 	"time"
 
@@ -48,6 +49,10 @@ func TestProducerBindsSignedJobToVerifiedSubject(t *testing.T) {
 	got, err := verifyProducer(raw, keys, p, v, now)
 	if err != nil || got == nil {
 		t.Fatalf("valid token rejected: %v", err)
+	}
+	want, ok := oidcKeyDigest(&key.PublicKey)
+	if !ok || got.issuerKey != want {
+		t.Fatal("verified key not bound")
 	}
 	for _, name := range []string{"iss", "aud", "repository", "repository_id", "ref", "event_name", "sha", "job_workflow_ref", "job_workflow_sha", "run_id", "run_attempt", "check_run_id", "runner_environment"} {
 		t.Run(name, func(t *testing.T) {
@@ -118,5 +123,31 @@ func TestProducerCannotBeItsOwnJWKSAttester(t *testing.T) {
 	v.policy.signerURI = "https://github.com/" + p.jobWorkflowRef
 	if got, err := verifyProducer(raw, keys, p, v, now); err == nil || got != nil {
 		t.Fatal("producer self-attestation accepted")
+	}
+}
+
+func TestOIDCKeyFingerprintIsKeyBound(t *testing.T) {
+	a, _, _, _, _ := producerFixture(t)
+	b, _, _, _, _ := producerFixture(t)
+	x, ok := oidcKeyDigest(&a.PublicKey)
+	if !ok {
+		t.Fatal("valid key rejected")
+	}
+	y, ok := oidcKeyDigest(&b.PublicKey)
+	if !ok || x == y {
+		t.Fatal("different key not distinguished")
+	}
+	if _, ok := oidcKeyDigest(nil); ok {
+		t.Fatal("nil key accepted")
+	}
+}
+
+func TestOIDCKeyFingerprintCanonicalVector(t *testing.T) {
+	n := new(big.Int).Lsh(big.NewInt(1), 2047)
+	n.Add(n, big.NewInt(1))
+	key := &rsa.PublicKey{N: n, E: 65537}
+	got, ok := oidcKeyDigest(key)
+	if !ok || hex.EncodeToString(got[:]) != "73743724c7e8b08560e25b6f7fe59bf3b3fc1a7d86439c686f84def0d67171e4" {
+		t.Fatal("wrong canonical issuer key digest")
 	}
 }

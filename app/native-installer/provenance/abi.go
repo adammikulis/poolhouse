@@ -22,7 +22,7 @@ typedef struct {
  int stage_fd, archive_fd;
 } ph_provenance_input;
 typedef struct {
- uint8_t artifact_sha256[32], archive_sha256[32], installation[32], head[32], policy_digest[32], nonce[32], target_sha256[32], jwks_sha256[32];
+ uint8_t artifact_sha256[32], archive_sha256[32], installation[32], head[32], policy_digest[32], nonce[32], target_sha256[32], jwks_sha256[32], oidc_key_sha256[32];
  ph_version root_version, timestamp_version, snapshot_version, targets_version;
  uint64_t generation, device, inode, size, archive_device, archive_inode, archive_size, artifact_id;
  int64_t trusted_time, producer_observed_time;
@@ -199,6 +199,7 @@ func PhProvenanceVerify(input *C.ph_provenance_input, output *C.ph_provenance_re
 	copy(unsafe.Slice((*byte)(unsafe.Pointer(&output.nonce[0])), 32), nonce[:])
 	copy(unsafe.Slice((*byte)(unsafe.Pointer(&output.target_sha256[0])), 32), targetDigest[:])
 	copy(unsafe.Slice((*byte)(unsafe.Pointer(&output.jwks_sha256[0])), 32), jwksDigest[:])
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(&output.oidc_key_sha256[0])), 32), candidate.issuerKey[:])
 	setVersion(&output.root_version, trust.next.root)
 	setVersion(&output.timestamp_version, trust.next.timestamp)
 	setVersion(&output.snapshot_version, trust.next.snapshot)
