@@ -446,12 +446,10 @@ def gate_lanes(args: argparse.Namespace, named: list[tuple[str, list[str]]]) -> 
     """The structure tests in the first lane (they need the main thread and the broker's slots) and the scripts beside them."""
     steps = []
     for name, command in named:
-        identity = [w for i, w in enumerate(command) if w != "-n" and command[i - 1:i] != ["-n"]]
         if "pytest" in command:
-            steps.append(gaterun.Step(name, lambda c=command: run(c, tier="gate", artifact_output=args.artifact_output),
-                                      identity))
+            steps.append(gaterun.Step(name, lambda c=command: run(c, tier="gate", artifact_output=args.artifact_output)))
         else:
-            steps.append(gaterun.Step(name, lambda n=name, c=command: script_status(n, c), identity))
+            steps.append(gaterun.Step(name, lambda n=name, c=command: script_status(n, c)))
     tests = [s for s in steps if s.name == "structure tests"]
     return [tests, [s for s in steps if s.name != "structure tests"]]
 
@@ -464,8 +462,7 @@ def gate(args: argparse.Namespace, rest: list[str]) -> int:
         return 0
     if failed := build_node():
         return failed
-    held = gaterun.Gate(ROOT, gatescope.base_ref(ROOT, args.base), gaterun.steps_folder(reuse.reuse_base(), testruns.scope(ROOT)),
-                        REUSE["on"])
+    held = gaterun.Gate()
     named = gate_steps(args.workers, rest)
     outcomes = held.run(gate_lanes(args, named))
     order = [name for name, _ in named]
