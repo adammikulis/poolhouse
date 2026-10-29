@@ -33,21 +33,25 @@ func archiveFor(t *testing.T, name string, content []byte) []byte {
 	}
 	return b.Bytes()
 }
+func extraction(t *testing.T, archive []byte) ([32]byte, [32]byte, int64, error) {
+	t.Helper()
+	f, err := os.CreateTemp(t.TempDir(), "stage-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	return extractArchive(context.Background(), bytes.NewReader(archive), int64(len(archive)), f)
+}
 func TestArchiveBindsExactSubject(t *testing.T) {
 	body := []byte("native fixture")
 	subject := sha256.Sum256(body)
 	a := archiveFor(t, artifactEntry, body)
-	got, err := verifyArchive(bytes.NewReader(a), int64(len(a)), subject)
-	if err != nil || got != sha256.Sum256(a) {
+	got, digest, n, err := extraction(t, a)
+	if err != nil || got != sha256.Sum256(a) || digest != subject || n != int64(len(body)) {
 		t.Fatalf("valid archive rejected: %v", err)
 	}
-	wrong := subject
-	wrong[0] ^= 1
-	if _, err = verifyArchive(bytes.NewReader(a), int64(len(a)), wrong); err == nil {
-		t.Fatal("wrong extracted subject accepted")
-	}
 	a = archiveFor(t, "../poolhouse-native-artifact", body)
-	if _, err = verifyArchive(bytes.NewReader(a), int64(len(a)), subject); err == nil {
+	if _, _, _, err = extraction(t, a); err == nil {
 		t.Fatal("traversal accepted")
 	}
 }
@@ -96,7 +100,6 @@ func TestProducerAPIBindsJobRunAndArchive(t *testing.T) {
 
 func TestArchiveRejectsDuplicateAndSymlink(t *testing.T) {
 	body := []byte("native fixture")
-	subject := sha256.Sum256(body)
 	var b bytes.Buffer
 	w := zip.NewWriter(&b)
 	for i := 0; i < 2; i++ {
@@ -111,7 +114,7 @@ func TestArchiveRejectsDuplicateAndSymlink(t *testing.T) {
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := verifyArchive(bytes.NewReader(b.Bytes()), int64(b.Len()), subject); err == nil {
+	if _, _, _, err := extraction(t, b.Bytes()); err == nil {
 		t.Fatal("duplicate entries accepted")
 	}
 	b.Reset()
@@ -128,7 +131,7 @@ func TestArchiveRejectsDuplicateAndSymlink(t *testing.T) {
 	if err = w.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = verifyArchive(bytes.NewReader(b.Bytes()), int64(b.Len()), subject); err == nil {
+	if _, _, _, err = extraction(t, b.Bytes()); err == nil {
 		t.Fatal("symlink accepted")
 	}
 }
@@ -173,5 +176,43 @@ func TestProducerAPIRejectsChangingJobsAndMissingExpiry(t *testing.T) {
 	})
 	if err := api.verify(context.Background(), candidate, 42, digest, 7, "native build"); err == nil {
 		t.Fatal("missing artifact expiry flag accepted")
+	}
+}
+
+func TestExtractionDoesNotOverwriteExistingStage(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "stage-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	original := []byte("existing work")
+	if _, err = f.Write(original); err != nil {
+		t.Fatal(err)
+	}
+	a := archiveFor(t, artifactEntry, []byte("new work"))
+	if _, _, _, err = extractArchive(context.Background(), bytes.NewReader(a), int64(len(a)), f); err == nil {
+		t.Fatal("nonempty stage accepted")
+	}
+	got, err := os.ReadFile(f.Name())
+	if err != nil || !bytes.Equal(got, original) {
+		t.Fatal("existing stage changed")
+	}
+}
+
+func TestExtractionHonorsCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	f, err := os.CreateTemp(t.TempDir(), "stage-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	a := archiveFor(t, artifactEntry, []byte("test"))
+	if _, _, _, err = extractArchive(ctx, bytes.NewReader(a), int64(len(a)), f); err == nil {
+		t.Fatal("cancelled extraction accepted")
+	}
+	st, err := f.Stat()
+	if err != nil || st.Size() != 0 {
+		t.Fatal("cancelled extraction changed stage")
 	}
 }

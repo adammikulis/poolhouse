@@ -20,7 +20,7 @@ typedef struct {
  ph_version root_version, timestamp_version, snapshot_version, targets_version;
  uint64_t generation, repository_number, run_number, attempt, check_run, artifact_id;
  int64_t previous_time, trusted_time;
- int artifact_fd, archive_fd;
+ int stage_fd, archive_fd;
 } ph_provenance_input;
 typedef struct {
  uint8_t artifact_sha256[32], archive_sha256[32], installation[32], head[32], policy_digest[32], nonce[32], target_sha256[32];
@@ -70,7 +70,7 @@ func setVersion(dst *C.ph_version, v trustVersion) {
 
 // PhProvenanceVerify prepares a candidate, not an authorization or a committed
 // witness. Only an authenticated service may call it with immutable private
-// buffers and an FD whose ownership is serialized. The service must retain and
+// buffers and an FD whose ownership is serialized. The service must create and journal the protected stage before this call, retain and
 // revalidate that FD and atomically consume the nonce/advance the exact prior
 // checkpoint before treating the candidate as an effect.
 //
@@ -94,6 +94,8 @@ func PhProvenanceVerify(input *C.ph_provenance_input, output *C.ph_provenance_re
 	if input.generation == 0 || input.previous_time <= 0 || input.trusted_time < input.previous_time || input.root_count > 32 || input.key_count == 0 || input.key_count > 32 || input.keys == nil {
 		return 0
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
 	installation, head, policyDigest, nonce := copy32(&input.installation[0]), copy32(&input.head[0]), copy32(&input.policy_digest[0]), copy32(&input.nonce[0])
 	source, workflow := copy20(&input.source[0]), copy20(&input.workflow[0])
 	if !nonzero(installation[:]) || !nonzero(head[:]) || !nonzero(policyDigest[:]) || !nonzero(nonce[:]) || !nonzero(source[:]) || !nonzero(workflow[:]) {
@@ -166,7 +168,7 @@ func PhProvenanceVerify(input *C.ph_provenance_input, output *C.ph_provenance_re
 	}
 	p := policy{san: string(vals[7]), repoURI: string(vals[8]), repoID: string(vals[9]), sourceDigest: string(vals[10]), sourceRef: string(vals[11]), signerURI: string(vals[12]), signerDigest: string(vals[13]), configURI: string(vals[14]), configDigest: string(vals[15]), trigger: string(vals[16]), runURI: string(vals[17])}
 	producer := producerPolicy{installation: installation, nonce: nonce, source: source, workflow: workflow, repositoryID: uint64(input.repository_number), runID: uint64(input.run_number), attempt: uint64(input.attempt), checkRunID: uint64(input.check_run), repository: string(vals[18]), ref: p.sourceRef, event: p.trigger, jobWorkflowRef: string(vals[19])}
-	file, before, ok := openProtected(int(input.artifact_fd))
+	file, before, ok := openStage(int(input.stage_fd))
 	if !ok {
 		return 0
 	}
@@ -176,24 +178,26 @@ func PhProvenanceVerify(input *C.ph_provenance_input, output *C.ph_provenance_re
 		return 0
 	}
 	defer archive.Close()
-	verified, err := verifyBundle(vals[0], io.NewSectionReader(file, 0, before.Size), trust.material, p)
+	archiveDigest, extractedDigest, extractedSize, err := extractArchive(ctx, archive, archiveBefore.Size, file)
 	if err != nil {
+		return 0
+	}
+	var stageAfter unix.Stat_t
+	if unix.Fstat(int(file.Fd()), &stageAfter) != nil || stageAfter.Dev != before.Dev || stageAfter.Ino != before.Ino || stageAfter.Size != extractedSize || stageAfter.Mode != before.Mode || stageAfter.Uid != before.Uid || stageAfter.Gid != before.Gid || stageAfter.Nlink != before.Nlink || stageAfter.Flags != before.Flags || stageAfter.Gen != before.Gen {
+		return 0
+	}
+	verified, err := verifyBundle(vals[0], io.NewSectionReader(file, 0, stageAfter.Size), trust.material, p)
+	if err != nil || ctx.Err() != nil || verified.artifactSHA256 != extractedDigest {
 		return 0
 	}
 	candidate, err := verifyProducer(string(vals[1]), keys, producer, verified, now)
-	if err != nil {
+	if err != nil || ctx.Err() != nil {
 		return 0
 	}
-	archiveDigest, err := verifyArchive(archive, archiveBefore.Size, verified.artifactSHA256)
-	if err != nil {
-		return 0
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
 	if err = newProducerAPI().verify(ctx, candidate, uint64(input.artifact_id), archiveDigest, uint64(archiveBefore.Size), string(vals[20])); err != nil {
 		return 0
 	}
-	if !sameProtected(file, before) || !sameProtected(archive, archiveBefore) {
+	if ctx.Err() != nil || !sameProtected(file, stageAfter) || !sameProtected(archive, archiveBefore) {
 		return 0
 	}
 	targetDigest := sha256.Sum256(vals[6])
@@ -209,9 +213,9 @@ func PhProvenanceVerify(input *C.ph_provenance_input, output *C.ph_provenance_re
 	setVersion(&output.snapshot_version, trust.next.snapshot)
 	setVersion(&output.targets_version, trust.next.targets)
 	output.generation = input.generation
-	output.device = C.uint64_t(before.Dev)
-	output.inode = C.uint64_t(before.Ino)
-	output.size = C.uint64_t(before.Size)
+	output.device = C.uint64_t(stageAfter.Dev)
+	output.inode = C.uint64_t(stageAfter.Ino)
+	output.size = C.uint64_t(stageAfter.Size)
 	output.archive_device = C.uint64_t(archiveBefore.Dev)
 	output.archive_inode = C.uint64_t(archiveBefore.Ino)
 	output.archive_size = C.uint64_t(archiveBefore.Size)
@@ -245,4 +249,23 @@ func sameProtected(file *os.File, before unix.Stat_t) bool {
 		return false
 	}
 	return before.Dev == after.Dev && before.Ino == after.Ino && before.Size == after.Size && before.Mode == after.Mode && before.Uid == after.Uid && before.Gid == after.Gid && before.Nlink == after.Nlink && before.Flags == after.Flags && before.Gen == after.Gen && before.Mtim == after.Mtim && before.Ctim == after.Ctim
+}
+
+func openStage(fd int) (*os.File, unix.Stat_t, bool) {
+	var st unix.Stat_t
+	dup, err := unix.FcntlInt(uintptr(fd), unix.F_DUPFD_CLOEXEC, 0)
+	if err != nil {
+		return nil, st, false
+	}
+	file := os.NewFile(uintptr(dup), "service-owned stage")
+	if file == nil {
+		unix.Close(dup)
+		return nil, st, false
+	}
+	flags, err := unix.FcntlInt(file.Fd(), unix.F_GETFL, 0)
+	if err != nil || flags&unix.O_ACCMODE != unix.O_RDWR || flags&unix.O_APPEND != 0 || unix.Fstat(dup, &st) != nil || st.Mode&unix.S_IFMT != unix.S_IFREG || st.Uid != 0 || st.Nlink != 1 || st.Mode&07777 != 0600 || st.Size != 0 {
+		file.Close()
+		return nil, st, false
+	}
+	return file, st, true
 }

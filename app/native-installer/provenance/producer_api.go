@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -179,34 +180,62 @@ func (a *producerAPI) verify(ctx context.Context, candidate *producerCandidate, 
 	return nil
 }
 
-func verifyArchive(archive io.ReaderAt, size int64, subject [32]byte) ([32]byte, error) {
-	var empty [32]byte
-	if archive == nil || size <= 0 || size > maxArtifact {
-		return empty, invalid
+// extractArchive uses one decoder and writes only into the held service-created
+// stage. Any error leaves the recorded stage for the authority to reconcile.
+func extractArchive(ctx context.Context, archive io.ReaderAt, size int64, stage *os.File) (archiveDigest, subjectDigest [32]byte, written int64, err error) {
+	fail := func() ([32]byte, [32]byte, int64, error) { return [32]byte{}, [32]byte{}, 0, invalid }
+	if ctx == nil || ctx.Err() != nil || archive == nil || stage == nil || size <= 0 || size > maxArtifact {
+		return fail()
 	}
-	zr, err := zip.NewReader(archive, size)
-	if err != nil || len(zr.File) != 1 {
-		return empty, invalid
+	st, e := stage.Stat()
+	if e != nil || !st.Mode().IsRegular() || st.Size() != 0 {
+		return fail()
+	}
+	zr, e := zip.NewReader(archive, size)
+	if e != nil || len(zr.File) != 1 {
+		return fail()
 	}
 	entry := zr.File[0]
-	if entry.Name != artifactEntry || !entry.Mode().IsRegular() || entry.UncompressedSize64 > maxArtifact {
-		return empty, invalid
+	if entry.Name != artifactEntry || !entry.Mode().IsRegular() || entry.Flags&1 != 0 || (entry.Method != zip.Store && entry.Method != zip.Deflate) || entry.UncompressedSize64 == 0 || entry.UncompressedSize64 > maxArtifact {
+		return fail()
 	}
-	f, err := entry.Open()
-	if err != nil {
-		return empty, invalid
+	f, e := entry.Open()
+	if e != nil {
+		return fail()
+	}
+	subject := sha256.New()
+	n, e := io.Copy(io.MultiWriter(io.NewOffsetWriter(stage, 0), subject), io.LimitReader(contextReader{ctx: ctx, reader: f}, maxArtifact+1))
+	closeErr := f.Close()
+	if e != nil || closeErr != nil || n <= 0 || n > maxArtifact || uint64(n) != entry.UncompressedSize64 || stage.Sync() != nil {
+		return fail()
+	}
+	readback := sha256.New()
+	m, e := io.Copy(readback, contextReader{ctx: ctx, reader: io.NewSectionReader(stage, 0, n)})
+	if e != nil || m != n || !bytes.Equal(subject.Sum(nil), readback.Sum(nil)) {
+		return fail()
+	}
+	final, e := stage.Stat()
+	if e != nil || final.Size() != n {
+		return fail()
 	}
 	h := sha256.New()
-	n, err := io.Copy(h, io.LimitReader(f, maxArtifact+1))
-	closeErr := f.Close()
-	if err != nil || closeErr != nil || n > maxArtifact || uint64(n) != entry.UncompressedSize64 || !bytes.Equal(h.Sum(nil), subject[:]) {
-		return empty, invalid
+	m, e = io.Copy(h, contextReader{ctx: ctx, reader: io.NewSectionReader(archive, 0, size)})
+	if e != nil || m != size {
+		return fail()
 	}
-	ah := sha256.New()
-	if _, err = io.Copy(ah, io.NewSectionReader(archive, 0, size)); err != nil {
-		return empty, invalid
+	copy(archiveDigest[:], h.Sum(nil))
+	copy(subjectDigest[:], subject.Sum(nil))
+	return archiveDigest, subjectDigest, n, nil
+}
+
+type contextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r contextReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
 	}
-	var digest [32]byte
-	copy(digest[:], ah.Sum(nil))
-	return digest, nil
+	return r.reader.Read(p)
 }
