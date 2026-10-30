@@ -6,6 +6,15 @@
 /* Limits are for OS-returned data; no caller-supplied bytes are promoted. */
 #define MAX_IDENTITY_BYTES (1024u * 1024u)
 
+bool ph_native_identity_equal(const ph_native_identity_observation *left, const ph_native_identity_observation *right) {
+    return left && right && left->signing_flags == right->signing_flags
+        && left->entitlements_present == right->entitlements_present && left->publisher_present == right->publisher_present
+        && !memcmp(left->code_directory,right->code_directory,sizeof(left->code_directory))
+        && !memcmp(left->requirement_digest,right->requirement_digest,sizeof(left->requirement_digest))
+        && !memcmp(left->entitlements_digest,right->entitlements_digest,sizeof(left->entitlements_digest))
+        && !memcmp(left->publisher_digest,right->publisher_digest,sizeof(left->publisher_digest));
+}
+
 static bool digest(CFDataRef data, bool present, const char *domain, size_t domain_size, uint8_t output[32]) {
     if (present && (!data || CFGetTypeID(data) != CFDataGetTypeID())) return false;
     CFIndex length = present ? CFDataGetLength(data) : 0;

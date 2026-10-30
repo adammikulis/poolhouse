@@ -28,13 +28,7 @@ static bool identity_matches(SecCodeRef code, const ph_native_identity_observati
     ph_native_identity_observation current = {0};
     return dynamic_valid(code) && ph_native_identity_observe(code, &current)
         && (current.signing_flags & kSecCodeSignatureRuntime) != 0
-        && current.signing_flags == expected->signing_flags
-        && current.entitlements_present == expected->entitlements_present
-        && current.publisher_present == expected->publisher_present
-        && !memcmp(current.code_directory, expected->code_directory, sizeof(current.code_directory))
-        && !memcmp(current.requirement_digest, expected->requirement_digest, sizeof(current.requirement_digest))
-        && !memcmp(current.entitlements_digest, expected->entitlements_digest, sizeof(current.entitlements_digest))
-        && !memcmp(current.publisher_digest, expected->publisher_digest, sizeof(current.publisher_digest));
+        && ph_native_identity_equal(&current, expected);
 }
 #ifdef TESTING
 bool ph_native_caller_test_status(CFTypeRef value) { return status_valid(value); }
