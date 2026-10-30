@@ -27,8 +27,16 @@ extern void listener_probe_link(void);
 
 struct context { int node; int frames; int ended; int disposed; int error; dispatch_semaphore_t done; };
 struct fixture { struct context node; struct context server; ph_native_xpc_caller_policy node_policy;
-    int active_stop; int listener_ended; int listener_disposed; int error; dispatch_semaphore_t done; };
+    int active_stop; int idle_cancel; int active_cancel; int listener_ended; int listener_disposed; int error;
+    ph_authority_connection_control *control; ph_authority_connection_control *retained; dispatch_semaphore_t done; };
 static void *off_queue_stop(void *raw) { ph_authority_session_stop_listener(raw); return NULL; }
+static void *cancel_listener(void *raw) {
+    ph_authority_connection_control *control = raw;
+    ph_authority_connection_control_cancel(control);
+    ph_authority_connection_control_cancel(control);
+    ph_authority_connection_control_release(control);
+    return NULL;
+}
 static void callback(void *raw, ph_authority_channel *channel, ph_channel_event event, const uint8_t *frame, size_t length) {
     struct context *c = raw;
     if (event == PH_CHANNEL_START && c->node) {
@@ -62,9 +70,13 @@ static void session_callback(void *raw, ph_authority_session *session, ph_author
         pthread_t worker;
         if (pthread_create(&worker,NULL,off_queue_stop,session) || pthread_join(worker,NULL)) fixture->error = 8;
     }
-    if (fixture->active_stop && event == PH_CHANNEL_FRAME && length == 38 && frame[5] == 1) {
+    if ((fixture->active_stop || fixture->active_cancel) && event == PH_CHANNEL_FRAME && length == 38 && frame[5] == 1) {
         fixture->server.frames++;
-        ph_authority_session_stop_listener(session);
+        if (fixture->active_cancel) {
+            pthread_t worker;
+            if (!fixture->control || pthread_create(&worker,NULL,cancel_listener,fixture->control)) fixture->error = 9;
+            else { fixture->control = NULL; pthread_detach(worker); }
+        } else ph_authority_session_stop_listener(session);
         return;
     }
     callback(&fixture->server,channel,event,frame,length);
@@ -73,6 +85,17 @@ static void session_callback(void *raw, ph_authority_session *session, ph_author
 static void listener_callback(void *raw, ph_authority_listener *listener, ph_listener_event event) {
     struct fixture *fixture = raw;
     if (event == PH_LISTENER_START) {
+        if (fixture->idle_cancel || fixture->active_cancel) {
+            fixture->control = ph_authority_listener_control_copy(listener);
+            fixture->retained = ph_authority_listener_control_copy(listener);
+            if (!fixture->control || !fixture->retained) { fixture->error = 10; ph_authority_listener_stop(listener); return; }
+            if (fixture->idle_cancel) {
+                pthread_t worker;
+                if (pthread_create(&worker,NULL,cancel_listener,fixture->control)) { fixture->error = 11; ph_authority_listener_stop(listener); }
+                else { fixture->control = NULL; pthread_detach(worker); }
+                return;
+            }
+        }
         xpc_endpoint_t endpoint = ph_authority_listener_test_endpoint(listener);
         if (!endpoint || !ph_authority_channel_test_connect(endpoint,&fixture->node_policy,callback,&fixture->node)) {
             fixture->error = 7;
@@ -90,7 +113,9 @@ static void listener_callback(void *raw, ph_authority_listener *listener, ph_lis
 int main(int argc, char **argv) {
     int wrong = argc == 2 && !strcmp(argv[1],"--wrong-session");
     int active = argc == 2 && !strcmp(argv[1],"--active-stop");
-    if (argc != 1 && !wrong && !active) return 6;
+    int idle_cancel = argc == 2 && !strcmp(argv[1],"--idle-cancel");
+    int active_cancel = argc == 2 && !strcmp(argv[1],"--active-cancel");
+    if (argc != 1 && !wrong && !active && !idle_cancel && !active_cancel) return 6;
     listener_probe_link();
     SecCodeRef self = NULL; SecRequirementRef requirement = NULL;
     ph_native_xpc_caller_policy policy = {0};
@@ -102,19 +127,23 @@ int main(int argc, char **argv) {
     policy.requirement = requirement; policy.euid = audit_token_to_euid(token); policy.asid = audit_token_to_asid(token);
     dispatch_semaphore_t done = dispatch_semaphore_create(0);
     struct fixture fixture = { .node = { .node = 1, .done = done }, .server = { .done = done },
-        .node_policy = policy, .active_stop = active, .done = done };
+        .node_policy = policy, .active_stop = active, .idle_cancel = idle_cancel, .active_cancel = active_cancel, .done = done };
     if (wrong) fixture.node_policy.asid ^= 1;
     if (!ph_authority_listener_test_start(&policy,listener_callback,session_callback,&fixture)) return 3;
-    if (dispatch_semaphore_wait(done,dispatch_time(DISPATCH_TIME_NOW,10*NSEC_PER_SEC)) ||
-        dispatch_semaphore_wait(done,dispatch_time(DISPATCH_TIME_NOW,10*NSEC_PER_SEC)) ||
-        dispatch_semaphore_wait(done,dispatch_time(DISPATCH_TIME_NOW,10*NSEC_PER_SEC))) return 4;
-    if (fixture.error || fixture.node.error || fixture.server.error || fixture.node.frames != ((wrong || active) ? 0 : 1) || fixture.server.frames != ((wrong || active) ? 1 : 2) ||
-        fixture.node.ended != 1 || fixture.server.ended != 1 || fixture.node.disposed != 1 || fixture.server.disposed != 1 ||
+    int events = idle_cancel ? 1 : 3;
+    for (int i = 0; i < events; i++) if (dispatch_semaphore_wait(done,dispatch_time(DISPATCH_TIME_NOW,10*NSEC_PER_SEC))) return 4;
+    if (fixture.retained) {
+        ph_authority_connection_control_cancel(fixture.retained);
+        ph_authority_connection_control_cancel(fixture.retained);
+        ph_authority_connection_control_release(fixture.retained);
+    }
+    if (fixture.error || fixture.node.error || fixture.server.error || fixture.node.frames != ((wrong || active || idle_cancel || active_cancel) ? 0 : 1) || fixture.server.frames != (idle_cancel ? 0 : (wrong || active || active_cancel) ? 1 : 2) ||
+        fixture.node.ended != (idle_cancel ? 0 : 1) || fixture.server.ended != (idle_cancel ? 0 : 1) || fixture.node.disposed != (idle_cancel ? 0 : 1) || fixture.server.disposed != (idle_cancel ? 0 : 1) ||
         fixture.listener_ended != 1 || fixture.listener_disposed != 1) {
         fprintf(stderr,"node %d/%d/%d/%d server %d/%d/%d/%d listener %d/%d/%d\n",fixture.node.error,fixture.node.frames,fixture.node.ended,fixture.node.disposed,
             fixture.server.error,fixture.server.frames,fixture.server.ended,fixture.server.disposed,fixture.error,fixture.listener_ended,fixture.listener_disposed); return 5;
     }
-    puts(wrong ? "wrong session closes both channels" : active ? "active listener stops and drains" : "serial authority channels drain their callbacks");
+    puts(wrong ? "wrong session closes both channels" : active ? "active listener stops and drains" : idle_cancel ? "idle listener cancels and drains" : active_cancel ? "active listener cancels and drains" : "serial authority channels drain their callbacks");
     return 0;
 }
 '''
@@ -177,3 +206,8 @@ def test_authority_listener_lifetime(tmp_path):
     out, err = _execute([str(binary), "--active-stop"], tmp_path, "active-stop", environment, (25, 65536))
     assert out == "active listener stops and drains\n"
     assert not err
+    for mode, expected in [("--idle-cancel", "idle listener cancels and drains\n"),
+                           ("--active-cancel", "active listener cancels and drains\n")]:
+        out, err = _execute([str(binary), mode], tmp_path, mode[2:], environment, (25, 65536))
+        assert out == expected
+        assert not err

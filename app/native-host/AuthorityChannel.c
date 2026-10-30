@@ -15,7 +15,7 @@ struct ph_authority_channel {
     ph_native_xpc_caller_policy policy;
     ph_channel_handler handler;
     void *context;
-    ph_authority_channel_control *control;
+    ph_authority_connection_control *control;
     bool closed;
 #ifdef TESTING
     void (*send_hook)(void *);
@@ -23,13 +23,31 @@ struct ph_authority_channel {
 #endif
 };
 
-struct ph_authority_channel_control {
+struct ph_authority_connection_control {
     pthread_mutex_t lock;
     unsigned references;
     xpc_connection_t connection;
 };
 
-static xpc_connection_t take_connection(ph_authority_channel_control *control) {
+static ph_authority_connection_control *new_control(xpc_connection_t connection) {
+    ph_authority_connection_control *control = calloc(1,sizeof(*control));
+    if (!control) return NULL;
+    if (pthread_mutex_init(&control->lock,NULL)) { free(control); return NULL; }
+    control->references = 1;
+    control->connection = connection;
+    xpc_retain(connection);
+    return control;
+}
+
+static ph_authority_connection_control *copy_control(ph_authority_connection_control *control) {
+    pthread_mutex_lock(&control->lock);
+    bool okay = control->connection && control->references != UINT_MAX;
+    if (okay) control->references++;
+    pthread_mutex_unlock(&control->lock);
+    return okay ? control : NULL;
+}
+
+static xpc_connection_t take_connection(ph_authority_connection_control *control) {
     pthread_mutex_lock(&control->lock);
     xpc_connection_t connection = control->connection;
     control->connection = NULL;
@@ -37,13 +55,13 @@ static xpc_connection_t take_connection(ph_authority_channel_control *control) {
     return connection;
 }
 
-void ph_authority_channel_control_cancel(ph_authority_channel_control *control) {
+void ph_authority_connection_control_cancel(ph_authority_connection_control *control) {
     if (!control) return;
     xpc_connection_t connection = take_connection(control);
     if (connection) { xpc_connection_cancel(connection); xpc_release(connection); }
 }
 
-void ph_authority_channel_control_release(ph_authority_channel_control *control) {
+void ph_authority_connection_control_release(ph_authority_connection_control *control) {
     if (!control) return;
     pthread_mutex_lock(&control->lock);
     bool last = --control->references == 0;
@@ -54,17 +72,12 @@ void ph_authority_channel_control_release(ph_authority_channel_control *control)
     if (last) { pthread_mutex_destroy(&control->lock); free(control); }
 }
 
-ph_authority_channel_control *ph_authority_channel_control_copy(ph_authority_channel *channel) {
+ph_authority_connection_control *ph_authority_connection_control_copy(ph_authority_channel *channel) {
     if (!channel || channel->closed || dispatch_get_specific(channel) != channel) return NULL;
-    ph_authority_channel_control *control = channel->control;
-    pthread_mutex_lock(&control->lock);
-    bool okay = control->connection && control->references != UINT_MAX;
-    if (okay) control->references++;
-    pthread_mutex_unlock(&control->lock);
-    return okay ? control : NULL;
+    return copy_control(channel->control);
 }
 
-static bool control_active(ph_authority_channel_control *control) {
+static bool control_active(ph_authority_connection_control *control) {
     pthread_mutex_lock(&control->lock);
     bool active = control->connection != NULL;
     pthread_mutex_unlock(&control->lock);
@@ -77,7 +90,7 @@ static void disposed(void *context) {
     void *owner = channel->context;
     dispatch_queue_t queue = channel->queue;
     CFRelease(channel->policy.requirement);
-    ph_authority_channel_control_release(channel->control);
+    ph_authority_connection_control_release(channel->control);
     free(channel);
     dispatch_async(queue, ^{ handler(owner,NULL,PH_CHANNEL_DISPOSED,NULL,0); });
     dispatch_release(queue);
@@ -170,14 +183,8 @@ static bool open_channel(xpc_connection_t connection, const ph_native_xpc_caller
     if (!channel) { discard_inactive(connection); return false; }
     channel->queue = dispatch_queue_create("app.poolhouse.authority.channel",DISPATCH_QUEUE_SERIAL);
     if (!channel->queue) { free(channel); discard_inactive(connection); return false; }
-    channel->control = calloc(1,sizeof(*channel->control));
+    channel->control = new_control(connection);
     if (!channel->control) { dispatch_release(channel->queue); free(channel); discard_inactive(connection); return false; }
-    if (pthread_mutex_init(&channel->control->lock,NULL)) {
-        free(channel->control); dispatch_release(channel->queue); free(channel); discard_inactive(connection); return false;
-    }
-    channel->control->references = 1;
-    channel->control->connection = connection;
-    xpc_retain(connection);
     channel->connection = connection;
     channel->policy = *policy;
     CFRetain(channel->policy.requirement);
@@ -224,6 +231,7 @@ struct ph_authority_listener {
     ph_listener_handler handler;
     ph_session_handler session_handler;
     void *context;
+    ph_authority_connection_control *control;
     ph_authority_session *sessions;
     size_t count;
     bool stopping;
@@ -236,6 +244,7 @@ static void listener_maybe_dispose(ph_authority_listener *listener) {
     void *context = listener->context;
     dispatch_queue_t queue = listener->queue;
     CFRelease(listener->policy.requirement);
+    ph_authority_connection_control_release(listener->control);
     free(listener);
     handler(context,NULL,PH_LISTENER_DISPOSED);
     dispatch_release(queue);
@@ -245,6 +254,8 @@ static void listener_stop_on_queue(ph_authority_listener *listener) {
     if (listener->stopping) return;
     listener->stopping = true;
     xpc_connection_cancel(listener->connection);
+    xpc_connection_t held = take_connection(listener->control);
+    if (held) xpc_release(held);
     for (ph_authority_session *session = listener->sessions; session; session = session->next)
         if (session->connection) xpc_connection_cancel(session->connection);
     listener->handler(listener->context,listener,PH_LISTENER_END);
@@ -254,6 +265,11 @@ static void listener_stop_on_queue(ph_authority_listener *listener) {
 void ph_authority_listener_stop(ph_authority_listener *listener) {
     if (!listener || dispatch_get_specific(listener) != listener) return;
     listener_stop_on_queue(listener);
+}
+
+ph_authority_connection_control *ph_authority_listener_control_copy(ph_authority_listener *listener) {
+    if (!listener || listener->stopping || dispatch_get_specific(listener) != listener) return NULL;
+    return copy_control(listener->control);
 }
 
 void ph_authority_session_stop_listener(ph_authority_session *session) {
@@ -324,6 +340,8 @@ static bool open_listener(xpc_connection_t connection, const ph_native_xpc_calle
     if (!listener) { discard_inactive(connection); return false; }
     listener->queue = dispatch_queue_create("app.poolhouse.authority.listener",DISPATCH_QUEUE_SERIAL);
     if (!listener->queue) { free(listener); discard_inactive(connection); return false; }
+    listener->control = new_control(connection);
+    if (!listener->control) { dispatch_release(listener->queue); free(listener); discard_inactive(connection); return false; }
     listener->connection = connection;
     listener->policy = *policy;
     CFRetain(listener->policy.requirement);

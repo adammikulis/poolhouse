@@ -8,7 +8,7 @@
  * caller must establish protected policy and bind each frame to Store/session
  * authority separately. Only handshake frames are supported here. */
 typedef struct ph_authority_channel ph_authority_channel;
-typedef struct ph_authority_channel_control ph_authority_channel_control;
+typedef struct ph_authority_connection_control ph_authority_connection_control;
 typedef enum { PH_CHANNEL_START, PH_CHANNEL_FRAME, PH_CHANNEL_END, PH_CHANNEL_DISPOSED } ph_channel_event;
 typedef void (*ph_channel_handler)(void *context, ph_authority_channel *channel,
     ph_channel_event event, const uint8_t *frame, size_t length);
@@ -31,9 +31,9 @@ void ph_authority_channel_close(ph_authority_channel *channel);
  * Cancel is idempotent and cannot preempt a callback already running. It never
  * proves delivery or effect settlement. Each
  * copied control must be released exactly once; it remains inert after END. */
-ph_authority_channel_control *ph_authority_channel_control_copy(ph_authority_channel *channel);
-void ph_authority_channel_control_cancel(ph_authority_channel_control *control);
-void ph_authority_channel_control_release(ph_authority_channel_control *control);
+ph_authority_connection_control *ph_authority_connection_control_copy(ph_authority_channel *channel);
+void ph_authority_connection_control_cancel(ph_authority_connection_control *control);
+void ph_authority_connection_control_release(ph_authority_connection_control *control);
 
 /* The listener owns the fixed service and its bounded adopted connections.
  * Its policy is a candidate until the service binds it to protected Store
@@ -52,6 +52,9 @@ bool ph_authority_listener_start(const ph_native_xpc_caller_policy *policy, ph_l
  * can request the same stop while its session remains owned. */
 void ph_authority_listener_stop(ph_authority_listener *listener);
 void ph_authority_session_stop_listener(ph_authority_session *session);
+/* Copy on the listener callback queue to request cancellation off-queue using
+ * the same connection-control cancel/release API as a channel. */
+ph_authority_connection_control *ph_authority_listener_control_copy(ph_authority_listener *listener);
 #ifdef TESTING
 /* Test hook runs immediately before enqueue while the cancel gate is held. */
 void ph_authority_channel_test_send_hook(ph_authority_channel *channel, void (*hook)(void *), void *context);

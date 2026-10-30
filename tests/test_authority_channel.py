@@ -26,9 +26,9 @@ SOURCE = r'''
 extern void channel_probe_link(void);
 
 struct context { int node; int idle; int race; int frames; int ended; int disposed; int error; dispatch_semaphore_t done;
-    ph_authority_channel_control *retained; };
+    ph_authority_connection_control *retained; };
 struct gate { dispatch_semaphore_t entered; dispatch_semaphore_t attempted; dispatch_semaphore_t finished;
-    ph_authority_channel_control *control; };
+    ph_authority_connection_control *control; };
 static void hold_send(void *raw) {
     struct gate *gate = raw;
     dispatch_semaphore_signal(gate->entered);
@@ -38,16 +38,16 @@ static void *cancel_racing(void *raw) {
     struct gate *gate = raw;
     dispatch_semaphore_wait(gate->entered,DISPATCH_TIME_FOREVER);
     dispatch_semaphore_signal(gate->attempted);
-    ph_authority_channel_control_cancel(gate->control);
+    ph_authority_connection_control_cancel(gate->control);
     dispatch_semaphore_signal(gate->finished);
-    ph_authority_channel_control_release(gate->control);
+    ph_authority_connection_control_release(gate->control);
     return NULL;
 }
 static void *cancel_idle(void *raw) {
-    ph_authority_channel_control *control = raw;
-    ph_authority_channel_control_cancel(control);
-    ph_authority_channel_control_cancel(control);
-    ph_authority_channel_control_release(control);
+    ph_authority_connection_control *control = raw;
+    ph_authority_connection_control_cancel(control);
+    ph_authority_connection_control_cancel(control);
+    ph_authority_connection_control_release(control);
     return NULL;
 }
 static void callback(void *raw, ph_authority_channel *channel, ph_channel_event event, const uint8_t *frame, size_t length) {
@@ -61,8 +61,8 @@ static void callback(void *raw, ph_authority_channel *channel, ph_channel_event 
         c->frames++;
         if (!c->node && length == 38 && frame[5] == 1) {
             if (c->idle) {
-                ph_authority_channel_control *control = ph_authority_channel_control_copy(channel);
-                c->retained = ph_authority_channel_control_copy(channel);
+                ph_authority_connection_control *control = ph_authority_connection_control_copy(channel);
+                c->retained = ph_authority_connection_control_copy(channel);
                 pthread_t worker;
                 if (!control || !c->retained || pthread_create(&worker,NULL,cancel_idle,control)) { c->error = 7; ph_authority_channel_close(channel); return; }
                 pthread_detach(worker);
@@ -72,7 +72,7 @@ static void callback(void *raw, ph_authority_channel *channel, ph_channel_event 
             memset(bound+38,2,32); bound[301]=1; bound[309]=1; bound[317]=1; bound[321]=1; bound[325]=1;
             if (c->race) {
                 struct gate gate = { .entered=dispatch_semaphore_create(0), .attempted=dispatch_semaphore_create(0),
-                    .finished=dispatch_semaphore_create(0), .control=ph_authority_channel_control_copy(channel) };
+                    .finished=dispatch_semaphore_create(0), .control=ph_authority_connection_control_copy(channel) };
                 pthread_t worker;
                 if (!gate.control || pthread_create(&worker,NULL,cancel_racing,&gate)) { c->error = 8; ph_authority_channel_close(channel); return; }
                 ph_authority_channel_test_send_hook(channel,hold_send,&gate);
@@ -133,9 +133,9 @@ int main(int argc, char **argv) {
         dispatch_semaphore_wait(done,dispatch_time(DISPATCH_TIME_NOW,10*NSEC_PER_SEC))) return 4;
     if (idle) {
         if (!server.retained) return 7;
-        ph_authority_channel_control_cancel(server.retained);
-        ph_authority_channel_control_cancel(server.retained);
-        ph_authority_channel_control_release(server.retained);
+        ph_authority_connection_control_cancel(server.retained);
+        ph_authority_connection_control_cancel(server.retained);
+        ph_authority_connection_control_release(server.retained);
     }
     if (node.error || server.error || (!race && node.frames != ((wrong || idle) ? 0 : 1)) || node.frames > 1 || server.frames != ((wrong || idle || race) ? 1 : 2) ||
         node.ended != 1 || server.ended != 1 || node.disposed != 1 || server.disposed != 1) {
