@@ -2,11 +2,11 @@
 //! never caller admission, installation proof, or permission to perform work.
 use sha2::{Digest, Sha256};
 
-const HEADER: &[u8; 5] = b"PHAC\x01";
-const DOMAIN_OPEN: &[u8] = b"poolhouse.authority.channel.open.v1\0";
-const DOMAIN_TRANSCRIPT: &[u8] = b"poolhouse.authority.channel.transcript.v1\0";
+const HEADER: &[u8; 5] = b"PHAC\x02";
+const DOMAIN_OPEN: &[u8] = b"poolhouse.authority.channel.open.v2\0";
+const DOMAIN_TRANSCRIPT: &[u8] = b"poolhouse.authority.channel.transcript.v2\0";
 const OPEN_LEN: usize = 5 + 1 + 32;
-const BOUND_LEN: usize = 5 + 1 + 9 * 32 + 3 * 8 + 2 * 4;
+const BOUND_LEN: usize = 5 + 1 + 9 * 32 + 3 * 8 + 3 * 4;
 const CONFIRM_LEN: usize = 5 + 1 + 32;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -16,7 +16,9 @@ pub struct Binding {
     pub node_identity: [u8;32], pub service_identity: [u8;32],
     pub node_incarnation: [u8;32], pub service_incarnation: [u8;32],
     pub installation_generation: u64, pub policy_generation: u64, pub cutover_generation: u64,
-    pub owner_uid: u32, pub owner_asid: u32,
+    // The service may run in the OS default audit session (zero). Each value
+    // still requires an independent observation of its own held connection.
+    pub owner_uid: u32, pub node_asid: u32, pub service_asid: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -41,12 +43,12 @@ impl Frame {
                 if [b.node_nonce,b.service_nonce,b.open_digest,b.installation,b.policy,b.node_identity,
                     b.service_identity,b.node_incarnation,b.service_incarnation].contains(&[0;32])
                     || b.node_nonce == b.service_nonce || b.installation_generation == 0 || b.policy_generation == 0 || b.cutover_generation == 0
-                    || b.owner_uid == 0 || b.owner_uid == u32::MAX || b.owner_asid == 0 || b.owner_asid == u32::MAX { return Err(InvalidFrame); }
+                    || b.owner_uid == 0 || b.owner_uid == u32::MAX || b.node_asid == 0 || b.node_asid == u32::MAX || b.service_asid == u32::MAX { return Err(InvalidFrame); }
                 out.push(2);
                 for value in [b.node_nonce,b.service_nonce,b.open_digest,b.installation,b.policy,b.node_identity,
                     b.service_identity,b.node_incarnation,b.service_incarnation] { out.extend_from_slice(&value); }
                 for value in [b.installation_generation,b.policy_generation,b.cutover_generation] { out.extend_from_slice(&value.to_be_bytes()); }
-                out.extend_from_slice(&b.owner_uid.to_be_bytes()); out.extend_from_slice(&b.owner_asid.to_be_bytes());
+                out.extend_from_slice(&b.owner_uid.to_be_bytes()); out.extend_from_slice(&b.node_asid.to_be_bytes()); out.extend_from_slice(&b.service_asid.to_be_bytes());
             }
             _ => return Err(InvalidFrame),
         }
@@ -70,7 +72,7 @@ impl Frame {
                 service_identity:fixed(bytes,&mut i)?, node_incarnation:fixed(bytes,&mut i)?, service_incarnation:fixed(bytes,&mut i)?,
                 installation_generation:u64::from_be_bytes(fixed(bytes,&mut i)?), policy_generation:u64::from_be_bytes(fixed(bytes,&mut i)?),
                 cutover_generation:u64::from_be_bytes(fixed(bytes,&mut i)?), owner_uid:u32::from_be_bytes(fixed(bytes,&mut i)?),
-                owner_asid:u32::from_be_bytes(fixed(bytes,&mut i)?),
+                node_asid:u32::from_be_bytes(fixed(bytes,&mut i)?), service_asid:u32::from_be_bytes(fixed(bytes,&mut i)?),
             }),
             _ => return Err(InvalidFrame),
         };
@@ -104,7 +106,7 @@ pub struct Expected {
     pub node_identity: [u8;32], pub service_identity: [u8;32],
     pub node_incarnation: [u8;32], pub service_incarnation: [u8;32],
     pub installation_generation: u64, pub policy_generation: u64, pub cutover_generation: u64,
-    pub owner_uid: u32, pub owner_asid: u32,
+    pub owner_uid: u32, pub node_asid: u32, pub service_asid: u32,
 }
 
 impl Expected {
@@ -113,7 +115,7 @@ impl Expected {
             && self.service_identity == b.service_identity && self.node_incarnation == b.node_incarnation
             && self.service_incarnation == b.service_incarnation && self.installation_generation == b.installation_generation
             && self.policy_generation == b.policy_generation && self.cutover_generation == b.cutover_generation
-            && self.owner_uid == b.owner_uid && self.owner_asid == b.owner_asid
+            && self.owner_uid == b.owner_uid && self.node_asid == b.node_asid && self.service_asid == b.service_asid
     }
 }
 
@@ -148,6 +150,11 @@ impl ServiceHandshake {
     }
 }
 
+#[cfg(target_os = "macos")]
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn ph_authority_frame_limit() -> usize { BOUND_LEN }
+
 /// Private C transport ABI. The pointer must address `len` immutable bytes
 /// owned by the serial transport for this call; IPC values are copied first.
 /// This checks framing only and never issues an authenticated capability.
@@ -179,16 +186,15 @@ mod tests {
             assert_eq!(ph_authority_frame_kind(std::ptr::null(),open.len()),0);
             assert_eq!(ph_authority_frame_kind(open.as_ptr(),usize::MAX),0);
         }
-        assert_eq!(open_digest(&open).unwrap(),[0xf5,0x0b,0x1e,0x8b,0xc9,0x38,0x27,0x62,0x44,0x26,0xb6,0xc6,0x11,0xc7,0x92,0x15,
-            0xc9,0xe7,0x7e,0xfe,0xbe,0x30,0xd2,0xba,0xb2,0xbf,0xc2,0xd0,0x5f,0xa3,0x52,0x30]);
+        assert_eq!(open_digest(&open).unwrap(),[0xde,0x5d,0xf3,0xbe,0xc8,0x1e,0x38,0xb6,0x25,0x11,0xc4,0xde,0xe6,0x84,0xdd,0xdb,0x02,0x6f,0x96,0xfc,0x59,0xa6,0x80,0x5e,0x2b,0xd4,0x44,0xc7,0xdf,0x65,0x6e,0xbd]);
         let binding = Binding { node_nonce:[1;32],service_nonce:[2;32],open_digest:open_digest(&open).unwrap(),
             installation:[3;32],policy:[4;32],node_identity:[5;32],service_identity:[6;32],
             node_incarnation:[7;32],service_incarnation:[8;32],installation_generation:1,policy_generation:2,
-            cutover_generation:1,owner_uid:501,owner_asid:100 };
+            cutover_generation:1,owner_uid:501,node_asid:100,service_asid:0 };
         let expected = Expected { installation:binding.installation,policy:binding.policy,node_identity:binding.node_identity,
             service_identity:binding.service_identity,node_incarnation:binding.node_incarnation,service_incarnation:binding.service_incarnation,
             installation_generation:binding.installation_generation,policy_generation:binding.policy_generation,
-            cutover_generation:binding.cutover_generation,owner_uid:binding.owner_uid,owner_asid:binding.owner_asid };
+            cutover_generation:binding.cutover_generation,owner_uid:binding.owner_uid,node_asid:binding.node_asid,service_asid:binding.service_asid };
         let (node, actual_open) = NodeHandshake::start([1;32],expected.clone()).unwrap();
         assert_eq!(actual_open,open);
         let (service,bound) = ServiceHandshake::start(&open,binding.clone()).unwrap();
@@ -197,7 +203,7 @@ mod tests {
         assert_eq!(Frame::decode(&confirm).unwrap(),Frame::Confirm(transcript(&open,&bound).unwrap()));
         assert_eq!(node.accept(&bound).unwrap().0,confirm);
         assert_eq!(service.accept(&confirm).unwrap(),transcript(&open,&bound).unwrap());
-        let mut wrong = expected; wrong.policy[0] ^= 1;
+        let mut wrong = expected.clone(); wrong.policy[0] ^= 1;
         assert!(NodeHandshake::start([1;32],wrong).unwrap().0.accept(&bound).is_err());
         let mut other_binding = binding.clone(); other_binding.service_nonce = [10;32];
         let other_service = ServiceHandshake::start(&open,other_binding).unwrap().0;
@@ -206,9 +212,13 @@ mod tests {
         assert!(transcript(&other,&bound).is_err());
         for index in 0..bound.len() { assert!(Frame::decode(&bound[..index]).is_err()); }
         let mut trailing = bound.clone(); trailing.push(0); assert!(Frame::decode(&trailing).is_err());
-        let mut version = bound.clone(); version[4] = 2; assert!(Frame::decode(&version).is_err());
+        let mut version = bound.clone(); version[4] = 1; assert!(Frame::decode(&version).is_err());
         let mut kind = bound.clone(); kind[5] = 4; assert!(Frame::decode(&kind).is_err());
         assert!(Frame::Open([0;32]).encode().is_err());
+        let mut wrong_session = expected.clone(); wrong_session.service_asid = 1;
+        assert!(NodeHandshake::start([1;32],wrong_session).unwrap().0.accept(&bound).is_err());
+        let mut invalid_session = binding.clone(); invalid_session.service_asid = u32::MAX;
+        assert!(Frame::Bound(invalid_session).encode().is_err());
         let mut no_cutover = binding; no_cutover.cutover_generation = 0;
         assert!(Frame::Bound(no_cutover).encode().is_err());
     }

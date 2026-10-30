@@ -7,7 +7,7 @@
 
 /* One parser, owned by the Rust authority library. */
 extern uint8_t ph_authority_frame_kind(const uint8_t *bytes, size_t length);
-enum { FRAME_LIMIT = 326 };
+extern size_t ph_authority_frame_limit(void);
 
 struct ph_authority_channel {
     xpc_connection_t connection;
@@ -126,7 +126,7 @@ static void receive(ph_authority_channel *channel, xpc_object_t message) {
     xpc_object_t value = xpc_dictionary_get_value(message,"frame");
     if (!value || xpc_get_type(value) != XPC_TYPE_DATA) { close_channel(channel); return; }
     size_t length = xpc_data_get_length(value);
-    if (!length || length > FRAME_LIMIT) { close_channel(channel); return; }
+    if (!length || length > ph_authority_frame_limit()) { close_channel(channel); return; }
     uint8_t *frame = malloc(length);
     if (!frame || xpc_data_get_bytes(value,frame,0,length) != length) { free(frame); close_channel(channel); return; }
     if (!ph_authority_frame_kind(frame,length)) { free(frame); close_channel(channel); return; }
@@ -162,7 +162,7 @@ static bool set_requirement(xpc_connection_t connection, SecRequirementRef requi
 }
 
 bool ph_authority_channel_send(ph_authority_channel *channel, const uint8_t *frame, size_t length) {
-    if (!channel || channel->closed || !frame || !length || length > FRAME_LIMIT ||
+    if (!channel || channel->closed || !frame || !length || length > ph_authority_frame_limit() ||
         dispatch_get_specific(channel) != channel) return false;
     if (!ph_authority_frame_kind(frame,length)) return false;
     xpc_object_t message = xpc_dictionary_create(NULL,NULL,0);

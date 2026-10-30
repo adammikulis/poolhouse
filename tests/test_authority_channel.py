@@ -53,7 +53,7 @@ static void *cancel_idle(void *raw) {
 static void callback(void *raw, ph_authority_channel *channel, ph_channel_event event, const uint8_t *frame, size_t length) {
     struct context *c = raw;
     if (event == PH_CHANNEL_START && c->node) {
-        uint8_t open[38] = {'P','H','A','C',1,1}; memset(open+6,1,32);
+        uint8_t open[38] = {'P','H','A','C',2,1}; memset(open+6,1,32);
         uint8_t malformed[38] = {0};
         if (ph_authority_channel_send(channel,malformed,sizeof(malformed))) c->error = 6;
         if (!ph_authority_channel_send(channel,open,sizeof(open))) c->error = 1;
@@ -68,7 +68,7 @@ static void callback(void *raw, ph_authority_channel *channel, ph_channel_event 
                 pthread_detach(worker);
                 return;
             }
-            uint8_t bound[326] = {'P','H','A','C',1,2}; memset(bound+6,1,288);
+            uint8_t bound[330] = {'P','H','A','C',2,2}; memset(bound+6,1,288);
             memset(bound+38,2,32); bound[301]=1; bound[309]=1; bound[317]=1; bound[321]=1; bound[325]=1;
             if (c->race) {
                 struct gate gate = { .entered=dispatch_semaphore_create(0), .attempted=dispatch_semaphore_create(0),
@@ -85,8 +85,8 @@ static void callback(void *raw, ph_authority_channel *channel, ph_channel_event 
                 return;
             }
             if (!ph_authority_channel_send(channel,bound,sizeof(bound))) c->error = 2;
-        } else if (c->node && length == 326 && frame[5] == 2) {
-            uint8_t confirm[38] = {'P','H','A','C',1,3}; memset(confirm+6,3,32);
+        } else if (c->node && length == 330 && frame[5] == 2) {
+            uint8_t confirm[38] = {'P','H','A','C',2,3}; memset(confirm+6,3,32);
             if (!ph_authority_channel_send(channel,confirm,sizeof(confirm)) && !c->race) c->error = 3;
         } else if (!c->node && length == 38 && frame[5] == 3) {
             ph_authority_channel_close(channel);

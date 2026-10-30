@@ -59,7 +59,7 @@ static void handle(void *unused, ph_authority_channel *channel, ph_channel_event
     (void)unused;
     if (trace) { fprintf(trace,"event %d\n",event); fflush(trace); }
     if (event == PH_CHANNEL_FRAME && length == 38 && frame[5] == 1) {
-        uint8_t bound[326] = {'P','H','A','C',1,2}; memset(bound+6,1,288);
+        uint8_t bound[330] = {'P','H','A','C',2,2}; memset(bound+6,1,288);
         memset(bound+38,2,32); bound[301]=1; bound[309]=1; bound[317]=1; bound[321]=1; bound[325]=1;
         if (!ph_authority_channel_send(channel,bound,sizeof(bound))) ph_authority_channel_close(channel);
     } else if (event == PH_CHANNEL_FRAME && length == 38 && frame[5] == 3) {
@@ -121,16 +121,16 @@ struct state { dispatch_semaphore_t done; const char *service; pid_t pid; struct
 static void handle(void *raw, ph_authority_channel *channel, ph_channel_event event, const uint8_t *frame, size_t length) {
     struct state *state = raw;
     if (event == PH_CHANNEL_START) {
-        uint8_t open[38] = {'P','H','A','C',1,1}; memset(open+6,1,32);
+        uint8_t open[38] = {'P','H','A','C',2,1}; memset(open+6,1,32);
         if (!ph_authority_channel_send(channel,open,sizeof(open))) state->error = 7;
-    } else if (event == PH_CHANNEL_FRAME && length == 326 && frame[5] == 2) {
+    } else if (event == PH_CHANNEL_FRAME && length == 330 && frame[5] == 2) {
         state->pid = ph_authority_channel_test_pid(channel);
         char actual[PROC_PIDPATHINFO_MAXSIZE];
         if (state->pid <= 0 || state->pid == getpid() || proc_pidpath(state->pid,actual,sizeof(actual)) <= 0 ||
             strcmp(actual,state->service) || proc_pidinfo(state->pid,PROC_PIDTBSDINFO,0,&state->birth,sizeof(state->birth)) != sizeof(state->birth)) {
             state->error = 8; ph_authority_channel_close(channel); return;
         }
-        uint8_t confirm[38] = {'P','H','A','C',1,3}; memset(confirm+6,3,32);
+        uint8_t confirm[38] = {'P','H','A','C',2,3}; memset(confirm+6,3,32);
         if (!ph_authority_channel_send(channel,confirm,sizeof(confirm))) state->error = 9;
     } else if (event == PH_CHANNEL_END) { state->end_error = ph_authority_channel_test_error(channel); }
     else if (event == PH_CHANNEL_DISPOSED) { dispatch_semaphore_signal(state->done); }
