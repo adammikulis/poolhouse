@@ -530,6 +530,7 @@ class SourceSnapshot:
                     before = os.fstat(stream.fileno())
                     if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
                             or before.st_uid != os.getuid() or before.st_mode & 0o077
+                            or bool(before.st_mode & 0o100) != (entry.mode == b"100755")
                             or before.st_size != entry.size):
                         raise RuntimeError("source snapshot: unsafe capture output")
                     digest, size = hashlib.sha256(), 0
