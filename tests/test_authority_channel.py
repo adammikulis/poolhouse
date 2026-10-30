@@ -26,7 +26,7 @@ SOURCE = r'''
 extern void channel_probe_link(void);
 
 struct context { int node; int idle; int race; int frames; int ended; int disposed; int error; dispatch_semaphore_t done;
-    ph_authority_connection_control *retained; };
+    ph_authority_connection_control *retained; const ph_native_xpc_caller_policy *policy; };
 struct gate { dispatch_semaphore_t entered; dispatch_semaphore_t attempted; dispatch_semaphore_t finished;
     ph_authority_connection_control *control; };
 static void hold_send(void *raw) {
@@ -52,6 +52,7 @@ static void *cancel_idle(void *raw) {
 }
 static void callback(void *raw, ph_authority_channel *channel, ph_channel_event event, const uint8_t *frame, size_t length) {
     struct context *c = raw;
+    if (event == PH_CHANNEL_START && ph_authority_channel_revalidate_current(channel,c->policy)) c->error = 11;
     if (event == PH_CHANNEL_START && c->node) {
         uint8_t open[38] = {'P','H','A','C',2,1}; memset(open+6,1,32);
         uint8_t malformed[38] = {0};
@@ -59,6 +60,9 @@ static void callback(void *raw, ph_authority_channel *channel, ph_channel_event 
         if (!ph_authority_channel_send(channel,open,sizeof(open))) c->error = 1;
     } else if (event == PH_CHANNEL_FRAME) {
         c->frames++;
+        ph_native_xpc_caller_policy wrong = *c->policy; wrong.asid ^= 1;
+        if (!ph_authority_channel_revalidate_current(channel,c->policy) ||
+            ph_authority_channel_revalidate_current(channel,&wrong)) c->error = 12;
         if (!c->node && length == 38 && frame[5] == 1) {
             if (c->idle) {
                 ph_authority_connection_control *control = ph_authority_connection_control_copy(channel);
@@ -93,6 +97,7 @@ static void callback(void *raw, ph_authority_channel *channel, ph_channel_event 
         } else { c->error = 4; ph_authority_channel_close(channel); }
     } else if (event == PH_CHANNEL_END) {
         c->ended++;
+        if (ph_authority_channel_revalidate_current(channel,c->policy)) c->error = 13;
         ph_authority_channel_close(channel); /* reentrant close is harmless */
     } else if (event == PH_CHANNEL_DISPOSED) {
         c->disposed++; dispatch_semaphore_signal(c->done);
@@ -114,7 +119,7 @@ int main(int argc, char **argv) {
     policy.requirement = requirement; policy.euid = audit_token_to_euid(token); policy.asid = audit_token_to_asid(token);
     const ph_native_xpc_caller_policy *policy_ptr = &policy;
     dispatch_semaphore_t done = dispatch_semaphore_create(0);
-    struct context server = { .idle = idle, .race = race, .done = done }, node = { .node = 1, .race = race, .done = done };
+    struct context server = { .idle = idle, .race = race, .done = done, .policy = &policy }, node = { .node = 1, .race = race, .done = done, .policy = &policy };
     struct context *server_ptr = &server;
     dispatch_queue_t listener_queue = dispatch_queue_create("isolated.authority.listener",DISPATCH_QUEUE_SERIAL);
     xpc_connection_t listener = xpc_connection_create(NULL,listener_queue);

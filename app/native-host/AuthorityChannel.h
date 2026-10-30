@@ -27,6 +27,11 @@ bool ph_authority_channel_accept(xpc_connection_t connection, const ph_native_xp
  * access to the channel; context remains alive through DISPOSED. */
 bool ph_authority_channel_send(ph_authority_channel *channel, const uint8_t *frame, size_t length);
 void ph_authority_channel_close(ph_authority_channel *channel);
+/* Recheck the actual current FRAME sender using independently authenticated
+ * policy. Valid only inside its channel callback; this is an observation, not
+ * an authorization, recipient check or cancellation/commit fence. */
+bool ph_authority_channel_revalidate_current(ph_authority_channel *channel,
+    const ph_native_xpc_caller_policy *policy);
 /* A callback may copy one owned control for cancellation from another thread.
  * Cancel is idempotent and cannot preempt a callback already running. It never
  * proves delivery or effect settlement. Each

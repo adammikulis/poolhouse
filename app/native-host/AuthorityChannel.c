@@ -17,6 +17,7 @@ struct ph_authority_channel {
     void *context;
     ph_authority_connection_control *control;
     bool closed;
+    xpc_object_t current_message; /* retained only during FRAME callback */
 #ifdef TESTING
     void (*send_hook)(void *);
     void *send_hook_context;
@@ -113,8 +114,16 @@ void ph_authority_channel_close(ph_authority_channel *channel) {
     close_channel(channel);
 }
 
+bool ph_authority_channel_revalidate_current(ph_authority_channel *channel,
+    const ph_native_xpc_caller_policy *policy) {
+    if (!channel || channel->closed || !policy || !channel->current_message ||
+        dispatch_get_specific(channel) != channel || !control_active(channel->control)) return false;
+    return ph_native_xpc_caller_matches(channel->current_message,channel->connection,policy);
+}
+
 static void receive(ph_authority_channel *channel, xpc_object_t message) {
     if (channel->closed) return;
+    if (channel->current_message) { close_channel(channel); return; }
     if (!control_active(channel->control)) { close_channel(channel); return; }
 #ifdef TESTING
     if (xpc_get_type(message) == XPC_TYPE_ERROR)
@@ -130,7 +139,11 @@ static void receive(ph_authority_channel *channel, xpc_object_t message) {
     uint8_t *frame = malloc(length);
     if (!frame || xpc_data_get_bytes(value,frame,0,length) != length) { free(frame); close_channel(channel); return; }
     if (!ph_authority_frame_kind(frame,length)) { free(frame); close_channel(channel); return; }
+    xpc_retain(message);
+    channel->current_message = message;
     channel->handler(channel->context,channel,PH_CHANNEL_FRAME,frame,length);
+    channel->current_message = NULL;
+    xpc_release(message);
     free(frame);
 }
 
