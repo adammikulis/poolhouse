@@ -83,6 +83,11 @@ fn hex<const N: usize>(value: &str) -> Option<[u8; N]> {
     for (index, slot) in output.iter_mut().enumerate() {
         *slot = (nibble(bytes[index * 2])? << 4) | nibble(bytes[index * 2 + 1])?;
     }
+    Some(output)
+}
+
+fn identity<const N: usize>(value: &str) -> Option<[u8; N]> {
+    let output=hex(value)?;
     output.iter().any(|byte| *byte != 0).then_some(output)
 }
 
@@ -91,7 +96,7 @@ impl WirePin {
         if !matches!(self.publisher_kind, 1 | 2) { return None; }
         Some(CodePin {
             cdhash: hex(&self.cdhash)?, sha256: hex(&self.sha256)?, publisher_kind: self.publisher_kind,
-            publisher_digest: hex(&self.publisher_digest)?, requirement_digest: hex(&self.requirement_digest)?,
+            publisher_digest: if self.publisher_kind==1 { hex(&self.publisher_digest)? } else { identity(&self.publisher_digest)? }, requirement_digest: hex(&self.requirement_digest)?,
             entitlements_digest: hex(&self.entitlements_digest)?,
         })
     }
@@ -110,9 +115,9 @@ impl Manifest {
             entitlements_digest: wire.helper.entitlements_digest,
         }.decode()?;
         let manifest = Self {
-            owner_uid: wire.owner_uid, authority_id: hex(&wire.authority_id)?, installation_id: hex(&wire.installation_id)?,
-            generation: wire.generation, receipt_public_key: hex(&wire.receipt_public_key)?, policy_digest: hex(&wire.policy_digest)?,
-            purpose_policy: hex(&wire.purpose_policy)?, rotation_policy: hex(&wire.rotation_policy)?,
+            owner_uid: wire.owner_uid, authority_id: identity(&wire.authority_id)?, installation_id: identity(&wire.installation_id)?,
+            generation: wire.generation, receipt_public_key: identity(&wire.receipt_public_key)?, policy_digest: hex(&wire.policy_digest)?,
+            purpose_policy: identity(&wire.purpose_policy)?, rotation_policy: identity(&wire.rotation_policy)?,
             helper, gui: wire.gui.decode()?, node: wire.node.decode()?,
         };
         (manifest.digest() == manifest.policy_digest).then_some(manifest)
@@ -151,6 +156,41 @@ mod tests {
             "generation":u64::MAX, "receipt_algorithm":"ed25519", "receipt_public_key":text(&[10;32]),
             "policy_digest":text(&hash.finalize()), "purpose_policy":text(&[6;32]), "rotation_policy":text(&[7;32]),
             "helper":helper, "gui":pin, "node":pin})
+    }
+
+    fn recompute(value:&mut Value) {
+        let mut hash=Sha256::new(); hash.update(DOMAIN);
+        for role in ["helper","gui","node"] {
+            let pin=&value[role];
+            hash.update(hex::<20>(pin["cdhash"].as_str().unwrap()).unwrap());
+            hash.update(hex::<32>(pin["sha256"].as_str().unwrap()).unwrap());
+            hash.update([pin["publisher_kind"].as_u64().unwrap() as u8]);
+            for field in ["publisher_digest","requirement_digest","entitlements_digest"] { hash.update(hex::<32>(pin[field].as_str().unwrap()).unwrap()); }
+        }
+        hash.update(hex::<32>(value["purpose_policy"].as_str().unwrap()).unwrap());
+        hash.update(hex::<32>(value["rotation_policy"].as_str().unwrap()).unwrap());
+        value["policy_digest"]=json!(text(&hash.finalize()));
+    }
+
+    #[test]
+    fn confirmed_hashes_use_full_domain_without_relaxing_identity() {
+        assert_eq!(hex::<32>(&text(&[0;32])),Some([0;32]));
+        assert!(identity::<32>(&text(&[0;32])).is_none());
+        assert!(hex::<1>("AA").is_none()); assert!(hex::<1>("0").is_none());
+        for role in ["helper","gui","node"] {
+            for (field,length) in [("cdhash",20),("sha256",32),("publisher_digest",32),("requirement_digest",32),("entitlements_digest",32)] {
+                let mut value=valid(); value[role][field]=json!("00".repeat(length)); recompute(&mut value);
+                assert!(Manifest::parse(&serde_json::to_vec(&value).unwrap()).is_some(),"{role}.{field}");
+                value["policy_digest"]=json!(text(&[0;32]));
+                assert!(Manifest::parse(&serde_json::to_vec(&value).unwrap()).is_none(),"hash equality remains required");
+            }
+        }
+        for field in ["authority_id","installation_id","receipt_public_key","purpose_policy","rotation_policy"] {
+            let mut value=valid(); value[field]=json!(text(&[0;32])); recompute(&mut value);
+            assert!(Manifest::parse(&serde_json::to_vec(&value).unwrap()).is_none(),"{field}");
+        }
+        let mut value=valid(); value["gui"]["publisher_kind"]=json!(2); value["gui"]["publisher_digest"]=json!(text(&[0;32])); recompute(&mut value);
+        assert!(Manifest::parse(&serde_json::to_vec(&value).unwrap()).is_none(),"unissued local bootstrap evidence remains nonzero");
     }
 
     #[test]

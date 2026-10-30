@@ -24,4 +24,4 @@ def test_shared_native_manifest(tmp_path):
     log = tmp_path / "manifest.log"
     log.write_text(result.stdout + result.stderr)
     assert result.returncode == 0, f"Manifest tests failed; full output: {log}\n{result.stdout}"
-    assert "3 passed" in result.stdout and "0 failed" in result.stdout
+    assert "4 passed" in result.stdout and "0 failed" in result.stdout
