@@ -1,4 +1,5 @@
 #include "Capture.h"
+#include "NativeIdentity.h"
 #include <Security/Security.h>
 #include <string.h>
 #include <stdio.h>
@@ -46,10 +47,9 @@ static bool code(const char *path, const char *main, const char *pin) {
     OSStatus status = SecStaticCodeCreateWithPath(url, kSecCSDefaultFlags, &code);
     CFRelease(url);
     if (status || !code) return false;
-    SecCSFlags checks = kSecCSStrictValidate | kSecCSCheckAllArchitectures | kSecCSCheckNestedCode;
-    status = SecStaticCodeCheckValidity(code, checks, NULL);
+    bool valid = ph_native_static_valid(code, NULL);
     CFDictionaryRef information = NULL;
-    bool okay = !status && !SecCodeCopySigningInformation(code, kSecCSSigningInformation, &information) && information;
+    bool okay = valid && !SecCodeCopySigningInformation(code, kSecCSSigningInformation, &information) && information;
     if (okay) {
         CFTypeRef unique = CFDictionaryGetValue(information, kSecCodeInfoUnique);
         okay = unique && CFGetTypeID(unique) == CFDataGetTypeID() && CFDataGetLength(unique) == 20 && policy(information);

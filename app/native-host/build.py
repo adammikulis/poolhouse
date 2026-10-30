@@ -11,7 +11,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 def compile_sources(output: Path, temporary: Path, testing: bool = False, library: bool = False, env=None) -> None:
     source = Path(__file__).parent
     objects = []
-    for path in (source / "Capture.c", source / "CodeIdentity.c"):
+    for path in (source / "Capture.c", source / "CodeIdentity.c", source / "NativeIdentity.c"):
         compiled = temporary / (path.stem + ".o")
         subprocess.run(["/usr/bin/clang", "-std=c11", "-Wall", "-Wextra", "-Werror",
                         *(["-DTESTING"] if testing else []), "-c", str(path), "-o", str(compiled)],

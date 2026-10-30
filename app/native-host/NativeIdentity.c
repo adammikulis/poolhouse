@@ -6,6 +6,11 @@
 /* Limits are for OS-returned data; no caller-supplied bytes are promoted. */
 #define MAX_IDENTITY_BYTES (1024u * 1024u)
 
+bool ph_native_static_valid(SecStaticCodeRef code, SecRequirementRef requirement) {
+    const SecCSFlags flags = kSecCSCheckAllArchitectures | kSecCSCheckNestedCode | kSecCSStrictValidate;
+    return code && SecStaticCodeCheckValidity(code, flags, requirement) == errSecSuccess;
+}
+
 bool ph_native_identity_equal(const ph_native_identity_observation *left, const ph_native_identity_observation *right) {
     return left && right && left->signing_flags == right->signing_flags
         && left->entitlements_present == right->entitlements_present && left->publisher_present == right->publisher_present

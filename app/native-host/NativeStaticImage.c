@@ -5,8 +5,7 @@ bool ph_native_static_image_matches(SecStaticCodeRef code, SecRequirementRef req
     if (!code || !requirement || !expected || !expected->publisher_present ||
         (expected->signing_flags & kSecCodeSignatureAdhoc) ||
         !(expected->signing_flags & kSecCodeSignatureRuntime)) return false;
-    const SecCSFlags flags = kSecCSCheckAllArchitectures | kSecCSCheckNestedCode | kSecCSStrictValidate;
-    if (SecStaticCodeCheckValidity(code, flags, requirement) != errSecSuccess) return false;
+    if (!ph_native_static_valid(code, requirement)) return false;
     ph_native_identity_observation actual = {0};
     return ph_native_identity_observe(code, &actual) && actual.publisher_present &&
         !(actual.signing_flags & kSecCodeSignatureAdhoc) &&
