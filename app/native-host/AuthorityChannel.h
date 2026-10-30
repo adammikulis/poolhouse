@@ -8,6 +8,7 @@
  * caller must establish protected policy and bind each frame to Store/session
  * authority separately. Only handshake frames are supported here. */
 typedef struct ph_authority_channel ph_authority_channel;
+typedef struct ph_authority_channel_control ph_authority_channel_control;
 typedef enum { PH_CHANNEL_START, PH_CHANNEL_FRAME, PH_CHANNEL_END, PH_CHANNEL_DISPOSED } ph_channel_event;
 typedef void (*ph_channel_handler)(void *context, ph_authority_channel *channel,
     ph_channel_event event, const uint8_t *frame, size_t length);
@@ -26,7 +27,16 @@ bool ph_authority_channel_accept(xpc_connection_t connection, const ph_native_xp
  * access to the channel; context remains alive through DISPOSED. */
 bool ph_authority_channel_send(ph_authority_channel *channel, const uint8_t *frame, size_t length);
 void ph_authority_channel_close(ph_authority_channel *channel);
+/* A callback may copy one owned control for cancellation from another thread.
+ * Cancel is idempotent and cannot preempt a callback already running. It never
+ * proves delivery or effect settlement. Each
+ * copied control must be released exactly once; it remains inert after END. */
+ph_authority_channel_control *ph_authority_channel_control_copy(ph_authority_channel *channel);
+void ph_authority_channel_control_cancel(ph_authority_channel_control *control);
+void ph_authority_channel_control_release(ph_authority_channel_control *control);
 #ifdef TESTING
+/* Test hook runs immediately before enqueue while the cancel gate is held. */
+void ph_authority_channel_test_send_hook(ph_authority_channel *channel, void (*hook)(void *), void *context);
 bool ph_authority_channel_test_connect(xpc_endpoint_t endpoint, const ph_native_xpc_caller_policy *policy,
     ph_channel_handler handler, void *context);
 #endif

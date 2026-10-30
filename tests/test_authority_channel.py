@@ -20,11 +20,36 @@ SOURCE = r'''
 #include <bsm/libbsm.h>
 #include <dispatch/dispatch.h>
 #include <mach/task_info.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 extern void channel_probe_link(void);
 
-struct context { int node; int frames; int ended; int disposed; int error; dispatch_semaphore_t done; };
+struct context { int node; int idle; int race; int frames; int ended; int disposed; int error; dispatch_semaphore_t done;
+    ph_authority_channel_control *retained; };
+struct gate { dispatch_semaphore_t entered; dispatch_semaphore_t attempted; dispatch_semaphore_t finished;
+    ph_authority_channel_control *control; };
+static void hold_send(void *raw) {
+    struct gate *gate = raw;
+    dispatch_semaphore_signal(gate->entered);
+    dispatch_semaphore_wait(gate->attempted,DISPATCH_TIME_FOREVER);
+}
+static void *cancel_racing(void *raw) {
+    struct gate *gate = raw;
+    dispatch_semaphore_wait(gate->entered,DISPATCH_TIME_FOREVER);
+    dispatch_semaphore_signal(gate->attempted);
+    ph_authority_channel_control_cancel(gate->control);
+    dispatch_semaphore_signal(gate->finished);
+    ph_authority_channel_control_release(gate->control);
+    return NULL;
+}
+static void *cancel_idle(void *raw) {
+    ph_authority_channel_control *control = raw;
+    ph_authority_channel_control_cancel(control);
+    ph_authority_channel_control_cancel(control);
+    ph_authority_channel_control_release(control);
+    return NULL;
+}
 static void callback(void *raw, ph_authority_channel *channel, ph_channel_event event, const uint8_t *frame, size_t length) {
     struct context *c = raw;
     if (event == PH_CHANNEL_START && c->node) {
@@ -35,12 +60,34 @@ static void callback(void *raw, ph_authority_channel *channel, ph_channel_event 
     } else if (event == PH_CHANNEL_FRAME) {
         c->frames++;
         if (!c->node && length == 38 && frame[5] == 1) {
+            if (c->idle) {
+                ph_authority_channel_control *control = ph_authority_channel_control_copy(channel);
+                c->retained = ph_authority_channel_control_copy(channel);
+                pthread_t worker;
+                if (!control || !c->retained || pthread_create(&worker,NULL,cancel_idle,control)) { c->error = 7; ph_authority_channel_close(channel); return; }
+                pthread_detach(worker);
+                return;
+            }
             uint8_t bound[326] = {'P','H','A','C',1,2}; memset(bound+6,1,288);
             memset(bound+38,2,32); bound[301]=1; bound[309]=1; bound[317]=1; bound[321]=1; bound[325]=1;
+            if (c->race) {
+                struct gate gate = { .entered=dispatch_semaphore_create(0), .attempted=dispatch_semaphore_create(0),
+                    .finished=dispatch_semaphore_create(0), .control=ph_authority_channel_control_copy(channel) };
+                pthread_t worker;
+                if (!gate.control || pthread_create(&worker,NULL,cancel_racing,&gate)) { c->error = 8; ph_authority_channel_close(channel); return; }
+                ph_authority_channel_test_send_hook(channel,hold_send,&gate);
+                if (!ph_authority_channel_send(channel,bound,sizeof(bound))) c->error = 9;
+                dispatch_semaphore_wait(gate.finished,DISPATCH_TIME_FOREVER);
+                ph_authority_channel_test_send_hook(channel,NULL,NULL);
+                if (ph_authority_channel_send(channel,bound,sizeof(bound))) c->error = 10;
+                pthread_join(worker,NULL);
+                dispatch_release(gate.entered); dispatch_release(gate.attempted); dispatch_release(gate.finished);
+                return;
+            }
             if (!ph_authority_channel_send(channel,bound,sizeof(bound))) c->error = 2;
         } else if (c->node && length == 326 && frame[5] == 2) {
             uint8_t confirm[38] = {'P','H','A','C',1,3}; memset(confirm+6,3,32);
-            if (!ph_authority_channel_send(channel,confirm,sizeof(confirm))) c->error = 3;
+            if (!ph_authority_channel_send(channel,confirm,sizeof(confirm)) && !c->race) c->error = 3;
         } else if (!c->node && length == 38 && frame[5] == 3) {
             ph_authority_channel_close(channel);
         } else { c->error = 4; ph_authority_channel_close(channel); }
@@ -53,7 +100,9 @@ static void callback(void *raw, ph_authority_channel *channel, ph_channel_event 
 }
 int main(int argc, char **argv) {
     int wrong = argc == 2 && !strcmp(argv[1],"--wrong-session");
-    if (argc != 1 && !wrong) return 6;
+    int idle = argc == 2 && !strcmp(argv[1],"--idle-cancel");
+    int race = argc == 2 && !strcmp(argv[1],"--cancel-race");
+    if (argc != 1 && !wrong && !idle && !race) return 6;
     channel_probe_link();
     SecCodeRef self = NULL; SecRequirementRef requirement = NULL;
     ph_native_xpc_caller_policy policy = {0};
@@ -65,7 +114,7 @@ int main(int argc, char **argv) {
     policy.requirement = requirement; policy.euid = audit_token_to_euid(token); policy.asid = audit_token_to_asid(token);
     const ph_native_xpc_caller_policy *policy_ptr = &policy;
     dispatch_semaphore_t done = dispatch_semaphore_create(0);
-    struct context server = { .done = done }, node = { .node = 1, .done = done };
+    struct context server = { .idle = idle, .race = race, .done = done }, node = { .node = 1, .race = race, .done = done };
     struct context *server_ptr = &server;
     dispatch_queue_t listener_queue = dispatch_queue_create("isolated.authority.listener",DISPATCH_QUEUE_SERIAL);
     xpc_connection_t listener = xpc_connection_create(NULL,listener_queue);
@@ -82,13 +131,19 @@ int main(int argc, char **argv) {
     if (!endpoint || !ph_authority_channel_test_connect(endpoint,&node_policy,callback,&node)) return 3;
     if (dispatch_semaphore_wait(done,dispatch_time(DISPATCH_TIME_NOW,10*NSEC_PER_SEC)) ||
         dispatch_semaphore_wait(done,dispatch_time(DISPATCH_TIME_NOW,10*NSEC_PER_SEC))) return 4;
-    if (node.error || server.error || node.frames != (wrong ? 0 : 1) || server.frames != (wrong ? 1 : 2) ||
+    if (idle) {
+        if (!server.retained) return 7;
+        ph_authority_channel_control_cancel(server.retained);
+        ph_authority_channel_control_cancel(server.retained);
+        ph_authority_channel_control_release(server.retained);
+    }
+    if (node.error || server.error || (!race && node.frames != ((wrong || idle) ? 0 : 1)) || node.frames > 1 || server.frames != ((wrong || idle || race) ? 1 : 2) ||
         node.ended != 1 || server.ended != 1 || node.disposed != 1 || server.disposed != 1) {
         fprintf(stderr,"node %d/%d/%d/%d server %d/%d/%d/%d\n",node.error,node.frames,node.ended,node.disposed,
             server.error,server.frames,server.ended,server.disposed); return 5;
     }
     /* Listener dependencies remain alive through this isolated process exit. */
-    puts(wrong ? "wrong session closes both channels" : "serial authority channels drain their callbacks");
+    puts(wrong ? "wrong session closes both channels" : idle ? "idle channel cancels from another thread" : race ? "cancel fences subsequent sends" : "serial authority channels drain their callbacks");
     return 0;
 }
 '''
@@ -129,6 +184,7 @@ def test_authority_channel_lifetime(tmp_path):
     assert checked.returncode == 0, checked.stderr.decode(errors="replace")
     assert symbols_file.stat().st_size <= 32 * 1024 * 1024
     assert b"ph_authority_channel_test_connect" not in symbols_file.read_bytes()
+    assert b"ph_authority_channel_test_send_hook" not in symbols_file.read_bytes()
     fixture, binary = tmp_path / "fixture.c", tmp_path / "fixture"
     fixture.write_text(SOURCE)
     native = build.staged / "native-host"
@@ -146,3 +202,10 @@ def test_authority_channel_lifetime(tmp_path):
     out, err = _execute([str(binary), "--wrong-session"], tmp_path, "wrong-session", environment, (25, 65536))
     assert out == "wrong session closes both channels\n"
     assert not err
+    out, err = _execute([str(binary), "--idle-cancel"], tmp_path, "idle-cancel", environment, (25, 65536))
+    assert out == "idle channel cancels from another thread\n"
+    assert not err
+    for index in range(10):
+        out, err = _execute([str(binary), "--cancel-race"], tmp_path, f"cancel-race-{index}", environment, (25, 65536))
+        assert out == "cancel fences subsequent sends\n"
+        assert not err

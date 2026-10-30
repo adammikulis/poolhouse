@@ -1,5 +1,7 @@
 #include "AuthorityChannel.h"
 #include <dispatch/dispatch.h>
+#include <limits.h>
+#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -13,8 +15,61 @@ struct ph_authority_channel {
     ph_native_xpc_caller_policy policy;
     ph_channel_handler handler;
     void *context;
+    ph_authority_channel_control *control;
     bool closed;
+#ifdef TESTING
+    void (*send_hook)(void *);
+    void *send_hook_context;
+#endif
 };
+
+struct ph_authority_channel_control {
+    pthread_mutex_t lock;
+    unsigned references;
+    xpc_connection_t connection;
+};
+
+static xpc_connection_t take_connection(ph_authority_channel_control *control) {
+    pthread_mutex_lock(&control->lock);
+    xpc_connection_t connection = control->connection;
+    control->connection = NULL;
+    pthread_mutex_unlock(&control->lock);
+    return connection;
+}
+
+void ph_authority_channel_control_cancel(ph_authority_channel_control *control) {
+    if (!control) return;
+    xpc_connection_t connection = take_connection(control);
+    if (connection) { xpc_connection_cancel(connection); xpc_release(connection); }
+}
+
+void ph_authority_channel_control_release(ph_authority_channel_control *control) {
+    if (!control) return;
+    pthread_mutex_lock(&control->lock);
+    bool last = --control->references == 0;
+    xpc_connection_t connection = last ? control->connection : NULL;
+    if (last) control->connection = NULL;
+    pthread_mutex_unlock(&control->lock);
+    if (connection) { xpc_connection_cancel(connection); xpc_release(connection); }
+    if (last) { pthread_mutex_destroy(&control->lock); free(control); }
+}
+
+ph_authority_channel_control *ph_authority_channel_control_copy(ph_authority_channel *channel) {
+    if (!channel || channel->closed || dispatch_get_specific(channel) != channel) return NULL;
+    ph_authority_channel_control *control = channel->control;
+    pthread_mutex_lock(&control->lock);
+    bool okay = control->connection && control->references != UINT_MAX;
+    if (okay) control->references++;
+    pthread_mutex_unlock(&control->lock);
+    return okay ? control : NULL;
+}
+
+static bool control_active(ph_authority_channel_control *control) {
+    pthread_mutex_lock(&control->lock);
+    bool active = control->connection != NULL;
+    pthread_mutex_unlock(&control->lock);
+    return active;
+}
 
 static void disposed(void *context) {
     ph_authority_channel *channel = context;
@@ -22,6 +77,7 @@ static void disposed(void *context) {
     void *owner = channel->context;
     dispatch_queue_t queue = channel->queue;
     CFRelease(channel->policy.requirement);
+    ph_authority_channel_control_release(channel->control);
     free(channel);
     dispatch_async(queue, ^{ handler(owner,NULL,PH_CHANNEL_DISPOSED,NULL,0); });
     dispatch_release(queue);
@@ -31,6 +87,8 @@ static void close_channel(ph_authority_channel *channel) {
     if (channel->closed) return;
     channel->closed = true;
     xpc_connection_cancel(channel->connection);
+    xpc_connection_t held = take_connection(channel->control);
+    if (held) xpc_release(held);
     xpc_connection_t connection = channel->connection;
     channel->handler(channel->context,channel,PH_CHANNEL_END,NULL,0);
     xpc_release(connection);
@@ -43,6 +101,7 @@ void ph_authority_channel_close(ph_authority_channel *channel) {
 
 static void receive(ph_authority_channel *channel, xpc_object_t message) {
     if (channel->closed) return;
+    if (!control_active(channel->control)) { close_channel(channel); return; }
     if (xpc_get_type(message) != XPC_TYPE_DICTIONARY ||
         !ph_native_xpc_caller_matches(message,channel->connection,&channel->policy) ||
         xpc_dictionary_get_count(message) != 1) { close_channel(channel); return; }
@@ -73,9 +132,15 @@ bool ph_authority_channel_send(ph_authority_channel *channel, const uint8_t *fra
     xpc_object_t message = xpc_dictionary_create(NULL,NULL,0);
     if (!message) { close_channel(channel); return false; }
     xpc_dictionary_set_data(message,"frame",frame,length);
-    xpc_connection_send_message(channel->connection,message);
+    pthread_mutex_lock(&channel->control->lock);
+    bool active = channel->control->connection != NULL;
+#ifdef TESTING
+    if (active && channel->send_hook) channel->send_hook(channel->send_hook_context);
+#endif
+    if (active) xpc_connection_send_message(channel->connection,message);
+    pthread_mutex_unlock(&channel->control->lock);
     xpc_release(message);
-    return true; /* XPC accepted the send; delivery is not confirmed. */
+    return active; /* An accepted send is not confirmed delivery. */
 }
 
 static bool open_channel(xpc_connection_t connection, const ph_native_xpc_caller_policy *policy,
@@ -101,6 +166,14 @@ static bool open_channel(xpc_connection_t connection, const ph_native_xpc_caller
     if (!channel) { discard_inactive(connection); return false; }
     channel->queue = dispatch_queue_create("app.poolhouse.authority.channel",DISPATCH_QUEUE_SERIAL);
     if (!channel->queue) { free(channel); discard_inactive(connection); return false; }
+    channel->control = calloc(1,sizeof(*channel->control));
+    if (!channel->control) { dispatch_release(channel->queue); free(channel); discard_inactive(connection); return false; }
+    if (pthread_mutex_init(&channel->control->lock,NULL)) {
+        free(channel->control); dispatch_release(channel->queue); free(channel); discard_inactive(connection); return false;
+    }
+    channel->control->references = 1;
+    channel->control->connection = connection;
+    xpc_retain(connection);
     channel->connection = connection;
     channel->policy = *policy;
     CFRetain(channel->policy.requirement);
@@ -134,6 +207,11 @@ bool ph_authority_channel_accept(xpc_connection_t connection, const ph_native_xp
 }
 
 #ifdef TESTING
+void ph_authority_channel_test_send_hook(ph_authority_channel *channel, void (*hook)(void *), void *context) {
+    if (!channel || dispatch_get_specific(channel) != channel) return;
+    channel->send_hook = hook;
+    channel->send_hook_context = context;
+}
 bool ph_authority_channel_test_connect(xpc_endpoint_t endpoint, const ph_native_xpc_caller_policy *policy,
     ph_channel_handler handler, void *context) {
     if (!endpoint || xpc_get_type(endpoint) != XPC_TYPE_ENDPOINT) return false;
