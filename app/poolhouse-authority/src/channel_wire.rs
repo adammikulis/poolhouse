@@ -95,23 +95,113 @@ pub fn open_digest(open: &[u8]) -> Result<[u8;32], InvalidFrame> {
     Ok(digest(DOMAIN_OPEN,&[open]))
 }
 
+/// The connection owner supplies this comparison data only after independently
+/// checking its protected Store and operating-system session. This type is
+/// data, not proof that those checks happened.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Expected {
+    pub installation: [u8;32], pub policy: [u8;32],
+    pub node_identity: [u8;32], pub service_identity: [u8;32],
+    pub node_incarnation: [u8;32], pub service_incarnation: [u8;32],
+    pub installation_generation: u64, pub policy_generation: u64, pub cutover_generation: u64,
+    pub owner_uid: u32, pub owner_asid: u32,
+}
+
+impl Expected {
+    fn matches(&self, b: &Binding) -> bool {
+        self.installation == b.installation && self.policy == b.policy && self.node_identity == b.node_identity
+            && self.service_identity == b.service_identity && self.node_incarnation == b.node_incarnation
+            && self.service_incarnation == b.service_incarnation && self.installation_generation == b.installation_generation
+            && self.policy_generation == b.policy_generation && self.cutover_generation == b.cutover_generation
+            && self.owner_uid == b.owner_uid && self.owner_asid == b.owner_asid
+    }
+}
+
+/// Each instance belongs to one retained connection. Consuming it prevents a
+/// second confirmation; the channel owner must also invalidate it on disconnect.
+pub struct NodeHandshake { open: Vec<u8>, expected: Expected }
+impl NodeHandshake {
+    pub fn start(nonce: [u8;32], expected: Expected) -> Result<(Self,Vec<u8>), InvalidFrame> {
+        let open = Frame::Open(nonce).encode()?;
+        Ok((Self { open:open.clone(), expected },open))
+    }
+    pub fn accept(self, bound: &[u8]) -> Result<(Vec<u8>,[u8;32]), InvalidFrame> {
+        let Frame::Bound(value) = Frame::decode(bound)? else { return Err(InvalidFrame) };
+        if !self.expected.matches(&value) { return Err(InvalidFrame); }
+        let digest = transcript(&self.open,bound)?;
+        Ok((Frame::Confirm(digest).encode()?,digest))
+    }
+}
+
+pub struct ServiceHandshake { open: Vec<u8>, bound: Vec<u8> }
+impl ServiceHandshake {
+    pub fn start(open: &[u8], binding: Binding) -> Result<(Self,Vec<u8>), InvalidFrame> {
+        let bound = Frame::Bound(binding).encode()?;
+        transcript(open,&bound)?;
+        Ok((Self { open:open.to_vec(), bound:bound.clone() },bound))
+    }
+    pub fn accept(self, confirm: &[u8]) -> Result<[u8;32], InvalidFrame> {
+        let Frame::Confirm(value) = Frame::decode(confirm)? else { return Err(InvalidFrame) };
+        let expected = transcript(&self.open,&self.bound)?;
+        if value != expected { return Err(InvalidFrame); }
+        Ok(expected)
+    }
+}
+
+/// Private C transport ABI. The pointer must address `len` immutable bytes
+/// owned by the serial transport for this call; IPC values are copied first.
+/// This checks framing only and never issues an authenticated capability.
+#[cfg(target_os = "macos")]
+#[allow(unsafe_code)]
+#[no_mangle]
+pub unsafe extern "C" fn ph_authority_frame_kind(bytes: *const u8, len: usize) -> u8 {
+    if bytes.is_null() || len > BOUND_LEN || len < 6 { return 0; }
+    let input = unsafe { std::slice::from_raw_parts(bytes,len) };
+    match Frame::decode(input) {
+        Ok(Frame::Open(_)) => 1,
+        Ok(Frame::Bound(_)) => 2,
+        Ok(Frame::Confirm(_)) => 3,
+        Err(_) => 0,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
+    #[allow(unsafe_code)]
     fn exact_transcript_rejects_splice_and_malformed_frames() {
         let open = Frame::Open([1;32]).encode().unwrap();
+        #[cfg(target_os = "macos")]
+        unsafe {
+            assert_eq!(ph_authority_frame_kind(open.as_ptr(),open.len()),1);
+            assert_eq!(ph_authority_frame_kind(std::ptr::null(),open.len()),0);
+            assert_eq!(ph_authority_frame_kind(open.as_ptr(),usize::MAX),0);
+        }
         assert_eq!(open_digest(&open).unwrap(),[0xf5,0x0b,0x1e,0x8b,0xc9,0x38,0x27,0x62,0x44,0x26,0xb6,0xc6,0x11,0xc7,0x92,0x15,
             0xc9,0xe7,0x7e,0xfe,0xbe,0x30,0xd2,0xba,0xb2,0xbf,0xc2,0xd0,0x5f,0xa3,0x52,0x30]);
         let binding = Binding { node_nonce:[1;32],service_nonce:[2;32],open_digest:open_digest(&open).unwrap(),
             installation:[3;32],policy:[4;32],node_identity:[5;32],service_identity:[6;32],
             node_incarnation:[7;32],service_incarnation:[8;32],installation_generation:1,policy_generation:2,
             cutover_generation:1,owner_uid:501,owner_asid:100 };
-        let bound = Frame::Bound(binding.clone()).encode().unwrap();
+        let expected = Expected { installation:binding.installation,policy:binding.policy,node_identity:binding.node_identity,
+            service_identity:binding.service_identity,node_incarnation:binding.node_incarnation,service_incarnation:binding.service_incarnation,
+            installation_generation:binding.installation_generation,policy_generation:binding.policy_generation,
+            cutover_generation:binding.cutover_generation,owner_uid:binding.owner_uid,owner_asid:binding.owner_asid };
+        let (node, actual_open) = NodeHandshake::start([1;32],expected.clone()).unwrap();
+        assert_eq!(actual_open,open);
+        let (service,bound) = ServiceHandshake::start(&open,binding.clone()).unwrap();
         assert_eq!(Frame::decode(&bound),Ok(Frame::Bound(binding.clone())));
         let confirm = Frame::Confirm(transcript(&open,&bound).unwrap()).encode().unwrap();
         assert_eq!(Frame::decode(&confirm).unwrap(),Frame::Confirm(transcript(&open,&bound).unwrap()));
+        assert_eq!(node.accept(&bound).unwrap().0,confirm);
+        assert_eq!(service.accept(&confirm).unwrap(),transcript(&open,&bound).unwrap());
+        let mut wrong = expected; wrong.policy[0] ^= 1;
+        assert!(NodeHandshake::start([1;32],wrong).unwrap().0.accept(&bound).is_err());
+        let mut other_binding = binding.clone(); other_binding.service_nonce = [10;32];
+        let other_service = ServiceHandshake::start(&open,other_binding).unwrap().0;
+        assert!(other_service.accept(&confirm).is_err());
         let other = Frame::Open([9;32]).encode().unwrap();
         assert!(transcript(&other,&bound).is_err());
         for index in 0..bound.len() { assert!(Frame::decode(&bound[..index]).is_err()); }

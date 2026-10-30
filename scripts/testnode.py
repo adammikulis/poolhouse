@@ -41,6 +41,9 @@ FIXTURES = ("tests/fixtures/phone-approval-vectors.json", "contracts/node/vector
             "contracts/node/native_boundaries/transcript-vectors.json")
 """Files of the repository, outside the Rust workspace, that a Rust test includes at compile time."""
 MEMBERS = ("Cargo.toml", "Cargo.lock", "poolhouse-node", "phone-governance-jni", "src-tauri", "poolhouse-authority", "poolhouse-manifest",
+           "native-host/NativeIdentity.c", "native-host/NativeIdentity.h", "native-host/NativeCaller.c", "native-host/NativeCaller.h",
+           "native-host/MachCode.c", "native-host/MachCode.h", "native-host/MachSender.c", "native-host/MachSender.h", "native-host/NativeRequest.h",
+           "native-host/AuthorityChannel.c", "native-host/AuthorityChannel.h",
            "native-service/Inspection.swift", "native-service/Bridge.swift",
            "native-service/generated/PassiveServiceData.swift", "native-service/generated/PassiveServiceData.h")
 KEY_LENGTH = 20
