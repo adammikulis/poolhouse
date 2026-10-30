@@ -80,6 +80,22 @@ def test_exclusions_and_missing_tracked_files_are_distinct(repo):
     assert b".env" not in result.missing
 
 
+@pytest.mark.parametrize("original_mode,changed_mode", [(0o600, 0o700), (0o700, 0o600)])
+def test_capture_rejects_changed_executable_mode(repo, monkeypatch, original_mode, changed_mode):
+    root, storage, _ = repo
+    (root / "tracked").chmod(original_mode)
+    original = source.SourceSnapshot._verify_output
+
+    def changed(snapshot, descriptor, entries):
+        (storage / "capture" / "tracked").chmod(changed_mode)
+        return original(snapshot, descriptor, entries)
+
+    monkeypatch.setattr(source.SourceSnapshot, "_verify_output", changed)
+    with pytest.raises(RuntimeError, match="capture output"):
+        capture(repo)
+    assert not (storage / "capture").exists()
+
+
 @pytest.mark.parametrize("kind", ["symlink", "hardlink", "fifo", "writable"])
 def test_unsafe_inputs_abort_without_output(repo, kind):
     root, storage, _ = repo
