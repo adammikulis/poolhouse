@@ -36,6 +36,21 @@ fn denial(reply: &Value) -> String {
 }
 
 #[test]
+fn an_approved_move_completes_without_a_second_terminal_command() {
+    let pool = found();
+    let there = process(true);
+    let anchor = anchor_of(there.id());
+    let ask = ok(rebind(&pool, &peer(&there), move_to(&anchor)));
+    let id = ask["id"].as_str().unwrap();
+
+    assert_eq!(ok(pool.answer(&pool.phone, id, "approve"))["state"], "approved");
+    assert!(!lead_works(&pool), "approval must also end the prior session's tokens");
+    assert!(!registers_from(&pool, &me()) && registers_from(&pool, &peer(&there)),
+        "the approved session moves without a separate terminal command");
+    done(vec![there]);
+}
+
+#[test]
 fn an_approved_session_move_works_once_from_the_terminal_it_names_and_ends_the_tokens_the_session_held() {
     let pool = found();
     let (there, elsewhere) = (process(true), process(true));
