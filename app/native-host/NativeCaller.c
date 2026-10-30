@@ -23,6 +23,19 @@ static bool dynamic_valid(SecCodeRef code) {
     CFRelease(info);
     return okay;
 }
+
+static bool identity_matches(SecCodeRef code, const ph_native_identity_observation *expected) {
+    ph_native_identity_observation current = {0};
+    return dynamic_valid(code) && ph_native_identity_observe(code, &current)
+        && (current.signing_flags & kSecCodeSignatureRuntime) != 0
+        && current.signing_flags == expected->signing_flags
+        && current.entitlements_present == expected->entitlements_present
+        && current.publisher_present == expected->publisher_present
+        && !memcmp(current.code_directory, expected->code_directory, sizeof(current.code_directory))
+        && !memcmp(current.requirement_digest, expected->requirement_digest, sizeof(current.requirement_digest))
+        && !memcmp(current.entitlements_digest, expected->entitlements_digest, sizeof(current.entitlements_digest))
+        && !memcmp(current.publisher_digest, expected->publisher_digest, sizeof(current.publisher_digest));
+}
 #ifdef TESTING
 bool ph_native_caller_test_status(CFTypeRef value) { return status_valid(value); }
 #endif
@@ -37,16 +50,21 @@ bool ph_native_caller_matches(const ph_mach_message *message, const ph_native_ca
         || (uint32_t)audit_token_to_asid(sender->audit) != policy->asid) return false;
     ph_mach_code_observation verified = {0};
     if (ph_mach_observe_code(message, policy->requirement, &verified) != PH_MACH_CODE_OBSERVED) return false;
-    ph_native_identity_observation current = {0};
-    bool okay = dynamic_valid(verified.code) && ph_native_identity_observe(verified.code, &current)
-        && (current.signing_flags & kSecCodeSignatureRuntime) != 0
-        && current.signing_flags == policy->identity.signing_flags
-        && current.entitlements_present == policy->identity.entitlements_present
-        && current.publisher_present == policy->identity.publisher_present
-        && !memcmp(current.code_directory, policy->identity.code_directory, sizeof(current.code_directory))
-        && !memcmp(current.requirement_digest, policy->identity.requirement_digest, sizeof(current.requirement_digest))
-        && !memcmp(current.entitlements_digest, policy->identity.entitlements_digest, sizeof(current.entitlements_digest))
-        && !memcmp(current.publisher_digest, policy->identity.publisher_digest, sizeof(current.publisher_digest));
+    bool okay = identity_matches(verified.code, &policy->identity);
     CFRelease(verified.code);
+    return okay;
+}
+
+bool ph_native_xpc_caller_matches(xpc_object_t message, xpc_connection_t held,
+    const ph_native_xpc_caller_policy *policy) {
+    if (!message || !held || !policy || !policy->requirement || xpc_get_type(message) != XPC_TYPE_DICTIONARY
+        || xpc_dictionary_get_remote_connection(message) != held
+        || (uint32_t)xpc_connection_get_euid(held) != policy->euid
+        || (uint32_t)xpc_connection_get_asid(held) != policy->asid) return false;
+    SecCodeRef sender = NULL;
+    if (SecCodeCreateWithXPCMessage(message, kSecCSDefaultFlags, &sender) || !sender) return false;
+    bool okay = SecCodeCheckValidity(sender,kSecCSDefaultFlags,policy->requirement) == errSecSuccess
+        && identity_matches(sender,&policy->identity);
+    CFRelease(sender);
     return okay;
 }

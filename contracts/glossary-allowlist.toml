@@ -210,6 +210,11 @@ reason = "a 3D mesh (three.js Mesh, MeshStandardMaterial, Blender's bpy.data.mes
 # -- "peer" in the node's wire protocol ------------------------------------------------------------------
 
 [[allow]]
+path = ["tests/test_xpc_connection.py"]
+words = ["peer"]
+reason = "the fixture calls Apple's exact xpc_connection_set_peer_code_signing_requirement SDK symbol and checks its XPC error constant"
+
+[[allow]]
 path = ["app/poolhouse-node/*", "docs/node.md", "docs/limits.md", "docs/sentinel-open-join.md", "docs/design-node-contract.md"]
 words = ["peer"]
 reason = "the node's wire protocol is the peer protocol: the other end of a connection, which may not yet be a member; docs/limits.md names its source files and constants"
