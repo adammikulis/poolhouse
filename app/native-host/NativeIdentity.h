@@ -21,6 +21,9 @@ bool ph_native_identity_equal(const ph_native_identity_observation *left, const 
 /* Strict all-architecture and nested-resource validation. An optional
  * requirement only has authority when independently authenticated. */
 bool ph_native_static_valid(SecStaticCodeRef code, SecRequirementRef requirement);
+/* Existing native-host executable format policy, usable on a held descriptor. */
+bool ph_native_thin_header(uint32_t magic, int32_t cpu, int32_t subtype, uint32_t type);
+bool ph_native_thin_arm64_fd(int fd);
 /* Decode and check bytes against a separately supplied digest. Neither input
  * authenticates an installation or gives authority. Output must start NULL. */
 bool ph_native_requirement_decode(CFDataRef bytes, const uint8_t expected_digest[32], SecRequirementRef *output);

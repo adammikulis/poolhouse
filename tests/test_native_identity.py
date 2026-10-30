@@ -12,6 +12,8 @@ SOURCE = r'''
 #include "NativeIdentity.h"
 #include <CoreFoundation/CoreFoundation.h>
 #include <Security/Security.h>
+#include <mach-o/loader.h>
+#include <mach/machine.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -21,6 +23,20 @@ static void show(const unsigned char *bytes, size_t size) {
 }
 int main(void) {
 #ifdef TESTING
+    FILE *temporary = tmpfile();
+    struct mach_header_64 header = {0};
+    header.magic=MH_MAGIC_64; header.cputype=CPU_TYPE_ARM64; header.cpusubtype=CPU_SUBTYPE_ARM64_ALL; header.filetype=MH_EXECUTE;
+    if (!temporary || fwrite(&header,1,sizeof(header),temporary)!=sizeof(header) || fflush(temporary) ||
+        ph_native_thin_arm64_fd(-1)) return 17;
+#if defined(__arm64__)
+    if (!ph_native_thin_arm64_fd(fileno(temporary))) return 17;
+#else
+    if (ph_native_thin_arm64_fd(fileno(temporary))) return 17;
+#endif
+    header.magic=0xcafebabe;
+    if (fseek(temporary,0,SEEK_SET) || fwrite(&header,1,sizeof(header),temporary)!=sizeof(header) || fflush(temporary) ||
+        ph_native_thin_arm64_fd(fileno(temporary))) return 18;
+    fclose(temporary);
     uint8_t absent[32], empty_hash[32];
     CFDataRef empty = CFDataCreate(NULL, NULL, 0);
     if (!empty || !ph_native_identity_test_digest(NULL, false, absent) ||

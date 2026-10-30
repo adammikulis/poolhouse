@@ -2,9 +2,25 @@
 #include <CommonCrypto/CommonDigest.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <string.h>
+#include <mach-o/loader.h>
+#include <mach/machine.h>
+#include <unistd.h>
 
 /* Limits are for OS-returned data; no caller-supplied bytes are promoted. */
 #define MAX_IDENTITY_BYTES (1024u * 1024u)
+
+bool ph_native_thin_header(uint32_t magic, int32_t cpu, int32_t subtype, uint32_t type) {
+#if defined(__arm64__)
+    return magic == MH_MAGIC_64 && cpu == CPU_TYPE_ARM64 && subtype == CPU_SUBTYPE_ARM64_ALL && type == MH_EXECUTE;
+#else
+    (void)magic; (void)cpu; (void)subtype; (void)type; return false;
+#endif
+}
+bool ph_native_thin_arm64_fd(int fd) {
+    struct mach_header_64 header;
+    return fd >= 0 && pread(fd, &header, sizeof(header), 0) == sizeof(header)
+        && ph_native_thin_header(header.magic, header.cputype, header.cpusubtype, header.filetype);
+}
 
 bool ph_native_static_valid(SecStaticCodeRef code, SecRequirementRef requirement) {
     const SecCSFlags flags = kSecCSCheckAllArchitectures | kSecCSCheckNestedCode | kSecCSStrictValidate;

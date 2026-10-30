@@ -9,20 +9,10 @@
 #include <mach-o/loader.h>
 #include <mach/machine.h>
 
-static bool thin_header(struct mach_header_64 header) {
-#if defined(__arm64__)
-    return header.magic == MH_MAGIC_64 && header.cputype == CPU_TYPE_ARM64
-        && header.cpusubtype == CPU_SUBTYPE_ARM64_ALL && header.filetype == MH_EXECUTE;
-#else
-    (void)header; return false;
-#endif
-}
-
 static bool thin_native(const char *path) {
     int fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
     if (fd < 0) return false;
-    struct mach_header_64 header;
-    bool okay = pread(fd, &header, sizeof(header), 0) == sizeof(header) && thin_header(header);
+    bool okay = ph_native_thin_arm64_fd(fd);
     close(fd); return okay;
 }
 
@@ -76,9 +66,7 @@ bool ph_host_protected_code(const char *directory, const char *paths, const char
 
 #ifdef TESTING
 bool ph_host_test_header(uint32_t magic, int32_t cpu, int32_t subtype, uint32_t type) {
-    struct mach_header_64 header = {0};
-    header.magic = magic; header.cputype = cpu; header.cpusubtype = subtype; header.filetype = type;
-    return thin_header(header);
+    return ph_native_thin_header(magic,cpu,subtype,type);
 }
 
 bool ph_host_test_policy(uint32_t flags, const char *entitlement) {
