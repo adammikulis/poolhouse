@@ -15,6 +15,7 @@ def governed(dispute=None):
                                        {"mode": "unfounded"}, {"mode": "governed"},
                                        {"mode": "unfounded", "say": "none", "old_format_file": "", "admins": []},
                                        {"mode": "unfounded", "say": "  ", "old_format_file": ""},
+                                       {**governed(), "old_format_file": "retired"},
                                        governed({"say": ""}), governed({"say": "  "})])
 def test_invalid_governance_is_not_reported_as_unfounded(monkeypatch, governance):
     monkeypatch.setattr(pool._node, "call", lambda *args, **kwargs: {
@@ -33,3 +34,14 @@ def test_explicit_unfounded_and_disputed_governance_are_distinct(monkeypatch):
     status = pool.status()
     assert status.governance == "governed"
     assert status.missing == "The pool is disputed."
+
+
+@pytest.mark.parametrize("governance", [
+    {"mode": "unfounded", "say": "No pool yet.", "old_format_file": "", "future_detail": "available"},
+    {**governed({"say": "The pool is disputed."}), "future_detail": "available"},
+])
+def test_additive_governance_fields_do_not_make_valid_status_unavailable(monkeypatch, governance):
+    monkeypatch.setattr(pool._node, "call", lambda *args, **kwargs: {
+        "pool": "pool", "policy": "secure", "fingerprint": "device", "governance": governance,
+    })
+    assert pool.status().governance == governance["mode"]

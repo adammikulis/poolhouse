@@ -123,17 +123,19 @@ def _governance(raw: object) -> dict:
     if not isinstance(raw, dict):
         raise errors.Error("The pool node returned an invalid governance state.")
     mode = raw.get("mode")
+    governed_fields = {"name", "epoch", "charter_hash", "admins", "weak_keys_only", "thresholds", "holds",
+                       "pending", "dispute", "waiting_for_signers", "delegates", "refused"}
     if mode == "unfounded":
-        valid = (set(raw) == {"mode", "say", "old_format_file"}
+        valid = ({"mode", "say", "old_format_file"} <= raw.keys() and not governed_fields.intersection(raw)
                  and isinstance(raw.get("say"), str) and bool(raw["say"].strip())
                  and isinstance(raw.get("old_format_file"), str))
     elif mode == "governed":
-        expected = {"mode", "name", "epoch", "charter_hash", "admins", "weak_keys_only",
-                    "thresholds", "holds", "pending", "dispute", "waiting_for_signers", "delegates", "refused"}
+        expected = {"mode", *governed_fields}
         epoch = raw.get("epoch")
         digest = raw.get("charter_hash")
         dispute = raw.get("dispute")
-        valid = (set(raw) == expected and isinstance(raw.get("name"), str) and bool(raw["name"].strip())
+        valid = (expected <= raw.keys() and "old_format_file" not in raw
+                 and isinstance(raw.get("name"), str) and bool(raw["name"].strip())
                  and type(epoch) is int and epoch >= 0 and isinstance(digest, str) and len(digest) == 64
                  and all(c in "0123456789abcdef" for c in digest)
                  and isinstance(raw.get("admins"), list) and type(raw.get("weak_keys_only")) is bool
