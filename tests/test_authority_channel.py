@@ -149,16 +149,14 @@ int main(int argc, char **argv) {
 '''
 
 
-@pytest.mark.skipif(sys.platform != "darwin", reason="macOS XPC SDK")
-@pytest.mark.timeout(600)
-def test_authority_channel_lifetime(tmp_path):
+def build_probe(tmp_path, crate_name):
     build = testnode.shared_build(ROOT / "app")
     environment = {**os.environ, "HOME": str(tmp_path), "TMPDIR": str(tmp_path),
                    "RUSTUP_HOME": str(testnode.account() / ".rustup"), "CARGO_HOME": str(testnode.account() / ".cargo"),
                    "CARGO_TARGET_DIR": str(build.target), "CARGO_BUILD_JOBS": "1"}
     project = tmp_path / "probe"
     (project / "src").mkdir(parents=True)
-    (project / "Cargo.toml").write_text('[package]\nname="channel_probe"\nversion="0.1.0"\nedition="2021"\n'
+    (project / "Cargo.toml").write_text('[package]\nname=' + json.dumps(crate_name) + '\nversion="0.1.0"\nedition="2021"\n'
         '[lib]\ncrate-type=["staticlib"]\n[dependencies]\npoolhouse-authority={path='
         + json.dumps(str(build.staged / "poolhouse-authority")) + '}\n')
     (project / "src/lib.rs").write_text('#[no_mangle] pub extern "C" fn channel_probe_link() {'
@@ -170,13 +168,20 @@ def test_authority_channel_lifetime(tmp_path):
     assert generated.returncode == 0, generated.stdout + generated.stderr
     def locked_packages(raw):
         return {(p["name"], p["version"], p.get("source"), p.get("checksum"))
-                for p in tomllib.loads(raw.decode())["package"] if p["name"] != "channel_probe"}
+                for p in tomllib.loads(raw.decode())["package"] if p["name"] != crate_name}
     assert locked_packages((project / "Cargo.lock").read_bytes()) <= locked_packages(original_lock)
     result = subprocess.run([testnode.tool("cargo"), "build", "--offline", "--locked"], cwd=project,
                             env=environment, capture_output=True, text=True, timeout=600)
     assert result.returncode == 0, result.stdout + result.stderr
-    archive = build.target / "debug/libchannel_probe.a"
+    archive = build.target / f"debug/lib{crate_name}.a"
     assert archive.is_file()
+    return build, environment, archive
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS XPC SDK")
+@pytest.mark.timeout(600)
+def test_authority_channel_lifetime(tmp_path):
+    build, environment, archive = build_probe(tmp_path,"channel_probe")
     symbols_file = tmp_path / "production-symbols"
     with symbols_file.open("wb") as symbols:
         checked = subprocess.run(["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/nm",
@@ -185,6 +190,9 @@ def test_authority_channel_lifetime(tmp_path):
     assert symbols_file.stat().st_size <= 32 * 1024 * 1024
     assert b"ph_authority_channel_test_connect" not in symbols_file.read_bytes()
     assert b"ph_authority_channel_test_send_hook" not in symbols_file.read_bytes()
+    assert b"ph_authority_channel_test_service" not in symbols_file.read_bytes()
+    assert b"ph_authority_channel_test_pid" not in symbols_file.read_bytes()
+    assert b"ph_authority_channel_test_error" not in symbols_file.read_bytes()
     fixture, binary = tmp_path / "fixture.c", tmp_path / "fixture"
     fixture.write_text(SOURCE)
     native = build.staged / "native-host"

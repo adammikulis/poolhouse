@@ -20,6 +20,7 @@ struct ph_authority_channel {
 #ifdef TESTING
     void (*send_hook)(void *);
     void *send_hook_context;
+    int test_error;
 #endif
 };
 
@@ -115,6 +116,10 @@ void ph_authority_channel_close(ph_authority_channel *channel) {
 static void receive(ph_authority_channel *channel, xpc_object_t message) {
     if (channel->closed) return;
     if (!control_active(channel->control)) { close_channel(channel); return; }
+#ifdef TESTING
+    if (xpc_get_type(message) == XPC_TYPE_ERROR)
+        channel->test_error = message == XPC_ERROR_PEER_CODE_SIGNING_REQUIREMENT ? 1 : 2;
+#endif
     if (xpc_get_type(message) != XPC_TYPE_DICTIONARY ||
         !ph_native_xpc_caller_matches(message,channel->connection,&channel->policy) ||
         xpc_dictionary_get_count(message) != 1) { close_channel(channel); return; }
@@ -377,6 +382,20 @@ bool ph_authority_channel_test_connect(xpc_endpoint_t endpoint, const ph_native_
     if (!endpoint || xpc_get_type(endpoint) != XPC_TYPE_ENDPOINT) return false;
     xpc_connection_t connection = xpc_connection_create_from_endpoint(endpoint);
     return connection && open_channel(connection,policy,handler,context);
+}
+bool ph_authority_channel_test_service(const char *name, const ph_native_xpc_caller_policy *policy,
+    ph_channel_handler handler, void *context) {
+    if (!name || !*name) return false;
+    xpc_connection_t connection = xpc_connection_create(name,NULL);
+    return connection && open_channel(connection,policy,handler,context);
+}
+pid_t ph_authority_channel_test_pid(ph_authority_channel *channel) {
+    if (!channel || channel->closed || dispatch_get_specific(channel) != channel) return -1;
+    return xpc_connection_get_pid(channel->connection);
+}
+int ph_authority_channel_test_error(ph_authority_channel *channel) {
+    if (!channel || dispatch_get_specific(channel) != channel) return -1;
+    return channel->test_error;
 }
 bool ph_authority_listener_test_start(const ph_native_xpc_caller_policy *policy, ph_listener_handler handler,
     ph_session_handler session_handler, void *context) {

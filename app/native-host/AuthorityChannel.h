@@ -60,6 +60,10 @@ ph_authority_connection_control *ph_authority_listener_control_copy(ph_authority
 void ph_authority_channel_test_send_hook(ph_authority_channel *channel, void (*hook)(void *), void *context);
 bool ph_authority_channel_test_connect(xpc_endpoint_t endpoint, const ph_native_xpc_caller_policy *policy,
     ph_channel_handler handler, void *context);
+bool ph_authority_channel_test_service(const char *name, const ph_native_xpc_caller_policy *policy,
+    ph_channel_handler handler, void *context);
+pid_t ph_authority_channel_test_pid(ph_authority_channel *channel);
+int ph_authority_channel_test_error(ph_authority_channel *channel);
 bool ph_authority_listener_test_start(const ph_native_xpc_caller_policy *policy, ph_listener_handler handler,
     ph_session_handler session_handler, void *context);
 xpc_endpoint_t ph_authority_listener_test_endpoint(ph_authority_listener *listener);
