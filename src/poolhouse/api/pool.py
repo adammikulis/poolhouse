@@ -118,10 +118,40 @@ def _missing(gov: dict) -> str:
     return ""
 
 
+def _governance(raw: object) -> dict:
+    """Reject an incomplete node response rather than treating it as no pool."""
+    if not isinstance(raw, dict):
+        raise errors.Error("The pool node returned an invalid governance state.")
+    mode = raw.get("mode")
+    if mode == "unfounded":
+        valid = (set(raw) == {"mode", "say", "old_format_file"}
+                 and isinstance(raw.get("say"), str) and bool(raw["say"].strip())
+                 and isinstance(raw.get("old_format_file"), str))
+    elif mode == "governed":
+        expected = {"mode", "name", "epoch", "charter_hash", "admins", "weak_keys_only",
+                    "thresholds", "holds", "pending", "dispute", "waiting_for_signers", "delegates", "refused"}
+        epoch = raw.get("epoch")
+        digest = raw.get("charter_hash")
+        dispute = raw.get("dispute")
+        valid = (set(raw) == expected and isinstance(raw.get("name"), str) and bool(raw["name"].strip())
+                 and type(epoch) is int and epoch >= 0 and isinstance(digest, str) and len(digest) == 64
+                 and all(c in "0123456789abcdef" for c in digest)
+                 and isinstance(raw.get("admins"), list) and type(raw.get("weak_keys_only")) is bool
+                 and isinstance(raw.get("thresholds"), dict) and isinstance(raw.get("holds"), dict)
+                 and (raw.get("pending") is None or isinstance(raw["pending"], dict))
+                 and (dispute is None or (isinstance(dispute, dict) and isinstance(dispute.get("say"), str) and bool(dispute["say"].strip())))
+                 and all(isinstance(raw.get(key), list) for key in ("waiting_for_signers", "delegates", "refused")))
+    else:
+        valid = False
+    if not valid:
+        raise errors.Error("The pool node returned an invalid governance state.")
+    return raw
+
+
 def status() -> Pool:
     """The pool this device belongs to, with every member (removed ones too) and what governs it; starts this device's node if needed."""
     raw = _node.call("pool_status")
-    gov = dict(raw.get("governance") or {})
+    gov = _governance(raw.get("governance"))
     return Pool(str(raw["pool"]), str(raw.get("project") or ""), str(raw["policy"]), str(raw["fingerprint"]),
                 str(raw.get("listen") or ""), bool(raw.get("join_code_open")),
                 tuple(_member(m) for m in raw.get("members", [])), "governed" if gov.get("mode") == "governed" else "unfounded",
