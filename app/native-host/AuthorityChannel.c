@@ -125,6 +125,24 @@ static void discard_inactive(xpc_connection_t connection) {
     xpc_release(connection);
 }
 
+static bool set_requirement(xpc_connection_t connection, SecRequirementRef requirement_ref) {
+    if (!requirement_ref) return false;
+    CFStringRef text = NULL;
+    if (SecRequirementCopyString(requirement_ref,kSecCSDefaultFlags,&text) || !text) {
+        if (text) CFRelease(text);
+        return false;
+    }
+    char requirement[16385];
+    CFIndex length = CFStringGetLength(text), written = 0;
+    CFIndex converted_count = CFStringGetBytes(text,CFRangeMake(0,length),kCFStringEncodingUTF8,0,false,
+        (UInt8 *)requirement,sizeof(requirement)-1,&written);
+    bool converted = length > 0 && converted_count == length && written > 0 && written < (CFIndex)sizeof(requirement)
+        && !memchr(requirement,0,(size_t)written);
+    if (converted) requirement[written] = 0;
+    CFRelease(text);
+    return converted && !xpc_connection_set_peer_code_signing_requirement(connection,requirement);
+}
+
 bool ph_authority_channel_send(ph_authority_channel *channel, const uint8_t *frame, size_t length) {
     if (!channel || channel->closed || !frame || !length || length > FRAME_LIMIT ||
         dispatch_get_specific(channel) != channel) return false;
@@ -147,21 +165,7 @@ static bool open_channel(xpc_connection_t connection, const ph_native_xpc_caller
     ph_channel_handler handler, void *context) {
     if (!connection || xpc_get_type(connection) != XPC_TYPE_CONNECTION) return false;
     if (!policy || !policy->requirement || !handler) { discard_inactive(connection); return false; }
-    CFStringRef text = NULL;
-    if (SecRequirementCopyString(policy->requirement,kSecCSDefaultFlags,&text) || !text) {
-        if (text) CFRelease(text);
-        discard_inactive(connection);
-        return false;
-    }
-    char requirement[16385];
-    CFIndex length = CFStringGetLength(text), written = 0;
-    CFIndex converted_count = CFStringGetBytes(text,CFRangeMake(0,length),kCFStringEncodingUTF8,0,false,
-        (UInt8 *)requirement,sizeof(requirement)-1,&written);
-    bool converted = length > 0 && converted_count == length && written > 0 && written < (CFIndex)sizeof(requirement)
-        && !memchr(requirement,0,(size_t)written);
-    if (converted) requirement[written] = 0;
-    CFRelease(text);
-    if (!converted || xpc_connection_set_peer_code_signing_requirement(connection,requirement)) { discard_inactive(connection); return false; }
+    if (!set_requirement(connection,policy->requirement)) { discard_inactive(connection); return false; }
     ph_authority_channel *channel = calloc(1,sizeof(*channel));
     if (!channel) { discard_inactive(connection); return false; }
     channel->queue = dispatch_queue_create("app.poolhouse.authority.channel",DISPATCH_QUEUE_SERIAL);
@@ -206,6 +210,144 @@ bool ph_authority_channel_accept(xpc_connection_t connection, const ph_native_xp
     return open_channel(connection,policy,handler,context);
 }
 
+enum { LISTENER_LIMIT = 32 };
+struct ph_authority_session {
+    ph_authority_listener *listener;
+    xpc_connection_t connection; /* owned and released on the listener queue */
+    ph_authority_channel *channel; /* borrowed only on the channel queue */
+    struct ph_authority_session *next;
+};
+struct ph_authority_listener {
+    xpc_connection_t connection;
+    dispatch_queue_t queue;
+    ph_native_xpc_caller_policy policy;
+    ph_listener_handler handler;
+    ph_session_handler session_handler;
+    void *context;
+    ph_authority_session *sessions;
+    size_t count;
+    bool stopping;
+    bool finalized;
+};
+
+static void listener_maybe_dispose(ph_authority_listener *listener) {
+    if (!listener->stopping || !listener->finalized || listener->count) return;
+    ph_listener_handler handler = listener->handler;
+    void *context = listener->context;
+    dispatch_queue_t queue = listener->queue;
+    CFRelease(listener->policy.requirement);
+    free(listener);
+    handler(context,NULL,PH_LISTENER_DISPOSED);
+    dispatch_release(queue);
+}
+
+static void listener_stop_on_queue(ph_authority_listener *listener) {
+    if (listener->stopping) return;
+    listener->stopping = true;
+    xpc_connection_cancel(listener->connection);
+    for (ph_authority_session *session = listener->sessions; session; session = session->next)
+        if (session->connection) xpc_connection_cancel(session->connection);
+    listener->handler(listener->context,listener,PH_LISTENER_END);
+    xpc_release(listener->connection);
+}
+
+void ph_authority_listener_stop(ph_authority_listener *listener) {
+    if (!listener || dispatch_get_specific(listener) != listener) return;
+    listener_stop_on_queue(listener);
+}
+
+void ph_authority_session_stop_listener(ph_authority_session *session) {
+    if (!session || !session->channel || dispatch_get_specific(session->channel) != session->channel) return;
+    ph_authority_listener *listener = session->listener;
+    /* The invoking session keeps the listener alive through its DISPOSED
+     * callback; submission precedes that callback on the channel queue. */
+    dispatch_async(listener->queue, ^{ listener_stop_on_queue(listener); });
+}
+
+static void listener_finalized(void *context) {
+    ph_authority_listener *listener = context;
+    dispatch_async(listener->queue, ^{ listener->finalized = true; listener_maybe_dispose(listener); });
+}
+
+static void session_event(void *context, ph_authority_channel *channel, ph_channel_event event,
+    const uint8_t *frame, size_t length) {
+    ph_authority_session *session = context;
+    ph_authority_listener *listener = session->listener;
+    if (event == PH_CHANNEL_START) session->channel = channel;
+    listener->session_handler(listener->context,session,channel,event,frame,length);
+    if (event == PH_CHANNEL_END) {
+        session->channel = NULL;
+        dispatch_async(listener->queue, ^{
+            if (session->connection) { xpc_release(session->connection); session->connection = NULL; }
+        });
+    } else if (event == PH_CHANNEL_DISPOSED) {
+        dispatch_async(listener->queue, ^{
+            ph_authority_session **entry = &listener->sessions;
+            while (*entry && *entry != session) entry = &(*entry)->next;
+            if (*entry == session) { *entry = session->next; listener->count--; free(session); }
+            listener_maybe_dispose(listener);
+        });
+    }
+}
+
+static void listener_event(ph_authority_listener *listener, xpc_object_t event) {
+    if (listener->stopping) {
+        if (xpc_get_type(event) == XPC_TYPE_CONNECTION) { xpc_retain(event); discard_inactive((xpc_connection_t)event); }
+        return;
+    }
+    if (xpc_get_type(event) != XPC_TYPE_CONNECTION) { listener_stop_on_queue(listener); return; }
+    xpc_connection_t connection = (xpc_connection_t)event;
+    if (listener->count == LISTENER_LIMIT) { xpc_retain(connection); discard_inactive(connection); return; }
+    ph_authority_session *session = calloc(1,sizeof(*session));
+    if (!session) { xpc_retain(connection); discard_inactive(connection); return; }
+    session->listener = listener;
+    session->connection = connection;
+    xpc_retain(connection); /* registry retain, released on END */
+    session->next = listener->sessions;
+    listener->sessions = session;
+    listener->count++;
+    if (!ph_authority_channel_accept(connection,&listener->policy,session_event,session)) {
+        listener->sessions = session->next;
+        listener->count--;
+        xpc_release(session->connection);
+        free(session);
+    }
+}
+
+static bool open_listener(xpc_connection_t connection, const ph_native_xpc_caller_policy *policy,
+    ph_listener_handler handler, ph_session_handler session_handler, void *context) {
+    if (!connection || xpc_get_type(connection) != XPC_TYPE_CONNECTION) return false;
+    if (!policy || !policy->requirement || !handler || !session_handler || !set_requirement(connection,policy->requirement)) {
+        discard_inactive(connection); return false;
+    }
+    ph_authority_listener *listener = calloc(1,sizeof(*listener));
+    if (!listener) { discard_inactive(connection); return false; }
+    listener->queue = dispatch_queue_create("app.poolhouse.authority.listener",DISPATCH_QUEUE_SERIAL);
+    if (!listener->queue) { free(listener); discard_inactive(connection); return false; }
+    listener->connection = connection;
+    listener->policy = *policy;
+    CFRetain(listener->policy.requirement);
+    listener->handler = handler;
+    listener->session_handler = session_handler;
+    listener->context = context;
+    dispatch_queue_set_specific(listener->queue,listener,listener,NULL);
+    xpc_connection_set_target_queue(connection,listener->queue);
+    xpc_connection_set_context(connection,listener);
+    xpc_connection_set_finalizer_f(connection,listener_finalized);
+    xpc_connection_set_event_handler(connection, ^(xpc_object_t event) { listener_event(listener,event); });
+    dispatch_suspend(listener->queue);
+    dispatch_async(listener->queue, ^{ listener->handler(listener->context,listener,PH_LISTENER_START); });
+    xpc_connection_activate(connection);
+    dispatch_resume(listener->queue);
+    return true;
+}
+
+bool ph_authority_listener_start(const ph_native_xpc_caller_policy *policy, ph_listener_handler handler,
+    ph_session_handler session_handler, void *context) {
+    xpc_connection_t listener = xpc_connection_create_mach_service("app.poolhouse.authority",NULL,XPC_CONNECTION_MACH_SERVICE_LISTENER);
+    return listener && open_listener(listener,policy,handler,session_handler,context);
+}
+
 #ifdef TESTING
 void ph_authority_channel_test_send_hook(ph_authority_channel *channel, void (*hook)(void *), void *context) {
     if (!channel || dispatch_get_specific(channel) != channel) return;
@@ -217,5 +359,14 @@ bool ph_authority_channel_test_connect(xpc_endpoint_t endpoint, const ph_native_
     if (!endpoint || xpc_get_type(endpoint) != XPC_TYPE_ENDPOINT) return false;
     xpc_connection_t connection = xpc_connection_create_from_endpoint(endpoint);
     return connection && open_channel(connection,policy,handler,context);
+}
+bool ph_authority_listener_test_start(const ph_native_xpc_caller_policy *policy, ph_listener_handler handler,
+    ph_session_handler session_handler, void *context) {
+    xpc_connection_t listener = xpc_connection_create(NULL,NULL);
+    return listener && open_listener(listener,policy,handler,session_handler,context);
+}
+xpc_endpoint_t ph_authority_listener_test_endpoint(ph_authority_listener *listener) {
+    if (!listener || listener->stopping || dispatch_get_specific(listener) != listener) return NULL;
+    return xpc_endpoint_create(listener->connection);
 }
 #endif

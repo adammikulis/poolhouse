@@ -34,10 +34,31 @@ void ph_authority_channel_close(ph_authority_channel *channel);
 ph_authority_channel_control *ph_authority_channel_control_copy(ph_authority_channel *channel);
 void ph_authority_channel_control_cancel(ph_authority_channel_control *control);
 void ph_authority_channel_control_release(ph_authority_channel_control *control);
+
+/* The listener owns the fixed service and its bounded adopted connections.
+ * Its policy is a candidate until the service binds it to protected Store
+ * state; the listener never issues an operation or an authority witness. */
+typedef struct ph_authority_listener ph_authority_listener;
+typedef struct ph_authority_session ph_authority_session;
+typedef enum { PH_LISTENER_START, PH_LISTENER_END, PH_LISTENER_DISPOSED } ph_listener_event;
+typedef void (*ph_listener_handler)(void *context, ph_authority_listener *listener, ph_listener_event event);
+typedef void (*ph_session_handler)(void *context, ph_authority_session *session, ph_authority_channel *channel,
+    ph_channel_event event, const uint8_t *frame, size_t length);
+/* Context remains live through LISTENER_DISPOSED; a session pointer is valid
+ * only until its CHANNEL_DISPOSED callback returns. */
+bool ph_authority_listener_start(const ph_native_xpc_caller_policy *policy, ph_listener_handler handler,
+    ph_session_handler session_handler, void *context);
+/* Listener stop is valid only from a listener callback. A session callback
+ * can request the same stop while its session remains owned. */
+void ph_authority_listener_stop(ph_authority_listener *listener);
+void ph_authority_session_stop_listener(ph_authority_session *session);
 #ifdef TESTING
 /* Test hook runs immediately before enqueue while the cancel gate is held. */
 void ph_authority_channel_test_send_hook(ph_authority_channel *channel, void (*hook)(void *), void *context);
 bool ph_authority_channel_test_connect(xpc_endpoint_t endpoint, const ph_native_xpc_caller_policy *policy,
     ph_channel_handler handler, void *context);
+bool ph_authority_listener_test_start(const ph_native_xpc_caller_policy *policy, ph_listener_handler handler,
+    ph_session_handler session_handler, void *context);
+xpc_endpoint_t ph_authority_listener_test_endpoint(ph_authority_listener *listener);
 #endif
 #endif
