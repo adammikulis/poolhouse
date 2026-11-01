@@ -12,7 +12,6 @@ from poolhouse.studio.packages import export_package, import_package
 from poolhouse.studio.store import Conflict, digest
 from poolhouse.studio.templates import templates
 
-from .discovery import load_pool_key
 from .request_fields import field, object_body
 from .session import parse_cookie
 from .studio_artifacts import artifact_files, open_artifact, stream_artifact
@@ -49,14 +48,11 @@ class StudioRoutes:
         session = ui.sessions.get(sid)
         if sid and session is None:
             raise PermissionError("This session ended. Sign in again to use Studio.")
-        if session:
-            principal = {"id": digest({"session": sid}), "scope": _binding(ui), "owner": session.credentialed}
-            ui._studio_principals[principal["id"]] = lambda: ui.sessions.get(sid) is not None
-            ui._studio_origins[principal["id"]] = lambda: (ui.sessions.get(sid).origin if ui.sessions.get(sid) else "")
-        else:
-            principal = {"id": digest({"local": self.client_ip, "scope": _binding(ui)}), "scope": _binding(ui), "owner": True}
-            ip, host, token = self.client_ip, self.host_header, self.header("X-Poolhouse-Setup", "")
-            ui._studio_principals[principal["id"]] = lambda: not load_pool_key(ui.pool_key_path) and not ui.may_setup(ip, host, token)
+        if not session:
+            raise PermissionError("Sign in to use Studio.")
+        principal = {"id": digest({"session": sid}), "scope": _binding(ui), "owner": session.credentialed}
+        ui._studio_principals[principal["id"]] = lambda: ui.sessions.get(sid) is not None
+        ui._studio_origins[principal["id"]] = lambda: (ui.sessions.get(sid).origin if ui.sessions.get(sid) else "")
         return ui.studio, principal
 
     def _studio(self) -> bool:

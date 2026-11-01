@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import threading
 import urllib.parse
@@ -10,11 +9,9 @@ import urllib.parse
 from poolhouse.home import machine_id
 from poolhouse.studio.store import Conflict
 
-from . import producer_member, project_enrollment
-from .discovery import memberships
-from .membership import fingerprint_of
-from .pool_roster import Pool
-from .remote import Discovery, Member
+from . import producer_member, studio_pool
+from .remote import Member
+from .service_pool import Pool
 from .studio_execution import DeviceExecutions
 from .studio_transport import MemberExecution
 
@@ -26,9 +23,10 @@ def _admitted(ui, source: str, dispatch: str) -> bool:
     certificate, pool, target = source.split(":")
     if target != machine_id():
         return False
-    roster = Pool(ui.pool_key_path)
-    return any(hashlib.sha256(item.key).hexdigest() == pool and item.group in roster.groups_of(certificate)
-               for item in memberships(ui.pool_key_path))
+    try:
+        return studio_pool.current() == pool and studio_pool.of_service(certificate) == pool
+    except PermissionError:
+        return False
 
 
 def _origin(ui, source: str, dispatch: str, spec_digest: str) -> bool:
@@ -36,18 +34,9 @@ def _origin(ui, source: str, dispatch: str, spec_digest: str) -> bool:
         return False
     certificate = source.split(":", 1)[0]
     origins = ui.__dict__.setdefault("_studio_origins", {})
-    if source not in origins:
-        pool = source.split(":")[1]
-        membership = next((item for item in memberships(ui.pool_key_path) if hashlib.sha256(item.key).hexdigest() == pool), None)
-        if membership is None:
-            return False
-        discovered = Member.discover(discovery=Discovery(key=membership.key, group=membership.group,
-                                                        pool_key_path=ui.pool_key_path, port=ui.discovery_port))
-        found = [item for item in discovered if item.beacon and fingerprint_of(item.beacon.cert) == certificate]
-        if len(found) != 1:
-            return False
-        origins[source] = found[0]
     try:
+        if source not in origins:
+            origins[source] = Member.from_binding(Pool().authorize(certificate), timeout=5)
         reply = MemberExecution(origins[source], lambda: _admitted(ui, source, dispatch)).request(
             "authorize", {"dispatch_id": dispatch, "spec_digest": spec_digest})
         return reply.get("authorized") is True
@@ -68,11 +57,15 @@ def answer(handler, ui, path: str, body=None) -> bool:
     """Dispatch device work only after the daemon opens a sealed member request."""
     if not path.startswith((PREFIX + "executions/", PREFIX + "resources/")):
         return False
-    membership = project_enrollment._matched(handler._sealing(), memberships(ui.pool_key_path)) if ui else None
-    if membership is None or not handler._member:
+    opening = handler._sealing() if ui else None
+    try:
+        pool = studio_pool.of_service(handler._member) if opening is not None and opening[2] and handler._member else ""
+    except PermissionError:
+        pool = ""
+    if not pool:
         handler._send(403, {"error": "Device execution requires a current enrolled pool device and a sealed request."})
         return True
-    source = handler._member + ":" + hashlib.sha256(membership.key).hexdigest() + ":" + machine_id()
+    source = handler._member + ":" + pool + ":" + machine_id()
     if not _admitted(ui, source, ""):
         handler._send(403, {"error": "This device is no longer a member of the selected pool."})
         return True
@@ -82,7 +75,7 @@ def answer(handler, ui, path: str, body=None) -> bool:
         if handler.command != "POST":
             raise ValueError("Device execution uses sealed typed requests.")
         action = path.removeprefix(PREFIX + "executions/")
-        if producer_member.answer(handler, ui, membership, action, body):
+        if producer_member.answer(handler, ui, pool, action, body):
             return True
         request = json.loads(body or b"{}")
         if not isinstance(request, dict):

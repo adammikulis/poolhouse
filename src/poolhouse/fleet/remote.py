@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import ipaddress
@@ -27,12 +28,7 @@ from poolhouse.http import (
 )
 
 from . import service_pool, tls
-from .discovery import (
-    Beacon,
-    DiscoveryError,
-    primary_ip,
-)
-from .onboard.lan import secure_scheme
+from .onboard.lan import DEFAULT_HTTP_PORT, primary_ip, secure_scheme
 
 if TYPE_CHECKING:
     from poolhouse.speech.protocols import Transcript
@@ -44,16 +40,39 @@ DIGEST_HEADER = "X-Poolhouse-SHA256"
 READS = Retry(tries=3, when_unreachable=False)
 
 
-@dataclass(frozen=True, slots=True)
-class Discovery:
-    timeout_s: float = 2.0
-    key: bytes | None = field(default=None, repr=False)
-    pool_key_path: Path | str | None = None
-    group: str | None = None
-    port: int | None = None
+class DiscoveryError(RuntimeError):
+    """No current compute service matches what was asked for."""
 
 
-DEFAULT_DISCOVERY = Discovery()
+@dataclass
+class Beacon:
+    """One compute service, as the node authorizes it and as its own health report describes it."""
+
+    name: str
+    port: int = DEFAULT_HTTP_PORT
+    device: dict[str, Any] = field(default_factory=dict)
+    busy: bool = False
+    queued: int = 0
+    slots: int = 1
+    free: int = 1
+    host: str = ""
+    hostname: str = ""
+    instance: str = ""
+    """The node's generation for this service binding."""
+    machine: str = ""
+    """The node's device id for the service."""
+    cert: str = ""
+    """The service certificate, base64 DER, which members pin."""
+
+
+def certificate_fingerprint(cert: str) -> str:
+    """The SHA-256 fingerprint of a certificate given as base64 DER, or ``""`` when it is not base64."""
+    try:
+        return hashlib.sha256(base64.b64decode(cert, validate=True)).hexdigest()
+    except (ValueError, TypeError):
+        return ""
+
+
 DEFAULT_REQUEST = Options(timeout=None)
 AGENT_ENV = "POOLHOUSE_WORKSPACE_AGENT"
 AGENT_HEADER = "X-Poolhouse-Agent"
@@ -149,10 +168,27 @@ class Member:
     def name(self) -> str:
         return self.beacon.name if self.beacon else self.base_url
 
+    @property
+    def fingerprint(self) -> str:
+        """The certificate fingerprint of the node-authorized service this member reaches, or ``""``."""
+        return self._binding.fingerprint if self._binding is not None else ""
+
+    @property
+    def pool(self) -> str:
+        """The pool whose node authorized this member's service, or ``""``."""
+        return self._binding.pool if self._binding is not None else ""
+
+    @classmethod
+    def from_binding(cls, row: service_pool.Binding, *, timeout: float = 60.0) -> Member:
+        """The member for one node-authorized service, with no health report asked for."""
+        address = urllib.parse.urlsplit(row.endpoint)
+        beacon = Beacon(name=row.name, host=address.hostname or "", port=address.port or 443,
+                        machine=row.device, cert=row.certificate, instance=row.generation)
+        return cls(row.endpoint, "", timeout=timeout, beacon=beacon)
+
     # -- discovery -------------------------------------------------------
     @classmethod
-    def discover(cls, *, discovery: Discovery = DEFAULT_DISCOVERY,
-                 timeout: float = 60.0) -> list[Member]:
+    def discover(cls, *, timeout: float = 60.0) -> list[Member]:
         """Every HTTPS compute service currently authorized by this device's node."""
         rows = service_pool.Pool().services()
         own = tls.local().fingerprint
@@ -160,10 +196,8 @@ class Member:
         for row in rows:
             if row.fingerprint == own:
                 continue
-            address = urllib.parse.urlsplit(row.endpoint)
-            beacon = Beacon(name=row.name, host=address.hostname or "", port=address.port or 443,
-                            machine=row.device, cert=row.certificate, instance=row.generation)
-            member = cls(row.endpoint, "", timeout=timeout, beacon=beacon)
+            member = cls.from_binding(row, timeout=timeout)
+            beacon = member.beacon
             report = member.health()
             beacon.device = report
             beacon.slots = int(report.get("slots") or 1)
@@ -174,10 +208,9 @@ class Member:
         return out
 
     @classmethod
-    def find_one(cls, *, require: str = "", name: str = "",
-                 discovery: Discovery = DEFAULT_DISCOVERY, timeout: float = 60.0) -> Member:
+    def find_one(cls, *, require: str = "", name: str = "", timeout: float = 60.0) -> Member:
         """The one member to use, or an error saying exactly why there isn't one."""
-        members = cls.discover(discovery=discovery, timeout=timeout)
+        members = cls.discover(timeout=timeout)
         if not members:
             raise DiscoveryError(
                 "this pool has no other current compute service; check the node's pool members")

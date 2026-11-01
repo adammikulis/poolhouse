@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
@@ -10,14 +9,13 @@ from poolhouse.home import machine_id
 from poolhouse.studio.catalog import node_spec
 from poolhouse.studio.engine import _artifacts
 
-from .discovery import derive_token, memberships
-from .membership import fingerprint_of
+from . import studio_pool
 from .project_client import members
 from .studio_transport import MemberExecution
 
 
 class DeviceDispatch:
-    """Run fixed nodes on devices selected from current authenticated discovery."""
+    """Run fixed nodes on devices the node currently authorizes in this pool."""
 
     def __init__(self, ui, store, authorize) -> None:
         self.ui, self.store, self.authorize = ui, store, authorize
@@ -29,9 +27,9 @@ class DeviceDispatch:
     def devices(self) -> list[dict]:
         rows = [{"id": machine_id(), "name": self.ui.name or "This device", "is_self": True,
                  "available": True, "capabilities": []}]
-        rows.extend({"id": fingerprint_of(item.beacon.cert), "name": item.name, "is_self": False,
+        rows.extend({"id": item.fingerprint, "name": item.name, "is_self": False,
                      "available": True, "capabilities": item.beacon.device.get("backends", [])}
-                    for item in members(self.ui) if item.beacon and item.beacon.machine != machine_id())
+                    for item in members() if item.beacon and item.beacon.machine != machine_id())
         return list({row["id"]: row for row in rows}.values())
 
     def is_remote(self, node: dict) -> bool:
@@ -39,7 +37,7 @@ class DeviceDispatch:
 
     def member(self, target):
         identity = target if isinstance(target, dict) else {"certificate": target}
-        found = [item for item in members(self.ui) if item.beacon and fingerprint_of(item.beacon.cert) == identity.get("certificate")
+        found = [item for item in members() if item.beacon and item.fingerprint == identity.get("certificate")
                  and (not identity.get("machine") or item.beacon.machine == identity["machine"])
                  and (not identity.get("pool") or self._pool(item) == identity["pool"])]
         if len(found) != 1:
@@ -47,15 +45,14 @@ class DeviceDispatch:
         return found[0]
 
     def _pool(self, member) -> str:
-        membership = next((item for item in memberships(self.ui.pool_key_path) if derive_token(item.key) == member.token), None)
-        if membership is None:
+        if not member.pool:
             raise PermissionError("The selected device no longer belongs to this pool.")
-        return hashlib.sha256(membership.key).hexdigest()
+        return studio_pool.scope_of(member.pool)
 
     def identity(self, node: dict) -> dict:
         selected = node["execution"]
         device = self.member(selected if "certificate" in selected else selected["machine"])
-        return {"machine": device.beacon.machine, "certificate": fingerprint_of(device.beacon.cert), "pool": self._pool(device)}
+        return {"machine": device.beacon.machine, "certificate": device.fingerprint, "pool": self._pool(device)}
 
     def validate(self, nodes: list[dict], principal: dict) -> list:
         errors = []
@@ -154,7 +151,7 @@ class DeviceDispatch:
 
     def authorize_execution(self, source: str, request: dict) -> bool:
         certificate, pool, _ = source.split(":")
-        found = [item for item in members(self.ui) if item.beacon and fingerprint_of(item.beacon.cert) == certificate and self._pool(item) == pool]
+        found = [item for item in members() if item.beacon and item.fingerprint == certificate and self._pool(item) == pool]
         if len(found) != 1:
             return False
         target = found[0].beacon.machine
