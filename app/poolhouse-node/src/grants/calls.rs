@@ -148,9 +148,8 @@ fn distrust(node: &mut Node, token: &str, p: &Map<String, Value>) -> Result<Valu
         return Ok(json!({"key": key, "distrusted": true, "entry": ""}));
     }
     let row = write(node, POOL_BOARD, "node", body, sig)?;
-    let floor = node.members.grants_floor_ms;
     let pool = node.host(POOL_BOARD)?;
-    pool.book.refresh(&pool.board, floor);
+    pool.book.refresh(&pool.board);
     Ok(json!({"key": key, "distrusted": true, "entry": row.id()}))
 }
 

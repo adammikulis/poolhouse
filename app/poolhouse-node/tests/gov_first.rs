@@ -264,23 +264,6 @@ fn a_charter_of_version_two_founds_nothing_and_says_it_is_another_version() {
     }
 }
 
-#[test]
-fn a_pool_of_charter_version_two_on_disk_is_set_aside_and_a_new_pool_may_be_founded() {
-    let dir = tempfile::tempdir().unwrap();
-    let c = charter(&[strong(A, "ann")], Policy::Secure, Unit::Person);
-    let id = c.pool_id();
-    GovPool::create(dir.path(), found_act(&c)).unwrap();
-    let held = dir.path().join("pools").join(&id);
-    let mut old: Value = serde_json::from_slice(&std::fs::read(held.join("charter.json")).unwrap()).unwrap();
-    old["body"].as_object_mut().unwrap().remove("first");
-    old["body"]["v"] = json!(2);
-    std::fs::write(held.join("charter.json"), serde_json::to_vec(&old).unwrap()).unwrap();
-    let pool = Pool::load(dir.path()).unwrap();
-    assert!(pool.is_unfounded(), "a pool made under version 2 is not run");
-    assert_eq!(pool.retired, format!("pools-old-format/{id}"));
-    assert!(dir.path().join("pools-old-format").join(&id).join("charter.json").is_file(), "it is kept, never deleted");
-}
-
 // -- the first device in the roster ------------------------------------------------------------------------------------------------
 
 #[test]

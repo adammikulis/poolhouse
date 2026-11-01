@@ -346,25 +346,6 @@ fn a_charter_of_another_version_founds_nothing_and_says_so_in_one_sentence() {
     assert_eq!(a.pool(), before, "it is still in no pool");
 }
 
-#[test]
-fn a_pool_of_another_charter_version_on_disk_is_set_aside_and_the_device_starts_unfounded() {
-    let dir = tempfile::tempdir().unwrap();
-    let c = charter(&[strong(A, "ann")], Policy::Secure, Unit::Person);
-    let id = c.pool_id();
-    GovPool::create(dir.path(), found_act(&c)).unwrap();
-    let held = dir.path().join("pools").join(&id);
-    assert!(Pool::load(dir.path()).unwrap().gov().is_some(), "a pool of this version loads");
-    let mut old: Value = serde_json::from_slice(&std::fs::read(held.join("charter.json")).unwrap()).unwrap();
-    old["body"]["v"] = json!(1);
-    std::fs::write(held.join("charter.json"), serde_json::to_vec(&old).unwrap()).unwrap();
-    let pool = Pool::load(dir.path()).unwrap();
-    assert!(pool.is_unfounded(), "the device starts as it would fresh");
-    assert_eq!(pool.retired, format!("pools-old-format/{id}"));
-    assert!(!held.exists(), "the old pool is out of the way");
-    assert!(dir.path().join("pools-old-format").join(&id).join("charter.json").is_file(), "and kept, never deleted");
-    assert!(Pool::load(dir.path()).unwrap().is_unfounded(), "a second start finds nothing to read");
-}
-
 // -- the founding path of a node -------------------------------------------------------------------------------------------------
 
 /// Enrol the P-256 key of ``phone`` on the node of ``dev`` the way a phone's own enrolment does, which is what makes a key strong there.

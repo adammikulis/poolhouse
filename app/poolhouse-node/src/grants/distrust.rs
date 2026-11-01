@@ -32,7 +32,6 @@ pub fn subject(gov: &GovPool, map: &Map<String, Value>) -> Result<String, &'stat
 /// The fingerprints of the keys the distrust rows of the pool board cut off now.
 pub fn set(node: &Node) -> BTreeSet<String> {
     let (Some(gov), Some(hosted)) = (node.members.gov(), node.boards.get(POOL_BOARD)) else { return BTreeSet::new() };
-    let floor = node.members.grants_floor_ms;
-    hosted.book.distrusts(&hosted.board).into_iter().filter(|r| r.hlc.0 > floor)
+    hosted.book.distrusts(&hosted.board).into_iter()
         .filter_map(|r| r.body.as_object().and_then(|m| subject(gov, m).ok())).collect()
 }
