@@ -10,23 +10,23 @@ import pytest
 
 from poolhouse import lan
 from poolhouse.fleet.daemon import ALL_INTERFACES, LOOPBACK, bind_address
-from poolhouse.fleet.discovery import primary_ip
+from poolhouse.fleet.onboard.lan import primary_ip
 
 
 def test_the_default_is_this_machine_only():
-    assert bind_address(None, lan=False, joined=False) == LOOPBACK
-    assert bind_address("", lan=False, joined=False) == LOOPBACK
+    assert bind_address(None, lan=False) == LOOPBACK
+    assert bind_address("", lan=False) == LOOPBACK
 
 
-def test_a_pool_member_or_an_explicit_lan_listens_on_the_network(monkeypatch):
+def test_only_an_explicit_lan_listens_on_the_network(monkeypatch):
     monkeypatch.setattr(lan, "allowed", lambda: True)  # the real home; elsewhere the daemon stays on loopback (tests/test_lan.py)
-    assert bind_address(None, lan=True, joined=False) == ALL_INTERFACES
-    assert bind_address(None, lan=False, joined=True) == ALL_INTERFACES
+    assert bind_address(None, lan=True) == ALL_INTERFACES
+    assert bind_address(None, lan=False) == LOOPBACK
 
 
 def test_a_named_host_wins_over_everything():
-    assert bind_address("127.0.0.1", lan=True, joined=True) == "127.0.0.1"
-    assert bind_address("192.0.2.7", lan=False, joined=False) == "192.0.2.7"
+    assert bind_address("127.0.0.1", lan=True) == "127.0.0.1"
+    assert bind_address("192.0.2.7", lan=False) == "192.0.2.7"
 
 
 def _free_port():
@@ -38,8 +38,8 @@ def _free_port():
 def _daemon(tmp_path, port, *flags):
     return subprocess.Popen(
         [sys.executable, "-m", "poolhouse.fleet.daemon", "--root", str(tmp_path / "traind"),
-         "--bench-home", str(tmp_path / "bench"), "--port", str(port), "--no-announce",
-         "--no-web", "--pool-key", str(tmp_path / "none.key"), *flags],
+         "--bench-home", str(tmp_path / "bench"), "--port", str(port),
+         "--no-web", *flags],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
@@ -85,7 +85,7 @@ def _ui_daemon(tmp_path, *, ui_from_lan):
     (root / "files").mkdir(parents=True)
     runner = JobRunner(root)
     handler = make_handler(Daemon(runner, root / "files", load_or_create_token(root),
-                                  ui=UI(name="box", pool_key_path=tmp_path / "k"),
+                                  ui=UI(name="box"),
                                   ui_from_lan=ui_from_lan))
     from poolhouse.fleet import tls
 
@@ -161,3 +161,17 @@ def test_a_lan_daemon_serves_its_certificate_and_refuses_plain_http_from_the_lan
     finally:
         proc.terminate()
         proc.wait(timeout=20)
+
+
+def test_the_machine_token_is_a_random_owner_only_secret_kept_under_the_root(tmp_path):
+    import stat
+
+    from poolhouse import macauth
+    from poolhouse.fleet.daemon import load_or_create_token
+
+    first = load_or_create_token(tmp_path / "a")
+    assert first.startswith(macauth.PREFIX)
+    assert load_or_create_token(tmp_path / "a") == first
+    assert load_or_create_token(tmp_path / "b") != first
+    assert stat.S_IMODE((tmp_path / "a" / "token").stat().st_mode) & 0o077 == 0
+    assert not (tmp_path / "a" / "machine-tokens").exists()

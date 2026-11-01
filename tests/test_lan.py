@@ -65,11 +65,11 @@ def test_the_flag_is_dropped_only_where_the_network_is_closed(clean):
     assert lan.clamp(["--lan"]) == ["--lan"]
 
 
-def test_the_daemon_binds_loopback_under_a_test_even_told_to_join_the_lan(clean):
-    assert bind_address(None, lan=True, joined=True) == LOOPBACK
+def test_the_daemon_binds_loopback_under_a_test_even_told_to_use_the_lan(clean):
+    assert bind_address(None, lan=True) == LOOPBACK
     real_home(clean)
-    assert bind_address(None, lan=True, joined=False) == ALL_INTERFACES
-    assert bind_address("192.0.2.7", lan=False, joined=False) == "192.0.2.7", "an address a person typed is theirs"
+    assert bind_address(None, lan=True) == ALL_INTERFACES
+    assert bind_address("192.0.2.7", lan=False) == "192.0.2.7", "an address a person typed is theirs"
 
 
 def test_the_beacon_goes_to_loopback_alone_and_its_socket_is_bound_there_with_no_group(clean):

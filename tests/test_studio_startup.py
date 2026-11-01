@@ -8,7 +8,7 @@ def test_actual_daemon_startup_restores_studio_with_its_authority_under_its_root
     root = tmp_path / 'traind'
     store = StudioStore(root / 'studio.ladybug')
     store.close()
-    options = DaemonOptions(root=root, name='startup-device', port=0, announce=False,
+    options = DaemonOptions(root=root, name='startup-device', port=0,
                             track='off', device_report=lambda: {'cpus': 1})
     runtime = DaemonRuntime(options)
     runtime.configure()

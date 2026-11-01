@@ -74,9 +74,9 @@ def test_daemon_routes_roots_before_startup_services(tmp_path, monkeypatch):
         assert lease_file() == root / "state" / "servers.json"
         raise StartupObserved
 
-    monkeypatch.setattr(daemon, "load_pool_key", inspect_startup)
+    monkeypatch.setattr(daemon.Settings, "load", staticmethod(inspect_startup))
     with pytest.raises(StartupObserved):
-        daemon.serve(daemon.DaemonOptions(root=root, announce=False, web=False))
+        daemon.serve(daemon.DaemonOptions(root=root, web=False))
 
 
 @pytest.mark.parametrize("marker", ["", "CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE"])
