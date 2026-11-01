@@ -2,35 +2,65 @@
 
 from __future__ import annotations
 
+import http.client
 import io
 import json
+import threading
+from dataclasses import dataclass, replace
 from types import SimpleNamespace
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import pytest
-from test_fleet_ui import Serving
+from service_kit import node_binary, two_nodes  # noqa: F401  (fixtures)
 
 from poolhouse import macauth, sealing
-from poolhouse.fleet import discovery, studio_library
-from poolhouse.fleet.daemon import load_or_create_token
-from poolhouse.http import Options, ServerError, request_json
+from poolhouse.fleet import studio_library, tls
+from poolhouse.fleet.api import Daemon, make_handler
+from poolhouse.fleet.framing import LimitedServer
+from poolhouse.fleet.jobs import JobRunner
+from poolhouse.fleet.remote import Member
+from poolhouse.fleet.service_pool import Pool
+from poolhouse.http import ServerError, request_json
 from poolhouse.studio.library import LocalLibrary
 from poolhouse.studio.packages import export_package
 from poolhouse.studio.store import StudioStore
 
 
+@dataclass
+class Served:
+    """A daemon on the second node of a real pool, and the member this process (the first node) reaches it as."""
+
+    member: Member
+    runner: JobRunner
+    ui: SimpleNamespace
+    nodes: object
+
+    @property
+    def endpoint(self) -> str:
+        return self.member.base_url + studio_library.ENDPOINT
+
+
 @pytest.fixture
-def pool(tmp_path):
-    served = Serving(tmp_path)
-    served.ui.root = tmp_path / "traind"
-    member = discovery.mint_pool("experiments", served.keyfile)
+def pool(two_nodes, tmp_path):  # noqa: F811
+    root = tmp_path / "traind"
+    root.mkdir()
+    runner = JobRunner(root, slots=1)
+    ui = SimpleNamespace(root=root, runner=runner)
+    members = Pool(two_nodes.b.state)
+    daemon = Daemon(runner, runner.files_root, macauth.derive(b"owner"), name="served", members=members, ui=ui,
+                    service_identity=lambda: two_nodes.idb)
+    server = LimitedServer(("127.0.0.1", 0), make_handler(daemon), tls=tls.member_context(two_nodes.idb, members))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    two_nodes.serve(1, server.server_port)
     try:
-        yield served, member
+        yield Served(Member.from_binding(Pool().authorize(two_nodes.idb.fingerprint)), runner, ui, two_nodes)
     finally:
-        store = getattr(served.ui, "_studio_pool_store", None)
+        store = getattr(ui, "_studio_pool_store", None)
         if store:
             store.close()
-        served.close()
+        runner.shutdown()
+        server.shutdown()
+        server.server_close()
 
 
 def _package(version="1", name="Example"):
@@ -39,57 +69,67 @@ def _package(version="1", name="Example"):
                           package_id="example", version=version, name=name)
 
 
-def _request(served, member, package=None):
-    return request_json(f"http://127.0.0.1:{served.port}{studio_library.ENDPOINT}",
-                        method="GET" if package is None else "POST",
+def _request(served, package=None, options=None):
+    return request_json(served.endpoint, method="GET" if package is None else "POST",
                         payload=None if package is None else {"package": package},
-                        options=Options(token=discovery.derive_token(member.key)))
+                        options=options or served.member.current_options())
+
+
+def _call(served, headers, context=None):
+    """One raw request to the daemon over TLS as the first node's service, with exactly ``headers``."""
+    target = urlsplit(served.endpoint)
+    context = context or served.member.current_options().tls_context
+    connection = http.client.HTTPSConnection(target.hostname, target.port, context=context)
+    try:
+        connection.request("GET", studio_library.ENDPOINT, headers={"Host": f"{target.hostname}:{target.port}", **headers})
+        return connection.getresponse().status
+    finally:
+        connection.close()
 
 
 def test_member_package_roundtrip_is_inert_idempotent_and_immutable(pool):
-    served, member = pool
     package = _package()
-    assert _request(served, member, package)["package"] == package
-    assert _request(served, member, package)["package"] == package
-    assert _request(served, member)["packages"] == [package]
+    assert _request(pool, package)["package"] == package
+    assert _request(pool, package)["package"] == package
+    assert _request(pool)["packages"] == [package]
     with pytest.raises(ServerError) as error:
-        _request(served, member, _package(name="Different content"))
+        _request(pool, _package(name="Different content"))
     assert error.value.status == 400
-    assert served.runner.snapshot() == []
+    assert pool.runner.snapshot() == []
 
 
 def test_non_pool_secret_unsealed_and_replayed_requests_are_refused(pool):
-    served, member = pool
-    endpoint = f"http://127.0.0.1:{served.port}{studio_library.ENDPOINT}"
+    member = pool.member
     with pytest.raises(ServerError) as error:
-        request_json(endpoint, options=Options(token="not-a-pool-secret"))
+        _request(pool, options=replace(member.current_options(), token="not-a-pool-secret"))
     assert error.value.status == 401
     with pytest.raises(ServerError) as error:
-        request_json(endpoint, options=Options(token=load_or_create_token(served.ui.root)))
-    assert error.value.status == 403
-    headers = macauth.sign(discovery.derive_token(member.key), "GET", endpoint, None)
-    status, _, _ = served.call(studio_library.ENDPOINT, headers=headers)
-    assert status == 403
-    status, _, _ = served.call(studio_library.ENDPOINT, headers=headers)
-    assert status == 401
-    sealed = {**macauth.sign(discovery.derive_token(member.key), "GET", endpoint, None), sealing.HEADER: "2"}
-    status, _, _ = served.call(studio_library.ENDPOINT, headers=sealed)
-    assert status == 200
-    status, _, _ = served.call(studio_library.ENDPOINT, headers=sealed)
-    assert status == 401
+        _request(pool, options=replace(member.current_options(), token=macauth.derive(b"owner")))
+    assert error.value.status == 401
+    headers = macauth.sign(member.token, "GET", pool.endpoint, None)
+    assert _call(pool, headers) == 403
+    assert _call(pool, headers) == 401
+    sealed = {**macauth.sign(member.token, "GET", pool.endpoint, None), sealing.HEADER: "2"}
+    assert _call(pool, sealed) == 200
+    assert _call(pool, sealed) == 401
 
 
-def test_matched_secondary_pool_has_separate_library_and_revocation_wins(pool):
-    served, secondary = pool
-    primary = discovery.mint_pool("another-pool", served.keyfile)
+def test_removed_member_is_refused_package_access(pool):
     package = _package()
-    _request(served, secondary, package)
-    assert _request(served, primary)["packages"] == []
-    assert _request(served, secondary)["packages"] == [package]
-    discovery.leave(secondary.group, served.keyfile)
-    with pytest.raises(ServerError) as error:
-        _request(served, secondary)
-    assert error.value.status in {401, 403}
+    _request(pool, package)
+    assert _request(pool)["packages"] == [package]
+    context, token = pool.member.current_options().tls_context, pool.member.token
+    sealed = {**macauth.sign(token, "GET", pool.endpoint, None), sealing.HEADER: "2"}
+    assert _call(pool, sealed, context) == 200
+    pool.nodes.b.person.remove_member(pool.nodes.b, pool.nodes.fingerprint(pool.nodes.a))
+    with pytest.raises((ServerError, PermissionError)):
+        _request(pool)
+    again = {**macauth.sign(token, "GET", pool.endpoint, None), sealing.HEADER: "2"}
+    try:
+        status = _call(pool, again, context)
+    except OSError:
+        status = 403  # the handshake itself was refused
+    assert status == 403
 
 
 def test_pool_library_preserves_local_publish_when_devices_are_offline(tmp_path):
@@ -126,28 +166,26 @@ def test_conflicting_member_version_does_not_replace_or_hide_unrelated_packages(
 
 
 def test_member_discovery_pages_packages_without_loading_the_whole_library(pool, monkeypatch):
-    served, member = pool
     monkeypatch.setattr(studio_library, "MAX_BYTES", 10_000)
     first = _package(name="a" * 5500)
     second = _package(version="2", name="b" * 5500)
-    _request(served, member, first)
-    _request(served, member, second)
-    page = _request(served, member)
+    _request(pool, first)
+    _request(pool, second)
+    page = _request(pool)
     assert page["packages"] == [first] and page["next"] == ["example", "1"]
-    url = f"http://127.0.0.1:{served.port}{studio_library.ENDPOINT}?" + urlencode({"after": json.dumps(page["next"])})
-    next_page = request_json(url, options=Options(token=discovery.derive_token(member.key)))
+    next_page = request_json(pool.endpoint + "?" + urlencode({"after": json.dumps(page["next"])}),
+                             options=pool.member.current_options())
     assert next_page["packages"] == [second] and next_page["next"] is None
 
 
 def test_rejected_oversized_package_cannot_poison_pool_discovery(pool, monkeypatch):
-    served, member = pool
     monkeypatch.setattr(studio_library, "MAX_BYTES", 10_000)
     package = _package(name="a" * 7500)
     assert len(json.dumps({"package": package}).encode()) < studio_library.MAX_BYTES
     with pytest.raises(ServerError) as error:
-        _request(served, member, package)
+        _request(pool, package)
     assert error.value.status == 400
-    assert _request(served, member)["packages"] == []
+    assert _request(pool)["packages"] == []
 
 
 @pytest.mark.parametrize("failure", [None, "seal", "oversize", "package", "cursor"])

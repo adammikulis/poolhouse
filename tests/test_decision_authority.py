@@ -1,16 +1,21 @@
-"""Only the fixed owning issuer may return a resident model source."""
-import hashlib
+"""Only the fixed owning issuer may return a resident model source.
+
+The device identity, its node and the node's binding of the identity's compute service are real (``service_kit``). The
+issuer's reply in ``authorized`` is a canned plumbing reply: the issuer itself is covered by ``test_studio_decision_issuer``.
+"""
 import json
 import time
 from types import SimpleNamespace
 
 import pytest
+from service_kit import node_binary, one_node, pool_id  # noqa: F401  (fixtures)
 
-from poolhouse import home
-from poolhouse.fleet import tls
-from poolhouse.fleet.discovery import mint_pool
-from poolhouse.fleet.membership import Roster
+from poolhouse import home, macauth
+from poolhouse.fleet import studio_pool, tls
+from poolhouse.fleet.runtime_paths import default_root
 from poolhouse.serve import decision_authority as authority
+
+ENDPOINT = "https://127.0.0.1:7443"
 
 
 def source():
@@ -24,31 +29,35 @@ def model():
 
 
 @pytest.fixture
-def enrolled():
+def enrolled(one_node, monkeypatch):  # noqa: F811
     identity = tls.identity(tls.device_directory(), "test-device")
+    monkeypatch.setattr(tls, "local", lambda: identity)
     home.state("machine-id").write_text("test-machine")
-    member = mint_pool("test-pool", home.state("pool.key"))
-    Roster(member.key).enrol(identity.beacon, "test-device", "self")
-    owned = SimpleNamespace(issuer={"endpoint": "https://127.0.0.1:7443", "certificate": identity.beacon,
-                            "machine": "test-machine", "pool": hashlib.sha256(member.key).hexdigest(),
+    token = macauth.PREFIX + "owner-credential"
+    default_root().mkdir(parents=True, exist_ok=True)
+    (default_root() / "token").write_text(token)
+    (default_root() / "token").chmod(0o600)
+    one_node.bind(one_node.a, identity, ENDPOINT)
+    owned = SimpleNamespace(issuer={"endpoint": ENDPOINT, "certificate": identity.beacon,
+                            "machine": "test-machine", "pool": studio_pool.scope_of(pool_id(one_node.a)),
                             "runtime": "b" * 64, "issuer_instance": "c" * 64})
-    return owned, identity, member
+    return owned, identity, token, one_node
 
 
-def test_existing_enrolled_identity_is_read_only_and_revocation_is_current(enrolled, monkeypatch):
-    owned, expected, member = enrolled
+def test_existing_enrolled_identity_is_read_only_and_a_replaced_service_binding_is_current(enrolled, monkeypatch, tmp_path):
+    owned, expected, token, nodes = enrolled
     monkeypatch.setattr(tls, "local", lambda: pytest.fail("must never create a TLS identity"))
-    actual, key = authority.existing(owned)
-    assert actual == expected and key == member.key
-    assert authority.existing(owned) == (actual, key)
-    Roster(member.key).revoke(expected.fingerprint, "self")
+    actual, owner = authority.existing(owned)
+    assert actual == expected and owner == token
+    assert authority.existing(owned) == (actual, owner)
+    nodes.bind(nodes.a, tls.identity(tmp_path / "replacement", "replacement"), ENDPOINT)
     with pytest.raises(PermissionError, match="enrolled"):
         authority.existing(owned)
 
 
-@pytest.mark.parametrize("mutation", ["missing", "symlink", "machine", "certificate", "expiry", "pool"])
+@pytest.mark.parametrize("mutation", ["missing", "symlink", "machine", "certificate", "expiry", "pool", "owner-credential"])
 def test_existing_identity_never_creates_adopts_or_falls_back(enrolled, mutation, tmp_path, monkeypatch):
-    owned, identity, _member = enrolled
+    owned, identity, _token, _nodes = enrolled
     monkeypatch.setattr(tls, "identity", lambda *_args, **_kwargs: pytest.fail("must not mint identity"))
     if mutation == "missing":
         identity.keyfile.unlink()
@@ -60,6 +69,8 @@ def test_existing_identity_never_creates_adopts_or_falls_back(enrolled, mutation
         home.state("machine-id").write_text("another-machine")
     elif mutation == "certificate":
         owned.issuer["certificate"] = "another-certificate"
+    elif mutation == "owner-credential":
+        (default_root() / "token").write_text("not-a-credential")
     elif mutation == "expiry":
         path = tls.device_directory() / "cert.json"
         value = json.loads(path.read_text())
@@ -86,12 +97,12 @@ def test_fixed_reply_requires_typed_positive_finite_settings():
 
 @pytest.fixture
 def authorized(enrolled, monkeypatch):
-    owned, _identity, _member = enrolled
+    owned, _identity, _token, _nodes = enrolled
     calls = []
     owned.instance = "f" * 64
     owned.sign = lambda body: calls.append(body) or {**body, "proof": "valid-proof"}
     state = {"reply_change": {}, "model_change": {}, "denied": False}
-    class Transport:
+    class Transport:  # plumbing only: a canned issuer reply, so the stages and echoed fields can be varied
         def __init__(self, member, current, *, identity):
             assert identity.der
             assert member.base_url == owned.issuer["endpoint"]

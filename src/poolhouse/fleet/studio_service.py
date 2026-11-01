@@ -1,7 +1,6 @@
 """Create the shared Studio engine independently of a browser request."""
 from __future__ import annotations
 
-import hashlib
 import threading
 from pathlib import Path
 
@@ -12,8 +11,8 @@ from poolhouse.studio.resources import model_resource
 from poolhouse.studio.saved_models import PREFIX as SAVED_MODEL_PREFIX, SavedModels
 from poolhouse.studio.store import StudioStore, digest
 
+from . import studio_pool
 from .dataset_imports import create as create_datasets
-from .discovery import load_pool_key
 from .files import safe_relpath
 from .managed_compute import process_environment
 from .studio_decision_service import create as create_decisions
@@ -24,9 +23,7 @@ _INITIALIZE = threading.RLock()
 
 
 def scope(ui) -> str:
-    key = load_pool_key(ui.pool_key_path)
-    return digest({"pool": hashlib.sha256(key).hexdigest() if key else "local",
-                   "device": machine_id(), "board": str(Path(ui.root).resolve())})
+    return digest({"pool": studio_pool.current(), "device": machine_id(), "board": str(Path(ui.root).resolve())})
 
 
 def initialize(ui):

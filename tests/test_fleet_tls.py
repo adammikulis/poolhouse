@@ -49,7 +49,7 @@ def service_authority(tmp_path, monkeypatch):
         if method == "pool_status":
             return {"pool": "a" * 32, "fingerprint": server_nodes.get(str(state), "1" * 64)}
         if method == "service_members":
-            return {"pool": "a" * 32, "services": rows}
+            return {"pool": "a" * 32, "services": [{"pool": "a" * 32, **row} for row in rows]}
         selected = [row for row in rows if row["fingerprint"] == params["fingerprint"]]
         if not selected:
             raise ValueError("service not authorized")

@@ -2,6 +2,7 @@
 import threading
 
 import pytest
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_studio_producer_flow import api, events, flow as _flow, runtime_app as _runtime_app, wait
 
 runtime_app = _runtime_app

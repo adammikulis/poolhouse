@@ -6,28 +6,26 @@ import re
 
 import pytest
 from browser_expect import expect
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from studio_commands import studio_command, workflow_picker
 from test_fleet_ui import Serving
 from test_studio_canvas_browser import studio_browser  # noqa: F401
 from test_studio_record_nodes import graph
 
 from poolhouse.fleet import tls
-from poolhouse.fleet.discovery import mint_pool
-from poolhouse.fleet.membership import Roster
 
 pytestmark = pytest.mark.slow
 
 
 @pytest.fixture
-def record_page(tmp_path, studio_browser):  # noqa: F811
+def record_page(tmp_path, studio_browser, studio_node):  # noqa: F811
     app = Serving(tmp_path)
     app.httpd.daemon_threads = False
     app.ui.root = tmp_path / 'traind'
     app.ui.settings.setup_done = True
     identity = tls.identity(tmp_path / 'tls', 'records')
     app.ui.studio_identity = lambda: identity
-    member = mint_pool('record-fields', app.keyfile)
-    Roster(member.key).enrol(identity.beacon, 'Record test device', 'test')
+    studio_node.bind(studio_node.a, identity, f'https://127.0.0.1:{app.port}')
     session = app.ui.sessions.open('record-owner-session', 'launch-ticket')
     cookie = 'poolhouse_ui=' + session.sid
     value = graph()

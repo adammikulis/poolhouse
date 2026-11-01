@@ -2,20 +2,19 @@
 import threading
 
 import pytest
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_fleet_ui import Serving
 
 from poolhouse.fleet import dataset_routes
-from poolhouse.fleet.discovery import mint_pool
 from poolhouse.fleet.workspace_routes import WorkspaceRoutes
 from poolhouse.studio.store import digest
 
 
 @pytest.fixture
-def served(tmp_path):
+def served(tmp_path, studio_node):  # noqa: F811
     app = Serving(tmp_path)
     app.ui.root = tmp_path / 'traind'
     app.ui.settings.setup_done = True
-    mint_pool('catalogue-test-pool', app.keyfile)
     session = app.ui.sessions.open('dataset-browser', 'launch-ticket')
     try:
         yield app, 'poolhouse_ui=' + session.sid, session
@@ -69,7 +68,7 @@ def test_missing_session_denied_before_catalogue(served, monkeypatch):
     app, _, _ = served
     monkeypatch.setattr(dataset_routes.dataset_catalogue, 'search', lambda **_: pytest.fail('unauthorized network'))
     status, _, _ = app.call('/ui/workspace/datasets/search')
-    assert status == 401
+    assert status == 403
 
 
 def test_fixed_routes_reject_post_without_calling_catalogue(served, monkeypatch):

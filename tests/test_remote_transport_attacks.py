@@ -8,7 +8,7 @@ import struct
 import tempfile
 import threading
 import time
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -162,34 +162,3 @@ def test_project_catalogue_rejects_invalid_members_without_type_crash(monkeypatc
     with pytest.raises(project_client.ProjectError):
         project_client.catalogue(SimpleNamespace())
 
-
-@pytest.mark.redteam
-@pytest.mark.parametrize("attack", ["oversized", "unsealed", "tampered", "invalid-json", "wrong-project", "redirect"])
-def test_local_registration_refuses_hostile_response(tmp_path, monkeypatch, attack):
-    endpoint = "http://127.0.0.1:8770/workspace/v1/local-project"
-    sealed = Sealed(b"s" * 32, "registration-nonce")
-    plain = b"not JSON" if attack == "invalid-json" else b'{"id":"' + PROJECT.encode() + b'"}'
-    if attack == "wrong-project":
-        plain = b'{"id":"' + b"b" * 32 + b'"}'
-    raw = sealing.seal(sealed.key, plain, sealing.response_data(sealed.nonce, 200))
-    if attack == "tampered":
-        raw = raw[:-1] + bytes([raw[-1] ^ 1])
-    if attack == "oversized":
-        raw = b"x" * (65536 + sealing.NONCE_BYTES + 17)
-    response = SimpleNamespace(status=200, headers={} if attack == "unsealed" else {sealing.HEADER: "2"},
-                               sealed=sealed, read=lambda limit: raw[:limit])
-    calls = []
-
-    def transport(url, **options):
-        calls.append((url, options))
-        assert options["guard"](url) == endpoint
-        assert options["timeout"] == 2
-        assert options["headers"][sealing.HEADER] == "2"
-        if attack == "redirect":
-            options["guard"]("https://foreign.invalid/workspace/v1/local-project")
-        return nullcontext(response)
-
-    monkeypatch.setattr(project_client, "open_stream", transport)
-    with pytest.raises((project_client.ProjectError, ValueError)):
-        project_client.register_local(tmp_path, b"fixture-dev-key", PROJECT, 8770)
-    assert len(calls) == 1 and calls[0][0] == endpoint

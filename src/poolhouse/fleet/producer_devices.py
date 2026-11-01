@@ -1,8 +1,7 @@
-"""Observational enrolled-device discovery and fixed software-producer transport."""
+"""Node-authorized compute device listing and fixed software-producer transport."""
 from __future__ import annotations
 
 import copy
-import hashlib
 import os
 import re
 import stat
@@ -13,12 +12,11 @@ from poolhouse import home
 from poolhouse.files import stat_signature
 from poolhouse.studio.store import Conflict, digest
 
-from . import studio_epoch, tls
-from .discovery import Beacon, derive_token, memberships
-from .membership import fingerprint_of, roster
+from . import studio_epoch, studio_pool, tls
 from .producer_member import FIELDS
 from .producer_offers import _process, _text
-from .remote import Discovery, Member
+from .remote import Beacon, Member
+from .service_pool import Pool
 from .studio_transport import MemberExecution
 
 _HEX32 = re.compile('[0-9a-f]{32}')
@@ -54,11 +52,11 @@ def _address(member):
 
 
 class Devices:
-    """No discovered address, offer or certificate creates source authority.
+    """No listed address, offer or certificate creates source authority.
 
     The factory supplies its actual service and existing RAM identity. Refresh and requests
     must run outside the shared store lock; receivers is deliberately a local cache read.
-    Each transport independently rechecks the selected pool, active roster and cached address.
+    Each transport independently rechecks the node's current pool, service binding and cached address.
     """
 
     def __init__(self, ui, service, control):
@@ -70,23 +68,22 @@ class Devices:
         if not isinstance(self.identity, tls.Identity) or self.identity.fingerprint != self.anchor['device']:
             raise PermissionError('The existing daemon identity is unavailable.')
         self.machine = _machine()
-        selected = self._current()
-        own = self._self(selected)
+        self._current()
+        own = self._self()
         self._members[self.identity.beacon] = (own, _address(own))
 
     def _current(self):
         if (self.service.authority._context() != self.anchor or self.ui.studio_identity() is not self.identity
                 or _machine() != self.machine):
             raise PermissionError('The selected producer pool or daemon changed.')
-        selected = memberships(self.ui.pool_key_path)
-        if not selected or hashlib.sha256(selected[0].key).hexdigest() != self.anchor['pool']:
+        if studio_pool.current() != self.anchor['pool']:
             raise PermissionError('The selected producer pool changed.')
-        own = roster(selected[0].key).get(self.identity.fingerprint)
-        if not own or not own.active or own.cert != self.identity.beacon:
-            raise PermissionError('The current daemon is not enrolled in this pool.')
-        return selected[0]
+        try:
+            return Pool().own(self.identity)
+        except PermissionError as exc:
+            raise PermissionError('The current daemon is not enrolled in this pool.') from exc
 
-    def _self(self, selected):
+    def _self(self):
         endpoint = self.ui.studio_endpoint()
         location = urlsplit(endpoint or '')
         if (location.scheme != 'https' or location.hostname != '127.0.0.1'
@@ -96,8 +93,11 @@ class Devices:
         name = self.ui.name or 'This device'
         if not _text(name):
             raise PermissionError('The daemon device label is invalid.')
+        token = getattr(self.ui, 'studio_token', lambda: '')()
+        if not token:
+            raise PermissionError('The existing daemon owner credential is unavailable.')
         beacon = Beacon(name=name, port=location.port, host='127.0.0.1', machine=self.machine, cert=self.identity.beacon)
-        return Member(endpoint, derive_token(selected.key), beacon=beacon, timeout=5)
+        return Member(endpoint, token, beacon=beacon, timeout=5, identity=self.identity)
 
     def _network(self):
         if self.service.store.lock._is_owned():
@@ -105,41 +105,34 @@ class Devices:
 
     def _allowed(self, member, expected):
         selected = self._current()
-        if _address(member) != expected or member.token != derive_token(selected.key):
-            raise PermissionError('The discovered producer device changed.')
-        listed = roster(selected.key).get(fingerprint_of(member.beacon.cert))
+        if _address(member) != expected:
+            raise PermissionError('The listed producer device changed.')
+        member.check_current()
         with self.lock:
             cached = self._members.get(member.beacon.cert)
-        if (not listed or not listed.active or listed.cert != member.beacon.cert
-                or cached is None or cached[0] is not member or cached[1] != expected):
-            raise PermissionError('The producer device is no longer a current enrolled member.')
-        if member.beacon.cert == self.identity.beacon and _address(self._self(selected)) != expected:
+        if (member.pool != selected.pool or cached is None or cached[0] is not member or cached[1] != expected):
+            raise PermissionError('The producer device is no longer a current node-authorized service.')
+        if member.beacon.cert == self.identity.beacon and _address(self._self()) != expected:
             raise PermissionError('The current encrypted daemon listener changed.')
         return True
 
     def refresh(self):
         self._network()
         selected = self._current()
-        own = self._self(selected)
+        own = self._self()
         found = {self.identity.beacon: (own, _address(own))}
-        for member in Member.discover(discovery=Discovery(key=selected.key, group=selected.group,
-                pool_key_path=self.ui.pool_key_path, port=self.ui.discovery_port, timeout_s=1), timeout=5):
+        for member in Member.discover(timeout=5):
             beacon = member.beacon
-            if not beacon or not beacon.cert or not beacon.machine or member.token != derive_token(selected.key):
-                raise PermissionError('Discovery returned an invalid enrolled device.')
-            listed = roster(selected.key).get(fingerprint_of(beacon.cert))
-            if not listed or not listed.active or listed.cert != beacon.cert:
-                raise PermissionError('Discovery returned a device outside the current roster.')
+            if not beacon or not beacon.cert or not beacon.machine or member.pool != selected.pool:
+                raise PermissionError('The node returned an invalid compute device.')
             if beacon.cert == self.identity.beacon:
-                if beacon.machine != self.machine:
-                    raise Conflict('The current certificate names another machine.')
                 continue
             previous = found.get(beacon.cert)
             if previous and previous[1] != _address(member):
                 raise Conflict('A producer certificate has ambiguous device addresses.')
             found[beacon.cert] = (member, _address(member))
         if self._current() != selected:
-            raise PermissionError('The pool changed during discovery.')
+            raise PermissionError('The pool changed during the device listing.')
         with self.lock:
             self._members = {cert: self._members.get(cert, value)
                              if self._members.get(cert, (None, None))[1] == value[1] else value
@@ -177,7 +170,7 @@ class Devices:
         with self.lock:
             cached = self._members.get(receiver['certificate'])
         if cached is None:
-            raise PermissionError('This device is not in current authenticated discovery.')
+            raise PermissionError('This device is not a current node-authorized compute service.')
         member, expected = cached
         self._allowed(member, expected)
         transport = MemberExecution(member, lambda: self._allowed(member, expected), identity=self.identity)
@@ -222,7 +215,7 @@ class Devices:
             mapping = copy.deepcopy(self._offers.get(ident))
             current = self._members.get(mapping['receiver']['certificate']) if mapping else None
         if not mapping or not current or current[1] != mapping['address']:
-            raise PermissionError('This offer is not from current authenticated discovery.')
+            raise PermissionError('This offer is not from a current node-authorized compute service.')
         response = self.request(mapping['receiver'], 'producer-inspect', {'offer_id': ident, 'revision': revision})
         offer = response.get('offer')
         if (set(response) != {'offer'} or not isinstance(offer, dict) or set(offer) != _OFFER

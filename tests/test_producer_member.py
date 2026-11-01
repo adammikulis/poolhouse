@@ -1,18 +1,22 @@
 """Actual sealed TLS producer routes derive the caller, never request identity fields."""
 import hashlib
+import socket
+import ssl
+import threading
 from types import SimpleNamespace
 
 import pytest
-from test_studio_device_http import devices  # noqa: F401
+from service_kit import node_binary, three_nodes  # noqa: F401  (fixtures the daemons below need)
+from test_studio_device_http import devices  # noqa: F401  (a fixture)
 
-from poolhouse.fleet import producer_member, tls
+from poolhouse.fleet import producer_member, studio_pool, tls
 from poolhouse.fleet.studio_transport import MAX_REPLY
 from poolhouse.graph.guard import MAX_BODY
 
 
 def provider(opened_devices):
     opened, _ = opened_devices
-    client, service, _, _, _ = opened[0]
+    client, service = opened[0].transport, opened[0].service
     calls = []
     class Provider:
         def member(self, actual, action, request):
@@ -23,11 +27,9 @@ def provider(opened_devices):
 
 
 def test_real_sealed_tls_uses_actual_current_caller_not_record_fields(request):
-    client, service, calls = provider(request.getfixturevalue('devices'))
+    client, _service, calls = provider(request.getfixturevalue('devices'))
     assert client.request('producer-offers', {}) == {'accepted': True, 'bytes': 0}
-    from poolhouse.fleet.discovery import load_pool_key
-    assert calls == [({'certificate': tls.local().beacon,
-                       'pool': hashlib.sha256(load_pool_key(service.ui.pool_key_path)).hexdigest()}, 'producer-offers', {})]
+    assert calls == [({'certificate': tls.local().beacon, 'pool': studio_pool.current()}, 'producer-offers', {})]
     with pytest.raises(ValueError):
         client.request('producer-offers', {'certificate': 'other-device', 'owner': True})
     assert len(calls) == 1
@@ -42,16 +44,46 @@ def test_duplicate_and_nonfinite_fields_never_dispatch_over_actual_tls(request, 
     assert calls == []
 
 
-def test_missing_service_and_mismatched_tls_identity_fail_closed(request, monkeypatch):
+def test_missing_service_fails_closed(request):
     opened, _ = request.getfixturevalue('devices')
-    client = opened[0][0]
+    client = opened[0].transport
     with pytest.raises(ValueError):
         client.request('producer-offers', {})
-    _, _, calls = provider(request.getfixturevalue('devices'))
-    monkeypatch.setattr(producer_member, 'fingerprint_of', lambda _: 'wrong-device')
-    with pytest.raises(ValueError):
-        client.request('producer-offers', {})
-    assert calls == []
+
+
+def test_tls_caller_that_is_not_the_sealed_member_cannot_dispatch(tmp_path):
+    """A real TLS 1.3 connection whose client certificate is not the member the daemon authorized."""
+    server_id = tls.identity(tmp_path / 'server', 'server')
+    client_id = tls.identity(tmp_path / 'client', 'client')
+    serving = tls.server_context(server_id)
+    serving.verify_mode = ssl.CERT_OPTIONAL
+    serving.load_verify_locations(cadata=client_id.certfile.read_text())
+    listener = socket.socket()
+    listener.bind(('127.0.0.1', 0))
+    listener.listen(1)
+    accepted = {}
+
+    def accept():
+        raw, _ = listener.accept()
+        accepted['channel'] = serving.wrap_socket(raw, server_side=True)
+
+    thread = threading.Thread(target=accept)
+    thread.start()
+    connecting = tls.pinned_context(server_id.beacon, who=client_id)
+    connected = connecting.wrap_socket(socket.create_connection(listener.getsockname()), server_hostname='127.0.0.1')
+    thread.join(10)
+    called = []
+    ui = SimpleNamespace(studio_producers=SimpleNamespace(member=lambda *args: called.append(args) or {}))
+    sent = []
+    handler = SimpleNamespace(command='POST', connection=accepted['channel'], _member='0' * 64, _send=lambda *args: sent.append(args))
+    with pytest.raises(PermissionError, match='do not match'):
+        producer_member.answer(handler, ui, studio_pool.scope_of('a' * 32), 'producer-offers', b'{}')
+    handler._member = hashlib.sha256(client_id.der).hexdigest()
+    assert producer_member.answer(handler, ui, studio_pool.scope_of('a' * 32), 'producer-offers', b'{}') is True
+    assert called and called[0][0]['certificate'] == client_id.beacon
+    connected.close()
+    accepted['channel'].close()
+    listener.close()
 
 
 def test_only_publisher_action_can_carry_maximum_record_over_sealed_tls(request):
@@ -76,10 +108,12 @@ def test_metadata_budget_is_fixed_before_provider_dispatch(request):
     assert calls == []
 
 
-def test_no_tls_channel_or_current_membership_cannot_dispatch():
+def test_no_tls_channel_or_current_pool_cannot_dispatch():
     handler = SimpleNamespace(command='POST', connection=object())
     with pytest.raises(PermissionError):
-        producer_member.answer(handler, SimpleNamespace(), SimpleNamespace(key=b'pool'), 'producer-offers', b'{}')
+        producer_member.answer(handler, SimpleNamespace(), studio_pool.scope_of('a' * 32), 'producer-offers', b'{}')
+    with pytest.raises(PermissionError):
+        producer_member.answer(handler, SimpleNamespace(), '', 'producer-offers', b'{}')
 
 
 def test_only_fixed_action_has_large_request_budget(request):

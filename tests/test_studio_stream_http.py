@@ -2,22 +2,20 @@
 import time
 
 import pytest
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_fleet_ui import Serving
 
 from poolhouse.fleet import studio_epoch, tls
-from poolhouse.fleet.discovery import mint_pool
-from poolhouse.fleet.membership import Roster
 
 
 @pytest.fixture
-def served(tmp_path):
+def served(tmp_path, studio_node):  # noqa: F811
     app = Serving(tmp_path)
     app.ui.root = tmp_path / 'traind'
     app.ui.settings.setup_done = True
     identity = tls.identity(tmp_path / 'tls', 'studio')
     app.ui.studio_identity = lambda: identity
-    member = mint_pool('stream-pool', app.keyfile)
-    Roster(member.key).enrol(identity.beacon, 'stream-device', 'test')
+    studio_node.bind(studio_node.a, identity, f'https://127.0.0.1:{app.port}')
     session = app.ui.sessions.open('owner-session', 'launch-ticket')
     cookie = 'poolhouse_ui=' + session.sid
     try:

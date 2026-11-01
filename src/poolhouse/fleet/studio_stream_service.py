@@ -1,7 +1,6 @@
 """Bind subscription authority to the actual daemon and current resource holders."""
 from __future__ import annotations
 
-import hashlib
 import ssl
 import time
 from pathlib import Path
@@ -14,13 +13,17 @@ from poolhouse.studio.store import digest
 from poolhouse.studio.stream_sources import WatchedSource
 from poolhouse.studio.streams import Streams
 
-from . import studio_epoch, tls
-from .discovery import key_path, load_pool_key
-from .pool_roster import Pool
+from . import studio_epoch, studio_pool, tls
+from .service_pool import Pool
 from .studio_authority import StudioAuthority
 from .studio_delivery_service import create as create_delivery
 from .studio_watch_registry import create_native_picks
 from .studio_webhook_service import create as create_webhooks
+
+
+def authority_root(ui) -> Path:
+    """Where this daemon keeps its Studio authority records: beside its other private state."""
+    return Path(ui.root) / "studio-authority"
 
 
 def create(ui, engine, saved, scope):
@@ -31,18 +34,20 @@ def create(ui, engine, saved, scope):
 
     def current():
         identity = getattr(ui, 'studio_identity', lambda: None)()
-        key = load_pool_key(ui.pool_key_path)
-        if identity is None or key is None:
-            raise PermissionError('Join this device to a pool before starting live workflows.')
+        if identity is None:
+            raise PermissionError('This device has no service identity for live workflows.')
         if ssl.PEM_cert_to_DER_cert(identity.certfile.read_text()) != identity.der:
             raise PermissionError('The current device certificate changed.')
         tls.server_context(identity)  # Load and match the existing private key; never create an identity.
-        group = hashlib.sha256(key).hexdigest()
-        active = any(member.key == key and roster.is_active(identity.fingerprint)
-                     for member, roster in Pool(ui.pool_key_path).rosters())
+        group = studio_pool.current()
+        try:
+            Pool().own(identity)
+            active = True
+        except PermissionError:
+            active = False
         return {'pool': group, 'device': identity.fingerprint, 'scope': scope(ui), 'active': active}
 
-    authority = StudioAuthority(key_path(ui.pool_key_path).parent, current=current, owner=origin,
+    authority = StudioAuthority(authority_root(ui), current=current, owner=origin,
                                 resources=lambda grant, node, inputs: resources_current(ui, saved, grant, node, inputs))
     service = Streams(engine, authority, sources=Sources(engine.store),
                       resources=lambda principal, graph: pin_resources(saved, principal, graph))
@@ -118,7 +123,7 @@ def resources_current(ui, saved, grant: dict, node, inputs) -> bool:
     source = grant['manifest']['source']
     if ui.studio.store.get('source', source['id'], grant['scope']) != source:
         return False
-    if source.get('selection_epoch') and studio_epoch.generation(key_path(ui.pool_key_path).parent, grant['pool']) != source['selection_epoch']:
+    if source.get('selection_epoch') and studio_epoch.generation(authority_root(ui), grant['pool']) != source['selection_epoch']:
         return False
     registry = getattr(ui, 'studio_destinations', None)
     for destination in grant['manifest']['destinations']:

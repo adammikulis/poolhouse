@@ -6,6 +6,7 @@ import threading
 from types import SimpleNamespace
 
 import pytest
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_studio_stream_http import served  # noqa: F401
 
 from poolhouse.fleet.producer_setup import Setup

@@ -11,10 +11,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from poolhouse import macauth
 from poolhouse.files import read_json
 from poolhouse.fleet import project_client, project_source as source, projects
 from poolhouse.fleet.api import Daemon, make_handler
-from poolhouse.fleet.discovery import derive_token
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.project_client import catalogue, receive
 from poolhouse.fleet.projects import ProjectRegistry, bootstrap, lan_host
@@ -131,7 +131,7 @@ def test_http_source_requires_auth_and_transfers_verified_checkout(repository, t
     registry = ProjectRegistry(tmp_path / "daemon", "pc", (repository,))
     project = registry.share(registry.candidates()[0]["id"])
     runner = JobRunner(tmp_path / "jobs")
-    token = derive_token(b"p" * 32)
+    token = macauth.derive(b"p" * 32)
     server = Server(("127.0.0.1", 0), make_handler(Daemon(runner, tmp_path, token, projects=registry)))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()

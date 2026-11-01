@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 from browser_expect import expect
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_fleet_ui import Serving
 from test_studio_canvas_browser import studio_browser  # noqa: F401
 from test_studio_decision_browser import choose_template, focus_node
@@ -15,8 +16,6 @@ from test_studio_live_browser import open_live
 
 from poolhouse import hub
 from poolhouse.fleet import studio_delivery_service, tls
-from poolhouse.fleet.discovery import mint_pool
-from poolhouse.fleet.membership import Roster
 from poolhouse.studio import adapters
 from poolhouse.studio.adapters import Adapters
 from poolhouse.studio.decisions import assess
@@ -39,7 +38,7 @@ def install_model_fixture(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def delivery_page(tmp_path, request, monkeypatch):
+def delivery_page(tmp_path, request, monkeypatch, studio_node):  # noqa: F811
     """Model-format parsing, model scores and transport are controlled; resource content and grants stay real."""
     install_model_fixture(tmp_path, monkeypatch)
     state = {'mode': 'done', 'sends': [], 'posts': [], 'model_calls': []}
@@ -72,8 +71,7 @@ def delivery_page(tmp_path, request, monkeypatch):
     app.ui.environment = app.runner.environment = environment
     identity = tls.identity(tmp_path / 'tls', 'studio')
     app.ui.studio_identity = lambda: identity
-    member = mint_pool('delivery-example-pool', app.keyfile)
-    Roster(member.key).enrol(identity.beacon, 'delivery-device', 'test')
+    studio_node.bind(studio_node.a, identity, f'https://127.0.0.1:{app.port}')
     session = app.ui.sessions.open('owner-session', 'launch-ticket')
     app.cookie = 'poolhouse_ui=' + session.sid
     open_page = request.getfixturevalue('studio_browser')

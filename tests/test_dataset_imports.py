@@ -8,25 +8,23 @@ import time
 from pathlib import Path
 
 import pytest
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_fleet_ui import Serving
 
 from poolhouse.fleet import dataset_catalogue, studio_epoch, tls
-from poolhouse.fleet.discovery import mint_pool
-from poolhouse.fleet.membership import Roster
 from poolhouse.studio import dataset_samples as samples
 
 ROOT = '/ui/workspace/datasets/'
 
 
 @pytest.fixture
-def served(tmp_path, monkeypatch):
+def served(tmp_path, monkeypatch, studio_node):  # noqa: F811
     app = Serving(tmp_path)
     app.ui.root = tmp_path / 'traind'
     app.ui.settings.setup_done = True
     identity = tls.identity(tmp_path / 'tls', 'dataset-test')
     app.ui.studio_identity = lambda: identity
-    member = mint_pool('dataset-test-pool', app.keyfile)
-    Roster(member.key).enrol(identity.beacon, 'dataset-device', 'test')
+    studio_node.bind(studio_node.a, identity, f'https://127.0.0.1:{app.port}')
     session = app.ui.sessions.open('dataset-owner', 'launch-ticket')
     preview = {'columns': [{'name': 'text', 'type': 'string'}, {'name': 'label', 'type': 'string'}],
         'rows': [{'text': 'first', 'label': 'yes'}, {'text': 'second', 'label': 'no'}],

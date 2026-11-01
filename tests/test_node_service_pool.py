@@ -21,7 +21,7 @@ def services(tmp_path, monkeypatch):
         if method == "pool_status":
             return {"pool": POOL, "fingerprint": rows[0]["device"]}
         if method == "service_members":
-            return {"pool": POOL, "services": rows}
+            return {"pool": POOL, "services": [{"pool": POOL, **row} for row in rows]}
         found = [row for row in rows if row["fingerprint"] == params["fingerprint"]]
         if not found:
             raise ValueError("not authorized")
@@ -90,6 +90,22 @@ def test_invalid_node_binding_fields_are_refused(services, field, value):
     pool, _identities, rows = services
     rows[1][field] = value
     with pytest.raises(PermissionError):
+        pool.services()
+
+
+def test_service_row_naming_another_pool_is_refused(services, monkeypatch):
+    pool, _identities, _rows = services
+    assert len(pool.services()) == 3
+    call = service_pool.node_health.call
+
+    def other(state, method, params=None):
+        reply = call(state, method, params)
+        if method == "service_members":
+            reply["services"][1]["pool"] = "b" * 32
+        return reply
+
+    monkeypatch.setattr(service_pool.node_health, "call", other)
+    with pytest.raises(PermissionError, match="outside its pool"):
         pool.services()
 
 
@@ -167,8 +183,7 @@ def test_self_service_keeps_owner_mac_separate_from_member_secret(services, monk
 
 
 def test_local_self_member_accepts_only_exact_own_cert_and_current_bound_port(services):
-    from poolhouse.fleet.discovery import Beacon
-    from poolhouse.fleet.remote import Member
+    from poolhouse.fleet.remote import Beacon, Member
     _pool, identities, rows = services
     owner = macauth.derive(b"local-owner")
     beacon = Beacon(name="own", host="127.0.0.1", port=9001, cert=identities[0].beacon)

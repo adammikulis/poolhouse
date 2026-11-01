@@ -14,7 +14,7 @@ from poolhouse.studio.decision_models import source
 from poolhouse.studio.decisions import assess, canonical_record
 from poolhouse.studio.engine import AdmissionWaiting, artifact_fingerprints
 
-from .discovery import key_path
+from . import tls
 from .studio_decision_issuer import DecisionIssuer
 
 
@@ -84,7 +84,7 @@ class ResidentDecisions:
         if not identity or identity.fingerprint != context['device'] or not endpoint:
             raise PermissionError('The current pool daemon requires its existing secure listener for live decisions.')
         machine = home.state('machine-id').read_text().strip()
-        if not machine or key_path(self.ui.pool_key_path) != home.state('pool.key'):
+        if not machine or identity.certfile.parent != tls.device_directory():
             raise PermissionError('Resident decisions require the current enrolled device profile.')
         return {'endpoint': endpoint, 'certificate': identity.beacon, 'machine': machine,
                 'pool': context['pool'], 'runtime': self.engine.implementation}

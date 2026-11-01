@@ -573,8 +573,6 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 return
             if member_answer(self, roster, "POST", self.path.split("?")[0], body) or shard_routes.answer(self, daemon, "POST", self.path, body):
                 return
-            if project_routes.register(self, daemon.projects, pool_key_path, body):
-                return
             if studio_device_routes.answer(self, ui, self.path.split("?")[0], body) or studio_library.answer(self, ui, self.path.split("?")[0], body):
                 return
             try:

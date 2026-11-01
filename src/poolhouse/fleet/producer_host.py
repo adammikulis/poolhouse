@@ -8,9 +8,9 @@ import threading
 
 from poolhouse.studio.store import Conflict, digest
 
-from .membership import fingerprint_of
 from .producer_bridge import BridgeCapability
 from .producer_process import OwnedProducer
+from .remote import certificate_fingerprint
 
 
 def _command(body, *, preparing=False):
@@ -67,7 +67,7 @@ class ProducerHost:
                 or intent.get('context', {}).get('pool') != receiver['pool']
                 or intent.get('context', {}).get('active') is not True
                 or intent.get('receiver', {}).get('certificate') != receiver['certificate']
-                or intent.get('context', {}).get('device') != fingerprint_of(receiver['certificate'])
+                or intent.get('context', {}).get('device') != certificate_fingerprint(receiver['certificate'])
                 or (binding is not None and intent.get('binding') != binding)):
             raise PermissionError('The receiver source identity changed.')
         for name, size in (('generation', 32), ('epoch', 64)):
