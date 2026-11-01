@@ -100,6 +100,17 @@ def build(node_binary, tmp_path, monkeypatch, count: int):  # noqa: F811
         yield Nodes(made, ids)
 
 
+def shared(node_binary, tmp_path_factory, count: int, *ports: int):  # noqa: F811
+    """Nodes built once for a module of tests that only read the pool, with their services bound at ``ports``."""
+    patches = pytest.MonkeyPatch()
+    try:
+        for nodes in build(node_binary, tmp_path_factory.mktemp("services"), patches, count):
+            nodes.serve(*ports)
+            yield nodes
+    finally:
+        patches.undo()
+
+
 @pytest.fixture
 def one_node(node_binary, tmp_path, monkeypatch):  # noqa: F811
     yield from build(node_binary, tmp_path, monkeypatch, 1)

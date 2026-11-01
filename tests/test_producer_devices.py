@@ -1,55 +1,71 @@
-"""Selected-pool discovery is observational; current roster checks own every request."""
+"""The node's current compute services are listed observationally; the node's current binding owns every request.
+
+The pool, its nodes and every service binding are real (``service_kit``). The listing step of `Member.discover` and the producer
+transport are plumbing stand-ins here (`state['found']`, `Transport` with canned replies): their live forms are covered by
+``test_studio_device_http`` and ``test_studio_producer_two_daemon``.
+"""
 import copy
-import hashlib
 import os
 import threading
 from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
+from service_kit import node_binary, shared, three_nodes, two_nodes  # noqa: F401  (fixtures)
 from test_studio_device_http import devices as enrolled_servers  # noqa: F401
 
-from poolhouse.fleet import producer_devices as devices, tls
-from poolhouse.fleet.discovery import Beacon, Membership, derive_token
-from poolhouse.fleet.membership import roster
+from poolhouse import macauth, node_launch
+from poolhouse.fleet import producer_devices as devices, studio_pool, tls
 from poolhouse.fleet.remote import Member
+from poolhouse.fleet.service_pool import Pool
 from poolhouse.studio.store import Conflict, digest
 
 
+@pytest.fixture(scope='module')
+def reading_nodes(node_binary, tmp_path_factory):  # noqa: F811
+    """Two nodes, their services bound once, for the tests that only read the pool."""
+    yield from shared(node_binary, tmp_path_factory, 2, 12345, 12346)
+
+
 @pytest.fixture
-def setup(tmp_path, monkeypatch):
+def setup(reading_nodes, tmp_path, monkeypatch):
+    return opened(reading_nodes, tmp_path, monkeypatch)
+
+
+@pytest.fixture
+def changing(two_nodes, tmp_path, monkeypatch):  # noqa: F811
+    """Two nodes of this test's own, for the tests that remove a device from the pool."""
+    two_nodes.serve(12345, 12346)
+    return opened(two_nodes, tmp_path, monkeypatch)
+
+
+def opened(nodes, tmp_path, monkeypatch):
     root = tmp_path.resolve()
     root.chmod(0o700)
     monkeypatch.setattr(devices.home, 'state', lambda *parts: root.joinpath(*parts))
     machine = root / 'machine-id'
     machine.write_text('f' * 16)
-    identity = tls.identity(root / 'local-tls', 'local-device')
-    remote_identity = tls.identity(root / 'remote-tls', 'remote-device')
-    selected = Membership('experiments', b'YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXowMTIzNDU')
-    listed = roster(selected.key)
-    listed.enrol(identity.beacon, 'Local device', 'test')
-    listed.enrol(remote_identity.beacon, 'Remote device', 'test')
-    context = {'pool': hashlib.sha256(selected.key).hexdigest(), 'device': identity.fingerprint,
-               'scope': 'scope', 'active': True}
-    remote = Member('https://127.0.0.1:12346', derive_token(selected.key),
-                    beacon=Beacon('Remote device', host='127.0.0.1', port=12346,
-                                  machine='e' * 16, cert=remote_identity.beacon))
-    state = {'memberships': [selected], 'context': context, 'identity': identity, 'found': [remote],
+    identity = nodes.ida
+    remote = Member.from_binding(Pool().authorize(nodes.idb.fingerprint))
+    context = {'pool': studio_pool.current(), 'device': identity.fingerprint, 'scope': 'scope', 'active': True}
+    token = macauth.derive(b'local-owner')
+    state = {'context': context, 'identity': identity, 'found': [remote],
              'discoveries': [], 'calls': [], 'replies': {}, 'during': None, 'endpoint': 'https://127.0.0.1:12345'}
-    ui = SimpleNamespace(pool_key_path=root / 'pool.key', discovery_port=0, name='Local device',
-                         studio_identity=lambda: state['identity'], studio_endpoint=lambda: state['endpoint'])
+    ui = SimpleNamespace(name='Local device', studio_identity=lambda: state['identity'],
+                         studio_endpoint=lambda: state['endpoint'], studio_token=lambda: token)
     service = SimpleNamespace(authority=SimpleNamespace(_context=lambda: copy.deepcopy(state['context'])),
                               store=SimpleNamespace(lock=threading.RLock()))
     control = {'certificate': identity.beacon, 'pool': context['pool'], 'runtime': '1' * 64,
                'control_path': '/tmp/control.sock', 'daemon': {'pid': os.getpid(), 'started': 100.0, 'instance': '2' * 64}}
-    monkeypatch.setattr(devices, 'memberships', lambda _: list(state['memberships']))
-    def discover(*, discovery, timeout):
+
+    def discover(*, timeout):
         assert not service.store.lock._is_owned()
-        state['discoveries'].append(discovery)
-        assert discovery.key == selected.key and timeout == 5
+        state['discoveries'].append(timeout)
+        assert timeout == 5
         return list(state['found'])
     monkeypatch.setattr(Member, 'discover', discover)
-    class Transport:
+
+    class Transport:  # plumbing only: canned producer replies and a record of what was sent
         def __init__(self, member, authorize, *, identity):
             assert identity is state['identity']
             self.member, self.authorize = member, authorize
@@ -64,11 +80,15 @@ def setup(tmp_path, monkeypatch):
             assert self.authorize() is True
             return result
     monkeypatch.setattr(devices, 'MemberExecution', Transport)
-    monkeypatch.setattr(tls, 'local', lambda: pytest.fail('Created a device identity'))
     monkeypatch.setattr(tls, 'identity', lambda *_: pytest.fail('Loaded or created another identity'))
     adapter = devices.Devices(ui, service, lambda: copy.deepcopy(control))
     return SimpleNamespace(adapter=adapter, state=state, root=root, ui=ui, service=service,
-                           identity=identity, remote=remote, listed=listed, selected=selected, control=control)
+                           identity=identity, remote=remote, nodes=nodes, control=control)
+
+
+def drop_remote(setup):
+    """The node of this device puts the remote device's service out of the pool."""
+    setup.nodes.a.person.remove_member(setup.nodes.a, setup.nodes.fingerprint(setup.nodes.b))
 
 
 def target(setup):
@@ -102,7 +122,7 @@ def test_existing_self_and_cached_receivers_need_no_network_even_under_store_loc
     own = setup.adapter.receivers()
     assert len(own) == 1 and own[0]['certificate'] == setup.identity.beacon
     rows = setup.adapter.refresh()
-    assert len(rows) == 2 and setup.state['discoveries'][0].group == 'experiments'
+    assert len(rows) == 2 and setup.state['discoveries'] == [5]
     assert all(row['id'] == digest({'pool': row['pool'], 'certificate': row['certificate']})[:32] for row in rows)
     with setup.service.store.lock:
         assert setup.adapter.receivers() == rows
@@ -136,13 +156,13 @@ def test_fixed_requests_inspect_and_intent_actions_use_only_authenticated_mappin
     assert setup.adapter.control() == setup.control
 
 
-@pytest.mark.parametrize('change', ['pool', 'key', 'identity', 'machine', 'endpoint', 'member-address', 'roster'])
-def test_cached_addresses_never_override_current_pool_identity_or_membership(setup, change):
+@pytest.mark.parametrize('change', ['pool', 'node-unavailable', 'identity', 'machine', 'endpoint', 'member-address'])
+def test_cached_addresses_never_override_current_pool_identity_or_membership(setup, change, monkeypatch):
     setup.adapter.refresh()
     if change == 'pool':
         setup.state['context']['pool'] = '0' * 64
-    elif change == 'key':
-        setup.state['memberships'] = []
+    elif change == 'node-unavailable':
+        monkeypatch.setattr(node_launch, 'default_state', lambda: setup.root / 'no-node')
     elif change == 'identity':
         setup.state['identity'] = replace(setup.identity)
     elif change == 'machine':
@@ -154,19 +174,25 @@ def test_cached_addresses_never_override_current_pool_identity_or_membership(set
         return
     elif change == 'member-address':
         setup.remote.base_url = 'https://127.0.0.1:12347'
-    else:
-        setup.listed.revoke(devices.fingerprint_of(setup.remote.beacon.cert), 'test')
     with pytest.raises(PermissionError):
         setup.adapter.request({'certificate': setup.remote.beacon.cert, 'pool': setup.adapter.anchor['pool']}, 'producer-offers', {})
     assert not setup.state['calls']
 
 
-def test_removed_member_during_request_discards_response(setup):
-    setup.adapter.refresh()
-    setup.state['during'] = lambda: setup.listed.revoke(devices.fingerprint_of(setup.remote.beacon.cert), 'test')
+def test_a_device_the_node_no_longer_lists_is_refused_from_the_cache(changing):
+    changing.adapter.refresh()
+    drop_remote(changing)
     with pytest.raises(PermissionError):
-        setup.adapter.request(target(setup), 'producer-offers', {})
-    assert len(setup.state['calls']) == 1
+        changing.adapter.request({'certificate': changing.remote.beacon.cert, 'pool': changing.adapter.anchor['pool']}, 'producer-offers', {})
+    assert not changing.state['calls']
+
+
+def test_removed_member_during_request_discards_response(changing):
+    changing.adapter.refresh()
+    changing.state['during'] = lambda: drop_remote(changing)
+    with pytest.raises(PermissionError):
+        changing.adapter.request(target(changing), 'producer-offers', {})
+    assert len(changing.state['calls']) == 1
 
 
 def test_discovery_never_accepts_ambiguous_same_certificate_or_unknown_target(setup):
@@ -257,19 +283,20 @@ def test_private_control_callback_cannot_adopt_another_context(setup, change):
         setup.adapter.control()
 
 
-def test_actual_self_adapter_uses_existing_identity_over_sealed_tls(request, monkeypatch):
-    from poolhouse.fleet.discovery import memberships
+def test_actual_self_adapter_uses_existing_identity_over_sealed_tls(request, monkeypatch, tmp_path):
+    """The adapter of the first daemon of a real pool reaches that daemon's own listener with its owner credential."""
     opened, _ = request.getfixturevalue('enrolled_servers')
-    client, remote_service, _runner, server, _pool = opened[0]
-    identity = tls.identity(remote_service.ui.root / 'tls', 'device-a')
-    selected = memberships(remote_service.ui.pool_key_path)[0]
+    row = opened[0]
+    nodes = request.getfixturevalue('three_nodes')
+    monkeypatch.setattr(node_launch, 'default_state', lambda: row.node.state)
+    monkeypatch.setattr(tls, 'local', lambda: row.identity)
     path = devices.home.state('machine-id')
     if not path.exists():
         path.write_text('f' * 16)
-    context = {'pool': hashlib.sha256(selected.key).hexdigest(), 'device': identity.fingerprint,
-               'scope': 'scope', 'active': True}
-    ui = SimpleNamespace(pool_key_path=remote_service.ui.pool_key_path, discovery_port=0, name='Local device',
-                         studio_identity=lambda: identity, studio_endpoint=lambda: f'https://127.0.0.1:{server.server_port}')
+    context = {'pool': studio_pool.current(), 'device': row.identity.fingerprint, 'scope': 'scope', 'active': True}
+    ui = SimpleNamespace(name='Local device', studio_identity=lambda: row.identity,
+                         studio_endpoint=lambda: f'https://127.0.0.1:{row.server.server_port}',
+                         studio_token=lambda: macauth.derive(b'device-a'))
     service = SimpleNamespace(authority=SimpleNamespace(_context=lambda: context),
                               store=SimpleNamespace(lock=threading.RLock()))
     calls = []
@@ -277,14 +304,14 @@ def test_actual_self_adapter_uses_existing_identity_over_sealed_tls(request, mon
         def member(self, caller, action, request):
             calls.append((caller, action, request))
             return {'offers': []}
-    remote_service.ui.studio_producers = Provider()
+    row.service.ui.studio_producers = Provider()
     monkeypatch.setattr(Member, 'discover', lambda **_: [])
-    monkeypatch.setattr(tls, 'local', lambda: pytest.fail('Looked up an implicit client identity'))
     monkeypatch.setattr(tls, 'identity', lambda *_: pytest.fail('Created a transport identity'))
     adapter = devices.Devices(ui, service, lambda: None)
     assert adapter.discover() == []
-    assert calls == [({'certificate': identity.beacon, 'pool': context['pool']}, 'producer-offers', {})]
-    assert adapter.receivers()[0]['certificate'] == client.certificate
+    assert calls == [({'certificate': row.identity.beacon, 'pool': context['pool']}, 'producer-offers', {})]
+    assert adapter.receivers()[0]['certificate'] == row.identity.beacon
+    assert nodes.devices[1] is row.node
 
 
 @pytest.mark.parametrize('change', ['runtime', 'instance', 'started', 'path'])
