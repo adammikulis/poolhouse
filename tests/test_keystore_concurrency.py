@@ -1,4 +1,4 @@
-"""Two commands changing `credentials.json` or the passphrase file at once must both land. Separate
+"""Two commands changing `credentials.json` at once must both land. Separate
 processes race over the real files; each child widens the read-to-write window so a missing lock loses a
 value every run."""
 
@@ -28,22 +28,6 @@ while not Path(os.environ["GO"]).exists():
 credentials._keep(sys.argv[1], "value-" + sys.argv[1])
 """
 
-PASSPHRASES = """
-import os, sys, time
-from pathlib import Path
-from poolhouse.fleet import recovery
-real = recovery._held
-def slow(path):
-    rows = real(path)
-    time.sleep(0.15)
-    return rows
-recovery._held = slow
-while not Path(os.environ["GO"]).exists():
-    time.sleep(0.005)
-recovery.remember("pass-" + sys.argv[1], sys.argv[1], sys.argv[2], say=lambda m: print(m, file=sys.stderr))
-"""
-
-
 def race(tmp_path: Path, script: str, *extra: str) -> None:
     env = {**child_env(tmp_path), "POOLHOUSE_TEST_KEYRING_DELAY": "0"}
     seed = subprocess.run([sys.executable, "-c", CHILD_NOWAIT], env=env, capture_output=True, text=True, timeout=120)
@@ -60,21 +44,3 @@ def test_concurrent_keychain_sets_all_land_in_credentials_json(tmp_path):
     race(tmp_path, CREDENTIALS)
     values = json.loads((tmp_path / "home" / "keystore" / "credentials.json").read_text())["values"]
     assert sorted(values) == sorted(f"n{i}" for i in range(RACERS))
-
-
-def test_concurrent_passphrase_saves_all_land_in_the_passphrase_file(tmp_path):
-    memberships = tmp_path / "home" / "pools.json"
-    race(tmp_path, PASSPHRASES, str(memberships))
-    held = json.loads(memberships.with_suffix(".passphrases").read_text())
-    assert sorted(held) == sorted(f"n{i}" for i in range(RACERS))
-
-
-def test_forgetting_a_passphrase_while_another_command_holds_the_file_reports_instead_of_raising(tmp_path, monkeypatch):
-    from poolhouse import lock
-    from poolhouse.fleet import recovery
-
-    told = []
-    monkeypatch.setattr(recovery, "warn", told.append)
-    monkeypatch.setattr(lock, "rewriting", lambda *_a, **_k: (_ for _ in ()).throw(lock.Busy("held")))
-    recovery.forget("g", tmp_path / "pools.json")
-    assert told and "was not removed" in told[0]

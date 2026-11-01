@@ -7,8 +7,8 @@ import sys
 from pathlib import Path
 
 from poolhouse.fleet import tls
+from poolhouse.fleet.onboard.devices import Devices
 from poolhouse.fleet.onboard.manifest import verify
-from poolhouse.fleet.onboard.requests import Devices
 from poolhouse.fleet.onboard.sharing import Licences
 from poolhouse.fleet.onboard.transfer import Share, ShareServer, mac_gate
 

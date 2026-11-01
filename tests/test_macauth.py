@@ -5,7 +5,7 @@ import pytest
 from poolhouse import macauth
 from poolhouse.macauth import Authenticator, Lockout, Stamp
 
-KEY = b"a-pool-key-of-thirty-two-bytes"
+KEY = b"a-service-secret-of-some-bytes"
 SECRET = macauth.derive(KEY)
 OTHER = macauth.derive(b"some-other-pools-key-32-bytes")
 URL = "http://10.1.2.3:8770/jobs?tail=5"

@@ -131,8 +131,8 @@ class UI:
             return ""
         if self.setup_token and token and _same(token, self.setup_token):
             return ""
-        return ("refused: set this machine up on the machine itself, or over ssh with "
-                "'poolhouse-members setup'. A daemon that has not joined a pool has no "
+        return ("refused: set this machine up on the machine itself, or over an ssh tunnel to it. "
+                "A daemon that has not joined a pool has no "
                 "password to check, so the first person to reach this page would own "
                 "the box. Start it with --setup-from-lan to allow this deliberately.")
 

@@ -75,8 +75,6 @@ def _parser(extend: Callable[[Any], None] | None = None) -> argparse.ArgumentPar
                                        "serving them -- every shard of a sharded model")
     got.add_argument("refs", nargs="+", metavar="REF",
                      help="hf:owner/repo/file.gguf, one or more")
-    got.add_argument("--no-members", action="store_true",
-                     help="do not ask members first; download from the Hub (also POOLHOUSE_NO_MEMBERS=1)")
 
     shape = sub.add_parser("layout", help="the attention layout off a GGUF header: which "
                                           "layers hold a full cache, slide, recur or share "
@@ -145,7 +143,7 @@ def _card(args) -> int:
 def _fetch(args) -> int:
     """``poolhouse-models fetch``: every shard of each reference, with what came down."""
     for one in args.refs:
-        path = hub.fetch(one, members=False if args.no_members else None, trust=PERSON)
+        path = hub.fetch(one, trust=PERSON)
         total = 0
         for shard in hub.shards_beside(path):
             size = shard.stat().st_size if shard.exists() else 0

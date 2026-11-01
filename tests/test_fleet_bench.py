@@ -48,7 +48,7 @@ from poolhouse.fleet.sweeps import (
 )
 from poolhouse.http import Server
 from poolhouse.platform import process_group_kwargs
-from tests.pool_support import any_command
+from tests.command_support import any_command
 
 pytest_plugins = ["node_kit"]
 

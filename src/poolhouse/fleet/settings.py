@@ -34,7 +34,6 @@ class Settings:
     setup_done: bool = False
     experimental_notice_accepted: bool = False
     """One local product acknowledgement, independent of pools, versions and authority."""
-    pool_mode: str = ""
     gym_python: str = ""
     """The default interpreter for installed simulator libraries."""
     gym_pythons: dict[str, str] = field(default_factory=dict)

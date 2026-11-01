@@ -1,7 +1,7 @@
 """The web interface against a real node: it asks for a signed-in session once a person founded the pool, and acts on the pool through the node.
 
 The node is a real process (`testfarm_kit`), the daemon and its interface are the shipped ones on a real socket, and the interface reads the
-pool from the node it finds in its home, exactly as a person's machine does. Nothing here holds a pool key or a passphrase.
+pool from the node it finds in its home, exactly as a person's machine does. Nothing here holds a key.
 """
 
 from __future__ import annotations
@@ -77,13 +77,6 @@ def test_a_launch_ticket_opens_the_founded_pool_and_the_node_says_who_is_in_it(g
     pool = ui.call("/ui/pool", cookie=cookie)[1]["pool"]
     assert pool["governance"] == "governed" and pool["name"] == ui.call("/ui/setup")[1]["group"]
     assert [m["this_device"] for m in pool["members"] if m["active"]] == [True]
-
-
-@pytest.mark.redteam
-def test_a_passphrase_does_not_open_a_founded_pool(governed, ui):
-    status, body, headers = ui.call("/ui/session", method="POST", body={"passphrase": "correct horse battery", "group": "home"})
-    assert status == 401 and not body.get("signed_in") and "Set-Cookie" not in headers
-    assert ui.call("/ui/settings")[0] == 401
 
 
 @pytest.mark.redteam

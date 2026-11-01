@@ -391,7 +391,7 @@ class TestTheCliFlag:
         assert parser.parse_args(["fit"]).ui is False
 
     def test_a_server_it_puts_up_answers_only_loopback(self):
-        """There is no pool passphrase behind this page, so there had better be no
+        """Nothing behind this page asks who is looking, so there had better be no
         address on it either."""
         server = serve_page(name="atrium")
         try:

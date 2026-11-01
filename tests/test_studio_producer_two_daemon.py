@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 import pytest
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_fleet_ui import Serving
 from test_studio_producer_flow import (
     SOURCE,
@@ -18,24 +19,23 @@ from test_studio_producer_flow import (
 )
 
 from poolhouse.fleet import producer_bootstrap, producer_control, producer_process, tls
-from poolhouse.fleet.discovery import adopt, load_pool_key, memberships
-from poolhouse.fleet.membership import Roster
-from poolhouse.fleet.pool_roster import Pool
+from poolhouse.fleet.daemon import load_or_create_token
 from poolhouse.fleet.producer_runtime import Runtime
 from poolhouse.fleet.remote import Member
+from poolhouse.fleet.service_pool import Pool
 
 runtime_app = _runtime_app
 
 
-def configure(receiver, root, producer):
+def configure(receiver, root, nodes):
     receiver.ui.root = root / 'traind'
     receiver.ui.settings.setup_done = True
     identity = tls.identity(root / 'tls', 'Receiving daemon')
     receiver.ui.studio_identity = lambda: identity
     receiver.ui.studio_endpoint = lambda: f'https://127.0.0.1:{receiver.port}'
-    adopt(memberships(producer.keyfile)[0], receiver.keyfile)
-    Roster(load_pool_key(receiver.keyfile)).enrol(identity.beacon, 'Receiving daemon', 'test')
-    receiver.httpd.tls = tls.member_context(identity, Pool(receiver.keyfile))
+    receiver.ui.studio_token = lambda: load_or_create_token(receiver.ui.root)
+    nodes.bind(nodes.a, identity, f'https://127.0.0.1:{receiver.port}')    # a second service of the same pool
+    receiver.httpd.tls = tls.member_context(identity, Pool())
     secret = receiver.ui.root / 'app-identity'
     secret.write_text('cd' * 32)
     secret.chmod(0o600)
@@ -58,14 +58,14 @@ def launch_sdk(producer, outgoing):
 
 
 @pytest.fixture
-def connected(runtime_app, monkeypatch):
+def connected(runtime_app, monkeypatch, studio_node):  # noqa: F811
     producer, _producer_cookie, outgoing = runtime_app
     with tempfile.TemporaryDirectory(prefix='recv-', dir='/tmp') as temporary:
         root = Path(temporary).resolve()
         receiver = Serving(root, name='Receiving daemon')
         incoming, driver = None, None
         try:
-            cookie, incoming = configure(receiver, root, producer)
+            cookie, incoming = configure(receiver, root, studio_node)
             members = [item.devices._self(item.devices._current()) for item in (outgoing, incoming)]
             # Only observational discovery is supplied; all requests cross actual TLS listeners.
             monkeypatch.setattr(Member, 'discover', lambda **kwargs: members)

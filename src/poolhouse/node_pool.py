@@ -51,7 +51,7 @@ def rows(pool: dict) -> list[dict]:
 
 
 def render(pool: dict, *, as_json: bool) -> str:
-    """The text `poolhouse-members ls` prints for a pool."""
+    """The text `poolhouse-pool members` prints for a pool."""
     if as_json:
         return json.dumps({"pool": pool.get("pool"), "project": pool.get("project"), "policy": pool.get("policy"),
                            "build": pool.get("build"), "members": rows(pool)}, indent=2)

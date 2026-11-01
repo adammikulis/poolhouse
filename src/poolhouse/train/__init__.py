@@ -19,7 +19,6 @@ from poolhouse.fleet import (
     JobRunner,
     Member,
     MemberError,
-    discover,
     safe_relpath,
     serve,
 )
@@ -89,7 +88,6 @@ __all__ = [
     "checkpoint_name",
     "constant",
     "contiguous_tail",
-    "discover",
     "embedding_params",
     "find_latest",
     "is_valid",

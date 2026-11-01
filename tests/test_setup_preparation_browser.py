@@ -9,7 +9,7 @@ from test_fleet_bootstrap import browser, no_release_lookup
 from test_fleet_ui import Serving
 
 from poolhouse import home, node_launch
-from poolhouse.fleet import automatic_pools, setup_preparation, startup_models
+from poolhouse.fleet import setup_preparation, startup_models
 from poolhouse.fleet.conversations import Conversations
 from poolhouse.fleet.models import Models
 from poolhouse.fleet.projects import ProjectRegistry
@@ -25,7 +25,6 @@ pytestmark = [pytest.mark.slow, pytest.mark.redteam]
 
 @pytest.fixture
 def ready_device(tmp_path, monkeypatch, native_probe, lease_node):
-    monkeypatch.setattr(automatic_pools, 'offers', lambda port=None: [])
     node = lease_node.resolve()
     monkeypatch.setattr(node_launch, 'default_state', lambda: node)
     assert node_launch.default_state() == lease_node.resolve() and not node.is_symlink()

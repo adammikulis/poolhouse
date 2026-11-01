@@ -31,7 +31,7 @@ from poolhouse.fleet.jobs import DaemonError, JobRunner
 from poolhouse.fleet.remote import Member, MemberError
 from poolhouse.fleet.settings import Settings
 from poolhouse.http import Options, Server, ServerError, request_bytes
-from tests.pool_support import any_command
+from tests.command_support import any_command
 
 
 def _free_port() -> int:

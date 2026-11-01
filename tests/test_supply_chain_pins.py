@@ -248,7 +248,7 @@ def test_hub_pull_pins_every_shard(monkeypatch, tmp_path):
     monkeypatch.setattr(http, "check", lambda url: url)
     with fake_hub(repos) as hub_:
         hub_.point(monkeypatch)
-        first = hub.pull("hf:maker/big-GGUF/Q4/big-00001-of-00002.gguf", members=False)
+        first = hub.pull("hf:maker/big-GGUF/Q4/big-00001-of-00002.gguf")
     held = pins()
     for name, body in repos["maker/big-GGUF"].items():
         link = first.parent.parent / name

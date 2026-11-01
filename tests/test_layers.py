@@ -40,7 +40,7 @@ LAYERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("machine", ("doctor", "fleet", "serve", "setup", "studio")),
     ("tools", ("coordination", "agent", "chat", "chatpolicy", "claude", "cli", "codex", "coding", "coding_actions", "decide_cli", "pi_tools",
                "do", "guard", "harness", "harness_claims", "harnessid", "harnessing", "harnesshook", "harnesspolicy", "mcp", "memory", "reputation", "inbox", "roles", "rules",
-               "api", "testfarm", "workspace", "pi", "features_cli", "board", "node_app", "device_host", "device_setup", "node_binary", "node_build", "node_join", "node_join_check", "node_key", "node_launch", "node_permission", "node_supervise", "build_update", "runtime_await", "runtime_board", "runtime_cli", "runtime_coalesce", "runtime_deploy", "runtime_host", "runtime_stale", "runtime_source", "runtime_store", "runtime_trust", "runtime_unmerged")),
+               "api", "testfarm", "workspace", "pi", "features_cli", "board", "node_app", "device_host", "device_setup", "node_binary", "node_build", "node_join", "node_join_check", "pool_cli", "node_key", "node_launch", "node_permission", "node_supervise", "build_update", "runtime_await", "runtime_board", "runtime_cli", "runtime_coalesce", "runtime_deploy", "runtime_host", "runtime_stale", "runtime_source", "runtime_store", "runtime_trust", "runtime_unmerged")),
     ("experimental", ("backend", "bench", "datasheet", "draft", "gguf", "gym", "ingest", "redteam", "scrape", "sources", "surface",
                       "testing", "train", "vision", "walk", "web", "world")),
 )
@@ -63,12 +63,10 @@ RANK["graph_extras"] = RANK["bench"]
 KNOWN = {
     ("fleet", "coding_actions"),
     ("fleet", "serve"),
-    ("fleet", "setup"),
     ("graph", "serve"),
     ("hub", "serve"),
     ("serve", "fleet"),
     ("serve", "setup"),
-    ("setup", "fleet"),
     ("setup", "serve"),
 }
 

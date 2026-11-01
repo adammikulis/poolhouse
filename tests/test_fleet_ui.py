@@ -159,9 +159,6 @@ def serving(tmp_path):
         s.close()
 
 
-WORDS = "correct horse battery"
-
-
 # -- assets --------------------------------------------------------------
 class TestAssets:
     def test_the_stylesheet_ships_with_the_package(self):
@@ -375,12 +372,6 @@ class TestSignIn:
         assert "SameSite=Strict" in headers["Set-Cookie"]
 
     @pytest.mark.redteam
-    def test_a_passphrase_signs_nobody_in(self, joined):
-        status, body, headers = joined.call("/ui/session", method="POST", body={"passphrase": WORDS, "group": "home"})
-        assert status == 401 and not body.get("signed_in")
-        assert "Set-Cookie" not in headers
-
-    @pytest.mark.redteam
     def test_a_wrong_ticket_does_not(self, joined):
         status, _, _ = joined.call("/ui/session", method="POST", body={"ticket": "not-a-ticket"})
         assert status == 401
@@ -391,14 +382,6 @@ class TestSignIn:
             status, body, _ = joined.call("/ui/session", method="POST", body={"ticket": "nope-nope-nope"})
         assert status == 429
         assert "0s" not in body["error"], "refusing while saying 'wait 0s' reads as a bug"
-
-    def test_the_old_pool_routes_are_gone(self, joined):
-        _, _, headers = joined.ticket_session()
-        cookie = headers["Set-Cookie"].split(";")[0]
-        for path, method in (("/ui/members", "GET"), ("/ui/pools", "GET"), ("/ui/pools/found", "GET"),
-                             ("/ui/fleet/join", "POST"), ("/ui/setup/join", "POST"), ("/ui/setup/recovery", "POST"),
-                             ("/ui/setup/pools", "GET")):
-            assert joined.call(path, method=method, cookie=cookie, body={} if method == "POST" else None)[0] == 404, path
 
     @pytest.mark.redteam
     def test_launch_ticket_is_consumed_once(self, joined):

@@ -110,8 +110,8 @@ def test_bare_and_its_flags_reach_the_app(fake, monkeypatch):
 
     monkeypatch.setattr("poolhouse.fleet.launch.main", app)
     assert cli.main([]) == 0
-    assert cli.main(["--port", "8771", "--no-browser"]) == 0
-    assert seen == [[], ["--port", "8771", "--no-browser"]]
+    assert cli.main(["--port", "8791", "--no-browser"]) == 0
+    assert seen == [[], ["--port", "8791", "--no-browser"]]
     assert fake == []
 
 
@@ -293,18 +293,15 @@ def test_all_without_listing_never_launches_the_app(monkeypatch):
 
 
 def test_open_is_a_primary_command_and_help_never_requests_a_ticket(monkeypatch, capsys):
-    from poolhouse.fleet import launch_open, members
+    from poolhouse.fleet import launch_open
 
     def forbidden():
-        raise AssertionError("help or rejected old command requested a ticket")
+        raise AssertionError("help requested a ticket")
 
     monkeypatch.setattr(launch_open, "ticket_url", forbidden)
     assert cli.commands()["open"] == "poolhouse.fleet.launch_open:main"
     assert cli.help_main(["open"]) == 0
     assert "poolhouse open" in capsys.readouterr().out
-    with pytest.raises(SystemExit) as refused:
-        members.main(["open", "--print"])
-    assert refused.value.code == 2
 
 
 def test_primary_open_print_is_denied_before_ticket_or_browser_work(monkeypatch):

@@ -237,5 +237,4 @@ def bootstrap_over_ssh(target: Target, share: Path, signed: Signed,
         raise SshRefused(f"the machine refused or failed: {why}")
     for step in reports:
         bus.emit(f"onboard.ssh.{step.get('step', 'reported')}", "info", subject)
-    return {"target": target.spec, "steps": [r.get("step") for r in reports],
-            "listen_port": final.get("port"), "fingerprint": final.get("fingerprint")}
+    return {"target": target.spec, "steps": [r.get("step") for r in reports]}

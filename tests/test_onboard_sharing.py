@@ -5,11 +5,11 @@ import base64
 import os
 
 import pytest
-from onboard_support import Clock, Recorder, info, requests
+from onboard_support import Recorder
 
 from poolhouse import macauth
 from poolhouse.fleet.onboard import manifest as mf, sharing, transfer
-from poolhouse.fleet.onboard.requests import Requests
+from poolhouse.fleet.onboard.devices import Devices
 from poolhouse.fleet.onboard.sharing import Licences
 from poolhouse.sentinel.human import HumanRequired, mint
 
@@ -25,12 +25,10 @@ def needs_cryptography():
 
 
 def join(tmp_path, rec, fp, *, mine):
-    """A member, through the real request flow; returns its file-request secret."""
-    rq = requests(tmp_path, rec, Clock())
+    """A member recorded in the devices book; returns its file-request secret."""
     secret = base64.urlsafe_b64encode(os.urandom(32)).decode()
-    r = rq.submit(info(fp, name=f"dev-{fp[:2]}"), f"10.0.0.{int(fp[:2], 16) % 200 + 1}")
-    rq.accept(r.id, mine=mine)
-    rq.joined(r.id, shared_pool_key=True, secret=secret)
+    Devices(tmp_path / "devices.json", bus=rec.bus).add_accepter(
+        fp, f"dev-{fp[:2]}", f"10.0.0.{int(fp[:2], 16) % 200 + 1}", secret=secret, mine=mine)
     return macauth.derive(base64.urlsafe_b64decode(secret))
 
 
@@ -51,7 +49,7 @@ class World:
                                          "licence_url": URL} | terms))]
         raw = self.signer.sign(entries, serial=1)
         self.manifest = mf.verify(raw, self.signer.public)
-        devices = Requests(self.tmp / "requests.json", bus=self.rec.bus).devices
+        devices = Devices(self.tmp / "devices.json", bus=self.rec.bus)
         self.server = transfer.ShareServer(
             transfer.Share(self.share_dir, raw, self.manifest, self.licences),
             authenticate=transfer.mac_gate(POOL, devices.all), ident=None,
@@ -94,7 +92,7 @@ def test_another_persons_device_is_refused_a_gated_file_even_in_the_same_fleet(w
     assert withheld and withheld[0].evidence["level"] == "owner"
 
 
-def test_a_request_signed_only_with_the_pool_key_has_no_device_and_is_refused(world):
+def test_a_request_signed_only_with_the_shared_secret_has_no_device_and_is_refused(world):
     world.serve()
     world.accept_licence()
     with pytest.raises(transfer.Withheld):
@@ -138,7 +136,7 @@ def test_a_removed_device_is_not_served_at_all(world):
     mine = join(world.tmp, world.rec, "11" * 32, mine=True)
     world.serve()
     world.accept_licence()
-    Requests(world.tmp / "requests.json", bus=world.rec.bus).devices.revoke("1111")
+    Devices(world.tmp / "devices.json", bus=world.rec.bus).revoke("1111")
     with pytest.raises(transfer.TransferError):
         world.fetch(mine, "prog.whl")
 
@@ -166,7 +164,7 @@ def test_the_devices_ledger_remembers_whose_device_it_is(tmp_path):
     rec = Recorder()
     join(tmp_path, rec, "11" * 32, mine=True)
     join(tmp_path, rec, "22" * 32, mine=False)
-    ledger = Requests(tmp_path / "requests.json", bus=rec.bus).devices.all()
+    ledger = Devices(tmp_path / "devices.json", bus=rec.bus).all()
     assert {d.fingerprint[:2]: d.mine for d in ledger} == {"11": True, "22": False}
     assert (tmp_path / "devices.json").stat().st_mode & 0o077 == 0
 

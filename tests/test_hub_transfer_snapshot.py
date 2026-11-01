@@ -24,12 +24,12 @@ def test_safetensors_pull_downloads_snapshot(ref, listed, tmp_path):
     def callback(progress):
         pass
     cancel = transfer.CancelToken()
-    assert transfer.pull(ref, tmp_path, callback, cancel, members=False) == tmp_path
+    assert transfer.pull(ref, tmp_path, callback, cancel) == tmp_path
     parsed, chosen, folder, run = calls[0]
     assert parsed.repo == "maker/model"
     assert chosen == files[:4]
     assert folder == tmp_path
-    assert run.report is callback and run.cancel is cancel and run.members is False
+    assert run.report is callback and run.cancel is cancel
 
 
 @pytest.mark.parametrize("ref", ["hf:maker/model/missing.safetensors", "hf:maker/model:Q4_K_M", "hf:maker/model/missing.gguf"])

@@ -402,7 +402,7 @@ class Models:
             ref = reference(source, check=transfer.check)
             transfer.check()
             pulled = hub.pull(ref, on_progress=lambda got: transfer.progress(got.done_bytes, got.total_bytes),
-                              cancel=transfer, members=False, trust=hub.PERSON).resolve()
+                              cancel=transfer, trust=hub.PERSON).resolve()
             transfer.check()
             return pulled
         except PermissionError:

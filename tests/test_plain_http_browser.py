@@ -10,12 +10,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from test_fleet_ui import WORDS, Serving
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
+from test_fleet_ui import Serving
 
 from poolhouse.fleet.conversations import Conversations
 from poolhouse.fleet.serving import Serving as Models
 from poolhouse.testing.canned import CANNED_MODEL_ID, Canned, CannedServer, marked
-from tests.pool_support import join_pool_by_passphrase
 
 pytestmark = pytest.mark.slow
 
@@ -26,7 +26,7 @@ SECURE_ONLY = ("crypto.randomUUID", "crypto.subtle", "navigator.serviceWorker", 
                "showDirectoryPicker", "showOpenFilePicker", "showSaveFilePicker")
 
 
-def test_the_chat_is_answered_from_a_plain_http_lan_address(tmp_path, monkeypatch, playwright):
+def test_the_chat_is_answered_from_a_plain_http_lan_address(tmp_path, monkeypatch, playwright, studio_node):  # noqa: F811
     import time
 
     from playwright.sync_api import Error, expect
@@ -41,8 +41,6 @@ def test_the_chat_is_answered_from_a_plain_http_lan_address(tmp_path, monkeypatc
         model.close()
         pytest.skip(f"chromium did not launch: {exc}")
     try:
-        join_pool_by_passphrase(WORDS, group="home", path=served.keyfile)
-        served.call("/ui/setup/join", method="POST", body={"passphrase": WORDS, "group": "home"})
         served.ui.setup_finished()
         served.ui.root = served.files.parent
         served.ui.conversations = Conversations(tmp_path / "chats")
@@ -54,12 +52,12 @@ def test_the_chat_is_answered_from_a_plain_http_lan_address(tmp_path, monkeypatc
         served.ui._members = (time.time(), [])
 
         page = browser.new_page()
+        cookie = served.ticket_session()[2]["Set-Cookie"].split(";")[0].split("=", 1)[1]
+        page.context.add_cookies([{"name": "poolhouse_ui", "value": cookie, "url": f"http://{LAN_ADDRESS}:{served.port}"}])
         page.set_default_timeout(15000)
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.goto(f"http://{LAN_ADDRESS}:{served.port}/ui#chat")
-        page.fill("#p", WORDS)
-        page.click("#signin-go")
         page.locator("#chat-askrow:not([hidden])").wait_for()
         assert page.evaluate("window.isSecureContext") is False
         assert page.evaluate("typeof crypto.randomUUID") == "undefined"

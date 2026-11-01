@@ -92,7 +92,7 @@ def test_a_pipe_or_socket_reader_stops_at_the_frame_limit_and_at_a_closed_connec
         node_health._reply(io.BytesIO(sent).read)
 
 
-@pytest.mark.parametrize("target", ["https://8.8.8.8/steal", "http://127.0.0.1:8771/steal",
+@pytest.mark.parametrize("target", ["https://8.8.8.8/steal", "http://127.0.0.1:8791/steal",
                                     "http://127.0.0.1:8770/other"])
 def test_project_source_redirect_stays_on_exact_authority(monkeypatch, target):
     followed = []

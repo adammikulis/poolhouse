@@ -27,9 +27,9 @@ else:
     resource = None
 
 from poolhouse.credentials.environment import child_environment
+from poolhouse.desktop import clean
 
 from .onboard.lan import in_tailnet
-from .onboard.requests import clean
 
 __all__ = ["MAC_APP_CLI", "READ_ONLY", "Tailnet", "TailnetMember", "detect", "find_cli", "parse"]
 

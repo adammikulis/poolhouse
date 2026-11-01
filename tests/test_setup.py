@@ -420,7 +420,7 @@ def test_the_firewall_finding_names_the_inbound_rule_and_how_to_add_it():
     if not finding.good:
         assert finding.said.startswith("no inbound rule for ")
         assert finding.fix == ["cmd", "/c", line()]
-        assert "protocol=TCP" in finding.fix[2] and "UDP" not in finding.fix[2] and "8771" not in finding.fix[2]
+        assert "protocol=TCP" in finding.fix[2] and "UDP" not in finding.fix[2]
         assert "Windows blocks inbound TCP 8770" in finding.note
     else:
         assert finding.said.startswith("inbound rules present: ")

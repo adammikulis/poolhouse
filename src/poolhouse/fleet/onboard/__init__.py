@@ -1,2 +1,2 @@
-"""Putting a new machine in the fleet: discovery, a request the owner answers, a short code,
-and files from members. Designed in docs/onboarding.md; nothing here runs at import."""
+"""Files and programs between the machines of a pool: a signed manifest, a bootstrap offer, an SSH install
+and signed downloads from members. Nothing here runs at import."""

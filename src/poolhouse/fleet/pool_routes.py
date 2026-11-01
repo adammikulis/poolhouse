@@ -2,7 +2,7 @@
 
 Every pool action here is the node's own (`poolhouse.api.pool`): the page founds a pool, makes the short code that adds a device,
 joins another device's pool and removes a member by asking the node, which asks the person where only they can answer. Nothing in
-this module holds a pool key, a passphrase or a membership record.
+this module holds a key, a join code or a membership record.
 """
 
 from __future__ import annotations

@@ -48,7 +48,7 @@ def test_weak_session_or_owner_json_cannot_mint(setup, origin):
         authority.mint({**PRINCIPAL, "owner": True}, "subscription", manifest(), "start")
 
 
-@pytest.mark.parametrize("origin", ["launch-ticket", "passphrase", "recovery-file"])
+@pytest.mark.parametrize("origin", ["launch-ticket"])
 def test_actual_strong_origins_can_delegate(setup, origin):
     authority, state, _ = setup
     state.origin = origin
@@ -181,54 +181,6 @@ def test_tombstone_is_inert_and_security_revoke_rotates_picker_epoch(setup):
         studio_epoch.read(root, POOL)
     grant = authority.mint(PRINCIPAL, "subscription", manifest(), "explicit-start")
     assert authority.authorize(authority.principal(grant), None, {})
-
-
-def test_leave_invalidates_before_membership_write(setup, monkeypatch):
-    import hashlib
-
-    from poolhouse.fleet import discovery
-    authority, state, root = setup
-    member = SimpleNamespace(group="example", key=b"key")
-    state.context["pool"] = hashlib.sha256(member.key).hexdigest()
-    grant = authority.mint(PRINCIPAL, "subscription", manifest(), "start")
-    monkeypatch.setattr(discovery, "memberships", lambda path=None: [member])
-    def write(rows, path):
-        assert not authority.authorize(authority.principal(grant), None, {})
-        raise OSError("test stops before writing membership")
-    monkeypatch.setattr(discovery, "_write_memberships", write)
-    with pytest.raises(OSError):
-        discovery.leave("example", root / "pool.key")
-
-
-def test_forget_revocation_failure_leaves_credentials_untouched(setup, monkeypatch):
-    from poolhouse.fleet import recovery
-    _, _, root = setup
-    calls = []
-    monkeypatch.setattr(recovery, "memberships", lambda path=None: [SimpleNamespace(group="example", key=b"key")])
-    monkeypatch.setattr(recovery, "_held", lambda path: {"example": "wrapped-credential"})
-    monkeypatch.setattr(recovery, "write_json", lambda *args: calls.append("write"))
-    def refuse(*args):
-        raise OSError("cannot persist revocation")
-    monkeypatch.setattr(studio_epoch, "invalidate", refuse)
-    recovery.forget("example", root / "pool.key")
-    assert calls == []
-
-
-def test_invitation_revokes_before_removing_credential(setup, monkeypatch):
-    from poolhouse.fleet.invites import Invitations
-    authority, state, root = setup
-    import hashlib
-    key = b"example-key"
-    state.context["pool"] = hashlib.sha256(key).hexdigest()
-    grant = authority.mint(PRINCIPAL, "subscription", manifest(), "start")
-    invitations = Invitations(lambda: [SimpleNamespace(group="example", key=key)], lambda: ("", ""), authority_root=root)
-    invitations.devices["credential"] = {"group": "example"}
-    invitations.revoke("credential")
-    assert not invitations.devices
-    assert not authority.authorize(authority.principal(grant), None, {})
-    before = (root / studio_epoch.NAME).read_bytes()
-    invitations.revoke("credential")
-    assert (root / studio_epoch.NAME).read_bytes() == before
 
 
 def test_first_picker_only_creates_disabled_epoch_and_start_preserves_pending_selection(setup):

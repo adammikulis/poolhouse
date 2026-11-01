@@ -5,7 +5,7 @@ import re
 
 from poolhouse.studio.store import Conflict
 
-from . import invite_routes
+from . import session
 from .launch_secret import HEADER
 from .request_fields import exact_body
 
@@ -28,7 +28,7 @@ class NativePickRoutes:
             self.send(405, {'error': 'POST required'})
             return True
         ui = self.ui
-        if (ui.launch is None or not invite_routes.local(self.client_ip) or not ui.host_ok(self.host_header)
+        if (ui.launch is None or not session.local(self.client_ip) or not ui.host_ok(self.host_header)
                 or self.header('Origin') or self.header('Sec-Fetch-Site') or not ui.launch.matches(self.header(HEADER))):
             self.send(403, {'error': 'Use the native app to choose an original source'})
             return True

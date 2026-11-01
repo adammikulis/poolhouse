@@ -86,7 +86,7 @@ class WorkspaceRoutes:
             path = self._dataset_path(root, field(req, "path", str, ""))
             content = field(req, "text", str, "")
             if len(content.encode()) > 10_000_000:
-                raise ValueError("Dataset upload limit is 10 MB; use poolhouse-members for larger files.")
+                raise ValueError("Dataset upload limit is 10 MB; put larger files in the folder directly.")
             path.parent.mkdir(parents=True, exist_ok=True)
             with path.open("x", encoding="utf-8", newline="") as target:
                 target.write(content)

@@ -284,7 +284,7 @@ def run_model(arm: str, how: str) -> Result:
                       time.monotonic() - began, not loads, True)
 
 
-KEY = b"a-pool-key-of-thirty-two-bytes"
+KEY = b"a-service-secret-of-some-bytes"
 SECRET = macauth.derive(KEY)
 HOST = "10.1.2.3:8770"
 

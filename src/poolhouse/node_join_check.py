@@ -1,4 +1,4 @@
-"""Walk the automatic pool join on this device, one step at a time, and say which step fails and the exact change that fixes it.
+"""Walk the pool join on this device, one step at a time, and say which step fails and the exact change that fixes it.
 
 Run `scripts/pool-join-check` on each of two devices on the same network. Each step is PASS, FAIL (with a `fix:` line) or SKIP
 (an earlier step failed). Nothing secret is printed: fingerprints are public and no key, code or token is shown.

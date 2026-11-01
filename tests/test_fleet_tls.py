@@ -1,7 +1,6 @@
-"""Fleet traffic off this machine is encrypted to a certificate the beacon vouched for."""
+"""Fleet traffic off this machine is encrypted to the certificate the node authorizes."""
 
 import contextlib
-import json
 import os
 import socket
 import ssl
@@ -11,12 +10,12 @@ import time
 import pytest
 
 from poolhouse import http, macauth
-from poolhouse.fleet import membership, service_pool, tls
+from poolhouse.fleet import service_pool, tls
 from poolhouse.fleet.api import Daemon, make_handler
 from poolhouse.fleet.daemon import ALL_INTERFACES, load_or_create_token
-from poolhouse.fleet.discovery import Beacon, discover, primary_ip
 from poolhouse.fleet.framing import LimitedServer
 from poolhouse.fleet.jobs import JobRunner
+from poolhouse.fleet.onboard.lan import primary_ip
 from poolhouse.fleet.remote import Member, MemberError
 from poolhouse.fleet.service_pool import Pool
 from poolhouse.windows_private import problem as windows_problem, restrict
@@ -312,50 +311,3 @@ def test_a_request_signed_for_one_pool_is_refused_by_another_over_tls(tmp_path, 
         assert replies == [200, 401]
     finally:
         stop(httpd, runner)
-
-
-# -- the beacon -------------------------------------------------------------------------
-
-
-def test_a_beacon_carries_the_certificate_and_names_an_https_address(tmp_path):
-    ident = tls.identity(tmp_path / "tls", "d")
-    beacon = Beacon(name="d", port=8770, host="10.1.2.3", cert=ident.beacon)
-    assert beacon.base_url == "https://10.1.2.3:8770" and beacon.public()["cert"] == ident.beacon
-    assert Beacon(name="d", port=8770, host="10.1.2.3").base_url == "http://10.1.2.3:8770"
-
-
-def test_a_machine_that_offers_no_certificate_is_not_talked_to(tmp_path):
-    from poolhouse.fleet import discovery
-
-    ident = tls.identity(tmp_path / "tls", "d")
-    bare = Beacon(name="bare", port=1, host="192.0.2.9")
-    sealed = Beacon(name="sealed", port=2, host="192.0.2.10", cert=ident.beacon)
-    here = Beacon(name="here", port=3, host="127.0.0.1")
-    assert discovery._trusted(bare) is False
-    assert discovery._trusted(sealed) is True and "192.0.2.10:2" in http._PINNED
-    assert discovery._trusted(here) is True
-
-
-def test_an_advertised_certificate_is_pinned_by_discovery_over_real_sockets(tmp_path):
-    from poolhouse.fleet.discovery import Advertiser, create_pool_key
-
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
-        probe.bind(("127.0.0.1", 0))
-        udp = probe.getsockname()[1]
-    ident = tls.identity(tmp_path / "tls", "d")
-    key = create_pool_key(tmp_path / "k", group="poolhouse").encode()
-    membership.roster(key).enrol(ident.beacon, "d", "test")
-    tell = Advertiser(Beacon(name="d", port=8770, cert=ident.beacon), key, port=udp,
-                      interval_s=30).start()
-    try:
-        found = discover(key, timeout_s=3.0, port=udp)
-        assert [b.name for b in found] == ["d"] and found[0].cert == ident.beacon
-        assert any(k.endswith(":8770") for k in http._PINNED)
-    finally:
-        tell.stop()
-
-
-def test_json_of_a_beacon_never_holds_the_key_the_secret_or_the_private_half(tmp_path):
-    ident = tls.identity(tmp_path / "tls", "d")
-    text = json.dumps(Beacon(name="d", port=1, cert=ident.beacon).public())
-    assert ident.keyfile.read_text().splitlines()[1] not in text

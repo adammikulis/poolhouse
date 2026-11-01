@@ -19,7 +19,7 @@ from typing import Any
 
 from poolhouse import home, lan as lan_policy, macauth, runtime_identity, sentinel
 from poolhouse.files import write_text
-from poolhouse.fleet.onboard.requests import Devices
+from poolhouse.fleet.onboard.devices import Devices
 from poolhouse.hub import default_roots
 from poolhouse.limits import read as limits_read
 from poolhouse.lock import only_one

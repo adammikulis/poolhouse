@@ -14,7 +14,7 @@ from poolhouse.log import say, warn
 from poolhouse.sentinel.human import HumanRequired
 
 from ..tailnet import detect
-from .requests import Devices
+from .devices import Devices
 from .routes import ssh_address
 from .signing import KeyStoreError, SigningKeys
 from .signing_cli import confirm_signing
@@ -87,7 +87,5 @@ def cmd_ssh(args: argparse.Namespace) -> int:
     except (SshRefused, KeyStoreError, HumanRequired) as exc:
         _emit(args, {"error": str(exc)}, f"error: {exc}")
         return 2
-    _emit(args, done, f"installed on {done['target']}; it is listening on port "
-                      f"{done['listen_port']}: join: poolhouse pool join-with-code --host "
-                      f"{target.host} --port {done['listen_port']}")
+    _emit(args, done, f"installed on {done['target']}")
     return 0

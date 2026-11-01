@@ -423,7 +423,7 @@ def test_restart_admission_blocks_other_active_work(restart_runtime, field):
         control.close()
 
 
-@pytest.mark.parametrize('content', ['{', '{}', '[{}]', '[{"port":true}]', '[{"port":8771,"slots":"bad"}]'])
+@pytest.mark.parametrize('content', ['{', '{}', '[{}]', '[{"port":true}]', '[{"port":8791,"slots":"bad"}]'])
 def test_restart_admission_refuses_unreadable_or_corrupt_serving_state(restart_runtime, content):
     from poolhouse.fleet.daemon_control import create
 

@@ -1,19 +1,16 @@
-"""First-run mode selection and local browser admission over real sockets."""
+"""First-run device name and local browser admission over real sockets."""
 from __future__ import annotations
 
 import pytest
 from launch_support import browser as browser_headers, sign_in
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_fleet_ui import Serving
 
-from poolhouse.fleet import automatic_pools
 from poolhouse.fleet.daemon import DaemonOptions, DaemonRuntime
-from poolhouse.fleet.discovery import memberships, mint_pool
-from poolhouse.fleet.settings import Settings
 
 
 @pytest.fixture
-def device(tmp_path, monkeypatch):
-    monkeypatch.setattr(automatic_pools, "offers", lambda port=None: [])
+def device(tmp_path):
     served = Serving(tmp_path)
     try:
         yield served
@@ -21,29 +18,19 @@ def device(tmp_path, monkeypatch):
         served.close()
 
 
-def initial(device, mode="dev", cookie=None, **extra):
+def initial(device, cookie=None, **extra):
     return device.call("/ui/setup/initial", method="POST", headers=browser_headers(device),
                        cookie=sign_in(device) if cookie is None else cookie,
-                       body={"name": "quillhaven", "pool_mode": mode, **extra})
+                       body={"name": "quillhaven", **extra})
 
 
-def test_dev_name_creates_automatic_membership_without_finishing_wizard(device):
+def test_a_name_is_kept_and_the_wizard_is_not_finished(device):
     status, state, headers = initial(device)
     assert status == 200
     assert state["name"] == "quillhaven"
-    assert state["pool_mode"] == "dev"
     assert state["needs_setup"] is True
-    assert memberships(device.keyfile)[0].mode == "dev"
     assert "HttpOnly" in headers["Set-Cookie"]
-    assert Settings.load(device.ui.settings_path).pool_mode == "dev"
-
-
-def test_prod_name_stays_unjoined_and_keeps_full_wizard(device):
-    status, state, _ = initial(device, "prod")
-    assert status == 200
-    assert state["needs_setup"] is True
-    assert state["pool_mode"] == "prod"
-    assert memberships(device.keyfile) == []
+    assert device.ui.name == "quillhaven"
 
 
 @pytest.mark.parametrize("changes", [
@@ -54,26 +41,25 @@ def test_prod_name_stays_unjoined_and_keeps_full_wizard(device):
 def test_initial_rejects_foreign_and_agent_requests(device, changes):
     headers = {**browser_headers(device), **changes}
     status, _, _ = device.call("/ui/setup/initial", method="POST", headers=headers,
-                               cookie=sign_in(device), body={"name": "quillhaven", "pool_mode": "dev"})
+                               cookie=sign_in(device), body={"name": "quillhaven"})
     assert status == 403
-    assert not memberships(device.keyfile)
+    assert device.ui.name == "studio"
 
 
-def test_initial_rejects_mode_change_and_nonboolean_automatic(device):
+def test_a_field_other_than_the_name_is_refused(device):
     cookie = sign_in(device)
-    mint_pool("private", device.keyfile, mode="prod")
-    assert initial(device, cookie=cookie)[0] == 400
-    assert initial(device, "prod", cookie=cookie, automatic="yes")[0] == 400
-    assert memberships(device.keyfile)[0].mode == "prod"
+    assert initial(device, cookie=cookie, pool_mode="dev")[0] == 400
+    assert initial(device, cookie=cookie, automatic="yes")[0] == 400
+    assert device.ui.name == "studio"
 
 
 def test_token_browser_session_cannot_mint_owner_session(device):
     token_session = device.ui.sessions.open("token", "token")
     cookie = device.ui.sessions.cookie_header(token_session).split(";")[0]
     status, _, _ = device.call("/ui/setup/initial", method="POST", headers=browser_headers(device),
-                               cookie=cookie, body={"name": "quillhaven", "pool_mode": "dev"})
+                               cookie=cookie, body={"name": "quillhaven"})
     assert status == 403
-    assert not memberships(device.keyfile)
+    assert device.ui.name == "studio"
 
 
 def test_updater_waits_for_downloads_and_background_installations():
@@ -94,42 +80,6 @@ def test_updater_waits_for_downloads_and_background_installations():
     assert runtime.background_busy() is False
 
 
-def test_completed_prod_hands_no_launch_session_and_refuses_initial(device):
-    from launch_support import redeem, ticket
-
-    mint_pool("private", device.keyfile, mode="prod")
-    device.ui.setup_finished()
-    status, issued, _ = ticket(device)
-    assert status == 200
-    status, _, headers = redeem(device, issued["ticket"])
-    assert status == 401
-    assert "Set-Cookie" not in headers
-    status, _, _ = device.call("/ui/setup/initial", method="POST", headers=browser_headers(device),
-                                  body={"name": "quillhaven", "pool_mode": "prod"})
-    assert status == 401
-    assert len(device.ui.sessions) == 0
-    assert {"event": "session.refused", "reason": "production-needs-passphrase",
-            "source": "127.0.0.1"} in device.rows
-
-
-def test_fresh_automatic_dev_can_choose_prod_explicitly(device):
-    automatic_pools.ensure(device.keyfile, mode="dev")
-    assert initial(device, "prod")[0] == 200
-    assert not memberships(device.keyfile)
-    assert Settings.load(device.ui.settings_path).pool_mode == "prod"
-
-
-def test_initial_never_drops_manual_dev_membership(device):
-    from dataclasses import replace
-
-    from poolhouse.fleet.discovery import adopt
-
-    member = mint_pool("private", device.keyfile, mode="dev")
-    adopt(replace(member, selection="manual"), device.keyfile)
-    assert initial(device, "prod")[0] == 400
-    assert memberships(device.keyfile)[0].group == "private"
-
-
 @pytest.mark.redteam
 @pytest.mark.parametrize("changes", [
     {"Origin": "http://foreign.invalid"}, {"Sec-Fetch-Site": "cross-site"},
@@ -139,18 +89,17 @@ def test_initial_never_drops_manual_dev_membership(device):
 def test_owner_admission_refuses_foreign_and_agent_requests_even_with_a_launch_session(device, changes):
     status, _, headers = device.call("/ui/setup/initial", method="POST", cookie=sign_in(device),
                                      headers={**browser_headers(device), **changes},
-                                     body={"name": "quillhaven", "pool_mode": "dev"})
+                                     body={"name": "quillhaven"})
     assert status == 403
     assert "Set-Cookie" not in headers
     assert len(device.ui.sessions) == 1
-    assert not memberships(device.keyfile)
 
 
 @pytest.mark.redteam
 def test_owner_admission_refuses_lan_and_missing_ui_header(device):
-    from poolhouse.fleet.discovery import primary_ip
+    from poolhouse.fleet.onboard.lan import primary_ip
 
-    body = {"name": "quillhaven", "pool_mode": "dev"}
+    body = {"name": "quillhaven"}
     cookie = sign_in(device)
     for options in ({"host": primary_ip()}, {"ui_header": False}):
         status, _, headers = device.call("/ui/setup/initial", method="POST", cookie=cookie,
@@ -158,35 +107,33 @@ def test_owner_admission_refuses_lan_and_missing_ui_header(device):
         assert status == 403
         assert "Set-Cookie" not in headers
     assert len(device.ui.sessions) == 1
-    assert not memberships(device.keyfile)
 
 
 @pytest.mark.redteam
 @pytest.mark.parametrize("body", [
     {"name": "../escaped", "pool_mode": "dev"},
     {"name": "quillhaven", "pool_mode": "owner"},
-    {"name": "quillhaven", "pool_mode": "dev", "automatic": "yes"},
-    {"name": "quillhaven", "pool_mode": "dev", "root": "../escaped"},
-    {"name": "x" * 5000, "pool_mode": "dev"},
+    {"name": "quillhaven", "automatic": "yes"},
+    {"name": "quillhaven", "root": "../escaped"},
+    {"name": "x" * 5000},
     ["quillhaven", "dev"],
 ])
-def test_initial_rejects_hostile_body_without_identity_or_membership_changes(device, body):
+def test_initial_rejects_hostile_body_without_identity_changes(device, body):
     status, _, headers = device.call("/ui/setup/initial", method="POST", headers=browser_headers(device),
                                      cookie=sign_in(device), body=body)
     assert status == 400
     assert "Set-Cookie" not in headers
     assert len(device.ui.sessions) == 1
-    assert not memberships(device.keyfile)
     assert device.ui.name == "studio"
 
 
 @pytest.mark.redteam
-def test_setup_jobs_refuses_untrusted_readers_and_ignores_external_paths(device, tmp_path):
+def test_setup_jobs_refuses_untrusted_readers_and_ignores_external_paths(device, tmp_path, studio_node):  # noqa: F811
     from poolhouse.fleet.setup_jobs import Jobs
 
     device.ui.root = tmp_path / "traind"
     device.ui.setup_jobs = Jobs(device.ui.root)
-    mint_pool("private", device.keyfile, mode="dev")
+    device.ui.gated = True               # the node of the device founded its pool
     device.ui.setup_finished()
     for expected, options in ((401, {}), (401, {"cookie": "poolhouse-session=forged"}),
                               (403, {"ui_header": False}), (401, {"headers": {"Host": "rebound.invalid"}})):
@@ -217,8 +164,8 @@ def test_initial_distinguishes_session_loss_from_forbidden_credentials(device, k
         cookie = device.ui.sessions.cookie_header(held).split(";")[0]
     status, response, headers = device.call('/ui/setup/initial', method='POST',
                                             headers=browser_headers(device), cookie=cookie,
-                                            body={'name':'quillhaven', 'pool_mode':'dev'})
+                                            body={'name': 'quillhaven'})
     assert status == (403 if kind == "uncredentialed" else 401)
     assert response['error'] and 'run:' not in response['error']
     assert 'Set-Cookie' not in headers
-    assert not memberships(device.keyfile)
+    assert device.ui.name == "studio"

@@ -82,7 +82,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.cmd in ("plan", "pause", "resume"):
             return (compute_cli.cmd_plan if args.cmd == "plan" else compute_cli.cmd_pause)(args)
-        if args.cmd in ("bootstrap", "share", "fetch", "signing", "model-sources"):
+        if args.cmd in ("bootstrap", "share", "fetch", "signing"):
             return run_service(args)
         result = _structured(execute(args))
     except errors.Error as exc:
