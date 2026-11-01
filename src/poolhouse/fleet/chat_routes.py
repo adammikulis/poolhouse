@@ -4,21 +4,17 @@ from __future__ import annotations
 
 from poolhouse import agent_dependency
 
+from . import roster
 from .chat import find, reply_parts, targets
 from .conversation_routes import ConversationRoutes
-from .service_pool import Pool
 
 __all__ = ["ChatRoutes"]
 
 
-def _secret(row: dict) -> str:
+def _secret(row: dict, root) -> str:
     """The request secret for one other pool member, or empty when the node authorizes none for it."""
-    if row.get("is_self") or not row.get("fingerprint"):
-        return ""
-    try:
-        return Pool().secret(str(row["fingerprint"]))
-    except PermissionError:
-        return ""
+    member = None if row.get("is_self") else roster.client_for(row, root=root)
+    return member.token if member is not None else ""
 
 
 class ChatRoutes(ConversationRoutes):
@@ -31,7 +27,7 @@ class ChatRoutes(ConversationRoutes):
 
     def _chat(self) -> bool:
         ui = self.ui
-        available = targets([{**row, "token": _secret(row)} for row in ui.members()], ui.serving)
+        available = targets([{**row, "token": _secret(row, ui.root)} for row in ui.members()], ui.serving)
         if self.method == "GET":
             problem = agent_dependency.problem()
             self.send(200, {"models": [t.public() for t in available], "runtime_ready": not problem,

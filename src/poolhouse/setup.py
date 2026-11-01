@@ -226,54 +226,47 @@ def _speech_findings() -> list[Finding]:
     return out
 
 
-def _fleet_findings(*, port: int | None = None, discovery_port: int | None = None,
-                    pool_key_path: Path | str | None = None) -> list[Finding]:
-    """Whether this machine has joined a pool, its daemon answers, discovery hears it
-    among the members ``poolhouse-pool status`` would list, and its two ports are free or
-    held by that same daemon.
+def _fleet_findings(*, port: int | None = None) -> list[Finding]:
+    """Whether this machine is in a pool its node answers for, its daemon answers, the pool lists it
+    among the devices ``poolhouse-pool plan`` would place work on, and its port is free or held by
+    that same daemon.
 
     Stops naming fleet findings at the first thing that is wrong: a daemon cannot answer
-    before a pool is joined, and discovery cannot hear a daemon that is not running.
+    before a pool is joined, and the pool cannot list a daemon that is not running.
     """
-    from poolhouse.fleet.discovery import DEFAULT_HTTP_PORT, default_port, memberships
-    from poolhouse.fleet.join import already_running, members
+    from poolhouse.fleet import roster
+    from poolhouse.fleet.launch import already_running
+    from poolhouse.fleet.onboard.lan import DEFAULT_HTTP_PORT
 
     port = DEFAULT_HTTP_PORT if port is None else port
-    discovery_port = default_port() if discovery_port is None else discovery_port
     out: list[Finding] = []
-    mine = memberships(pool_key_path)
     me = already_running(port)
-    if not mine:
-        out.append(Finding(name="fleet: joined", good=False, said="in no pool",
-                           fix=["poolhouse-pool", "join", "--passphrase", "WORDS"]))
-    else:
-        out.append(Finding(name="fleet: joined", good=True, said=f"pool '{mine[0].group}'"))
+    try:
+        rows = roster.members(port=port)
+    except PermissionError as exc:
+        rows = None
+        out.append(Finding(name="fleet: joined", good=False, said=str(exc),
+                           fix=["poolhouse-pool", "status"],
+                           note="the pool is the Rust node's: join one with 'poolhouse-pool join --host HOST CODE' "
+                                "(the code comes from 'poolhouse-pool add-device' on a member) or found one with "
+                                "'poolhouse-pool found NAME'"))
+    if rows is not None:
+        out.append(Finding(name="fleet: joined", good=True, said="the node lists this pool's compute services"))
         if me is None:
             out.append(Finding(name="fleet: daemon", good=False,
-                               said=f"does not answer on {port}", fix=["poolhouse-pool", "join"]))
+                               said=f"does not answer on {port}", fix=["poolhouse"]))
         else:
             out.append(Finding(name="fleet: daemon", good=True,
                                said=f"'{me.get('name', '?')}' answers on {port}"))
             if runtime_identity.applies():
                 out.append(identity_finding(me))
-            try:
-                rows = members(pool_key_path=pool_key_path, port=discovery_port,
-                            self_machine=str(me.get("machine") or ""))
-            except OSError as exc:
-                out.append(Finding(name="fleet: seen", good=False,
-                                   said=f"discovery failed: {exc}", fix=["poolhouse-members", "ls"]))
-            else:
-                seen = any(row.get("is_self") for row in rows)
-                out.append(Finding(
-                    name="fleet: seen", good=seen,
-                    said=(f"sees itself among {len(rows)} member(s)" if seen else
-                          f"discovery hears {len(rows)} member(s), none itself"),
-                    fix=[] if seen else ["poolhouse-members", "ls"],
-                    note="" if seen else
-                         "the beacon is unreachable even on loopback -- a firewall or a "
-                         "security tool dropping local multicast hides this machine from "
-                         "every member"))
-    out.append(_ports_finding(port, discovery_port, me))
+            seen = any(row.get("is_self") for row in rows)
+            out.append(Finding(
+                name="fleet: seen", good=seen,
+                said=f"listed with {len(rows)} device(s) that answer" if seen else
+                     f"{len(rows)} device(s) answer, none itself",
+                fix=[] if seen else ["poolhouse-pool", "members"]))
+    out.append(_ports_finding(port, me))
     return out
 
 
@@ -308,11 +301,10 @@ def _store_finding(path: Path | None = None) -> Finding:
     return Finding(name="store", good=True, said=f"{tilde(path)} opens")
 
 
-def _port_free(port: int, *, udp: bool = False) -> bool:
+def _port_free(port: int) -> bool:
     """Whether a bare bind to ``port`` succeeds on this machine -- false when something
     else already holds it."""
-    kind = socket.SOCK_DGRAM if udp else socket.SOCK_STREAM
-    with socket.socket(socket.AF_INET, kind) as s:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
             s.bind(("127.0.0.1", port))
         except OSError:
@@ -320,22 +312,17 @@ def _port_free(port: int, *, udp: bool = False) -> bool:
     return True
 
 
-def _ports_finding(http_port: int, discovery_port: int, daemon: dict[str, object] | None
-                   ) -> Finding:
-    """Whether ``http_port`` and ``discovery_port`` are free, or held by ``daemon`` --
-    this machine's own ``/health`` answer, or None when nothing there is ours."""
+def _ports_finding(http_port: int, daemon: dict[str, object] | None) -> Finding:
+    """Whether ``http_port`` is free, or held by ``daemon`` -- this machine's own ``/health``
+    answer, or None when nothing there is ours."""
     if daemon is not None:
-        return Finding(name="ports", good=True,
-                       said=f"{http_port} and {discovery_port} held by this machine's "
-                            "own daemon")
-    stuck = [p for p, udp in ((http_port, False), (discovery_port, True))
-             if not _port_free(p, udp=udp)]
+        return Finding(name="ports", good=True, said=f"{http_port} held by this machine's own daemon")
+    stuck = not _port_free(http_port)
     return Finding(
         name="ports", good=not stuck,
-        said="free" if not stuck else f"held by something else: {', '.join(map(str, stuck))}",
-        fix=[] if not stuck else ["lsof", "-nP", f"-iTCP:{http_port}", f"-iUDP:{discovery_port}"],
-        note="" if not stuck else
-             "poolhouse-pool join needs both free to start the daemon and hear the LAN")
+        said="free" if not stuck else f"held by something else: {http_port}",
+        fix=[] if not stuck else ["lsof", "-nP", f"-iTCP:{http_port}"],
+        note="" if not stuck else "poolhouse needs it free to start the daemon")
 
 
 def _scripts() -> list[str]:
@@ -384,25 +371,23 @@ def _firewall_rule_present(name: str) -> bool:
 
 
 def _firewall_finding() -> Finding:
-    """Windows only: the daemon is unreachable and its beacons unheard until the firewall
-    lets TCP 8770 and UDP 8771 in. The fix is one line for an administrator's prompt --
-    the one `poolhouse-setup --yes` cannot run for you from an ordinary one."""
-    from poolhouse.fleet.discovery import windows_firewall_line, windows_firewall_rules
+    """Windows only: the daemon is unreachable until the firewall lets TCP 8770 in. The fix is
+    one line for an administrator's prompt -- the one `poolhouse-setup --yes` cannot run for
+    you from an ordinary one."""
+    from poolhouse.fleet import windows_firewall
 
-    rules = windows_firewall_rules()
-    present = {name: _firewall_rule_present(name) for name, _ in rules}
+    present = {name: _firewall_rule_present(name) for name, _, _ in windows_firewall.rules()}
     missing = [name for name, ok in present.items() if not ok]
     return Finding(
         name="firewall",
         good=not missing,
         said=("inbound rules present: " + ", ".join(present)) if not missing
              else "no inbound rule for " + ", ".join(missing),
-        fix=[] if not missing else ["cmd", "/c", windows_firewall_line()],
+        fix=[] if not missing else ["cmd", "/c", windows_firewall.line()],
         root=True,
         note="" if not missing else
-             "Windows blocks inbound TCP 8770 (the daemon) and UDP 8771 (its beacons) "
-             "by default, so other machines see nothing in 'poolhouse-members ls'. Run the "
-             "line in a prompt opened as administrator")
+             "Windows blocks inbound TCP 8770 (the daemon) by default, so other machines cannot "
+             "reach it. Run the line in a prompt opened as administrator")
 
 
 def _lacking_flags(binary: str) -> list[tuple[str, str]]:

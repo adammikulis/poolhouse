@@ -76,7 +76,7 @@ def host(tmp_path, model_server):
         make_handler(Daemon(runner, files, token, "host", serving=serving)))
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     try:
-        yield {"name": "host", "base_url": f"http://127.0.0.1:{port}", "fingerprint": "a" * 64, "token": token,
+        yield {"name": "host", "base_url": f"http://127.0.0.1:{port}", "token": token,
                "is_self": False, "device": {"serving": serving.public()}}
     finally:
         runner.shutdown()
@@ -139,7 +139,7 @@ class TestChattingThroughTheInterface:
         ui = UIServing(tmp_path / "bare", name="laptop")
         # The node derives the secret for two of its authorized services; here the one member is a plain daemon whose
         # owner token the test knows, so the row's token stands in for what `Pool.secret` would return for its fingerprint.
-        monkeypatch.setattr(chat_routes, "_secret", lambda row: row.get("token", ""))
+        monkeypatch.setattr(chat_routes, "_secret", lambda row, root: row.get("token", ""))
         _, _, headers = ui.ticket_session()
         assert ui.ui.models is None
         assert ui.ui.serving is None

@@ -105,22 +105,22 @@ def joined(daemon):
 
 @pytest.fixture
 def with_members(joined):
-    """One invented machine on the LAN, so the pool view has a card to draw.
+    """One invented machine in the pool, so the pool view has a card to draw.
 
-    The route still assembles the answer; only the multicast sweep is stood in for,
+    The route still assembles the answer; only the node's list of other devices is stood in for,
     because a test has no second machine.
     """
-    joined.ui.members = lambda force=False: [{
-        "name": "greenhollow", "port": 8770, "host": "10.0.0.9",
-        "base_url": "http://10.0.0.9:8770", "is_self": False, "pools": ["home"],
-        "slots": 4, "free": 1, "queued": 2, "busy": False,
-        "device": {"vendor": "nvidia", "cuda": True, "gpu": "Marrowgate 5000",
-                   "cpus": 16, "ram_gb": 64.0, "ram_used_gb": 20.0, "cpu_pct": 41.0,
-                   "vram_total_gb": 24.0, "vram_free_gb": 6.0, "gpu_util_pct": 88.0,
-                   "temp_c": 79.0, "clock_mhz": 2400, "power_w": 310.5,
-                   "throttled": True, "labels": ["train"], "speech": ["asr", "vad"],
-                   "models": [{"name": "thornfield-8B-Q4_K_M.gguf"}]},
-    }]
+    from poolhouse.fleet import roster
+
+    device = {"vendor": "nvidia", "cuda": True, "gpu": "Marrowgate 5000",
+              "cpus": 16, "ram_gb": 64.0, "ram_used_gb": 20.0, "cpu_pct": 41.0,
+              "vram_total_gb": 24.0, "vram_free_gb": 6.0, "gpu_util_pct": 88.0,
+              "temp_c": 79.0, "clock_mhz": 2400, "power_w": 310.5,
+              "throttled": True, "labels": ["train"], "speech": ["asr", "vad"],
+              "models": [{"name": "thornfield-8B-Q4_K_M.gguf"}],
+              "slots": 4, "free": 1, "queued": 2, "busy": False}
+    row = {**roster.describe("greenhollow", "http://10.0.0.9:8770", "machine-green", device), "pools": ["home"]}
+    joined.ui.members = lambda force=False: [row]
     return joined
 
 
@@ -176,7 +176,7 @@ class TestFirstRun:
         page.fill("#setup-device-name", "quillhaven")
         page.get_by_role("button", name="Continue", exact=True).click()
         page.get_by_role("heading", name="Make this device ready", exact=True).wait_for()
-        assert page.get_by_role("button", name="Set up models later", exact=True).is_visible()
+        page.get_by_role("button", name="Set up models later", exact=True).wait_for()
         assert daemon.ui.name == "quillhaven"
         assert page.locator("#setup-pool-passphrase").count() == 0
         assert page.locator("#setup-invitation-only").count() == 0

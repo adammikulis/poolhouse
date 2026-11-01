@@ -9,9 +9,8 @@ from typing import Any
 
 from poolhouse import errors
 from poolhouse.api import pool
+from poolhouse.fleet import compute_cli
 from poolhouse.fleet.onboard.cli import add_service_commands, run as run_service
-from poolhouse.fleet.plan import PREFERENCES
-from poolhouse.fleet.runtime_paths import default_root
 from poolhouse.log import say
 
 
@@ -36,30 +35,13 @@ def parser() -> argparse.ArgumentParser:
             command.add_argument("device")
         elif name == "members":
             command.add_argument("--include-removed", action="store_true")
-    _compute_commands(commands)
+    compute_cli.add_commands(commands)
     def common(command):
         command.add_argument("--json", action="store_true")
         command.add_argument("--state", default="")
         return command
     add_service_commands(commands, common)
     return root
-
-
-def _compute_commands(commands) -> None:
-    for name in ("plan", "pause", "resume"):
-        command = commands.add_parser(name)
-        command.set_defaults(cmd=name, pool_key=None, root=str(default_root()))
-        command.add_argument("--json", action="store_true")
-        command.add_argument("--port", type=int, default=8770)
-        command.add_argument("--timeout", type=float, default=2.0)
-        if name == "plan":
-            command.add_argument("--users", type=int, required=True)
-            command.add_argument("--context", type=int, required=True)
-            command.add_argument("--prefer", choices=sorted(PREFERENCES), default="quality")
-            command.add_argument("--apply", action="store_true")
-        elif name == "pause":
-            command.add_argument("--for", dest="span", default="")
-            command.add_argument("--reason", default="")
 
 
 def execute(args: argparse.Namespace) -> Any:
@@ -99,8 +81,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
         if args.cmd in ("plan", "pause", "resume"):
-            from poolhouse.fleet.join import cmd_pause, cmd_plan
-            return (cmd_plan if args.cmd == "plan" else cmd_pause)(args)
+            return (compute_cli.cmd_plan if args.cmd == "plan" else compute_cli.cmd_pause)(args)
         if args.cmd in ("bootstrap", "share", "fetch", "signing", "model-sources"):
             return run_service(args)
         result = _structured(execute(args))

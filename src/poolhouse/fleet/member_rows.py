@@ -1,30 +1,11 @@
-"""The devices of the pool as rows a screen draws, and the bench sweep line built from a pick.
-
-A row is a plain dict: the node-authorized compute service of one device (`remote.Member`, from the node's service list) or this
-machine, with what its health report says it serves, its room, whether it is busy and its commit. Rows carry no secret; a caller that
-needs a request secret asks `service_pool.Pool.secret` for the row's ``fingerprint``.
-"""
+"""What a screen does with the rows of `roster.describe`: tell two devices of one name apart, and build the bench sweep line from a pick."""
 
 from __future__ import annotations
 
-import base64
-import hashlib
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from typing import Any
 
-from poolhouse.units import human_bytes
-
-__all__ = ["describe", "member_row", "named_apart", "sweep_argv"]
-
-
-def member_row(member: Any) -> dict[str, Any]:
-    """One `remote.Member` as the row every screen shares; ``fingerprint`` names its certificate."""
-    beacon = member.beacon
-    cert = base64.b64decode(beacon.cert) if beacon.cert else b""
-    return {"name": beacon.name, "port": beacon.port, "machine": beacon.machine, "host": beacon.host, "hostname": "",
-            "base_url": member.base_url, "device": beacon.device, "busy": beacon.busy, "queued": beacon.queued,
-            "slots": beacon.slots, "free": beacon.free, "instance": beacon.instance,
-            "fingerprint": hashlib.sha256(cert).hexdigest() if cert else "", "is_self": False, "pools": []}
+__all__ = ["named_apart", "sweep_argv"]
 
 
 def named_apart(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -43,53 +24,6 @@ def named_apart(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         for row in same:
             row["name"] = f"{name}#{str(row.get('machine') or '')[:width] or '?'}"
     return rows
-
-
-def describe(row: dict[str, Any], *, pools: Iterable[str] = ()) -> dict[str, Any]:
-    """One member as the fleet screen's row: what it serves, its room, whether it is busy, its commit.
-
-    Read out of the row's device report, defensively: a daemon on an older build reports fewer fields, and a row with a '?'
-    in it beats no row.
-    """
-    d = row.get("device") or {}
-    served = []
-    for one in d.get("serving") or []:
-        for model in one.get("models") or []:
-            served.append(f"{model}:{one.get('port', '?')}")
-    vram_total, vram_free = d.get("vram_total_gb"), d.get("vram_free_gb")
-    if d.get("room_bytes"):
-        room = human_bytes(int(d["room_bytes"]))
-    elif vram_total:
-        room = f"{vram_free if vram_free is not None else '?'}/{vram_total} GB"
-    elif d.get("ram_gb"):
-        room = f"{d.get('ram_gb')} GB ram"
-    else:
-        room = "?"
-    lock = d.get("lock") or ("measuring" if d.get("measuring") else "")
-    said = d.get("availability") or {}
-    return {
-        "name": row["name"], "called": str(row.get("called") or row["name"]), "machine": str(row.get("machine") or ""),
-        "host": str(row.get("host") or ""), "base_url": str(row.get("base_url") or ""),
-        "port": int(row.get("port") or 0), "busy": bool(row.get("busy")), "free": int(row.get("free", 1)),
-        "slots": int(row.get("slots") or 1), "queued": int(row.get("queued") or 0),
-        "room": room, "serving": served,
-        "models": [str(m.get("name")) for m in (d.get("models") or []) if m.get("name")],
-        "speech": [str(one) for one in (d.get("speech") or [])],
-        "lock": str(lock) if lock else "",
-        "paused": bool(said.get("paused")),
-        "paused_because": (str(said.get("unavailable_because") or "paused") if said.get("paused") else ""),
-        "commit": str(d.get("bench_commit") or d.get("commit") or "?"),
-        "commit_age_s": float(d.get("commit_age_s") or 0.0),
-        "version": str(d.get("version") or ""),
-        "tracking": str(d.get("tracking") or ""),
-        "checked_at": float(d.get("update_checked_at") or 0.0),
-        "update_error": str(d.get("update_error") or ""),
-        "gpu": str(d.get("gpu") or ""),
-        "pools": list(pools),
-        "is_self": bool(row.get("is_self")),
-        "display_url": str(row.get("display_url") or ""),
-        "device": d,
-    }
 
 
 def sweep_argv(models: Sequence[str], *, members: Sequence[str] = (), sample: int = 0,

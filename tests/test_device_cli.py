@@ -7,7 +7,7 @@ import threading
 import pytest
 
 from poolhouse import cli
-from poolhouse.fleet import device_cli
+from poolhouse.fleet import device_cli, roster
 from poolhouse.fleet.api import Daemon, make_handler
 from poolhouse.fleet.availability import Availability
 from poolhouse.fleet.daemon import load_or_create_token
@@ -18,7 +18,7 @@ from poolhouse.http import Server
 @pytest.fixture
 def device(tmp_path, monkeypatch):
     token = load_or_create_token(tmp_path)
-    monkeypatch.setattr(device_cli, "default_root", lambda: tmp_path)
+    monkeypatch.setattr(roster, "default_root", lambda: tmp_path)
     runner = JobRunner(tmp_path)
     stopped = []
     monkeypatch.setattr(runner, "stop_running", lambda: stopped.append(True))

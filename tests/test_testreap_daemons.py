@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import subprocess
@@ -29,11 +28,9 @@ def daemon_row(pid, root, *, parent=1, age=5.0, template=DAEMON):
     return Proc(pid, parent, NOW - age, template.format(root=root))
 
 
-def stale(rows, *, owners=None, recorded=None, gone=(), roots=(TMP,)):
-    """The stale daemons of ``rows``; ``owners`` maps a pid to the process its environment names, ``recorded`` a pid to the pid its run record holds."""
-    roots_of = {row.pid: found.group(1) for row in rows if (found := ROOT.search(row.command))}
-    held = {root: (pid if recorded is None else recorded.get(pid)) for pid, root in roots_of.items()}
-    readers = testreap.Readers(gone=lambda pid, started: pid in gone, owner_of=lambda pid: (owners or {}).get(pid), recorded=held.get)
+def stale(rows, *, owners=None, gone=(), roots=(TMP,)):
+    """The stale daemons of ``rows``; ``owners`` maps a pid to the process its environment names."""
+    readers = testreap.Readers(gone=lambda pid, started: pid in gone, owner_of=lambda pid: (owners or {}).get(pid))
     return testreap.stale_daemons(rows, roots, now=NOW, readers=readers)
 
 
@@ -55,12 +52,6 @@ def test_only_a_daemon_with_a_root_under_the_test_folder_is_ever_stale():
     assert stale(table, owners={11: 500, 12: 500, 13: 500}, gone={500}) == [13]
 
 
-def test_a_daemon_is_not_stale_when_the_run_record_under_its_root_names_another_process():
-    table = [daemon_row(11, f"{TMP}/pytest-3/a/traind", age=OLD), daemon_row(12, f"{TMP}/pytest-3/b/traind", age=OLD),
-             daemon_row(13, f"{TMP}/pytest-3/c/traind", age=OLD)]
-    assert stale(table, owners={11: 500, 12: 500, 13: 500}, gone={500}, recorded={11: 11, 12: 99}) == [11, 13]
-
-
 def test_only_python_running_the_daemon_module_is_a_daemon():
     other = [Proc(5, 1, NOW - OLD, f"/usr/bin/perl -m poolhouse.cli.daemon --root {TMP}/pytest-3/a/traind"),
              Proc(6, 1, NOW - OLD, f"/bin/zsh -c grep 'poolhouse.cli.daemon --root {TMP}/pytest-3/a/traind' log"),
@@ -68,20 +59,8 @@ def test_only_python_running_the_daemon_module_is_a_daemon():
     assert stale(other, owners={5: 500, 6: 500, 7: 500}, gone={500}) == []
 
 
-def test_the_recorded_pid_is_read_from_the_file_start_daemon_writes(tmp_path):
-    assert testreap.recorded_pid(str(tmp_path)) is None
-    from poolhouse.fleet.join import STARTED_FILE
-
-    (tmp_path / STARTED_FILE).write_text(json.dumps({"pid": 4242}))
-    assert testreap.recorded_pid(str(tmp_path)) == 4242
-    (tmp_path / STARTED_FILE).write_text("not json")
-    assert testreap.recorded_pid(str(tmp_path)) is None
-
-
 def stand_in_daemon(root: Path, owner: int, fake: Path) -> subprocess.Popen:
-    """A process with the command line of a daemon whose root holds its run record, running a module that sleeps."""
-    from poolhouse.fleet.join import STARTED_FILE
-
+    """A process with the command line of a daemon, running a module that sleeps."""
     (fake / "poolhouse" / "cli").mkdir(parents=True, exist_ok=True)
     (fake / "poolhouse" / "__init__.py").write_text("")
     (fake / "poolhouse" / "cli" / "__init__.py").write_text("")
@@ -89,7 +68,6 @@ def stand_in_daemon(root: Path, owner: int, fake: Path) -> subprocess.Popen:
     root.mkdir(parents=True, exist_ok=True)
     child = subprocess.Popen([sys.executable, "-m", "poolhouse.cli.daemon", "--port", "6100", "--root", str(root)],
                              env={**os.environ, "PYTHONPATH": str(fake), node_supervise.PARENT_ENV: str(owner)})
-    (root / STARTED_FILE).write_text(json.dumps({"pid": child.pid}))
     return child
 
 

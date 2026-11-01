@@ -1,7 +1,6 @@
 """Tailscale detection through a real executable on PATH, and how a member is reached
 over a tailnet. No Tailscale is needed: the executable is a script that prints canned output."""
 
-import argparse
 import json
 import socket
 import ssl
@@ -12,7 +11,6 @@ import pytest
 from onboard_support import Recorder, identity, info, requests
 
 from poolhouse.fleet import tailnet, tls
-from poolhouse.fleet.onboard import cli
 from poolhouse.fleet.onboard.join_code import fingerprint_of
 from poolhouse.fleet.onboard.lan import NotLocal, in_tailnet, require_local
 from poolhouse.fleet.onboard.nearby import decode
@@ -337,16 +335,3 @@ def test_the_probe_checks_the_pinned_certificate_on_a_real_server(tmp_path):
     finally:
         listener.close()
         thread.join(2)
-
-
-def test_the_devices_command_reports_the_route_and_whether_tailscale_is_there(
-        tmp_path, fake, capsys):
-    device(tmp_path, address="127.0.0.1", name="stranger", hostname="stranger")
-    fake.say(status())
-    parser = argparse.ArgumentParser()
-    cli.add_commands(parser.add_subparsers(dest="cmd"))
-    args = parser.parse_args(["devices", "--state", str(tmp_path), "--json", "--port", "1"])
-    assert cli.run(args) == 0
-    out = json.loads(capsys.readouterr().out)
-    assert out["tailscale"] == {"detected": True, "up": True, "state": "Running"}
-    assert [d["route"] for d in out["devices"]] == ["unreachable"]

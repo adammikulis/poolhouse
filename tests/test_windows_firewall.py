@@ -37,8 +37,9 @@ class Windows:
         return base64.b64decode(encoded).decode("utf-16-le")
 
 
-def test_the_one_rule_is_the_daemons_port():
+def test_the_one_rule_is_the_daemons_port_and_there_is_no_beacon_rule():
     assert firewall.rules() == [("Poolhouse", "TCP", DEFAULT_HTTP_PORT)]
+    assert "UDP" not in firewall.line() and "8771" not in firewall.line()
 
 
 def test_with_the_rule_held_nothing_is_asked_of_windows(capsys):
@@ -53,8 +54,10 @@ def test_a_missing_rule_is_added_by_one_elevated_prompt_that_says_so_first(capsy
     assert "press Yes" in capsys.readouterr().out
     added = windows.elevated()
     assert "-DisplayName 'Poolhouse'" in added and f"-Protocol TCP -LocalPort {DEFAULT_HTTP_PORT}" in added and "-Profile Private" in added
-    assert "UDP" not in added and "discovery" not in added, "the node holds its own beacon; only the daemon's port is opened here"
     assert firewall.missing(windows) == []
+    again = Windows(held=["Poolhouse"])
+    assert firewall.ensure(again) is True
+    assert not any("-Verb RunAs" in s for s in again.sent), "a rule that is held is not added again"
 
 
 def test_a_prompt_that_was_declined_is_said_in_a_sentence_and_nothing_is_claimed(capsys):

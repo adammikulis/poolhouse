@@ -231,7 +231,7 @@ def test_a_missing_openssh_client_is_a_clear_refusal(tmp_path, monkeypatch, keys
 
 # -- the command line ------------------------------------------------------------------------
 def fleet(env, *args):
-    return subprocess.run([sys.executable, "-m", "poolhouse.fleet.join", *args], env=env,
+    return subprocess.run([sys.executable, "-m", "poolhouse.pool_cli", *args], env=env,
                           capture_output=True, text=True, timeout=120, check=False)
 
 

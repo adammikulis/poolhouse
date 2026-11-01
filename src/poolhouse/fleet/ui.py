@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import threading
 import time
@@ -16,11 +17,11 @@ from poolhouse.home import machine_id
 from poolhouse.http import Options, Server, ServerError, open_stream
 from poolhouse.optional import module
 
-from . import pausing
+from . import pausing, roster
 from .launch_secret import LaunchSecret
-from .member_rows import describe, member_row, named_apart
+from .member_rows import named_apart
 from .page import FIT_ONLY
-from .remote import NO_SERVICES, Member
+from .remote import NO_SERVICES
 from .routes import ASSETS, UI_HEADER, asset_bytes, routes, write, write_json
 from .runtime_paths import default_root
 from .serving import Hosting, context_settings
@@ -209,35 +210,22 @@ class UI:
     def itself(self) -> dict[str, Any]:
         """This machine as a member row, for a screen counting machines before any
         other one is in the pool."""
+        report = self.report() if callable(self.report) else {}
         status = self.runner.status() if self.runner is not None else {}
-        slots = int(status.get("slots") or 1)
-        return {"name": self.name, "port": self.member_port, "machine": machine_id(),
-                "device": self.report() if callable(self.report) else {},
-                "busy": bool(status.get("busy")), "queued": int(status.get("queued") or 0),
-                "slots": slots, "free": int(status.get("free", slots)),
-                "host": "127.0.0.1", "hostname": "",
-                "base_url": f"http://127.0.0.1:{self.member_port}",
-                "display_url": self.display_url,
-                "is_self": True, "pools": []}
+        row = roster.describe(self.name, f"http://127.0.0.1:{self.member_port}", machine_id(), {**report, **status}, is_self=True)
+        return {**row, "display_url": self.display_url}
 
     def members(self, *, force: bool = False) -> list[dict[str, Any]]:
-        """This machine and every other compute service the node authorizes, cached briefly. The browser cannot do this itself."""
+        """This machine and every other compute device the node lists for the pool, cached briefly. The browser cannot do this itself."""
         age, cached = self._members
         if not force and time.time() - age < DISCOVER_CACHE_S:
             return cached
-        local = self.itself()
         group = self.group()
-        local["pools"] = [group] if group else []
-        rows = [local]
-        try:
-            found = Member.discover(timeout=2.0)
-        except NO_SERVICES:
-            found = []                     # the node authorizes no other compute service
-        for member in found:
-            row = member_row(member)
-            row["called"] = row["name"]
-            row["pools"] = list(local["pools"])
-            rows.append(row)
+        rows = [self.itself()]
+        with contextlib.suppress(*NO_SERVICES):  # the node lists no other compute device
+            rows += [row for row in roster.members(timeout_s=2.0, port=self.member_port) if not row["is_self"]]
+        for row in rows:
+            row["pools"] = [group] if group else []
         found_rows = sorted(named_apart(rows), key=lambda r: (not r["is_self"], r["name"]))
         self._members = (time.time(), found_rows)
         return found_rows
@@ -323,35 +311,18 @@ class UI:
 
     # -- the fleet, and a sweep over it ----------------------------------
     def fleet(self) -> dict[str, Any]:
-        """The members as `member_rows.describe` rows -- serving, room, busy, commit -- and the
+        """The members as `roster.describe` rows -- serving, room, busy, commit -- and the
         models they hold between them, which is what a sweep can be built from."""
-        rows = [describe(row, pools=row.get("pools") or []) for row in self.members()]
+        rows = self.members()
         models = sorted({m for r in rows for m in r["models"]})
         return {"members": rows, "models": models, "self": self.name,
                 "group": self.group(), "bench": self.bench_state()}
-
-    def pause_here(self, action: str, fields: dict[str, Any]) -> dict[str, Any]:
-        """Pause or resume this machine as ``POST /availability`` does, and say what it now reports."""
-        schedule = self.schedule
-        if schedule is None:
-            raise ValueError("no schedule on this daemon")
-        if action == "pause":
-            minutes = fields.get("minutes")
-            schedule.pause(minutes=float(minutes) if minutes else None, reason=str(fields.get("reason") or ""))
-            if getattr(self.settings, "on_paused", "stop") == "stop" and self.runner is not None:
-                self.runner.stop_running()
-        else:
-            schedule.resume()
-        if self.schedule_path is not None:
-            schedule.save(self.schedule_path)
-        return schedule.public()
 
     def pause_fleet(self, *, resume: bool = False, minutes: float | None = None,
                     reason: str = "") -> dict[str, Any]:
         """Pause or resume every machine this one can see, and what each of them said."""
         answers = pausing.pause_fleet(
-            pausing.Fanout(self.root or default_root(), resume=resume, minutes=minutes,
-                           reason=reason, here=self.pause_here),
+            pausing.Fanout(self.root or default_root(), resume=resume, minutes=minutes, reason=reason),
             self.members(force=True))
         self._members = (0.0, [])
         return {"machines": [a.public() for a in answers],

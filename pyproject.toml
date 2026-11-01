@@ -170,8 +170,7 @@ poolhouse-traind = "poolhouse.cli.daemon:main"
 # the macOS identity of the LAN node: build Poolhouse.app, ask for Local Network permission
 poolhouse-node = "poolhouse.node_permission:main"
 poolhouse-device = "poolhouse.fleet.device_cli:main"
-poolhouse-members = "poolhouse.fleet.members:main"
-# one command makes this machine a member: checks, llama-server, passphrase, daemon, announce
+# the pool of this device's node: found, join, members, and plan, pause and resume compute on its devices
 poolhouse-pool = "poolhouse.pool_cli:main"
 # the same functions the commands call, as MCP tools over stdio, for an agent to drive
 poolhouse-mcp = "poolhouse.mcp:main"

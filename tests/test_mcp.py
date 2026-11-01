@@ -159,10 +159,16 @@ class TestTheTools:
         (reply,) = drive(rpc(1, "tools/call", name="bench_show", arguments={}))
         assert said(reply) == [], "an empty bench home holds no runs"
 
-    def test_fleet_members_in_no_pool_is_empty_not_an_error(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("POOLHOUSE_POOL_KEY", str(tmp_path / "none.key"))
+    def test_fleet_members_with_no_node_answering_says_so(self, monkeypatch):
+        from poolhouse.fleet import service_pool
+
+        def dead(*_args):
+            raise OSError("node disconnected")
+
+        monkeypatch.setattr(service_pool.node_health, "call", dead)
         (reply,) = drive(rpc(1, "tools/call", name="fleet_members", arguments={"timeout_s": 0.2}))
-        assert said(reply) == []
+        assert reply["result"]["isError"]
+        assert "node must answer" in reply["result"]["content"][0]["text"]
 
     def test_a_tool_that_raises_answers_with_the_error(self, monkeypatch):
         from poolhouse import hub

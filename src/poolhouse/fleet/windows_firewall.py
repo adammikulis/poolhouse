@@ -1,6 +1,6 @@
 """Windows only: the inbound rule the daemon needs to be reached, added with the one administrator prompt.
 
-The rule is TCP for the daemon's port, on private networks.
+The rule is TCP for the daemon's port, on private networks. The Rust node's own ports are opened by `poolhouse.device_host`.
 """
 
 from __future__ import annotations
@@ -13,9 +13,9 @@ from poolhouse.log import say, warn
 
 from .onboard.lan import DEFAULT_HTTP_PORT
 
+FIREWALL_RULE_HTTP = "Poolhouse"
 POWERSHELL = "powershell.exe"
 TIMEOUT_S = 300
-RULE = "Poolhouse"
 PUBLIC = (r"Windows treats this network as Public, which blocks your other devices from reaching Poolhouse here: "
           r"in Settings > Network & internet, open this network's properties and choose Private")
 
@@ -34,7 +34,13 @@ def powershell(script: str) -> str:
 
 def rules() -> list[tuple[str, str, int]]:
     """``(name, protocol, port)`` of each rule: the daemon's TCP port."""
-    return [(RULE, "TCP", DEFAULT_HTTP_PORT)]
+    return [(FIREWALL_RULE_HTTP, "TCP", DEFAULT_HTTP_PORT)]
+
+
+def line() -> str:
+    """The rule as one line a person can paste into an administrator's prompt."""
+    return " && ".join(f'netsh advfirewall firewall add rule name="{name}" dir=in action=allow protocol={proto} localport={port}'
+                       for name, proto, port in rules())
 
 
 def missing(run: Run = powershell) -> list[tuple[str, str, int]]:
@@ -62,7 +68,7 @@ def ensure(run: Run = powershell) -> bool:
     """Make sure the rules are in place, asking Windows once; False, after saying what to do, when they are not."""
     absent = missing(run)
     if absent:
-        say("Windows will ask once to let Poolhouse be reached by your other devices: press Yes.")
+        say("Windows will ask once to let your other devices reach Poolhouse: press Yes.")
         add(absent, run)
         absent = missing(run)
     if absent:

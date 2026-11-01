@@ -4,8 +4,8 @@ from __future__ import annotations
 import argparse
 
 from poolhouse.command import Group, flag
+from poolhouse.fleet import roster
 from poolhouse.fleet.remote import DiscoveryError, Member
-from poolhouse.fleet.runtime_paths import default_root
 from poolhouse.http import ServerError
 from poolhouse.log import say, warn
 
@@ -13,10 +13,9 @@ from poolhouse.log import say, warn
 def _member(args: argparse.Namespace) -> Member:
     if args.name:
         return Member.find_one(name=args.name)
-    try:
-        token = (default_root() / "token").read_text().strip()
-    except OSError as exc:
-        raise OSError(f"this device's own daemon has no owner token to present: {exc}") from exc
+    token = roster.owner_token()
+    if not token:
+        raise OSError("this device's own daemon has made no owner token to present; start it with `poolhouse`")
     return Member(f"http://127.0.0.1:{args.port}", token)
 
 
