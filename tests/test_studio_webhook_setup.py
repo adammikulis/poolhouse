@@ -2,6 +2,7 @@
 import copy
 
 import pytest
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_studio_stream_http import served  # noqa: F401
 from test_studio_webhooks import _serve
 

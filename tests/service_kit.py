@@ -12,11 +12,13 @@ macOS is a link, so a service identity lives under the test's own folder instead
 
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 from testfarm_kit import (  # noqa: F401
+    BOARD,
     Device,
     approve,
     devices,
@@ -30,6 +32,9 @@ from testfarm_kit import (  # noqa: F401
 
 from poolhouse import node_health
 from poolhouse.fleet import service_pool, tls
+
+BINDINGS = itertools.count(1)
+"""Names the session that carries each binding."""
 
 
 @dataclass
@@ -58,9 +63,13 @@ class Nodes:
     def bind(self, device: Device, identity: tls.Identity, endpoint: str) -> dict:
         """Bind ``identity``'s certificate at ``endpoint`` on ``device``'s node, behind the person's approval of that exact binding."""
         params = {"cert": identity.der.hex(), "endpoint": endpoint}
-        draft = device.call("service_draft", token=device.token, **params)
-        approve(device, "service_bind", narrowed={"resource": draft["resource"], "uses": 1})
-        return device.call("service_bind", token=device.token, **params)
+        # A session may make only so many requests; each binding is made by a session of its own.
+        got = device.client.call("register", BOARD, "", model="claude-sonnet-5-5", harness="claude-code",
+                                 session=f"{device.name}-bind-{next(BINDINGS)}")
+        asking = Device(device.root, device.state, device.client, got["token"], got["name"], device.person)
+        draft = asking.call("service_draft", token=asking.token, **params)
+        approve(asking, "service_bind", narrowed={"resource": draft["resource"], "uses": 1})
+        return asking.call("service_bind", token=asking.token, **params)
 
     def serve(self, *ports: int, host: str = "127.0.0.1") -> None:
         """Bind each node's service at its port on ``host`` and wait until every node lists them all."""
@@ -107,6 +116,16 @@ def shared(node_binary, tmp_path_factory, count: int, *ports: int):  # noqa: F81
         for nodes in build(node_binary, tmp_path_factory.mktemp("services"), patches, count):
             nodes.serve(*ports)
             yield nodes
+    finally:
+        patches.undo()
+
+
+@pytest.fixture(scope="module")
+def studio_node(node_binary, tmp_path_factory):  # noqa: F811
+    """One node in a pool of its own for a module of Studio tests; a test binds the service identity it serves with."""
+    patches = pytest.MonkeyPatch()
+    try:
+        yield from build(node_binary, tmp_path_factory.mktemp("services"), patches, 1)
     finally:
         patches.undo()
 
