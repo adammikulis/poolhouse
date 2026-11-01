@@ -16,28 +16,38 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse.fleet.discovery import (
-    DEFAULT_HTTP_PORT,
-    FIREWALL_RULE_DISCOVERY,
-    FIREWALL_RULE_HTTP,
-    default_port,
-)
+from poolhouse import pool_cli
+from poolhouse.device_host import RULES
+from poolhouse.fleet.onboard.lan import DEFAULT_HTTP_PORT
+from poolhouse.fleet.windows_firewall import FIREWALL_RULE_HTTP
 
 PACKAGING = Path(__file__).resolve().parent.parent / "packaging"
 SH = PACKAGING / "install.sh"
 PS1 = PACKAGING / "install.ps1"
 
 
-def test_the_windows_installer_opens_the_firewall_rules_the_fleet_needs():
-    """Windows Defender Firewall blocks the daemon and its beacons inbound by default; the
-    installer adds the two rules, by the names and ports discovery.py uses, so a machine
-    joined from the app is not invisible to the rest of the fleet."""
+def test_the_windows_installer_opens_the_ports_the_daemon_and_the_rust_node_need():
+    """Windows Defender Firewall blocks inbound by default; the installer adds the daemon's rule and
+    the node's pool port and beacon rules, by the names and ports `windows_firewall` and `device_host`
+    use, so a machine joined from the app is not invisible to the rest of the pool."""
     script = PS1.read_text(encoding="utf-8")
     rules = dict(re.findall(r'Name = "([^"]+)";\s+Protocol = "(?:TCP|UDP)"; Port = (\d+)', script))
-    assert rules == {FIREWALL_RULE_HTTP: str(DEFAULT_HTTP_PORT),
-                     FIREWALL_RULE_DISCOVERY: str(default_port())}
+    assert rules == {FIREWALL_RULE_HTTP: str(DEFAULT_HTTP_PORT), **{name: str(port) for name, _, port in RULES}}
+    assert "8771" not in script and "Poolhouse discovery" not in script, "the old beacon port is not opened"
     assert "-Verb RunAs" in script, "the rules need an administrator's approval, once"
     assert "Get-NetFirewallRule" in script, "a rule already present is not added twice"
+
+
+@pytest.mark.parametrize("path", [SH, PS1])
+def test_the_installers_join_the_way_the_pool_command_does(path):
+    """The installers run `poolhouse-pool join --host HOST [--port N] [--fingerprint F] [CODE]`: a command line
+    `pool_cli` accepts, and none of the passphrase or logon flags it does not."""
+    text = path.read_text(encoding="utf-8")
+    assert "--passphrase" not in text and "join --persist" not in text and "--group" not in text
+    assert "POOLHOUSE_PASSPHRASE" not in text and "POOLHOUSE_POOL" not in text
+    args = pool_cli.parser().parse_args(["join", "--host", "device.invalid", "--port", "7449", "--fingerprint", "ab", "code"])
+    assert (args.host, args.port, args.fingerprint, args.code) == ("device.invalid", 7449, "ab", "code")
+    assert 'join --host "$POOLHOUSE_JOIN_HOST"' in text or '@("join", "--host", $env:POOLHOUSE_JOIN_HOST)' in text
 
 
 def test_the_shell_installer_parses():
@@ -77,7 +87,7 @@ def test_the_installers_call_the_commands_rather_than_redoing_them(command):
     assert command in PS1.read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize("name", ["POOLHOUSE_PASSPHRASE", "POOLHOUSE_NAME", "POOLHOUSE_MODELS",
+@pytest.mark.parametrize("name", ["POOLHOUSE_JOIN_HOST", "POOLHOUSE_NAME", "POOLHOUSE_MODELS",
                                   "POOLHOUSE_OFFLINE_ZIP", "POOLHOUSE_OFFLINE_WHEELS",
                                   "POOLHOUSE_MODE"])
 def test_every_prompt_can_be_answered_from_the_environment(name):

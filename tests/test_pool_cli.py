@@ -4,6 +4,8 @@ import json
 import tomllib
 from pathlib import Path
 
+import pytest
+
 from poolhouse import errors
 
 
@@ -38,14 +40,10 @@ def test_remove_uses_node_pool_api(monkeypatch, capsys):
 
 def test_node_refusal_does_not_create_a_pool(monkeypatch, capsys):
     from poolhouse import pool_cli
-    from poolhouse.fleet import discovery
 
     def unavailable():
         raise errors.NotRunning("The pool node is unavailable.")
-    def mint(*args, **kwargs):
-        raise AssertionError("the pool command must not mint Python membership")
     monkeypatch.setattr(pool_cli.pool, "status", unavailable)
-    monkeypatch.setattr(discovery, "mint_pool", mint)
     assert pool_cli.main(["status", "--json"]) == 1
     assert json.loads(capsys.readouterr().out) == {"error": "The pool node is unavailable."}
 
@@ -63,13 +61,6 @@ def test_leave_uses_registered_node_session(monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out) == {"state": "pending"}
 
 
-def test_old_module_entry_uses_same_node_pool_command():
-    from poolhouse import pool_cli
-    from poolhouse.fleet import join
-
-    assert join.main is pool_cli.main
-
-
 def test_source_management_keeps_its_own_action(monkeypatch):
     from poolhouse import pool_cli
 
@@ -79,11 +70,20 @@ def test_source_management_keeps_its_own_action(monkeypatch):
     assert calls == [("model-sources", "list")]
 
 
-def test_compute_plan_keeps_existing_handler(monkeypatch):
+def test_compute_commands_run_in_the_compute_module(monkeypatch):
     from poolhouse import pool_cli
-    from poolhouse.fleet import join
+    from poolhouse.fleet import compute_cli
 
     calls = []
-    monkeypatch.setattr(join, "cmd_plan", lambda args: calls.append((args.users, args.context, args.apply)) or 3)
+    monkeypatch.setattr(compute_cli, "cmd_plan", lambda args: calls.append((args.users, args.context, args.apply)) or 3)
     assert pool_cli.main(["plan", "--users", "2", "--context", "4096", "--apply"]) == 3
     assert calls == [(2, 4096, True)]
+
+
+def test_the_pool_command_names_no_old_pool_flag():
+    from poolhouse import pool_cli
+
+    for words in (["join", "--persist", "--host", "h"], ["join", "--passphrase", "WORDS", "--host", "h"],
+                  ["plan", "--pool-key", "k", "--users", "1", "--context", "2"]):
+        with pytest.raises(SystemExit):
+            pool_cli.parser().parse_args(words)

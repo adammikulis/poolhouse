@@ -543,15 +543,13 @@ class TestDiscoveryAndTheFirewall:
             (("239.255.77.70", 8771), ""), (("239.255.77.70", 8771), "127.0.0.1"),
             (("255.255.255.255", 8771), ""), (("127.0.0.1", 8771), "")]
 
-    def test_the_two_inbound_rules_name_the_two_ports(self):
-        from poolhouse.fleet.discovery import windows_firewall_line, windows_firewall_rules
+    def test_the_inbound_rule_names_the_daemons_port(self):
+        from poolhouse.fleet.windows_firewall import line, rules
 
-        rules = dict(windows_firewall_rules())
-        assert rules["Poolhouse"].endswith("protocol=TCP localport=8770")
-        assert rules["Poolhouse discovery"].endswith("protocol=UDP localport=8771")
-        line = windows_firewall_line()
-        assert line.count("netsh advfirewall firewall add rule") == 2 and " && " in line
-        assert "\n" not in line, "one line, for one administrator's prompt"
+        assert rules() == [("Poolhouse", "TCP", 8770)]
+        assert line().endswith("protocol=TCP localport=8770")
+        assert line().count("netsh advfirewall firewall add rule") == 1
+        assert "\n" not in line(), "one line, for one administrator's prompt"
 
     def test_the_daemon_announces_itself_the_moment_it_starts(self, monkeypatch, tmp_path):
         """The loop's first beacon is interval_s away. A daemon that has just come up must

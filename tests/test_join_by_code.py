@@ -1,17 +1,12 @@
-"""Joining fills the member book, and the model store is served to the devices that may have it.
+"""What a member learns from a join offer, and how the model store is served to the devices that may have it.
 
-Real processes and files: the owner and the new machine are `python -m poolhouse.fleet.join`
-processes with their own homes (as in test_onboard_cli), joining is the real flow with the code
-read out, ``share --models`` is a process serving a real folder of GGUF files over pinned TLS, and
-the downloading side is the real `MemberSession`. Nothing is added with ``roster add``.
-"""
+The offer is authenticated by the exchange that carried it; the store is served over pinned TLS and
+the downloading side is the real `MemberSession`. Joining a pool is the node's: `poolhouse-pool join`."""
 
 from __future__ import annotations
 
 import base64
-import contextlib
 import hashlib
-import json
 import os
 import socket
 from pathlib import Path
@@ -19,10 +14,8 @@ from pathlib import Path
 import pytest
 from onboard_support import Clock, Recorder, identity as make_identity, requests as make_requests
 from test_hub_pull import blob
-from test_onboard_cli import env_for, fleet as run_fleet, read_document, spawn, stop
 
-from poolhouse import hub, sentinel
-from poolhouse.fleet import tls
+from poolhouse import sentinel
 from poolhouse.fleet.onboard import memberfirst, memberlearn, modelstore, pake
 from poolhouse.fleet.onboard.join_code import (
     API,
@@ -37,13 +30,11 @@ from poolhouse.fleet.onboard.manifest import DEFAULT_CHUNK, Entry
 from poolhouse.fleet.onboard.requests import Devices, Request
 from poolhouse.fleet.onboard.sharing import Access, Licences
 from poolhouse.fleet.onboard.transfer import Share, confined, serve_file
-from poolhouse.hub import members as hub_members, origins
+from poolhouse.hub import members as hub_members
 from poolhouse.hub.memberbook import MemberBook
-from poolhouse.hub.places import Place
 from poolhouse.safenames import Unsafe
 from poolhouse.sentinel.human import mint
 from poolhouse.sentinel.store import Holding
-from tests.pool_support import join as pool_join
 
 KIB = 1024
 FP = "a" * 64
@@ -169,113 +160,22 @@ def test_two_devices_with_one_name_do_not_overwrite_each_other(tmp_path):
 
 
 # -- two homes, the real flow ------------------------------------------------------------------
-def start_owner(tmp_path, *listen_args):
-    env = env_for(tmp_path / "owner")
-    key_path = tmp_path / "owner" / "pool.key"
-    pool_join("a-long-enough-passphrase", path=key_path)
-    state = tmp_path / "owner" / "state"
-    port = free_port()
-    proc = spawn(env, "add-device", "--json", "--state", str(state), "--host", "127.0.0.1",
-                 "--port", "0", "--no-announce", "--for", "180s", "--share-port", str(port),
-                 *listen_args)
-    started = json.loads(read_document(proc))
-    return proc, type("Owner", (), {"env": env, "state": state, "port": started["port"],
-                                    "share_port": port, "key_path": key_path,
-                                    "home": tmp_path / "owner"})
 
 
-def join_new_box(owner, tmp_path, *join_args, accept="--mine"):
-    env = env_for(tmp_path / "newbox")
-    state = tmp_path / "newbox" / "state"
-    share_port = free_port()
-    join = spawn(env, "join-with-code", "--host", "127.0.0.1", "--port", str(owner.port), "--json",
-                 "--state", str(state), "--wait", "60s", "--name", "new-box",
-                 "--share-port", str(share_port), *join_args)
-    try:
-        seen = []
-        for _ in range(100):
-            seen = json.loads(run_fleet(owner.env, "requests", "--json", "--state",
-                                        str(owner.state)).stdout)["requests"]
-            if seen:
-                break
-        code = json.loads(run_fleet(owner.env, "accept", seen[0]["id"][:8], accept, "--json",
-                                    "--state", str(owner.state)).stdout)["code"]
-        join.stdin.write(code + "\n")
-        join.stdin.flush()
-        _, err = join.communicate(timeout=60)
-        assert join.returncode == 0, err
-    finally:
-        join.kill()
-    return type("Box", (), {"env": env, "state": state, "share_port": share_port,
-                            "home": tmp_path / "newbox"})
 
 
-@pytest.fixture
-def joined(tmp_path):
-    proc, owner = start_owner(tmp_path)
-    box = join_new_box(owner, tmp_path)
-    yield owner, box
-    stop(proc)
 
 
-def row_of(state: Path) -> dict:
-    [row] = MemberBook(state / "members.json").rows()
-    return row
 
 
-def signing_public(state: Path) -> str:
-    return json.loads((state / "signing.json").read_text())["public"]
 
 
-def test_joining_alone_fills_the_member_book_of_both_devices(joined):
-    owner, box = joined
-    on_owner, on_box = row_of(owner.state), row_of(box.state)
-    new_ident = tls.identity(box.state / "tls", "x")
-    owner_ident = tls.identity(owner.state / "tls", "x")
-    assert on_owner["name"] == "new-box" and on_owner["source"] == "join-code"
-    assert on_owner["url"] == f"https://127.0.0.1:{box.share_port}"
-    assert on_owner["certificate"] == new_ident.beacon
-    assert on_owner["fingerprint"] == new_ident.fingerprint
-    assert on_owner["signing_key"] == signing_public(box.state) and on_owner["device_secret"]
-    assert on_box["url"] == f"https://127.0.0.1:{owner.share_port}"
-    assert on_box["certificate"] == owner_ident.beacon
-    assert on_box["fingerprint"] == owner_ident.fingerprint
-    assert on_box["signing_key"] == signing_public(owner.state)
-    owner_devices = json.loads((owner.state / "devices.json").read_text())["devices"]
-    assert on_box["device_secret"] == owner_devices[0]["secret"]     # what the owner expects from it
-    box_devices = json.loads((box.state / "devices.json").read_text())["devices"]
-    assert on_owner["device_secret"] == box_devices[0]["secret"]      # and the other way round
-    assert oct((owner.state / "members.json").stat().st_mode & 0o777) == "0o600"
 
 
-def test_revoking_a_device_removes_it_from_the_member_book(joined):
-    owner, box = joined
-    assert row_of(owner.state)["name"] == "new-box"
-    done = run_fleet(owner.env, "remove", "new-box", "--json", "--state", str(owner.state))
-    assert json.loads(done.stdout)["members_removed"] == ["new-box"]
-    assert MemberBook(owner.state / "members.json").rows() == []
-    assert len(MemberBook(box.state / "members.json").rows()) == 1       # the other side is its own call
 
 
-def test_a_device_that_shares_nothing_has_no_share_address_recorded(tmp_path):
-    proc, owner = start_owner(tmp_path)
-    try:
-        box = join_new_box(owner, tmp_path, "--no-share")
-        assert MemberBook(owner.state / "members.json").rows() == []        # it shares nothing
-        assert row_of(box.state)["url"].endswith(f":{owner.share_port}")
-    finally:
-        stop(proc)
 
 
-def test_an_owner_that_shares_nothing_leaves_no_row_on_the_new_machine(tmp_path):
-    proc, owner = start_owner(tmp_path, "--no-share")
-    try:
-        box = join_new_box(owner, tmp_path)
-        assert MemberBook(box.state / "members.json").rows() == []
-        assert row_of(owner.state)["name"] == "new-box"
-        assert len(json.loads((box.state / "devices.json").read_text())["devices"]) == 1
-    finally:
-        stop(proc)
 
 
 # -- the model store ---------------------------------------------------------------------------
@@ -322,47 +222,10 @@ def accept_licence(owner, name: str, who: str = "adam") -> None:
              terminal=(True, True), env={}), entry, who=who)
 
 
-@pytest.fixture
-def store(tmp_path, joined, monkeypatch):
-    owner, box = joined
-    models = Models(tmp_path)
-    accept_licence(owner, "gated-Q4.gguf")
-    quarantine(owner.home, models.data["held-Q4.gguf"], monkeypatch, tmp_path)
-    sharing = spawn(owner.env, "share", "--models", "--models-dir", str(models.root),
-                    "--sharing", "open-Q4.gguf=open", "--sharing", "nested-Q8.gguf=open",
-                    "--host", "127.0.0.1", "--port", str(owner.share_port), "--json",
-                    "--state", str(owner.state), "--for", "180s")
-    started = json.loads(read_document(sharing))
-    session = memberfirst.MemberSession(MemberBook(box.state / "members.json"), staging=tmp_path / "stage",
-                                    origins_path=box.state / "member-downloads.jsonl")
-
-    def get(name: str):
-        final = tmp_path / "got" / name.rsplit("/", 1)[-1]
-        final.parent.mkdir(exist_ok=True)
-        ok = session.fetch(models.wanted(name), final, cancelled=lambda: False,
-                           progress=lambda _n: None, phase=lambda _p: None)
-        return ok, final
-
-    yield type("Store", (), {"owner": owner, "box": box, "models": models, "doc": started,
-                             "session": session, "get": staticmethod(get)})
-    stop(sharing)
 
 
-def test_the_model_store_lists_what_discovery_finds_and_leaves_out_what_it_must(store):
-    listed = {f["name"]: f for f in store.doc["files"]}
-    assert set(listed) == {"open-Q4.gguf", "gated-Q4.gguf", "unaccepted-Q4.gguf", "nested-Q8.gguf"}
-    assert listed["open-Q4.gguf"]["sharing"] == "open"
-    assert listed["gated-Q4.gguf"]["sharing"] == "owner" and listed["gated-Q4.gguf"]["licence_recorded"]
-    assert not listed["unaccepted-Q4.gguf"]["licence_recorded"]
-    skipped = " ".join(store.doc["skipped"])
-    assert "held-Q4.gguf" in skipped and "quarantine" in skipped
 
 
-def test_an_open_model_in_a_subfolder_comes_from_the_store_by_name_and_digest(store):
-    ok, final = store.get("open-Q4.gguf")
-    assert ok and final.read_bytes() == store.models.data["open-Q4.gguf"]
-    ok, final = store.get("deep/er/nested-Q8.gguf")
-    assert ok and final.read_bytes() == store.models.data["deep/er/nested-Q8.gguf"]
 
 
 def test_the_manifest_is_signed_and_its_serial_rises(tmp_path):
@@ -372,60 +235,14 @@ def test_the_manifest_is_signed_and_its_serial_rises(tmp_path):
     assert first == 1_000 and second == 1_001 and earlier_clock == 1_002
 
 
-def test_a_file_a_symlink_points_out_of_the_roots_is_never_listed_or_served(store, tmp_path):
-    models = store.models
-    ok, _final = store.get("open-Q4.gguf")           # the store works...
-    assert ok
-    session = store.session
-    leak = hub_members.Wanted("x/y", "escape.gguf", len(models.secret),
-                            hashlib.sha256(models.secret).hexdigest())
-    assert session.fetch(leak, tmp_path / "leak.gguf", cancelled=lambda: False,
-                         progress=lambda _n: None, phase=lambda _p: None) is False
-    assert not (tmp_path / "leak.gguf").exists()
 
 
-def test_a_gated_model_goes_to_the_owners_own_device_once_the_licence_is_on_record(store):
-    ok, final = store.get("gated-Q4.gguf")
-    assert ok and final.read_bytes() == store.models.data["gated-Q4.gguf"]
-    line = origins.latest("gated-Q4.gguf", len(final.read_bytes()), store.box.state / "member-downloads.jsonl")
-    assert line["relies_on"]["accepted_by"] == "adam" and line["relies_on"]["licence"] == "gated-Q4.gguf"
-    assert line["sha256"] == hashlib.sha256(final.read_bytes()).hexdigest() and line["member"]
 
 
-def test_a_gated_model_whose_licence_the_owner_never_accepted_is_withheld(store):
-    ok, final = store.get("unaccepted-Q4.gguf")
-    assert not ok and not final.exists()
 
 
-def test_a_gated_model_is_withheld_from_a_device_that_is_not_marked_the_owners(store):
-    path = store.owner.state / "devices.json"
-    doc = json.loads(path.read_text())
-    for d in doc["devices"]:
-        d["mine"] = False
-    path.write_text(json.dumps(doc))
-    ok, _final = store.get("gated-Q4.gguf")
-    assert not ok
-    ok, final = store.get("open-Q4.gguf")           # an open model still goes to any member
-    assert ok and final.exists()
 
 
-def test_poolhouse_models_list_shows_where_a_member_model_came_from_and_whose_acceptance(
-        store, tmp_path, monkeypatch, capsys):
-    ok, final = store.get("gated-Q4.gguf")
-    assert ok
-    monkeypatch.setenv("POOLHOUSE_HOME", str(store.box.home))
-    here = final.parent
-    shown = Place("poolhouse", "flat", here, True, 4)
-    monkeypatch.setattr(hub, "standard", lambda roots=None: [shown])
-    origins.record({"file": final.name, "size": final.stat().st_size, "member": "owner-box",
-                    "relies_on": {"device": "owner-box", "accepted_by": "adam"}})
-    from poolhouse.serve import models_cli
-    assert models_cli.run(["list", "--json"]) == 0
-    rows = json.loads(capsys.readouterr().out)
-    [row] = [r for r in rows if r["path"].endswith("gated-Q4.gguf")]
-    assert row["from_member"]["member"] == "owner-box"
-    assert models_cli.run(["list"]) == 0
-    assert "member owner-box, licence accepted by adam on owner-box" in capsys.readouterr().out
 
 
 # -- store-root confinement, quarantine and levels at the serving function -----------------------
@@ -540,9 +357,3 @@ def test_a_gated_file_is_served_to_the_owners_devices_only_with_the_acceptance_o
     assert ok.status == 206 and ok.headers["X-Licence-Accepted-By"] == "adam"
 
 
-def test_the_share_command_needs_a_pool_and_something_to_share(tmp_path):
-    env = env_for(tmp_path / "lonely")
-    refused = run_fleet(env, "share", "--json", "--state", str(tmp_path / "s"))
-    assert refused.returncode == 2
-    with contextlib.suppress(OSError):
-        assert "needs a pool" in json.loads(refused.stdout)["error"]

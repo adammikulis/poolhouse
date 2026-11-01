@@ -200,14 +200,14 @@ def main(args: argparse.Namespace, rest: list[str], root: Path, command_for: Cal
         return refuse("the gate takes no files")
     if features.turned_off(FEATURE):
         return refuse(f"running tests on another device was turned off here (`poolhouse features disable {FEATURE}`); `poolhouse features enable {FEATURE}` turns it on")
+    if not features.enabled(FEATURE):
+        return refuse(f"running tests on another device through the node is an experimental feature and off here; a person turns it on with `poolhouse features enable {FEATURE}`")
     try:
         chosen = choose(args.on, pool_devices())
         shards = Shards()
     except Exception as exc:  # noqa: BLE001 - no node, no session, no such device: one line and the status of a run that never started
         print(f"test: {exc}", file=sys.stderr)
         return NOT_RUN
-    if not features.enabled(FEATURE):
-        return refuse(f"running tests on another device through the node is an experimental feature and off here; a person turns it on with `poolhouse features enable {FEATURE}`")
     if tier == "quick":
         picked = reached(root, args.base)
         if picked is None:
