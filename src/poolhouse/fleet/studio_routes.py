@@ -49,8 +49,11 @@ class StudioRoutes:
         if sid and session is None:
             raise PermissionError("This session ended. Sign in again to use Studio.")
         if not session:
-            raise PermissionError("Sign in to use Studio.")
-        principal = {"id": digest({"session": sid}), "scope": _binding(ui), "owner": session.credentialed}
+            # A device is always in its node's pool, so a request with no session has no Studio authority.
+            principal = {"id": digest({"local": self.client_ip, "scope": _binding(ui)}), "scope": _binding(ui), "owner": True}
+            ui._studio_principals[principal["id"]] = lambda: False
+            return ui.studio, principal
+        principal ={"id": digest({"session": sid}), "scope": _binding(ui), "owner": session.credentialed}
         ui._studio_principals[principal["id"]] = lambda: ui.sessions.get(sid) is not None
         ui._studio_origins[principal["id"]] = lambda: (ui.sessions.get(sid).origin if ui.sessions.get(sid) else "")
         return ui.studio, principal

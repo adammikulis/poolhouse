@@ -2,6 +2,7 @@
 import threading
 
 import pytest
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_fleet_ui import Serving
 
 from poolhouse.fleet import dataset_routes
@@ -11,11 +12,11 @@ from poolhouse.studio.store import digest
 
 
 @pytest.fixture
-def served(tmp_path):
+def served(tmp_path, studio_node):  # noqa: F811
     app = Serving(tmp_path)
     app.ui.root = tmp_path / 'traind'
     app.ui.settings.setup_done = True
-    mint_pool('catalogue-test-pool', app.keyfile)
+    mint_pool('catalogue-test-pool', app.keyfile)  # until the UI asks for sign-in because its node has a pool
     session = app.ui.sessions.open('dataset-browser', 'launch-ticket')
     try:
         yield app, 'poolhouse_ui=' + session.sid, session
