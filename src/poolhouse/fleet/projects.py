@@ -346,12 +346,12 @@ class ProjectRegistry:
                 "bootstrap_sha256": hashlib.sha256(code).hexdigest()}
 
 
-def register(handler, registry: ProjectRegistry | None, pool_key_path: Path | None, body: bytes) -> bool:
-    """Register a local Git checkout under authenticated active Dev membership."""
+def register(handler, registry: ProjectRegistry | None, body: bytes) -> bool:
+    """Register a local Git checkout for an authenticated request from this machine."""
     if urllib.parse.urlparse(handler.path).path != "/workspace/v1/local-project":
         return False
-    if not project_enrollment.local(handler._sealing(), pool_key_path, handler.client_address[0]):
-        handler._send(403, {"error": "project registration requires this device's authenticated pool"})
+    if not project_enrollment.local(handler._sealing(), handler.client_address[0]):
+        handler._send(403, {"error": "project registration requires an authenticated request from this device"})
     elif registry is None:
         handler._send(501, {"error": "project registry unavailable"})
     else:

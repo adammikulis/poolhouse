@@ -243,7 +243,7 @@ def start(argv: list[str], *, executable: str | None = None) -> int:
             environment.append(name + "=" + translated)
     for index, arg in enumerate(arguments):
         name, separator, value = arg.partition("=")
-        if name not in {"--root", "--bench-home", "--pool-key"}:
+        if name not in {"--root", "--bench-home"}:
             continue
         if not separator:
             if index + 1 >= len(arguments):

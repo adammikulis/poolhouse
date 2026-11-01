@@ -16,7 +16,6 @@ import ssl
 from collections.abc import Callable, Iterable
 from contextvars import ContextVar
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -25,7 +24,7 @@ from poolhouse.macauth import Authenticator, Verdict
 from . import tls
 from .service_pool import Pool
 
-__all__ = ["ANONYMOUS", "LOCAL", "MEMBER", "STRANGER", "Screen", "Screened", "identify", "pool_of"]
+__all__ = ["ANONYMOUS", "LOCAL", "MEMBER", "STRANGER", "Screen", "Screened", "identify"]
 
 LOCAL, ANONYMOUS, MEMBER, STRANGER = "local", "anonymous", "member", "stranger"
 
@@ -106,8 +105,3 @@ class Screen:
         checking = self.enrolled if kind == ANONYMOUS else self.workspace if workspace else self.pool_secret
         verdict = checking.check(handler.command, handler.path, handler.headers, body, handler.client_address[0])
         return Screened(kind, member, verdict)
-
-
-def pool_of(secret: str, pool_key_path: Path | str | None) -> str | None:
-    """Local owner credentials do not identify a pool."""
-    return None

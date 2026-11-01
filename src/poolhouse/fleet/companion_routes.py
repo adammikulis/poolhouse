@@ -40,7 +40,8 @@ def answer(ui: Any, handler: Any, raw: bytes | None = None) -> bool:
         return False
     try:
         source = ipaddress.ip_address(handler.client_address[0])
-        if (ui is None or not isinstance(handler.connection, ssl.SSLSocket)
+        if (ui is None or getattr(ui, "invitations", None) is None
+                or not isinstance(handler.connection, ssl.SSLSocket)
                 or not (source.is_private or in_tailnet(str(source))) or source.is_unspecified or source.is_multicast):
             raise ValueError("Android connections require local network TLS")
         auth = handler.headers.get("Authorization", "")

@@ -108,8 +108,6 @@ class Daemon:
     schedule_path: Path | None = None
     serving: Serving | None = None
     models: Models | None = None
-    pool_key_path: Path | str | None = None
-    tokens: Callable[[], set[str]] | None = None
     devices: Callable[[], list] = lambda: []
     bench: BenchHost | None = None
     hosting: Hosting | None = None
@@ -119,7 +117,7 @@ class Daemon:
     launcher_control: Callable[[], Any] | None = None
     service_identity: Callable[[], tls.Identity] | None = None
     members: Pool | None = None
-    """Which devices are in this daemon's pools; by default the record beside ``pool_key_path``."""
+    """Which compute services the node authorizes; by default the live node's."""
     command: Callable[[list[str]], list[str]] = commands.allowed
     """Which argv a ``POST /jobs`` may run, and in what form; raises ValueError to refuse."""
 
@@ -134,7 +132,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
     runner, files_root, token, name = daemon.runner, daemon.files_root, daemon.token, daemon.name
     report, fetcher, ui, schedule = daemon.report, daemon.fetcher, daemon.ui, daemon.schedule
     on_paused, schedule_path, serving = daemon.on_paused, daemon.schedule_path, daemon.serving
-    models, pool_key_path, tokens = daemon.models, daemon.pool_key_path, daemon.tokens
+    models = daemon.models
     bench, hosting, decide = daemon.bench, daemon.hosting, daemon.decide
     ui_from_lan = daemon.ui_from_lan
     command = daemon.command
@@ -143,7 +141,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
     def secrets_now() -> set[str]:
         """Every secret this machine answers to, read at request time."""
         own = token() if callable(token) else token
-        return {one for one in (own, *(tokens() if tokens else ())) if one}
+        return {own} if own else set()
 
     screen = callers.Screen(secrets_now, lambda: [device_auth.secret(device) for device in daemon.devices()],
                             roster, lambda auth: watch_authenticator(auth, sentinel.armed(), Verdict),
@@ -573,7 +571,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 return
             if member_answer(self, roster, "POST", self.path.split("?")[0], body) or shard_routes.answer(self, daemon, "POST", self.path, body):
                 return
-            if project_routes.register(self, daemon.projects, pool_key_path, body):
+            if project_routes.register(self, daemon.projects, body):
                 return
             if studio_device_routes.answer(self, ui, self.path.split("?")[0], body) or studio_library.answer(self, ui, self.path.split("?")[0], body):
                 return
