@@ -73,6 +73,16 @@ def certificate_fingerprint(cert: str) -> str:
         return ""
 
 
+@dataclass(frozen=True, slots=True)
+class Discovery:
+    timeout_s: float = 2.0
+    key: bytes | None = field(default=None, repr=False)
+    pool_key_path: Path | str | None = None
+    group: str | None = None
+    port: int | None = None
+
+
+DEFAULT_DISCOVERY = Discovery()
 DEFAULT_REQUEST = Options(timeout=None)
 AGENT_ENV = "POOLHOUSE_WORKSPACE_AGENT"
 AGENT_HEADER = "X-Poolhouse-Agent"
@@ -188,7 +198,8 @@ class Member:
 
     # -- discovery -------------------------------------------------------
     @classmethod
-    def discover(cls, *, timeout: float = 60.0) -> list[Member]:
+    def discover(cls, *, discovery: Discovery = DEFAULT_DISCOVERY,
+                 timeout: float = 60.0) -> list[Member]:
         """Every HTTPS compute service currently authorized by this device's node."""
         rows = service_pool.Pool().services()
         own = tls.local().fingerprint
@@ -208,9 +219,10 @@ class Member:
         return out
 
     @classmethod
-    def find_one(cls, *, require: str = "", name: str = "", timeout: float = 60.0) -> Member:
+    def find_one(cls, *, require: str = "", name: str = "",
+                 discovery: Discovery = DEFAULT_DISCOVERY, timeout: float = 60.0) -> Member:
         """The one member to use, or an error saying exactly why there isn't one."""
-        members = cls.discover(timeout=timeout)
+        members = cls.discover(discovery=discovery, timeout=timeout)
         if not members:
             raise DiscoveryError(
                 "this pool has no other current compute service; check the node's pool members")
