@@ -4,6 +4,7 @@ import json
 import pytest
 import test_studio_stream_http as stream_http
 from browser_expect import expect
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from studio_commands import studio_command
 from test_studio_canvas_browser import studio_browser  # noqa: F401
 from test_studio_n8n import node, workflow

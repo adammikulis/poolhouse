@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 import pytest
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_studio_producer_factory import runtime_app as _runtime_app
 
 from poolhouse.fleet import producer_bootstrap, producer_control, producer_process

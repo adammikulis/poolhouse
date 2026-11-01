@@ -1,4 +1,5 @@
 """Real same-Mac producer admission and owner revocation; no installed-holder proof."""
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_studio_producer_flow import (
     api,
     events,

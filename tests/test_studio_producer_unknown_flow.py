@@ -4,6 +4,7 @@ The transport fault occurs before socket send, not actual packet loss. Runtime
 component recreation preserves the real store; this is not a daemon-process restart.
 """
 import pytest
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_studio_producer_flow import api, flow as _flow, runtime_app as _runtime_app, start
 
 from poolhouse.fleet.producer_runtime import Runtime
