@@ -307,9 +307,6 @@ Limits that remain:
   signed-in screen. Reading the secret, the arguments or the daemon's memory is not defended; a
   separate operating-system account for agents, or a sandbox that hides the state directory and
   process list from them, is what closes it.
-* `POST /ui/setup/join` on a machine that has not joined a pool still opens a session for any
-  loopback caller. That session is not credentialed, so it cannot act as the person or reach the
-  routes listed above, but it is accepted by routes that only ask for a live session.
 * The Windows launcher keeps the daemon in WSL and does not read the secret file from there, so
   its window opens the page without a ticket.
 
