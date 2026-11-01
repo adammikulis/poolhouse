@@ -38,7 +38,6 @@ from . import (
     commands,
     companion_routes,
     device_auth,
-    invite_routes,
     projects as project_routes,
     shard_routes,
     studio_device_routes,
@@ -50,7 +49,6 @@ from .availability import Availability, parse_window
 from .daemon_control import protected
 from .deciding import MAX_REQUEST, Deciding
 from .device import device_report
-from .discovery import load_pool_key, memberships
 from .files import (
     DIGEST_HEADER,
     FILE_CHUNK,
@@ -73,7 +71,6 @@ from .jobs import DaemonError, JobRunner
 from .measuring import BenchHost, Job as BenchJob, Refused
 from .member_routes import answer as member_answer
 from .models import Models
-from .onboard.joining import API as JOIN_API, Joining
 from .service_guard import ServiceGuard
 from .service_pool import Pool
 from .serving import Hosting, NoRoom, ServeSettings, Serving
@@ -112,7 +109,6 @@ class Daemon:
     serving: Serving | None = None
     models: Models | None = None
     pool_key_path: Path | str | None = None
-    pool_mode: str | None = None
     tokens: Callable[[], set[str]] | None = None
     devices: Callable[[], list] = lambda: []
     bench: BenchHost | None = None
@@ -121,8 +117,6 @@ class Daemon:
     ui_from_lan: bool = False
     """Whether the web interface answers other machines. Off: it answers this one alone."""
     launcher_control: Callable[[], Any] | None = None
-    joining: Joining | None = None
-    """Answers a machine that asks to join with the passphrase; without it the join routes are off."""
     service_identity: Callable[[], tls.Identity] | None = None
     members: Pool | None = None
     """Which devices are in this daemon's pools; by default the record beside ``pool_key_path``."""
@@ -143,7 +137,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
     models, pool_key_path, tokens = daemon.models, daemon.pool_key_path, daemon.tokens
     bench, hosting, decide = daemon.bench, daemon.hosting, daemon.decide
     ui_from_lan = daemon.ui_from_lan
-    joining, command = daemon.joining, daemon.command
+    command = daemon.command
     roster = daemon.members or Pool()
 
     def secrets_now() -> set[str]:
@@ -356,27 +350,9 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             if not isinstance(self.connection, ssl.SSLSocket) and not addressed_to_this_machine(
                     "localhost", self.client_address[0]):
                 self._send(403, {"error": "the web interface is served to other machines over "
-                                          "TLS only; it signs in with the passphrase"})
+                                          "TLS only; it signs in from the Poolhouse window of this computer"})
                 return True
             return ui_routes(ui, self)
-
-        def _join(self, body: bytes | None) -> bool:
-            """Answer a ``/join/v1`` request, which carries no signature; False for any other path."""
-            if invite_routes.public(ui, self, body):
-                return True
-            if joining is None or not self.path.startswith(JOIN_API + "/"):
-                return False
-            try:
-                asked = json.loads(body or b"{}")
-            except ValueError:
-                asked = None
-            if not isinstance(asked, dict):
-                self._send(400, {"error": "the body is not a JSON object"})
-                return True
-            status, answer = joining.handle(self.path.split("?")[0], asked, self.client_address[0],
-                                            transport_tls=isinstance(self.connection, ssl.SSLSocket))
-            self._send(status, answer)
-            return True
 
         def do_GET(self) -> None:
             if studio_webhooks.public(ui, self, None):
@@ -412,11 +388,10 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 sched = schedule.public() if schedule is not None else None
                 if sched is not None and not sched["available"]:
                     status = {**status, "free": 0}
-                joined = memberships(pool_key_path)
                 root = getattr(daemon.ui, "root", None)
                 proof = app_identity.prove(root, self.headers.get(app_identity.HEADER, "")) if root else ""
                 self._send(200, {"ok": True, "name": self._name(), **({"proof": proof} if proof else {}),
-                                 "pool_mode": daemon.pool_mode or (joined[0].mode if joined else "dev"), **status, **report(),
+                                 **status, **report(),
                                  **({"availability": sched} if sched else {}),
                                  **({"serving": serving.public()} if serving is not None
                                     else {})})
@@ -589,7 +564,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             if self._ui():
                 return
             body = self._body()
-            if body is None or self._join(body) or self._proxy(body):
+            if body is None or self._proxy(body):
                 return
             if not self._guard(body):
                 return
@@ -690,7 +665,6 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 try:
                     got = models.ensure(str(req.get("name") or ""),
                                         source=str(req.get("source") or ""),
-                                        key=load_pool_key(pool_key_path),
                                         autodownload=bool(req.get("autodownload", True)))
                 except (ModelError, ValueError) as e:
                     self._send(400, {"error": str(e)})

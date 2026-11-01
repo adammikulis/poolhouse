@@ -455,10 +455,10 @@ def _installed_commit() -> str:
 
 
 def state() -> dict[str, Any]:
-    """What this machine runs and how it keeps current, for the beacon and ``/health``.
+    """What this machine runs and how it keeps current, for ``/health``.
 
     ``tracking`` is a branch name, ``releases``, or ``off``; ``update_checked_at`` is when
-    that was last looked at, so `fleet.join.table` can print "main, 4m ago" rather than a
+    that was last looked at, so a screen can print "main, 4m ago" rather than a
     claim nobody checked.
     """
     commit = _installed_commit()

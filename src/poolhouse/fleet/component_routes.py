@@ -3,17 +3,16 @@
 from __future__ import annotations
 
 from . import model_components
-from .discovery import load_pool_key
 from .weights import ModelError
 
 
-def selected(models, request: dict, key: bytes | None = None) -> list[dict]:
+def selected(models, request: dict) -> list[dict]:
     choices = {"mtp": request.get("mtp", False), "vision": request.get("vision", False)}
     if any(not isinstance(value, bool) for value in choices.values()):
         raise ModelError("MTP and vision choices must be true or false")
     if not any(choices.values()):
         return []
-    found = model_components.catalogue(models, request["name"], str(request.get("source") or ""), key)
+    found = model_components.catalogue(models, request["name"], str(request.get("source") or ""))
     selected = []
     for row in found["components"]:
         if choices[row["kind"]] and row["status"] != "installed":
@@ -32,8 +31,7 @@ def route(request) -> bool:
         return True
     try:
         if request.method == "GET":
-            request.send(200, model_components.catalogue(ui.models, request.asked("name"), request.asked("source"),
-                                                        load_pool_key(ui.pool_key_path)))
+            request.send(200, model_components.catalogue(ui.models, request.asked("name"), request.asked("source")))
         elif request.method == "POST":
             body = request.body()
             name, kind = body.get("name", ""), body.get("kind", "")
@@ -43,14 +41,13 @@ def route(request) -> bool:
                 raise ModelError("Install the base model before adding a component")
             if ui.models.sources() not in {"internet", "lan", "both"}:
                 raise ModelError("Choose download sources before installing components")
-            offers = selected(ui.models, {"name": name, "mtp": kind == "mtp", "vision": kind == "vision"},
-                              load_pool_key(ui.pool_key_path))
+            offers = selected(ui.models, {"name": name, "mtp": kind == "mtp", "vision": kind == "vision"})
             if not offers:
                 request.send(200, {"installed": True, "name": name, "kind": kind})
             elif ui.downloads is None:
                 request.send(501, {"error": "Background downloads are unavailable"})
             else:
-                row = ui.downloads.start(name, key=load_pool_key(ui.pool_key_path), components=offers)
+                row = ui.downloads.start(name, components=offers)
                 request.send(202, row.public())
         else:
             return False

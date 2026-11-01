@@ -14,18 +14,14 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from poolhouse import runtime, spawned
+from poolhouse import node_pool, runtime, spawned
 from poolhouse.http import Options, ServerError, request_json
 from poolhouse.log import say, warn
 
-from . import discovery, launch_health, launch_open, wsl_network, wsl_registration, wsl_startup
+from . import launch_health, launch_open, wsl_network, wsl_registration, wsl_startup
 from .daemon_control import ControlError, launch_of, request_replacement
-from .discovery import (
-    DEFAULT_PORT as DISCOVERY_PORT,  # noqa: F401  (keeps ports in view)
-    memberships,
-)
 from .handover import claim, finish
-from .pool_modes import notice
+from .onboard.lan import primary_ip
 from .runtime_paths import default_root
 from .updates import state
 from .wsl import (
@@ -129,15 +125,15 @@ def last_screen(name: str, *, track: str = "", port: int = HTTP_PORT) -> list[st
     commit = said["commit"]
     lines = [f"  machine     {name}",
              f"  running     {version}" + ("" if commit in ("", f"v{version}") else f"  {commit}")]
-    groups = memberships()
-    if groups:
-        lines.append(f"  pool     {groups[0].group}")
+    held = node_pool.status()
+    named = ((held or {}).get("governance") or {}).get("name")
+    if named:
+        lines.append(f"  pool     {named}")
     url = f"http://127.0.0.1:{port}/ui/"
     if already_running(port) is None:
         return [*lines, "",
                 f"  next        poolhouse                        -- starts it and opens {url}",
-                "              poolhouse-pool join --persist   -- joins the pool and starts "
-                "it at every login"]
+                "              poolhouse-pool status           -- shows the pool this machine is in"]
     return [*lines,
             f"  open        {url}",
             f"  updates     {'follows ' + track if track else 'releases'}, "
@@ -192,8 +188,6 @@ def _arguments(argv):
 
 
 def _reuse(running: dict[str, Any], known: argparse.Namespace, rest: list[str]) -> int:
-    groups = memberships()
-    say(notice(running.get("pool_mode") or (groups[0].mode if groups else "dev")))
     say(f"Poolhouse is already running as '{running.get('name', '?')}'.")
     if not known.no_browser:
         webbrowser.open(launch_open.page_url(known.port, _root(rest)))
@@ -298,7 +292,7 @@ def main(argv: list[str] | None = None, *,
             return 1
         finally:
             stopped.set()
-    if wsl_startup.guest() and wsl_registration.configuration() is None and (note := wsl_network.nat_notice(discovery.primary_ip())):
+    if wsl_startup.guest() and wsl_registration.configuration() is None and (note := wsl_network.nat_notice(primary_ip())):
         warn(note)
     if daemon_main is None:
         from .daemon import run as daemon_main

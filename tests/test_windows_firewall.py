@@ -11,7 +11,7 @@ import base64
 import pytest
 
 from poolhouse.fleet import windows_firewall as firewall
-from poolhouse.fleet.discovery import DEFAULT_HTTP_PORT, default_port
+from poolhouse.fleet.onboard.lan import DEFAULT_HTTP_PORT
 from poolhouse.fleet.wsl_network import nat_notice
 
 
@@ -37,24 +37,27 @@ class Windows:
         return base64.b64decode(encoded).decode("utf-16-le")
 
 
-def test_the_rules_are_the_daemons_port_and_the_beacons_port():
-    assert firewall.rules() == [("Poolhouse", "TCP", DEFAULT_HTTP_PORT), ("Poolhouse discovery", "UDP", default_port())]
+def test_the_one_rule_is_the_daemons_port_and_there_is_no_beacon_rule():
+    assert firewall.rules() == [("Poolhouse", "TCP", DEFAULT_HTTP_PORT)]
+    assert "UDP" not in firewall.line() and "8771" not in firewall.line()
 
 
-def test_with_both_rules_held_nothing_is_asked_of_windows(capsys):
-    windows = Windows(held=["Poolhouse", "Poolhouse discovery"])
+def test_with_the_rule_held_nothing_is_asked_of_windows(capsys):
+    windows = Windows(held=["Poolhouse"])
     assert firewall.ensure(windows) is True
     assert not any("-Verb RunAs" in s for s in windows.sent) and capsys.readouterr().out == ""
 
 
-def test_missing_rules_are_added_by_one_elevated_prompt_that_says_so_first(capsys):
-    windows = Windows(held=["Poolhouse"])
+def test_a_missing_rule_is_added_by_one_elevated_prompt_that_says_so_first(capsys):
+    windows = Windows()
     assert firewall.ensure(windows) is True
     assert "press Yes" in capsys.readouterr().out
     added = windows.elevated()
-    assert "-DisplayName 'Poolhouse discovery'" in added and f"-Protocol UDP -LocalPort {default_port()}" in added and "-Profile Private" in added
-    assert "-DisplayName 'Poolhouse' " not in added, "a rule that is held is not added again"
+    assert "-DisplayName 'Poolhouse'" in added and f"-Protocol TCP -LocalPort {DEFAULT_HTTP_PORT}" in added and "-Profile Private" in added
     assert firewall.missing(windows) == []
+    again = Windows(held=["Poolhouse"])
+    assert firewall.ensure(again) is True
+    assert not any("-Verb RunAs" in s for s in again.sent), "a rule that is held is not added again"
 
 
 def test_a_prompt_that_was_declined_is_said_in_a_sentence_and_nothing_is_claimed(capsys):
@@ -64,7 +67,7 @@ def test_a_prompt_that_was_declined_is_said_in_a_sentence_and_nothing_is_claimed
 
 
 def test_a_network_windows_calls_public_is_named_with_the_setting_to_change(capsys):
-    windows = Windows(held=["Poolhouse", "Poolhouse discovery"], categories="Public")
+    windows = Windows(held=["Poolhouse"], categories="Public")
     assert firewall.ensure(windows) is False
     assert "choose Private" in capsys.readouterr().err
     assert firewall.public_only(Windows(categories="Public,Private")) is False

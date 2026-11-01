@@ -345,24 +345,6 @@ class Beacon:
         return self.instance or f"{self.hostname}:{self.name}:{self.port}"
 
 
-def named_apart(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """``rows``, each ``name`` two machines share followed by ``#`` and the shortest prefix
-    of four or more characters of its ``machine`` that tells them apart."""
-    by_name: dict[str, list[dict[str, Any]]] = {}
-    for row in rows:
-        by_name.setdefault(str(row.get("name") or ""), []).append(row)
-    for name, same in by_name.items():
-        machines = {str(row.get("machine") or "") for row in same}
-        if len(machines) < 2:
-            continue
-        width = 4
-        while len({m[:width] for m in machines}) < len(machines):
-            width += 1
-        for row in same:
-            row["name"] = f"{name}#{str(row.get('machine') or '')[:width] or '?'}"
-    return rows
-
-
 def _prefer(existing: Beacon, candidate: Beacon) -> Beacon:
     """Merge a repeat answer from one daemon: the later state, the better address."""
     if not (candidate.host.startswith("127.") or existing.host.startswith("127.")):

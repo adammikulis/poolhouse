@@ -20,7 +20,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from test_fleet_join import loopback_advertisers
 
 from poolhouse.bench.member_runs import gather, import_runs
 from poolhouse.fleet.api import Daemon, make_handler
@@ -49,10 +48,8 @@ from poolhouse.fleet.sweeps import (
 )
 from poolhouse.http import Server
 from poolhouse.platform import process_group_kwargs
-from tests.model_approval import approved
 from tests.pool_support import any_command
 
-__all__ = ["loopback_advertisers"]
 pytest_plugins = ["node_kit"]
 
 G = 2**30
@@ -888,7 +885,6 @@ def test_a_detached_bench_is_told_the_home_whose_lock_the_daemon_watches(tmp_pat
 def test_the_bench_home_moves_with_the_environment(tmp_path):
     """Read in a fresh interpreter: reloading the module in this one would mint a second
     `RunNotKept` class and break every later `pytest.raises` on the first (CI, 2026-09-02)."""
-    import os
 
     env = {**os.environ, "POOLHOUSE_BENCH_HOME": str(tmp_path / "elsewhere")}
     said = subprocess.run([sys.executable, "-c",
@@ -902,19 +898,18 @@ def test_the_bench_home_moves_with_the_environment(tmp_path):
 # `bench/ops.py` is the glue between `python -m poolhouse.bench sweep --fleet` and the fleet
 # functions above: it has to turn `--members` names (or none) into the real members `plan`
 # needs, and the placement `plan` returns into the ``{member: Job}`` mapping `dispatch`
-# needs. Discovery itself (real UDP, a real pool key) is `tests/test_fleet_discovery.py`'s
-# job; here `poolhouse.fleet.join.members` and `poolhouse.fleet.pausing.member_clients` are stood
-# in for, so what is real is exactly what was broken: `plan`, `jobs_from`, `dispatch`,
+# needs. Which devices the node lists is `tests/test_fleet_roster.py`'s job; here
+# `poolhouse.fleet.roster.members` and `poolhouse.fleet.roster.client_for` are stood in for, so
+# what is real is exactly what was broken: `plan`, `jobs_from`, `dispatch`,
 # `wait` and `gather`, over the same two daemons as the rest of this module.
 
 def _discovery_stub(monkeypatch, clients):
-    """`poolhouse.fleet.join.members` and `poolhouse.fleet.pausing.member_clients` answering with
+    """`poolhouse.fleet.roster.members` and `poolhouse.fleet.roster.client_for` answering with
     ``clients`` (``{name: Member}``), so `ops._discovered` runs for real over them."""
-    import poolhouse.fleet.join as join_module
-    import poolhouse.fleet.pausing as pausing_module
+    from poolhouse.fleet import roster
 
-    monkeypatch.setattr(join_module, "members", lambda **kw: [{"name": n} for n in clients])
-    monkeypatch.setattr(pausing_module, "member_clients", lambda rows, **kw: dict(clients))
+    monkeypatch.setattr(roster, "members", lambda **kw: [{"name": n} for n in clients])
+    monkeypatch.setattr(roster, "client_for", lambda row, **kw: clients[row["name"]])
 
 
 def test_fleet_planned_and_measure_spread_real_jobs_over_discovered_members(boxes, tmp_path,
@@ -1017,152 +1012,14 @@ def test_fleet_planned_refuses_when_discovery_finds_nobody(monkeypatch):
     monkeypatch.setattr(ops.measuring, "installed_commit", lambda: COMMIT)
     _discovery_stub(monkeypatch, {})
 
-    with pytest.raises(OpsRefused, match="no member answered discovery"):
+    with pytest.raises(OpsRefused, match="no pool device answered"):
         ops.fleet_planned(["sweep", "--fleet", "--serve", "m.gguf"], ["m.gguf"])
-
-
-# -- the whole thing, with nothing stood in but the model -------------------------------
-
-_OWN_GRAPH = {
-    "nodes": [
-        {"id": "topic:kiln", "kind": "topic", "label": "kiln", "mentions": 2, "attrs": {}},
-        {"id": "person:wren", "kind": "person", "label": "Wren Tallis", "mentions": 1,
-         "attrs": {}},
-    ],
-    "edges": [{"source": "person:wren", "target": "topic:kiln", "rel": "interested_in",
-               "weight": 1}],
-}
-_OWN_QUESTIONS = [{"q": "who fires the kiln?", "expect": ["person:wren"]},
-                  {"q": "what is Wren Tallis interested in?", "expect": ["topic:kiln"]}]
-
-_FLEET_LLAMA_META = {
-    "general.architecture": "llama",
-    "llama.block_count": 2,
-    "llama.attention.head_count_kv": 2,
-    "llama.attention.key_length": 8,
-    "llama.context_length": 4096,
-}
 
 
 def _free_port(kind: int = socket.SOCK_STREAM) -> int:
     with socket.socket(socket.AF_INET, kind) as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
-
-
-def _boot_daemon(tmp_path: Path, name: str, *, keyfile: Path, disco_port: int):
-    """A real loopback daemon and signed test advertiser: process, log, log handle and advertiser."""
-    from poolhouse.fleet.discovery import Advertiser, Beacon, derive_token, load_pool_key
-
-    root = tmp_path / name
-    root.mkdir(parents=True, exist_ok=True)
-    http_port = _free_port()
-    log = tmp_path / f"{name}.out"
-    fh = log.open("wb")
-    env = {**os.environ, "POOLHOUSE_DISCOVERY_PORT": str(disco_port),
-           "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"),
-           "PYTHONUNBUFFERED": "1"}
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "poolhouse.fleet.daemon", "--root", str(root / "traind"),
-         "--bench-home", str(root / "bench"), "--host", "127.0.0.1",
-         "--port", str(http_port), "--name", name, "--pool-key", str(keyfile)],
-        env=env, stdout=fh, stderr=subprocess.STDOUT, cwd=root)
-    driver = Member(f"http://127.0.0.1:{http_port}", derive_token(load_pool_key(keyfile)))
-    deadline = time.time() + 20
-    while time.time() < deadline:
-        try:
-            health = driver.health()
-            if health.get("ok"):
-                beacon = Beacon(name=health["name"], port=http_port, machine=health["machine"],
-                                device=health, busy=health.get("busy", False),
-                                queued=health.get("queued", 0), slots=health.get("slots", 1),
-                                free=health.get("free", 1))
-                advertiser = Advertiser(beacon, load_pool_key(keyfile), port=disco_port,
-                                        interval_s=0.2).start()
-                return proc, log, fh, advertiser
-        except MemberError:
-            if proc.poll() is not None:
-                pytest.fail(f"{name} traind died:\n{log.read_text(errors='replace')}")
-        time.sleep(0.1)
-    proc.kill()
-    pytest.fail(f"{name} traind never answered /health:\n{log.read_text(errors='replace')}")
-
-
-def _own_graph(where: Path) -> list[str]:
-    """``--graph`` and ``--questions`` over `_OWN_GRAPH`, written under ``where``."""
-    where.mkdir(parents=True, exist_ok=True)
-    graph = where / "own.json"
-    graph.write_text(json.dumps(_OWN_GRAPH))
-    asked = where / "own.jsonl"
-    asked.write_text("".join(json.dumps(q) + "\n" for q in _OWN_QUESTIONS))
-    return ["--graph", str(graph), "--questions", str(asked)]
-
-
-@pytest.mark.slow
-def test_sweep_fleet_discovers_a_real_daemon_and_measures_on_it_for_real(
-        tmp_path, monkeypatch, workspace_node, loopback_advertisers):
-    """Nothing here is mocked: a real ``poolhouse-pool`` daemon booted as a subprocess, found
-    by real UDP discovery, given a real HTTP job that runs the real ``python -m poolhouse.bench`` over a
-    graph that is not the shipped community, on a llama-server-shaped process instead of a
-    GPU; the run it keeps comes home. The graph and questions are gone from the
-    dispatcher's disk before the job is sent, so the member reads only what the job carried."""
-    import shutil
-
-    from conftest import write_gguf
-
-    import poolhouse.bench as bench
-    import poolhouse.fleet.sweeps as sweeps_module
-    from poolhouse.bench import runs
-    from poolhouse.fleet.discovery import create_pool_key
-    from poolhouse.graph.cache import digest
-    from poolhouse.testing.canned import canned_binary
-
-    keyfile = tmp_path / "pool.key"
-    create_pool_key(keyfile, group="poolhouse")
-    disco_port = _free_port(socket.SOCK_DGRAM)
-    gguf = approved(write_gguf(tmp_path / "tiny.gguf", _FLEET_LLAMA_META))
-    booted = [_boot_daemon(tmp_path, name, keyfile=keyfile, disco_port=disco_port)
-              for name in ("quill", "lantern")]
-    try:
-        monkeypatch.setenv("POOLHOUSE_POOL_KEY", str(keyfile))
-        monkeypatch.setenv("POOLHOUSE_DISCOVERY_PORT", str(disco_port))
-        monkeypatch.setenv("POOLHOUSE_BENCH_HOME", str(tmp_path / "dispatcher-home"))
-
-        binary = canned_binary(tmp_path)
-        kept = tmp_path / "runs.ladybug"
-        dispatcher = tmp_path / "dispatcher"
-        real_dispatch = sweeps_module.dispatch
-
-        def dispatch_without_the_files(jobs, **kw):
-            shutil.rmtree(dispatcher)
-            return real_dispatch(jobs, **kw)
-
-        monkeypatch.setattr(sweeps_module, "dispatch", dispatch_without_the_files)
-        argv = ["sweep", "--fleet", "--serve", str(gguf), "--binary", str(binary),
-                *_own_graph(dispatcher), "--store", "", "--plain-only", "--no-smoke",
-                "--no-profile", "--kept", str(kept), "--serve-port", str(_free_port())]
-        code = bench._main(argv)
-        assert code == 0, "\n".join(p[1].read_text(errors="replace") for p in booted)
-
-        kept_runs = runs(kept)
-        assert kept_runs, "the fleet measured nothing"
-        assert kept_runs[0]["server"]["host"] in ("quill", "lantern")
-        assert kept_runs[0]["server"]["graph"] == digest(_OWN_GRAPH) != bench.invented_digest()
-        assert len(kept_runs[0]["rows"]) == len(_OWN_QUESTIONS), "the shipped questions"
-        assert not dispatcher.exists()
-        for name in ("quill", "lantern"):
-            given = tmp_path / name / "bench" / "given"
-            assert not given.exists() or not any(given.iterdir()), \
-                f"{name} removes what a job shipped once the job ends"
-    finally:
-        for proc, _log, fh, advertiser in booted:
-            advertiser.stop()
-            proc.terminate()
-            try:
-                proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-            fh.close()
 
 
 def _one_machine(boxes, tmp_path, monkeypatch, *, models):

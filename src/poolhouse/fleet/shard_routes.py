@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Any
 
 from . import shard_exec, shard_host, shard_run, shard_spec, shard_store
-from .discovery import memberships
 from .framing import Malformed, content_range
 from .jobs import DaemonError
 from .shard_tree import MOST_PACKED
@@ -41,11 +40,6 @@ def who(handler: Any) -> str:
     """The device that asked (its fingerprint) and, when it named one, the agent behind the request."""
     agent = handler.headers.get("X-Poolhouse-Agent", "")
     return "/".join(p for p in (handler._member or "local", agent if AGENT.match(agent) else "") if p)
-
-
-def mode_of(handler: Any, daemon: Any) -> str:
-    """The mode of the pool the request was signed in; empty when it was signed in none of this device's pools."""
-    return next((m.mode for m in memberships(daemon.pool_key_path) if m.group == handler._group), "")
 
 
 def jobs_of(daemon: Any) -> tuple[set[str], set[str]]:
@@ -90,7 +84,7 @@ def upload(handler: Any, daemon: Any, shard: str, body: bytes) -> bool:
     except Malformed as bad:
         return refuse(handler, bad.status, bad.message)
     folder = shard_store.folder_of(daemon.files_root, shard)
-    if why := shard_host.refusal(mode_of(handler, daemon), str(daemon.files_root.parent)):
+    if why := shard_host.refusal(str(daemon.files_root.parent)):
         return refuse(handler, 403, f"this device takes no tests: {why}")
     if not folder.is_dir() and (why := shard_store.room(daemon.files_root, handler._member, *jobs_of(daemon))):
         return refuse(handler, 429, why)
@@ -109,7 +103,7 @@ def start(handler: Any, daemon: Any, body: bytes) -> bool:
         header = shard_spec.check_header(json.loads(body or b"{}"))
     except (shard_spec.Refused, ValueError, TypeError) as exc:
         return refuse(handler, 400, str(exc))
-    if why := shard_host.refusal(mode_of(handler, daemon), str(daemon.files_root.parent)):
+    if why := shard_host.refusal(str(daemon.files_root.parent)):
         return refuse(handler, 403, f"this device takes no tests: {why}")
     folder = shard_store.folder_of(daemon.files_root, header["id"])
     tree = folder / shard_store.TREE
@@ -186,7 +180,7 @@ def answer(handler: Any, daemon: Any, method: str, path: str, body: bytes | None
         return False
     name = route[len(PREFIX):]
     if method == "GET" and name == "caps":
-        handler._send(200, shard_host.capability(mode_of(handler, daemon), str(daemon.files_root.parent),
+        handler._send(200, shard_host.capability(str(daemon.files_root.parent),
                                                  daemon.name() if callable(daemon.name) else daemon.name, daemon.runner.status()))
         return True
     if not handler._member:

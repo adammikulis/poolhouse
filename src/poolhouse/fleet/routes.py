@@ -15,38 +15,26 @@ from . import (
     component_routes,
     credential_routes,
     experimental_routes,
-    invite_routes,
     project_client,
-    recovery,
 )
 from .board_routes import BoardRoutes
 from .chat_routes import ChatRoutes
-from .discovery import (
-    DiscoveryError,
-    in_pool,
-    load_pool_key,
-    memberships,
-    pool_group,
-    require_name,
-)
 from .extension_routes import ExtensionRoutes
 from .features_routes import FeatureRoutes
 from .initial_setup_routes import InitialSetupRoutes
 from .knowledge_routes import KnowledgeRoutes
 from .launch_routes import LaunchRoutes
+from .member_rows import sweep_argv
 from .notice_routes import NoticeRoutes
-from .onboard.joining import JoinOptions, join_by_passphrase, pool_action
-from .onboard.pools import known_pools
 from .page import COMPONENTS, render
 from .page_security import PAGE_HEADERS
-from .pausing import minutes_of
+from .pool_routes import PoolRoutes
 from .room_routes import RoomRoutes
 from .runtime_repair_routes import RuntimeRepairRoutes
 from .serving_routes import route as serving_route
-from .session import parse_cookie
+from .session import SignInHeld, parse_cookie
 from .setup_jobs import jobs, libraries, provenance, server
 from .setup_preparation import choices_for
-from .setup_recovery_routes import SetupRecoveryRoutes
 from .setup_routes import SetupRoutes
 from .studio_native_picks import NativePickRoutes
 from .studio_routes import StudioRoutes
@@ -212,14 +200,6 @@ class PageRoutes:
         return super().open_route()
 
 
-def found_pools(routes: Any) -> bool:
-    """Answer with the pools on this machine and those the network offers."""
-    ui = routes.ui
-    found = known_pools(ui.pool_key_path, port=ui.discovery_port, self_names=(ui.name,))
-    routes.send(200, {"found": [c.public() for c in found]})
-    return True
-
-
 class SessionRoutes:
     """``/ui/session``: who is signed in, signing in, and signing out."""
 
@@ -243,16 +223,12 @@ class SessionRoutes:
     def _sign_in(self) -> bool:
         ui, req = self.ui, self.body()
         try:
-            sid = ui.login(self.client_ip,
-                           passphrase=str(req.get("passphrase") or ""),
-                           group=str(req.get("group") or ""),
-                           token=str(req.get("token") or ""),
-                           ticket=str(req.get("ticket") or ""))
-        except DiscoveryError as exc:
+            sid = ui.login(self.client_ip, ticket=str(req.get("ticket") or ""))
+        except SignInHeld as exc:
             self.send(429, {"error": str(exc)})
             return True
         if sid is None:
-            self.send(401, {"error": "that passphrase does not match this pool"})
+            self.send(401, {"error": "sign in from the Poolhouse window of this computer"})
             return True
         session = ui.sessions.get(sid)
         self.send(200, {"signed_in": True, "expires_at": session.expires_at},
@@ -304,7 +280,7 @@ class SettingsRoutes:
                 "theme_registry": registry(),
                 "resolved_theme": resolve(ui.settings.appearance if ui.settings else default_appearance()),
                 "name": ui.name,
-                "group": pool_group(ui.pool_key_path),
+                "group": ui.group(),
                 "version": current_version(),
                 "autostart": auto.status(),
                 "schedule": ui.schedule.public() if ui.schedule else {},
@@ -357,13 +333,13 @@ class SettingsRoutes:
             self.send(501, {"error": "this daemon does not know where it keeps things"})
             return True
         if self.method == "GET":
-            items = plan(ui.root, key_path=ui.pool_key_path)
+            items = plan(ui.root)
             self.send(200, {"items": [i.public() for i in items],
                             "app": str(app_location() or "")})
             return True
         if self.method == "POST":
             keys = [str(k) for k in (self.body().get("remove") or [])]
-            out = remove(ui.root, keys, key_path=ui.pool_key_path)
+            out = remove(ui.root, keys)
             out["app"] = str(app_location() or "")
             self.send(200, out)
             return True
@@ -435,24 +411,23 @@ class ModelRoutes:
         if ui.models is None:
             self.send(501, {"error": "no model store on this daemon"})
             return True
-        key = load_pool_key(ui.pool_key_path)
         auto_models = ui.settings is None or ui.settings.autodownload_models
         if self.method == "GET":
-            return self._models_here(key, auto_models)
+            return self._models_here(auto_models)
         if self.method == "DELETE":
             name = str(self.body().get("name") or "")
             self.send(200, {"discarded": ui.models.discard(name)})
             return True
         if self.method == "POST":
-            return self._get_model(key, auto_models)
+            return self._get_model(auto_models)
         return super().route()
 
-    def _models_here(self, key: Any, auto_models: bool) -> bool:
+    def _models_here(self, auto_models: bool) -> bool:
         ui = self.ui
         here = {m.name for m in ui.models.all()}
         free = ui.models.free_gb()
         elsewhere: dict[str, list[str]] = {}
-        for beacon in (ui.members() if key is not None else []):
+        for beacon in ui.members():
             if beacon.get("is_self"):
                 continue
             for row in (beacon.get("device", {}).get("models") or []):
@@ -471,7 +446,7 @@ class ModelRoutes:
         })
         return True
 
-    def _get_model(self, key: Any, auto_models: bool) -> bool:
+    def _get_model(self, auto_models: bool) -> bool:
         from .weights import ModelError
         ui, req = self.ui, self.body()
         name = str(req.get("name") or "")
@@ -479,7 +454,7 @@ class ModelRoutes:
             self.send(400, {"error": "no model was named"})
             return True
         try:
-            components = component_routes.selected(ui.models, req, key)
+            components = component_routes.selected(ui.models, req)
         except (ModelError, ValueError) as exc:
             self.send(400, {"error": str(exc)})
             return True
@@ -488,7 +463,7 @@ class ModelRoutes:
                 self.send(501, {"error": "Background component downloads are unavailable"})
                 return True
             try:
-                got = ui.models.ensure(name, source=str(req.get("source") or ""), key=key,
+                got = ui.models.ensure(name, source=str(req.get("source") or ""),
                                        autodownload=auto_models)
             except (ModelError, ValueError) as exc:
                 self.send(400, {"error": str(exc)})
@@ -506,8 +481,7 @@ class ModelRoutes:
         integrated = next((row for row in components if row["packaging"] == "integrated"), None)
         if integrated and here is None:
             name, source = integrated["name"], integrated["ref"]
-        started = ui.downloads.start(name, source=source,
-                                     key=key, autodownload=auto_models,
+        started = ui.downloads.start(name, source=source, autodownload=auto_models,
                                      components=components)
         self.send(202, started.public())
         return True
@@ -565,92 +539,6 @@ class UpdateRoutes:
         return True
 
 
-class PoolRoutes:
-    """The pools this machine is in, the machines it sees, and joining another."""
-
-    def route(self) -> bool:
-        if self.path == "/ui/pools":
-            return self._pools()
-        if self.path == "/ui/pools/found" and self.method == "GET":
-            return found_pools(self)
-        if self.path == "/ui/members" and self.method == "GET":
-            self.send(200, {"members": self.ui.members(), "self": self.ui.name,
-                            "group": pool_group(self.ui.pool_key_path)})
-            return True
-        if self.path == "/ui/fleet" and self.method == "GET":
-            self.send(200, self.ui.fleet())
-            return True
-        if self.path == "/ui/fleet/join" and self.method == "POST":
-            return self._join_fleet()
-        if self.path == "/ui/fleet/pause" and self.method == "POST":
-            return self._pause_fleet()
-        return super().route()
-
-    def _pause_fleet(self) -> bool:
-        req = self.body()
-        span = str(req.get("for") or "")
-        minutes = minutes_of(span)
-        if span and minutes is None:
-            self.send(400, {"error": f"{span!r} is not a length of time; "
-                                     "try '2h', '90m' or '45s'"})
-            return True
-        self.send(200, self.ui.pause_fleet(resume=bool(req.get("resume")),
-                                           minutes=minutes,
-                                           reason=str(req.get("reason") or "")))
-        return True
-
-    def _pools(self) -> bool:
-        ui = self.ui
-        if self.method == "GET":
-            self.send(200, {"pools": [m.public() for m in
-                                         memberships(ui.pool_key_path)]})
-            return True
-        if self.method == "POST":
-            req = self.body()
-            words = str(req.get("passphrase") or "")
-            try:
-                group = require_name(req.get("group"))
-                with ui.join_guard():
-                    if req.get("mode") is not None:
-                        pool_action(str(req["mode"]), words, group, ui.pool_key_path,
-                                       options=JoinOptions(port=ui.discovery_port, mode=req.get("pool_mode")))
-                    else:
-                        join_by_passphrase(words, group, ui.pool_key_path,
-                                           options=JoinOptions(port=ui.discovery_port, mode=req.get("pool_mode")))
-            except DiscoveryError as exc:
-                self.send(400, {"error": str(exc)})
-                return True
-            recovery.remember(words, group, ui.pool_key_path)
-            rows = memberships(ui.pool_key_path)
-            ui.rejoined()
-            self.send(200, {"pools": [m.public() for m in rows], "joined": group,
-                            "mode": str(req.get("mode") or "join")})
-            return True
-        if self.method == "DELETE":
-            group = str(self.body().get("group") or "")
-            rows = ui.leave(group)
-            ui.rejoined()
-            self.send(200, {"pools": [m.public() for m in rows], "left": group})
-            return True
-        return super().route()
-
-    def _join_fleet(self) -> bool:
-        from .join import JoinError
-        req = self.body()
-        words = str(req.get("passphrase") or "")
-        if not words and not req.get("persist"):
-            self.send(400, {"error": "nothing to do: type the passphrase every machine "
-                                     "shares, or tick 'start at logon'"})
-            return True
-        try:
-            self.send(200, self.ui.join_fleet(
-                passphrase=words, group=require_name(req.get("group")) if words else "",
-                persist=bool(req.get("persist")), name=str(req.get("name") or "")))
-        except (JoinError, DiscoveryError) as exc:
-            self.send(400, {"error": str(exc)})
-        return True
-
-
 class JobRoutes:
     """A measurement sweep: starting it, watching it, stopping it, and what it found."""
 
@@ -673,7 +561,6 @@ class JobRoutes:
     def _sweep(self) -> bool:
         import shlex
 
-        from .join import sweep_argv
         req = self.body()
         models = [str(m) for m in (req.get("models") or []) if str(m).strip()]
         if not models:
@@ -710,7 +597,7 @@ class JobRoutes:
         return True
 
 
-class Router(NoticeRoutes, InitialSetupRoutes, RuntimeRepairRoutes, PageRoutes, SetupRecoveryRoutes, SetupRoutes, SessionRoutes, MeasureRoutes, SettingsRoutes,
+class Router(NoticeRoutes, InitialSetupRoutes, RuntimeRepairRoutes, PageRoutes, SetupRoutes, SessionRoutes, MeasureRoutes, SettingsRoutes,
              BoardRoutes, RoomRoutes, FeatureRoutes, ModelRoutes, ChatRoutes, UpdateRoutes, PoolRoutes, JobRoutes,
              KnowledgeRoutes, *experimental_routes.load(), NativePickRoutes, StudioRoutes, WorkspaceRoutes, LaunchRoutes, ExtensionRoutes, Base):
     """Every screen's routes, in the order a request meets them."""
@@ -727,8 +614,6 @@ class Router(NoticeRoutes, InitialSetupRoutes, RuntimeRepairRoutes, PageRoutes, 
             return True
         if not self.signed_in():
             return True
-        if invite_routes.ui_route(self):
-            return True
         if project_client.route(self):
             return True
         if self.route():
@@ -739,13 +624,13 @@ class Router(NoticeRoutes, InitialSetupRoutes, RuntimeRepairRoutes, PageRoutes, 
     def signed_in(self) -> bool:
         """Whether the request may go on; sends the refusal when it may not.
 
-        A machine in no pool has no password anyone could be asked for, so it answers
-        to itself and to nobody else.
+        A pool no person founded has nobody to sign in as, so its device answers to
+        itself and to nobody else.
         """
         ui = self.ui
         if ui.authed(self.cookie):
             return True
-        if in_pool(ui.pool_key_path):
+        if ui.founded():
             self.send(401, {"error": "sign in first"})
             return False
         why = ui.may_setup(self.client_ip, self.host_header,

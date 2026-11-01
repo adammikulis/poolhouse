@@ -173,7 +173,7 @@ class Preparation:
         progress.check()
         if shared is not None and shared.state != 'done':
             raise ValueError('The shared model download did not complete.')
-        model = self.ui.models.ensure(pick.file, source=pick.ref, key=None,
+        model = self.ui.models.ensure(pick.file, source=pick.ref,
             transfer=ModelTransfer(progress=report, current=progress.local_check), autodownload=True)
         progress.check()
         # A concurrent ordinary download may have finished under the same target lock.

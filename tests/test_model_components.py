@@ -98,7 +98,7 @@ def test_failed_replacement_retains_the_original_model(tmp_path):
     models = Mock()
     models.ensure.side_effect = [Model(base.name, base, base.stat().st_size, 0), OSError("transfer stopped")]
     row = Getting("fixture", base.name, components=[offer()])
-    Downloads(models)._run(row, None, True)
+    Downloads(models)._run(row, True)
     assert row.state == "failed" and base.read_bytes() == original
     assert components.effective(base) == base
 
@@ -141,9 +141,9 @@ def test_addon_route_refuses_untrusted_requests_before_component_lookup(method):
     handler.headers = {}
     ui = Mock()
     ui.authed.return_value = False
+    ui.founded.return_value = False
     ui.may_setup.return_value = "remote setup refused"
-    with patch.object(components, "catalogue") as catalogue, patch.object(
-            routes, "in_pool", return_value=False), patch.object(routes.Router, "send") as send:
+    with patch.object(components, "catalogue") as catalogue, patch.object(routes.Router, "send") as send:
         routes.Router(ui, handler).run()
         assert send.call_args.args[0] == 403
         catalogue.assert_not_called()

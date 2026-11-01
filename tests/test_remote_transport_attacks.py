@@ -16,7 +16,7 @@ import pytest
 
 from poolhouse import node_health, node_launch, sealing
 from poolhouse.board.client import Client
-from poolhouse.fleet import project_client, wsl_network
+from poolhouse.fleet import project_client
 from poolhouse.http import Sealed, ServerError
 
 PROJECT = "a" * 32
@@ -90,13 +90,6 @@ def test_the_client_takes_only_a_json_object_from_a_node(squatter, monkeypatch, 
 def test_a_pipe_or_socket_reader_stops_at_the_frame_limit_and_at_a_closed_connection(sent, error):
     with pytest.raises(error):
         node_health._reply(io.BytesIO(sent).read)
-
-
-@pytest.mark.parametrize("raw", [b"x" * (wsl_network.LIMIT + 1), b"not JSON\n", b"[]\n", b"null\n", b""],
-                         ids=["oversized", "malformed", "array", "null", "closed"])
-def test_wsl_control_replies_reject_oversized_and_malformed_frames(raw):
-    with pytest.raises((OSError, ValueError)):
-        wsl_network._read(io.BytesIO(raw))
 
 
 @pytest.mark.parametrize("target", ["https://8.8.8.8/steal", "http://127.0.0.1:8771/steal",

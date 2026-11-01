@@ -2,7 +2,7 @@
 machines that talk to it.
 
 A device makes its own certificate (`identity`) and is that certificate: it is pinned at joining
-and listed in the pool's membership (`fleet.membership`), it is what the device presents as a
+and listed in the node's authorized compute services (`fleet.service_pool`), it is what the device presents as a
 client and what its daemon serves. A client trusts the one certificate it was told to and no
 other (`pinned_context`): no certificate authority and no first-use trust. A server asks every
 client for its certificate and completes the handshake only with one that is a member
@@ -191,7 +191,7 @@ def _partial(ctx: ssl.SSLContext) -> None:
 
 
 class Members(Protocol):
-    """What `member_context` reads from a membership record."""
+    """What `member_context` reads from the node's authorized compute services."""
 
     def stamp(self) -> Hashable: ...
 

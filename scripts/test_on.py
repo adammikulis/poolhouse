@@ -5,7 +5,7 @@
     scripts/test gate --on wsl-box                         the structural checks there
     scripts/test full --on all --split                     divide the whole list between this machine and the devices
 
-The device that receives it (another device of the node's pool, or a member of a pool in dev mode) runs `scripts/test` on exactly
+The device that receives it (another device of the node's pool) runs `scripts/test` on exactly
 this tree, on its own Python 3.13, and sends the result back, with the output as it is written; the printed lines are a local run's, with the device and its platform named. A file that passed on a
 device with this content, platform and tier is not sent again (`--no-reuse` sends it): a pass on one device
 never satisfies another. Each result is posted to the board, keyed by device. Exit status is the worst of
@@ -33,9 +33,8 @@ from poolhouse.activity.gate import tree_hash
 from poolhouse.fleet import shard_split
 from poolhouse.fleet.shard_spec import TEST_FILE
 from poolhouse.testfarm import report
-from poolhouse.testfarm.client import ShardError, choose
+from poolhouse.testfarm.client import ShardError, Shards, choose, pool_devices
 from poolhouse.testfarm.consent import FEATURE
-from poolhouse.testfarm.farm import Farm, open_farm
 from poolhouse.testfarm.ledger import Ledger, key as ledger_key
 from poolhouse.workspace import testruns
 
@@ -49,7 +48,7 @@ OPTION = re.compile(r"^-")
 class Run:
     """What every part of one remote run shares: who asks, the record, the tier, the file keys and the tree."""
 
-    shards: Farm
+    shards: Shards
     ledger: Ledger
     tier: str
     content: dict[str, str]
@@ -161,7 +160,7 @@ def record(run: Run, part: Part) -> None:
         print(f"test: board notice not sent: {exc}", file=sys.stderr)
 
 
-def ready(shards: Farm, devices: list[dict]) -> list[Part]:
+def ready(shards: Shards, devices: list[dict]) -> list[Part]:
     """A part for each device that takes tests; the ones that do not are named with the reason."""
     parts = []
     for device in devices:
@@ -201,14 +200,14 @@ def main(args: argparse.Namespace, rest: list[str], root: Path, command_for: Cal
         return refuse("the gate takes no files")
     if features.turned_off(FEATURE):
         return refuse(f"running tests on another device was turned off here (`poolhouse features disable {FEATURE}`); `poolhouse features enable {FEATURE}` turns it on")
+    if not features.enabled(FEATURE):
+        return refuse(f"running tests on another device through the node is an experimental feature and off here; a person turns it on with `poolhouse features enable {FEATURE}`")
     try:
-        shards = open_farm()
-        chosen = choose(args.on, shards.devices)
+        chosen = choose(args.on, pool_devices())
+        shards = Shards()
     except Exception as exc:  # noqa: BLE001 - no node, no session, no such device: one line and the status of a run that never started
         print(f"test: {exc}", file=sys.stderr)
         return NOT_RUN
-    if any(row["via"] == "node" and not row["also"] for row in chosen) and not features.enabled(FEATURE):
-        return refuse(f"running tests on another device through the node is an experimental feature and off here; a person turns it on with `poolhouse features enable {FEATURE}`")
     if tier == "quick":
         picked = reached(root, args.base)
         if picked is None:

@@ -207,16 +207,13 @@ pool-view .url,pool-view .name,pool-view .loaded-models { overflow-wrap:anywhere
           ? el("div", { class: "empty" },
               el("div", { class: "big" }, "Your pool starts here"),
               el("div", {}, "Install Poolhouse on another device to add its spare compute."),
-              el("div", {}, "Dev connects trusted devices automatically. You can also join manually below."))
+              el("div", {}, "Add a device or join another device's pool below."))
           : null));
 
       const nav = document.querySelector("fleet-nav");
       if (nav && nav.paint) nav.paint("pool");
 
-      Promise.all([api("/ui/pools"), api("/ui/setup")]).then(([c, setup]) => {
-        this.poolMode = setup.pool_mode; this.deviceName = setup.name;
-        this.drawPools(c.pools || []);
-      });
+      api("/ui/pool").then((c) => this.drawPool(c.pool || null, c.error || ""));
       this.drawSweep(r);
 
       clearTimeout(this.timer);
@@ -284,36 +281,42 @@ pool-view .url,pool-view .name,pool-view .loaded-models { overflow-wrap:anywhere
         note);
     }
 
-    drawPools(rows) {
-      const signature = JSON.stringify([this.poolMode, rows.map(c => [c.group, c.mode, c.selection])]);
+    drawPool(pool, error) {
+      const signature = JSON.stringify([error, pool && [pool.id, pool.name, pool.policy, pool.governance, pool.listening, pool.joining_open, pool.missing,
+        pool.members.map(m => [m.fingerprint, m.name, m.active, m.connected])]]);
       if (signature === this.poolSignature) return;
       this.poolSignature = signature;
       const joined = this.querySelector("#pool-joined");
       const refresh = async () => {
-        this.drawPools((await api("/ui/pools")).pools || []);
+        this.poolSignature = "";
         this.draw();
       };
+      const fail = (text) => joined.append(el("div", { class: "err", role: "alert" }, text));
+      const members = (pool?.members || []).filter(m => m.active);
       joined.replaceChildren(
         el("h2", {}, "Pool connections"),
-        el("div", { class: "hint" }, "This device shares compute with each pool listed here."),
-        ...M.kids((rows[0]?.mode || this.poolMode) === "dev" ? el("button", { class: "ghost small", onclick: async () => {
-          const state = await api("/ui/setup");
-          const result = await api("/ui/setup/initial", { method: "POST", body: JSON.stringify({
-            name: state.name, pool_mode: "dev", automatic: true }) });
-          if (result.error) { joined.append(el("div", { class: "err" }, result.error)); return; }
-          await refresh();
-        } }, !rows.length || rows[0].selection === "manual" ? "Connect automatically" : "Automatic connection enabled") : null),
-        ...(rows.length ? rows.map((c, i) =>
+        el("div", { class: "hint" }, "This device shares compute with the devices of the pool its node is in."),
+        ...M.kids(error ? el("div", { class: "err", role: "alert" }, error) : null),
+        ...(pool ? [
           el("div", { class: "row" },
-            el("span", {}, el("b", {}, c.group),
-              el("span", { class: "why" }, i === 0 ? "Primary pool" : "Also joined")),
-            el("button", { class: "ghost small", onclick: async () => {
-              const left = await api("/ui/pools", { method: "DELETE",
-                body: JSON.stringify({ group: c.group }) });
-              if (left.error || left.ok === false) { joined.append(el("div", { class: "err", role: "alert" }, left.error || "Could not leave this pool.")); return; }
+            el("span", {}, el("b", {}, pool.name || "A pool of one"),
+              el("span", { class: "why" }, pool.governance === "governed"
+                ? `Joining: ${pool.policy}` : "No person has founded this pool yet")),
+            ...M.kids(pool.governance === "governed" ? el("button", { class: "ghost small", onclick: async () => {
+              const left = await api("/ui/pool", { method: "DELETE" });
+              if (left.error || left.ok === false) { fail(left.error || "Could not leave this pool."); return; }
               await refresh();
-            }, title: M.plain("action.leave") }, M.t("action.leave")))) : [el("div", { class: "hint" }, "No pool joined.")]),
-        M.poolForm({ endpoint: "/ui/pools", groups: rows.map(c => c.group), group: rows[0]?.group || "default", onComplete: refresh }));
+            }, title: M.plain("action.leave") }, M.t("action.leave")) : null)),
+          ...M.kids(pool.missing ? el("div", { class: "hint" }, pool.missing) : null),
+          ...members.map(m => el("div", { class: "row" },
+            el("span", {}, el("b", {}, m.name),
+              el("span", { class: "why" }, m.this_device ? "This device" : m.connected ? "Connected" : "Known")),
+            ...M.kids(m.this_device ? null : el("button", { class: "ghost small", onclick: async () => {
+              const removed = await api("/ui/pool/remove-device", { method: "POST", body: JSON.stringify({ device: m.fingerprint }) });
+              if (removed.error || removed.ok === false) { fail(removed.error || "Could not remove this device."); return; }
+              await refresh();
+            } }, "Remove"))))] : []),
+        M.poolForm({ founded: pool?.governance === "governed", onComplete: refresh }));
     }
 
     drawSweep(fleet) {

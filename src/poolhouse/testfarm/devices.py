@@ -15,8 +15,7 @@ from poolhouse.log import say
 from poolhouse.workspace import testruns
 
 from . import report
-from .client import ShardError, choose
-from .farm import Farm, open_farm
+from .client import ShardError, Shards, choose, pool_devices
 from .ledger import Ledger
 
 
@@ -36,7 +35,7 @@ def last_line(last: dict) -> str:
     return f"{'PASS' if last['exit'] == 0 else 'FAIL'} {last['tier']} {last['passed']} passed {last['failed']} failed {ago(last['at'])}"
 
 
-def describe(shards: Farm, device: dict, ledger: Ledger) -> dict:
+def describe(shards: Shards, device: dict, ledger: Ledger) -> dict:
     """One row: the device, what it says about taking shards, and the last run recorded for it."""
     row = {**device, "last": ledger.last(device["fingerprint"])}
     try:
@@ -48,13 +47,13 @@ def describe(shards: Farm, device: dict, ledger: Ledger) -> dict:
 
 def table(rows: list[dict]) -> list[str]:
     """The lines `poolhouse-test-devices` prints."""
-    lines = [f"{'DEVICE':<20} {'VIA':<5} {'REACH':<8} {'PLATFORM':<34} {'SLOTS':<6} {'TAKES TESTS':<12} LAST RESULT"]
+    lines = [f"{'DEVICE':<20} {'REACH':<8} {'PLATFORM':<34} {'SLOTS':<6} {'TAKES TESTS':<12} LAST RESULT"]
     for row in rows:
         caps = row["caps"]
         platform = report.where(caps["platform"], caps.get("python")) if "platform" in caps else "-"
         slots = f"{caps['free']}/{caps['most_active']}" if "free" in caps else "-"
         takes = "yes" if caps["accepts"] else "no"
-        lines.append(f"{row['name']:<20} {row.get('via', 'node'):<5} {row.get('reach', 'unknown'):<8} {platform:<34} {slots:<6} {takes:<12} {last_line(row['last'])}")
+        lines.append(f"{row['name']:<20} {row.get('reach', 'unknown'):<8} {platform:<34} {slots:<6} {takes:<12} {last_line(row['last'])}")
         if not caps["accepts"]:
             lines.append(f"{'':<26} {caps.get('reason', '')}")
         if row.get("reach_hint"):
@@ -65,8 +64,8 @@ def table(rows: list[dict]) -> list[str]:
 def run(args: argparse.Namespace) -> int:
     """List the devices; 1 when no node answers or no registered session is available."""
     try:
-        shards = open_farm()
-        chosen = choose(args.device, shards.devices)
+        chosen = choose(args.device, pool_devices())
+        shards = Shards()
         ledger = Ledger(reuse.reuse_base() / testruns.scope(Path.cwd()))
         rows = [describe(shards, device, ledger) for device in chosen]
     except (ShardError, NodeError) as exc:

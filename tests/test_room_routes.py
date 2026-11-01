@@ -9,22 +9,17 @@ import platform
 
 import pytest
 from conftest import write_gguf
-from test_fleet_ui import WORDS, Serving, a_keystore, counting  # noqa: F401
+from test_fleet_ui import Serving
+from test_fleet_ui_founded import gated, governed  # noqa: F401  (governed is a fixture)
 from test_wired import Recorder, dense
 
 from poolhouse.serve import wired, wired_apply as apply
 
-
-@pytest.fixture(autouse=True)
-def the_passphrase_is_kept(a_keystore):  # noqa: F811
-    """Joining stores the passphrase and signing in compares against it."""
+pytest_plugins = ("testfarm_kit",)  # the `node_binary` fixture the founded pool below uses
 
 
 @pytest.fixture(autouse=True)
-def the_pool_already_exists(monkeypatch, tmp_path):
-    from poolhouse.fleet.onboard import joining
-
-    monkeypatch.setattr(joining, "find_joiners", lambda *a, **k: [])
+def an_isolated_home(monkeypatch, tmp_path):
     monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "home"))
     monkeypatch.setattr(platform, "system", lambda: "Darwin")
     for name in apply.AGENT_MARKERS:
@@ -99,25 +94,15 @@ def test_an_access_token_header_cannot_make_the_request(room):
     assert room.ran.calls == []
 
 
-def test_a_session_opened_with_a_token_cannot_make_the_request(room):
-    room.call("/ui/setup/join", method="POST", body={"passphrase": WORDS, "group": "home"})
-    token = next(iter(room._pool_tokens()))
-    _, _, headers = room.call("/ui/session", method="POST", body={"token": token})
-    cookie = headers["Set-Cookie"].split(";")[0]
-    status, body, _ = room.call("/ui/room/apply", method="POST", body={"mb": 65536},
-                                cookie=cookie)
-    assert status == 403 and "token" in body["error"]
-    _, _, headers = room.call("/ui/session", method="POST", body={"passphrase": WORDS})
-    person = headers["Set-Cookie"].split(";")[0]
-    status, _, _ = room.call("/ui/room/apply", method="POST", body={"mb": 65536}, cookie=person)
-    assert status == 200 or status == 502
-    assert len(room.ran.calls) == 1
-
-
-def test_a_joined_machine_asks_for_a_session_first(room):
-    room.call("/ui/setup/join", method="POST", body={"passphrase": WORDS, "group": "home"})
+@pytest.mark.slow
+def test_a_founded_pool_asks_for_a_session_first(governed, room):  # noqa: F811
+    gated(room)
     status, _, _ = room.call("/ui/room/apply", method="POST", body={"mb": 65536})
     assert status == 401 and room.ran.calls == []
+    _, _, headers = room.ticket_session()
+    status, _, _ = room.call("/ui/room/apply", method="POST", body={"mb": 65536}, cookie=headers["Set-Cookie"].split(";")[0])
+    assert status == 200 or status == 502
+    assert len(room.ran.calls) == 1
 
 
 def test_a_model_name_with_shell_text_is_only_ever_a_lookup(room):
@@ -159,8 +144,7 @@ def test_another_machine_on_the_network_cannot_make_the_request_even_signed_in(r
     from tests.remote_client_support import REMOTE_ADDRESS
 
     lan = REMOTE_ADDRESS
-    room.call("/ui/setup/join", method="POST", body={"passphrase": WORDS, "group": "home"})
-    _, _, headers = room.call("/ui/session", method="POST", body={"passphrase": WORDS}, host=lan)
+    _, _, headers = room.ticket_session(host=lan)
     cookie = headers["Set-Cookie"].split(";")[0]
     status, body, _ = room.call("/ui/room/apply", method="POST", body={"mb": 65536},
                                 host=lan, cookie=cookie)

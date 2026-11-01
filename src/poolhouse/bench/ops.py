@@ -23,7 +23,7 @@ from poolhouse.bench.member_runs import gather
 from poolhouse.bench.record import of
 from poolhouse.bench.score import derived
 from poolhouse.bench.show import NOT_ANSWERING
-from poolhouse.fleet import join, measuring, pausing, sweeps
+from poolhouse.fleet import measuring, roster, sweeps
 from poolhouse.log import say, warn
 from poolhouse.serve.serving import Config, Serving
 
@@ -274,12 +274,17 @@ def _values_of(argv: Sequence[str], flag: str) -> list[str]:
 
 
 def _discovered(members: Sequence[str]) -> dict[str, Any]:
-    """Every member on this machine's pool(s), by name, narrowed to ``members`` when named.
+    """Every compute device of the pool this machine's node lists, by name, narrowed to ``members`` when named.
 
-    `Refused` when a name in ``members`` answered to no daemon, or when discovery found
-    nobody at all.
+    `Refused` when a name in ``members`` answered to no daemon, or when no device answered
+    at all.
     """
-    clients = pausing.member_clients(join.members())
+    try:
+        rows = roster.members()
+    except PermissionError as exc:
+        raise Refused(f"error: {exc}") from exc
+    found = {str(row["name"]): roster.client_for(row) for row in rows}
+    clients = {name: client for name, client in found.items() if client is not None}
     if members:
         wanted = {str(p) for p in members}
         named = {name: client for name, client in clients.items() if name in wanted}
@@ -290,8 +295,8 @@ def _discovered(members: Sequence[str]) -> dict[str, Any]:
                           + (f" (found: {', '.join(sorted(clients))})" if clients else ""))
         clients = named
     if not clients:
-        raise Refused("error: no member answered discovery; is another machine running "
-                      "'poolhouse-pool join'?")
+        raise Refused("error: no pool device answered; is another member running the poolhouse daemon "
+                      "('poolhouse-pool members' lists the pool)?")
     return clients
 
 
@@ -299,8 +304,8 @@ def fleet_planned(argv: Sequence[str], models: Sequence[str], *,
                   members: Sequence[str] = ()) -> Fleeted:
     """The fleet's plan for ``models``, and the jobs it dispatches.
 
-    Members are this machine's own discovery (`poolhouse.fleet.join.members`, turned into
-    `remote.Member` clients the way `poolhouse.fleet.pausing.member_clients` does), narrowed to
+    Members are the devices this machine's node lists (`poolhouse.fleet.roster.members`, turned into
+    `remote.Member` clients by `poolhouse.fleet.roster.client_for`), narrowed to
     ``members`` by name when given. `poolhouse.fleet.sweeps.plan` then places each model,
     largest first, and `poolhouse.fleet.measuring.jobs_from` turns the placement into one
     `Job` per member. A member on another commit is refused before anything is dispatched.

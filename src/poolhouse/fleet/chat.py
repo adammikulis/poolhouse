@@ -46,9 +46,8 @@ def _capabilities(value):
     return value if isinstance(value, dict) and 'chat' in value else model_capabilities()
 
 
-def targets(members: list[dict[str, Any]], serving: Any = None,
-            token: str = "") -> list[Target]:
-    """Every model this machine can reach, its own and the ones on the network."""
+def targets(members: list[dict[str, Any]], serving: Any = None) -> list[Target]:
+    """Every model this machine can reach, its own and the ones on the network; a member row's ``token`` is the secret to reach it."""
     out: list[Target] = []
     for served in (serving.live() if serving is not None else []):
         if not allows_chat(getattr(served, 'capabilities', None)):
@@ -73,7 +72,7 @@ def targets(members: list[dict[str, Any]], serving: Any = None,
                     continue
                 out.append(Target(model=str(model),
                                   url=f"{base}/infer{CHAT_PATH}",
-                                  token=token,
+                                  token=str(beacon.get("token") or ""),
                                   capabilities=_capabilities(served.get('capabilities')),
                                   member=str(beacon.get("name") or "")))
     out.sort(key=lambda t: (not t.local, t.member, t.model))

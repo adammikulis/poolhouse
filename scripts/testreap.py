@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import signal
@@ -10,7 +9,7 @@ import tempfile
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
 import psutil
 
@@ -113,17 +112,6 @@ def owner_pid(pid: int) -> int | None:
     return int(named) if named.isdigit() else None
 
 
-def recorded_pid(root: str) -> int | None:
-    """The pid in the run record ``start_daemon`` wrote under ``root``, or ``None`` when there is none (pytest removes the folders of old runs)."""
-    from poolhouse.fleet.join import STARTED_FILE
-
-    try:
-        held: Any = json.loads((Path(root) / STARTED_FILE).read_text())
-        return int(held["pid"])
-    except (OSError, ValueError, KeyError, TypeError):
-        return None
-
-
 def daemon_root(row: Proc, roots: tuple[str, ...]) -> str | None:
     """The ``--root`` of ``row`` when it is a daemon (a Python running the daemon module) whose root starts with one of ``roots``."""
     words = row.command.split()
@@ -138,12 +126,11 @@ class Readers(NamedTuple):
 
     gone: Callable[[int, float], bool] = owner_gone
     owner_of: Callable[[int], int | None] = owner_pid
-    recorded: Callable[[str], int | None] = recorded_pid
 
 
 def stale_daemons(rows: list[Proc], roots: tuple[str, ...] = DAEMON_ROOTS, min_age: float = MIN_AGE_S, now: float | None = None,
                   readers: Readers | None = None) -> list[int]:
-    """The pids of daemons whose root starts with one of ``roots``, whose run record under that root, when there is one, names them and whose run is gone.
+    """The pids of daemons whose root starts with one of ``roots`` and whose run is gone.
 
     A daemon started under a test process names it in its environment and is stale once that process has exited. One that names
     none is stale after ``min_age`` seconds once its parent has exited."""
@@ -152,7 +139,7 @@ def stale_daemons(rows: list[Proc], roots: tuple[str, ...] = DAEMON_ROOTS, min_a
     found = []
     for row in rows:
         root = daemon_root(row, roots)
-        if root is None or readers.recorded(root) not in (row.pid, None):
+        if root is None:
             continue
         owner = readers.owner_of(row.pid)
         if readers.gone(owner, row.started) if owner is not None else (

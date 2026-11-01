@@ -433,21 +433,19 @@ class Endpoint:
                 "transport": Transport(api_key=self.token)}
 
 
-def discover_serving(key: bytes, *, model: str = "", timeout_s: float = 2.0,
-                     group: str | None = None, port: int | None = None
-                     ) -> list[Endpoint]:
-    """Every machine on the network with a model loaded."""
-    from .discovery import derive_token, discover
+def discover_serving(*, model: str = "", timeout_s: float = 10.0) -> list[Endpoint]:
+    """Every node-authorized pool service with a model loaded."""
+    from .remote import Member
 
-    token = derive_token(key)
     out = []
-    for beacon in discover(key, timeout_s=timeout_s, group=group, port=port):
+    for member in Member.discover(timeout=timeout_s):
+        beacon = member.beacon
         for served in (beacon.device.get("serving") or []):
             models = tuple(served.get("models") or ())
             if model and not any(model.lower() in m.lower() for m in models):
                 continue
-            out.append(Endpoint(member=beacon.name, base_url=beacon.base_url,
-                                token=token, models=models,
+            out.append(Endpoint(member=member.name, base_url=member.base_url,
+                                token=member.token, models=models,
                                 slots=int(served.get("slots") or 1),
                                 free=beacon.free))
     return out

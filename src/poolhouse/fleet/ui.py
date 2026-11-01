@@ -6,44 +6,26 @@ import contextlib
 import json
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
 
-from poolhouse import jsonl
-from poolhouse.fleet.join_request import JoinHooks, JoinRequest
+from poolhouse import jsonl, node_pool
 from poolhouse.home import machine_id
 from poolhouse.http import Options, Server, ServerError, open_stream
 from poolhouse.optional import module
 
-from . import pausing, recovery
-from .discovery import (
-    DiscoveryError,
-    derive_token,
-    discover,
-    leave,
-    load_pool_key,
-    memberships,
-    named_apart,
-    pool_group,
-    require_name,
-)
+from . import pausing, roster
 from .launch_secret import LaunchSecret
-from .onboard.joining import (
-    DEFAULT_JOIN_OPTIONS,
-    JoinOptions,
-    join_by_passphrase,
-    join_existing,
-    matches,
-    pool_action,
-)
+from .member_rows import named_apart
 from .page import FIT_ONLY
+from .remote import NO_SERVICES
 from .routes import ASSETS, UI_HEADER, asset_bytes, routes, write, write_json
 from .runtime_paths import default_root
 from .serving import Hosting, context_settings
-from .session import Sessions, Throttle, parse_cookie
+from .session import Sessions, SignInHeld, Throttle, parse_cookie
 from .settings import apply_preferences
 from .updates import current_version
 
@@ -55,7 +37,9 @@ FALLBACK_ROOM = 24 * 1024 ** 3
 
 LOOPBACK = {"127.0.0.1", "::1", "localhost"}
 DISCOVER_CACHE_S = 3.0
-"""Long enough that three panels refreshing do not each fire a multicast sweep, short"""
+"""Long enough that three panels refreshing do not each ask every member's health, short enough that a new member shows."""
+POOL_CACHE_S = 2.0
+"""How long the node's answer about this device's pool is reused between requests."""
 
 
 SCRAPE_TIMEOUT_S = 4.0
@@ -87,9 +71,8 @@ def _scraped(source: str) -> dict[str, Any]:
 class UI:
     """Route handling for ``/ui/*``. Holds the session store and the login throttle."""
 
-    def __init__(self, *, name: str = "", pool_key_path: Path | str | None = None,
-                 member_port: int = 8770, setup_token: str = "",
-                 on_join: Any | None = None) -> None:
+    def __init__(self, *, name: str = "", member_port: int = 8770, setup_token: str = "",
+                 gated: bool = True) -> None:
         self.runner: Any = None
         self.parts: Any = None
         """The page's components, `page.COMPONENTS` unless a caller leaves some out."""
@@ -114,25 +97,22 @@ class UI:
         """``() -> dict``: this process's own answering telemetry, when it answers anything.
         `AskRoutes.metrics` is that callable. None on a daemon that only serves models,
         which is most of them -- the Telemetry view is then pointed at a page that does."""
-        self.discovery_port: int | None = None
-        self.persist_with: Any = None
         self.rename: Any = None
         """``(str) -> str``: renames this machine now. Set by the daemon that owns it."""
         self.name = name
-        self.on_join = on_join
-        self.pool_key_path = pool_key_path
+        self.gated = gated
+        """False on a page that answers this machine alone (`serve_page`): no founded pool asks it to sign in."""
         self.member_port = member_port
         self.setup_token = setup_token
         self.sessions = Sessions()
-        self.throttle = Throttle()
         self.launch_throttle = Throttle()
         self.redeem_throttle = Throttle()
         self.launch: LaunchSecret | None = None
         """The secret that lets this machine's own window or owner terminal ask for a ticket."""
         self.audit: Callable[..., None] | None = None
         """``(event, **fields)``: takes the rows `record` would write to the root's audit file."""
-        self._join_lock = threading.Lock()
         self._members: tuple[float, list[dict[str, Any]]] = (0.0, [])
+        self._pool: tuple[float, dict[str, Any] | None] = (0.0, None)
         self.setup_jobs = None
         self._setup_jobs_lock = threading.Lock()
 
@@ -156,6 +136,35 @@ class UI:
                 "password to check, so the first person to reach this page would own "
                 "the box. Start it with --setup-from-lan to allow this deliberately.")
 
+    def pool(self, *, force: bool = False) -> dict[str, Any] | None:
+        """The pool status this device's node reports, briefly reused; None when no node answers."""
+        age, held = self._pool
+        if force or time.time() - age >= POOL_CACHE_S:
+            held = node_pool.status()
+            self._pool = (time.time(), held)
+        return held
+
+    def governance(self) -> dict[str, Any]:
+        """What governs this device's pool: ``mode`` ``governed`` once a person founded it, with its ``name``."""
+        held = self.pool()
+        raw = held.get("governance") if isinstance(held, dict) else None
+        return raw if isinstance(raw, dict) else {}
+
+    def founded(self) -> bool:
+        """Whether a person founded this device's pool, which is when the page asks for a signed-in session.
+
+        A node that does not answer is not told apart from a founded pool: the page stays closed rather than open.
+        """
+        if not self.gated:
+            return False
+        held = self.pool()
+        return held is None or self.governance().get("mode") != "unfounded"
+
+    def group(self) -> str | None:
+        """The name of the founded pool this device is in; None while the pool is unfounded."""
+        name = self.governance().get("name") if self.governance().get("mode") == "governed" else None
+        return str(name) if name else None
+
     def authed(self, cookie_header: str) -> bool:
         return self.sessions.get(parse_cookie(cookie_header)) is not None
 
@@ -176,16 +185,12 @@ class UI:
 
     # -- state -----------------------------------------------------------
     def state(self) -> dict[str, Any]:
-        selected = memberships(self.pool_key_path)
-        joined = bool(selected)
-        mode = selected[0].mode if selected else getattr(self.settings, "pool_mode", "") or "dev"
+        founded = self.founded()
         done = bool(self.settings and self.settings.setup_done)
         return {"version": current_version(),
                 "experimental_notice_accepted": bool(self.settings and self.settings.experimental_notice_accepted is True),
-                "in_pool": joined, "name": self.name,
-                "group": pool_group(self.pool_key_path) if joined else None,
-                "needs_password": joined, "pool_mode": mode,
-                "selection": getattr(selected[0], "selection", "automatic") if selected else "automatic",
+                "in_pool": founded, "name": self.name, "group": self.group(),
+                "needs_sign_in": founded,
                 "needs_setup": not done,
                 "needs_setup_theme": bool(self.settings and not done and self.settings.appearance_initialized is False)}
 
@@ -197,104 +202,33 @@ class UI:
                 self.settings.save(self.settings_path)
         return {"ok": True, **self.state()}
 
-    def leave(self, group: str) -> list[Any]:
-        """Drop a pool and its stored passphrase; the pools left."""
-        recovery.forget(group, self.pool_key_path)
-        return leave(group, self.pool_key_path)
-
-    def rejoined(self) -> None:
-        """The set of pools changed: advertise on the new one, drop the old."""
+    def refresh(self) -> None:
+        """The pool changed: forget what was read of it and of its members."""
         self._members = (0.0, [])
-        if self.on_join is not None:
-            with contextlib.suppress(Exception):
-                self.on_join()
+        self._pool = (0.0, None)
 
     def itself(self) -> dict[str, Any]:
         """This machine as a member row, for a screen counting machines before any
-        other one is on the network."""
+        other one is in the pool."""
+        report = self.report() if callable(self.report) else {}
         status = self.runner.status() if self.runner is not None else {}
-        slots = int(status.get("slots") or 1)
-        return {"name": self.name, "port": self.member_port, "machine": machine_id(),
-                "device": self.report() if callable(self.report) else {},
-                "busy": bool(status.get("busy")), "queued": int(status.get("queued") or 0),
-                "slots": slots, "free": int(status.get("free", slots)),
-                "host": "127.0.0.1", "hostname": "",
-                "base_url": f"http://127.0.0.1:{self.member_port}",
-                "display_url": self.display_url,
-                "is_self": True, "pools": []}
+        row = roster.describe(self.name, f"http://127.0.0.1:{self.member_port}", machine_id(), {**report, **status}, is_self=True)
+        return {**row, "display_url": self.display_url}
 
     def members(self, *, force: bool = False) -> list[dict[str, Any]]:
-        """Everyone on the LAN, cached briefly. The browser cannot do this itself."""
+        """This machine and every other compute device the node lists for the pool, cached briefly. The browser cannot do this itself."""
         age, cached = self._members
         if not force and time.time() - age < DISCOVER_CACHE_S:
             return cached
-        joined = memberships(self.pool_key_path)
-        if not joined:
-            return [self.itself()]
-        # One machine in two of your pools is one machine, listed once, with the
-        # pools you share with it. Each pool is advertised separately, so the
-        # same daemon answers on each with a beacon of its own.
-        local = self.itself()
-        local["pools"] = [member.group for member in joined]
-        by_address: dict[str, dict[str, Any]] = {local["machine"]: local}
-        for member in joined:
-            for beacon in discover(member.key, timeout_s=1.5, port=self.discovery_port):
-                identity = beacon.machine or beacon.base_url
-                row = by_address.get(identity)
-                if row is None:
-                    row = beacon.public()
-                    row["host"] = beacon.host
-                    row["base_url"] = beacon.base_url
-                    row["called"] = beacon.name
-                    row["is_self"] = beacon.machine == machine_id()
-                    row["pools"] = []
-                    by_address[identity] = row
-                if member.group not in row["pools"]:
-                    row["pools"].append(member.group)
-        found = sorted(named_apart(list(by_address.values())),
-                       key=lambda r: (not r["is_self"], r["name"]))
-        self._members = (time.time(), found)
-        return found
-
-    # -- actions ---------------------------------------------------------
-    @contextlib.contextmanager
-    def join_guard(self) -> Iterator[None]:
-        """Serialize pool membership changes without waiting on another handshake."""
-        if not self._join_lock.acquire(blocking=False):
-            raise DiscoveryError("another join is in progress; try again")
-        try:
-            yield
-        finally:
-            self._join_lock.release()
-
-    def join(self, passphrase: str, group: str, source: str, *,
-             options: JoinOptions = DEFAULT_JOIN_OPTIONS, origin: str = "") -> tuple[dict[str, Any], str]:
-        """Join a pool and open a session carrying ``origin``. Returns ``(state, session id)``."""
-        group = require_name(group)
-        held = self.throttle.blocked_for(source)
-        if held:
-            raise DiscoveryError(f"too many attempts -- wait {held:.0f}s")
-        try:
-            with self.join_guard():
-                if options.action is not None:
-                    pool_action(options.action, passphrase, group, self.pool_key_path,
-                                   options=replace(options, port=options.port if options.port is not None else self.discovery_port))
-                else:
-                    joiner = join_existing if options.existing else join_by_passphrase
-                    joiner(passphrase, group, self.pool_key_path,
-                           options=replace(options, port=options.port if options.port is not None else self.discovery_port))
-                recovery.remember(passphrase, group, self.pool_key_path)
-        except DiscoveryError:
-            self.throttle.failed(source)
-            raise
-        self.throttle.succeeded(source)
-        self._members = (0.0, [])
-        if self.on_join is not None:
-            with contextlib.suppress(Exception):
-                self.on_join()
-        session = self.sessions.open("setup", origin)
-        self.record("session.open", who="setup", origin=origin, source=source)
-        return self.state(), session.sid
+        group = self.group()
+        rows = [self.itself()]
+        with contextlib.suppress(*NO_SERVICES):  # the node lists no other compute device
+            rows += [row for row in roster.members(timeout_s=2.0, port=self.member_port) if not row["is_self"]]
+        for row in rows:
+            row["pools"] = [group] if group else []
+        found_rows = sorted(named_apart(rows), key=lambda r: (not r["is_self"], r["name"]))
+        self._members = (time.time(), found_rows)
+        return found_rows
 
     def set_name(self, name: str) -> str:
         """Set the device name through the active advertiser."""
@@ -377,57 +311,19 @@ class UI:
 
     # -- the fleet, and a sweep over it ----------------------------------
     def fleet(self) -> dict[str, Any]:
-        """The members as `join.describe` rows -- serving, room, busy, commit -- and the
+        """The members as `roster.describe` rows -- serving, room, busy, commit -- and the
         models they hold between them, which is what a sweep can be built from."""
-        from .discovery import Beacon
-        from .join import describe
-
-        rows = []
-        for row in self.members():
-            beacon = Beacon(name=str(row.get("name") or ""), port=int(row.get("port") or 8770),
-                            device=dict(row.get("device") or {}), busy=bool(row.get("busy")),
-                            queued=int(row.get("queued") or 0), slots=int(row.get("slots") or 1),
-                            free=int(row.get("free", 1)), host=str(row.get("host") or ""),
-                            hostname=str(row.get("hostname") or ""),
-                            machine=str(row.get("machine") or ""))
-            rows.append({**describe(beacon, pools=row.get("pools") or [],
-                                    self_machine=machine_id()),
-                         "display_url": str(row.get("display_url") or ""),
-                         "called": str(row.get("called") or row["name"])})
+        rows = self.members()
         models = sorted({m for r in rows for m in r["models"]})
         return {"members": rows, "models": models, "self": self.name,
-                "group": pool_group(self.pool_key_path), "bench": self.bench_state()}
-
-    def join_fleet(self, *, passphrase: str = "", group: str = "", persist: bool = False,
-                   name: str = "") -> dict[str, Any]:
-        """The Join button: `join.join_machine`, with this daemon as the one already up."""
-        from .join import join_machine
-
-        def enrol(words: str, named: str) -> None:
-            join_by_passphrase(words, named, self.pool_key_path)
-            self.rejoined()
-
-        said: list[str] = []
-        joined = join_machine(request=JoinRequest(name=name or self.name, passphrase=passphrase, group=group, persist=persist, port=self.member_port, root=self.root or default_root(), pool_key_path=self.pool_key_path, admission=JoinOptions(port=self.discovery_port, timeout_s=2.0)), hooks=JoinHooks(enrol=enrol, persist_with=self.persist_with, say=said.append))
-        self._members = (0.0, [])
-        return {**joined.public(), "said": said}
-
-    def with_self(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """The members, with this machine among them even if its own beacon was not heard."""
-        if any(r.get("is_self") for r in rows):
-            return rows
-        return [{"name": self.name, "pools": [m.group for m in
-                                                 memberships(self.pool_key_path)],
-                 "base_url": f"http://127.0.0.1:{self.member_port}", "is_self": True},
-                *rows]
+                "group": self.group(), "bench": self.bench_state()}
 
     def pause_fleet(self, *, resume: bool = False, minutes: float | None = None,
                     reason: str = "") -> dict[str, Any]:
         """Pause or resume every machine this one can see, and what each of them said."""
         answers = pausing.pause_fleet(
-            pausing.Fanout(self.root or default_root(), resume=resume, minutes=minutes,
-                   reason=reason, pool_key_path=self.pool_key_path),
-            self.with_self(self.members(force=True)))
+            pausing.Fanout(self.root or default_root(), resume=resume, minutes=minutes, reason=reason),
+            self.members(force=True))
         self._members = (0.0, [])
         return {"machines": [a.public() for a in answers],
                 "reached": sum(1 for a in answers if a.ok), "total": len(answers)}
@@ -584,55 +480,20 @@ class UI:
             got["restarting"] = relaunch()
         return got
 
-    def login(self, source: str, *, passphrase: str = "", group: str = "",
-              token: str = "", ticket: str = "") -> str | None:
-        """A session id, or None. Raises ``DiscoveryError`` when held off or overloaded."""
-        if ticket:
-            return self._redeem(source, ticket)
-
-        key = load_pool_key(self.pool_key_path)
-        if key is None:
+    def login(self, source: str, *, ticket: str = "") -> str | None:
+        """A session id for a launch ticket, or None. Raises ``SignInHeld`` when held off."""
+        if not ticket:
             return None
-
-        if token:
-            if _same(token, derive_token(key)):
-                self.throttle.succeeded(source)
-                self.record("session.open", who="token", origin="token", source=source)
-                return self.sessions.open("token", "token").sid
-            self.throttle.failed(source)
-            self.record("session.refused", reason="token", source=source)
-            return None
-
-        held = self.throttle.blocked_for(source)
-        if held:
-            raise DiscoveryError(f"too many attempts -- wait {held:.0f}s")
-        if not self.throttle.acquire():
-            raise DiscoveryError("busy checking another passphrase; try again")
-        try:
-            ok = matches(passphrase, group or pool_group(self.pool_key_path) or "",
-                         self.pool_key_path)
-        finally:
-            self.throttle.release()
-        if not ok:
-            self.throttle.failed(source)
-            self.record("session.refused", reason="passphrase", source=source)
-            return None
-        self.throttle.succeeded(source)
-        self.record("session.open", who="passphrase", origin="passphrase", source=source)
-        return self.sessions.open("passphrase", "passphrase").sid
+        return self._redeem(source, ticket)
 
     def _redeem(self, source: str, ticket: str) -> str | None:
         held = self.redeem_throttle.blocked_for(source)
         if held:
-            raise DiscoveryError(f"too many attempts -- wait {held:.0f}s")
+            raise SignInHeld(f"too many attempts -- wait {held:.0f}s")
         kind = self.sessions.spend_ticket(ticket)
         if not kind:
             self.redeem_throttle.failed(source)
             self.record("session.refused", reason="ticket", source=source)
-            return None
-        state = self.state()
-        if kind == "launch-secret" and state["in_pool"] and state["pool_mode"] == "prod":
-            self.record("session.refused", reason="production-needs-passphrase", source=source)
             return None
         self.redeem_throttle.succeeded(source)
         self.record("session.open", who="ticket", origin="launch-ticket", source=source)
@@ -678,19 +539,16 @@ def serve_page(*, port: int = 0, name: str = "", host: str = "127.0.0.1") -> Any
     """A loopback-only server over `routes` alone -- what ``poolhouse-serve fit --ui`` puts up.
 
     The same ``UI`` object and the same route table the daemon mounts, with nothing else
-    on it: no jobs, no models, no members, and a pool key path that deliberately does not
-    exist, so a machine that *is* in a pool is not asked to sign in to look at its own
-    measurements. It binds loopback, which is what makes that safe: `may_setup` lets this
+    on it: no jobs, no models, no members, and a page that is never gated, so a machine in a founded pool is not
+    asked to sign in to look at its own measurements. It binds loopback, which is what makes that safe: `may_setup` lets this
     machine in and there is no address anyone else could reach.
 
     Returns the server, not yet serving; the caller decides whether that is a thread or
     this one. ``port=0`` takes whatever is free, and ``server.server_port`` says which.
     """
     import platform as _platform
-    import tempfile
 
-    ui = UI(name=name or _platform.node() or "this machine",
-            pool_key_path=Path(tempfile.gettempdir()) / "poolhouse-fit-no-pool")
+    ui = UI(name=name or _platform.node() or "this machine", gated=False)
     ui.parts = FIT_ONLY
     handler = type("FitHandler", (_Loopback,), {"ui": ui})
     return Server((host, port), handler)

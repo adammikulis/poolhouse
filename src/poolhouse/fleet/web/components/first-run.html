@@ -50,7 +50,7 @@ first-run .wizard-step { color:var(--muted); margin-bottom:12px; }
       if (this.openSession !== session) {
         if (this.openSession !== undefined) this.clearProjectOperation();
         this.project = null; this.pendingProject = null; this.defaultOperation = null; this.kept = {}; this.modelInstall = null;
-        this.invitationOnly = undefined; this.name = undefined; this.systemTheme = null; this.cancelUncertain = null; }
+        this.name = undefined; this.systemTheme = null; this.cancelUncertain = null; }
       this.openSession = session; this.operation = null; this.busy = null; this.finishing = null;
       this.progress = this.note(); this.controls = this.actions();
       this.show('Opening setup', 'Checking this device’s current setup…', this.progress, this.controls);
@@ -59,7 +59,6 @@ first-run .wizard-step { color:var(--muted); margin-bottom:12px; }
         this.systemTheme = this.setup.needs_setup_theme === true ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : null;
         this.loadTheme(epoch, session);
         this.name ||= this.setup.name;
-        this.invitationOnly ??= this.setup.pool_mode === 'prod';
         if (this.intent?.job) { this.step = 2; this.paint(); this.poll(); }
         else this.paint();
       } catch (error) { if (this.current(epoch, session)) this.failure(error); }
@@ -95,8 +94,7 @@ first-run .wizard-step { color:var(--muted); margin-bottom:12px; }
     go(step) { this.epoch++; this.busy = null; this.finishing = null; clearTimeout(this.timer); this.step = step; return this.paint(); }
     paint() { return this.step === 0 ? this.deviceStep() : this.step === 1 ? this.modelStep() : this.preparingStep(); }
     async saveDevice() {
-      const result = await this.request('/ui/setup/initial', post({name:this.name.trim() || this.setup.name,
-        pool_mode:this.invitationOnly ? 'prod' : 'dev'}));
+      const result = await this.request('/ui/setup/initial', post({name:this.name.trim() || this.setup.name}));
       if (!result.ok) throw Error('The device name could not be saved.');
       this.setup = result;
     }
@@ -109,16 +107,11 @@ first-run .wizard-step { color:var(--muted); margin-bottom:12px; }
         connect.loaded = true;
         try {
           if (!connect.isConnected) return;
-          connect.append(M.poolForm({endpoint:'/ui/setup/join', poolMode:this.invitationOnly ? 'prod' : 'dev',
-            group:'default', onComplete:async () => {
-              this.setup = await this.request('/ui/setup'); note.textContent = 'Pool connected.';
+          connect.append(M.poolForm({founded:this.setup.in_pool, onComplete:async () => {
+              this.setup = await this.request('/ui/setup'); note.textContent = 'Pool updated.';
             }}));
         } catch (error) { connect.loaded = false; note.textContent = error.message; }
       };
-      const strict = el('input', {id:'setup-invitation-only', type:'checkbox'}); strict.checked = !!this.invitationOnly;
-      strict.onchange = () => { this.invitationOnly = strict.checked; };
-      const policy = el('details', {class:'wizard-section'}, el('summary', {}, 'Connection options'),
-        el('label', {class:'opt', for:strict.id}, strict, 'Only connect devices I explicitly invite'));
       const next = this.button('Continue', () => this.task(next, note, async () => {
         await this.saveDevice(); await this.go(1);
       }));
@@ -126,7 +119,7 @@ first-run .wizard-step { color:var(--muted); margin-bottom:12px; }
         el('label', {for:input.id}, 'Device name'), input,
         el('p', {class:'hint'}, this.setup.in_pool ? `Connected to ${this.setup.group || 'your pool'}.`
           : 'This device starts its own private pool. You can connect other devices later.'), connect,
-        policy, this.actions(next), note);
+        this.actions(next), note);
     }
     async modelStep() {
       const epoch = this.epoch, session = M.sessionContext(), loading = this.note();

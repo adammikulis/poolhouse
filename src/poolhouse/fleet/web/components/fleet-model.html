@@ -15,8 +15,6 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
   let releaseBoot;
   const bootReady = new Promise(resolve => { releaseBoot = resolve; });
 
-  M.MIN_PASS = 5;
-
   /** A random v4 UUID on any origin: the browser's own UUID call is only on https and loopback pages, a LAN address has none. */
   M.uuid = () => {
     const b = crypto.getRandomValues(new Uint8Array(16));
@@ -283,7 +281,7 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
     if (M.route) fn(M.route);
   };
 
-  /** Ask for the passphrase, saying why. */
+  /** Say the page is opened from this computer's own window, and why. */
   M.signIn = function (message) {
     if (IN_APP.includes(M.route)) M.requestedRoute = M.route;
     M.signInMessage = message || "";
@@ -393,16 +391,15 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
       if (!current()) return false;
       M.noticeAccepted = setup.experimental_notice_accepted === true;
       M.group = setup.group || "";
-      M.inPool = !!setup.needs_password;
+      M.inPool = !!setup.needs_sign_in;
       const launched = (await request("/ui/session")).signed_in;
       if (!current()) return false;
       M.launchOnly = !!document.querySelector("launch-needed")
-        && ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname)
-        && (!setup.in_pool || setup.pool_mode === "dev");
+        && ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname);
       if (!launched && M.launchOnly) { releaseBoot(); return M.go("launch-needed"); }
-      if (!launched && setup.needs_password) { releaseBoot(); return M.signIn(); }
+      if (!launched && setup.needs_sign_in) { releaseBoot(); return M.signIn(); }
       if (setup.needs_setup && document.querySelector("first-run")) { releaseBoot(); return M.go("first-run"); }
-      if (!setup.needs_password) { await M.loadPreferences(); if (!current()) return false; releaseBoot(); return M.go(M.requestedRoute); }
+      if (!setup.needs_sign_in) { await M.loadPreferences(); if (!current()) return false; releaseBoot(); return M.go(M.requestedRoute); }
       const s = await request("/ui/session");
       if (!current()) return false;
       if (s.signed_in) await M.loadPreferences();

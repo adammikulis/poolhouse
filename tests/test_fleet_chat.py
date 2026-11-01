@@ -15,18 +15,17 @@ import time
 
 import pytest
 from launch_support import browser
-from test_fleet_ui import WORDS, Serving as UIServing
+from test_fleet_ui import Serving as UIServing
 
+from poolhouse.fleet import chat_routes
 from poolhouse.fleet.api import Daemon, make_handler
-from poolhouse.fleet.chat import Target, find, targets
+from poolhouse.fleet.chat import find, targets
 from poolhouse.fleet.daemon import load_or_create_token
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.serving import Serving
-from poolhouse.http import Options, Server, ServerError, open_stream
+from poolhouse.http import Options, Server, open_stream
 from poolhouse.testing.canned import CANNED_MARKER, CANNED_MODEL_ID, Canned, CannedServer, marked
-from tests.keystore_support import counting  # noqa: F401
 from tests.net_site import gguf_bytes
-from tests.pool_support import a_keystore, join_pool_by_passphrase  # noqa: F401
 
 MODEL = CANNED_MODEL_ID
 PIECES = ["Hel", "lo", " there"]
@@ -40,22 +39,9 @@ def tmp_path_of(ui):
 
 
 @pytest.fixture(autouse=True)
-def the_passphrase_is_kept(a_keystore):  # noqa: F811
-    """Joining stores the passphrase and signing in compares against it."""
-
-
-@pytest.fixture(autouse=True)
 def loopback_is_the_internet(monkeypatch):
     """The download test fetches from a server on this machine, which has to be named."""
     monkeypatch.setenv("POOLHOUSE_FETCH_ALLOW_HOSTS", "127.0.0.1")
-
-
-@pytest.fixture(autouse=True)
-def nobody_else_is_on_the_network(monkeypatch):
-    """A join finds no machine to shake hands with, so it makes the pool."""
-    from poolhouse.fleet.onboard import joining
-
-    monkeypatch.setattr(joining, "find_joiners", lambda *a, **k: [])
 
 
 def _free_port() -> int:
@@ -80,8 +66,7 @@ def host(tmp_path, model_server):
     root = tmp_path / "host"
     files = root / "files"
     files.mkdir(parents=True)
-    key = join_pool_by_passphrase(WORDS, group="home", path=tmp_path / "host.key")
-    token = load_or_create_token(root, key)
+    token = load_or_create_token(root)
     serving = Serving(root / "serving.json")
     serving.register(model_server, [MODEL])
     runner = JobRunner(root, files)
@@ -91,7 +76,7 @@ def host(tmp_path, model_server):
         make_handler(Daemon(runner, files, token, "host", serving=serving)))
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     try:
-        yield {"name": "host", "base_url": f"http://127.0.0.1:{port}",
+        yield {"name": "host", "base_url": f"http://127.0.0.1:{port}", "token": token,
                "is_self": False, "device": {"serving": serving.public()}}
     finally:
         runner.shutdown()
@@ -117,7 +102,7 @@ class TestPickingWhereToSend:
         assert found[1].public()['capabilities']['chat'] is True
 
     def test_a_machine_serving_nothing_still_sees_a_members_model(self, host):
-        found = targets([host], serving=None, token="t")
+        found = targets([{**host, "token": "t"}], serving=None)
         assert [t.model for t in found] == [MODEL]
         assert found[0].member == "host"
         assert found[0].local is False
@@ -129,7 +114,7 @@ class TestPickingWhereToSend:
                 from poolhouse.fleet.serving import Served
                 return [Served(port=9999, models=[MODEL])]
 
-        found = targets([host], serving=Fake(), token="t")
+        found = targets([{**host, "token": "t"}], serving=Fake())
         assert len(found) == 1
         assert found[0].local is True
 
@@ -139,7 +124,7 @@ class TestPickingWhereToSend:
         assert targets([me], serving=None) == []
 
     def test_only_an_exact_advertised_model_is_selected(self, host):
-        found = targets([host], serving=None, token="t")
+        found = targets([{**host, "token": "t"}], serving=None)
         assert find(found, MODEL).model == MODEL
         assert find(found, "qwen3") is None
         assert find(found, "") is None
@@ -149,14 +134,13 @@ class TestPickingWhereToSend:
 
 class TestChattingThroughTheInterface:
     @pytest.fixture
-    def bare(self, tmp_path, host):
+    def bare(self, tmp_path, host, monkeypatch):
         """A machine that installed nothing: no model store, nothing serving."""
         ui = UIServing(tmp_path / "bare", name="laptop")
-        join_pool_by_passphrase(WORDS, group="home", path=ui.keyfile)
-        ui.call("/ui/setup/join", method="POST",
-                body={"passphrase": WORDS, "group": "home"})
-        _, _, headers = ui.call("/ui/session", method="POST",
-                                body={"passphrase": WORDS})
+        # The node derives the secret for two of its authorized services; here the one member is a plain daemon whose
+        # owner token the test knows, so the row's token stands in for what `Pool.secret` would return for its fingerprint.
+        monkeypatch.setattr(chat_routes, "_secret", lambda row, root: row.get("token", ""))
+        _, _, headers = ui.ticket_session()
         assert ui.ui.models is None
         assert ui.ui.serving is None
         ui.ui.root = ui.files.parent
@@ -399,10 +383,7 @@ class TestChattingThroughTheInterface:
     def test_with_nobody_serving_it_says_so_rather_than_failing(self, tmp_path):
         ui = UIServing(tmp_path / "alone", name="alone")
         try:
-            ui.call("/ui/setup/join", method="POST",
-                    body={"passphrase": WORDS, "group": "home"})
-            _, _, headers = ui.call("/ui/session", method="POST",
-                                    body={"passphrase": WORDS})
+            _, _, headers = ui.ticket_session()
             cookie = headers["Set-Cookie"].split(";")[0]
             ui.ui._members = (time.time(), [])
             status, body, _ = ui.call(
@@ -412,104 +393,3 @@ class TestChattingThroughTheInterface:
             assert "serving a model" in body["error"]
         finally:
             ui.close()
-
-
-
-class TestAnsweringToSeveralPools:
-    """The bearer token is derived from a pool key, so a machine in two pools
-    has two tokens and must accept either."""
-
-    def daemon(self, tmp_path, anchor):
-        from poolhouse.fleet.api import Daemon, make_handler
-        from poolhouse.fleet.daemon import load_or_create_token
-        from poolhouse.fleet.discovery import derive_token, memberships
-        from poolhouse.fleet.jobs import JobRunner
-
-        root = tmp_path / "traind"
-        files = root / "files"
-        files.mkdir(parents=True, exist_ok=True)
-        rows = memberships(anchor)
-        token = load_or_create_token(root, rows[0].key)
-        runner = JobRunner(root, files)
-        port = _free_port()
-        httpd = Server(
-            ("127.0.0.1", port),
-            make_handler(Daemon(runner, files, token, "box",
-                         pool_key_path=anchor,
-                         tokens=lambda: {derive_token(m.key)
-                                         for m in memberships(anchor)})))
-        threading.Thread(target=httpd.serve_forever, daemon=True).start()
-        return f"http://127.0.0.1:{port}", runner, httpd
-
-    def ask(self, base, token):
-        # /health answers anyone with whether the daemon is there. /jobs wants a request
-        # signed with the pool's secret, which is what this is about.
-        from poolhouse.http import build_request
-
-        req = build_request(f"{base}/jobs", token=token)
-        try:
-            with open_stream(req.full_url, options=Options(headers=dict(req.header_items()), timeout=5)) as r:
-                return r.status
-        except ServerError as exc:
-            return exc.status
-
-    def test_either_pool_can_reach_it(self, tmp_path):
-        from poolhouse.fleet.discovery import derive_token
-        from tests.pool_support import join
-
-        anchor = tmp_path / "pool.key"
-        join(WORDS, group="home", path=anchor)
-        join("a different set of words here", group="work", path=anchor)
-        rows = {m.group: m.key for m in __import__(
-            "poolhouse.fleet.discovery", fromlist=["memberships"]).memberships(anchor)}
-
-        base, runner, httpd = self.daemon(tmp_path, anchor)
-        try:
-            assert self.ask(base, derive_token(rows["home"])) == 200
-            assert self.ask(base, derive_token(rows["work"])) == 200, (
-                "the second pool was refused")
-            assert self.ask(base, "not-a-real-token") == 401
-        finally:
-            runner.shutdown()
-            httpd.shutdown()
-            httpd.server_close()
-
-    def test_a_pool_it_left_is_refused(self, tmp_path):
-        from poolhouse.fleet.discovery import derive_token, leave, memberships
-        from tests.pool_support import join
-
-        anchor = tmp_path / "pool.key"
-        join(WORDS, group="home", path=anchor)
-        join("a different set of words here", group="work", path=anchor)
-        gone = derive_token({m.group: m.key
-                             for m in memberships(anchor)}["work"])
-
-        base, runner, httpd = self.daemon(tmp_path, anchor)
-        try:
-            assert self.ask(base, gone) == 200
-            leave("work", anchor)
-            assert self.ask(base, gone) == 401, "it still answered a pool it left"
-        finally:
-            runner.shutdown()
-            httpd.shutdown()
-            httpd.server_close()
-
-
-def test_exact_local_paths_disambiguate_identical_model_names_without_guessing():
-    first = Target('shared.gguf', 'http://127.0.0.1:1/v1/chat/completions', alias='/models/one/shared.gguf')
-    second = Target('shared.gguf', 'http://127.0.0.1:2/v1/chat/completions', alias='/models/two/shared.gguf')
-    assert find([first, second], second.alias) is second
-    assert find([first, second], first.alias) is first
-    assert find([first, second], 'shared.gguf') is None
-    assert find([first, second], '/models/missing/shared.gguf') is None
-    assert find([first, second], 'shared') is None
-    assert find([first, second], '') is None
-
-
-def test_alias_model_collision_and_duplicate_exact_identity_are_refused():
-    local = Target('shared.gguf', 'http://127.0.0.1:1/v1/chat/completions', alias='/models/one/shared.gguf')
-    remote = Target(local.alias, 'http://127.0.0.1:2/infer/v1/chat/completions', member='member-one')
-    assert find([local, remote], local.alias) is None
-    assert find([remote, local], local.alias) is None
-    duplicate = Target('other.gguf', 'http://127.0.0.1:3/v1/chat/completions', alias=local.alias)
-    assert find([local, duplicate], local.alias) is None

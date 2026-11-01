@@ -15,7 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from poolhouse import files, hub, lock
 from poolhouse.files import promote
@@ -30,6 +30,9 @@ from . import model_components
 from .download_progress import Transfer
 from .model_library import library
 from .weights import ModelError, is_beside, reference
+
+if TYPE_CHECKING:
+    from .remote import Member
 
 __all__ = [
     "CHUNK",
@@ -283,21 +286,25 @@ class Models:
                 "models_total": len(held)}
 
     # -- getting one ----------------------------------------------------
-    def where(self, name: str, key: bytes, *, timeout_s: float = 2.0
-              ) -> list[tuple[str, str, int]]:
-        """Machines on this network holding a model. (member, base_url, size)."""
-        from .discovery import discover
+    def where(self, name: str, *, timeout_s: float = 10.0) -> list[tuple[Member, int]]:
+        """Pool members whose node-authorized compute service holds a model. (member, size)."""
+        from .remote import NO_SERVICES, Member
 
         needle = name.strip().lower()
+        try:
+            members = Member.discover(timeout=timeout_s)
+        except NO_SERVICES:
+            return []                      # the node authorizes no pool service: no LAN holder
         out = []
-        for beacon in discover(key, timeout_s=timeout_s):
-            for row in [*(beacon.device.get("models") or []), *(beacon.device.get("components") or [])]:
+        for member in members:
+            device = member.beacon.device if member.beacon else {}
+            for row in [*(device.get("models") or []), *(device.get("components") or [])]:
                 if needle in str(row.get("name", "")).lower():
-                    out.append((beacon.name, beacon.base_url, int(row.get("size") or 0)))
+                    out.append((member, int(row.get("size") or 0)))
                     break
         return out
 
-    def ensure(self, name: str, *, source: str = "", key: bytes | None = None,
+    def ensure(self, name: str, *, source: str = "",
                transfer: ModelTransfer | None = None, autodownload: bool = True) -> Model:
         """Obtain one exact filename under the existing shared target lock."""
         transfer = transfer or ModelTransfer()
@@ -311,7 +318,7 @@ class Models:
         self.store.mkdir(parents=True, exist_ok=True)
         target_lock = self.store / ('.download-' + hashlib.sha256(filename.encode()).hexdigest() + '.lock')
         with lock.held(target_lock, check=transfer.check):
-            return self._obtain(filename, source, key, transfer, autodownload)
+            return self._obtain(filename, source, transfer, autodownload)
 
     def _held_file(self, name: str) -> Model | None:
         """An exact installed weights filename, including explicit companion downloads."""
@@ -326,7 +333,7 @@ class Models:
                 return Model(path.name, path, info.st_size, info.st_mtime)
         return None
 
-    def _obtain(self, name: str, source: str, key: bytes | None,
+    def _obtain(self, name: str, source: str,
                 transfer: ModelTransfer, autodownload: bool) -> Model:
         found = self._held_file(name)
         transfer.check()
@@ -345,11 +352,11 @@ class Models:
             return replace(found, verified_reference=VerifiedReference(source, pulled.name, sha256))
         if not autodownload:
             raise ModelError(f"{name} is not on this machine, and automatic downloading is off")
-        if key is not None and policy != "internet":
-            for member_name, base_url, _size in self.where(name, key):
-                transfer.note(f"Copying {name} from {member_name}")
+        if policy != "internet":
+            for member, _size in self.where(name):
+                transfer.note(f"Copying {name} from {member.name}")
                 try:
-                    return self._from_member(name, base_url, key, transfer)
+                    return self._from_member(name, member, transfer)
                 except PermissionError:
                     raise
                 except (ModelError, OSError):
@@ -361,20 +368,15 @@ class Models:
         transfer.note(f"Downloading {name}")
         return self._from_internet(name, source, transfer)
 
-    def _from_member(self, name: str, base_url: str, key: bytes,
-                     transfer: ModelTransfer | None) -> Model:
-        from .discovery import derive_token
-        from .remote import Member
-
+    def _from_member(self, name: str, member: Member, transfer: ModelTransfer | None) -> Model:
         transfer = transfer or ModelTransfer()
         transfer.check()
-        member = Member(base_url, derive_token(key))
         holds = member.models()
         transfer.check()
         holds += [component for row in list(holds) for component in row.get("components", [])]
         match = next((row for row in holds if row.get('name') == name), None)
         if match is None:
-            raise ModelError(f"{base_url} no longer has {name}")
+            raise ModelError(f"{member.name} no longer has {name}")
         try:
             fname = safe_filename(name)
         except Unsafe as exc:
@@ -432,7 +434,7 @@ class Models:
             info = placement.commit()
             return Model(target.name, target, info.st_size, info.st_mtime, verified)
 
-    def ensure_draft(self, model: Model, source: str, *, key: bytes | None = None,
+    def ensure_draft(self, model: Model, source: str, *,
                      on_progress: Callable[[int, int], None] | None = None) -> Path:
         """Fetch the small model that guesses ahead for ``model``, beside it.
 
@@ -444,7 +446,7 @@ class Models:
         policy = self.sources()
         if policy not in ("internet", "lan", "both"):
             raise ModelError("Choose download sources before getting an MTP head.")
-        if policy != "internet" and key is not None and self._draft_from_members(model, beside, key, on_progress):
+        if policy != "internet" and self._draft_from_members(model, beside, on_progress):
             return beside
         if policy == "lan":
             raise ModelError("No machine on your LAN has this MTP head; Internet downloads are disabled.")
@@ -453,15 +455,13 @@ class Models:
             promote(got.path, beside)
         return beside
 
-    def _draft_from_members(self, model: Model, beside: Path, key: bytes,
-                          on_progress: Any) -> bool:
+    def _draft_from_members(self, model: Model, beside: Path, on_progress: Any) -> bool:
         """Ask the machines holding ``model`` for the draft that sits beside it."""
-        from .discovery import derive_token
-        from .remote import Member, MemberError
+        from .remote import MemberError
 
-        for _name, base_url, _size in self.where(model.name, key):
+        for member, _size in self.where(model.name):
             try:
-                Member(base_url, derive_token(key)).pull(
+                member.pull(
                     beside.name, beside, on_progress=on_progress, route="/models/")
             except (MemberError, OSError):
                 continue
@@ -570,7 +570,7 @@ class Downloads:
         self._lock = threading.Lock()
         self._sem = threading.Semaphore(slots)
 
-    def start(self, name: str, *, source: str = "", key: bytes | None = None,
+    def start(self, name: str, *, source: str = "",
               autodownload: bool = True, components: list[dict] | None = None) -> Getting:
         with self._lock:
             for row in self.getting.values():
@@ -582,11 +582,11 @@ class Downloads:
                           name=name, source=source, pending_draft=bool(components),
                           components=copy.deepcopy(components or []))
             self.getting[row.id] = row
-        threading.Thread(target=self._run, args=(row, key, autodownload),
+        threading.Thread(target=self._run, args=(row, autodownload),
                          daemon=True, name=f"get-{row.id}").start()
         return row
 
-    def _run(self, row: Getting, key: bytes | None, autodownload: bool) -> None:
+    def _run(self, row: Getting, autodownload: bool) -> None:
         with self._sem:
             try:
                 offset = 0
@@ -606,7 +606,7 @@ class Downloads:
                     row.note = text
                     say(f"  {text}")
 
-                got = self.models.ensure(row.name, source=row.source, key=key,
+                got = self.models.ensure(row.name, source=row.source,
                                          transfer=ModelTransfer(progress=progress, note=note),
                                          autodownload=autodownload)
                 offset = got.size
@@ -621,7 +621,7 @@ class Downloads:
                     row.transfer = Transfer()
                     row.total = offset + offer.get("size_bytes", 0)
                     note(f"Downloading {kind} for {got.name}")
-                    companion = self.models.ensure(offer["name"], source=offer["ref"], key=key,
+                    companion = self.models.ensure(offer["name"], source=offer["ref"],
                                                    transfer=ModelTransfer(progress=progress, note=note), autodownload=autodownload)
                     model_components.link(got.path, companion.path, offer)
                     offset += companion.size

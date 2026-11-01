@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from .discovery import in_pool
 from .session import parse_cookie
 
 
@@ -43,11 +42,11 @@ def _start(handler, can_serve):
         return True
     sid = parse_cookie(handler.cookie)
     session = ui.sessions.get(sid)
-    pooled = in_pool(ui.pool_key_path)
+    pooled = ui.founded()
     def current():
         if session is not None:
             return ui.sessions.get(sid) is session
-        return not pooled and not in_pool(ui.pool_key_path) and not ui.may_setup(
+        return not pooled and not ui.founded() and not ui.may_setup(
             handler.client_ip, handler.host_header, handler.header("X-Poolhouse-Setup", ""))
     try:
         context = req.get('context')

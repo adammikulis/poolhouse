@@ -1,11 +1,11 @@
 {
- "surfaces": 937,
+ "surfaces": 952,
  "by_status": {
-  "covered": 612,
-  "partial": 193,
-  "uncovered": 51,
-  "n/a": 81,
-  "unmapped": 0
+  "covered": 617,
+  "partial": 194,
+  "uncovered": 53,
+  "n/a": 85,
+  "unmapped": 3
  },
  "by_kind": {
   "chat-tool": {
@@ -19,7 +19,7 @@
    "covered": 7,
    "partial": 5,
    "uncovered": 0,
-   "n/a": 21,
+   "n/a": 22,
    "unmapped": 0
   },
   "context": {
@@ -37,8 +37,8 @@
    "unmapped": 0
   },
   "egress": {
-   "covered": 63,
-   "partial": 46,
+   "covered": 62,
+   "partial": 47,
    "uncovered": 0,
    "n/a": 1,
    "unmapped": 0
@@ -51,7 +51,7 @@
    "unmapped": 0
   },
   "human": {
-   "covered": 77,
+   "covered": 79,
    "partial": 0,
    "uncovered": 0,
    "n/a": 1,
@@ -68,7 +68,7 @@
    "covered": 7,
    "partial": 5,
    "uncovered": 0,
-   "n/a": 22,
+   "n/a": 25,
    "unmapped": 0
   },
   "mcp-tool": {
@@ -79,18 +79,18 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 91,
+   "covered": 92,
    "partial": 0,
-   "uncovered": 47,
+   "uncovered": 49,
    "n/a": 0,
    "unmapped": 0
   },
   "route": {
-   "covered": 139,
-   "partial": 57,
+   "covered": 143,
+   "partial": 51,
    "uncovered": 0,
    "n/a": 1,
-   "unmapped": 0
+   "unmapped": 3
   },
   "slash-command": {
    "covered": 9,
@@ -100,8 +100,8 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 104,
-   "partial": 59,
+   "covered": 103,
+   "partial": 65,
    "uncovered": 0,
    "n/a": 4,
    "unmapped": 0
@@ -746,7 +746,7 @@
   {
    "id": "cli:poolhouse-pool",
    "kind": "cli",
-   "source": "poolhouse.fleet.join:main",
+   "source": "poolhouse.pool_cli:main",
    "trust": "the person at a terminal; arguments may carry text from outside",
    "attacker": "hostile argument text or path reaches the command",
    "status": "partial",
@@ -823,6 +823,16 @@
    "id": "cli:poolhouse-store",
    "kind": "cli",
    "source": "poolhouse.graph.store_cli:main",
+   "trust": "the person at a terminal; arguments may carry text from outside",
+   "attacker": "hostile argument text or path reaches the command",
+   "status": "n/a",
+   "tests": [],
+   "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
+  },
+  {
+   "id": "cli:poolhouse-test",
+   "kind": "cli",
+   "source": "poolhouse.testfarm.cli:command",
    "trust": "the person at a terminal; arguments may carry text from outside",
    "attacker": "hostile argument text or path reaches the command",
    "status": "n/a",
@@ -1927,6 +1937,18 @@
    "note": "a fixed loopback TCP probe treats timeouts and unhealthy listeners as live; only connection refusal authorizes starting the replacement"
   },
   {
+   "id": "egress:fleet/launch_health.py:authenticated",
+   "kind": "egress",
+   "source": "fleet/launch_health.py:authenticated",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "partial",
+   "tests": [
+    "tests/test_net_no_bypass.py"
+   ],
+   "note": "loopback and LAN calls to servers the person configured; the net-no-bypass scan keeps public hosts out, answers from a hostile server (oversized, slow, malformed JSON) are not sent"
+  },
+  {
    "id": "egress:fleet/launch_open.py:ticket_url",
    "kind": "egress",
    "source": "fleet/launch_open.py:ticket_url",
@@ -2356,22 +2378,6 @@
    "note": "loopback and LAN calls to servers the person configured; the net-no-bypass scan keeps public hosts out, answers from a hostile server (oversized, slow, malformed JSON) are not sent"
   },
   {
-   "id": "egress:fleet/wsl_network.py:DiscoverySocket.__init__",
-   "kind": "egress",
-   "source": "fleet/wsl_network.py:DiscoverySocket.__init__",
-   "trust": "addresses and redirects named by pages, repositories and members",
-   "attacker": "a redirect or address sends the request somewhere the person did not choose",
-   "status": "covered",
-   "tests": [
-    "tests/test_remote_transport_attacks.py::test_wsl_control_replies_reject_oversized_and_malformed_frames",
-    "tests/test_wsl_network.py::test_udp_bridge_refuses_non_discovery_destinations",
-    "tests/test_wsl_network.py::test_udp_bridge_preserves_timeout",
-    "tests/test_wsl_network.py::test_discovery_reply_cache_retains_recent_members_and_fixed_destinations",
-    "tests/test_wsl_network.py::test_lan_relay_preserves_stream_half_close_and_releases_ports"
-   ],
-   "note": "launcher-selected control and fixed daemon destinations cannot be redirected by relay bytes; control frames and discovery datagrams have bounded reads and deadlines"
-  },
-  {
    "id": "egress:fleet/wsl_network.py:_forward",
    "kind": "egress",
    "source": "fleet/wsl_network.py:_forward",
@@ -2379,13 +2385,10 @@
    "attacker": "a redirect or address sends the request somewhere the person did not choose",
    "status": "covered",
    "tests": [
-    "tests/test_remote_transport_attacks.py::test_wsl_control_replies_reject_oversized_and_malformed_frames",
-    "tests/test_wsl_network.py::test_udp_bridge_refuses_non_discovery_destinations",
-    "tests/test_wsl_network.py::test_udp_bridge_preserves_timeout",
-    "tests/test_wsl_network.py::test_discovery_reply_cache_retains_recent_members_and_fixed_destinations",
+    "tests/test_wsl_network.py::test_lan_forward_refuses_public_target",
     "tests/test_wsl_network.py::test_lan_relay_preserves_stream_half_close_and_releases_ports"
    ],
-   "note": "launcher-selected control and fixed daemon destinations cannot be redirected by relay bytes; control frames and discovery datagrams have bounded reads and deadlines"
+   "note": "the relay connects only to the launcher-selected private daemon destination, and relay bytes cannot redirect it"
   },
   {
    "id": "egress:fleet/wsl_ui.py:stdio",
@@ -3665,7 +3668,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -3794,6 +3797,40 @@
    "id": "human:authority.py:set_state",
    "kind": "human",
    "source": "authority.py:set_state",
+   "trust": "an agent process or a member",
+   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
+    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
+    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
+    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
+   ],
+   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:authority_caller.py:_authenticated",
+   "kind": "human",
+   "source": "authority_caller.py:_authenticated",
+   "trust": "an agent process or a member",
+   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
+    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
+    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
+    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
+   ],
+   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:authority_caller.py:current",
+   "kind": "human",
+   "source": "authority_caller.py:current",
    "trust": "an agent process or a member",
    "attacker": "an agent or a forged grant takes an action only a person may take",
    "status": "covered",
@@ -5356,8 +5393,7 @@
    "attacker": "an unauthenticated or cross-origin client reaches the port",
    "status": "covered",
    "tests": [
-    "tests/test_wsl_network.py::test_bridge_refuses_authentication_and_socket_scope",
-    "tests/test_wsl_network.py::test_bridge_caps_messages_and_datagrams",
+    "tests/test_wsl_network.py::test_a_bridge_without_a_lan_address_refuses_to_listen_on_every_interface",
     "tests/test_wsl_network.py::test_lan_relay_preserves_stream_half_close_and_releases_ports",
     "tests/test_wsl_ui.py::test_local_ui_relay_preserves_bytes_and_actual_loopback_member",
     "tests/test_wsl_ui.py::test_local_ui_queues_connections_over_admission_limit",
@@ -5419,9 +5455,39 @@
    "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
   },
   {
+   "id": "listener:runtime_identity.py:adopt",
+   "kind": "listener",
+   "source": "runtime_identity.py:adopt",
+   "trust": "anything that can connect to the address",
+   "attacker": "an unauthenticated or cross-origin client reaches the port",
+   "status": "n/a",
+   "tests": [],
+   "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
+  },
+  {
    "id": "listener:sandbox/cli.py:test",
    "kind": "listener",
    "source": "sandbox/cli.py:test",
+   "trust": "anything that can connect to the address",
+   "attacker": "an unauthenticated or cross-origin client reaches the port",
+   "status": "n/a",
+   "tests": [],
+   "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
+  },
+  {
+   "id": "listener:sandbox/netforward.py:forward_then_run",
+   "kind": "listener",
+   "source": "sandbox/netforward.py:forward_then_run",
+   "trust": "anything that can connect to the address",
+   "attacker": "an unauthenticated or cross-origin client reaches the port",
+   "status": "n/a",
+   "tests": [],
+   "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
+  },
+  {
+   "id": "listener:sandbox/netrelay.py:Relay.__init__",
+   "kind": "listener",
+   "source": "sandbox/netrelay.py:Relay.__init__",
    "trust": "anything that can connect to the address",
    "attacker": "an unauthenticated or cross-origin client reaches the port",
    "status": "n/a",
@@ -6467,6 +6533,16 @@
    "id": "parser:decide/sources.py",
    "kind": "parser",
    "source": "decide/sources.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "uncovered",
+   "tests": [],
+   "note": "files the product wrote for itself (stores, caches, snapshots, case files) are read back; a hand-edited or planted file is not tried"
+  },
+  {
+   "id": "parser:decide/window.py",
+   "kind": "parser",
+   "source": "decide/window.py",
    "trust": "files, pages and archives from outside",
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
    "status": "uncovered",
@@ -7571,6 +7647,16 @@
    "note": "files the product wrote for itself (stores, caches, snapshots, case files) are read back; a hand-edited or planted file is not tried"
   },
   {
+   "id": "parser:sandbox/run.py",
+   "kind": "parser",
+   "source": "sandbox/run.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "uncovered",
+   "tests": [],
+   "note": "files the product wrote for itself (stores, caches, snapshots, case files) are read back; a hand-edited or planted file is not tried"
+  },
+  {
    "id": "parser:scrape/seen.py",
    "kind": "parser",
    "source": "scrape/seen.py",
@@ -8208,6 +8294,18 @@
    "note": "Native coordinator graphs and Fleet sockets reject self-review, same-device economic review, missing read/project authority, altered task/proposal/review hashes, browser identity overrides and foreign-page mutations"
   },
   {
+   "id": "parser:workspace/worktree_cleanup.py",
+   "kind": "parser",
+   "source": "workspace/worktree_cleanup.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_workspace_rules.py"
+   ],
+   "note": ""
+  },
+  {
    "id": "parser:workspace/worktree_lifecycle.py",
    "kind": "parser",
    "source": "workspace/worktree_lifecycle.py",
@@ -8609,7 +8707,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -9005,7 +9103,7 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
-    "tests/test_fleet_ui.py::TestSignIn::test_launch_ticket_requires_session_and_is_consumed_once",
+    "tests/test_fleet_ui.py::TestSignIn::test_launch_ticket_is_consumed_once",
     "tests/test_redteam_person_session.py::test_a_ticket_is_asked_for_only_by_the_machine_itself_with_its_secret",
     "tests/test_redteam_person_session.py::test_guessing_the_secret_is_held_off_even_for_the_right_secret",
     "tests/test_redteam_person_session.py::test_only_a_few_tickets_wait_at_once",
@@ -9021,7 +9119,7 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
-    "tests/test_fleet_ui.py::TestSignIn::test_launch_ticket_requires_session_and_is_consumed_once",
+    "tests/test_fleet_ui.py::TestSignIn::test_launch_ticket_is_consumed_once",
     "tests/test_redteam_person_session.py::test_a_ticket_is_asked_for_only_by_the_machine_itself_with_its_secret",
     "tests/test_redteam_person_session.py::test_guessing_the_secret_is_held_off_even_for_the_right_secret",
     "tests/test_redteam_person_session.py::test_only_a_few_tickets_wait_at_once",
@@ -9235,6 +9333,97 @@
    "note": ""
   },
   {
+   "id": "route:fleet/pool_routes.py:/ui/fleet",
+   "kind": "route",
+   "source": "fleet/pool_routes.py:PoolRoutes.route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session",
+    "tests/test_fleet_ui_founded.py::test_the_pool_actions_refuse_what_names_nothing"
+   ],
+   "note": "the pool actions need a signed-in session once a person founded the pool, and refuse a body that names nothing before the node is asked"
+  },
+  {
+   "id": "route:fleet/pool_routes.py:/ui/fleet/pause",
+   "kind": "route",
+   "source": "fleet/pool_routes.py:PoolRoutes.route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session",
+    "tests/test_fleet_ui_founded.py::test_the_pool_actions_refuse_what_names_nothing"
+   ],
+   "note": "the pool actions need a signed-in session once a person founded the pool, and refuse a body that names nothing before the node is asked"
+  },
+  {
+   "id": "route:fleet/pool_routes.py:/ui/pool",
+   "kind": "route",
+   "source": "fleet/pool_routes.py:PoolRoutes.route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session",
+    "tests/test_fleet_ui_founded.py::test_the_pool_actions_refuse_what_names_nothing"
+   ],
+   "note": "the pool actions need a signed-in session once a person founded the pool, and refuse a body that names nothing before the node is asked"
+  },
+  {
+   "id": "route:fleet/pool_routes.py:/ui/pool/add-device",
+   "kind": "route",
+   "source": "fleet/pool_routes.py:PoolRoutes.route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session",
+    "tests/test_fleet_ui_founded.py::test_the_pool_actions_refuse_what_names_nothing"
+   ],
+   "note": "the pool actions need a signed-in session once a person founded the pool, and refuse a body that names nothing before the node is asked"
+  },
+  {
+   "id": "route:fleet/pool_routes.py:/ui/pool/found",
+   "kind": "route",
+   "source": "fleet/pool_routes.py:PoolRoutes.route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session",
+    "tests/test_fleet_ui_founded.py::test_the_pool_actions_refuse_what_names_nothing"
+   ],
+   "note": "the pool actions need a signed-in session once a person founded the pool, and refuse a body that names nothing before the node is asked"
+  },
+  {
+   "id": "route:fleet/pool_routes.py:/ui/pool/join",
+   "kind": "route",
+   "source": "fleet/pool_routes.py:PoolRoutes.route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session",
+    "tests/test_fleet_ui_founded.py::test_the_pool_actions_refuse_what_names_nothing"
+   ],
+   "note": "the pool actions need a signed-in session once a person founded the pool, and refuse a body that names nothing before the node is asked"
+  },
+  {
+   "id": "route:fleet/pool_routes.py:/ui/pool/remove-device",
+   "kind": "route",
+   "source": "fleet/pool_routes.py:PoolRoutes.route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session",
+    "tests/test_fleet_ui_founded.py::test_the_pool_actions_refuse_what_names_nothing"
+   ],
+   "note": "the pool actions need a signed-in session once a person founded the pool, and refuse a body that names nothing before the node is asked"
+  },
+  {
    "id": "route:fleet/project_client.py:/ui/projects",
    "kind": "route",
    "source": "fleet/project_client.py:route",
@@ -9336,7 +9525,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -9351,7 +9540,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -9366,7 +9555,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -9381,7 +9570,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -9396,7 +9585,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -9411,7 +9600,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -9426,7 +9615,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -9454,7 +9643,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -9469,7 +9658,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -9484,52 +9673,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
-   ],
-   "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
-  },
-  {
-   "id": "route:fleet/routes.py:/ui/fleet",
-   "kind": "route",
-   "source": "fleet/routes.py:PoolRoutes.route",
-   "trust": "browser session on this machine behind the UI header",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "partial",
-   "tests": [
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
-   ],
-   "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
-  },
-  {
-   "id": "route:fleet/routes.py:/ui/fleet/join",
-   "kind": "route",
-   "source": "fleet/routes.py:PoolRoutes.route",
-   "trust": "browser session on this machine behind the UI header",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "partial",
-   "tests": [
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
-   ],
-   "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
-  },
-  {
-   "id": "route:fleet/routes.py:/ui/fleet/pause",
-   "kind": "route",
-   "source": "fleet/routes.py:PoolRoutes.route",
-   "trust": "browser session on this machine behind the UI header",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "partial",
-   "tests": [
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -9544,7 +9688,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -9559,7 +9703,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -9574,22 +9718,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
-   ],
-   "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
-  },
-  {
-   "id": "route:fleet/routes.py:/ui/members",
-   "kind": "route",
-   "source": "fleet/routes.py:PoolRoutes.route",
-   "trust": "browser session on this machine behind the UI header",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "partial",
-   "tests": [
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -9604,7 +9733,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -9619,7 +9748,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -9646,37 +9775,9 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
-  },
-  {
-   "id": "route:fleet/routes.py:/ui/pools",
-   "kind": "route",
-   "source": "fleet/routes.py:PoolRoutes.route",
-   "trust": "browser session on this machine behind the UI header",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "partial",
-   "tests": [
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
-   ],
-   "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
-  },
-  {
-   "id": "route:fleet/routes.py:/ui/pools/found",
-   "kind": "route",
-   "source": "fleet/routes.py:PoolRoutes.route",
-   "trust": "browser session on this machine behind the UI header",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "covered",
-   "tests": [
-    "tests/test_fleet_found_route.py::test_first_run_refuses_the_list_from_another_machine",
-    "tests/test_fleet_found_route.py::test_a_machine_in_a_pool_asks_for_the_list_behind_its_sign_in"
-   ],
-   "note": ""
   },
   {
    "id": "route:fleet/routes.py:/ui/rates.json",
@@ -9689,7 +9790,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -9704,7 +9805,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -9716,10 +9817,12 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
-    "tests/test_fleet_ui.py::TestSignIn::test_the_wrong_passphrase_does_not",
-    "tests/test_fleet_ui.py::TestSignIn::test_persistent_guessing_is_slowed_down"
+    "tests/test_fleet_ui.py::TestSignIn::test_a_passphrase_signs_nobody_in",
+    "tests/test_fleet_ui.py::TestSignIn::test_a_wrong_ticket_does_not",
+    "tests/test_fleet_ui.py::TestSignIn::test_persistent_guessing_is_slowed_down",
+    "tests/test_fleet_ui_founded.py::test_a_passphrase_does_not_open_a_founded_pool"
    ],
-   "note": "Real sign-in requests reject hostile passphrases and rate-limit repeated guesses"
+   "note": "Real sign-in requests accept only a spent launch ticket, refuse a passphrase or a wrong ticket, and rate-limit repeated guesses"
   },
   {
    "id": "route:fleet/routes.py:/ui/settings",
@@ -9732,7 +9835,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -9759,7 +9862,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -9774,7 +9877,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -9789,7 +9892,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -9804,7 +9907,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -9819,7 +9922,7 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
@@ -9897,23 +10000,6 @@
    "note": "Preparation rejects foreign origins, forged authority, malformed bodies and revoked contexts; read-only status admission cannot authorize a mutation."
   },
   {
-   "id": "route:fleet/setup_recovery_routes.py:/ui/setup/recovery",
-   "kind": "route",
-   "source": "fleet/setup_recovery_routes.py:SetupRecoveryRoutes.public_route",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "covered",
-   "tests": [
-    "tests/test_fleet_named_lan.py::test_prejoin_discovery_obeys_setup_boundary",
-    "tests/test_fleet_named_lan.py::test_malformed_stale_and_oversized_hints_are_ignored",
-    "tests/test_fleet_named_lan.py::test_random_key_hint_and_upload_authenticate_without_keystore",
-    "tests/test_fleet_named_lan.py::test_hostile_recovery_upload_never_writes_membership",
-    "tests/test_fleet_named_lan.py::test_wrong_name_wrong_key_and_cross_origin_cannot_import",
-    "tests/test_fleet_named_lan.py::test_authenticated_pake_answer_must_contain_selected_name_and_valid_key"
-   ],
-   "note": "LAN hints are bounded nonce-matching metadata; local setup or a signed-in person selects a named recovery file, validates its bounded shape, and authenticates a native encrypted protocol-3 beacon before any membership write; scans and recovery joins never access the keystore"
-  },
-  {
    "id": "route:fleet/setup_routes.py:/ui/setup",
    "kind": "route",
    "source": "fleet/setup_routes.py:SetupRoutes.public_route",
@@ -9924,9 +10010,9 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_rejoining_needs_a_session_once_the_box_is_in_a_pool"
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
-   "note": "The extracted setup owner retains actual socket tests for remote ownership, DNS rebinding, missing UI headers and rejoining without a session."
+   "note": "The extracted setup owner retains actual socket tests for remote ownership, DNS rebinding, missing UI headers and a founded pool without a session."
   },
   {
    "id": "route:fleet/setup_routes.py:/ui/setup/done",
@@ -9943,21 +10029,6 @@
    "note": "Malformed completion bodies and invalid themes cannot finish setup; a remote machine cannot finish another device's setup."
   },
   {
-   "id": "route:fleet/setup_routes.py:/ui/setup/join",
-   "kind": "route",
-   "source": "fleet/setup_routes.py:SetupRoutes.public_route",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "covered",
-   "tests": [
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_rejoining_needs_a_session_once_the_box_is_in_a_pool"
-   ],
-   "note": "The extracted setup owner retains actual socket tests for remote ownership, DNS rebinding, missing UI headers and rejoining without a session."
-  },
-  {
    "id": "route:fleet/setup_routes.py:/ui/setup/members",
    "kind": "route",
    "source": "fleet/setup_routes.py:SetupRoutes.public_route",
@@ -9966,20 +10037,7 @@
    "status": "partial",
    "tests": [
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
-    "tests/test_fleet_named_lan.py::test_prejoin_discovery_obeys_setup_boundary"
-   ],
-   "note": "The shared UI-header boundary and prejoin discovery boundary are attacked; individual preference, suggestion and member routes lack a complete hostile-request matrix."
-  },
-  {
-   "id": "route:fleet/setup_routes.py:/ui/setup/pools",
-   "kind": "route",
-   "source": "fleet/setup_routes.py:SetupRoutes.public_route",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "partial",
-   "tests": [
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
-    "tests/test_fleet_named_lan.py::test_prejoin_discovery_obeys_setup_boundary"
+    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine"
    ],
    "note": "The shared UI-header boundary and prejoin discovery boundary are attacked; individual preference, suggestion and member routes lack a complete hostile-request matrix."
   },
@@ -9992,7 +10050,7 @@
    "status": "partial",
    "tests": [
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
-    "tests/test_fleet_named_lan.py::test_prejoin_discovery_obeys_setup_boundary"
+    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine"
    ],
    "note": "The shared UI-header boundary and prejoin discovery boundary are attacked; individual preference, suggestion and member routes lack a complete hostile-request matrix."
   },
@@ -10005,9 +10063,39 @@
    "status": "partial",
    "tests": [
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
-    "tests/test_fleet_named_lan.py::test_prejoin_discovery_obeys_setup_boundary"
+    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine"
    ],
    "note": "The shared UI-header boundary and prejoin discovery boundary are attacked; individual preference, suggestion and member routes lack a complete hostile-request matrix."
+  },
+  {
+   "id": "route:fleet/shard_routes.py:/files/shards",
+   "kind": "route",
+   "source": "fleet/shard_routes.py:answer",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "unmapped",
+   "tests": [],
+   "note": ""
+  },
+  {
+   "id": "route:fleet/shard_routes.py:/files/shards/*",
+   "kind": "route",
+   "source": "fleet/shard_routes.py:answer",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "unmapped",
+   "tests": [],
+   "note": ""
+  },
+  {
+   "id": "route:fleet/shard_routes.py:/shards/v1/*",
+   "kind": "route",
+   "source": "fleet/shard_routes.py:answer",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "unmapped",
+   "tests": [],
+   "note": ""
   },
   {
    "id": "route:fleet/studio_destinations.py:/ui/studio/*",
@@ -11372,6 +11460,18 @@
    "note": "fixed git argv over the checkout scripts/test is run in, in a throwaway index; no model, member or file name reaches it"
   },
   {
+   "id": "spawn:app_bundle.py:tool",
+   "kind": "spawn",
+   "source": "app_bundle.py:tool",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "partial",
+   "tests": [
+    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
+   ],
+   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
+  },
+  {
    "id": "spawn:bench/keep.py:_commit.git",
    "kind": "spawn",
    "source": "bench/keep.py:_commit.git",
@@ -12147,6 +12247,18 @@
    "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
   },
   {
+   "id": "spawn:fleet/shard_host.py:probe",
+   "kind": "spawn",
+   "source": "fleet/shard_host.py:probe",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "partial",
+   "tests": [
+    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
+   ],
+   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
+  },
+  {
    "id": "spawn:fleet/shard_run.py:checkout",
    "kind": "spawn",
    "source": "fleet/shard_run.py:checkout",
@@ -12265,6 +12377,18 @@
    "id": "spawn:fleet/updates.py:relaunch.go",
    "kind": "spawn",
    "source": "fleet/updates.py:relaunch.go",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "partial",
+   "tests": [
+    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
+   ],
+   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
+  },
+  {
+   "id": "spawn:fleet/windows_firewall.py:powershell",
+   "kind": "spawn",
+   "source": "fleet/windows_firewall.py:powershell",
    "trust": "arguments built from model output, member messages or file names",
    "attacker": "attacker text becomes a command line, environment or working directory",
    "status": "partial",
@@ -12450,17 +12574,16 @@
    "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
   },
   {
-   "id": "spawn:jobs.py:detach",
+   "id": "spawn:jobs.py:_start",
    "kind": "spawn",
-   "source": "jobs.py:detach",
+   "source": "jobs.py:_start",
    "trust": "arguments built from model output, member messages or file names",
    "attacker": "attacker text becomes a command line, environment or working directory",
-   "status": "covered",
+   "status": "partial",
    "tests": [
-    "tests/test_redteam_spawn.py::test_a_hostile_argument_is_one_argv_item_and_never_reaches_a_shell",
-    "tests/test_redteam_mcp.py::test_a_hostile_model_name_is_one_argument_never_a_shell_line"
+    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
    ],
-   "note": ""
+   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
   },
   {
    "id": "spawn:leasetable.py:Table._start",
@@ -12610,18 +12733,6 @@
     "tests/test_net_scan.py"
    ],
    "note": ""
-  },
-  {
-   "id": "spawn:node_app.py:_tool",
-   "kind": "spawn",
-   "source": "node_app.py:_tool",
-   "trust": "arguments built from model output, member messages or file names",
-   "attacker": "attacker text becomes a command line, environment or working directory",
-   "status": "covered",
-   "tests": [
-    "tests/test_node_app.py::test_a_hostile_path_is_one_argument_in_every_command_line_the_app_builds"
-   ],
-   "note": "Poolhouse.app is built, signed and launched with argv lists only (codesign, security, openssl, open, the bundle executable); a hostile path or member address is one argument, and the certificate name, bundle id and requirement are constants"
   },
   {
    "id": "spawn:node_binary.py:build",
@@ -12981,6 +13092,30 @@
    "note": "Checkout paths, refs, state roots, launcher directories and forwarded arguments are single argv items with no shell; a ref starting with a dash names no commit; module and function names in launchers are matched against a pattern"
   },
   {
+   "id": "spawn:runtime_identity.py:_probe",
+   "kind": "spawn",
+   "source": "runtime_identity.py:_probe",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "partial",
+   "tests": [
+    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
+   ],
+   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
+  },
+  {
+   "id": "spawn:runtime_identity.py:_tool",
+   "kind": "spawn",
+   "source": "runtime_identity.py:_tool",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "partial",
+   "tests": [
+    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
+   ],
+   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
+  },
+  {
    "id": "spawn:runtime_launchers.py:entrypoints",
    "kind": "spawn",
    "source": "runtime_launchers.py:entrypoints",
@@ -13034,6 +13169,20 @@
    "id": "spawn:sandbox/denial_log.py:DenialLog._probe",
    "kind": "spawn",
    "source": "sandbox/denial_log.py:DenialLog._probe",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_sandbox_redteam.py",
+    "tests/test_pdf_engine.py",
+    "tests/test_net_scan.py"
+   ],
+   "note": ""
+  },
+  {
+   "id": "spawn:sandbox/netforward.py:forward_then_run",
+   "kind": "spawn",
+   "source": "sandbox/netforward.py:forward_then_run",
    "trust": "arguments built from model output, member messages or file names",
    "attacker": "attacker text becomes a command line, environment or working directory",
    "status": "covered",
