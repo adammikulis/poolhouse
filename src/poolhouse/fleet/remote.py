@@ -76,10 +76,6 @@ def certificate_fingerprint(cert: str) -> str:
 @dataclass(frozen=True, slots=True)
 class Discovery:
     timeout_s: float = 2.0
-    key: bytes | None = field(default=None, repr=False)
-    pool_key_path: Path | str | None = None
-    group: str | None = None
-    port: int | None = None
 
 
 DEFAULT_DISCOVERY = Discovery()
