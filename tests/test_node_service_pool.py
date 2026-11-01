@@ -93,6 +93,22 @@ def test_invalid_node_binding_fields_are_refused(services, field, value):
         pool.services()
 
 
+def test_service_row_naming_another_pool_is_refused(services, monkeypatch):
+    pool, _identities, _rows = services
+    assert len(pool.services()) == 3
+    call = service_pool.node_health.call
+
+    def other(state, method, params=None):
+        reply = call(state, method, params)
+        if method == "service_members":
+            reply["services"][1]["pool"] = "b" * 32
+        return reply
+
+    monkeypatch.setattr(service_pool.node_health, "call", other)
+    with pytest.raises(PermissionError, match="outside its pool"):
+        pool.services()
+
+
 def test_screen_preserves_nonce_replay_and_isolates_members_pairwise(services, monkeypatch):
     pool, identities, rows = services
     screen = callers.Screen(lambda: [], lambda: [], pool, lambda value: value)
