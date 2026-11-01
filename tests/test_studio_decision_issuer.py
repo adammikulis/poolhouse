@@ -12,6 +12,7 @@ from dataclasses import asdict, replace
 from types import SimpleNamespace
 
 import pytest
+from service_kit import node_binary, one_node  # noqa: F401  (fixtures)
 
 from poolhouse.fleet import studio_device_routes as routes
 from poolhouse.fleet.studio_decision_issuer import DecisionIssuer
@@ -280,18 +281,15 @@ def test_saved_owner_flag_cannot_replace_current_grant(current):
         mint(current)
 
 
-def test_fixed_member_route_uses_actual_accepted_socket_and_never_mints(current, monkeypatch):
-    membership = SimpleNamespace(key=b'test-pool-key')
-    monkeypatch.setattr(routes, 'memberships', lambda _path: [membership])
-    monkeypatch.setattr(routes.project_enrollment, '_matched', lambda *_args: membership)
-    monkeypatch.setattr(routes, '_admitted', lambda *_args: True)
+def test_fixed_member_route_uses_actual_accepted_socket_and_never_mints(current, one_node):  # noqa: F811
+    one_node.bind(one_node.a, one_node.ida, 'https://127.0.0.1:7443')
     received = []
     class Issuer:
         def authorize(self, payload, remote, local):
             received.append((payload, remote, local))
             return {'authorized': False}
-    ui = SimpleNamespace(pool_key_path='unused', studio_decision_issuer=Issuer())
-    handler = SimpleNamespace(_sealing=lambda: object(), _member='enrolled-test', command='POST',
+    ui = SimpleNamespace(studio_decision_issuer=Issuer())
+    handler = SimpleNamespace(_sealing=lambda: (b'key', SimpleNamespace(), True), _member=one_node.ida.fingerprint, command='POST',
                               client_address=('127.0.0.1', 12121), connection=SimpleNamespace(getsockname=lambda: ('127.0.0.1', 7443)),
                               _send=lambda status, value: received.append((status, value)))
     assert routes.answer(handler, ui, routes.PREFIX + 'executions/decision-authorize', b'{"permit_id":"opaque"}')
@@ -359,27 +357,34 @@ def test_actual_launch_channel_accepts_the_real_issuer_calibration_context(curre
 
 
 @pytest.fixture
-def resident_listener(current, tmp_path):
+def resident_listener(current, tmp_path, one_node, monkeypatch):  # noqa: F811
 
-    from poolhouse import home, http
-    from poolhouse.fleet import tls
+    from pathlib import Path
+
+    from poolhouse import home, http, macauth
+    from poolhouse.fleet import studio_pool, tls
     from poolhouse.fleet.api import Daemon, make_handler
-    from poolhouse.fleet.discovery import derive_token, mint_pool
     from poolhouse.fleet.framing import LimitedServer
     from poolhouse.fleet.jobs import JobRunner
-    from poolhouse.fleet.pool_roster import Pool
+    from poolhouse.fleet.runtime_paths import default_root
+    from poolhouse.fleet.service_pool import Pool
 
+    # The broker child finds the node, the device identity and the owner credential from this home, as a daemon's child does.
+    monkeypatch.setenv('POOLHOUSE_HOME', str(Path(one_node.a.root).resolve()))
     identity = tls.identity(tls.device_directory(), 'resident-test')
+    monkeypatch.setattr(tls, 'local', lambda: identity)
     home.state('machine-id').write_text('resident-test')
-    membership = mint_pool('resident-pool', home.state('pool.key'))
-    pool = Pool(home.state('pool.key'))
-    pool.enrol(membership.group, identity.beacon, 'resident-test', 'test')
+    token = macauth.derive(b'resident-owner')
+    default_root().mkdir(parents=True, exist_ok=True)
+    (default_root() / 'token').write_text(token)
+    (default_root() / 'token').chmod(0o600)
+    pool = Pool()
     runner = JobRunner(tmp_path / 'runner')
     current.engine.runner = runner
     current.issuer.worker_proof = runner.verify_studio_worker
-    ui = SimpleNamespace(pool_key_path=home.state('pool.key'), studio_decision_issuer=current.issuer)
-    daemon = Daemon(runner, runner.files_root, derive_token(membership.key), name='resident-test',
-                    pool_key_path=home.state('pool.key'), members=pool, ui=ui)
+    ui = SimpleNamespace(studio_decision_issuer=current.issuer)
+    daemon = Daemon(runner, runner.files_root, token, name='resident-test', members=pool, ui=ui,
+                    service_identity=lambda: identity)
     replies = []
     handler = make_handler(daemon)
     class Recorded(handler):
@@ -390,8 +395,9 @@ def resident_listener(current, tmp_path):
     server = LimitedServer(('127.0.0.1', 0), Recorded, tls=tls.member_context(identity, pool))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
+    one_node.bind(one_node.a, identity, f'https://127.0.0.1:{server.server_port}')
     current.owned.issuer.update(endpoint=f'https://127.0.0.1:{server.server_port}', certificate=identity.beacon,
-                                machine='resident-test', pool=hashlib.sha256(membership.key).hexdigest())
+                                machine='resident-test', pool=studio_pool.current())
     try:
         yield runner, server, replies
     finally:
