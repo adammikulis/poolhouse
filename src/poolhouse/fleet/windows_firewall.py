@@ -1,6 +1,6 @@
-"""Windows only: the inbound rules the daemon needs to be found and reached, added with the one administrator prompt.
+"""Windows only: the inbound rule the daemon needs to be reached, added with the one administrator prompt.
 
-The rules are those `discovery.windows_firewall_rules` names: TCP for the daemon and UDP for its beacons, on private networks.
+The rule is TCP for the daemon's port, on private networks.
 """
 
 from __future__ import annotations
@@ -11,10 +11,11 @@ from collections.abc import Callable
 
 from poolhouse.log import say, warn
 
-from . import discovery
+from .onboard.lan import DEFAULT_HTTP_PORT
 
 POWERSHELL = "powershell.exe"
 TIMEOUT_S = 300
+RULE = "Poolhouse"
 PUBLIC = (r"Windows treats this network as Public, which blocks your other devices from reaching Poolhouse here: "
           r"in Settings > Network & internet, open this network's properties and choose Private")
 
@@ -32,8 +33,8 @@ def powershell(script: str) -> str:
 
 
 def rules() -> list[tuple[str, str, int]]:
-    """``(name, protocol, port)`` of each rule: the daemon's TCP port and the beacons' UDP port."""
-    return [(discovery.FIREWALL_RULE_HTTP, "TCP", discovery.DEFAULT_HTTP_PORT), (discovery.FIREWALL_RULE_DISCOVERY, "UDP", discovery.default_port())]
+    """``(name, protocol, port)`` of each rule: the daemon's TCP port."""
+    return [(RULE, "TCP", DEFAULT_HTTP_PORT)]
 
 
 def missing(run: Run = powershell) -> list[tuple[str, str, int]]:
@@ -61,11 +62,11 @@ def ensure(run: Run = powershell) -> bool:
     """Make sure the rules are in place, asking Windows once; False, after saying what to do, when they are not."""
     absent = missing(run)
     if absent:
-        say("Windows will ask once to let Poolhouse be found by your other devices: press Yes.")
+        say("Windows will ask once to let Poolhouse be reached by your other devices: press Yes.")
         add(absent, run)
         absent = missing(run)
     if absent:
-        warn("Windows did not add the firewall rules, so your other devices cannot find or reach this one: open Poolhouse again and press Yes when Windows asks.")
+        warn("Windows did not add the firewall rules, so your other devices cannot reach this one: open Poolhouse again and press Yes when Windows asks.")
         return False
     if public_only(run):
         warn(PUBLIC)

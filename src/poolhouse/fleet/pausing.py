@@ -6,7 +6,7 @@ own answer. A machine that is off never receives the message; `seen` remembers t
 this machine has met so `pause_table` can name it.
 
 A machine that was off hears nothing, so it asks when it starts: `member_pause` reads the
-pause off the beacons it can hear and `adopt_pause` takes it.
+pause off the pool's authorized services and `adopt_pause` takes it.
 """
 
 from __future__ import annotations
@@ -22,7 +22,6 @@ from typing import Any
 from poolhouse.home import expand
 
 from .availability import Availability
-from .discovery import Beacon, derive_token, discover, memberships
 from .remote import Member, MemberError
 
 __all__ = [
@@ -77,19 +76,20 @@ class Fanout:
     resume: bool = False
     minutes: float | None = None
     reason: str = ""
-    pool_key_path: Path | str | None = None
+    here: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None
+    """How this machine applies the change to itself: ``(action, fields) -> availability``."""
 
 
-def member_clients(rows: Sequence[dict[str, Any]], *,
-                 pool_key_path: Path | str | None = None,
-                 timeout: float = 60.0) -> dict[str, Member]:
-    """A `remote.Member` for each row a pool key of this machine's reaches, by name."""
-    tokens = {m.group: derive_token(m.key) for m in memberships(pool_key_path)}
+def member_clients(rows: Sequence[dict[str, Any]], *, timeout: float = 60.0) -> dict[str, Member]:
+    """A `remote.Member` for each row whose endpoint the node currently authorizes, by name."""
     out: dict[str, Member] = {}
     for row in rows:
-        token = next((tokens[g] for g in row.get("pools") or [] if g in tokens), "")
-        if token:
-            out[str(row["name"])] = Member(str(row["base_url"]), token, timeout=timeout)
+        if row.get("is_self") or not str(row.get("base_url") or "").startswith("https://"):
+            continue
+        try:
+            out[str(row["name"])] = Member(str(row["base_url"]), "", timeout=timeout)
+        except (PermissionError, ValueError):
+            continue
     return out
 
 
@@ -141,7 +141,7 @@ def _until(said: dict[str, Any]) -> str:
 def pause_fleet(what: Fanout, rows: Sequence[dict[str, Any]]) -> list[Answer]:
     """Send one pause or resume to each machine, and what each said."""
     remember_seen(rows, what.root)
-    clients = member_clients(rows, pool_key_path=what.pool_key_path, timeout=REACH_S)
+    clients = member_clients(rows, timeout=REACH_S)
     action = "resume" if what.resume else "pause"
     fields: dict[str, Any] = {}
     if not what.resume:
@@ -151,13 +151,16 @@ def pause_fleet(what: Fanout, rows: Sequence[dict[str, Any]]) -> list[Answer]:
     for row in rows:
         name, mine = str(row["name"]), bool(row.get("is_self"))
         member = clients.get(name)
+        if mine and what.here is not None:
+            out.append(Answer(name, True, _until(what.here(action, fields)), True))
+            continue
         if member is None:
-            out.append(Answer(name, False, "no pool key reaches this machine", mine))
+            out.append(Answer(name, False, "the node authorizes no compute service for this machine", mine))
             continue
         try:
             out.append(Answer(name, True, _until(member.availability(action, **fields)),
                               mine))
-        except (MemberError, OSError, ValueError) as exc:
+        except (MemberError, OSError, ValueError, PermissionError) as exc:
             told = str(exc)
             out.append(Answer(name, False,
                               UNHEARD if "unreachable" in told else told[-160:], mine))
@@ -231,19 +234,14 @@ def pause_among(rows: Sequence[dict[str, Any]], *,
     return best
 
 
-def member_pause(pool_key_path: Path | str | None = None, *,
-               timeout_s: float = ADOPT_S, port: int | None = None,
-               finder: Callable[..., list[Beacon]] = discover) -> Adopted | None:
-    """Listen for this machine's pools and return the pause they are under."""
-    rows: list[dict[str, Any]] = []
-    deadline = time.time() + timeout_s
-    for member in memberships(pool_key_path):
-        left = deadline - time.time()
-        if left <= 0:
-            break
-        for beacon in finder(member.key, timeout_s=left, port=port):
-            rows.append({"name": beacon.name, "device": beacon.device})
-    return pause_among(rows)
+def member_pause(*, timeout_s: float = ADOPT_S) -> Adopted | None:
+    """Ask the pool's authorized compute services and return the pause they are under."""
+    try:
+        members = Member.discover(timeout=timeout_s)
+    except (PermissionError, MemberError, OSError):
+        return None                      # no other authorized service answered: nothing to adopt
+    return pause_among([{"name": m.name, "device": m.beacon.device if m.beacon else {}}
+                        for m in members])
 
 
 def adopt_pause(schedule: Availability, found: Adopted | None) -> Adopted | None:

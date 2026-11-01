@@ -197,8 +197,8 @@ settings-view #settings-removal { border-top:1px solid var(--line); padding-top:
       this.querySelector("#settings-again").replaceChildren(
         el("h2", {}, "Set this device up again"),
         el("div", { class: "hint" },
-          "Walks through naming it and choosing a passphrase, as it did the first time. "
-          + "The Pools it is already in are left alone."),
+          "Walks through naming it, as it did the first time. "
+          + "The pool it is already in is left alone."),
         el("button", { class: "ghost small",
           onclick: () => M.go("first-run") }, "Run setup again"));
 

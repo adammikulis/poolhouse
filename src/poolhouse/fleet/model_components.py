@@ -153,16 +153,20 @@ def inventory(model: Path) -> dict:
     return result
 
 
-def catalogue(models, name: str, source: str = "", key: bytes | None = None) -> dict:
+def catalogue(models, name: str, source: str = "") -> dict:
     model = models.listed(name)       # a name from a request is compared, never opened
     source = source or (source_for(model.path) if model else "")
     offers, error = [], ""
     repo, _ = _reference(source)
     policy = models.sources()
-    if key is not None and policy in {"lan", "both"}:
-        from .remote import Discovery, Member, MemberError
+    if policy in {"lan", "both"}:
+        from .remote import Member, MemberError
 
-        for member in Member.discover(discovery=Discovery(key=key, timeout_s=1)):
+        try:
+            members = Member.discover(timeout=10.0)
+        except (PermissionError, MemberError, OSError):
+            members = []                 # the node authorizes no other compute service
+        for member in members:
             try:
                 for held in member.models():
                     same = _reference(held.get("source", "")) == _reference(source) if source else held.get("name") == name

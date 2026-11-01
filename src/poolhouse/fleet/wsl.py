@@ -15,7 +15,8 @@ from pathlib import Path
 from poolhouse.log import say, warn
 from poolhouse.platform import end_child, launch
 
-from . import discovery, launch_health, runtime_wheel, windows_firewall, wsl_network, wsl_ui
+from . import launch_health, runtime_wheel, windows_firewall, wsl_network, wsl_ui
+from .onboard.lan import primary_ip
 
 __all__ = ["WSLError", "command", "prepare", "start"]
 
@@ -199,14 +200,13 @@ def _gateway(host: str) -> str:
 
 
 def _bridge(executable: str, arguments: list[str]) -> wsl_network.NetworkBridge | None:
-    host = discovery.primary_ip()
+    host = primary_ip()
     if not host:
-        warn("LAN discovery is unavailable while Windows has no LAN address.")
+        warn("The LAN bridge is unavailable while Windows has no LAN address.")
         return None
-    linux_host = _read(executable, "-c", "from poolhouse.fleet.discovery import primary_ip; print(primary_ip())")
+    linux_host = _read(executable, "-c", "from poolhouse.fleet.onboard.lan import primary_ip; print(primary_ip())")
     port = _port(arguments)
-    bridge = wsl_network.NetworkBridge(host, (linux_host, port), discovery.default_group(),
-                                      discovery.default_port(), discovery._native_socket)
+    bridge = wsl_network.NetworkBridge(host, (linux_host, port))
     bridge.gateway = _gateway(host)
     try:
         return bridge.start()

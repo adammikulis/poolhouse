@@ -20,7 +20,7 @@ import json
 import os
 import sys
 import time
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,7 +33,6 @@ from poolhouse.http import Options, ServerError, ServerUnreachable, json_body, r
 from poolhouse.jobs import detach
 from poolhouse.log import say, warn
 from poolhouse.pool_cli import main
-from poolhouse.units import human_bytes
 
 from . import automatic_pools, pool_modes, recovery
 from .applying import apply_plan, serving_table
@@ -45,7 +44,6 @@ from .discovery import (
     key_path,
     leave as leave_pool,
     memberships,
-    named_apart,
     require_name,
 )
 from .join_request import (
@@ -57,6 +55,7 @@ from .join_request import (
     LeaveRequest,
 )
 from .launch import already_running, wait_for_health
+from .member_rows import describe, named_apart
 from .onboard.joining import JoinOptions, join_by_passphrase
 from .onboard.pools import format_pools, known_pools, pick_pool
 from .pausing import (
@@ -78,7 +77,6 @@ __all__ = [
     "JoinError",
     "Joined",
     "checks",
-    "describe",
     "join_machine",
     "leave_machine",
     "main",
@@ -90,7 +88,6 @@ __all__ = [
     "remember_track",
     "running_code",
     "start_daemon",
-    "sweep_argv",
     "table",
     "updating",
 ]
@@ -295,58 +292,6 @@ def _enrol_via_daemon(port: int, passphrase: str, group: str, mode: str | None) 
 
 
 # -- the devices in the pool ---------------------------------------------------------------
-def describe(beacon: Beacon, *, pools: Iterable[str] = (),
-             self_machine: str = "") -> dict[str, Any]:
-    """One member as a row: what it serves, its room, whether it is busy, its commit.
-
-    Read out of the beacon's device report, defensively: a daemon on an older build
-    reports fewer fields, and a row with a '?' in it beats no row.
-    """
-    d = beacon.device or {}
-    served = []
-    for one in d.get("serving") or []:
-        for model in one.get("models") or []:
-            served.append(f"{model}:{one.get('port', '?')}")
-    # `fleet.measuring.BenchHost.report` puts the memory a model may use, the commit this
-    # machine runs and whether it is measuring on the beacon; an older daemon has only
-    # the device probe, and its card's memory is the next best answer.
-    vram_total, vram_free = d.get("vram_total_gb"), d.get("vram_free_gb")
-    if d.get("room_bytes"):
-
-        room = human_bytes(int(d["room_bytes"]))
-    elif vram_total:
-        room = f"{vram_free if vram_free is not None else '?'}/{vram_total} GB"
-    elif d.get("ram_gb"):
-        room = f"{d.get('ram_gb')} GB ram"
-    else:
-        room = "?"
-    lock = d.get("lock") or ("measuring" if d.get("measuring") else "")
-    said = d.get("availability") or {}
-    return {
-        "name": beacon.name, "called": beacon.name, "machine": beacon.machine,
-        "host": beacon.host, "base_url": beacon.base_url,
-        "port": beacon.port, "busy": bool(beacon.busy), "free": beacon.free,
-        "slots": beacon.slots, "queued": beacon.queued,
-        "room": room, "serving": served,
-        "models": [str(m.get("name")) for m in (d.get("models") or []) if m.get("name")],
-        "speech": [str(one) for one in (d.get("speech") or [])],
-        "lock": str(lock) if lock else "",
-        "paused": bool(said.get("paused")),
-        "paused_because": (str(said.get("unavailable_because") or "paused")
-                           if said.get("paused") else ""),
-        "commit": str(d.get("bench_commit") or d.get("commit") or "?"),
-        "commit_age_s": float(d.get("commit_age_s") or 0.0),
-        "version": str(d.get("version") or ""),
-        "tracking": str(d.get("tracking") or ""),
-        "checked_at": float(d.get("update_checked_at") or 0.0),
-        "update_error": str(d.get("update_error") or ""),
-        "gpu": str(d.get("gpu") or ""),
-        "pools": list(pools),
-        "is_self": bool(self_machine) and beacon.machine == self_machine,
-        "device": d,
-    }
-
-
 def members(*, pool_key_path: Path | str | None = None, timeout_s: float = 2.0,
           port: int | None = None, self_machine: str = "",
           finder: Callable[..., list[Beacon]] = discover) -> list[dict[str, Any]]:
@@ -367,8 +312,9 @@ def members(*, pool_key_path: Path | str | None = None, timeout_s: float = 2.0,
             who = f"{beacon.machine or beacon.hostname}:{beacon.port}"
             row = found.get(who)
             if row is None:
-                found[who] = describe(beacon, pools=[member.group],
-                                      self_machine=self_machine)
+                found[who] = describe({**beacon.public(), "host": beacon.host, "base_url": beacon.base_url,
+                                       "is_self": bool(self_machine) and beacon.machine == self_machine},
+                                      pools=[member.group])
                 continue
             if member.group not in row["pools"]:
                 row["pools"].append(member.group)
@@ -605,29 +551,6 @@ def leave_machine(request: LeaveRequest = DEFAULT_LEAVE, *, say: Callable[[str],
 
 
 # -- a sweep over the fleet ----------------------------------------------------------
-def sweep_argv(models: Sequence[str], *, members: Sequence[str] = (), sample: int = 0,
-               label: str = "", extra: Sequence[str] = ()) -> list[str]:
-    """The ``python -m poolhouse.bench`` line that spreads ``models`` over the fleet, one job each.
-
-    Built here rather than in the page, so the command the page shows is the command the
-    daemon runs and the one a person could paste. ``--detach`` is not on it: the caller
-    detaches, and hands the log back.
-    """
-    if not models:
-        raise ValueError("a sweep needs at least one model")
-    argv = ["sweep", "--fleet"]
-    for m in models:
-        argv += ["--serve", str(m)]
-    if members:
-        argv += ["--members", ",".join(members)]
-    if sample:
-        argv += ["--sample", str(int(sample))]
-    if label:
-        argv += ["--label", label]
-    argv += [str(a) for a in extra]
-    return argv
-
-
 # -- the command -----------------------------------------------------------------------
 def _pool_and_words(args: argparse.Namespace, key: Path | str | None) -> tuple[str, str]:
     """Read explicit pool credentials or select automatic admission."""

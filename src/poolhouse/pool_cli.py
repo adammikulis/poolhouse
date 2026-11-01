@@ -8,7 +8,7 @@ from dataclasses import asdict, is_dataclass
 from typing import Any
 
 from poolhouse import errors
-from poolhouse.api import _node, pool
+from poolhouse.api import pool
 from poolhouse.fleet.onboard.cli import add_service_commands, run as run_service
 from poolhouse.fleet.plan import PREFERENCES
 from poolhouse.fleet.runtime_paths import default_root
@@ -78,7 +78,7 @@ def execute(args: argparse.Namespace) -> Any:
         case "remove":
             return pool.remove(args.device)
         case "leave":
-            return _node.call("pool_leave", token=_node.session().token)
+            return pool.leave()
         case "sync":
             pool.sync()
             return pool.status()

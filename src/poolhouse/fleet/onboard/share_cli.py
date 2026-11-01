@@ -25,17 +25,16 @@ from poolhouse.log import say, warn
 from poolhouse.sentinel.human import HumanRequired, mint
 from poolhouse.units import parse_duration
 
-from ..discovery import memberships
+from ..service_pool import Pool
 from ..tls import TlsUnavailable, identity
 from . import modelstore
 from .join_code import DEFAULT_SHARE_PORT
 from .manifest import SHARING_LEVELS, Entry, Signer, verify
 from .memberfirst import quarantine_veto
-from .requests import Devices
-from .sharing import OPEN, OWNER, Licences
+from .sharing import OPEN, OWNER, Access, Licences
 from .signing import KeyStoreError, SigningKeys
 from .signing_cli import confirm_signing
-from .transfer import Share, ShareServer, mac_gate
+from .transfer import Share, ShareServer
 
 __all__ = ["add_share", "cmd_share"]
 
@@ -101,14 +100,32 @@ def _emit(args: argparse.Namespace, document: dict[str, Any], text: str) -> None
     say(json.dumps(document, indent=1, default=str) if args.json else text)
 
 
+def service_gate(pool: Pool):
+    """The gate a `ShareServer` asks: a request signed with the secret the node derives for two of its authorized services."""
+    def secrets_now() -> list[str]:
+        own = pool.own().fingerprint
+        return [pool.secret(row.fingerprint) for row in pool.services() if row.fingerprint != own]
+
+    auth = macauth.Authenticator(secrets_now)
+
+    def gate(method: str, target: str, headers: Any, who: str) -> Access | None:
+        return Access() if auth.check(method, target, headers, None, who).ok else None
+    return gate
+
+
 def cmd_share(args: argparse.Namespace) -> int:
     directory = Path(args.state) if args.state else home.state("onboard")
-    share_dir, held = Path(args.dir) if args.dir else directory, memberships()
+    share_dir, pool = Path(args.dir) if args.dir else directory, Pool()
     bad = [v for v in _joins(args.sharing).values() if v not in SHARING_LEVELS]
-    if not held or bad or not (args.models or (share_dir.is_dir() and args.dir)):
-        _emit(args, {"error": "needs a pool, --dir (or --models) and sharing levels of "
+    if bad or not (args.models or (share_dir.is_dir() and args.dir)):
+        _emit(args, {"error": "needs --dir (or --models) and sharing levels of "
                               f"{'/'.join(SHARING_LEVELS)}"},
-              "error: needs a pool and --dir (or --models)")
+              "error: needs --dir (or --models)")
+        return 2
+    try:
+        pool.own()
+    except PermissionError as exc:
+        _emit(args, {"error": str(exc)}, f"error: {exc}")
         return 2
     skipped: list[str] = []
     paths = roots = None
@@ -131,8 +148,7 @@ def cmd_share(args: argparse.Namespace) -> int:
         return 2
     licences = Licences(directory / "licences.json")
     _confirm_licences(entries, licences)
-    devices = Devices(directory / "devices.json")
-    gate = mac_gate(macauth.derive(held[0].key), devices.all)
+    gate = service_gate(pool)
     span = parse_duration(args.span) or 600.0
     with ShareServer(Share(share_dir, raw, verify(raw, keys.public), licences, quarantine_veto,
                            paths, roots or ()),

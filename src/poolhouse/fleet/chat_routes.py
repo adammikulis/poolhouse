@@ -6,9 +6,19 @@ from poolhouse import agent_dependency
 
 from .chat import find, reply_parts, targets
 from .conversation_routes import ConversationRoutes
-from .discovery import derive_token, load_pool_key
+from .service_pool import Pool
 
 __all__ = ["ChatRoutes"]
+
+
+def _secret(row: dict) -> str:
+    """The request secret for one other pool member, or empty when the node authorizes none for it."""
+    if row.get("is_self") or not row.get("fingerprint"):
+        return ""
+    try:
+        return Pool().secret(str(row["fingerprint"]))
+    except PermissionError:
+        return ""
 
 
 class ChatRoutes(ConversationRoutes):
@@ -21,9 +31,7 @@ class ChatRoutes(ConversationRoutes):
 
     def _chat(self) -> bool:
         ui = self.ui
-        key = load_pool_key(ui.pool_key_path)
-        available = targets(ui.members() if key is not None else [], ui.serving,
-                            derive_token(key) if key else "")
+        available = targets([{**row, "token": _secret(row)} for row in ui.members()], ui.serving)
         if self.method == "GET":
             problem = agent_dependency.problem()
             self.send(200, {"models": [t.public() for t in available], "runtime_ready": not problem,

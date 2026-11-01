@@ -4,18 +4,20 @@ from __future__ import annotations
 import argparse
 
 from poolhouse.command import Group, flag
-from poolhouse.fleet.discovery import DiscoveryError, derive_token
-from poolhouse.fleet.members import _require_key
-from poolhouse.fleet.remote import Discovery, Member
+from poolhouse.fleet.remote import DiscoveryError, Member
+from poolhouse.fleet.runtime_paths import default_root
 from poolhouse.http import ServerError
 from poolhouse.log import say, warn
 
 
 def _member(args: argparse.Namespace) -> Member:
-    key = _require_key(args.pool_key)
     if args.name:
-        return Member.find_one(name=args.name, discovery=Discovery(key=key))
-    return Member(f"http://127.0.0.1:{args.port}", derive_token(key))
+        return Member.find_one(name=args.name)
+    try:
+        token = (default_root() / "token").read_text().strip()
+    except OSError as exc:
+        raise OSError(f"this device's own daemon has no owner token to present: {exc}") from exc
+    return Member(f"http://127.0.0.1:{args.port}", token)
 
 
 def _pause(args: argparse.Namespace) -> int:
@@ -65,8 +67,7 @@ def _schedule(args: argparse.Namespace) -> int:
 TARGET = (flag("--name", default="", help="another device in this pool (default: this device)"),
           flag("--port", type=int, default=8770))
 COMMAND = Group("poolhouse device", "Availability and working hours for one selected pool device.",
-                options=[flag("--pool-key", default=None, help="path to this pool's key")],
-                errors=(DiscoveryError, ServerError, OSError),
+                errors=(DiscoveryError, PermissionError, ServerError, OSError),
                 epilog="First-time device preparation: poolhouse device setup --help")
 COMMAND.add("pause", _pause, help="stop taking work; the device's configured stop/leave policy governs running jobs",
             options=[*TARGET, flag("--minutes", type=float, default=0, help="resume after this many minutes"),

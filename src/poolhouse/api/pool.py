@@ -16,7 +16,7 @@ from poolhouse.api import _node
 from poolhouse.board import founding, presence
 from poolhouse.board.client import Client, NodeError
 
-__all__ = ["Capacity", "Founding", "Member", "Pool", "Refusal", "add_device", "capacity", "found", "join", "listen", "members",
+__all__ = ["Capacity", "Founding", "Member", "Pool", "Refusal", "add_device", "capacity", "found", "join", "leave", "listen", "members",
            "policy", "remove", "status", "sync"]
 Refusal = founding.Refusal
 """A call that needs the person: ``str`` is one sentence to pass on; ``needs`` (`approval`, `device`, `time`, `none`), ``where`` (where they
@@ -235,6 +235,11 @@ def remove(device: str) -> Member:
         raise errors.Error(f"{'no' if not found else 'two'} member is called {device!r} (members: {names})")
     _node.call("member_remove", {"fingerprint": found[0].fingerprint}, token=_node.session().token)
     return next(m for m in members(include_removed=True) if m.fingerprint == found[0].fingerprint)
+
+
+def leave() -> dict[str, object]:
+    """Leave the pool this device is in: the node forgets it and this device becomes a pool of one."""
+    return dict(_node.call("pool_leave", token=_node.session().token))
 
 
 def sync() -> None:

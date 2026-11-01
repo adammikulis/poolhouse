@@ -1,6 +1,6 @@
 """Whether this device takes test shards, and the Python 3.13 with pytest that runs them.
 
-A device takes shards only in a pool in dev mode, only while nobody turned `remote-tests` off here,
+A device takes shards only while nobody turned `remote-tests` off here,
 and only with a Python 3.13 that imports pytest. What it says is `capability`.
 """
 
@@ -69,10 +69,8 @@ def resolve() -> tuple[str, str]:
     return "", f"Python {WANTED} with pytest is missing on this device ({'; '.join(tried) or 'nothing found'}): {FIX}"
 
 
-def refusal(mode: str, root: str = "") -> str:
+def refusal(root: str = "") -> str:
     """Why this device takes no shards (``''`` when it takes them); a sentence a person can act on."""
-    if mode != "dev":
-        return "this device is in a pool that is not in dev mode, so it takes tests only from devices a person named"
     if features.turned_off(FEATURE, root):
         return f"tests from other devices were turned off here (`poolhouse features disable {FEATURE}`); `poolhouse features enable {FEATURE}` turns them on"
     return resolve()[1]
@@ -84,9 +82,9 @@ def platform_of(python: str = WANTED) -> dict[str, Any]:
             "wsl": guest(), "python": python}
 
 
-def capability(mode: str, root: str, name: str, status: dict[str, Any]) -> dict[str, Any]:
+def capability(root: str, name: str, status: dict[str, Any]) -> dict[str, Any]:
     """What `GET /shards/v1/caps` answers: whether shards are taken (and why not), the platform and the free slots."""
-    reason = refusal(mode, root)
+    reason = refusal(root)
     slots, free = int(status.get("slots", 1)), int(status.get("free", 0))
-    return {"accepts": not reason, "reason": reason, "platform": platform_of(), "python": WANTED, "name": name, "mode": mode,
+    return {"accepts": not reason, "reason": reason, "platform": platform_of(), "python": WANTED, "name": name,
             "free": free, "most_active": slots}

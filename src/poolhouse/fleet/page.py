@@ -34,7 +34,6 @@ MODULES = {"chat-create": frozenset({"chat-view"}),
            "task-publishing": frozenset({"tasks-view"}),
            "task-review-quality": frozenset({"tasks-view"}),
            "gym-drone-geometry": frozenset({"gym-scene"}),
-           "setup-recovery": frozenset({"first-run", "pool-actions"}),
            "chat-model-picker": frozenset({"chat-view"}),
            "chat-runtime": frozenset({"chat-view", "settings-view"}),
            "chat-coding": frozenset({"chat-view"}), "workspace-model": frozenset({
