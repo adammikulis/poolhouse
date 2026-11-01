@@ -3,6 +3,7 @@ import copy
 
 import pytest
 import test_studio_stream_http
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_studio_stream_http import create
 
 served = test_studio_stream_http.served

@@ -8,10 +8,17 @@ import uuid
 from copy import deepcopy
 
 import pytest
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_fleet_ui import Serving
 
 from poolhouse.fleet.jobs import Job
 from poolhouse.fleet.studio_service import scope
+
+
+@pytest.fixture(autouse=True)
+def _the_pool(studio_node):  # noqa: F811
+    """Studio scopes its records by the pool its node is in, so a node is there."""
+    yield studio_node
 
 
 @pytest.fixture

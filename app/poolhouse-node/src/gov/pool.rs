@@ -232,15 +232,6 @@ impl GovPool {
         Ok(pool)
     }
 
-    /// Whether the pool kept in ``dir`` is of the format this build reads: its founding act and its charter are of the current versions.
-    /// A directory that cannot be read as JSON is for `load` to report.
-    pub fn current_format(dir: &Path) -> bool {
-        match read_json::<Value>(&dir.join(CHARTER)) {
-            Ok(Some(found)) => found["v"] == super::act::VERSION && found["body"]["v"] == super::charter::VERSION,
-            _ => true,
-        }
-    }
-
     /// Open the pool kept in ``dir``.
     pub fn load(dir: &Path) -> Result<GovPool> {
         Self::load_with_awake_base(dir, None)

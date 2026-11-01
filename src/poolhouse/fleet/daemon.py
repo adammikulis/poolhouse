@@ -280,6 +280,7 @@ class DaemonRuntime:
     def configure_interface(self) -> None:
         if self.interface is not None:
             self.interface.rename = self.rename
+            self.interface.studio_token = lambda: self.token
             self.interface.runner = self.runner
             self.interface.schedule = self.schedule
             self.interface.settings = self.settings

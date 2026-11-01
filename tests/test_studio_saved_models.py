@@ -3,10 +3,17 @@ import copy
 import hashlib
 
 import pytest
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 
 from poolhouse.studio.engine import _artifacts
 from poolhouse.studio.saved_models import SavedModels
 from poolhouse.studio.store import digest
+
+
+@pytest.fixture(autouse=True)
+def _the_pool(studio_node):  # noqa: F811
+    """Studio scopes its records by the pool its node is in, so a node is there."""
+    yield studio_node
 
 
 class MemoryStore:

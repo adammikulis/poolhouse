@@ -14,11 +14,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
-from poolhouse import home
-from poolhouse.fleet import tls
-from poolhouse.fleet.discovery import Beacon, derive_token, memberships
-from poolhouse.fleet.membership import Roster
-from poolhouse.fleet.remote import Member
+from poolhouse import home, macauth
+from poolhouse.fleet import studio_pool, tls
+from poolhouse.fleet.remote import Beacon, Member
+from poolhouse.fleet.runtime_paths import default_root
+from poolhouse.fleet.service_pool import Pool
 from poolhouse.fleet.studio_transport import MemberExecution
 from poolhouse.serve.decision_residents import DecisionModel, fingerprint
 from poolhouse.serve.process import started_at
@@ -36,12 +36,15 @@ def _plain(path: Path) -> None:
         raise PermissionError("The resident issuer identity belongs to another account.")
 
 
-def existing(owned: Bootstrap) -> tuple[tls.Identity, bytes]:
-    """Read only already-enrolled fixed files. Missing identity never creates one."""
+def existing(owned: Bootstrap) -> tuple[tls.Identity, str]:
+    """Read only already-enrolled fixed files. Missing identity never creates one.
+
+    Returns the device identity and the daemon owner's token, which the owning daemon's own endpoint takes."""
     folder = tls.device_directory()
     cert, key, meta = folder / "cert.pem", folder / "key.pem", folder / "cert.json"
     machine = home.state("machine-id")
-    for path in (cert, key, meta, machine):
+    owner = default_root() / "token"
+    for path in (cert, key, meta, machine, owner):
         _plain(path)
     if os.name != "nt" and key.stat().st_mode & 0o077:
         raise PermissionError("The resident issuer key is not account-private.")
@@ -53,12 +56,18 @@ def existing(owned: Bootstrap) -> tuple[tls.Identity, bytes]:
             or machine.read_text().strip() != owned.issuer["machine"]
             or held.get("fingerprint") != hashlib.sha256(der).hexdigest()):
         raise PermissionError("The resident issuer's enrolled device identity changed.")
-    # Explicit fixed default path: environment-selected paths cannot choose authority.
-    rows = [row for row in memberships(home.state("pool.key"))
-            if hashlib.sha256(row.key).hexdigest() == owned.issuer["pool"]]
-    if len(rows) != 1 or not Roster(rows[0].key).is_active(hashlib.sha256(der).hexdigest()):
+    token = owner.read_text().strip()
+    if not token.startswith(macauth.PREFIX):
+        raise PermissionError("The resident issuer owner credential is unavailable.")
+    identity = tls.Identity(cert, key, der, expiry)
+    try:
+        current = Pool().own(identity)
+        enrolled = studio_pool.scope_of(current.pool) == owned.issuer["pool"]
+    except PermissionError:
+        enrolled = False
+    if not enrolled:
         raise PermissionError("The resident issuer is no longer enrolled in this pool.")
-    return tls.Identity(cert, key, der, expiry), rows[0].key
+    return identity, token
 
 
 def model_reply(value: dict) -> DecisionModel:
@@ -103,9 +112,9 @@ class DecisionAuthorization:
 
     def __call__(self, stage: str) -> DecisionModel:
         payload = self.owned.sign({**self.body, "stage": stage})
-        identity, key = existing(self.owned)
+        identity, token = existing(self.owned)
         parts = urlsplit(self.owned.issuer["endpoint"])
-        member = Member(self.owned.issuer["endpoint"], derive_token(key), timeout=5,
+        member = Member(self.owned.issuer["endpoint"], token, timeout=5, identity=identity,
                         beacon=Beacon("resident-issuer", host=parts.hostname, port=parts.port,
                                       machine=self.owned.issuer["machine"], cert=self.owned.issuer["certificate"]))
         def current():

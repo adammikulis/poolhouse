@@ -3,12 +3,11 @@ import json
 
 import pytest
 from browser_expect import expect
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from studio_commands import studio_command
 from test_dataset_catalogue import REPO, remote as _remote
 from test_fleet_ui import Serving
 from test_studio_canvas_browser import add, studio_browser as _studio_browser
-
-from poolhouse.fleet.discovery import mint_pool
 
 remote = _remote
 studio_browser = _studio_browser
@@ -16,11 +15,10 @@ pytestmark = pytest.mark.slow
 
 
 @pytest.fixture
-def dataset_page(tmp_path, remote, studio_browser):
+def dataset_page(tmp_path, remote, studio_browser, studio_node):  # noqa: F811
     app = Serving(tmp_path)
     app.ui.root = tmp_path / 'traind'
     app.ui.settings.setup_done = True
-    mint_pool('dataset-ui-pool', app.keyfile)
     session = app.ui.sessions.open('dataset-browser', 'launch-ticket')
     try:
         with studio_browser() as page:

@@ -39,7 +39,7 @@ note = "Real isolated storage and offer-registry tests at controlled child and m
 match = ["parser:fleet/producer_member.py", "handler:fleet/producer_member.py:answer"]
 status = "covered"
 count = 2
-tests = ["tests/test_producer_member.py::test_real_sealed_tls_uses_actual_current_caller_not_record_fields", "tests/test_producer_member.py::test_duplicate_and_nonfinite_fields_never_dispatch_over_actual_tls", "tests/test_producer_member.py::test_missing_service_and_mismatched_tls_identity_fail_closed", "tests/test_producer_member.py::test_only_publisher_action_can_carry_maximum_record_over_sealed_tls", "tests/test_producer_member.py::test_metadata_budget_is_fixed_before_provider_dispatch", "tests/test_producer_member.py::test_no_tls_channel_or_current_membership_cannot_dispatch", "tests/test_producer_member.py::test_only_fixed_action_has_large_request_budget"]
+tests = ["tests/test_producer_member.py::test_real_sealed_tls_uses_actual_current_caller_not_record_fields", "tests/test_producer_member.py::test_duplicate_and_nonfinite_fields_never_dispatch_over_actual_tls", "tests/test_producer_member.py::test_missing_service_fails_closed", "tests/test_producer_member.py::test_tls_caller_that_is_not_the_sealed_member_cannot_dispatch", "tests/test_producer_member.py::test_only_publisher_action_can_carry_maximum_record_over_sealed_tls", "tests/test_producer_member.py::test_metadata_budget_is_fixed_before_provider_dispatch", "tests/test_producer_member.py::test_no_tls_channel_or_current_pool_cannot_dispatch", "tests/test_producer_member.py::test_only_fixed_action_has_large_request_budget"]
 note = "Actual sealed TLS adapter tests bind the authenticated caller certificate and pool, reject substituted identities and malformed fixed schemas, and limit large bodies to publishing. Provider source capability, grant checks and full factory composition remain separate requirements."
 
 [[group]]
@@ -521,9 +521,7 @@ count = 1
 tests = ["tests/test_project_registration.py::test_windows_registration_in_wsl_uses_literal_argv_and_verified_git_root",
          "tests/test_project_registration.py::test_registration_refuses_invalid_path_without_spawning",
          "tests/test_project_registration.py::test_registration_refuses_invalid_wsl_translation",
-         "tests/test_project_registration.py::test_windows_drive_path_is_not_translated_outside_wsl",
-         "tests/test_project_registration.py::test_registration_rejects_unauthenticated_caller_before_path_translation",
-         "tests/test_project_registration.py::test_sealed_wsl_registration_checks_identity_before_persisting"]
+         "tests/test_project_registration.py::test_windows_drive_path_is_not_translated_outside_wsl"]
 note = "WSL drive paths reach a fixed literal argument vector; bounded absolute paths and authenticated local Dev admission are checked before translation, and mismatched Git identities cannot persist"
 
 [[group]]
@@ -550,23 +548,6 @@ tests = ["tests/test_workspace_backlog.py::test_repository_infers_github_origin_
          "tests/test_workspace_backlog.py::test_repository_rejects_traversal_owner_in_origin"]
 note = "Origin URLs are read with a fixed argv, timeout and checkout directory; hostile URL syntax does not become a repository"
 
-
-[[group]]
-match = ["egress:fleet/project_client.py:register_local"]
-status = "covered"
-count = 1
-tests = ["tests/test_remote_transport_attacks.py::test_local_registration_refuses_hostile_response"]
-note = "bounded loopback registration rejects foreign redirects, oversized replies, absent or tampered seals, malformed JSON and another project identity"
-
-[[group]]
-match = ["route:fleet/projects.py:/workspace/v1/local-project"]
-status = "covered"
-count = 1
-tests = ["tests/test_project_enrollment_admission.py::test_local_project_route_refuses_unauthorized_registration",
-         "tests/test_project_enrollment_admission.py::test_native_registration_requires_local_active_dev_proof",
-         "tests/test_board_metadata.py::test_native_registration_refuses_identity_mismatch_before_mutation",
-         "tests/test_board_metadata.py::test_native_registration_refuses_unbounded_or_relative_path"]
-note = "native registration requires loopback sealed active Dev admission and an exact bounded local Git identity; rejected requests do not register or expose a path"
 
 [[group]]
 match = ["route:fleet/api.py:/jobs/*"]
@@ -1076,10 +1057,8 @@ note = "TLS daemon requests attack missing phone authority, wrong methods, unkno
 match = ["route:fleet/callers.py:/workspace/v1/*"]
 status = "covered"
 count = 1
-tests = ["tests/test_project_enrollment_admission.py::test_registration_requires_a_sealed_request_from_the_active_dev_membership",
-         "tests/test_project_enrollment_admission.py::test_local_project_route_refuses_unauthorized_registration",
-         "tests/test_project_enrollment_admission.py::test_native_registration_requires_local_active_dev_proof"]
-note = "A real daemon's project requests (the catalogue, a snapshot, the local registration) reject missing and pool-only device proof, unsealed bodies and malformed JSON; registration requires the active Dev membership"
+tests = ["tests/test_fleet_android.py::test_real_tls_dispatcher_refuses_phone_credentials_on_computer_routes"]
+note = "A real daemon's project requests (the catalogue, a snapshot) reject missing and phone device proof, unsealed bodies and malformed JSON"
 
 [[group]]
 match = ["route:fleet/invite_routes.py:/ui/fleet/android-devices"]

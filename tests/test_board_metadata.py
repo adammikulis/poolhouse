@@ -138,7 +138,7 @@ def test_native_registration_refuses_unbounded_or_relative_path(tmp_path, root):
 def test_person_workspace_catalogue_includes_every_unshared_local_project(repository, tmp_path, monkeypatch):
     registry = ProjectRegistry(tmp_path / 'registry', 'device', (repository,))
     identifier = identity(repository)
-    monkeypatch.setattr(project_client, 'members', lambda ui: [])
+    monkeypatch.setattr(project_client, 'members', lambda: [])
     monkeypatch.setattr(source, 'build', lambda *args: pytest.fail('workspace catalogue published source'))
     result = project_client.available(SimpleNamespace(projects=registry))
     assert registry.get(identifier).shared is False

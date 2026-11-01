@@ -1,7 +1,14 @@
 """Actual service grants pin source configuration independently of transient sender liveness."""
 import pytest
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_studio_stream_http import served  # noqa: F401
 from test_studio_webhook_setup import configured, create  # noqa: F401
+
+
+@pytest.fixture(autouse=True)
+def _the_pool(studio_node):  # noqa: F811
+    """Studio scopes its records by the pool its node is in, so a node is there."""
+    yield studio_node
 
 
 @pytest.mark.parametrize('changed', [{'generation': 'e' * 32}, {'revision': 2}, {'label': 'Reconfigured source'}])

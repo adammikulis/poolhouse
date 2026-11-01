@@ -138,16 +138,6 @@ fn a_distrust_that_should_not_count_changes_nothing_and_no_row_ends_one() {
 }
 
 #[test]
-fn a_distrust_row_at_or_before_the_floor_cuts_nothing_off() {
-    let pool = found();
-    ok(distrust(&pool, &pool.phone.fingerprint()));
-    assert!(pool.authority().is_empty(), "while no floor stands the distrust cuts the key off");
-    let pool = pool.restarted(|root| std::fs::write(root.join("grants_floor.json"), json!({"before_ms": now_ms() + 3_600_000}).to_string()).unwrap());
-    assert_eq!(pool.authority(), vec![pool.phone.fingerprint()], "a row at or before the floor counts for nothing");
-    assert_eq!(pool.grants()["distrusted"], json!([]));
-}
-
-#[test]
 fn two_admins_that_distrust_each_other_leave_no_authority_key_and_no_grant() {
     let pool = found();
     let mut second = FakePhone::new("second phone");

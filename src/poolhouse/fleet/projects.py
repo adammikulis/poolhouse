@@ -19,8 +19,8 @@ from poolhouse.home import DEFAULT_NAME
 from poolhouse.net import git
 from poolhouse.redact import secrets
 
-from . import project_enrollment, project_source as source, runtime_wheel, wsl_startup
-from .discovery import primary_ip
+from . import project_source as source, runtime_wheel, wsl_startup
+from .onboard.lan import primary_ip
 from .wsl_network import ENV as BRIDGE_ENV
 
 
@@ -344,23 +344,6 @@ class ProjectRegistry:
         code = bootstrap()
         return {"projects": self.list(), "machine": self.machine, "capabilities": ["project-source"],
                 "bootstrap_sha256": hashlib.sha256(code).hexdigest()}
-
-
-def register(handler, registry: ProjectRegistry | None, body: bytes) -> bool:
-    """Register a local Git checkout for an authenticated request from this machine."""
-    if urllib.parse.urlparse(handler.path).path != "/workspace/v1/local-project":
-        return False
-    if not project_enrollment.local(handler._sealing(), handler.client_address[0]):
-        handler._send(403, {"error": "project registration requires an authenticated request from this device"})
-    elif registry is None:
-        handler._send(501, {"error": "project registry unavailable"})
-    else:
-        request = handler._object(body)
-        try:
-            handler._send(200, registry.register(local_root(request.get("root", "")), request.get("project_id", "")))
-        except (TypeError, ValueError, OSError):
-            handler._send(400, {"error": "project registration requires a matching local Git checkout"})
-    return True
 
 
 def answer(handler, registry: ProjectRegistry | None, parsed) -> bool:

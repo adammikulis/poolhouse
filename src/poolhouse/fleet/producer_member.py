@@ -8,7 +8,6 @@ import ssl
 
 from poolhouse.json_objects import unique_object
 
-from .membership import fingerprint_of
 from .producer_control import BRIDGE_BYTES, METADATA_BYTES
 
 _COMMAND = {'source', 'command_id'}
@@ -21,20 +20,20 @@ FIELDS = {'producer-offers': set(), 'producer-inspect': {'offer_id', 'revision'}
 ACTIONS = frozenset(FIELDS)
 
 
-def answer(handler, ui, membership, action, raw):
-    """Called only after the existing sealed member and current roster guards."""
+def answer(handler, ui, pool, action, raw):
+    """Called only after the node-authorized sealed member guard; ``pool`` is the caller's current pool."""
     if action not in ACTIONS:
         return False
     channel = handler.connection
     if (handler.command != 'POST' or not isinstance(channel, ssl.SSLSocket)
-            or channel.version() != 'TLSv1.3' or membership is None):
+            or channel.version() != 'TLSv1.3' or not pool):
         raise PermissionError('Software producers require a current encrypted pool device.')
     certificate = channel.getpeercert(binary_form=True)
     if not certificate:
         raise PermissionError('The current producer device certificate is missing.')
     caller = {'certificate': base64.b64encode(certificate).decode('ascii'),
-            'pool': hashlib.sha256(membership.key).hexdigest()}
-    if fingerprint_of(caller['certificate']) != handler._member:
+            'pool': pool}
+    if hashlib.sha256(certificate).hexdigest() != handler._member:
         raise PermissionError('The sealed caller and TLS device do not match.')
     maximum = BRIDGE_BYTES if action == 'producer-publish' else METADATA_BYTES
     if not isinstance(raw, bytes) or not raw or len(raw) > maximum:

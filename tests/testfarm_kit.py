@@ -90,11 +90,11 @@ def governed(device: Device) -> None:
     until("the joined device to hold the pool's charter", 30, lambda: device.call("pool_status")["governance"]["mode"] == "governed")
 
 
-def approve(device: Device, *actions: str) -> None:
+def approve(device: Device, *actions: str, narrowed: dict | None = None) -> None:
     """The test pool's admin key approves what the session of ``device`` asks for, the way a person's phone does: the session asks, a second session
     carries the signed answer (the one that asks cannot), and the node writes the standing grants. A governed pool counts no grant any other way."""
     key = device.person.key  # the admin key of the pool and, planted by `start`, the phone key the node takes approvals from
-    asked = device.call("approval_request", BOARD, device.token, asks=[{"action": a, "resource": "*", "lasts_ms": LASTS_MS} for a in actions], note="the test farm's pool")
+    asked = device.call("approval_request", BOARD, device.token, asks=[{"action": a, "resource": "*", "lasts_ms": LASTS_MS, **(narrowed or {})} for a in actions], note="the test farm's pool")
     carrier = device.call("register", BOARD, "", model="claude-sonnet-5-5", harness="claude-code", session=f"{device.name}-carrier-{next(CARRIERS)}")["token"]
     node = node_health.call(device.state, "pool_status")["fingerprint"]
     waiting = device.call("approval_pending", "", carrier, **grants.sign_list(key, node, int(time.time() * 1000)))["approvals"]

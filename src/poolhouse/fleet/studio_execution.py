@@ -27,7 +27,7 @@ def checked_node(value: dict) -> dict:
     if spec["type"] in {"dataset", "model", "prompt", "tools.call"}:
         raise ValueError("This node runs in the originating workspace.")
     node = {"id": value.get("id", "node"), "type": spec["type"], "version": spec["version"],
-            "parameters": _parameters(value.get("parameters", {}), spec["parameters"]), "bindings": {}}
+            "parameters": _parameters(value.get("parameters", {}), spec), "bindings": {}}
     if not isinstance(node["id"], str) or not node["id"] or len(node["id"]) > 512:
         raise ValueError("Invalid node identity.")
     if ":" in str(node["parameters"].get("environment", "")):

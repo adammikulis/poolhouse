@@ -6,18 +6,18 @@ import time
 from pathlib import Path
 
 import pytest
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_fleet_ui import Serving
 from test_studio_stream_http import create, served as _served
 
 from poolhouse import home
 from poolhouse.fleet import producer_bootstrap, tls
-from poolhouse.fleet.discovery import mint_pool
-from poolhouse.fleet.membership import Roster
-from poolhouse.fleet.pool_roster import Pool
+from poolhouse.fleet.daemon import load_or_create_token
 from poolhouse.fleet.producer_client import ProducerClient
 from poolhouse.fleet.producer_control import receive_frame, send_frame
 from poolhouse.fleet.producer_runtime import Runtime
 from poolhouse.fleet.remote import Member
+from poolhouse.fleet.service_pool import Pool
 
 served = _served
 
@@ -54,19 +54,19 @@ def test_start_availability_runs_without_store_lock_and_changed_source_prevents_
 
 
 @pytest.fixture
-def runtime_app(monkeypatch):
+def runtime_app(monkeypatch, studio_node):  # noqa: F811
     # A short private test root keeps real Unix socket paths within the kernel limit.
     with tempfile.TemporaryDirectory(prefix='prod-', dir='/tmp') as temporary:
         root = Path(temporary).resolve()
         app = Serving(root)
         app.ui.root = root / 'traind'
         app.ui.settings.setup_done = True
-        identity = tls.identity(root / 'tls', 'studio')
+        identity = studio_node.ida  # the identity this process presents is the one the daemon serves with
         app.ui.studio_identity = lambda: identity
         app.ui.studio_endpoint = lambda: f'https://127.0.0.1:{app.port}'
-        member = mint_pool('producer-tests', app.keyfile)
-        Roster(member.key).enrol(identity.beacon, 'Actual test device', 'test')
-        app.httpd.tls = tls.member_context(identity, Pool(app.keyfile))
+        studio_node.bind(studio_node.a, identity, f'https://127.0.0.1:{app.port}')
+        app.ui.studio_token = lambda: load_or_create_token(app.ui.root)
+        app.httpd.tls = tls.member_context(identity, Pool())
         machine = home.state('machine-id')
         machine.parent.mkdir(parents=True, exist_ok=True)
         machine.write_text('a' * 16)

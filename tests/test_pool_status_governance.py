@@ -13,9 +13,8 @@ def governed(dispute=None):
 
 @pytest.mark.parametrize("governance", [None, {}, [], {"mode": "unexpected"},
                                        {"mode": "unfounded"}, {"mode": "governed"},
-                                       {"mode": "unfounded", "say": "none", "old_format_file": "", "admins": []},
-                                       {"mode": "unfounded", "say": "  ", "old_format_file": ""},
-                                       {**governed(), "old_format_file": "retired"},
+                                       {"mode": "unfounded", "say": "none", "admins": []},
+                                       {"mode": "unfounded", "say": "  "},
                                        governed({"say": ""}), governed({"say": "  "})])
 def test_invalid_governance_is_not_reported_as_unfounded(monkeypatch, governance):
     monkeypatch.setattr(pool._node, "call", lambda *args, **kwargs: {
@@ -27,7 +26,7 @@ def test_invalid_governance_is_not_reported_as_unfounded(monkeypatch, governance
 
 def test_explicit_unfounded_and_disputed_governance_are_distinct(monkeypatch):
     raw = {"pool": "pool", "policy": "secure", "fingerprint": "device",
-           "governance": {"mode": "unfounded", "say": "No pool yet.", "old_format_file": ""}}
+           "governance": {"mode": "unfounded", "say": "No pool yet."}}
     monkeypatch.setattr(pool._node, "call", lambda *args, **kwargs: raw)
     assert pool.status().governance == "unfounded"
     raw["governance"] = governed({"say": "The pool is disputed."})
@@ -37,7 +36,7 @@ def test_explicit_unfounded_and_disputed_governance_are_distinct(monkeypatch):
 
 
 @pytest.mark.parametrize("governance", [
-    {"mode": "unfounded", "say": "No pool yet.", "old_format_file": "", "future_detail": "available"},
+    {"mode": "unfounded", "say": "No pool yet.", "future_detail": "available"},
     {**governed({"say": "The pool is disputed."}), "future_detail": "available"},
 ])
 def test_additive_governance_fields_do_not_make_valid_status_unavailable(monkeypatch, governance):

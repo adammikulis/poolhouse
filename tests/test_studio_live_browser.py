@@ -6,19 +6,18 @@ import re
 
 import pytest
 from browser_expect import expect
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from studio_commands import studio_command
 from test_fleet_ui import Serving
 from test_studio_canvas_browser import studio_browser  # noqa: F401
 
 from poolhouse.fleet import tls
-from poolhouse.fleet.discovery import mint_pool
-from poolhouse.fleet.membership import Roster
 
 pytestmark = pytest.mark.slow
 
 
 @pytest.fixture
-def live_page(tmp_path, request):
+def live_page(tmp_path, request, studio_node):  # noqa: F811
     open_page = request.getfixturevalue('studio_browser')
     app = Serving(tmp_path)
     # Join in-flight browser HTTP handlers before closing their graph connection.
@@ -27,8 +26,7 @@ def live_page(tmp_path, request):
     app.ui.settings.setup_done = True
     identity = tls.identity(tmp_path / 'tls', 'studio')
     app.ui.studio_identity = lambda: identity
-    member = mint_pool('live-example-pool', app.keyfile)
-    Roster(member.key).enrol(identity.beacon, 'live-device', 'test')
+    studio_node.bind(studio_node.a, identity, f'https://127.0.0.1:{app.port}')
     session = app.ui.sessions.open('owner-session', 'launch-ticket')
     try:
         with open_page() as page:

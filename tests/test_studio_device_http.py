@@ -4,31 +4,30 @@ import json
 import sys
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from service_kit import node_binary, three_nodes  # noqa: F401  (fixtures)
 
-from poolhouse import http
+from poolhouse import http, macauth
 from poolhouse.fleet import studio_device_routes, tls
 from poolhouse.fleet.api import Daemon, make_handler
-from poolhouse.fleet.discovery import Beacon, derive_token, mint_pool
 from poolhouse.fleet.framing import LimitedServer
 from poolhouse.fleet.jobs import JobRunner
-from poolhouse.fleet.pool_roster import Pool
 from poolhouse.fleet.remote import Member
+from poolhouse.fleet.service_pool import Pool
 from poolhouse.fleet.studio_transport import MemberExecution
 from poolhouse.studio.catalog import node_spec
 from poolhouse.studio.store import digest
 
 
-@pytest.mark.parametrize('hostname', ['127.0.0.1', 'localhost'])
+@pytest.mark.parametrize('devices', ['127.0.0.1', 'localhost'], indirect=True)
 @pytest.mark.parametrize('same_url', [False, True])
-def test_member_tls_redirects_never_contact_a_second_endpoint(devices, monkeypatch, hostname, same_url):
+def test_member_tls_redirects_never_contact_a_second_endpoint(devices, monkeypatch, same_url):
     opened, _ = devices
-    client, _, _, server, _ = opened[0]
-    beacon = Beacon('device-a', host=hostname, port=server.server_port, machine='device-a', cert=client.certificate)
-    client = MemberExecution(Member(beacon.base_url, client.member.token, beacon=beacon), lambda: True)
+    client, server = opened[0].transport, opened[0].server
     hits = []
 
     def redirect(handler):
@@ -57,8 +56,7 @@ def test_member_exact_leaf_survives_global_pin_replacement(devices, tmp_path, mo
     from poolhouse.fleet import studio_transport
 
     opened, _ = devices
-    client, service, _, server, _ = opened[0]
-    identity = tls.identity(service.ui.root / 'tls', 'device-a')
+    client, server, identity = opened[0].transport, opened[0].server, opened[0].identity
     parent = x509.load_pem_x509_certificate(identity.certfile.read_bytes())
     signer = serialization.load_pem_private_key(identity.keyfile.read_bytes(), password=None)
     key = ec.generate_private_key(ec.SECP256R1())
@@ -104,39 +102,50 @@ class NativeWork:
         return json.loads((context['output_dir'] / 'result.json').read_text())['outputs']
 
 
+@dataclass
+class Opened:
+    """One daemon of the pool: the sealed transport to it, its service, runner, listener, node and TLS identity."""
+
+    transport: MemberExecution
+    service: object
+    runner: JobRunner
+    server: LimitedServer
+    node: object
+    identity: tls.Identity
+
+
 @pytest.fixture
-def devices(tmp_path, monkeypatch):
+def devices(three_nodes, tmp_path, monkeypatch, request):  # noqa: F811
+    """Two daemons on real nodes of one pool; this process is the first node's device and calls them."""
     active = {'origin': True}
     monkeypatch.setattr(studio_device_routes, '_origin', lambda *args: active['origin'])
+    host = getattr(request, 'param', '127.0.0.1')
     opened = []
     try:
-        for name in ['device-a', 'device-b']:
+        for index, name in ((1, 'device-a'), (2, 'device-b')):
             root = tmp_path / name
             root.mkdir()
-            keyfile = root / 'pool.key'
-            membership = mint_pool('experiments', keyfile)
-            identity = tls.identity(root / 'tls', name)
-            pool = Pool(keyfile)
-            pool.enrol('experiments', identity.beacon, name, 'test')
-            pool.enrol('experiments', tls.local().beacon, 'source-device', 'test')
+            node, identity = three_nodes.devices[index], three_nodes.ids[index]
+            pool = Pool(node.state)
             runner = JobRunner(root, slots=2)
-            ui = SimpleNamespace(root=root, runner=runner, pool_key_path=keyfile, discovery_port=0)
+            ui = SimpleNamespace(root=root, runner=runner)
             service = studio_device_routes.service(ui)
             service.adapters = NativeWork()
-            token = derive_token(membership.key)
-            daemon = Daemon(runner, runner.files_root, token, name=name, pool_key_path=keyfile, members=pool, ui=ui)
+            daemon = Daemon(runner, runner.files_root, macauth.derive(name.encode()), name=name, members=pool, ui=ui,
+                            service_identity=lambda identity=identity: identity)
             server = LimitedServer(('127.0.0.1', 0), make_handler(daemon), tls=tls.member_context(identity, pool))
             threading.Thread(target=server.serve_forever, daemon=True).start()
-            beacon = Beacon(name, host='127.0.0.1', port=server.server_port, machine=name, cert=identity.beacon)
-            member = Member(beacon.base_url, token, beacon=beacon)
-            opened.append((MemberExecution(member, lambda: True), service, runner, server, pool))
+            opened.append(Opened(None, service, runner, server, node, identity))
+        three_nodes.serve(1, opened[0].server.server_port, opened[1].server.server_port, host=host)
+        for row in opened:
+            row.transport = MemberExecution(Member.from_binding(Pool().authorize(row.identity.fingerprint)), lambda: True)
         yield opened, active
     finally:
-        for _, service, runner, server, _ in opened:
-            runner.shutdown()
-            server.shutdown()
-            server.server_close()
-            service.close()
+        for row in opened:
+            row.runner.shutdown()
+            row.server.shutdown()
+            row.server.server_close()
+            row.service.close()
         http._PINNED.clear()
 
 
@@ -162,29 +171,29 @@ def settle(transport, request):
 
 def test_two_actual_authenticated_daemons_execute_independent_jobs_concurrently(devices):
     opened, _ = devices
-    requests = [payload(row[0], letter) for row, letter in zip(opened, ['a', 'b'], strict=True)]
+    requests = [payload(row.transport, letter) for row, letter in zip(opened, ['a', 'b'], strict=True)]
     for row, request in zip(opened, requests, strict=True):
-        assert row[0].request('submit', request)['dispatch_id'] == request['dispatch_id']
-    results = [settle(row[0], request)['outputs']['report'] for row, request in zip(opened, requests, strict=True)]
+        assert row.transport.request('submit', request)['dispatch_id'] == request['dispatch_id']
+    results = [settle(row.transport, request)['outputs']['report'] for row, request in zip(opened, requests, strict=True)]
     assert max(result['start'] for result in results) < min(result['end'] for result in results)
 
 
-def test_sealed_duplicate_submission_does_not_replay_and_removed_member_is_denied(devices):
+def test_sealed_duplicate_submission_does_not_replay_and_removed_member_is_denied(devices, three_nodes):  # noqa: F811
     opened, _ = devices
-    transport, _, runner, _, pool = opened[0]
+    transport, runner, node = opened[0].transport, opened[0].runner, opened[0].node
     request = payload(transport, 'd')
     transport.request('submit', request)
     settle(transport, request)
     assert transport.request('submit', request)['state'] == 'done'
     assert len(runner.jobs) == 1
-    pool.revoke(tls.local().fingerprint, 'test')
+    node.person.remove_member(node, three_nodes.fingerprint(three_nodes.a))
     with pytest.raises((ValueError, OSError)):
         transport.request('status', {key: request[key] for key in ['dispatch_id', 'spec_digest']})
 
 
 def test_actual_sealed_resource_staging_and_result_collection(devices, tmp_path):
     opened, active = devices
-    transport = opened[0][0]
+    transport = opened[0].transport
     source = tmp_path / 'examples.jsonl'
     source.write_text('{"text":"example"}\n')
     node = {'id': 'split', 'type': 'data.split', 'version': 1, 'parameters': {'fraction': .8, 'seed': 0}}

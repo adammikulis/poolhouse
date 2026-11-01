@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import threading
 import urllib.parse
@@ -14,9 +13,8 @@ from poolhouse.studio.library import LocalLibrary
 from poolhouse.studio.packages import import_package
 from poolhouse.studio.store import StudioStore
 
-from . import project_enrollment
-from .discovery import DiscoveryError, memberships
-from .remote import Discovery, Member
+from . import studio_pool
+from .remote import DiscoveryError, Member
 
 ENDPOINT = "/studio/v1/packages"
 MAX_BYTES = 3_000_000
@@ -69,9 +67,9 @@ def _storage(ui):
         return ui._studio_pool_store
 
 
-def _local(ui, membership):
+def _local(ui, pool):
     store = _storage(ui)
-    scope = "pool:" + hashlib.sha256(membership.key).hexdigest()
+    scope = "pool:" + pool
     return LocalLibrary(store.graph, scope, lock=store.lock)
 
 
@@ -79,12 +77,16 @@ def answer(handler, ui, path, body=None):
     """Answer package requests after the daemon authenticates and opens the request."""
     if path != ENDPOINT:
         return False
-    membership = project_enrollment._matched(handler._sealing(), memberships(ui.pool_key_path)) if ui else None
-    if membership is None:
+    opening = handler._sealing() if ui else None
+    try:
+        pool = studio_pool.of_service(handler._member) if opening is not None and opening[2] and handler._member else ""
+    except PermissionError:
+        pool = ""
+    if not pool:
         handler._send(403, {"error": "Package sharing requires a current pool and a sealed request."})
         return True
     try:
-        library = _local(ui, membership)
+        library = _local(ui, pool)
         if handler.command in {"GET", "HEAD"}:
             handler._send(200, _page(library, handler.path))
         elif handler.command == "POST":
@@ -213,20 +215,18 @@ class MemberLibrary:
 
 
 def provider(ui):
-    """Return the active pool's package provider using current enrolled members."""
-    rows = memberships(ui.pool_key_path)
-    if not rows:
-        raise ValueError("Join a pool to share packages. File sharing is available here.")
-    selected = rows[0]
+    """Return the active pool's package provider using the node's current compute services."""
+    try:
+        selected = studio_pool.current()
+    except PermissionError as exc:
+        raise ValueError("Join a pool to share packages. File sharing is available here.") from exc
 
     def authorize():
-        current = memberships(ui.pool_key_path)
-        if not current or current[0] != selected:
+        if studio_pool.current() != selected:
             raise PermissionError("The active pool changed; open its library again.")
 
     def members():
         authorize()
-        return Member.discover(discovery=Discovery(key=selected.key, group=selected.group,
-                               pool_key_path=ui.pool_key_path, port=ui.discovery_port), timeout=5)
+        return Member.discover(timeout=5)
 
     return MemberLibrary(_local(ui, selected), members, authorize)
