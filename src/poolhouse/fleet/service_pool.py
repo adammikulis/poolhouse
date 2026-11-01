@@ -89,7 +89,10 @@ class Pool:
         reply = self._call("service_members")
         if not isinstance(reply, dict) or set(reply) != {"pool", "services"} or not isinstance(reply["services"], list):
             raise PermissionError("The node returned an invalid compute service list.")
-        rows = [binding(reply["pool"], row) for row in reply["services"]]
+        if any(not isinstance(row, dict) or row.get("pool") != reply["pool"] for row in reply["services"]):
+            raise PermissionError("The node returned a compute service outside its pool.")
+        rows = [binding(reply["pool"], {name: value for name, value in row.items() if name != "pool"})
+                for row in reply["services"]]
         if len({row.device for row in rows}) != len(rows) or len({row.fingerprint for row in rows}) != len(rows):
             raise PermissionError("The node returned conflicting compute service identities.")
         return rows

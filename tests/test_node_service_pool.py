@@ -21,7 +21,7 @@ def services(tmp_path, monkeypatch):
         if method == "pool_status":
             return {"pool": POOL, "fingerprint": rows[0]["device"]}
         if method == "service_members":
-            return {"pool": POOL, "services": rows}
+            return {"pool": POOL, "services": [{"pool": POOL, **row} for row in rows]}
         found = [row for row in rows if row["fingerprint"] == params["fingerprint"]]
         if not found:
             raise ValueError("not authorized")
@@ -167,8 +167,7 @@ def test_self_service_keeps_owner_mac_separate_from_member_secret(services, monk
 
 
 def test_local_self_member_accepts_only_exact_own_cert_and_current_bound_port(services):
-    from poolhouse.fleet.discovery import Beacon
-    from poolhouse.fleet.remote import Member
+    from poolhouse.fleet.remote import Beacon, Member
     _pool, identities, rows = services
     owner = macauth.derive(b"local-owner")
     beacon = Beacon(name="own", host="127.0.0.1", port=9001, cert=identities[0].beacon)
