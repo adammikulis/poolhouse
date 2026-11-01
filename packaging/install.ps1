@@ -20,7 +20,8 @@
 # Every step past the install is a poolhouse command, not PowerShell: poolhouse-serve build,
 # poolhouse-setup, poolhouse-models fetch, poolhouse-pool join, poolhouse-doctor.
 #
-# Unattended: POOLHOUSE_MODE, POOLHOUSE_NAME, POOLHOUSE_PASSPHRASE, POOLHOUSE_POOL,
+# Unattended: POOLHOUSE_MODE, POOLHOUSE_NAME, POOLHOUSE_JOIN_HOST, POOLHOUSE_JOIN_CODE,
+# POOLHOUSE_JOIN_PORT, POOLHOUSE_JOIN_FINGERPRINT,
 # POOLHOUSE_MODELS, POOLHOUSE_ADOPT_CACHE, POOLHOUSE_REF, POOLHOUSE_OFFLINE_ZIP,
 # POOLHOUSE_OFFLINE_MODELS. Nothing is prompted for when no console is attached.
 #
@@ -61,7 +62,6 @@ $script:bin   = ""
 $script:track = ""
 
 function Step($what) { Write-Host ""; Write-Host "== $what" }
-function Interactive { return [Environment]::UserInteractive -and -not [Console]::IsInputRedirected }
 
 # -- python -------------------------------------------------------------------
 # Say how to get one; never install a Python behind somebody's back.
@@ -83,14 +83,16 @@ poolhouse runs on Python $python. Install it with:
 "@
 }
 
-# -- the two firewall rules ---------------------------------------------------
-# Windows Defender Firewall blocks the daemon (TCP 8770) and its beacons (UDP 8771)
-# inbound by default, so without these two rules the machine is invisible to the rest of
-# the fleet. Names and ports match poolhouse.fleet.discovery. One approval prompt.
+# -- the firewall rules -------------------------------------------------------
+# Windows Defender Firewall blocks inbound by default, so without these rules the machine is
+# invisible to the rest of the pool: the daemon (TCP 8770) and the Rust node's pool port and
+# its beacons (TCP 7447, UDP 7448). Names and ports match poolhouse.device_host.RULES and
+# poolhouse.fleet.windows_firewall. One approval prompt.
 function Open-Firewall {
     $rules = @(
-        @{ Name = "Poolhouse";           Protocol = "TCP"; Port = 8770 },
-        @{ Name = "Poolhouse discovery"; Protocol = "UDP"; Port = 8771 }
+        @{ Name = "Poolhouse";                Protocol = "TCP"; Port = 8770 },
+        @{ Name = "Poolhouse node";           Protocol = "TCP"; Port = 7447 },
+        @{ Name = "Poolhouse node discovery"; Protocol = "UDP"; Port = 7448 }
     )
     $missing = @($rules | Where-Object {
         -not (Get-NetFirewallRule -DisplayName $_.Name -ErrorAction SilentlyContinue) })
@@ -98,7 +100,7 @@ function Open-Firewall {
     $lines = ($missing | ForEach-Object {
         "netsh advfirewall firewall add rule name=`"$($_.Name)`" dir=in action=allow " +
         "protocol=$($_.Protocol) localport=$($_.Port)" }) -join " ; "
-    Write-Host "Letting the fleet reach this machine (Windows asks for approval once)..."
+    Write-Host "Letting the pool reach this machine (Windows asks for approval once)..."
     try {
         Start-Process powershell -Verb RunAs -Wait -ArgumentList "-NoProfile", "-Command", $lines
     }
@@ -335,19 +337,21 @@ function Fetch-Models {
 }
 
 function Join-Fleet {
-    Step "joining the fleet"
+    Step "joining a pool"
     $fleet = Join-Path $script:bin "poolhouse-pool.exe"
     if (-not (Test-Path $fleet)) { Write-Host "skipped: no poolhouse-pool"; return }
-    $argv = @("join", "--persist")
-    if ($env:POOLHOUSE_NAME)    { $argv += @("--name", $env:POOLHOUSE_NAME) }
-    if ($env:POOLHOUSE_POOL) { $argv += @("--group", $env:POOLHOUSE_POOL) }
-    if ($script:track)         { $argv += @("--track", $script:track) }
-    if ($env:POOLHOUSE_PASSPHRASE) { $argv += @("--passphrase", $env:POOLHOUSE_PASSPHRASE) }
-    elseif (-not (Interactive)) {
-        Write-Host "no passphrase, and no console to ask at. Set POOLHOUSE_PASSPHRASE and re-run,"
-        Write-Host "or run:  poolhouse-pool join --persist"
+    if (-not $env:POOLHOUSE_JOIN_HOST) {
+        Write-Host "not joining a pool: the node joins the pool of a device that offers it. On a member run"
+        Write-Host "  poolhouse-pool add-device"
+        Write-Host "then here, with that device's address (and the code it printed):"
+        Write-Host "  poolhouse-pool join --host HOST CODE"
+        Write-Host "or set POOLHOUSE_JOIN_HOST (and POOLHOUSE_JOIN_CODE) and run this again."
         return
     }
+    $argv = @("join", "--host", $env:POOLHOUSE_JOIN_HOST)
+    if ($env:POOLHOUSE_JOIN_PORT)        { $argv += @("--port", $env:POOLHOUSE_JOIN_PORT) }
+    if ($env:POOLHOUSE_JOIN_FINGERPRINT) { $argv += @("--fingerprint", $env:POOLHOUSE_JOIN_FINGERPRINT) }
+    if ($env:POOLHOUSE_JOIN_CODE)        { $argv += $env:POOLHOUSE_JOIN_CODE }
     & $fleet @argv
 }
 

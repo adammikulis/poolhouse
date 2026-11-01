@@ -10,25 +10,24 @@ from typing import Any
 
 from poolhouse.log import say
 
-from .pausing import member_clients
 from .remote import MemberError
+from .roster import client_for
 
 __all__ = ["apply_plan", "serving_table"]
 
 
-def apply_plan(placement: Any, rows: Sequence[dict[str, Any]], *,
-               pool_key_path: Path | str | None = None,
+def apply_plan(placement: Any, rows: Sequence[dict[str, Any]], *, root: Path | str | None = None,
                say: Callable[[str], None] = say) -> list[dict[str, Any]]:
     """``POST /serve`` on each placed member, and what each answered.
 
     Each answer is ``{"member", "model", "slots", "status", "served" | "error", "serving"}``;
     ``serving`` is the member's ``/health`` serving rows after the call.
     """
-    clients = member_clients(rows, pool_key_path=pool_key_path, timeout=600.0)
+    by_name = {str(row["name"]): row for row in rows}
     out: list[dict[str, Any]] = []
     for row in placement.rows:
         answer: dict[str, Any] = {"member": row.member, "model": row.model, "slots": row.slots}
-        member = clients.get(row.member)
+        member = client_for(by_name[row.member], root=root, timeout=600.0) if row.member in by_name else None
         if member is None:
             answer.update(status=0, error="no daemon answered for this member")
             out.append(answer)

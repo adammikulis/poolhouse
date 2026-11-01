@@ -6,7 +6,7 @@ own answer. A machine that is off never receives the message; `seen` remembers t
 this machine has met so `pause_table` can name it.
 
 A machine that was off hears nothing, so it asks when it starts: `member_pause` reads the
-pause off the beacons it can hear and `adopt_pause` takes it.
+pause off the pool's devices that answer and `adopt_pause` takes it.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import math
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -22,8 +22,8 @@ from typing import Any
 from poolhouse.home import expand
 
 from .availability import Availability
-from .discovery import Beacon, derive_token, discover, memberships
-from .remote import Member, MemberError
+from .remote import MemberError
+from .roster import client_for, members
 
 __all__ = [
     "ADOPT_S",
@@ -35,7 +35,6 @@ __all__ = [
     "Answer",
     "Fanout",
     "adopt_pause",
-    "member_clients",
     "member_pause",
     "minutes_of",
     "pause_among",
@@ -77,20 +76,6 @@ class Fanout:
     resume: bool = False
     minutes: float | None = None
     reason: str = ""
-    pool_key_path: Path | str | None = None
-
-
-def member_clients(rows: Sequence[dict[str, Any]], *,
-                 pool_key_path: Path | str | None = None,
-                 timeout: float = 60.0) -> dict[str, Member]:
-    """A `remote.Member` for each row a pool key of this machine's reaches, by name."""
-    tokens = {m.group: derive_token(m.key) for m in memberships(pool_key_path)}
-    out: dict[str, Member] = {}
-    for row in rows:
-        token = next((tokens[g] for g in row.get("pools") or [] if g in tokens), "")
-        if token:
-            out[str(row["name"])] = Member(str(row["base_url"]), token, timeout=timeout)
-    return out
 
 
 def seen(root: Path | str) -> list[dict[str, Any]]:
@@ -141,7 +126,6 @@ def _until(said: dict[str, Any]) -> str:
 def pause_fleet(what: Fanout, rows: Sequence[dict[str, Any]]) -> list[Answer]:
     """Send one pause or resume to each machine, and what each said."""
     remember_seen(rows, what.root)
-    clients = member_clients(rows, pool_key_path=what.pool_key_path, timeout=REACH_S)
     action = "resume" if what.resume else "pause"
     fields: dict[str, Any] = {}
     if not what.resume:
@@ -150,9 +134,9 @@ def pause_fleet(what: Fanout, rows: Sequence[dict[str, Any]]) -> list[Answer]:
     out: list[Answer] = []
     for row in rows:
         name, mine = str(row["name"]), bool(row.get("is_self"))
-        member = clients.get(name)
+        member = client_for(row, root=what.root, timeout=REACH_S)
         if member is None:
-            out.append(Answer(name, False, "no pool key reaches this machine", mine))
+            out.append(Answer(name, False, "this device holds no credential for this machine", mine))
             continue
         try:
             out.append(Answer(name, True, _until(member.availability(action, **fields)),
@@ -231,18 +215,12 @@ def pause_among(rows: Sequence[dict[str, Any]], *,
     return best
 
 
-def member_pause(pool_key_path: Path | str | None = None, *,
-               timeout_s: float = ADOPT_S, port: int | None = None,
-               finder: Callable[..., list[Beacon]] = discover) -> Adopted | None:
-    """Listen for this machine's pools and return the pause they are under."""
-    rows: list[dict[str, Any]] = []
-    deadline = time.time() + timeout_s
-    for member in memberships(pool_key_path):
-        left = deadline - time.time()
-        if left <= 0:
-            break
-        for beacon in finder(member.key, timeout_s=left, port=port):
-            rows.append({"name": beacon.name, "device": beacon.device})
+def member_pause(*, timeout_s: float = ADOPT_S, port: int | None = None) -> Adopted | None:
+    """Ask the pool's devices that answer and return the pause they are under."""
+    try:
+        rows = members(timeout_s=timeout_s) if port is None else members(timeout_s=timeout_s, port=port)
+    except PermissionError:
+        return None
     return pause_among(rows)
 
 

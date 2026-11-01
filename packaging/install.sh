@@ -19,7 +19,8 @@
 # Answer every prompt with the environment and it runs unattended (a machine with no
 # terminal is never prompted at all):
 #   POOLHOUSE_MODE=app|headless|dev|system   POOLHOUSE_NAME=<this machine>
-#   POOLHOUSE_PASSPHRASE=<the words every machine shares>   POOLHOUSE_POOL=<group>
+#   POOLHOUSE_JOIN_HOST=<a member's address>   POOLHOUSE_JOIN_CODE=<its add-device code>
+#   POOLHOUSE_JOIN_PORT=<its pool port>   POOLHOUSE_JOIN_FINGERPRINT=<its beacon fingerprint, open pools>
 #   POOLHOUSE_MODELS=auto|default|none|<word>   POOLHOUSE_ADOPT_CACHE=yes|no
 #   POOLHOUSE_REF=main|v1.2.3   POOLHOUSE_BUILD=release|source
 #   POOLHOUSE_OFFLINE_ZIP=/path/to.zip   POOLHOUSE_OFFLINE_MODELS=/dir   (no network at all)
@@ -48,7 +49,6 @@ say() { printf '%s\n' "$*"; }
 step() { printf '\n== %s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
-interactive() { [ -t 0 ] && [ -t 1 ]; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -382,20 +382,21 @@ fetch_models() {
 }
 
 join_fleet() {
-  step "joining the fleet"
+  step "joining a pool"
   [ -x "$BIN/poolhouse-pool" ] || { say "skipped: no poolhouse-pool"; return 0; }
-  set -- join --persist
-  [ -n "${POOLHOUSE_NAME:-}" ] && set -- "$@" --name "$POOLHOUSE_NAME"
-  [ -n "${POOLHOUSE_POOL:-}" ] && set -- "$@" --group "$POOLHOUSE_POOL"
-  [ -n "$TRACK" ] && set -- "$@" --track "$TRACK"
-  if [ -n "${POOLHOUSE_PASSPHRASE:-}" ]; then
-    set -- "$@" --passphrase "$POOLHOUSE_PASSPHRASE"
-  elif ! interactive; then
-    say "no passphrase, and no terminal to ask at. Set POOLHOUSE_PASSPHRASE and re-run,"
-    say "or run:  poolhouse-pool join --persist"
+  if [ -z "${POOLHOUSE_JOIN_HOST:-}" ]; then
+    say "not joining a pool: the node joins the pool of a device that offers it. On a member run"
+    say "  poolhouse-pool add-device"
+    say "then here, with that device's address (and the code it printed):"
+    say "  poolhouse-pool join --host HOST CODE"
+    say "or set POOLHOUSE_JOIN_HOST (and POOLHOUSE_JOIN_CODE) and run this again."
     return 0
   fi
-  "$BIN/poolhouse-pool" "$@" || say "  join did not finish; 'poolhouse-pool join' retries"
+  set -- join --host "$POOLHOUSE_JOIN_HOST"
+  [ -n "${POOLHOUSE_JOIN_PORT:-}" ] && set -- "$@" --port "$POOLHOUSE_JOIN_PORT"
+  [ -n "${POOLHOUSE_JOIN_FINGERPRINT:-}" ] && set -- "$@" --fingerprint "$POOLHOUSE_JOIN_FINGERPRINT"
+  [ -n "${POOLHOUSE_JOIN_CODE:-}" ] && set -- "$@" "$POOLHOUSE_JOIN_CODE"
+  "$BIN/poolhouse-pool" "$@" || say "  join did not finish; 'poolhouse-pool join --host HOST CODE' retries"
 }
 
 what_came_with_it() {
