@@ -575,6 +575,7 @@ def test_fleet_findings_see_a_real_daemon_on_loopback(tmp_path, pool_answers):
     from poolhouse.fleet.api import Daemon, make_handler
     from poolhouse.fleet.daemon import load_or_create_token
     from poolhouse.fleet.jobs import JobRunner
+    from poolhouse.fleet.launch import wait_for_health
     from poolhouse.http import Server
     from poolhouse.setup import _fleet_findings
 
@@ -585,6 +586,7 @@ def test_fleet_findings_see_a_real_daemon_on_loopback(tmp_path, pool_answers):
     httpd = Server(("127.0.0.1", port), make_handler(Daemon(runner, root / "files", load_or_create_token(root), "setuptestbox")))
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     try:
+        assert wait_for_health(port, seconds=30) is not None, "the first /health samples telemetry and is slow on a loaded machine"
         found = {f.name: f for f in _fleet_findings(port=port)}
     finally:
         runner.shutdown()

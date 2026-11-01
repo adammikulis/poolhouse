@@ -578,10 +578,11 @@ class TestDiscoveryAndTheFirewall:
         msg = _verify(key, raw, kind="beacon")
         assert msg is not None and msg["beacon"]["name"] == "fixture-box"
 
-    def test_setup_prints_the_netsh_line_until_both_rules_exist(self, windows, monkeypatch):
+    def test_setup_prints_the_netsh_line_until_the_rule_exists(self, windows, monkeypatch):
         from poolhouse import setup
 
         monkeypatch.setattr(setup, "_arches", lambda binary, known=None: set())
+        monkeypatch.setattr(setup, "_fleet_findings", lambda: [])
         monkeypatch.setattr(setup.subprocess, "run",
                             lambda argv, **k: _ok(1, stdout="\nNo rules match the specified criteria.\n"))
 
@@ -590,16 +591,17 @@ class TestDiscoveryAndTheFirewall:
         assert len(found) == 1
         finding = found[0]
         assert not finding.good and finding.root
-        assert "Poolhouse discovery" in finding.said and "Poolhouse," in finding.said
+        assert finding.said == "no inbound rule for Poolhouse"
         assert finding.fix[:2] == ["cmd", "/c"]
         assert "protocol=TCP localport=8770" in finding.fix[2]
-        assert "protocol=UDP localport=8771" in finding.fix[2]
+        assert "UDP" not in finding.fix[2] and "8771" not in finding.fix[2]
         assert "administrator" in finding.note
 
-    def test_setup_is_satisfied_once_netsh_finds_them(self, windows, monkeypatch):
+    def test_setup_is_satisfied_once_netsh_finds_it(self, windows, monkeypatch):
         from poolhouse import setup
 
         monkeypatch.setattr(setup, "_arches", lambda binary, known=None: set())
+        monkeypatch.setattr(setup, "_fleet_findings", lambda: [])
         monkeypatch.setattr(setup.subprocess, "run",
                             lambda argv, **k: _ok(0, stdout="Rule Name: Poolhouse\n"))
 
