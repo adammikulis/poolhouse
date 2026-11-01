@@ -16,9 +16,11 @@ pw = pytest.importorskip("playwright.sync_api", reason="poolhouse[scrape]")
 
 #: Every test here launches headless Chromium and drives a real page.
 pytestmark = pytest.mark.slow
+pytest_plugins = ("testfarm_kit",)  # the `node_binary` fixture the founded-pool tests use
 
-from launch_support import sign_in  # noqa: E402
-from test_fleet_ui import WORDS, Serving, nobody_else_is_on_the_network  # noqa: E402, F401
+from launch_support import hand_typed, sign_in  # noqa: E402
+from test_fleet_ui import Serving  # noqa: E402
+from test_fleet_ui_founded import gated, governed  # noqa: E402, F401  (governed is a fixture)
 
 #: where each screen is reached from the workspace rail
 RAIL = {"Chat": "#nav-tabs a[data-workspace='conversations']", "Studio": "#nav-tabs a[data-workspace='studio']",
@@ -95,10 +97,8 @@ def daemon(tmp_path, monkeypatch):
 
 @pytest.fixture
 def joined(daemon):
-    """That daemon, in a pool, with a session cookie for the browser."""
+    """That daemon, finished with setup, with a session cookie for the browser."""
     daemon.cookie = sign_in(daemon)
-    daemon.call("/ui/setup/join", method="POST", cookie=daemon.cookie,
-                body={"passphrase": WORDS, "group": "home"})
     daemon.ui.setup_finished()
     return daemon
 
@@ -179,17 +179,19 @@ class TestFirstRun:
         assert page.get_by_role("button", name="Set up models later", exact=True).is_visible()
         assert daemon.ui.name == "quillhaven"
         assert page.locator("#setup-pool-passphrase").count() == 0
+        assert page.locator("#setup-invitation-only").count() == 0
         assert not errors
 
-    def test_a_short_passphrase_cannot_be_joined_with(self, daemon, open_page):
+    def test_joining_another_pool_asks_for_an_address_and_a_code_not_a_passphrase(self, daemon, open_page):
         page, errors = open_page(daemon)
         page.get_by_text("Join another pool", exact=True).click()
-        page.wait_for_selector("#setup-pool-passphrase")
-        page.fill("#setup-pool-name", "default")
-        page.fill("#setup-pool-passphrase", "abc")
-        assert page.get_by_role("button", name="Join existing pool", exact=True).is_disabled()
-        page.fill("#setup-pool-passphrase", "correct horse battery")
-        assert page.get_by_role("button", name="Join existing pool", exact=True).is_enabled()
+        page.wait_for_selector("#pool-join-host")
+        join = page.get_by_role("button", name="Join that pool", exact=True)
+        assert join.is_disabled()
+        page.fill("#pool-join-host", "192.0.2.7")
+        page.fill("#pool-join-code-in", "a code")
+        assert join.is_enabled()
+        assert page.locator("input[type=password]").count() == 0
         assert not errors
 
     @pytest.mark.parametrize("accelerator", [False, True])
@@ -214,54 +216,6 @@ class TestFirstRun:
         assert "labels" not in body and "autostart" not in body
         assert body["work_hours"] is True
         assert daemon.ui.settings.on_paused == "stop" and daemon.ui.settings.autostart == "manual"
-        assert not errors
-
-    def test_manual_pool_connection_stays_available_without_a_separate_step(self, daemon, open_page, monkeypatch):
-        from poolhouse.fleet import automatic_pools
-        from poolhouse.fleet.discovery import memberships
-        monkeypatch.setattr(automatic_pools, "offers", lambda port=None: [])
-        page, errors = open_page(daemon)
-        page.get_by_text("Join another pool", exact=True).click()
-        page.select_option("#setup-pool-action", "create")
-        page.fill("#setup-pool-name", "private-lab")
-        page.fill("#setup-pool-passphrase", WORDS)
-        page.get_by_role("button", name="Create new pool", exact=True).click()
-        page.wait_for_selector("#first-run .ok:has-text('Created')")
-        assert memberships(daemon.keyfile)[0].selection == "manual"
-        assert page.get_by_role("heading", name="Welcome to Poolhouse", exact=True).is_visible()
-        assert not errors
-
-    def test_fresh_automatic_device_can_require_explicit_invitations(self, daemon, open_page, monkeypatch):
-        from poolhouse.fleet import automatic_pools
-        from poolhouse.fleet.discovery import memberships
-        monkeypatch.setattr(automatic_pools, "offers", lambda port=None: [])
-        automatic_pools.ensure(daemon.keyfile, mode="dev")
-        page, errors = open_page(daemon)
-        page.get_by_text("Connection options", exact=True).click()
-        page.check("#setup-invitation-only")
-        page.get_by_role("button", name="Continue", exact=True).click()
-        page.get_by_role("heading", name="Make this device ready", exact=True).wait_for()
-        assert memberships(daemon.keyfile) == []
-        assert daemon.ui.settings.pool_mode == "prod"
-        assert not errors
-
-    def test_pool_controls_can_return_to_auto_after_leaving_all_pools(self, daemon, open_page, monkeypatch):
-        from poolhouse.fleet import automatic_pools
-        from poolhouse.fleet.discovery import memberships
-        monkeypatch.setattr(automatic_pools, "offers", lambda port=None: [])
-        page, errors = open_page(daemon)
-        page.get_by_role("button", name="Continue", exact=True).click()
-        page.get_by_role("heading", name="Make this device ready", exact=True).wait_for()
-        page.get_by_role("button", name="Set up models later", exact=True).click()
-        page.wait_for_url("**/#chat")
-        page.click(RAIL["Pool"])
-        connections(page)
-        page.click("#pool-joined button:has-text('Leave')")
-        page.wait_for_selector("#pool-joined button:has-text('Connect automatically')")
-        assert not memberships(daemon.keyfile)
-        page.click("#pool-joined button:has-text('Connect automatically')")
-        page.wait_for_selector("#pool-joined .row")
-        assert memberships(daemon.keyfile)[0].selection == "automatic"
         assert not errors
 
     def test_deferred_setup_preserves_an_existing_runtime_install(self, daemon, open_page, monkeypatch):
@@ -298,28 +252,14 @@ class TestFirstRun:
 
 # -- signing in --------------------------------------------------------------------------
 class TestSigningIn:
-    def test_a_pool_asks_for_its_passphrase(self, joined, open_page):
-        page, errors = open_page(joined)
-        page.wait_for_selector("#signin:not([hidden])")
-        assert "passphrase" in page.locator("#signin .sub").inner_text()
-        assert not errors
-
-    def test_the_wrong_words_are_refused_and_the_right_ones_open_the_pool(
-            self, joined, open_page):
-        page, errors = open_page(joined)
-        page.wait_for_selector("#signin:not([hidden])")
-        page.fill("#p", "not the passphrase")
-        page.click("#signin-go")
-        page.wait_for_selector("#signin-note .err")
-        assert "match" in page.locator("#signin-note .err").inner_text()
-
-        page.fill("#p", WORDS)
-        page.click("#signin-go")
-        # Completed onboarding returns to the default Studio workspace.
-        page.wait_for_selector(".studio-workspace:not([hidden])")
-        page.click(RAIL["Pool"])
-        page.wait_for_selector("#pool:not([hidden])")
-        assert page.locator("#pool h1").inner_text() == "Devices"
+    @pytest.mark.slow
+    def test_a_founded_pool_sends_this_computers_own_window_to_reconnect(self, governed, daemon, open_page):  # noqa: F811
+        gated(daemon)
+        with hand_typed():
+            page, errors = open_page(daemon)
+        page.wait_for_selector("#launch-needed:not([hidden])")
+        assert "Open the Poolhouse app" in page.locator("#launch-needed .sub").inner_text()
+        assert page.locator("input[type=password]").count() == 0
         assert not errors
 
 
@@ -352,11 +292,26 @@ class TestThePoolView:
         assert "3/4" in page.locator("#pool-stat").inner_text()
         assert not errors
 
-    def test_the_pool_it_is_in_is_listed_with_a_way_out(self, joined, open_page):
+    def test_with_no_node_answering_the_connections_say_so_and_offer_the_pool_actions(self, joined, open_page):
         page, errors = open_page(joined, cookie=joined.cookie)
+        connections_section = page.locator("pool-view details.pool-connections")
+        connections_section.locator("summary").click()
+        page.wait_for_selector("#pool-joined .err")
+        assert "No node answers" in page.locator("#pool-joined").inner_text()
+        assert page.locator("#pool-joined #pool-add-form").count() == 1
+        assert page.locator("#pool-joined #pool-join-form").count() == 1
+        assert not errors
+
+    @pytest.mark.slow
+    def test_the_pool_it_is_in_is_listed_with_a_way_out(self, governed, daemon, open_page):  # noqa: F811
+        gated(daemon)
+        daemon.cookie = sign_in(daemon)
+        daemon.ui.setup_finished()
+        page, errors = open_page(daemon, cookie=daemon.cookie)
         connections(page)
-        assert "home" in page.locator("#pool-joined").inner_text()
+        assert daemon.ui.group() in page.locator("#pool-joined").inner_text()
         assert page.locator("#pool-joined button:has-text('Leave')").count() == 1
+        assert page.locator("#pool-found-form").count() == 0, "a founded pool is not founded again"
         assert not errors
 
     def test_benchmark_options_are_explicit_and_no_command_is_shown(self, joined, open_page):
@@ -638,9 +593,12 @@ class TestClosingTheWindow:
         assert "Stays reachable" in page.locator("#close-background-d").inner_text()
         assert not errors
 
-    def test_a_machine_in_a_pool_is_told_what_the_others_lose(self, joined,
-                                                                 open_page):
-        page, errors = open_page(joined, cookie=joined.cookie)
+    @pytest.mark.slow
+    def test_a_machine_in_a_pool_is_told_what_the_others_lose(self, governed, daemon, open_page):  # noqa: F811
+        gated(daemon)
+        daemon.cookie = sign_in(daemon)
+        daemon.ui.setup_finished()
+        page, errors = open_page(daemon, cookie=daemon.cookie)
         page.wait_for_function("() => typeof window.poolhouseAskOnClose === 'function'")
 
         page.evaluate("window.poolhouseAskOnClose()")

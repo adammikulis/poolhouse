@@ -20,7 +20,7 @@ from . import pausing
 from .launch_secret import LaunchSecret
 from .member_rows import describe, member_row, named_apart
 from .page import FIT_ONLY
-from .remote import Member, MemberError
+from .remote import NO_SERVICES, Member
 from .routes import ASSETS, UI_HEADER, asset_bytes, routes, write, write_json
 from .runtime_paths import default_root
 from .serving import Hosting, context_settings
@@ -231,7 +231,7 @@ class UI:
         rows = [local]
         try:
             found = Member.discover(timeout=2.0)
-        except (PermissionError, MemberError, OSError):
+        except NO_SERVICES:
             found = []                     # the node authorizes no other compute service
         for member in found:
             row = member_row(member)

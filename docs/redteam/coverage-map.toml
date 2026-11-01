@@ -609,7 +609,7 @@ note = "Every DNS result is checked before a frozen sockaddr connection; the exa
 [[group]]
 match = ["route:fleet/launch_routes.py:/ui/launch-ticket", "route:fleet/launch_routes.py:/ui/launch/ticket"]
 status = "covered"
-tests = ["tests/test_fleet_ui.py::TestSignIn::test_launch_ticket_requires_session_and_is_consumed_once",
+tests = ["tests/test_fleet_ui.py::TestSignIn::test_launch_ticket_is_consumed_once",
          "tests/test_redteam_person_session.py::test_a_ticket_is_asked_for_only_by_the_machine_itself_with_its_secret",
          "tests/test_redteam_person_session.py::test_guessing_the_secret_is_held_off_even_for_the_right_secret",
          "tests/test_redteam_person_session.py::test_only_a_few_tickets_wait_at_once",
@@ -715,25 +715,11 @@ note = "A real child receives a literal hostile interpreter path and a credentia
 [[group]]
 match = ["route:fleet/routes.py:/ui/session"]
 status = "covered"
-tests = ["tests/test_fleet_ui.py::TestSignIn::test_the_wrong_passphrase_does_not",
-         "tests/test_fleet_ui.py::TestSignIn::test_persistent_guessing_is_slowed_down"]
-note = "Real sign-in requests reject hostile passphrases and rate-limit repeated guesses"
-
-# -- named LAN setup and recovery uploads ---------------------------------------------------
-[[group]]
-match = [
-         "route:fleet/setup_recovery_routes.py:/ui/setup/recovery",
-         "parser:fleet/lan_pools.py", "parser:fleet/recovery.py"]
-status = "covered"
-tests = [
-  "tests/test_fleet_named_lan.py::test_prejoin_discovery_obeys_setup_boundary",
-  "tests/test_fleet_named_lan.py::test_malformed_stale_and_oversized_hints_are_ignored",
-  "tests/test_fleet_named_lan.py::test_random_key_hint_and_upload_authenticate_without_keystore",
-  "tests/test_fleet_named_lan.py::test_hostile_recovery_upload_never_writes_membership",
-  "tests/test_fleet_named_lan.py::test_wrong_name_wrong_key_and_cross_origin_cannot_import",
-  "tests/test_fleet_named_lan.py::test_authenticated_pake_answer_must_contain_selected_name_and_valid_key",
-]
-note = "LAN hints are bounded nonce-matching metadata; local setup or a signed-in person selects a named recovery file, validates its bounded shape, and authenticates a native encrypted protocol-3 beacon before any membership write; scans and recovery joins never access the keystore"
+tests = ["tests/test_fleet_ui.py::TestSignIn::test_a_passphrase_signs_nobody_in",
+         "tests/test_fleet_ui.py::TestSignIn::test_a_wrong_ticket_does_not",
+         "tests/test_fleet_ui.py::TestSignIn::test_persistent_guessing_is_slowed_down",
+         "tests/test_fleet_ui_founded.py::test_a_passphrase_does_not_open_a_founded_pool"]
+note = "Real sign-in requests accept only a spent launch ticket, refuse a passphrase or a wrong ticket, and rate-limit repeated guesses"
 
 [[group]]
 match = ["egress:fleet/serving.py:_identity"]
@@ -1167,12 +1153,13 @@ status = "covered"
 tests = ["tests/test_startup_models.py::StartupModelTests::test_startup_route_refuses_untrusted_requests_and_ignores_query_paths"]
 
 [[group]]
-match = [ "route:fleet/routes.py:/ui/pools/found"]
+match = ["route:fleet/pool_routes.py:*", "handler:fleet/pool_routes.py:*"]
 status = "covered"
 tests = [
-  "tests/test_fleet_found_route.py::test_first_run_refuses_the_list_from_another_machine",
-  "tests/test_fleet_found_route.py::test_a_machine_in_a_pool_asks_for_the_list_behind_its_sign_in",
+  "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session",
+  "tests/test_fleet_ui_founded.py::test_the_pool_actions_refuse_what_names_nothing",
 ]
+note = "the pool actions need a signed-in session once a person founded the pool, and refuse a body that names nothing before the node is asked"
 
 [[group]]
 match = ["spawn:pi.py:launch"]
@@ -1227,7 +1214,7 @@ tests = [
   "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
   "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
   "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-  "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in",
+  "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session",
 ]
 note = "session, header and host checks are attacked; the query and body of each /ui screen route are not"
 
@@ -1546,8 +1533,7 @@ note = "the AST gate shows no spawn goes through a shell; what each argv carries
 [[group]]
 match = ["listener:fleet/wsl_network.py:NetworkBridge._listen"]
 status = "covered"
-tests = ["tests/test_wsl_network.py::test_bridge_refuses_authentication_and_socket_scope",
-         "tests/test_wsl_network.py::test_bridge_caps_messages_and_datagrams",
+tests = ["tests/test_wsl_network.py::test_a_bridge_without_a_lan_address_refuses_to_listen_on_every_interface",
          "tests/test_wsl_network.py::test_lan_relay_preserves_stream_half_close_and_releases_ports",
          "tests/test_wsl_ui.py::test_local_ui_relay_preserves_bytes_and_actual_loopback_member",
          "tests/test_wsl_ui.py::test_local_ui_queues_connections_over_admission_limit",
@@ -1628,14 +1614,11 @@ tests = ["tests/test_remote_transport_attacks.py", "tests/test_project_source.py
 note = "signed source replies stay on the exact LAN authority endpoint; wire and plaintext bounds include authenticated sealing overhead"
 
 [[group]]
-match = ["egress:fleet/wsl_network.py:DiscoverySocket.__init__", "egress:fleet/wsl_network.py:_forward"]
+match = ["egress:fleet/wsl_network.py:_forward"]
 status = "covered"
-tests = ["tests/test_remote_transport_attacks.py::test_wsl_control_replies_reject_oversized_and_malformed_frames",
-         "tests/test_wsl_network.py::test_udp_bridge_refuses_non_discovery_destinations",
-         "tests/test_wsl_network.py::test_udp_bridge_preserves_timeout",
-         "tests/test_wsl_network.py::test_discovery_reply_cache_retains_recent_members_and_fixed_destinations",
+tests = ["tests/test_wsl_network.py::test_lan_forward_refuses_public_target",
          "tests/test_wsl_network.py::test_lan_relay_preserves_stream_half_close_and_releases_ports"]
-note = "launcher-selected control and fixed daemon destinations cannot be redirected by relay bytes; control frames and discovery datagrams have bounded reads and deadlines"
+note = "the relay connects only to the launcher-selected private daemon destination, and relay bytes cannot redirect it"
 
 [[group]]
 match = ["egress:net/*", "egress:httpguard.py:*", "egress:http.py:*", "egress:web.py:*",
@@ -1865,10 +1848,10 @@ tests = ["tests/test_setup_preparation_routes.py::test_new_current_owner_can_ins
 note = "Preparation rejects foreign origins, forged authority, malformed bodies and revoked contexts; read-only status admission cannot authorize a mutation."
 
 [[group]]
-match = ["route:fleet/setup_routes.py:/ui/setup", "route:fleet/setup_routes.py:/ui/setup/join"]
+match = ["route:fleet/setup_routes.py:/ui/setup"]
 status = "covered"
-tests = ["tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine", "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused", "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header", "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_rejoining_needs_a_session_once_the_box_is_in_a_pool"]
-note = "The extracted setup owner retains actual socket tests for remote ownership, DNS rebinding, missing UI headers and rejoining without a session."
+tests = ["tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine", "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused", "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header", "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"]
+note = "The extracted setup owner retains actual socket tests for remote ownership, DNS rebinding, missing UI headers and a founded pool without a session."
 
 [[group]]
 match = ["route:fleet/setup_routes.py:/ui/setup/done"]
@@ -1877,7 +1860,7 @@ tests = ["tests/test_setup_finished.py::test_malformed_done_body_cannot_finish_s
 note = "Malformed completion bodies and invalid themes cannot finish setup; a remote machine cannot finish another device's setup."
 
 [[group]]
-match = ["route:fleet/setup_routes.py:/ui/setup/pools", "route:fleet/setup_routes.py:/ui/setup/suggest", "route:fleet/setup_routes.py:/ui/setup/members", "route:fleet/setup_routes.py:/ui/setup/prefs"]
+match = ["route:fleet/setup_routes.py:/ui/setup/suggest", "route:fleet/setup_routes.py:/ui/setup/members", "route:fleet/setup_routes.py:/ui/setup/prefs"]
 status = "partial"
-tests = ["tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header", "tests/test_fleet_named_lan.py::test_prejoin_discovery_obeys_setup_boundary"]
+tests = ["tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header", "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine"]
 note = "The shared UI-header boundary and prejoin discovery boundary are attacked; individual preference, suggestion and member routes lack a complete hostile-request matrix."

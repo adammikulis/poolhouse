@@ -83,8 +83,6 @@ class RoomRoutes:
         if self.header("Authorization") or self.header("X-Poolhouse-Token"):
             return "an access token cannot change the wiring limit; a person at the page can"
         session = ui.sessions.get(parse_cookie(self.cookie))
-        if session is not None and session.who == "token":
-            return "a session opened with an access token cannot change the wiring limit"
         if session is not None and not session.credentialed:
             return "this session was not opened with a credential; open poolhouse from its own window"
         if ui.founded() and session is None:

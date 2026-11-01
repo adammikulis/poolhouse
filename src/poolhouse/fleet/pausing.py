@@ -22,7 +22,7 @@ from typing import Any
 from poolhouse.home import expand
 
 from .availability import Availability
-from .remote import Member, MemberError
+from .remote import NO_SERVICES, Member, MemberError
 
 __all__ = [
     "ADOPT_S",
@@ -152,7 +152,10 @@ def pause_fleet(what: Fanout, rows: Sequence[dict[str, Any]]) -> list[Answer]:
         name, mine = str(row["name"]), bool(row.get("is_self"))
         member = clients.get(name)
         if mine and what.here is not None:
-            out.append(Answer(name, True, _until(what.here(action, fields)), True))
+            try:
+                out.append(Answer(name, True, _until(what.here(action, fields)), True))
+            except (OSError, ValueError) as exc:
+                out.append(Answer(name, False, str(exc)[-160:], True))
             continue
         if member is None:
             out.append(Answer(name, False, "the node authorizes no compute service for this machine", mine))
@@ -238,7 +241,7 @@ def member_pause(*, timeout_s: float = ADOPT_S) -> Adopted | None:
     """Ask the pool's authorized compute services and return the pause they are under."""
     try:
         members = Member.discover(timeout=timeout_s)
-    except (PermissionError, MemberError, OSError):
+    except NO_SERVICES:
         return None                      # no other authorized service answered: nothing to adopt
     return pause_among([{"name": m.name, "device": m.beacon.device if m.beacon else {}}
                         for m in members])

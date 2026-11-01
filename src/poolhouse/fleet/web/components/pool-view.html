@@ -312,7 +312,7 @@ pool-view .url,pool-view .name,pool-view .loaded-models { overflow-wrap:anywhere
             el("span", {}, el("b", {}, m.name),
               el("span", { class: "why" }, m.this_device ? "This device" : m.connected ? "Connected" : "Known")),
             ...M.kids(m.this_device ? null : el("button", { class: "ghost small", onclick: async () => {
-              const removed = await api("/ui/pool/members", { method: "DELETE", body: JSON.stringify({ device: m.fingerprint }) });
+              const removed = await api("/ui/pool/remove-device", { method: "POST", body: JSON.stringify({ device: m.fingerprint }) });
               if (removed.error || removed.ok === false) { fail(removed.error || "Could not remove this device."); return; }
               await refresh();
             } }, "Remove"))))] : []),

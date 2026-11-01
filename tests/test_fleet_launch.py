@@ -8,10 +8,12 @@ import threading
 from http.server import BaseHTTPRequestHandler
 
 import pytest
+from testfarm_kit import devices, found, skip_unless_possible
 
 from poolhouse.fleet import autostart, launch
 from poolhouse.http import Server
-from tests.pool_support import join_pool_by_passphrase
+
+pytest_plugins = ("testfarm_kit",)  # the `node_binary` fixture
 
 
 class _Health(BaseHTTPRequestHandler):
@@ -51,14 +53,19 @@ def test_with_nothing_answering_it_says_how_to_start_the_page():
     assert not any(line.startswith("  pool     ") for line in lines)
     assert f"poolhouse                        -- starts it and opens http://127.0.0.1:{port}/ui/" \
         in text
-    assert "poolhouse-pool join --persist" in text
+    assert "poolhouse-pool status" in text
 
 
-def test_with_a_daemon_answering_it_names_the_page_and_the_pool(daemon):
-    join_pool_by_passphrase("correct horse battery staple", group="attic")
-    lines = launch.last_screen("box", track="main", port=daemon)
+@pytest.mark.slow
+def test_with_a_daemon_answering_it_names_the_page_and_the_pool_the_node_is_in(daemon, node_binary, monkeypatch):
+    skip_unless_possible()
+    with devices(node_binary, "a") as (a,):
+        found(a)
+        monkeypatch.setenv("POOLHOUSE_HOME", str(a.root))
+        name = a.call("pool_status")["governance"]["name"]
+        lines = launch.last_screen("box", track="main", port=daemon)
     assert f"  open        http://127.0.0.1:{daemon}/ui/" in lines
-    assert "  pool     attic" in lines
+    assert f"  pool     {name}" in lines
     assert "  updates     follows main, whenever nothing is running here" in lines
     assert not [line for line in lines if "starts it and opens" in line]
 

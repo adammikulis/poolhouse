@@ -16,6 +16,7 @@ from conftest import threaded_server
 
 from poolhouse import http as phttp, hub as hubmod
 from poolhouse.fleet.models import Models, ModelTransfer
+from poolhouse.fleet.remote import Member
 from poolhouse.fleet.weights import ModelError, reference
 from poolhouse.http import Server
 from poolhouse.testing.fakehub import fake_hub
@@ -334,27 +335,25 @@ class TestDraftModels:
         a_model(theirs, name="join.gguf", mb=2)
         root = tmp_path / "traind"
         (root / "files").mkdir(parents=True)
-        key = b"a-pool-key-they-both-know"
-        token = load_or_create_token(root, key)
+        token = load_or_create_token(root)
         runner = JobRunner(root)
         port = free_port()
         httpd = Server(
             ("127.0.0.1", port),
             make_handler(Daemon(runner, root / "files", token,
-                         models=Models([theirs], theirs),
-                         pool_key_path=tmp_path / "their.key")))
+                         models=Models([theirs], theirs))))
         threading.Thread(target=httpd.serve_forever, daemon=True).start()
 
         asked = []
         monkeypatch.setattr(
             Models, "where",
-            lambda self, name, k, **kw: (asked.append(name),
-                                         [("theirs", f"http://127.0.0.1:{port}", 0)])[1])
+            lambda self, name, **kw: (asked.append(name),
+                                      [(Member(f"http://127.0.0.1:{port}", token), 0)])[1])
 
         big = a_model(tmp_path / "models", name="join.gguf", mb=2)
         model = store.find("join.gguf")
         try:
-            got = store.ensure_draft(model, "http://127.0.0.1:1/none.gguf", key=key)
+            got = store.ensure_draft(model, "http://127.0.0.1:1/none.gguf")
         finally:
             runner.shutdown()
             httpd.shutdown()
@@ -707,7 +706,6 @@ class TestOverHTTP:
         from poolhouse.fleet.api import Daemon, make_handler
         from poolhouse.fleet.daemon import load_or_create_token
         from poolhouse.fleet.jobs import JobRunner
-        from poolhouse.fleet.remote import Member
         from poolhouse.http import Server
 
         root = tmp_path / "traind"
@@ -721,8 +719,7 @@ class TestOverHTTP:
         httpd = Server(
             ("127.0.0.1", port),
             make_handler(Daemon(runner, files, token,
-                         models=Models([theirs], theirs),
-                         pool_key_path=tmp_path / "pool.key")))
+                         models=Models([theirs], theirs))))
         threading.Thread(target=httpd.serve_forever, daemon=True).start()
         try:
             yield Member(f"http://127.0.0.1:{port}", token), theirs
@@ -828,19 +825,19 @@ class TestWhatAMemberOrServerSends:
     @pytest.mark.parametrize("evil", ["../../escaped.gguf", "/tmp/escaped-abs.gguf"])
     def test_a_member_cannot_place_a_file_outside_the_store(self, store, tmp_path, evil):
         with a_member_holding([{"name": evil}], gguf_bytes()) as base, pytest.raises(ModelError):
-            store._from_member(evil, base, b"k", None)
+            store._from_member(evil, Member(base, "k"), None)
         assert not list(store.store.glob("*"))
         assert not (tmp_path / "escaped.gguf").exists()
 
     def test_a_member_name_without_a_weights_suffix_is_refused(self, store):
         with a_member_holding([{"name": "evil.sh"}], gguf_bytes()) as base, pytest.raises(ModelError):
-            store._from_member("evil.sh", base, b"k", None)
+            store._from_member("evil.sh", Member(base, "k"), None)
         assert not list(store.store.glob("*"))
 
     def test_a_member_file_that_is_not_a_gguf_is_deleted(self, store):
         with a_member_holding([{"name": "m.gguf"}], b"<html>not a model</html>") as base, \
                 pytest.raises(ModelError):
-            store._from_member("m.gguf", base, b"k", None)
+            store._from_member("m.gguf", Member(base, "k"), None)
         assert not list(store.store.glob("*"))
 
     def test_a_download_that_is_not_a_gguf_is_deleted(self, store):

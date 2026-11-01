@@ -68,7 +68,6 @@ class InitialSetupRoutes:
 
     def _own_window(self, host, *, read=False, untrusted_origin=False) -> bool:
         port = 80 if host.port is None else host.port
-        session = self.ui.sessions.get(parse_cookie(self.cookie))
         origin = self.header("Origin")
         origin_ok = origin in {"http://" + self.host_header, "https://" + self.host_header}
         if read is True and self.method == "GET" and not origin:
@@ -79,8 +78,7 @@ class InitialSetupRoutes:
                 and self.header("X-Poolhouse-UI") == "1" and origin_ok
                 and self.header("Sec-Fetch-Site") in (("same-origin", "") if untrusted_origin else ("same-origin",))
                 and not any(self.header(name) for name in
-                            ("Authorization", "X-Poolhouse-Token", "X-Poolhouse-Agent"))
-                and (session is None or session.who != "token"))
+                            ("Authorization", "X-Poolhouse-Token", "X-Poolhouse-Agent")))
 
     def _initial_preferences(self) -> None:
         length = int(self.header("Content-Length", "0"))

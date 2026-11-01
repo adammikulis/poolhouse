@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from poolhouse.fleet import discovery, wsl_network, wsl_registration as registration
+from poolhouse.fleet import wsl_registration as registration
 
 
 @pytest.fixture
@@ -35,10 +35,6 @@ def test_cli_without_inherited_environment_uses_current_daemon(descriptor, monke
     monkeypatch.setenv(registration.ENV, json.dumps(config))
     with registration.registered():
         monkeypatch.delenv(registration.ENV)
-        socket_factory = MagicMock()
-        monkeypatch.setattr(wsl_network, 'DiscoverySocket', socket_factory)
-        discovery._socket(bind=('', 0))
-        socket_factory.assert_called_once_with({'broadcast': False, 'bind': ('', 0), 'group': None})
         assert registration.configuration() == config
     assert not path.exists()
 
@@ -85,12 +81,12 @@ def test_explicit_configuration_has_priority_and_is_validated(descriptor, monkey
 
 
 @pytest.mark.parametrize('raw', ['broken', '[]', 'x' * (registration.LIMIT + 1)])
-def test_malformed_descriptor_never_falls_back_to_native_udp(descriptor, raw):
+def test_malformed_descriptor_is_refused_not_ignored(descriptor, raw):
     path, _, _ = descriptor
     path.parent.mkdir()
     path.write_text(raw)
     with pytest.raises(OSError):
-        discovery._socket()
+        registration.configuration()
 
 
 @pytest.mark.parametrize('mode,uid', [(stat.S_IFLNK | 0o600, 123), (stat.S_IFREG | 0o644, 123), (stat.S_IFREG | 0o600, 999)])

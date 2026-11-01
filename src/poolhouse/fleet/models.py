@@ -288,12 +288,12 @@ class Models:
     # -- getting one ----------------------------------------------------
     def where(self, name: str, *, timeout_s: float = 10.0) -> list[tuple[Member, int]]:
         """Pool members whose node-authorized compute service holds a model. (member, size)."""
-        from .remote import Member
+        from .remote import NO_SERVICES, Member
 
         needle = name.strip().lower()
         try:
             members = Member.discover(timeout=timeout_s)
-        except PermissionError:
+        except NO_SERVICES:
             return []                      # the node authorizes no pool service: no LAN holder
         out = []
         for member in members:

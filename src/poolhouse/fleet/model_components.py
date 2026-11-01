@@ -160,11 +160,11 @@ def catalogue(models, name: str, source: str = "") -> dict:
     repo, _ = _reference(source)
     policy = models.sources()
     if policy in {"lan", "both"}:
-        from .remote import Member, MemberError
+        from .remote import NO_SERVICES, Member, MemberError
 
         try:
             members = Member.discover(timeout=10.0)
-        except (PermissionError, MemberError, OSError):
+        except NO_SERVICES:
             members = []                 # the node authorizes no other compute service
         for member in members:
             try:

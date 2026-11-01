@@ -46,14 +46,14 @@ class PoolRoutes:
 
     def route(self) -> bool:
         if self.path == "/ui/pool" and self.method == "GET":
-            return self._guarded(lambda: {"pool": asdict(pool_api.status())})
+            return self._guarded(self._status)
         if self.path == "/ui/pool/found" and self.method == "POST":
             return self._guarded(self._found)
         if self.path == "/ui/pool/add-device" and self.method == "POST":
             return self._guarded(self._add_device)
         if self.path == "/ui/pool/join" and self.method == "POST":
             return self._guarded(self._join)
-        if self.path == "/ui/pool/members" and self.method == "DELETE":
+        if self.path == "/ui/pool/remove-device" and self.method == "POST":
             return self._guarded(self._remove)
         if self.path == "/ui/pool" and self.method == "DELETE":
             return self._guarded(lambda: {"left": pool_api.leave()})
@@ -78,6 +78,12 @@ class PoolRoutes:
             self.ui.refresh()
             self.send(200, answer)
         return True
+
+    def _status(self) -> dict[str, Any]:
+        """The pool as the node reports it; asks nothing of a node that is not running, and starts none."""
+        if self.ui.pool(force=True) is None:
+            return {"pool": None, "error": "No node answers on this device, so it has no pool to show."}
+        return {"pool": asdict(pool_api.status())}
 
     def _found(self) -> dict[str, Any]:
         req = self.body()

@@ -23,15 +23,11 @@ from launch_support import arm, disarm
 from poolhouse.fleet import tls
 from poolhouse.fleet.api import Daemon, make_handler
 from poolhouse.fleet.daemon import load_or_create_token
-from poolhouse.fleet.discovery import in_pool
 from poolhouse.fleet.framing import LimitedServer
 from poolhouse.fleet.jobs import JobRunner
-from poolhouse.fleet.onboard.join_code import unverified_context
 from poolhouse.fleet.session import Sessions, Throttle, parse_cookie
 from poolhouse.fleet.ui import UI, asset_bytes
 from poolhouse.http import Server
-from tests.keystore_support import counting  # noqa: F401
-from tests.pool_support import a_keystore  # noqa: F401
 from tests.remote_client_support import REMOTE_ADDRESS, RemoteClientServer
 
 
@@ -57,17 +53,14 @@ def no_release_lookup(monkeypatch):
     monkeypatch.setattr(updates, "check", offline)
 
 
-@pytest.fixture(autouse=True)
-def the_passphrase_is_kept(a_keystore):  # noqa: F811
-    """Joining stores the passphrase and signing in compares against it."""
+def unverified_context():
+    """A client context for a loopback daemon whose certificate is made on the spot."""
+    import ssl
 
-
-@pytest.fixture(autouse=True)
-def nobody_else_is_on_the_network(monkeypatch):
-    """No existing pool answers the test discovery socket."""
-    from poolhouse.fleet.onboard import joining
-
-    monkeypatch.setattr(joining, "find_joiners", lambda *a, **k: [])
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
 
 
 def _free_port() -> int:
@@ -85,11 +78,9 @@ class Serving:
         root = tmp_path / "traind"
         self.files = root / "files"
         self.files.mkdir(parents=True)
-        self.keyfile = tmp_path / "pool.key"
         token = load_or_create_token(root)
         self.runner = JobRunner(root, self.files)
-        self.ui = UI(name=name, pool_key_path=self.keyfile,
-                     setup_token=setup_token)
+        self.ui = UI(name=name, setup_token=setup_token, gated=False)
         self.ui.runner = self.runner
         self.ui.settings = self.initial_settings()
         self.ui.settings_path = tmp_path / "settings.json"
@@ -97,22 +88,12 @@ class Serving:
         self.ui.report = lambda: {"cpus": 8, "accelerator": False}
         self.port = _free_port()
         self.rows = arm(self)
-        from poolhouse.fleet import invite_client, invite_routes
-        from poolhouse.fleet.discovery import memberships
-        from poolhouse.fleet.invites import Invitations
-
         identity = tls.identity(tmp_path / "tls", name) if secure else None
         context = tls.server_context(identity) if identity else None
-        self.ui.invitations = Invitations(lambda: memberships(self.keyfile),
-                                         lambda: (f"https://127.0.0.1:{self.port}",
-                                                  identity.fingerprint if identity else ""))
-        self.ui.join_invitation = lambda code: invite_routes.joined(
-            self.ui, invite_client.redeem(code, name))
         self.httpd = LimitedServer(
             ("127.0.0.1", self.port), tls=context,
             handler=make_handler(Daemon(self.runner, self.files, token, name, ui=self.ui,
-                         schedule=schedule, tokens=self._pool_tokens,
-                         pool_key_path=self.keyfile, ui_from_lan=True,
+                         schedule=schedule, ui_from_lan=True,
                          schedule_path=(root / "availability.json") if schedule else None)))
         self.lan_httpd = None
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
@@ -123,11 +104,10 @@ class Serving:
         from poolhouse.fleet.settings import Settings
         return Settings(experimental_notice_accepted=True)
 
-    def _pool_tokens(self):
-        """Every token this daemon answers to, the way the real one works it out."""
-        from poolhouse.fleet.discovery import derive_token, memberships
-
-        return {derive_token(m.key) for m in memberships(self.keyfile)}
+    def ticket_session(self, **options):
+        """Sign in the way the Poolhouse window does: spend a launch ticket this daemon minted."""
+        ticket, _ = self.ui.sessions.mint_ticket("launch-secret")
+        return self.call("/ui/session", method="POST", body={"ticket": ticket}, **options)
 
     def call(self, path, *, method="GET", body=None, **options):
         host = options.pop("host", "127.0.0.1")
@@ -264,31 +244,25 @@ class TestFirstRunIsNotUpForGrabs:
         assert status == 200 and body["needs_setup"] is True
 
     def test_setup_works_from_the_machine_itself(self, serving):
-        status, body, _ = serving.call("/ui/setup/join", method="POST",
-                                       body={"mode": "create", "passphrase": WORDS, "group": "home"})
+        status, body, _ = serving.call("/ui/setup/prefs", method="POST", body={})
         assert status == 200, body
-        assert body["in_pool"] is True and body["group"] == "home"
-        assert in_pool(serving.keyfile)
+        assert body["applied"] == []
 
     def test_setup_is_refused_from_another_machine(self, serving):
-        """Whoever reaches an unjoined daemon first would own it. Being on the LAN is
+        """Whoever reaches an unfounded daemon first would own it. Being on the LAN is
         not enough; you have to be on the box, or use ssh and the CLI."""
-        status, body, _ = serving.call("/ui/setup/join", method="POST",
-                                       body={"mode": "create", "group": "home", "passphrase": WORDS},
-                                       host=REMOTE_ADDRESS)
+        status, body, _ = serving.call("/ui/setup/prefs", method="POST", body={}, host=REMOTE_ADDRESS)
         assert status == 403
         assert "ssh" in body["error"]
-        assert not in_pool(serving.keyfile)
 
     def test_a_request_addressed_to_a_hostname_is_refused(self, serving):
         """DNS rebinding: a page anywhere can point a domain at 127.0.0.1 and POST to
         it. Loopback-only buys nothing without checking what it was addressed to."""
         status, body, _ = serving.call(
-            "/ui/setup/join", method="POST", body={"mode": "create", "group": "home", "passphrase": WORDS},
+            "/ui/setup/prefs", method="POST", body={},
             headers={"Host": f"evil.example.com:{serving.port}"})
         assert status == 403
         assert "hostname" in body["error"]
-        assert not in_pool(serving.keyfile)
 
     def test_the_api_is_unreachable_without_the_ui_header(self, serving):
         """A cross-origin form, image or link cannot set a custom header without a
@@ -296,36 +270,26 @@ class TestFirstRunIsNotUpForGrabs:
         status, body, _ = serving.call("/ui/setup", ui_header=False)
         assert status == 403 and "header" in body["error"]
 
-    def test_rejoining_needs_a_session_once_the_box_is_in_a_pool(self, serving):
-        serving.call("/ui/setup/join", method="POST",
-                     body={"mode": "create", "passphrase": WORDS, "group": "home"})
-        status, body, _ = serving.call("/ui/setup/join", method="POST",
-                                       body={"mode": "create", "group": "home", "passphrase": "different words here"})
-        assert status == 401
-        assert "sign in" in body["error"]
-
     def test_a_setup_code_lets_a_headless_box_be_set_up_remotely(self, tmp_path):
         s = Serving(tmp_path, setup_token="abc123xyz")
         try:
-            refused, _, _ = s.call("/ui/setup/join", method="POST",
-                                   body={"mode": "create", "group": "home", "passphrase": WORDS}, host=REMOTE_ADDRESS)
+            refused, _, _ = s.call("/ui/setup/prefs", method="POST", body={}, host=REMOTE_ADDRESS)
             assert refused == 403
-            ok, body, _ = s.call("/ui/setup/join", method="POST",
-                                 body={"mode": "create", "group": "home", "passphrase": WORDS}, host=REMOTE_ADDRESS,
+            ok, body, _ = s.call("/ui/setup/prefs", method="POST", body={}, host=REMOTE_ADDRESS,
                                  headers={"X-Poolhouse-Setup": "abc123xyz"})
             assert ok == 200, body
         finally:
             s.close()
 
 
-class TestThePassphraseNeverCrossesPlainHttp:
+class TestNoSessionCrossesPlainHttp:
     def test_another_machine_is_refused_the_interface_when_it_would_be_plain_http(self, tmp_path):
-        """A listener beyond this machine cannot be built without TLS, so no passphrase can reach it."""
+        """A listener beyond this machine cannot be built without TLS, so no ticket can reach it."""
         plain = Serving(tmp_path, secure=False)
         try:
             for path, method in (("/ui/setup", "GET"), ("/ui/session", "POST")):
                 with pytest.raises(ValueError, match="TLS or not at all"):
-                    plain.call(path, method=method, body={"passphrase": WORDS}
+                    plain.call(path, method=method, body={"ticket": "t"}
                                if method == "POST" else None, host=REMOTE_ADDRESS)
                 assert plain.lan_httpd is None
             assert plain.call("/ui/setup")[0] == 200
@@ -333,43 +297,14 @@ class TestThePassphraseNeverCrossesPlainHttp:
             plain.close()
 
     def test_over_tls_the_same_request_reaches_the_sign_in(self, serving):
-        serving.call("/ui/setup/join", method="POST", body={"mode": "create", "passphrase": WORDS, "group": "home"})
-        status, _, headers = serving.call("/ui/session", method="POST",
-                                          body={"passphrase": WORDS}, host=REMOTE_ADDRESS)
+        status, _, headers = serving.ticket_session(host=REMOTE_ADDRESS)
         assert status == 200 and "Set-Cookie" in headers
-
-
-class TestExplicitPoolActions:
-    def test_a_missing_name_is_refused_without_creating_a_pool(self, serving):
-        status, body, _ = serving.call("/ui/setup/join", method="POST",
-                                       body={"passphrase": WORDS, "mode": "create"})
-        assert status == 400 and "pool name" in body["error"]
-        assert not in_pool(serving.keyfile)
-
-    def test_recreating_a_local_pool_preserves_its_key(self, serving):
-        from poolhouse.fleet.discovery import memberships
-
-        status, body, headers = serving.call("/ui/setup/join", method="POST",
-            body={"passphrase": WORDS, "group": "home", "mode": "create"})
-        assert status == 200, body
-        cookie = headers["Set-Cookie"].split(";")[0]
-        first = memberships(serving.keyfile)[0]
-        status, body, _ = serving.call("/ui/pools", method="POST", cookie=cookie,
-            body={"passphrase": "different words", "group": "home", "mode": "create"})
-        assert status == 400 and "already belongs" in body["error"]
-        assert memberships(serving.keyfile)[0].key == first.key
-
-    def test_joining_an_unseen_pool_creates_no_key(self, serving):
-        status, body, _ = serving.call("/ui/setup/join", method="POST",
-            body={"passphrase": WORDS, "group": "home", "mode": "join"})
-        assert status == 400 and "No machine" in body["error"]
-        assert not in_pool(serving.keyfile)
 
 
 # -- a machine in no pool ---------------------------------------------
 class TestOnItsOwn:
-    """Joining a pool is optional. A machine that skipped it has no password, so it
-    answers to itself and to nobody else."""
+    """Founding a pool is a person's decision. A machine whose pool nobody founded has nobody to
+    sign in as, so it answers to itself and to nobody else."""
 
     def finished(self, serving):
         status, body, _ = serving.call("/ui/setup/done", method="POST")
@@ -380,7 +315,6 @@ class TestOnItsOwn:
         assert serving.call("/ui/setup")[1]["needs_setup"] is True
         assert self.finished(serving)["needs_setup"] is False
         assert serving.call("/ui/setup")[1]["needs_setup"] is False
-        assert not in_pool(serving.keyfile)
 
     def test_finishing_is_remembered_between_runs(self, serving):
         from poolhouse.fleet.settings import Settings
@@ -389,11 +323,11 @@ class TestOnItsOwn:
         assert Settings.load(serving.ui.settings_path).setup_done is True
 
     def test_the_pool_screen_counts_the_machine_it_is_running_on(self, serving):
-        """A machine that joined nothing is still a machine, with slots and a card.
-        Counting only the beacons on the network showed it '0 machines'."""
+        """A machine in a pool of one is still a machine, with slots and a card.
+        Counting only the other services showed it '0 machines'."""
         self.finished(serving)
 
-        status, body, _ = serving.call("/ui/members")
+        status, body, _ = serving.call("/ui/fleet")
 
         assert status == 200, body
         assert [row["name"] for row in body["members"]] == [serving.ui.name]
@@ -401,11 +335,8 @@ class TestOnItsOwn:
         assert body["members"][0]["slots"] == 1
         assert body["members"][0]["device"]["cpus"] == 8
 
-    def test_there_is_no_password_to_ask_for(self, serving):
-        assert serving.call("/ui/setup")[1]["needs_password"] is False
-        serving.call("/ui/setup/join", method="POST",
-                     body={"mode": "create", "passphrase": WORDS, "group": "home"})
-        assert serving.call("/ui/setup")[1]["needs_password"] is True
+    def test_there_is_no_sign_in_to_ask_for(self, serving):
+        assert serving.call("/ui/setup")[1]["needs_sign_in"] is False
 
     def test_the_machine_itself_gets_in_without_signing_in(self, serving):
         self.finished(serving)
@@ -431,119 +362,86 @@ class TestOnItsOwn:
         assert status == 403
         assert serving.call("/ui/setup")[1]["needs_setup"] is True
 
-    def test_a_pool_puts_the_password_back(self, serving):
-        self.finished(serving)
-        serving.call("/ui/setup/join", method="POST",
-                     body={"mode": "create", "passphrase": WORDS, "group": "home"})
-        status, body, _ = serving.call("/ui/settings")
-        assert status == 401 and "sign in" in body["error"]
-
-
 # -- signing in ----------------------------------------------------------
 class TestSignIn:
     @pytest.fixture
     def joined(self, serving):
-        serving.call("/ui/setup/join", method="POST",
-                     body={"mode": "create", "passphrase": WORDS, "group": "home"})
         return serving
 
-    def test_the_passphrase_signs_you_in(self, joined):
-        """Typing the words you already know, rather than pasting 43 characters."""
-        status, body, headers = joined.call("/ui/session", method="POST",
-                                            body={"passphrase": WORDS, "group": "home"})
+    def test_a_launch_ticket_signs_you_in(self, joined):
+        status, body, headers = joined.ticket_session()
         assert status == 200 and body["signed_in"]
         assert "HttpOnly" in headers["Set-Cookie"]
         assert "SameSite=Strict" in headers["Set-Cookie"]
 
     @pytest.mark.redteam
-    def test_the_wrong_passphrase_does_not(self, joined):
-        status, _, _ = joined.call("/ui/session", method="POST",
-                                   body={"passphrase": "not the words"})
-        assert status == 401
+    def test_a_passphrase_signs_nobody_in(self, joined):
+        status, body, headers = joined.call("/ui/session", method="POST", body={"passphrase": WORDS, "group": "home"})
+        assert status == 401 and not body.get("signed_in")
+        assert "Set-Cookie" not in headers
 
     @pytest.mark.redteam
-    def test_correct_passphrase_for_a_different_group_is_refused(self, joined):
-        status, body, headers = joined.call('/ui/session', method='POST',
-                                            body={'passphrase':WORDS,'group':'poolhouse'})
-        assert status == 401 and not body.get('signed_in')
-        assert 'Set-Cookie' not in headers
-
-    def test_one_typo_does_not_lock_you_out(self, joined):
-        """Someone who fumbles a passphrase once and is then told to wait has been
-        punished for being the legitimate user."""
-        joined.call("/ui/session", method="POST", body={"passphrase": "wrong words"})
-        status, body, _ = joined.call("/ui/session", method="POST",
-                                      body={"passphrase": WORDS, "group": "home"})
-        assert status == 200, body
+    def test_a_wrong_ticket_does_not(self, joined):
+        status, _, _ = joined.call("/ui/session", method="POST", body={"ticket": "not-a-ticket"})
+        assert status == 401
 
     @pytest.mark.redteam
     def test_persistent_guessing_is_slowed_down(self, joined):
         for _ in range(6):
-            status, body, _ = joined.call("/ui/session", method="POST",
-                                          body={"passphrase": "nope nope nope"})
+            status, body, _ = joined.call("/ui/session", method="POST", body={"ticket": "nope-nope-nope"})
         assert status == 429
         assert "0s" not in body["error"], "refusing while saying 'wait 0s' reads as a bug"
 
-    def test_the_pool_cannot_be_browsed_without_signing_in(self, joined):
-        status, _, _ = joined.call("/ui/members")
-        assert status == 401
-
-    def test_a_session_opens_the_pool_view(self, joined):
-        _, _, headers = joined.call("/ui/session", method="POST",
-                                    body={"passphrase": WORDS, "group": "home"})
+    def test_the_old_pool_routes_are_gone(self, joined):
+        _, _, headers = joined.ticket_session()
         cookie = headers["Set-Cookie"].split(";")[0]
-        status, body, _ = joined.call("/ui/members", cookie=cookie)
-        assert status == 200
-        assert body["group"] == "home"
+        for path, method in (("/ui/members", "GET"), ("/ui/pools", "GET"), ("/ui/pools/found", "GET"),
+                             ("/ui/fleet/join", "POST"), ("/ui/setup/join", "POST"), ("/ui/setup/recovery", "POST"),
+                             ("/ui/setup/pools", "GET")):
+            assert joined.call(path, method=method, cookie=cookie, body={} if method == "POST" else None)[0] == 404, path
 
     @pytest.mark.redteam
-    def test_launch_ticket_requires_session_and_is_consumed_once(self, joined):
-        status, _, _ = joined.call('/ui/launch-ticket', method='POST')
-        assert status == 401
-        _, _, headers = joined.call('/ui/session', method='POST',
-                                    body={'passphrase': WORDS, 'group': 'home'})
-        cookie=headers['Set-Cookie'].split(';')[0]
-        status, body, headers=joined.call('/ui/launch-ticket', method='POST', cookie=cookie)
+    def test_launch_ticket_is_consumed_once(self, joined):
+        _, _, headers = joined.ticket_session()
+        cookie = headers['Set-Cookie'].split(';')[0]
+        status, body, headers = joined.call('/ui/launch-ticket', method='POST', cookie=cookie)
         assert status == 200 and headers['Cache-Control'] == 'no-store'
         assert joined.call('/ui/launch-ticket', method='POST', cookie=cookie, ui_header=False)[0] == 403
-        assert joined.call('/ui/launch-ticket', method='POST', cookie=cookie, headers={'Host':'foreign.example'})[0] == 403
-        ticket=body['ticket']
-        status, body, _=joined.call('/ui/session',method='POST',body={'ticket':ticket})
+        assert joined.call('/ui/launch-ticket', method='POST', cookie=cookie, headers={'Host': 'foreign.example'})[0] == 403
+        ticket = body['ticket']
+        status, body, _ = joined.call('/ui/session', method='POST', body={'ticket': ticket})
         assert status == 200 and body['signed_in']
-        status, _, _=joined.call('/ui/session',method='POST',body={'ticket':ticket})
+        status, _, _ = joined.call('/ui/session', method='POST', body={'ticket': ticket})
         assert status == 401
-        assert joined.call('/ui/launch-ticket',cookie=cookie)[0] == 405
+        assert joined.call('/ui/launch-ticket', cookie=cookie)[0] == 405
 
     def test_browser_launch_exchanges_ticket_and_removes_address_credential(self, joined):
-        playwright=pytest.importorskip('playwright.sync_api')
-        _, _, headers=joined.call('/ui/session',method='POST',
-                                 body={'passphrase':WORDS,'group':'home'})
-        cookie=headers['Set-Cookie'].split(';')[0]
-        _, body, _=joined.call('/ui/launch-ticket',method='POST',cookie=cookie)
+        playwright = pytest.importorskip('playwright.sync_api')
+        _, _, headers = joined.ticket_session()
+        cookie = headers['Set-Cookie'].split(';')[0]
+        _, body, _ = joined.call('/ui/launch-ticket', method='POST', cookie=cookie)
         with playwright.sync_playwright() as driver:
-            browser=driver.chromium.launch(headless=True)
-            page=browser.new_page()
+            browser = driver.chromium.launch(headless=True)
+            page = browser.new_page()
             page.goto(f'http://127.0.0.1:{joined.port}/ui/?launch_ticket={body["ticket"]}#tasks')
             page.wait_for_function("() => !location.search.includes('launch_ticket')")
             page.wait_for_function("() => document.cookie !== undefined && window.fleetModel !== undefined")
-            status=page.evaluate("async () => (await fetch('/ui/session',{headers:{'X-Poolhouse-UI':'1'}})).json()")
+            status = page.evaluate("async () => (await fetch('/ui/session',{headers:{'X-Poolhouse-UI':'1'}})).json()")
             assert status['signed_in']
             assert page.url.endswith('#tasks')
             browser.close()
 
     def test_signing_out_ends_the_session(self, joined):
-        _, _, headers = joined.call("/ui/session", method="POST",
-                                    body={"passphrase": WORDS, "group": "home"})
+        _, _, headers = joined.ticket_session()
         cookie = headers["Set-Cookie"].split(";")[0]
+        assert joined.call("/ui/session", cookie=cookie)[1]["signed_in"] is True
         joined.call("/ui/session", method="DELETE", cookie=cookie)
-        status, _, _ = joined.call("/ui/members", cookie=cookie)
-        assert status == 401
+        assert joined.call("/ui/session", cookie=cookie)[1]["signed_in"] is False
 
     def test_the_ui_cookie_does_not_work_on_the_job_api(self, joined):
         """The cookie is scoped to /ui. A browser session must not become a bearer
         credential for the route that runs commands."""
-        _, _, headers = joined.call("/ui/session", method="POST",
-                                    body={"passphrase": WORDS, "group": "home"})
+        _, _, headers = joined.ticket_session()
         cookie = headers["Set-Cookie"].split(";")[0]
         status, _, _ = joined.call("/jobs", cookie=cookie)
         assert status == 401
@@ -613,8 +511,6 @@ class TestPreferences:
 
     @pytest.fixture
     def joined(self, serving):
-        serving.call("/ui/setup/join", method="POST",
-                     body={"mode": "create", "passphrase": WORDS, "group": "home"})
         return serving
 
     def test_availability_suggestions_do_not_assign_a_device_role(self):
@@ -663,8 +559,7 @@ class TestPreferences:
         assert "labels" not in body["suggest"]
 
     def test_asking_for_more_jobs_leaves_it_at_one(self, joined):
-        _, _, headers = joined.call("/ui/session", method="POST",
-                                    body={"passphrase": WORDS})
+        _, _, headers = joined.ticket_session()
         cookie = headers["Set-Cookie"].split(";")[0]
 
         status, body, _ = joined.call("/ui/setup/prefs", method="POST", cookie=cookie,
@@ -678,8 +573,7 @@ class TestPreferences:
     def test_the_name_the_wizard_asked_for_reaches_the_machine(self, joined, tmp_path):
         from poolhouse.fleet.settings import Settings
 
-        _, _, headers = joined.call("/ui/session", method="POST",
-                                    body={"passphrase": WORDS})
+        _, _, headers = joined.ticket_session()
         cookie = headers["Set-Cookie"].split(";")[0]
         joined.ui.settings_path = tmp_path / "named.json"
         renamed: list[str] = []
@@ -699,7 +593,7 @@ class TestPreferences:
         old = parse_window("sat 10:00-12:00 # Existing reservation")
         joined.ui.schedule = Availability(windows=[old])
         joined.ui.schedule_path = tmp_path / "availability.json"
-        status, result, headers = joined.call("/ui/session", method="POST", body={"passphrase":WORDS})
+        status, result, headers = joined.ticket_session()
         assert status == 200, result
         cookie = headers["Set-Cookie"].split(";")[0]
         for spec in ["mon-fri 09:00-17:00", "mon-fri 09:00-17:00", "mon,tue,wed,thu,fri 09:00-17:00"]:
@@ -713,8 +607,7 @@ class TestPreferences:
         assert joined.ui.schedule.windows == expected
 
     def test_a_blank_name_leaves_the_machine_called_what_it_was(self, joined):
-        _, _, headers = joined.call("/ui/session", method="POST",
-                                    body={"passphrase": WORDS})
+        _, _, headers = joined.ticket_session()
         cookie = headers["Set-Cookie"].split(";")[0]
         before = joined.ui.name
 
@@ -724,8 +617,7 @@ class TestPreferences:
         assert joined.ui.name == before
 
     def test_saving_a_preference_does_not_interrupt_running_work(self, joined):
-        _, _, headers = joined.call("/ui/session", method="POST",
-                                    body={"passphrase": WORDS})
+        _, _, headers = joined.ticket_session()
         cookie = headers["Set-Cookie"].split(";")[0]
         joined.call("/ui/setup/prefs", method="POST", cookie=cookie,
                     body={"slots": 4, "autostart": "manual"})
@@ -791,10 +683,7 @@ class TestClosingTheWindow:
 class TestSettingsScreen:
     @pytest.fixture
     def signed_in(self, serving):
-        serving.call("/ui/setup/join", method="POST",
-                     body={"mode": "create", "passphrase": WORDS, "group": "home"})
-        _, _, headers = serving.call("/ui/session", method="POST",
-                                     body={"passphrase": WORDS})
+        _, _, headers = serving.ticket_session()
         return serving, headers["Set-Cookie"].split(";")[0]
 
     def test_it_reports_what_the_daemon_is_doing(self, signed_in):
@@ -802,12 +691,8 @@ class TestSettingsScreen:
         status, body, _ = serving.call("/ui/settings", cookie=cookie)
         assert status == 200
         assert body["settings"]["slots"] == serving.runner.slots
-        assert body["group"] == "home"
+        assert body["group"] is None, "the pool of one that no person founded has no name"
         assert "autostart" in body and "version" in body
-
-    def test_settings_need_a_session(self, serving):
-        serving.call("/ui/setup/join", method="POST", body={"mode": "create", "group": "home", "passphrase": WORDS})
-        assert serving.call("/ui/settings")[0] == 401
 
     def test_the_settings_screen_cannot_raise_the_job_count(self, signed_in):
         from poolhouse.fleet.settings import Settings
@@ -858,10 +743,7 @@ class TestTheInterfaceAndTheDaemonAgree:
 
     @pytest.fixture
     def signed_in(self, serving):
-        serving.call("/ui/setup/join", method="POST",
-                     body={"mode": "create", "passphrase": WORDS, "group": "home"})
-        _, _, headers = serving.call("/ui/session", method="POST",
-                                     body={"passphrase": WORDS})
+        _, _, headers = serving.ticket_session()
         return serving, headers["Set-Cookie"].split(";")[0]
 
     def called_paths(self):
@@ -1059,7 +941,7 @@ class TestUpdates:
     def test_a_pip_install_is_told_to_update_with_pip(self, tmp_path):
         from poolhouse.fleet.ui import UI
 
-        ui = UI(name="x", pool_key_path=tmp_path / "k")
+        ui = UI(name="x", gated=False)
         got = ui.install_update()
         assert not got["ok"] and "pip" in got["error"]
 
@@ -1218,7 +1100,7 @@ class TestTheBenchOnThePage:
     """`UI.bench_state` is the bench half of `/ui/fleet`: what `python -m poolhouse.bench status` says."""
 
     def _ui(self, tmp_path):
-        return UI(name="studio", pool_key_path=tmp_path / "pool.key")
+        return UI(name="studio", gated=False)
 
     def test_an_idle_machine_reports_the_bench_with_nothing_measuring(self, tmp_path,
                                                                      monkeypatch):

@@ -105,6 +105,11 @@ class MemberError(ServerError):
     """One request to one member did not work."""
 
 
+NO_SERVICES = (PermissionError, MemberError, OSError, tls.TlsUnavailable)
+"""What asking for the pool's compute services raises when there are none to use: the node authorizes none, a member does not answer,
+or this device has no certificate to present."""
+
+
 def _member_error(where: str, exc: ServerError) -> MemberError:
     """One member's failure, said the way its callers read it."""
     if isinstance(exc, ServerUnreachable):
