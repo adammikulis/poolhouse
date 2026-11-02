@@ -59,6 +59,20 @@ fn an_asker_that_fills_its_allowance_leaves_every_other_asker_its_own() {
 }
 
 #[test]
+fn the_first_key_and_the_first_phone_count_against_the_asker_as_a_change_does() {
+    let (mut firsts, answer) = person();
+    for n in 0..MOST_PER_TEN_MINUTES {
+        *answer.lock().unwrap() = Some(true);
+        firsts.ask(Purpose::Phone, "demo/impostor", "", "", n as u64).unwrap();
+        assert_eq!(firsts.status("demo/impostor", n as u64)["state"], "confirmed");
+    }
+    *answer.lock().unwrap() = None;
+    assert!(matches!(firsts.ask(Purpose::Phone, "demo/impostor", "", "", 10), Err(Error::Quota(_))), "its fourth waits");
+    assert!(matches!(firsts.ask(Purpose::Key, "demo/impostor", KEY, "", 11), Err(Error::Quota(_))), "a key counts with the phone it asked for");
+    firsts.ask(Purpose::Key, "demo/person", KEY, "", 12).expect("another asker keeps its own allowance");
+}
+
+#[test]
 fn an_asker_that_fills_its_cards_evicts_no_card_of_another() {
     let (mut firsts, _) = person();
     let kept = card(&mut firsts, "demo/person", &[b"mine"], false, 0);

@@ -334,6 +334,27 @@ fn a_window_act_must_name_this_device_be_signed_by_a_key_and_belong_to_the_yes_i
 }
 
 #[test]
+fn a_yes_for_this_devices_window_opens_no_window_for_another_member() {
+    let (a, b) = (device(), device());
+    at_a_terminal(&a);
+    at_a_terminal(&b);
+    let me = person(&a, "the-person");
+    let seed = found(&a, &me, "home");
+    let code = open_window(&a, &me, &seed, json!({}));
+    join(&b, &person(&b, "the-guest-person"), &a, &code);
+    assert!(a.is_member(&b.fp()), "the second device is a member");
+    // the person's yes was for a window of this device: the key's signature of a window of the member opens it for nobody
+    let later = person(&a, "later");
+    let (ticket, mut act, _) = window_card(&a, &later);
+    act["body"]["fingerprint"] = json!(b.fp());
+    let bytes = serde_json::from_value::<poolhouse_node::gov::act::Act>(act.clone()).unwrap().sign_bytes();
+    signed_by(&seed, &mut act, &bytes);
+    let refused = a.call("add_device", "", &later, json!({"ticket": ticket, "window": act}));
+    assert_eq!(refused["ok"], false, "{refused}");
+    assert!(refused["error"]["message"].as_str().unwrap().contains("names this device"), "{refused}");
+}
+
+#[test]
 fn the_yes_for_one_window_or_join_covers_no_other_pool_host_port_code_or_device() {
     use poolhouse_node::window::describe;
     let same = |a: &Value, b: &Value| describe("join_pool", "", "", a.as_object().unwrap()).unwrap().bytes == describe("join_pool", "", "", b.as_object().unwrap()).unwrap().bytes;

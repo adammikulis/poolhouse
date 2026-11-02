@@ -471,3 +471,27 @@ fn the_prompt_for_a_change_of_admins_names_the_key_the_yes_adds_or_removes() {
         assert!(shown.contains(&words), "the yes of {kind} is for that key, so the prompt names it: {shown}");
     }
 }
+
+#[test]
+fn the_yes_for_a_founding_is_spent_when_the_pool_is_founded_and_not_before() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut node = node(dir.path());
+    let prompt = at_the_prompt(&mut node, "os");
+    let token = person_session(&mut node);
+    let drafted = ok(draft(&mut node, &token, "home"));
+    let anchor = poolhouse_node::gov::charter::Charter::read(&drafted["charter"]).unwrap().anchor();
+    let holder = node.tokens.resolve(&token).cloned().unwrap();
+    let by = format!("{}/{}", holder.board, holder.name);
+    assert!(node.firsts.founding_yes(&by, &anchor, node.now_ms()).is_none(), "no yes yet");
+    let said = answered(&mut node, &prompt, &token, "pool_key", drafted["card"].as_str().unwrap(), true);
+    let seed = said["seed"].as_str().unwrap();
+    assert!(node.firsts.founding_yes(&by, &anchor, node.now_ms()).is_some(), "the yes stands until a pool is founded with it");
+    let mut spoiled = drafted["charter"].clone();
+    spoiled["admins"][0]["acceptance"] = json!("00".repeat(64));
+    assert_eq!(req(&mut node, "pool_found", "", &token, json!({"charter": spoiled}))["ok"], false);
+    assert!(node.firsts.founding_yes(&by, &anchor, node.now_ms()).is_some(), "a founding that failed did not spend it");
+    let founded = req(&mut node, "pool_found", "", &token, json!({"charter": accepted(&drafted, seed)}));
+    assert_eq!(founded["ok"], true, "{founded}");
+    assert!(node.firsts.founding_yes(&by, &anchor, node.now_ms()).is_none(), "the pool is founded, and the person's yes for it is spent");
+    assert_eq!(prompt.raised.load(Ordering::SeqCst), 1);
+}

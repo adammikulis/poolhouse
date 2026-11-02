@@ -100,6 +100,9 @@ class AskingNode:
         self.on_windows, self.terminal, self.device, self.typed = on_windows, "", -1, b""
 
     def call(self, _state, method, _board="", _token="", params=None):
+        if method == "register_person":
+            assert params["proof"] == "the-secret", "the rig's person is the node's own person: it presents the secret the node keeps for the person"
+            return {"ok": True, "result": {"token": "tok"}}
         if method == "presence_ask":
             self.terminal = params["terminal"]
             if self.on_windows:
@@ -119,17 +122,19 @@ class AskingNode:
         return {"ok": True, "result": {"state": "confirmed" if yes else "asking", "secret": "s"}}
 
 
-def test_the_rigs_person_answers_with_a_conpty_on_windows_and_a_pseudo_terminal_elsewhere(monkeypatch, conpty):
+def test_the_rigs_person_answers_with_a_conpty_on_windows_and_a_pseudo_terminal_elsewhere(monkeypatch, conpty, tmp_path):
+    (tmp_path / "person").mkdir()
+    (tmp_path / "person" / "ui.secret").write_text("the-secret\n")
     windows_node = AskingNode(on_windows=True)
     monkeypatch.setattr(wire, "call", windows_node.call)
     with monkeypatch.context() as on_windows:
         on_windows.setattr(sys, "platform", "win32")
-        said = wire.answer_presence(Path(), "tok", "key", "ab")
+        said = wire.answer_presence(tmp_path, "key", "ab")
     assert said["result"]["state"] == "confirmed", said
     assert windows_node.terminal == "4242" and ScriptedConPty.last.written[-1] == "yes\r" and ScriptedConPty.last.ended
     unix_node = AskingNode(on_windows=False)
     monkeypatch.setattr(wire, "call", unix_node.call)
-    said = wire.answer_presence(Path(), "tok", "key", "ab")
+    said = wire.answer_presence(tmp_path, "key", "ab")
     assert said["result"]["state"] == "confirmed" and unix_node.terminal.startswith("/dev/"), (said, unix_node.terminal)
 
 
