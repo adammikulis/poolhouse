@@ -47,8 +47,8 @@ def test_fixture_uses_a_founded_strong_admin_pool_and_a_separate_stranger(pool, 
     assert status["policy"] == other["policy"] == stranger["policy"] == "secure"
     for current in (status, other, stranger):
         assert current["governance"]["mode"] == "governed"
-        assert current["governance"]["admins"][0]["strength"] == "strong"
-        assert not current["governance"]["weak_keys_only"]
+        assert current["governance"]["admins"][0]["claim"]["method"] == "phone-keystore"
+        assert current["governance"]["admins"][0]["counted"] == "computer"
         assert [member["status"] for member in current["members"] if member["self"]] == ["active"]
 
 

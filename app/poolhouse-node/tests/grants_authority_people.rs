@@ -14,6 +14,8 @@ use serde_json::json;
 
 const CY: u8 = 3;
 const HOUR: i64 = 3_600_000;
+/// A moment past the hold of a governance act: seven days.
+const HELD: i64 = 7 * 24 * HOUR + HOUR;
 const LINK: &str = "poolhouse://add-phone?data=";
 
 /// A pool of ann's phone, ben's phone and cy's key, three people with a strong admin key each, on a device whose signer holds cy's key; the
@@ -113,7 +115,7 @@ fn a_listing_that_needs_a_second_person_waits_for_pool_cosign_and_its_hold_start
     let cosigned = ok(pool.rig.call("pool_cosign", "", &pool.token, json!({"act": act.id()})));
     assert_eq!(cosigned["status"], "pending", "{cosigned}");
     assert!(!pool.authority().contains(&dan.fingerprint()), "the hold has only begun");
-    pool.pass(25 * HOUR);
+    pool.pass(HELD);
     assert!(pool.authority().contains(&dan.fingerprint()), "the hold ran out");
     let seen = pool.rig.node.lock().unwrap().gov_view();
     assert!(seen["waiting_for_signers"].as_array().unwrap().is_empty() && seen["pending"].is_null(), "{seen}");

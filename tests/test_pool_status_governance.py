@@ -7,7 +7,7 @@ from poolhouse.api import pool
 
 def governed(dispute=None):
     return {"mode": "governed", "name": "home", "epoch": 1, "charter_hash": "a" * 64,
-            "admins": [], "weak_keys_only": False, "thresholds": {}, "holds": {}, "pending": None,
+            "admins": [], "floors": {"routine": "computer", "sensitive": "computer", "governance": "computer"}, "approved_from": "this computer", "thresholds": {}, "holds": {}, "pending": None,
             "dispute": dispute, "waiting_for_signers": [], "delegates": [], "refused": []}
 
 

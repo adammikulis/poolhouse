@@ -18,6 +18,7 @@ pub fn risk_of(action: &str) -> (&'static str, &'static str) {
         "sync_now" => (ROUTINE, "It swaps board entries with the pool's devices and changes nothing else."),
         "link_read" => (SENSITIVE, "Another board can read what this one holds: it leaves this board, and a link cannot take it back."),
         "link_remove" => (ROUTINE, "It ends a sharing link, and sharing can be made again."),
+        "pool_leave" => (ROUTINE, "It makes this device leave the pool; the pool goes on without it."),
         "note_verify" => (ROUTINE, "It records that a note's command was run; it runs nothing."),
         "add_device" => (SENSITIVE, "It makes a code that lets another device join this pool."),
         "join_pool" => (SENSITIVE, "It joins this device to another pool and shares its boards with it."),

@@ -5,7 +5,6 @@ mod kit;
 use kit::gov::*;
 use poolhouse_node::cert::Identity;
 use poolhouse_node::gov::act::Act;
-use poolhouse_node::gov::keys::Strength;
 use poolhouse_node::gov::pool::{GovPool, Ingest};
 use poolhouse_node::membership::Policy;
 use poolhouse_node::poolops::wall_ms;
@@ -23,10 +22,11 @@ fn device_admit(g: &mut GovPool, signer: u8, guest: &Identity, via: &str) -> Ing
 }
 
 fn delegate_pool() -> (tempfile::TempDir, GovPool, Identity) {
-    let (d, mut g) = pool(&[strong(A, "ann"), kit::gov::weak(B, "ann")], Policy::Secure);
+    let (d, mut g) = pool(&[phone_admin(A, "ann"), kit::gov::weak(B, "ann")], Policy::Secure);
     let delegate = ident(20);
     put_admit(&mut g, &delegate, &[A]);
     put(&mut g, "delegate", json!({"fingerprint": delegate.fingerprint()}), &[A]);
+    advance(&mut g, HELD);
     (d, g, delegate)
 }
 
@@ -98,7 +98,7 @@ fn a_weak_key_ends_a_delegate_at_once_and_what_it_admitted_before_stays() {
 
 #[test]
 fn an_open_pools_member_admits_five_an_hour_and_only_with_via_segment() {
-    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Open);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Open);
     let member = ident(20);
     put_admit(&mut g, &member, &[A]);
     let guests: Vec<Identity> = (30..38).map(ident).collect();
@@ -115,7 +115,7 @@ fn an_open_pools_member_admits_five_an_hour_and_only_with_via_segment() {
 
 #[test]
 fn a_secure_pool_takes_no_open_admit() {
-    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
     let member = ident(20);
     put_admit(&mut g, &member, &[A]);
     let guest = ident(30);
@@ -125,7 +125,7 @@ fn a_secure_pool_takes_no_open_admit() {
 
 #[test]
 fn a_device_that_left_is_not_a_member_and_an_admit_brings_it_back_and_a_removed_one_never_returns() {
-    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
     let (stays, goes, gone) = (ident(20), ident(21), ident(22));
     for d in [&stays, &goes, &gone] {
         put_admit(&mut g, d, &[A]);
@@ -143,12 +143,11 @@ fn a_device_that_left_is_not_a_member_and_an_admit_brings_it_back_and_a_removed_
     std::thread::sleep(std::time::Duration::from_millis(5));
     put_admit(&mut g, &gone, &[A]);
     assert!(is_removed(&g, &gone), "a removed certificate never comes back");
-    let _ = Strength::Strong;
 }
 
 #[test]
 fn a_removed_member_signs_no_open_admit() {
-    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Open);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Open);
     let member = ident(20);
     put_admit(&mut g, &member, &[A]);
     advance(&mut g, 10);
@@ -160,7 +159,7 @@ fn a_removed_member_signs_no_open_admit() {
 
 #[test]
 fn a_device_that_left_signs_no_admit_after_it_left() {
-    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Open);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Open);
     let member = ident(20);
     put_admit(&mut g, &member, &[A]);
     let (before, after) = (ident(30), ident(31));
@@ -177,15 +176,16 @@ fn a_device_that_left_signs_no_admit_after_it_left() {
 
 #[test]
 fn a_delegate_made_by_a_key_that_is_removed_without_its_act_in_the_cut_admits_nobody() {
-    let (_d, mut g) = pool(&[strong(A, "ann"), strong(B, "ben"), strong(3, "cy")], Policy::Secure);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann"), phone_admin(B, "ben"), phone_admin(3, "cy")], Policy::Secure);
     let delegate = ident(20);
     put_admit(&mut g, &delegate, &[A]);
     put(&mut g, "delegate", json!({"fingerprint": delegate.fingerprint()}), &[B, 3]);
+    advance(&mut g, HELD);
     let guest = ident(30);
     device_admit(&mut g, 20, &guest, "");
     assert!(is_member(&g, &guest), "while the delegate act stands");
     put(&mut g, "admin_remove", json!({"key": public(3), "cut": []}), &[A, B]);
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert!(!admins(&g).contains(&public(3)));
     assert!(!is_member(&g, &guest), "the delegate act lost the signature of the key that was removed, and one person is not enough to make a delegate");
     assert!(g.state().roster.delegates.is_empty());
@@ -233,7 +233,7 @@ fn an_admit_carrying_the_signature_of_a_device_that_may_not_admit_is_refused() {
 
 #[test]
 fn a_member_cannot_add_its_signature_to_the_leave_of_another_device() {
-    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
     let (goes, other) = (ident(21), ident(22));
     put_admit(&mut g, &goes, &[A]);
     put_admit(&mut g, &other, &[A]);
@@ -279,7 +279,7 @@ fn an_admit_held_with_a_second_device_signature_still_counts_for_the_delegate_th
 
 #[test]
 fn a_leave_held_with_a_second_device_signature_is_still_the_leave_of_the_device_it_names() {
-    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
     let (goes, other) = (ident(21), ident(22));
     put_admit(&mut g, &goes, &[A]);
     put_admit(&mut g, &other, &[A]);
@@ -292,13 +292,14 @@ fn a_leave_held_with_a_second_device_signature_is_still_the_leave_of_the_device_
 
 #[test]
 fn a_delegate_end_ends_the_delegate_whatever_time_its_signer_put_on_either_act() {
-    let (_d, mut g) = pool(&[strong(A, "ann"), kit::gov::weak(B, "ann")], Policy::Secure);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann"), kit::gov::weak(B, "ann")], Policy::Secure);
     let delegate = ident(20);
     put_admit(&mut g, &delegate, &[A]);
     let (epoch, prev) = g.context();
     let mut ahead = Act::new(&g.id, epoch, "delegate", json!({"fingerprint": delegate.fingerprint()}), wall_ms() + 4 * MINUTE as u64, &prev).unwrap();
     sign(&mut ahead, A);
     take(&mut g, ahead);
+    advance(&mut g, HELD);
     assert!(g.state().roster.delegates.contains_key(&delegate.fingerprint()));
     advance(&mut g, 10);
     put(&mut g, "delegate_end", json!({"fingerprint": delegate.fingerprint()}), &[B]);
@@ -307,7 +308,7 @@ fn a_delegate_end_ends_the_delegate_whatever_time_its_signer_put_on_either_act()
 
 #[test]
 fn a_device_that_left_admits_nobody_whatever_time_it_puts_on_the_admit() {
-    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Open);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Open);
     let member = ident(20);
     put_admit(&mut g, &member, &[A]);
     assert_eq!(device_leave(&mut g, &member, &[20]), Ingest::Accepted);
@@ -321,7 +322,7 @@ fn a_device_that_left_admits_nobody_whatever_time_it_puts_on_the_admit() {
 
 #[test]
 fn a_leave_is_signed_by_the_device_it_names_alone() {
-    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
     let (goes, other) = (ident(21), ident(22));
     put_admit(&mut g, &goes, &[A]);
     put_admit(&mut g, &other, &[A]);

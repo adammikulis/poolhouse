@@ -86,6 +86,18 @@ fn write(node: &mut Node, board: &str, actor: &str, mut body: Map<String, Value>
     node.host(board)?.board.append_person(Kind::Grant, actor, body)
 }
 
+/// What a pool says to a key enrolled on this device that signs a grant of the ``risk`` class (`routine`, `sensitive` or `irreversible`) of an act
+/// that stays on this device while the key sits below the pool's sensitive floor; none for a routine grant, for a device in no pool and for a key at
+/// the floor. An act that reaches beyond the device needs an admin key of the pool, which `Authority` checks.
+fn below_floor(node: &Node, key: &str, risk: &str) -> Option<String> {
+    if risk == crate::approvals::content::ROUTINE {
+        return None;
+    }
+    let floor = node.members.gov()?.state().chain.latest().charter.floors.sensitive;
+    let level = node.persons.get(key).map_or(crate::gov::keys::Level::Weak, |k| k.claim.counted());
+    (level < floor).then(|| format!("This pool needs a key approved from {} for that, and this key is approved from {}, so nothing was approved.", floor.shown(), level.shown()))
+}
+
 fn issue(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let actor = carrier(node, token, board)?;
     let body = signed_body("issue", board, p, &["gid", "to", "action", "scope", "at_ms", "until_ms", "uses", "conditions", "person"]);
@@ -99,6 +111,9 @@ fn issue(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> R
     }
     if !node.persons.signed(&parsed.person, &signing_bytes(&body), sig) {
         return Err(Error::Denied("a grant counts only when a person key enrolled on this node signed it".into()));
+    }
+    if let Some(why) = below_floor(node, &parsed.person, crate::approvals::content::risk_of(&parsed.action).0) {
+        return Err(Error::Denied(why));
     }
     if standing(node, board)?.grants.iter().any(|g| g.status != "ignored" && g.issue.gid == parsed.gid) {
         return Err(Error::Invalid("that grant id is already on the board".into()));

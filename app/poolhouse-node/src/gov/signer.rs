@@ -16,13 +16,6 @@ use crate::fsutil::{hex, write_atomic};
 /// The file a check names in the environment to have every step it asks of a person written to it, one JSON line each.
 pub const LEDGER_ENV: &str = "POOLHOUSE_STEP_LEDGER";
 
-/// Whether the device key lives where the operating system will not hand it to the process (a keystore item) or in a file.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum KeyBinding {
-    File,
-    Keystore,
-}
-
 /// A key a signer holds: its public key and the person it belongs to.
 #[derive(Clone, Debug)]
 pub struct SignerKey {

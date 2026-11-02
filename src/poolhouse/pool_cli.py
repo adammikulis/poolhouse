@@ -11,7 +11,7 @@ from poolhouse import errors
 from poolhouse.api import pool
 from poolhouse.fleet import compute_cli
 from poolhouse.fleet.onboard.cli import add_service_commands, run as run_service
-from poolhouse.log import say
+from poolhouse.log import say, warn
 
 
 def parser() -> argparse.ArgumentParser:
@@ -52,7 +52,7 @@ def execute(args: argparse.Namespace) -> Any:
         case "members":
             return pool.members(include_removed=args.include_removed)
         case "found":
-            return pool.found(args.name, args.policy)
+            return pool.found(args.name, args.policy, say=warn)
         case "add-device":
             return pool.add_device(args.ttl)
         case "join":

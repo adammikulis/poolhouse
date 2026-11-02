@@ -2,7 +2,7 @@ use crate::error::Result;
 use super::{bad, Act, Binding, GovPool};
 use super::super::body::{self, Body};
 use super::super::charter::{Charter, Class, Mode, Unit};
-use super::super::keys::{fingerprint_of, AdminKey, Alg, Role, Strength};
+use super::super::keys::{fingerprint_of, AdminKey, Alg, Role};
 
 fn quote(text: &str) -> String {
     let mut out = String::from("\u{2068}\"");
@@ -29,7 +29,7 @@ fn key(entry: &AdminKey) -> String {
     format!("{}: {}; person {}; {}; {}; key {}; listed since epoch {}",
         match entry.role { Role::Admin => "Admin", Role::Recovery => "Recovery key" }, quote(&entry.label), quote(&entry.person),
         match entry.alg { Alg::Ed25519 => "Ed25519", Alg::P256 => "P-256" },
-        match entry.strength { Strength::Strong => "strong", Strength::Weak => "weak" }, fingerprint_of(&entry.key), entry.since)
+        entry.claim.map_or("no claim", |c| c.shown()), fingerprint_of(&entry.key), entry.since)
 }
 
 fn terms(charter: &Charter) -> Result<String> {
@@ -44,6 +44,7 @@ fn terms(charter: &Charter) -> Result<String> {
     lines.push(format!("Sensitive approvals: {}{}", charter.needed(Class::Sensitive),
         if charter.thresholds.sensitive == 0 { " (automatic: two once two people hold strong admin keys)" } else { "" }));
     lines.push(format!("Count approvals by: {}", unit(charter.thresholds.unit)));
+    lines.push(format!("Lowest level that counts: routine {}; sensitive {}; governance {}", charter.floors.routine.name(), charter.floors.sensitive.name(), charter.floors.governance.name()));
     lines.push(format!("Wait before adding an admin: {} hours", charter.holds.admin_add_h));
     lines.push(format!("Wait before removing an admin: {} hours", charter.holds.admin_remove_h));
     lines.push(format!("Wait for a handoff: {} minutes", charter.holds.handoff_min));
@@ -74,7 +75,7 @@ fn change(act: &Act, pool: &GovPool, depth: usize) -> Result<String> {
             }
             lines.join("\n")
         }
-        Body::AdminAdd(add) => format!("Add an admin key. Requested role, strength and identity:\n{}", key(&add.entry)),
+        Body::AdminAdd(add) => format!("Add an admin key. Requested role, level and identity:\n{}", key(&add.entry)),
         Body::AdminRemove(remove) => {
             let mut lines = vec![format!("Remove admin key {}", fingerprint_of(&remove.key))];
             if remove.cut.is_empty() { lines.push("None of this key's signed changes are retained.".into()); }
@@ -97,6 +98,14 @@ fn change(act: &Act, pool: &GovPool, depth: usize) -> Result<String> {
             lines.join("\n")
         }
         Body::SetMode(mode) => format!("Governed by: {}", match mode.mode { Mode::Admins => "admins", Mode::Members => "members" }),
+        Body::SetFloors(f) => {
+            let mut lines = vec!["Change the lowest level that counts:".to_string()];
+            for (name, level) in [("Routine", f.routine), ("Sensitive", f.sensitive), ("Governance", f.governance)] {
+                if let Some(l) = level { lines.push(format!("{name}: {}", l.name())); }
+            }
+            lines.join("\n")
+        }
+        Body::RecoveryReplace(add) => format!("Replace the recovery key. Requested role, level and identity:\n{}", key(&add.entry)),
         Body::Delegate(device) => format!("Allow {} to admit devices for 30 days.", named_device(pool, &device.fingerprint)),
         Body::DelegateEnd(device) => format!("End permission for {} to admit devices.", named_device(pool, &device.fingerprint)),
         Body::Cancel(target) | Body::Veto(target) => {
@@ -110,12 +119,12 @@ fn change(act: &Act, pool: &GovPool, depth: usize) -> Result<String> {
 
 pub(super) fn render(act: &Act, pool: &GovPool, binding: &Binding) -> Result<String> {
     let charter = &pool.state().chain.latest().charter;
-    let Some(selected) = charter.admin(&binding.public).filter(|key| key.role == Role::Admin && key.strength == Strength::Strong) else {
-        return bad("This phone key is not a strong admin under these pool terms.");
+    let Some(selected) = charter.admin(&binding.public).filter(|key| key.role == Role::Admin && key.claim.is_some_and(|c| c.method == super::super::keys::Method::PhoneKeystore)) else {
+        return bad("This phone key is not a phone admin under these pool terms.");
     };
     if pool.genesis.anchor() != binding.anchor { return bad("The pool does not match this phone's founding pin.") }
     let (epoch, head) = pool.context();
-    let context = format!("Pool ID: {}\nPinned founding terms: {}\nCurrent terms: epoch {epoch}; fingerprint {head}\nSigning with: {}; {}; strong admin",
+    let context = format!("Pool ID: {}\nPinned founding terms: {}\nCurrent terms: epoch {epoch}; fingerprint {head}\nSigning with: {}; {}; phone admin",
         pool.id, binding.anchor, fingerprint_of(&selected.key), match selected.alg { Alg::Ed25519 => "Ed25519", Alg::P256 => "P-256" });
     let card = format!("{context}\n\nChange to approve:\n{}\n\n{}", change(act, pool, 0)?, terms(charter)?);
     if card.len() > 64 * 1024 { return bad("This change is too large for the phone to display safely.") }

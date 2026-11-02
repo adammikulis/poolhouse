@@ -10,7 +10,7 @@ use crate::row::{valid_name, valid_origin};
 
 use super::act::{valid_id, Act};
 use super::charter::{Charter, Mode, Unit};
-use super::keys::{valid_public, AdminKey};
+use super::keys::{valid_public, AdminKey, Level, Role};
 
 /// How a device came in: `found` (the first device of a pool), `join-code`, `open`, `tap`, `delegate`, `handoff`.
 pub const HOW: [&str; 6] = ["found", "join-code", "open", "tap", "delegate", "handoff"];
@@ -98,6 +98,15 @@ pub struct Holds {
     pub dispute_d: Option<u64>,
 }
 
+/// A change of floors: each one named moves to the level given.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct Floors {
+    pub routine: Option<Level>,
+    pub sensitive: Option<Level>,
+    pub governance: Option<Level>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct SetMode {
@@ -118,6 +127,8 @@ pub enum Body {
     SetThreshold(Thresholds),
     SetHolds(Holds),
     SetMode(SetMode),
+    SetFloors(Floors),
+    RecoveryReplace(Add),
     Delegate(Device),
     DelegateEnd(Device),
 }
@@ -220,6 +231,24 @@ pub fn parse(act: &Act) -> Result<Body> {
             Body::SetHolds(h)
         }
         "set_mode" => Body::SetMode(read(act)?),
+        "set_floors" => {
+            let f: Floors = read(act)?;
+            if f.routine.is_none() && f.sensitive.is_none() && f.governance.is_none() {
+                return bad("a floor change names a floor");
+            }
+            if [f.routine, f.sensitive, f.governance].contains(&Some(Level::Weak)) {
+                return bad("a floor is never a typed yes: a pool needs a key that counts");
+            }
+            Body::SetFloors(f)
+        }
+        "recovery_replace" => {
+            let a: Add = read(act)?;
+            a.entry.check()?;
+            if a.entry.role != Role::Recovery {
+                return bad("a recovery key is replaced by a key of the recovery role");
+            }
+            Body::RecoveryReplace(a)
+        }
         _ => return bad("this build does not know that kind of act"),
     })
 }

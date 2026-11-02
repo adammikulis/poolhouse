@@ -72,7 +72,7 @@ def start(binary: Path, name: str, person: RigPerson) -> Device:
     root = Path(tempfile.mkdtemp(prefix="ml", dir="/tmp"))
     state = root / "node"
     state.mkdir(mode=0o700)
-    wire.plant_phone_key(state, person.key.public.hex())
+    wire.plant_key(state, person.key.public.hex(), "phone")
     node_supervise.point(state, binary, node_binary_module.sha256(binary))
     node_launch.ensure_node(state, extra=["--listen", "127.0.0.1:0", *wire.PRESENCE])
     client = Client(state)

@@ -85,34 +85,37 @@ slice closes it; nothing else in this document is safe to build on until it does
 
 An **admin** is a public key named in the pool's charter: Ed25519, or a phone's P-256 key (`alg`, 130 hex digits, signatures in strict
 DER with `s` in the lower half of the group). Every entry carries the key's **own acceptance**: a signature by
-that key over the pool, the charter it follows, its algorithm, its role and its strength. A key is therefore listed only by its holder: adding a key needs the
+that key over the pool, the charter it follows, its algorithm, its role and its claim of how it is held. A key is therefore listed only by its holder: adding a key needs the
 added key's signature as well as the admins' (1.5), so nobody can list someone else's public key to borrow its name or its
 standing grants. A person decides on a key by its **fingerprint as three check words** ("maple-river-ten"); the label an adder wrote
 ("the owner's phone") is untrusted text, quoted and styled apart wherever it appears, and is never what an approval rests on.
 
-**Strength.** A key is `strong` when the platform enforces a per-signature presence that the signing process cannot supply for
-itself: a phone's biometric or device credential, a hardware key's touch, a hardware-backed key with a presence prompt. It is `weak`
-when any process of the user's account can use it: a keystore item readable after login, a key file, a `yes` typed at a terminal a
-process can open for itself (the limit `docs/node.md` states under "Key custody"). The strength is fixed when the key is
-enrolled and written in the charter. The node derives it when it drafts or founds a charter and never reads it from a caller: a key is strong
-when a phone enrolled it on that node (`persons.json`, `phone: true`; `docs/phone-approval.md`) and weak otherwise, and a charter that calls any other
-key strong is refused. A key added later carries the strength the strong quorum signed. **Only strong keys
-count toward sensitive acts, toward removing a member and toward cancelling.** A weak key may sign only the end of a delegate (a
-reduction of power); it counts toward nothing else, because it proves less than that a person was there. `pool_status` says "weak keys only" for a pool with no strong admin.
+**Assurance level.** A key's level is how much stands between a program of the user's account and its signature, lowest first: `weak` (a `yes`
+typed at a terminal a process can open for itself, a key file; the limit `docs/node.md` states under "Key custody"), `computer` (the computer's
+own prompt), `native` (a protected helper under another operating-system identity) and `phone` (a phone's biometric or device credential).
+The level is fixed when the key is enrolled and written in the charter. The node derives it when it drafts or founds a charter and never reads
+it from a caller: it records the level in `persons.json` when the key is enrolled (`phone` for a phone's enrolment; `docs/phone-approval.md`)
+and a charter that lists a key at a higher level is refused. A key added later carries the level the keys at the floor signed. **A key counts
+for a class of act only at or above the charter's floor for it** (routine, sensitive, governance; by default the lowest level present for routine and
+the highest for sensitive and governance, so a pool founded by a phone keeps every floor at `phone`). Removing a member is a sensitive act. What only
+`computer` keys sign waits: a governance act is held seven days, and an irreversible data act waits a day for a key to cancel it. A weak key may sign only the end of a delegate (a
+reduction of power); it counts toward nothing else, because it proves less than that a person was there. `pool_status` carries the `levels` of the listed keys, the `floors` and `approved_from`; a charter that lists no admin key above `weak` founds no pool.
 
 **Roles.** `admin` signs and counts as above. `recovery` is a key kept offline (a phrase the person writes down, or a second phone
 put away). **The recovery key counts toward no immediate threshold, routine or sensitive**: the phrase alone can never sign an
-admin change or a reissue, so its time lock cannot be skipped. It signs exactly three acts: `recover` (time-locked, 1.8),
-`recover_cancel` for its own pending recover and `recovery_replace` (time-locked like a recover). It is removed or replaced only by
-its own signature, or by a reissue, which every device holds for its own person when the admin set changes (R6). A thief holding an
-admin key therefore cannot quietly strip the recovery path.
+admin change or a reissue, so its time lock cannot be skipped. It signs exactly four acts: `recover` (time-locked, 1.8),
+`recover_cancel` for its own pending recover, `recovery_replace` (time-locked like a recover) and a `cancel` of a `recovery_replace` or of
+the removal of itself. It is removed or replaced by an
+`admin_remove` or a `recovery_replace`, each held seven days whoever signs it, and the recovery key's `cancel` ends either; a reissue
+replaces it too, which every device holds for its own person when the admin set changes (R6). A thief holding an admin key therefore
+starts the strip of the recovery path but cannot finish it before the recovery key or a key at the floor has had seven days to cancel it.
 
-**Thresholds** count distinct people, each by a strong key. Two classes:
+**Thresholds** count distinct people, each by a key at or above the floor of the class. Two thresholds (a governance act takes the sensitive one):
 
 | Class | Acts | Default | Choose at creation |
 |---|---|---|---|
-| `routine` | remove a member, cancel a pending act, end a delegate | 1 | 1..n |
-| `sensitive` | add or remove an admin, change a threshold, a delay or the mode, reissue the pool, sign a board charter side, make a delegate | 1 while the set holds one person; 2 once it holds two people | 1..n, counted in people or in keys |
+| `routine` | cancel a pending act, end a delegate | 1 | 1..n |
+| `sensitive` | remove a member, admit a device, and for a governance act add or remove an admin, change a threshold, a delay, a floor or the mode, replace the recovery key, reissue the pool, sign a board charter side, make a delegate | 1 while the set holds one person; 2 once it holds two people | 1..n, counted in people or in keys |
 
 Counting people means one person with a phone and a security key signs a sensitive act with either: the normal case is one tap.
 The owner may choose "two keys of mine" at creation or later (`sensitive: {m: 2, unit: "key"}`). Adding the first key of another
@@ -513,7 +516,7 @@ Rust, `app/poolhouse-node/tests/governance.rs` and `reissue.rs`. The numbers in 
 * [1] the recovery key alone signs no `admin_add`, `handoff`, `remove` or `admin_remove` at threshold 1; its `recover` takes effect
   only after the delay measured on the device's clock from first sight, whatever `at_ms` says (a backdated `recover`, and a device
   whose wall clock is moved a month forward, do not shorten it); a strong admin's `cancel` and the key's own `recover_cancel` end it;
-  removing the recovery key needs its own signature or a held reissue; an `admin_remove` takes effect only after its hold and the
+  removing the recovery key is an `admin_remove` held seven days that the recovery key's `cancel` ends, or a held reissue; an `admin_remove` takes effect only after its hold and the
   removed key's `veto` cancels it and opens a dispute that pauses admin-set acts;
 * [2] an `admin_add` without the added key's acceptance is refused; a pool cannot list another person's public key; the scope
   `admin:<fp>` matches a pool only where the key accepted;
@@ -553,7 +556,7 @@ nobody), `gov-weak-key` (a key-file admin cannot reissue).
 
 | # | Finding | Fix in one line | Where | Test |
 |---|---|---|---|---|
-| 1 | Recovery key defeats thresholds; delays trust signer time | Recovery key counts for no immediate threshold, is removed only by its own signature, key removals are held and vetoable, every delay is monotonic from first sight | 1.3, 1.5, 1.8 | 1.13 [1] |
+| 1 | Recovery key defeats thresholds; delays trust signer time | Recovery key counts for no immediate threshold, is removed or replaced only by an act held seven days that it can cancel, key removals are held and vetoable, every delay is monotonic from first sight | 1.3, 1.5, 1.8 | 1.13 [1] |
 | 2 | Admin scope spoofing | A key is listed only with its own acceptance; `admin:<fp>` matches only accepted keys; check words, never labels | 1.3, 1.5, 2 | 1.13 [2] |
 | 3 | Agent-reachable admin key | Only strong (per-signature presence) keys count for sensitive acts, removals and cancels; the laptop's key is weak | 1.3 | 1.13 [3] |
 | 4 | Code-execution regression | Per-device shard allow list kept, default the owner's own devices, never granted by `inbound_consent` or the bundle | 1.7, 5 | `serve.rs`, `shard.rs` |

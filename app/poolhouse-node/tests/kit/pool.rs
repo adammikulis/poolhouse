@@ -139,7 +139,7 @@ impl Founded {
     /// Let the hold run on the listing of the phone ``new`` as a second strong admin key of the same person, which the approval that added the
     /// phone handed to the pool.
     pub fn add_admin(&self, new: &FakePhone) {
-        self.pass(48 * HOURS);
+        self.pass(8 * 24 * HOURS);
         assert!(self.authority().contains(&new.fingerprint()), "the approval that added the phone listed it as an admin key");
     }
 

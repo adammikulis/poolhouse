@@ -34,7 +34,7 @@ impl Governed {
         let params = outsider.enrolment("local-person", Some((&admin, &node.cert.fingerprint())));
         ok(req(&mut node, "person_enroll", "", &token, params));
         assert!(node.persons.get(&outsider.fingerprint()).is_some());
-        assert!(!node.persons.is_phone_key(&outsider.public()));
+        assert_eq!(node.persons.level_of(&outsider.public()), poolhouse_node::gov::keys::Level::Weak);
         assert!(node.members.gov().unwrap().state().chain.latest().charter.admin(&outsider.public()).is_none());
         Self { _dir: dir, node, name, token, outsider }
     }

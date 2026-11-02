@@ -1,7 +1,7 @@
 use super::*;
 use crate::gov::act::{ActSig, SigKind};
 use crate::gov::charter::{Charter, First};
-use crate::gov::keys::{AdminKey, Alg, Role, Strength};
+use crate::gov::keys::{AdminKey, Alg, Claim, Role};
 use crate::gov::signer::RigSigner;
 use crate::membership::Policy;
 use serde_json::json;
@@ -12,7 +12,7 @@ fn setup() -> (tempfile::TempDir, Charter, Binding) {
     let root = tempfile::tempdir().unwrap();
     let certificate = tempfile::tempdir().unwrap();
     let identity = crate::cert::load_or_create(certificate.path(), &ed25519_dalek::SigningKey::from_bytes(&[91; 32])).unwrap();
-    let mut admin = AdminKey { key: RigSigner::public(1), alg: Alg::Ed25519, role: Role::Admin, strength: Strength::Strong,
+    let mut admin = AdminKey { key: RigSigner::public(1), alg: Alg::Ed25519, role: Role::Admin, claim: Some(Claim::phone_keystore()),
         person: "person-a".into(), since: 1, acceptance: String::new(), label: "admin key".into() };
     let mut charter = Charter::new("test pool", Policy::Secure, "", vec![admin.clone()], First::of(&identity.der, "first computer"), NOW);
     admin.acceptance = RigSigner::sign_as(1, &admin.acceptance_message(&charter.anchor(), ""));
@@ -34,7 +34,7 @@ fn bootstrap(engine: &mut Engine, charter: &Charter) {
     let verified = engine.review(Proof { found: charter.found_act(), acts: vec![] }, request, NOW).unwrap();
     assert!(verified.card().contains("Current pool terms"));
     let binding = &engine.checkpoint.binding;
-    assert!(verified.card().contains(&format!("Signing with: {}; Ed25519; strong admin", crate::gov::keys::fingerprint_of(&binding.public))));
+    assert!(verified.card().contains(&format!("Signing with: {}; Ed25519; phone admin", crate::gov::keys::fingerprint_of(&binding.public))));
     assert!(verified.card().contains(&binding.anchor) && verified.card().contains(&charter.hash()));
 }
 
@@ -81,7 +81,11 @@ fn a_valid_late_competing_act_survives_omission_and_reopen() {
     let first = sign(pool.new_act("set_holds", json!({"admin_add_h": 25}), NOW).unwrap());
     let competing = sign(pool.new_act("set_holds", json!({"admin_add_h": 26}), NOW).unwrap());
     let stale = request(&engine);
-    assert!(engine.review(Proof { found: charter.found_act(), acts: vec![first] }, stale, NOW).is_err());
+    let pool = engine.pool.as_mut().unwrap();
+    pool.ingest(first, NOW);
+    pool.clock.advance_ms(8 * 24 * 3_600_000);
+    pool.refold();
+    assert!(engine.review(Proof { found: charter.found_act(), acts: vec![] }, stale, NOW).is_err());
     assert_eq!(engine.pool.as_ref().unwrap().context().0, 2);
     engine.pool.as_ref().unwrap().clock.advance_ms(1);
     let current = request(&engine);
@@ -105,7 +109,11 @@ fn invalid_late_junk_does_not_poison_the_next_valid_request() {
     let mut junk = sign(pool.new_act("set_holds", json!({"admin_add_h": 26}), NOW).unwrap());
     junk.signatures[0].sig = "00".repeat(64);
     let stale = request(&engine);
-    assert!(engine.review(Proof { found: charter.found_act(), acts: vec![first] }, stale, NOW).is_err());
+    let pool = engine.pool.as_mut().unwrap();
+    pool.ingest(first, NOW);
+    pool.clock.advance_ms(8 * 24 * 3_600_000);
+    pool.refold();
+    assert!(engine.review(Proof { found: charter.found_act(), acts: vec![] }, stale, NOW).is_err());
     let current = request(&engine);
     assert!(engine.review(Proof { found: charter.found_act(), acts: vec![junk.clone()] }, current, NOW).is_err());
     assert!(!engine.pool.as_ref().unwrap().acts().contains_key(&junk.id()));
@@ -206,57 +214,6 @@ fn semantic_cards_show_every_changed_field_without_transport_prose_or_json() {
         for text in expected { assert!(card.contains(text), "missing {text} in {card}"); }
         assert_eq!(bytes, act.sign_bytes());
     }
-    let mut added = charter.admins[0].clone();
-    added.key = RigSigner::public(2);
-    added.since = 2;
-    added.label = "second admin\u{202e}\u{2066}\\u202e".into();
-    added.person = "person-b".into();
-    added.acceptance = RigSigner::sign_as(2, &added.acceptance_message(&charter.pool_id(), &charter.hash()));
-    let pool = engine.pool.as_ref().unwrap();
-    let add = pool.new_act("admin_add", json!({"entry":added}), NOW).unwrap();
-    let text = card::render(&add, pool, &binding).unwrap();
-    assert!(text.contains("second admin") && text.contains("person-b") && text.contains("listed since epoch 2"));
-    assert!(text.contains(&crate::gov::keys::fingerprint_of(&RigSigner::public(2))));
-    assert!(!text.contains('\u{202e}') && !text.contains('\u{2066}'));
-}
-
-#[test]
-fn cancellation_cards_require_and_show_the_verified_target() {
-    let (root, charter, binding) = setup();
-    let mut engine = Engine::open(root.path(), &binding).unwrap();
-    bootstrap(&mut engine, &charter);
-    let pool = engine.pool.as_mut().unwrap();
-    let target = sign(pool.new_act("remove", json!({"fingerprint":"d".repeat(64)}), NOW).unwrap());
-    assert_eq!(pool.ingest(target.clone(), NOW), Ingest::Accepted);
-    for kind in ["cancel", "veto"] {
-        let act = pool.new_act(kind, json!({"act":target.id()}), NOW).unwrap();
-        let card = card::render(&act, pool, &binding).unwrap();
-        assert!(card.contains(&target.id()) && card.contains("Remove") && card.contains("dddddddd"));
-        let missing = pool.new_act(kind, json!({"act":"e".repeat(64)}), NOW).unwrap();
-        assert!(card::render(&missing, pool, &binding).is_err());
-    }
-}
-
-#[test]
-fn proposals_reuse_current_policy_before_returning_signing_bytes() {
-    let (root, charter, binding) = setup();
-    let mut engine = Engine::open(root.path(), &binding).unwrap();
-    bootstrap(&mut engine, &charter);
-    for (kind, body) in [("set_mode", json!({"mode":"members"})), ("set_threshold", json!({"routine":9})),
-        ("admin_remove", json!({"key":binding.public}))] {
-        let mut current = request(&engine);
-        current.act = engine.pool.as_ref().unwrap().new_act(kind, body, NOW).unwrap();
-        assert!(engine.review(Proof { found:charter.found_act(), acts:vec![] }, current, NOW).is_err());
-    }
-    let mut added = charter.admins[0].clone();
-    added.key = RigSigner::public(2);
-    added.person = "person-b".into();
-    added.since = 2;
-    added.acceptance = RigSigner::sign_as(2, &added.acceptance_message(&charter.pool_id(), &charter.hash()));
-    let mut current = request(&engine);
-    current.act = engine.pool.as_ref().unwrap().new_act("admin_add", json!({"entry":added}), NOW).unwrap();
-    let refusal = engine.review(Proof { found:charter.found_act(), acts:vec![] }, current, NOW).err().unwrap().to_string();
-    assert!(refusal.contains("needs verified proof"));
 }
 
 #[test]

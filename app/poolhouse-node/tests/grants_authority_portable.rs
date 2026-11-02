@@ -79,7 +79,7 @@ fn a_portable_row_of_an_admin_whose_phone_this_device_does_not_know_is_ignored_w
     p.plant(&person(BEN), BY_BEN, &spec);
     let (status, why) = p.state(BY_BEN);
     assert_eq!(status, "ignored", "{why}");
-    assert!(why.contains("does not know that key as a phone's"), "{why}");
+    assert!(why.contains("does not hold that key"), "{why}");
     assert!(!p.holds("sync_now"));
     p.plant(&person(ANN), BY_ANN, &spec);
     assert_eq!(p.state(BY_ANN).0, "live", "the same row from a key this device knows as a phone's counts");

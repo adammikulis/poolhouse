@@ -111,10 +111,8 @@ def _missing(gov: dict) -> str:
         return str(gov.get("say") or "This device is in no pool yet; ask me to make one or to join one.")
     if gov.get("dispute"):
         return str(gov["dispute"]["say"])
-    if gov.get("weak_keys_only"):
-        return founding.NEEDS_PHONE
     if gov.get("waiting_for_signers"):
-        return "A change to this pool is waiting for a signature from your phone."
+        return "A change to this pool is waiting for more approvals from the keys that govern it."
     return ""
 
 
@@ -123,7 +121,7 @@ def _governance(raw: object) -> dict:
     if not isinstance(raw, dict):
         raise errors.Error("The pool node returned an invalid governance state.")
     mode = raw.get("mode")
-    governed_fields = {"name", "epoch", "charter_hash", "admins", "weak_keys_only", "thresholds", "holds",
+    governed_fields = {"name", "epoch", "charter_hash", "admins", "floors", "approved_from", "thresholds", "holds",
                        "pending", "dispute", "waiting_for_signers", "delegates", "refused"}
     if mode == "unfounded":
         valid = ({"mode", "say"} <= raw.keys() and not governed_fields.intersection(raw)
@@ -137,7 +135,7 @@ def _governance(raw: object) -> dict:
                  and isinstance(raw.get("name"), str) and bool(raw["name"].strip())
                  and type(epoch) is int and epoch >= 0 and isinstance(digest, str) and len(digest) == 64
                  and all(c in "0123456789abcdef" for c in digest)
-                 and isinstance(raw.get("admins"), list) and type(raw.get("weak_keys_only")) is bool
+                 and isinstance(raw.get("admins"), list) and isinstance(raw.get("floors"), dict) and isinstance(raw.get("approved_from"), str)
                  and isinstance(raw.get("thresholds"), dict) and isinstance(raw.get("holds"), dict)
                  and (raw.get("pending") is None or isinstance(raw["pending"], dict))
                  and (dispute is None or (isinstance(dispute, dict) and isinstance(dispute.get("say"), str) and bool(dispute["say"].strip())))
@@ -222,7 +220,9 @@ def found(name: str | None = None, policy: str = "secure", *, admin: founding.Ad
     sentence an agent passes on, with ``needs``, ``where`` and ``then`` for what to do next.
     ``say`` is told, while the call waits, where the person answers (a sentence for the agent to pass on).
     """
-    made = founding.found_here(Client(node_launch.default_state()), name, policy, admin=admin, voice=presence.Voice(say=say or (lambda _text: None)))
+    state = node_launch.default_state()
+    node_launch.ensure_node(state)
+    made = founding.found_here(Client(state), name, policy, admin=admin, voice=presence.Voice(say=say or (lambda _text: None)))
     return Founding(status(), made.already, made.say())
 
 
@@ -232,7 +232,10 @@ def remove(device: str) -> Member:
     if len(found) != 1:
         names = ", ".join(m.name for m in members()) or "none"
         raise errors.Error(f"{'no' if not found else 'two'} member is called {device!r} (members: {names})")
-    _node.call("member_remove", {"fingerprint": found[0].fingerprint}, token=_node.session().token)
+    try:
+        founding.govern(Client(node_launch.default_state()), "remove", {"fingerprint": found[0].fingerprint})
+    except founding.NoComputerKey:
+        _node.call("member_remove", {"fingerprint": found[0].fingerprint}, token=_node.session().token)
     return next(m for m in members(include_removed=True) if m.fingerprint == found[0].fingerprint)
 
 

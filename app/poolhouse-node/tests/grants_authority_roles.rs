@@ -3,7 +3,7 @@
 mod kit;
 
 use ed25519_dalek::{Signer, SigningKey};
-use kit::gov::{charter, found_act, recovery, sign, strong, weak, HOUR};
+use kit::gov::{charter, found_act, recovery, sign, phone_admin, weak, HELD, HOUR};
 use kit::govnode::{approved, approved_row, charter_for, enrol_phone_key, pass};
 use kit::grants::{Person, Spec};
 use kit::netkit::{device, Dev};
@@ -39,7 +39,7 @@ impl Seeded {
         for seed in [A, B, C, D, W] {
             enrol_phone_key(&dev, seed);
         }
-        let keys = [strong(A, "ann"), strong(B, "ben"), strong(C, "cy"), recovery(D, "di"), weak(W, "wil")];
+        let keys = [phone_admin(A, "ann"), phone_admin(B, "ben"), phone_admin(C, "cy"), recovery(D, "di"), weak(W, "wil")];
         dev.ok("pool_found", "", &dev.token, json!({"act": found_act(&charter_for(&dev, &keys, Policy::Secure))}));
         let (name, token) = dev.session("demo", "lead");
         Seeded { dev, name, token }
@@ -122,7 +122,7 @@ fn the_strong_keys_make_a_grant_count_and_the_recovery_key_and_the_weak_key_do_n
     s.plant(D, "g-00000000000000e3", "note_verify");
     assert!(s.state("g-00000000000000e3").1.contains("the recovery key signs no grant"), "{:?}", s.state("g-00000000000000e3"));
     s.plant(W, "g-00000000000000e4", "task_authority");
-    assert!(s.state("g-00000000000000e4").1.contains("not strong"), "{:?}", s.state("g-00000000000000e4"));
+    assert!(s.state("g-00000000000000e4").1.contains("counts for nothing"), "{:?}", s.state("g-00000000000000e4"));
     assert_eq!(s.state("g-00000000000000e4").0, "ignored");
 }
 
@@ -141,13 +141,13 @@ fn the_recovery_key_ends_no_grant_where_the_weak_key_does() {
 
 #[test]
 fn a_charter_the_members_run_or_with_no_strong_key_closes_the_pool_to_every_grant() {
-    let admins = charter(&[strong(A, "ann"), weak(W, "ann")], Policy::Secure, Unit::Person);
+    let admins = charter(&[phone_admin(A, "ann"), weak(W, "ann")], Policy::Secure, Unit::Person);
     assert_eq!(closed_reason(&admins), None);
     let mut members: Charter = admins.clone();
     members.mode = Mode::Members;
     assert!(closed_reason(&members).is_some_and(|why| why.contains("not run by its admins")));
     let no_strong = charter(&[weak(W, "ann")], Policy::Secure, Unit::Person);
-    assert!(closed_reason(&no_strong).is_some_and(|why| why.contains("no strong admin key")));
+    assert!(closed_reason(&no_strong).is_some_and(|why| why.contains("no admin key that counts")));
 }
 
 #[test]
@@ -158,7 +158,7 @@ fn a_removed_admins_grants_stop_counting_and_the_revoke_it_signed_before_still_h
     assert_eq!(s.state(&other).0, "revoked");
     s.act("admin_remove", json!({"key": kit::gov::public(A)}), &[B, C]);
     assert_eq!(s.state(&own).0, "live", "a removal waits out its hold");
-    pass(&s.dev, 25 * HOUR);
+    pass(&s.dev, HELD);
     assert_eq!(s.authority(), sorted(&[B, C]));
     let (state, why) = s.state(&own);
     assert_eq!(state, "ignored");

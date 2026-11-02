@@ -21,7 +21,7 @@ fn fast_sign(act: &mut Act, seed: u8, fingerprint: &str) {
 
 /// An open pool with one admin and one member device (made from seed 20), and that device's fingerprint.
 fn open_pool() -> (tempfile::TempDir, GovPool, String) {
-    let (d, mut g) = pool(&[strong(A, "ann")], Policy::Open);
+    let (d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Open);
     let member = ident(20);
     put_admit(&mut g, &member, &[A]);
     (d, g, member.fingerprint())
@@ -125,7 +125,7 @@ fn a_pool_that_holds_as_many_acts_as_it_will_gives_up_a_device_signed_admit_for_
 
 #[test]
 fn admits_that_stand_nowhere_do_not_count_toward_the_four_thousand() {
-    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
     let removed = ident(40);
     put_admit(&mut g, &removed, &[A]);
     put(&mut g, "remove", json!({"fingerprint": removed.fingerprint()}), &[A]);
@@ -139,18 +139,18 @@ fn admits_that_stand_nowhere_do_not_count_toward_the_four_thousand() {
 
 #[test]
 fn a_pool_is_folded_again_when_a_hold_or_a_delegate_ends_and_not_for_the_time_that_passes() {
-    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
     let folds = g.folds();
     g.clock.advance_ms(10_000);
     assert!(!g.tick());
     assert_eq!(g.folds(), folds, "nothing is pending, so the time that passes needs no fold");
-    let ben = entry_after(strong(2, "ben"), 2, &g);
+    let ben = entry_after(phone_admin(2, "ben"), 2, &g);
     put(&mut g, "admin_add", json!({"entry": ben}), &[A]);
     let folds = g.folds();
     g.clock.advance_ms(10_000);
     assert!(!g.tick());
     assert_eq!(g.folds(), folds, "the hold has not run");
-    g.clock.advance_ms(25 * HOUR);
+    g.clock.advance_ms(HELD);
     assert!(g.tick(), "the hold ran out");
     assert!(admins(&g).contains(&public(2)));
 }
