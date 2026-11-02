@@ -24,6 +24,7 @@ mod firsts;
 mod ledger;
 mod os;
 pub mod terminal;
+pub mod tty;
 
 use serde_json::{json, Map, Value};
 
@@ -111,6 +112,11 @@ pub trait Presence: Send {
     fn kind(&self) -> &'static str;
     /// Open a prompt that says ``what``; ``terminal`` is the terminal device the asker named, which only a terminal prompt uses.
     fn begin(&mut self, what: &str, terminal: &str) -> Result<Box<dyn Asking>>;
+    /// Whether this presence asks only on the controlling terminal of the process that asks, which the node finds itself and the asker does not
+    /// name: a computer whose own node has no prompt of the system's to ask with (`os::can_prompt`).
+    fn own_terminal(&self) -> bool {
+        false
+    }
 }
 
 fn same(a: &str, b: &str) -> bool {
@@ -133,26 +139,34 @@ pub fn call(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) 
     }
     if method == "presence_ask" {
         let purpose = Purpose::named(text(p, "purpose")?)?;
+        // Whatever is asked, only the person's own session asks it: a first key and a first phone as much as a change, so no session an agent
+        // started can put a question to the person, and none can open a terminal of its own and answer it.
+        if !person_session(node, &holder) {
+            return Err(Error::Denied("Only the person's own session asks the person at the computer's prompt; an agent asks the person to run the command.".into()));
+        }
+        // Where the system has no prompt of its own the question is put on the terminal of the process that asks, which the node finds itself.
+        let terminal = if node.firsts.asks_on_own_terminal() {
+            node.asking.peer.pid.and_then(tty::of).map(|t| t.to_string_lossy().into_owned()).ok_or_else(|| {
+                Error::Denied("This computer asks you on your terminal, and this request does not come from a process that has one: run the command in a terminal of yours.".into())
+            })?
+        } else {
+            text(p, "terminal")?.to_string()
+        };
         if matches!(purpose, Purpose::PoolKey | Purpose::Card) {
-            if !person_session(node, &holder) {
-                return Err(Error::Denied("Only the person's own session asks for a change to be answered at the computer's prompt; an agent asks the person to run the command.".into()));
-            }
             if !text(p, "public")?.is_empty() {
                 return Err(Error::Invalid("A change names no key: the node makes the key a card enrols, and a card asks for no other.".into()));
             }
-            node.firsts.ask_card(purpose, &by, text(p, "card")?, text(p, "terminal")?, now)?;
+            node.firsts.ask_card(purpose, &by, text(p, "card")?, &terminal, now)?;
         } else {
             if !node.persons.is_empty() {
                 return Err(Error::Denied("A person key is enrolled already: a further key or phone is approved by one that is, not by this prompt.".into()));
             }
-            node.firsts.ask(purpose, &by, text(p, "public")?, text(p, "terminal")?, now)?;
+            node.firsts.ask(purpose, &by, text(p, "public")?, &terminal, now)?;
         }
     }
     let mut out = phone_status(node, &by, now, "0.0.0.0:7449".parse().expect("fixed phone address"))?;
     if out["state"] == "confirmed" && out["purpose"] == "pool_key" {
-        if let Some(made) = node.firsts.take_enrolment(&by) {
-            let claim = node.firsts.pool_key_claim();
-            node.persons.add_claimed_key(crate::grants::person::ED25519, &made.public, "this computer's key for a pool", now, claim)?;
+        if let Some(made) = node.firsts.take_key(&by) {
             out["public"] = json!(made.public);
             out["seed"] = json!(crate::fsutil::hex(&made.seed));
         }

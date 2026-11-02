@@ -60,13 +60,16 @@ fn the_windows_prompt_is_a_base64_of_a_utf16_script_and_the_sentence_is_not_in_i
 }
 
 #[test]
-fn powershell_is_found_under_the_system_directory_and_never_by_a_relative_one() {
-    let root = std::env::temp_dir();
-    let found = os::powershell_in(Some(root.clone().into_os_string()));
-    assert_eq!(found, root.join("System32").join("WindowsPowerShell").join("v1.0").join("powershell.exe"));
-    let fallback = os::powershell_in(Some("relative".into()));
-    assert!(fallback.starts_with(r"C:\Windows") && !fallback.starts_with("relative"), "{fallback:?}");
-    assert!(os::powershell_in(None).starts_with(r"C:\Windows"));
+fn powershell_is_found_under_the_system_directory_the_system_reports_and_never_by_the_environment() {
+    let system = std::env::temp_dir();
+    assert_eq!(os::powershell_under(&system), system.join("WindowsPowerShell").join("v1.0").join("powershell.exe"));
+    // an environment variable names no place: a process that sets `SystemRoot` to a directory of its own does not change the program that is started
+    let before = os::windows_dialog().get_program().to_owned();
+    std::env::set_var("SystemRoot", std::env::temp_dir());
+    let after = os::windows_dialog().get_program().to_owned();
+    std::env::remove_var("SystemRoot");
+    assert_eq!(before, after, "the system directory is the one the system reports");
+    assert!(!std::path::Path::new(&after).starts_with(std::env::temp_dir()), "{after:?}");
 }
 
 #[test]

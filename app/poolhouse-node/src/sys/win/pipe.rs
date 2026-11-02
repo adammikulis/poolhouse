@@ -15,7 +15,7 @@ use windows_sys::Win32::Storage::FileSystem::{
 };
 use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
 use windows_sys::Win32::System::Pipes::{
-    ConnectNamedPipe, CreateNamedPipeW, GetNamedPipeServerProcessId, ImpersonateNamedPipeClient, WaitNamedPipeW, PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE,
+    ConnectNamedPipe, CreateNamedPipeW, GetNamedPipeClientProcessId, GetNamedPipeServerProcessId, ImpersonateNamedPipeClient, WaitNamedPipeW, PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE,
     PIPE_UNLIMITED_INSTANCES, PIPE_WAIT,
 };
 use windows_sys::Win32::System::Threading::{CreateEventW, GetCurrentThread, OpenThreadToken, ResetEvent, SetEvent, WaitForSingleObject};
@@ -62,6 +62,14 @@ pub struct Stream {
 impl Stream {
     fn new(handle: Handle) -> Stream {
         Stream { handle, read_timeout: Cell::new(None) }
+    }
+
+    /// The id of the process on the client end of this pipe, as the system says.
+    pub fn client_pid(&self) -> Option<u32> {
+        let mut pid = 0u32;
+        // SAFETY: the handle is the connected server end of a pipe, valid while `self` lives, and `pid` is valid for the write.
+        let found = unsafe { GetNamedPipeClientProcessId(self.handle.0, &mut pid) };
+        (found != 0 && pid > 0).then_some(pid)
     }
 
     /// Reads wait at most ``timeout`` (None: for ever) and then fail with `TimedOut`.

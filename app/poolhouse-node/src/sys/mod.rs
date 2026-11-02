@@ -37,10 +37,10 @@ impl Principal {
     }
 }
 
-/// The id of the process on the other end of ``stream``: not read on Windows yet.
+/// The id of the process on the other end of ``stream``, as the system says.
 #[cfg(windows)]
-pub fn peer_pid(_stream: &Stream) -> Option<u32> {
-    None
+pub fn peer_pid(stream: &Stream) -> Option<u32> {
+    stream.client_pid()
 }
 
 /// Where the node of the state directory ``state`` listens: a socket file, or a pipe name.

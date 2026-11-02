@@ -151,17 +151,18 @@ fn founding_is_one_prompt_and_its_yes_is_the_key_the_node_made_and_the_ticket() 
     assert_eq!(drafted["charter"]["first"]["delegate"], true, "the computer may admit devices for 30 days");
     assert!(node.persons.claim_of(&public_of(&drafted)).is_none(), "nothing is enrolled before the yes");
     let said = answered(&mut node, &prompt, &token, "pool_key", drafted["card"].as_str().unwrap(), true);
+    assert!(node.persons.claim_of(&public_of(&drafted)).is_none(), "and the yes enrols nothing: the key is entered when the pool it founds is");
     assert_eq!(said["state"], "confirmed", "{said}");
     let (ticket, seed) = (said["secret"].as_str().unwrap().to_string(), said["seed"].as_str().unwrap().to_string());
     assert_eq!(said["public"], public_of(&drafted).as_str());
     assert_eq!(hex(SigningKey::from_bytes(&unhex(&seed).unwrap().try_into().unwrap()).verifying_key().as_bytes()), public_of(&drafted), "the seed is the one of the key the draft listed");
-    assert_eq!(node.persons.claim_of(&public_of(&drafted)), Some(Claim::keystore_prompt()), "the yes enrolled the key as one the computer's prompt made");
-    assert_eq!(node.persons.level_of(&public_of(&drafted)), Level::Computer);
     let again = ok(req(&mut node, "presence_status", "", &token, json!({})));
     assert!(again["seed"].is_null() && again["secret"].is_null(), "the seed and the ticket are handed once: {again}");
     ok(req(&mut node, "ticket_spend", "", &token, json!({"ticket": ticket, "payload": payload(&drafted)})));
     let founded = req(&mut node, "pool_found", "", &token, json!({"charter": accepted(&drafted, &seed)}));
     assert_eq!(founded["ok"], true, "the answer to the card is the grant to found: {founded}");
+    assert_eq!(node.persons.claim_of(&public_of(&drafted)), Some(Claim::keystore_prompt()), "the founding enrolled the key as one the computer's prompt made");
+    assert_eq!(node.persons.level_of(&public_of(&drafted)), Level::Computer);
     assert_eq!(prompt.raised.load(Ordering::SeqCst), 1, "one prompt");
     let shown = prompt.shown.lock().unwrap().clone();
     assert!(shown[0].contains("pool home") && shown[0].len() <= 240, "{shown:?}");
@@ -366,14 +367,107 @@ fn a_computer_with_no_prompt_of_its_own_founds_a_pool_approved_by_a_typed_yes_an
     }
     let said = answered(&mut node, &prompt, &token, "pool_key", drafted["card"].as_str().unwrap(), true);
     assert_eq!(said["state"], "confirmed", "{said}");
-    assert_eq!(node.persons.claim_of(&public_of(&drafted)), Some(Claim::keystore_typed()));
     let shown = prompt.shown.lock().unwrap().clone();
     assert!(shown[0].contains("typed yes") && shown[0].contains("program running as you"), "{shown:?}");
     let founded = req(&mut node, "pool_found", "", &token, json!({"charter": accepted(&drafted, said["seed"].as_str().unwrap())}));
     assert_eq!(founded["ok"], true, "no phone and no prompt of its own does not block a pool: {founded}");
+    assert_eq!(node.persons.claim_of(&public_of(&drafted)), Some(Claim::keystore_typed()));
     let gov = ok(req(&mut node, "pool_status", "", &token, json!({})))["governance"].clone();
     assert_eq!((gov["approved"].clone(), gov["delegates"].clone()), (json!("approved by a typed yes; a program running as you could approve it"), json!([])));
     let card = ok(req(&mut node, "pool_draft", "", &token, json!({"kind": "set_holds", "body": {"admin_add_h": 48}})));
     assert!(card["summary"].as_str().unwrap().contains("LEVEL: This change is approved by a typed yes; a program running as you could approve it."), "{card}");
     assert!(card["summary"].as_str().unwrap().contains("It waits 7 days"), "every hold stays: {card}");
+}
+
+#[test]
+fn a_computer_that_can_prompt_but_cannot_keep_its_key_in_a_keystore_founds_a_typed_yes_pool_with_the_one_yes() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut node = node(dir.path());
+    let prompt = at_the_prompt(&mut node, "os");
+    let token = person_session(&mut node);
+    let drafted = ok(req(&mut node, "pool_draft_found", "", &token, json!({"title": "home", "policy": "secure", "project": "", "keys": [{"computer": true, "sealed": false, "person": "owner", "label": "this computer"}]})));
+    assert_eq!((drafted["counting"].clone(), drafted["typed"].clone()), (json!(true), json!(true)), "{drafted}");
+    assert_eq!(drafted["charter"]["admins"][0]["claim"]["method"], "file", "a key kept in a file is claimed as one");
+    assert_eq!(drafted["charter"]["first"]["delegate"], false);
+    let said = answered(&mut node, &prompt, &token, "pool_key", drafted["card"].as_str().unwrap(), true);
+    assert_eq!(said["state"], "confirmed", "{said}");
+    assert!(prompt.shown.lock().unwrap()[0].contains("typed yes"), "the prompt says how the pool is approved: {:?}", prompt.shown.lock().unwrap());
+    ok(req(&mut node, "ticket_spend", "", &token, json!({"ticket": said["secret"], "payload": payload(&drafted)})));
+    let founded = req(&mut node, "pool_found", "", &token, json!({"charter": accepted(&drafted, said["seed"].as_str().unwrap())}));
+    assert_eq!(founded["ok"], true, "the prompt of this computer is enough for the pool, and the key is as weak as a file: {founded}");
+    assert_eq!(node.persons.claim_of(&public_of(&drafted)), Some(Claim::file()), "the key is recorded as the charter says it is held");
+    assert_eq!(prompt.raised.load(Ordering::SeqCst), 1, "one prompt");
+}
+
+#[test]
+fn a_founding_that_fails_leaves_no_key_behind_and_the_yes_for_the_charter_stays() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut node = node(dir.path());
+    let prompt = at_the_prompt(&mut node, "os");
+    let token = person_session(&mut node);
+    let drafted = ok(draft(&mut node, &token, "home"));
+    let said = answered(&mut node, &prompt, &token, "pool_key", drafted["card"].as_str().unwrap(), true);
+    let seed = said["seed"].as_str().unwrap();
+    let mut spoiled = drafted["charter"].clone();
+    spoiled["admins"][0]["acceptance"] = json!("00".repeat(64));
+    let refused = req(&mut node, "pool_found", "", &token, json!({"charter": spoiled}));
+    assert_eq!(refused["ok"], false, "{refused}");
+    assert!(node.persons.claim_of(&public_of(&drafted)).is_none(), "a pool that was not founded left no key behind");
+    let again = req(&mut node, "pool_found", "", &token, json!({"charter": accepted(&drafted, seed)}));
+    assert_eq!(again["ok"], true, "the person's yes was not spent by the failure: {again}");
+    assert_eq!(prompt.raised.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn a_window_or_a_join_is_drafted_only_where_the_network_runs() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut node = node(dir.path());
+    let token = person_session(&mut node);
+    for (op, args) in [("add_device", json!({})), ("join_pool", json!({"host": "127.0.0.1", "port": 1, "passphrase": "123456"}))] {
+        let drawn = req(&mut node, "op_draft", "", &token, json!({"op": op, "args": args}));
+        assert_eq!(code(&drawn), "invalid", "{op}: {drawn}");
+        assert!(drawn["error"]["message"].as_str().unwrap().contains("network is not running"), "{drawn}");
+    }
+}
+
+#[test]
+fn the_sentence_of_a_founding_shows_every_key_the_charter_lists() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut node = node(dir.path());
+    let prompt = at_the_prompt(&mut node, "os");
+    let token = person_session(&mut node);
+    let other = hex(&kit::key(9).verifying_key().to_bytes());
+    let drafted = ok(req(&mut node, "pool_draft_found", "", &token, json!({"title": "home", "policy": "secure", "project": "", "keys": [
+        {"computer": true, "person": "owner", "label": "this computer"}, {"key": other, "person": "second", "label": "another"}]})));
+    let card = drafted["card"].as_str().unwrap();
+    ok(req(&mut node, "presence_ask", "", &token, json!({"purpose": "pool_key", "card": card, "terminal": ""})));
+    let shown = prompt.shown.lock().unwrap()[0].clone();
+    for key in drafted["charter"]["admins"].as_array().unwrap() {
+        let words = poolhouse_node::phone::words(&poolhouse_node::gov::keys::fingerprint_of(key["key"].as_str().unwrap()));
+        assert!(shown.contains(&words), "the yes is for every key the charter lists, and {words} is one of them: {shown}");
+    }
+    assert!(shown.contains("Keys "), "{shown}");
+}
+
+#[test]
+fn the_prompt_for_a_change_of_admins_names_the_key_the_yes_adds_or_removes() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut node = node(dir.path());
+    let prompt = at_the_prompt(&mut node, "os");
+    let token = person_session(&mut node);
+    let drafted = ok(draft(&mut node, &token, "home"));
+    let said = answered(&mut node, &prompt, &token, "pool_key", drafted["card"].as_str().unwrap(), true);
+    ok(req(&mut node, "ticket_spend", "", &token, json!({"ticket": said["secret"], "payload": payload(&drafted)})));
+    ok(req(&mut node, "pool_found", "", &token, json!({"charter": accepted(&drafted, said["seed"].as_str().unwrap())})));
+    let status = ok(req(&mut node, "pool_status", "", &token, json!({})));
+    let (pool, charter) = (status["pool"].as_str().unwrap().to_string(), status["governance"]["charter_hash"].as_str().unwrap().to_string());
+    let other = kit::gov::entry_on(kit::gov::computer_admin(9, "second"), 2, &pool, &charter);
+    let words = poolhouse_node::phone::words(&other.fingerprint());
+    for (kind, body) in [("admin_add", json!({"entry": other})), ("admin_remove", json!({"key": other.key}))] {
+        let card = ok(req(&mut node, "pool_draft", "", &token, json!({"kind": kind, "body": body})));
+        let shown_before = prompt.shown.lock().unwrap().len();
+        answered(&mut node, &prompt, &token, "card", card["card"].as_str().unwrap(), true);
+        let shown = prompt.shown.lock().unwrap()[shown_before].clone();
+        assert!(shown.contains(&words), "the yes of {kind} is for that key, so the prompt names it: {shown}");
+    }
 }

@@ -748,7 +748,11 @@ impl Net {
                 let by=crate::poolapi::person_by(&mut node,&c.token).ok_or_else(|| Error::Denied("A yes at the computer's prompt is for the person's own session.".into()))?;
                 let mut args=c.params.clone();
                 args.remove("ticket");
+                let window=args.remove("window");
                 node.spend_op(&by,ticket,&c.method,&args)?;
+                if let Some(act)=window.filter(|_| c.method=="add_device") {
+                    node.window_submit(&act)?;
+                }
             }
         }
         if c.method=="add_device" {

@@ -131,6 +131,8 @@ pub enum Body {
     RecoveryReplace(Add),
     Delegate(Device),
     DelegateEnd(Device),
+    /// The person's yes for one join window: the device may admit what proves the window's code, for ten minutes.
+    Window(Device),
 }
 
 fn bad<T>(why: &str) -> Result<T> {
@@ -192,12 +194,13 @@ pub fn parse(act: &Act) -> Result<Body> {
             check_removal(&r)?;
             Body::Remove(r)
         }
-        "leave" | "delegate" | "delegate_end" => {
+        "leave" | "delegate" | "delegate_end" | "window" => {
             let d: Device = read(act)?;
             check_device(&d)?;
             match act.kind.as_str() {
                 "leave" => Body::Leave(d),
                 "delegate" => Body::Delegate(d),
+                "window" => Body::Window(d),
                 _ => Body::DelegateEnd(d),
             }
         }

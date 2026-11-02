@@ -10,12 +10,17 @@ none twice, and no card or key for a session an agent started.
 from __future__ import annotations
 
 import hashlib
+import socket
 import threading
 from contextlib import contextmanager
 
 import pytest
+from pool_check import wire
 from pool_check.terminal import at_terminal
 
+import poolhouse as ph
+from poolhouse import keystore, node_launch
+from poolhouse.api import _node
 from poolhouse.board import (
     client as board_client,
     computer_key,
@@ -64,14 +69,17 @@ def agent_session(node) -> board_session.Session:
 
 
 @contextmanager
-def person_at_the_terminal(*answers: str):
-    """A terminal the node writes its questions on, and a person who types each of ``answers`` there when a question appears."""
+def person_at_the_terminal(*answers: str, asked: list[str] | None = None):
+    """A terminal the node writes its questions on, and a person who types each of ``answers`` there when a question appears (each is added to
+    ``asked`` as it is typed)."""
     terminal = at_terminal()
+    asked = [] if asked is None else asked
 
     def typing() -> None:
         for answer in answers or ("yes",):
             if not terminal.shows("Type yes", 40.0):
                 return
+            asked.append(answer)
             terminal.types(answer + terminal.ENTER)
 
     typed = threading.Thread(target=typing, daemon=True)
@@ -169,3 +177,95 @@ def test_a_ticket_the_node_never_made_signs_nothing(workspace_node):
     with pytest.raises(computer_key.TicketRequired):
         key.sign_bytes(b"x")
     assert session.token
+
+
+@pytest.fixture
+def mine(workspace_node, monkeypatch):
+    """The test's node is this device's node for `ph.pool`, and the account's keystore is the test's."""
+    monkeypatch.setattr(node_launch, "default_state", lambda: workspace_node.state)
+    monkeypatch.setattr(keystore, "default", lambda: KS)
+    return workspace_node
+
+
+def listening(node) -> int:
+    """Start the node again with its network on at a port of this machine's loopback only; the port."""
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    node.stop()
+    node_launch.ensure_node(node.state, extra=["--listen", f"127.0.0.1:{port}", *wire.PRESENCE])
+    return port
+
+
+@contextmanager
+def typing(monkeypatch, *answers: str, asked: list[str] | None = None):
+    """A person at a terminal of their own, which `ph.pool` finds as this process's terminal, who types each of ``answers`` where a question appears."""
+    with person_at_the_terminal(*answers, asked=asked) as voice:
+        monkeypatch.setattr(presence, "terminal_name", lambda: voice.terminal)
+        yield voice
+
+
+def test_the_persons_own_process_is_the_persons_session_and_a_process_an_agent_started_is_not(mine, monkeypatch):
+    person = _node.person_session()
+    assert person is not None, "a process that reads the secret the node keeps for the person is the person's"
+    kept = mine.client.call("pool_draft_found", "", person.token, title="home", policy="secure", project="", keys=[{"computer": True, "person": "owner", "label": "a key"}])
+    assert kept["card"], "and the node lets that session raise a card for a key of this computer"
+    monkeypatch.setenv("CLAUDECODE", "1")
+    assert _node.person_session() is None, "a process an agent started is never the person's, whatever it can read"
+    monkeypatch.delenv("CLAUDECODE")
+    secret = mine.state / "person" / "ui.secret"
+    away = secret.with_suffix(".away")
+    secret.rename(away)
+    try:
+        assert _node.person_session() is None, "a process that cannot read the secret is not the person's"
+    finally:
+        away.rename(secret)
+    assert _node.person_session() is not None
+
+
+def test_a_window_is_opened_with_the_persons_yes_even_in_a_pool_a_typed_yes_approved(mine, monkeypatch):
+    founded(mine)
+    listening(mine)
+    asked: list[str] = []
+    with typing(monkeypatch, asked=asked):
+        opened = ph.pool.add_device()
+    assert asked == ["yes"] and len(str(opened["code"])) >= 6 and opened["expires_in_s"] == 300, "the one yes opened the window: a typed-yes pool has no delegate to open it without one"
+    assert mine.client.call("pool_status")["governance"]["delegates"] == []
+
+
+def test_a_no_opens_no_window_and_a_process_an_agent_started_asks_the_person_nothing(mine, monkeypatch):
+    founded(mine)
+    listening(mine)
+    asked: list[str] = []
+    with typing(monkeypatch, "no", asked=asked), pytest.raises(ph.pool.Refusal) as refused:
+        ph.pool.add_device()
+    assert (asked, refused.value.needs, refused.value.then) == (["no"], "approval", "stop")
+    monkeypatch.setenv("CLAUDECODE", "1")
+    terminal = at_terminal()
+    try:
+        monkeypatch.setattr(presence, "terminal_name", lambda: terminal.name)
+        with pytest.raises(ph.Error):
+            ph.pool.add_device()
+        assert not terminal.shows("Type yes", 1.0), "an agent's call put no question to the person"
+    finally:
+        terminal.close()
+
+
+def test_joining_is_the_persons_yes_for_that_host_and_code_and_a_no_joins_nothing(mine, monkeypatch):
+    listening(mine)
+    asked: list[str] = []
+    with typing(monkeypatch, asked=asked), pytest.raises(ph.pool.Refusal) as unreached:
+        ph.pool.join("127.0.0.1", "123456", port=1)
+    assert asked == ["yes"] and unreached.value.then == "ask-owner", "the yes was given and the node then went to the address: there is no pool there"
+    with typing(monkeypatch, "no", asked=asked), pytest.raises(ph.pool.Refusal) as refused:
+        ph.pool.join("127.0.0.1", "123456", port=1)
+    assert (asked, refused.value.needs, refused.value.then) == (["yes", "no"], "approval", "stop")
+    assert [m.this_device for m in ph.pool.members()] == [True]
+
+
+def test_a_change_to_who_governs_is_made_with_the_persons_yes_at_the_prompt_and_by_this_computers_key(mine, monkeypatch):
+    founded(mine)
+    asked: list[str] = []
+    with typing(monkeypatch, asked=asked):
+        renewed = ph.pool.renew()
+    assert asked == ["yes"] and renewed.this_device, "the person was asked for exactly that change, and the node took the act this computer's key signed under it"

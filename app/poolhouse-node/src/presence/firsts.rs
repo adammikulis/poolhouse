@@ -18,8 +18,6 @@ use crate::gov::keys::Claim;
 
 /// How long what a yes makes (the one-time secret, a founding yes) is good for.
 pub(crate) const SECRET_FOR_MS: u64 = 10 * 60_000;
-/// How many prompts are open at once, over all askers: a dialog for every session would bury the person.
-const MOST_OPEN: usize = 4;
 
 /// A prompt that is open.
 struct Pending {
@@ -35,7 +33,10 @@ struct Ticket {
     sha256: String,
     left: BTreeSet<String>,
     made_ms: u64,
-    enrol: Option<Generated>,
+    /// The key the node made for the card, until it is handed to the asker.
+    seed: Option<Generated>,
+    /// The key (public, claim) the founding of the card's charter enrols, until the pool is founded.
+    enrol: Option<(String, Claim)>,
 }
 
 /// A founding card that was answered yes, waiting for the charter it founds.
@@ -108,16 +109,18 @@ impl Firsts {
         if self.can_hold_counting_key() { Claim::keystore_prompt() } else { Claim::keystore_typed() }
     }
 
-    /// Whether a prompt can be raised for ``by`` now: it has none open, the node is not asking too many askers at once, and ``by`` is neither
-    /// in the quiet after a no nor over its allowance.
+    /// Whether a prompt can be raised for ``by`` now: it has none open, and it is neither in the quiet after a no nor over its allowance. Every
+    /// count is ``by``'s own, so no number of other sessions can take the person's place.
     fn admit(&self, by: &str, now: u64) -> Result<()> {
         if self.askers.get(by).is_some_and(|a| a.asking.is_some()) {
             return Err(crate::limits::floor("The person is being asked something already: answer that first."));
         }
-        if self.askers.values().filter(|a| a.asking.is_some()).count() >= MOST_OPEN {
-            return Err(crate::limits::floor("The person is being asked a few things already: answer those first."));
-        }
         self.ledger.allows(by, now)
+    }
+
+    /// Whether the presence of this node asks only on the controlling terminal of the process that asks.
+    pub fn asks_on_own_terminal(&self) -> bool {
+        self.presence.own_terminal()
     }
 
     /// Open a prompt for ``by`` (`board/name`): nothing is made until the person says yes.
@@ -136,6 +139,7 @@ impl Firsts {
         };
         let what = format!("poolhouse: allow the session {by} to add {}{key} to this computer?", purpose.words());
         let prompt = self.presence.begin(&what, terminal)?;
+        self.ledger.raised(by, now)?;
         let asker = self.askers.entry(by.into()).or_default();
         asker.asking = Some(Pending { purpose, bound: if purpose == Purpose::Key { bound.into() } else { String::new() }, started_ms: now, prompt });
         asker.outcome = None;
@@ -183,19 +187,28 @@ impl Firsts {
         Ok(())
     }
 
-    /// The key ``by``'s yes enrolled and the node has not yet entered in the person keys, once.
-    pub fn take_enrolment(&mut self, by: &str) -> Option<Generated> {
-        self.askers.get_mut(by).and_then(|a| a.ticket.as_mut()).and_then(|t| t.enrol.take())
+    /// The key ``by``'s yes was for, with its secret, which the asker is given once. Nothing is enrolled by it: the key is entered in the person keys
+    /// only when the pool it founds is (`founding_yes`).
+    pub fn take_key(&mut self, by: &str) -> Option<Generated> {
+        self.askers.get_mut(by).and_then(|a| a.ticket.as_mut()).and_then(|t| t.seed.take())
     }
 
-    /// Whether ``by`` answered yes for the card that founds the charter of ``anchor`` less than ten minutes ago; true once.
-    pub fn founding_confirmed(&mut self, by: &str, anchor: &str, now: u64) -> bool {
-        let Some(asker) = self.askers.get_mut(by) else { return false };
-        let ok = asker.founded.as_ref().is_some_and(|f| f.anchor == anchor && now.saturating_sub(f.made_ms) <= SECRET_FOR_MS);
-        if ok {
+    /// What ``by``'s yes less than ten minutes ago for the card that founds the charter of ``anchor`` lets the founding do: None when there is no such yes,
+    /// else the key (public half and claim) the founding enrols, if the card made one. The yes is kept until `founded`, so a founding that fails leaves it.
+    pub fn founding_yes(&self, by: &str, anchor: &str, now: u64) -> Option<Option<(String, Claim)>> {
+        let asker = self.askers.get(by)?;
+        asker.founded.as_ref().filter(|f| f.anchor == anchor && now.saturating_sub(f.made_ms) <= SECRET_FOR_MS)?;
+        Some(asker.ticket.as_ref().and_then(|t| t.enrol.clone()))
+    }
+
+    /// The pool the yes was for is founded: the yes is spent.
+    pub fn founded(&mut self, by: &str) {
+        if let Some(asker) = self.askers.get_mut(by) {
             asker.founded = None;
+            if let Some(t) = asker.ticket.as_mut() {
+                t.enrol = None;
+            }
         }
-        ok
     }
 
     fn poll(&mut self, now: u64) {
@@ -262,9 +275,10 @@ impl Firsts {
             return Outcome::No;
         }
         let secret = crate::phone::enrol::b64url(&raw);
-        let enrol = if done.purpose == Purpose::PoolKey { self.cards.take_generated(by, &done.bound) } else { None };
+        let seed = if done.purpose == Purpose::PoolKey { self.cards.take_generated(by, &done.bound) } else { None };
+        let enrol = seed.as_ref().map(|made| (made.public.clone(), made.claim));
         let asker = self.askers.entry(by.into()).or_default();
-        asker.ticket = Some(Ticket { sha256: sha256_hex(secret.as_bytes()), left: held.payloads.iter().cloned().collect(), made_ms: yes_at, enrol });
+        asker.ticket = Some(Ticket { sha256: sha256_hex(secret.as_bytes()), left: held.payloads.iter().cloned().collect(), made_ms: yes_at, seed, enrol });
         if let Some(anchor) = held.founding {
             asker.founded = Some(Founded { anchor, made_ms: yes_at });
         }

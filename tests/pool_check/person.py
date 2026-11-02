@@ -76,14 +76,14 @@ class RigPerson:
         if grants.fingerprint(carried.public) in held:
             return {"fingerprint": grants.fingerprint(carried.public)}
         if not held:
-            secret = self.says_yes(device, holder.token, "key", carried.public.hex())["secret"]
+            secret = self.says_yes(device, "key", carried.public.hex())["secret"]
             return device.call("person_enroll", "", holder.token, **grants.enrolment(carried, ABOUT), secret=secret)
         return device.call("person_enroll", "", holder.token, **grants.approve(grants.enrolment(carried, ABOUT), self.key, self.where(device)))
 
-    def says_yes(self, device: Device, token: str, purpose: str, public: str = "") -> dict:
-        """The person types yes to the node's question for the first ``purpose`` (`key` or `phone`) as the session ``token``: the node's reply, which
-        carries the one-time secret once, to the session that asked."""
-        out = device.wire("presence", "--state", device.state_text, "--token", token, "--purpose", purpose, "--public", public, check=False)
+    def says_yes(self, device: Device, purpose: str, public: str = "") -> dict:
+        """The person types yes to the node's question for the first ``purpose`` (`key` or `phone`), asked by the person's own session: the node's reply,
+        which carries the one-time secret once, to the session that asked."""
+        out = device.wire("presence", "--state", device.state_text, "--purpose", purpose, "--public", public, check=False)
         if not out["ok"] or out["result"]["state"] != "confirmed":
             raise RuntimeError(f"{device.name}: the person's yes to the node's question was not taken: {out}")
         return dict(out["result"])

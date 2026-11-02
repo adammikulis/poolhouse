@@ -139,7 +139,7 @@ impl Moved {
         let named = |field: &str| act.body[field].as_str().map(str::to_string);
         match act.kind.as_str() {
             "admit" => self.devices.extend(act.body["cert"].as_str().and_then(unhex).map(|der| crate::cert::cert_fingerprint(&der))),
-            "delegate" | "remove" | "delegate_end" => self.devices.extend(named("fingerprint")),
+            "delegate" | "remove" | "delegate_end" | "window" => self.devices.extend(named("fingerprint")),
             _ => self.chain |= act.is_chain(),
         }
     }
@@ -299,7 +299,7 @@ impl GovPool {
         self.dirty.seen |= self.ready.len() != known;
         self.admits_live = self.acts.iter().filter(|(id, a)| a.kind == "admit" && !roster.void.contains_key(*id) && !roster.short.contains_key(*id)).count();
         let ends = [chain.pending.as_ref().map(|p| p.effective_ms), chain.dispute.as_ref().map(|d| d.ends_ms)];
-        self.deadline = ends.into_iter().flatten().chain(roster.delegates.values().map(|d| d.ends_ms)).chain(roster.next_delegate_start(now)).min().unwrap_or(i64::MAX);
+        self.deadline = ends.into_iter().flatten().chain(roster.delegates.values().map(|d| d.ends_ms)).chain(roster.next_delegate_start(now)).chain(roster.next_window_end(now)).min().unwrap_or(i64::MAX);
         self.state = State { chain, roster };
         self.folded_at = now;
         self.folds += 1;
@@ -431,7 +431,7 @@ impl GovPool {
         let via = act.body["via"].as_str().unwrap_or("");
         match act.kind.as_str() {
             "leave" => device.status == Status::Active && act.body["fingerprint"] == key,
-            "admit" => (self.state.chain.latest().charter.policy == Policy::Open && via == "segment") || (via.is_empty() && self.state.roster.delegates.contains_key(key)),
+            "admit" => (self.state.chain.latest().charter.policy == Policy::Open && via == "segment") || (via.is_empty() && (self.state.roster.delegates.contains_key(key) || self.state.roster.held_a_window(key))),
             _ => false,
         }
     }
@@ -693,7 +693,7 @@ impl GovPool {
     pub fn join_payload(&self, budget: usize, joiner: &str) -> Result<JoinPayload> {
         let (chain, roster) = (&self.state.chain, &self.state.roster);
         let settled: Vec<Act> = chain.applied.iter().filter_map(|id| self.acts.get(id)).cloned().collect();
-        let live = |a: &Act| a.kind == "delegate" && a.body["fingerprint"].as_str().is_some_and(|d| roster.delegates.contains_key(d));
+        let live = |a: &Act| (a.kind == "delegate" && a.body["fingerprint"].as_str().is_some_and(|d| roster.delegates.contains_key(d))) || (a.kind == "window" && a.body["fingerprint"].as_str().is_some_and(|d| roster.held_a_window(d)));
         let delegates: Vec<Act> = self.acts.values().filter(|a| live(a)).take(PAGE_ACTS).cloned().collect();
         let history: usize = settled.iter().chain(&delegates).chain(std::iter::once(&self.found)).map(GovPool::weight).sum();
         if history > budget {
@@ -701,7 +701,7 @@ impl GovPool {
         }
         let mut acts: Vec<Act> = roster.admitted_by.get(joiner).and_then(|id| self.acts.get(id)).cloned().into_iter().collect();
         let mut bytes = history + acts.iter().map(GovPool::weight).sum::<usize>();
-        let standing = |id: &String, a: &Act| !a.is_chain() && !matches!(a.kind.as_str(), "cancel" | "veto" | "delegate" | "delegate_end") && self.status(id) == ActStatus::Effective;
+        let standing = |id: &String, a: &Act| !a.is_chain() && !matches!(a.kind.as_str(), "cancel" | "veto" | "delegate" | "delegate_end" | "window") && self.status(id) == ActStatus::Effective;
         for a in self.acts.iter().filter(|(id, a)| standing(id, a)).map(|(_, a)| a) {
             bytes += GovPool::weight(a);
             if bytes > budget || acts.len() >= PAGE_ACTS {

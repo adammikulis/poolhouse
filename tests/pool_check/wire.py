@@ -3,7 +3,7 @@
     python tests/pool_check/wire.py start --state DIR --binary PATH [--arg ARG ...] [--key HEX [--level phone|native|computer|weak]]
     python tests/pool_check/wire.py stop  --state DIR
     python tests/pool_check/wire.py call  --state DIR METHOD [--board B] [--token T] [--params JSON]
-    python tests/pool_check/wire.py presence --state DIR --token T --purpose key|phone [--public HEX]
+    python tests/pool_check/wire.py presence --state DIR --purpose key|phone [--public HEX]
     python tests/pool_check/wire.py phone-listen --state DIR
     python tests/pool_check/wire.py phone --state DIR OP [--token T] [--body JSON] [--method GET]
     python tests/pool_check/wire.py cert --state DIR
@@ -51,10 +51,10 @@ def call(state: Path, method: str, board: str = "", token: str = "", params: dic
     return {"ok": False, "code": reply["error"]["code"], "error": reply["error"]["message"]}
 
 
-def answer_presence(state: Path, token: str, purpose: str, public: str = "") -> dict:
-    """Play the person at the node's own question: ask as the session ``token`` for the one-time secret of the first key or phone, name a
-    terminal of this device (`terminal.at_terminal`: a pseudo-terminal, or a ConPTY pseudo-console on Windows) as where to ask, and type `yes` there when the
-    node has written its question on it.
+def answer_presence(state: Path, purpose: str, public: str = "") -> dict:
+    """Play the person at the node's own question: ask as the person's own session (registered with the secret the node keeps for the person) for the
+    one-time secret of the first key or phone, name a terminal of this device (`terminal.at_terminal`: a pseudo-terminal, or a ConPTY pseudo-console on
+    Windows) as where to ask, and type `yes` there when the node has written its question on it.
 
     This is what a person does at a terminal, against the node as shipped: the node writes the question itself and reads the line itself,
     so the answer does not pass through the process that asked (docs/pool-check.md). Only the rig's person runs it; the node has no
@@ -64,6 +64,10 @@ def answer_presence(state: Path, token: str, purpose: str, public: str = "") -> 
 
     terminal = at_terminal()
     try:
+        me = call(state, "register_person", "pool", "", {"session": "the-rig-person", "proof": (Path(state) / "person" / "ui.secret").read_text().strip()})
+        if not me["ok"]:
+            return me
+        token = me["result"]["token"]
         asked = call(state, "presence_ask", "", token, {"purpose": purpose, "public": public, "terminal": terminal.name})
         if not asked["ok"] or asked["result"]["state"] != "asking":
             return asked
@@ -169,7 +173,6 @@ def main(argv: list[str] | None = None) -> int:
         one = sub.add_parser(name)
         one.add_argument("--state", required=True)
         if name == "presence":
-            one.add_argument("--token", required=True)
             one.add_argument("--purpose", required=True, choices=("key", "phone"))
             one.add_argument("--public", default="")
         if name == "phone":
@@ -196,7 +199,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "start":
             out = start(state, Path(args.binary), [f"{a}" for a in args.arg], args.key, args.level)
         elif args.cmd == "presence":
-            out = answer_presence(state, args.token, args.purpose, args.public)
+            out = answer_presence(state, args.purpose, args.public)
         elif args.cmd == "phone-listen":
             phone.listen_on(state, "127.0.0.1:0")
             out = {"ok": True, "result": {"listening": True}}

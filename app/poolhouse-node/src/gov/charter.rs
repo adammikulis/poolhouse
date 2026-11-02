@@ -54,7 +54,7 @@ pub enum Class {
 /// removal names signs.
 pub fn floor_class(kind: &str) -> Option<Class> {
     match kind {
-        "admit" | "remove" => Some(Class::Sensitive),
+        "admit" | "remove" | "window" => Some(Class::Sensitive),
         "cancel" | "delegate" | "admin_add" | "admin_remove" | "set_threshold" | "set_holds" | "set_mode" | "set_floors" | "recovery_replace" => Some(Class::Governance),
         _ => None,
     }

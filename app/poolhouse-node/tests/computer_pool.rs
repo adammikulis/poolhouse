@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use ed25519_dalek::{Signer as _, SigningKey};
+use kit::govnode::pass;
 use kit::netkit::{device, Dev};
 use poolhouse_node::error::Result as NodeResult;
 use poolhouse_node::fsutil::{hex, sha256_hex, unhex};
@@ -18,6 +19,7 @@ use serde_json::{json, Value};
 
 /// A person at the prompt who says yes to everything the node shows, and counts the prompts and keeps the sentences.
 struct Yes {
+    kind: &'static str,
     raised: Arc<AtomicUsize>,
     shown: Arc<Mutex<Vec<String>>>,
 }
@@ -32,7 +34,7 @@ impl Asking for Said {
 
 impl Presence for Yes {
     fn kind(&self) -> &'static str {
-        "os"
+        self.kind
     }
 
     fn begin(&mut self, what: &str, _terminal: &str) -> NodeResult<Box<dyn Asking>> {
@@ -45,8 +47,16 @@ impl Presence for Yes {
 fn at_the_prompt(dev: &Dev) -> (Arc<AtomicUsize>, Arc<Mutex<Vec<String>>>) {
     let (raised, shown) = (Arc::new(AtomicUsize::new(0)), Arc::new(Mutex::new(Vec::new())));
     let mut node = dev.node.lock().unwrap();
-    node.firsts = Firsts::new(Box::new(Yes { raised: raised.clone(), shown: shown.clone() }));
+    node.firsts = Firsts::new(Box::new(Yes { kind: "os", raised: raised.clone(), shown: shown.clone() }));
     node.rig_bind_device_key();
+    (raised, shown)
+}
+
+/// ``dev`` is a computer with no prompt of its own, whose person is asked on a terminal and whose device key is a file: the pool it founds is approved
+/// by a typed yes.
+fn at_a_terminal(dev: &Dev) -> (Arc<AtomicUsize>, Arc<Mutex<Vec<String>>>) {
+    let (raised, shown) = (Arc::new(AtomicUsize::new(0)), Arc::new(Mutex::new(Vec::new())));
+    dev.node.lock().unwrap().firsts = Firsts::new(Box::new(Yes { kind: "terminal", raised: raised.clone(), shown: shown.clone() }));
     (raised, shown)
 }
 
@@ -67,6 +77,42 @@ fn yes_for(dev: &Dev, token: &str, purpose: &str, card: &str) -> Value {
 fn ticket_for(dev: &Dev, token: &str, op: &str, args: Value) -> String {
     let drawn = dev.ok("op_draft", "", token, json!({"op": op, "args": args}));
     yes_for(dev, token, "card", drawn["card"].as_str().unwrap())["secret"].as_str().unwrap().to_string()
+}
+
+/// Open a window on ``dev`` as the person ``me``: the one yes for the window card also signs, with the key of ``seed``, the act that lets this device
+/// admit what proves the code; the code the call gives back.
+fn open_window(dev: &Dev, me: &str, seed: &str, args: Value) -> String {
+    let drawn = dev.ok("op_draft", "", me, json!({"op": "add_device", "args": args}));
+    let ticket = yes_for(dev, me, "card", drawn["card"].as_str().unwrap())["secret"].as_str().unwrap().to_string();
+    let bytes = unhex(drawn["window"]["sign_bytes"].as_str().unwrap()).unwrap();
+    dev.ok("ticket_spend", "", me, json!({"ticket": ticket, "payload": sha256_hex(&bytes)}));
+    let mut act = drawn["window"]["act"].clone();
+    let key = hex(SigningKey::from_bytes(&unhex(seed).unwrap().try_into().unwrap()).verifying_key().as_bytes());
+    act["signatures"] = json!([{"kind": "admin", "key": key, "sig": sign(seed, &bytes)}]);
+    let mut params = args.as_object().unwrap().clone();
+    params.insert("ticket".into(), json!(ticket));
+    params.insert("window".into(), act);
+    dev.ok("add_device", "", me, Value::Object(params))["code"].as_str().unwrap().to_string()
+}
+
+/// ``guest`` joins the pool at ``host`` with ``code``, with the yes of its person for exactly that join.
+fn join(guest: &Dev, who: &str, host: &Dev, code: &str) -> Value {
+    let args = json!({"host": "127.0.0.1", "port": host.net.port, "passphrase": code});
+    let mut params = args.as_object().unwrap().clone();
+    params.insert("ticket".into(), json!(ticket_for(guest, who, "join_pool", args)));
+    guest.ok("join_pool", "", who, Value::Object(params))
+}
+
+/// The person ``me`` of ``dev`` removes the device ``fingerprint`` with the key of ``seed``, at one prompt for exactly that removal.
+fn remove(dev: &Dev, me: &str, seed: &str, fingerprint: &str) {
+    let removal = dev.ok("pool_draft", "", me, json!({"kind": "remove", "body": {"fingerprint": fingerprint}}));
+    let sign_bytes = unhex(removal["sign_bytes"].as_str().unwrap()).unwrap();
+    let said = yes_for(dev, me, "card", removal["card"].as_str().unwrap());
+    dev.ok("ticket_spend", "", me, json!({"ticket": said["secret"], "payload": sha256_hex(&sign_bytes)}));
+    let key = hex(SigningKey::from_bytes(&unhex(seed).unwrap().try_into().unwrap()).verifying_key().as_bytes());
+    let mut act = removal["act"].clone();
+    act["signatures"] = json!([{"kind": "admin", "key": key, "sig": sign(seed, &sign_bytes)}]);
+    assert_eq!(dev.ok("pool_submit", "", me, json!({"act": act}))["status"], "effective");
 }
 
 fn sign(seed: &str, bytes: &[u8]) -> String {
@@ -197,4 +243,120 @@ fn a_yes_opens_one_window_for_the_session_it_was_given_to_and_nothing_else() {
     assert_eq!(again["ok"], false, "a yes opens one window: {again}");
     let no_card = a.call("op_draft", "", &me, json!({"op": "pool_leave", "args": {}}));
     assert_eq!(no_card["ok"], false, "{no_card}");
+}
+
+#[test]
+fn a_pool_approved_by_a_typed_yes_is_founded_opens_a_window_admits_a_second_device_and_removes_it() {
+    let (a, b) = (device(), device());
+    let (raised, shown) = at_a_terminal(&a);
+    at_a_terminal(&b);
+    let me = person(&a, "the-person");
+    let seed = found(&a, &me, "home");
+    let gov = a.status()["governance"].clone();
+    assert_eq!((gov["floors"]["sensitive"].clone(), gov["delegates"].clone()), (json!("weak"), json!([])), "approved by a typed yes, and no device is a delegate: {gov}");
+    assert!(shown.lock().unwrap()[0].contains("typed yes") && !shown.lock().unwrap()[0].contains("30 days"), "{:?}", shown.lock().unwrap());
+    // the ticket alone opens nothing here: no device is a delegate and the node holds no key
+    let other = person(&a, "another-terminal");
+    let drawn = a.ok("op_draft", "", &other, json!({"op": "add_device", "args": {}}));
+    let ticket = yes_for(&a, &other, "card", drawn["card"].as_str().unwrap())["secret"].as_str().unwrap().to_string();
+    let refused = a.call("add_device", "", &other, json!({"ticket": ticket}));
+    assert_eq!(refused["ok"], false, "{refused}");
+    assert!(refused["error"]["message"].as_str().unwrap().contains("I need your OK"), "{refused}");
+    // the person's yes for the window is also the key's signature of the act that lets this device admit what proves the code
+    let code = open_window(&a, &me, &seed, json!({}));
+    let guest = person(&b, "the-guest-person");
+    let joined = join(&b, &guest, &a, &code);
+    assert!(joined["approved"].as_str().unwrap().contains("typed yes"), "the joiner is told how the pool is approved: {joined}");
+    assert!(a.is_member(&b.fp()) && b.is_member(&a.fp()), "both devices list each other");
+    remove(&a, &me, &seed, &b.fp());
+    assert_eq!(a.member(&b.fp()).unwrap()["status"], "revoked");
+    assert_eq!(raised.load(Ordering::SeqCst), 4, "founding, a window's yes that opens nothing, the window and the removal");
+}
+
+#[test]
+fn a_computer_whose_delegate_has_lapsed_still_opens_a_window_with_the_persons_yes() {
+    let (a, b) = (device(), device());
+    let (raised, _) = at_the_prompt(&a);
+    at_the_prompt(&b);
+    let me = person(&a, "the-person");
+    let seed = found(&a, &me, "home");
+    pass(&a, 31 * 24 * 3_600_000);
+    assert!(a.status()["governance"]["delegates"].as_array().unwrap().is_empty(), "the 30 days are over");
+    let other = person(&a, "another-terminal");
+    let drawn = a.ok("op_draft", "", &other, json!({"op": "add_device", "args": {}}));
+    let ticket = yes_for(&a, &other, "card", drawn["card"].as_str().unwrap())["secret"].as_str().unwrap().to_string();
+    assert_eq!(a.call("add_device", "", &other, json!({"ticket": ticket}))["ok"], false, "with no delegate and no signed act the ticket opens nothing");
+    let code = open_window(&a, &me, &seed, json!({}));
+    join(&b, &person(&b, "the-guest-person"), &a, &code);
+    assert!(a.is_member(&b.fp()));
+    assert_eq!(raised.load(Ordering::SeqCst), 3, "founding, the refused window's yes and the window");
+}
+
+/// A fresh ticket for a window on ``dev`` as ``me``, with the window act the card drafted and the key that would sign it.
+fn window_card(dev: &Dev, me: &str) -> (String, Value, Vec<u8>) {
+    let drawn = dev.ok("op_draft", "", me, json!({"op": "add_device", "args": {}}));
+    let ticket = yes_for(dev, me, "card", drawn["card"].as_str().unwrap())["secret"].as_str().unwrap().to_string();
+    let bytes = unhex(drawn["window"]["sign_bytes"].as_str().unwrap()).unwrap();
+    dev.ok("ticket_spend", "", me, json!({"ticket": ticket, "payload": sha256_hex(&bytes)}));
+    (ticket, drawn["window"]["act"].clone(), bytes)
+}
+
+fn signed_by(seed: &str, act: &mut Value, bytes: &[u8]) {
+    let key = hex(SigningKey::from_bytes(&unhex(seed).unwrap().try_into().unwrap()).verifying_key().as_bytes());
+    act["signatures"] = json!([{"kind": "admin", "key": key, "sig": sign(seed, bytes)}]);
+}
+
+#[test]
+fn a_window_act_must_name_this_device_be_signed_by_a_key_and_belong_to_the_yes_it_came_with() {
+    let (a, b) = (device(), device());
+    at_a_terminal(&a);
+    at_a_terminal(&b);
+    let me = person(&a, "the-person");
+    let seed = found(&a, &me, "home");
+    // an act that names another device opens no window here
+    let (p2, p3, p4) = (person(&a, "p2"), person(&a, "p3"), person(&a, "p4"));
+    let (ticket, mut act, _) = window_card(&a, &p2);
+    act["body"]["fingerprint"] = json!(b.fp());
+    let bytes = serde_json::from_value::<poolhouse_node::gov::act::Act>(act.clone()).unwrap().sign_bytes();
+    signed_by(&seed, &mut act, &bytes);
+    let wrong = a.call("add_device", "", &p2, json!({"ticket": ticket, "window": act}));
+    assert_eq!(wrong["ok"], false, "{wrong}");
+    // an act no key signed opens none either
+    let (ticket, act, _) = window_card(&a, &p3);
+    let unsigned = a.call("add_device", "", &p3, json!({"ticket": ticket, "window": act}));
+    assert_eq!(unsigned["ok"], false, "{unsigned}");
+    assert!(a.status()["join_code_open"] != json!(true), "no window opened");
+    // a key that signs the act of one yes cannot sign a second act under it: the ticket names the bytes of the card
+    let (ticket, mut act, bytes) = window_card(&a, &p4);
+    signed_by(&seed, &mut act, &bytes);
+    let opened = a.ok("add_device", "", &p4, json!({"ticket": ticket, "window": act}));
+    assert!(opened["code"].is_string(), "{opened}");
+}
+
+#[test]
+fn the_yes_for_one_window_or_join_covers_no_other_pool_host_port_code_or_device() {
+    use poolhouse_node::window::describe;
+    let same = |a: &Value, b: &Value| describe("join_pool", "", "", a.as_object().unwrap()).unwrap().bytes == describe("join_pool", "", "", b.as_object().unwrap()).unwrap().bytes;
+    let base = json!({"host": "10.0.0.5", "port": 7447, "passphrase": "123456", "fingerprint": ""});
+    assert!(same(&base, &base.clone()));
+    for (field, other) in [("host", json!("10.0.0.6")), ("port", json!(7448)), ("passphrase", json!("654321")), ("fingerprint", json!("ab".repeat(32)))] {
+        let mut changed = base.clone();
+        changed[field] = other;
+        assert!(!same(&base, &changed), "a yes for one {field} is no yes for another");
+    }
+    let window = |pool: &str, ttl: u64, code: &str, presigned: bool| describe("add_device", pool, "home", json!({"ttl_s": ttl, "passphrase": code, "presigned": presigned}).as_object().unwrap()).unwrap().bytes;
+    let base = window("pool-a", 120, "", false);
+    assert_ne!(base, window("pool-b", 120, "", false), "a yes for a window of one pool opens none of another");
+    assert_ne!(base, window("pool-a", 60, "", false), "nor one of another length");
+    assert_ne!(base, window("pool-a", 120, "my-own-code", false), "nor with a code of the asker's choosing");
+    assert_ne!(base, window("pool-a", 120, "", true), "nor a presigned one");
+    assert_ne!(describe("join_pool", "", "", base_join().as_object().unwrap()).unwrap().sentence, describe("join_pool", "", "", {
+        let mut other = base_join();
+        other["host"] = json!("10.0.0.6");
+        other
+    }.as_object().unwrap()).unwrap().sentence, "the prompt names the host");
+}
+
+fn base_join() -> Value {
+    json!({"host": "10.0.0.5", "port": 7447, "passphrase": "123456", "fingerprint": ""})
 }

@@ -127,6 +127,7 @@ fn sentence(act: &Act, g: &GovPool, deep: bool) -> String {
         Body::RecoveryReplace(a) => format!("Replace the recovery key with {}. The old recovery key can cancel this for 7 days.", key_line(&a.entry)),
         Body::Delegate(d) => format!("Let {} admit devices for 30 days.", device(g, &d.fingerprint)),
         Body::DelegateEnd(d) => format!("End {}'s power to admit devices.", device(g, &d.fingerprint)),
+        Body::Window(d) => format!("Let {} admit one new device that proves a code, in the next 10 minutes.", device(g, &d.fingerprint)),
         Body::Cancel(t) | Body::Veto(t) => {
             let held = g.acts().get(&t.act).filter(|h| deep && !matches!(h.kind.as_str(), "cancel" | "veto"));
             let what = held.map_or_else(|| format!("the act {}", short(&t.act)), |h| sentence(h, g, false));

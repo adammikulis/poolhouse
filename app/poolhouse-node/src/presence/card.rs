@@ -30,6 +30,8 @@ pub const UNSHOWABLE: &str = "This name has characters the computer's prompt can
 pub struct Generated {
     pub public: String,
     pub seed: [u8; 32],
+    /// How the charter says the key is held, which is what is recorded for it when the pool is founded.
+    pub claim: crate::gov::keys::Claim,
 }
 
 impl std::fmt::Debug for Generated {

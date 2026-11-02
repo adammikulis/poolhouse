@@ -108,6 +108,7 @@ fn change(act: &Act, pool: &GovPool, depth: usize) -> Result<String> {
         Body::RecoveryReplace(add) => format!("Replace the recovery key. Requested role, level and identity:\n{}", key(&add.entry)),
         Body::Delegate(device) => format!("Allow {} to admit devices for 30 days.", named_device(pool, &device.fingerprint)),
         Body::DelegateEnd(device) => format!("End permission for {} to admit devices.", named_device(pool, &device.fingerprint)),
+        Body::Window(device) => format!("Let {} admit one new device that proves a code, in the next 10 minutes.", named_device(pool, &device.fingerprint)),
         Body::Cancel(target) | Body::Veto(target) => {
             if depth != 0 { return bad("A cancellation request cannot contain another cancellation.") }
             let Some(held) = pool.acts().get(&target.act) else { return bad("The phone needs the signed change this request cancels.") };

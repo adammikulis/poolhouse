@@ -150,9 +150,9 @@ impl Person {
     }
 
     /// Enrol this key on the node ``call`` reaches, carried by the session ``token``, with the one-time secret the person's yes makes.
-    pub fn enroll(&self, _dir: &Path, call: Call, token: &str) -> Value {
+    pub fn enroll(&self, dir: &Path, call: Call, token: &str) -> Value {
         let mut params = self.enrolment("a test person", None);
-        params["secret"] = json!(first_secret(call, token, "key", &self.public()));
+        params["secret"] = json!(first_secret(dir, call, "key", &self.public()));
         call("person_enroll", "", token, params)
     }
 
@@ -271,10 +271,14 @@ pub fn gid_of(name: &str, action: &str) -> String {
     format!("g-{}", &sha256_hex(format!("{name} {action}").as_bytes())[..20])
 }
 
-/// Ask the person for the one-time secret the first key (``purpose`` `key`) or the first phone (`phone`) is added with, as the session
-/// ``token``. A node of a test says yes at once (`kit::node`); a node process asks on the terminal named here, where this test types `yes`
-/// as a person would, so the same binary a person installs is the one that is run.
-pub fn first_secret(call: Call, token: &str, purpose: &str, public: &str) -> String {
+/// Ask the person for the one-time secret the first key (``purpose`` `key`) or the first phone (`phone`) is added with, as the person's own
+/// session of the node whose state directory is ``dir`` (only that session puts a question to the person). A node of a test says yes at once
+/// (`kit::node`); a node process asks on the terminal named here, where this test types `yes` as a person would, so the same binary a person
+/// installs is the one that is run.
+pub fn first_secret(dir: &Path, call: Call, purpose: &str, public: &str) -> String {
+    let made = call("register_person", "demo", "", json!({"session": format!("first-{purpose}"), "proof": super::proof_in(dir)}));
+    let token = made["result"]["token"].as_str().unwrap_or_else(|| panic!("the person's own session: {made}")).to_string();
+    let token = token.as_str();
     #[cfg(unix)]
     let mut screen = super::screen::screen();
     #[cfg(unix)]

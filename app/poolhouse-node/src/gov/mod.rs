@@ -77,3 +77,5 @@ pub fn admit_fits(admin_signed: bool, live: usize) -> bool {
 }
 /// The first-sight time of an act a device took inside a join it made: its holds were over before this device was there.
 pub const SETTLED: i64 = i64::MIN / 4;
+/// How long a window act lets the device it names admit, in awake time: the person's one yes for opening one join window.
+pub const WINDOW_AWAKE_MS: i64 = 10 * 60_000;

@@ -17,7 +17,7 @@ from poolhouse.board import founding, presence
 from poolhouse.board.client import Client, NodeError
 
 __all__ = ["Capacity", "Founding", "Member", "Pool", "Refusal", "add_device", "capacity", "found", "join", "leave", "listen", "members",
-           "policy", "remove", "status", "sync"]
+           "policy", "remove", "renew", "status", "sync"]
 Refusal = founding.Refusal
 """A call that needs the person: ``str`` is one sentence to pass on; ``needs`` (`approval`, `device`, `time`, `none`), ``where`` (where they
 tap or answer) and ``then`` (`wait`, `retry`, `ask-owner`, `stop`) say what happens next. A subclass of `ph.Denied`."""
@@ -189,7 +189,7 @@ def add_device(ttl_s: int = 300, *, say: Callable[[str], object] | None = None) 
     """
     params: dict[str, object] = {"ttl_s": ttl_s}
     if (person := _node.person_session()) is not None:
-        params["ticket"] = founding.ticket_for(person, "add_device", {"ttl_s": ttl_s}, presence.Voice(say=say or (lambda _text: None)))
+        params |= founding.yes_for(person, "add_device", {"ttl_s": ttl_s}, presence.Voice(say=say or (lambda _text: None)))
     return dict(_node.call("add_device", params, token=(person or _node.session()).token))
 
 
@@ -206,7 +206,7 @@ def join(host: str, code: str = "", *, port: int = DEFAULT_PORT, fingerprint: st
     session = person or _node.session()
     params = {"host": host, "port": port, **({"passphrase": code} if code else {"fingerprint": fingerprint})}
     if person is not None:
-        params["ticket"] = founding.ticket_for(person, "join_pool", dict(params), presence.Voice(say=say or (lambda _text: None)))
+        params |= founding.yes_for(person, "join_pool", dict(params), presence.Voice(say=say or (lambda _text: None)))
 
     def send() -> dict[str, object]:
         return dict(session.client.call("join_pool", "", session.token, **params))
@@ -244,6 +244,15 @@ def remove(device: str) -> Member:
     except founding.NoComputerKey:
         _node.call("member_remove", {"fingerprint": found[0].fingerprint}, token=_node.session().token)
     return next(m for m in members(include_removed=True) if m.fingerprint == found[0].fingerprint)
+
+
+def renew(*, say: Callable[[str], object] | None = None) -> Member:
+    """Give this device another 30 days of admitting devices without asking (the delegate a pool starts with): a change to who governs the pool, so it
+    is approved at this computer's prompt and takes effect after the pool's wait. Until then a window is still opened with the person's yes (`add_device`).
+    Raises `Refusal`."""
+    this = next(m for m in members() if m.this_device)
+    founding.govern(Client(node_launch.default_state()), "delegate", {"fingerprint": this.fingerprint}, voice=presence.Voice(say=say or (lambda _text: None)))
+    return this
 
 
 def leave() -> dict[str, object]:

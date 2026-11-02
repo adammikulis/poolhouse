@@ -38,7 +38,7 @@ fn answered(n: &mut Node, token: &str) -> Value {
 fn only_a_line_typed_yes_on_the_terminal_makes_the_secret_and_the_node_asked_there_itself() {
     let dir = tempdir().unwrap();
     let mut n = terminal_node(dir.path());
-    let (_, token) = session(&mut n, "demo", "a");
+    let token = person_token(&mut n, "demo", "a");
     let mut me = screen();
     assert_eq!(ok(ask(&mut n, &token, &me.name))["state"], "asking");
     let shown = me.sees("Type yes");
@@ -54,7 +54,7 @@ fn enter_y_and_a_late_yes_are_refusals_and_a_no_keeps_the_node_from_asking_again
     for line in ["\n", "y\n", "no\n", "yes please\n", "yess\n"] {
         let dir = tempdir().unwrap();
         let mut n = terminal_node(dir.path());
-        let (_, token) = session(&mut n, "demo", "a");
+        let token = person_token(&mut n, "demo", "a");
         let mut me = screen();
         ok(ask(&mut n, &token, &me.name));
         me.sees("Type yes");
@@ -68,7 +68,7 @@ fn enter_y_and_a_late_yes_are_refusals_and_a_no_keeps_the_node_from_asking_again
 fn text_typed_before_the_question_is_dropped() {
     let dir = tempdir().unwrap();
     let mut n = terminal_node(dir.path());
-    let (_, token) = session(&mut n, "demo", "a");
+    let token = person_token(&mut n, "demo", "a");
     let mut me = screen();
     me.types("yes\n");
     ok(ask(&mut n, &token, &me.name));
@@ -81,8 +81,8 @@ fn text_typed_before_the_question_is_dropped() {
 fn nobody_typing_makes_nothing_and_another_session_reads_nothing() {
     let dir = tempdir().unwrap();
     let mut n = terminal_node(dir.path());
-    let (_, mine) = session(&mut n, "demo", "a");
-    let (_, theirs) = session(&mut n, "demo", "b");
+    let mine = person_token(&mut n, "demo", "a");
+    let theirs = person_token(&mut n, "demo", "b");
     let me = screen();
     ok(ask(&mut n, &mine, &me.name));
     std::thread::sleep(Duration::from_millis(500));
@@ -99,7 +99,7 @@ fn nobody_typing_makes_nothing_and_another_session_reads_nothing() {
 fn a_terminal_that_is_not_one_of_the_askers_is_refused() {
     let dir = tempdir().unwrap();
     let mut n = terminal_node(dir.path());
-    let (_, token) = session(&mut n, "demo", "a");
+    let token = person_token(&mut n, "demo", "a");
     let file = dir.path().join("not-a-terminal");
     std::fs::write(&file, "x").unwrap();
     for named in ["", "/dev/null", "/dev/../etc/passwd", "/nonexistent/tty", file.to_str().unwrap(), "/dev/random"] {

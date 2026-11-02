@@ -82,14 +82,35 @@ impl Node {
     /// is for. `card_why` says why there is no card when the prompt could not show the operation whole.
     pub fn op_draft(&mut self, by: &str, op: &str, args: &Value) -> Result<Value> {
         let args = args.as_object().ok_or_else(|| Error::Invalid("args is the params of the operation".into()))?;
+        if self.facts.listen.is_none() {
+            return Err(Error::Invalid("this node's network is not running: a person turns it on first".into()));
+        }
         let (pool, name) = self.pool_words();
         let done = describe(op, &pool, &name, args)?;
-        let card = self.firsts.cards.add(by, Draft { sentence: &done.sentence, payloads: &[done.bytes.clone()], founding: None, generated: None }, self.now_ms());
+        // A window is also the person's yes to this device admitting what proves its code: the act the person's key signs under the same ticket, so no
+        // delegate, signer or wait is needed for the one device a window lets in.
+        let window = match (op, self.members.gov()) {
+            ("add_device", Some(g)) => Some(g.new_act("window", json!({"fingerprint": self.cert.fingerprint()}), crate::poolops::wall_ms())?),
+            _ => None,
+        };
+        let mut payloads = vec![done.bytes.clone()];
+        payloads.extend(window.iter().map(|act| act.sign_bytes()));
+        let card = self.firsts.cards.add(by, Draft { sentence: &done.sentence, payloads: &payloads, founding: None, generated: None }, self.now_ms());
         let (card_id, card_why) = match card {
             Ok(id) => (Value::String(id), Value::Null),
             Err(why) => (Value::Null, Value::String(why.into())),
         };
-        Ok(json!({"card": card_id, "card_why": card_why, "sentence": done.sentence}))
+        let window = window.map(|act| json!({"sign_bytes": crate::fsutil::hex(&act.sign_bytes()), "act": act}));
+        Ok(json!({"card": card_id, "card_why": card_why, "sentence": done.sentence, "window": window}))
+    }
+
+    /// Take in the act the person's key signed for opening a window on this device: it must be a window act that names this device.
+    pub fn window_submit(&mut self, act: &Value) -> Result<()> {
+        let named = act["kind"] == "window" && act["body"]["fingerprint"].as_str() == Some(self.cert.fingerprint().as_str());
+        if !named {
+            return Err(Error::Denied("a window is opened by a window act that names this device".into()));
+        }
+        self.pool_submit(act).map(drop)
     }
 
     /// Spend the ticket ``ticket`` of ``by`` on the operation ``op`` of ``args`` (the params of the call, less its ticket).

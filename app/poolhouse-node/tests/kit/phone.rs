@@ -185,8 +185,8 @@ impl Rig {
         if !self.node.lock().unwrap().persons.is_empty() {
             return make_offer(&mut self.node.lock().unwrap(), now()).unwrap();
         }
-        let (_, token) = self.session("demo", "first-phone-setup");
-        first_secret(&mut |m, b, t, p| self.call(m, b, t, p), &token, "phone", "")
+        let dir = self.node.lock().unwrap().dir.clone();
+        first_secret(&dir, &mut |m, b, t, p| self.call(m, b, t, p), "phone", "")
     }
 
     /// The body of ``phone``'s `add` request with the code ``secret``: in a pool it also carries the phone's acceptance of the terms the code

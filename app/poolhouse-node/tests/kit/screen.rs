@@ -28,6 +28,12 @@ pub fn screen() -> Screen {
 }
 
 impl Screen {
+    /// The descriptor of the device side, which a process takes as its controlling terminal.
+    pub fn device_fd(&self) -> std::os::fd::RawFd {
+        use std::os::fd::AsRawFd;
+        self._device.as_raw_fd()
+    }
+
     /// Read what the node put on the screen until ``text`` appears.
     pub fn sees(&mut self, text: &str) -> String {
         let (end, mut shown) = (Instant::now() + Duration::from_secs(20), Vec::new());
@@ -40,6 +46,16 @@ impl Screen {
             }
         }
         String::from_utf8_lossy(&shown).into_owned()
+    }
+
+    /// Read and drop what is waiting on the screen: a terminal's last process does not end until what was written to it has been read.
+    pub fn drain(&mut self) {
+        let mut reader = &self.person;
+        for _ in 0..4 {
+            std::thread::sleep(Duration::from_millis(50));
+            let mut buf = [0u8; 512];
+            while matches!(reader.read(&mut buf), Ok(n) if n > 0) {}
+        }
     }
 
     pub fn types(&mut self, line: &str) {

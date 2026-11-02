@@ -26,9 +26,9 @@ pub const WINDOW_MS: u64 = 3_600_000;
 pub const LONG_WINDOW_MS: u64 = 7 * 24 * WINDOW_MS;
 
 /// Every kind of act this build knows.
-pub const KINDS: [&str; 15] = [
+pub const KINDS: [&str; 16] = [
     "found", "admit", "remove", "leave", "admin_add", "admin_remove", "veto", "cancel", "set_threshold", "set_holds", "set_mode", "set_floors", "recovery_replace", "delegate",
-    "delegate_end",
+    "delegate_end", "window",
 ];
 /// The kinds that change the admin set, a threshold, a hold, a floor or the mode: they form one chain, an epoch each.
 pub const CHAIN: [&str; 7] = ["admin_add", "admin_remove", "set_threshold", "set_holds", "set_mode", "set_floors", "recovery_replace"];

@@ -34,7 +34,7 @@ pub fn params(method: &str) -> Option<&'static [&'static str]> {
         "pool_found" => &["act", "charter"],
         "pool_draft_found" => &["title", "policy", "project", "keys"],
         "op_draft" => &["op", "args"],
-        "add_device" => &["passphrase", "ttl_s", "presigned", "ticket"],
+        "add_device" => &["passphrase", "ttl_s", "presigned", "ticket", "window"],
         "join_pool" => &["host", "port", "passphrase", "fingerprint", "ticket"],
         "shard_call" => &["device", "op", "args"],
         "shard_consent" => &["enabled", "python", "repo", "allow", "deny"],
@@ -132,11 +132,16 @@ pub fn dispatch(node: &mut Node, method: &str, token: &str, p: &Map<String, Valu
             let (name, anchor) = crate::gov::ops::founding_name(&act)?;
             let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("a registered session is needed".into()))?;
             let now = node.now_ms();
-            // The person's yes at the computer's prompt for this very charter is the grant to found it; otherwise the session needs the grant.
-            if !node.firsts.founding_confirmed(&format!("{}/{}", holder.board, holder.name), &anchor, now) {
+            // The person's yes at the computer's prompt for this very charter is the grant to found it, and the key the node made for it is enrolled when the pool
+            // is founded and not before; otherwise the session needs the grant.
+            let by = format!("{}/{}", holder.board, holder.name);
+            let yes = node.firsts.founding_yes(&by, &anchor, now);
+            if yes.is_none() {
                 authorize(node, token, "pool_create", &name)?;
             }
-            node.pool_found(&act)
+            let made = node.pool_found_with(&act, yes.flatten().as_ref())?;
+            node.firsts.founded(&by);
+            Ok(made)
         }
         "pool_draft_found" => {
             let by = person_by(node, token);

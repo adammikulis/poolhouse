@@ -30,7 +30,12 @@ pytest_plugins = ["node_kit"]
 
 
 def register(node) -> str:
-    """A session of the demo board that asks as an agent does: its own token, no terminal of the person's."""
+    """The person's own session of the demo board, registered with the secret the node keeps for the person: the only session that puts a question to the person."""
+    return board_session.register(node.client, node.board, board_session.Native("person", "poolhouse-ui", "the-person"), "", person=True).token
+
+
+def agent(node) -> str:
+    """A session of the demo board that an agent started: its own token, no secret of the person's."""
     return board_session.register(node.client, node.board, board_session.Native("claude-sonnet-5-5", "claude-code", "agent"), "").token
 
 
@@ -68,7 +73,7 @@ def test_a_guessed_secret_and_the_files_an_agent_can_write_enrol_no_first_key(wo
 
 def test_a_secret_is_the_nodes_own_and_one_wrong_guess_spends_it(workspace_node):
     token, person = register(workspace_node), Signer.generate()
-    said = wire.answer_presence(workspace_node.state, token, "key", person.public.hex())["result"]
+    said = wire.answer_presence(workspace_node.state, "key", person.public.hex())["result"]
     assert said["state"] == "confirmed" and said["presence"] == "terminal"
     with pytest.raises(Denied):
         grants.enrol(workspace_node.client, token, {**grants.enrolment(person, "a test person"), "secret": "guess"})
@@ -81,17 +86,17 @@ def test_the_person_typing_yes_to_the_node_enrols_the_first_key_and_a_second_sec
     token, person = register(workspace_node), Signer.generate()
     assert enrol_first(workspace_node.client, token, person)["fingerprint"] == grants.fingerprint(person.public)
     assert held(workspace_node) == [grants.fingerprint(person.public)]
-    again = wire.answer_presence(workspace_node.state, token, "key", Signer.generate().public.hex())
+    again = wire.answer_presence(workspace_node.state, "key", Signer.generate().public.hex())
     assert not again["ok"] and again["code"] == "denied", "a key is enrolled already: a further one is approved by it, not by this question"
 
 
 def test_the_persons_yes_is_for_the_key_it_was_asked_about_and_no_other_key(workspace_node):
     token, person, agent = register(workspace_node), Signer.generate(), Signer.generate()
-    said = wire.answer_presence(workspace_node.state, token, "key", person.public.hex())["result"]
+    said = wire.answer_presence(workspace_node.state, "key", person.public.hex())["result"]
     with pytest.raises(Denied):
         grants.enrol(workspace_node.client, token, {**grants.enrolment(agent, "an agent"), "secret": said["secret"]})
     assert held(workspace_node) == [], "a yes for one key enrolled another"
-    asked = wire.answer_presence(workspace_node.state, token, "key", "")
+    asked = wire.answer_presence(workspace_node.state, "key", "")
     assert not asked["ok"] and asked["code"] == "invalid", "a first key is asked for with its key"
 
 
@@ -103,7 +108,7 @@ def test_a_node_started_with_no_way_to_ask_refuses_the_first_key_and_the_first_p
     try:
         node_launch.ensure_node(state, extra=[])
         client = board_client.Client(state)
-        token = board_session.register(client, "demo", board_session.Native("claude-sonnet-5-5", "claude-code", "x"), "").token
+        token = board_session.register(client, "demo", board_session.Native("person", "poolhouse-ui", "x"), "", person=True).token
         for purpose in ("key", "phone"):
             with pytest.raises(Denied, match="no way to ask"):
                 presence.ask(client, token, purpose, Signer.generate().public.hex() if purpose == "key" else "")
@@ -130,3 +135,13 @@ def test_no_switch_of_the_shipped_node_answers_for_the_person():
             continue
         text = source.read_text(encoding="utf-8")
         assert "cfg(feature" not in text and "AlwaysYes" not in text, f"{source} compiles a way to answer for the person only in some builds"
+
+
+def test_a_session_an_agent_started_asks_the_person_for_nothing_and_cannot_open_a_terminal_to_answer_for_them(workspace_node):
+    token = agent(workspace_node)
+    for purpose in ("key", "phone"):
+        with pytest.raises(Denied, match="person's own session"):
+            presence.ask(workspace_node.client, token, purpose, Signer.generate().public.hex() if purpose == "key" else "")
+    assert held(workspace_node) == []
+    with pytest.raises(board_client.Denied):
+        workspace_node.client.call("register_person", workspace_node.board, "", session="forged", proof="a" * 64)

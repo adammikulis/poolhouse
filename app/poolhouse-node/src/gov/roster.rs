@@ -14,7 +14,7 @@ use super::act::Act;
 use super::body::{self, Admit, Body};
 use super::chain::{Chain, Seen};
 use super::charter::Class;
-use super::{COMPUTER_HOLD_MS, DAY_MS, DELEGATE_DAYS, DELEGATE_PER_DAY, DELEGATE_PER_HOUR, HOUR_MS, OPEN_PER_HOUR, OPEN_POOL_PER_HOUR, SETTLED};
+use super::{COMPUTER_HOLD_MS, DAY_MS, DELEGATE_DAYS, DELEGATE_PER_DAY, DELEGATE_PER_HOUR, HOUR_MS, OPEN_PER_HOUR, OPEN_POOL_PER_HOUR, SETTLED, WINDOW_AWAKE_MS};
 
 /// A device an admin act lets sign `admit`.
 #[derive(Clone, Debug)]
@@ -31,6 +31,11 @@ pub struct Roster {
     /// For each device, the spans of awake time (first sight of the act that made it a delegate until it ended or ran out) in which
     /// an admit it signed counts.
     windows: BTreeMap<String, Vec<(i64, i64)>>,
+    /// For each device, the spans of awake time in which a window act the person's yes made lets it admit; a window of a history taken in at a
+    /// join is a span that is over.
+    opened: BTreeMap<String, Vec<(i64, i64)>>,
+    /// The devices whose window is open now.
+    pub open_now: BTreeSet<String>,
     /// For each device, who signed its admit: `admin KEY`, `delegate FINGERPRINT` or `member FINGERPRINT`.
     pub signed_by: BTreeMap<String, String>,
     /// For each device, the id of the act that admitted it.
@@ -47,6 +52,16 @@ pub struct Roster {
 }
 
 impl Roster {
+    /// Whether ``device`` has held a window, open or over: its admit is taken in, and whether it stands is for the time this device first saw it.
+    pub fn held_a_window(&self, device: &str) -> bool {
+        self.opened.contains_key(device)
+    }
+
+    /// The first awake moment after ``now`` at which a window ends, so the pool is folded again then.
+    pub fn next_window_end(&self, now: i64) -> Option<i64> {
+        self.opened.values().flatten().map(|(_, until)| *until).filter(|until| *until > now).min()
+    }
+
     /// The first awake moment after ``now`` at which a delegate's window begins: a delegate act is held, and the pool is folded again when
     /// the hold has run so that the device may admit.
     pub fn next_delegate_start(&self, now: i64) -> Option<i64> {
@@ -141,7 +156,7 @@ fn delegates(chain: &Chain, acts: &BTreeMap<String, Act>, ready: &Seen, now: i64
     if let Some((_, fingerprint)) = chain.epochs.first().filter(|e| e.charter.first.delegate).and_then(|e| e.charter.first.device()) {
         out.windows.entry(fingerprint).or_default().push((SETTLED, joined.saturating_add(DELEGATE_DAYS * DAY_MS)));
     }
-    let mut ops: Vec<(i64, u64, &String, &Act)> = acts.iter().filter(|(_, a)| matches!(a.kind.as_str(), "delegate" | "delegate_end")).map(|(id, a)| (ready.get(id).copied().unwrap_or(now), a.at_ms, id, a)).collect();
+    let mut ops: Vec<(i64, u64, &String, &Act)> = acts.iter().filter(|(_, a)| matches!(a.kind.as_str(), "delegate" | "delegate_end" | "window")).map(|(id, a)| (ready.get(id).copied().unwrap_or(now), a.at_ms, id, a)).collect();
     ops.sort_by_key(|(first, at, id, _)| (*first, *at, (*id).clone()));
     for (at, _, id, a) in ops {
         // An act that carries all its signatures now is ready now: the pool records that moment (`validated`) so that the next fold keeps it.
@@ -155,6 +170,15 @@ fn delegates(chain: &Chain, acts: &BTreeMap<String, Act>, ready: &Seen, now: i64
                 Verdict::Ok => {
                     complete(out);
                     out.windows.entry(d.fingerprint).or_default().push(delegate_span(chain, id, a, at, joined));
+                }
+                Verdict::Short(h, n, why) => drop(out.short.insert(id.clone(), (h, n, why))),
+                Verdict::Void(why) => drop(out.void.insert(id.clone(), why)),
+            },
+            (Ok(Body::Window(d)), _) => match verdict(id, a, Some(Class::Sensitive), chain, false) {
+                Verdict::Ok => {
+                    complete(out);
+                    let span = if at == SETTLED { (SETTLED, SETTLED) } else { (at, at.saturating_add(WINDOW_AWAKE_MS)) };
+                    out.opened.entry(d.fingerprint).or_default().push(span);
                 }
                 Verdict::Short(h, n, why) => drop(out.short.insert(id.clone(), (h, n, why))),
                 Verdict::Void(why) => drop(out.void.insert(id.clone(), why)),
@@ -175,6 +199,8 @@ fn delegates(chain: &Chain, acts: &BTreeMap<String, Act>, ready: &Seen, now: i64
             out.delegates.insert(device.clone(), Delegate { device: device.clone(), ends_ms: *ends });
         }
     }
+    let open: Vec<String> = out.opened.iter().filter(|(_, spans)| spans.iter().any(|(from, until)| *from <= now && now < *until)).map(|(device, _)| device.clone()).collect();
+    out.open_now.extend(open);
 }
 
 fn candidates(acts: &BTreeMap<String, Act>) -> Vec<Candidate> {
@@ -232,6 +258,7 @@ struct Facts {
     /// member at a given point of that order.
     life: BTreeMap<String, Vec<(i64, u64, String, bool)>>,
     windows: BTreeMap<String, Vec<(i64, i64)>>,
+    opened: BTreeMap<String, Vec<(i64, i64)>>,
     seen: BTreeMap<String, i64>,
     admin_ok: BTreeSet<String>,
     admin_of: BTreeMap<String, String>,
@@ -262,7 +289,8 @@ impl Facts {
     /// Whether ``device`` was a delegate when this device first saw the admit ``id``.
     fn delegate_at(&self, device: &str, id: &str) -> bool {
         let at = self.seen.get(id).copied().unwrap_or(0);
-        at == SETTLED || self.windows.get(device).is_some_and(|w| w.iter().any(|(from, until)| *from <= at && at < *until))
+        at == SETTLED
+            || [&self.windows, &self.opened].into_iter().any(|spans| spans.get(device).is_some_and(|w| w.iter().any(|(from, until)| *from <= at && at < *until)))
     }
 }
 
@@ -324,7 +352,7 @@ pub fn build(chain: &Chain, acts: &BTreeMap<String, Act>, (seen, ready): (&Seen,
         life.entry(fp).or_default().push((first(&id), at, id, false));
     }
     life.values_mut().for_each(|events| events.sort());
-    let mut facts = Facts { open: chain.latest().charter.policy == Policy::Open, life, windows: out.windows.clone(), seen: seen_of, admin_ok: BTreeSet::new(), admin_of: BTreeMap::new() };
+    let mut facts = Facts { open: chain.latest().charter.policy == Policy::Open, life, windows: out.windows.clone(), opened: out.opened.clone(), seen: seen_of, admin_ok: BTreeSet::new(), admin_of: BTreeMap::new() };
     if let Some(admin) = chain.epochs.first().and_then(|e| e.charter.admins.first()).filter(|_| !found_id.is_empty()) {
         facts.admin_ok.insert(found_id.clone());
         facts.admin_of.insert(found_id.clone(), admin.fingerprint());

@@ -4,6 +4,7 @@
 use std::sync::atomic::Ordering;
 
 use super::card::{Draft, Generated, TICKET_FOR_MS};
+use super::firsts::SECRET_FOR_MS;
 use super::ledger::{MOST_PER_DAY, MOST_PER_TEN_MINUTES, QUIET_MS};
 use super::os::{self, OsPrompt, ASK_FOR_MS};
 use super::tests::{person, person_aged, Age, Said, Scripted};
@@ -15,7 +16,7 @@ const DAY: u64 = 24 * 60 * MIN;
 
 fn card(firsts: &mut Firsts, by: &str, payloads: &[&[u8]], generated: bool, now: u64) -> String {
     let payloads: Vec<Vec<u8>> = payloads.iter().map(|p| p.to_vec()).collect();
-    let generated = generated.then(|| Generated { public: KEY.into(), seed: [7; 32] });
+    let generated = generated.then(|| Generated { public: KEY.into(), seed: [7; 32], claim: crate::gov::keys::Claim::keystore_prompt() });
     firsts.cards.add(by, Draft { sentence: "Poolhouse - make the pool home.", payloads: &payloads, founding: None, generated }, now).unwrap()
 }
 
@@ -150,10 +151,11 @@ fn a_key_is_enrolled_only_through_the_card_that_made_it_and_only_for_the_asker_o
     *answer.lock().unwrap() = Some(true);
     firsts.ask_card(Purpose::PoolKey, "demo/a", &made, "", 5).unwrap();
     assert_eq!(firsts.status("demo/a", 6)["state"], "confirmed");
-    assert!(firsts.take_enrolment("demo/b").is_none(), "another session is given nothing");
-    let key = firsts.take_enrolment("demo/a").expect("the asker is given the key the card made");
+    assert!(firsts.take_key("demo/b").is_none(), "another session is given nothing");
+    let key = firsts.take_key("demo/a").expect("the asker is given the key the card made");
     assert_eq!((key.public.as_str(), key.seed), (KEY, [7; 32]));
-    assert!(firsts.take_enrolment("demo/a").is_none(), "once");
+    assert!(firsts.take_key("demo/a").is_none(), "once");
+    assert!(firsts.founding_yes("demo/a", "no-such-charter", 8).is_none(), "the yes is for a charter, and this one is not it");
     assert!(matches!(firsts.ask_card(Purpose::PoolKey, "demo/a", &made, "", 7), Err(Error::Invalid(_))), "the card keeps no copy of the key: a second yes hands it to nobody");
 }
 
@@ -194,4 +196,30 @@ fn an_administrators_group_is_found_among_the_groups_of_the_account() {
     assert!(os::is_member(&[20, 80, 501], Some(80)));
     assert!(!os::is_member(&[20, 501], Some(80)), "a standard account");
     assert!(!os::is_member(&[80], None), "no such group");
+}
+
+#[test]
+fn a_card_is_asked_for_only_while_it_waits_and_not_a_moment_after() {
+    let (mut firsts, _) = person();
+    let id = card(&mut firsts, "demo/a", &[b"payload"], false, 1000);
+    assert!(firsts.cards.get("demo/a", &id, 1000 + super::card::CARD_FOR_MS).is_some(), "at the last moment it still waits");
+    assert!(firsts.cards.get("demo/a", &id, 1000 + super::card::CARD_FOR_MS + 1).is_none(), "a moment later it is gone");
+    assert!(matches!(firsts.ask_card(Purpose::Card, "demo/a", &id, "", 1000 + super::card::CARD_FOR_MS + 1), Err(Error::Invalid(_))), "and it is not asked for: draft it again");
+}
+
+#[test]
+fn the_yes_for_a_founding_is_good_for_ten_minutes_and_for_the_charter_it_was_given_for() {
+    let (mut firsts, answer) = person();
+    let payloads = vec![b"acceptance".to_vec()];
+    let id = firsts.cards.add("demo/a", Draft { sentence: "Poolhouse - make the pool home.", payloads: &payloads, founding: Some("anchor-a".into()), generated: None }, 0).unwrap();
+    *answer.lock().unwrap() = Some(true);
+    firsts.ask_card(Purpose::Card, "demo/a", &id, "", 1000).unwrap();
+    assert_eq!(firsts.status("demo/a", 1000)["state"], "confirmed");
+    assert!(firsts.founding_yes("demo/a", "anchor-b", 1000).is_none(), "another charter is not the one");
+    assert!(firsts.founding_yes("demo/b", "anchor-a", 1000).is_none(), "nor is another session");
+    assert!(firsts.founding_yes("demo/a", "anchor-a", 1000 + SECRET_FOR_MS).is_some(), "at the last moment it holds");
+    assert!(firsts.founding_yes("demo/a", "anchor-a", 1000 + SECRET_FOR_MS + 1).is_none(), "a moment later it does not");
+    assert!(firsts.founding_yes("demo/a", "anchor-a", 2000).is_some(), "asking is not spending");
+    firsts.founded("demo/a");
+    assert!(firsts.founding_yes("demo/a", "anchor-a", 2000).is_none(), "the pool it was for is founded, so it is spent");
 }

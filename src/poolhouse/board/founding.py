@@ -22,7 +22,7 @@ from poolhouse.board.session import Session
 from poolhouse.board.terminal import terminal_id
 from poolhouse.fleet.onboard.signing import KeyStoreError
 
-__all__ = ["Admin", "Founded", "NoComputerKey", "Refusal", "Terms", "found", "found_here", "found_on_computer", "govern", "pool_session", "ticket_for", "with_card"]
+__all__ = ["Admin", "Founded", "NoComputerKey", "Refusal", "Terms", "found", "found_here", "found_on_computer", "govern", "pool_session", "with_card", "yes_for"]
 
 POOL_GRANT_LASTS = "10m"
 CARD_WAIT_S = 120.0
@@ -94,7 +94,8 @@ def _enrolled(session: Session, admin: Admin, voice: presence.Voice) -> None:
         raise Refusal("This device already trusts a different key of yours; add this one from your phone, or use that one.", needs="device",
                       where="the Poolhouse app on your phone")
     try:
-        grants.enrol_first(session.client, session.token, admin.key, admin.about, voice)
+        # only the person's own session puts the question to the person
+        grants.enrol_first(session.client, pool_session(session.client, person_session=True).token, admin.key, admin.about, voice)
     except NodeError as err:
         raise _refused(err, where="the prompt this computer shows") from None
 
@@ -246,17 +247,35 @@ def found_on_computer(session: Session, name: str, policy: str = "secure", voice
         raise
 
 
-def ticket_for(session: Session, op: str, args: dict[str, Any], voice: presence.Voice = presence.SILENT) -> str:
-    """The person's yes at the computer's own prompt for the operation ``op`` (`add_device` or `join_pool`) with ``args``: the ticket the call
-    then carries. The person's own session holds no grant; it opens a window or joins a pool with this yes for exactly that."""
+def yes_for(session: Session, op: str, args: dict[str, Any], voice: presence.Voice = presence.SILENT, *, ks: keystore.Keystore | None = None) -> dict[str, Any]:
+    """The person's yes at the computer's own prompt for the operation ``op`` (`add_device` or `join_pool`) with ``args``, as the params the call then
+    carries: the ticket, and for a window the act this computer's key signs under that same ticket, which lets this device admit what proves the window's
+    code (so a pool approved by a typed yes, or a Mac whose 30 days have lapsed, still adds a device). The person's own session holds no grant; it
+    opens a window or joins a pool with this yes for exactly that."""
     try:
         drawn = session.client.call("op_draft", "", session.token, op=op, args=args)
     except NodeError as err:
         raise _refused(err, needs="none") from None
     try:
-        return str(presence.ask_card(session.client, session.token, "card", presence.Card(_card_of(drawn)), voice)["secret"])
+        ticket = str(presence.ask_card(session.client, session.token, "card", presence.Card(_card_of(drawn)), voice)["secret"])
     except Denied as err:
         raise Refusal(str(err), needs="approval", where="the prompt this computer shows", then="stop") from None
+    params: dict[str, Any] = {"ticket": ticket}
+    window = drawn.get("window")
+    if isinstance(window, dict) and (key := _pool_key(session, ks)) is not None:
+        key.ticket = ticket
+        act = dict(window["act"])
+        act["signatures"] = [{"kind": "admin", "key": key.public.hex(), "sig": key.sign_bytes(bytes.fromhex(window["sign_bytes"])).hex()}]
+        params["window"] = act
+    return params
+
+
+def _pool_key(session: Session, ks: keystore.Keystore | None) -> computer_key.ComputerKey | None:
+    """The key of this computer that governs the pool this device is in, if there is one."""
+    status = session.client.call("pool_status")
+    listed = {str(k["fingerprint"]) for k in status["governance"].get("admins", []) if k["role"] == "admin"}
+    key = computer_key.PoolKeys(session.client.state, session.client, session.token, ks=ks).find(listed)
+    return key.use(session.token) if key is not None else None
 
 
 def pool_session(client: Client, *, person_session: bool = False) -> Session:

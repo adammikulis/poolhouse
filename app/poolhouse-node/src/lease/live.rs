@@ -15,6 +15,8 @@ pub struct Proc {
     pub session: u32,
     /// Whether it has a controlling terminal.
     pub tty: bool,
+    /// The device number of its controlling terminal, 0 when it has none or this platform does not say.
+    pub tdev: u64,
 }
 
 #[cfg(target_os = "macos")]
@@ -30,7 +32,8 @@ pub fn inspect(pid: u32) -> Option<Proc> {
         }
         let session = libc::getsid(pid as i32).max(0) as u32;
         Some(Proc { start: info.pbi_start_tvsec * 1000 + info.pbi_start_tvusec / 1000, zombie: info.pbi_status == ZOMBIE, parent: info.pbi_ppid, session,
-                   tty: info.e_tdev != 0 && info.e_tdev != u32::MAX })
+                   tty: info.e_tdev != 0 && info.e_tdev != u32::MAX,
+                   tdev: if info.e_tdev == u32::MAX { 0 } else { u64::from(info.e_tdev) } })
     }
 }
 
@@ -43,19 +46,19 @@ pub fn inspect(pid: u32) -> Option<Proc> {
     // SAFETY: sysconf reads a constant.
     let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) }.max(1) as u64;
     let field = |i: usize| rest.get(i).and_then(|f| f.parse().ok()).unwrap_or(0);
-    Some(Proc { start: ticks * 1000 / hz, zombie: rest.first() == Some(&"Z"), parent: field(1), session: field(3), tty: field(4) != 0 })
+    Some(Proc { start: ticks * 1000 / hz, zombie: rest.first() == Some(&"Z"), parent: field(1), session: field(3), tty: field(4) != 0, tdev: u64::from(field(4)) })
 }
 
 #[cfg(windows)]
 pub fn inspect(pid: u32) -> Option<Proc> {
-    crate::sys::process_info(pid).map(|(start, _)| Proc { start, zombie: false, parent: 0, session: 0, tty: false })
+    crate::sys::process_info(pid).map(|(start, _)| Proc { start, zombie: false, parent: 0, session: 0, tty: false, tdev: 0 })
 }
 
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "linux"))))]
 pub fn inspect(pid: u32) -> Option<Proc> {
     // SAFETY: signal 0 only checks that the process exists.
     let found = unsafe { libc::kill(pid as i32, 0) } == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM);
-    found.then_some(Proc { start: 0, zombie: false, parent: 0, session: 0, tty: false })
+    found.then_some(Proc { start: 0, zombie: false, parent: 0, session: 0, tty: false, tdev: 0 })
 }
 
 /// The start time to record for ``pid`` now, or None when it cannot be read.

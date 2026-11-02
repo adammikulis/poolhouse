@@ -177,17 +177,33 @@ pub(crate) fn base64(bytes: &[u8]) -> String {
     out
 }
 
-/// Windows PowerShell by its place under the system directory (`SystemRoot` when that is an absolute path, else `C:\Windows`), never by a name
-/// the search path could resolve to another program.
-pub(crate) fn powershell_in(root: Option<std::ffi::OsString>) -> std::path::PathBuf {
-    let root = root.map(std::path::PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows"));
-    root.join("System32").join("WindowsPowerShell").join("v1.0").join("powershell.exe")
+/// Windows PowerShell by its place under the system directory ``system``, never by a name the search path could resolve to another program.
+pub(crate) fn powershell_under(system: &std::path::Path) -> std::path::PathBuf {
+    system.join("WindowsPowerShell").join("v1.0").join("powershell.exe")
+}
+
+/// The system directory as Windows reports it (`GetSystemDirectoryW`), never read from an environment variable a process can set.
+#[cfg(windows)]
+fn system_directory() -> std::path::PathBuf {
+    use std::os::windows::ffi::OsStringExt;
+    let mut buf = [0u16; 260];
+    // SAFETY: the buffer is valid for the length passed, and the call writes at most that many UTF-16 units.
+    let n = unsafe { windows_sys::Win32::System::SystemInformation::GetSystemDirectoryW(buf.as_mut_ptr(), buf.len() as u32) } as usize;
+    if n == 0 || n >= buf.len() {
+        return std::path::PathBuf::from(r"C:\Windows\System32");
+    }
+    std::path::PathBuf::from(std::ffi::OsString::from_wide(&buf[..n]))
+}
+
+#[cfg(not(windows))]
+fn system_directory() -> std::path::PathBuf {
+    std::path::PathBuf::from(r"C:\Windows\System32")
 }
 
 /// The command that raises the person's prompt on Windows; the sentence is written to its standard input.
 pub(crate) fn windows_dialog() -> Command {
     let utf16: Vec<u8> = WINDOWS_PROMPT.encode_utf16().flat_map(u16::to_le_bytes).collect();
-    let mut command = Command::new(powershell_in(std::env::var_os("SystemRoot")));
+    let mut command = Command::new(powershell_under(&system_directory()));
     command.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", &base64(&utf16)]);
     command
 }

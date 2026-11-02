@@ -25,18 +25,19 @@ const MOST_LINE: usize = 256;
 /// Ask on the terminal device the request names.
 pub struct Terminal {
     real: bool,
+    own: bool,
 }
 
 impl Terminal {
     /// The terminal presence of the node of ``state``, which is refused outright when that is this account's own node.
     pub fn new(state: &std::path::Path) -> Terminal {
-        Terminal { real: super::on_real_home(state) }
+        Terminal { real: super::on_real_home(state), own: false }
     }
 
     /// The terminal presence of a computer that has no prompt of its own (`os::can_prompt`): the account's own node directory is not refused,
     /// because the person's terminal is the only way to ask there, and what it makes counts as a typed yes.
     pub fn unprompted() -> Terminal {
-        Terminal { real: false }
+        Terminal { real: false, own: true }
     }
 }
 
@@ -66,6 +67,10 @@ pub fn is_yes(line: &[u8]) -> bool {
 impl Presence for Terminal {
     fn kind(&self) -> &'static str {
         "terminal"
+    }
+
+    fn own_terminal(&self) -> bool {
+        self.own
     }
 
     fn begin(&mut self, what: &str, terminal: &str) -> Result<Box<dyn Asking>> {
@@ -255,7 +260,7 @@ mod tests {
 
     #[test]
     fn a_terminal_is_never_the_way_to_ask_on_the_accounts_own_node() {
-        let refused = Terminal { real: true }.begin("poolhouse: allow the session demo/a to add your first person key to this computer?", "/dev/tty");
+        let refused = Terminal { real: true, own: false }.begin("poolhouse: allow the session demo/a to add your first person key to this computer?", "/dev/tty");
         assert!(refused.err().is_some_and(|e| e.to_string().contains("operating system's prompt only")), "the program that asks could open its own terminal and answer it");
     }
 
