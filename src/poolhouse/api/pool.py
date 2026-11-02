@@ -180,16 +180,20 @@ def listen(*, agreed: bool = False) -> Pool:
     return status()
 
 
-def add_device(ttl_s: int = 300) -> dict[str, object]:
+def add_device(ttl_s: int = 300, *, say: Callable[[str], object] | None = None) -> dict[str, object]:
     """Make a short-lived code for another device to join this pool with (policy ``secure``).
 
     Returns what the node answers: the code and how long it is valid. Show the code to the person at the other
-    device; it is typed there (or passed to `join`) within ``ttl_s`` seconds.
+    device; it is typed there (or passed to `join`) within ``ttl_s`` seconds. The person's own session opens the window with the person's
+    yes at this computer's prompt for exactly that window; an agent's session needs the grant ``add_device``.
     """
-    return dict(_node.call("add_device", {"ttl_s": ttl_s}, token=_node.session().token))
+    params: dict[str, object] = {"ttl_s": ttl_s}
+    if (person := _node.person_session()) is not None:
+        params["ticket"] = founding.ticket_for(person, "add_device", {"ttl_s": ttl_s}, presence.Voice(say=say or (lambda _text: None)))
+    return dict(_node.call("add_device", params, token=(person or _node.session()).token))
 
 
-def join(host: str, code: str = "", *, port: int = DEFAULT_PORT, fingerprint: str = "") -> dict[str, object]:
+def join(host: str, code: str = "", *, port: int = DEFAULT_PORT, fingerprint: str = "", say: Callable[[str], object] | None = None) -> dict[str, object]:
     """Join the pool of the device at ``host``; this device becomes a member.
 
     A ``secure`` pool takes the ``code`` its `add_device` made. An ``open`` pool on this device's own network takes no code, only the
@@ -198,8 +202,11 @@ def join(host: str, code: str = "", *, port: int = DEFAULT_PORT, fingerprint: st
     """
     if not code and not fingerprint:
         raise errors.Error("give the code the other device showed, or for an open pool the fingerprint of the device that answers")
-    session = _node.session()
+    person = _node.person_session()
+    session = person or _node.session()
     params = {"host": host, "port": port, **({"passphrase": code} if code else {"fingerprint": fingerprint})}
+    if person is not None:
+        params["ticket"] = founding.ticket_for(person, "join_pool", dict(params), presence.Voice(say=say or (lambda _text: None)))
 
     def send() -> dict[str, object]:
         return dict(session.client.call("join_pool", "", session.token, **params))

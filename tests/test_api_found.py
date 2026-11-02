@@ -38,12 +38,13 @@ def test_status_of_a_fresh_device_says_it_is_unfounded_and_what_to_do(workspace_
     assert pool.governance == "unfounded" and pool.name == "" and "pool of one" in pool.missing and len(pool.members) == 1
 
 
-def test_found_on_a_device_whose_prompt_the_node_cannot_raise_says_in_one_sentence_what_to_do(workspace_node):
+def test_found_on_a_computer_with_no_prompt_puts_the_question_on_a_terminal_and_never_asks_for_a_phone(workspace_node):
     with pytest.raises(ph.pool.Refusal) as refused:
         ph.pool.found("home")
-    assert isinstance(refused.value, ph.Denied) and "prompt" in str(refused.value) and refused.value.needs == "device"
-    assert len(str(refused.value)) <= 160 and ph.pool.status().governance == "unfounded"
+    assert isinstance(refused.value, ph.Denied) and "terminal" in str(refused.value) and "phone" not in str(refused.value).lower()
+    assert refused.value.needs == "approval" and len(str(refused.value)) <= 260 and ph.pool.status().governance == "unfounded"
     assert workspace_node.client.call("person_keys")["keys"] == [], "a refusal made no key"
+    assert not (workspace_node.state / "person" / "pools").exists(), "and kept none"
 
 
 def test_found_with_a_linked_phone_asks_the_phone_and_a_second_call_says_it_is_there(phone_node):
@@ -72,11 +73,11 @@ def test_found_with_a_linked_phone_asks_the_phone_and_a_second_call_says_it_is_t
     assert ph.pool.status().missing == "", "a governed pool with a strong key needs nothing from its person"
 
 
-def test_found_with_a_phone_linked_but_no_prompt_to_raise_says_so_and_changes_nothing(phone_node):
+def test_a_linked_phone_is_not_asked_for_the_key_this_computer_makes(phone_node):
     add_phone(phone_node)
     with pytest.raises(ph.pool.Refusal) as refused:
         ph.pool.found("home")
-    assert "prompt" in str(refused.value) and "phone" in refused.value.where
+    assert "terminal" in str(refused.value) and "phone" not in refused.value.where
     assert ph.pool.status().governance == "unfounded"
 
 

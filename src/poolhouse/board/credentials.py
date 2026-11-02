@@ -97,6 +97,16 @@ def store(state: Path, board: str, name: str, token: str, parent: str = "") -> P
     return target
 
 
+def person_secret(state: Path) -> str:
+    """The secret the node keeps for the person's own session in ``<state>/person/ui.secret``, a folder the agent sandbox may neither read
+    nor write; `Denied` when this process cannot read it, which is what an agent's process is."""
+    path = state / "person" / "ui.secret"
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        raise Denied("denied", f"the person's own session is registered with the secret the node keeps at {path}, which this process cannot read") from None
+
+
 def load(state: Path, board: str, name: str) -> str:
     """``name``'s token on ``board``; `Denied` when there is none or its file is not private."""
     path = state / "client" / board / f"{name}.token"

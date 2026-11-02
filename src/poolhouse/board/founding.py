@@ -1,10 +1,11 @@
 """A pool is founded for a person: the node drafts the charter, the person's key signs it, the node takes it back (docs/pools-and-serving.md, 2 and 3).
 
 Nothing here signs for anyone. The signature that makes the pool true is the person's admin key, put to the person where only the
-person can answer: the operating system's own prompt on this computer (the key is this computer's, `computer_key`), or a phone's card
-(docs/phone-approval.md, docs/design-phone-free-pools.md). `Admin` is that key. How it counts, the node says: the draft of the charter
-carries the claim the node derives for it, and the node takes no pool whose charter lists no key that counts. Every refusal is a `Refusal`:
-one sentence an agent passes on, what is needed and where the person taps or answers.
+person can answer: the operating system's own prompt on this computer (the key is this computer's, `computer_key`: the node makes it, the
+person's yes at the prompt enrols it and hands it to the person's session once), or a phone's card (docs/phone-approval.md,
+docs/design-phone-free-pools.md). `Admin` is that key when it is a phone's or another device's. How a key counts, the node says: the draft
+of the charter carries the claim the node derives for it, and the node takes no pool whose charter lists no key that counts. Every refusal
+is a `Refusal`: one sentence an agent passes on, what is needed and where the person taps or answers.
 """
 
 from __future__ import annotations
@@ -14,18 +15,20 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from poolhouse import errors, person
-from poolhouse.board import approval, computer_key, grants, phone, presence
+from poolhouse import errors, keystore, person
+from poolhouse.board import approval, computer_key, credentials, grants, phone, presence
 from poolhouse.board.client import Client, Denied, NodeError
 from poolhouse.board.session import Session
 from poolhouse.board.terminal import terminal_id
+from poolhouse.fleet.onboard.signing import KeyStoreError
 
-__all__ = ["Admin", "Founded", "NoComputerKey", "Refusal", "Terms", "default_admin", "found", "found_here", "govern", "pool_session", "with_card"]
+__all__ = ["Admin", "Founded", "NoComputerKey", "Refusal", "Terms", "found", "found_here", "found_on_computer", "govern", "pool_session", "ticket_for", "with_card"]
 
 POOL_GRANT_LASTS = "10m"
 CARD_WAIT_S = 120.0
 POLICIES = ("open", "secure")
-NOT_COUNTED = "This computer cannot ask you at its own prompt from here, so its key would count for nothing: use the installed Poolhouse, or your phone."
+NOT_COUNTED = ("That key is a typed yes, which counts for nothing on a computer that can ask you at its own prompt: found the pool without naming "
+               "a key, and this computer makes its own.")
 FOR_THE_PERSON = ("The computer's own prompt is for you to answer: run `poolhouse-pool found NAME` in a terminal of your own; an agent cannot "
                   "answer it for you.")
 
@@ -45,8 +48,8 @@ class NoComputerKey(Refusal):
 
 @dataclass(frozen=True, slots=True)
 class Admin:
-    """The person's key that governs the pool: it signs each act itself, so the person is asked by whatever stands behind ``key``: the
-    computer's prompt for a `ComputerKey`, which has an ``approve``, the phone's card for the grant of any other."""
+    """A key that is not this computer's and governs the pool (a phone's): it signs each act itself, so the person is asked by whatever stands
+    behind ``key``, the phone's card for the grant."""
 
     key: grants.Signs
     person: str = "owner"
@@ -141,32 +144,28 @@ def _allowed(session: Session, admin: Admin, name: str, wait_s: float, voice: pr
         raise _refused(err, where="the question this computer asks you") from None
 
 
-def _draft(session: Session, admin: Admin, name: str, policy: str) -> dict[str, Any]:
-    """The node's draft of the charter of the admin key: the level of the key is what the node derives."""
-    key = {"key": admin.key.public.hex(), "person": admin.person, "label": admin.label}
-    return dict(session.client.call("pool_draft_found", "", session.token, title=name, policy=policy, project="", keys=[key]))
+def _draft(session: Session, key: dict[str, Any], name: str, policy: str) -> dict[str, Any]:
+    """The node's draft of the charter of the key ``key`` names (a key someone holds, or ``computer`` for the key the node makes)."""
+    try:
+        return dict(session.client.call("pool_draft_found", "", session.token, title=name, policy=policy, project="", keys=[key]))
+    except NodeError as err:
+        raise _refused(err, needs="none") from None
 
 
-def _approved(session: Session, key: computer_key.ComputerKey, draft: dict[str, Any], terms: Terms) -> None:
-    """The person says yes at this computer's own prompt for the card the node drafted: that yes enrols the key and is its ticket."""
+def _card_of(draft: dict[str, Any]) -> str:
+    """The id of the card the node drafted, or the refusal that says why there is none."""
     card = draft.get("card")
     if not isinstance(card, str):
         raise Refusal(str(draft.get("card_why") or "This change cannot be confirmed at the computer's prompt."), needs="none", then="stop")
-    enrolled = grants.fingerprint(key.public) in _held(session)
-    try:
-        key.approve(card, enrolled=enrolled, voice=terms.voice)
-    except Denied as err:
-        if not enrolled:
-            key.forget()
-        raise Refusal(str(err), needs="approval", where="the prompt this computer shows", then="stop") from None
+    return card
 
 
-def _charter(admin: Admin, draft: dict[str, Any]) -> dict[str, Any]:
+def _charter(key: grants.Signs, draft: dict[str, Any]) -> dict[str, Any]:
     """The node's draft of the charter with the admin key's acceptance filled in, signed outside the node."""
     charter = draft["charter"]
     for wanted in draft["accept"]:
         listed = next(k for k in charter["admins"] if k["key"] == wanted["key"])
-        listed["acceptance"] = admin.key.sign_bytes(bytes.fromhex(wanted["sign_bytes"])).hex()
+        listed["acceptance"] = key.sign_bytes(bytes.fromhex(wanted["sign_bytes"])).hex()
     return dict(charter)
 
 
@@ -186,58 +185,90 @@ class Terms:
     wait_s: float = CARD_WAIT_S
 
 
-def found(session: Session, admin: Admin, name: str, policy: str = "secure", terms: Terms | None = None) -> Founded:
-    """Found the pool ``name`` of ``policy`` on this device, governed by the person's ``admin`` key; the charter the key accepts names this
-    device as the pool's first member, so accepting it is the whole of founding.
-
-    A device that is already in a founded pool answers with that pool and changes nothing. ``terms`` says how the person is waited for.
-    Raises `Refusal`: a key that counts for nothing, a no, a question nobody answered.
-    """
-    terms = terms or Terms()
-    status = session.client.call("pool_status", "", session.token)
-    if (done := _already(status)) is not None:
-        return done
-    if policy not in POLICIES:
-        raise Refusal("A pool lets devices join by themselves (open) or with a code (secure); say which.", needs="none")
+def _submit(session: Session, charter: dict[str, Any]) -> Founded:
     try:
-        draft = _draft(session, admin, name, policy)
-    except NodeError as err:
-        raise _refused(err, needs="none") from None
-    approve = isinstance(admin.key, computer_key.ComputerKey)
-    if not draft["counting"]:
-        if approve:
-            admin.key.forget()
-        raise Refusal(NOT_COUNTED, needs="device", where="your own account's Poolhouse, or the Poolhouse app on your phone")
-    if approve:
-        _approved(session, admin.key, draft, terms)
-    else:
-        _allowed(session, admin, name, terms.wait_s, terms.voice)
-    try:
-        charter = _charter(admin, draft)
         made = session.client.call("pool_found", "", session.token, charter=charter)
     except NodeError as err:
         raise _refused(err, needs="none") from None
     return Founded(str(made["pool"]), str(made["name"]), str(made["policy"]), int(made["epoch"]))
 
 
-def default_admin(session: Session) -> Admin:
-    """The key this computer offers a new pool: a new key of its own, sealed under the keystore, that signs under the person's yes at the
-    computer's prompt. Only the person's own session has one; a process an agent started is refused, and so is a computer with no keystore."""
-    if person.marked():
-        raise Refusal(FOR_THE_PERSON, needs="approval", where="a terminal of your own", then="ask-owner")
+def _checked(session: Session, policy: str) -> Founded | None:
+    """The pool this device is in already, if it is in one; else None. Raises `Refusal` for a policy that is neither."""
+    if (done := _already(session.client.call("pool_status", "", session.token))) is not None:
+        return done
+    if policy not in POLICIES:
+        raise Refusal("A pool lets devices join by themselves (open) or with a code (secure); say which.", needs="none")
+    return None
+
+
+def found(session: Session, admin: Admin, name: str, policy: str = "secure", terms: Terms | None = None) -> Founded:
+    """Found the pool ``name`` of ``policy`` on this device, governed by a key that is not this computer's (a phone's): the charter the key
+    accepts names this device as the pool's first member, so accepting it is the whole of founding.
+
+    A device that is already in a founded pool answers with that pool and changes nothing. ``terms`` says how the person is waited for.
+    Raises `Refusal`: a key that counts for nothing, a no, a question nobody answered.
+    """
+    terms = terms or Terms()
+    if (done := _checked(session, policy)) is not None:
+        return done
+    draft = _draft(session, {"key": admin.key.public.hex(), "person": admin.person, "label": admin.label}, name, policy)
+    if not draft["counting"]:
+        raise Refusal(NOT_COUNTED, needs="none")
+    _allowed(session, admin, name, terms.wait_s, terms.voice)
+    return _submit(session, _charter(admin.key, draft))
+
+
+def found_on_computer(session: Session, name: str, policy: str = "secure", voice: presence.Voice = presence.SILENT, *, ks: keystore.Keystore | None = None) -> Founded:
+    """Found the pool ``name`` with a key this computer makes: the node drafts the charter with a key it makes for the card, the person's one
+    yes at the computer's own prompt enrols that key, is its ticket and hands its secret to this session once, the key signs the charter's
+    acceptance under the ticket, and the node takes the pool. Where the computer can raise no prompt of its own the pool says it is approved
+    by a typed yes, and the question is put on the person's terminal."""
+    if (done := _checked(session, policy)) is not None:
+        return done
+    keys = computer_key.PoolKeys(session.client.state, session.client, session.token, ks=ks)
+    draft = _draft(session, {"computer": True, "person": "owner", "label": "this computer's key", "sealed": keys.sealed()}, name, policy)
+    if not draft["counting"]:
+        raise Refusal(NOT_COUNTED, needs="none")
     try:
-        key = computer_key.PoolKeys(session.client.state, session.client, session.token).make()
-    except computer_key.NoKeystore as err:
-        raise Refusal(str(err), needs="device", where="this computer's keystore", then="stop") from None
-    return Admin(key, "owner", "this computer's key", "this computer's key for a pool")
+        said = presence.ask_card(session.client, session.token, "pool_key", presence.Card(_card_of(draft)), voice)
+    except Denied as err:
+        raise Refusal(str(err), needs="approval", where="the prompt this computer shows", then="stop") from None
+    try:
+        key = keys.adopt(bytes.fromhex(str(said["seed"])))
+    except (KeyStoreError, OSError, ValueError, KeyError) as err:
+        raise Refusal(f"This computer could not keep the key it made for the pool: {err}", needs="device", where="this computer's keystore", then="stop") from None
+    key.ticket = str(said["secret"])
+    try:
+        return _submit(session, _charter(key, draft))
+    except Refusal:
+        key.forget()
+        raise
+
+
+def ticket_for(session: Session, op: str, args: dict[str, Any], voice: presence.Voice = presence.SILENT) -> str:
+    """The person's yes at the computer's own prompt for the operation ``op`` (`add_device` or `join_pool`) with ``args``: the ticket the call
+    then carries. The person's own session holds no grant; it opens a window or joins a pool with this yes for exactly that."""
+    try:
+        drawn = session.client.call("op_draft", "", session.token, op=op, args=args)
+    except NodeError as err:
+        raise _refused(err, needs="none") from None
+    try:
+        return str(presence.ask_card(session.client, session.token, "card", presence.Card(_card_of(drawn)), voice)["secret"])
+    except Denied as err:
+        raise Refusal(str(err), needs="approval", where="the prompt this computer shows", then="stop") from None
 
 
 def pool_session(client: Client, *, person_session: bool = False) -> Session:
     """A session of the pool board of this device (the one that may change the pool), as the node knows the caller. The person's own
-    session (``person_session``) is the only one the node lets raise the computer's prompt."""
+    session (``person_session``) is registered with the secret the node keeps for the person, which a process an agent started cannot read, and it
+    is the only one the node lets raise the computer's prompt."""
     native = f"python-api-{terminal_id()}"
     if person_session:
-        got = client.call("register_person", "pool", "", session=native)
+        try:
+            got = client.call("register_person", "pool", "", session=native, proof=credentials.person_secret(client.state))
+        except Denied:
+            raise Refusal(FOR_THE_PERSON, needs="approval", where="a terminal of your own", then="ask-owner") from None
     else:
         got = client.call("register", "pool", "", model="poolhouse-api", harness="poolhouse-api", session=native)
     return Session(client, "pool", got["token"], got["name"])
@@ -245,17 +276,21 @@ def pool_session(client: Client, *, person_session: bool = False) -> Session:
 
 def device_name() -> str:
     """A name for a pool that nobody named: this computer's, in the letters a pool name may hold."""
-    host = "".join(c if c.isalnum() or c in "-_" else " " for c in socket.gethostname().split(".")[0]).strip()
+    host = "".join(c if c.isascii() and (c.isalnum() or c in "-.") else " " for c in socket.gethostname().split(".")[0]).strip().lstrip("-. ")
     return host[:40] or "home"
 
 
 def found_here(client: Client, name: str | None, policy: str, *, admin: Admin | None = None, voice: presence.Voice = presence.SILENT) -> Founded:
-    """What an agent does when its person says "make a pool": found it on the device ``client`` reaches, with ``admin`` or the key the device can offer."""
-    session = pool_session(client, person_session=admin is None)
-    return found(session, admin or default_admin(session), name or device_name(), policy, Terms(voice=voice))
+    """What an agent does when its person says "make a pool": found it on the device ``client`` reaches, with ``admin`` (a phone's key) or, by
+    default, a key this computer makes."""
+    if admin is not None:
+        return found(pool_session(client), admin, name or device_name(), policy, Terms(voice=voice))
+    if person.marked():
+        raise Refusal(FOR_THE_PERSON, needs="approval", where="a terminal of your own", then="ask-owner")
+    return found_on_computer(pool_session(client, person_session=True), name or device_name(), policy, voice)
 
 
-def govern(client: Client, kind: str, body: dict[str, Any], *, voice: presence.Voice = presence.SILENT) -> dict[str, Any]:
+def govern(client: Client, kind: str, body: dict[str, Any], *, voice: presence.Voice = presence.SILENT, ks: keystore.Keystore | None = None) -> dict[str, Any]:
     """Have this computer's key make the act of ``kind`` the node drafts from ``body`` (a removal, a new device): the person says yes at the
     computer's prompt for exactly that act, the key signs it, and the pool takes it. The node's reply (`status`, `act`)."""
     try:
@@ -263,7 +298,7 @@ def govern(client: Client, kind: str, body: dict[str, Any], *, voice: presence.V
     except NodeError as err:
         raise _refused(err, needs="none") from None
     listed = {str(k["fingerprint"]) for k in status["governance"].get("admins", []) if k["role"] == "admin"}
-    key = computer_key.PoolKeys(client.state, client, "").find(listed)
+    key = computer_key.PoolKeys(client.state, client, "", ks=ks).find(listed)
     if key is None:
         raise NoComputerKey("No key of this computer governs this pool, so it cannot make that change here.", needs="device", where="the computer that founded the pool", then="stop")
     if person.marked():
@@ -274,11 +309,8 @@ def govern(client: Client, kind: str, body: dict[str, Any], *, voice: presence.V
         draft = session.client.call("pool_draft", "", session.token, kind=kind, body=body)
     except NodeError as err:
         raise _refused(err, needs="none") from None
-    card = draft.get("card")
-    if not isinstance(card, str):
-        raise Refusal(str(draft.get("card_why") or "This change cannot be confirmed at the computer's prompt."), needs="none", then="stop")
     try:
-        key.approve(card, enrolled=True, voice=voice)
+        key.approve(_card_of(draft), voice=voice)
     except Denied as err:
         raise Refusal(str(err), needs="approval", where="the prompt this computer shows", then="stop") from None
     act = dict(draft["act"])

@@ -105,21 +105,23 @@ def test_nobody_taps_the_phone_and_no_pool_and_no_key_exist(phone_node):
     assert phone_node.client.call("person_keys")["keys"] == held, "a card nobody answered enrolled no key"
 
 
-def test_a_key_the_node_does_not_hold_as_a_phones_is_refused_before_anyone_is_asked(workspace_node):
+def test_a_key_the_node_does_not_hold_is_asked_for_at_the_terminal_and_enrolled_nowhere_before_the_yes(workspace_node):
     session = pool_session(workspace_node)
     with pytest.raises(Refusal) as refused:
         founding.found(session, person(), "home")
-    assert "prompt" in refused.value.say and refused.value.needs == "device" and len(refused.value.say) <= 260
+    assert "terminal" in refused.value.say and refused.value.needs == "approval" and len(refused.value.say) <= 260
     assert workspace_node.client.call("person_keys")["keys"] == [] and governance(workspace_node)["mode"] == "unfounded"
 
 
-def test_a_key_the_person_typed_yes_for_is_not_strong_whatever_the_agent_says(workspace_node):
+def test_a_key_the_person_typed_yes_for_is_never_more_than_a_typed_yes_whatever_the_agent_says(workspace_node):
     admin = person()
     enrol_first(workspace_node.client, workspace_node.member("agent").token, admin.key)
     session = pool_session(workspace_node)
-    with pytest.raises(Refusal) as refused:
-        founding.found(session, admin, "home")
-    assert "prompt" in refused.value.say and governance(workspace_node)["mode"] == "unfounded"
+    made = founding.found(session, admin, "home")
+    gov = governance(workspace_node)
+    assert made.name == "home" and [a["claim"]["method"] for a in gov["admins"]] == ["keystore-typed"] and gov["admins"][0]["counted"] == "weak"
+    assert gov["floors"] == {"routine": "weak", "sensitive": "weak", "governance": "weak"} and gov["delegates"] == [], "a computer with no prompt of its own is approved by a typed yes"
+    assert "typed yes" in gov["approved"] and "program running as you" in gov["approved"]
     key = [{"key": admin.key.public.hex(), "person": "owner", "claim": "phone-keystore", "label": "the owner's key"}]
     with pytest.raises(Invalid):
         workspace_node.client.call("pool_draft_found", "", session.token, title="home", policy="secure", project="", keys=key)
@@ -209,5 +211,5 @@ def test_the_command_for_agents_says_one_sentence_and_exits_3_when_the_person_ha
 
     done = workspace_node.cli("pool", "found", "home", "--json", who=workspace_node.member("agent"))
     said = json.loads(done.stdout.strip().splitlines()[-1])
-    assert done.returncode == 3 and said["founded"] is False and "keystore" in said["say"] and said["needs"] == "device", done
+    assert done.returncode == 3 and said["founded"] is False and "terminal" in said["say"] and "phone" not in said["say"].lower() and said["needs"] == "approval", done
     assert governance(workspace_node)["mode"] == "unfounded"

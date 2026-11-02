@@ -52,8 +52,8 @@ def test_leave_uses_registered_node_session(monkeypatch, capsys):
     calls = []
     class Session:
         token = "session-token"
-    monkeypatch.setattr(pool_cli._node, "session", Session)
-    monkeypatch.setattr(pool_cli._node, "call", lambda method, **kwargs: calls.append((method, kwargs)) or {"state": "pending"})
+    monkeypatch.setattr(pool_cli.pool._node, "session", Session)
+    monkeypatch.setattr(pool_cli.pool._node, "call", lambda method, **kwargs: calls.append((method, kwargs)) or {"state": "pending"})
     assert pool_cli.main(["leave", "--json"]) == 0
     assert calls == [("pool_leave", {"token": "session-token"})]
     assert json.loads(capsys.readouterr().out) == {"state": "pending"}

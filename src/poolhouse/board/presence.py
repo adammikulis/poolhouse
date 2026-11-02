@@ -69,10 +69,9 @@ SILENT = Voice()
 
 
 class Card(NamedTuple):
-    """A change the node drafted (``id``) and the public key (hex) whose yes enrols it or that signs it."""
+    """A change the node drafted (``id``). The yes at its prompt enrols the key the node made for it, when it made one."""
 
     id: str
-    public: str
 
 
 def ask(
@@ -88,10 +87,10 @@ def ask(
 
 
 def ask_card(client: Client, token: str, purpose: str, card: Card, voice: Voice = SILENT) -> dict[str, Any]:
-    """Ask the person, through the node, to answer the change ``card`` names (``purpose`` `pool_key` for a key not yet enrolled, `card` for
-    one that is): the sentence the prompt shows is the node's, written from its draft, and the reply's `secret` is the ticket a signer shows
-    the node for each payload it signs. Raises `Denied` as `ask` does."""
-    return _asked(client, token, voice, purpose=purpose, public=card.public, card=card.id)
+    """Ask the person, through the node, to answer the change ``card`` names (``purpose`` `pool_key` for a card that made a key for this computer,
+    `card` for any other): the sentence the prompt shows is the node's, written from its draft, and the reply's `secret` is the ticket a signer
+    shows the node for each payload it signs (a `pool_key` reply also carries the new key's `seed`, once). Raises `Denied` as `ask` does."""
+    return _asked(client, token, voice, purpose=purpose, card=card.id)
 
 
 def _asked(client: Client, token: str, voice: Voice, **params: str) -> dict[str, Any]:

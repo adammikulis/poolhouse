@@ -72,7 +72,7 @@ def a_floor_is_never_a_typed_yes_and_never_above_what_a_key_holds(world: World) 
     try:
         first.admin("pool_submit", act=world.person.signed(first.admin("pool_draft", kind="set_floors", body={"routine": "weak"})))
     except Refused as refused:
-        assert "never a typed yes" in str(refused), f"a floor of a typed yes was refused for another reason: {refused}"
+        assert "never lowered to a typed yes" in str(refused), f"a floor of a typed yes was refused for another reason: {refused}"
     else:
         raise AssertionError("a floor of a typed yes was taken")
     draft = first.admin("pool_draft", kind="set_floors", body={"sensitive": "phone"})

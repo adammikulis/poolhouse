@@ -178,8 +178,13 @@ class SigningKeys:
         else:
             raise KeyStoreError("Unsupported signing key storage")
 
-    def _create(self) -> dict[str, Any]:
-        signer = Signer.generate()
+    def adopt(self, seed: bytes) -> None:
+        """Keep the key whose 32 secret bytes ``seed`` are, which the node made for a pool and gave the person once; an existing key stays."""
+        if not (read_json(self.meta_path, {}) or {}).get("key_id"):
+            self._create(Signer.from_raw(seed))
+
+    def _create(self, signer: Signer | None = None) -> dict[str, Any]:
+        signer = signer or Signer.generate()
         store = self._put(signer)
         doc = {"store": store, "key_id": signer.key_id, "public": base64.b64encode(signer.public).decode(),
                "created": time.time(), "rotations": [], "revoked": [], "confirm": self.always_confirm}

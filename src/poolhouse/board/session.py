@@ -417,7 +417,7 @@ def register(client: Client, board: str, native: Native, parent_token: str = "",
     its token is kept in a private file for later commands. A session registered before keeps presenting its own token, which
     is how the node takes a session it holds no lineage for. ``person`` registers the person's own session, which the node marks."""
     own = "" if parent_token else _own_token(client, board, native)
-    method, params = ("register_person", {"session": native.id}) if person else ("register", {"model": native.model, "harness": native.harness, "session": native.id})
+    method, params = ("register_person", {"session": native.id, "proof": credentials.person_secret(client.state)}) if person else ("register", {"model": native.model, "harness": native.harness, "session": native.id})
     try:
         got = client.call(method, board, parent_token or own, **params)
     except Denied:

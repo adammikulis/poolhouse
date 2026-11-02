@@ -1,9 +1,10 @@
-"""The computer's own key for a pool: it signs only what the person said yes to at the computer's prompt, and a pool is founded with it with no phone.
+"""The computer's own key for a pool: the node makes it for the card, the person's yes at the prompt enrols it and hands it to the person's session
+once, and it signs only what the person said yes to there. A pool is founded with it with no phone.
 
-The node is the one as shipped (it asks the person at a terminal it reads itself, `--presence terminal`): that prompt is of the kind the
-installed software raises where it has no operating system dialog, so a key it enrols counts as a typed yes and founds nothing. The success
-path therefore plants the key's claim the way `wire.plant_key` writes it ("planted, not custody"), and the card is answered at that terminal.
-What these tests check is the ticket: no signature without one, none for other bytes, none twice, and no prompt for a process an agent started.
+The node is the one as shipped for a computer with no prompt of its own (it asks the person at a terminal it reads itself, `--presence terminal`): so
+the pool says it is approved by a typed yes, and the card is answered at that terminal. What these tests check is the person's own session
+(proven by the secret the node keeps for the person), the key the node made, and the ticket: no signature without one, none for other bytes,
+none twice, and no card or key for a session an agent started.
 """
 
 from __future__ import annotations
@@ -13,11 +14,16 @@ import threading
 from contextlib import contextmanager
 
 import pytest
-from pool_check import wire
 from pool_check.terminal import at_terminal
 
-from poolhouse.board import computer_key, founding, presence, session as board_session
-from poolhouse.board.founding import Admin, Refusal
+from poolhouse.board import (
+    client as board_client,
+    computer_key,
+    founding,
+    presence,
+    session as board_session,
+)
+from poolhouse.board.founding import Refusal
 
 pytest_plugins = ["node_kit"]
 
@@ -39,9 +45,16 @@ class MemoryKeystore:
         return self.wrap(purpose, account, blob)
 
 
+KS = MemoryKeystore()
+
+
+def secret_of(node) -> str:
+    return (node.state / "person" / "ui.secret").read_text().strip()
+
+
 def person_session(node) -> board_session.Session:
-    """The person's own session on the pool board, as `poolhouse-pool found` registers it."""
-    got = node.client.call("register_person", "pool", "", session="the-person")
+    """The person's own session on the pool board, registered with the secret the node keeps for the person."""
+    got = node.client.call("register_person", "pool", "", session="the-person", proof=secret_of(node))
     return board_session.Session(node.client, "pool", got["token"], got["name"])
 
 
@@ -50,15 +63,18 @@ def agent_session(node) -> board_session.Session:
     return board_session.Session(node.client, "pool", made.token, made.name)
 
 
-def make_key(node, session) -> computer_key.ComputerKey:
-    return computer_key.PoolKeys(node.state, node.client, session.token, ks=MemoryKeystore()).make()
-
-
 @contextmanager
-def person_at_the_terminal(answer: str = "yes"):
-    """A terminal the node writes its question on, and a person who types ``answer`` there when it appears."""
+def person_at_the_terminal(*answers: str):
+    """A terminal the node writes its questions on, and a person who types each of ``answers`` there when a question appears."""
     terminal = at_terminal()
-    typed = threading.Thread(target=lambda: terminal.shows("Type yes", 40.0) and terminal.types(answer + terminal.ENTER), daemon=True)
+
+    def typing() -> None:
+        for answer in answers or ("yes",):
+            if not terminal.shows("Type yes", 40.0):
+                return
+            terminal.types(answer + terminal.ENTER)
+
+    typed = threading.Thread(target=typing, daemon=True)
     typed.start()
     try:
         yield presence.Voice(terminal=terminal.name)
@@ -67,35 +83,30 @@ def person_at_the_terminal(answer: str = "yes"):
         terminal.close()
 
 
-def plant(node, key: computer_key.ComputerKey) -> None:
-    """Record the key's claim in the node's person keys the way an enrolment at the operating system's prompt does, and start the node again."""
-    node.stop()
-    wire.plant_key(node.state, key.public.hex(), "computer")
-    node.start()
-
-
-def draft_of(node, session, key, name="home") -> dict:
-    keys = [{"key": key.public.hex(), "person": "owner", "label": "this computer's key"}]
-    return node.client.call("pool_draft_found", "", session.token, title=name, policy="secure", project="", keys=keys)
+def founded(node, *answers: str) -> tuple[board_session.Session, computer_key.ComputerKey]:
+    """Found the pool "home" as the person at the terminal; the person's session and the key the node made for it."""
+    session = person_session(node)
+    with person_at_the_terminal(*(answers or ("yes",))) as voice:
+        founding.found_on_computer(session, "home", "secure", voice, ks=KS)
+    listed = {str(k["fingerprint"]) for k in node.client.call("pool_status")["governance"]["admins"]}
+    key = computer_key.PoolKeys(node.state, node.client, session.token, ks=KS).find(listed)
+    assert key is not None
+    return session, key.use(session.token)
 
 
 def test_signing_without_a_ticket_raises(workspace_node):
-    session = person_session(workspace_node)
-    key = make_key(workspace_node, session)
+    session, key = founded(workspace_node)
     with pytest.raises(computer_key.TicketRequired):
         key.sign_bytes(b"anything")
+    assert session.token
 
 
 def test_a_ticket_for_other_bytes_is_refused_and_each_payload_is_signed_once(workspace_node):
-    session = person_session(workspace_node)
-    key = make_key(workspace_node, session)
-    plant(workspace_node, key)
-    session = person_session(workspace_node)
-    key.use(session.token)
-    draft = draft_of(workspace_node, session, key)
-    payload = bytes.fromhex(draft["accept"][0]["sign_bytes"])
+    session, key = founded(workspace_node)
+    draft = workspace_node.client.call("pool_draft", "", session.token, kind="set_holds", body={"admin_add_h": 48})
+    payload = bytes.fromhex(draft["sign_bytes"])
     with person_at_the_terminal() as voice:
-        key.approve(draft["card"], enrolled=True, voice=voice)
+        key.approve(draft["card"], voice=voice)
     with pytest.raises(computer_key.TicketRequired):
         key.sign_bytes(payload + b"x")
     assert len(key.sign_bytes(payload)) == 64
@@ -103,66 +114,58 @@ def test_a_ticket_for_other_bytes_is_refused_and_each_payload_is_signed_once(wor
         key.sign_bytes(payload)
 
 
-def test_a_pool_is_founded_with_the_computers_key_and_no_phone(workspace_node):
-    session = person_session(workspace_node)
-    key = make_key(workspace_node, session)
-    plant(workspace_node, key)
-    session = person_session(workspace_node)
-    key.use(session.token)
+def test_a_pool_is_founded_with_a_key_this_computer_makes_and_no_phone(workspace_node):
     assert workspace_node.client.call("pool_status")["governance"]["mode"] == "unfounded"
-    with person_at_the_terminal() as voice:
-        made = founding.found(session, Admin(key), "home", "secure", founding.Terms(voice=voice))
-    assert (made.name, made.policy, made.epoch, made.already) == ("home", "secure", 1, False)
+    session, key = founded(workspace_node)
     gov = workspace_node.client.call("pool_status")["governance"]
-    assert gov["mode"] == "governed" and gov["admins"][0]["claim"]["method"] == "keystore-prompt" and gov["admins"][0]["counted"] == "computer"
-    assert gov["floors"] == {"routine": "computer", "sensitive": "computer", "governance": "computer"}
+    assert (gov["name"], gov["mode"]) == ("home", "governed")
+    assert [a["claim"]["method"] for a in gov["admins"]] == ["keystore-typed"], "a computer with no prompt of its own makes a typed-yes key"
+    assert gov["floors"] == {"routine": "weak", "sensitive": "weak", "governance": "weak"} and gov["delegates"] == []
+    assert "typed yes" in gov["approved"] and "program running as you" in gov["approved"]
     assert not any(k["claim"]["method"] == "phone-keystore" for k in gov["admins"]), "no phone is anywhere in this pool"
+    assert [a["fingerprint"] for a in gov["admins"]] == [hashlib.sha256(key.public).hexdigest()], "the pool's one key is the one the node made, kept by this session"
+    assert session.name
 
 
-def test_a_no_at_the_prompt_founds_nothing(workspace_node):
+def test_a_no_at_the_prompt_founds_nothing_and_keeps_no_key(workspace_node):
     session = person_session(workspace_node)
-    key = make_key(workspace_node, session)
-    plant(workspace_node, key)
-    session = person_session(workspace_node)
-    key.use(session.token)
     with person_at_the_terminal("no") as voice, pytest.raises(Refusal) as refused:
-        founding.found(session, Admin(key), "home", "secure", founding.Terms(voice=voice))
+        founding.found_on_computer(session, "home", "secure", voice, ks=KS)
     assert refused.value.then == "stop" and refused.value.needs == "approval" and len(refused.value.say) <= 260
     assert workspace_node.client.call("pool_status")["governance"]["mode"] == "unfounded"
-    with pytest.raises(computer_key.TicketRequired):
-        key.sign_bytes(b"x")
+    assert not (workspace_node.state / "person" / "pools").exists(), "a no left no key behind"
+    assert workspace_node.client.call("person_keys")["keys"] == [], "and enrolled none"
 
 
-def test_a_key_a_typed_yes_made_founds_nothing_and_says_how_to_fix_it(workspace_node):
-    session = person_session(workspace_node)
-    key = make_key(workspace_node, session)
-    with pytest.raises(Refusal) as refused:
-        founding.found(session, Admin(key), "home", "secure")
-    assert "prompt" in refused.value.say and refused.value.needs == "device"
-    assert workspace_node.client.call("pool_status")["governance"]["mode"] == "unfounded"
+def test_a_session_that_does_not_hold_the_persons_secret_is_not_the_persons_session(workspace_node):
+    for proof in ("", "a" * 64, "0" * 63):
+        with pytest.raises(board_client.Denied):
+            workspace_node.client.call("register_person", "pool", "", session="forged", proof=proof)
+    with pytest.raises(board_client.Denied):
+        workspace_node.client.call("register_person", "pool", "", session="forged")
+    assert (workspace_node.state / "person" / "ui.secret").stat().st_mode & 0o077 == 0, "only the account reads it"
 
 
-def test_a_process_an_agent_started_gets_no_key_and_raises_no_prompt(workspace_node, monkeypatch):
+def test_an_agent_session_is_given_no_key_no_card_and_no_prompt(workspace_node, monkeypatch):
+    agent = agent_session(workspace_node)
+    with pytest.raises(board_client.Denied, match="person's own session"):
+        workspace_node.client.call("pool_draft_found", "", agent.token, title="home", policy="secure", project="",
+                                   keys=[{"computer": True, "person": "owner", "label": "a key"}])
+    held = [{"key": "5866666666666666666666666666666666666666666666666666666666666666", "person": "owner", "label": "a key"}]
+    draft = workspace_node.client.call("pool_draft_found", "", agent.token, title="home", policy="secure", project="", keys=held)
+    assert draft["card"] is None and "person's own session" in draft["card_why"]
+    with pytest.raises(board_client.Denied, match="person's own session"):
+        workspace_node.client.call("presence_ask", "", agent.token, purpose="pool_key", card="a" * 64, terminal="")
     monkeypatch.setenv("CLAUDECODE", "1")
-    session = agent_session(workspace_node)
     with pytest.raises(Refusal) as refused:
-        founding.default_admin(session)
+        founding.found_here(workspace_node.client, "home", "secure")
     assert "terminal of your own" in refused.value.say and refused.value.then == "ask-owner"
     assert not (workspace_node.state / "person" / "pools").exists(), "no key was made"
 
 
-def test_an_agent_session_cannot_get_the_prompt_raised_at_the_node(workspace_node):
-    session = person_session(workspace_node)
-    key = make_key(workspace_node, session)
-    agent = agent_session(workspace_node)
-    draft = draft_of(workspace_node, agent, key)
-    with pytest.raises(Exception, match="person's own session"):
-        workspace_node.client.call("presence_ask", "", agent.token, purpose="pool_key", public=key.public.hex(), card=draft["card"], terminal="")
-
-
 def test_a_ticket_the_node_never_made_signs_nothing(workspace_node):
-    session = person_session(workspace_node)
-    key = make_key(workspace_node, session)
+    session, key = founded(workspace_node)
     key.ticket = "a guess"
     with pytest.raises(computer_key.TicketRequired):
         key.sign_bytes(b"x")
+    assert session.token
