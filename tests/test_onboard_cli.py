@@ -11,12 +11,6 @@ import pytest
 FP1 = "1" * 64
 
 @pytest.fixture(autouse=True)
-def needs_spake2():
-    pytest.importorskip("spake2")
-
-
-
-@pytest.fixture(autouse=True)
 def needs_cryptography():
     pytest.importorskip("cryptography")
 
