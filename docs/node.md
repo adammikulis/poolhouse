@@ -196,7 +196,7 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `hello` | | | `{node, version, pid, fingerprint, device (the certificate fingerprint grants and approvals name), build, build_seq, wire}` |
 | `lineage` | | | `{lineage}`: the processes the node reads for the one asking, from it up to the shell of its terminal, each `{pid, start}`; the last is the `anchor` a person signs for |
 | `register` | board | `model, harness, session` (token = parent, or the session's own token) | `{name, token, created, parent, origin}`; a main session already registered is answered only to its lineage, and the token it gets is bound to the lineage it registers from |
-| `register_person` | board | `session` (token = none, or the person's own session's token) | as `register`, for the person's own main session (harness `poolhouse-ui`, model `person`), which the node marks `person`; `register` and `whoami` refuse the harness `poolhouse-ui` |
+| `register_person` | board | `session`, `proof` (token = none, or the person's own session's token) | as `register`, for the person's own main session (harness `poolhouse-ui`, model `person`), which the node marks `person` when `proof` is the secret it keeps for the person in `<state>/person/ui.secret` (a folder the agent sandbox may neither read nor write); a request without it is refused; `register` and `whoami` refuse the harness `poolhouse-ui` |
 | `rebind` | board | `harness, session, anchor`, and in no pool `at_ms, nonce, by, sig` (a person key's signature), in a pool `approval` (the id of the request) | `{name, moved, tokens_ended}`; in a pool the request with its `id` and `code`, then `{state, moved}` until the phone answers |
 | `whoami` | board, token | `model, harness` (claim what you run on) | `{name, board, target, identity}` |
 | `session_lookup` | board | `harness, session` | `{name}` (denied when none is registered) |
@@ -463,19 +463,27 @@ to allow the session to add the first key, and the node asks the person itself: 
 on macOS and Linux, raised only by the installed software on the real home: the launcher passes `--presence os` only when
 `poolhouse.real_machine.allowed()`, and the node itself asks only for the account's own node directory (`~/.poolhouse/node`, that directory and
 no other under it, never as the administrator account). **On the real home the operating system's prompt is the only presence**: a computer
-with no such prompt (a Linux without `pkexec`) refuses and says so plainly. The prompt shows the words of the key being added, the yes
+with no such prompt (a Linux without `pkexec` or a desktop session, a standard macOS account) asks on the person's terminal instead, and
+what that makes counts as a typed yes (`presence::can_prompt`, `Mode::Os`): it is never left with no way to ask, and never counted above what it is. The prompt shows the words of the key being added, the yes
 is for that key only (`presence_ask` takes its `public`; another key presented with the secret is refused), and the prompt ends when two minutes
 are up whether or not anything polls. For a node on any other state directory (a server, a container, the pool check's rig, a test) started
 with `--presence terminal`, the node writes the question on the terminal device the asker names and reads the typed `yes` itself; it refuses that
 mode on the real home, because the program that asks could open a terminal of its own and answer. A node started with no `--presence`
 cannot ask and refuses the first key and the first phone. On a yes the node makes the random secret in its memory (never a file), hands it
 once to the session that asked (`presence_status`), accepts it once and for ten minutes, and spends it on any guess, so a wrong secret ends the
-attempt; a node that holds a key never asks. **A change the node drafted is answered at the same prompt** (`presence_ask` with `purpose: pool_key` for a key not yet enrolled, `card` for one that is, and the
-`card` that `pool_draft_found` or `pool_draft` returned; only the person's own session may ask, three prompts in ten minutes and twenty a day at most). The sentence the prompt
-shows is the node's, written from the pool's name, the device it names and the key's words; a sentence the prompt would cut or change (over 160 characters, or with a
-character outside letters, digits, spaces and `.,-/()`) gets no card. A yes makes a **ticket**: a secret handed once to the session that asked, kept by the node only as a hash,
-good for two minutes and for the SHA-256 of each payload the card names, each once (`ticket_spend`); a `pool_key` yes also enrols the key (`keystore-prompt` through the operating
-system's prompt, `keystore-typed` through a terminal's) and, for a founding card, is the grant `pool_found` needs. The computer's key (`src/poolhouse/board/computer_key.py`)
+attempt; a node that holds a key never asks. **A change the node drafted is answered at the same prompt**, and so is every operation the person's own session does without a grant. Who may ask is proven: only the
+person's own session (`register_person` with the secret the node keeps for the person) drafts a card, receives a key the node made, or raises a prompt, so an agent's draft is a
+charter with no card. A card is asked for with `presence_ask` (`purpose: pool_key` for a card that made a key for this computer, `card` for any other, and the `card` that `pool_draft_found`,
+`pool_draft` or `op_draft` returned; it never takes a key from the request). Every limit counts one asker alone: one prompt open, ten minutes of quiet after a no, three prompts in ten
+minutes, twenty a day and sixteen cards, so a session that fills its own allowance or is refused takes nothing from the person's; the counts are kept in `prompts.json`, so a restart does not
+forget them. The sentence the prompt shows is the node's, written from the pool's name, its policy, whether its first computer may admit devices for 30 days, the words of the key's fingerprint
+and (for a removal) the words of the device's fingerprint, never a device's own name; it says that the yes adds a key and what it allows. A sentence the prompt would cut or change (over 240
+characters, or with a character outside letters, digits, spaces and `.,-/()`) gets no card, and a pool name is at most 40 letters, digits, spaces, dots and dashes, so a pool that cannot be
+administered is never made. A yes makes a **ticket**: a secret handed once to the session that asked, kept by the node only as a hash, good for two minutes from the yes (the moment the prompt
+ended, noted by the node and not by the poll that found it) and for the SHA-256 of each payload the card names, each once (`ticket_spend`). A `pool_key` yes enrols the key **the node made for that
+card** (`keystore-prompt` through the operating system's prompt, `keystore-typed` through a terminal's), hands its seed to the person's session once, and for a founding card is the grant `pool_found` needs.
+Opening a join window (`add_device`) and joining a pool (`join_pool`) by the person's session are cards too (`op_draft`): the call carries the ticket, and the node recomputes the bytes from the call it
+received and spends the ticket on them, so one yes opens one window or makes one join; a session with a grant needs none. The computer's key (`src/poolhouse/board/computer_key.py`)
 unseals only after the node accepts the payload. There is no cargo feature, argument or environment variable that answers for the person, in any
 binary: the crate's own tests put a stand-in on a library field that no binary sets, and the rig's person types `yes` at a pseudo-terminal
 (`tests/pool_check/wire.py`, `answer_presence`). On Windows the prompt is Windows Hello (a PIN, a fingerprint or a face) through the user consent verifier, and the system's credential dialog checked against the account's
@@ -895,7 +903,7 @@ pool, through admin keys; a device never does, and the one thing a member device
   key may end a delegate and nothing else. Every key that counts is a `computer` key, so every governance act waits seven days and a dispute
   lasts from the end of that wait. A grant of an irreversible data act (`file_delete`) approved on a card starts a day later, so a person key can
   revoke it first. A key that signs `grant_issue` directly meets the same floor in a pool for a sensitive grant of a device-local act. A floor is
-  never `weak`, and a floor above `computer` is void because no listed key can hold it. The `recovery` role states no claim and counts toward no
+  `weak` only in a pool founded where no key above `weak` can exist (R2 of docs/design-phone-free-pools.md: the pool is approved by a typed yes, lists no key above `weak`, gives its first computer no delegate and keeps every hold) and is never lowered to `weak` later, and a floor above `computer` is void because no listed key can hold it. The `recovery` role states no claim and counts toward no
   immediate act. The founding computer is a delegate for thirty days by the charter itself (`first.delegate`), with no hold.
   Thresholds count distinct people (`unit: person`) or keys: `routine` (cancel, end a delegate) 1 by default, `sensitive`
   (remove, admit, and for governance acts the admin changes, thresholds, holds, floors, a delegate) 1 while one person holds a key
@@ -981,10 +989,10 @@ pool, through admin keys; a device never does, and the one thing a member device
   unfounded` with an empty `pool`, nothing is written, it needs no signer to exist and it admits nobody (`add_device` answers "This
   device is not in a pool yet; make one, or join one."). It joins a pool with a code or an open pool it hears, or founds one
   (`pool_create`, or `pool_draft_found` and `pool_found` with a key outside the node). A device never founds a pool by itself.
-- **A pool of another charter version is set aside the same way.** A `pools/<id>/` whose founding act or charter is not of the version
-  this build reads is moved (never deleted) to `pools-old-format/<id>` and the device starts unfounded with the same one line; a
-  charter of another version that is offered to found a pool is refused with "this pool was made by another version of Poolhouse and
-  cannot be used: make a new pool".
+- **A pool of another charter version is refused, never converted.** A `pools/<id>/` whose founding act or charter is not of the version
+  this build reads stops the node with "this pool was made by another version of Poolhouse and cannot be used: make a new pool"; nothing
+  is moved, converted or written, and the person removes the folder to start the node (`tests/gov_old_version.rs`). A charter of another
+  version that is offered to found a pool is refused with the same sentence.
 - **An old-format pool is set aside, not refused.** A state directory with a `pool.json` makes the node rename it (never delete it) to
   `pool.json.old-format` (`.1`, `.2` ... when that name exists), print one line, "this device was in an old-format pool: it now starts
   unfounded; create a new pool", and start as the unfounded pool of one, whatever the file held (it is never read). Every board it
@@ -1142,16 +1150,18 @@ sessions is fenced as untrusted data on the way out and a credential in outgoing
 (`screen`, still Python). Tests use `tests/node_kit.py`: a real node on a short `/tmp` root.
 
 **Founding a pool from Python.** `board/founding.py` is the client of `pool_draft_found`, `pool_found`, `pool_draft` and `pool_submit`:
-`found(session, admin, name, policy)` drafts the charter (which names this device as the pool's first member), has the person's key sign its acceptance and submits it,
-after the grant `pool_create` came from the phone's card (`with_card` asks the card for any missing grant and sends the call again after the
-tap) or from the first key. It answers "already in the pool X" for a device that is founded, and refuses a key the node does not derive as
-above `weak` before the person is asked (the node's draft of the charter says the level it derives for each key). `ph.pool.found`, `ph.pool.status` (`governance`, `name`, `missing`) and `ph.pool.join` (a code, or an open pool's fingerprint)
+`found_on_computer(session, name, policy)` drafts the charter with a key the node makes for this computer (which names this device as the pool's first member), the person's one yes at the
+computer's prompt enrols that key and gives the session its seed once, the key signs the acceptance under the ticket, and the node takes the pool; where the computer can raise no prompt of its own the pool is
+approved by a typed yes and says so. `found(session, admin, name, policy)` does the same for a key someone else holds (a phone's), after the grant `pool_create` came from the phone's card
+(`with_card` asks the card for any missing grant and sends the call again after the tap). Both answer "already in the pool X" for a device that is founded. `ph.pool.found`, `ph.pool.status` (`governance`, `name`, `missing`) and `ph.pool.join` (a code, or an open pool's fingerprint)
 wrap it, and `poolhouse-workspace pool found` is the agent's command; docs/pools-and-serving.md, 1.17, says what is built and what remains.
 
 ## The person's session (the UI)
 
 The UI daemon acts for the person through one session of its own per board, `poolhouse.board.person.session(root)`: a
-parentless session registered under the harness `poolhouse-ui` and the model `person`, with one native id for each terminal or
+parentless session registered under the harness `poolhouse-ui` and the model `person` with the secret the node keeps for the person (`<state>/person/ui.secret`; the registration
+without it is refused, so a process an agent started is never the person's), which does nothing privileged because of what it is (each thing it does without a grant
+is one answer at the computer's prompt for exactly that thing), with one native id for each terminal or
 program that asks (`person.native_id()`), since a token spends a grant only from the lineage that registered it ("Identity"). It holds no grant of its own: when the
 node refuses a call of the page for want of one, the person's key (kept beside the node) is asked to sign a grant for that one use
 (`board.person_key`), which takes a typed `yes` on a terminal: a daemon with none signs nothing, and the person runs the command. Its token is kept in the daemon's private client folder

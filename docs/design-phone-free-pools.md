@@ -22,16 +22,17 @@ taps and plain sentences, and the pool must say honestly how much weaker a compu
   governance (2.6). A pool is never blocked on a phone: because every counting key is a `computer` key, governance acts are held 7 days and irreversible
   data acts wait a cancel window, each with a notification, never refused.
 - **The computer journey.** Found a pool: say it, tap **Make pool**, answer the computer's one prompt (2 counted steps).
-  Add a device: tap to open the join window on the first computer, type the code it shows into the new device (1 tap and no prompt while
-  the 30-day delegate lives). Approve: tap, prompt. Remove a member: open, approve, prompt, pick a number. Recover: 24 words, seven days.
+  Add a device: answer the computer's prompt for the join window on the first computer, type the code it shows into the new device and answer that
+  device's prompt for the join (a prompt each; no admit is asked of anyone while the 30-day delegate lives). Approve: tap, prompt. Remove a member: open, approve, prompt, pick a number. Recover: 24 words, seven days.
 - **Honest weakness.** At `computer` a program running as you outside the agent sandbox could sign without the prompt, and the level is only the
   vouching computer's word (2.2). What stands in the way is stated per operation in 2.5: holds and cancel windows (2.6), the thresholds and the
   admin key's separate custody. A protected helper closes the first and not root, and a phone closes both, in fact; no member can check either, so
   both count as `computer` until an evidence kind exists (keys document 3.9).
 - **Build.** Eight slices (section 3). The protocol lands first (slice 1); the review findings H1 and H2 are settled in this design before slice 1 is
   built, and H3 before slice 6. The claim, the voucher and the per-pool admin key are the keys document's slices. After slice 4 a computer-only person can found a pool, approve,
-  add a device by a card and remove one; slice 5 makes a join one tap and a code and ends with the live check on the owner's Mac. Windows and Linux
-  without a prompt are slice 7: those computers join pools and found none until it lands, and the refusal says why in one sentence. A
+  add a device by a card and remove one; slice 5 makes a join one tap and a code and ends with the live check on the owner's Mac. A computer
+  that can raise no prompt of its own (a Linux without polkit or a desktop session, a standard macOS account) founds a pool **approved by a typed yes**
+  (R2), says so on every card and every screen, and keeps every wait. A
   standard (non-administrator) macOS account is slice 3.
 - **Three decisions** made by the owner, recorded in section 5. The review log is section 7.
 
@@ -127,7 +128,8 @@ says a level (`app/poolhouse-node/tests/gov_strength.rs:58` already refuses a dr
   keys exist, unlike the first-key prompt (`presence/mod.rs:417`). Counts as `computer`. The charter decides who approves; `persons.json` is a cache
   of it and a row a program wrote there adds no approver (keys document 2.3).
 - `keystore-typed` and `file`: every other enrolled key: one a terminal's typed yes enrolled, any key on a directory that is not the real home, and an admin
-  key whose store is the passphrase file of a computer with no keystore (`src/poolhouse/fleet/onboard/signing.py:145-158`). Counts as `weak`.
+  key whose store is the passphrase file of a computer with no keystore (`src/poolhouse/fleet/onboard/signing.py:145-158`). Counts as `weak`. A pool whose every
+  key is of this kind is allowed only where no key above `weak` can exist (R2): the computer raises no prompt of its own, or cannot keep a key in its keystore.
 - Other members read the claim from the charter and the voucher's statements. For a key founded by someone else they have the vouching device's word, and the
   joiner's screen says so. A key added later counts as `computer` at most.
 - **No member can verify a claim.** A key's level is the vouching computer's word, whatever it says: a key added later is vouched by a card, and a node
@@ -145,8 +147,11 @@ says a level (`app/poolhouse-node/tests/gov_strength.rs:58` already refuses a dr
 - **The node holds no admin key**, as now (`gov/signer.rs:3-5`). A signer in the person-facing process, `ComputerKey` (a `Signs`), signs only
   with a **ticket**:
   1. The act or grant is drafted by the node (`pool_draft_found`, `pool_draft`), which writes the card text from the bytes (`gov/describe.rs`).
-  2. The person opens the card in the Poolhouse window and taps **Approve**: a call only the person's own UI session can make, never an
-     agent's session (`docs/node.md` "The person's session").
+  2. The person opens the card in the Poolhouse window and taps **Approve**: a call only the person's own UI session can make. That session is
+     **proven, not claimed**: it is registered with the secret the node keeps for the person in `<state>/person/ui.secret` (a folder the agent sandbox may
+     neither read nor write), so an agent's session cannot be made the person's, and an agent's draft is a charter with no card
+     (`docs/node.md` "The person's session"). The session holds no grant: everything it does without one is one answer at the prompt for exactly that
+     thing (this list, and a join window and a join, 2.4).
   3. Only then the node raises the computer's own prompt, once for the card, with one sentence the node writes from the act's bytes.
   4. On a yes the node gives the signer a ticket for that card id, the SHA-256 of each payload it names and a two-minute life, usable once.
   5. The signer rebuilds the bytes from the act it was given, refuses any that differ, unseals the key, signs the payloads, wipes the key.
@@ -155,23 +160,29 @@ says a level (`app/poolhouse-node/tests/gov_strength.rs:58` already refuses a dr
   of `docs/pools-and-serving.md` 2.4 does. The signer signs each payload only if its kind and pool are ones the card names.
 - **Bundled tickets.** One ticket may name up to 10 routine cards that the person opened together ("Approve 4 requests from your agents"),
   and costs one prompt. A sensitive or governance card is never bundled: one prompt each.
-- **One ask at founding.** The pool's admin key is made and enrolled by the same prompt that answers the founding card: the `pool_key` enrol prompt
-  of 2.2 carries the card's sentence, and its yes is both the key's enrolment and the ticket. A second pool on the computer makes its own admin key
+- **One ask at founding.** The pool's admin key is made by the node for that card (the asker never names it), and enrolled by the same prompt that answers
+  the founding card: the `pool_key` enrol prompt of 2.2 carries the card's sentence, which says that the yes adds a key and what it allows, and its yes is the
+  key's enrolment, the ticket and the hand-over of the key's secret to the person's session, once. A request that names a key, or asks a card that made none
+  for a key, is refused, so one surprise yes can never enrol a key an agent holds. A second pool on the computer makes its own admin key
   under its own card and prompt. The system's keychain may add a dialog of its own for the new item; that is unverified and 2.9 records it, and
   until it is recorded the friction contract counts 2 prompts for the first pool.
 - **What the prompt is, and is not.**
   - On macOS it is `do shell script ... with administrator privileges` through `osascript` (`presence/mod.rs:133-141`): the system's
     dialog for an **administrator's name and password**, titled by `osascript`, not by Poolhouse. Any program running as you can raise the same dialog
     with any text, so the prompt is not proof that the node raised it. That is the weakness of `computer` again (2.1), and `native` is the fix.
-  - Its text is cut to 160 characters of letters, digits and ` .,-/()` with no quotes (`plain`, `presence/mod.rs:133-134`). The node never cuts a
-    sentence: it builds the sentence from fixed words, the act's kind, the pool's name and a short fingerprint, and **refuses to raise the prompt when the
-    sentence is over 160 characters**, with one plain sentence on the card ("This name is too long to confirm here; shorten it").
+  - Its text is cut to 240 characters of letters, digits and ` .,-/()` with no quotes (`plain`, `presence/os.rs`). The node never cuts a
+    sentence: it builds the sentence from fixed words, the act's kind, the pool's name and the words of a fingerprint (a device is named by its fingerprint's
+    words, never by its own name, which it chose), and **refuses to raise the prompt when the sentence is over 240 characters**. A pool name is at most 40 letters,
+    digits, spaces, dots and dashes, and the draft and the founding refuse any other with one plain sentence, so no pool is made that cannot be administered. The
+    sentence says "OPEN" and that anyone on the network can join when the policy is `open`, and that this computer may admit devices without asking for 30 days.
   - The sentence is written from the act's bytes and never from the agent's words: the card's `WHY: The agent says: ...` text
     (`approvals/content.rs:228`) and any task text never enter the prompt string.
   - A standard (non-administrator) macOS account cannot pass an administrator's password dialog, so a family Mac fails onboarding. Slice 3 gives
     such an account a prompt it can answer with its own password (the candidate is the `LAContext` policy that `app/native-approval/Card.swift`
     already uses; not run on a standard account yet, so the live check of 2.9 proves it).
-  - **Prompt limits.** At most 3 operating-system prompts in 10 minutes and 20 a day on a computer, counted by the node. The ask ceiling of
+  - **Prompt limits.** At most 3 operating-system prompts in 10 minutes and 20 a day for each asking session, counted by the node and kept in `prompts.json` (a
+    restart, which a session can ask for, forgets nothing); the open prompt, the quiet of ten minutes after a no and the sixteen cards are each one session's, so
+    a session that fills its allowance or is refused takes nothing from the person's. The ask ceiling of
     `ops.rs:28-31` (12 asks in 10 minutes) counts asks and would allow about 72 password prompts an hour, so it is not the limit of prompts. A
     request over the limit waits as a card; nothing is refused and no phone is asked.
 - Not chosen now. A key bound to Touch ID in the Secure Enclave needs a signed app with a keychain entitlement and so a paid Apple account
@@ -201,8 +212,8 @@ this Wi-Fi can join".
 | # | The person | What happens | Counted |
 |---|---|---|---|
 | 1 | Says "Add my other laptop" on the first computer | The agent asks for the window; a card appears in the app: "Let a new device join 'home' with a code shown here. Open for 5 minutes." | say |
-| 2 | Taps **Open window** on the card (a tap in the app, which only the person's own session can make) | **The first computer's screen shows the code**, and the agent is told only that a window is open | tap |
-| 3 | Types the code into the new device's Poolhouse (it finds the pool by its beacon) | The code is checked by SPAKE2, three tries per window; the first computer's delegate device key signs the admit | type |
+| 2 | Taps **Open window** on the card and answers the computer's prompt for exactly that window ("let a new device join the pool 'home' with a code, for 2 minutes") | **The first computer's screen shows the code**, to the person's session that was given the answer; the agent is told only that a window is open | tap, prompt |
+| 3 | Types the code into the new device's Poolhouse (it finds the pool by its beacon) and answers that computer's prompt for joining the pool at that address | The code is checked by SPAKE2, three tries per window; the first computer's delegate device key signs the admit | type, prompt |
 | 4 | Nothing. The first computer shows "'laptop-2' (tide-oak-nine) joined 'home'. [Remove]" and every member shows the same notice | | none |
 
 The code is at least 40 bits: four words from the 2048-word list of the recovery phrase (44 bits), where today's is six digits
@@ -210,7 +221,9 @@ The code is at least 40 bits: four words from the 2048-word list of the recovery
 admits a day and 5 outstanding (admitted since the delegate was last renewed; the sixth is a card with a prompt). Looser caps (3 an hour, 10 a day) are possible only when an
 evidence kind lets a key count above `computer`.
 
-Counted: 1 tap, 1 typed code, 0 prompts while the delegate lives. With no delegate (never granted, or the 30 days ran out) the admit is a card:
+Counted: 1 tap, 1 prompt for the window, 1 typed code and 1 prompt for the join, and no admit asked of anyone while the delegate lives. A window and a join are prompts because the person's
+session holds no grant and a tap is a claim any program running as you can make; the prompt is the one step it cannot take. In a pool approved by a typed yes the first computer is no delegate: its first
+other device is admitted by an admit the person approves for it, or after a `delegate` act has waited its seven days. With no delegate (never granted, or the 30 days ran out) the admit is a card:
 tap and prompt, 2 more. Renewal is its own approval, nudged a week ahead, never inside another tap (`docs/pools-and-serving.md` 1.3).
 
 **Approve what an agent asks** (journey 3)
@@ -316,8 +329,12 @@ selects the counting keys and nothing more. A phone key and a computer key there
 that holds a phone key can remove a phone owner's devices, bounded by the threshold (R5) and not by a floor (`docs/pools-and-serving.md:114` lists
 remove-a-member as routine and changes).
 
-R2. `weak` is below every floor, and **a floor is never `weak`**: the charter is refused if it names it. `weak` counts toward nothing but
-ending a delegate (`gov/pool.rs:361`).
+R2. `weak` is below every floor, with one exception: **a floor is `weak` only where no key above `weak` can exist on the platform** (a computer that can raise no prompt of
+its own, or cannot keep a key in its keystore). Every member refuses a founding charter that names a `weak` floor and lists a key above `weak`, or that gives its first
+computer the delegate with no wait; the drafting node never drafts one on a computer that can raise a prompt, and a `set_floors` never lowers a floor to `weak`. Such a pool is
+**approved by a typed yes**: its cards, its `LEVEL:` line, its founding line, the prompt and the joiner's screen say plainly "approved by a typed yes; a program running as you
+could approve it", it keeps every hold, window and cancel that a computer pool has, and its first computer is no delegate. Outside that exception `weak` counts toward nothing but
+ending a delegate (`gov/pool.rs:361`). The refusal that said "use your phone" is gone: no pool waits for a phone.
 
 R3. Adding a key below the floor (a `weak` key) lists it and counts it for nothing.
 
@@ -434,7 +451,11 @@ pool, and a person who joins it trusts that. The joiner's screen and the pool he
 **D2. Recovery is 24 words, with no file.** The person writes down 24 generated words, shown once; the node never keeps them. A recovery takes effect
 only after a 7-day lock. The file sealed under six words is dropped.
 
-**D3. Founding gives the founding computer the 30-day delegate.** Adding your own devices then costs no tap, the same trade as phone pools
+**D4. A computer that can raise no prompt of its own founds a pool approved by a typed yes.** The owner's order is that founding is never blocked, and a computer with no administrator's account, no
+polkit or no keystore is not a computer that may not found. R2 gives it a pool whose every card says how weak the approval is; the cost, accepted with the order, is that a program running as the person can
+approve for it, and the pool's waits are all it has.
+
+**D3. Founding gives the founding computer the 30-day delegate** (except in a pool approved by a typed yes, D4). Adding your own devices then costs no tap, the same trade as phone pools
 (`docs/pools-and-serving.md` 3.1). A program running as you can use that device key as well as the pool key; the admit rate (3 an hour, 10 a day) and
 removal bound it. For a pool whose counting keys are all `computer` the review tightened the bound to 3 admits a day and 5 until the delegate is
 renewed, and a window to open only on the person's tap (2.4); the card says "this computer may admit devices without asking".
@@ -502,5 +523,8 @@ Built, each with tests written and run first (`app/poolhouse-node/tests/gov_leve
 
 Differences from the text: `shard_consent` is not an irreversible data act (the node's table calls it sensitive and a day's wait would delay every sharing consent); the notification
 of a pending governance act, which 2.6 names as the precondition of real `computer` keys, is not built (the hold is shown in `pool_status`), at the owner's order that a pool must
-be founded now; the join code is still six digits and windows are not limited to two an hour; the delegate caps of a computer-only pool are not built; a platform with no usable
-prompt founds nothing and says why, because a pool whose every key counts for nothing admits no one.
+be founded now; the join code is still six digits and windows are not limited to two an hour; the delegate caps of a computer-only pool are not built; the person's own session is proven by the secret
+the node keeps for the person (`identity::proves_person`), a join window and a join are each one prompt for exactly that operation (`window.rs`, `op_draft`), the key a founding yes enrols is made by the node and handed
+to the person's session once, the limits of prompts are one session's and are kept in `prompts.json`, a ticket lives two minutes from the yes, a delegate act waits its seven days from the moment it carried all
+its signatures, a grant of an irreversible act waits its day however it was signed (`grants::book::span`), the macOS and Linux prompts are used only where the account or session can answer them (`presence::can_prompt`,
+otherwise the person's terminal), and the Windows prompt is started from the system directory.
