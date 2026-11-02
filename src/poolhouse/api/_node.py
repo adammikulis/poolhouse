@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 from typing import Any
 
-from poolhouse import errors, node_health, node_launch, person
+from poolhouse import errors, node_health, node_launch
 from poolhouse.board import client, founding, person_key
 
 __all__ = ["call", "person_session", "session"]
@@ -30,8 +30,6 @@ def person_session() -> Any | None:
     and on a computer with no prompt of the system's own a typed yes is approval by "a program running as you could approve it": see
     `credentials.person_secret`); it holds no grant, and opens a join window or joins a pool with the person's yes at the computer's prompt for exactly
     that (`founding.yes_for`)."""
-    if person.marked():
-        return None
     with contextlib.suppress(founding.Refusal):
         return founding.pool_session(client.Client(node_launch.default_state()), person_session=True)
     return None

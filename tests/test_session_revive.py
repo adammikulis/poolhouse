@@ -8,8 +8,6 @@ again and goes on, and no refusal sends the owner to a terminal. A subagent has 
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from poolhouse import authority, node_launch, person, runtime_trust
@@ -33,7 +31,7 @@ def test_a_session_with_no_token_file_registers_again_from_its_native_id_and_goe
     assert not token_file(workspace_node, lead).exists()
     done = workspace_node.cli("whoami", env=environment(lead))
     assert done.returncode == 0, done.stderr
-    assert json.loads(done.stdout)["id"] == lead.name, "the session keeps its name"
+    assert f"id: {lead.name}" in done.stdout, "the session keeps its name"
     assert token_file(workspace_node, lead).is_file(), "and has a token again, kept where the next command finds it"
 
 

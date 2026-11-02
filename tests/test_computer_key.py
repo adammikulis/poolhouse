@@ -19,7 +19,7 @@ from pool_check import wire
 from pool_check.terminal import at_terminal
 
 import poolhouse as ph
-from poolhouse import keystore, node_launch
+from poolhouse import keystore, node_launch, person as persons
 from poolhouse.api import _node
 from poolhouse.board import (
     client as board_client,
@@ -167,7 +167,7 @@ def test_an_agent_session_is_given_no_key_no_card_and_no_prompt(workspace_node, 
     monkeypatch.setenv("CLAUDECODE", "1")
     with pytest.raises(Refusal) as refused:
         founding.found_here(workspace_node.client, "home", "secure")
-    assert "terminal of your own" in refused.value.say and refused.value.then == "ask-owner"
+    assert "terminal" in refused.value.say and refused.value.needs == "approval", "an agent that cannot be asked at a prompt is told in one sentence"
     assert not (workspace_node.state / "person" / "pools").exists(), "no key was made"
 
 
@@ -205,13 +205,13 @@ def typing(monkeypatch, *answers: str, asked: list[str] | None = None):
         yield voice
 
 
-def test_the_persons_own_process_is_the_persons_session_and_a_process_an_agent_started_is_not(mine, monkeypatch):
+def test_the_persons_session_is_proven_by_the_secret_and_not_by_who_started_the_process(mine, monkeypatch):
     person = _node.person_session()
     assert person is not None, "a process that reads the secret the node keeps for the person is the person's"
     kept = mine.client.call("pool_draft_found", "", person.token, title="home", policy="secure", project="", keys=[{"computer": True, "person": "owner", "label": "a key"}])
     assert kept["card"], "and the node lets that session raise a card for a key of this computer"
     monkeypatch.setenv("CLAUDECODE", "1")
-    assert _node.person_session() is None, "a process an agent started is never the person's, whatever it can read"
+    assert _node.person_session() is not None, "the secret proves the session, whoever started the process: the prompt is still the person's to answer"
     monkeypatch.delenv("CLAUDECODE")
     secret = mine.state / "person" / "ui.secret"
     away = secret.with_suffix(".away")
@@ -269,3 +269,14 @@ def test_a_change_to_who_governs_is_made_with_the_persons_yes_at_the_prompt_and_
     with typing(monkeypatch, asked=asked):
         renewed = ph.pool.renew()
     assert asked == ["yes"] and renewed.this_device, "the person was asked for exactly that change, and the node took the act this computer's key signed under it"
+
+
+def test_an_agent_runs_the_founding_command_and_the_pool_is_made_when_the_person_answers(workspace_node, monkeypatch):
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setattr(keystore, "default", lambda: KS)
+    assert persons.marked(), "an agent started this process"
+    asked: list[str] = []
+    with person_at_the_terminal(asked=asked) as voice:
+        made = founding.found_here(workspace_node.client, "home", "secure", voice=voice)
+    assert (made.name, made.already) == ("home", False) and asked == ["yes"], "the question was put to the person, who answered it"
+    assert workspace_node.client.call("pool_status")["governance"]["mode"] == "governed"

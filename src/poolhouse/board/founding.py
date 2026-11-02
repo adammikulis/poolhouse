@@ -15,7 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from poolhouse import errors, keystore, person
+from poolhouse import errors, keystore
 from poolhouse.board import approval, computer_key, credentials, grants, phone, presence
 from poolhouse.board.client import Client, Denied, NodeError
 from poolhouse.board.session import Session
@@ -29,8 +29,8 @@ CARD_WAIT_S = 120.0
 POLICIES = ("open", "secure")
 NOT_COUNTED = ("That key is a typed yes, which counts for nothing on a computer that can ask you at its own prompt: found the pool without naming "
                "a key, and this computer makes its own.")
-FOR_THE_PERSON = ("The computer's own prompt is for you to answer: run `poolhouse-pool found NAME` in a terminal of your own; an agent cannot "
-                  "answer it for you.")
+FOR_THE_PERSON = ("This process cannot ask you at the computer's own prompt: run the command in a terminal of your own. An agent that can ask "
+                  "is not refused; it only cannot answer for you.")
 
 
 class Refusal(errors.Denied):
@@ -234,7 +234,7 @@ def found_on_computer(session: Session, name: str, policy: str = "secure", voice
     try:
         said = presence.ask_card(session.client, session.token, "pool_key", presence.Card(_card_of(draft)), voice)
     except Denied as err:
-        raise Refusal(str(err), needs="approval", where="the prompt this computer shows", then="stop") from None
+        raise Refusal(str(err).removeprefix("denied: "), needs="approval", where="the prompt this computer shows", then="stop") from None
     try:
         key = keys.adopt(bytes.fromhex(str(said["seed"])))
     except (KeyStoreError, OSError, ValueError, KeyError) as err:
@@ -301,11 +301,11 @@ def device_name() -> str:
 
 def found_here(client: Client, name: str | None, policy: str, *, admin: Admin | None = None, voice: presence.Voice = presence.SILENT) -> Founded:
     """What an agent does when its person says "make a pool": found it on the device ``client`` reaches, with ``admin`` (a phone's key) or, by
-    default, a key this computer makes."""
+    default, a key this computer makes. Whoever runs this asks the person as the node lets it: the person's own session is registered by the
+    secret the node keeps for the person (`pool_session`), which a process that cannot read it never has, and the answer is the person's at the
+    computer's prompt, which no process can give for them."""
     if admin is not None:
         return found(pool_session(client), admin, name or device_name(), policy, Terms(voice=voice))
-    if person.marked():
-        raise Refusal(FOR_THE_PERSON, needs="approval", where="a terminal of your own", then="ask-owner")
     return found_on_computer(pool_session(client, person_session=True), name or device_name(), policy, voice)
 
 
@@ -320,8 +320,6 @@ def govern(client: Client, kind: str, body: dict[str, Any], *, voice: presence.V
     key = computer_key.PoolKeys(client.state, client, "", ks=ks).find(listed)
     if key is None:
         raise NoComputerKey("No key of this computer governs this pool, so it cannot make that change here.", needs="device", where="the computer that founded the pool", then="stop")
-    if person.marked():
-        raise Refusal(FOR_THE_PERSON.replace("found NAME", f"{kind.replace('_', '-')} ..."), needs="approval", where="a terminal of your own", then="ask-owner")
     session = pool_session(client, person_session=True)
     key.use(session.token)
     try:
