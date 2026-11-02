@@ -10,8 +10,7 @@ from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 
 from poolhouse import keystore, sealing
 from poolhouse.activity.log import ActivityLog, Unreadable
-from poolhouse.fleet import discovery
-from poolhouse.fleet.onboard import joining, signing
+from poolhouse.fleet.onboard import signing
 from poolhouse.memory import vault
 from poolhouse.requests.store import Ask, Inbox, Unavailable, build
 
@@ -92,13 +91,6 @@ def test_signing_file_uses_current_domain_and_refuses_foreign_ciphertext(tmp_pat
     assert path.read_bytes() == before
 
 
-def test_join_secret_uses_poolhouse_namespace_and_pool_binding():
-    salt = hashlib.sha256(b'poolhouse/join/v1/' + b'synthetic-pool').digest()
-    expected = base64.urlsafe_b64encode(keystore.scrypt_key('passphrase', salt)).decode().rstrip('=')
-    assert joining.join_secret('passphrase', 'synthetic-pool') == expected
-    assert joining.join_secret('passphrase', 'other-pool') != expected
-
-
 def test_unsupported_signing_storage_never_migrates_or_generates_identity(tmp_path):
     keys = signing.SigningKeys(tmp_path / 'keys', say=lambda _message: None)
     for operation in (keys._get, keys._drop):
@@ -131,15 +123,3 @@ def test_current_memory_file_tag_roundtrips_and_foreign_tag_never_decrypts(tmp_p
     with pytest.raises(vault.BadSeal):
         vault.open_blob(path.read_bytes(), [KEY], owner='owner')
     assert path.read_bytes() == foreign
-
-
-def test_current_discovery_tag_roundtrips_and_foreign_tag_never_derives_a_key(tmp_path, monkeypatch):
-    monkeypatch.setattr(discovery.time, 'time', lambda: 1800000000.0)
-    payload = {'v':3, 'kind':'query', 't':1800000000.0, 'nonce':'synthetic-nonce'}
-    raw = discovery._pack(KEY, payload)
-    assert raw.startswith(b'PHD3')
-    assert discovery._verify(KEY, raw, kind='query', nonce='synthetic-nonce') == payload
-    assert discovery._verify(KEY, raw, kind='query', nonce='synthetic-nonce') == payload
-    monkeypatch.setattr(discovery, '_box_key', lambda *_: pytest.fail('foreign tag derived a key'))
-    assert discovery._verify(KEY, b'F0D3' + raw[4:], kind='query') is None
-    assert not discovery.memberships(tmp_path / 'pool.key')

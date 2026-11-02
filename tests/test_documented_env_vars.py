@@ -28,7 +28,6 @@ EXTERNAL: dict[str, str] = {
     "POOLHOUSE_PUSH_MAIN": "documented as inert: the Bash guard no longer reads it; release-main approval replaces it",
     "POOLHOUSE_FLEET_TLS": "documented as removed: the pool has no TLS-off switch (docs/pool-encryption.md); tests/ sets it to prove it is ignored",
     "POOLHOUSE_NET": "opt-in switch of the live web smoke test, read by tests/ only",
-    "POOLHOUSE_MANUAL_DIALOG":"opt-in switch of the manual notification-dialog test, read by tests/ only",
 }
 """Documented variables that are intentionally not in the shipped source, each with the reason."""
 

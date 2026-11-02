@@ -130,9 +130,9 @@ def test_the_default_pull_of_a_name_that_says_the_model_was_altered_asks(stand, 
 def test_the_default_pull_and_fetch_and_snapshot_and_base_folder_ask_alike(stand):
     server = stand(repos())
     with pytest.raises(admission.NotApproved):
-        hub.pull(ref(), members=False)
+        hub.pull(ref())
     with pytest.raises(ph.Error):
-        hub.fetch(ref(), members=False)
+        hub.fetch(ref())
     with pytest.raises(admission.NotApproved):
         hub.snapshot("maker/thing-GGUF")
     with pytest.raises(admission.NotApproved):
@@ -222,7 +222,7 @@ def test_a_trust_is_a_trust_and_not_a_word(stand):
         with pytest.raises(TypeError, match="Trust"):
             ph.models.pull("maker/thing-GGUF", FILE, trust=word)
         with pytest.raises(TypeError, match="Trust"):
-            hub.pull(ref(), members=False, trust=word)
+            hub.pull(ref(), trust=word)
     assert dataclasses.is_dataclass(Trust) and Trust.__dataclass_params__.frozen
 
 
@@ -236,7 +236,7 @@ def test_the_publishers_of_a_trust_are_a_collection_of_names_and_never_one_strin
 def test_the_person_trust_asks_about_the_same_pull_and_names_the_argument_before_the_inbox(stand, ring):
     server = stand(repos())
     with pytest.raises(admission.NotApproved) as raised:
-        hub.pull(ref(), members=False, trust=PERSON)
+        hub.pull(ref(), trust=PERSON)
     said = str(raised.value)
     assert said.startswith("This model is from maker, who Poolhouse does not know. It is maker/thing-GGUF at ")
     assert 0 < said.index("trust=") < said.index("requests inbox")
@@ -244,7 +244,7 @@ def test_the_person_trust_asks_about_the_same_pull_and_names_the_argument_before
     (waiting,) = requests.list_requests(state="pending", kind="model_publisher")
     assert waiting.human_only
     assert approve("model_publisher") == 1
-    assert hub.pull(ref(), members=False, trust=PERSON).name == FILE
+    assert hub.pull(ref(), trust=PERSON).name == FILE
 
 
 def test_the_command_line_asks_and_has_no_way_to_say_otherwise(stand, capsys):
@@ -255,7 +255,7 @@ def test_the_command_line_asks_and_has_no_way_to_say_otherwise(stand, capsys):
         assert refused.value.code == 2
     capsys.readouterr()
     for command in ("pull", "fetch"):
-        assert models_cli.run([command, ref(), "--no-members"]) != 0
+        assert models_cli.run([command, ref()]) != 0
         said = capsys.readouterr().err
         assert "This model is from maker" in said and 0 < said.index("trust=") < said.index("requests inbox")
     assert server.downloads == {}
@@ -280,9 +280,9 @@ def test_nothing_in_the_environment_or_a_tool_schema_widens_the_policy(stand, mo
                  "POOLHOUSE_MODEL_TRUST", "POOLHOUSE_AGENT", "CLAUDECODE"):
         monkeypatch.setenv(name, "library")
     with pytest.raises(admission.NotApproved):
-        hub.pull(ref(), members=False, trust=PERSON)
+        hub.pull(ref(), trust=PERSON)
     with pytest.raises(admission.NotApproved):
-        hub.pull(ref(), members=False)
+        hub.pull(ref())
     assert server.downloads == {}
     for tool in mcp.TOOLS:
         assert not {"trust", "policy", "pipeline", "publishers"} & set(tool.schema().get("properties", {})), tool.name
@@ -291,18 +291,18 @@ def test_nothing_in_the_environment_or_a_tool_schema_widens_the_policy(stand, mo
 def test_a_reference_that_says_trust_allows_nothing(stand):
     server = stand(repos())
     with pytest.raises((hub.NotFound, admission.NotApproved)):
-        hub.pull(f"hf:maker/thing-GGUF/{FILE}?trust=library", members=False, trust=PERSON)
+        hub.pull(f"hf:maker/thing-GGUF/{FILE}?trust=library", trust=PERSON)
     with pytest.raises((hub.NotFound, admission.NotApproved)):
-        hub.pull(f"hf:maker/thing-GGUF/{FILE}#trust=library", members=False)
+        hub.pull(f"hf:maker/thing-GGUF/{FILE}#trust=library")
     assert server.downloads == {} and not hasattr(admission, "from_text") and not hasattr(Trust, "parse")
 
 
 def test_the_shipped_list_is_read_when_a_pull_is_checked_so_a_publisher_added_to_it_is_not_asked_about(stand, monkeypatch):
     server = stand(repos())
     with pytest.raises(admission.NotApproved):
-        hub.pull(ref(), members=False, trust=PERSON)
+        hub.pull(ref(), trust=PERSON)
     monkeypatch.setattr(publishers, "TRUSTED", publishers.TRUSTED | {"maker"})
-    assert hub.pull(ref(), members=False, trust=PERSON).name == FILE
+    assert hub.pull(ref(), trust=PERSON).name == FILE
     assert server.downloads
 
 

@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 import pytest
-from test_fleet_ui import WORDS, Serving
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
+from test_fleet_ui import Serving
 
 from poolhouse.fleet.conversations import Conversations
-from tests.pool_support import join_pool_by_passphrase
 from tests.remote_client_support import REMOTE_ADDRESS
 
 OPERATION = "a" * 32
@@ -13,11 +13,9 @@ BODY = {"model": "m", "settings": {}, "operation_id": OPERATION}
 
 
 @pytest.fixture
-def lan(tmp_path):
+def lan(tmp_path, studio_node):  # noqa: F811
     served = Serving(tmp_path)
     try:
-        join_pool_by_passphrase(WORDS, group="home", path=served.keyfile)
-        served.call("/ui/setup/join", method="POST", body={"passphrase": WORDS, "group": "home"})
         served.ui.setup_finished()
         served.ui.root = tmp_path
         served.ui.conversations = Conversations(tmp_path / "chats")
@@ -27,7 +25,7 @@ def lan(tmp_path):
 
 
 def sign_in(served) -> str:
-    _, _, headers = served.call("/ui/session", method="POST", body={"passphrase": WORDS}, host=REMOTE_ADDRESS)
+    _, _, headers = served.ticket_session(host=REMOTE_ADDRESS)
     return headers["Set-Cookie"].split(";")[0]
 
 

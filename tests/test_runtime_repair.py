@@ -63,7 +63,7 @@ def test_job_updates_merge_newer_worker_state(tmp_path):
 
 class Route(InitialSetupRoutes, RuntimeRepairRoutes):
     def __init__(self, tmp_path):
-        self.ui = UI(pool_key_path=tmp_path / "pool.key")
+        self.ui = UI()
         self.ui.root = tmp_path
         person = self.ui.sessions.open("setup")
         self.cookie = "poolhouse_ui=" + person.sid

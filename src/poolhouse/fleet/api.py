@@ -36,7 +36,6 @@ from . import (
     app_identity,
     callers,
     commands,
-    companion_routes,
     device_auth,
     projects as project_routes,
     shard_routes,
@@ -69,7 +68,6 @@ from .framing import (
 )
 from .jobs import DaemonError, JobRunner
 from .measuring import BenchHost, Job as BenchJob, Refused
-from .member_routes import answer as member_answer
 from .models import Models
 from .service_guard import ServiceGuard
 from .service_pool import Pool
@@ -355,8 +353,6 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
         def do_GET(self) -> None:
             if studio_webhooks.public(ui, self, None):
                 return
-            if companion_routes.answer(ui, self):
-                return
             if self.path == "/favicon.ico":
                 self.send_response(204)
                 self.end_headers()
@@ -375,7 +371,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             if not (path == "/health" and here and "Authorization" not in self.headers) \
                     and not self._guard():
                 return
-            if member_answer(self, roster, "GET", path, None) or shard_routes.answer(self, daemon, "GET", self.path, None):
+            if shard_routes.answer(self, daemon, "GET", self.path, None):
                 return
             if project_routes.answer(self, daemon.projects, parsed):
                 return
@@ -554,11 +550,6 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 return
             if daemon.launcher_control and daemon.launcher_control().route(self):
                 return
-            if self.path.split("?", 1)[0].startswith("/companion/"):
-                body = self._body(65536)
-                if body is not None:
-                    companion_routes.answer(ui, self, body)
-                return
             if self._ui():
                 return
             body = self._body()
@@ -569,7 +560,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             body = self._unsealed(body)
             if body is None:
                 return
-            if member_answer(self, roster, "POST", self.path.split("?")[0], body) or shard_routes.answer(self, daemon, "POST", self.path, body):
+            if shard_routes.answer(self, daemon, "POST", self.path, body):
                 return
             if studio_device_routes.answer(self, ui, self.path.split("?")[0], body) or studio_library.answer(self, ui, self.path.split("?")[0], body):
                 return

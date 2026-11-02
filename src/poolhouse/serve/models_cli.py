@@ -61,8 +61,6 @@ def add(sub: argparse._SubParsersAction) -> None:
     suggest.add_argument("--max-verdict", choices=("green", "yellow", "red"), default="green")
     pull = make("pull", "download hf:owner/repo[/file.gguf][:QUANT]", arg="ref")
     pull.add_argument("--dest", help="plain folder to download into (default: the Hugging Face hub cache)")
-    pull.add_argument("--no-members", action="store_true",
-                      help="do not ask paired devices first; download from the Hub (also POOLHOUSE_NO_MEMBERS=1)")
     snapshot = make("snapshot", "download a public Hub model or dataset into the persistent Hugging Face cache",
                     arg="repo")
     snapshot.add_argument("--repo-type", choices=("model", "dataset"), default="model")
@@ -204,7 +202,7 @@ def _pull(args: argparse.Namespace) -> int:
             warn(f"\r{p.phase:11} {p.fraction:6.1%}  {human_bytes(p.bytes_per_second)}/s  "
                  f"{p.file}", end="", flush=True)
 
-    got = hub.pull(args.ref, args.dest, show, members=False if args.no_members else None, trust=PERSON)
+    got = hub.pull(args.ref, args.dest, show, trust=PERSON)
     warn("")
     return _emit(args, {"path": str(got)}, lambda: say(str(got)))
 

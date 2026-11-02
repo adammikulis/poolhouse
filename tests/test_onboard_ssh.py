@@ -107,7 +107,7 @@ class Tools:
         self.log, self.payload = tmp_path / "calls.log", tmp_path / "payload.tar"
         self.reply = tmp_path / "reply.txt"
         self.reply.write_text(json.dumps({"step": "verified"}) + "\n" + json.dumps(
-            {"step": "listening", "port": 8772, "fingerprint": "ff" * 32, "ok": True}) + "\n")
+            {"step": "installed", "ok": True}) + "\n")
         for name in ("ssh", "ssh-keygen", "ssh-keyscan"):
             f = self.dir / name
             f.write_text(SHIM.format(fp=FINGERPRINT))
@@ -145,7 +145,7 @@ def test_a_known_host_gets_exactly_two_ssh_calls_with_the_fixed_argv(
     assert unpack[-3:] == ["--", "pi@kitchen.local", ssh.REMOTE_UNPACK]
     assert "BatchMode=yes" in unpack and "StrictHostKeyChecking=yes" in unpack
     assert not any("keyscan" in c[0] for c in tools.calls())      # a known host is not scanned
-    assert done["listen_port"] == 8772 and done["fingerprint"] == "ff" * 32
+    assert done["steps"] == ["verified", "installed"]
     assert [e.kind for e in rec.events][:2] == ["onboard.ssh.started", "onboard.ssh.copied"]
 
 
@@ -376,7 +376,7 @@ def test_a_verified_wheel_is_installed_into_a_per_user_venv_with_no_sudo(
     make_wheel(share / "poolhousefake-0.1-py3-none-any.whl")
     _, signed = signed_for(tmp_path, share)
     inbox = unpack(tmp_path, ssh.build_payload(share, signed))
-    done = remote(tmp_path, inbox, "--no-listen")
+    done = remote(tmp_path, inbox)
     assert done.returncode == 0, done.stdout + done.stderr
     venv = tmp_path / "home" / ".poolhouse" / "venv"
     out = subprocess.run([str(venv / "bin" / "python"), "-c", "import poolhousefake; "
@@ -395,7 +395,7 @@ def test_against_a_real_localhost_sshd(tmp_path, keystore, share):
     target = ssh.parse_target(f"{os.environ.get('USER', '')}@localhost")
     done = ssh.bootstrap_over_ssh(target, share, signed,
                                   lambda prints: os.environ.get("POOLHOUSE_TEST_HOSTKEY", ""))
-    assert done["listen_port"]
+    assert done["steps"][-1] == "installed"
 
 
 def test_a_manifest_naming_a_path_cannot_make_the_payload_read_outside_the_share(

@@ -1,4 +1,4 @@
-"""Drives a running bundle's page in headless Chromium: first run, sign-in, every tab."""
+"""Drives a running bundle's page in headless Chromium: first run, every tab."""
 
 from __future__ import annotations
 
@@ -33,35 +33,14 @@ def press(page: Page, label: str) -> None:
     page.click(f"#first-run button:text-is('{label}')")
 
 
-def first_run(page: Page, name: str, passphrase: str, group: str) -> None:
-    """Complete isolated setup through explicit model deferral; smoke never starts compute."""
+def first_run(page: Page, name: str) -> None:
+    """Complete setup through explicit model deferral; smoke never starts compute."""
     page.get_by_role("heading", name="Welcome to Poolhouse", exact=True).wait_for()
     page.fill("#setup-device-name", name)
-    page.get_by_text("Join another pool", exact=True).click()
-    page.wait_for_selector("#setup-pool-action")
-    page.select_option("#setup-pool-action", "create")
-    page.fill("#setup-pool-name", group)
-    page.fill("#setup-pool-passphrase", passphrase)
-    page.get_by_role("button", name="Create new pool", exact=True).click()
-    page.wait_for_selector("#first-run .ok:has-text('Created')")
     press(page, "Continue")
     page.get_by_role("heading", name="Make this device ready", exact=True).wait_for()
     press(page, "Set up models later")
     page.wait_for_selector("#app:not([hidden])")
-
-
-def sign_in(page: Page, passphrase: str) -> None:
-    """Types the passphrase if the page asks for it, and waits for a screen of the signed-in app.
-
-    Finishing setup leaves the page signed in on the chat screen; a page that was signed out
-    asks for the passphrase first.
-    """
-    signed_in = "#chat:not([hidden]), #pool:not([hidden])"
-    page.wait_for_selector(f"#signin:not([hidden]), {signed_in}")
-    if page.locator("#signin:not([hidden])").count():
-        page.fill("#p", passphrase)
-        page.click("#signin-go")
-    page.wait_for_selector(signed_in)
 
 
 def every_screen(page: Page) -> None:
@@ -76,8 +55,6 @@ def main() -> int:
     """Returns 0 when every screen drew with no error in the page."""
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("base", help="the daemon, e.g. http://127.0.0.1:8899")
-    ap.add_argument("--passphrase", required=True)
-    ap.add_argument("--group", default="ci")
     ap.add_argument("--screenshot", help="where to save the last screen")
     args = ap.parse_args()
 
@@ -94,8 +71,7 @@ def main() -> int:
                 if r.status >= 400 and r.status != 501 else None)
         try:
             page.goto(launch_url(page, args.base))
-            first_run(page, "ci-runner", args.passphrase, args.group)
-            sign_in(page, args.passphrase)
+            first_run(page, "ci-runner")
             every_screen(page)
         finally:
             if args.screenshot:

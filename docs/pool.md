@@ -13,17 +13,14 @@ performance are not claimed anywhere.
 
 ## 0. The five findings that shape the order
 
-1. A phone app exists already, and it is native Android, not a web page. It enrolls by a QR invite, pins the
-   daemon certificate and is allowed `fleet.status` and `chat` for one hour
-   (`app/android/README.md` [D]; `fleet/invites.py` `_grant` [V]; `fleet/companion_routes.py` [V]).
-   It cannot command anything else.
+1. A phone app exists already, and it is native Android, not a web page. It approves for the node's pool
+   (`app/android/README.md` [D]). It cannot command anything else.
 2. No person action can come from a phone today. Every person-session browser route requires the client
    address to be loopback and a Host header that is not a DNS name (`workspace/person_session.py:_validate`
    [V], `fleet/room_routes.py:_person` [V], `fleet/ui.py:host_ok` [V]). That is a deliberate floor, so the
    phone needs a new person credential kind, not a looser check (section 2.3).
 3. Tailscale is already half-built as a route: read-only detection, a learned tailnet address after the
-   certificate matched, and no install or config (`fleet/tailnet.py`, `fleet/onboard/routes.py` [V]). But the
-   Android companion and its invite refuse tailnet IPv4, see section 2.5 [V].
+   certificate matched, and no install or config (`fleet/tailnet.py`, `fleet/onboard/routes.py` [V]).
 4. Fleet jobs cannot run tests. The daemon refuses every argv except `python -m poolhouse.bench` and
    `python -m poolhouse.fleet.calibration` (`fleet/commands.py:allowed` [V]). The test broker and the reuse
    store are per device (section 2.1).
@@ -34,26 +31,17 @@ performance are not claimed anywhere.
 
 ## 1. What works today for several home devices
 
-### 1.1 Joining and joining
+### 1.1 Joining
 
 - A device starts its daemon with `poolhouse-traind`; it listens on loopback until it has joined a pool or is
   given `--lan` (`fleet/daemon.py:bind_address` [V]). Once joined it binds all interfaces over TLS with a
   self-signed certificate that devices pin; loopback is plain HTTP (`Daemon.listen`, `tls.py` [V]).
-- Development mode is the default: nearby devices discover one another by signed beacon and join the same
-  pool over pinned TLS without a passphrase (`docs/fleet.md` "Joining a pool" [D]; beacon verification in
-  `fleet/discovery.py` [V]).
-- Person-approved joining for a device that must be explicitly admitted:
-  - on the existing device: `poolhouse-pool add-device --for 10m`; a dialog shows Decline, Accept as mine,
-    Accept as someone else's, then a six digit code (`cli/reference.py` [V]);
-  - on the new device: `poolhouse-pool join-with-code --host H [--port 8772]`, type the code. A SPAKE2 exchange hands
-    over the pool key; three wrong tries or a machine in the middle fails (`docs/onboarding.md` [D]).
-  - `poolhouse-pool accept ID --mine|--other` and `decline ID` answer from a terminal (`cli/reference.py` [V]).
-- Explicit Production admission: `poolhouse-pool join --group NAME --mode prod --persist` (`docs/fleet.md` [D]).
-- Nearby and status: `poolhouse-pool nearby`, `poolhouse-pool status` (`cli/reference.py` [V]) and `poolhouse-members ls`
-  ([D] `docs/fleet.md`). `poolhouse-pool devices [--learn]` shows each member as lan, tailnet or
-  unreachable (`fleet/onboard/devices_cli.py` [V]).
-- Joining is pairwise today: N devices need N(N-1)/2 joins, there is no membership certificate
-  (`docs/board-replication.md` section 1 [D]; `fleet/onboard/cli.py` pinned rows).
+- A pool is founded and approved by a person's admin key on the node (`docs/node.md`). On the existing device
+  `poolhouse-pool add-device` prints a short join code; on the new device `poolhouse-pool join CODE --host H`
+  joins the pool (`docs/fleet.md` "Joining a pool" [D]).
+- Status: `poolhouse-pool status` and `poolhouse-pool members` (`cli/reference.py` [V]).
+  `poolhouse-pool devices [--learn]` shows each member as lan, tailnet or unreachable
+  (`fleet/onboard/devices_cli.py` [V]).
 
 ### 1.2 Signed logs
 
@@ -66,7 +54,7 @@ What runs today:
 
 - Each device's node holds the boards of the projects it takes part in and syncs the boards both members hold once
   the devices are in one pool (`docs/node.md`, its section on the pool). A session registers on its own device's
-  node, so there is no host to join, no code or invitation to carry, and no fallback to choose between.
+  node, so there is no host to join, no code to carry, and no fallback to choose between.
 - The first `poolhouse-workspace` command in a Git checkout registers the project on the device's node and resolves
   its board (`docs/node.md`, "Boards, projects, links").
 - `outbox` says whether a message is `provisional` or `synced` (every device that has synced the board holds it).
@@ -92,7 +80,7 @@ What runs today:
 - The broker is reachable only on `127.0.0.1` (`serve/broker_wire.py` `DEFAULT_HOST` [V]). Another device
   cannot take a lease on this one.
 - Which device serves what is announced in the daemon's device report (`serving` list) and visible in
-  `poolhouse-members ls` (`fleet/chat.py:targets` reads it [V]).
+  `poolhouse-pool status` (`fleet/chat.py:targets` reads it [V]).
 - `poolhouse-pool plan --users N --context C [--apply]` picks a model per device and, with `--apply`,
   calls `POST /serve` on each daemon (`docs/fleet.md` "Placing users" [D]).
 - A conversation reaches a model held by another device through `<device>/infer/v1/chat/completions`, which the
@@ -166,8 +154,7 @@ Rank is by how much of the goal a missing item blocks, first item first.
 2. **No lease broker reachable per device.** `broker_wire` is loopback [V]. A remote request to load a model
    today is `POST /serve` from `plan --apply` [D]; it should be a lease with reason and requester under the
    caller's own identity, taken through the target's broker, so the target's queue and history stay the one
-   record. Open: the `/serve` route authorizes by the pool-derived token, not by agent identity (token
-   derivation in `fleet/discovery.py` [V]); a lease request needs the board identity of the asker.
+   record. Open: the `/serve` route authorizes by the daemon token, not by agent identity; a lease request needs the board identity of the asker.
 3. **One thing on the GPU, pool wide.** The rule is enforced per machine by the manager (one set of settings
    per port, a lease for other settings is refused [D]). Nothing coordinates two devices, which is fine since
    each has its own GPU; the real gap is a device that is both a test runner and a model host (2.1(5)) and a
@@ -176,23 +163,19 @@ Rank is by how much of the goal a missing item blocks, first item first.
    found under `serve/` or `fleet/` (searched `idle_timeout`, `idle_unload`, `unload_after`, `keep_alive`, `wake_on_lan`, `magic packet` under `serve/` and `fleet/`) [V]. The board's `wait`
    and `watch` are reads of the node, not machine power. Needed: an "asleep" state in the report and a
    person-granted wake action; unload is `poolhouse-serve down` and must go through the same lease check.
-5. **Model files.** Members already fetch model files from each other before the Hub
-   (`poolhouse-models pull`, `fleet fetch`, `docs/onboarding.md` [D]), so a device without the model can
-   obtain it without the internet. This works.
+5. **Model files.** A device without the model fetches it from the Hub (`poolhouse-models pull`,
+   `docs/model-discovery.md` [D]).
 
 ### 2.3 Commanding from a phone
 
-What exists [V]: a native Android companion with QR enrollment, biometric unlock, one hour scope
-`fleet.status` and `chat`, revocable from the owner's local Fleet page; invites are minted only from the
-owner's loopback page by a person browser session (`fleet/invite_routes.py:ui_route` [V]). Physical-device
+What exists [V]: a native Android app that approves for the node's pool. Physical-device
 checks of QR, biometric and pinning are still outstanding (README [D]). iPhone: nothing exists.
 
 Missing, ranked:
 
 1. **A phone person credential.** The person session is loopback only [V]. A phone must be a
-   person-credentialed *device*: a device key enrolled by a person-approved QR or passphrase on the host's
-   own owner page, with scoped capabilities and expiry, revocable, and recorded as a device row (like
-   `Invitations.devices`). It must never be an agent token and must never let a model hold or relay it:
+   person-credentialed *device*: a device key enrolled by a person-approved QR on the host's
+   own owner page, with scoped capabilities and expiry, revocable, and recorded as a device row. It must never be an agent token and must never let a model hold or relay it:
    the host checks `person.require_person`-style provenance on the minting side only, and the phone's use of
    it is bounded to a named capability list. It must not widen the loopback floor for the browser session of
    the host itself. (`docs/person-delegation.md` invariants 1, 2, 4 [D].)
@@ -209,9 +192,8 @@ Missing, ranked:
 4. **Push notifications.** Neither route has push. A PWA gets Web Push only over HTTPS with a service worker,
    and on iOS only when installed to the home screen (no APNs and no native iPhone app: **blocked until the product takes off**, section 5.1). A native Android app needs FCM or a local poll; this
    introduces a third-party service and is an owner question (section 5).
-5. **QR joining UI for a web client.** QR drawing exists on the host (`fleet/invite_routes.py` uses the
-   `qrcode` package [V]); the scanning end in a browser needs the camera, which needs a secure context
-   (section 3.1). Pasting the invite works without the camera [V for Android; web untested].
+5. **QR joining UI for a web client.** The scanning end in a browser needs the camera, which needs a secure context
+   (section 3.1). Pasting the join code works without the camera.
 
 Remote access off the home network: out of scope except that section 3 shows the existing Tailscale route
 covers it for native clients and for the daemon, with no new public port.
@@ -225,7 +207,7 @@ Mostly present: workspace CLI and MCP exist (section 1.7). Gaps, ranked:
    or read a test job on a device. Each takes the agent's own token (`_token()`
    in `workspace/tools.py` [V]); none takes a person credential.
 2. **Board access from another device is the node's replication.** A harness on each device registers on that
-   device's node, with no invitation (`docs/node.md`); the claim that Codex and Claude on two devices both reach
+   device's node (`docs/node.md`); the claim that Codex and Claude on two devices both reach
    one board needs a live proof on the owner's devices and is not asserted.
 3. **Rule for every new remote action.** The action is allowed to an agent only through a capability the
    agent's own token carries, minted by a person; a job that executes code on a device (2.1(1), 2.2(2))
@@ -246,14 +228,14 @@ no service worker, manifest, camera, WebAuthn or `crypto.subtle`. So the UI itse
 except the copy buttons; what breaks is everything a phone app would add. The daemon on the LAN is already
 HTTPS, but with its own self-signed certificate that browsers do not trust [V `tls.py`]; a phone page there
 shows a certificate warning and, even once accepted, browsers refuse to register a service worker on an
-untrusted certificate. The session cookie sets `Secure` only if asked, and sign-in sends a passphrase
+untrusted certificate. The session cookie sets `Secure` only if asked, and sign-in uses a launch ticket
 (`fleet/session.py:cookie_header`, `routes.py:_sign_in` [V]).
 
 | option | HTTPS name | Phone sees | Breaks or limits |
 |---|---|---|---|
-| option A: the tailnet (`tailscale serve`, a certificate for the tailnet DNS name) | `host.tailnet-name.ts.net`, stable | Valid public-CA certificate, secure context | Needs the Tailscale app on the phone and every device and a Tailscale account; certificate issuance is transparent-log public (the machine name appears in CT logs); the daemon's `host_ok` refuses a Host that is a DNS name and a `serve` proxy arrives as loopback with that Host, so person routes stay refused until section 3 slice 4 changes the credential model [V `ui.py`, `person_session.py`]; the Android companion and invite refused tailnet IPv4 until the fix of 2026-10-08 (below) |
+| option A: the tailnet (`tailscale serve`, a certificate for the tailnet DNS name) | `host.tailnet-name.ts.net`, stable | Valid public-CA certificate, secure context | Needs the Tailscale app on the phone and every device and a Tailscale account; certificate issuance is transparent-log public (the machine name appears in CT logs); the daemon's `host_ok` refuses a Host that is a DNS name and a `serve` proxy arrives as loopback with that Host, so person routes stay refused until section 3 slice 4 changes the credential model [V `ui.py`, `person_session.py`] |
 | option B: a local certificate authority the phone trusts | a name the owner picks, needs local DNS or mDNS | Secure context once the CA is installed | iOS needs the profile installed and enabled as full trust, Android 11+ cannot trust a user CA for apps that do not opt in (the native app pins its own certificate and is unaffected); we would own a CA private key, an attack target and a security surface; the CA install is a person-only device setting; renewals and DNS are ours to run |
-| option C: plain LAN, no HTTPS trust | IP or `.local` | Not secure, or a warning page | No PWA install, no service worker, no web push, no camera in page, no WebAuthn, copy buttons fail; native Android app unaffected because it pins the certificate itself (`app/android` `PinnedHttps.java` [V]); the sign-in passphrase protection rests on the self-signed TLS only |
+| option C: plain LAN, no HTTPS trust | IP or `.local` | Not secure, or a warning page | No PWA install, no service worker, no web push, no camera in page, no WebAuthn, copy buttons fail; native Android app unaffected because it pins the certificate itself (`app/android` `PinnedHttps.java` [V]); the launch ticket travels over the self-signed TLS only |
 
 **(b) Tailscale as transport only.** Already the design for detection and routing
 (`docs/onboarding.md` "Devices on other networks", `docs/security.md` [D]; `fleet/tailnet.py`,
@@ -270,12 +252,6 @@ address is stored only after the certificate matched there.
   [D onboarding.md]. The board's sync is the node's transport between members on its own listener (`docs/node.md`, its section on the pool),
   authenticated by the pinned certificate and by a row signature from the origin device's key, so a relayed row is
   verified by the origin and not by the path or the tailnet.
-- Verified gap: `Invitations.mint` requires `address.is_private`, and `companion_routes.answer` requires
-  `source.is_private`; for `100.64.0.0/10` Python's `ipaddress` returns `is_private == False`
-  (checked with `ipaddress.ip_address('100.101.1.2').is_private`), while `fd7a:115c:a1e0::/48` returns True.
-  So the Android companion cannot enroll or connect over a tailnet IPv4 address today. A one-line widening
-  to `or in_tailnet(...)` (`fleet/onboard/lan.py:in_tailnet` [V]) fixes both; made on 2026-10-08 (slice 1
-  now only adds the per-device route display).
 
 **(c) Install and `tailscale serve` are person-only system settings.** We prepare and check; the person
 installs. The pattern is `poolhouse.fleet.autostart`: `prepare` stages unit files and a manifest and installs
@@ -297,17 +273,17 @@ branch landed before the next starts. Dependencies name slice numbers.
 
 | # | Slice | Size | Needs | Builds on |
 |---|---|---|---|---|
-| 1 | `poolhouse-pool devices` shows the route per device (tailnet IPv4 admission in the companion and invite checks is already fixed) | S | none | `fleet/onboard/lan.py:in_tailnet`, `fleet/invites.py`, `companion_routes.py`; `tests/test_onboard_tailnet.py` |
+| 1 | `poolhouse-pool devices` shows the route per device | S | none | `fleet/onboard/lan.py:in_tailnet`; `tests/test_onboard_tailnet.py` |
 | 2 | Device capability block in `Daemon.report()` (test capacity, platform key, checkouts, awake/asleep) and a `Requires` filter on it | S-M | none | `fleet/pool.py`, `fleet/daemon.py:report`, `scripts/testslots.py status` |
 | 3 | Board-fed landing reviews (built: `land-review`, the push hook) | done | none (single device) | `docs/landing.md`; `docs/node.md`; `workspace/task_integration.py` |
-| 4 | Phone person credential: device-key enrollment from the owner page, named capabilities, expiry, revoke, read-only status and board | M-L | 1 | `fleet/invites.py` `devices` and `_grant`, `companion_routes.py`, `docs/person-delegation.md` |
+| 4 | Phone person credential: device-key enrollment from the owner page, named capabilities, expiry, revoke, read-only status and board | M-L | 1 | `docs/person-delegation.md` |
 | 5 | Remote test runner: a person-granted job kind for `scripts/test` on a named commit, result posted as evidence by the runner's own agent | L | 2, 3 | `fleet/commands.py`, `docs/test-execution.md`, `docs/test-reuse.md`, `workspace/testruns.py`; branches `docs/linux-wsl-current`, `fix/linux-admission-stdio-current`, `fix/linux-immutable-runner` to be reviewed first |
 | 6 | Replica board: logs between devices, outbox, no agent-settable host (built by the node) | done | none, but ahead of any N>2 claim | `docs/node.md`; `docs/board-replication.md` (the design record) |
 | 7 | Lease through a remote broker under the asker's identity; `plan --apply` becomes a lease with reason | M | 2, 4 | `serve/broker_wire.py`, `serve/leases.py`, `fleet/api.py` `/serve` |
 | 8 | Phone capabilities: approve/deny, start/stop lease, submit test, read results | M | 4, 5, 7 | `docs/person-delegation.md` sections 7 and 12 |
 | 9 | Pool MCP tools: devices, lease request, test submit/read, each with the agent's own token | M | 3, 5, 7 | `mcp.py`, `workspace/tools.py` |
 | 10 | Tailscale prepare/verify slice in the autostart pattern (commands staged, person installs) | S-M | 1 | `fleet/autostart_cli.py`, `fleet/tailnet.py`, `docs/onboarding.md` |
-| 11 | PWA client for phone: manifest, service worker, phone views, QR scan | M-L | 4, 10 (HTTPS) or the owner picks native only | `fleet/web/components`, `fleet/invite_routes.py` |
+| 11 | PWA client for phone: manifest, service worker, phone views, QR scan | M-L | 4, 10 (HTTPS) or the owner picks native only | `fleet/web/components` |
 | 12 | Wake and idle unload | M | 2, 7 | none exists; Wake-on-LAN needs the sleeping device's NIC settings, a person setting |
 
 Optional, never authority: the parked NATS bundle (`docs/nats-coordination-quickstart` and the

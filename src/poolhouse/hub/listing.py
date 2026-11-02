@@ -160,7 +160,7 @@ class FetchError(OSError, errors.Error):
     """A Hub model could not be fetched; its cause retains the endpoint's refusal."""
 
 
-def fetch(reference: str, *, members: bool | None = None, trust: Trust = PERSON) -> Path:
+def fetch(reference: str, *, trust: Trust = PERSON) -> Path:
     """Download an `hf:` reference into the Hugging Face hub cache, without serving it, under ``trust``
     (a person answers for any publisher but the shipped ones by default).
 
@@ -175,7 +175,7 @@ def fetch(reference: str, *, members: bool | None = None, trust: Trust = PERSON)
         raise ValueError(f"{reference!r} should look like hf:owner/repo/file.gguf")
     repo, name = parts
     try:
-        got = pull(f"hf:{repo}/{name}", members=members, trust=trust)
+        got = pull(f"hf:{repo}/{name}", trust=trust)
     except remote.NotFound as exc:
         raise FetchNotFound(str(exc)) from exc
     except remote.RemoteError as exc:

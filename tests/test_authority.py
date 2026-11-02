@@ -58,10 +58,10 @@ def test_set_selects_all_a_group_or_a_gate_and_persists():
     assert authority.state_of("sentinel.quarantine") == authority.state_of("sentinel.policy") == authority.PERSON
     assert authority.state_of("serve.wired-limit") == authority.DELEGATED
     authority.set_state(["ALL"], authority.PERSON, by="lead")
-    authority.set_state(["serve.wired-limit", "fleet.recovery"], authority.DELEGATED, by="lead",
+    authority.set_state(["serve.wired-limit", "chat.policy"], authority.DELEGATED, by="lead",
                         asking=authority.Asking(terminal=(True, True), env={}, typed=lambda prompt: "yes"))
     held = {row["gate"]: row["state"] for row in authority.show()["gates"]}
-    assert held["serve.wired-limit"] == held["fleet.recovery"] == authority.DELEGATED
+    assert held["serve.wired-limit"] == held["chat.policy"] == authority.DELEGATED
     assert held["sentinel.policy"] == authority.PERSON
 
 
@@ -181,20 +181,10 @@ def test_the_keystore_stays_a_person_s_whatever_the_registry_says(monkeypatch, c
     assert "for a person" in capsys.readouterr().err
 
 
-def test_the_pool_passphrase_stays_a_person_s(monkeypatch, capsys):
-    from poolhouse.fleet import recovery
-    authority.set_state(["ALL"], authority.DELEGATED, by="lead")
-    monkeypatch.setenv("CLAUDECODE", "1")
-    args = argparse.Namespace(cmd="passphrase", group="", pool_key=None)
-    assert recovery.run(args) == 2
-    assert "for a person" in capsys.readouterr().err
-
-
 def test_the_gates_of_no_registry_name_survive_in_the_source():
     from pathlib import Path
     root = Path(authority.__file__).parent
-    pinned = {"net/cli.py": 'human.require_person("unlock")', "fleet/recovery.py": 'human.require_person("passphrase")',
-              "fleet/runtime_paths.py": 'person.require_person("display the pool token")',
+    pinned = {"net/cli.py": 'human.require_person("unlock")', "fleet/runtime_paths.py": 'person.require_person("display the daemon token")',
               "sentinel/review.py": 'human.require_person("review")'}
     for name, call in pinned.items():
         assert call in (root / name).read_text()

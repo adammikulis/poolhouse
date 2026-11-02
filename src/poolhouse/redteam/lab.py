@@ -60,7 +60,7 @@ class Lab:
 def own_home(path: Path) -> Iterator[Path]:
     """Point ``POOLHOUSE_HOME`` at ``path`` for the block and put the old value back after. The lab forges requests, plants
     decoys and rotates keys, and every one of those lands in whatever home is current: without this the red-team
-    command quarantined 127.0.0.1 in the real sentinel store and left key backups beside the real pool key."""
+    command quarantined 127.0.0.1 in the real sentinel store and left key backups beside the real device keys."""
     path.mkdir(parents=True, exist_ok=True)
     before = os.environ.get(home.ROOT_ENV)
     os.environ[home.ROOT_ENV] = str(path)

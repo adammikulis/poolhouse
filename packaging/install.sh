@@ -149,7 +149,7 @@ install_app() {
     [ -d "$DEST/Poolhouse.app" ] || die "$KEY could not be copied into $DEST"
     say ""
     say "Installed to $DEST/Poolhouse.app"
-    say "Open it to name this device and choose Dev or Prod."
+    say "Open it to name this device."
     say "Setup downloads continue in the background while you finish onboarding."
     open "$DEST/Poolhouse.app" 2>/dev/null || true
   else
@@ -243,7 +243,7 @@ link_scripts() {
   TO="${POOLHOUSE_DEST:-$HOME/.local/bin}"
   [ "$MODE" = system ] && TO="${POOLHOUSE_DEST:-/usr/local/bin}"
   mkdir -p "$TO" 2>/dev/null || true
-  for name in poolhouse poolhouse-traind poolhouse-pool poolhouse-members poolhouse-serve \
+  for name in poolhouse poolhouse-traind poolhouse-pool poolhouse-serve \
               poolhouse-models poolhouse-setup poolhouse-doctor poolhouse-mcp; do
     [ -x "$FROM/$name" ] || continue
     ln -sf "$FROM/$name" "$TO/$name" 2>/dev/null || true

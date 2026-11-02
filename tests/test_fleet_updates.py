@@ -69,7 +69,7 @@ def _git(**over: tuple[int, str]) -> FakeGit:
         "rev-parse": (0, OLD),
         "fetch": (0, ""),
         "merge-base": (0, ""),
-        "diff": (0, "src/poolhouse/fleet/join.py\nREADME.md\n"),
+        "diff": (0, "src/poolhouse/fleet/launch.py\nREADME.md\n"),
         "merge": (0, "Updating 1111111..2222222"),
     }
     base.update(over)
@@ -129,7 +129,7 @@ class TestFollowingABranch:
         assert restarts == []
 
     def test_a_pull_that_touches_packaging_reinstalls_first(self, tmp_path):
-        git = _git(**{"diff": (0, "pyproject.toml\nsrc/poolhouse/fleet/join.py\n")})
+        git = _git(**{"diff": (0, "pyproject.toml\nsrc/poolhouse/fleet/launch.py\n")})
         installed = []
         got = updates.track_once(
             updates.TrackedBranch(REPO, 'main', tmp_path),

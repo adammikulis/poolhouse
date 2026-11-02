@@ -16,8 +16,6 @@ from keyring.errors import PasswordDeleteError
 
 from poolhouse.fleet import tls
 from poolhouse.fleet.onboard.events import Bus, Event
-from poolhouse.fleet.onboard.join_code import Grant
-from poolhouse.fleet.onboard.requests import Limits, Requests
 
 
 class Clock:
@@ -48,21 +46,6 @@ class Recorder:
 
 def identity(root: Path, name: str) -> tls.Identity:
     return tls.identity(root / name, name)
-
-
-def requests(root: Path, rec: Recorder, clock: Clock | None = None,
-             limits: Limits | None = None) -> Requests:
-    return Requests(root / "requests.json", limits=limits, bus=rec.bus,
-                    clock=clock or Clock())
-
-
-def info(fingerprint: str, nonce: str = "ab" * 16, **more: str) -> dict[str, str]:
-    return {"name": "kitchen-pi", "hostname": "kitchen.local", "model": "Linux aarch64",
-            "fingerprint": fingerprint, "nonce": nonce, **more}
-
-
-def grant_for(ident: tls.Identity) -> Grant:
-    return Grant(group="home", key="secret-pool-key", certificate=ident.beacon)
 
 
 class FileKeyring(KeyringBackend):

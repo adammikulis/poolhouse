@@ -1,10 +1,10 @@
 {
- "surfaces": 952,
+ "surfaces": 910,
  "by_status": {
-  "covered": 617,
-  "partial": 194,
+  "covered": 586,
+  "partial": 184,
   "uncovered": 53,
-  "n/a": 85,
+  "n/a": 84,
   "unmapped": 3
  },
  "by_kind": {
@@ -17,7 +17,7 @@
   },
   "cli": {
    "covered": 7,
-   "partial": 5,
+   "partial": 4,
    "uncovered": 0,
    "n/a": 22,
    "unmapped": 0
@@ -30,28 +30,28 @@
    "unmapped": 0
   },
   "desktop": {
-   "covered": 10,
+   "covered": 5,
    "partial": 0,
    "uncovered": 0,
    "n/a": 12,
    "unmapped": 0
   },
   "egress": {
-   "covered": 62,
-   "partial": 47,
+   "covered": 58,
+   "partial": 45,
    "uncovered": 0,
    "n/a": 1,
    "unmapped": 0
   },
   "handler": {
-   "covered": 31,
+   "covered": 29,
    "partial": 2,
    "uncovered": 0,
    "n/a": 0,
    "unmapped": 0
   },
   "human": {
-   "covered": 79,
+   "covered": 75,
    "partial": 0,
    "uncovered": 0,
    "n/a": 1,
@@ -66,9 +66,9 @@
   },
   "listener": {
    "covered": 7,
-   "partial": 5,
+   "partial": 3,
    "uncovered": 0,
-   "n/a": 25,
+   "n/a": 24,
    "unmapped": 0
   },
   "mcp-tool": {
@@ -79,15 +79,15 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 92,
+   "covered": 89,
    "partial": 0,
    "uncovered": 49,
    "n/a": 0,
    "unmapped": 0
   },
   "route": {
-   "covered": 143,
-   "partial": 51,
+   "covered": 130,
+   "partial": 46,
    "uncovered": 0,
    "n/a": 1,
    "unmapped": 3
@@ -688,19 +688,6 @@
    "note": ""
   },
   {
-   "id": "cli:poolhouse-members",
-   "kind": "cli",
-   "source": "poolhouse.fleet.members:main",
-   "trust": "the person at a terminal; arguments may carry text from outside",
-   "attacker": "hostile argument text or path reaches the command",
-   "status": "partial",
-   "tests": [
-    "tests/test_redteam_fleet.py",
-    "tests/test_join_by_code.py"
-   ],
-   "note": "the daemon's handler and the join exchange are attacked; the join and member-book argument parsing are not"
-  },
-  {
    "id": "cli:poolhouse-memory",
    "kind": "cli",
    "source": "poolhouse.memory.cli:main",
@@ -751,8 +738,7 @@
    "attacker": "hostile argument text or path reaches the command",
    "status": "partial",
    "tests": [
-    "tests/test_redteam_fleet.py",
-    "tests/test_join_by_code.py"
+    "tests/test_redteam_fleet.py"
    ],
    "note": "the daemon's handler and the join exchange are attacked; the join and member-book argument parsing are not"
   },
@@ -857,8 +843,7 @@
    "attacker": "hostile argument text or path reaches the command",
    "status": "partial",
    "tests": [
-    "tests/test_redteam_fleet.py",
-    "tests/test_join_by_code.py"
+    "tests/test_redteam_fleet.py"
    ],
    "note": "the daemon's handler and the join exchange are attacked; the join and member-book argument parsing are not"
   },
@@ -1265,8 +1250,7 @@
    "attacker": "attacker text reaches a dialog, notification or shell command",
    "status": "covered",
    "tests": [
-    "tests/test_redteam_dialog.py",
-    "tests/test_onboard_notify.py"
+    "tests/test_redteam_dialog.py"
    ],
    "note": ""
   },
@@ -1278,8 +1262,7 @@
    "attacker": "attacker text reaches a dialog, notification or shell command",
    "status": "covered",
    "tests": [
-    "tests/test_redteam_dialog.py",
-    "tests/test_onboard_notify.py"
+    "tests/test_redteam_dialog.py"
    ],
    "note": ""
   },
@@ -1291,8 +1274,7 @@
    "attacker": "attacker text reaches a dialog, notification or shell command",
    "status": "covered",
    "tests": [
-    "tests/test_redteam_dialog.py",
-    "tests/test_onboard_notify.py"
+    "tests/test_redteam_dialog.py"
    ],
    "note": ""
   },
@@ -1304,8 +1286,7 @@
    "attacker": "attacker text reaches a dialog, notification or shell command",
    "status": "covered",
    "tests": [
-    "tests/test_redteam_dialog.py",
-    "tests/test_onboard_notify.py"
+    "tests/test_redteam_dialog.py"
    ],
    "note": ""
   },
@@ -1328,71 +1309,6 @@
    "status": "n/a",
    "tests": [],
    "note": "fixed scripts that read the battery, focus or login item; no text from outside"
-  },
-  {
-   "id": "desktop:fleet/onboard/notify.py:LinuxNotifier.ask",
-   "kind": "desktop",
-   "source": "fleet/onboard/notify.py:LinuxNotifier.ask",
-   "trust": "names of members, sessions, files",
-   "attacker": "attacker text reaches a dialog, notification or shell command",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_dialog.py",
-    "tests/test_onboard_notify.py"
-   ],
-   "note": ""
-  },
-  {
-   "id": "desktop:fleet/onboard/notify.py:LinuxNotifier.show_code",
-   "kind": "desktop",
-   "source": "fleet/onboard/notify.py:LinuxNotifier.show_code",
-   "trust": "names of members, sessions, files",
-   "attacker": "attacker text reaches a dialog, notification or shell command",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_dialog.py",
-    "tests/test_onboard_notify.py"
-   ],
-   "note": ""
-  },
-  {
-   "id": "desktop:fleet/onboard/notify.py:MacNotifier.ask",
-   "kind": "desktop",
-   "source": "fleet/onboard/notify.py:MacNotifier.ask",
-   "trust": "names of members, sessions, files",
-   "attacker": "attacker text reaches a dialog, notification or shell command",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_dialog.py",
-    "tests/test_onboard_notify.py"
-   ],
-   "note": ""
-  },
-  {
-   "id": "desktop:fleet/onboard/notify.py:MacNotifier.show_code",
-   "kind": "desktop",
-   "source": "fleet/onboard/notify.py:MacNotifier.show_code",
-   "trust": "names of members, sessions, files",
-   "attacker": "attacker text reaches a dialog, notification or shell command",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_dialog.py",
-    "tests/test_onboard_notify.py"
-   ],
-   "note": ""
-  },
-  {
-   "id": "desktop:fleet/onboard/notify.py:pick",
-   "kind": "desktop",
-   "source": "fleet/onboard/notify.py:pick",
-   "trust": "names of members, sessions, files",
-   "attacker": "attacker text reaches a dialog, notification or shell command",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_dialog.py",
-    "tests/test_onboard_notify.py"
-   ],
-   "note": ""
   },
   {
    "id": "desktop:fleet/room_routes.py:RoomRoutes._apply",
@@ -1875,44 +1791,6 @@
    "note": "Catalogue fixtures attack origin and cursor substitution, malformed and bounded metadata, media URLs and immutable file selections. The caller uses the maintained guarded network pipeline with an explicit byte bound and no token; transport tests exercise private-address redirects and cross-origin credential removal. No live Hugging Face or dataset import execution is claimed."
   },
   {
-   "id": "egress:fleet/discovery.py:_trusted",
-   "kind": "egress",
-   "source": "fleet/discovery.py:_trusted",
-   "trust": "addresses and redirects named by pages, repositories and members",
-   "attacker": "a redirect or address sends the request somewhere the person did not choose",
-   "status": "partial",
-   "tests": [
-    "tests/test_net_no_bypass.py"
-   ],
-   "note": "loopback and LAN calls to servers the person configured; the net-no-bypass scan keeps public hosts out, answers from a hostile server (oversized, slow, malformed JSON) are not sent"
-  },
-  {
-   "id": "egress:fleet/invite_client.py:_post",
-   "kind": "egress",
-   "source": "fleet/invite_client.py:_post",
-   "trust": "addresses and redirects named by pages, repositories and members",
-   "attacker": "a redirect or address sends the request somewhere the person did not choose",
-   "status": "covered",
-   "tests": [
-    "tests/test_fleet_invite_client.py::test_every_resolved_address_must_be_a_remote_lan_device",
-    "tests/test_fleet_invite_client.py::test_wrong_certificate_is_refused_before_any_http",
-    "tests/test_fleet_invite_client.py::test_modified_grant_is_rejected"
-   ],
-   "note": "Every DNS result is checked before a frozen sockaddr connection; the exact TLS leaf is pinned before HTTP; modified raw grants fail authentication"
-  },
-  {
-   "id": "egress:fleet/join.py:_enrol_via_daemon.call",
-   "kind": "egress",
-   "source": "fleet/join.py:_enrol_via_daemon.call",
-   "trust": "addresses and redirects named by pages, repositories and members",
-   "attacker": "a redirect or address sends the request somewhere the person did not choose",
-   "status": "partial",
-   "tests": [
-    "tests/test_net_no_bypass.py"
-   ],
-   "note": "loopback and LAN calls to servers the person configured; the net-no-bypass scan keeps public hosts out, answers from a hostile server (oversized, slow, malformed JSON) are not sent"
-  },
-  {
    "id": "egress:fleet/launch.py:_health",
    "kind": "egress",
    "source": "fleet/launch.py:_health",
@@ -1960,32 +1838,6 @@
     "tests/test_launch_secret.py::test_a_redirected_or_shared_secret_is_never_read_or_written"
    ],
    "note": "The loopback ticket request reads the recorded port and secret only from an owner-only, non-symlink record; a daemon that answers with errors, non-JSON or no ticket yields the bare page"
-  },
-  {
-   "id": "egress:fleet/onboard/join_code.py:JoinCodeClient._call",
-   "kind": "egress",
-   "source": "fleet/onboard/join_code.py:JoinCodeClient._call",
-   "trust": "addresses and redirects named by pages, repositories and members",
-   "attacker": "a redirect or address sends the request somewhere the person did not choose",
-   "status": "covered",
-   "tests": [
-    "tests/test_onboard_tailnet.py",
-    "tests/test_onboard_transfer.py"
-   ],
-   "note": ""
-  },
-  {
-   "id": "egress:fleet/onboard/joining.py:_Call._connect",
-   "kind": "egress",
-   "source": "fleet/onboard/joining.py:_Call._connect",
-   "trust": "addresses and redirects named by pages, repositories and members",
-   "attacker": "a redirect or address sends the request somewhere the person did not choose",
-   "status": "covered",
-   "tests": [
-    "tests/test_onboard_tailnet.py",
-    "tests/test_onboard_transfer.py"
-   ],
-   "note": ""
   },
   {
    "id": "egress:fleet/onboard/lan.py:require_local",
@@ -2226,18 +2078,6 @@
     "tests/test_project_source.py"
    ],
    "note": "signed source replies stay on the exact LAN authority endpoint; wire and plaintext bounds include authenticated sealing overhead"
-  },
-  {
-   "id": "egress:fleet/project_client.py:register_local",
-   "kind": "egress",
-   "source": "fleet/project_client.py:register_local",
-   "trust": "addresses and redirects named by pages, repositories and members",
-   "attacker": "a redirect or address sends the request somewhere the person did not choose",
-   "status": "covered",
-   "tests": [
-    "tests/test_remote_transport_attacks.py::test_local_registration_refuses_hostile_response"
-   ],
-   "note": "bounded loopback registration rejects foreign redirects, oversized replies, absent or tampered seals, malformed JSON and another project identity"
   },
   {
    "id": "egress:fleet/remote.py:Member._request",
@@ -3053,8 +2893,7 @@
     "tests/test_redteam_fleet.py::test_no_protected_route_answers_without_the_right_token",
     "tests/test_redteam_fleet.py::test_no_path_reaches_a_file_outside_the_files_directory",
     "tests/test_fleet_framing.py",
-    "tests/test_fleet_commands.py",
-    "tests/test_fleet_handshake.py"
+    "tests/test_fleet_commands.py"
    ],
    "note": "authentication, traversal, framing, body sealing, the /jobs allowlist and the join handshake are attacked; the JSON bodies of /models/get, /serve, /fetch, /decide, /bench and /availability are not"
   },
@@ -3068,32 +2907,6 @@
    "tests": [
     "tests/test_onboard_bootstrap.py",
     "tests/test_onboard_transfer.py"
-   ],
-   "note": ""
-  },
-  {
-   "id": "handler:fleet/onboard/join_code.py:_route",
-   "kind": "handler",
-   "source": "fleet/onboard/join_code.py:_route",
-   "trust": "network member or local browser",
-   "attacker": "malformed, oversized or unauthenticated requests",
-   "status": "covered",
-   "tests": [
-    "tests/test_join_by_code.py::test_an_offer_whose_tag_is_not_the_exchanges_is_refused_and_nothing_is_learned",
-    "tests/test_onboard_join_code.py"
-   ],
-   "note": ""
-  },
-  {
-   "id": "handler:fleet/onboard/join_code.py:dispatch",
-   "kind": "handler",
-   "source": "fleet/onboard/join_code.py:dispatch",
-   "trust": "network member or local browser",
-   "attacker": "malformed, oversized or unauthenticated requests",
-   "status": "covered",
-   "tests": [
-    "tests/test_join_by_code.py::test_an_offer_whose_tag_is_not_the_exchanges_is_refused_and_nothing_is_learned",
-    "tests/test_onboard_join_code.py"
    ],
    "note": ""
   },
@@ -3549,10 +3362,11 @@
    "tests": [
     "tests/test_producer_member.py::test_real_sealed_tls_uses_actual_current_caller_not_record_fields",
     "tests/test_producer_member.py::test_duplicate_and_nonfinite_fields_never_dispatch_over_actual_tls",
-    "tests/test_producer_member.py::test_missing_service_and_mismatched_tls_identity_fail_closed",
+    "tests/test_producer_member.py::test_missing_service_fails_closed",
+    "tests/test_producer_member.py::test_tls_caller_that_is_not_the_sealed_member_cannot_dispatch",
     "tests/test_producer_member.py::test_only_publisher_action_can_carry_maximum_record_over_sealed_tls",
     "tests/test_producer_member.py::test_metadata_budget_is_fixed_before_provider_dispatch",
-    "tests/test_producer_member.py::test_no_tls_channel_or_current_membership_cannot_dispatch",
+    "tests/test_producer_member.py::test_no_tls_channel_or_current_pool_cannot_dispatch",
     "tests/test_producer_member.py::test_only_fixed_action_has_large_request_budget"
    ],
    "note": "Actual sealed TLS adapter tests bind the authenticated caller certificate and pool, reject substituted identities and malformed fixed schemas, and limit large bodies to publishing. Provider source capability, grant checks and full factory composition remain separate requirements."
@@ -3964,57 +3778,6 @@
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
   },
   {
-   "id": "human:fleet/members_cli.py:cmd_add",
-   "kind": "human",
-   "source": "fleet/members_cli.py:cmd_add",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:fleet/members_cli.py:cmd_adopt",
-   "kind": "human",
-   "source": "fleet/members_cli.py:cmd_adopt",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:fleet/members_cli.py:cmd_remove",
-   "kind": "human",
-   "source": "fleet/members_cli.py:cmd_remove",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
    "id": "human:fleet/onboard/share_cli.py:_confirm_licences",
    "kind": "human",
    "source": "fleet/onboard/share_cli.py:_confirm_licences",
@@ -4035,23 +3798,6 @@
    "id": "human:fleet/onboard/signing_cli.py:_run",
    "kind": "human",
    "source": "fleet/onboard/signing_cli.py:_run",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:fleet/recovery.py:run",
-   "kind": "human",
-   "source": "fleet/recovery.py:run",
    "trust": "an agent process or a member",
    "attacker": "an agent or a forged grant takes an action only a person may take",
    "status": "covered",
@@ -4998,7 +4744,7 @@
     "tests/test_board_grants.py::test_a_class_grant_needs_the_person_to_say_registration_is_open_and_then_does_hold_for_any_process_that_claims_the_family",
     "tests/test_board_grants.py::test_a_key_is_taken_off_the_node_by_a_key_the_node_holds_and_the_last_key_stays",
     "tests/test_board_person_key.py::test_a_process_with_a_terminal_and_the_passphrase_in_its_environment_signs_nothing_until_the_person_types_yes",
-    "tests/test_board_person_key.py::test_the_person_key_asks_every_time_whatever_its_record_says_and_the_pool_key_is_not_changed",
+    "tests/test_board_person_key.py::test_the_person_key_asks_every_time_whatever_its_record_says_and_the_share_signing_key_is_not_changed",
     "tests/test_board_person_key.py::test_the_question_is_read_from_the_bytes_signed_and_only_a_grant_a_revocation_or_a_key_is_signed",
     "tests/test_board_person_key.py::test_a_confirm_passed_by_the_caller_answers_nothing_and_the_question_is_still_put",
     "tests/test_board_person_key.py::test_a_carried_key_whose_name_is_not_plain_text_is_refused_before_the_person_is_asked",
@@ -5030,7 +4776,7 @@
     "tests/test_board_grants.py::test_a_class_grant_needs_the_person_to_say_registration_is_open_and_then_does_hold_for_any_process_that_claims_the_family",
     "tests/test_board_grants.py::test_a_key_is_taken_off_the_node_by_a_key_the_node_holds_and_the_last_key_stays",
     "tests/test_board_person_key.py::test_a_process_with_a_terminal_and_the_passphrase_in_its_environment_signs_nothing_until_the_person_types_yes",
-    "tests/test_board_person_key.py::test_the_person_key_asks_every_time_whatever_its_record_says_and_the_pool_key_is_not_changed",
+    "tests/test_board_person_key.py::test_the_person_key_asks_every_time_whatever_its_record_says_and_the_share_signing_key_is_not_changed",
     "tests/test_board_person_key.py::test_the_question_is_read_from_the_bytes_signed_and_only_a_grant_a_revocation_or_a_key_is_signed",
     "tests/test_board_person_key.py::test_a_confirm_passed_by_the_caller_answers_nothing_and_the_question_is_still_put",
     "tests/test_board_person_key.py::test_a_carried_key_whose_name_is_not_plain_text_is_refused_before_the_person_is_asked",
@@ -5210,7 +4956,7 @@
     "tests/test_redteam_fleet.py",
     "tests/test_onboard_tailnet.py"
    ],
-   "note": "the daemon handler is attacked; forged UDP beacons are attacked in tests/test_fleet_discovery.py only for the signature"
+   "note": "the daemon handler is attacked"
   },
   {
    "id": "listener:fleet/daemon.py:DaemonRuntime.loop",
@@ -5223,43 +4969,17 @@
     "tests/test_redteam_fleet.py",
     "tests/test_onboard_tailnet.py"
    ],
-   "note": "the daemon handler is attacked; forged UDP beacons are attacked in tests/test_fleet_discovery.py only for the signature"
+   "note": "the daemon handler is attacked"
   },
   {
-   "id": "listener:fleet/discovery.py:_native_socket",
+   "id": "listener:fleet/onboard/lan.py:can_bind",
    "kind": "listener",
-   "source": "fleet/discovery.py:_native_socket",
-   "trust": "anything that can connect to the address",
-   "attacker": "an unauthenticated or cross-origin client reaches the port",
-   "status": "partial",
-   "tests": [
-    "tests/test_redteam_fleet.py",
-    "tests/test_onboard_tailnet.py"
-   ],
-   "note": "the daemon handler is attacked; forged UDP beacons are attacked in tests/test_fleet_discovery.py only for the signature"
-  },
-  {
-   "id": "listener:fleet/launch.py:_can_bind",
-   "kind": "listener",
-   "source": "fleet/launch.py:_can_bind",
+   "source": "fleet/onboard/lan.py:can_bind",
    "trust": "anything that can connect to the address",
    "attacker": "an unauthenticated or cross-origin client reaches the port",
    "status": "n/a",
    "tests": [],
    "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
-  },
-  {
-   "id": "listener:fleet/onboard/nearby.py:UdpTransport.__init__",
-   "kind": "listener",
-   "source": "fleet/onboard/nearby.py:UdpTransport.__init__",
-   "trust": "anything that can connect to the address",
-   "attacker": "an unauthenticated or cross-origin client reaches the port",
-   "status": "partial",
-   "tests": [
-    "tests/test_redteam_fleet.py",
-    "tests/test_onboard_tailnet.py"
-   ],
-   "note": "the daemon handler is attacked; forged UDP beacons are attacked in tests/test_fleet_discovery.py only for the signature"
   },
   {
    "id": "listener:fleet/producer_control.py:ControlServer.__init__",
@@ -5571,16 +5291,6 @@
     "tests/test_serverkeys.py"
    ],
    "note": "loopback relays opaque hostile HTTP and binary bytes through the private Unix socket; the managed model command includes its API key"
-  },
-  {
-   "id": "listener:setup.py:_port_free",
-   "kind": "listener",
-   "source": "setup.py:_port_free",
-   "trust": "anything that can connect to the address",
-   "attacker": "an unauthenticated or cross-origin client reaches the port",
-   "status": "n/a",
-   "tests": [],
-   "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
   },
   {
    "id": "listener:studio/streams.py:Streams.activate",
@@ -6580,37 +6290,7 @@
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
    "status": "covered",
    "tests": [
-    "tests/test_onboard_manifest.py",
-    "tests/test_join_by_code.py",
-    "tests/test_onboard_join_code.py"
-   ],
-   "note": ""
-  },
-  {
-   "id": "parser:fleet/onboard/join_code.py",
-   "kind": "parser",
-   "source": "fleet/onboard/join_code.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_onboard_manifest.py",
-    "tests/test_join_by_code.py",
-    "tests/test_onboard_join_code.py"
-   ],
-   "note": ""
-  },
-  {
-   "id": "parser:fleet/onboard/joining.py",
-   "kind": "parser",
-   "source": "fleet/onboard/joining.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_onboard_manifest.py",
-    "tests/test_join_by_code.py",
-    "tests/test_onboard_join_code.py"
+    "tests/test_onboard_manifest.py"
    ],
    "note": ""
   },
@@ -6622,23 +6302,7 @@
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
    "status": "covered",
    "tests": [
-    "tests/test_onboard_manifest.py",
-    "tests/test_join_by_code.py",
-    "tests/test_onboard_join_code.py"
-   ],
-   "note": ""
-  },
-  {
-   "id": "parser:fleet/onboard/nearby.py",
-   "kind": "parser",
-   "source": "fleet/onboard/nearby.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_onboard_manifest.py",
-    "tests/test_join_by_code.py",
-    "tests/test_onboard_join_code.py"
+    "tests/test_onboard_manifest.py"
    ],
    "note": ""
   },
@@ -6650,9 +6314,7 @@
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
    "status": "covered",
    "tests": [
-    "tests/test_onboard_manifest.py",
-    "tests/test_join_by_code.py",
-    "tests/test_onboard_join_code.py"
+    "tests/test_onboard_manifest.py"
    ],
    "note": ""
   },
@@ -6664,9 +6326,7 @@
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
    "status": "covered",
    "tests": [
-    "tests/test_onboard_manifest.py",
-    "tests/test_join_by_code.py",
-    "tests/test_onboard_join_code.py"
+    "tests/test_onboard_manifest.py"
    ],
    "note": ""
   },
@@ -6678,9 +6338,7 @@
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
    "status": "covered",
    "tests": [
-    "tests/test_onboard_manifest.py",
-    "tests/test_join_by_code.py",
-    "tests/test_onboard_join_code.py"
+    "tests/test_onboard_manifest.py"
    ],
    "note": ""
   },
@@ -6692,9 +6350,7 @@
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
    "status": "covered",
    "tests": [
-    "tests/test_onboard_manifest.py",
-    "tests/test_join_by_code.py",
-    "tests/test_onboard_join_code.py"
+    "tests/test_onboard_manifest.py"
    ],
    "note": ""
   },
@@ -6882,10 +6538,11 @@
    "tests": [
     "tests/test_producer_member.py::test_real_sealed_tls_uses_actual_current_caller_not_record_fields",
     "tests/test_producer_member.py::test_duplicate_and_nonfinite_fields_never_dispatch_over_actual_tls",
-    "tests/test_producer_member.py::test_missing_service_and_mismatched_tls_identity_fail_closed",
+    "tests/test_producer_member.py::test_missing_service_fails_closed",
+    "tests/test_producer_member.py::test_tls_caller_that_is_not_the_sealed_member_cannot_dispatch",
     "tests/test_producer_member.py::test_only_publisher_action_can_carry_maximum_record_over_sealed_tls",
     "tests/test_producer_member.py::test_metadata_budget_is_fixed_before_provider_dispatch",
-    "tests/test_producer_member.py::test_no_tls_channel_or_current_membership_cannot_dispatch",
+    "tests/test_producer_member.py::test_no_tls_channel_or_current_pool_cannot_dispatch",
     "tests/test_producer_member.py::test_only_fixed_action_has_large_request_budget"
    ],
    "note": "Actual sealed TLS adapter tests bind the authenticated caller certificate and pool, reject substituted identities and malformed fixed schemas, and limit large bodies to publishing. Provider source capability, grant checks and full factory composition remain separate requirements."
@@ -8053,8 +7710,7 @@
     "tests/test_coding_routes.py::test_native_turns_resume_and_revoke_only_their_agent",
     "tests/test_coding_routes.py::test_cancel_stops_native_process_and_the_next_turn_can_start",
     "tests/test_coding_routes.py::test_launcher_refusal_is_failed_instead_of_a_completed_empty_turn",
-    "tests/test_harness_rails.py::TestHook::test_no_environment_variable_or_argument_lifts_the_policy",
-    "tests/test_harness_rails.py::TestHarnessSession::test_a_fake_endpoint_cannot_verify_a_delegated_agents_model"
+    "tests/test_harness_rails.py::TestHook::test_no_environment_variable_or_argument_lifts_the_policy"
    ],
    "note": "Coding is a declared authenticated Fleet extension; only same-origin person UI can start turns, browser bodies cannot set identity or policy, native argv/session resume retains maintained role hooks, cancellation revokes the temporary agent"
   },
@@ -8072,8 +7728,7 @@
     "tests/test_coding_routes.py::test_native_turns_resume_and_revoke_only_their_agent",
     "tests/test_coding_routes.py::test_cancel_stops_native_process_and_the_next_turn_can_start",
     "tests/test_coding_routes.py::test_launcher_refusal_is_failed_instead_of_a_completed_empty_turn",
-    "tests/test_harness_rails.py::TestHook::test_no_environment_variable_or_argument_lifts_the_policy",
-    "tests/test_harness_rails.py::TestHarnessSession::test_a_fake_endpoint_cannot_verify_a_delegated_agents_model"
+    "tests/test_harness_rails.py::TestHook::test_no_environment_variable_or_argument_lifts_the_policy"
    ],
    "note": "Coding is a declared authenticated Fleet extension; only same-origin person UI can start turns, browser bodies cannot set identity or policy, native argv/session resume retains maintained role hooks, cancellation revokes the temporary agent"
   },
@@ -8333,15 +7988,14 @@
    "id": "route:fleet/api.py:/availability",
    "kind": "route",
    "source": "fleet/api.py:make_handler.Handler._read_jobs",
-   "trust": "member holding the pool key; /health open to anyone",
+   "trust": "member the node authorizes; /health open to anyone",
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "partial",
    "tests": [
     "tests/test_redteam_fleet.py::test_no_protected_route_answers_without_the_right_token",
     "tests/test_redteam_fleet.py::test_no_path_reaches_a_file_outside_the_files_directory",
     "tests/test_fleet_framing.py",
-    "tests/test_fleet_commands.py",
-    "tests/test_fleet_handshake.py"
+    "tests/test_fleet_commands.py"
    ],
    "note": "authentication, traversal, framing, body sealing, the /jobs allowlist and the join handshake are attacked; the JSON bodies of /models/get, /serve, /fetch, /decide, /bench and /availability are not"
   },
@@ -8349,15 +8003,14 @@
    "id": "route:fleet/api.py:/bench",
    "kind": "route",
    "source": "fleet/api.py:make_handler.Handler._read_jobs",
-   "trust": "member holding the pool key; /health open to anyone",
+   "trust": "member the node authorizes; /health open to anyone",
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "partial",
    "tests": [
     "tests/test_redteam_fleet.py::test_no_protected_route_answers_without_the_right_token",
     "tests/test_redteam_fleet.py::test_no_path_reaches_a_file_outside_the_files_directory",
     "tests/test_fleet_framing.py",
-    "tests/test_fleet_commands.py",
-    "tests/test_fleet_handshake.py"
+    "tests/test_fleet_commands.py"
    ],
    "note": "authentication, traversal, framing, body sealing, the /jobs allowlist and the join handshake are attacked; the JSON bodies of /models/get, /serve, /fetch, /decide, /bench and /availability are not"
   },
@@ -8365,48 +8018,29 @@
    "id": "route:fleet/api.py:/bench/export",
    "kind": "route",
    "source": "fleet/api.py:make_handler.Handler._read_jobs",
-   "trust": "member holding the pool key; /health open to anyone",
+   "trust": "member the node authorizes; /health open to anyone",
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "partial",
    "tests": [
     "tests/test_redteam_fleet.py::test_no_protected_route_answers_without_the_right_token",
     "tests/test_redteam_fleet.py::test_no_path_reaches_a_file_outside_the_files_directory",
     "tests/test_fleet_framing.py",
-    "tests/test_fleet_commands.py",
-    "tests/test_fleet_handshake.py"
+    "tests/test_fleet_commands.py"
    ],
    "note": "authentication, traversal, framing, body sealing, the /jobs allowlist and the join handshake are attacked; the JSON bodies of /models/get, /serve, /fetch, /decide, /bench and /availability are not"
-  },
-  {
-   "id": "route:fleet/api.py:/companion/*",
-   "kind": "route",
-   "source": "fleet/api.py:make_handler.Handler.do_POST",
-   "trust": "member holding the pool key; /health open to anyone",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "covered",
-   "tests": [
-    "tests/test_fleet_android.py::test_real_tls_dispatcher_refuses_phone_credentials_on_computer_routes",
-    "tests/test_fleet_android.py::test_route_authentication_refuses_inappropriate_authority",
-    "tests/test_fleet_android.py::test_chat_rejects_extra_authority_and_unavailable_targets",
-    "tests/test_fleet_android.py::test_revocation_closes_stream_before_more_output",
-    "tests/test_fleet_android.py::test_status_omits_computer_capabilities_paths_and_secrets",
-    "tests/test_fleet_android.py::test_session_invalidates_with_authority"
-   ],
-   "note": "TLS daemon requests attack missing phone authority, wrong methods, unknown routes, malformed/oversized bodies and computer-route escalation; direct route attacks cover plaintext/public sources, revoked sessions, model and role injection, redaction and stream revocation"
   },
   {
    "id": "route:fleet/api.py:/decide",
    "kind": "route",
    "source": "fleet/api.py:make_handler.Handler._route_post",
-   "trust": "member holding the pool key; /health open to anyone",
+   "trust": "member the node authorizes; /health open to anyone",
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "partial",
    "tests": [
     "tests/test_redteam_fleet.py::test_no_protected_route_answers_without_the_right_token",
     "tests/test_redteam_fleet.py::test_no_path_reaches_a_file_outside_the_files_directory",
     "tests/test_fleet_framing.py",
-    "tests/test_fleet_commands.py",
-    "tests/test_fleet_handshake.py"
+    "tests/test_fleet_commands.py"
    ],
    "note": "authentication, traversal, framing, body sealing, the /jobs allowlist and the join handshake are attacked; the JSON bodies of /models/get, /serve, /fetch, /decide, /bench and /availability are not"
   },
@@ -8414,15 +8048,14 @@
    "id": "route:fleet/api.py:/favicon.ico",
    "kind": "route",
    "source": "fleet/api.py:make_handler.Handler.do_GET",
-   "trust": "member holding the pool key; /health open to anyone",
+   "trust": "member the node authorizes; /health open to anyone",
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "partial",
    "tests": [
     "tests/test_redteam_fleet.py::test_no_protected_route_answers_without_the_right_token",
     "tests/test_redteam_fleet.py::test_no_path_reaches_a_file_outside_the_files_directory",
     "tests/test_fleet_framing.py",
-    "tests/test_fleet_commands.py",
-    "tests/test_fleet_handshake.py"
+    "tests/test_fleet_commands.py"
    ],
    "note": "authentication, traversal, framing, body sealing, the /jobs allowlist and the join handshake are attacked; the JSON bodies of /models/get, /serve, /fetch, /decide, /bench and /availability are not"
   },
@@ -8430,15 +8063,14 @@
    "id": "route:fleet/api.py:/fetch",
    "kind": "route",
    "source": "fleet/api.py:make_handler.Handler._read_files",
-   "trust": "member holding the pool key; /health open to anyone",
+   "trust": "member the node authorizes; /health open to anyone",
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "partial",
    "tests": [
     "tests/test_redteam_fleet.py::test_no_protected_route_answers_without_the_right_token",
     "tests/test_redteam_fleet.py::test_no_path_reaches_a_file_outside_the_files_directory",
     "tests/test_fleet_framing.py",
-    "tests/test_fleet_commands.py",
-    "tests/test_fleet_handshake.py"
+    "tests/test_fleet_commands.py"
    ],
    "note": "authentication, traversal, framing, body sealing, the /jobs allowlist and the join handshake are attacked; the JSON bodies of /models/get, /serve, /fetch, /decide, /bench and /availability are not"
   },
@@ -8446,15 +8078,14 @@
    "id": "route:fleet/api.py:/files/*",
    "kind": "route",
    "source": "fleet/api.py:make_handler.Handler._read_files",
-   "trust": "member holding the pool key; /health open to anyone",
+   "trust": "member the node authorizes; /health open to anyone",
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "partial",
    "tests": [
     "tests/test_redteam_fleet.py::test_no_protected_route_answers_without_the_right_token",
     "tests/test_redteam_fleet.py::test_no_path_reaches_a_file_outside_the_files_directory",
     "tests/test_fleet_framing.py",
-    "tests/test_fleet_commands.py",
-    "tests/test_fleet_handshake.py"
+    "tests/test_fleet_commands.py"
    ],
    "note": "authentication, traversal, framing, body sealing, the /jobs allowlist and the join handshake are attacked; the JSON bodies of /models/get, /serve, /fetch, /decide, /bench and /availability are not"
   },
@@ -8462,15 +8093,14 @@
    "id": "route:fleet/api.py:/health",
    "kind": "route",
    "source": "fleet/api.py:make_handler.Handler.do_GET",
-   "trust": "member holding the pool key; /health open to anyone",
+   "trust": "member the node authorizes; /health open to anyone",
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "partial",
    "tests": [
     "tests/test_redteam_fleet.py::test_no_protected_route_answers_without_the_right_token",
     "tests/test_redteam_fleet.py::test_no_path_reaches_a_file_outside_the_files_directory",
     "tests/test_fleet_framing.py",
-    "tests/test_fleet_commands.py",
-    "tests/test_fleet_handshake.py"
+    "tests/test_fleet_commands.py"
    ],
    "note": "authentication, traversal, framing, body sealing, the /jobs allowlist and the join handshake are attacked; the JSON bodies of /models/get, /serve, /fetch, /decide, /bench and /availability are not"
   },
@@ -8478,15 +8108,14 @@
    "id": "route:fleet/api.py:/infer",
    "kind": "route",
    "source": "fleet/api.py:make_handler.Handler._proxy",
-   "trust": "member holding the pool key; /health open to anyone",
+   "trust": "member the node authorizes; /health open to anyone",
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "partial",
    "tests": [
     "tests/test_redteam_fleet.py::test_no_protected_route_answers_without_the_right_token",
     "tests/test_redteam_fleet.py::test_no_path_reaches_a_file_outside_the_files_directory",
     "tests/test_fleet_framing.py",
-    "tests/test_fleet_commands.py",
-    "tests/test_fleet_handshake.py"
+    "tests/test_fleet_commands.py"
    ],
    "note": "authentication, traversal, framing, body sealing, the /jobs allowlist and the join handshake are attacked; the JSON bodies of /models/get, /serve, /fetch, /decide, /bench and /availability are not"
   },
@@ -8494,7 +8123,7 @@
    "id": "route:fleet/api.py:/infer/*",
    "kind": "route",
    "source": "fleet/api.py:make_handler.Handler._proxy",
-   "trust": "member holding the pool key; /health open to anyone",
+   "trust": "member the node authorizes; /health open to anyone",
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
@@ -8509,7 +8138,7 @@
    "id": "route:fleet/api.py:/infer?*",
    "kind": "route",
    "source": "fleet/api.py:make_handler.Handler._proxy",
-   "trust": "member holding the pool key; /health open to anyone",
+   "trust": "member the node authorizes; /health open to anyone",
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
@@ -8524,15 +8153,14 @@
    "id": "route:fleet/api.py:/jobs",
    "kind": "route",
    "source": "fleet/api.py:make_handler.Handler._read_jobs",
-   "trust": "member holding the pool key; /health open to anyone",
+   "trust": "member the node authorizes; /health open to anyone",
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "partial",
    "tests": [
     "tests/test_redteam_fleet.py::test_no_protected_route_answers_without_the_right_token",
     "tests/test_redteam_fleet.py::test_no_path_reaches_a_file_outside_the_files_directory",
     "tests/test_fleet_framing.py",
-    "tests/test_fleet_commands.py",
-    "tests/test_fleet_handshake.py"
+    "tests/test_fleet_commands.py"
    ],
    "note": "authentication, traversal, framing, body sealing, the /jobs allowlist and the join handshake are attacked; the JSON bodies of /models/get, /serve, /fetch, /decide, /bench and /availability are not"
   },
@@ -8540,7 +8168,7 @@
    "id": "route:fleet/api.py:/jobs/*",
    "kind": "route",
    "source": "fleet/api.py:make_handler.Handler.do_GET",
-   "trust": "member holding the pool key; /health open to anyone",
+   "trust": "member the node authorizes; /health open to anyone",
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
@@ -8554,15 +8182,14 @@
    "id": "route:fleet/api.py:/models",
    "kind": "route",
    "source": "fleet/api.py:make_handler.Handler._read_models",
-   "trust": "member holding the pool key; /health open to anyone",
+   "trust": "member the node authorizes; /health open to anyone",
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "partial",
    "tests": [
     "tests/test_redteam_fleet.py::test_no_protected_route_answers_without_the_right_token",
     "tests/test_redteam_fleet.py::test_no_path_reaches_a_file_outside_the_files_directory",
     "tests/test_fleet_framing.py",
-    "tests/test_fleet_commands.py",
-    "tests/test_fleet_handshake.py"
+    "tests/test_fleet_commands.py"
    ],
    "note": "authentication, traversal, framing, body sealing, the /jobs allowlist and the join handshake are attacked; the JSON bodies of /models/get, /serve, /fetch, /decide, /bench and /availability are not"
   },
@@ -8570,15 +8197,14 @@
    "id": "route:fleet/api.py:/models/*",
    "kind": "route",
    "source": "fleet/api.py:make_handler.Handler._read_models",
-   "trust": "member holding the pool key; /health open to anyone",
+   "trust": "member the node authorizes; /health open to anyone",
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "partial",
    "tests": [
     "tests/test_redteam_fleet.py::test_no_protected_route_answers_without_the_right_token",
     "tests/test_redteam_fleet.py::test_no_path_reaches_a_file_outside_the_files_directory",
     "tests/test_fleet_framing.py",
-    "tests/test_fleet_commands.py",
-    "tests/test_fleet_handshake.py"
+    "tests/test_fleet_commands.py"
    ],
    "note": "authentication, traversal, framing, body sealing, the /jobs allowlist and the join handshake are attacked; the JSON bodies of /models/get, /serve, /fetch, /decide, /bench and /availability are not"
   },
@@ -8586,15 +8212,14 @@
    "id": "route:fleet/api.py:/models/get",
    "kind": "route",
    "source": "fleet/api.py:make_handler.Handler._post_jobs",
-   "trust": "member holding the pool key; /health open to anyone",
+   "trust": "member the node authorizes; /health open to anyone",
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "partial",
    "tests": [
     "tests/test_redteam_fleet.py::test_no_protected_route_answers_without_the_right_token",
     "tests/test_redteam_fleet.py::test_no_path_reaches_a_file_outside_the_files_directory",
     "tests/test_fleet_framing.py",
-    "tests/test_fleet_commands.py",
-    "tests/test_fleet_handshake.py"
+    "tests/test_fleet_commands.py"
    ],
    "note": "authentication, traversal, framing, body sealing, the /jobs allowlist and the join handshake are attacked; the JSON bodies of /models/get, /serve, /fetch, /decide, /bench and /availability are not"
   },
@@ -8602,15 +8227,14 @@
    "id": "route:fleet/api.py:/serve",
    "kind": "route",
    "source": "fleet/api.py:make_handler.Handler._post_serve",
-   "trust": "member holding the pool key; /health open to anyone",
+   "trust": "member the node authorizes; /health open to anyone",
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "partial",
    "tests": [
     "tests/test_redteam_fleet.py::test_no_protected_route_answers_without_the_right_token",
     "tests/test_redteam_fleet.py::test_no_path_reaches_a_file_outside_the_files_directory",
     "tests/test_fleet_framing.py",
-    "tests/test_fleet_commands.py",
-    "tests/test_fleet_handshake.py"
+    "tests/test_fleet_commands.py"
    ],
    "note": "authentication, traversal, framing, body sealing, the /jobs allowlist and the join handshake are attacked; the JSON bodies of /models/get, /serve, /fetch, /decide, /bench and /availability are not"
   },
@@ -8618,15 +8242,14 @@
    "id": "route:fleet/api.py:/speech/providers",
    "kind": "route",
    "source": "fleet/api.py:make_handler.Handler._read_jobs",
-   "trust": "member holding the pool key; /health open to anyone",
+   "trust": "member the node authorizes; /health open to anyone",
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "partial",
    "tests": [
     "tests/test_redteam_fleet.py::test_no_protected_route_answers_without_the_right_token",
     "tests/test_redteam_fleet.py::test_no_path_reaches_a_file_outside_the_files_directory",
     "tests/test_fleet_framing.py",
-    "tests/test_fleet_commands.py",
-    "tests/test_fleet_handshake.py"
+    "tests/test_fleet_commands.py"
    ],
    "note": "authentication, traversal, framing, body sealing, the /jobs allowlist and the join handshake are attacked; the JSON bodies of /models/get, /serve, /fetch, /decide, /bench and /availability are not"
   },
@@ -8634,15 +8257,14 @@
    "id": "route:fleet/api.py:/speech/transcribe",
    "kind": "route",
    "source": "fleet/api.py:make_handler.Handler._post_speech",
-   "trust": "member holding the pool key; /health open to anyone",
+   "trust": "member the node authorizes; /health open to anyone",
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "partial",
    "tests": [
     "tests/test_redteam_fleet.py::test_no_protected_route_answers_without_the_right_token",
     "tests/test_redteam_fleet.py::test_no_path_reaches_a_file_outside_the_files_directory",
     "tests/test_fleet_framing.py",
-    "tests/test_fleet_commands.py",
-    "tests/test_fleet_handshake.py"
+    "tests/test_fleet_commands.py"
    ],
    "note": "authentication, traversal, framing, body sealing, the /jobs allowlist and the join handshake are attacked; the JSON bodies of /models/get, /serve, /fetch, /decide, /bench and /availability are not"
   },
@@ -8650,7 +8272,7 @@
    "id": "route:fleet/api.py:/studio/ingest/*",
    "kind": "route",
    "source": "fleet/api.py:make_handler.Handler.do_POST",
-   "trust": "member holding the pool key; /health open to anyone",
+   "trust": "member the node authorizes; /health open to anyone",
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
@@ -8670,15 +8292,14 @@
    "id": "route:fleet/api.py:/ui*",
    "kind": "route",
    "source": "fleet/api.py:make_handler.Handler._ui",
-   "trust": "member holding the pool key; /health open to anyone",
+   "trust": "member the node authorizes; /health open to anyone",
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "partial",
    "tests": [
     "tests/test_redteam_fleet.py::test_no_protected_route_answers_without_the_right_token",
     "tests/test_redteam_fleet.py::test_no_path_reaches_a_file_outside_the_files_directory",
     "tests/test_fleet_framing.py",
-    "tests/test_fleet_commands.py",
-    "tests/test_fleet_handshake.py"
+    "tests/test_fleet_commands.py"
    ],
    "note": "authentication, traversal, framing, body sealing, the /jobs allowlist and the join handshake are attacked; the JSON bodies of /models/get, /serve, /fetch, /decide, /bench and /availability are not"
   },
@@ -8690,11 +8311,9 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
-    "tests/test_project_enrollment_admission.py::test_registration_requires_a_sealed_request_from_the_active_dev_membership",
-    "tests/test_project_enrollment_admission.py::test_local_project_route_refuses_unauthorized_registration",
-    "tests/test_project_enrollment_admission.py::test_native_registration_requires_local_active_dev_proof"
+    "tests/test_node_service_pool.py::test_screen_preserves_nonce_replay_and_isolates_members_pairwise"
    ],
-   "note": "A real daemon's project requests (the catalogue, a snapshot, the local registration) reject missing and pool-only device proof, unsealed bodies and malformed JSON; registration requires the active Dev membership"
+   "note": "A member's project request is answered only for a service the node authorizes: a replayed nonce and another member's secret are refused"
   },
   {
    "id": "route:fleet/chat_routes.py:/ui/chat",
@@ -8710,57 +8329,6 @@
     "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session"
    ],
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
-  },
-  {
-   "id": "route:fleet/companion_routes.py:/companion/*",
-   "kind": "route",
-   "source": "fleet/companion_routes.py:answer",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "covered",
-   "tests": [
-    "tests/test_fleet_android.py::test_real_tls_dispatcher_refuses_phone_credentials_on_computer_routes",
-    "tests/test_fleet_android.py::test_route_authentication_refuses_inappropriate_authority",
-    "tests/test_fleet_android.py::test_chat_rejects_extra_authority_and_unavailable_targets",
-    "tests/test_fleet_android.py::test_revocation_closes_stream_before_more_output",
-    "tests/test_fleet_android.py::test_status_omits_computer_capabilities_paths_and_secrets",
-    "tests/test_fleet_android.py::test_session_invalidates_with_authority"
-   ],
-   "note": "TLS daemon requests attack missing phone authority, wrong methods, unknown routes, malformed/oversized bodies and computer-route escalation; direct route attacks cover plaintext/public sources, revoked sessions, model and role injection, redaction and stream revocation"
-  },
-  {
-   "id": "route:fleet/companion_routes.py:/companion/v1/chat",
-   "kind": "route",
-   "source": "fleet/companion_routes.py:answer",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "covered",
-   "tests": [
-    "tests/test_fleet_android.py::test_real_tls_dispatcher_refuses_phone_credentials_on_computer_routes",
-    "tests/test_fleet_android.py::test_route_authentication_refuses_inappropriate_authority",
-    "tests/test_fleet_android.py::test_chat_rejects_extra_authority_and_unavailable_targets",
-    "tests/test_fleet_android.py::test_revocation_closes_stream_before_more_output",
-    "tests/test_fleet_android.py::test_status_omits_computer_capabilities_paths_and_secrets",
-    "tests/test_fleet_android.py::test_session_invalidates_with_authority"
-   ],
-   "note": "TLS daemon requests attack missing phone authority, wrong methods, unknown routes, malformed/oversized bodies and computer-route escalation; direct route attacks cover plaintext/public sources, revoked sessions, model and role injection, redaction and stream revocation"
-  },
-  {
-   "id": "route:fleet/companion_routes.py:/companion/v1/status",
-   "kind": "route",
-   "source": "fleet/companion_routes.py:answer",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "covered",
-   "tests": [
-    "tests/test_fleet_android.py::test_real_tls_dispatcher_refuses_phone_credentials_on_computer_routes",
-    "tests/test_fleet_android.py::test_route_authentication_refuses_inappropriate_authority",
-    "tests/test_fleet_android.py::test_chat_rejects_extra_authority_and_unavailable_targets",
-    "tests/test_fleet_android.py::test_revocation_closes_stream_before_more_output",
-    "tests/test_fleet_android.py::test_status_omits_computer_capabilities_paths_and_secrets",
-    "tests/test_fleet_android.py::test_session_invalidates_with_authority"
-   ],
-   "note": "TLS daemon requests attack missing phone authority, wrong methods, unknown routes, malformed/oversized bodies and computer-route escalation; direct route attacks cover plaintext/public sources, revoked sessions, model and role injection, redaction and stream revocation"
   },
   {
    "id": "route:fleet/component_routes.py:/ui/models/addons",
@@ -8957,83 +8525,9 @@
    "tests": [
     "tests/test_fleet_initial_setup.py::test_owner_admission_refuses_foreign_and_agent_requests_even_with_a_launch_session",
     "tests/test_fleet_initial_setup.py::test_owner_admission_refuses_lan_and_missing_ui_header",
-    "tests/test_fleet_initial_setup.py::test_initial_rejects_hostile_body_without_identity_or_membership_changes",
-    "tests/test_fleet_initial_setup.py::test_completed_prod_hands_no_launch_session_and_refuses_initial",
-    "tests/test_fleet_initial_setup.py::test_initial_never_drops_manual_dev_membership",
     "tests/test_redteam_person_session.py::test_forged_page_headers_without_a_ticket_open_no_session_and_make_no_person"
    ],
    "note": "Real sockets refuse a request with no launch-ticket session however its Host, Origin and Sec-Fetch-Site are forged, and refuse foreign origins, DNS rebinding, LAN ownership, missing UI headers and agent credentials; malformed or oversized setup bodies cannot mutate names or memberships, token sessions cannot mint person sessions, and a Production machine hands out no launch session"
-  },
-  {
-   "id": "route:fleet/invite_routes.py:/join/invite/challenge",
-   "kind": "route",
-   "source": "fleet/invite_routes.py:public",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "covered",
-   "tests": [
-    "tests/test_fleet_invites.py::test_public_exchange_refuses_plain_http",
-    "tests/test_fleet_invites.py::test_atomic_single_use_and_no_key_in_invite",
-    "tests/test_fleet_invites.py::test_wrong_proof_and_changed_fields_cannot_redeem",
-    "tests/test_fleet_invites.py::test_rate_limits_and_challenge_bound"
-   ],
-   "note": "TLS is required; wrong proofs, altered fields, expiry, rotation, rate excess and simultaneous replay cannot redeem a second grant"
-  },
-  {
-   "id": "route:fleet/invite_routes.py:/join/invite/redeem",
-   "kind": "route",
-   "source": "fleet/invite_routes.py:public",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "covered",
-   "tests": [
-    "tests/test_fleet_invites.py::test_public_exchange_refuses_plain_http",
-    "tests/test_fleet_invites.py::test_atomic_single_use_and_no_key_in_invite",
-    "tests/test_fleet_invites.py::test_wrong_proof_and_changed_fields_cannot_redeem",
-    "tests/test_fleet_invites.py::test_rate_limits_and_challenge_bound"
-   ],
-   "note": "TLS is required; wrong proofs, altered fields, expiry, rotation, rate excess and simultaneous replay cannot redeem a second grant"
-  },
-  {
-   "id": "route:fleet/invite_routes.py:/ui/fleet/android-devices",
-   "kind": "route",
-   "source": "fleet/invite_routes.py:ui_route",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "covered",
-   "tests": [
-    "tests/test_fleet_android.py::test_android_device_controls_reject_foreign_authority_without_revocation",
-    "tests/test_fleet_android.py::test_owner_controls_android_enrollment_and_revocation"
-   ],
-   "note": "Foreign source/host, machine-token browser authority, oversized bodies, wrong methods and unauthenticated revocation are refused while the existing phone session remains valid"
-  },
-  {
-   "id": "route:fleet/invite_routes.py:/ui/fleet/invites",
-   "kind": "route",
-   "source": "fleet/invite_routes.py:ui_route",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "covered",
-   "tests": [
-    "tests/test_fleet_invites.py::test_ui_mint_requires_local_authenticated_owner",
-    "tests/test_fleet_invites.py::test_owner_mint_refuses_hostname_rebinding",
-    "tests/test_fleet_invites.py::test_join_invitation_passes_owner_and_setup_router_guards"
-   ],
-   "note": "Owner router guards reject missing UI headers, unauthenticated joined hosts and foreign addressed setup; local owner actions return noncacheable invitations and sessions"
-  },
-  {
-   "id": "route:fleet/invite_routes.py:/ui/fleet/join-invite",
-   "kind": "route",
-   "source": "fleet/invite_routes.py:ui_route",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "covered",
-   "tests": [
-    "tests/test_fleet_invites.py::test_ui_mint_requires_local_authenticated_owner",
-    "tests/test_fleet_invites.py::test_owner_mint_refuses_hostname_rebinding",
-    "tests/test_fleet_invites.py::test_join_invitation_passes_owner_and_setup_router_guards"
-   ],
-   "note": "Owner router guards reject missing UI headers, unauthenticated joined hosts and foreign addressed setup; local owner actions return noncacheable invitations and sessions"
   },
   {
    "id": "route:fleet/knowledge_routes.py:/ui/knowledge/*",
@@ -9169,108 +8663,6 @@
     "tests/test_onboard_transfer.py"
    ],
    "note": ""
-  },
-  {
-   "id": "route:fleet/onboard/join_code.py:/onboard/v1/requests/*",
-   "kind": "route",
-   "source": "fleet/onboard/join_code.py:JoinCodeServer._route",
-   "trust": "anyone on the LAN, unauthenticated until the owner accepts",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "covered",
-   "tests": [
-    "tests/test_onboard_join_code.py::test_a_request_nobody_accepted_cannot_start_an_exchange",
-    "tests/test_onboard_join_code.py::test_a_confirmation_cannot_be_replayed",
-    "tests/test_onboard_join_code.py::test_plain_http_is_refused_even_from_this_machine",
-    "tests/test_onboard_join_code.py::test_oversize_and_malformed_bodies_are_refused",
-    "tests/test_onboard_join_code.py::test_a_member_cannot_be_swapped_for_another_mid_conversation"
-   ],
-   "note": "Join exchanges require accepted requests over the protected transport; malformed and oversized bodies, replayed confirmations and replacement members are refused."
-  },
-  {
-   "id": "route:fleet/onboard/join_code.py:confirm",
-   "kind": "route",
-   "source": "fleet/onboard/join_code.py:JoinCodeServer._route",
-   "trust": "anyone on the LAN, unauthenticated until the owner accepts",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "covered",
-   "tests": [
-    "tests/test_join_by_code.py::test_an_offer_whose_tag_is_not_the_exchanges_is_refused_and_nothing_is_learned",
-    "tests/test_onboard_join_code.py"
-   ],
-   "note": ""
-  },
-  {
-   "id": "route:fleet/onboard/join_code.py:exchange",
-   "kind": "route",
-   "source": "fleet/onboard/join_code.py:JoinCodeServer._route",
-   "trust": "anyone on the LAN, unauthenticated until the owner accepts",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "covered",
-   "tests": [
-    "tests/test_join_by_code.py::test_an_offer_whose_tag_is_not_the_exchanges_is_refused_and_nothing_is_learned",
-    "tests/test_onboard_join_code.py"
-   ],
-   "note": ""
-  },
-  {
-   "id": "route:fleet/onboard/members_cli.py:add",
-   "kind": "route",
-   "source": "fleet/onboard/members_cli.py:cmd_members",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "partial",
-   "tests": [
-    "tests/test_member_first.py"
-   ],
-   "note": "member-book verbs add, remove, on, off and limit take a name and an address typed by the person; hostile names are tested only through the dialog"
-  },
-  {
-   "id": "route:fleet/onboard/members_cli.py:limit",
-   "kind": "route",
-   "source": "fleet/onboard/members_cli.py:cmd_members",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "partial",
-   "tests": [
-    "tests/test_member_first.py"
-   ],
-   "note": "member-book verbs add, remove, on, off and limit take a name and an address typed by the person; hostile names are tested only through the dialog"
-  },
-  {
-   "id": "route:fleet/onboard/members_cli.py:off",
-   "kind": "route",
-   "source": "fleet/onboard/members_cli.py:cmd_members",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "partial",
-   "tests": [
-    "tests/test_member_first.py"
-   ],
-   "note": "member-book verbs add, remove, on, off and limit take a name and an address typed by the person; hostile names are tested only through the dialog"
-  },
-  {
-   "id": "route:fleet/onboard/members_cli.py:on",
-   "kind": "route",
-   "source": "fleet/onboard/members_cli.py:cmd_members",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "partial",
-   "tests": [
-    "tests/test_member_first.py"
-   ],
-   "note": "member-book verbs add, remove, on, off and limit take a name and an address typed by the person; hostile names are tested only through the dialog"
-  },
-  {
-   "id": "route:fleet/onboard/members_cli.py:remove",
-   "kind": "route",
-   "source": "fleet/onboard/members_cli.py:cmd_members",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "partial",
-   "tests": [
-    "tests/test_member_first.py"
-   ],
-   "note": "member-book verbs add, remove, on, off and limit take a name and an address typed by the person; hostile names are tested only through the dialog"
   },
   {
    "id": "route:fleet/onboard/signing_cli.py:confirm",
@@ -9452,21 +8844,6 @@
    "note": "source publication and checkout require a browser session; hostile candidate paths, member schema, redirects and source archives are rejected before checkout"
   },
   {
-   "id": "route:fleet/projects.py:/workspace/v1/local-project",
-   "kind": "route",
-   "source": "fleet/projects.py:register",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "covered",
-   "tests": [
-    "tests/test_project_enrollment_admission.py::test_local_project_route_refuses_unauthorized_registration",
-    "tests/test_project_enrollment_admission.py::test_native_registration_requires_local_active_dev_proof",
-    "tests/test_board_metadata.py::test_native_registration_refuses_identity_mismatch_before_mutation",
-    "tests/test_board_metadata.py::test_native_registration_refuses_unbounded_or_relative_path"
-   ],
-   "note": "native registration requires loopback sealed active Dev admission and an exact bounded local Git identity; rejected requests do not register or expose a path"
-  },
-  {
    "id": "route:fleet/room_routes.py:/ui/room",
    "kind": "route",
    "source": "fleet/room_routes.py:RoomRoutes.route",
@@ -9627,8 +9004,7 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
-    "tests/test_fleet_credentials.py::test_ui_saves_multiple_named_credentials_without_returning_values",
-    "tests/test_fleet_credentials.py::test_joined_credential_management_requires_a_signed_in_session"
+    "tests/test_fleet_credentials.py::test_ui_saves_multiple_named_credentials_without_returning_values"
    ],
    "note": "credential values are saved without being returned; joined credential management requires a signed-in session"
   },
@@ -9817,10 +9193,8 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
-    "tests/test_fleet_ui.py::TestSignIn::test_a_passphrase_signs_nobody_in",
     "tests/test_fleet_ui.py::TestSignIn::test_a_wrong_ticket_does_not",
-    "tests/test_fleet_ui.py::TestSignIn::test_persistent_guessing_is_slowed_down",
-    "tests/test_fleet_ui_founded.py::test_a_passphrase_does_not_open_a_founded_pool"
+    "tests/test_fleet_ui.py::TestSignIn::test_persistent_guessing_is_slowed_down"
    ],
    "note": "Real sign-in requests accept only a spent launch ticket, refuse a passphrase or a wrong ticket, and rate-limit repeated guesses"
   },
@@ -11281,8 +10655,7 @@
     "tests/test_coding_routes.py::test_native_turns_resume_and_revoke_only_their_agent",
     "tests/test_coding_routes.py::test_cancel_stops_native_process_and_the_next_turn_can_start",
     "tests/test_coding_routes.py::test_launcher_refusal_is_failed_instead_of_a_completed_empty_turn",
-    "tests/test_harness_rails.py::TestHook::test_no_environment_variable_or_argument_lifts_the_policy",
-    "tests/test_harness_rails.py::TestHarnessSession::test_a_fake_endpoint_cannot_verify_a_delegated_agents_model"
+    "tests/test_harness_rails.py::TestHook::test_no_environment_variable_or_argument_lifts_the_policy"
    ],
    "note": "Coding is a declared authenticated Fleet extension; only same-origin person UI can start turns, browser bodies cannot set identity or policy, native argv/session resume retains maintained role hooks, cancellation revokes the temporary agent"
   },
@@ -12176,9 +11549,7 @@
     "tests/test_project_registration.py::test_windows_registration_in_wsl_uses_literal_argv_and_verified_git_root",
     "tests/test_project_registration.py::test_registration_refuses_invalid_path_without_spawning",
     "tests/test_project_registration.py::test_registration_refuses_invalid_wsl_translation",
-    "tests/test_project_registration.py::test_windows_drive_path_is_not_translated_outside_wsl",
-    "tests/test_project_registration.py::test_registration_rejects_unauthenticated_caller_before_path_translation",
-    "tests/test_project_registration.py::test_sealed_wsl_registration_checks_identity_before_persisting"
+    "tests/test_project_registration.py::test_windows_drive_path_is_not_translated_outside_wsl"
    ],
    "note": "WSL drive paths reach a fixed literal argument vector; bounded absolute paths and authenticated local Dev admission are checked before translation, and mismatched Git identities cannot persist"
   },

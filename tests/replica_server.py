@@ -9,7 +9,7 @@ from pathlib import Path
 
 from poolhouse.fleet.api import Daemon, make_handler
 from poolhouse.fleet.jobs import JobRunner
-from poolhouse.fleet.onboard.requests import Device
+from poolhouse.fleet.onboard.devices import Device
 from poolhouse.http import Server
 
 

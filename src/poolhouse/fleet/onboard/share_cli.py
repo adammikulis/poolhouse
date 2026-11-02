@@ -16,11 +16,12 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import logging
 import time
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, macauth
+from poolhouse import home, macauth, sentinel
 from poolhouse.log import say, warn
 from poolhouse.sentinel.human import HumanRequired, mint
 from poolhouse.units import parse_duration
@@ -28,22 +29,25 @@ from poolhouse.units import parse_duration
 from ..service_pool import Pool
 from ..tls import TlsUnavailable, identity
 from . import modelstore
-from .join_code import DEFAULT_SHARE_PORT
 from .manifest import SHARING_LEVELS, Entry, Signer, verify
-from .memberfirst import quarantine_veto
 from .sharing import OPEN, OWNER, Access, Licences
 from .signing import KeyStoreError, SigningKeys
 from .signing_cli import confirm_signing
 from .transfer import Share, ShareServer
 
-__all__ = ["add_share", "cmd_share"]
+__all__ = ["DEFAULT_SHARE_PORT", "add_share", "cmd_share", "quarantine_veto"]
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_SHARE_PORT = 8773
+"""Where ``pool share`` listens unless told otherwise."""
 
 SUFFIX_KIND = {".whl": "wheel", ".gz": "sdist", ".zip": "sdist", ".gguf": "model",
                ".safetensors": "model"}
 
 
 def add_share(sub: Any, common: Any) -> None:
-    p = common(sub.add_parser("share", help="serve files, with a signed manifest, to joined "
+    p = common(sub.add_parser("share", help="serve files, with a signed manifest, to the "
                                             "devices of this pool"))
     p.add_argument("--dir", default="", help="the files to share (a flat folder)")
     p.add_argument("--models", action="store_true",
@@ -54,7 +58,7 @@ def add_share(sub: Any, common: Any) -> None:
                    help="with --models: look only in these folders (repeatable)")
     p.add_argument("--for", dest="span", default="10m")
     p.add_argument("--port", type=int, default=DEFAULT_SHARE_PORT,
-                   help="the port to listen on (default: the one join records; 0: any)")
+                   help="the port to listen on (0: any)")
     p.add_argument("--host", default="", help="the address to listen on (default: every "
                                               "interface)")
     p.add_argument("--sharing", action="append", default=[], metavar="NAME=LEVEL",
@@ -98,6 +102,18 @@ def _confirm_licences(entries: list[Entry], licences: Licences) -> None:
 
 def _emit(args: argparse.Namespace, document: dict[str, Any], text: str) -> None:
     say(json.dumps(document, indent=1, default=str) if args.json else text)
+
+
+def quarantine_veto(entry: Entry) -> str:
+    """The serving side's veto: why a file sentinel holds in quarantine is not handed out.
+    A download is quarantined under its sha256 (`poolhouse.net.hold`)."""
+    try:
+        if sentinel.default().store.blocked("artifact", f"download:{entry.sha256}"):
+            return "this copy is in quarantine on the serving device"
+    except (OSError, ImportError, ValueError) as exc:
+        logger.warning("could not ask sentinel about %s, withholding it: %s", entry.name, exc)
+        return "the serving device could not check its quarantine"
+    return ""
 
 
 def service_gate(pool: Pool):

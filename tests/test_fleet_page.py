@@ -178,11 +178,10 @@ class TestFirstRun:
         page.get_by_role("heading", name="Make this device ready", exact=True).wait_for()
         page.get_by_role("button", name="Set up models later", exact=True).wait_for()
         assert daemon.ui.name == "quillhaven"
-        assert page.locator("#setup-pool-passphrase").count() == 0
         assert page.locator("#setup-invitation-only").count() == 0
         assert not errors
 
-    def test_joining_another_pool_asks_for_an_address_and_a_code_not_a_passphrase(self, daemon, open_page):
+    def test_joining_another_pool_asks_for_an_address_and_a_code(self, daemon, open_page):
         page, errors = open_page(daemon)
         page.get_by_text("Join another pool", exact=True).click()
         page.wait_for_selector("#pool-join-host")
@@ -191,7 +190,6 @@ class TestFirstRun:
         page.fill("#pool-join-host", "192.0.2.7")
         page.fill("#pool-join-code-in", "a code")
         assert join.is_enabled()
-        assert page.locator("input[type=password]").count() == 0
         assert not errors
 
     @pytest.mark.parametrize("accelerator", [False, True])
@@ -221,7 +219,7 @@ class TestFirstRun:
     def test_deferred_setup_preserves_an_existing_runtime_install(self, daemon, open_page, monkeypatch):
         import threading
 
-        from poolhouse.fleet import automatic_pools, llama
+        from poolhouse.fleet import llama
         from poolhouse.fleet.setup_jobs import jobs, server
         entered, release = threading.Event(), threading.Event()
         def install(root, **options):
@@ -230,7 +228,6 @@ class TestFirstRun:
             assert release.wait(20)
             return root / "managed-server"
         monkeypatch.setattr(llama, "ensure_server", install)
-        monkeypatch.setattr(automatic_pools, "offers", lambda port=None: [])
         job = jobs(daemon.ui).start("server", {}, lambda progress: server(daemon.ui, progress))
         page, errors = open_page(daemon)
         try:

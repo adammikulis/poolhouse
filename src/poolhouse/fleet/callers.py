@@ -1,7 +1,7 @@
 """Who is on the other end of a connection to the daemon, and whether that is enough.
 
 A request that arrives over TLS from another machine carries the certificate its sender showed
-in the handshake. It is answered only when that certificate is a member's (`pool_roster`) and,
+in the handshake. It is answered only when that certificate is a member's (`roster`) and,
 when the request is signed with a pool's secret, a member of that same pool. A sender that
 showed no certificate (a phone, a browser) may use only the credential of its own device.
 The check runs on every request, so a device put out of the pool is refused at its next one

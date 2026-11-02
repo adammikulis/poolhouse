@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 from conftest import write_gguf
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 
 from poolhouse.fleet import serving
 
@@ -96,14 +97,12 @@ def test_exact_context_reaches_existing_lease_without_mutating_defaults(model, t
 
 
 @pytest.fixture
-def app(tmp_path, model, monkeypatch):
+def app(tmp_path, model, monkeypatch, studio_node):  # noqa: F811
     from test_fleet_ui import Serving as DaemonServing
 
     from poolhouse.fleet import routes
-    from poolhouse.fleet.discovery import mint_pool
     from poolhouse.fleet.models import Models
     instance = DaemonServing(tmp_path)
-    mint_pool('context-test-pool', instance.keyfile)
     session = instance.ui.sessions.open('context-owner', 'launch-ticket')
     instance.ui.models = Models([tmp_path], tmp_path)
     instance.ui.serving = serving.Serving(tmp_path / 'serving.json')

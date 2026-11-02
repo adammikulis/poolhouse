@@ -1,22 +1,15 @@
-"""A machine that joined the node's pool lists it with `poolhouse-members ls` and needs no pool key file."""
+"""A machine in the node's pool lists its active members, and says how each one is reached."""
 
-import argparse
 import json
 
 import pytest
 
 from poolhouse import lan, node_launch, node_pool
-from poolhouse.fleet import members
-from poolhouse.fleet.discovery import DiscoveryError
 
 POOL = {"pool": "0123456789abcdef", "project": "ab" * 8, "policy": "open", "members": [
     {"fingerprint": "a" * 64, "name": "desk", "status": "active", "self": True, "connected": False, "addr": None},
     {"fingerprint": "b" * 64, "name": "", "status": "active", "self": False, "connected": True, "addr": "192.0.2.9:7447"},
     {"fingerprint": "c" * 64, "name": "gone", "status": "revoked", "self": False, "connected": False, "addr": None}]}
-
-
-def args(tmp_path, *, as_json=False):
-    return argparse.Namespace(pool_key=str(tmp_path / "no-such.key"), timeout=0.1, json=as_json)
 
 
 def test_only_active_members_are_listed_with_who_is_this_machine():
@@ -28,21 +21,6 @@ def test_only_active_members_are_listed_with_who_is_this_machine():
 def test_the_network_arguments_ask_for_the_lan_and_pass_a_project_on():
     assert node_pool.network_args() == ["--lan"]
     assert node_pool.network_args(project="team", project_dir="/r") == ["--lan", "--project", "team", "--project-dir", "/r"]
-
-
-def test_ls_without_a_key_file_prints_the_pool_of_the_running_node(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(node_pool, "status", lambda state=None: POOL)
-    assert members.cmd_ls(args(tmp_path)) == 0
-    out = capsys.readouterr().out
-    assert "0123456789abcdef" in out and "desk" in out and "192.0.2.9:7447" in out and "gone" not in out
-    assert members.cmd_ls(args(tmp_path, as_json=True)) == 0
-    assert [m["name"] for m in json.loads(capsys.readouterr().out)["members"]] == ["desk", "b" * 12]
-
-
-def test_ls_without_a_key_file_and_without_a_node_still_says_what_is_missing(tmp_path, monkeypatch):
-    monkeypatch.setattr(node_pool, "status", lambda state=None: None)
-    with pytest.raises(DiscoveryError, match="no pool key"):
-        members.cmd_ls(args(tmp_path))
 
 
 def test_status_is_none_when_no_node_answers(tmp_path):

@@ -23,16 +23,11 @@ def _smoke():
     return module
 
 
-def test_the_walk_creates_the_pool_and_reaches_the_end_of_setup(daemon, open_page, monkeypatch):
-    from poolhouse.fleet import automatic_pools
-    from poolhouse.fleet.discovery import memberships
-
-    monkeypatch.setattr(automatic_pools, "offers", lambda port=None: [])
+def test_the_walk_names_the_device_and_reaches_the_end_of_setup(daemon, open_page):
     page, errors = open_page(daemon)
     page.wait_for_selector("#first-run:not([hidden])")
-    _smoke().first_run(page, "ci-runner", fleet_page.WORDS, "ci")
-    _smoke().sign_in(page, fleet_page.WORDS)
-    assert "ci" in [m.group for m in memberships(daemon.keyfile)]
+    _smoke().first_run(page, "ci-runner")
+    assert daemon.ui.name == "ci-runner"
     assert not errors
 
 

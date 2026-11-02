@@ -42,7 +42,7 @@ does is the same for every file.
   ids, the config and the seed file; which machine runs a shard, what the store holds and what history says never change a division.
 - **Transports** (section 6) take a shard to somewhere it runs: this machine's processes, a device of a Poolhouse pool over the pool's
   mutual-TLS routes, later ssh. The pool is one transport plugin. There is one sharding path and one wire protocol; what exists today as
-  a node carrier, a pool carrier in dev mode, `--split` and a CI splitter is folded into it (section 2, section 14).
+  a node carrier, a pool carrier, `--split` and a CI splitter is folded into it (section 2, section 14).
 - **The surface** (section 3) is `ph.test` in Python, the `poolhouse-test` command (also `poolhouse test`), and the `testfarm.toml`
   schema. Everything else is internal. `pip install poolhouse` gives a repository all three.
 - **Poolhouse's repository** keeps its tiers, markers, node build, gates, agent rules and confinement in its own `testfarm.toml` and
@@ -164,7 +164,7 @@ lease = ["gpu"]
 | Affected | `affected.py`, `affected_rules.py` | import graph plus string rules written for Poolhouse's tests, testmon | core: selection over dependency sets; `python-imports` analyzer in the pytest preset; the string rules become globs in Poolhouse's config; testmon deleted |
 | Rust builds | `testnode.py`, `testunits.py`, `testartifacts.py`, `tests/native_cargo.py`, `testapp.py` | one cargo call builds the targets before the timer, shared target folder, pruning | core: steps; cargo preset helpers; the node binary stays Poolhouse's step |
 | Node carrier | `app/poolhouse-node/src/shard/*.rs` (1,271 lines with `tests/shard.rs`), `testfarm/client.py` (`Shards`), `testfarm/consent.py`, grants `shard_call` and `shard_consent` | send a tree to a device of the node's pool, per-device allow list, leases | one wire and one receiver (section 6); open question 1 |
-| Pool carrier in dev mode | `fleet/shard_{routes,host,store,spec,tree,run,exec,result,split}.py` (9 files, 974 lines), `testfarm/dev.py`, `Member.shard_*` | `/shards/v1/*` over the pool's pinned TLS, executor, limits | the pool transport and the executor (section 6) |
+| Pool carrier | `fleet/shard_{routes,host,store,spec,tree,run,exec,result,split}.py` (9 files, 974 lines), `testfarm/dev.py`, `Member.shard_*` | `/shards/v1/*` over the pool's pinned TLS, executor, limits | the pool transport and the executor (section 6) |
 | Farm and `--on` | `testfarm/farm.py`, `scripts/test_on.py`, `testfarm/ledger.py`, `testfarm/report.py`, `poolhouse-test-devices`, `poolhouse.api.remote_tests` (`ph.test`) | merges the two carriers, reuse ledger apart from the store, per-device report | the planner, the store, the report, `poolhouse-test devices`, `ph.test` |
 | `--split` | `fleet/shard_split.py`, `test_on.divide` | duration-balanced division, a person's option | the planner, always on when targets exist |
 | CI shards | `scripts/ci_shards.py`, `tests/ci-durations.json`, `.github/workflows/ci.yml` | the same division for eight CI jobs | `poolhouse-test plan --shards N --index I` |
@@ -215,8 +215,7 @@ Rules, each a test:
   names. L1 imports nothing of Poolhouse. The L0 list names no pool home, no state root and no credential module: the runner's state
   location (below), the child environment (10.5) and the lease vocabulary (4.3) are the runner's own or a provider's.
 - A preset imports only L2 and L1 (and the helper programs a preset runs are Python modules under `testfarm/presets/<tool>/` with the
-  same rule). A transport imports L2 and L1; the pool transport also imports the pool client modules it talks through (`fleet.remote`,
-  `fleet.discovery`, `fleet.membership`) and its server half the membership and feature modules it reads (`memberships`, `features`); the
+  same rule). A transport imports L2 and L1; the pool transport also imports the pool client module it talks through (`fleet.remote`) and its server half the feature module it reads (`features`); the
   layering test lists them by name. A resource provider imports L2, L1 and the lease modules it adapts (`poolhouse.leases`,
   `poolhouse.serve.grant`). Nothing else under `testfarm` imports `scripts/`, `tests/`, `poolhouse.board`, `poolhouse.serve` or
   `poolhouse.workspace`.
@@ -1117,15 +1116,14 @@ pool of this device (6.2). `ssh` later implements the same four calls over an ss
 transports list for this user; `pool`, a device name or a fingerprint uses those. A tree is sent only for a project the user has named, to
 devices the person agreed (4.8), so
 a repository handed to the user cannot send anything anywhere. What a transport lists is that transport's own definition: the pool
-transport lists the accepting members of a pool in dev mode, where every member already runs tests for every other member (`docs/fleet.md`,
-"Two devices on a LAN"), and the members of another pool whose allow list holds the sender; `poolhouse features disable remote-tests` is
+transport lists the members of a pool whose allow list holds the sender; `poolhouse features disable remote-tests` is
 the receiver's switch. The first send of a project to a device prints the file count, the top-level names of the transported set and every
 untracked file in it;
 `plan --show-tree` prints them without sending.
 
 ### 6.2 The pool transport
 
-The wire is the shard routes of a pool in dev mode, generalised from a fixed command to a unit list. [code] today:
+The wire is the shard routes of a pool, generalised from a fixed command to a unit list. [code] today:
 
 | Operation | Route | Notes |
 |---|---|---|
@@ -1147,7 +1145,7 @@ field, a shard belongs to the member that first uploaded to its id and every oth
 refused at the connection. A protocol or build mismatch is refused with the update hint (`poolhouse runtime ensure`), never run.
 
 **Admission by the receiver.** One function, supplied by the pool transport, decides: `admit(sender fingerprint, policy) → allow | the
-sentence for why not`. In a pool in dev mode it allows every member while `remote-tests` is not disabled. In any other pool it allows only
+sentence for why not`. It allows only
 the senders on the device's allow list, empty until a person adds one. Adding is one act with one sentence, "This lets '<device>' run its
 own code on this computer, as you.": `poolhouse-test allow DEVICE` puts it to the receiving device's gate (4.8), and with none available refuses
 and prints the block for the person's own editor. The same gate is asked, once each, to widen what the sender may do on this device (the
@@ -1465,8 +1463,7 @@ Owner paths (4.8); the residues named in 10.9.
 - **Identity is the pool's.** A shard operation is a signed request over mutual TLS pinned to the certificate the pool recorded for the
   member; the sender is the certificate, never a field of the request; `X-Poolhouse-Agent` and `by` are labels for the audit trail
   (`docs/test-farm.md`, "Mechanism"). The runner creates no identity, token or credential of its own.
-- **The receiver's policy decides.** `admit()` (6.2) in a pool in dev mode: every member, until `remote-tests` is disabled on the
-  device. In any other pool: the allow list, empty until a person adds a sender, never widened by joining, by `inbound_consent` or by being
+- **The receiver's policy decides.** `admit()` (6.2): the allow list, empty until a person adds a sender, never widened by joining, by `inbound_consent` or by being
   a member (`docs/pools-and-serving.md`). The list is per pool (`docs/design-multi-pool-devices.md`) and is kept with the pool's settings,
   where no child, confined or not, can read or write (the Owner zone, 3.5).
 - **What the policy can restrict, on the receiver, by its own settings:** controls that limit a capability: the network a step may use
@@ -1677,7 +1674,7 @@ with no file is in `tests/test_testfarm_attacks.py`.
 | A21 | Fork bomb, memory hog, disk fill by a shard, a `setsid` child that outlives the shard | process-group kill; a process ceiling (`RLIMIT_NPROC` on macOS, the pids limit on Linux) that stops a fork storm before the polled kill could (3.1); PID namespace and `--die-with-parent` on Linux; a marker sweep on macOS with the residue in 10.9; the derived disk, memory and time bounds of 10.6 (a sized scratch volume or a polled floor, and a polled memory share on macOS with the residue in 10.9); bounded log | `test_a21_a_detached_child_does_not_survive_a_shard_on_linux` and `test_testfarm_confinement.py::test_a_unit_that_writes_until_stopped_and_one_that_allocates_until_stopped_are_ended` |
 | A22 | The step or hook of a repository the user was handed runs on the sender | a project the user has not named runs LIST, `deps.command`, steps, hooks and units confined, including for `list`, `check`, `init`, `plan` and `affected` (10.2), in a scratch copy, after the project is classified from files with no git and with every git call confined (4.9); nothing sends a hook to a device | `test_a22_check_on_a_fresh_clone_runs_its_list_confined` |
 | A23 | A project's `testfarm.toml` or the reuse store reads outside the project (a symlink to a home file in `inputs`, a DEPS row with an absolute or `..` path) | such rows are refused; the runner reads only the project root and its state directory, and check B proves it under the sandbox's read profile, children included | `test_testfarm_readonly.py::test_nothing_outside_the_project_and_the_state_is_read` |
-| A24 | Takeover by whoever is merely present on the LAN | dev mode trusts every device that joined, which `docs/fleet.md` states; with the default target `local` a project's tree goes nowhere until the user names the project and chooses another target, so that trust does not reach every consumer by default; a `target` or `--on` that names a device set the person has not agreed is a widening that asks the host's gate (4.8); a pool that is not in dev mode requires the allow list; the kill switch is `remote-tests` | `test_a24_nothing_is_sent_until_the_project_is_named_and_a_target_chosen` |
+| A24 | Takeover by whoever is merely present on the LAN | with the default target `local` a project's tree goes nowhere until the user names the project and chooses another target, so joining a pool sends nothing by default; a `target` or `--on` that names a device set the person has not agreed is a widening that asks the host's gate (4.8); every pool requires the allow list; the kill switch is `remote-tests` | `test_a24_nothing_is_sent_until_the_project_is_named_and_a_target_chosen` |
 | A25 | An old build on one device (a downgrade of the protocol) | caps carries `protocol` and the build; a mismatch is refused, never run; the device's statement that it can confine is its own build's and is measured by the confinement control unit of 6.4; a device that lies is a compromised receiver (A5) | `test_a25_a_protocol_or_build_mismatch_is_refused` |
 | A26 | A sender queues work or sets tiny timeouts to make a device's own work look failed or late | the device's own work is admitted first (background class); the network denial keeps a sent test from the owner's model server, and on a macOS device a sent `loopback` unit is refused unless the receiver lists ports (10.2); a device's refusal is reported to the sender only | `test_a26_a_sent_test_cannot_prompt_the_owners_model_server` |
 | A27 | Slice injection: a hostile index or count (`--slices '8; rm -rf'`, `-1`, `1e9`, a count that makes the tool run one slice out of range, a slice template that smuggles a flag), or a device that reports slices the sender did not assign | the index and count are integers the runner makes, positive, decimal only, with the count bounded by the sender's memory (10.6), put in as whole arguments (10.4); `--slices` is parsed as an integer or refused with status 4; the template allows exactly the two placeholders; the sender checks the slice set it received (exactly the slices it assigned, once each) as it checks ids (A5) | `test_a27_a_hostile_slice_count_or_index_is_refused` |
@@ -1719,7 +1716,7 @@ Named with the owner, because each is a residue of the platform and the owner ac
    users who ask at the same moment can overload the machine. The tool is a developer tool on a machine its user owns.
 3. **Two members counted as two sources.** The install-instance id separates a copy of the key made without it from the original, and only
    while the original also contacts the sender; a copy of the whole disk, a snapshot restore or a backup restore carries the id and is the
-   same instance, which is the device. One person who runs two instances under two fingerprints on one machine (dev mode lets a joiner join
+   same instance, which is the device. One person who runs two instances under two fingerprints on one machine (a joiner can join
    twice) can make two members agree. The effect is a `remote` entry that serves that device only and counts for no authority.
 4. **Third-party loopback services on macOS.** Seatbelt has no private loopback and its port rules are a snapshot. A sent unit's
    `net = "loopback"` is refused on a macOS device unless the receiver lists the ports to allow, and such labels go to a Linux or WSL device; a
@@ -1818,8 +1815,7 @@ poolhouse-test run                          # the same command, sharded over the
 
 Steps that need a person: naming a project as one's own, one yes per project asked once through the host's gate ("The tests and build commands in
 '<path>' will run as you, with access to your files except the runner's own keys and settings, and may be sent to: <devices>. Without a yes they
-run confined, in a copy."), which `init` offers as its last line and which Poolhouse's own checkout gets from its device setup; and, for a pool
-that is not in dev mode, the receiving device's person adding the sender once (`poolhouse-test allow`), asked once through the same gate with the
+run confined, in a copy."), which `init` offers as its last line and which Poolhouse's own checkout gets from its device setup; and the receiving device's person adding the sender once (`poolhouse-test allow`), asked once through the same gate with the
 sentence "This lets '<device>' run its own code on this computer, as you." (it also asks once each to widen what the sender may do: network
 destinations, loopback ports, resources; it never asks for a time, a disk or a memory number). With no gate available each of these refuses,
 changes nothing and
@@ -2294,12 +2290,10 @@ group's own exit) and `docs/limits.md` is updated in step 8.
 
 Product choices this document cannot settle from the code and documents. Each names the option it would take.
 
-1. **Which pool stack carries the allow list of a pool in prod mode, and does the Rust carrier stay?** Pools in dev mode are served by the Python
-   daemon; pools with charters, grants and phone approvals are served by `poolhouse-node`, whose `shard_consent` grant is the only
+1. **Which pool stack carries the allow list, and does the Rust carrier stay?** Pools with charters, grants and phone approvals are served by `poolhouse-node`, whose `shard_consent` grant is the only
    place a person's signed yes for "this sender may run code here" exists. The design makes one server and one wire. Option A: delete the
    Rust shard host and its two grants and keep the allow list as a device setting changed by `poolhouse-test allow` (one act with one
-   sentence, put to the host's gate, 4.8), valid for every pool mode
-   (`docs/agent-policy.md` says there are no production users and pools are not preserved). Option B: keep the grant as the way the allow
+   sentence, put to the host's gate, 4.8), valid for every pool. Option B: keep the grant as the way the allow
    list is written and have the node bind its member operations to the same Python server, so a phone signs the same act. The design
    takes A unless the owner wants a phone-signed grant for it.
 2. **Where tests run.** Decided: the target is the user's setting and the `--on` flag, default `local`; a tree is sent only for a project the
@@ -2308,7 +2302,7 @@ Product choices this document cannot settle from the code and documents. Each na
    dependencies, a toolchain). The design lets the project declare steps (an environment command cached by a key) and `[requires]`
    probes, and never installs anything on a device on the runner's own initiative. Steps have no network under the default policy, so a
    project whose build fetches dependencies (no vendored dependencies) is not served by devices under it: it runs on `local`, or on a
-   device whose policy names the destinations. Whether the pool's dev mode should name any destinations by default is the owner's.
+   device whose policy names the destinations. Whether a device's policy should name any destinations by default is the owner's.
 4. **How a unit that needs a model or the GPU uses the lease through the runner.** Decided: the runner holds the resource for the unit's
    invocation and asks the broker to delegate it to the invocation's process group, and `poolhouse-serve up` finds an ancestor of its
    caller in a delegated group (5.5). No lease id travels in the environment, and the model server runs with one slot. The change to

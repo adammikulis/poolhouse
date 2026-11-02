@@ -39,7 +39,7 @@ class Windows:
 
 def test_the_one_rule_is_the_daemons_port_and_there_is_no_beacon_rule():
     assert firewall.rules() == [("Poolhouse", "TCP", DEFAULT_HTTP_PORT)]
-    assert "UDP" not in firewall.line() and "8771" not in firewall.line()
+    assert "UDP" not in firewall.line()
 
 
 def test_with_the_rule_held_nothing_is_asked_of_windows(capsys):

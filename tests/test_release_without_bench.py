@@ -83,7 +83,7 @@ def test_the_daemon_answers_the_bench_routes_without_the_bench(tmp_path: Path) -
     _run(f"""
 from pathlib import Path
 from poolhouse.fleet.ui import UI
-ui = UI(name="studio", pool_key_path=Path({str(tmp_path)!r}) / "pool.key")
+ui = UI(name="studio")
 state = ui.bench_state()
 assert state["available"] is False and state["measuring"] is None, state
 assert "not installed here" in ui.rates()["error"]

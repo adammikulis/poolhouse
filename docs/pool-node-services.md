@@ -14,9 +14,9 @@ Python asks its local node for current service authorization on each request and
 
 The existing compute routes, body limits, file chunks, resume/digest checks, model lease admission, sandbox, source permits and producer execution authority remain enforced. Browser/owner authentication is independent of service membership. A service binding never authorizes setup, runtime administration, key export, membership changes or local owner UI actions.
 
-Two distinct current P-256 service identities derive a pairwise ECDH request secret. Derivation is domain-separated and binds the actual Rust pool id and both service certificate fingerprints and binding generations in a canonical order. Both endpoints validate their own and the other endpoint's current node-issued binding before deriving or using the secret. No shared pool key or node private key reaches Python. Invalid or non-P-256 service certificates are refused.
+Two distinct current P-256 service identities derive a pairwise ECDH request secret. Derivation is domain-separated and binds the actual Rust pool id and both service certificate fingerprints and binding generations in a canonical order. Both endpoints validate their own and the other endpoint's current node-issued binding before deriving or using the secret. No node private key reaches Python. Invalid or non-P-256 service certificates are refused.
 
-Existing request MACs, the long-lived authenticator's RAM nonce cache and sealed request/reply bodies use this pairwise secret. Restarting the daemon changes the node-observed process generation and therefore the pairwise key. An authenticated member cannot use its secret to impersonate another member. Rebinding changes the secret. Existing operation idempotency, ownership and resource checks remain independent and continue to apply. No retained compatibility mode accepts old shared-pool keys.
+Existing request MACs, the long-lived authenticator's RAM nonce cache and sealed request/reply bodies use this pairwise secret. Restarting the daemon changes the node-observed process generation and therefore the pairwise key. An authenticated member cannot use its secret to impersonate another member. Rebinding changes the secret. Existing operation idempotency, ownership and resource checks remain independent and continue to apply.
 
 ## Caller coverage
 
@@ -24,7 +24,7 @@ Existing request MACs, the long-lived authenticator's RAM nonce cache and sealed
 
 `fleet.files`, `fleet.models`, `fleet.producer_devices`, `studio_transport` and `serve.decision_authority` use the current Rust pool id and bound service identity. Their source, offer, permit and execution guards remain independent of membership. A node binding cannot create a software producer offer or decision permit.
 
-Test work uses existing Rust `shard_call` and `testfarm.client.Shards`. Python automatic pool convergence, PAKE joining, invitation membership, roster merge routes and shared pool keys are removed after callers route pool actions to the Rust node. No state migration or dual authority is retained.
+Test work uses the Rust `shard_call` and `testfarm.client.Shards`. Pool convergence, joining, membership, the roster and pool keys belong to the Rust node alone; the Python daemon holds no pool authority.
 
 ## Verification
 

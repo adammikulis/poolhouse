@@ -2,7 +2,7 @@
 
 from poolhouse import agent_dependency
 
-from . import invite_routes, runtime_repair
+from . import runtime_repair, session
 from .setup_jobs import jobs, provenance
 
 
@@ -42,7 +42,7 @@ class RuntimeRepairRoutes:
         if self.path not in {"/ui/agent-runtime/install", "/ui/agent-runtime/repair"}:
             return super().route()
         if (self.method != "POST" or not self._local_browser()
-                or not invite_routes.person_session(self)):
+                or not session.person_session(self)):
             self.send(403, {"error": "Install the agent runtime from this computer's signed-in browser."})
             return True
         if not self._fixed_repair_request():

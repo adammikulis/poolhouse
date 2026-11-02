@@ -105,7 +105,7 @@ def test_an_ordinary_name_is_not_marked(name):
 def test_a_model_from_an_unlisted_publisher_is_refused_and_asks_a_person(stand):
     server = stand(repos("maker/thing-GGUF"))
     with pytest.raises(admission.NotApproved) as raised:
-        hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     said = SENTENCE.format(who="maker", repo="maker/thing-GGUF", commit=server.commit("maker/thing-GGUF")[:12])
     assert str(raised.value).startswith(said)
     assert server.downloads == {} and pins() == {}
@@ -121,22 +121,22 @@ def test_a_refusal_is_not_lifted_by_asking_again_or_by_a_denial(stand):
     server = stand(repos("maker/thing-GGUF"))
     for _ in range(2):
         with pytest.raises(admission.NotApproved):
-            hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+            hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     assert len(asked()) == 1
     (waiting,) = asked()
     requests.answer(waiting.id, "deny", waiting.fingerprint, "terminal",
                     requests.Context(terminal=(True, True), env={}))
     with pytest.raises(admission.NotApproved):
-        hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     assert server.downloads == {}
 
 
 def test_a_person_approves_one_repository_at_one_commit_and_the_pin_records_both(stand):
     server = stand(repos("maker/thing-GGUF"))
     with pytest.raises(admission.NotApproved):
-        hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     assert approve("model_publisher") == 1
-    got = hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+    got = hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     assert got.name == FILE and server.downloads
     commit = server.commit("maker/thing-GGUF")
     (pin,) = pins().values()
@@ -149,16 +149,16 @@ def test_an_approval_covers_neither_another_commit_nor_another_repository_of_the
     held = {**repos("maker/thing-GGUF"), **repos("maker/other-GGUF")}
     server = stand(held)
     with pytest.raises(admission.NotApproved):
-        hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     approve("model_publisher")
-    hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+    hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     with pytest.raises(admission.NotApproved):
-        hub.pull(f"hf:maker/other-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:maker/other-GGUF/{FILE}")
     server.moved["maker/thing-GGUF"] = 1
     with pytest.raises(admission.NotApproved):
-        hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     approve("model_publisher")
-    assert hub.pull(f"hf:maker/other-GGUF/{FILE}", members=False).name == FILE
+    assert hub.pull(f"hf:maker/other-GGUF/{FILE}").name == FILE
 
 
 def test_an_agent_cannot_approve_a_publisher_even_where_answers_are_delegated(stand, monkeypatch):
@@ -166,7 +166,7 @@ def test_an_agent_cannot_approve_a_publisher_even_where_answers_are_delegated(st
     monkeypatch.delenv(authority.FLOOR_ENV, raising=False)
     assert authority.state_of("requests.answer") == authority.DELEGATED
     with pytest.raises(admission.NotApproved):
-        hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     (waiting,) = asked()
     for env in ({"CLAUDECODE": "1"}, {"POOLHOUSE_AGENT": "claude-x"}):
         with pytest.raises(person.HumanRequired):
@@ -176,7 +176,7 @@ def test_an_agent_cannot_approve_a_publisher_even_where_answers_are_delegated(st
         requests.answer(waiting.id, "approve", waiting.fingerprint, "ui",
                         requests.Context(env={"CLAUDECODE": "1"}))
     with pytest.raises(admission.NotApproved):
-        hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     assert server.downloads == {}
 
 
@@ -192,15 +192,15 @@ def test_a_request_in_other_words_is_not_an_approval_of_the_pull(stand):
                ("host", server.url.split("//", 1)[1]))))
     assert approve("model_publisher") == 1
     with pytest.raises(admission.NotApproved):
-        hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     assert server.downloads == {}
     assert approve("model_publisher") == 1
-    assert hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False).name == FILE
+    assert hub.pull(f"hf:maker/thing-GGUF/{FILE}").name == FILE
 
 
 def test_a_known_publisher_is_fetched_without_asking(stand):
     server = stand(repos("unsloth/thing-GGUF"))
-    got = hub.pull(f"hf:unsloth/thing-GGUF/{FILE}", members=False)
+    got = hub.pull(f"hf:unsloth/thing-GGUF/{FILE}")
     assert got.name == FILE and server.downloads
     assert asked() == [] and requests.list_requests() == []
     (pin,) = pins().values()
@@ -211,7 +211,7 @@ def test_a_lookalike_of_a_known_publisher_is_asked_about(stand):
     held = {"Unsloth/thing-GGUF": {FILE: gguf_bytes(extra=4100)}}
     server = stand(held)
     with pytest.raises(admission.NotApproved, match="This model is from Unsloth"):
-        hub.pull(f"hf:Unsloth/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:Unsloth/thing-GGUF/{FILE}")
     assert server.downloads == {}
 
 
@@ -219,19 +219,19 @@ def test_a_lookalike_of_a_known_publisher_is_asked_about(stand):
 def test_an_abliterated_repository_of_a_known_publisher_asks(stand):
     server = stand(repos("unsloth/thing-abliterated-GGUF"))
     with pytest.raises(admission.NotApproved, match="changed to answer what the original would refuse"):
-        hub.pull(f"hf:unsloth/thing-abliterated-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:unsloth/thing-abliterated-GGUF/{FILE}")
     assert server.downloads == {}
     (waiting,) = asked()
     assert waiting.human_only and waiting.reason.endswith("Use it anyway?")
     assert approve("model_publisher") == 1
-    assert hub.pull(f"hf:unsloth/thing-abliterated-GGUF/{FILE}", members=False).name == FILE
+    assert hub.pull(f"hf:unsloth/thing-abliterated-GGUF/{FILE}").name == FILE
 
 
 def test_an_uncensored_file_in_an_ordinary_repository_asks(stand):
     name = "thing-uncensored-Q4_K_M.gguf"
     server = stand(repos("google/thing-GGUF", file=name))
     with pytest.raises(admission.NotApproved, match="changed to answer"):
-        hub.pull(f"hf:google/thing-GGUF/{name}", members=False)
+        hub.pull(f"hf:google/thing-GGUF/{name}")
     assert server.downloads == {}
 
 
@@ -239,7 +239,7 @@ def test_an_uncensored_file_in_an_ordinary_repository_asks(stand):
 def test_a_floating_revision_is_resolved_and_every_request_names_the_commit(stand):
     server = stand(repos("unsloth/thing-GGUF"))
     commit = server.commit("unsloth/thing-GGUF")
-    hub.pull(f"hf:unsloth/thing-GGUF/{FILE}", members=False)
+    hub.pull(f"hf:unsloth/thing-GGUF/{FILE}")
     paths = [path for _, path, _, _ in server.hub_seen]
     assert any(f"/resolve/{commit}/" in path for path in paths)
     assert not any("/main" in path.split("?")[0] for path in paths if "/resolve/" in path or "/tree/" in path)
@@ -250,7 +250,7 @@ def test_a_floating_revision_is_resolved_and_every_request_names_the_commit(stan
 def test_a_reference_names_a_commit_as_written(stand):
     server = stand(repos("unsloth/thing-GGUF"))
     commit = server.commit("unsloth/thing-GGUF")
-    hub.pull(f"hf:unsloth/thing-GGUF/{FILE}@{commit}", members=False)
+    hub.pull(f"hf:unsloth/thing-GGUF/{FILE}@{commit}")
     assert not any("/revision/" in path for _, path, _, _ in server.hub_seen)
     (pin,) = pins().values()
     assert pin.commit == commit
@@ -260,35 +260,35 @@ def test_a_reference_names_a_commit_as_written(stand):
 def test_other_bytes_for_a_commit_already_pulled_are_refused_and_quarantined(stand):
     held = repos("unsloth/thing-GGUF")
     server = stand(held)
-    hub.pull(f"hf:unsloth/thing-GGUF/{FILE}", members=False)
+    hub.pull(f"hf:unsloth/thing-GGUF/{FILE}")
     before = dict(server.downloads)
     held["unsloth/thing-GGUF"][FILE] = gguf_bytes(extra=9000)
     with pytest.raises(admission.DigestChanged, match="quarantined by sentinel"):
-        hub.pull(f"hf:unsloth/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:unsloth/thing-GGUF/{FILE}")
     assert server.downloads == before
     commit = server.commit("unsloth/thing-GGUF")
     key = f"hub:unsloth/thing-GGUF/{FILE}@{commit}"
     assert sentinel.default().store.state_of("model", key) == sentinel.State.QUARANTINED
     with pytest.raises(admission.DigestChanged):
-        hub.pull(f"hf:unsloth/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:unsloth/thing-GGUF/{FILE}")
     assert len(pins()) == 1
 
 
 def test_other_bytes_under_a_new_commit_ask_a_person_and_the_same_bytes_do_not(stand):
     held = repos("unsloth/thing-GGUF")
     server = stand(held)
-    hub.pull(f"hf:unsloth/thing-GGUF/{FILE}", members=False)
+    hub.pull(f"hf:unsloth/thing-GGUF/{FILE}")
     server.moved["unsloth/thing-GGUF"] = 1
-    assert hub.pull(f"hf:unsloth/thing-GGUF/{FILE}", members=False).name == FILE
+    assert hub.pull(f"hf:unsloth/thing-GGUF/{FILE}").name == FILE
     assert asked() == []
     server.moved["unsloth/thing-GGUF"] = 2
     held["unsloth/thing-GGUF"][FILE] = gguf_bytes(extra=9000)
     before = dict(server.downloads)
     with pytest.raises(admission.NotApproved, match="is not the file Poolhouse pulled from"):
-        hub.pull(f"hf:unsloth/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:unsloth/thing-GGUF/{FILE}")
     assert server.downloads == before
     assert approve("model_publisher") == 1
-    hub.pull(f"hf:unsloth/thing-GGUF/{FILE}", members=False)
+    hub.pull(f"hf:unsloth/thing-GGUF/{FILE}")
     newest = max(pins().values(), key=lambda p: p.pinned_at)
     assert newest.commit == server.commit("unsloth/thing-GGUF") and newest.source_ref.endswith(FILE)
 

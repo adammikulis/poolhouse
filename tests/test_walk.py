@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 
 from poolhouse.log import to
 from poolhouse.testing.canned import CANNED_MARKER, CANNED_MODEL_ID, marked
@@ -202,21 +203,17 @@ def test_asking_the_graph_page_waits_for_the_whole_streamed_answer(slow_model, t
 @pytest.mark.slow
 def test_saying_something_in_the_fleet_chat_waits_for_the_whole_reply(slow_model, tmp_path,
                                                                       monkeypatch,
-                                                                      playwright):
+                                                                      playwright, studio_node):  # noqa: F811
     import time
 
-    from test_fleet_ui import WORDS, Serving
+    from test_fleet_ui import Serving
 
     from poolhouse.fleet.conversations import Conversations
     from poolhouse.fleet.serving import Serving as Models
-    from tests.pool_support import join_pool_by_passphrase
 
     monkeypatch.setenv("POOLHOUSE_CACHE", str(tmp_path / "cache"))
     served = Serving(tmp_path, name="laptop")
     try:
-        join_pool_by_passphrase(WORDS, group="home", path=served.keyfile)
-        served.call("/ui/setup/join", method="POST",
-                    body={"passphrase": WORDS, "group": "home"})
         served.ui.setup_finished()
         served.ui.root = served.files.parent
         served.ui.conversations = Conversations(tmp_path / "chats")
@@ -226,7 +223,7 @@ def test_saying_something_in_the_fleet_chat_waits_for_the_whole_reply(slow_model
         monkeypatch.setattr(models, "all", lambda: [decoder])
         served.ui.serving = models
         served.ui._members = (time.time(), [])
-        stops = walked(served, tmp_path, playwright, screens=("chat",), passphrase=WORDS,
+        stops = walked(served, tmp_path, playwright, screens=("chat",),
                        say="hello", answer_s=60.0)
     finally:
         served.httpd.shutdown()

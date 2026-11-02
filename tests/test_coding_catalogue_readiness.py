@@ -96,6 +96,6 @@ def test_foreign_origin_and_noncredentialed_sessions_cannot_discover(catalogue_a
     app = catalogue_api
     status, data, _ = app.call('/ui/coding/catalogue', headers={'Origin': 'https://foreign.invalid'})
     assert status == 403 and 'models' not in data
-    session = app.ui.sessions.open('fixture-view', 'pool-key')
+    session = app.ui.sessions.open('fixture-view', 'browser')
     status, data, _ = get(app, cookie=app.ui.sessions.cookie_header(session).split(';', 1)[0])
     assert status == 403 and 'selected_project' not in data

@@ -56,56 +56,6 @@ REPO = Path(__file__).resolve().parent.parent
 WORDS = "correct horse battery staple"
 
 
-# -- setup ---------------------------------------------------------------
-@check("Setup", "pool keys are random even when their join passphrases match")
-def _():
-    from poolhouse.fleet.discovery import mint_pool
-    from poolhouse.fleet.onboard.joining import join_secret
-    secret = join_secret(WORDS, "verify-setup")
-    a = mint_pool("verify-setup", TMP / "random-a.key", join=secret)
-    b = mint_pool("verify-setup", TMP / "random-b.key", join=secret)
-    assert a.key != b.key and a.join == b.join
-    assert secret != join_secret(WORDS, "another-group")
-    return "independent random keys; group-scoped join authentication"
-
-
-@check("Setup", "two groups on one network cannot see each other")
-def _():
-    from poolhouse.fleet import Advertiser, Beacon, discover
-    from poolhouse.fleet.discovery import mint_pool
-    port = free_port()
-    ours = mint_pool("ours", TMP / "a.key").key
-    theirs = mint_pool("theirs", TMP / "b.key").key
-    with Advertiser(Beacon(name="ours", port=8770), ours, port=port, interval_s=0.2), \
-         Advertiser(Beacon(name="theirs", port=8771), theirs, port=port, interval_s=0.2):
-        we = {b.name for b in discover(ours, timeout_s=2.0, port=port)}
-        they = {b.name for b in discover(theirs, timeout_s=2.0, port=port)}
-    assert we == {"ours"} and they == {"theirs"}, (we, they)
-    return "each sees only its own"
-
-
-@check("Setup", "a passphrase shorter than the minimum is refused")
-def _():
-    from poolhouse.fleet.discovery import MIN_JOIN_LENGTH, DiscoveryError, check_length
-    try:
-        check_length("x" * (MIN_JOIN_LENGTH - 1))
-    except DiscoveryError as exc:
-        return str(exc)[:60]
-    raise AssertionError("accepted a short passphrase")
-
-
-@check("Setup", "the group is remembered, so a passphrase can be checked later")
-def _():
-    from poolhouse.fleet.discovery import mint_pool, pool_group
-    from poolhouse.fleet.onboard.joining import join_secret, matches
-    key = TMP / "grp.key"
-    mint_pool("garage", key, join=join_secret(WORDS, "garage"))
-    assert pool_group(key) == "garage"
-    assert matches(WORDS, path=key)
-    assert not matches("wrong words here", path=key)
-    return "group 'garage'"
-
-
 # -- the daemon ----------------------------------------------------------
 class Box:
     def __init__(self, name="box", slots=1, labels=(), extra=None, host="127.0.0.1"):
@@ -126,7 +76,7 @@ class Box:
         self.runner = JobRunner(root, self.files, slots=slots)
         self.port = free_port()
         report = lambda: {**device_report(lambda: dict(extra or {})), "labels": list(labels)}
-        self.ui = UI(name=name, pool_key_path=root / "pool.key")
+        self.ui = UI(name=name)
         self.ui.runner, self.ui.settings = self.runner, Settings()
         self.ui.settings_path, self.ui.report = root / "settings.json", report
         self.httpd = ThreadingHTTPServer(
@@ -383,7 +333,7 @@ def _():
 
 @check("Interface", "setup is refused from another machine")
 def _():
-    from poolhouse.fleet.discovery import primary_ip
+    from poolhouse.fleet.onboard.lan import primary_ip
     box = Box("guard", host="0.0.0.0")
     try:
         req = urllib.request.Request(

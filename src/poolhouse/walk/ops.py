@@ -71,7 +71,6 @@ class Walk:
     out: Path = Path()
     screens: tuple[str, ...] = ()
     headless: bool = True
-    passphrase: str = ""
     setup: bool = False
     ask: str = ""
     say: str = ""
@@ -273,29 +272,16 @@ def _setup(walker: Walker) -> None:
     walker.through("done", partial(_open_app, walker.page))
 
 
-def _signed(page: Any, passphrase: str) -> None:
-    page.fill("#p", passphrase)
-    page.click("#signin-go")
-    page.wait_for_selector("#app:not([hidden])")
-
-
 def _sign_in(walker: Walker) -> str:
-    """The passphrase screen, and past it; returns why the app is still shut, or ""."""
+    """The sign-in screen; returns why the app is still shut, or ""."""
     page = walker.page
     if page.locator("#signin").is_hidden():
         if walker.wants("sign-in"):
-            walker.skip("sign-in", "this machine is in no pool; nothing asks for a "
-                                   "passphrase")
+            walker.skip("sign-in", "nothing asks for a sign-in")
     else:
         if walker.wants("sign-in"):
             walker.stop("sign-in", "#signin")
-        if not walker.what.passphrase:
-            return "this pool wants its passphrase; --passphrase signs in"
-        try:
-            _signed(page, walker.what.passphrase)
-        except walker.failure as exc:
-            walker.failed("sign-in", f"the passphrase was refused: {_first_line(exc)}")
-            return "the passphrase was refused"
+        return "this page signs in from the Poolhouse window of a computer in the pool"
     if page.locator("#first-run").is_visible():
         return "this machine is still in first-run; --setup walks the wizard through it"
     return ""

@@ -68,7 +68,7 @@ downloads, one directory per long command's logs -- lives under `~/.cache/poolho
 `POOLHOUSE_CACHE` moves and which is safe to delete.
 
 Unattended, for a machine you are setting up from a script: `POOLHOUSE_NAME`,
-`POOLHOUSE_PASSPHRASE`, `POOLHOUSE_POOL`, `POOLHOUSE_MODE`, `POOLHOUSE_MODELS`,
+`POOLHOUSE_MODE`, `POOLHOUSE_MODELS`,
 `POOLHOUSE_ADOPT_CACHE`, `POOLHOUSE_REF` answer every prompt, and a machine with no terminal
 is never prompted at all. `POOLHOUSE_OFFLINE_ZIP` and `POOLHOUSE_OFFLINE_MODELS` install from
 local files and skip every network step; `POOLHOUSE_OFFLINE_WHEELS` names the directory the
@@ -99,7 +99,7 @@ build option creates local install artifacts; it does not publish or commit eith
 
 Past the install, every step is a Poolhouse command rather than shell -- `poolhouse-setup`
 (what this machine can do), `poolhouse-serve build` (llama.cpp), `poolhouse-models fetch`
-(into the one cache, every download checked against its sha256), `poolhouse-pool join
+(into the one cache, every download checked against its sha256), `poolhouse-traind
 --persist`, and `poolhouse-doctor` at the end, whose lines it prints.
 
 **Or download it yourself** from the [latest release](https://github.com/adammikulis/poolhouse/releases/latest):
@@ -121,13 +121,13 @@ or newer.
 
 ![Setting up a machine](images/setup.jpg)
 
-Do the same on every machine you want to train with, typing the same passphrase. They
-find each other on their own.
+Do the same on every machine you want to train with, then join each to the pool with its join code
+(docs/fleet.md, "Joining a pool").
 
 **On Windows** the same daemon runs, with the handful of things Windows does differently
 decided in one place (`poolhouse/platform.py`): a job gets its own process group and is
 stopped with a `CTRL_BREAK_EVENT` it can catch as `SIGBREAK`, the one-runner lock is
-`msvcrt.locking` where POSIX has `flock`, the pool key is made private with `icacls`
+`msvcrt.locking` where POSIX has `flock`, the daemon token is made private with `icacls`
 where `chmod 600` would only flip the read-only bit, and `poolhouse-traind --persist`
 registers a Scheduled Task at logon (`com.poolhouse.traind.login`) the way `poolhouse-serve
 build --persist` registers its weekly refresh. `--system` registers a second one
@@ -138,22 +138,22 @@ real service because a service needs a wrapper to hold a long-lived Python proce
 startup task is one line and survives a reboot either way. Two things a Windows machine needs that the
 others do not: llama.cpp comes from `poolhouse-serve build --from release` (a release zip,
 since most Windows installs have no compiler), and **Windows Defender Firewall blocks the
-daemon's TCP 8770 and its UDP 8771 beacons inbound by default**, so `poolhouse-members ls` on
+daemon's TCP 8770 inbound by default**, so `poolhouse-pool members` on
 another machine sees nothing until, in a prompt opened as administrator:
 
 ```
-netsh advfirewall firewall add rule name="Poolhouse" dir=in action=allow protocol=TCP localport=8770 && netsh advfirewall firewall add rule name="Poolhouse discovery" dir=in action=allow protocol=UDP localport=8771
+netsh advfirewall firewall add rule name="Poolhouse" dir=in action=allow protocol=TCP localport=8770
 ```
 
-`poolhouse-setup` prints that line as a finding until both rules exist. The first time on a
+`poolhouse-setup` prints that line as a finding until the rule exists. The first time on a
 new Windows machine, in this order, each of which should say what follows it:
 `pip install -e .` (an editable install, so `poolhouse-traind` is on PATH);
-`poolhouse-setup` (the firewall finding, `!` until the rules are added, then `ok`);
+`poolhouse-setup` (the firewall finding, `!` until the rule is added, then `ok`);
 `poolhouse-doctor` (the checkout and hooks);
 `poolhouse-serve build --from release` ("current -> ...\builds\bNNNN" after "verifying");
 `poolhouse-traind --persist` ("installed to start at login", then a `traind.log` under
 `~\.poolhouse` that begins `poolhouse traind on http://0.0.0.0:8770`);
-`poolhouse-members ls` from another machine (the Windows box listed with its GPU). `ci.yml`'s
+`poolhouse-pool members` from another machine (the Windows box listed with its GPU). `ci.yml`'s
 `windows` job runs `install.ps1 -Headless` end to end on a Windows runner -- a venv under a
 scratch prefix, the console scripts on its own PATH, then `-Uninstall` taking the venv away
 again -- against a wheel built in the same job, with no model and no network.
@@ -242,7 +242,7 @@ Checking a reboot is manual, because a test cannot reboot a machine:
 
 1. `prepare`, `install`, then `status` prints `autostart: current`.
 2. Reboot, log in, wait a minute. `status` prints `autostart: current` and
-   `poolhouse-members ls` from another machine lists this one.
+   `poolhouse-pool members` from another machine lists this one.
 3. Kill the daemon process: it returns within the restart interval; kill it six times in
    five minutes and the manager stops restarting it (systemd), which `status` shows as drifted.
 4. Edit the unit file: `status` prints `drifted`. `rollback` restores the file it replaced.

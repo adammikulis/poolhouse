@@ -31,7 +31,7 @@ def folder_repos(name: str = "maker/thing", seed: int = 1):
 
 
 def pull_folder(repo: str = "maker/thing", trust=LIBRARY, dest=None):
-    return hub.pull(f"hf:{repo}/{SHARD}", dest, members=False, trust=trust)
+    return hub.pull(f"hf:{repo}/{SHARD}", dest, trust=trust)
 
 
 def waiting_pins():
@@ -303,7 +303,7 @@ def test_the_base_a_decider_loads_is_asked_about_before_anything_is_read(stand):
 
 def test_a_file_pulled_under_library_is_asked_about_by_the_shared_check(stand, tmp_path):
     stand({"maker/thing-GGUF": {"thing-Q4_K_M.gguf": gguf_bytes(extra=4096)}})
-    got = hub.pull("hf:maker/thing-GGUF/thing-Q4_K_M.gguf", members=False, trust=LIBRARY)
+    got = hub.pull("hf:maker/thing-GGUF/thing-Q4_K_M.gguf", trust=LIBRARY)
     with pytest.raises(admission.NotApproved, match="This model is from maker"):
         admission.vetted(got)
     approve("model_publisher")

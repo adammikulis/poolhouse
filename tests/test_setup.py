@@ -420,7 +420,7 @@ def test_the_firewall_finding_names_the_inbound_rule_and_how_to_add_it():
     if not finding.good:
         assert finding.said.startswith("no inbound rule for ")
         assert finding.fix == ["cmd", "/c", line()]
-        assert "protocol=TCP" in finding.fix[2] and "UDP" not in finding.fix[2] and "8771" not in finding.fix[2]
+        assert "protocol=TCP" in finding.fix[2] and "UDP" not in finding.fix[2]
         assert "Windows blocks inbound TCP 8770" in finding.note
     else:
         assert finding.said.startswith("inbound rules present: ")
@@ -556,7 +556,7 @@ def test_fleet_finding_says_the_node_does_not_answer_and_how_to_join(monkeypatch
     assert found.keys() == {"fleet: joined", "ports"}
     assert not found["fleet: joined"].good
     assert "node must answer" in found["fleet: joined"].said
-    assert "poolhouse-pool join --host" in found["fleet: joined"].note and "passphrase" not in found["fleet: joined"].note
+    assert "poolhouse-pool join --host" in found["fleet: joined"].note
 
 
 def test_fleet_finding_says_the_daemon_does_not_answer(pool_answers):

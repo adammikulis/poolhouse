@@ -1,4 +1,4 @@
-"""``poolhouse-pool bootstrap | share | fetch | signing | model-sources``: the file, source and installation commands.
+"""``poolhouse-pool bootstrap | share | fetch | signing``: the file, source and installation commands.
 
 Every command takes ``--json`` and prints one JSON document; nothing is scraped from text.
 State lives under ``--state`` (default ``<state root>/onboard``): this machine's certificate and
@@ -24,10 +24,9 @@ from poolhouse.units import parse_duration
 from ..tailnet import detect
 from ..tls import TlsUnavailable, identity, pinned_context
 from .bootstrap import BootstrapServer, Terms
+from .devices import Devices, short
 from .lan import primary_ip
 from .manifest import ManifestError, RotationAnnounced, Signer, key_fingerprint, verify
-from .members_cli import add_members, cmd_members
-from .requests import Devices, short
 from .routes import resolve
 from .share_cli import add_share, cmd_share
 from .signing import KeyStoreError, SigningKeys
@@ -71,7 +70,6 @@ def add_service_commands(sub: Any, common: Any) -> None:
                                                    "a wildcard)")
 
     add_share(sub, common)
-    add_members(sub, common)
     add_signing(sub, common)
 
     p = common(sub.add_parser("fetch", help="fetch files from a machine this one joined with"))
@@ -175,6 +173,5 @@ def cmd_fetch(args: argparse.Namespace) -> int:
 
 
 def run(args: argparse.Namespace) -> int:
-    fn = {"bootstrap": cmd_bootstrap, "share": cmd_share, "fetch": cmd_fetch, "signing": cmd_signing,
-          "model-sources": cmd_members}[args.cmd]
+    fn = {"bootstrap": cmd_bootstrap, "share": cmd_share, "fetch": cmd_fetch, "signing": cmd_signing}[args.cmd]
     return fn(args)

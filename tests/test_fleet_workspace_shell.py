@@ -32,18 +32,6 @@ def test_navigation_remembers_screen_on_reload_and_browser_back(joined, open_pag
     assert not errors
 
 
-def test_signing_in_returns_to_requested_screen(joined, open_page):
-    from test_fleet_ui import WORDS
-
-    page, errors = open_page(joined, path="/ui/#models")
-    page.wait_for_selector("#signin:not([hidden])")
-    page.fill("#p", WORDS)
-    page.click("#signin-go")
-    page.wait_for_selector("#models:not([hidden])")
-    assert page.url.endswith("#models")
-    assert not errors
-
-
 def test_conversation_search_finds_saved_message_content(joined, open_page):
     chats = joined.ui.conversations
     a = chats.start(model="sample", title="A morning conversation")

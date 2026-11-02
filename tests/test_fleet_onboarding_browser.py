@@ -46,12 +46,3 @@ def test_failed_startup_save_stays_on_the_step(daemon, open_page, monkeypatch):
     assert page.get_by_role("button", name="Continue", exact=True).is_enabled()
     assert "4 of 9 · Startup" in page.locator("#first-run-card > p").inner_text()
     assert not errors
-
-
-def test_empty_passphrase_explains_what_to_enter(joined, open_page):
-    page, errors = open_page(joined)
-    page.wait_for_selector("#signin:not([hidden])")
-    page.locator("#signin-go").click()
-    assert page.locator("#signin-note").inner_text() == "Enter the pool passphrase."
-    assert page.locator("#signin-go").is_enabled()
-    assert not errors

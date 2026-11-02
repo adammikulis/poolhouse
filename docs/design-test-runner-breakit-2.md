@@ -39,7 +39,7 @@ partial because of the findings below, named per row.
 | N10 | Medium | `[requires] module:NAME.sub` imports the parent package on the device: the sender picks which installed module's code runs | 6.5 |
 | N11 | Medium | Sentinels carry no nonce field, are recognisable, do not test confinement, and `suspect` costs a liar nothing | 6.4, 10.9 item 5, A9 |
 | N12 | Medium | Lease delegation by process id: the id the OS reports names a dead process, ids recycle, the model server can outlive the group; a descriptor the runner forgets is a capability | 5.5, 3.5 rule 3 |
-| N13 | Medium | Untracked files travel when a unit's dependencies are "the whole tree"; the `own` sentence says "your devices", which in dev mode is anyone who joined | 6.3, 4.8, A19 |
+| N13 | Medium | Untracked files travel when a unit's dependencies are "the whole tree"; the `own` sentence says "your devices", which is every member of the pool | 6.3, 4.8, A19 |
 | N14 | Low | The runner walks and hashes directories a child wrote, by name; the no-follow create is only as good as its directory descriptor | 3.5 rule 1, 4.4, 6.6 |
 | N15 | Low | Loopback denial on macOS is a snapshot of ports and `sandbox.Net` has no deny-ports mode | 10.2, 10.9 item 4 |
 | N16 | Low | A preset's `[confine]` names toolchain homes that hold credentials and forwards variables whose values are secrets | 7, 10.5 |
@@ -182,8 +182,7 @@ a terminal, and through the question tool when an agent ran the command" (4.8, 6
    `named`, or adds `[confine] read = ["~"]` to the `pytest` preset, and the next run is unconfined. A7's test `an_agent_cannot_name_a_project`
    passes because the CLI refuses, not because the file is safe.
 3. *`target` and `--on` are not gated.* `poolhouse-test target auto` "asks nobody" (4.8) and `--on pool` is a flag. A prompt-injected agent
-   in a named project runs one of them and the tracked source goes to every accepting member of a pool in dev mode, where "every
-   device on the network that runs Poolhouse in dev mode joins when it asks" (`docs/fleet.md`). The first send prints a file count to the
+   in a named project runs one of them and the tracked source goes to every accepting member of a pool. The first send prints a file count to the
    agent, not to the person. A19 and A24 are answered by "the default is `local`", which is the agent's to change.
 
 **Breaks.** 4.8, 6.2, 12, A7, A11, A19, A24, F14, F30 item 7.
@@ -283,7 +282,7 @@ progress only up to the total guard, which therefore always exists.
 **Attack.** 10.3 "clamps `slots`, `timeout` and `env` to its policy", and 15 says a shard has "no deadline of its own". There is no
 number or rule for the clamp. A compromised or merely hostile member sends a unit with `timeout = 1e9` (valid by N6) and a loop; it
 holds the device's free background slots, its heat and its battery until the owner's own work is requested (the only thing that ends
-it, 10.7) and, in a pool in dev mode, any device on the LAN that joined can be that member (A24). A4 answers "hogs slots" with the
+it, 10.7) and any device of the pool can be that member (A24). A4 answers "hogs slots" with the
 background class, which orders work and does not bound it.
 
 Disk and memory are worse:
@@ -356,7 +355,7 @@ the Runner hash the unpacked files through descriptors it opens afterwards.
 dot. [probe] `find_spec('this.x')` printed "The Zen of Python" (the module ran), and `find_spec('xml.dom.minidom')` loaded `xml`,
 `xml.dom` and `xml.dom.domreg`: `find_spec` of a dotted name imports every parent. The sender picks which installed package's
 import-time code runs on the device, before any tree, any `allow` beyond membership, any confinement. A module whose import opens a
-browser, starts a daemon or writes a file is a one-line request in dev mode from any member.
+browser, starts a daemon or writes a file is a one-line request from any member.
 
 **Breaks.** 6.5, F15, A4.
 
@@ -420,7 +419,7 @@ descriptor to a file outside the profile is a test failure.
 `files` or `npm` unit, depends on "the whole tree" (1, 5.4). Whether the whole tree names every untracked file is not said. If it does,
 `notes.txt`, `token.txt` and `config.local.yml` (untracked, not ignored) travel to each device; A19's test, "untracked files are not
 sent unless named", cannot say what "named" means for `**`. And the `own` sentence says the tests "may be sent to your devices" (4.8,
-12), which in a pool in dev mode is any device on the LAN that joined.
+12), which is any member of the pool.
 
 **Breaks.** 6.3, 4.8, 12, A19, F14, F25.
 

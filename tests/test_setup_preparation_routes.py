@@ -5,7 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 from launch_support import browser as browser_headers
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_fleet_initial_setup import device, initial
+from testfarm_kit import devices as nodes, found
 
 from poolhouse import lock
 from poolhouse.fleet import setup_context, setup_preparation
@@ -18,7 +20,7 @@ PREFIX = '/ui/setup/prepare'
 
 
 @pytest.fixture
-def preparing(device, tmp_path, monkeypatch):
+def preparing(device, tmp_path, monkeypatch, studio_node):  # noqa: F811
     root = tmp_path / 'setup-state'
     root.mkdir(mode=0o700)
     device.ui.root = root
@@ -177,8 +179,7 @@ def test_current_context_revocation_during_status_cannot_publish_response(prepar
     assert call(preparing, PREFIX + '/' + first['id'], method='GET')[0] == 403
 
 
-def test_pool_context_change_invalidates_captured_execution_callback(preparing):
-    from poolhouse.fleet.discovery import mint_pool
+def test_pool_context_change_invalidates_captured_execution_callback(preparing, node_binary, monkeypatch):  # noqa: F811
     from poolhouse.fleet.routes import Router
     handler = SimpleNamespace(path=PREFIX, command='POST', client_address=('127.0.0.1', 1),
                               server=preparing.device.httpd,
@@ -186,25 +187,7 @@ def test_pool_context_change_invalidates_captured_execution_callback(preparing):
                                        'X-Poolhouse-UI':'1', **browser_headers(preparing.device)})
     context = setup_context.bind(Router(preparing.device.ui, handler))
     assert context.current() is True
-    mint_pool('another-test-pool', preparing.device.keyfile, mode='dev')
-    assert context.current() is False
-
-
-def test_explicit_zero_host_port_is_not_treated_as_missing(preparing):
-    from poolhouse.fleet.routes import Router
-    handler = SimpleNamespace(path=PREFIX + '/' + 'c' * 32, command='GET',
-                              client_address=('127.0.0.1', 1),
-                              server=SimpleNamespace(server_address=('127.0.0.1', 80)),
-                              headers={'Cookie':preparing.cookie, 'Host':'localhost:0',
-                                       'X-Poolhouse-UI':'1', 'Sec-Fetch-Site':'same-origin'})
-    assert Router(preparing.device.ui, handler)._local_browser(read=True) is False
-
-
-def test_model_choices_rechecks_the_actual_session_after_metadata_read(preparing, monkeypatch):
-    from poolhouse.fleet import routes
-    def revoke(ui):
-        ui.sessions.get(parse_cookie(preparing.cookie)).expires_at = 0
-        return {'models':[{'model_id':'private-fixture'}]}
-    monkeypatch.setattr(routes, 'choices_for', revoke)
-    status, body, _ = call(preparing, '/ui/models/startup', method='GET')
-    assert status == 401 and 'models' not in body
+    with nodes(node_binary, 'another') as (other,):
+        found(other)                      # a node in a pool of its own: this device now reads that pool
+        monkeypatch.setattr('poolhouse.node_launch.default_state', lambda: other.state)
+        assert context.current() is False

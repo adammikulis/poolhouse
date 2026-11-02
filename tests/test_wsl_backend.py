@@ -244,8 +244,8 @@ def test_wsl_start_preserves_service_setup_and_closes_owned_resources(monkeypatc
                         else "/mnt/c/runtime/python.exe")
     class LocalUI:
         def __init__(self, argv, port):
-            assert argv[-3:] == ["-m", "poolhouse.fleet.wsl_ui", "8771"]
-            assert port == 8771
+            assert argv[-3:] == ["-m", "poolhouse.fleet.wsl_ui", "8791"]
+            assert port == 8791
 
         def start(self):
             events.append("local-start")
@@ -261,7 +261,7 @@ def test_wsl_start_preserves_service_setup_and_closes_owned_resources(monkeypatc
     monkeypatch.setattr(wsl.subprocess, "run", unexpected_process)
     monkeypatch.delenv("POOLHOUSE_HOME", raising=False)
     monkeypatch.delenv("POOLHOUSE_CACHE", raising=False)
-    arguments = ["--port", "8771", "argument; $(touch injected)"]
+    arguments = ["--port", "8791", "argument; $(touch injected)"]
     assert wsl.start(arguments, executable="/home/test/runtime/bin/python") == 0
     assert len(launches) == 1
     argv, kwargs = launches[0]

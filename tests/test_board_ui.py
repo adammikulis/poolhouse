@@ -127,7 +127,7 @@ def test_person_post_accepts_exact_browser_origin(board_for, scheme):
     assert status == 200 and sent['to'] == '#general'
 
 
-@pytest.mark.parametrize('origin', ['https://127.0.0.1:8771', 'https://localhost:8770',
+@pytest.mark.parametrize('origin', ['https://127.0.0.1:8791', 'https://localhost:8770',
                                    'https://evil.test:8770', 'https://127.0.0.1:8770/'])
 def test_person_post_rejects_different_browser_origin(board_for, origin):
     assert board(board_for[0], 'post', method='POST', origin=origin,

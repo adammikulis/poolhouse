@@ -109,7 +109,7 @@ def plan(needs: Needs, *, port: int = node_join.DEFAULT_PORT, beacon: int = node
     steps.append({"runtime": "use the node of the selected runtime", "found": f"use the node binary at {needs.source.path}",
                   "build": "build the node with cargo (a few minutes)",
                   "rustup": "install Rust with the standard installer, then build the node"}[needs.source.kind])
-    steps.append(f"start the node with its network on (TCP {port}, UDP beacon {beacon}), and run the join check")
+    steps.append(f"start the node with its network on (TCP {port}, UDP discovery {beacon}), and run the join check")
     return steps
 
 

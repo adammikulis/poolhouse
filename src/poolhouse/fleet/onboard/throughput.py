@@ -1,12 +1,10 @@
 """How fast a member really is, and how fast it may be asked to go.
 
 `Rolling` is the measure: bytes completed in the last ``window_s`` seconds, as a rate. A transfer
-uses one over all its members (below the floor for a whole window, the Hub is used instead) and each
-member has one of its own (its rate is kept in the member book and ranks it for the next pull).
-`Limiter` is the optional cap on a member's bytes per second, the metered-connection / bandwidth
-setting (``poolhouse pool model-sources limit``): requests are scheduled so that the average never
-exceeds it. Both take a clock so tests can move time.
-"""
+uses one over all its members and each member has one of its own.
+`Limiter` is the optional cap on a member's bytes per second (the metered-connection / bandwidth
+setting): requests are scheduled so that the average never exceeds it. Both take a clock so tests
+can move time."""
 
 from __future__ import annotations
 

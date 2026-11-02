@@ -155,7 +155,7 @@ function Install-App {
         Open-Firewall
         Write-Host ""
         Write-Host "Installed to $dest"
-        Write-Host "Open poolhouse to name this device and choose Dev or Prod."
+        Write-Host "Open poolhouse to name this device."
         Write-Host "Setup downloads continue in the background while you finish onboarding."
     }
     finally {

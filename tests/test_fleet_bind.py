@@ -98,7 +98,7 @@ def _ui_daemon(tmp_path, *, ui_from_lan):
 def _status(address, port):
     import http.client
 
-    from poolhouse.fleet.onboard.join_code import unverified_context
+    from poolhouse.fleet.onboard.routes import unverified_context
 
     conn = (http.client.HTTPConnection(address, port, timeout=5) if address.startswith("127.")
             else http.client.HTTPSConnection(address, port, timeout=5, context=unverified_context()))

@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from poolhouse import errors, home, http, hub, lock, net
-from poolhouse.hub import admission, hfstore, members as peering, remote
+from poolhouse.hub import admission, hfstore, remote
 from poolhouse.hub.remote import GatedRepo, NotFound, RemoteFile
 from poolhouse.net.download import staged_part
 from poolhouse.units import human_bytes
@@ -171,7 +171,6 @@ class _Meter:
         self.resumed = 0
         self.step = 0
         self.cancel: CancelToken | None = None
-        self.session: peering.Session | None = None
         self.unvetted = ""
 
     def send(self, phase: str, one: RemoteFile, got: int, *, force: bool = False) -> None:
@@ -205,29 +204,7 @@ def _want(parsed: remote.Ref, one: RemoteFile, auth: str, unvetted: str = "") ->
                     pin_notes=admission.notes(parsed.repo, parsed.commit, one.path, unvetted))
 
 
-def _from_members(parsed: remote.Ref, one: RemoteFile, final: Path, meter: _Meter) -> bool:
-    """Try the members for ``one``; True when ``final`` is in place. Whatever goes
-    wrong with them is a reason to ask the Hub, a cancel is not."""
-    cancel = meter.cancel
-    try:
-        return meter.session.fetch(  # type: ignore[union-attr]
-            peering.Wanted(parsed.repo, one.path, one.size, one.sha256,
-                           tuple(admission.notes(parsed.repo, parsed.commit, one.path, meter.unvetted).items())), final,
-            cancelled=lambda: bool(cancel and cancel.cancelled),
-            progress=lambda done: meter.send("downloading", one, done),
-            phase=lambda name: meter.send(name, one, one.size, force=True))
-    except peering.Stopped as exc:
-        raise Cancelled(one.path) from exc
-    except (OSError, ValueError, RuntimeError) as exc:
-        if cancel is not None and cancel.cancelled:
-            raise Cancelled(one.path) from exc
-        logger.warning("members failed for %s, using the Hub: %s", one.path, exc)
-        return False
-
-
 def _fetch(parsed: remote.Ref, one: RemoteFile, final: Path, meter: _Meter) -> None:
-    if meter.session is not None and _from_members(parsed, one, final, meter):
-        return
     cancel = meter.cancel
     url, auth = _url(parsed, one), remote.token()
     meter.resumed += _staged(url, final)
@@ -283,7 +260,7 @@ def _space(folder: Path, need: int) -> None:
 
 
 def pull(ref: str, dest: str | Path | None = None, on_progress: Report | None = None,
-         cancel: CancelToken | None = None, *, members: bool | None = None,
+         cancel: CancelToken | None = None, *,
          trust: admission.Trust = admission.PERSON) -> Path:
     """Download ``ref`` and return its GGUF file or safetensors folder, in the Hub cache's snapshot.
 
@@ -293,11 +270,10 @@ def pull(ref: str, dest: str | Path | None = None, on_progress: Report | None = 
     failed pull leaves ``<file>.part`` and the next pull of the same reference continues
     it. Two processes pulling the same file take turns.
 
-    Members are asked first (``members=False`` skips them; `poolhouse.hub.members`): their
-    bytes count only if they hash to the Hub's own digest, else the Hub is used. ``trust`` says what is fetched
+    ``trust`` says what is fetched
     without an answer; the default asks a person about anything but a shipped publisher (`admission.Trust`).
     """
-    run = _Run(on_progress, cancel, members, admission.checked(trust))
+    run = _Run(on_progress, cancel, admission.checked(trust))
     run.check()
     parsed = remote.resolve(remote.parse(ref), check=run.check)
     if parsed.file.lower().endswith(".safetensors"):
@@ -326,7 +302,6 @@ class _Run:
 
     report: Report | None = None
     cancel: CancelToken | None = None
-    members: bool | None = None
     trust: admission.Trust = admission.PERSON
 
     def check(self) -> None:
@@ -351,8 +326,6 @@ def _bring(parsed: remote.Ref, chosen: list[RemoteFile], dest: str | Path | None
     _space(targets[0].final.parent, sum(_remaining(parsed, t) for t in targets))
     meter = _Meter(parsed.text, sum(f.size for f in chosen), len(chosen), run.report)
     meter.cancel, meter.unvetted = run.cancel, unvetted
-    if any(not _present(t.final, t.file) for t in targets):
-        meter.session = peering.session(run.members)
     for index, target in enumerate(targets):
         meter.index = index
         target.final.parent.mkdir(parents=True, exist_ok=True)

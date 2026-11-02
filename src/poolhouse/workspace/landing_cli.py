@@ -80,7 +80,7 @@ TABLE = [
      review),
     ("land-trust", "count the tasks and grants of another device of the pool (its certificate fingerprint; a person "
                   "or a lead with the grant), or stop counting them with --revoke",
-     [flag("device", help="the device's fingerprint, from `poolhouse-members ls --json`"),
+     [flag("device", help="the device's fingerprint, from `poolhouse-pool members --json`"),
       flag("--revoke", action="store_true", help="stop counting this device's entries")],
      lambda a, s: landing.trust(s, a.device, not a.revoke)),
 ]

@@ -2,8 +2,7 @@
 
 The node (``poolhouse-node run --lan``) takes the project of the repository it runs in and listens for an open pool of that
 project; it joins the one it hears and founds none, because a pool is founded by a person's key (docs/node.md, "The unfounded
-pool of one"). Two devices that pool with no person's key are the daemons of a pool in dev mode (docs/fleet.md, "Two devices on a
-LAN"). Nothing here asks for a key file: this reads who is in the node's pool from the running node.
+pool of one"). Nothing here asks for a key file: this reads who is in the node's pool from the running node.
 """
 
 from __future__ import annotations
@@ -51,7 +50,7 @@ def rows(pool: dict) -> list[dict]:
 
 
 def render(pool: dict, *, as_json: bool) -> str:
-    """The text `poolhouse-members ls` prints for a pool."""
+    """The text `poolhouse-pool members` prints for a pool."""
     if as_json:
         return json.dumps({"pool": pool.get("pool"), "project": pool.get("project"), "policy": pool.get("policy"),
                            "build": pool.get("build"), "members": rows(pool)}, indent=2)

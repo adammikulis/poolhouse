@@ -128,7 +128,6 @@ jobs:
         if: runner.os != 'Windows'
         run: >-
           python packaging/smoke.py http://127.0.0.1:8899
-          --passphrase "correct horse battery staple" --group ci
           --screenshot dist/smoke.png
       # The Windows application runs its daemon inside an Ubuntu WSL distribution (docs/windows-runtime.md)
       # and a hosted runner has none, so there is no page to drive. What a runner can show is that the

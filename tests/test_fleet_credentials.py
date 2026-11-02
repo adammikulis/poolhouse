@@ -43,17 +43,13 @@ def test_ui_saves_multiple_named_credentials_without_returning_values(server):
     assert credentials.get("ANTHROPIC_API_KEY") == values["ANTHROPIC_API_KEY"]
 
 
-def test_joined_credential_management_requires_a_signed_in_session(server):
-    from test_fleet_ui import WORDS
-
+def test_founded_credential_management_requires_a_signed_in_session(server):
     server.call("/ui/setup/done", method="POST")
-    server.call("/ui/setup/join", method="POST",
-                body={"mode": "create", "passphrase": WORDS, "group": "home"})
+    server.ui.gated = True               # the device is in a founded pool: its page needs a session
     status, result, _ = server.call("/ui/credentials", method="POST",
                                     body={"name": "HF_TOKEN", "value": "hf-private"})
     assert status == 401 and "sign in" in result["error"]
-    status, signed, headers = server.call("/ui/session", method="POST",
-                                         body={"passphrase": WORDS, "group": "home"})
+    status, signed, headers = server.ticket_session()
     assert status == 200 and signed["signed_in"]
     cookie = headers["Set-Cookie"].split(";", 1)[0]
     status, result, _ = server.call("/ui/credentials", method="POST", cookie=cookie,

@@ -4,8 +4,6 @@ import json
 import tomllib
 from pathlib import Path
 
-import pytest
-
 from poolhouse import errors
 
 
@@ -61,13 +59,14 @@ def test_leave_uses_registered_node_session(monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out) == {"state": "pending"}
 
 
-def test_source_management_keeps_its_own_action(monkeypatch):
+def test_file_and_installation_commands_run_in_the_onboard_module(monkeypatch):
     from poolhouse import pool_cli
 
     calls = []
-    monkeypatch.setattr(pool_cli, "run_service", lambda args: calls.append((args.cmd, args.action)) or 0)
-    assert pool_cli.main(["model-sources", "list", "--json"]) == 0
-    assert calls == [("model-sources", "list")]
+    monkeypatch.setattr(pool_cli, "run_service", lambda args: calls.append(args.cmd) or 0)
+    assert pool_cli.main(["bootstrap", "--share", "files", "--json"]) == 0
+    assert pool_cli.main(["share", "--dir", "files", "--json"]) == 0
+    assert calls == ["bootstrap", "share"]
 
 
 def test_compute_commands_run_in_the_compute_module(monkeypatch):
@@ -78,12 +77,3 @@ def test_compute_commands_run_in_the_compute_module(monkeypatch):
     monkeypatch.setattr(compute_cli, "cmd_plan", lambda args: calls.append((args.users, args.context, args.apply)) or 3)
     assert pool_cli.main(["plan", "--users", "2", "--context", "4096", "--apply"]) == 3
     assert calls == [(2, 4096, True)]
-
-
-def test_the_pool_command_names_no_old_pool_flag():
-    from poolhouse import pool_cli
-
-    for words in (["join", "--persist", "--host", "h"], ["join", "--passphrase", "WORDS", "--host", "h"],
-                  ["plan", "--pool-key", "k", "--users", "1", "--context", "2"]):
-        with pytest.raises(SystemExit):
-            pool_cli.parser().parse_args(words)

@@ -1,5 +1,4 @@
-//! Joining with a code or passphrase: SPAKE2 (the `spake2` crate) with HMAC-SHA256 confirmations,
-//! the construction of the Python join code (`fleet/onboard/pake.py`).
+//! Joining with a code or passphrase: SPAKE2 (the `spake2` crate) with HMAC-SHA256 confirmations.
 //!
 //! A short code is a few bits of entropy, so nothing sent may let a listener test a guess:
 //! in SPAKE2 nothing does, and a side's confirmation is sent only after the other's verified,

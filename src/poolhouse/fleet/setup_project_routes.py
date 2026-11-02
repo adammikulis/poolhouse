@@ -5,7 +5,7 @@ import re
 
 from poolhouse.studio.store import digest
 
-from . import invite_routes, setup_context
+from . import session, setup_context
 from .launch_secret import HEADER
 from .request_fields import exact_body
 from .setup_project_picker import Picker
@@ -79,7 +79,7 @@ def public(route):
         route.send(405, {'error': 'POST required'})
         return True
     ui = route.ui
-    if (ui.launch is None or not invite_routes.local(route.client_ip) or not ui.host_ok(route.host_header)
+    if (ui.launch is None or not session.local(route.client_ip) or not ui.host_ok(route.host_header)
             or route.header('Origin') or route.header('Sec-Fetch-Site')
             or not ui.launch.matches(route.header(HEADER))):
         route.send(403, {'error': 'Choose a folder from the Poolhouse window.'})

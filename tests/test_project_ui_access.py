@@ -7,7 +7,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from poolhouse.fleet import routes
 from poolhouse.fleet.api import Daemon, make_handler
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.ui import UI
@@ -18,9 +17,9 @@ from poolhouse.http import Server
 @pytest.mark.parametrize("path", ["/ui/projects", "/ui/projects/" + "a" * 32 + "/checkout"])
 def test_project_ui_refuses_forged_browser_access(tmp_path, monkeypatch, ui_header, cookie, path):
     touched = []
-    ui = UI(pool_key_path=tmp_path / "pool.key")
+    ui = UI()
+    ui.gated = True                 # the device is in a founded pool: its page needs a session
     ui.projects = SimpleNamespace(share=lambda *_args: touched.append("share"))
-    monkeypatch.setattr(routes, "in_pool", lambda _path: True)
     runner = JobRunner(tmp_path / "jobs")
     server = Server(("127.0.0.1", 0), make_handler(Daemon(runner, tmp_path, "test-daemon", ui=ui)))
     worker = threading.Thread(target=server.serve_forever, daemon=True)

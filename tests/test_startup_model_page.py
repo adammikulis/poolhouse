@@ -16,7 +16,7 @@ class SetupPage:
         self.theme, self.needs_theme = theme, needs_theme
         self.default_selected = True
         self.installed, self.state = installed, state
-        self.pool_mode, self.name = 'dev', 'test-device'
+        self.name = 'test-device'
         self.create_error = False
         self.job = {'id': 'c' * 32, 'state': state, 'can_cancel':state in {'queued','installing'}, 'note': 'Checking the model', 'error': '',
                     'result': {'chat_ready': state == 'done', 'tools_ready': state == 'done',
@@ -35,16 +35,15 @@ class SetupPage:
             self.gets.append(path)
         body = {'ok': True}
         if path == '/ui/setup':
-            body.update(needs_setup=True, name=self.name, pool_mode=self.pool_mode, experimental_notice_accepted=True, needs_setup_theme=self.needs_theme)
+            body.update(needs_setup=True, name=self.name, experimental_notice_accepted=True, needs_setup_theme=self.needs_theme)
         elif path == '/ui/settings':
             body.update(settings={}, resolved_theme=PRESETS["dark" if self.needs_theme else self.theme],
                         theme_registry=list(PRESETS.values()))
         elif path == '/ui/session':
             body.update(signed_in=True, credentialed=True)
         elif path == '/ui/setup/initial':
-            self.pool_mode = request.request.post_data_json['pool_mode']
             self.name = request.request.post_data_json['name']
-            body.update(needs_setup=True, name=self.name, pool_mode=self.pool_mode, in_pool=True, group='local-pool')
+            body.update(needs_setup=True, name=self.name, in_pool=True, group='local-pool')
         elif path == '/ui/models/startup':
             body.update(models=[{'model_id': 'curated-decoder', 'name': 'Recommended decoder', 'file': 'decoder.gguf',
                                 'memory_gb': 4, 'download_bytes': 4300000000, 'installed': self.installed, 'recommended': True,
@@ -209,7 +208,7 @@ def test_back_invalidates_held_preparation_and_old_finally_cannot_unlock_new_req
         page.wait_for_function('() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
         assert page.get_by_role('button', name='Continue', exact=True).is_disabled()
         assert not any(path in {'/ui/setup/projects/default', '/ui/setup/prepare'} for path, _ in setup.posted)
-        held_initial[0].fulfill(body=json.dumps({'ok': True, 'name':'test-device', 'pool_mode':'dev', 'in_pool':True}), content_type='application/json')
+        held_initial[0].fulfill(body=json.dumps({'ok': True, 'name':'test-device', 'in_pool':True}), content_type='application/json')
         page.locator('#startup-model-choice').wait_for()
         assert page.get_by_role('button', name='Prepare and continue', exact=True).is_enabled()
         screenshot(page, tmp_path, '02-return-model')
@@ -286,7 +285,7 @@ def test_lost_submission_ack_attaches_same_intent_and_shows_actual_transfer_byte
         browser.close()
 
 
-def test_new_session_discards_old_connection_policy_and_device_name_draft(tmp_path):
+def test_new_session_discards_old_device_name_draft(tmp_path):
     pw = pytest.importorskip('playwright.sync_api')
     setup = SetupPage()
     with pw.sync_playwright() as play:
@@ -297,17 +296,14 @@ def test_new_session_discards_old_connection_policy_and_device_name_draft(tmp_pa
         page.goto('http://127.0.0.1:8765/')
         page.get_by_role('heading', name='Welcome to Poolhouse', exact=True).wait_for()
         page.locator('#setup-device-name').fill('old-device-draft')
-        setup.pool_mode, setup.name = 'prod', 'current-device'
+        setup.name = 'current-device'
         page.evaluate('async () => { await fleetModel.signOut(); fleetModel.go("first-run"); }')
         page.get_by_role('heading', name='Welcome to Poolhouse', exact=True).wait_for()
         assert page.locator('#setup-device-name').input_value() == 'current-device'
-        page.get_by_text('Connection options', exact=True).click()
-        assert page.locator('#setup-invitation-only').is_checked()
-        screenshot(page, tmp_path, '01-current-connection-policy')
         page.get_by_role('button', name='Continue', exact=True).click()
         page.get_by_role('heading', name='Make this device ready', exact=True).wait_for()
         body = next(body for path, body in setup.posted if path == '/ui/setup/initial')
-        assert body['pool_mode'] == 'prod' and body['name'] == 'current-device'
+        assert body == {'name': 'current-device'}
         browser.close()
 
 

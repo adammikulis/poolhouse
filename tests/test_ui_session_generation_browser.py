@@ -5,14 +5,11 @@ from test_fleet_initial_setup import initial
 from test_fleet_ui import Serving
 from test_studio_canvas_browser import studio_browser  # noqa: F401
 
-from poolhouse.fleet import automatic_pools
-
 pytestmark = pytest.mark.slow
 
 
 @pytest.fixture
-def session_page(tmp_path, studio_browser, monkeypatch):  # noqa: F811
-    monkeypatch.setattr(automatic_pools, 'offers', lambda port=None: [])
+def session_page(tmp_path, studio_browser):  # noqa: F811
     app = Serving(tmp_path)
     assert initial(app)[0] == 200
     app.ui.setup_finished()

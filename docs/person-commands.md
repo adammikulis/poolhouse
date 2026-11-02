@@ -8,8 +8,6 @@ Refusal shapes: `X is for a person; this process was started by an agent (CLAUDE
 
 | Command | Enforced | Protects | An agent's route |
 | --- | --- | --- | --- |
-| `poolhouse-members roster add`, `adopt` | `fleet/members_cli.py:65,84` | a device joining a pool | node grant `add_device`, a phone approves |
-| `poolhouse-members roster remove` | `fleet/members_cli.py:109` | removing a member, irreversible | `ph.pool.remove`, grant `member_remove`, a phone approves |
 | `poolhouse-workspace phone add` (first phone), `phone remove` | `workspace/phone_cli.py:79,105` | the person key that approves grants | later phones: `phone offer`, an existing phone approves |
 | `grant`, `revoke-grant`, `distrust`, `grants-setup`, `person-enroll`, `person-unenroll`, `person-proof` | `workspace/grants_cli.py:99` | grants of authority | `approval request ACTION`, a phone answers |
 | `rebind HARNESS SESSION` | `grants_cli.py:258`, node `sessions.rs:81` | a session's tokens moving to another terminal | none |
@@ -18,7 +16,6 @@ Refusal shapes: `X is for a person; this process was started by an agent (CLAUDE
 | `mint`, `delegate`; reads of the person record | `scripts/hooks/claude-bash-guard:114-119` | creating identities; the person's key and record | `poolhouse-workspace invite` |
 | `poolhouse-security unlock`, `keystore-reset` | `net/cli.py:159,189` | the keystore | none |
 | `poolhouse-node key --migrate` | `node_permission.py:115` | device key custody | none |
-| recovery `passphrase` | `fleet/recovery.py:149` | the pool passphrase | none |
 | onboard `signing export/rotate/revoke/confirm/accept` | `fleet/onboard/signing_cli.py` | the signing key | `signing show` is open |
 | `poolhouse-security review` | `sentinel/review.py:209` | the review screen | none |
 | `poolhouse open` | `fleet/launch_open.py:main` | a signed-in ticket to the owner's page | none |
@@ -39,7 +36,6 @@ Refusal shapes: `X is for a person; this process was started by an agent (CLAUDE
 | `poolhouse-log export` | `activity.export` |
 | `poolhouse-runtime ensure`, `rollback`, `restart-host`, `pin` | `runtime.deploy` |
 | `poolhouse-runtime ensure --allow-unmerged --ref SHA --review-branch BRANCH` (live eligible lead, independent exact-SHA approval) | `runtime.deploy` and `runtime.deploy-unmerged` |
-| recovery `export` (writes a file that runs commands on every pool machine) | `fleet.recovery` |
 | `poolhouse-serve memory --apply` (wired limit, through the macOS administrator dialog; the sudo path needs a terminal) | `serve.wired-limit` |
 | `poolhouse-workspace install-hooks` | `workspace.setup` |
 | `poolhouse-workspace agent start`, `stop`, `supersede-issue`, `resume-issue` | `workspace.agents` |
@@ -61,10 +57,9 @@ Refusal shapes: `X is for a person; this process was started by an agent (CLAUDE
 - `person.require_person()` checks only that stdin and stdout are terminals (`person.py:53-63`), so an agent that unsets the marker and runs under a pseudo-terminal passes every T-AGENT gate that has no typed yes. The marker and the terminal are the only boundary.
 - A session registered from another process lineage gets no grants until a person runs `rebind` (`grants/mod.rs:137`).
 - Budget raises are refused whenever `CLAUDECODE` is set, even for a person's commit.
-- Silent drops: `keystore.py:151` (no prompt when marked) and `fleet/runtime_paths.py:31` (the pool token line is left out).
+- Silent drops: `keystore.py:151` (no prompt when marked) and `fleet/runtime_paths.py:31` (the daemon token line is left out).
 
 ## For the owner
 
 - A lead agent can run `authority set` and `authority preset`; only subagents are refused (`authority_cli.py:49-54`). No gate protects the registry.
-- In dev an agent can answer requests (`requests.answer`) and export the recovery key (`fleet.recovery`).
-- The onboarding journey (AGENTS.md section 2) is blocked today by: the network-on step in a terminal, the first phone, `roster add` for devices the beacon does not reach, autostart `install`, the owner's page (`open`), and the hidden pool token.
+- The onboarding journey (AGENTS.md section 2) is blocked today by: the network-on step in a terminal, the first phone, autostart `install`, the owner's page (`open`), and the hidden daemon token.
