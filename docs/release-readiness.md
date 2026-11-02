@@ -294,7 +294,7 @@ WSL onboarding, execution dispatch or any POOL/GOV completion claim.
 | IDN-3 | The local half is clean: CODEOWNERS and workflows | `scripts/github-protection --check --local` | tested: prints `0 findings (local only)` on `d365522ea`, 2026-10-13, this Mac | none |
 | IDN-4 | A device that is not the lander holds no push credential; the lander's credential lasts at most an hour | `scripts/github-protection --check --agent`; `--agent --lander` | built untested | IDN-1 |
 | IDN-5 | The release signing key exists and `RELEASE_KEY` in `src/poolhouse/fleet/signing.py` is set | `scripts/release-key show-public`; `tests/test_release_key.py`; `tests/test_fleet_signing.py` | not built: `RELEASE_KEY` is empty | OW-3 |
-| IDN-6 | A signed update installs and an unsigned, wrongly signed or altered one is deleted; `poolhouse-pool join --track` accepts only a signed tip | `tests/test_fleet_updates.py`; `tests/test_fleet_signing.py` | tested (both selectors pass); fails closed while the key is empty | IDN-5 |
+| IDN-6 | A signed update installs and an unsigned, wrongly signed or altered one is deleted; `poolhouse-traind --track` accepts only a signed tip | `tests/test_fleet_updates.py`; `tests/test_fleet_signing.py` | tested (both selectors pass); fails closed while the key is empty | IDN-5 |
 | IDN-7 | The runtime and the pinned Box build are signed by the same key (only if Box ships) | none | not built | Question 2 |
 | IDN-8 | Release builds, SBOM and licence checks pass; the release environment needs the owner's approval | `python scripts/notices.py --check`; `python scripts/sbom.py --out sbom.cdx.json`; `release-dry-run.yml`; `audit.yml` | built untested; `audit.yml` has not run on GitHub | `docs/release.md` |
 | IDN-9 | PyPI accepts `poolhouse` | PyPI similarity waiver, then a pending publisher, then `PYPI_ENABLED` | not built: upload is off until the waiver lands | HANDOFF "Getting it onto a machine that is not this one"; Question 13 |
@@ -546,7 +546,7 @@ because its feature is not built is a stop-ship unless the owner has moved that 
 | | 6.3 Start a pool founded before the key-strength fix (POOL-8) | refused in one sentence; a new pool is founded | it runs |
 | | 6.4 Shut down a pool, wait 3 days, read the device (POOL-9; needs three days) | live state and secrets gone; the sealed record remains where compromise shut it | the pool is restorable after compromise |
 | 7 Release mechanics | 7.1 Download a release asset and verify it: `ssh-keygen -Y check-novalidate -n poolhouse-release -s ASSET.zip.sig < ASSET.zip`, then against the pinned key | verifies | unsigned or wrong key installs |
-| | 7.2 `poolhouse-pool join --track BRANCH` on an unsigned tip | refused | it fast-forwards |
+| | 7.2 `poolhouse-traind --track BRANCH` on an unsigned tip | refused | it fast-forwards |
 | | 7.3 `scripts/github-protection --check` | `0 findings` | any finding |
 | 8 Upgrade | 8.1 Re-run the installer over the installed build with a model resident | upgraded; the model and board survive | a lost job or model |
 

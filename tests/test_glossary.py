@@ -91,8 +91,8 @@ def test_the_scan_leaves_ordinary_words_alone(text):
 
 
 def test_the_rewrite_maps_old_words_to_the_glossary_words():
-    new, _ = VOCAB.rewrite("PairingClient pairs a paired device; cluster_key, journals, a seat", "src/poolhouse/x.py")
-    assert new == "JoiningClient joins a member; pool_key, logs, a session"
+    new, _ = VOCAB.rewrite("PairingClient pairs a paired device; cluster_name, journals, a seat", "src/poolhouse/x.py")
+    assert new == "JoiningClient joins a member; pool_name, logs, a session"
     again, hits = VOCAB.rewrite(new, "src/poolhouse/x.py")
     assert again == new and sum(hits.values()) == 0
 

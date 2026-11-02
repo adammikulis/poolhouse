@@ -21,7 +21,7 @@ from poolhouse.log import say, warn
 from . import launch_health, launch_open, wsl_network, wsl_registration, wsl_startup
 from .daemon_control import ControlError, launch_of, request_replacement
 from .handover import claim, finish
-from .onboard.lan import primary_ip
+from .onboard.lan import can_bind, primary_ip
 from .runtime_paths import default_root
 from .updates import state
 from .wsl import (
@@ -66,19 +66,9 @@ def port_held(port: int, timeout: float = 2.0) -> bool:
     except TimeoutError:
         # Windows retransmits the SYN to a closed loopback port for about two seconds before
         # it refuses, so a free port can time out here. Whether it can be bound says which.
-        return not _can_bind(port)
+        return not can_bind(port)
     except OSError:
         return True
-
-
-def _can_bind(port: int) -> bool:
-    """Whether this machine can listen on the loopback port right now."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-        try:
-            probe.bind(("127.0.0.1", port))
-        except OSError:
-            return False
-    return True
 
 
 def _held_health(port: int) -> dict[str, Any] | None:

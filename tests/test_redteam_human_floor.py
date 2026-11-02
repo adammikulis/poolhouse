@@ -260,7 +260,7 @@ def test_building_the_signing_keys_never_asks_the_keystore(tmp_path):
         os.environ.pop("POOLHOUSE_TEST_KEYRING", None)
 
 
-SECRET_NAMES = ("passphrase", "password", "secret", "token", "credential", "api_key", "pool_key")
+SECRET_NAMES = ("passphrase", "password", "secret", "token", "credential", "api_key")
 
 
 def test_no_mcp_tool_takes_a_secret_or_joins_a_fleet():

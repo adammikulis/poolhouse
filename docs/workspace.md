@@ -599,7 +599,7 @@ The local UI can hand a signed-in browser launcher a short-lived, single-use ses
 `POST /ui/launch-ticket`. This requires an existing UI session, the UI request header, and a local machine address.
 Opening `/ui/?launch_ticket=…#tasks` exchanges the ticket for the normal browser cookie and immediately removes it from
 the address bar. Tickets do not expose the person's credentials and cannot be reused. The request requires a session
-opened with a credential (a spent ticket or the pool passphrase). The first ticket of a daemon run comes from its
+opened with a credential (a spent ticket). The first ticket of a daemon run comes from its
 launch secret; see section 6.1 of `docs/person-delegation.md`.
 
 ### Model-family accounts and device provenance

@@ -24,7 +24,7 @@ Existing request MACs, the long-lived authenticator's RAM nonce cache and sealed
 
 `fleet.files`, `fleet.models`, `fleet.producer_devices`, `studio_transport` and `serve.decision_authority` use the current Rust pool id and bound service identity. Their source, offer, permit and execution guards remain independent of membership. A node binding cannot create a software producer offer or decision permit.
 
-Test work uses existing Rust `shard_call` and `testfarm.client.Shards`. Python automatic pool convergence, PAKE joining, invitation membership, roster merge routes and shared pool keys are removed after callers route pool actions to the Rust node. No state migration or dual authority is retained.
+Test work uses the Rust `shard_call` and `testfarm.client.Shards`. Pool convergence, joining, membership, the roster and pool keys belong to the Rust node alone; the Python daemon holds no pool authority.
 
 ## Verification
 

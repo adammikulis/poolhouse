@@ -457,8 +457,7 @@ release { kind: build|rollback, commit: 40 hex, tree_sha256, seq, prev: hash of 
 
 **The release root is pinned at founding.** The founding charter lists the phone's key with `role: release` as well as admin, by
 default and with one plain line in the founding text: "this key also decides which version of Poolhouse your devices run".
-A pool with no release key follows nothing (a device keeps its build and `runtime status` says why in one sentence); there is no
-legacy pool and no migration. A lost root is rotated by the recovery phrase (section 6, key loss).
+A pool with no release key follows nothing (a device keeps its build and `runtime status` says why in one sentence). A lost root is rotated by the recovery phrase (section 6, key loss).
 
 **The follow rule.** `build_update` no longer asks which commit is newest; the pool's build is the verified, soaked, uncancelled
 `release` act with the highest `seq`. **The verified commit is the whole build input, so the user's checkout is never part of it

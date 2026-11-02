@@ -114,10 +114,9 @@ ROUTE_DIRS = ("fleet/", "graph/", "sentinel/", "ui/")
 ROUTE_FILES = {"workspace/fleet_routes.py", "workspace/coding_routes.py", "activity/fleet_routes.py", "workspace/work_reputation.py"}
 ROLE_VALUES = {"tool", "user", "system"}
 TRUST_BY_FILE = {
-    "fleet/api.py": "member holding the pool key; /health open to anyone",
+    "fleet/api.py": "member the node authorizes; /health open to anyone",
     "fleet/routes.py": "browser session on this machine behind the UI header",
     "graph/": "browser on this machine",
-    "fleet/onboard/join_code.py": "anyone on the LAN, unauthenticated until the owner accepts",
     "fleet/onboard/bootstrap.py": "whoever holds the unguessable address",
 }
 

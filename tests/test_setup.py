@@ -556,7 +556,7 @@ def test_fleet_finding_says_the_node_does_not_answer_and_how_to_join(monkeypatch
     assert found.keys() == {"fleet: joined", "ports"}
     assert not found["fleet: joined"].good
     assert "node must answer" in found["fleet: joined"].said
-    assert "poolhouse-pool join --host" in found["fleet: joined"].note and "passphrase" not in found["fleet: joined"].note
+    assert "poolhouse-pool join --host" in found["fleet: joined"].note
 
 
 def test_fleet_finding_says_the_daemon_does_not_answer(pool_answers):

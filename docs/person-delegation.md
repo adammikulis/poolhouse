@@ -278,13 +278,9 @@ is indistinguishable from the page, so none of them opens a session or selects t
   secret to `POST /ui/launch/ticket` (no `Origin`, no `Sec-Fetch-Site`, loopback `Host`) and get a
   ticket valid for 60 seconds and one redemption, at most eight waiting at once. The page opens as
   `/ui/?launch_ticket=...`, redeems it with `POST /ui/session`, and removes it from the address bar.
-  A launch-secret ticket opens no session once a pool in prod mode is joined: that machine asks
-  for the pool passphrase.
-* **Origin.** Every session records how it was opened. `launch-ticket`, `passphrase`,
-  `recovery-file` and `invite` are credentialed; `token` and a session opened by joining a pool
-  with no credential are not. Choosing a device name and mode (`/ui/setup/initial`), joining the
+* **Origin.** Every session records how it was opened. `launch-ticket` is credentialed; `token` is not. Choosing a device name (`/ui/setup/initial`), joining the
   workspace as the person (`SessionWorkspace`, checked on every person request and again inside
-  `connect`), the board and invitation routes, every installed `/ui/<extension>` route,
+  `connect`), the board routes, every installed `/ui/<extension>` route,
   credential changes, coordinator selection, the wiring limit and handing a session to a browser
   (`/ui/launch-ticket`) refuse a session that is not credentialed.
 * **Hand-typed address.** A page opened without a ticket, or whose session ended, shows how to open

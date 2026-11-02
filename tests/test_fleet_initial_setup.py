@@ -48,7 +48,7 @@ def test_initial_rejects_foreign_and_agent_requests(device, changes):
 
 def test_a_field_other_than_the_name_is_refused(device):
     cookie = sign_in(device)
-    assert initial(device, cookie=cookie, pool_mode="dev")[0] == 400
+    assert initial(device, cookie=cookie, mode="dev")[0] == 400
     assert initial(device, cookie=cookie, automatic="yes")[0] == 400
     assert device.ui.name == "studio"
 
@@ -111,8 +111,8 @@ def test_owner_admission_refuses_lan_and_missing_ui_header(device):
 
 @pytest.mark.redteam
 @pytest.mark.parametrize("body", [
-    {"name": "../escaped", "pool_mode": "dev"},
-    {"name": "quillhaven", "pool_mode": "owner"},
+    {"name": "../escaped", "mode": "dev"},
+    {"name": "quillhaven", "mode": "owner"},
     {"name": "quillhaven", "automatic": "yes"},
     {"name": "quillhaven", "root": "../escaped"},
     {"name": "x" * 5000},

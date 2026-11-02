@@ -190,7 +190,7 @@ summary is what lets other devices decide a row is settled.
 
 ### Discovery, NAT, relays
 
-- LAN: the existing signed beacons (`Device.discover`, `fleet/discovery.py:270`) find members on the segment.
+- LAN: the node's signed beacons find members on the segment.
   Elsewhere: `member-add` and presence summaries carry last-seen addresses; any member that answers is a
   rendezvous for that moment, none is designated.
 - A relay is optional, stateless forwarding of signed, TLS-wrapped streams between two members that cannot
@@ -273,8 +273,7 @@ status list): `local` (logged), `synced n/m` (m = active members reached recentl
 - The first device's signing key is the founder, with no special rights after founding.
 - `member-add {device, signing_key, tls_cert_fp, enrolled_by, person_approval}` is signed by the enroller
   and by the joiner. It is valid when the enroller is a member at that HLC and the join handshake
-  completed on both ends with the person present (`poolhouse-pool join-with-code`, existing SPAKE2 flow in
-  `pyproject.toml:72`). Trust propagates through these records: a device need not join each of N-1
+  completed on both ends with the person present (`poolhouse-pool join CODE`). Trust propagates through these records: a device need not join each of N-1
   others. The new device receives the membership fold from its one join partner and then authenticates
   every other member by its recorded certificate fingerprint and signing key.
 - Transport: TLS with the device's fingerprint pinned from the membership fold (`tls.pinned_context`
@@ -411,28 +410,6 @@ Each slice leaves the current coordinator path working until slice 6. File lists
    (`Remote`), `coordinator_routes.py` selection, `coordinator_bootstrap.py`, `coordinator.py` RPC,
    `remote.py` project-host client path and `remote_host.py`; `docs/workspace.md` updated. Boards
    (`remote.py:24-61`, shape with a project host) become a project scope in the same pool, not a host.
-   Hosted state converts at first start: the host's views become rows under its own origin.
-
-### Pool rename (the lead runs it separately)
-
-The device group is a pool. Identifiers that say pool for this concept, with the rename:
-
-| Today | Becomes |
-|---|---|
-| `poolhouse-pool` (`pyproject.toml:162`, `fleet/join.py:main`) | `poolhouse-pool` |
-| `pool_key`, `--pool-key`, `POOLHOUSE_POOL_KEY`, `pool.key` (`fleet/discovery.py:75-80`) | `pool_key`, `--pool-key`, the matching pool-key environment variable, `pool.key` |
-| `pool_id` (project connections, `workspace/remote.py`, `project_connection.py`) | `pool_id` |
-| `pool`, `--pool` in the project record shown by `whoami` | `pool`, `--pool` |
-| `mint_pool`, `pool_group`, `Membership` group fields (`fleet/discovery.py`) | `mint_pool`, `pool_group` |
-| `fleet/pool_modes.py`, `lan_pools.py`, `automatic_pools.py` | `pool_modes.py`, `lan_pools.py`, `automatic_pools.py` |
-| `poolhouse-pool join|listen|join|status|recovery|leave` | `poolhouse-pool ...` |
-| `pools.json` (`discovery.pools_path` `:176`) | `pools.json` |
-
-Every other file that says pool for the device group (about 45 under `fleet/` and `workspace/`, plus
-`macauth.py`, `sealing.py`, `setup.py`, `mcp.py`, `harnessid.py`; list from `grep -rl pool src`) is
-renamed after a read. Pool stays where it means data clustering: `graph/community.py`,
-`graph/web/components/graph-3d.html`, `walk/`, `bench/folding.py`, `world/names.py`. The beacon protocol
-version (`fleet/discovery.py:53`) is bumped; no migration is kept.
 
 ## 10. Changes needed in docs/session-liveness.md (not rewritten here)
 

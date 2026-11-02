@@ -344,8 +344,7 @@ over by being there.
 ### 1.9 Changing the join policy is a reissue
 
 `set_join_policy` is removed. The node answers it, in a governed pool, with `invalid: A pool's join policy never changes in place;
-reissue the pool to change it.`, whatever grant is held; a legacy pool (1.14) keeps its local, grant-guarded `set_join_policy` until
-it is migrated, because removals and the policy are the local API's alone there. To go from open to secure (or the reverse) an admin reissues the pool.
+reissue the pool to change it.`, whatever grant is held. To go from open to secure (or the reverse) an admin reissues the pool.
 
 **The agent flow** (the owner says "make this pool secure"):
 
@@ -479,7 +478,6 @@ id, or a beacon announcing a move has no admin signature, so it moves nobody. Th
 | A majority of members in members-governed mode | Proposes new admins after 30 days. | Only endorsed keys at least 30 days old count; notice from day one; any strong admin cancels. |
 | A cloned device key | Is a member as the original is. | Heartbeat detection, one-tap removal; keystore binding where one exists. |
 | Hash or nonce grinding | Cannot win a tie. | Ties are settled by signers' counts and fixed fingerprints, else by a dispute (1.5). |
-| A legacy `by` field written by an attacker | Nothing: only devices this node itself handshook with are kept by default. | Section 1.14. |
 
 ### 1.12 What the person feels (security without friction)
 
@@ -551,32 +549,6 @@ kept devices continue and the dropped one is refused), `gov-handoff-forged`, `go
 nothing), `gov-clone-flagged`, `gov-recovery-timelock`, `gov-hold-cancel` (a reissue signed and cancelled in its hold moves
 nobody), `gov-weak-key` (a key-file admin cannot reissue).
 
-### 1.14 Migration of existing pools
-
-An existing pool has the legacy `pool.json`, a random id, no charter, and person keys enrolled per device. Migration is **the first
-reissue**, started only by an explicit call, never by the node on start, and **it is not an outage**:
-
-* **Legacy mode keeps syncing.** A node that finds `pool.json` and no `pools/` directory starts in `needs_migration`, and **boards,
-  grants, sessions and sync with its current members keep working exactly as before**. What changes at once, so landing slice 1 closes
-  the hole: in legacy mode the node **ignores removals and policy changes that arrive from members, and ignores device rows it
-  does not already hold** (a member can no longer remove the founder, enrol a stranger or freeze the policy); removals and the
-  policy are the local API's (grants) alone. Every other pool method answers "This device's pool needs a one-time upgrade; ask the
-  owner to approve it."
-* **Exactly one device originates.** `pool_migrate` (grant `pool_migrate`) is called on one device, which builds a charter naming
-  the strong key that approves as the first admin (a person approval, never automatic) and a handoff. **The review list defaults to
-  keeping only the devices this node has itself handshaken with** (a legacy `by` or name is written by whoever sent the row and is
-  never evidence); every other device defaults to Drop, with the same check words and last-seen as 1.9.
-* **Each other device follows; it does not originate.** Before it can follow, the device needs the person's strong key enrolled
-  on it (the same key, enrolled through the phone path, one approval per device or one batch); the old pool's authority for this one
-  handoff is **the person keys enrolled on each device** (`persons.json`), which is what governed it. The device verifies the
-  signature against its own enrolled key, checks its fingerprint is kept, and follows after the hold.
-* The old file moves to `pools/retired/<old id>/pool.json`. Boards are bound to the new pool by the same approval (the person sees
-  the list of boards and the tap binds them, 4.2). Grants that name no pool keep working for board-level actions
-  (`task_authority`, `note_verify`, `land_*`, `link_*`, `source_add`, `file_delete`, `quarantine_release`); grants for pool-level
-  actions stop counting and the first-run bundle replaces them in the same approval.
-* Never touched by tests, by a worktree or by a build: every test uses a temporary state directory; the real home is migrated once,
-  at a safe boundary, by the owner's approval (section 13).
-
 ### 1.15 The attack-first review (2026-10-11): where each finding is fixed
 
 | # | Finding | Fix in one line | Where | Test |
@@ -593,7 +565,6 @@ reissue**, started only by an explicit call, never by the node on start, and **i
 | 10 | Serving | Offers are device-signed; `serve_call` bundle only to own devices, other persons' devices one tap; bucketed estimates | 7.2, 7.3, 2 | `serve.rs` |
 | 11 | Members-governed mode | Endorsed keys of a minimum age; a device cannot know every admin is gone, so the mode never infers it | 1.8 | 1.13 [11] |
 | 12 | DoS and open | `via: segment`, ephemeral windows, caps, paging within the frame, per-member queues, rate limits | 1.5, 5 | 1.13 [12] |
-| 13 | Migration | Legacy mode keeps syncing but ignores member removals, policy and unknown rows; one originator; handshaken devices only; keys enrolled first | 1.14 | `reissue.rs` |
 | 14 | Cross-pool | Beacons rotate and seal; tokens bound to one pool; the least permissive right wins; origin cap counts live origins; bucketed timing | 4.2, 6.3, 7.4 | `pools.rs`, `board_share.rs` |
 
 ### 1.16 What slice 1 carries from the removal review (2026-10-11), as built
@@ -907,7 +878,7 @@ id may enter its signatures, and the old note "the head signature uses an empty 
 
 **Grants** gain `scope.pool`: an id, `*`, or `admin:<key fingerprint>` (the pools whose admin set holds that key). A grant that names
 a pool-level action is spent only for the pool in the call's context. The registry changes: removed `set_join_policy`; kept `shard_consent` (its per-device allow
-list, 1.7); added `pool_create`, `pool_leave` and `admin_manage` (slice 1), `pool_reissue`, `pool_migrate`, `board_share`, `board_leave`,
+list, 1.7); added `pool_create`, `pool_leave` and `admin_manage` (slice 1), `pool_reissue`, `board_share`, `board_leave`,
 `board_bind`, `board_rebind`, `serve_offer`, `serve_call`, `inbound_consent` (model calls). A grant lets a session **ask**; an admin signature is what makes a
 governing act true for everyone; both are needed, and the first-run bundle (section 2) is how a person gives the first without a
 tap per act. Pool-level audit entries (member added, uses of pool-level grants, offers) are written to the pool's own history
@@ -925,11 +896,10 @@ board, never to a shared board.
 | `member_remove {pool, fingerprint}` | grant `member_remove` | asks for the admin act; one tap |
 | `pool_reissue {pool, policy, keep}` | grant `pool_reissue` | draft and approval (1.9) |
 | `admin_list`, `admin_add`, `admin_remove` | `admin_manage` | admins and their state; slice 1 has `pool_propose {kind, body}` (make an act and sign it with the keys this device's signer holds), `pool_cosign {act}` (add this signer's signatures to an act the pool holds) and `pool_submit {act}` (take an act signed elsewhere; the signatures are the authority) |
-| `pool_migrate` | grant `pool_migrate` | 1.14 |
 | `sync_now {pool}`, `shard_call {pool, device, ...}`, `capacity {pool}` | as today | per pool; ambiguity is a plain question |
 
 Command line for agents (`--json` everywhere): `poolhouse pool list | status | create | join | add-device | remove | leave |
-reissue | admins | migrate`, `poolhouse board share | unshare | sharing`, `poolhouse-serve offer | withdraw | offers | offered |
+reissue | admins`, `poolhouse board share | unshare | sharing`, `poolhouse-serve offer | withdraw | offers | offered |
 usage | stop`.
 
 ### 4.4 Devices on different networks: the tailnet
@@ -1347,11 +1317,10 @@ unchanged.
 
 * **Rust node tests** (each seen to fail first, `app/poolhouse-node/tests/`): `governance.rs`, `reissue.rs` (1.13), `pools.rs`
   (two pools on one device: the pool-and-certificate check; a member of A cannot reach B's ops; one certificate in both; beacons per
-  pool; leaving A leaves B; a join does not merge; lone-pool absorption; `needs_migration` and `pool_migrate`; grants scoped by pool;
+  pool; leaving A leaves B; a join does not merge; lone-pool absorption; grants scoped by pool;
   one GPU lease across pools; fairness; limits; a token registered through pool A is refused in pool B; a join binds no existing board
   and a board binds only by `board_bind`; a beacon of a `secure` pool shows neither the pool id nor the fingerprint to a listener
-  that does not know the id and does not repeat across two days or two pools; in legacy mode a member's removal, policy and unknown
-  device rows are ignored while sync goes on), `board_share.rs` (6.9; a device in two pools of one board takes the `ro` of the two;
+  that does not know the id and does not repeat across two days or two pools), `board_share.rs` (6.9; a device in two pools of one board takes the `ro` of the two;
   a board whose pool reissued 20 times still takes a new writer), `serve.rs` (default no offers; a member of an offered pool
   calls; a non-member and a member of another pool are refused; metering per pool and member; withdraw, stop, removal mid-call; slot
   erase on a pool switch; an offer not signed by its device is not shown; a shard from a member that is not on the allow list is
@@ -1402,8 +1371,8 @@ The first slice closes the hole; each later slice names what must exist before i
 | P1 | Phone approval | `docs/phone-approval.md`: enrol the person key by QR, the per-action signed approval, push, the screen path; removes the terminal-only step of `grants-setup`. Owned by another branch. | none |
 | P2 | Serve broker on node leases | The Python broker takes `model_slot`, `gpu` and claims from the node (`docs/node.md`, "What is left"). | none |
 | P3 | Device keys in the keystore | `device.key` into the OS keystore where one exists (`docs/pool-encryption.md`, slice 3). | none |
-| 1 | Governance core (first; everything else depends on it) | Charter, pool id hash, keys with their own acceptance and their strength, thresholds, acts with holds, cancel and veto, monotonic first-sight time, fork rules, caps, paging and rates, the `acts` op replacing `members` as authority, admission by tap or (with P3) by delegate, `remove`, `leave`, cut rule, `set_join_policy` refused, **legacy mode that keeps syncing but ignores member removals, policy and unknown device rows** (so landing it is not an outage), plain `say` errors on new methods, step ledger skeleton; with it the vocabulary of section 12 and the one-pool wording of `docs/node.md`, `docs/api.md`, `docs/serving.md`, `docs/pool-check.md`, `docs/test-farm.md`. Review fixes 1, 2, 3, 7, 8, 12 and the closing part of 13. Tests of 1.13 (core part) and the pool-check steps `gov-plain-member-cannot`, `gov-hold-cancel`, `gov-weak-key`. | none (P1 for real approvals; the rig key until then; P3 for the delegate) |
-| 2 | Reissue, migration, copy defence | Handoff, follow rules R1..R8, suspension on verify, hold, window and fallback, 90-day act log, review list (open joiners drop), clone heartbeat and flag, `pool_migrate` (one originator, handshaken devices only, keys enrolled first). Review fixes 6, 13. Tests of 1.13 (reissue part); steps `gov-open-to-secure-after-founder-removed`, `gov-handoff-forged`, `gov-pool-copy`, `gov-clone-flagged`. | 1, P1 |
+| 1 | Governance core (first; everything else depends on it) | Charter, pool id hash, keys with their own acceptance and their strength, thresholds, acts with holds, cancel and veto, monotonic first-sight time, fork rules, caps, paging and rates, the `acts` op replacing `members` as authority, admission by tap or (with P3) by delegate, `remove`, `leave`, cut rule, `set_join_policy` refused, plain `say` errors on new methods, step ledger skeleton; with it the vocabulary of section 12 and the one-pool wording of `docs/node.md`, `docs/api.md`, `docs/serving.md`, `docs/pool-check.md`, `docs/test-farm.md`. Review fixes 1, 2, 3, 7, 8, 12 and the closing part of 13. Tests of 1.13 (core part) and the pool-check steps `gov-plain-member-cannot`, `gov-hold-cancel`, `gov-weak-key`. | none (P1 for real approvals; the rig key until then; P3 for the delegate) |
+| 2 | Reissue, copy defence | Handoff, follow rules R1..R8, suspension on verify, hold, window and fallback, 90-day act log, review list (open joiners drop), clone heartbeat and flag. Review fixes 6, 13. Tests of 1.13 (reissue part); steps `gov-open-to-secure-after-founder-removed`, `gov-handoff-forged`, `gov-pool-copy`, `gov-clone-flagged`. | 1, P1 |
 | 3 | Backup, recovery, succession | Backup nudge, recovery key and time lock, `recover_cancel`, `endorse`, members-governed mode, disputes, banners. Review fixes 1 (the rest), 11. Step `gov-recovery-timelock`. | 1, P1 |
 | 4 | Many pools on one device | `pools/<id>/` layout, pool context on every member request, one-identity standing check, per-pool rotating sealed beacons and discovery, tokens bound to one pool, `pool_create/list/status/leave`, join of a second pool, the unfounded pool and explicit `board_bind`, `scope.pool` and the new grant registry, session pool, `ph.pool` and CLI additions. Review fixes 9, 14 (beacons, tokens). Step `pool-two-on-one-device`. | 1 (2 for migration) |
 | 5 | First-run bundle and plain refusals | The first-run bundle of standing grants (scope by accepted key, `serve_call` to own devices only, `shard_consent` never), separate monthly renewal approval, the allow list of 1.7, `NeedsApproval`, `say`/`needs`/`then` on every error, check words and trusted-display joins, delegate notices with [Remove]. Review fixes 2 (scope), 4, 5, 8, 10 (bundle). | 4, P1 |
@@ -1446,12 +1415,9 @@ is a ceiling every later slice must stay under, with and without Tailscale prese
 
 ## 13. Owner-only questions, and decisions taken
 
-**Two things only the owner can do** (each spends, goes outward or cannot be undone):
+**One thing only the owner can do** (each spends, goes outward or cannot be undone):
 
-1. **Migrating the real pool.** The owner's real pool is migrated once, at a safe boundary, by the owner's approval (1.14). It
-   renames every device's pool id and rebinds its boards; it cannot be undone except by reissuing again. Needs the owner's tap, on
-   a day the devices are all on. Nothing touches the real home before then.
-2. **Tailscale accounts.** The owner decided on Tailscale and no relay of ours (2026-10-11). Crossing networks needs the owner's
+1. **Tailscale accounts.** The owner decided on Tailscale and no relay of ours (2026-10-11). Crossing networks needs the owner's
    own Tailscale account, installed and signed in on each device (and the phone for approvals away from home); the real checks of
    section 10 need it, and the node-sharing check needs a second account. Registering an account is outward-facing and is the
    owner's; nothing here creates, pays for or changes one.

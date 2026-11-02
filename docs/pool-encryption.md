@@ -392,19 +392,6 @@ is superseded by this section.
   only beacons whose certificate is an active member and un-pins a revoked one; `enrolled=False` is for the
   person choosing whom to enrol), the membership exchange route, and the sync loop (it talks only to enrolled
   devices).
-- **Spreading.** `POST /fleet/v1/members` merges a member's record and answers with the receiver's;
-  `membership_sync` pushes at once on enrolment and revocation and every 20 s each daemon asks its members.
-- **Joining.** Joining lists each side's certificate in the other's record (the asker's certificate is checked
-  against the fingerprint the SPAKE2 exchange bound). The passphrase join binds the joiner's certificate as
-  its SPAKE2 identity (it was the fixed string `joiner`), the automatic Development join and a computer
-  invitation carry it too, and each joiner lists the machine that admitted it. A pool joined from a
-  recovery file, or before this change, has only itself in its record: `poolhouse-members roster adopt` lists the
-  machines that answer for the pool with their fingerprints for a person to compare, `roster add` enrols
-  one by certificate, `roster remove` puts one out (all three need a person at a terminal), and the daemon
-  says at start which pools are still alone.
-- **Migration.** There is no automatic migration of trust: a daemon starting on an existing pool enrols
-  only itself, so its devices refuse it until they are joined again or adopted by a person. The owner is the
-  only user.
 - **Tests.** `tests/test_pool_membership.py`: real TLS sockets and the real daemon handler on temp roots; two
   devices with different keys told apart; a non-member device refused; a removed device refused at its next
   request on a live session and at its next handshake; a removed device out of every check; a stale device

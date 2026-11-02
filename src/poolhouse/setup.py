@@ -12,7 +12,6 @@ import contextlib
 import json
 import os
 import shutil
-import socket
 import subprocess
 import tomllib
 from dataclasses import dataclass
@@ -22,6 +21,7 @@ from pathlib import Path
 
 from poolhouse import home, runtime_identity
 from poolhouse.checks import Finding, ask, checkout, tilde
+from poolhouse.fleet.onboard.lan import can_bind
 from poolhouse.installed import standard
 from poolhouse.log import say
 from poolhouse.platform import is_windows
@@ -301,23 +301,12 @@ def _store_finding(path: Path | None = None) -> Finding:
     return Finding(name="store", good=True, said=f"{tilde(path)} opens")
 
 
-def _port_free(port: int) -> bool:
-    """Whether a bare bind to ``port`` succeeds on this machine -- false when something
-    else already holds it."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        try:
-            s.bind(("127.0.0.1", port))
-        except OSError:
-            return False
-    return True
-
-
 def _ports_finding(http_port: int, daemon: dict[str, object] | None) -> Finding:
     """Whether ``http_port`` is free, or held by ``daemon`` -- this machine's own ``/health``
     answer, or None when nothing there is ours."""
     if daemon is not None:
         return Finding(name="ports", good=True, said=f"{http_port} held by this machine's own daemon")
-    stuck = not _port_free(http_port)
+    stuck = not can_bind(http_port)
     return Finding(
         name="ports", good=not stuck,
         said="free" if not stuck else f"held by something else: {http_port}",

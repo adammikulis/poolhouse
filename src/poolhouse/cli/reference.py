@@ -48,7 +48,6 @@ HELP: dict[str, str] = {
     "test": "Describe a project's tests in testfarm.toml, check the description and list its units.",
     "mcp": "The poolhouse commands as MCP tools over stdio, for an agent to drive.",
     "models": "Find a model that is newer than anything you remember, and serve it.",
-    "members": "Set up a pool and see who is in it.",
     "open": "Open this machine's running Poolhouse page, signed in with a one-use address.",
     "requests": "Every request that waits for a person: list, show, answer, watch (a person at a terminal only).",
     "security": "What sentinel has seen and holds: events, quarantine, pins, decoys and the log's chain.",

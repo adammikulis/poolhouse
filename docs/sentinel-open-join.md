@@ -57,8 +57,8 @@ default"]
 - It sees the Python fleet daemon's requests only. The Rust node has no hook into it. [V by absence;
   node.md "Nothing in Python calls it yet"]
 - It does not look at who is joining, only at requests after a peer is already trusted. There is no
-  enrolment detector, no probation, and `Roster.enrol` takes whoever the join flow authenticated. [V
-  `fleet/membership.py enrol`]
+  enrolment detector, no probation, and `enrol` takes whoever the join flow authenticated. [V
+  `membership.rs enrol`]
 - A process running as the owner can read the sentinel key and rewrite its state; the defence is
   against agents and peers. [D `docs/sentinel.md` "Self-protection"]
 - State replaced by an older validly sealed copy is not detected. [D same]
@@ -87,7 +87,7 @@ merge; sync is bounded to 400 rows, 2 MiB and 16 origins a request; per-board qu
 | 4 | One fingerprint from several addresses | N | The record is keyed by fingerprint; an address updates only for a member whose beacon key matches. | Address flapping is not observed, and nothing records how many addresses one fingerprint used. |
 | 5 | Replay of captured beacons | N | Valid for 60 s by timestamp; a replay inside the window re-announces a real member at its real address. A replay cannot enrol anyone, since the replayer lacks the key. | A replayed beacon wastes a dial; at most 60 s of stale address. Low. [analysis] |
 | 6 | Enrol, then misbehave | N | An enrolled device is a full `active` member: it syncs every board both hold, can acquire leases, `link`s are per session. | The core gap. Nothing separates "just walked in" from "trusted for months". |
-| 7 | Resource exhaustion by many enrolments | N | `enrol` has no cap; each adds a row, a save of `pool.json`, and an entry in every peer's membership exchange (`MOST_ROWS` 4096 is the Python limit; Rust unchecked here). [V `membership.py MOST_ROWS`] | Unbounded membership growth; revoking each requires a person action. |
+| 7 | Resource exhaustion by many enrolments | N | `enrol` has no cap; each adds a row, a save of `pool.json`, and an entry in every peer's membership exchange (Rust unchecked here). | Unbounded membership growth; revoking each requires a person action. |
 | 8 | A compromised member | M | Full member authority; revocation is a record that spreads by `members`. | Needs the same containment as a probationer: caps and quarantine reachable from detectors, not only by a person. |
 | 9 | Clock skew games | N, M | Beacons are bounded to +-60 s; foreign rows to +5 min; the Python authenticator has a 120 s window. A member can set its HLC ahead to order itself first (first claim in the total order wins a target). | Skew is held back at 5 min but not counted or reported; an HLC far in the past is not examined. |
 | 10 | Malformed or oversized frames | N, L | Local frames 1 MiB, peer frames 4 MiB, beacons 1 KiB; unknown fields do not parse; length prefix read once. | Not yet fuzzed; a length prefix of 4 MiB sent and then withheld ties a thread for 30 s. [analysis] |
@@ -116,9 +116,9 @@ What `open` must never allow, whatever else is decided: [analysis]
 
 Add `probation` to the existing `active | revoked`. A device enrolled by `open` starts as
 `probation` with `since`, `until` (earliest automatic promotion), `by: open`, the first address, the
-beacon id seen and the segment (subnet) it joined from. Tokens, `pool.json` rows and the Python
-`Roster` read it the same way: `Device.read` ignores unknown fields today in Python, so the field is
-additive. [V `membership.py Device.read`; analysis] `quarantined` is a flag on a row, not a status
+beacon id seen and the segment (subnet) it joined from. Tokens and `pool.json` rows
+read it the same way: unknown fields are ignored, so the field is
+additive. [analysis] `quarantined` is a flag on a row, not a status
 (connected but isolated), so that `revoked` stays terminal and is never undone.
 
 | Capability | Unknown | Probation | Active | Quarantined |
@@ -288,11 +288,6 @@ servers. Nothing in section 1 moves; the peer observers move from "wrap the Pyth
 `sentinel/adapters.py` is the one seam; the Python fleet daemon keeps `watch_authenticator` until it
 is removed. [V adapters seam; analysis]
 
-Python `fleet/membership.py` and `pool_roster.py` stay as the reader of the same record while both
-exist; the new `probation` and `quarantined` fields are additive and ignored by old readers, which
-would treat the device as `active`. That is unsafe: ship the Python reader's understanding of
-`probation` before the node writes it. [analysis]
-
 ## 5. Red-team plan
 
 Scored by evidence a script reads (a counter, a log line, a status field, a refused call), never by a
@@ -347,21 +342,20 @@ Sizes: S under 150 lines of code plus tests, M 150 to 500, L over 500.
 | # | Slice | Size | Tests to write | Depends on |
 |---|---|---|---|---|
 | 1 | Owner-only grants in the node (replace the `Grants` stub for membership methods) | M | a same-uid session without the grant is `denied` for `set_join_policy`, `member_remove`, `join_pool`, `link`, `project_add`; with it, allowed | node network branch |
-| 2 | Probation status and capability table (Rust): membership row, per-state checks in `peer.rs`, invitations as board entries | L | each cell of 3.1; `merge` keeps `revoked` terminal; round trip through `pool.json`; old Python reader still parses | 1 |
-| 3 | Python reader understands `probation`/`quarantined` (`fleet/membership.py`, `pool_roster.py`) | S | a roster with a probationer is not "active" anywhere callers check; `Device.read` round trip | none (do before 2 ships) |
-| 4 | Node limits: beacon and dial rate, enrolment cap per segment and pool-wide, concurrent connections, per-device caps, `busy` reply | M | flood tests on loopback; caps never exceeded under 8 threads | 2 |
-| 5 | Node counters and event stream (`device_events`, `device_state`) and the narrowing-only sentinel token | M | the sentinel token can narrow, cannot promote; a counter per detector input | 2 |
-| 6 | Sentinel `members.py`: detectors in 3.3 on the existing `Windows`, `Finding` and policy path; subject `device`/`segment`; `explain.WHY` and heads-up kinds | M | each detector on a synthetic clock (as `rates.py` is tested); false-alarm corpus: 500 honest enrolments and syncs produce nothing above `notice` | 5 |
-| 7 | Graded responses and promotion rules, audit entries written and mirrored | M | each grade; `guarded` never exceeds grade 2 on heuristics; promotion only with a live heartbeat | 2, 5, 6 |
-| 8 | The brake: CLI verbs (HumanGrant), Fleet page buttons, next-request effect | M | verb then the very next request refused; an agent marker refuses; page button calls the same route | 2 |
-| 9 | Lone-adopter confirmation | S | a lone device does not adopt without confirmation; confirmation by id | 2 |
-| 10 | Trust-ledger link: device account evidence, promotion by evidence, standing-grant | M | clean syncs raise the ledger state; a fault drops it; the grant is scoped and revocable | 7, earned-trust slices |
-| 11 | Fuzz targets in `app/poolhouse-node/fuzz` | M | the five targets, run for a fixed iteration count in CI, long runs by hand | node network branch |
-| 12 | Red-team scenarios (`redteam/scenarios/members.py`) and the scenario table above as tests | L | each row of 5.2 | 2 to 8 |
-| 13 | Sentinel as a node-socket client and heartbeat check by the node | M | kill the sentinel: enrolment closes in three intervals; restart: it reopens | 5 |
+| 2 | Probation status and capability table (Rust): membership row, per-state checks in `peer.rs`, invitations as board entries | L | each cell of 3.1; `merge` keeps `revoked` terminal; round trip through `pool.json` | 1 |
+| 3 | Node limits: beacon and dial rate, enrolment cap per segment and pool-wide, concurrent connections, per-device caps, `busy` reply | M | flood tests on loopback; caps never exceeded under 8 threads | 2 |
+| 4 | Node counters and event stream (`device_events`, `device_state`) and the narrowing-only sentinel token | M | the sentinel token can narrow, cannot promote; a counter per detector input | 2 |
+| 5 | Sentinel `members.py`: detectors in 3.3 on the existing `Windows`, `Finding` and policy path; subject `device`/`segment`; `explain.WHY` and heads-up kinds | M | each detector on a synthetic clock (as `rates.py` is tested); false-alarm corpus: 500 honest enrolments and syncs produce nothing above `notice` | 4 |
+| 6 | Graded responses and promotion rules, audit entries written and mirrored | M | each grade; `guarded` never exceeds grade 2 on heuristics; promotion only with a live heartbeat | 2, 4, 5 |
+| 7 | The brake: CLI verbs (HumanGrant), Fleet page buttons, next-request effect | M | verb then the very next request refused; an agent marker refuses; page button calls the same route | 2 |
+| 8 | Lone-adopter confirmation | S | a lone device does not adopt without confirmation; confirmation by id | 2 |
+| 9 | Trust-ledger link: device account evidence, promotion by evidence, standing-grant | M | clean syncs raise the ledger state; a fault drops it; the grant is scoped and revocable | 6, earned-trust slices |
+| 10 | Fuzz targets in `app/poolhouse-node/fuzz` | M | the five targets, run for a fixed iteration count in CI, long runs by hand | node network branch |
+| 11 | Red-team scenarios (`redteam/scenarios/members.py`) and the scenario table above as tests | L | each row of 5.2 | 2 to 7 |
+| 12 | Sentinel as a node-socket client and heartbeat check by the node | M | kill the sentinel: enrolment closes in three intervals; restart: it reopens | 4 |
 
-The order that makes `open` shippable: 1, 3, 2, 4, 5, 13, 6, 7, 8, 9, then 11 and 12 as the gate.
-Slices 10 is the generosity that follows. `open` is not enabled by default until 12 is green. [analysis]
+The order that makes `open` shippable: 1, 2, 3, 4, 12, 5, 6, 7, 8, then 10 and 11 as the gate.
+Slice 9 is the generosity that follows. `open` is not enabled by default until 11 is green. [analysis]
 
 ## 7. Owner decisions
 
@@ -393,7 +387,6 @@ Each is one question, ranked options, my recommendation first.
 
 - The node's accept loop and thread model beyond `net.rs` comments; slow-loris numbers are an
   inference from the 30 s IO timeout.
-- Whether Python `Roster.enrol` has an in-code member cap beyond `MOST_ROWS` rows read from a peer.
 - The Fleet page route list; the brake's page route is a proposal.
 - That PyRIT's current converters apply to device-name payloads; the converter table is read from
   `pyrit_bridge.CONVERTERS`.

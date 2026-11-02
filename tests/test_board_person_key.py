@@ -142,7 +142,7 @@ def test_one_yes_covers_the_list_it_showed_and_nothing_else(person_key_at):
         key.approve([grants.want_line("demo", other, T0)], "Refused:")
 
 
-def test_the_person_key_asks_every_time_whatever_its_record_says_and_the_pool_key_is_not_changed(person_key_at, tmp_path):
+def test_the_person_key_asks_every_time_whatever_its_record_says_and_the_share_signing_key_is_not_changed(person_key_at, tmp_path):
     keys, asked = person_key_at(False, False)
     assert keys.meta()["confirm"] is True, "a new person key records that it asks"
     record = tmp_path / "person" / "signing.json"
@@ -150,8 +150,8 @@ def test_the_person_key_asks_every_time_whatever_its_record_says_and_the_pool_ke
     with pytest.raises(KeyStoreError, match="confirmation"):
         grants.sign_issue(keys, "demo", WANT, now_ms=T0)
     assert len(asked) == 1
-    pool = SigningKeys(tmp_path / "pool", ks=NoKeystore(), passphrase=lambda _prompt: PASSPHRASE)
-    assert pool.meta()["confirm"] is False and len(pool.sign_bytes(b"data")) == 64, "the pool's signing key signs without asking, as before"
+    share = SigningKeys(tmp_path / "share", ks=NoKeystore(), passphrase=lambda _prompt: PASSPHRASE)
+    assert share.meta()["confirm"] is False and len(share.sign_bytes(b"data")) == 64, "the share signing key signs without asking, as before"
 
 
 def test_a_confirm_passed_by_the_caller_answers_nothing_and_the_question_is_still_put(person_key_at):

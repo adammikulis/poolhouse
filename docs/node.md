@@ -994,7 +994,7 @@ when the verified binary's checksum differs from the one inside, so the supervis
 
 ## The runtime's identity on macOS
 
-The node is not the only program that listens: the daemon (TCP 8770, UDP 8771) is Python. macOS decides about a program by the
+The node is not the only program that listens: the daemon (TCP 8770) is Python. macOS decides about a program by the
 executable the process runs, and the Application Firewall's own log shows how: `Handle flow with processPID: N and bundleid:
 python.exe` and `KNOWN APP FLOW: file:///Users/.../.pyenv/versions/3.13.5/bin/python3.13, return known verdict`, so the entry in
 the firewall list is that file's path and the signing identifier inside it, and `socketfilterfw --listapps` lists it by name. A
