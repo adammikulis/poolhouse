@@ -119,7 +119,7 @@ pub fn founding_name(act: &Value) -> Result<(String, String)> {
 /// What the operating system's prompt says to found the pool of ``c``, written from its name and its first key and nothing a session said.
 fn founding_prompt(c: &Charter) -> String {
     let key = c.admins.iter().find(|k| k.role == Role::Admin).map(|k| crate::phone::words(&k.fingerprint())).unwrap_or_default();
-    format!("Poolhouse: make the pool {} and let this computer approve changes to it. Key {key}.", c.name)
+    format!("Poolhouse - make the pool {} and let this computer approve changes to it. Key {key}.", c.name)
 }
 
 /// What the operating system's prompt says to sign ``act``, written from its kind, the device it names and the pool's name.
@@ -127,10 +127,10 @@ fn act_prompt(act: &Act, g: &GovPool) -> String {
     let pool = &g.state().chain.latest().charter.name;
     let device = |fingerprint: &str| g.devices().get(fingerprint).map_or_else(|| "a device".to_string(), |d| d.name.clone());
     match (act.kind.as_str(), act.body["fingerprint"].as_str()) {
-        ("remove", Some(fp)) => format!("Poolhouse: remove the device {} from the pool {pool}. It stops working with every device at once.", device(fp)),
-        ("admit", _) => format!("Poolhouse: add a new device to the pool {pool}."),
-        ("delegate", Some(fp)) => format!("Poolhouse: let the device {} admit devices to the pool {pool} for 30 days.", device(fp)),
-        (kind, _) => format!("Poolhouse: change who governs the pool {pool} ({}).", kind.replace('_', " ")),
+        ("remove", Some(fp)) => format!("Poolhouse - remove the device {} from the pool {pool}. It stops working with every device at once.", device(fp)),
+        ("admit", _) => format!("Poolhouse - add a new device to the pool {pool}."),
+        ("delegate", Some(fp)) => format!("Poolhouse - let the device {} admit devices to the pool {pool} for 30 days.", device(fp)),
+        (kind, _) => format!("Poolhouse - change who governs the pool {pool} ({}).", kind.replace('_', " ")),
     }
 }
 
@@ -514,7 +514,8 @@ impl Node {
             Ok(id) => (Value::String(id), Value::Null),
             Err(why) => (Value::Null, Value::String(why.into())),
         };
-        Ok(json!({"charter": charter.body(), "anchor": anchor, "accept": accept, "summary": founding_line(&charter), "card": card_id, "card_why": card_why}))
+        let counting = charter.admins.iter().any(|k| k.role == Role::Admin && k.level() > Level::Weak);
+        Ok(json!({"charter": charter.body(), "anchor": anchor, "accept": accept, "summary": founding_line(&charter), "counting": counting, "card": card_id, "card_why": card_why}))
     }
 
     /// The act of ``kind`` this device's pool would take next, with the bytes a person's key signs and what the person is shown: for

@@ -275,6 +275,11 @@ impl Charter {
         self.admin(public).is_some_and(|k| self.counts(k, class))
     }
 
+    /// Whether a phone holds one of the admin keys: a pool with none is governed from computers alone.
+    pub fn has_phone(&self) -> bool {
+        self.admins.iter().any(|k| k.role == Role::Admin && k.claim.is_some_and(|c| c.method == super::keys::Method::PhoneKeystore))
+    }
+
     /// Whether a listed admin key is at or above ``level``.
     pub fn holds_level(&self, level: Level) -> bool {
         self.admins.iter().any(|k| k.role == Role::Admin && k.level() >= level)

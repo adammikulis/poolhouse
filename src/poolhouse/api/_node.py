@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from poolhouse import errors, node_health, node_launch
+from poolhouse import errors, node_health, node_launch, person
 from poolhouse.board import client, founding, person_key
 
 __all__ = ["call", "session"]
@@ -24,5 +24,7 @@ def call(method: str, params: dict[str, Any] | None = None, *, token: str = "") 
 
 
 def session() -> Any:
-    """A session of the pool board of this device (the one that may change the pool), as the node knows the caller."""
-    return founding.pool_session(client.Client(node_launch.default_state()))
+    """A session of the pool board of this device (the one that may change the pool), as the node knows the caller. Where the process is a
+    person's own (a terminal and no agent marker) it is the person's session, which opens a join window and joins a pool with no grant to
+    hold: the person at their own terminal is the tap. An agent's process gets an agent's session."""
+    return founding.pool_session(client.Client(node_launch.default_state()), person_session=not person.marked())

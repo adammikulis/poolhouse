@@ -572,7 +572,7 @@ pub fn call(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) 
 }
 
 /// Whether ``holder`` is the person's own session, which the node marks and no claim sets.
-fn person_session(node: &mut Node, holder: &crate::identity::Holder) -> bool {
+pub(crate) fn person_session(node: &mut Node, holder: &crate::identity::Holder) -> bool {
     node.host(&holder.board).ok().and_then(|hosted| hosted.names.get(&holder.name).map(|i| i.person)).unwrap_or(false)
 }
 

@@ -126,13 +126,22 @@ def phone_call(state: Path, op: str, token: str, body: dict, method: str) -> dic
     return {"ok": True, "result": {"status": status, "reply": reply}}
 
 
+CLAIMS = {
+    "weak": {"method": "keystore-typed", "os": "macos", "prompt": "typed-yes"},
+    "computer": {"method": "keystore-prompt", "os": "macos", "prompt": "os-dialog"},
+    "native": {"method": "helper", "os": "macos", "prompt": "os-dialog"},
+    "phone": {"method": "phone-keystore", "os": "android", "prompt": "biometric"},
+}
+"""The claim the person-keys file records for a key of each level: what the enrolment that earns the level would have said."""
+
+
 def plant_key(state: Path, public: str, level: str = "phone") -> None:
-    """Write the Ed25519 key ``public`` (hex) into the person keys file of ``state`` at ``level``, as the enrolment that earns that level
-    records it: the node reads the file when it starts and lists the key in a pool at no higher level. The key is planted, not held in custody:
-    no phone, protected helper or prompt is behind the level. Only a file the account owns can do this."""
+    """Write the Ed25519 key ``public`` (hex) into the person keys file of ``state`` with the claim of ``level``, as the enrolment that earns
+    that claim records it: the node reads the file when it starts and lists the key in a pool with that claim. The key is planted, not held in
+    custody: no phone, protected helper or prompt is behind the claim. Only a file the account owns can do this."""
     path = state / "persons.json"
     held = json.loads(path.read_text()) if path.exists() else {}
-    held[hashlib.sha256(bytes.fromhex(public)).hexdigest()] = {"public": public, "label": f"the pool check's {level} key", "at_ms": 1, "alg": "ed25519", "assurance": level}
+    held[hashlib.sha256(bytes.fromhex(public)).hexdigest()] = {"public": public, "label": f"the pool check's {level} key", "at_ms": 1, "alg": "ed25519", "claim": CLAIMS[level]}
     path.write_text(json.dumps(held))
 
 

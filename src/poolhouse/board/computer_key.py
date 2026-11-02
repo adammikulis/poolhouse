@@ -11,16 +11,16 @@ governance act is held seven days.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import secrets
 import sys
 from pathlib import Path
 
-from poolhouse import errors
+from poolhouse import errors, keystore
 from poolhouse.board import presence
 from poolhouse.board.client import Client, Denied
 from poolhouse.fleet.onboard.signing import KeyStoreError, SigningKeys
-from poolhouse import keystore
 
 __all__ = ["ComputerKey", "NoKeystore", "PoolKeys", "TicketRequired"]
 
@@ -50,6 +50,11 @@ class ComputerKey:
     def public(self) -> bytes:
         return self._keys.public
 
+    def use(self, token: str) -> ComputerKey:
+        """The key, asking and signing as the session ``token`` (the person's own): a ticket is good for that session alone."""
+        self._token = token
+        return self
+
     @property
     def directory(self) -> Path:
         return self._keys.directory
@@ -74,10 +79,8 @@ class ComputerKey:
         """Drop the sealed key of a pool that was not made, so an abandoned founding leaves nothing behind."""
         for name in ("signing.json", "signing.key.wrapped", "signing.key.enc"):
             (self._keys.directory / name).unlink(missing_ok=True)
-        try:
+        with contextlib.suppress(OSError):
             self._keys.directory.rmdir()
-        except OSError:
-            pass
 
 
 class PoolKeys:
@@ -100,7 +103,7 @@ class PoolKeys:
         directory = self.directory / secrets.token_hex(16)
         directory.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         key = ComputerKey(self._keys(directory), self.client, self.token)
-        key.public  # made here, on first use of its public half
+        _ = key.public  # the key is made here, on first use of its public half
         return key
 
     def find(self, listed: set[str]) -> ComputerKey | None:

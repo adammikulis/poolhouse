@@ -45,6 +45,12 @@ pub fn handles(method: &str) -> bool {
     params(method).is_some()
 }
 
+/// Whether ``token`` is the person's own session: the one that opens a join window of a pool no phone governs and sees its code, and joins
+/// a pool with a code, with no grant to hold (the person at their own terminal is the tap).
+pub fn is_person(node: &mut Node, token: &str) -> bool {
+    node.tokens.resolve(token).cloned().is_some_and(|holder| crate::presence::person_session(node, &holder))
+}
+
 /// The session behind ``token``, if it holds a grant for ``action`` on ``resource``; nothing is spent. For what can still fail
 /// once it is allowed: `spend` the use after it was done.
 pub fn require(node: &mut Node, token: &str, action: &str, resource: &str) -> Result<Holder> {

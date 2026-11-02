@@ -46,7 +46,7 @@ def test_an_agent_founds_a_pool_of_a_key_a_phone_enrolled_and_a_second_try_says_
     made = founding.found(session, admin, "home", "secure")
     assert (made.name, made.policy, made.epoch, made.already) == ("home", "secure", 1, False)
     gov = governance(workspace_node)
-    assert gov["mode"] == "governed" and gov["name"] == "home" and gov["admins"][0]["assurance"] == "phone"
+    assert gov["mode"] == "governed" and gov["name"] == "home" and gov["admins"][0]["claim"]["method"] == "phone-keystore" and gov["admins"][0]["counted"] == "computer"
     members = workspace_node.client.call("pool_status")["members"]
     assert [m["status"] for m in members if m["self"]] == ["active"], "this device is the pool's first member"
     again = founding.found(session, admin, "home", "secure")
@@ -109,7 +109,7 @@ def test_a_key_the_node_does_not_hold_as_a_phones_is_refused_before_anyone_is_as
     session = pool_session(workspace_node)
     with pytest.raises(Refusal) as refused:
         founding.found(session, person(), "home")
-    assert "your phone" in refused.value.say and refused.value.needs == "device" and len(refused.value.say) <= 160
+    assert "prompt" in refused.value.say and refused.value.needs == "device" and len(refused.value.say) <= 260
     assert workspace_node.client.call("person_keys")["keys"] == [] and governance(workspace_node)["mode"] == "unfounded"
 
 
@@ -119,14 +119,14 @@ def test_a_key_the_person_typed_yes_for_is_not_strong_whatever_the_agent_says(wo
     session = pool_session(workspace_node)
     with pytest.raises(Refusal) as refused:
         founding.found(session, admin, "home")
-    assert "your phone" in refused.value.say and governance(workspace_node)["mode"] == "unfounded"
-    key = [{"key": admin.key.public.hex(), "person": "owner", "assurance": "phone", "label": "the owner's key"}]
+    assert "prompt" in refused.value.say and governance(workspace_node)["mode"] == "unfounded"
+    key = [{"key": admin.key.public.hex(), "person": "owner", "claim": "phone-keystore", "label": "the owner's key"}]
     with pytest.raises(Invalid):
         workspace_node.client.call("pool_draft_found", "", session.token, title="home", policy="secure", project="", keys=key)
     plain = dict(key[0])
-    del plain["assurance"]
+    del plain["claim"]
     drafted = workspace_node.client.call("pool_draft_found", "", session.token, title="home", policy="secure", project="", keys=[plain])
-    assert [k["assurance"] for k in drafted["charter"]["admins"]] == ["weak"]
+    assert [k["claim"]["method"] for k in drafted["charter"]["admins"]] == ["keystore-typed"]
 
 
 def test_a_charter_the_agent_made_without_the_persons_key_founds_nothing(workspace_node):
@@ -209,5 +209,5 @@ def test_the_command_for_agents_says_one_sentence_and_exits_3_when_the_person_ha
 
     done = workspace_node.cli("pool", "found", "home", "--json", who=workspace_node.member("agent"))
     said = json.loads(done.stdout.strip().splitlines()[-1])
-    assert done.returncode == 3 and said["founded"] is False and "phone" in said["say"] and said["needs"] == "device", done
+    assert done.returncode == 3 and said["founded"] is False and "keystore" in said["say"] and said["needs"] == "device", done
     assert governance(workspace_node)["mode"] == "unfounded"

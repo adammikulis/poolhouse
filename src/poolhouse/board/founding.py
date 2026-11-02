@@ -20,13 +20,12 @@ from poolhouse.board.client import Client, Denied, NodeError
 from poolhouse.board.session import Session
 from poolhouse.board.terminal import terminal_id
 
-__all__ = ["Admin", "Founded", "Refusal", "Terms", "default_admin", "found", "found_here", "govern", "pool_session", "with_card"]
+__all__ = ["Admin", "Founded", "NoComputerKey", "Refusal", "Terms", "default_admin", "found", "found_here", "govern", "pool_session", "with_card"]
 
 POOL_GRANT_LASTS = "10m"
 CARD_WAIT_S = 120.0
 POLICIES = ("open", "secure")
-NOT_COUNTED = ("This computer cannot ask you at its own prompt from here, so a key it made would count for nothing in a pool: run Poolhouse "
-               "installed on your own account, or approve from your phone.")
+NOT_COUNTED = "This computer cannot ask you at its own prompt from here, so its key would count for nothing: use the installed Poolhouse, or your phone."
 FOR_THE_PERSON = ("The computer's own prompt is for you to answer: run `poolhouse-pool found NAME` in a terminal of your own; an agent cannot "
                   "answer it for you.")
 
@@ -38,6 +37,10 @@ class Refusal(errors.Denied):
     def __init__(self, say: str, *, needs: str = "none", where: str = "", then: str = "ask-owner") -> None:
         super().__init__(say)
         self.say, self.needs, self.where, self.then = say, needs, where, then
+
+
+class NoComputerKey(Refusal):
+    """No key of this computer governs the pool: a phone does, and its card is the way."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -255,21 +258,25 @@ def found_here(client: Client, name: str | None, policy: str, *, admin: Admin | 
 def govern(client: Client, kind: str, body: dict[str, Any], *, voice: presence.Voice = presence.SILENT) -> dict[str, Any]:
     """Have this computer's key make the act of ``kind`` the node drafts from ``body`` (a removal, a new device): the person says yes at the
     computer's prompt for exactly that act, the key signs it, and the pool takes it. The node's reply (`status`, `act`)."""
+    try:
+        status = client.call("pool_status")
+    except NodeError as err:
+        raise _refused(err, needs="none") from None
+    listed = {str(k["fingerprint"]) for k in status["governance"].get("admins", []) if k["role"] == "admin"}
+    key = computer_key.PoolKeys(client.state, client, "").find(listed)
+    if key is None:
+        raise NoComputerKey("No key of this computer governs this pool, so it cannot make that change here.", needs="device", where="the computer that founded the pool", then="stop")
     if person.marked():
-        raise Refusal(FOR_THE_PERSON.replace("found NAME", "remove DEVICE"), needs="approval", where="a terminal of your own", then="ask-owner")
+        raise Refusal(FOR_THE_PERSON.replace("found NAME", f"{kind.replace('_', '-')} ..."), needs="approval", where="a terminal of your own", then="ask-owner")
     session = pool_session(client, person_session=True)
+    key.use(session.token)
     try:
         draft = session.client.call("pool_draft", "", session.token, kind=kind, body=body)
-        status = session.client.call("pool_status", "", session.token)
     except NodeError as err:
         raise _refused(err, needs="none") from None
     card = draft.get("card")
     if not isinstance(card, str):
         raise Refusal(str(draft.get("card_why") or "This change cannot be confirmed at the computer's prompt."), needs="none", then="stop")
-    listed = {str(k["fingerprint"]) for k in status["governance"]["admins"] if k["role"] == "admin"}
-    key = computer_key.PoolKeys(client.state, client, session.token).find(listed)
-    if key is None:
-        raise Refusal("No key of this computer governs this pool, so it cannot make that change here.", needs="device", where="the computer that founded the pool", then="stop")
     try:
         key.approve(card, enrolled=True, voice=voice)
     except Denied as err:
