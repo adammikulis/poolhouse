@@ -621,7 +621,6 @@
       "feature selections"
     ],
     "cross_domain": [
-      "pool_mode/initial automatic governance -> governance request/inspect/cancel/watch; no legacy trust migration",
       "credentials -> credential list/put/remove protected domain",
       "libraries -> extension install/remove jobs",
       "model selection/download/readiness -> models/jobs domain",

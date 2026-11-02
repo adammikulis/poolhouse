@@ -220,7 +220,7 @@ None of these reads the ledger, and none has a standing input; they stay at thei
   flag, force pushes, remote deletion, `--all`, `--tags`. [D `CLAUDE.md` "Hooks and settings"]
   Release approval is the only authorizable kind and is made by the structured approval question.
   [D `docs/person-delegation.md` header]
-- **Keystore and secrets.** The keystore, pool token, signing keys, `sudoers`, and
+- **Keystore and secrets.** The keystore, daemon token, signing keys, `sudoers`, and
   the OS privilege prompt are a person's regardless of registry. [D `AGENTS.md`]
 - **The authority registry.** `person` gates pass only a person at a terminal; a helper or child
   identity never passes a `delegated` gate; `POOLHOUSE_AUTHORITY_FLOOR=person` only tightens.

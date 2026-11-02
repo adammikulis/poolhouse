@@ -154,8 +154,7 @@ Rank is by how much of the goal a missing item blocks, first item first.
 2. **No lease broker reachable per device.** `broker_wire` is loopback [V]. A remote request to load a model
    today is `POST /serve` from `plan --apply` [D]; it should be a lease with reason and requester under the
    caller's own identity, taken through the target's broker, so the target's queue and history stay the one
-   record. Open: the `/serve` route authorizes by the pool-derived token, not by agent identity (token
-   derivation in `fleet/discovery.py` [V]); a lease request needs the board identity of the asker.
+   record. Open: the `/serve` route authorizes by the daemon token, not by agent identity; a lease request needs the board identity of the asker.
 3. **One thing on the GPU, pool wide.** The rule is enforced per machine by the manager (one set of settings
    per port, a lease for other settings is refused [D]). Nothing coordinates two devices, which is fine since
    each has its own GPU; the real gap is a device that is both a test runner and a model host (2.1(5)) and a

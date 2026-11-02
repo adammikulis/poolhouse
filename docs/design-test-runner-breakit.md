@@ -315,7 +315,7 @@ are not signed and corroboration is optional (`--corroborate`).
   most units, then stalls (F12); claims a low `fixed_cost_s` to win ties.
 - A1: a clone with a member's key answers under its fingerprint (the design covers its results). It also receives trees and runs the
   sender's code, and the allow-list entry the person gave the original covers it.
-- `--corroborate` counts two fingerprints as two sources. In dev mode a joiner can join twice on one machine (A24), so two members
+- `--corroborate` counts two fingerprints as two sources. A joiner can join twice on one machine (A24), so two members
   confirming a result can be one party.
 
 **Breaks.** 5.2, 5.3, 6.4, A1, A3, A5, A9.
@@ -384,15 +384,14 @@ no slot until the claim clears.
 
 ### F14. The project file and the default choose where a project's tree goes (High)
 
-**Attack.** `[remote] default = "auto"` (6.1) sends the tree to every accepting member of a pool in dev mode, and in dev mode "every
-device on the network that runs Poolhouse in dev mode joins the pool when it asks" (`docs/fleet.md`, "What dev mode trusts") [doc].
+**Attack.** `[remote] default = "auto"` (6.1) sends the tree to every accepting member of a pool.
 The transported set is `git ls-files -co --exclude-standard` (4.1): tracked files and untracked files not in `.gitignore`, so
 `notes.txt` and `.env.local` go too. A19's answer, refusing "files whose names look like secrets", misses `config.local.yml` and
 rejects test fixtures such as `fake_credentials.json`. For a consumer repository (a work project with Poolhouse installed for its
 tests) this discloses its source to a stranger on a shared network with no prompt (open question 2 prints nothing). And the project
 file chooses the target: a cloned hostile repository sets `[remote] default = "pool"` and `poolhouse-test run` runs its code, in
 confinement, on every device of the user's pool. A7's answer "the config can only ask for less than the receiver's policy" is empty
-because in dev mode the policy allows every member.
+because the policy allows every member.
 
 **Breaks.** 4.1 `[remote]`, 6.1, 12 (adoption journey), A7, A19, A24.
 
@@ -690,7 +689,7 @@ Verdicts: **held**, **weak** (answered in part), **broken** (the stated answer d
 | A21 fork bomb, memory, disk | weak | Group kill misses `setsid` children on macOS (F15); the derived bounds are not specified |
 | A22 hook of a handed repository | broken | `list`, `check`, `init` run it unconfined; a print is not a gate (F5) |
 | A23 reads outside the project | held, with a gap | State root inside `~/.poolhouse` (F23); DEPS rows with absolute or `..` paths need the check B read test |
-| A24 present on the LAN | weak | Stated and accepted for dev mode; the design extends it from Poolhouse's own development to every consumer by default (F14) |
+| A24 present on the LAN | weak | Stated and accepted; the design extends it from Poolhouse's own development to every consumer by default (F14) |
 | A25 old build | held | Protocol and build mismatch is refused. The device's statement that it can confine is self-reported (F11) |
 | A26 starving the owner | weak | Background class and kill on lease hold for leased work; an unlabelled test uses the owner's loopback model server (F10) |
 
@@ -734,7 +733,7 @@ and markers; these are behaviours and constants a grep does not find.
 | `unrecorded_max` 30 s, sqrt rule, quarter of capacity, 1800 s, 200 units, 3 days (section 4) | Timings measured on Poolhouse's suite and node build | Poolhouse |
 | 4.3 lease kinds `cpu_slots`, `memory_mb`, `gpu`, `model_slot`, `claim` in the L1 schema; 5.5 `ph.leases`, "the node's table", "`HEAVY_MODULES`' heavy lane" | Poolhouse's lease vocabulary in the schema and the core; 3.1's exact L0 list names no lease, node or `ph` module, so the layering test would fail the design | Poolhouse |
 | 10.7 and 6.2 "GPU, benchmark or foreground lease" inside the L2 executor | Poolhouse's lease classes | Poolhouse |
-| 6.1 `auto` = "a pool in dev mode"; `admit(sender, pool mode, policy)` | Dev mode and the `remote-tests` feature as the generic default | Poolhouse |
+| 6.1 `auto` = "a pool"; `admit(sender, policy)` | The `remote-tests` feature as the generic default | Poolhouse |
 | 5.3, 6.4 "task evidence", "landing", "release" in the kinds model | A consumer's workflow in the store's semantics. The store should carry a `trust` attribute and let the consumer decide | Poolhouse |
 | 3.1 L0 `home`, `activity.reuse (state root)`, `credentials.child_environment` | The product's home and secret-stripping as the library's state | Poolhouse (F23) |
 | 5.5 `TESTFARM_*` for `DEV_TEST_*`, reserved cores 1, aging 600 s, backfill 2 or 30 s | Poolhouse's tuning as the broker's defaults | Poolhouse |
@@ -750,8 +749,7 @@ and markers; these are behaviours and constants a grep does not find.
 5. The strict schema (4) makes an undocumented key an error, and the text uses keys the table (4.1) lacks: `needs` (4.4), `prune`
    (4.4, 9), `[remote] verify_list` (10.3), the `[requires]` grammar (6.5), the LIST and probe deadlines (F3). `[run] argv` is read "of
    the named set" (10.3) but sets have no `argv`.
-6. 3.1 says each L3 plugin imports L2 and L1 only; the same section lets a transport import `fleet.remote`, `fleet.discovery` and
-   `fleet.membership`, and the server half uses `memberships` and `features`.
+6. 3.1 says each L3 plugin imports L2 and L1 only; the same section lets a transport import `fleet.remote`, and the server half uses `features`.
 7. 6.2 says `allow` is "a typed yes at a terminal"; 12 says it is asked once through the question tool; question 1 offers a
    phone-signed grant. Three mechanisms for one act.
 8. Windows. 6.2 and 6.3 specify `taskkill /T /F` and reserved names for a receiver; `docs/sandbox.md` lists Seatbelt, bubblewrap and a
@@ -760,7 +758,7 @@ and markers; these are behaviours and constants a grep does not find.
 9. 11 forbids any re-run after a device is `refused` as well as after it vanished. A device that refused at start ran nothing;
    reassigning its units is safe and stops one flaky member from failing a run (F6 uses this).
 10. 6.2 caps asks "no authority needed beyond membership" and returns free slots, platform and `requires` satisfied: a stranger who
-    joined in dev mode can enumerate the pool's capacity and toolchains.
+    joined can enumerate the pool's capacity and toolchains.
 11. 6.3 "a later step sends a delta against a base commit fetched by SHA only": the receiver must pin the remote itself, disable
     `ext::` and `fd::` transports and `--upload-pack`, and use no credential helper. A sender-supplied remote is code execution.
 12. 5.6 "A job's owner is the OS user and the process": whether another shell of the same user may cancel it, and what releases a
@@ -771,7 +769,7 @@ and markers; these are behaviours and constants a grep does not find.
     `test_no_banned_word_is_left_outside_the_allowlist` and `test_the_rewrite_has_nothing_left_to_change` both name only
     `docs/design-test-runner.md`: lines 31 and 121 (the hyphenated carrier name, which the glossary bans as a kind of pool) and line
     221 (the sentence that lists the banned words). `python scripts/nomenclature.py --dry-run` prints them. Fix: say "the carrier of a
-    pool in dev mode" on lines 31 and 121, and either rephrase line 221 or give it an entry with a reason in
+    pool" on lines 31 and 121, and either rephrase line 221 or give it an entry with a reason in
     `contracts/glossary-allowlist.toml`. This document passes the test.
 
 ## 7. What held

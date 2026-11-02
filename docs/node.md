@@ -836,7 +836,7 @@ listener is the one network port.
   lone devices never join each other at once); the dial is pinned to the fingerprint in the beacon.
 - **Joining** (`join_code.rs`). `secure`: `add_device` opens a window (a six-digit code or a passphrase,
   three tries, a time limit), `join_pool` on the other device runs SPAKE2 (`spake2`) with both certificate
-  fingerprints as its identities and HMAC-SHA256 confirmations, as in `fleet/onboard/pake.py`; the pool
+  fingerprints as its identities and HMAC-SHA256 confirmations; the pool
   record then arrives sealed under the exchange (in a governed pool, the founding act and the acts that stand). `open`: the device
   is admitted on its first contact from the same segment and the admit is recorded with the certificate fingerprint (`by: open`).
   A device joins only if it is alone in a pool that no admin governs (`Pool::can_join_other`); a governed pool is left by its own

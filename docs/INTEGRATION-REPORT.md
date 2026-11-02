@@ -45,8 +45,6 @@ permission classifier while the branches were still in progress) and are merged 
 followed by `feat/decision-model-type`, `feat/workspace-landing`, `agent/sandbox` and
 `feat/sentinel-wiring`. The checks that depended on the first two (the net-pipeline no-bypass scan and its
 network seal across the merged suite) are in the default tier whose latest result is below.
-The SPAKE2 library check against `fleet/onboard/pake.py` on the wheel the `fleet-onboard` extra installs is
-still open (`HANDOFF.md`).
 
 ## Integration bugs found and fixed
 
@@ -188,8 +186,7 @@ objects.
 
 ## Decisions for the owner
 
-1. Check the `spake2` wheel the `fleet-onboard` extra installs against `fleet/onboard/pake.py`, and that
-   `cryptography` stays optional (`fleet-tls`) with a clear message when it is missing.
+1. Check that `cryptography` stays optional (`fleet-tls`) with a clear message when it is missing.
 2. Whether `docs/INTEGRATION-REPORT.md` stays after the release.
 3. Whether a fresh `tests-collected` is recorded from a machine that has every extra installed.
 4. Whether the red-team tier (`--redteam`) joins the default tier or a scheduled job; it is what

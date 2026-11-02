@@ -184,7 +184,7 @@ def test_the_keystore_stays_a_person_s_whatever_the_registry_says(monkeypatch, c
 def test_the_gates_of_no_registry_name_survive_in_the_source():
     from pathlib import Path
     root = Path(authority.__file__).parent
-    pinned = {"net/cli.py": 'human.require_person("unlock")', "fleet/runtime_paths.py": 'person.require_person("display the pool token")',
+    pinned = {"net/cli.py": 'human.require_person("unlock")', "fleet/runtime_paths.py": 'person.require_person("display the daemon token")',
               "sentinel/review.py": 'human.require_person("review")'}
     for name, call in pinned.items():
         assert call in (root / name).read_text()

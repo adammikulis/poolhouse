@@ -264,7 +264,7 @@ Drive the native Linux app as well as the independent WSL installation. Shared p
 Then implement candidate discovery, canonical identity, production signing integration, authoritative membership,
 resumable subscriptions, and removal propagation. Correct beacon reporting and the invalid pool-length expression
 identified in the original review. Secure admission is default; open admission requires explicit charter acceptance.
-Delete lexicographic automatic pool adoption. Setup uses discovered devices and native approvals, not typed network
+Setup uses discovered devices and native approvals, not typed network
 addresses, names, ports, or terminal commands. Cross-network access requires an explicit network provider.
 
 Move settings, durable jobs, capacity, residency, downloads, conversations, projects, and all retained feature domains
@@ -272,7 +272,7 @@ into the node. Keep pure algorithms as libraries/bounded workers. Bundle Tauri a
 window/CLI. Preserve supported model behavior and all security invariants. Complete replacement and callers before
 retiring old paths; incomplete replacements remain outside the installed default.
 
-Delete Python pooling/discovery/shared-secret membership/roster/TLS identity; LAN work authorization and duplicate
+Delete LAN work authorization and duplicate
 remote tests; app HTTP daemon/headless sidecar/control/launch tickets; Windows-to-WSL runtime/path/network/UI/startup
 bridges; independent Python node supervision; obsolete schemas, aliases, compatibility readers, and repair advice.
 Update packaging, callers, selectors, and equivalent public-mechanism tests in the same batches.

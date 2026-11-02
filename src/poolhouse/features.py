@@ -149,5 +149,5 @@ register("guard-change", "experimental",
          "A person-approved change to the guards and the code that makes them (no gate is wired yet).",
          "Would let an approved diff alter the guard code itself; nothing reads it until it is wired.")
 register("remote-tests", "experimental",
-         "Run tests on other devices of the pool (scripts/test --on), and take their tests here: in a pool in dev mode this is on until turned off, in any other pool a person turns it on and names the senders.",
-         "While a device takes tests, any member allowed to send them runs a checkout's tests there as its user: in dev mode that is every device that joined the pool, and a stolen pool certificate is code execution.")
+         "Run tests on other devices of the pool (scripts/test --on), and take their tests here: a person turns it on and names the senders.",
+         "While a device takes tests, any member allowed to send them runs a checkout's tests there as its user, and a stolen pool certificate is code execution.")

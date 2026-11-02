@@ -45,7 +45,7 @@ admin starts a successor pool and every member joins it by its own consent.
 
 The record is `pool.json` (`membership.rs`): a pool id (8 random bytes), the join policy with a time and a name, the project key,
 and one row per device (fingerprint, certificate, name, `active` or `revoked`, time, `by`). Nothing in it is signed. There is no
-founder, owner, admin or pool key: `by` is a label. The first device to open a state directory made the pool and is a member like
+founder, owner or admin in it: `by` is a label. The first device to open a state directory made the pool and is a member like
 any other.
 
 Authority sits in two places that do not agree:

@@ -28,5 +28,5 @@ def configure(root: Path) -> None:
 def announce_token(token: str) -> None:
     """Display the daemon token to a person at an interactive terminal."""
     with contextlib.suppress(person.HumanRequired):
-        person.require_person("display the pool token")
+        person.require_person("display the daemon token")
         say(f"  token {token}")

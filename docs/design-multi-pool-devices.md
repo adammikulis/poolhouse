@@ -61,9 +61,7 @@ is a charter attribute of the one pool; the beacon (`beacon.rs`) is one datagram
 
 **Python.** `ph.pool` (`api/pool.py`) and `node_pool.py` read the one `pool_status`; `board/founding.py` answers "already in the pool X" for any
 founded device; `node_join.py` joins "a device in no pool"; `device_setup.py` (firewall rule, mirrored networking on WSL, the node, the join check) is
-device-wide and needs no change. The legacy `poolhouse-pool` command (`fleet/join.py`, a passphrase-and-group daemon with its own `pool.json`) is the
-older mechanism; HANDOFF already lists its replacement by `found NAME | status | members | add-device | join CODE | remove DEVICE | leave`, which is
-section 6's command line, and this design does not extend it. `scripts/pool-check` and `tests/pool_check/world.py` give every device one pool.
+device-wide and needs no change. The command line `found NAME | status | members | add-device | join CODE | remove DEVICE | leave` is section 6's, and this design does not extend it. `scripts/pool-check` and `tests/pool_check/world.py` give every device one pool.
 
 ## 2. The model
 

@@ -173,7 +173,7 @@ separate.
 
 ### System settings and the authority registry
 
-A machine setting (wired memory limit `iogpu.wired_limit_mb`, sentinel policy, quarantine release, recovery export,
+A machine setting (wired memory limit `iogpu.wired_limit_mb`, sentinel policy, quarantine release,
 request answer) changes only through a named gate in one registry, `poolhouse.authority`, each `person` or `delegated`
 (`poolhouse-workspace authority show|set|preset`: docs/workspace.md, "Authority").
 
@@ -184,7 +184,7 @@ request answer) changes only through a named gate in one registry, `poolhouse.au
 - Default preset `dev`: every delegable gate delegated, enforcement `open`. `prod` leaves workspace setup, model
   recording and local agent verbs delegated, makes every other gate a person's, enforcement `strict`.
   `POOLHOUSE_AUTHORITY_FLOOR=person` reads every gate as a person's; it only tightens, and the test suite sets it.
-- A person's whatever the registry says, and not in it: the keystore and secrets (unlock, pool passphrase and token,
+- A person's whatever the registry says, and not in it: the keystore and secrets (unlock, passphrases and tokens,
   signing keys), a passwordless `sudoers` rule (Poolhouse never installs one), and OS authentication for a privileged
   step. The machine setting an agent may request is the wired memory limit (`serve.wired-limit`). An agent prepares
   the exact operation; the person authenticates through the protected native OS journey. Poolhouse never sees or

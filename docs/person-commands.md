@@ -57,9 +57,9 @@ Refusal shapes: `X is for a person; this process was started by an agent (CLAUDE
 - `person.require_person()` checks only that stdin and stdout are terminals (`person.py:53-63`), so an agent that unsets the marker and runs under a pseudo-terminal passes every T-AGENT gate that has no typed yes. The marker and the terminal are the only boundary.
 - A session registered from another process lineage gets no grants until a person runs `rebind` (`grants/mod.rs:137`).
 - Budget raises are refused whenever `CLAUDECODE` is set, even for a person's commit.
-- Silent drops: `keystore.py:151` (no prompt when marked) and `fleet/runtime_paths.py:31` (the pool token line is left out).
+- Silent drops: `keystore.py:151` (no prompt when marked) and `fleet/runtime_paths.py:31` (the daemon token line is left out).
 
 ## For the owner
 
 - A lead agent can run `authority set` and `authority preset`; only subagents are refused (`authority_cli.py:49-54`). No gate protects the registry.
-- The onboarding journey (AGENTS.md section 2) is blocked today by: the network-on step in a terminal, the first phone, autostart `install`, the owner's page (`open`), and the hidden pool token.
+- The onboarding journey (AGENTS.md section 2) is blocked today by: the network-on step in a terminal, the first phone, autostart `install`, the owner's page (`open`), and the hidden daemon token.

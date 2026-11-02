@@ -1443,8 +1443,7 @@ tests = ["tests/test_wsl_network.py::test_a_bridge_without_a_lan_address_refuses
 note = "the discovery control listener rejects bad capabilities, destinations and oversized frames; the TCP listener relays opaque bytes to the fixed daemon target"
 
 [[group]]
-match = ["listener:fleet/daemon.py:*", "listener:fleet/discovery.py:*",
-         "listener:fleet/onboard/nearby.py:*"]
+match = ["listener:fleet/daemon.py:*"]
 status = "partial"
 tests = ["tests/test_redteam_fleet.py", "tests/test_onboard_tailnet.py"]
 note = "the daemon handler is attacked"
