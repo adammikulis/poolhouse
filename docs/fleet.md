@@ -169,7 +169,7 @@ scripts/test all tests/test_x.py tests/test_y.py --on NAME --split     divide th
 
 A member takes tests from the pool's other members once the node authorizes the compute service for it (docs/test-farm.md). It runs them on
 its own Python 3.13 that imports pytest: the one `scripts/setup-wsl-dev` makes (`~/.venvs/poolhouse-dev`), else
-the Python the daemon runs, else the one `POOLHOUSE_SHARD_PYTHON` names; with none it says so and what to run. A job on a member records the
+the Python the node recorded when shards were turned on (docs/test-farm.md); with none it says so and what to run. A job on a member records the
 device that asked and the agent behind the request (`GET /jobs`, the `by` field), and the reuse record, the exit status and the printed
 report are those of a run on the node's pool. A member that stops answering while its tests run ends the run with a message that says its
 tests did not finish and were not run anywhere else; the other parts of a split run go on and the exit status is 70.
@@ -254,9 +254,7 @@ over TLS only and signs in with a launch ticket from the Poolhouse window (`pool
 
 **What a device may run.** `POST /jobs` accepts `python -m poolhouse.bench ...` and
 `python -m poolhouse.fleet.calibration ...`, run in the daemon's own folder with its own
-environment, and refuses any other program, any `cwd` and any `env` from the wire. A member
-also takes test shards (`/shards/v1/...`): a tier, test files and a time limit
-in a typed request, run by the same executor as the node's shards, never a command line. A pool
+environment, and refuses any other program, any `cwd` and any `env` from the wire. A pool
 sweep (`python -m poolhouse.bench sweep --fleet`) dispatches measurements through `POST /bench`, which
 takes a typed job and no command line.
 

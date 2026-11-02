@@ -348,33 +348,6 @@ class Member:
                 raise MemberError(f"job {job_id} still {job['state']} after timeout")
             time.sleep(poll_s)
 
-    # -- test shards -----------------------------------------------------
-    def shard_caps(self) -> dict:
-        """Whether this member takes test shards (and why not), its platform and its free slots."""
-        return self._json("GET", "/shards/v1/caps")
-
-    def shard_upload(self, shard: str, tree: bytes) -> dict:
-        """Send the packed tree of ``shard`` in order, 8 MB at a time; the last answer."""
-        total, sent, last = len(tree), 0, b"{}"
-        while sent < total:
-            chunk = tree[sent:sent + CHUNK]
-            span = {"Content-Range": f"bytes {sent}-{sent + len(chunk) - 1}/{total}"}
-            _, last, _ = self._request("PUT", f"/shards/v1/{shard}/tree", data=chunk, options=Options(headers=span, timeout=300))
-            sent += len(chunk)
-        return json.loads(last or b"{}")
-
-    def shard_start(self, header: dict) -> dict:
-        """Run the shard ``header`` names on the tree already sent with `shard_upload`."""
-        return self._json("POST", "/shards/v1/start", header)
-
-    def shard_state(self, shard: str, since: int = 0) -> dict:
-        """A shard's state, its output from byte ``since`` and, once it has ended, its result."""
-        return self._json("GET", f"/shards/v1/{shard}?since={since}")
-
-    def shard_cancel(self, shard: str) -> dict:
-        """Stop a shard and what it started."""
-        return self._json("POST", f"/shards/v1/{shard}/cancel", {})
-
     # -- speech ----------------------------------------------------------
     def speech(self) -> dict:
         """What this member can hear and say: every engine it has, and which it would use."""

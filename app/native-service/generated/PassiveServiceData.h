@@ -1,6 +1,6 @@
 // Generated passive data only. No installation, scope or authority.
-#ifndef POOLHOUSE_PASSIVE_SERVICE_DATA_H
-#define POOLHOUSE_PASSIVE_SERVICE_DATA_H
+#ifndef PH_PASSIVE_SERVICE_DATA_H
+#define PH_PASSIVE_SERVICE_DATA_H
 #include <stdint.h>
 #include <stddef.h>
 #define PH_PASSIVE_ABI_VERSION UINT32_C(1)

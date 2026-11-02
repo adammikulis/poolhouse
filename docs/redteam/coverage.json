@@ -1,11 +1,11 @@
 {
- "surfaces": 910,
+ "surfaces": 906,
  "by_status": {
-  "covered": 586,
-  "partial": 184,
-  "uncovered": 53,
+  "covered": 588,
+  "partial": 183,
+  "uncovered": 51,
   "n/a": 84,
-  "unmapped": 3
+  "unmapped": 0
  },
  "by_kind": {
   "chat-tool": {
@@ -79,9 +79,9 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 89,
+   "covered": 91,
    "partial": 0,
-   "uncovered": 49,
+   "uncovered": 47,
    "n/a": 0,
    "unmapped": 0
   },
@@ -90,7 +90,7 @@
    "partial": 46,
    "uncovered": 0,
    "n/a": 1,
-   "unmapped": 3
+   "unmapped": 0
   },
   "slash-command": {
    "covered": 9,
@@ -101,7 +101,7 @@
   },
   "spawn": {
    "covered": 103,
-   "partial": 65,
+   "partial": 64,
    "uncovered": 0,
    "n/a": 4,
    "unmapped": 0
@@ -6255,9 +6255,16 @@
    "source": "decide/window.py",
    "trust": "files, pages and archives from outside",
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "uncovered",
-   "tests": [],
-   "note": "files the product wrote for itself (stores, caches, snapshots, case files) are read back; a hand-edited or planted file is not tried"
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_planted_files.py::test_a_config_that_is_not_a_json_object_is_a_refusal_not_a_crash",
+    "tests/test_redteam_planted_files.py::test_a_window_or_size_that_is_not_a_plain_positive_whole_number_is_refused",
+    "tests/test_redteam_planted_files.py::test_a_text_config_that_is_not_an_object_never_supplies_the_flat_numbers",
+    "tests/test_redteam_planted_files.py::test_a_config_that_is_a_directory_or_a_dangling_link_is_a_refusal",
+    "tests/test_redteam_planted_files.py::test_a_hostile_pid_max_leaves_a_run_room_or_no_limit_and_never_crashes",
+    "tests/test_redteam_planted_files.py::test_the_share_is_never_less_than_one_however_many_runs_are_alive"
+   ],
+   "note": "a planted model config.json is refused unless every window and size is a plain positive whole number, and a hostile pid_max leaves a sandbox run a share of at least one process or no limit"
   },
   {
    "id": "parser:files.py",
@@ -7309,9 +7316,16 @@
    "source": "sandbox/run.py",
    "trust": "files, pages and archives from outside",
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "uncovered",
-   "tests": [],
-   "note": "files the product wrote for itself (stores, caches, snapshots, case files) are read back; a hand-edited or planted file is not tried"
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_planted_files.py::test_a_config_that_is_not_a_json_object_is_a_refusal_not_a_crash",
+    "tests/test_redteam_planted_files.py::test_a_window_or_size_that_is_not_a_plain_positive_whole_number_is_refused",
+    "tests/test_redteam_planted_files.py::test_a_text_config_that_is_not_an_object_never_supplies_the_flat_numbers",
+    "tests/test_redteam_planted_files.py::test_a_config_that_is_a_directory_or_a_dangling_link_is_a_refusal",
+    "tests/test_redteam_planted_files.py::test_a_hostile_pid_max_leaves_a_run_room_or_no_limit_and_never_crashes",
+    "tests/test_redteam_planted_files.py::test_the_share_is_never_less_than_one_however_many_runs_are_alive"
+   ],
+   "note": "a planted model config.json is refused unless every window and size is a plain positive whole number, and a hostile pid_max leaves a sandbox run a share of at least one process or no limit"
   },
   {
    "id": "parser:scrape/seen.py",
@@ -9440,36 +9454,6 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine"
    ],
    "note": "The shared UI-header boundary and prejoin discovery boundary are attacked; individual preference, suggestion and member routes lack a complete hostile-request matrix."
-  },
-  {
-   "id": "route:fleet/shard_routes.py:/files/shards",
-   "kind": "route",
-   "source": "fleet/shard_routes.py:answer",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "unmapped",
-   "tests": [],
-   "note": ""
-  },
-  {
-   "id": "route:fleet/shard_routes.py:/files/shards/*",
-   "kind": "route",
-   "source": "fleet/shard_routes.py:answer",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "unmapped",
-   "tests": [],
-   "note": ""
-  },
-  {
-   "id": "route:fleet/shard_routes.py:/shards/v1/*",
-   "kind": "route",
-   "source": "fleet/shard_routes.py:answer",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "unmapped",
-   "tests": [],
-   "note": ""
   },
   {
    "id": "route:fleet/studio_destinations.py:/ui/studio/*",
@@ -11609,18 +11593,6 @@
    "id": "spawn:fleet/settings.py:_has_battery",
    "kind": "spawn",
    "source": "fleet/settings.py:_has_battery",
-   "trust": "arguments built from model output, member messages or file names",
-   "attacker": "attacker text becomes a command line, environment or working directory",
-   "status": "partial",
-   "tests": [
-    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
-   ],
-   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
-  },
-  {
-   "id": "spawn:fleet/shard_host.py:probe",
-   "kind": "spawn",
-   "source": "fleet/shard_host.py:probe",
    "trust": "arguments built from model output, member messages or file names",
    "attacker": "attacker text becomes a command line, environment or working directory",
    "status": "partial",
