@@ -11,6 +11,7 @@ from pathlib import Path
 
 from poolhouse import (
     authority,
+    authority_caller,
     build_update,
     jobs,
     node_launch,
@@ -23,6 +24,7 @@ from poolhouse import (
     runtime_deploy,
     runtime_git,
     runtime_host,
+    runtime_inputs,
     runtime_launchers,
     runtime_source,
     runtime_stale,
@@ -66,14 +68,21 @@ def plan_from(args: argparse.Namespace, *, deploying: bool = True) -> runtime_de
     primary = runtime_trust.primary_for(_checkout(args.checkout), deploying=deploying,
                                         delegated=getattr(args, "via", "") == authority.DELEGATED)
     exception = getattr(args, "allow_unmerged", False)
-    if exception and person.marked() and (not runtime_unmerged.COMMIT.fullmatch(args.ref)
-                                         or (args.agent and args.agent != os.environ.get(authority.AGENT_ENV))):
-        raise runtime_deploy.DeployError("reviewed runtime deployment needs the full commit SHA and the caller's own identity")
     commit = runtime_deploy.resolve_commit(primary, getattr(args, "ref", "HEAD"))
+    if deploying and person.marked():
+        requested, args.agent = args.agent, ""
+        args.agent = runtime_unmerged.current_actor(primary).name
+        previous = getattr(args, "_reviewed_approval", None)
+        if isinstance(previous, runtime_unmerged.Approval) and previous.actor != args.agent:
+            raise runtime_deploy.DeployError("the runtime approval belongs to another agent")
+        if requested and requested != args.agent:
+            raise runtime_deploy.DeployError("runtime deployment needs the caller's own identity")
     if exception and person.marked():
-        exception = runtime_unmerged.approve(primary, commit, args.review_branch)
+        exception = getattr(args, "_reviewed_approval", None) or runtime_unmerged.approve(primary, commit, args.review_branch)
     if deploying:
         runtime_deploy.admit(primary, commit, allow_unmerged=exception)
+    if isinstance(exception, runtime_unmerged.Approval):
+        args.ref, args.review_branch, args._reviewed_approval = commit, exception.branch, exception
     baseline = json.loads(args.automatic_from) if getattr(args, "automatic_from", "") else None
     if baseline is not None and (not isinstance(baseline, list) or len(baseline) not in (0, 5)
                                  or any(not isinstance(value, str) for value in baseline)):
@@ -116,14 +125,18 @@ def _again(args: argparse.Namespace) -> list[str]:
 
 def _audited(args: argparse.Namespace, command: str, plan: runtime_deploy.Plan, result: str, detail: str = "") -> None:
     verb = f"{command} --force-build" if getattr(args, "force_build", False) else command
-    runtime_trust.audit(verb, plan.commit, result, agent=args.agent, detail=detail, via=getattr(args, "via", ""))
+    runtime_trust.audit(verb, plan.commit, result, agent=args.agent, detail=detail,
+                        via=getattr(args, "via", ""), source=str(plan.checkout))
 
 
 def _ensure(args: argparse.Namespace) -> int:
+    if getattr(args, "hook_refresh", False) and authority_caller.is_live_child(
+            cwd=_checkout(args.checkout), asserted_name=args.agent):
+        return 0
     if args.settle and not args.now and not getattr(args, "automatic_from", ""):
         args.automatic_from = json.dumps(runtime_deploy.automatic_selection())
     if not args.background:
-        args.via = runtime_trust.authorize("ensure")
+        args.via = runtime_trust.authorize("ensure", cwd=_checkout(args.checkout))
     if args.allow_unmerged:
         if args.background:
             raise runtime_deploy.DeployError("--allow-unmerged builds in the foreground")
@@ -136,6 +149,12 @@ def _ensure(args: argparse.Namespace) -> int:
         return 0
     if args.background:
         settled = runtime_deploy.settled(plan)
+        if (not settled and getattr(args, "hook_refresh", False) and not args.force and not args.force_build
+                and (same := _documentation_refresh(plan)) is not None):
+            detail = f"automatic documentation-only refresh omitted; built from {same.commit[:7]}"
+            say(f"source {plan.commit[:7]}: {detail}")
+            _audited(args, "ensure --background", plan, "documentation-refresh-omitted", detail)
+            return 0
         if settled:
             say(f"runtime {plan.commit[:7]} is {settled}")
         elif _building():
@@ -152,12 +171,38 @@ def _ensure(args: argparse.Namespace) -> int:
     return 0 if _run(args, plan).ok else 1
 
 
+def _documentation_refresh(plan: runtime_deploy.Plan) -> runtime.Runtime | None:
+    """A healthy unchanged selection eligible for documentation-only automatic refresh omission."""
+    chosen = runtime_deploy.healthy(plan)
+    if chosen is None or chosen.commit == plan.commit:
+        return None
+    before = runtime_deploy.automatic_selection()
+    expected = (str(chosen.prefix), chosen.commit, chosen.version, chosen.identity, str(runtime_store.epoch_of(chosen.prefix)))
+    if (before != expected or (plan.automatic_from is not None and plan.automatic_from != before)
+            or not runtime_inputs.documentation_only(plan.checkout, chosen.commit, plan.commit)):
+        return None
+    if (runtime_deploy.resolve_commit(plan.checkout) != plan.commit
+            or runtime_deploy.automatic_selection() != before
+            or runtime_deploy.healthy(plan) != chosen):
+        return None
+    return chosen
+
+
 def _planned(args: argparse.Namespace) -> runtime_deploy.Plan | None:
     """The plan for the checkout's tip; none when the tip is not on the remote yet and a waiter for its push builds it."""
     try:
         return plan_from(args)
     except runtime_source.Unpublished as exc:
         if args.background:
+            if getattr(args, "hook_refresh", False) and not args.force and not args.force_build:
+                prospective = plan_from(args, deploying=False)
+                if (prospective.checkout == exc.checkout and prospective.commit == exc.commit
+                        and (same := _documentation_refresh(prospective)) is not None):
+                    detail = ("unpublished source; no deployment: automatic documentation-only refresh omitted; "
+                              f"built from {same.commit[:7]}")
+                    say(f"source {prospective.commit[:7]}: {detail}")
+                    _audited(args, "ensure --background", prospective, "unpublished-documentation-refresh-omitted", detail)
+                    return None
             _awaiting(args, exc)
             return None
         if not args.await_published:
@@ -171,7 +216,7 @@ def _awaited(args: argparse.Namespace) -> runtime_deploy.Plan:
         plan = runtime_await.following(lambda: plan_from(args), args.await_published)
     except Busy:
         raise runtime_deploy.DeployError("not built: another runtime build is already waiting for a push") from None
-    args.via = runtime_trust.authorize("ensure")
+    args.via = runtime_trust.authorize("ensure", cwd=plan.checkout)
     return plan
 
 
@@ -209,7 +254,7 @@ def _pin(args: argparse.Namespace) -> int:
 def _run(args: argparse.Namespace, plan: runtime_deploy.Plan) -> runtime_deploy.Outcome:
     previous = str(runtime_store.selection().get("commit", ""))
     outcome = runtime_deploy.ensure(plan, force=args.force, force_build=args.force_build,
-                                    after_wait=lambda: runtime_trust.authorize("ensure"))
+                                    after_wait=lambda: runtime_trust.authorize("ensure", cwd=plan.checkout))
     if outcome.action in ("switched", "recovered"):
         allowed = (plan.allow_unmerged if isinstance(plan.allow_unmerged, runtime_unmerged.Approval) else plan.commit) \
             if plan.allow_unmerged and outcome.commit == plan.commit else ""
@@ -239,7 +284,7 @@ def _settled(args: argparse.Namespace) -> int:
 
 
 def _rollback(args: argparse.Namespace) -> int:
-    args.via = runtime_trust.authorize("rollback")
+    args.via = runtime_trust.authorize("rollback", cwd=_checkout(args.checkout))
     previous = str(runtime_store.selection().get("commit", ""))
     plan = plan_from(args)
     outcome = runtime_deploy.rollback(plan, args.to)
@@ -284,6 +329,8 @@ def _verdict(plan: runtime_deploy.Plan) -> str:
     settled = runtime_deploy.settled(plan)
     if settled == "held":
         return f"held, ensure will not build {plan.commit[:7]} until the branch moves"
+    if not settled and (same := _documentation_refresh(plan)) is not None:
+        return f"automatic documentation-only refresh would be omitted; built from {same.commit[:7]}"
     return "yes" if settled else f"no, ensure would build {plan.commit[:7]}"
 
 
@@ -362,13 +409,14 @@ COMMON = [
 GROUP = Group("poolhouse runtime", "Build, verify and select the installed runtime from the source checkout; status; rollback.")
 GROUP.add("ensure", _reported(_ensure), help="make the checkout's commit the selected runtime", options=[
     *COMMON, flag("--ref", default="HEAD"),
+    flag("--hook-refresh", action="store_true", help=argparse.SUPPRESS),
     flag("--automatic-from", default="", help=argparse.SUPPRESS),
     flag("--boundary-wait", type=float, default=runtime_git.BOUNDARY_WAIT_S,
-         help="seconds to wait for a landing to finish before the cutover; the refusal names who holds the boundary"),
+         help="seconds to wait for another cutover to finish; the refusal names who holds the boundary"),
     flag("--await-published", type=float, default=0.0, help=argparse.SUPPRESS),
     flag("--force", action="store_true", help="rebuild even when held or current"),
-    flag("--allow-unmerged", action="store_true", help="deploy an exact independently reviewed source commit while delegated, or confirm at a terminal"),
-    flag("--review-branch", default="", help="the branch whose exact commit an independent landing review accepted, for a delegated source deployment"),
+    flag("--allow-unmerged", action="store_true", help="deploy the exact source commit using its standing independent approval"),
+    flag("--review-branch", default="", help="the reviewed branch (default: find a standing review of the exact commit)"),
     flag("--force-build", action="store_true", help="build again at once after a failed build (needs an agent)"),
     flag("--now", action="store_true", help="skip the stability delay before a background build"),
     flag("--settle", action="store_true", help="wait until the tip has been unchanged for a few minutes, then build only the newest tip"),

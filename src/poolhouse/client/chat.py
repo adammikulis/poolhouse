@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from poolhouse import procscan
 from poolhouse.client import families
 from poolhouse.client.families import Family
 from poolhouse.client.health import reported_models
@@ -616,11 +617,8 @@ class Client:
         port = _port_of(self.base_url)
         if self.api == "ollama":
             return ollama.processes(port)
-        import psutil
-
         pids: list[int] = []
-        for process in psutil.process_iter(["pid", "name", "cmdline"]):
-            info = getattr(process, "info", None) or {}
+        for process, info in procscan.readable(["pid", "name", "cmdline"]):
             if "llama-server" not in str(info.get("name") or ""):
                 continue
             argv = [str(a) for a in (info.get("cmdline") or [])]

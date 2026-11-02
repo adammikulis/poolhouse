@@ -150,7 +150,7 @@ fn a_pool_is_folded_again_when_a_hold_or_a_delegate_ends_and_not_for_the_time_th
     g.clock.advance_ms(10_000);
     assert!(!g.tick());
     assert_eq!(g.folds(), folds, "the hold has not run");
-    g.clock.advance_ms(25 * HOUR);
+    g.clock.advance_ms(HELD);
     assert!(g.tick(), "the hold ran out");
     assert!(admins(&g).contains(&public(2)));
 }

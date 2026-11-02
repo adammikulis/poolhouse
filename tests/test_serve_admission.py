@@ -15,18 +15,19 @@ import time
 from pathlib import Path
 
 import pytest
+from model_approval import approved
 
-from poolhouse import leasetable, limits
+from poolhouse import leasetable, limits, sentinel
+from poolhouse.client import reported_models, serving_params
 from poolhouse.serve import admission
 from poolhouse.serve.backend import LlamaServerBackend, ServerBackend, ServerInfo, ServerSpec
 from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.manager import ServerManager
 from poolhouse.serve.ports import free_port
 from poolhouse.serve.process import pid_exists
-from poolhouse.testing.fakes import FakeLlamaServer, Served, fake_llama_binary
+from poolhouse.testing.canned import CANNED_MODEL_ID, Canned, CannedServer, canned_binary
 from poolhouse.testing.registry import record_server
 from poolhouse.ui.verdict import THRESHOLDS
-from tests.model_approval import approved
 
 pytest_plugins = ["serve_node"]
 pytestmark = pytest.mark.usefixtures("serve_leases")
@@ -36,13 +37,13 @@ SRC = str(Path(__file__).resolve().parent.parent / "src")
 
 
 class ServedBackend(ServerBackend):
-    """Starts a child process and a llama-server look-alike on the port asked for."""
+    """Starts a child process and a canned llama-server look-alike on the port asked for."""
 
     name = "fake"
 
     def __init__(self) -> None:
         self.started: list[ServerSpec] = []
-        self.fakes: list[FakeLlamaServer] = []
+        self.fakes: list[CannedServer] = []
         self.processes: list[subprocess.Popen] = []
 
     def command(self, spec: ServerSpec) -> list[str]:
@@ -53,8 +54,8 @@ class ServedBackend(ServerBackend):
         process = subprocess.Popen(["sleep", "120"])
         self.processes.append(process)
         slots = max(1, int(spec.parallel or 1))
-        self.fakes.append(FakeLlamaServer(Served(
-            model=Path(str(spec.model)).name, context=int(spec.context), slots=slots),
+        self.fakes.append(CannedServer(Canned(
+            served_path=Path(str(spec.model)).name, context=int(spec.context), slots=slots),
             port=spec.port))
         return ServerInfo(base_url=f"http://127.0.0.1:{spec.port}", port=spec.port,
                           pid=process.pid, backend=self.name, process=process)
@@ -96,6 +97,14 @@ def spec(path: Path, **fields) -> ServerSpec:
     return ServerSpec(model=path, port=free_port(), context=4096, **fields)
 
 
+def test_a_leased_server_reports_the_canned_id_and_the_file_it_holds(tmp_path, backend, machine):
+    """Admission reads a server by what it says; a plumbing server says it is not a model."""
+    path = weights(tmp_path, "qwen.gguf", 1)
+    info = manager(tmp_path, backend).lease(spec(path))
+    assert reported_models(info.base_url) == [CANNED_MODEL_ID]
+    assert serving_params(info.base_url).model == "qwen.gguf"
+
+
 def test_servers_that_fit_run_together_and_a_third_that_does_not_is_refused(
         tmp_path, backend, machine):
     told: list[str] = []
@@ -107,6 +116,8 @@ def test_servers_that_fit_run_together_and_a_third_that_does_not_is_refused(
     b = held.lease(spec(second))
     assert a.port != b.port and pid_exists(a.pid) and pid_exists(b.pid)
 
+    approved(third)
+    assert sentinel.default().verify_before_load(third, cached=True)
     began = time.monotonic()
     with pytest.raises(admission.AdmissionRefused) as why:
         held.lease(spec(third))
@@ -256,7 +267,7 @@ def test_two_processes_that_do_not_fit_together_do_not_both_start(tmp_path, mach
                                                                     monkeypatch):
     """The second process is refused while the first, which has been killed, leaves its
     server running; then that leaked server is stopped and the second one starts."""
-    binary = fake_llama_binary(tmp_path)
+    binary = canned_binary(tmp_path)
     first = approved(weights(tmp_path, "first.gguf", 6))
     second = weights(tmp_path, "second.gguf", 6)
     code = ("import sys, time\n"

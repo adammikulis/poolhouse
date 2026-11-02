@@ -1,0 +1,202 @@
+# Private proposal metadata only; not an on-disk schema, ledger, authority proof or recovery API.
+version = 1
+status = "proposal"
+operation = []
+
+[[type]]
+name = "StateStoreId"
+kind = "scalar"
+visibility = "private"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "StateTransactionId"
+kind = "scalar"
+visibility = "private"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "StateRecordId"
+kind = "scalar"
+visibility = "private"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "StateCheckpointId"
+kind = "scalar"
+visibility = "private"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "StateEffectId"
+kind = "scalar"
+visibility = "private"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "StateProtectionDomainId"
+kind = "scalar"
+visibility = "private"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "StateContentDigest"
+kind = "scalar"
+visibility = "private"
+encoding = "hex32"
+issuer = "node"
+
+[[type]]
+name = "StateAwakeMillis"
+kind = "scalar"
+visibility = "private"
+encoding = "u64"
+issuer = "node"
+minimum = 0
+maximum = 9223372036854775807
+
+[[type]]
+name = "StateOwnerBoundary"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "node_service", type = "Empty"}, {tag = "protected_helper", type = "Empty"}, {tag = "worker_private_spool", type = "Empty"}, {tag = "disposable_ui_cache", type = "Empty"}]
+
+[[type]]
+name = "StateRecordClass"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "signed_governance", type = "Empty"}, {tag = "signed_board", type = "Empty"}, {tag = "verifier_observation", type = "Empty"}, {tag = "approval_control", type = "Empty"}, {tag = "local_settings", type = "Empty"}, {tag = "durable_job", type = "Empty"}, {tag = "resource_custody", type = "Empty"}, {tag = "content_asset", type = "Empty"}, {tag = "ui_cache", type = "Empty"}]
+
+[[type]]
+name = "StateStoreBinding"
+kind = "record"
+visibility = "private"
+fields = [{name = "store_id", type = "StateStoreId"}, {name = "installation_id", type = "InstallationId"}, {name = "device_id", type = "DeviceId"}, {name = "generation", type = "ResourceGeneration"}, {name = "protection_domain", type = "StateProtectionDomainId"}]
+
+[[type]]
+name = "StatePoolScope"
+kind = "record"
+visibility = "private"
+fields = [{name = "pool_id", type = "PoolId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "StateBoardScope"
+kind = "record"
+visibility = "private"
+fields = [{name = "pool_id", type = "PoolId"}, {name = "pool_generation", type = "ResourceGeneration"}, {name = "board_id", type = "BoardId"}, {name = "board_generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "StateJobScope"
+kind = "record"
+visibility = "private"
+fields = [{name = "job_id", type = "JobId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "StateScope"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "installation", type = "Empty"}, {tag = "pool", type = "StatePoolScope"}, {tag = "board", type = "StateBoardScope"}, {tag = "job", type = "StateJobScope"}]
+
+[[type]]
+name = "StateRecordBinding"
+kind = "record"
+visibility = "private"
+fields = [{name = "store", type = "StateStoreBinding"}, {name = "scope", type = "StateScope"}, {name = "record_id", type = "StateRecordId"}, {name = "record_class", type = "StateRecordClass"}, {name = "owner", type = "StateOwnerBoundary"}, {name = "revision", type = "U64"}, {name = "content_digest", type = "StateContentDigest"}]
+
+[[type]]
+name = "StateTransactionBinding"
+kind = "record"
+visibility = "private"
+fields = [{name = "store", type = "StateStoreBinding"}, {name = "scope", type = "StateScope"}, {name = "transaction_id", type = "StateTransactionId"}, {name = "operation_id", type = "OperationId"}, {name = "expected_revision", type = "U64"}, {name = "revision", type = "U64"}, {name = "mutation_digest", type = "StateContentDigest"}]
+
+[[type]]
+name = "StateCommitState"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "prepared", type = "Empty"}, {tag = "committed", type = "Empty"}, {tag = "cancelled_before_commit", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "StateEffectState"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "not_required", type = "Empty"}, {tag = "pending", type = "Empty"}, {tag = "performed", type = "Empty"}, {tag = "failed", type = "Empty"}, {tag = "outcome_unknown", type = "Empty"}, {tag = "reconciled", type = "Empty"}]
+
+[[type]]
+name = "StateOptionalCheckpointId"
+kind = "optional"
+visibility = "private"
+item = "StateCheckpointId"
+
+[[type]]
+name = "StateOptionalContentDigest"
+kind = "optional"
+visibility = "private"
+item = "StateContentDigest"
+
+[[type]]
+name = "StateCommitReceipt"
+kind = "record"
+visibility = "private"
+fields = [{name = "binding", type = "StateTransactionBinding"}, {name = "state", type = "StateCommitState"}, {name = "checkpoint_id", type = "StateOptionalCheckpointId"}]
+
+[[type]]
+name = "StateEffectReceipt"
+kind = "record"
+visibility = "private"
+fields = [{name = "binding", type = "StateTransactionBinding"}, {name = "effect_id", type = "StateEffectId"}, {name = "state", type = "StateEffectState"}, {name = "result_digest", type = "StateOptionalContentDigest"}]
+
+[[type]]
+name = "StateBootUptime"
+kind = "record"
+visibility = "private"
+fields = [{name = "boot_count", type = "U64"}, {name = "uptime_ms", type = "U64"}]
+
+[[type]]
+name = "StateClockBasis"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "process_checkpoint", type = "Empty"}, {tag = "boot_uptime", type = "StateBootUptime"}]
+
+[[type]]
+name = "StateAwakeCheckpoint"
+kind = "record"
+visibility = "private"
+fields = [{name = "awake_ms", type = "StateAwakeMillis"}, {name = "basis", type = "StateClockBasis"}]
+
+[[type]]
+name = "StateObservationTime"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "local_awake", type = "StateAwakeMillis"}, {tag = "admitted_join_history", type = "StateRecordId"}]
+
+[[type]]
+name = "StateObservationCheckpoint"
+kind = "record"
+visibility = "private"
+fields = [{name = "binding", type = "StateStoreBinding"}, {name = "checkpoint_id", type = "StateCheckpointId"}, {name = "scope", type = "StateScope"}, {name = "revision", type = "U64"}, {name = "observations_digest", type = "StateContentDigest"}, {name = "awake", type = "StateAwakeCheckpoint"}]
+
+[[type]]
+name = "StateRollbackFence"
+kind = "record"
+visibility = "private"
+fields = [{name = "checkpoint", type = "StateObservationCheckpoint"}, {name = "authority_root", type = "AuthorityRootId"}, {name = "authority_generation", type = "AuthorityGeneration"}, {name = "witness_domain", type = "StateProtectionDomainId"}, {name = "witness_revision", type = "U64"}, {name = "witness_digest", type = "StateContentDigest"}]
+
+[[type]]
+name = "StateRecoveryDisposition"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "ready", type = "Empty"}, {tag = "reconcile_required", type = "Empty"}, {tag = "refuse_missing", type = "Empty"}, {tag = "refuse_corrupt", type = "Empty"}, {tag = "refuse_rollback", type = "Empty"}, {tag = "refuse_wrong_owner", type = "Empty"}, {tag = "refuse_incompatible", type = "Empty"}]

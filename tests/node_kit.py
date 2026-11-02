@@ -60,7 +60,6 @@ def runner_binary() -> Path:
 @pytest.fixture(scope="session")
 def node_binary(tmp_path_factory) -> Path:
     """The runner's node binary, copied to a folder of this session's own."""
-    node_orphans.reap()
     mine = tmp_path_factory.mktemp("node") / "poolhouse-node"
     shutil.copy2(runner_binary(), mine)
     return mine

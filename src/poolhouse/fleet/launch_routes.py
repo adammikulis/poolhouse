@@ -3,9 +3,8 @@ terminal, or from an already credentialed UI session."""
 
 from __future__ import annotations
 
-from . import invite_routes
 from .launch_secret import HEADER
-from .session import parse_cookie
+from .session import local, parse_cookie
 
 
 class LaunchRoutes:
@@ -16,7 +15,7 @@ class LaunchRoutes:
             self.send(405, {'error': 'POST required'})
             return True
         ui, source = self.ui, self.client_ip
-        if (ui.launch is None or not invite_routes.local(source) or not ui.host_ok(self.host_header)
+        if (ui.launch is None or not local(source) or not ui.host_ok(self.host_header)
                 or self.header('Origin') or self.header('Sec-Fetch-Site')):
             self.send(403, {'error': 'a launch ticket is asked for by this machine itself'})
             return True

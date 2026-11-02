@@ -125,7 +125,6 @@ Run 1, by cause (setup + call + teardown, seconds summed over 10,169 timed phase
 29.1 s tests/test_onboard_cli.py
 28.1 s tests/test_ingest_sources.py
 27.6 s tests/test_graph_tidy.py
-26.5 s tests/test_ingest_migrate.py
 26.1 s tests/test_fleet_bench.py
 25.6 s tests/test_ingest_ask.py
 24.9 s tests/test_graph_serve.py

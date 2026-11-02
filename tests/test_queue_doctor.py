@@ -65,16 +65,29 @@ def test_a_job_whose_runner_is_gone_is_recorded_as_failed(tmp_path):
     assert status["state"] == "failed" and "its runner process is gone" in status["detail"]
 
 
-def test_a_job_with_no_owner_is_ended_on_sight_even_while_it_writes_output(tmp_path):
+def test_a_local_process_job_survives_a_doctor_sweep(tmp_path):
+    jobs = testjobs.Jobs(tmp_path)
+    process = sleeper()
+    try:
+        name = job(tmp_path, "local", created=time.time(), log_age=1, process=process)
+        jobs.write(name, "spec.json", {"id": name, "owner": {"id": "", "source": "local-process",
+                                                                  "pid": os.getpid(), "started": storage.process_start(os.getpid())}})
+        assert queue_doctor.sweep(jobs, sleep=lambda _: None) == []
+        assert process.poll() is None and jobs.read(name)["state"] == "running"
+    finally:
+        process.kill()
+
+
+def test_a_job_with_no_owner_is_not_signalled(tmp_path):
     jobs = testjobs.Jobs(tmp_path)
     process = sleeper()
     try:
         name = job(tmp_path, "j0", created=time.time(), log_age=1, process=process)
         (tmp_path / "jobs" / name / "spec.json").write_text(json.dumps({"id": name, "created": time.time(), "owner": {}}))
         said = []
-        assert queue_doctor.sweep(jobs, say=said.append, sleep=lambda s: process.wait(timeout=10)) == [name]
-        assert process.poll() is not None
-        assert jobs.read(name)["state"] == "failed" and "it has no owner" in jobs.read(name)["detail"]
+        assert queue_doctor.sweep(jobs, say=said.append, sleep=lambda s: None) == []
+        assert process.poll() is None
+        assert jobs.read(name)["state"] == "running" and any("it has no owner" in line for line in said)
     finally:
         process.kill()
 
@@ -130,7 +143,8 @@ def test_a_stray_entry_in_the_jobs_folder_does_not_stop_the_pass(tmp_path):
         name = job(tmp_path, "j6", created=time.time() - 3000, log_age=5, process=process)
         (tmp_path / "jobs" / name / "spec.json").write_text(json.dumps({"id": name, "created": time.time(), "owner": {}}))
         said = []
-        assert queue_doctor.sweep(jobs, say=said.append, sleep=lambda s: process.wait(timeout=10)) == [name]
+        assert queue_doctor.sweep(jobs, say=said.append, sleep=lambda s: None) == []
+        assert process.poll() is None
         assert any("stray.dir" in line for line in said)
     finally:
         process.kill()

@@ -6,6 +6,8 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
+from poolhouse.macauth import PREFIX
+
 __all__ = ["MASK", "redact", "redact_value"]
 
 MASK = "<redacted>"
@@ -17,7 +19,7 @@ _PATTERNS: tuple[re.Pattern[str], ...] = (
                re.S),
     re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{8,}"),
     re.compile(r"Poolhouse-MAC\s+[^\n]*"),
-    re.compile(r"\bmlsk1\.[A-Za-z0-9_-]{8,}"),
+    re.compile(rf"\b{re.escape(PREFIX)}[A-Za-z0-9_-]{{8,}}"),
     re.compile(r"\bhf_[A-Za-z0-9]{16,}"),
     re.compile(r"\bgh[pousr]_[A-Za-z0-9]{16,}|\bgithub_pat_[A-Za-z0-9_]{16,}"),
     re.compile(r"\bsk-(?:ant-)?[A-Za-z0-9_-]{16,}"),

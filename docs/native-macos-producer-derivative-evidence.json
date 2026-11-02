@@ -1,0 +1,262 @@
+{
+  "record_id": "macos-producer-version-comparison-2026-10-23T21:29:13Z",
+  "observed_utc": "2026-10-23T21:29:13.634003+00:00",
+  "checkpoint_status": {
+    "all_eight_version_cases_exit_zero": true,
+    "loader_positive_controls": "marker executed for both variants",
+    "original_injected_markers": "executed for both variants",
+    "derivative_injected_markers": "not observed for both variants",
+    "live_process_identity": "unverified",
+    "live_protection": "unverified",
+    "live_server": "unverified",
+    "H": "unfinished",
+    "installed": false,
+    "native_admission": false,
+    "publisher_identity_established": false,
+    "active_host_replaced_or_restarted": false
+  },
+  "scope": "Isolated --version observations of separately copied artifacts signed ad hoc with the runtime option. This is not server, actor, trust or admission proof.",
+  "original_evidence": {
+    "path": "native-macos-producer-evidence.json",
+    "sha256": "50b7238a25ca485263aaac31fb1ab78ae2ae76f2019fe952a7717d6be60d0aa5",
+    "server_dyld_failures": "preserved for both original artifacts; this version experiment does not supersede them"
+  },
+  "source": {
+    "revision": "6aaac694803004a63c6f393d153c96d22521a6b9",
+    "patches": [
+      {
+        "path": "0001-harden-producer-entrypoints.patch",
+        "sha256": "fa8b66bdc178b9649fc1f30dd9d65a6f626536f4f6d0bf1f3e4ee43fcd4ac022"
+      },
+      {
+        "path": "0002-retain-native-session-context.patch",
+        "sha256": "8ab2fdc96d34ab5c8e5acf51b9b4addeb3a6c879b1a3dc76636669ab53200578"
+      }
+    ]
+  },
+  "host": {
+    "os": "macOS",
+    "version": "26.6",
+    "build": "25G70",
+    "architecture": "arm64",
+    "original_package_profile": "dev-small"
+  },
+  "retained_evidence": {
+    "codex-mac-version-checkpoint.json": "4d6bad1be417d4393e92447dbd66eea9f2d53d025b44e6d55a9f2036f9cc4933",
+    "version_runner_sha256": "c27788f0815c1eb1b7d46b4d1dd561c38c4491456783bd5d55c19a2fe534030d",
+    "original_probe_runner_sha256": "5b6171652971e857cf21d9abb34adccbc3115c5c8bb19d9baf9b0e594a2401b9",
+    "helper_sha256": "82ba2135aed4cd362fba02baa702d743c0a771574a06f15dc1c9930a89e51c43",
+    "loader_sha256": "cacb7a6758a96bdae13e39369262ef9fb5606f0852d65d545ab49b39049efa6d"
+  },
+  "variants": [
+    {
+      "variant": "codex",
+      "copy": {
+        "original_sha256": "40a7769c664a5ac81a848830636b75b08c5cc2ea74b9dc2cab26cd3579380412",
+        "before_sign_sha256": "40a7769c664a5ac81a848830636b75b08c5cc2ea74b9dc2cab26cd3579380412",
+        "after_sign_sha256": "385f219934714b0a95a74967792ee2ad7ecb750195bfaf2ce135ed46b6a728f4",
+        "mode": "0o700",
+        "hard_links": 1,
+        "original_unchanged_after_sign": true,
+        "original_unchanged_final": true
+      },
+      "sign_command": [
+        "/usr/bin/codesign",
+        "--force",
+        "--sign",
+        "-",
+        "--options",
+        "runtime",
+        "--timestamp=none",
+        "<EVIDENCE_ROOT>/version-derivative-cli/codex"
+      ],
+      "verify_command": [
+        "/usr/bin/codesign",
+        "--verify",
+        "--strict",
+        "<EVIDENCE_ROOT>/version-derivative-cli/codex"
+      ],
+      "signature": {
+        "verification": "strict verification exit0",
+        "flags": "0x10002",
+        "runtime_flag_observed": true,
+        "entitlement_document": "absent: successful codesign emitted no entitlement document",
+        "options": "ad-hoc runtime timestamp=none; no entitlements or preserve-metadata",
+        "details_sha256": "800778dd94b03416f203180f7194c89aa78364d18a65b103f47afec8c70f7e00"
+      },
+      "probe_command": [
+        "python3",
+        "scripts/testslots.py",
+        "run",
+        "--want",
+        "1",
+        "--min",
+        "1",
+        "--label",
+        "Mac codex isolated version boundary",
+        "--",
+        "python3",
+        "<EVIDENCE_ROOT>/probes/version_boundary.py",
+        "--manifest",
+        "<EVIDENCE_ROOT>/probe-manifest-codex.json",
+        "--execute"
+      ],
+      "cwd": "<POOLHOUSE_SOURCE>",
+      "result_json": "version-result-codex.json",
+      "result_sha256": "3b66f079195141ac63c13ff1896190036f01e98b3cffb7d74c9df52202177dc4",
+      "loader_positive_control": {
+        "exit": null,
+        "marker": true
+      },
+      "cases": {
+        "derivative-baseline": {
+          "exit": 0,
+          "timeout": false,
+          "loader_marker": false,
+          "artifact_unchanged": true,
+          "live_identity": "unverified: short entrypoint only"
+        },
+        "derivative-injected": {
+          "exit": 0,
+          "timeout": false,
+          "loader_marker": false,
+          "artifact_unchanged": true,
+          "live_identity": "unverified: short entrypoint only"
+        },
+        "original-baseline": {
+          "exit": 0,
+          "timeout": false,
+          "loader_marker": false,
+          "artifact_unchanged": true,
+          "live_identity": "unverified: short entrypoint only"
+        },
+        "original-injected": {
+          "exit": 0,
+          "timeout": false,
+          "loader_marker": true,
+          "artifact_unchanged": true,
+          "live_identity": "unverified: short entrypoint only"
+        }
+      },
+      "live_process_identity": "unverified",
+      "live_server": "unverified",
+      "H": "unfinished"
+    },
+    {
+      "variant": "codex-app-server",
+      "copy": {
+        "original_sha256": "cd0c7ccff1eb965f0852521533159d3105ca8c729f3ccea26a8946a856ec3a9c",
+        "before_sign_sha256": "cd0c7ccff1eb965f0852521533159d3105ca8c729f3ccea26a8946a856ec3a9c",
+        "after_sign_sha256": "e70b23215ca48f937ae4bf95d736e724cfe3fbf39863a58bcb5c14ad749b3c75",
+        "mode": "0o700",
+        "hard_links": 1,
+        "original_unchanged_after_sign": true,
+        "original_unchanged_final": true
+      },
+      "sign_command": [
+        "/usr/bin/codesign",
+        "--force",
+        "--sign",
+        "-",
+        "--options",
+        "runtime",
+        "--timestamp=none",
+        "<EVIDENCE_ROOT>/version-derivative-standalone/codex-app-server"
+      ],
+      "verify_command": [
+        "/usr/bin/codesign",
+        "--verify",
+        "--strict",
+        "<EVIDENCE_ROOT>/version-derivative-standalone/codex-app-server"
+      ],
+      "signature": {
+        "verification": "strict verification exit0",
+        "flags": "0x10002",
+        "runtime_flag_observed": true,
+        "entitlement_document": "absent: successful codesign emitted no entitlement document",
+        "options": "ad-hoc runtime timestamp=none; no entitlements or preserve-metadata",
+        "details_sha256": "d3aa42087df1ad61e6d0b64eb4c2632f064ccaed5ad1f057256bf2b531926a25"
+      },
+      "probe_command": [
+        "python3",
+        "scripts/testslots.py",
+        "run",
+        "--want",
+        "1",
+        "--min",
+        "1",
+        "--label",
+        "Mac codex-app-server isolated version boundary",
+        "--",
+        "python3",
+        "<EVIDENCE_ROOT>/probes/version_boundary.py",
+        "--manifest",
+        "<EVIDENCE_ROOT>/probe-manifest-codex-app-server.json",
+        "--execute"
+      ],
+      "cwd": "<POOLHOUSE_SOURCE>",
+      "result_json": "version-result-codex-app-server.json",
+      "result_sha256": "38ba1ea1e7438cdccb4565ece9c246413e06c114055f0b03ba9dad65e5b51af7",
+      "loader_positive_control": {
+        "exit": null,
+        "marker": true
+      },
+      "cases": {
+        "derivative-baseline": {
+          "exit": 0,
+          "timeout": false,
+          "loader_marker": false,
+          "artifact_unchanged": true,
+          "live_identity": "unverified: short entrypoint only"
+        },
+        "derivative-injected": {
+          "exit": 0,
+          "timeout": false,
+          "loader_marker": false,
+          "artifact_unchanged": true,
+          "live_identity": "unverified: short entrypoint only"
+        },
+        "original-baseline": {
+          "exit": 0,
+          "timeout": false,
+          "loader_marker": false,
+          "artifact_unchanged": true,
+          "live_identity": "unverified: short entrypoint only"
+        },
+        "original-injected": {
+          "exit": 0,
+          "timeout": false,
+          "loader_marker": true,
+          "artifact_unchanged": true,
+          "live_identity": "unverified: short entrypoint only"
+        }
+      },
+      "live_process_identity": "unverified",
+      "live_server": "unverified",
+      "H": "unfinished"
+    }
+  ],
+  "startup_diagnostic": {
+    "variant": "codex",
+    "artifact_sha256": "40a7769c664a5ac81a848830636b75b08c5cc2ea74b9dc2cab26cd3579380412",
+    "scope": "Original CLI strict baseline; no attach or insertion",
+    "observed_utc": "2026-10-23T21:23:54.586006+00:00",
+    "summary": "A macOS managed preferences refresh failure and generic fatal EPERM were observed; the exact later fatal call remains unresolved.",
+    "diagnosis_metadata_sha256": "48651f113e9bb6737623b54e513688ce0923abddc3e5e0f069d23677bdf727ba",
+    "result_metadata_sha256": "7b21e1e3b714069ca3941251c1eb1bc15c50d9a661d39959b4786def040a82c0",
+    "stderr_total_bytes": 210,
+    "stderr_sha256": "ced90a7c81c0005cd3de5bb5b04c9963391ce7f16c30d28c50aa5485198e6b81",
+    "exit_before_cleanup": 1,
+    "unix_listener": false,
+    "sandbox_unchanged": true,
+    "managed_requirements_bypassed": false
+  },
+  "limits": [
+    "No live PID/executable/start binding or listener proof was collected by the short entrypoint experiment.",
+    "No root/child turn, notification delivery, private node admission or completion proof was established.",
+    "An ad-hoc runtime signature and absent marker on --version grant no publisher identity or trust.",
+    "Original artifact hashes and server probe failures remain immutable; later experiments need separate records.",
+    "Raw captured streams and artifact bytes remain outside Git. Commands use portable placeholders for locally retained reviewed files."
+  ],
+  "remaining_probe_tempdirs": []
+}

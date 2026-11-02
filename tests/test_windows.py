@@ -6,7 +6,6 @@ import errno
 import os
 import platform
 import signal
-import socket
 import subprocess
 import sys
 import textwrap
@@ -403,18 +402,6 @@ class TestPrivateFile:
         private_file(target)
         assert modes == [(target, 0o600)]
 
-    def test_the_pool_key_goes_through_it(self, windows, monkeypatch, tmp_path):
-        """`discovery` used to chmod directly, which on Windows protects nothing."""
-        from poolhouse import platform as platform_module
-        from poolhouse.fleet.discovery import create_pool_key
-
-        ran: list[list[str]] = []
-        monkeypatch.setattr(platform_module.subprocess, "run",
-                            lambda argv, **k: ran.append(list(argv)) or _ok())
-        monkeypatch.setenv("USERNAME", "fixture-user")
-        create_pool_key(tmp_path / "pool.key", group="poolhouse")
-        assert any(argv[0] == "icacls" and argv[1].endswith("pool.json") for argv in ran)
-
 
 # -- starting at logon ---------------------------------------------------------------
 @pytest.fixture
@@ -532,58 +519,20 @@ class TestTraindPersist:
 
 
 # -- what the firewall has to let through -------------------------------------------
-class TestDiscoveryAndTheFirewall:
-    def test_beacons_are_udp_multicast_and_broadcast_on_a_fixed_port(self, monkeypatch):
-        from poolhouse.fleet import discovery
+class TestTheFirewall:
+    def test_the_inbound_rule_names_the_daemons_port(self):
+        from poolhouse.fleet.windows_firewall import line, rules
 
-        monkeypatch.setattr(discovery.lan_policy, "allowed", lambda: True)
-        assert discovery.DEFAULT_GROUP == "239.255.77.70"
-        assert discovery.DEFAULT_PORT == 8771 and discovery.DEFAULT_HTTP_PORT == 8770
-        assert discovery._destinations(discovery.DEFAULT_GROUP, 8771) == [
-            (("239.255.77.70", 8771), ""), (("239.255.77.70", 8771), "127.0.0.1"),
-            (("255.255.255.255", 8771), ""), (("127.0.0.1", 8771), "")]
+        assert rules() == [("Poolhouse", "TCP", 8770)]
+        assert line().endswith("protocol=TCP localport=8770")
+        assert line().count("netsh advfirewall firewall add rule") == 1
+        assert "\n" not in line(), "one line, for one administrator's prompt"
 
-    def test_the_two_inbound_rules_name_the_two_ports(self):
-        from poolhouse.fleet.discovery import windows_firewall_line, windows_firewall_rules
-
-        rules = dict(windows_firewall_rules())
-        assert rules["poolhouse traind"].endswith("protocol=TCP localport=8770")
-        assert rules["poolhouse discovery"].endswith("protocol=UDP localport=8771")
-        line = windows_firewall_line()
-        assert line.count("netsh advfirewall firewall add rule") == 2 and " && " in line
-        assert "\n" not in line, "one line, for one administrator's prompt"
-
-    def test_the_daemon_announces_itself_the_moment_it_starts(self, monkeypatch, tmp_path):
-        """The loop's first beacon is interval_s away. A daemon that has just come up must
-        appear in the next `poolhouse-members ls`, not the one after."""
-        from poolhouse.fleet import discovery
-        from poolhouse.fleet.discovery import Advertiser, Beacon, _verify
-
-        discovery.create_pool_key(tmp_path / "pool.key", group="poolhouse")
-        key = discovery.load_pool_key(tmp_path / "pool.key")
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as ear:
-            ear.bind(("127.0.0.1", 0))
-            ear.settimeout(3.0)
-            heard_on = ear.getsockname()[1]
-            # Unicast to the listener alone, so this is deterministic on any interface.
-            monkeypatch.setattr(discovery, "_destinations",
-                                lambda group, port: [(("127.0.0.1", heard_on), "")])
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-                s.bind(("127.0.0.1", 0))
-                serve_on = s.getsockname()[1]
-            adv = Advertiser(Beacon(name="fixture-box", port=8770), key,
-                             port=serve_on, interval_s=60.0).start()
-            try:
-                raw, _ = ear.recvfrom(65535)
-            finally:
-                adv.stop()
-        msg = _verify(key, raw, kind="beacon")
-        assert msg is not None and msg["beacon"]["name"] == "fixture-box"
-
-    def test_setup_prints_the_netsh_line_until_both_rules_exist(self, windows, monkeypatch):
+    def test_setup_prints_the_netsh_line_until_the_rule_exists(self, windows, monkeypatch):
         from poolhouse import setup
 
         monkeypatch.setattr(setup, "_arches", lambda binary, known=None: set())
+        monkeypatch.setattr(setup, "_fleet_findings", lambda: [])
         monkeypatch.setattr(setup.subprocess, "run",
                             lambda argv, **k: _ok(1, stdout="\nNo rules match the specified criteria.\n"))
 
@@ -592,18 +541,19 @@ class TestDiscoveryAndTheFirewall:
         assert len(found) == 1
         finding = found[0]
         assert not finding.good and finding.root
-        assert "poolhouse traind" in finding.said and "poolhouse discovery" in finding.said
+        assert finding.said == "no inbound rule for Poolhouse"
         assert finding.fix[:2] == ["cmd", "/c"]
         assert "protocol=TCP localport=8770" in finding.fix[2]
-        assert "protocol=UDP localport=8771" in finding.fix[2]
+        assert "UDP" not in finding.fix[2]
         assert "administrator" in finding.note
 
-    def test_setup_is_satisfied_once_netsh_finds_them(self, windows, monkeypatch):
+    def test_setup_is_satisfied_once_netsh_finds_it(self, windows, monkeypatch):
         from poolhouse import setup
 
         monkeypatch.setattr(setup, "_arches", lambda binary, known=None: set())
+        monkeypatch.setattr(setup, "_fleet_findings", lambda: [])
         monkeypatch.setattr(setup.subprocess, "run",
-                            lambda argv, **k: _ok(0, stdout="Rule Name: poolhouse traind\n"))
+                            lambda argv, **k: _ok(0, stdout="Rule Name: Poolhouse\n"))
 
         finding = next(f for f in setup.look() if f.name == "firewall")
         assert finding.good and not finding.fix
@@ -613,10 +563,3 @@ class TestDiscoveryAndTheFirewall:
 
         monkeypatch.setattr(setup, "_arches", lambda binary, known=None: set())
         assert not [f for f in setup.look() if f.name == "firewall"]
-
-    def test_members_init_uses_recovery_on_windows_to_preserve_the_name(self, capsys, tmp_path):
-        from poolhouse.fleet.members import main
-
-        assert main(["--pool-key", str(tmp_path / "pool.key"), "init", "--group", "Cedar lab"]) == 0
-        out = capsys.readouterr().out
-        assert "recovery export" in out and "recovery import" in out and "PowerShell" in out

@@ -24,6 +24,8 @@ struct Waiting {
 pub struct Tally {
     /// How many rows of each origin are counted: the rows before the first one dated too far ahead to be shown.
     done: BTreeMap<String, usize>,
+    /// The seq of the first row of each live segment counted: a log that starts a new segment is counted again.
+    first: BTreeMap<String, u64>,
     waiting: BTreeMap<String, Vec<Waiting>>,
     notes: BTreeMap<String, usize>,
     /// Rows counted since this was made: what keeping the counters has cost.
@@ -37,7 +39,7 @@ impl Tally {
         for origin in board.origins() {
             let rows = board.rows(&origin);
             let from = self.done.get(&origin).copied().unwrap_or(0);
-            if from > rows.len() {
+            if from > rows.len() || self.first.get(&origin).is_some_and(|f| *f != board.first_seq(&origin)) {
                 *self = Tally::default();
                 return self.catch_up(board, names);
             }
@@ -51,6 +53,7 @@ impl Tally {
             let is_local = |n: &str| names.contains(n);
             let (entries, _) = fold(&fresh, Context { own_origin: &own, label: &mut name, is_local: &is_local });
             self.counted += fresh.len() as u64;
+            self.first.insert(origin.clone(), board.first_seq(&origin));
             self.done.insert(origin, cut);
             for e in entries {
                 if e.kind == Kind::Note {

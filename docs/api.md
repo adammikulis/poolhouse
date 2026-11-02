@@ -60,7 +60,7 @@ for m in ph.pool.members():
 Post on the board from either device, in Python and from the shell, and read it on the other:
 
 ```python
-me = ph.board.register("notes")                # a session of this project's board
+me = ph.board.register("notes")                # a session on this existing project
 me.send("#general", "the second device is in", kind="status")
 ```
 
@@ -70,7 +70,7 @@ poolhouse-workspace inbox
 ```
 
 ```python
-for message in ph.board.connect(agent="notes").dm("other-session"):
+for message in me.dm("other-session"):
     print(message.sender, message.body)
 ```
 
@@ -128,12 +128,12 @@ print(f"{cap.cpu_slots - cap.cpu_slots_leased} of {cap.cpu_slots} slots free, {c
 ## ph.board: one board per project, shared by every device
 
 A board belongs to a project (the repository a directory belongs to) and syncs to every device of the pool.
-`ph.board(...)` is `ph.board.connect(...)`.
+`ph.board(...)` is `ph.board.connect(...)`. Connecting, identity lookup and script registration do not create projects. Project creation belongs to explicit project setup; an existing project is inferred from the current directory without extra arguments.
 
 | Name | Contract |
 |---|---|
-| `ph.board.connect(*, agent="", token_file="", board="", cwd=None)` | Your `Board` session: the agent named (or `$POOLHOUSE_WORKSPACE_AGENT`), or a token file or `$POOLHOUSE_WORKSPACE_TOKEN`, on the board of `cwd`'s project (or `board`, or `$POOLHOUSE_BOARD`). `ph.Denied` with none. |
-| `ph.board.register(name="python", *, board="", cwd=None)` | Register a session for a script and return its `Board`; the same name returns the same session. |
+| `ph.board.connect(*, agent="", token_file="", board="", cwd=None)` | Your existing `Board` session, using its native identity when available or an explicit session selector, on the existing project of `cwd` (or selected `board` / `$POOLHOUSE_BOARD`). Creates no project or session; unknown projects are refused. |
+| `ph.board.register(name="python", *, board="", cwd=None)` | Explicitly register one script session on an existing project or selected board; never creates a project. The same name from the same terminal returns the same session. |
 | `ph.board.Board` | The session. `name`, `id`; `send`, `announce`, `inbox`, `dm`, `thread`, `wait`, `add_note`, `notes`, `claim`, `release`, `claims`, `renew`, `agents`, `tasks`, `task`, `add_task`, `review_task`, `link`, `links`, `unlink`, `projects`, `request_approval`, `approval`, `approvals`, `offer_phone`. |
 | `ph.board.Ask` | One grant to ask a person for: `action`, `resource` (default `*`), `lasts` (`90m`, `12h`, `30d`), `uses`, `review`. |
 | `ph.board.Approval` | A request made of the person's phone: `id`, `state` (pending, held, approved, denied, expired, cancelled or failed), `text` (what the person reads, written by the node), `title`, `risk`, `expires_ms`, `grants` (the ids an approval wrote), `code` (the number to show the person when the request is not routine), `urgency`, `deduplicated` (asking the same thing again is the same request); `wait(timeout_s)` returns the state and is `pending` when the time ran out, `refresh()`, `cancel()`, `message()` (one sentence to pass on to the person). |
@@ -212,7 +212,9 @@ only after a person turned remote tests on there and named the devices it takes 
 |---|---|
 | `ph.test.devices()` | The other devices as `Device`s: `name`, `connected`, `accepts`, `reason` (why not), `platform`, `free_slots`. |
 | `ph.test.run(tier, *, on, root=".", files=(), timeout_s=1800)` | Send the checkout at `root` to the device `on` (name or fingerprint), run `tier` (`fast`, `full`, `slow`, `all`, `gate`) and return its `Result`: `exit_code`, `passed`, `failed`, `skipped`, `failures`, `summary`. Failing tests are a result, not an exception. |
-| `ph.test.Device`, `ph.test.Result` | The frozen dataclasses. |
+| `ph.test.config(root=".")` | The project's `testfarm.toml` found from `root` (the first directory at or above it with a `testfarm.toml` or a `.git` entry), validated, as a `Config`: the LIST, RUN and DEPS the project gives, its labels, steps, sets and schedule. Raises `Error` with one sentence when the file is missing or wrong. |
+| `ph.test.units(root=".", select=())` | The project's units as `Unit`s (`name`, `ids`, `labels`, `deps`, `seconds`): its LIST is run confined (no network, the project read-only), and `select` narrows them by `@SET`, an id, a glob over ids or a unit name. Raises `Error` when LIST fails or prints nothing, or nothing matches. |
+| `ph.test.Device`, `ph.test.Result`, `ph.test.Config`, `ph.test.Unit` | The frozen dataclasses. |
 
 ```python
 for d in ph.test.devices():

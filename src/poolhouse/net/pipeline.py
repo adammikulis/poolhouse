@@ -46,6 +46,7 @@ class Ask:
     backoff: float = 0.5
     max_bytes: int = 0
     private: tuple[str, ...] = ()
+    check: Callable[[], None] | None = field(default=None, repr=False, compare=False)
 
 
 ASK = Ask()
@@ -142,7 +143,18 @@ class Pipeline:
         changes: dict[str, object] = {"max_bytes": ask.max_bytes} if ask.max_bytes else {}
         if ask.private:
             changes["allow_hosts"] = self.limits.allow_hosts | frozenset(ask.private)
-        return self.limited(ask.purpose, admit=ask.admit, **changes)
+        limits = self.limited(ask.purpose, admit=ask.admit, **changes)
+        policy_vet = limits.vet
+
+        def vet(url: str) -> None:
+            if ask.check is not None:
+                ask.check()
+            if policy_vet is not None:
+                policy_vet(url)
+            if ask.check is not None:
+                ask.check()
+
+        return replace(limits, vet=vet)
 
     @contextlib.contextmanager
     def open(self, url: str, ask: Ask = ASK) -> Iterator[Reply]:

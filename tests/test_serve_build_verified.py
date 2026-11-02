@@ -216,3 +216,67 @@ class TestAPatchThatNoLongerApplies:
         _, tag = build_source.build_from_source(_build_args(force=True))
         assert tag.startswith(upstream.first[:7])
         assert "TWO" in (broken.tree / "a.txt").read_text()
+
+
+@pytest.mark.parametrize('broken_patch', [False, True])
+def test_failed_trial_cleanup_preserves_its_lock_bytes_and_unrelated_missing_registration(upstream, tmp_path, capsys, broken_patch):
+    source = upstream.bare.parent / 'work'
+    rev = upstream.push('a.txt', 'one\ndeux\nthree\n', 'conflicting change') if broken_patch else upstream.first
+    other = tmp_path / 'unavailable'
+    _run(source, 'worktree', 'add', '--detach', str(other), upstream.first)
+    registration = Path((other / '.git').read_text().split('gitdir:', 1)[1].strip())
+    metadata = {p.name: p.read_bytes() for p in registration.iterdir() if p.is_file()}
+    other.rename(tmp_path / 'preserved-unavailable')
+    trials = []
+    retained = {}
+
+    def locked_trial(*args, cwd=None):
+        if args[0] == 'apply':
+            trials.append(Path(cwd))
+            _run(source, 'worktree', 'lock', '--reason', 'another operation holds this trial', str(cwd))
+        if args[:2] == ('worktree', 'remove'):
+            own = Path((trials[0] / '.git').read_text().split('gitdir:', 1)[1].strip())
+            for path in (trials[0] / 'a.txt', trials[0] / '.git', own / 'locked'):
+                retained[path] = path.read_bytes()
+        return _real_git(*args, cwd=cwd)
+
+    if broken_patch:
+        with pytest.raises(BuildFailed, match='does not apply to upstream'):
+            build_patches.check_patches(source, rev, locked_trial)
+    else:
+        assert build_patches.check_patches(source, rev, locked_trial) is None
+    [trial] = trials
+    assert (trial.is_dir(), registration.is_dir()) == (True, True)
+    assert retained and all(path.read_bytes() == data for path, data in retained.items())
+    assert 'locked' in _run(source, 'worktree', 'list', '--porcelain')
+    assert f'worktree {other.resolve()}\n' in _run(source, 'worktree', 'list', '--porcelain') + '\n'
+    assert {p.name: p.read_bytes() for p in registration.iterdir() if p.is_file()} == metadata
+    warning = capsys.readouterr().err
+    assert 'preserved' in warning and str(trial) in warning
+
+
+@pytest.mark.parametrize('diagnostic_fails', [False, True])
+def test_preserved_trial_warning_is_redacted_and_never_changes_patch_success(tmp_path, monkeypatch, capsys, diagnostic_fails):
+    trial = tmp_path / 'trial'
+    trial.mkdir()
+    patch = tmp_path / 'test.patch'
+    patch.touch()
+    secret = 'unique-patch-trial-private-value'
+    monkeypatch.setenv('PATCH_TRIAL_SECRET', secret)
+    monkeypatch.setattr(build_patches, '_worktree', lambda *_args: trial)
+    monkeypatch.setattr(build_patches, 'patch_files', lambda: [patch])
+
+    def git(*args, **_kwargs):
+        if args[0] == 'worktree':
+            raise BuildFailed(f'removal refused {secret}')
+
+    if diagnostic_fails:
+        def unavailable(*_args):
+            raise OSError('diagnostic stream unavailable')
+        monkeypatch.setattr(build_patches, 'warn', unavailable)
+    assert build_patches.check_patches(tmp_path, 'HEAD', git) is None
+    assert trial.exists()
+    output = capsys.readouterr().err
+    assert secret not in output
+    if not diagnostic_fails:
+        assert 'preserved' in output and 'cleanup failed' in output

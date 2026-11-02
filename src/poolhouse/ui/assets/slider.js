@@ -1,4 +1,4 @@
-/* <ml-slider>: a range with tick labels. `stops` makes it step through a list of values. */
+/* <poolhouse-slider>: a range with tick labels. `stops` makes it step through a list of values. */
 import { define, h } from "./base.js";
 import { FIELD_STYLES, FieldElement } from "./field.js";
 import { fmt } from "./format.js";
@@ -7,14 +7,14 @@ const STYLES = `
 ${FIELD_STYLES}
 .top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .top label { margin-bottom: 0; }
-output { font-family: var(--ml-mono); font-size: 13px; font-weight: 600; color: var(--ml-text); }
-input[type=range] { width: 100%; margin: 10px 0 0; accent-color: var(--ml-accent); background: transparent; height: 22px; }
+output { font-family: var(--poolhouse-ui-mono); font-size: 13px; font-weight: 600; color: var(--poolhouse-ui-text); }
+input[type=range] { width: 100%; margin: 10px 0 0; accent-color: var(--poolhouse-ui-accent); background: transparent; height: 22px; }
 .ticks { position: relative; height: 30px; margin-top: 2px; }
 .tick { position: absolute; top: 0; transform: translateX(-50%); display: flex; flex-direction: column;
-  align-items: center; font-size: 11px; color: var(--ml-muted); white-space: nowrap; }
-.tick::before { content: ""; width: 1px; height: 6px; background: var(--ml-line-strong); margin-bottom: 3px; }
-.tick.on { color: var(--ml-text); font-weight: 600; }
-.tick.on::before { background: var(--ml-accent); width: 2px; }
+  align-items: center; font-size: 11px; color: var(--poolhouse-ui-muted); white-space: nowrap; }
+.tick::before { content: ""; width: 1px; height: 6px; background: var(--poolhouse-ui-line-strong); margin-bottom: 3px; }
+.tick.on { color: var(--poolhouse-ui-text); font-weight: 600; }
+.tick.on::before { background: var(--poolhouse-ui-accent); width: 2px; }
 .ticks[hidden] { display: none; }
 `;
 
@@ -22,13 +22,32 @@ const THUMB = 16;
 const compact = (n) => (Math.abs(n) >= 1000 && n % 1024 === 0 ? `${n / 1024}k`
   : Math.abs(n) >= 1000 ? `${+(n / 1000).toFixed(1)}k` : String(n));
 
-class MlSlider extends FieldElement {
+class PoolhouseSlider extends FieldElement {
   static props = { ...FieldElement.common, value: "number", min: "number", max: "number", step: "number",
                    marks: "object", stops: "object", format: "string", unit: "string", valueText: "string" };
   static styles = STYLES;
 
   build() {
     this.control = h("input", { type: "range", id: "c", oninput: () => this.moved() });
+    const commit = () => this.dispatchEvent(new Event("commit", {bubbles:true}));
+    this.control.onchange = commit;
+    this.control.onkeydown = event => {
+      if (this.disabled || !["Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      this.control.value = event.key === "Home" ? this.control.min : this.control.max;
+      this.moved(); commit();
+    };
+    this.control.onpointerdown = event => {
+      if (!this.disabled && event.isPrimary && event.button === 0) this.pointer = {id:event.pointerId, moved:false};
+    };
+    this.control.onpointerup = event => {
+      const pointer = this.pointer;
+      if (pointer?.id !== event.pointerId) return;
+      this.pointer = null;
+      if (!pointer.moved && !this.disabled) { this.moved(); commit(); }
+    };
+    this.control.onpointercancel = event => { if (this.pointer?.id === event.pointerId) this.pointer = null; };
+    this.control.onlostpointercapture = event => { if (this.pointer?.id === event.pointerId) this.pointer = null; };
     this.out = h("output", { for: "c" });
     this.ticks = h("div", { class: "ticks", "aria-hidden": "true" });
     this.chrome(h("div", {}, this.control, this.ticks));
@@ -38,7 +57,10 @@ class MlSlider extends FieldElement {
 
   list() { return Array.isArray(this.stops) && this.stops.length ? this.stops.map(Number) : null; }
 
+  disconnectedCallback() { this.pointer = null; super.disconnectedCallback?.(); }
+
   moved() {
+    if (this.pointer) this.pointer.moved = true;
     const stops = this.list();
     const value = stops ? stops[Number(this.control.value)] : Number(this.control.value);
     this.value = value;
@@ -68,8 +90,9 @@ class MlSlider extends FieldElement {
       class: `tick${m.value === shown ? " on" : ""}`,
       style: { left: `calc(${frac(m.value)} * (100% - ${THUMB}px) + ${THUMB / 2}px)` } },
       String(m.label ?? compact(m.value)))));
+    if (this.disabled) this.pointer = null;
     this.paintChrome(this.control);
     this.control.setAttribute("aria-labelledby", this.ids.l);
   }
 }
-define("ml-slider", MlSlider);
+define("poolhouse-slider", PoolhouseSlider);

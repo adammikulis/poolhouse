@@ -1,13 +1,11 @@
-<!-- sign-in: the passphrase this pool was set up with -->
+<!-- sign-in: a founded pool's page is opened from this computer's own Poolhouse window, which hands it a one-use ticket -->
 <template>
   <div class="centre" id="signin" hidden>
     <div class="card">
       <div class="hint">POOLHOUSE</div>
       <h1>Sign in</h1>
-      <p class="sub">Unlock this compute pool with its pool passphrase.</p>
-      <label for="p">Passphrase</label>
-      <input type="password" id="p" placeholder="Pool passphrase" autocomplete="current-password">
-      <button id="signin-go">Sign in</button>
+      <p class="sub">This pool was founded by a person, so its page opens from the Poolhouse window of a computer in it.
+        On that computer run <code>poolhouse open</code>, or open the Poolhouse app.</p>
       <div id="signin-note" role="alert" aria-live="polite"></div>
     </div>
   </div>
@@ -22,32 +20,14 @@
       if (this.wired) return;
       this.wired = true;
       this.box = this.querySelector("#signin");
-      this.pass = this.querySelector("#p");
-      this.go = this.querySelector("#signin-go");
       this.note = this.querySelector("#signin-note");
-      this.go.onclick = () => this.submit();
-      this.pass.onkeydown = (e) => { if (e.key === "Enter") this.submit(); };
       M.onRoute((route) => {
         const on = route === "sign-in";
         this.box.hidden = !on;
         if (!on) return;
         this.note.replaceChildren(...M.kids(M.signInMessage
           ? el("div", { class: "err" }, M.signInMessage) : null));
-        this.pass.focus();
       });
-    }
-
-    async submit() {
-      if (this.go.disabled) return;
-      if (!this.pass.value.trim()) { M.signIn("Enter the pool passphrase."); return; }
-      this.go.disabled = true;
-      this.go.textContent = "Checking…";
-      const r = await M.api("/ui/session", { method: "POST",
-        body: JSON.stringify({ passphrase: this.pass.value }) });
-      this.go.disabled = false;
-      this.go.textContent = "Sign in";
-      if (r.ok) { this.pass.value = ""; M.signInMessage = ""; return M.go("pool"); }
-      M.signIn(r.error || "That did not match.");
     }
   }
   customElements.define("sign-in", SignIn);

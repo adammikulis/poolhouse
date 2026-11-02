@@ -162,17 +162,17 @@ def test_selected_restart_uses_a_separate_authenticated_launcher(isolated, monke
 
     chosen = runtime.Runtime(isolated / "runtime", B, "0.1.0", runtime.identity())
     monkeypatch.setattr(runtime, "selected", lambda: chosen)
-    monkeypatch.setattr(sys, "argv", ["daemon", "--root", "studio", "--port", "8771"])
+    monkeypatch.setattr(sys, "argv", ["daemon", "--root", "studio", "--port", "8791"])
     monkeypatch.setattr(os, "execve", lambda *args: pytest.fail("live daemon exec bypassed checkpoint"))
     monkeypatch.setattr(autostart, "_run", lambda args: pytest.fail("restarted an old service target"))
     calls = []
     monkeypatch.setattr(jobs, "detach", lambda *args, **kwargs: calls.append((args, kwargs)))
     assert autostart.restart() == "launcher"
     module, argv = calls[0][0]
-    assert (module, argv) == ("poolhouse.fleet.launch", ["--restart", "--no-browser", "--root", "studio", "--port", "8771"])
+    assert (module, argv) == ("poolhouse.fleet.launch", ["--restart", "--no-browser", "--root", "studio", "--port", "8791"])
     from poolhouse.fleet import launch
     known, rest = launch._arguments(argv)
-    assert known.restart and known.port == 8771 and rest == ["--root", "studio"]
+    assert known.restart and known.port == 8791 and rest == ["--root", "studio"]
 
 
 @pytest.mark.slow

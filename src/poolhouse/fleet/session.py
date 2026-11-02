@@ -3,20 +3,25 @@
 from __future__ import annotations
 
 import hmac
+import ipaddress
 import secrets
 import threading
 import time
 from dataclasses import dataclass, field
+from typing import Any
 
-__all__ = ["COOKIE", "CREDENTIALED", "Sessions", "Throttle", "parse_cookie", "same"]
+__all__ = ["COOKIE", "CREDENTIALED", "Sessions", "SignInHeld", "Throttle", "local", "parse_cookie", "person_session", "same"]
 
 COOKIE = "poolhouse_ui"
 TTL_S = 12 * 3600
 TICKET_TTL_S = 60.0
 MAX_TICKETS = 8
-CREDENTIALED = frozenset({"launch-ticket", "passphrase", "recovery-file", "invite"})
-"""Session origins that rest on a credential the server checked: a spent launch ticket, a pool
-passphrase, a verified recovery file or a redeemed invitation."""
+CREDENTIALED = frozenset({"launch-ticket"})
+"""Session origins that rest on a credential the server checked: a spent launch ticket."""
+
+
+class SignInHeld(Exception):
+    """A sign-in was held off: too many attempts, or too many being checked."""
 
 
 def parse_cookie(header: str, name: str = COOKIE) -> str:
@@ -26,6 +31,21 @@ def parse_cookie(header: str, name: str = COOKIE) -> str:
         if key == name:
             return value.strip()
     return ""
+
+
+def local(address: str) -> bool:
+    """Whether ``address`` is this computer's loopback (v4, v6 or v4-mapped)."""
+    try:
+        parsed = ipaddress.ip_address(address)
+        return parsed.is_loopback or bool(getattr(parsed, "ipv4_mapped", None) and parsed.ipv4_mapped.is_loopback)
+    except ValueError:
+        return False
+
+
+def person_session(route: Any) -> bool:
+    """Whether the request carries a browser session a person opened (a spent launch ticket or the setup page)."""
+    session = route.ui.sessions.get(parse_cookie(route.cookie))
+    return session is not None and session.who in {"ticket", "setup"}
 
 
 def same(a: str, b: str) -> bool:

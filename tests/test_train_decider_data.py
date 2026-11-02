@@ -7,6 +7,7 @@ import json
 
 import pytest
 
+from poolhouse import deciders
 from poolhouse.decide import registry
 from poolhouse.decide.guards.scoperules import ScopeDecider, violations
 from poolhouse.decide.sources import CONFIG, FORMAT
@@ -112,7 +113,7 @@ def test_registering_records_the_directory_under_its_name_and_replaces_a_repeat(
     with pytest.raises(DecideError, match="already registered"):
         registry.register(again)
     registry.register(again, replace=True)
-    assert [r["path"] for r in registry.listing() if r["name"] == "guard"] == [str(again.resolve())]
+    assert [r["path"] for r in deciders.listing() if r["name"] == "guard"] == [str(again.resolve())]
     assert registry.find("guard.prev") == first.resolve()
 
 
@@ -120,7 +121,7 @@ def test_a_registered_directory_that_is_gone_is_not_listed(tmp_path):
     root = make_dir(tmp_path / "gone", "tmp")
     registry.register(root)
     (root / CONFIG).unlink()
-    assert registry.listing() == []
+    assert deciders.listing() == []
     with pytest.raises(DecideError, match="no decider called"):
         registry.find("tmp")
 

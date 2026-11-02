@@ -67,7 +67,6 @@ def test_packaged_simulation_and_desktop_boundaries_are_inventoried():
         "route:fleet/gym_recording_routes.py:/ui/gym/recordings*",
         "route:workspace/fleet_routes.py:/ui/board/*",
         "route:fleet/routes.py:/ui/session",
-        "route:fleet/setup_recovery_routes.py:/ui/setup/recovery",
     } <= found.keys()
 
 
@@ -252,3 +251,34 @@ def test_delegated_relay_spawn_inventory_tracks_actual_canonical_calls():
 
 def test_configured_system_one_transport_keeps_its_parser_and_egress_inventory():
     assert {"parser:client/systemone.py", "egress:client/systemone.py:SystemOne.ask"} <= set(state()[0])
+
+
+def test_fixed_target_route_constants_and_tuples_are_inventoried():
+    cov = coverage()
+    tree = ast.parse('''PREFIX = "/studio/v1/"
+def dispatch(path):
+    if path.startswith((PREFIX + "executions/", PREFIX + "resources/")):
+        return True
+''')
+    found = {}
+    cov.find_routes(found, "src/poolhouse/fleet/studio_device_routes.py", tree)
+    assert set(found) == {
+        "route:fleet/studio_device_routes.py:/studio/v1/executions/*",
+        "route:fleet/studio_device_routes.py:/studio/v1/resources/*",
+    }
+
+
+def test_route_inventory_never_evaluates_dynamic_expressions():
+    cov = coverage()
+    tree = ast.parse('''PREFIX = "/studio/v1/"
+MUTABLE = "/untrusted/"
+MUTABLE = source()
+def dispatch(path, supplied):
+    path.startswith(PREFIX + execute())
+    path.startswith(supplied + "executions/")
+    path.startswith(MUTABLE + "resources/")
+    unrelated.startswith(PREFIX + "unrelated/")
+''')
+    found = {}
+    cov.find_routes(found, "src/poolhouse/fleet/studio_device_routes.py", tree)
+    assert found == {}

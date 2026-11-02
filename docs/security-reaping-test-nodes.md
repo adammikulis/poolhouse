@@ -5,8 +5,7 @@ asking the person, what it checks first, what it writes down, and what it breaks
 The owner decided this session that a lead may reap these; the rule it replaces is "an expired claim or dead worker needs
 verified recovery or an explicit task-scoped handoff before mutation" (AGENTS.md, "Shared ownership before mutation";
 docs/agent-rules.md, "Shared ownership"). This note defines the verified recovery for one class of process and for nothing else.
-The file name starts with `security` so that `scripts/land_review.SENSITIVE_DOCS` makes a change to this design need the
-exact-SHA independent review at landing; its first name matched no prefix there.
+The file name starts with `security`.
 
 ## 1. What exists today
 
@@ -240,13 +239,13 @@ inside `node_reap.apply`, so the verb, a library call and any later caller pass 
 
 **Reviewed paths and test scope.** `src/poolhouse/protectedwrites.py`: `node_reap` joins the
 `src/poolhouse/(protectedwrites|worktreerules|authority|person|real_machine)\.py` alternative of `REVIEWED`, so a change to the
-rules needs the exact-SHA independent approval (`scripts/land_review.py` reads `touches_guards`), as the authority registry does.
+rules is a guard change (`touches_guards`), as the authority registry is.
 `scripts/hooks/weakened-assertions`: `test_node_reap*` joins `NAMES` (and the line of its docstring that lists them), so fewer
 assertions, a removed test function or an added skip in `tests/test_node_reap.py` is refused without a `Reviewed-by-second:`
 line; a case in the hook's own test covers it. The `redteam` marker is not used for this: it leaves a file out of ordinary runs
 unless `--redteam` is given. `docs/redteam/coverage-map.toml` gets a row, naming `tests/test_node_reap.py`, for each surface
 `scripts/redteam_coverage.py --check` finds in the module (the `lsof` spawn at least). This document keeps the `security` prefix
-of its name (`land_review.SENSITIVE_DOCS`).
+of its name.
 
 **Documents** touched when it is built: docs/node.md (the `node_launch` section), docs/workspace.md ("Authority", where `prod` leaves workspace setup, model recording and local agent verbs delegated and gains
 test-node reaping, the same sentence in AGENTS.md "System settings and the authority registry", and the workspace commands), docs/person-commands.md (a REGISTRY row), docs/test-execution.md (leftover test nodes), and the

@@ -15,7 +15,7 @@ import time
 
 import pytest
 from launch_support import browser, hand_typed, redeem, sign_in, ticket
-from test_fleet_ui import WORDS, Serving
+from test_fleet_ui import Serving
 from test_redteam_human_floor import run_command
 
 from poolhouse import home, node_launch
@@ -80,7 +80,7 @@ FORGED = {"Host": "127.0.0.1", "Sec-Fetch-Site": "same-origin"}
 def test_forged_page_headers_without_a_ticket_open_no_session_and_make_no_person(window):
     forged = {**FORGED, "Origin": f"http://127.0.0.1:{window.port}", "Host": f"127.0.0.1:{window.port}"}
     status, cookie, _ = raw_post(window, "/ui/setup/initial", forged,
-                                 json.dumps({"name": "quillhaven", "pool_mode": "dev"}).encode())
+                                 json.dumps({"name": "quillhaven"}).encode())
     assert status == 403 and cookie is None
     status, cookie, _ = raw_post(window, "/ui/setup/local-session", forged)
     assert status == 404 and cookie is None
@@ -126,23 +126,6 @@ def test_a_session_without_a_credentialed_origin_cannot_connect_or_act_as_the_pe
     assert connect(window, cookie)[0] == 403
     assert people(window) == []
     assert window.call(f"/ui/projects/{window.project}/board/agents", cookie=cookie)[0] == 403
-
-
-def test_a_pool_created_with_no_credential_leaves_a_session_that_cannot_connect(window):
-    status, _, headers = window.call("/ui/setup/join", method="POST",
-                                     body={"mode": "create", "passphrase": WORDS, "group": "home"})
-    assert status == 200
-    cookie = headers["Set-Cookie"].split(";", 1)[0]
-    assert connect(window, cookie)[0] == 403
-    assert people(window) == []
-
-
-def test_a_passphrase_session_connects(window):
-    window.call("/ui/setup/join", method="POST", body={"mode": "create", "passphrase": WORDS, "group": "home"})
-    status, _, headers = window.call("/ui/session", method="POST", body={"passphrase": WORDS, "group": "home"})
-    assert status == 200
-    assert connect(window, headers["Set-Cookie"].split(";", 1)[0])[0] == 200
-    assert len(people(window)) == 1
 
 
 def test_the_credentialed_connect_is_recorded_in_the_audit_chain(window):
@@ -201,7 +184,7 @@ def test_the_audit_rows_name_every_mint_and_refusal_and_hold_no_ticket_or_secret
     _, issued, _ = ticket(window)
     redeem(window, issued["ticket"])
     window.call("/ui/setup/initial", method="POST", headers=browser(window),
-                body={"name": "quillhaven", "pool_mode": "dev"})
+                body={"name": "quillhaven"})
     events = {(row["event"], row.get("reason") or row.get("by") or row.get("origin")) for row in window.rows}
     assert {("launch.refused", "secret"), ("session.refused", "ticket"), ("launch.ticket", "launch-secret"),
             ("session.open", "launch-ticket"), ("session.refused", "setup-without-credential")} <= events
@@ -237,7 +220,7 @@ def test_a_page_opened_by_hand_says_how_to_open_it_and_a_launched_page_does_not(
         with hand_typed():
             page.goto(base)
         expect(page.locator("#launch-needed")).to_be_visible()
-        expect(page.locator("#launch-needed-command")).to_have_text("poolhouse members open")
+        expect(page.get_by_role("heading", name="Reconnect to Poolhouse")).to_be_visible()
         launched = chromium.new_page()
         launched.goto(f"{base}?launch_ticket={ticket(window)[1]['ticket']}")
         launched.wait_for_selector("#app:not([hidden])")
@@ -259,7 +242,7 @@ def launch_tickets(machine) -> list[dict]:
 
 @pytest.mark.skipif(sys.platform == "win32", reason="requires a POSIX pseudoterminal")
 def test_the_open_command_hands_a_person_at_a_terminal_a_one_use_address(machine, tmp_path):
-    done = run_command(tmp_path, ("poolhouse.fleet.members", "main", ["open", "--print"]), agent=False, terminal=True)
+    done = run_command(tmp_path, ("poolhouse.fleet.launch_open", "main", ["--print"]), agent=False, terminal=True)
     assert done.returncode == 0, done.stdout
     found = re.search(rf"http://127\.0\.0\.1:{machine.port}/ui/\?launch_ticket=([\w-]+)", done.stdout)
     assert found, done.stdout
@@ -271,13 +254,13 @@ def test_the_open_command_hands_a_person_at_a_terminal_a_one_use_address(machine
 def test_the_open_command_hands_an_agent_or_a_pipe_nothing(machine, tmp_path, agent, terminal):
     if terminal and sys.platform == "win32":
         pytest.skip("requires a POSIX pseudoterminal")
-    done = run_command(tmp_path, ("poolhouse.fleet.members", "main", ["open", "--print"]), agent=agent, terminal=terminal)
+    done = run_command(tmp_path, ("poolhouse.fleet.launch_open", "main", ["--print"]), agent=agent, terminal=terminal)
     assert done.returncode != 0
     assert "launch_ticket" not in done.stdout + (done.stderr or "")
     assert launch_tickets(machine) == []
 
 
-GATES = ("members open", "signed-in local person")
+GATES = ("open", "signed-in local person")
 
 
 def gated(reply) -> bool:

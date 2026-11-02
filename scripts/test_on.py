@@ -5,8 +5,8 @@
     scripts/test gate --on wsl-box                         the structural checks there
     scripts/test full --on all --split                     divide the whole list between this machine and the devices
 
-The receiving node runs `scripts/test` on exactly this tree, on its own Python 3.13, and sends the result
-back; the printed lines are a local run's, with the device and its platform named. A file that passed on a
+The device that receives it (another device of the node's pool) runs `scripts/test` on exactly
+this tree, on its own Python 3.13, and sends the result back, with the output as it is written; the printed lines are a local run's, with the device and its platform named. A file that passed on a
 device with this content, platform and tier is not sent again (`--no-reuse` sends it): a pass on one device
 never satisfies another. Each result is posted to the board, keyed by device. Exit status is the worst of
 the runs; 70 means a device never ran its part (not enrolled, shards off, unreachable, refused).
@@ -178,7 +178,7 @@ def ready(shards: Shards, devices: list[dict]) -> list[Part]:
 def finish(run: Run, part: Part, sent: bool) -> int:
     """Print one device's outcome and record it; its exit status."""
     if part.error:
-        print(f"test: nothing ran on {part.name}: {part.error}", file=sys.stderr)
+        print(f"test: no result from {part.name}: {part.error}", file=sys.stderr)
         return NOT_RUN
     if not sent:
         print(f"+ {part.name}: every test file passed there with this content ({len(part.reused)} reused)")
@@ -198,8 +198,10 @@ def main(args: argparse.Namespace, rest: list[str], root: Path, command_for: Cal
         return refuse("a run on another device takes test files tests/NAME.py only: no options, node ids or paths")
     if tier == "gate" and files:
         return refuse("the gate takes no files")
+    if features.turned_off(FEATURE):
+        return refuse(f"running tests on another device was turned off here (`poolhouse features disable {FEATURE}`); `poolhouse features enable {FEATURE}` turns it on")
     if not features.enabled(FEATURE):
-        return refuse(f"running tests on another device is an experimental feature and off here; a person turns it on with `poolhouse features enable {FEATURE}`")
+        return refuse(f"running tests on another device through the node is an experimental feature and off here; a person turns it on with `poolhouse features enable {FEATURE}`")
     try:
         chosen = choose(args.on, pool_devices())
         shards = Shards()

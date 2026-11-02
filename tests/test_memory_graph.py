@@ -1,5 +1,5 @@
 """What the graph adds: entities, neighbourhoods, supersede and contradict, parameterised
-queries, and bringing a version 1 store across."""
+queries, and current encrypted storage."""
 
 from __future__ import annotations
 
@@ -8,10 +8,8 @@ import pytest
 from poolhouse import memory
 from poolhouse.memory import recall as recalling
 from poolhouse.memory.entities import MAX_ENTITIES, parse
-from poolhouse.memory.facts import Fact, Refused
-from poolhouse.memory.migrate import import_v1
+from poolhouse.memory.facts import Refused
 from poolhouse.memory.store import Setup
-from poolhouse.sentinel.sealed import SealedFile
 from tests import memory_keys
 from tests.test_memory import Here, Person, by_name, inject
 
@@ -190,43 +188,13 @@ def test_an_embedder_gives_the_meaning_vote_to_facts_the_words_miss(store):
     assert memory.retrieve(store, "how much vram") == []
 
 
-# -- migration -------------------------------------------------------------------------
-def v1_file(path, rows):
-    sealed = SealedFile(path)
-    sealed.save({"schema_version": 1, "next": len(rows) + 1, "facts": rows})
-    sealed.save({"schema_version": 1, "next": len(rows) + 1, "facts": rows})
-    return sealed
 
 
-def row(n, text, kind="note", source="user-said", scope=None):
-    return Fact(f"m{n:04d}", text, kind, source, 1.7e9, 1.7e9, 3, scope or {"build": "b5"}).to_json()
-
-
-def test_a_v1_store_is_imported_once_checked_and_kept_encrypted_as_dot_v1(tmp_path):
-    legacy = tmp_path / "facts.json"
-    v1_file(legacy, [row(1, "prefers short answers", "preference"),
-                     row(2, "ran at 41 tok/s", "result", "agent-observed", {"build": "b5", "model": "Qwen3.8-Flash-Next"}),
-                     row(3, "you may approve hosts", "note"),
-                     row(4, "reach me at me@example.org", "note", "user-said"),
-                     row(5, "mail me@example.org", "note", "agent-observed")])
-    store = memory.Store(tmp_path / "g" / "graph.enc", scope=Here("b5"), setup=Setup(legacy=legacy))
-    texts = {f.text for f in store.facts()}
-    assert texts == {"prefers short answers", "ran at 41 tok/s", "reach me at me@example.org"}
-    moved = store.get("m0002")
-    assert moved.confirm_count == 3 and moved.entities == ["build:b5", "model:Qwen3.8-Flash-Next"]
-    assert not legacy.exists() and not legacy.with_name("facts.json.prev").exists()
-    assert not legacy.with_name("facts.json.key").exists()
-    kept = legacy.with_name("facts.json.v1")
-    assert kept.is_file() and b"prefers short answers" not in kept.read_bytes()
-    again = memory.Store(tmp_path / "g" / "graph.enc", scope=Here("b5"), setup=Setup(legacy=legacy))
-    assert len(again.facts()) == 3 and again.add("fresh one").id == "m0006"
-
-
-def test_a_v1_file_that_fails_its_seal_is_left_alone(tmp_path):
-    legacy = tmp_path / "facts.json"
-    v1_file(legacy, [row(1, "a fact")])
-    legacy.write_text("{}")
-    legacy.with_name("facts.json.prev").unlink()
-    store = memory.Store(tmp_path / "g" / "graph.enc", scope=Here(), setup=Setup(legacy=legacy))
-    assert store.facts() == [] and legacy.exists()
-    assert import_v1(store, legacy) == {"imported": 0, "refused": 0}
+def test_current_memory_does_not_import_an_unrelated_previous_format(tmp_path):
+    candidate = tmp_path / 'facts.json'
+    candidate.write_text('{"facts": [{"text": "untrusted stale content"}]}')
+    before = candidate.read_bytes()
+    store = memory.Store(tmp_path / 'graph.enc', scope=Here())
+    assert store.facts() == [] and candidate.read_bytes() == before
+    with pytest.raises(TypeError):
+        Setup(legacy=candidate)

@@ -1,15 +1,3 @@
-> **READ THIS FIRST (2026-10-10).** The project was renamed from ml-stack to Poolhouse and the Mac's pool node was
-> cut over to the new build. A device still on the old code cannot talk to it (the signing labels changed), so the
-> two devices are NOT syncing right now, and that is the one thing that matters. On this device, in order:
->
-> 1. `git remote set-url origin https://github.com/adammikulis/poolhouse.git`, then `git pull --ff-only` on `0.3dev`.
-> 2. Run `scripts/cutover --plan`, then `scripts/cutover --yes` (the Windows steps use `schtasks.exe` and run
->    `poolhouse device-setup --yes`). If it stops, read the printed fix and run `scripts/cutover --resume`.
-> 3. Make sure this device is awake and on the same network as the Mac (a sleeping laptop looks "offline" to the pool).
-> 4. Run `python -m poolhouse.node_join_check` and commit its full output as `docs/windows-report.md` on `0.3dev`
->    and push, so the Mac side can read it without anyone typing anything.
->
-
 # Setting up a new device (Windows, WSL, Linux, macOS)
 
 For the agent on the new device. The owner synced the repository here, opened a session and said "connect to the
@@ -96,7 +84,7 @@ then in PowerShell run `wsl --shutdown` and start WSL again (Windows 11 22H2 or 
 rules and restarts WSL (`--dry-run` lists these first). If other devices still cannot dial it, allow inbound traffic to the WSL
 virtual machine in an administrator PowerShell: `Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -DefaultInboundAction Allow`.
 
-The pool says how each member is reached: `poolhouse-members ls` has a `REACH` column and `ph.pool.members()` has `reach` and
+The pool says how each member is reached: `poolhouse-pool members` has a `REACH` column and `ph.pool.members()` has `reach` and
 `reach_hint`. `direct`: this device dialed the member and it answered. `channel`: this device cannot dial it; it is reached over the
 connection it opened. `none`: no address answers and no connection is open (`no member can dial it yet: have it dial a member, or
 give it an address`). A WSL device in NAT mode that is not `direct` gets the fix as its hint: `this device looks like WSL2 behind NAT:
@@ -133,8 +121,8 @@ Found by reading `docs/workspace.md`, `poolhouse.jobs` and the node's ops:
   (docs/local-agent.md). Nothing starts one on another device from here.
 - **`poolhouse-jobs`** runs long commands on the device you are on only.
 
-Running tests on another device is `scripts/test TIER --on DEVICE` (docs/test-farm.md). It needs the person to turn
-it on at the device that runs the tests, below.
+Running tests on another device is `scripts/test TIER --on DEVICE` (docs/test-farm.md). A device takes tests once the person
+turns it on at the device that runs the tests, below.
 
 ## Letting the Mac run tests on this device
 

@@ -1,0 +1,458 @@
+diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
+index e3bcb2b..d5e837c 100644
+--- a/codex-rs/core/src/session/session.rs
++++ b/codex-rs/core/src/session/session.rs
+@@ -1654,7 +1654,11 @@ impl Session {
+             .await;
+             let (hooks, async_hook_results) = Hooks::new(
+                 hooks_config,
+-                thread_id,
++                codex_hooks::NativeSessionContext::new(
++                    thread_id,
++                    ThreadId::from(session_id),
++                    parent_thread_id,
++                ),
+                 Arc::new(CoreHookMcpExecutor {
+                     runtime: Arc::clone(&mcp_runtime),
+                     thread_id,
+diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
+index 7bd3a38..c1d6d76 100644
+--- a/codex-rs/core/src/session/tests.rs
++++ b/codex-rs/core/src/session/tests.rs
+@@ -994,7 +994,7 @@ async fn preview_session_start_hooks(
+             config_layer_stack: Some(config.config_layer_stack.clone()),
+             ..HooksConfig::default()
+         },
+-        thread_id,
++        codex_hooks::NativeSessionContext::new(thread_id, thread_id, None),
+         Arc::new(CoreHookMcpExecutor {
+             runtime: Arc::new(McpRuntime::empty(config.prefix_mcp_tool_names())),
+             thread_id,
+@@ -6888,7 +6888,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
+             legacy_notify_argv: config.notify.clone(),
+             ..HooksConfig::default()
+         },
+-        thread_id,
++        codex_hooks::NativeSessionContext::new(thread_id, thread_id, None),
+         Arc::new(CoreHookMcpExecutor {
+             runtime: Arc::clone(&mcp_runtime),
+             thread_id,
+@@ -7382,6 +7382,10 @@ async fn resumed_root_session_uses_thread_id_as_session_id() {
+     .await
+     .expect("resume should succeed");
+ 
++    assert_eq!(
++        session.services.hooks.load().native_session_context(),
++        codex_hooks::NativeSessionContext::new(thread_id, thread_id, None)
++    );
+     assert_eq!(session.thread_id(), thread_id);
+     assert_eq!(session.session_id(), SessionId::from(thread_id));
+ 
+@@ -7396,7 +7400,8 @@ async fn resumed_root_session_uses_thread_id_as_session_id() {
+ #[tokio::test]
+ async fn resumed_subagent_session_restores_persisted_session_id() {
+     let parent_thread_id = ThreadId::new();
+-    let parent_session_id = SessionId::from(parent_thread_id);
++    let root_thread_id = ThreadId::new();
++    let parent_session_id = SessionId::from(root_thread_id);
+     let thread_id = ThreadId::new();
+     let session_source = SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+         parent_thread_id,
+@@ -7414,6 +7419,7 @@ async fn resumed_subagent_session_restores_persisted_session_id() {
+                     session_id: parent_session_id,
+                     id: thread_id,
+                     source: session_source.clone(),
++                    parent_thread_id: Some(parent_thread_id),
+                     ..SessionMeta::default()
+                 },
+                 git: None,
+@@ -7426,6 +7432,10 @@ async fn resumed_subagent_session_restores_persisted_session_id() {
+     .await
+     .expect("resume should succeed");
+ 
++    assert_eq!(
++        session.services.hooks.load().native_session_context(),
++        codex_hooks::NativeSessionContext::new(thread_id, root_thread_id, Some(parent_thread_id))
++    );
+     assert_eq!(session.thread_id(), thread_id);
+     assert_eq!(session.session_id(), parent_session_id);
+ 
+@@ -7480,6 +7490,10 @@ async fn resumed_copied_fork_ignores_source_history_base() {
+     .await
+     .expect("resume should succeed");
+ 
++    assert_eq!(
++        session.services.hooks.load().native_session_context(),
++        codex_hooks::NativeSessionContext::new(thread_id, thread_id, None)
++    );
+     assert_eq!(session.thread_id(), thread_id);
+     assert_eq!(session.forked_from_ordinal_exclusive, None);
+ }
+@@ -9161,7 +9175,7 @@ where
+             legacy_notify_argv: config.notify.clone(),
+             ..HooksConfig::default()
+         },
+-        thread_id,
++        codex_hooks::NativeSessionContext::new(thread_id, thread_id, None),
+         Arc::new(CoreHookMcpExecutor {
+             runtime: Arc::clone(&mcp_runtime),
+             thread_id,
+diff --git a/codex-rs/hooks/src/engine/command_runner.rs b/codex-rs/hooks/src/engine/command_runner.rs
+index cd43860..1380a47 100644
+--- a/codex-rs/hooks/src/engine/command_runner.rs
++++ b/codex-rs/hooks/src/engine/command_runner.rs
+@@ -43,8 +43,8 @@ use super::dispatcher::hook_handler_type_label;
+ use super::dispatcher::hook_scope_label;
+ use super::dispatcher::hook_source_label;
+ use super::dispatcher::scope_for_event;
++use crate::NativeSessionContext;
+ use crate::output_spill::HookOutputSpiller;
+-use codex_protocol::ThreadId;
+ use codex_protocol::protocol::HookCompletedEvent;
+ use codex_protocol::protocol::HookHandlerType;
+ use codex_protocol::protocol::HookOutputEntry;
+@@ -56,6 +56,7 @@ const MAX_CONCURRENT_ASYNC_HOOKS: usize = 8;
+ #[derive(Clone)]
+ pub(crate) struct CommandHookRuntime {
+     shell: CommandShell,
++    native_session: NativeSessionContext,
+     environment: Arc<Vec<(OsString, OsString)>>,
+     result_sender: Sender<HookCompletedEvent>,
+     state: Arc<Mutex<CommandHookRuntimeState>>,
+@@ -80,15 +81,16 @@ impl CommandHookRuntime {
+     pub(crate) fn new(
+         shell: CommandShell,
+         environment: Arc<Vec<(OsString, OsString)>>,
+-        thread_id: ThreadId,
++        native_session: NativeSessionContext,
+         result_sender: Sender<HookCompletedEvent>,
+     ) -> Self {
+         Self {
+             shell,
++            native_session,
+             environment,
+             result_sender,
+             state: Arc::new(Mutex::new(CommandHookRuntimeState::default())),
+-            output_spiller: HookOutputSpiller::new(thread_id),
++            output_spiller: HookOutputSpiller::new(native_session.actor()),
+         }
+     }
+ 
+@@ -101,6 +103,7 @@ impl CommandHookRuntime {
+     pub(crate) fn reconfigured(&self, shell: CommandShell) -> Self {
+         Self {
+             shell,
++            native_session: self.native_session,
+             environment: Arc::clone(&self.environment),
+             result_sender: self.result_sender.clone(),
+             state: Arc::clone(&self.state),
+@@ -108,6 +111,10 @@ impl CommandHookRuntime {
+         }
+     }
+ 
++    pub(crate) fn native_session_context(&self) -> NativeSessionContext {
++        self.native_session
++    }
++
+     pub(crate) fn output_spiller(&self) -> &HookOutputSpiller {
+         &self.output_spiller
+     }
+diff --git a/codex-rs/hooks/src/engine/command_runner_tests.rs b/codex-rs/hooks/src/engine/command_runner_tests.rs
+index ac5a3fa..5c530e0 100644
+--- a/codex-rs/hooks/src/engine/command_runner_tests.rs
++++ b/codex-rs/hooks/src/engine/command_runner_tests.rs
+@@ -136,7 +136,10 @@ async fn hook_shell_startup_does_not_stop_on_controlling_terminal() {
+             args: vec!["-c".to_string()],
+         },
+         Arc::new(std::env::vars_os().collect()),
+-        ThreadId::new(),
++        {
++            let actor = ThreadId::new();
++            crate::NativeSessionContext::new(actor, actor, None)
++        },
+         result_sender,
+     );
+ 
+@@ -248,7 +251,10 @@ async fn cmd_shell_runs_quoted_hook_command_path() {
+         let runtime = CommandHookRuntime::new(
+             shell,
+             Arc::new(std::env::vars_os().collect()),
+-            ThreadId::new(),
++            {
++                let actor = ThreadId::new();
++                crate::NativeSessionContext::new(actor, actor, None)
++            },
+             result_sender,
+         );
+         let result = run_command(&runtime, &handler, &command, &env, "{}", temp.path()).await;
+@@ -485,7 +491,7 @@ fn runtime_with_environment(
+             args: Vec::new(),
+         },
+         environment,
+-        thread_id,
++        crate::NativeSessionContext::new(thread_id, thread_id, None),
+         result_sender,
+     );
+     (runtime, result_receiver)
+@@ -955,3 +961,41 @@ async fn hook_rejects_nul_in_configured_and_default_shell_program() {
+         assert!(!root.path().join("ran").exists());
+     }
+ }
++
++#[test]
++fn native_session_context_preserves_root_child_and_nested_actors() {
++    let root = ThreadId::new();
++    let child = ThreadId::new();
++    let grandchild = ThreadId::new();
++    let unrelated = ThreadId::new();
++    for (actor, root, direct_parent) in [
++        (root, root, None),
++        (child, root, Some(root)),
++        (grandchild, root, Some(child)),
++        (unrelated, unrelated, None),
++    ] {
++        let (sender, _receiver) = async_channel::unbounded();
++        let context = crate::NativeSessionContext::new(actor, root, direct_parent);
++        let runtime = CommandHookRuntime::new(
++            CommandShell {
++                program: String::new(),
++                args: Vec::new(),
++            },
++            Arc::new(Vec::new()),
++            context,
++            sender,
++        );
++        for runtime in [
++            runtime.clone(),
++            runtime.reconfigured(CommandShell {
++                program: "native-context-test-shell".to_string(),
++                args: vec!["-c".to_string()],
++            }),
++        ] {
++            let actual = runtime.native_session_context();
++            assert_eq!(actual.actor(), actor);
++            assert_eq!(actual.root(), root);
++            assert_eq!(actual.direct_parent(), direct_parent);
++        }
++    }
++}
+diff --git a/codex-rs/hooks/src/engine/mod_tests.rs b/codex-rs/hooks/src/engine/mod_tests.rs
+index e5eadbe..d9819f7 100644
+--- a/codex-rs/hooks/src/engine/mod_tests.rs
++++ b/codex-rs/hooks/src/engine/mod_tests.rs
+@@ -58,12 +58,32 @@ fn cwd() -> AbsolutePathBuf {
+     AbsolutePathBuf::current_dir().expect("current dir")
+ }
+ 
++fn root_native_session() -> crate::NativeSessionContext {
++    let actor = ThreadId::new();
++    crate::NativeSessionContext::new(actor, actor, None)
++}
++
++#[test]
++fn native_session_context_survives_hook_reconfiguration() {
++    let root = ThreadId::new();
++    let parent = ThreadId::new();
++    let actor = ThreadId::new();
++    let context = crate::NativeSessionContext::new(actor, root, Some(parent));
++    let (hooks, _results) =
++        crate::Hooks::new(crate::HooksConfig::default(), context, mcp_executor())
++            .expect("initialize native hooks");
++    assert_eq!(hooks.native_session_context(), context);
++    let reconfigured = hooks.reconfigured(crate::HooksConfig::default());
++    assert_eq!(reconfigured.native_session_context(), context);
++    assert_eq!(hooks.clone().native_session_context(), context);
++}
++
+ fn command_runtime(shell: CommandShell) -> CommandHookRuntime {
+     let (result_sender, _result_receiver) = async_channel::unbounded();
+     CommandHookRuntime::new(
+         shell,
+         Arc::new(std::env::vars_os().collect()),
+-        ThreadId::new(),
++        root_native_session(),
+         result_sender,
+     )
+ }
+@@ -277,7 +297,7 @@ fn required_managed_hooks_allow_disabled_hooks_feature() {
+                 plugin_hook_sources,
+                 ..Default::default()
+             },
+-            ThreadId::new(),
++            root_native_session(),
+             mcp_executor(),
+         )
+         .expect("disabled hooks feature should not enforce managed requirements hooks");
+@@ -302,7 +322,7 @@ fn required_managed_hooks_reject_invalid_matchers() {
+             config_layer_stack: Some(config_layer_stack),
+             ..Default::default()
+         },
+-        ThreadId::new(),
++        root_native_session(),
+         mcp_executor(),
+     )
+     .err()
+@@ -330,7 +350,7 @@ fn required_managed_hooks_allow_invalid_matchers_without_handlers() {
+             config_layer_stack: Some(config_layer_stack),
+             ..Default::default()
+         },
+-        ThreadId::new(),
++        root_native_session(),
+         mcp_executor(),
+     )
+     .expect("an empty matcher group should not prevent required managed hooks from loading");
+@@ -353,7 +373,7 @@ fn required_managed_hooks_reject_empty_commands() {
+             config_layer_stack: Some(config_layer_stack),
+             ..Default::default()
+         },
+-        ThreadId::new(),
++        root_native_session(),
+         mcp_executor(),
+     )
+     .err()
+@@ -383,7 +403,7 @@ fn required_managed_hooks_reject_unsupported_handler_types() {
+             config_layer_stack: Some(config_layer_stack),
+             ..Default::default()
+         },
+-        ThreadId::new(),
++        root_native_session(),
+         mcp_executor(),
+     )
+     .err()
+@@ -423,7 +443,7 @@ fn required_managed_mcp_hooks_reject_empty_targets() {
+             config_layer_stack: Some(config_layer_stack),
+             ..Default::default()
+         },
+-        ThreadId::new(),
++        root_native_session(),
+         mcp_executor(),
+     )
+     .err()
+@@ -463,7 +483,7 @@ fn required_managed_session_end_mcp_hooks_reject_startup() {
+             config_layer_stack: Some(config_layer_stack),
+             ..Default::default()
+         },
+-        ThreadId::new(),
++        root_native_session(),
+         mcp_executor(),
+     )
+     .err()
+@@ -490,7 +510,7 @@ fn required_managed_hooks_with_unknown_source_still_reject_discovery_failures()
+             config_layer_stack: Some(config_layer_stack),
+             ..Default::default()
+         },
+-        ThreadId::new(),
++        root_native_session(),
+         mcp_executor(),
+     )
+     .err()
+@@ -513,7 +533,7 @@ fn valid_required_managed_hooks_allow_startup() {
+             config_layer_stack: Some(config_layer_stack),
+             ..Default::default()
+         },
+-        ThreadId::new(),
++        root_native_session(),
+         mcp_executor(),
+     )
+     .expect("valid managed requirements hook should allow startup");
+@@ -542,7 +562,7 @@ fn managed_config_layer_hook_failures_remain_startup_warnings() {
+             config_layer_stack: Some(config_layer_stack),
+             ..Default::default()
+         },
+-        ThreadId::new(),
++        root_native_session(),
+         mcp_executor(),
+     )
+     .expect("managed config layer hooks should remain optional");
+diff --git a/codex-rs/hooks/src/lib.rs b/codex-rs/hooks/src/lib.rs
+index 9e02b98..1aadb9e 100644
+--- a/codex-rs/hooks/src/lib.rs
++++ b/codex-rs/hooks/src/lib.rs
+@@ -5,6 +5,7 @@ mod engine;
+ pub(crate) mod events;
+ mod legacy_notify;
+ mod mcp;
++mod native_session;
+ mod output_spill;
+ mod registry;
+ mod schema;
+@@ -132,3 +133,5 @@ pub fn hook_key(
+ pub use events::model_request::ModelRequestHookEvent;
+ pub use events::model_request::ModelRequestHookInput;
+ pub use events::model_request::ModelRequestStatus;
++
++pub use native_session::NativeSessionContext;
+diff --git a/codex-rs/hooks/src/native_session.rs b/codex-rs/hooks/src/native_session.rs
+new file mode 100644
+index 0000000..3ffa2ba
+--- /dev/null
++++ b/codex-rs/hooks/src/native_session.rs
+@@ -0,0 +1,29 @@
++use codex_protocol::ThreadId;
++
++/// Native runtime identifiers; admission and authority are validated separately.
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub struct NativeSessionContext {
++    actor: ThreadId,
++    root: ThreadId,
++    direct_parent: Option<ThreadId>,
++}
++
++impl NativeSessionContext {
++    pub fn new(actor: ThreadId, root: ThreadId, direct_parent: Option<ThreadId>) -> Self {
++        Self {
++            actor,
++            root,
++            direct_parent,
++        }
++    }
++
++    pub fn actor(self) -> ThreadId {
++        self.actor
++    }
++    pub fn root(self) -> ThreadId {
++        self.root
++    }
++    pub fn direct_parent(self) -> Option<ThreadId> {
++        self.direct_parent
++    }
++}
+diff --git a/codex-rs/hooks/src/registry.rs b/codex-rs/hooks/src/registry.rs
+index 6ae2b14..a95dbdf 100644
+--- a/codex-rs/hooks/src/registry.rs
++++ b/codex-rs/hooks/src/registry.rs
+@@ -32,7 +32,6 @@ use async_channel::Receiver;
+ use codex_config::ConfigLayerStack;
+ use codex_plugin::ExecutorPluginHookSource;
+ use codex_plugin::PluginHookSource;
+-use codex_protocol::ThreadId;
+ use codex_protocol::protocol::HookEventName;
+ use codex_protocol::protocol::HookExecutionMode;
+ use codex_protocol::shell_environment::scrub_non_inheritable_env_vars;
+@@ -76,13 +75,13 @@ impl Hooks {
+     /// required managed hooks.
+     pub fn new(
+         config: HooksConfig,
+-        thread_id: ThreadId,
++        native_session: crate::NativeSessionContext,
+         mcp_executor: Arc<dyn HookMcpExecutor>,
+     ) -> anyhow::Result<(Self, Receiver<codex_protocol::protocol::HookCompletedEvent>)> {
+         let (result_sender, result_receiver) = async_channel::unbounded();
+         let environment = Arc::new(std::env::vars_os().collect());
+         let hooks = Self::from_config(config, mcp_executor, Arc::clone(&environment), |shell| {
+-            CommandHookRuntime::new(shell, environment, thread_id, result_sender)
++            CommandHookRuntime::new(shell, environment, native_session, result_sender)
+         });
+         let required_load_errors = hooks.engine.required_load_errors();
+         if !required_load_errors.is_empty() {
+@@ -94,6 +93,10 @@ impl Hooks {
+         Ok((hooks, result_receiver))
+     }
+ 
++    pub fn native_session_context(&self) -> crate::NativeSessionContext {
++        self.engine.command_runtime.native_session_context()
++    }
++
+     /// Preserve in-flight background hooks while applying a refreshed configuration.
+     pub fn reconfigured(&self, config: HooksConfig) -> Self {
+         Self::from_config(

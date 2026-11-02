@@ -63,7 +63,7 @@ Bodies hold integers, text, booleans, arrays and objects; fractions are refused 
 depends on a float format.
 
 Kinds: `message`, `note`, `verify`, `identity`, `lease`, `audit`, `landing`, `room`, `task` and `grant` are folded into the view now;
-`reputation_event` is in the schema so a later log still parses, and a foreign entry of that kind is not shown yet. `head` is a signature row, never shown.
+`reputation_event` is in the schema so a later log still parses, and a foreign entry of that kind is not shown yet. `head` signs transport rows; `base` starts a segment and `carry` authenticates an original durable operation. These transport records are never shown.
 
 - **Crash safety.** Append is one write plus `fsync`; it returns when the row is on disk. On open, a
   last line without its newline was never acknowledged and is cut off (a torn write from `kill -9`);
@@ -71,6 +71,14 @@ Kinds: `message`, `note`, `verify`, `identity`, `lease`, `audit`, `landing`, `ro
 - **Heads.** A head row signs (Ed25519, the device key: "Where the device key is kept") the row directly before it.
   Only rows through the last verified head are given to peers or stored from peers. A pool of one
   never needs to sign.
+- **Segments.** A log that holds 75 percent of the rows or of the bytes it may keep starts a new segment (`board/rotate.rs`,
+  `docs/notes/2026-10-19-log-rotation.md`): a `base` row that continues the chain, this device's notes, rooms, tasks and grants
+  carried with their original operation identity, order and clock, and a head, in one file that replaces the log by a rename; the rows before it go to `archive/<origin>.<first>-<last>.jsonl`.
+  Seqs go on across segments. A copy of the log takes the base as any next row, applies the segment once every restated row is
+  held (until then its view is the old rows), and a member that holds nothing of the origin, or is behind a base whose archive is
+  gone, starts the chain at the base. A base may start a chain at a seq of at least 2; it is refused when it ends a segment under half
+  the cap, restates more than half the rows or leaves out a grant revocation the copy holds. Nothing in the rows before a base is needed to
+  verify the rows after it: the head that covers the base is signed by the key pinned for the origin, as every head is.
 - **Merge.** All rows sort by (wall, counter, origin, seq): one total order for any delivery order,
   with a row delivered twice kept once and a repeated `idem` key of one actor on one origin kept at
   its first row. Foreign rows dated more than five minutes ahead are held back from the view.
@@ -79,8 +87,8 @@ Kinds: `message`, `note`, `verify`, `identity`, `lease`, `audit`, `landing`, `ro
   refused), must be a usable name and must not be a local session's name, and is shown as
   `actor@dN`. Posts target `#general` or `#announcements` (with announcement types only). Notes per
   foreign sender are capped. Refusals are recorded (the latest 200) and shown in `status`.
-- **Quotas.** 64 origins per board, 200,000 rows and 128 MiB per log (one session writes a tenth of each and the sessions of one process tree
-  a quarter between them; the last 2,000 rows and 8 MiB are the node's own: the identity entry and the audit of a session ending, and in
+- **Quotas.** 64 origins per board, 200,000 rows and 128 MiB per live segment of a log (one session writes a tenth of each and the sessions of one process tree
+  a quarter between them; the last 2,000 rows and 8 MiB are the node's own: the identity entry of a session ending, and in
   the last 500 rows and 2 MiB only a head and the rows a person's decision makes; docs/limits.md, "At a bound"), 128 KiB per row, 64 KiB per
   body text.
 - **Damage.** A forged, forked or broken copy is `damaged`. It marks the origin damaged only when
@@ -133,6 +141,13 @@ minutes) and the terminal it was signed in (`anchor`: the shell of that terminal
 `yes`; the node makes the caller's lineage the session's and ends the tokens it held; the harness started in that terminal registers as
 the session. Tokens of its subagents stay bound to where they were registered.
 
+On a device in a pool a typed `yes` moves no session. `rebind` with the terminal's `anchor` and no `approval` makes a request that the admin
+phones are shown (kind `rebind`, the session, the board and the terminal inside what the phone signs) and answers its id and a number; the
+person picks that number among three on the phone, which ties the tap to the terminal in front of them. The same call with the request's id
+as `approval` answers `{state: pending, moved: false}` until the tap, then makes the caller's lineage the session's once, from the terminal
+the request names, within ten minutes of the tap; the request is then `used`. A session has one request waiting at a time and at most three
+an hour, and the call spends no nonce. A device with no admin phone of the pool added refuses the request.
+
 A main session with no lineage recorded (registered before lineages were kept, by a process the node could not read, from another
 process id namespace, or under `hidepid`) is taken again only by a process that presents a token of that name, which binds it to where
 that process runs; any other process is refused saying a person moves the session with `rebind`. No process adopts a name by being the
@@ -181,10 +196,11 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `hello` | | | `{node, version, pid, fingerprint, device (the certificate fingerprint grants and approvals name), build, build_seq, wire}` |
 | `lineage` | | | `{lineage}`: the processes the node reads for the one asking, from it up to the shell of its terminal, each `{pid, start}`; the last is the `anchor` a person signs for |
 | `register` | board | `model, harness, session` (token = parent, or the session's own token) | `{name, token, created, parent, origin}`; a main session already registered is answered only to its lineage, and the token it gets is bound to the lineage it registers from |
-| `rebind` | board | `harness, session, at_ms, nonce, anchor, by, sig` (a person key's signature) | `{name, moved, tokens_ended}` |
+| `register_person` | board | `session` (token = none, or the person's own session's token) | as `register`, for the person's own main session (harness `poolhouse-ui`, model `person`), which the node marks `person`; `register` and `whoami` refuse the harness `poolhouse-ui` |
+| `rebind` | board | `harness, session, anchor`, and in no pool `at_ms, nonce, by, sig` (a person key's signature), in a pool `approval` (the id of the request) | `{name, moved, tokens_ended}`; in a pool the request with its `id` and `code`, then `{state, moved}` until the phone answers |
 | `whoami` | board, token | `model, harness` (claim what you run on) | `{name, board, target, identity}` |
 | `session_lookup` | board | `harness, session` | `{name}` (denied when none is registered) |
-| `agents` | board, token | `retired` | `{agents: [{name, parent, family, model, model_state, harness, retired, retired_reason, seen_ms, idle}]}`; retires the sessions idle for a day first |
+| `agents` | board, token | `retired` | `{agents: [{name, parent, family, model, model_state, harness, retired, retired_reason, person, seen_ms, idle}]}`; retires the sessions idle for a day first |
 | `retire` | board, token | `target` (empty = yourself), `reason` (`done`, the default, `revoked` or `forged`) | `{name, retired, reason, by, tokens_revoked, leases_released, subagents_retired}` |
 | `post` | board, token | `kind` (message or note), `idem`, `fields` | `{id, seq, sender, status}` |
 | `read` | board, token | `since` (cursor map), `kind`, `channel`, `by` (sender), `limit`, `inbox` (direct messages and what the caller's subscriptions and mentions send to its inbox), `digest` (what its digest subscriptions collected), `mentions`, `with`, `thread` (a message and every reply under it), `head` (no entries: the cursor of now), `files` (file messages only) | `{entries, cursor}` |
@@ -227,11 +243,12 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 
 | `lease_acquire`, `lease_renew`, `lease_release`, `lease_list`, `lease_wait` | board, token | see "Leases" | a lease |
 | `grant_issue`, `grant_revoke` | board, any session (it only carries the request) | the signed grant or revocation, see "Standing grants" | `{gid, action, until_ms, entry}` / `{gid, revoked, entry}` |
+| `grant_distrust` | none, any session (it only carries the request) | `key, since, pool, person, at_ms, reason, sig`: the signed distrust, see "Standing grants" | `{key, distrusted, entry}` |
 | `grants`, `grant_log` | board, token | `limit` (log) | every grant with its state, the entries that name none that count, the registry / the newest grant entries |
 | `person_enroll`, `person_unenroll`, `person_keys` | token (enrol, unenrol), none (keys) | `public, about, at_ms, proof` and `secret` (the first key) or `by, approval, approved_ms, nonce, anchor`; `fingerprint, at_ms, by, nonce, anchor, sig` | `{fingerprint, keys}` / the enrolled person keys, each with its `alg` (`ed25519` or `p256`) |
 | `approval_request`, `approval_status`, `approval_cancel`, `approvals` | board, token | `asks` (one to eight of `{action, resource, lasts_ms, uses, review}`), `note`, `task`, `ttl_s`, `expect_policy` / `id` / `id` / `state` | the request with its plain-words `text` and `challenge` / its state and the grants it wrote / the request / the session's own requests; docs/phone-approval.md |
 | `approval_pending`, `approval_decide` | token (any registered session; a session only carries a decision) | `key, sig, at_ms` / `id, decision (approve, approve_repeat, deny, block), key, sig, text_sha256, pick` | the session's own waiting requests, or every one with the signature of an enrolled key made in the last thirty seconds / the request decided, once, by the signature of an enrolled key |
-| `phone_info`, `phone_offer`, `phones` | none, token, token | `secret` / / | where phones reach this node and its pinned certificate / a code for a further phone (once a person key exists) / the phones held |
+| `phone_info`, `phone_offer`, `phones` | none, token, token | `secret` / / | where phones reach this node and its pinned certificate / a code for a further phone (once a person key exists); in a pool its link also carries `admit`, the terms a phone accepts being listed under / the phones held |
 
 A refusal for want of a grant is `denied` and carries `error.grant`: the action, the resource, the session, its board and this
 device, so a client a person is running can sign a grant for exactly that and ask again. The network methods
@@ -294,20 +311,21 @@ subagent has none. The node removes a session's expired folders whenever it list
 **Sessions.** `register` records the model id and harness (`model_state` `claimed`; a subagent that names no
 model gets its parent's, `inherited`, and the name's family comes from it; the node itself may mark
 one `verified`, and a claim can never lower a verified one); `whoami` with `model`/`harness`
-changes the claim. Each change is an identity entry. Registering a session that has a parent without
+changes the claim. A change of the model or the harness is an identity entry; a change of only the model state (`inherited` to `claimed`) is not. Registering a session that has a parent without
 that parent's token, or under another parent, is `denied`, and so is registering a retired subagent.
 `retire` revokes every token of the session, ends its leases (written to the board), marks the
-identity retired and writes an `audit` entry. A session retires itself, and a main session takes its subagents with it;
-a parent (any ancestor) retires a descendant; a session retires no other main session. The end has a reason, recorded on the identity and in the
-audit entry: `done` (an ordinary end, such as a worker whose work is finished) or, given only by a parent and never
-by a session about itself, `revoked` or `forged` (an end for cause, which the landing runner holds against the work
-the session asked for or reviewed). The node itself ends a session as `idle` (see below). A main session that ended `done` or
+identity retired and writes one identity entry that says who ended it (`retired_by`) and what that released (`detail`). A session retires itself, and a main session takes its subagents with it;
+a parent (any ancestor) retires a descendant; a session retires no other main session. The end has a reason, recorded on the identity and in its
+ending entry: `done` (an ordinary end, such as a worker whose work is finished) or, given only by a parent and never
+by a session about itself, `revoked` or `forged` (an end for cause, after which the reviews the session wrote no longer count). The node itself ends a session as `idle` (see below). A main session that ended `done` or
+
 `idle` registers again as the same session, from the lineage it was registered from and on the same terms as before it ended
 (a retired subagent never does); its old tokens stay refused and it is given a new one.
 
 **Idle sessions.** A session is *idle* when it is not retired and has neither made a request within 30 minutes
-(`child_beat_s`) nor holds a lease whose process still runs; `agents` marks it `idle`. No count of live sessions is kept: any number register, from one terminal or many. The node retires a session that has been idle for 24 hours (`idle_retire_s`;
-its tokens end, its leases are released and the board gets an `audit` entry by `node`) whenever it lists sessions or registers one.
+(`child_beat_s`) nor holds a lease whose process still runs; `agents` marks it `idle`. A board holds at most `live_main_sessions` main sessions that have not ended (docs/limits.md). The node retires a session that has been idle for 24 hours (`idle_retire_s`;
+its tokens end, its leases are released and the board gets its ending identity entry) whenever it lists sessions or registers one. The person's own session of a terminal (`register_person`) is also retired,
+as `done`, once every process it was registered from has ended, so a terminal that was opened and closed holds no place.
 
 **Claims** are leases of one `claim` resource taken without waiting. `reserve` takes a set of them in one call of the
 node: the set is checked against what others hold before the first is taken, so it is taken whole or refused whole (the
@@ -316,7 +334,7 @@ set refused by a claim another device holds gives back what it took. A branch cl
 board's name, so two boards may claim the same branch name; ports, servers, paths and installs are the
 device's. `claims` lists the claims of the caller's board with the owner. A holder's `pid` and `ttl_s`
 behave as for any lease (dead process or expiry drops it). A claim taken with `local` waits only for this device's
-sessions: a branch or area claim another device holds on the board does not keep it from being granted (the landing
+sessions: a branch claim another device holds on the board does not keep it from being granted (the landing
 runner's claim is one).
 
 **Notes** carry `nkind` (decision, rule, fact, question), `title`, `body`, `source`, `tags`,
@@ -331,20 +349,14 @@ never runs `verify_cmd`: a client does and records `exit` and the SHA-256 of the
 **Landing reviews** are the `landing` entries of the board (channel `#landing`): a `review` names a plain `branch` (never
 `main` or `master`), a full 40-character `sha`, a `verdict` (`accept` or `reject`) and the `standing` the node stamps on it
 (the sender's name, model and model state at that moment, never taken from the caller). `land_review` writes one for the
-live session behind the token and refuses a session that ever held `claim branch BRANCH`. `land_accepts` (`branch`, `sha`,
-`worktree`) answers `scripts/land` and the push hook: the last review of each reviewer of this device for exactly that commit
-and branch, without the caller and without any session that ever acquired `claim branch BRANCH` or `claim worktree PATH`
-(read from the board's lease entries, whatever branch a reviewer wrote), and the `creators` it found; an empty list means no
-creator is on record. A review row appended by hand under a creator's name is left out the same way. Entries of the
+live session behind the token. `land_accepts` (`sha`, and optionally `branch` and `worktree`) answers the push hook and the unmerged runtime deployment: the last review of
+each reviewer of this device for exactly that commit under any branch name, without the caller and, given a branch or worktree,
+without any session that ever held its claim or was started by one (through any number of subagents); a session of that kind
+cannot write a review of the branch either, and the creators of record come back with the answer. Entries of the
 retired landing queue (`request`, `cancel`, `pause`, `resume`, `state`, `beat`, and reviews of a request) fold and count
 for nothing.
-A model's tier is not the node's to judge, so `landing.eligible` in Python bars the lowest tier and an
-unlisted model from landing or reviewing, and `landing.standing` re-derives each reviewer's tier from the stamped model and
-drops a reviewer retired as `revoked` or `forged`. The tier
-comes from `src/poolhouse/workspace/model_tiers.json` (families `anthropic`, `openai` and `qwen`;
-docs/model-benchmarks.md, section 1): a local agent claims the id `localmodel.model_identity` gives, which
-drops the quantisation, so the `qwen` family lists those short ids and every quantisation of Qwen3.8-27B and
-Qwen3.8-Flash-Next above its lowest tier, on the same claimed-id trust as the other families.
+`landing.rejected` and `landing.standing` drop a reviewer retired as `revoked` or `forged`. No model identifier decides who may land, review or
+coordinate: the model on a review is the id the session claimed, kept as a label.
 
 A review counts only when this device wrote it. The device list (`<state>/land_trust.json`, kept per pool, empty by default,
 never replicated) decides whose `task` and `grant` entries count besides this device's own; it is changed by `land_trust`
@@ -363,7 +375,7 @@ needs an `assign` entry that names it and a model lease of this device's table t
 worker's parent, by the task's maker when the worker is named in its assignees, or by a session with no parent that holds
 `task_authority` for itself), and `task_claim` takes the claim lease `task` of the task for two minutes at a time, which
 `task_beat` renews and a lost worker lets lapse; an expired lease is recovered by a qualified reviewer (`task_ready`), which
-spends a retry, and a blocked task is resumed the same way. A submission is stamped with the model of the lease and the
+spends a retry, and a blocked task is resumed the same way. `task_admit` is the worker's read-only check before it works: it returns the working task with its lease and scope only to the worker the task is assigned to, and renews nothing. A submission is stamped with the model of the lease and the
 worker's own registration; a review names the exact proposal and hash and needs every acceptance criterion passed by an
 independent check. The worker never reviews its own task. In `open` mode (the default) any other session of the board
 reviews; in `strict` mode only a person (a session with no parent that holds `task_authority`), a designated reviewer, or the
@@ -384,8 +396,7 @@ body holds no fractions: times are whole milliseconds. Followers (`task_watch`) 
 others are shown under `foreign_ignored`. The `task` claim kind is the node's own: `claim` refuses it and `claims` does not list it.
 
 **Stubs.** One check waits for the trust ledger and is a stub that allows nothing: model verification (no session is ever
-`verified`, so `landing.eligible` reads a listed model id as claimed, and a grant naming a verified model or a verified class
-holds for nobody yet).
+`verified`, so a grant naming a verified model or a verified class holds for nobody yet).
 
 The Rust client (`client::Client`, `client::ensure_running`) finds a dead socket, takes
 `start.lock` (single-flight, so callers queue and the second finds the first's node), spawns
@@ -401,9 +412,9 @@ API, for itself or anyone, and a `grant` entry any writer puts on the board with
 allows nothing. What gates a signature is the custody of the key: the operating-system user and a typed confirmation, not the node
 ("Key custody" below says exactly what that does and does not protect).
 
-**The registry.** Eighteen actions, fixed in `grants::spec::ACTIONS`: `member_remove`, `add_device`, `join_pool`,
+**The registry.** The actions in `grants::spec::ACTIONS` are `member_remove`, `add_device`, `join_pool`,
 `sync_now`, `shard_call`, `shard_consent`, `land_trust`, `task_authority`, `note_verify`, `quarantine_release`,
-`file_delete`, `link_read`, `link_write`, `link_remove`, `source_add`, `pool_create`, `pool_leave` and `admin_manage`. Anything else is `invalid` to grant. **The floors** are refused by name, at issue, in the fold and at every
+`file_delete`, `link_read`, `link_write`, `link_remove`, `source_add`, `pool_create`, `pool_leave`, `admin_manage` and `service_bind`. Anything else is `invalid` to grant. A `service_bind` grant names one exact `service:<digest>` resource, the receiving device fingerprint and one use; it authorizes the compute certificate, endpoint and generation shown by `service_draft`. **The floors** are refused by name, at issue, in the fold and at every
 use, whoever signed: `push_main`, `merge_main`, `release_main`, `tag_release`, `force_push`, `act_as_person`, `agent_is_human`,
 `keystore`, `second_gpu`, `forge`, `grant_issue`, `grant_revoke`, `person_enroll` and `sudo`. Pushing `main` stays with the
 owner's release authorization (docs/person-delegation.md); the GPU is leased one holder at a time (the Leases section).
@@ -422,7 +433,31 @@ when it is issued, so a captured request cannot be replayed later, and a repeate
 another device may use (`task_authority`, `note_verify`, `sync_now`, `shard_call`) names the one device it is used on, so its count is
 kept where it is spent.
 
-**Who may sign.** The keys enrolled in `persons.json`. `person_enroll` takes `public`, `about`, `at_ms` and `proof` (the key's own
+**Who may sign.** On a device in no pool, any key enrolled in `persons.json`. On a device in a pool (founded or joined; leaving keeps it so) the
+action decides. A device-local action (`link_read`, `link_remove`, `source_add`, `quarantine_release`, `pool_leave`: everything it does stays in this
+device's own state) is granted by any key enrolled here, as before. Every other action, including one added later, reaches beyond the device and counts
+only from an approval a pool admin key signed: the key is listed in the charter in force with the admin role and strength strong, its own acceptance
+verifies, and this device knows it as a phone's key (the mark a phone's own enrolment puts in `persons.json`). `grant_issue` for such an action is
+refused ("In a pool your phone gives standing grants: ask for one and tap approve."), and an `issue` row that carries no approval, or that a key outside
+that set signed, is listed `ignored` with the reason. The approval row carries the decision (`approve` or `approve_repeat`) the signature was made
+for. A revocation of a grant of the pool counts from any admin-role key the pool listed in any epoch, strong or weak, checked against the charter and
+never against `persons.json`; a revocation of a device-local grant also counts from any key enrolled here. `approval_decide` takes a decision only
+from such an admin key. `grants` reports `governance` (`governed` or `unfounded`), `authority` (the admin keys that count now), `may_issue`,
+`may_revoke` and `registry.device_local`, and `poolhouse-workspace grant` and `grants-setup` refuse in a pool before they ask for a typed `yes`.
+
+**Who is added, told and shown requests in a pool.** A phone whose key the charter in force lists as a strong admin key joins with the one-time code
+and the proof of its key and needs no approval: a device that holds only a typed-yes key gets the admin's phone with one scan. Any other phone waits for
+an admin phone to approve it. Pushes, `list`, `get`, `wait` and `approval_pending` go only to an admin phone (an admin key this device knows as a
+phone's, not distrusted); another phone is shown no request. `person_unenroll`, a phone removal and its request refuse a key the charter lists ("it
+leaves through an admin removal") before a nonce is spent. `approval_request` is refused while this device holds no admin phone. Every request ticks
+the pool once before it is served, so a removal whose hold has run counts at once. A `distrust` row (`grant_distrust`) is signed by an admin-role key
+of the charter in force, names a key the charter lists and the epoch it was listed at, and the pool's id; it stops that key counting as an authority
+key (grants, decisions, pushes, reads) on every board at once and ends only when the key leaves the charter or is listed again. It can only narrow:
+a distrusted key's revocations and distrusts still count, and no row undoes one. A pool whose `acts.json` or `seen.json` is missing or malformed
+stops the node. A pool set aside for another charter version leaves `grants_floor.json` at the state root: no grant row written at or before it
+counts on any board.
+
+**Who may sign on a device in no pool.** `person_enroll` takes `public`, `about`, `at_ms` and `proof` (the key's own
 signature over the enrolment). The first key also takes `secret`: `poolhouse-workspace grants-setup`, run by a person at a terminal, asks the node (`presence_ask`)
 to allow the session to add the first key, and the node asks the person itself: the operating system's own prompt (a password or a fingerprint,
 on macOS and Linux, raised only by the installed software on the real home: the launcher passes `--presence os` only when
@@ -476,7 +511,13 @@ signs a challenge that binds the text, the node and the request, and an approved
 of a signature over the grant, so they count wherever a grant a person typed `yes` for counts. The phone endpoint (`--phone ADDR`, or the address in
 `phone.json` in the state directory) is HTTPS on one P-256 certificate (`phone.cert`, pinned by the code a person scans); `phones.json` holds each phone, its token's hash
 and its push address; `approvals.json` the requests; `fatigue.json` the declines, timeouts, holds and pushes that keep a request made again and again from wearing the person down (docs/phone-approval.md, "Approval fatigue"); `phone_offer.json` the hash of the one-time code a person's command (or the node, once a key exists) left for the next
-phone. The first phone is enrolled by that code alone; every later phone waits for a key the node holds to approve it.
+phone. The first phone is enrolled by that code alone; every later phone waits for a key the node holds to approve it. On a device in a pool a phone the charter
+lists as a strong admin key is enrolled by the code alone; any other phone sends, with its `add`, its `acceptance` of being listed as an admin key of the person
+the code is for (the terms are in the link's `admit`: pool, charter hash, epoch and person, which the node reads from its own state again), and the request an
+admin phone is shown carries the unsigned `admin_add` act. That phone approves with two signatures, `sig` on the request and `act_sig` on the act; the node hands
+the act to the pool at that tap, so the hold begins there, and the new phone is an admin key when the hold has run. The person is the one whose admin phone the
+code was made for (the one person whose admin phones the device holds, or the person of the phone that made it), and only a phone of that person approves. A
+device with no admin phone refuses a phone the charter does not list before its code is spent.
 
 **Recovery.** When the only key is lost or no longer trusted, the owner stops the node, deletes `persons.json` in the node's state directory, starts the node and runs `grants-setup` again. It is an offline step at a terminal: with
 the node stopped no session can ask for it, and every grant the deleted key signed reads as ignored until the new key signs new ones.
@@ -622,7 +663,7 @@ used to be admitted six ways: the GPU, CPU slots, memory, named claims, served m
 `src/lease/` (`types`, `policy`, `table`, `live`, `merge`, `rpc`). Config is `lease-config.json`
 (optional; every field has a default): `cpu_slots` (cores), `memory_mb` (0 = no budget),
 `max_wait_s` 600, `background_share_percent` 50, `unknown_background_s` 180, `queue_patience_s` 60,
-`default_ttl_s` 300, `max_ttl_s` 86400, `max_leases_per_holder` 512, `max_leases_per_lineage` 1024, `max_leases` 4096. The file is read again whenever its bytes change (at the next lease call), so a
+`default_ttl_s` 300, `max_ttl_s` 86400, `max_leases_per_holder` 512, `max_leases_per_lineage` 1024, `max_leases` 4096, `max_worktree_records` 1024. The file is read again whenever its bytes change (at the next lease call), so a
 budget a program writes there applies at once; a file that does not parse changes nothing (and neither does one that is not a
 JSON object, whose `max_ttl_s` is under 1 or whose `background_share_percent` is over 100), and a deleted one sets the defaults.
 
@@ -677,13 +718,18 @@ A lease is `{id, state (queued|held), holder, resources, class, estimate_s, sinc
 expires_ms, ttl_s, pid, remote, position, wait_estimate_s}`. Rust: `node.leases` (`Leases`, with
 `tick`), `lease::table::Table`, `lease::rpc::call` and `serve`, `lease::live::is_alive`.
 
-**On the board.** Every grant and end is a `lease` entry (`#leases`) written under the holder's
+**On the board.** Every grant and end of a lease that holds something another device can name is a `lease` entry (`#leases`) written under the holder's
 name: `{lease, action: acquire|release|expire|dead|abandon, resources: [lines]}`. `lease::merge::view`
 reads them back in the board's total order: the earliest acquire of an exclusive resource holds it
-until its own end entry; counted resources sum. Gpu, model slots and the path, port, server and
-install claims are scoped to the origin that wrote them (a device's table decides its own, others only
-read); branch and area claims are pool-wide, and a local request for one a peer holds on the board
-queues behind it (`merge::foreign_holds`).
+until its own end entry; counted resources sum. Gpu and model slots are scoped to the origin that wrote them (a device's table decides its own, others only
+read); a branch claim is pool-wide, and a local request for one a peer holds on the board
+queues behind it (`merge::foreign_holds`). **Device-only claims write no entry.** A claim of a
+worktree, an area, a port, a server or an install (`lease::types::DEVICE_CLAIMS`) names a thing that exists on one device
+(a path of its disk, a port or server of its network, an area spelled under the path of its repository), so no other device can hold
+or ask for it: the device's table keeps it (`leases.json`) and the board is not told. A lease that holds only such claims is
+not mirrored (`Lease::on_board`); a lease that holds a branch or a task claim with them is. The sessions that held a worktree
+claim are kept in `worktree-holders.json` (`lease/holders.rs`: at most `max_worktree_records` for one process tree and `MOST_HOLDERS` in all, retained without age-out, a new path past either refused, never one dropped to make room), which the landing reviews read to leave
+a branch's creator out of its reviewers. The holder of an expired device-only claim is still told by a notice.
 
 ## Sync
 
@@ -790,7 +836,7 @@ listener is the one network port.
   lone devices never join each other at once); the dial is pinned to the fingerprint in the beacon.
 - **Joining** (`join_code.rs`). `secure`: `add_device` opens a window (a six-digit code or a passphrase,
   three tries, a time limit), `join_pool` on the other device runs SPAKE2 (`spake2`) with both certificate
-  fingerprints as its identities and HMAC-SHA256 confirmations, as in `fleet/onboard/pake.py`; the pool
+  fingerprints as its identities and HMAC-SHA256 confirmations; the pool
   record then arrives sealed under the exchange (in a governed pool, the founding act and the acts that stand). `open`: the device
   is admitted on its first contact from the same segment and the admit is recorded with the certificate fingerprint (`by: open`).
   A device joins only if it is alone in a pool that no admin governs (`Pool::can_join_other`); a governed pool is left by its own
@@ -961,6 +1007,54 @@ when the verified binary's checksum differs from the one inside, so the supervis
   on the multicast group) is the signal of a denied permission, and a run launched from a terminal borrows that terminal's
   permission; only the `open` launch the command uses measures the bundle's own.
 
+## The runtime's identity on macOS
+
+The node is not the only program that listens: the daemon (TCP 8770) is Python. macOS decides about a program by the
+executable the process runs, and the Application Firewall's own log shows how: `Handle flow with processPID: N and bundleid:
+python.exe` and `KNOWN APP FLOW: file:///Users/.../.pyenv/versions/3.13.5/bin/python3.13, return known verdict`, so the entry in
+the firewall list is that file's path and the signing identifier inside it, and `socketfilterfw --listapps` lists it by name. A
+runtime's `bin/python` led there, so every prompt said python3.13 and the Allow belonged to every program that uses that Python. A
+process also inherits a responsible process from whatever started it (a daemon started from a shell in an editor is the editor's,
+measured with `responsibility_get_pid_responsible_for_pid`), and Local Network prompts name that process.
+
+- **One executable, named Poolhouse.** `runtime_identity.bind` copies the interpreter a runtime was made from (and the libraries it
+  loads from beside itself, which a standalone Python needs; `macho` reads the load commands, never `otool`) into
+  `~/.poolhouse/apps/runtime/<platform>-<machine>-<python>/Poolhouse.app/Contents/MacOS/Poolhouse`, with bundle id
+  `app.poolhouse.runtime`, display name Poolhouse and the node bundle's Local Network text, signs it with `Poolhouse Local Signing`
+  and points the runtime's `bin/python` links at it. The runtime stays a virtual environment (the kernel runs the bundle, Python
+  reads the `pyvenv.cfg` beside the link it was started by), so `sys.executable`, the launchers and the hooks do not change, and
+  every Python process of the runtime is Poolhouse: the daemon, the workers, the launchd units.
+- **Stable across rebuilds and updates.** The designated requirement is `identifier "app.poolhouse.runtime" and certificate leaf =
+  H"<sha1>"`, no hash of the bytes. The path holds the platform and Python ABI, not a version, so a runtime update or a patch release
+  of Python replaces the bundle in place (made beside, verified, moved in) and the path and the requirement stay; a new Python minor
+  version is a new executable and macOS asks once more. `bind` runs when a runtime is built, again when it is selected (a rollback, a
+  fallback) and when `runtime ensure` finds the selection current but not yet Poolhouse's.
+- **Loud, never unsigned.** When the certificate cannot be had (the keychain is locked, the person is not there to approve making it) the
+  build stops with `Poolhouse could not sign its executable (...)`, the previous runtime stays selected and keeps running, and the
+  failure is recorded (`identity_failure` in the deploy record, shown in `runtime ensure`'s detail) and not tried again for ten minutes,
+  so a Mac without the certificate does not ask for it every time `ensure` runs. There is no ad hoc fallback for this bundle. A runtime whose Python
+  does not start as the copy is not bound and the build is refused with what the probe saw. Nothing is bound or signed outside the
+  installed software on the real home (`real_machine`).
+- **launchd.** The bundle also starts by itself (a `pyvenv.cfg` in its resources tells Python where its standard library is, which a
+  standalone Python needs), and `bind` and the unit check start it bare. Both autostart paths write `ProgramArguments` as `[Poolhouse, -I, -S, <launcher>, ...]`, so the background item and the
+  job are Poolhouse; a unit is refused while an installed Mac has no verified executable. Detached daemon restarts (`runtime
+  restart-host`, `poolhouse --restart`) start the process with its responsibility disclaimed (`disclaim`), so its prompts name Poolhouse
+  and not the terminal or editor that ran the command. A daemon run in the foreground of a terminal stays that terminal's.
+- **Attack notes.** *Who can replace the executable:* any process of the same account, as it can replace the interpreter today;
+  `ensure_bundle` rebuilds a bundle that no longer verifies, `poolhouse-setup` and `autostart status` report one that does not or one
+  signed with a certificate other than this Mac's (the requirement is compared with the keychain's certificate, not only checked for
+  its shape), and a swapped binary signed ad hoc does not satisfy the requirement macOS kept. The base Python comes from the
+  runtime's own `pyvenv.cfg`, so a lost bundle is made again from what the runtime says, and a bundle is replaced in one step
+  (`renamex_np`), never removed first.
+  *Who can sign as Poolhouse:* a process of the account that can use the certificate's key, which is the grant `codesign` already has
+  for the node bundle; it can ride the Allow of this executable, which is a general interpreter that any process of the account can run, as python3.13 is
+  today; what changes is that the Allow no longer belongs to every other program installed with that Python. *Quarantine and notarisation:* the files are made locally, so they carry no quarantine
+  attribute and Gatekeeper does not assess them; they are not notarised, so the Application Firewall does not allow them
+  automatically as signed software and asks once. *The certificate missing:* the loud refusal above.
+- **What is not covered.** A runtime from a Python macOS cannot copy (its libraries sit outside the bundle's reach) is refused loudly.
+  A `--dev` checkout installed with `pip install -e` is not a runtime and keeps its interpreter's name. Windows names a program by
+  its file, so the Windows rules are by port.
+
 ## Shipping and keeping it up
 
 The Python side of getting the node onto a device and keeping it there: `poolhouse.node_binary` (build, checksum,
@@ -1017,8 +1111,10 @@ verify; the binary is `poolhouse-node.exe` on Windows), `node_build` (into a run
 
 `poolhouse.board` is the client. `client.Client` speaks the socket (starting the node through
 `node_launch.ensure_node` when it is dead) and raises `NodeError` (`Denied`, `Invalid`, `Quota`) with the node's code;
-`place.resolve` maps the working directory to a board (`POOLHOUSE_BOARD`, else the project registry; a git repository
-the node does not know is added as a project, named by its folder and a few hex of its git common directory);
+`place.existing` selects an explicit board or resolves an existing project from the working directory without creating
+a project or session. Connections use it; source authorization uses `place.at_path`, which ignores board selectors
+and asks the registry for the actual path. Unknown projects are refused. The legacy
+`place.resolve` initializer remains for deliberate project setup, separate from lookup;
 `credentials` keeps a private token file per board and name under `<state>/client/` and the read cursors of each
 question (inbox, announcements); `session.Session` is one token's typed API (`post`, `read`, `notes`, `claim`,
 `agents`, `retire` ...) returning small dataclasses, with an injectable `clock`. `session.register` /

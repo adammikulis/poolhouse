@@ -1,4 +1,4 @@
-<!-- settings-view: what this machine does, what it can train with, and taking it off again -->
+<!-- settings-view: device preferences, model defaults and maintenance -->
 <style>
 settings-view { display:contents; }
 settings-view #settings { padding:calc(28px * var(--ui-density,1)) calc(32px * var(--ui-density,1)); max-width:1320px; width:100%; }
@@ -21,7 +21,8 @@ settings-view .settings-pane h3 { font-size:1.071rem; margin:22px 0 12px; }
 settings-view .settings-pane .opt { padding:calc(12px * var(--ui-density,1)); border:1px solid var(--line); border-radius:10px; margin-bottom:8px; }
 settings-view .settings-toolbar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:16px 0; }
 settings-view .settings-toolbar button { width:auto; margin:0; }
-settings-view .settings-footer { display:flex; align-items:center; gap:18px; margin-top:20px; }
+settings-view .settings-footer { position:sticky; bottom:0; z-index:2; margin-top:20px; padding:12px 0; background:var(--bg); border-top:1px solid var(--line); }
+settings-view .settings-footer .settings-toolbar { margin:0; }
 settings-view #settings-save { width:auto; min-width:150px; margin:0; background:var(--poolhouse-pink); color:var(--poolhouse-pink-ink,var(--poolhouse-navy)); }
 settings-view #settings-note { min-height:24px; }
 settings-view .library-kind { display:inline-block; font-size:0.786rem; border:1px solid var(--line); border-radius:20px; padding:calc(2px * var(--ui-density,1)) calc(8px * var(--ui-density,1)); margin:4px 8px; }
@@ -43,14 +44,14 @@ settings-view #settings-removal { border-top:1px solid var(--line); padding-top:
         <button type="button" role="tab" data-section="developer" aria-selected="false" data-t="dev.heading">Developer</button>
       </nav>
       <div class="settings-content">
-        <section class="settings-pane" data-pane="appearance" role="tabpanel"><theme-editor></theme-editor><div class="group" id="settings-interface"></div></section>
+        <section class="settings-pane" data-pane="appearance" role="tabpanel"><div class="group" id="settings-tokens"></div><theme-editor></theme-editor><div class="group" id="settings-interface"></div></section>
         <section class="settings-pane" data-pane="models" role="tabpanel" hidden><header><h2>Models &amp; providers</h2><p class="hint">Set defaults for new conversations and choose where models come from.</p></header><div class="group" id="settings-chatting"></div></section>
         <section class="settings-pane" data-pane="compute" role="tabpanel" hidden><header><h2>Device availability</h2><p class="hint">Decide when this device contributes and what happens when you need it.</p></header><div id="settings-left"></div><div id="settings-when"></div><div class="group" id="settings-wired"><h2>GPU memory</h2><wired-memory></wired-memory></div></section>
         <section class="settings-pane" data-pane="libraries" role="tabpanel" hidden><header><h2>Libraries &amp; simulators</h2><p class="hint">Add training and simulation capabilities to managed environments.</p></header><div class="group" id="settings-libs"></div></section>
         <section class="settings-pane" data-pane="credentials" role="tabpanel" hidden><header><h2>Provider credentials</h2><p class="hint">Connect services using locally stored tokens and API keys.</p></header><div class="group" id="settings-credentials"></div></section>
         <section class="settings-pane" data-pane="maintenance" role="tabpanel" hidden><header><h2>Maintenance</h2><p class="hint">Updates, device setup, and storage management.</p></header><div class="group" id="settings-updates"></div><div class="group" id="settings-again"></div><details data-advanced><summary>Experimental features</summary><feature-flags></feature-flags></details><details data-advanced><summary>Runtime tools</summary><div class="group" id="settings-agent-runtime"></div></details><div class="group" id="settings-removal"></div></section>
         <section class="settings-pane" data-pane="developer" role="tabpanel" hidden><vocabulary-settings></vocabulary-settings></section>
-        <footer class="settings-footer"><button id="settings-save">Save preferences</button><div id="settings-note" role="status" aria-live="polite"></div></footer>
+        <footer class="settings-footer"><div class="settings-toolbar"><button id="settings-save">Save preferences</button><button id="settings-discard" class="ghost" disabled>Discard preferences</button><span id="settings-dirty" role="status" aria-live="polite"></span></div><p class="hint">Theme, library and credential controls save separately.</p><div id="settings-note" role="status" aria-live="polite"></div></footer>
       </div>
     </div>
   </main>
@@ -64,55 +65,16 @@ settings-view #settings-removal { border-top:1px solid var(--line); padding-top:
 
   class SettingsView extends HTMLElement {
     connectedCallback() {
-      if (this.wired) return;
+      if (this.wired) { this.settingsWidth?.addEventListener('change', this.settingsAxis); this.settingsAxis?.(); return; }
       this.wired = true;
-      this.box = this.querySelector("#settings");
-      this.note = this.querySelector("#settings-note");
-      this.save = this.querySelector("#settings-save");
-      this.save.onclick = () => this.apply();
-      const tabs = [...this.querySelectorAll("[data-section]")];
-      for (const [index, button] of tabs.entries()) {
-        const pane = this.querySelector(`[data-pane="${button.dataset.section}"]`);
-        button.id = `settings-tab-${button.dataset.section}`;
-        button.setAttribute("aria-controls", `settings-pane-${button.dataset.section}`);
-        button.tabIndex = index ? -1 : 0;
-        pane.id = `settings-pane-${button.dataset.section}`;
-        pane.setAttribute("aria-labelledby", button.id);
-        button.onclick = () => this.selectSection(button.dataset.section);
-        button.onkeydown = event => {
-          if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
-          event.preventDefault();
-          const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1
-            : (index + (event.key === "ArrowDown" ? 1 : -1) + tabs.length) % tabs.length;
-          tabs[next].click(); tabs[next].focus();
-        };
-      }
-      M.onRoute((route) => {
-        const on = route === "settings";
-        this.box.hidden = !on;
-        if (on) this.loadSettings();
-      });
+      this.connectSettingsState();
     }
 
-    selectSection(section) {
-      for (const pane of this.querySelectorAll("[data-pane]")) pane.hidden = pane.dataset.pane !== section;
-      for (const button of this.querySelectorAll("[data-section]")) {
-        button.setAttribute("aria-selected", String(button.dataset.section === section));
-        button.tabIndex = button.dataset.section === section ? 0 : -1;
-      }
-      this.save.hidden = !["appearance", "models", "compute", "maintenance"].includes(section);
-    }
-
-    loadSettings() {
-      this.draw().catch(error => {
-        this.note.replaceChildren(el("div", {class:"err"}, error.message),
-          el("button", {class:"ghost small", onclick:() => this.loadSettings()}, "Retry loading settings"));
-      });
-    }
+    disconnectedCallback() { this.settingsWidth?.removeEventListener('change', this.settingsAxis); }
 
     radio(group, value, label, why) {
       const id = `${group}-${value}`;
-      const input = el("input", { type: "radio", name: group, id,
+      const input = el("input", { type: "radio", name: group, id, value,
                                   ...(this.pick[group] === value ? { checked: "1" } : {}) });
       input.onchange = () => { this.pick[group] = value; };
       return el("label", { class: "opt", for: id }, input, M.row(label, why));
@@ -125,32 +87,38 @@ settings-view #settings-removal { border-top:1px solid var(--line); padding-top:
       return el("label", { class: "opt", for: key }, input, M.row(label, why));
     }
 
-    async draw() {
+    async draw(request) {
       this.save.disabled = true;
       this.note.textContent = "Loading preferences…";
       const s = await api("/ui/settings");
+      if (request !== this.settingsLoad || !this.isConnected) return;
       if (M.refused(s)) return;
       if (!s.ok) throw Error(s.error || "Could not load preferences.");
       const cur = s.settings || {};
       M.group = s.group || "";
       this.pick = {
-        labels: (cur.labels || []).join(","),
         autostart: (s.autostart || {}).mode || cur.autostart || "manual",
         on_paused: cur.on_paused || "stop",
         on_close: cur.on_close || "",
         auto_update: cur.auto_update !== false,
         autodownload_models: cur.autodownload_models !== false,
         download_sources: cur.download_sources || "both",
-        context: cur.context || 8192,
+        context: Number.isSafeInteger(cur.context) && cur.context > 0 ? cur.context : 0,
         always_show_advanced: cur.always_show_advanced === true,
+        studio_undo_steps: cur.studio_undo_steps ?? 32,
         chat_max_output_tokens: cur.chat_max_output_tokens,
       };
       M.setPreferences({...cur, resolved_theme:s.resolved_theme});
+      const undo = el("input", {type:"number", min:"1", max:"128", step:"1", "aria-label":"Studio undo steps"});
+      undo.value = this.pick.studio_undo_steps;
+      undo.oninput = () => { this.pick.studio_undo_steps = Number(undo.value); };
       this.querySelector("#settings-interface").replaceChildren(
         el("h2", {}, "Interface"),
         this.check("always_show_advanced", "Always show advanced options",
           "Keep detailed model, training, tool, and maintenance settings expanded across the workspace."),
-        el("p", {class:"hint"}, "Start with the essential controls. Open advanced options as you learn, or keep them visible here. Saved on this device."));
+        el("p", {class:"hint"}, "Start with the essential controls. Open advanced options as you learn, or keep them visible here. Saved on this device."),
+        el("label", {}, "Studio undo steps", undo),
+        el("p", {class:"hint"}, "Keep 1–128 editing steps for each undo and redo history (default 32). Reducing this immediately discards older steps. Runs and tool actions cannot be undone."));
       this.querySelector("#settings-sub").textContent =
         `${s.name}${s.machine?.gpu ? " — " + s.machine.gpu : ""}`;
       const nav = document.querySelector("fleet-nav");
@@ -158,30 +126,43 @@ settings-view #settings-removal { border-top:1px solid var(--line); padding-top:
 
       this.querySelector("#settings-left").replaceChildren(
         el("div", { class: "group" },
-          el("h2", {}, "What this device does"),
-          this.radio("labels", "train", "Train models", ""),
-          this.radio("labels", "prep", "Prepare data", ""),
-          this.radio("labels", "train,prep", "Both", "")),
-        el("div", { class: "group" },
           el("h2", {}, "Starting up"),
           this.radio("autostart", "login", "When I log in", ""),
           this.radio("autostart", "boot", "When the computer starts",
             "your computer will ask for your password"),
           this.radio("autostart", "manual", "Only when I open it", "")));
 
-      const output = el("input", {type:"number", min:"1", step:"1", "aria-label":"Default maximum output tokens"});
-      output.value = cur.chat_max_output_tokens ?? "";
+      const output = el("output-token-slider");
+      output.configure({label:"Default maximum output tokens", context:this.pick.context || null});
+      output.value = cur.chat_max_output_tokens;
       output.oninput = () => { this.pick.chat_max_output_tokens = output.value === "" ? null : Number(output.value); };
+      const auto = el("label", {class:"opt"});
+      const box = el("input", {type:"checkbox"});
+      box.checked = !this.pick.context;
+      auto.append(box, " Largest context that fits this machine, for each model");
+      const picker = M.contextPicker(this.pick.context || M.CTX_STEPS[M.CTX_STEPS.length - 1], (n) => {
+        if (box.checked) return;
+        this.pick.context = n; output.configure({context:n});
+      });
+      const slider = picker.querySelector("poolhouse-slider");
+      slider.disabled = box.checked;
+      box.onchange = () => {
+        slider.disabled = box.checked;
+        this.pick.context = box.checked ? 0 : Number(slider.value) || M.CTX_STEPS[M.CTX_STEPS.length - 1];
+        output.configure({context:this.pick.context || null});
+      };
+      this.querySelector("#settings-tokens").replaceChildren(
+        auto,
+        picker,
+        el("p", {class:"hint"}, "Serving context controls the model memory window. Automatic gives each model the largest context this machine holds for it. Coding conversations can select automatic context separately."),
+        output,
+        el("p", {class:"hint"}, "Default response length for new conversations. Existing conversations keep their selected output limits."),
+      );
       this.querySelector("#settings-chatting").replaceChildren(
-        el("h2", {}, "Model defaults"),
-        el("label", {}, "Default maximum output tokens", output),
-        el("p", {class:"hint"}, "Used by new conversations. Leave blank for no output cap. Existing conversations keep their selected limits. Reasoning effort is configured separately."),
         el("h3", {}, "Download sources"),
         this.radio("download_sources", "internet", "Internet only", "Skip LAN model transfers."),
         this.radio("download_sources", "lan", "LAN only", "No Internet fallback for models or MTP heads."),
-        this.radio("download_sources", "both", "Both", "Try your Pool first, then the Internet."),
-        M.contextPicker(cur.context || 8192, (n) => { this.pick.context = n; }),
-        el("p", {class:"hint"}, "Serving context controls the model memory window. Coding conversations can select automatic context separately."));
+        this.radio("download_sources", "both", "Both", "Try your Pool first, then the Internet."));
 
       const status = el("div", { class: "hint", style: "margin-top:10px" },
         el("span", { class: "spin" }), " Checking for updates…");
@@ -216,14 +197,15 @@ settings-view #settings-removal { border-top:1px solid var(--line); padding-top:
       this.querySelector("#settings-again").replaceChildren(
         el("h2", {}, "Set this device up again"),
         el("div", { class: "hint" },
-          "Walks through naming it and choosing a passphrase, as it did the first time. "
-          + "The Pools it is already in are left alone."),
+          "Walks through naming it, as it did the first time. "
+          + "The pool it is already in is left alone."),
         el("button", { class: "ghost small",
           onclick: () => M.go("first-run") }, "Run setup again"));
 
       M.agentRuntimeMaintenance(this.querySelector("#settings-agent-runtime"));
       M.applyAdvanced(this);
-      this.save.disabled = false;
+      this.savedPick = structuredClone(this.pick);
+      this.updatePreferencesUI();
       this.note.replaceChildren();
       this.drawLibraries().catch(error => this.libraryError(error));
       this.drawCredentials().catch(error => {
@@ -279,27 +261,6 @@ settings-view #settings-removal { border-top:1px solid var(--line); padding-top:
         el("div", {class:"settings-toolbar"}, save, remove), note);
     }
 
-    async apply() {
-      this.save.disabled = true;
-      this.save.textContent = "Saving…";
-      this.box.setAttribute("aria-busy", "true");
-      try {
-        const result = await api("/ui/settings", {method:"POST", body:JSON.stringify({
-          ...this.pick, labels:this.pick.labels ? this.pick.labels.split(",") : []})});
-        if (!result.ok || result.error) throw Error(result.error || "Could not save preferences.");
-        M.setPreferences({...M.preferences, ...this.pick});
-        this.note.replaceChildren(result.manual
-          ? el("div", {}, el("div", {class:"err"}, result.manual_why || "Needs permission."),
-              el("pre", {class:"cmd"}, result.manual))
-          : el("div", {class:"ok"}, "Preferences saved."));
-      } catch (error) { this.note.replaceChildren(el("div", {class:"err"}, error.message)); }
-      finally {
-        this.save.disabled = false;
-        this.save.textContent = "Save preferences";
-        this.box.setAttribute("aria-busy", "false");
-      }
-    }
-
     libraryError(error) {
       this.querySelector("#settings-libs").replaceChildren(el("h2", {}, "Libraries & simulators"),
         el("div", {class:"err", role:"status"}, error.message),
@@ -307,12 +268,14 @@ settings-view #settings-removal { border-top:1px solid var(--line); padding-top:
     }
 
     async drawLibraries() {
+      const epoch = this.settingsEpoch, current = () => epoch === this.settingsEpoch;
       const libs = this.querySelector("#settings-libs");
       libs.hidden = false;
       libs.replaceChildren(
         el("h2", {}, "Libraries & simulators"),
         el("div", { class: "hint" }, el("span", { class: "spin" }), " Looking…"));
       const L = await api("/ui/libraries");
+      if (!current()) return;
       if (!L.ok) {
         libs.replaceChildren(el("h2", {}, "Libraries & simulators"),
           el("div", {class:"err", role:"status"}, L.error || "Could not load installed libraries."),
@@ -337,9 +300,12 @@ settings-view #settings-removal { border-top:1px solid var(--line); padding-top:
               + (lib.python_version ? ` · Python ${lib.python_version}` : ""))));
       });
 
+      let pending = false;
+      const inputs = boxes.map(box => box.querySelector("input"));
       const apply = el("button", { class: "ghost" }, "Apply library changes");
       const out = el("div", {role:"status", "aria-live":"polite"});
       apply.onclick = async () => {
+        if (pending || !current()) return;
         const before = new Set((L.libraries || []).filter((x) => x.installed).map((x) => x.name));
         const install = [...want].filter((n) => !before.has(n));
         const remove = [...before].filter((n) => !want.has(n));
@@ -347,26 +313,48 @@ settings-view #settings-removal { border-top:1px solid var(--line); padding-top:
           out.replaceChildren(el("div", { class: "hint" }, "Nothing to change."));
           return;
         }
+        pending = true;
         apply.disabled = true;
         apply.textContent = "Installing libraries…";
         for (const box of libs.querySelectorAll("input")) box.disabled = true;
         try {
           const result = await api("/ui/libraries", {method:"POST", body:JSON.stringify({install, remove})});
+          if (!current()) return;
           if (!result.ok) throw Error(result.error || "Could not change installed libraries.");
+          for (const [index, lib] of (L.libraries || []).entries()) {
+            if (install.includes(lib.name) || remove.includes(lib.name))
+              boxes[index].querySelector(".library-kind").textContent = install.includes(lib.name) ? "Queued to install" : "Queued to remove";
+          }
           const watch = async () => {
             const changed = await M.followSetupJob(result.job, job => {
+              if (!current()) throw Error("This settings session ended.");
               out.replaceChildren(el("div", {class:"hint", role:"status"}, `${job.state}: ${job.note}`));
             });
+            if (!current()) return;
             const failed = Object.entries(changed.changed || {}).filter(([, value]) => !value.ok);
             if (failed.length) throw Error(failed.map(([name, value]) => `${name}: ${value.error}`).join("; "));
             await this.drawLibraries();
+            if (!current()) return;
             libs.append(el("div", {class:"ok", role:"status"}, "Library changes applied. Installed simulators are ready to reopen."));
           };
-          watch().catch(error => out.replaceChildren(el("div", {class:"err", role:"status"}, error.message)));
-        } catch (error) { out.replaceChildren(el("div", {class:"err"}, error.message)); }
-        finally {
-          apply.disabled = false; apply.textContent = "Apply library changes";
-          for (const box of libs.querySelectorAll("input")) box.disabled = false;
+          watch().catch(error => {
+            if (current()) {
+              for (const [index, lib] of (L.libraries || []).entries())
+                boxes[index].querySelector(".library-kind").textContent = lib.installed ? "Installed" : "Available to install";
+              out.replaceChildren(el("div", {class:"err", role:"status"}, error.message));
+            }
+          }).finally(() => {
+            if (!current()) return;
+            pending = false;
+            for (const input of inputs) input.disabled = false;
+          });
+        } catch (error) {
+          if (current()) { pending = false; out.replaceChildren(el("div", {class:"err"}, error.message)); }
+        } finally {
+          if (current()) {
+            apply.disabled = false; apply.textContent = "Apply library changes";
+            for (const input of inputs) input.disabled = pending;
+          }
         }
       };
 
@@ -466,6 +454,7 @@ settings-view #settings-removal { border-top:1px solid var(--line); padding-top:
         ...boxes, go, out);
     }
   }
+  Object.assign(SettingsView.prototype, window.SettingsState);
   customElements.define("settings-view", SettingsView);
 })();
 </script>

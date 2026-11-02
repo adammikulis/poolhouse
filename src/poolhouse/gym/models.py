@@ -2,8 +2,7 @@
 
 from pathlib import Path
 
-from poolhouse import hub
-from poolhouse.decide import registry
+from poolhouse import deciders, hub
 from poolhouse.decide.pins import STRANDS
 
 SMOL = "ggml-org/SmolVLM-256M-Instruct-GGUF"
@@ -34,7 +33,7 @@ def model_choices():
     decisions.extend({"id": row["name"], "label": row["name"], "checkpoint": row["path"],
                       "model": row["name"], "device": "auto",
                       "status": "installed" if Path(row["path"]).is_dir() else "missing"}
-                     for row in registry.listing())
+                     for row in deciders.listing())
     vision = [vision_row(model) for model in hub.discover(kind="vision")]
     vision.sort(key=lambda row: ("smolvlm" not in row["label"].lower(),
                                 "qwen3.5" not in row["label"].lower(), row["label"].lower()))

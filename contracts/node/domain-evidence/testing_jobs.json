@@ -1,0 +1,625 @@
+{
+  "version": 1,
+  "status": "Intended one-explicit-unit managed pytest contract proposal only; no collector/executor, native source issuer, confinement, model run or K acceptance. Direct library/pytest testing remains independent.",
+  "source_commit": "e133a2ee8e4a736676c14cd05cbe5f0447fd6987",
+  "sources": [
+    {
+      "path": "src/poolhouse/testfarm/core/project.py",
+      "sha256": "d3a2009edeb68828ac3242a9e3147767425e34fa6d7d5ddefa7c116b3654daaf",
+      "sites": [
+        {
+          "line": 26,
+          "text": "def find_root(start: Path) -> Path:"
+        },
+        {
+          "line": 57,
+          "text": "def list_units(root: Path, config: Config) -> Listed:"
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/testfarm/core/spawn.py",
+      "sha256": "6744ccb5de328da161c834ba80fda5c99a268258cc26d36ab2eaa967d3e6c28a",
+      "sites": [
+        {
+          "line": 35,
+          "text": "def run_confined(argv: Sequence[str], project: Path, *, timeout: float | None) -> Outcome:"
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/testfarm/model/config.py",
+      "sha256": "484c86dd09a2c75b2702da78a6dc61b867c7d56d0260c19e8d9e71eae6dee063",
+      "sites": [
+        {
+          "line": 22,
+          "text": "class ListSpec:"
+        },
+        {
+          "line": 36,
+          "text": "class RunSpec:"
+        },
+        {
+          "line": 158,
+          "text": "class CommandUnit:"
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/testfarm/model/parse.py",
+      "sha256": "5eac4c7f3624dc927808eb0f04c6e710e37614b8767067dd89a7d607be704ecc",
+      "sites": [
+        {
+          "line": 107,
+          "text": "def _run_spec(table: dict) -> RunSpec | None:"
+        },
+        {
+          "line": 189,
+          "text": "def _hang_guard(config: Config) -> None:"
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/testfarm/model/kinds.py",
+      "sha256": "6de373a2e3c17156e0d7954bcdad54a1be6c371538a4b24a66a2cffc81497987",
+      "sites": [
+        {
+          "line": 257,
+          "text": "def argv(allowed: Iterable[str] = (), whole: Iterable[str] = ()) -> Kind:"
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/testfarm/model/schema.py",
+      "sha256": "622a736282d8d02552e19a0c626e81918c883dc066caa02973724a832da0a1a4",
+      "sites": [
+        {
+          "line": 9,
+          "text": "RUN_PLACEHOLDERS = (\"ids\", \"idfile\", \"result\", \"extra\", \"jobs\")"
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/testfarm/model/ids.py",
+      "sha256": "76b313c345b20018772b5255188beb1bbae7efd3104a231f67a66d4fa8e514b1",
+      "sites": [
+        {
+          "line": 18,
+          "text": "def refusal(text: object, refuse_prefix: Iterable[str] = ()) -> str | None:"
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/testfarm/model/units.py",
+      "sha256": "89ae400b7b06b304159e2c622b2bf7077f766d54b7f9d40c2fa089b779ca7a10",
+      "sites": [
+        {
+          "line": 82,
+          "text": "def read_rows(output: bytes, spec: ListSpec, refuse_prefix: Sequence[str] = ()) -> tuple[list[Row], int]:"
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/testfarm/core/select.py",
+      "sha256": "bfc85f548d6effb04e3cc714757dc01542d5d94d5d36a607f36ed484bf30e6a2",
+      "sites": [
+        {
+          "line": 22,
+          "text": "def select(units: Sequence[Unit], config: Config, selectors: Sequence[str] = ()) -> tuple[Unit, ...]:"
+        }
+      ]
+    },
+    {
+      "path": "scripts/test",
+      "sha256": "8839af0567390d3a50e4a488b3f9f2c8c8a23f1ae9a679ddb83043ca4d27fca4",
+      "sites": [
+        {
+          "line": 103,
+          "text": "def pytest_command(workers: int, *rest: str) -> list[str]:"
+        }
+      ]
+    },
+    {
+      "path": "scripts/test_fixture_plan.py",
+      "sha256": "9d6b0d4589a02357bc0cd31dd913fcac2eef0e13e0e029738334bdbe4edb4b56",
+      "sites": [
+        {
+          "line": 49,
+          "text": "def invocation_selectors(command: list[str]) -> list[str]:"
+        }
+      ]
+    },
+    {
+      "path": "scripts/testreuse_run.py",
+      "sha256": "32e0e19690c06f0c85874fbb073f8ace179587e5e0d138bc46bcd858efae76ce",
+      "sites": [
+        {
+          "line": 126,
+          "text": "def results(junit: Path, root: Path) -> dict[str, dict[str, int]]:"
+        }
+      ]
+    }
+  ],
+  "operations": [],
+  "intent_integration": {
+    "intent": "managed_test_unit",
+    "existing_operations": [
+      "jobs.prepare",
+      "jobs.submit",
+      "jobs.preparations.inspect",
+      "jobs.preparations.cancel",
+      "jobs.preparations.watch"
+    ],
+    "new_operations": 0,
+    "difference": "NEW managed execution design and closed per-intent plan/details. No generic RUN implementation or source-to-native caller migration is claimed."
+  },
+  "actual_source": {
+    "list": "testfarm.api.units\u2192core.project.list_units executes configured LIST, requires hang guard, parses source-format lines/JSONL, rejects duplicate/invalid IDs and empty results unless allowed. spawn.run_confined uses source read-only/scratch-only write/allowlist env/network deny; actual OS confinement remains separately proved, not inferred from Policy DTO.",
+    "run_templates": "model.config.RunSpec holds argv/ids_after/slice/results/env/launcher/needs; schema/kinds validates array tokens, no shell string, no program placeholder, whole-argument ids/extra. parse requires {ids} or {idfile} with LIST and slice index/count rules. Source config validation is not execution authority.",
+    "implementation_gap": "No general testfarm RunSpec.argv expansion/execution consumer was found in inspected testfarm/scripts source. Its rich schema is retained evidence, not an implemented canonical runner. scripts/test.pytest_command and actual testslots runner are the maintained pytest execution path; proposed profile needs its real native adapter.",
+    "selection": "core.select.select accepts sets/globs and empty selectors select all. Canonical intent DOES NOT reuse that broad/default selection policy; one nonempty exact name only, no suite alias or fallback.",
+    "ids": "model.ids.refusal uses NFC, rejects controls/private-use/unassigned categories and leading dash/prefix restrictions. Parameterized pytest punctuation is legitimate. Plain selector remains ordinary data, not a source path, argv or authority.",
+    "report": "Existing testreuse_run reads per-case JUnit counts and testfarm.report summarizes results. Tests/repository plugins can forge these reports. A canonical receipt proves exact admitted execution/exit provenance, not correctness, honesty or security quality of repository code."
+  },
+  "intended_design": {
+    "plain_selector": "JobManagedTestUnitIntent accepts source lookup ref and a direct TestingExactSelector string. No native-text/input reference, GUI ritual, project registration or terminal step is required to name a unit. Nonempty UTF-8 uses the existing canonical 65536-byte per-text wire envelope, not a claim that legacy IDs had that limit; IDs outside the supported transport/profile refuse explicitly, not truncate or gain a hidden staging ceremony. Resolve exact equality to one catalogue Unit.name (with its grouped IDs) in immutable discovery; no match/ambiguity refuses. Punctuation such as brackets or * in a parameter ID is literal data, never glob/shell expansion. Empty selection and suite-wide aliases have no fallback; an all/glob-looking value never selects a set.",
+    "source_authority": "TestingSourceRef is installation/principal/incarnation-bound lookup data for the actual current-source snapshot, not proof of access or execution rights. A genuine native source/current-directory adapter must hold and verify file identities/content including selected dirty/untracked code and exact allowed dependencies under existing source/OS policy. No mandatory workspace/project/board. Do not introduce blanket signed-source or person approval for authorized ordinary local code; signatures/OS consent only where actual policy requires. Ref/digest/profile/caller label never grants execution.",
+    "direct_vs_managed": "Direct pytest/library/testfarm config or units calls retain ordinary local behavior and require no Node/daemon/session/claim. This leaf governs ONLY explicitly requested managed Node execution; it must not become a pre-tool gate or intercept generic testing.",
+    "profile": "Exactly maintained_pytest_explicit_unit_v1, a node-owned reviewed profile bound to concrete supported LIST/RUN token arrays and held Python/pytest/executable/plugin/config/environment bytes. Recognize frozen template grammar and toolchain before any code. Run chosen frozen IDs as separate whole arguments through the one existing admitted worker path; never shell-parse, accept caller extras, program interpolation, arbitrary env or evaluate JSON/config as a command. Only fixed profile-provided result-sink and ID-file locations under node-owned scratch may be substituted. Unknown custom templates, presets, hooks, steps, launchers, slices, unsupported flags or report formats refuse as unsupported; do not silently ignore them or construct a generic/fake executor.",
+    "admission_before_collection": "LIST/pytest collection imports repository code, plugins and conftest and can have effects. Require normal managed execution permission and actual CPU/memory/storage/process/output/native confinement admission BEFORE source scan/collection/staging. Freeze a private JobFrozenTestingCollectionPlan with collection launch transaction/fence before execution; no fabricated already-known unit catalogue. Hold source read-only, isolated home/temp and immutable environment, deny real keystore/home/paid API/public network. Source LIST output_bytes=None is a gap; a real resource profile must provide admitted aggregate output/parse limits before enablement, no hidden unbounded buffer or invented success. The precollection plan freezes actual timeout/output/confinement/resource-profile defaults before LIST, not by resolving them after collection; its digest binds the actual held policy.",
+    "network_and_models": "Network denied by default. Loopback only through a separately reviewed exact resource profile/endpoint binding; no public endpoint/DNS/proxy/provider access or sandbox weakening. A model-backed collection or run requires real admitted model/backend and authoritative lease before any model use; unavailable or unknown needs refuse loudly, no fake model/mock answer. Ordinary claim holds are not compute permits. Missing OS enforcement or model-resource closure cannot be replaced by a label or boolean.",
+    "freeze_after_collection": "After one admitted collection, freeze actual source/config/toolchain/environment/plugins/dependency/confinement digests, exact collector profile/generation/result, full unique unit/grouped ID order+digest, selector, real resource bounds and explicit hang guards. Dynamic dependency claims in LIST output cannot narrow actual code-trust/read scope or a reuse key without verified closure; absent dependency metadata conservatively binds whole held source. Match source/generation at every phase; current-source does not mean a mutable live path. No whole suite default.",
+    "durability": "Reuse the same principal+installation incarnation+operation+RequestId+normalized intent ledger. Same request attaches on exact payload; conflict refuses before code. One collection fence before LIST, separate run fence before submit execution, separate result-publication transaction. A prepared run binds its exact original collection plan digest. Same plan/new RequestId cannot recollect/rerun or remint work after lost ack; unresolved source/selector operation blocks retry bypass. An explicit new run after settled prior outcome may use a new request; do not turn read/inspect into execution.",
+    "submit": "Reauthorize before replay and action; recheck held source/toolchain/profile/environment/plugins/dependency/config/unit/resource/custody generations and expiry, then launch only exact frozen IDs. Runtime pytest collection must match the frozen selection/grouped IDs; changed/extra/missing IDs or dynamic configuration cannot broaden selection. Profile timeout must be an actual finite positive source/policy limit, not a retry knob. Unknown template/profile/estimate/confinement/admission refuses, including collection or model imports.",
+    "cancel_recovery": "Before collection or run fence, cancellation wins atomically with that launch. During collection/run, use the owned confined process-tree cancellation path and retain output/resource custody until actual descendant termination/reap and settlement. Timeout is timed_out/error, never pass; missing termination evidence remains unknown/recovery, not a false cancelled terminal. Crash/ack loss retains exact operation/source/fences/holders and reconciles; no blind recollect/rerun, generic PID kill or silent retry on another node.",
+    "reports_and_results": "Project/repository code can forge JUnit, counts and passed output. reported_outcome and report_status are explicitly untrusted source observations. Execution receipt itself needs actual protected/native producer+process/source/runtime/confinement proof. Enforce exact IDs/counts and parser-profile boundaries, aggregate output admission and redaction before persistence/streaming. Missing/malformed/conflicting report\u2192error/unknown; skipped is never passed; exit/report conflict cannot become pass. Publish result only after actual exit/owned output custody. Optional report_digest is absent when no report exists, never invented.",
+    "reuse": "Reuse only actual immutable receipt under exactly equal source/config/toolchain/environment/plugins/dependency closure/selection/native runtime/confinement and current authorization/resource policy. Current source must be freshly verified against retained bytes; do not trust old hash labels or arbitrary dependency claims. Expose original receipt explicitly, never pretend cached execution ran again. Any uncertainty/unknown effect refuses reuse. Compare every required actual current native/runtime/confinement/toolchain/config/plugin/dependency/selection identity independently; the two public current digest fields alone are never sufficient for reuse.",
+    "streaming": "Use existing jobs output and ordered preparation watch with principal/installation/job/generation-bound cursors and bounded redacted chunks. Disconnect detaches only; no cancellation, new collection, project registration or automatic callback execution."
+  },
+  "independent_review": {
+    "reviewer": "native_authority",
+    "design": "PASS one explicit-unit managed profile; PASS direct plain typed exactselector DATA refinement before code.",
+    "constraints": "Admission/normal execution policy before collection, genuine current-source custody, no blanket signature/approval, no selector authority or suite fallback, distinct effect fences, actual cancellation/reap, truthful report/reuse provenance.",
+    "limits": "Source/shape review and actual codec refusal probe remain needed. No real collection or test workload executed for this declaration."
+  },
+  "shape_vectors": {
+    "accepted": [
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "managed_test_unit",
+            "value": {
+              "source": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "generation": "00000000-0000-4000-8000-000000000002",
+                "installation": {
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "generation": "00000000-0000-4000-8000-000000000002"
+                }
+              },
+              "selector": "tests/test_unit.py::test_item[a*b]"
+            }
+          }
+        }
+      },
+      {
+        "type": "JobPreparationView",
+        "value": {
+          "preparation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "job_id": "00000000-0000-4000-8000-000000000001",
+          "operation_id": "00000000-0000-4000-8000-000000000001",
+          "revision": "1",
+          "intent": {
+            "kind": "managed_test_unit",
+            "value": {
+              "source": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "generation": "00000000-0000-4000-8000-000000000002",
+                "installation": {
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "generation": "00000000-0000-4000-8000-000000000002"
+                }
+              },
+              "selector": "tests/test_unit.py::test_item[a*b]"
+            }
+          },
+          "phase": {
+            "kind": "preparing",
+            "value": {}
+          },
+          "job_state": {
+            "kind": "preparing",
+            "value": {}
+          },
+          "details": {
+            "kind": "managed_test_unit",
+            "value": {
+              "plan": null,
+              "effect": {
+                "kind": "not_collected",
+                "value": {}
+              },
+              "authority": {
+                "protected": {
+                  "kind": "not_yet_determined",
+                  "value": {}
+                },
+                "os_consent": {
+                  "kind": "not_yet_determined",
+                  "value": {}
+                }
+              },
+              "progress": {
+                "phase": {
+                  "kind": "waiting_for_admission",
+                  "value": {}
+                },
+                "collected_ids": "0",
+                "completed_ids": "0",
+                "total_ids": null,
+                "elapsed_seconds": "0000000000000000",
+                "message": "Waiting for managed collection admission"
+              },
+              "result": null
+            }
+          },
+          "expires_at": null,
+          "progress": {
+            "completed_bytes": "0",
+            "total_bytes": null,
+            "message": "Waiting for managed collection admission"
+          }
+        }
+      }
+    ],
+    "refused": [
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "managed_test_unit",
+            "value": {
+              "source": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "generation": "00000000-0000-4000-8000-000000000002",
+                "installation": {
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "generation": "00000000-0000-4000-8000-000000000002"
+                }
+              },
+              "selector": ""
+            }
+          }
+        }
+      },
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "managed_test_unit",
+            "value": {
+              "source": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "generation": "00000000-0000-4000-8000-000000000002",
+                "installation": {
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "generation": "00000000-0000-4000-8000-000000000002"
+                }
+              },
+              "selector": true
+            }
+          }
+        }
+      },
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "managed_test_unit",
+            "value": {
+              "source": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "generation": "00000000-0000-4000-8000-000000000002",
+                "installation": {
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "generation": "00000000-0000-4000-8000-000000000002"
+                }
+              },
+              "selector": {
+                "unit_reference": "00000000-0000-4000-8000-000000000001"
+              }
+            }
+          }
+        }
+      },
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "managed_test_unit",
+            "value": {
+              "source": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "generation": "00000000-0000-4000-8000-000000000002",
+                "installation": {
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "generation": "00000000-0000-4000-8000-000000000002"
+                }
+              },
+              "selector": "tests/test_unit.py::test_item[a*b]",
+              "argv": [
+                "python",
+                "-m",
+                "pytest"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "managed_test_unit",
+            "value": {
+              "source": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "generation": "00000000-0000-4000-8000-000000000002",
+                "installation": {
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "generation": "00000000-0000-4000-8000-000000000002"
+                }
+              },
+              "selector": "tests/test_unit.py::test_item[a*b]",
+              "shell": "run anything"
+            }
+          }
+        }
+      },
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "managed_test_unit",
+            "value": {
+              "source": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "generation": "00000000-0000-4000-8000-000000000002",
+                "installation": {
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "generation": "00000000-0000-4000-8000-000000000002"
+                }
+              },
+              "selector": "tests/test_unit.py::test_item[a*b]",
+              "env": {
+                "ALLOW": "yes"
+              }
+            }
+          }
+        }
+      },
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "managed_test_unit",
+            "value": {
+              "source": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "generation": "00000000-0000-4000-8000-000000000002",
+                "installation": {
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "generation": "00000000-0000-4000-8000-000000000002"
+                }
+              },
+              "selector": "tests/test_unit.py::test_item[a*b]",
+              "approved": true
+            }
+          }
+        }
+      },
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "managed_test_unit",
+            "value": {
+              "source": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "generation": "00000000-0000-4000-8000-000000000002",
+                "installation": {
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "generation": "00000000-0000-4000-8000-000000000002"
+                }
+              },
+              "selector": "tests/test_unit.py::test_item[a*b]",
+              "all": true
+            }
+          }
+        }
+      },
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "managed_test_unit",
+            "value": {
+              "source": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "generation": "00000000-0000-4000-8000-000000000002",
+                "installation": {
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "generation": "00000000-0000-4000-8000-000000000002"
+                }
+              },
+              "selector": "tests/test_unit.py::test_item[a*b]",
+              "extra": []
+            }
+          }
+        }
+      },
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "managed_test_unit",
+            "value": {
+              "source": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "generation": "00000000-0000-4000-8000-000000000002",
+                "installation": {
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "generation": "00000000-0000-4000-8000-000000000002"
+                },
+                "project": "00000000-0000-4000-8000-000000000001"
+              },
+              "selector": "tests/test_unit.py::test_item[a*b]"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "required_runtime_vectors": [
+    {
+      "case": "empty or unmatched/ambiguous exact selector",
+      "expected": "refuse; no all/glob fallback",
+      "status": "runtime/native obligation; NOT executed by codec tests"
+    },
+    {
+      "case": "legitimate parameterized unit name with punctuation",
+      "expected": "exact match only, frozen grouped IDs",
+      "status": "runtime/native obligation; NOT executed by codec tests"
+    },
+    {
+      "case": "source access but no managed execution permission",
+      "expected": "no LIST or run",
+      "status": "runtime/native obligation; NOT executed by codec tests"
+    },
+    {
+      "case": "unknown custom template/hooks/launcher/report mode",
+      "expected": "unsupported, no generic executor",
+      "status": "runtime/native obligation; NOT executed by codec tests"
+    },
+    {
+      "case": "collection denied admission or missing real model",
+      "expected": "no code/model work, no fake fallback",
+      "status": "runtime/native obligation; NOT executed by codec tests"
+    },
+    {
+      "case": "changed source/config/plugin/dependency/profile after prepare",
+      "expected": "refuse stale plan",
+      "status": "runtime/native obligation; NOT executed by codec tests"
+    },
+    {
+      "case": "same plan replay or lost collection/run ack",
+      "expected": "attach/reconcile, never collect/run again",
+      "status": "runtime/native obligation; NOT executed by codec tests"
+    },
+    {
+      "case": "run collects different IDs or broadens group",
+      "expected": "error/unknown, never whole-suite fallback",
+      "status": "runtime/native obligation; NOT executed by codec tests"
+    },
+    {
+      "case": "forged pass/JUnit or mismatched exit",
+      "expected": "report observation only; conflict error/unknown",
+      "status": "runtime/native obligation; NOT executed by codec tests"
+    },
+    {
+      "case": "skipped/timeout or cancellation without reap proof",
+      "expected": "not passed, unknown until actual settlement",
+      "status": "runtime/native obligation; NOT executed by codec tests"
+    },
+    {
+      "case": "reuse stale source/environment/native/confinement",
+      "expected": "refuse reuse",
+      "status": "runtime/native obligation; NOT executed by codec tests"
+    },
+    {
+      "case": "direct ordinary pytest/library call",
+      "expected": "no Node/workspace/project prerequisite",
+      "status": "runtime/native obligation; NOT executed by codec tests"
+    }
+  ],
+  "enablement_blockers": [
+    "No native current-source/selector-to-invocation binding, source custody issuer, measured supported profile/template adapter, actual immutable collector/executor or native confinement/receipt implementation is supplied.",
+    "Complete resource/output limits, parser/selection/finite-time/profile/state-machine validators, real-model handling and runtime cancellation/reuse provenance need actual implementation and independent hardware proof. Unknown profiles refuse.",
+    "General testfarm templates/steps/hooks/slices/arbitrary commands and other languages remain retained required work, not silently accepted or discarded. This leaf supports one declared profile only.",
+    "No actual managed LIST/test/model/network execution, runtime deployment or H/K/P/I acceptance performed. Codec fixtures are data-shape checks, never a canned runner."
+  ]
+}

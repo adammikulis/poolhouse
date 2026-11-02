@@ -15,7 +15,7 @@ from poolhouse.sentinel import Mode, Sentinel, State, human
 from poolhouse.sentinel.adapters import GuardLogHandler, screening, watch_authenticator
 from poolhouse.sentinel.servers import unmanaged_findings
 
-KEY = b"a-pool-key-of-thirty-two-bytes"
+KEY = b"a-service-secret-of-some-bytes"
 SECRET = macauth.derive(KEY)
 URL = "/jobs"
 HOST = "10.1.2.3:8770"

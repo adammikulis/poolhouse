@@ -13,9 +13,9 @@ A `Policy` names everything a process may touch. Anything not named is refused.
 | `read` | trees it may read (plus the system trees every process reads: linker, frameworks, zoneinfo) |
 | `write` | trees it may read and write |
 | `exec` | the programs it may start; the command itself is added |
-| `net` | `Net.deny()`, `Net.loopback()`, or `Net.only(*ports)` (loopback, those ports) |
+| `net` | `Net.deny()`, `Net.loopback()` (macOS only: Linux has no way to give the host's loopback without the host's network), or `Net.only(*ports)` (those ports of the host's loopback) |
 | `env` | the whole environment; nothing is inherited |
-| `limits` | wall clock (kills the process group), CPU seconds, file size, open files, output bytes |
+| `limits` | wall clock (kills the process group), CPU seconds, file size, open files, output bytes, processes the run may add |
 | `gpu` | what Metal needs (below) and nothing else |
 
 Every path is validated before it reaches a profile: absolute, existing, no control character,
@@ -29,7 +29,7 @@ Backends sit behind one `Backend` protocol (`available`, `wrap`, `denials`):
 | Backend | Where | State |
 |---|---|---|
 | `seatbelt` | macOS, `sandbox-exec -p <profile> -- argv` | implemented, tested against the real tool |
-| `bubblewrap` | Linux, `bwrap --unshare-all --die-with-parent --new-session --clearenv ...` | read grants, network denial, model relay and GPU discovery tested on WSL |
+| `bubblewrap` | Linux, `bwrap --unshare-all --unshare-user --disable-userns --cap-drop ALL --die-with-parent --new-session --clearenv ...` | read grants, network denial, the relay for named ports, nested namespaces, capabilities and the process allowance tested on Ubuntu 24.04 (bubblewrap 0.9.0); model relay and GPU discovery tested on WSL |
 | `container` | any | stub that raises `NotImplementedError`; plan below |
 | none | | `run` raises `SandboxUnavailable` and does not start the command |
 
@@ -97,8 +97,15 @@ Known limits:
 - Metadata (existence, size) is readable only for the allow-listed trees and their ancestor
   directories; contents outside the allow-list cannot be read.
 - A process that calls `setsid` leaves the group the runner kills. It stays inside the sandbox.
-- macOS does not enforce `RLIMIT_AS` or a useful `RLIMIT_NPROC` (the process limit is per user), so
-  there is no memory or process-count ceiling.
+- macOS does not enforce `RLIMIT_AS`, so there is no memory ceiling. `Limits.processes` is a process-count ceiling the kernel enforces:
+  `RLIMIT_NPROC` counts every process of the user, so the ceiling is what the user has when the run starts plus the allowance, and the
+  kernel refuses the fork that crosses it (`EAGAIN`; `tests/test_sandbox_linux.py`).
+  The allowance covers the run's own helpers as well as the command's processes, and other processes of the user that start meanwhile use
+  some of it: it bounds the run, it does not count it. The three shipped policies (`bash`, `mcp_server`, `model_server`) set it to
+  `run.fair_share()`: the room the system leaves the user (its per-user process limit, less what the user has) divided by the runs of this
+  process alive plus one (docs/design-isolated-launcher.md, "Numbers and their sources"). On macOS the kernel counts processes and not
+  threads, so threads are not bounded (1500 ran with an allowance of 40); on Linux it counts both, and the ceiling adds the user's threads.
+  A child that calls `setsid` leaves the group the wall clock kills; the allowance still bounds it.
 - Refusals are read from one `log stream` (`denial_log.py`) that the first confined command of a
   process starts and that runs until the process ends; the kernel does not keep its reports for
   `log show`. Reading them waits for a refusal of the reader's own to come back through the stream
@@ -174,6 +181,27 @@ Known limits:
 - Refusals that every confined process provokes at start-up (preference files, a few Mach
   services, `net.routetable`) are filtered out of `Result.denials`.
 
+## Attack first: the network, new namespaces and the process count
+
+The attacker is code that runs inside a confined process with the person's user id: a command a model chose, an MCP server, a model
+server, and every program any of them writes and starts. It wants the services on the host's loopback (the node, the broker, the
+approval page, the model server's own port), more processes than the run was given, and a way out of the profile. Each row has the
+probe that failed on the code before the change and passes on the code after it (`tests/test_sandbox_linux.py`, in a container with
+bubblewrap).
+
+| # | Attack | Defence | Probe |
+|---|---|---|---|
+| P1 | Linux: with `Net.only` or `Net.loopback` reach any host port, the LAN or the internet, a pathname or abstract Unix socket of the host | no `--share-net`; every mode runs in its own network namespace; a named port is reached only through a relay | a confined process connects to a port the policy did not name, to a wildcard listener (through the host's own address too) and to the host's abstract socket (refused), and to the named port (works) |
+| P2 | Linux: enter a nested user namespace to regain capabilities, then mount, `ptrace` or open raw sockets | `--unshare-user --disable-userns --cap-drop ALL` | `unshare(CLONE_NEWUSER)` fails inside; the capability sets in `/proc/self/status` are empty |
+| P3 | Linux: use the relay as a deputy: another port, another host, a second socket the parent did not make | the host end connects to `127.0.0.1` and the one port its socket was made for; nothing in the byte stream names a destination; the socket directory is the parent's, mounted read-only | the sockets present inside are exactly the named ports; a connection through a socket reaches that port and no other |
+| P4 | Linux: flood the relay, hold connections open, outlive the run | at most 32 connections per port; relays and sockets end with the run (`finish`); a directory a killed parent left is swept when the next relay is made | connections past the bound are closed; after `finish` the socket directory is gone; a directory of a dead process is removed |
+| P5 | downgrade: a bubblewrap that lacks `--disable-userns`, or a policy that asks for the host's whole loopback on Linux; a different `bwrap` found on `PATH` after the probe | the backend reports itself unavailable with the reason; `Net.loopback()` on Linux raises `PolicyError` naming `Net.only`; `wrap` runs the binary `available` probed | the unavailable reason names the missing option; the refusal is raised before a process starts; the probed path is the one run |
+| P6 | fork without end (a fork bomb), or hold many threads so that a count of processes undercounts the kernel's | `RLIMIT_NPROC` set to what the user has (processes, and on Linux threads) plus the policy's allowance: the kernel refuses the fork that crosses it | a confined loop forks until `EAGAIN` and stops within the allowance, with 300 threads of the same user running (Linux) |
+
+The other cases of AGENTS.md section 1 do not change: nothing here handles a key, a signature, a membership or an approval, so a copied
+or cloned pool or device, a replay, a forged signature, a stolen phone, approval fatigue and a takeover have no new surface, and a
+malicious or compromised agent is the attacker described above. Not defended: a kernel or `sandbox-exec` or bubblewrap bug.
+
 ## GPU
 
 `Policy(gpu=True)` adds two rules to the profile:
@@ -221,17 +249,35 @@ as `--cpus`/`--memory`, and a Linux build of the tool inside the image. It serve
 
 ## Linux
 
-`bubblewrap.arguments` builds the argv: `--unshare-all`, `--share-net` only when the policy keeps
-loopback, read-only binds for `read`/`exec`, binds for `write`, `--clearenv` with `--setenv` for
-each variable. Network-denied reads and GPU visibility are exercised on WSL by
-`tests/test_wsl_backend.py`. Network-sharing modes do not restrict destinations, and
-executable visibility follows the mounted filesystem; the executable allow-list needs
-additional enforcement.
+`bubblewrap.arguments` builds the argv: `--unshare-all` (user, IPC, PID, network, UTS and cgroup namespaces), `--unshare-user
+--disable-userns --cap-drop ALL` (the process cannot make a user namespace of its own, which is how an unprivileged process regains
+capabilities, and holds none), read-only binds for `read`/`exec`, binds for `write`, `--clearenv` with `--setenv` for each variable.
+No policy shares the host's network. The process sees its own loopback and nothing else; `Net.only(*ports)` reaches those ports of
+the host's loopback through a relay, and `Net.loopback()` (every port) raises `PolicyError` because it cannot be given without the
+host's whole network. A policy with no network is not given the host's `/etc/hosts` and `/etc/resolv.conf`.
+
+The relay (`netrelay.py` in the parent, `netforward.py` in the namespace): the parent makes a directory it alone can enter
+(`poolhouse-net-<pid>-<start>-...` under the temporary directory), listens on one Unix socket in it per named port and connects each
+accepted connection to `127.0.0.1` and that port. The directory is bound read-only into the namespace at `/run/poolhouse/net`, and the
+process that runs first inside (`python -I -S netforward.py`) listens on the same ports of the namespace's loopback, carries each
+connection to the socket for its port from a process of its own, then becomes the command. The interpreter that runs it is bound
+read-only with its standard library (and its shared library, when it has one), and the directories of installed packages inside those
+trees are hidden. Neither end copies a destination from the bytes it carries, each port carries at most 32 connections at once (one
+over is closed), and the sockets and the directory end with the run (`Bubblewrap.finish`); a directory a killed parent left is removed when the
+next relay is made. A command can connect to the named ports and, through the sockets it finds, to the same ports; to no other port, to
+no address beyond the machine, to no Unix socket of the host and to no abstract socket of the host.
+
+A bubblewrap older than 0.8.0 has no `--disable-userns`: the backend reports itself unavailable and says so, and no command runs more
+loosely. `wrap` runs the binary `available` probed. The Linux boundary is tested by `tests/test_sandbox_linux.py` on a host that can make
+the namespaces (Ubuntu 24.04, bubblewrap 0.9.0, a container started with `seccomp=unconfined` and `systempaths=unconfined`, since Docker's
+defaults refuse user namespaces); elsewhere the real-process tests skip with the availability check's reason. Network-denied reads and GPU
+visibility are exercised on WSL by `tests/test_wsl_backend.py`. Executable visibility follows the mounted filesystem; the executable
+allow-list needs additional enforcement. Still readable on Linux: `/proc/cmdline`, `/proc/version`, the boot id and the kernel host name.
 
 ## Commands
 
 `poolhouse security sandbox status` prints the backend, whether it can run and the deprecation
-note. `poolhouse security sandbox test` runs five guarantees against real confined processes and
+note. `poolhouse security sandbox test` runs six guarantees against real confined processes and
 exits 1 when one fails.
 
 ## Sandboxed model server
@@ -248,7 +294,7 @@ multimodal projectors, and sharded models require live model validation.
 
 ## Tests and measurements
 
-- `tests/test_sandbox_policy.py` (pure), `tests/test_sandbox_seatbelt.py` (real `sandbox-exec`),
+- `tests/test_sandbox_policy.py` (pure), `tests/test_sandbox_seatbelt.py` (real `sandbox-exec`), `tests/test_sandbox_linux.py` (real `bwrap`),
   `tests/test_sandbox_integration.py`, `tests/test_sandbox_redteam.py` and
   `tests/test_sandbox_gpu.py` (slow: a real `llama-server` offloading every layer inside the
   profile, plus a decoy read and a connection out refused). The Seatbelt tests skip cleanly

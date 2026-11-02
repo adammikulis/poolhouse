@@ -102,6 +102,7 @@ fn join_policy_open_enrols_a_device_that_names_the_fingerprint() {
     assert_eq!(open.pool(), b.pool());
     assert_eq!(open.member(&b.fp()).unwrap()["by"], "open");
     assert!(open.is_member(&b.fp()) && b.is_member(&open.fp()));
+    kit::govnode::grant(&b, "demo", &b.token, &["sync_now"]);
     b.ok("sync_now", "", &b.token, json!({}));
     assert!(b.texts("demo", &b.token).contains(&"from the open pool".to_string()));
     assert_eq!(b.status()["policy"], "open", "the policy is one attribute of the pool, and it never changes in place");

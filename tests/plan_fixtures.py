@@ -73,6 +73,7 @@ def table_tensor() -> Entry:
 
 def metadata(experts: int = 512, **extra: object) -> dict:
     return {"general.architecture": "qwen4exp", "qwen4exp.block_count": LAYERS,
+            "qwen4exp.context_length": 262144,
             "qwen4exp.expert_count": experts, "qwen4exp.expert_used_count": 10,
             "qwen4exp.embedding_length": EMBED, "qwen4exp.attention.head_count": 24,
             "qwen4exp.attention.head_count_kv": 2, "qwen4exp.attention.key_length": 256,

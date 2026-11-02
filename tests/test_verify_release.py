@@ -6,7 +6,6 @@ from __future__ import annotations
 import ast
 import importlib
 from pathlib import Path
-from types import CodeType, FunctionType
 
 import pytest
 
@@ -45,28 +44,6 @@ def test_a_name_the_verifier_imports_still_exists(line, module, name):
             f"verify_release.py:{line} imports {name} from {module}, which no longer has it")
 
 
-def test_offline_setup_checks_use_random_keys_and_group_scoped_join_authentication(tmp_path):
-    tree = ast.parse(VERIFIER.read_text(encoding='utf-8'))
-    ran = []
-    for node in tree.body:
-        if not isinstance(node, ast.FunctionDef) or not node.decorator_list:
-            continue
-        decorator = node.decorator_list[0]
-        if not isinstance(decorator, ast.Call) or not decorator.args \
-                or not isinstance(decorator.args[0], ast.Constant) or decorator.args[0].value != 'Setup':
-            continue
-        claim = decorator.args[1].value
-        if 'two groups' in claim:
-            continue  # This check requires live UDP; the offline checks do not.
-        node.decorator_list = []
-        scope = {'TMP': tmp_path, 'WORDS': 'correct horse battery staple'}
-        module = compile(ast.Module(body=[node], type_ignores=[]), str(VERIFIER), 'exec')
-        code = next(value for value in module.co_consts if isinstance(value, CodeType))
-        assert isinstance(FunctionType(code, scope)(), str)
-        ran.append(claim)
-    assert len(ran) == 3
-
-
 def service_checks(tmp_path):
     import importlib.util
 
@@ -89,8 +66,8 @@ def service_checks(tmp_path):
 
 def test_service_check_extraction_preserves_order_and_network_markers(tmp_path):
     checks = service_checks(tmp_path)
-    assert [area for area, _, _, _ in checks] == ['Models'] * 6 + ['Chat'] * 3
-    assert [network for _, _, network, _ in checks] == [False] * 4 + [True] * 2 + [False] * 3
+    assert [area for area, _, _, _ in checks] == ['Models'] * 5 + ['Chat'] * 2
+    assert [network for _, _, network, _ in checks] == [False] * 3 + [True] * 2 + [False] * 2
     source = VERIFIER.read_text()
     assert source.index('register(check, TMP, free_port)') < source.index('@check("Updating"')
 

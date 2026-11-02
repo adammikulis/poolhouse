@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from poolhouse import hub
 from poolhouse.serve import holding, ops
 from poolhouse.serve.backend import ServerSpec
+from poolhouse.serve.fitted import fitted
 from poolhouse.serve.holding import Hold
 
 __all__ = ["Served", "down", "status", "up"]
@@ -43,7 +44,8 @@ def up(model: str, *, context: int = 0, parallel: int = 0, wait: bool = True,
        reason: str = "") -> Served:
     """Lease a server of ``model`` (a path, a file name found in the Hub cache, or ``hf:owner/repo/file.gguf``).
 
-    ``context`` is tokens across all slots and ``parallel`` the slots (the server defaults when 0). With ``wait``
+    ``context`` is tokens across all slots (0 for the largest this machine holds safely for the model and the slots)
+    and ``parallel`` the slots (0 for one). With ``wait``
     this returns when the server is ready; without, it returns at once with state ``queued`` when memory is
     short. ``reason`` is one line saying why, kept in the lease's record. Raises `poolhouse.Error` when the
     request is refused, saying what would fit.
@@ -52,7 +54,7 @@ def up(model: str, *, context: int = 0, parallel: int = 0, wait: bool = True,
     asked = ServerSpec(model=found)
     spec_in = ServerSpec(model=found, context=context or asked.context, parallel=parallel or asked.parallel)
     manager = ops.manager_for()
-    spec = ops.resolve_spec(spec_in, manager=manager).spec
+    spec = fitted(ops.resolve_spec(spec_in, manager=manager).spec)[0]
     weight = holding.check_fits(spec, ask=model)
     held = holding.up(spec, manager=manager, say=lambda _line: None,
                       terms=holding.Terms(wait_s=600.0, wait=wait, weight=weight, reason=reason))

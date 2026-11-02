@@ -24,8 +24,9 @@ from typing import Any
 
 from poolhouse import gate, sealing, sentinel, serverkeys
 from poolhouse.files import promote
+from poolhouse.graph.guard import MAX_BODY
 from poolhouse.http import _open
-from poolhouse.macauth import Verdict, parts
+from poolhouse.macauth import Verdict
 from poolhouse.sentinel.adapters import watch_authenticator
 from poolhouse.speech import service as speech
 from poolhouse.speech.protocols import ProviderError
@@ -35,17 +36,18 @@ from . import (
     app_identity,
     callers,
     commands,
-    companion_routes,
     device_auth,
-    invite_routes,
     projects as project_routes,
+    shard_routes,
+    studio_device_routes,
     studio_library,
+    studio_webhooks,
+    tls,
 )
 from .availability import Availability, parse_window
 from .daemon_control import protected
 from .deciding import MAX_REQUEST, Deciding
 from .device import device_report
-from .discovery import load_pool_key, memberships
 from .files import (
     DIGEST_HEADER,
     FILE_CHUNK,
@@ -66,10 +68,9 @@ from .framing import (
 )
 from .jobs import DaemonError, JobRunner
 from .measuring import BenchHost, Job as BenchJob, Refused
-from .member_routes import answer as member_answer
 from .models import Models
-from .onboard.joining import API as JOIN_API, Joining
-from .pool_roster import Pool
+from .service_guard import ServiceGuard
+from .service_pool import Pool
 from .serving import Hosting, NoRoom, ServeSettings, Serving
 from .ui import routes as ui_routes
 from .weights import ModelError
@@ -105,9 +106,6 @@ class Daemon:
     schedule_path: Path | None = None
     serving: Serving | None = None
     models: Models | None = None
-    pool_key_path: Path | str | None = None
-    pool_mode: str | None = None
-    tokens: Callable[[], set[str]] | None = None
     devices: Callable[[], list] = lambda: []
     bench: BenchHost | None = None
     hosting: Hosting | None = None
@@ -115,10 +113,9 @@ class Daemon:
     ui_from_lan: bool = False
     """Whether the web interface answers other machines. Off: it answers this one alone."""
     launcher_control: Callable[[], Any] | None = None
-    joining: Joining | None = None
-    """Answers a machine that asks to join with the passphrase; without it the join routes are off."""
+    service_identity: Callable[[], tls.Identity] | None = None
     members: Pool | None = None
-    """Which devices are in this daemon's pools; by default the record beside ``pool_key_path``."""
+    """Which compute services the node authorizes; by default the live node's."""
     command: Callable[[list[str]], list[str]] = commands.allowed
     """Which argv a ``POST /jobs`` may run, and in what form; raises ValueError to refuse."""
 
@@ -133,21 +130,22 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
     runner, files_root, token, name = daemon.runner, daemon.files_root, daemon.token, daemon.name
     report, fetcher, ui, schedule = daemon.report, daemon.fetcher, daemon.ui, daemon.schedule
     on_paused, schedule_path, serving = daemon.on_paused, daemon.schedule_path, daemon.serving
-    models, pool_key_path, tokens = daemon.models, daemon.pool_key_path, daemon.tokens
+    models = daemon.models
     bench, hosting, decide = daemon.bench, daemon.hosting, daemon.decide
     ui_from_lan = daemon.ui_from_lan
-    joining, command = daemon.joining, daemon.command
-    roster = daemon.members or Pool(pool_key_path)
+    command = daemon.command
+    roster = daemon.members or Pool()
 
     def secrets_now() -> set[str]:
         """Every secret this machine answers to, read at request time."""
         own = token() if callable(token) else token
-        return {one for one in (own, *(tokens() if tokens else ())) if one}
+        return {own} if own else set()
 
     screen = callers.Screen(secrets_now, lambda: [device_auth.secret(device) for device in daemon.devices()],
-                            roster, pool_key_path, lambda auth: watch_authenticator(auth, sentinel.armed(), Verdict))
+                            roster, lambda auth: watch_authenticator(auth, sentinel.armed(), Verdict),
+                            identity=daemon.service_identity)
 
-    class Handler(Limited, BaseHTTPRequestHandler):
+    class Handler(ServiceGuard, Limited, BaseHTTPRequestHandler):
         server_version = "poolhouse-traind/0.1"
 
         def log_message(self, fmt: str, *args: Any) -> None:  # quieter
@@ -215,6 +213,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             with target.open("rb") as fh:
                 fh.seek(start)
                 while remaining > 0:
+                    self._service_current()
                     chunk = fh.read(min(FILE_CHUNK, remaining))
                     if not chunk:
                         break
@@ -224,46 +223,9 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                         return
                     remaining -= len(chunk)
 
-        _member = ""
-
-        def _guard(self, body: bytes | None = None) -> bool:
-            """Whether this request is signed by a secret this machine answers to, and when it
-            came over TLS from another machine, by a device that is a member; the answer is
-            sent when it is not. ``body`` is what the request carried."""
-            seen = screen.check(self, body)
-            verdict, self._member = seen.verdict, seen.member
-            if seen.refusal is not None:
-                self.close_connection = seen.kind == callers.STRANGER
-                self._send(seen.refusal[0], {"error": seen.refusal[1]})
-                return False
-            if verdict.ok:
-                mode = self.headers.get(sealing.HEADER, "")
-                self._opening = (sealing.box_key(verdict.secret), verdict, mode == "2",
-                                 self.headers) if mode in ("1", "2") else None
-                return True
-            if verdict.locked:
-                self._send(429, {"error": verdict.reason}, headers={"Retry-After": "60"})
-            else:
-                self._send(401, {"error": verdict.reason})
-            return False
-
-        def _unsealed(self, body: bytes | None) -> bytes | None:
-            """What a signed request's body says, or None once a refusal has been sent: a body
-            is sealed under the key derived from the secret that signed it."""
-            if not body:
-                return body
-            opening = self._sealing()
-            if opening is None:
-                self._send(400, {"error": "a request body is sent sealed"})
-                return None
-            key, verdict, _ = opening
-            host, target = parts(f"//{self.headers.get('Host', '')}{self.path}")
-            try:
-                return sealing.open_(key, body, sealing.request_data(
-                    self.command, target, host, verdict.at, verdict.nonce))
-            except sealing.SealError:
-                self._send(400, {"error": "the body did not authenticate"})
-                return None
+        _screen = screen
+        _roster = roster
+        _service_secrets = staticmethod(secrets_now)
 
         def _body(self, most: int = MOST_BODY) -> bytes | None:
             """The request body, or None once a refusal for it has been sent."""
@@ -358,7 +320,9 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             read = getattr(response, "read1", response.read)
             try:
                 while True:
+                    self._service_current()
                     block = read(INFER_CHUNK)
+                    self._service_current()
                     if not block:
                         break
                     self.wfile.write(block)
@@ -382,30 +346,12 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             if not isinstance(self.connection, ssl.SSLSocket) and not addressed_to_this_machine(
                     "localhost", self.client_address[0]):
                 self._send(403, {"error": "the web interface is served to other machines over "
-                                          "TLS only; it signs in with the passphrase"})
+                                          "TLS only; it signs in from the Poolhouse window of this computer"})
                 return True
             return ui_routes(ui, self)
 
-        def _join(self, body: bytes | None) -> bool:
-            """Answer a ``/join/v1`` request, which carries no signature; False for any other path."""
-            if invite_routes.public(ui, self, body):
-                return True
-            if joining is None or not self.path.startswith(JOIN_API + "/"):
-                return False
-            try:
-                asked = json.loads(body or b"{}")
-            except ValueError:
-                asked = None
-            if not isinstance(asked, dict):
-                self._send(400, {"error": "the body is not a JSON object"})
-                return True
-            status, answer = joining.handle(self.path.split("?")[0], asked, self.client_address[0],
-                                            transport_tls=isinstance(self.connection, ssl.SSLSocket))
-            self._send(status, answer)
-            return True
-
         def do_GET(self) -> None:
-            if companion_routes.answer(ui, self):
+            if studio_webhooks.public(ui, self, None):
                 return
             if self.path == "/favicon.ico":
                 self.send_response(204)
@@ -425,22 +371,21 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             if not (path == "/health" and here and "Authorization" not in self.headers) \
                     and not self._guard():
                 return
-            if member_answer(self, roster, "GET", path, None):
+            if shard_routes.answer(self, daemon, "GET", self.path, None):
                 return
             if project_routes.answer(self, daemon.projects, parsed):
                 return
-            if studio_library.answer(self, ui, path):
+            if studio_device_routes.answer(self, ui, path) or studio_library.answer(self, ui, path):
                 return
             if path == "/health":
                 status = runner.status()
                 sched = schedule.public() if schedule is not None else None
                 if sched is not None and not sched["available"]:
                     status = {**status, "free": 0}
-                joined = memberships(pool_key_path)
                 root = getattr(daemon.ui, "root", None)
                 proof = app_identity.prove(root, self.headers.get(app_identity.HEADER, "")) if root else ""
                 self._send(200, {"ok": True, "name": self._name(), **({"proof": proof} if proof else {}),
-                                 "pool_mode": daemon.pool_mode or (joined[0].mode if joined else "dev"), **status, **report(),
+                                 **status, **report(),
                                  **({"availability": sched} if sched else {}),
                                  **({"serving": serving.public()} if serving is not None
                                     else {})})
@@ -598,28 +543,26 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             self._send(status, payload)
 
         def do_POST(self) -> None:
-            if daemon.launcher_control and daemon.launcher_control().route(self):
-                return
-            if self.path.split("?", 1)[0].startswith("/companion/"):
-                body = self._body(65536)
+            if self.path.startswith("/studio/ingest/"):
+                body = self._body(MAX_BODY)
                 if body is not None:
-                    companion_routes.answer(ui, self, body)
+                    studio_webhooks.public(ui, self, body)
+                return
+            if daemon.launcher_control and daemon.launcher_control().route(self):
                 return
             if self._ui():
                 return
             body = self._body()
-            if body is None or self._join(body) or self._proxy(body):
+            if body is None or self._proxy(body):
                 return
             if not self._guard(body):
                 return
             body = self._unsealed(body)
             if body is None:
                 return
-            if member_answer(self, roster, "POST", self.path.split("?")[0], body):
+            if shard_routes.answer(self, daemon, "POST", self.path, body):
                 return
-            if project_routes.register(self, daemon.projects, pool_key_path, body):
-                return
-            if studio_library.answer(self, ui, self.path.split("?")[0], body):
+            if studio_device_routes.answer(self, ui, self.path.split("?")[0], body) or studio_library.answer(self, ui, self.path.split("?")[0], body):
                 return
             try:
                 self._route_post(body or b"{}")
@@ -682,8 +625,8 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                     argv = req.get("argv")
                     if isinstance(argv, str):
                         argv = shlex.split(argv)
-                    job = runner.submit(req.get("name", ""), command(argv or []),
-                                        str(files_root))
+                    job = runner.label(runner.submit(req.get("name", ""), command(argv or []),
+                                                     str(files_root)), shard_routes.who(self))
                 except (DaemonError, ValueError) as e:
                     self._send(400, {"error": str(e)})
                     return
@@ -711,7 +654,6 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 try:
                     got = models.ensure(str(req.get("name") or ""),
                                         source=str(req.get("source") or ""),
-                                        key=load_pool_key(pool_key_path),
                                         autodownload=bool(req.get("autodownload", True)))
                 except (ModelError, ValueError) as e:
                     self._send(400, {"error": str(e)})
@@ -790,7 +732,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 try:
                     req = self._object(body)
                     wanted = str(req.get("model") or "")
-                    context = int(req.get("context") or 8192)
+                    context = int(req.get("context") or 0)
                     parallel = max(1, int(req.get("parallel") or 1))
                 except (TypeError, ValueError) as e:
                     self._send(400, {"error": str(e)})
@@ -834,6 +776,8 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             if body is None:
                 return
             parsed = urllib.parse.urlparse(self.path)
+            if studio_device_routes.answer(self, ui, parsed.path, body) or shard_routes.answer(self, daemon, "PUT", self.path, body):
+                return
             if not parsed.path.startswith("/files/"):
                 self._send(404, {"error": "no such route"})
                 return

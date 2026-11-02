@@ -71,8 +71,8 @@ dependencies { protocol 'org.json:json:20240303' }
 def phone = 'src/main/java/app/poolhouse/phone/'
 def checked = ['Hex', 'Canonical', 'Challenge', 'ApprovalText', 'ApprovalView', 'WebPushCipher', 'AddLink', 'Authorizer', 'Transport', 'NodeError',
                'NodeApi', 'AddRequest', 'Decider', 'Wants', 'ApprovalFlow', 'PushPayload', 'NotificationModel', 'PushChannel', 'PushHandler',
-               'PinnedHttps', 'ChatLink', 'ChatSetup', 'FoundingCharter', 'FoundingCard', 'P256Signature', 'PoolKeyBinding', 'GovernanceAct'].collect { phone + it + '.java' }
-def checks = ['SoftwareAuthorizer', 'PhoneApprovalTest', 'PhoneProtocolTest', 'PhoneFoundingTest', 'PoolKeyTest', 'GovernanceActTest'].collect { 'src/test/java/app/poolhouse/phone/' + it + '.java' }
+               'PinnedHttps', 'ChatLink', 'ChatSetup', 'FoundingCharter', 'FoundingCard', 'P256Signature', 'PoolKeyBinding', 'GovernanceAct', 'AdminAddAct', 'AddSigning'].collect { phone + it + '.java' }
+def checks = ['SoftwareAuthorizer', 'PhoneApprovalTest', 'PhoneProtocolTest', 'PhoneFoundingTest', 'PoolKeyTest', 'GovernanceActTest', 'AdmitTest'].collect { 'src/test/java/app/poolhouse/phone/' + it + '.java' }
 tasks.register('compileProtocol', JavaCompile) {
     source = files(checked + checks)
     classpath = configurations.protocol
@@ -113,3 +113,11 @@ tasks.register('actChecks', JavaExec) {
     args = [file('../../tests/fixtures/phone-founding-vectors.json').path, file('../../tests/fixtures/phone-act-vectors.json').path]
 }
 tasks.named('protocolChecks') { dependsOn 'actChecks' }
+
+tasks.register('admitChecks', JavaExec) {
+    dependsOn 'compileProtocol'
+    classpath = configurations.protocol + files(layout.buildDirectory.dir('protocol'))
+    mainClass = 'app.poolhouse.phone.AdmitTest'
+    args = [file('../../tests/fixtures/phone-admit-vectors.json').path, file('../../docs/phone-approval.md').path]
+}
+tasks.named('protocolChecks') { dependsOn 'admitChecks' }

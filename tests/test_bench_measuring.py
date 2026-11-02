@@ -30,7 +30,7 @@ def _measurable(tmp_path, monkeypatch):
                                  "expect": ["topic:compiler"]}) + "\n")
     return ["--kept", str(tmp_path / "runs.ladybug"), "--graph", str(graph),
             "--questions", str(asked), "--client", "fake:client", "--no-smoke",
-            "--no-selfcheck", "--no-prefetch"]
+            "--no-prefetch"]
 
 
 def test_a_run_in_the_foreground_is_measuring_and_says_how_it_asks(tmp_path, monkeypatch,
@@ -108,7 +108,7 @@ def test_a_run_that_is_killed_leaves_no_live_record(tmp_path, monkeypatch, capsy
     monkeypatch.setattr(running, "_main", killed)
     monkeypatch.setattr(running, "_estimated", lambda rest: 0)
     with pytest.raises(SystemExit):
-        running.main(["run", "stopped", "--no-selfcheck", "--no-prefetch"])
+        running.main(["run", "stopped", "--no-prefetch"])
     capsys.readouterr()
     assert measuring() is None
     assert json.loads(measuring_file().read_text(encoding="utf-8"))["ended"]
@@ -139,7 +139,7 @@ def test_the_record_says_every_arm_a_drafts_run_will_serve():
                        "--n-max", "2", "--n-max", "8", "--reasoning-budget", "0"])
     assert how["head"] == "none, mtp-a.gguf" and how["head_ahead"] == "2, 8"
     assert _how_said(how)[1] == ("  serving: draft heads none, mtp-a.gguf; 2, 8 ahead; "
-                                "q8_0 cache; thinking budget 0; 32k context across 1 slot")
+                                "q8_0 cache; thinking budget 0; the largest context that fits across 1 slot")
 
 
 def test_a_sweep_told_to_drop_the_head_says_it_has_none():

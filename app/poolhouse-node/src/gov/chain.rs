@@ -3,16 +3,16 @@
 //! An act that adds or removes an admin, or moves a threshold, a hold or the mode, names the charter it follows (`prev`) and takes
 //! the pool to the next epoch. Acts that follow the same charter form one step:
 //!
-//! * Removals commute: every removal of the step applies, unless together they would leave fewer strong admins than the
-//!   sensitive threshold needs, in which case none applies and a dispute opens. One removal that alone would leave too few is void.
+//! * Removals commute: every removal of the step applies, unless together they would leave fewer counting admins than the
+//!   governance threshold needs, in which case none applies and a dispute opens. One removal that alone would leave too few is void.
 //! * An add or a threshold change counts only if its signers survive the removals of the step.
-//! * Two such acts that cannot both hold are settled by the highest level among their signers, then by the number of signers, then by
-//!   the lower signer fingerprints; a tie that remains applies neither and opens a dispute that the signers settle by signing one of
-//!   them again.
+//! * Two such acts that cannot both hold are settled by the number of signers, then by the lower signer fingerprints; a tie that
+//!   remains applies neither and opens a dispute that the signers settle by signing one of them again.
 //!
 //! An act complete on this device only after the first act of its step has run its hold arrives too late to join or contest the step.
 //!
-//! A step takes effect when the longest hold among its acts has run on this device, counted in awake time from the first moment
+//! A step takes effect when the longest hold among its acts has run on this device (seven days for every act of the step, because every
+//! key that counts is a `computer` key and no member can check a higher level), counted in awake time from the first moment
 //! this device saw each act with all the signatures it needs, with no valid `cancel` seen before then; a `veto` by the key a removal names ends the removal and
 //! opens a dispute. While a dispute is open no step is taken. A key that is removed loses every signature of its that is not in the
 //! cut its removal carried, wherever it was counted.
@@ -23,7 +23,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::act::Act;
 use super::body::{self, Body};
 use super::charter::{Charter, Class, Mode, Unit};
-use super::keys::{Level, Role};
+use super::keys::Role;
 use super::{COMPUTER_HOLD_MS, DAY_MS, HOUR_MS, MAX_ADMINS, MAX_ADMIN_ACTS, SETTLED};
 
 /// The first moment (awake milliseconds) this device saw each act.
@@ -147,11 +147,6 @@ fn hours(h: u64) -> i64 {
     i64::try_from(h).unwrap_or(0).saturating_mul(HOUR_MS)
 }
 
-/// Whether a key above `Computer` is among ``signers``: the pool's own holds are then enough, and a computer's word alone is not.
-pub(super) fn above_computer(c: &Charter, signers: &[String]) -> bool {
-    signers.iter().filter_map(|k| c.admin(k)).any(|k| k.assurance > Level::Computer)
-}
-
 /// Whether ``body`` lists the first recovery key, replaces the recovery key or removes it: the acts a thief of one computer's key could use
 /// to put a recovery key of its own beyond the owner's reach.
 fn touches_recovery(body: &Body, c: &Charter) -> bool {
@@ -163,24 +158,17 @@ fn touches_recovery(body: &Body, c: &Charter) -> bool {
     }
 }
 
-/// How long the act ``body`` signed by ``signers`` is held: the pool's own hold for the kind of act, seven days when only `Computer` keys
-/// signed it, and seven days whoever signed it for any act that touches the recovery key.
-fn hold_ms(body: &Body, c: &Charter, signers: &[String]) -> i64 {
+/// How long a governance act ``body`` is held: seven days, because every key that counts is a `Computer` key (no member can check a higher
+/// level, keys document C6), and never less than the pool's own hold for the kind of act. An act that touches the recovery key is
+/// held seven days too.
+fn hold_ms(body: &Body, c: &Charter) -> i64 {
     let own = match body {
         Body::AdminAdd(_) => hours(c.holds.admin_add_h),
         Body::AdminRemove(_) => hours(c.holds.admin_remove_h),
         b if weakens(b, c) => hours(c.holds.admin_add_h.max(c.holds.admin_remove_h)),
         _ => 0,
     };
-    let computer_only = if above_computer(c, signers) { 0 } else { COMPUTER_HOLD_MS };
-    let recovery = if touches_recovery(body, c) { COMPUTER_HOLD_MS } else { 0 };
-    own.max(computer_only).max(recovery)
-}
-
-/// The highest old floor that ``body`` lowers, when it lowers one: its signers must hold that level.
-fn lowers_from(body: &Body, c: &Charter) -> Option<Level> {
-    let Body::SetFloors(f) = body else { return None };
-    [(f.routine, c.floors.routine), (f.sensitive, c.floors.sensitive), (f.governance, c.floors.governance)].into_iter().filter(|(new, old)| new.is_some_and(|n| n < *old)).map(|(_, old)| old).max()
+    own.max(COMPUTER_HOLD_MS)
 }
 
 /// Whether the change gives a signer less to do or a thief more room: a smaller threshold, a shorter hold or `mode: members`.
@@ -193,7 +181,6 @@ fn weakens(body: &Body, c: &Charter) -> bool {
         }
         Body::SetHolds(h) => sooner(h.admin_add_h, c.holds.admin_add_h) || sooner(h.admin_remove_h, c.holds.admin_remove_h) || sooner(h.handoff_min, c.holds.handoff_min) || sooner(h.dispute_d, c.holds.dispute_d),
         Body::SetMode(m) => m.mode == Mode::Members,
-        Body::SetFloors(_) => lowers_from(body, c).is_some(),
         _ => false,
     }
 }
@@ -270,11 +257,9 @@ fn survivors_ok(c: &Charter, targets: &BTreeSet<String>, need: usize) -> bool {
 fn check(act: &Act, signed: &[String], body: &Body, s: &EpochState, pool: &str) -> Check {
     let c = &s.charter;
     let counts = |k: &&String| c.counts_key(k, Class::Governance);
-    let lowest = lowers_from(body, c);
-    let held = |k: &&String| lowest.is_none_or(|old| c.admin(k).is_some_and(|x| x.assurance >= old));
     let counted: Vec<String> = match body {
-        Body::AdminRemove(d) => signed.iter().filter(counts).filter(held).filter(|k| **k != d.key).cloned().collect(),
-        _ => signed.iter().filter(counts).filter(held).cloned().collect(),
+        Body::AdminRemove(d) => signed.iter().filter(counts).filter(|k| **k != d.key).cloned().collect(),
+        _ => signed.iter().filter(counts).cloned().collect(),
     };
     match body {
         Body::AdminAdd(add) => {
@@ -300,12 +285,6 @@ fn check(act: &Act, signed: &[String], body: &Body, s: &EpochState, pool: &str) 
             }
         }
         _ => return Check::Void(format!("a {} act is not a step of the admin chain", act.kind)),
-    }
-    if let Body::AdminAdd(add) | Body::RecoveryReplace(add) = body {
-        let top = counted.iter().filter_map(|k| c.admin(k)).map(|k| k.assurance).max();
-        if top.is_some_and(|top| add.entry.assurance > top) {
-            return Check::Void("a key is listed at no level above the keys that listed it".into());
-        }
     }
     let (have, need) = (c.count(Class::Governance, &counted.iter().map(String::as_str).collect::<Vec<_>>()), c.needed(Class::Governance));
     if have < need {
@@ -385,7 +364,7 @@ fn candidates(cx: &Ctx, chain: &mut Chain, dropped: &BTreeSet<String>) -> Vec<Ca
             Check::Short(have, need, why) => drop(chain.short.insert(id.clone(), (have, need, why))),
             Check::Ok(signers) => {
                 chain.validated.insert(id.clone());
-                let hold = hold_ms(&parsed, &s.charter, &signers);
+                let hold = hold_ms(&parsed, &s.charter);
                 let effective = cx.ready_at(id).saturating_add(hold);
                 let stoppable_until = if cx.ready_at(id) == SETTLED { cx.joined.saturating_add(hold) } else { effective };
                 if cancels.get(id).is_some_and(|c| *c <= stoppable_until) {
@@ -406,13 +385,11 @@ fn veto_dispute(cx: &Ctx, chain: &Chain, s: &EpochState) -> Option<Dispute> {
     vetoes.iter().filter(|(id, _)| chain.void.get(*id).is_some_and(|w| w.contains("vetoed"))).map(|(id, at)| dispute(vec![id.clone()], *at, &s.charter, "the key a removal names vetoed it")).max_by_key(|d| d.ends_ms)
 }
 
-/// How an act ranks against one that cannot hold beside it: the higher top level among its signers first, then more signers, then the lower
-/// signer fingerprints.
-fn rank(cand: &Cand, c: &Charter) -> (Reverse<Option<Level>>, Reverse<usize>, Vec<String>) {
-    let keys: Vec<&super::keys::AdminKey> = cand.signers.iter().filter_map(|k| c.admin(k)).collect();
-    let mut fingerprints: Vec<String> = keys.iter().map(|k| k.fingerprint()).collect();
+/// How an act ranks against one that cannot hold beside it: more signers first, then the lower signer fingerprints.
+fn rank(cand: &Cand, c: &Charter) -> (Reverse<usize>, Vec<String>) {
+    let mut fingerprints: Vec<String> = cand.signers.iter().filter_map(|k| c.admin(k)).map(|k| k.fingerprint()).collect();
     fingerprints.sort();
-    (Reverse(keys.iter().map(|k| k.assurance).max()), Reverse(cand.signers.len()), fingerprints)
+    (Reverse(cand.signers.len()), fingerprints)
 }
 
 fn round(cx: &Ctx, chain: &mut Chain, dropped: &mut BTreeSet<String>) -> Round {
@@ -445,7 +422,7 @@ fn round(cx: &Ctx, chain: &mut Chain, dropped: &mut BTreeSet<String>) -> Round {
     let targets: BTreeSet<String> = removals.iter().filter_map(|r| if let Body::AdminRemove(d) = &r.body { Some(d.key.clone()) } else { None }).collect();
     if removals.len() > 1 && !survivors_ok(&s.charter, &targets, need) {
         let ids: Vec<String> = removals.iter().map(|r| r.id.clone()).collect();
-        let since = removals.iter().map(|r| cx.ready_at(&r.id)).max().unwrap_or(cx.now);
+        let since = removals.iter().map(|r| r.effective).max().unwrap_or(cx.now);
         return settle(cx, dispute(ids, since, &s.charter, "removals together would leave too few admins"), dropped);
     }
     let survive = |k: &&String| !targets.contains(*k);
@@ -460,7 +437,7 @@ fn round(cx: &Ctx, chain: &mut Chain, dropped: &mut BTreeSet<String>) -> Round {
     others.sort_by_key(|o| rank(o, &s.charter));
     if others.len() > 1 && rank(others[0], &s.charter) == rank(others[1], &s.charter) {
         let ids: Vec<String> = others.iter().filter(|o| rank(o, &s.charter) == rank(others[0], &s.charter)).map(|o| o.id.clone()).collect();
-        let since = others.iter().map(|o| cx.ready_at(&o.id)).max().unwrap_or(cx.now);
+        let since = others.iter().map(|o| o.effective).max().unwrap_or(cx.now);
         return settle(cx, dispute(ids, since, &s.charter, "two acts that cannot both hold have the same signers"), dropped);
     }
     for loser in others.iter().skip(1) {

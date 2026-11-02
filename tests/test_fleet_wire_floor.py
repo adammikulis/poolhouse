@@ -10,10 +10,9 @@ import threading
 import pytest
 
 from poolhouse import http
-from poolhouse.fleet import discovery, projects, tls
+from poolhouse.fleet import projects, tls
 from poolhouse.fleet.api import Daemon, make_handler
 from poolhouse.fleet.daemon import ALL_INTERFACES, load_or_create_token
-from poolhouse.fleet.discovery import Beacon
 from poolhouse.fleet.framing import LimitedServer
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.projects import lan_host
@@ -138,9 +137,6 @@ def test_the_old_switch_changes_nothing(tmp_path, monkeypatch):
     monkeypatch.setattr(projects, "primary_ip", lambda: "192.168.40.2")
     assert not hasattr(tls, "disabled")
     assert lan_host(8770) == "https://192.168.40.2:8770"
-    bare = Beacon(name="old", host="192.168.40.9", port=8770)
-    assert discovery._trusted(bare) is False
-    assert discovery._trusted(Beacon(name="here", host="127.0.0.1", port=8770)) is True
 
 
 @pytest.mark.parametrize("host", ["http://192.168.40.9:8770", "http://studio.local:8770"])

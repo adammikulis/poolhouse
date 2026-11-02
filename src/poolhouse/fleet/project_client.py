@@ -9,37 +9,11 @@ import time
 from pathlib import Path
 
 from poolhouse import sealing
-from poolhouse.fleet.remote import Discovery
-from poolhouse.http import Options, Sealed, ServerError, ServerUnreachable, open_stream
+from poolhouse.http import Options, Sealed, ServerError, open_stream
 
-from .discovery import derive_token, memberships
 from .onboard.lan import require_local_url
 from .project_source import MAX_ARCHIVE, MAX_FILES, MAX_SOURCE, ProjectError, checkout, project_id
 from .remote import Member
-
-
-def register_local(root, key, project_id, port):
-    """Register a Git checkout with this device's sealed Fleet endpoint."""
-    endpoint = f"http://127.0.0.1:{port}/workspace/v1/local-project"
-    def destination(url):
-        if url != endpoint:
-            raise ProjectError("local project registration cannot redirect")
-        return url
-    try:
-        with open_stream(endpoint, method="POST", data=json.dumps({"root": str(root.resolve()), "project_id": project_id}).encode(), options=Options(token=derive_token(key), headers={"Content-Type": "application/json", sealing.HEADER: "2"}, timeout=2, guard=destination)) as response:
-            if not response.headers.get(sealing.HEADER):
-                raise ProjectError("local project registration was not authenticated and sealed")
-            limit = 65536 + sealing.NONCE_BYTES + 16
-            raw = response.read(limit + 1)
-            if len(raw) > limit:
-                raise ProjectError("local project registration exceeds its response limit")
-            result = json.loads(response.sealed.open(response.status, response.headers, raw))
-            if not isinstance(result, dict) or result.get("id") != project_id:
-                raise ProjectError("local project registration returned another project")
-    except ServerUnreachable as error:
-        raise ProjectError("Local Fleet is unavailable; start poolhouse and retry project joining") from error
-    except ServerError as error:
-        raise ProjectError("local project registration failed") from error
 
 
 def read(member: Member, path: str, limit: int, *, deadline: float | None = None) -> bytes:
@@ -114,12 +88,9 @@ def validate_project(project: dict) -> None:
             raise ProjectError(f"Invalid project {field}")
 
 
-def members(ui) -> list[Member]:
-    found = {}
-    for member in memberships(ui.pool_key_path):
-        for daemon in Member.discover(discovery=Discovery(pool_key_path=ui.pool_key_path, key=member.key, group=member.group, timeout_s=1, port=ui.discovery_port)):
-            found.setdefault(daemon.base_url, daemon)
-    return list(found.values())
+def members() -> list[Member]:
+    """Every other compute service the node currently authorizes in this device's pool."""
+    return Member.discover()
 
 
 def available(ui) -> dict:
@@ -127,7 +98,7 @@ def available(ui) -> dict:
     if ui.projects:
         projects = [{**p, "is_self": True, "member": "", "state": "available"}
                     for p in ui.projects.list()]
-    for member in members(ui):
+    for member in members():
         if member.beacon and ui.projects and member.beacon.machine == ui.projects.machine:
             continue
         try:
@@ -180,7 +151,7 @@ def route(request) -> bool:
             request.send(200, {"ok": True})
         elif len(suffix) == 2 and suffix[1] == "checkout" and method == "POST":
             selected = request.body().get("member")
-            selected_members = [p for p in members(ui) if p.base_url == selected]
+            selected_members = [p for p in members() if p.base_url == selected]
             if len(selected_members) != 1:
                 raise ProjectError("Choose a currently authenticated pool device")
             result = receive(selected_members[0], suffix[0], ui.root / "project-checkouts")

@@ -229,8 +229,8 @@ def test_globs_match_but_a_pattern_that_matches_everything_is_not_an_always_rule
     path.write_text(json.dumps(good))
     private(path)
     rules = saved.Rules(path)
-    assert rules.covers("serve_up", {"model": "quince-2b.gguf"}, "x", False)
-    assert rules.covers("serve_up", {"model": "larch.gguf"}, "x", False) is None
+    assert rules.covers("serve_up", {"model": "quince-2b.gguf"}, "approve-first", False)
+    assert rules.covers("serve_up", {"model": "larch.gguf"}, "approve-first", False) is None
     good["rules"][0]["match"] = {"model": "*"}
     path.write_text(json.dumps(good))
     assert "must name something" in saved.Rules(path).broken

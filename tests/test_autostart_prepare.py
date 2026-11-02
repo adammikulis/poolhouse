@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import json
 import plistlib
+import sys
 from pathlib import Path
 
 import pytest
 from autostart_support import environment, launchers, staged, write_launcher
 
-from poolhouse import home
+from poolhouse import home, runtime_identity
 from poolhouse.files import sha256_file
-from poolhouse.fleet import autostart_manifest as manifest_mod
+from poolhouse.fleet import autostart, autostart_manifest as manifest_mod
 from poolhouse.fleet.autostart_manifest import ManifestError, launcher_problem, parse
 from poolhouse.fleet.autostart_prepare import PrepareError, Spec, prepare
 
@@ -19,6 +20,15 @@ from poolhouse.fleet.autostart_prepare import PrepareError, Spec, prepare
 @pytest.fixture
 def user(tmp_path, monkeypatch):
     return environment(tmp_path, monkeypatch)
+
+
+@pytest.fixture
+def poolhouse():
+    """A Mac that has its Poolhouse executable (a file stands in: units only name it)."""
+    path = runtime_identity.executable_path()
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"x")
+    return path
 
 
 def test_prepare_stages_files_and_installs_nothing(tmp_path, user):
@@ -53,11 +63,13 @@ def test_the_manifest_carries_no_secret_from_the_environment(tmp_path, user, mon
         assert "secret-" not in text, path.name
 
 
-def test_each_platform_renders_a_restart_policy_and_the_argv_list(tmp_path, user):
+def test_each_platform_renders_a_restart_policy_and_the_argv_list(tmp_path, user, poolhouse):
     mac = staged(tmp_path, platform="darwin").manifest
     pool = next(r for r in mac.roles if r.role == "pool-daemon")
     plist = plistlib.loads((staged_dir(mac) / pool.units[0].name).read_bytes())
-    assert plist["ProgramArguments"] == list(pool.argv)
+    assert plist["ProgramArguments"] == runtime_identity.launch_argv(list(pool.argv))
+    assert plist["ProgramArguments"][0] == str(runtime_identity.executable_path()) and plist["ProgramArguments"][1:3] == ["-I", "-S"]
+    assert plist["ProgramArguments"][3:] == list(pool.argv), "macOS names the unit after the program it runs, which is Poolhouse"
     assert plist["KeepAlive"] == {"SuccessfulExit": False} and plist["ThrottleInterval"] == 30
     assert plist["RunAtLoad"] is True and "UserName" not in plist
     ensure = next(r for r in mac.roles if r.role == "runtime-ensure")
@@ -89,7 +101,7 @@ def test_unattended_ensure_takes_only_its_own_arguments(tmp_path, user):
     assert not {"POOLHOUSE_WORKSPACE_AGENT", "POOLHOUSE_WORKSPACE_TOKEN"} & set(role.environment)
 
 
-def test_arguments_with_spaces_quotes_and_percent_stay_single_argv_elements(tmp_path, user):
+def test_arguments_with_spaces_quotes_and_percent_stay_single_argv_elements(tmp_path, user, poolhouse):
     odd = home.state("bin dir", "it's \"q\" $x %h")
     launchers(odd)
     done = prepare(Spec(("pool-daemon",), launchers=odd, platform="linux", report="a b;c"))
@@ -100,7 +112,7 @@ def test_arguments_with_spaces_quotes_and_percent_stay_single_argv_elements(tmp_
     assert "%%h" in line and "$$x" in line and '\\"q\\"' in line and "%h" not in line.replace("%%h", "")
     plist = plistlib.loads((staged_dir(prepare(Spec(("pool-daemon",), launchers=odd, platform="darwin")).manifest)
                             / "com.poolhouse.traind.plist").read_bytes())
-    assert plist["ProgramArguments"][0] == str(odd / "poolhouse-traind")
+    assert plist["ProgramArguments"][3] == str(odd / "poolhouse-traind")
 
 
 @pytest.mark.parametrize("bad", [{"labels": ("a b",)}, {"labels": ("x;rm -rf",)},
@@ -194,3 +206,39 @@ def test_the_daemon_port_in_the_health_probe_is_the_daemon_default():
     from poolhouse.fleet import daemon
 
     assert manifest_mod.DAEMON_PORT == daemon.DEFAULT_PORT
+
+
+def test_a_mac_unit_is_not_prepared_while_the_installed_mac_has_no_signed_executable(tmp_path, user, monkeypatch):
+    staged(tmp_path, platform="darwin")  # a machine that is not the installed software renders the unit and asks nothing
+    monkeypatch.setattr(runtime_identity, "applies", lambda: True)
+    with pytest.raises(PrepareError, match="no signed executable yet"):
+        staged(tmp_path, platform="darwin")
+    assert staged(tmp_path, platform="linux").manifest.platform == "linux", "no other platform asks for it"
+
+
+def test_the_login_plist_of_the_older_install_path_also_starts_the_launcher_under_poolhouse(tmp_path, user, monkeypatch, poolhouse):
+    done = type("Done", (), {"returncode": 0, "stderr": ""})()
+    monkeypatch.setattr(autostart.subprocess, "run", lambda *a, **k: done)
+    launcher = write_launcher(home.state("bin"), "poolhouse-traind")
+    result = autostart._mac_install("login", [str(launcher), "--slots", "2"], tmp_path / "logs")
+    plist = plistlib.loads(result.path.read_bytes())
+    assert plist["ProgramArguments"] == [str(runtime_identity.executable_path()), "-I", "-S", str(launcher), "--slots", "2"]
+    python_form = autostart._mac_install("login", [sys.executable, "-m", "poolhouse.cli.daemon"], tmp_path / "logs")
+    assert plistlib.loads(python_form.path.read_bytes())["ProgramArguments"][0] == sys.executable, "the runtime's own python is already Poolhouse"
+
+
+def test_the_older_install_path_installs_nothing_on_an_installed_mac_that_has_no_signed_executable(tmp_path, user, monkeypatch):
+    monkeypatch.setattr(autostart.sys, "platform", "darwin")
+    monkeypatch.setattr(autostart.wsl_startup, "guest", lambda: False)
+    monkeypatch.setattr(autostart, "uninstall", lambda: [])
+    monkeypatch.setattr(autostart, "_runs", lambda argv: True)
+    monkeypatch.setattr(autostart, "_mac_install", lambda *a: pytest.fail("a unit that cannot start was installed"))
+    monkeypatch.setattr(runtime_identity, "applies", lambda: True)
+    result = autostart.install("login", log_dir=tmp_path / "logs")
+    assert not result.installed and "no signed executable yet" in result.note
+
+
+def test_a_mac_with_no_poolhouse_executable_keeps_starting_its_units_as_it_always_did(tmp_path, user):
+    mac = staged(tmp_path, roles=("pool-daemon",), platform="darwin").manifest
+    plist = plistlib.loads((staged_dir(mac) / mac.roles[0].units[0].name).read_bytes())
+    assert plist["ProgramArguments"] == list(mac.roles[0].argv), "a unit is never pointed at an executable nothing built"

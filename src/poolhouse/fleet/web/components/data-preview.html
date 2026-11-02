@@ -1,0 +1,36 @@
+<style>
+.dataset-sample { min-width:0; }
+.dataset-sample .dataset-fields { display:flex; gap:12px; flex-wrap:wrap; margin:14px 0; }
+.dataset-sample .dataset-fields label { display:flex; align-items:center; gap:5px; margin:0; font-size:12px; }
+.dataset-sample .dataset-table { overflow:auto; max-width:100%; }
+.dataset-sample table { min-width:100%; width:max-content; }
+.dataset-sample td { max-width:320px; white-space:pre-wrap; overflow-wrap:anywhere; vertical-align:top; }
+.dataset-sample summary { cursor:pointer; max-width:300px; }
+.dataset-sample pre { max-height:260px; max-width:500px; overflow:auto; }
+</style>
+<script>
+(function () {
+ const E=window.fleetModel.el;
+ const D=window.datasetModel={};
+ D.table=(host,rows,columns,description)=>{
+  host.classList.add('dataset-sample');
+  const selected=new Set(columns.map(column=>column.name)),fields=E('div',{class:'dataset-fields',role:'group','aria-label':'Preview fields'}),table=E('div',{class:'dataset-table',tabindex:'0','aria-label':'Dataset sample rows'});
+  const cell=value=>{
+   if(value===undefined)return E('td',{},'—');
+   if(value!==null&&typeof value==='object')return E('td',{},E('details',{},E('summary',{},Array.isArray(value)?'List · '+value.length+' items':'Object · '+Object.keys(value).length+' fields'),E('pre',{},JSON.stringify(value,null,2))));
+   const text=value===null?'null':String(value);
+   return E('td',{},text.length>500?E('details',{},E('summary',{},text.slice(0,120)+'…'),E('pre',{},text)):text);
+  };
+  const draw=()=>{
+   const keys=columns.map(column=>column.name).filter(name=>selected.has(name));
+   table.replaceChildren(keys.length?E('table',{},E('thead',{},E('tr',{},...keys.map(name=>E('th',{scope:'col'},name)))),E('tbody',{},...rows.map(row=>E('tr',{},...keys.map(name=>cell(row[name])))))):E('p',{},'Select fields to inspect their values.'));
+  };
+  for(const column of columns){
+   const input=E('input',{type:'checkbox',checked:true,'aria-label':'Show field '+column.name});
+   input.onchange=()=>{if(input.checked)selected.add(column.name);else selected.delete(column.name);draw();};
+   fields.append(E('label',{},input,E('span',{},column.name)));
+  }
+  host.replaceChildren(E('p',{class:'intro'},description),fields,table);draw();
+ };
+})();
+</script>

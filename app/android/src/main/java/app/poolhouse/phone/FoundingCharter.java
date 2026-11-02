@@ -126,7 +126,7 @@ final class FoundingCharter {
         return Hex.words(Hex.sha256(der));
     }
 
-    private static void publicKey(String key, String alg) {
+    static void publicKey(String key, String alg) {
         if (alg.equals("ed25519")) {
             if (!key.matches("[0-9a-f]{64}")) throw bad();
             byte[] raw = Hex.parse(key);

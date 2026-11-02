@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 use crate::fsutil::{sha256_hex, unhex, write_atomic};
-use crate::gov::keys::Level;
+use crate::gov::keys::{Claim, Level};
 
 use super::spec::SKEW_MS;
 
@@ -33,8 +33,9 @@ fn ed25519() -> String {
     ED25519.into()
 }
 
-fn weak() -> Level {
-    Level::Weak
+/// The claim of a row that states none: a file beside the node, which counts for nothing.
+fn unstated() -> Claim {
+    Claim::file()
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -45,10 +46,11 @@ pub struct Key {
     pub at_ms: u64,
     #[serde(default = "ed25519")]
     pub alg: String,
-    /// How much stands between a program of the account and this key's signature, as this node recorded it when the key was enrolled: a
-    /// phone's own enrolment records `Phone`, every other enrolment `Weak`. A pool lists a key at no level above this one.
-    #[serde(default = "weak")]
-    pub assurance: Level,
+    /// How the key is held, as this node derived it from the way the key was enrolled: a phone's own enrolment says `phone-keystore`, the
+    /// operating system's prompt for the key `keystore-prompt`, a typed yes `keystore-typed`. A pool lists a key with this claim and no
+    /// better one. The row is a cache: the charter decides who approves.
+    #[serde(default = "unstated")]
+    pub claim: Claim,
 }
 
 /// The enrolled keys, by fingerprint (SHA-256 of the public key), kept in one atomically replaced file.
@@ -176,21 +178,21 @@ impl Persons {
 
     /// Enrol the key ``public`` of algorithm ``alg`` (`ed25519` or `p256`), as `add` does.
     pub fn add_key(&mut self, alg: &str, public: &str, label: &str, at_ms: u64) -> Result<String> {
-        self.enrol(alg, public, label, at_ms, Level::Weak)
+        self.enrol(alg, public, label, at_ms, Claim::keystore_typed())
     }
 
     /// Enrol the key ``public`` of algorithm ``alg`` as a phone's. A key already held keeps how it was enrolled.
     pub fn add_phone_key(&mut self, alg: &str, public: &str, label: &str, at_ms: u64) -> Result<String> {
-        self.enrol(alg, public, label, at_ms, Level::Phone)
+        self.enrol(alg, public, label, at_ms, Claim::phone_keystore())
     }
 
-    /// Enrol the key ``public`` at ``level``, which the caller derived from the evidence of how the key was made: the phone's enrolment
-    /// derives `Phone`, the operating system's prompt `Computer`. A key already held keeps the level it was enrolled at.
-    pub fn add_leveled_key(&mut self, alg: &str, public: &str, label: &str, at_ms: u64, level: Level) -> Result<String> {
-        self.enrol(alg, public, label, at_ms, level)
+    /// Enrol the key ``public`` with ``claim``, which the caller derived from the evidence of how the key was made: the phone's enrolment
+    /// derives `phone-keystore`, the operating system's prompt `keystore-prompt`. A key already held keeps the claim it was enrolled with.
+    pub fn add_claimed_key(&mut self, alg: &str, public: &str, label: &str, at_ms: u64, claim: Claim) -> Result<String> {
+        self.enrol(alg, public, label, at_ms, claim)
     }
 
-    fn enrol(&mut self, alg: &str, public: &str, label: &str, at_ms: u64, assurance: Level) -> Result<String> {
+    fn enrol(&mut self, alg: &str, public: &str, label: &str, at_ms: u64, claim: Claim) -> Result<String> {
         let fingerprint = fingerprint_of(alg, public)?;
         if self.removed.contains_key(&fingerprint) {
             return Err(Error::Denied("that key was removed from this node and is not enrolled again: make a new key on that device".into()));
@@ -199,15 +201,20 @@ impl Persons {
             if self.keys.len() >= MOST_KEYS {
                 return Err(crate::limits::refuse("this node holds as many person keys as it may", MOST_KEYS, "MOST_KEYS", "grants/person.rs"));
             }
-            self.keys.insert(fingerprint.clone(), Key { public: public.to_ascii_lowercase(), label: label.into(), at_ms, alg: alg.into(), assurance });
+            self.keys.insert(fingerprint.clone(), Key { public: public.to_ascii_lowercase(), label: label.into(), at_ms, alg: alg.into(), claim });
             write_atomic(&self.path, &serde_json::to_vec(&self.keys)?)?;
         }
         Ok(fingerprint)
     }
 
-    /// The level this node recorded for the enrolled key ``public`` (hex): `Weak` for a key it does not hold or one that was removed.
+    /// The claim this node recorded for the enrolled key ``public`` (hex); none for a key it does not hold or one that was removed.
+    pub fn claim_of(&self, public: &str) -> Option<Claim> {
+        self.keys.values().find(|k| k.public == public).map(|k| k.claim)
+    }
+
+    /// The level the enrolled key ``public`` counts at, computed from its claim: `Weak` for a key this node does not hold.
     pub fn level_of(&self, public: &str) -> Level {
-        self.keys.values().find(|k| k.public == public).map_or(Level::Weak, |k| k.assurance)
+        self.claim_of(public).map_or(Level::Weak, |c| c.counted())
     }
 
     /// The enrolled key ``fingerprint``.
@@ -246,21 +253,22 @@ mod tests {
         let mut persons = Persons::open(&path).unwrap();
         persons.add(&public(1), "typed", 1).unwrap();
         persons.add_phone_key(ED25519, &public(2), "phone", 2).unwrap();
-        assert_eq!((persons.level_of(&public(1)), persons.level_of(&public(2)), persons.level_of(&public(3))), (Level::Weak, Level::Phone, Level::Weak));
+        assert_eq!((persons.claim_of(&public(1)), persons.claim_of(&public(2)), persons.claim_of(&public(3))), (Some(Claim::keystore_typed()), Some(Claim::phone_keystore()), None));
         persons.add_phone_key(ED25519, &public(1), "phone", 3).unwrap();
         persons.add(&public(2), "typed", 4).unwrap();
-        assert_eq!(persons.level_of(&public(1)), Level::Weak, "a key held as a typed yes made it does not become a phone's");
-        assert_eq!(persons.level_of(&public(2)), Level::Phone, "nor does a phone's key stop being one");
-        assert_eq!(Persons::open(&path).unwrap().level_of(&public(2)), Level::Phone, "a restart keeps it");
+        assert_eq!(persons.claim_of(&public(1)), Some(Claim::keystore_typed()), "a key held as a typed yes made it does not become a phone's");
+        assert_eq!(persons.claim_of(&public(2)), Some(Claim::phone_keystore()), "nor does a phone's key stop being one");
+        assert_eq!(Persons::open(&path).unwrap().claim_of(&public(2)), Some(Claim::phone_keystore()), "a restart keeps it");
     }
 
     #[test]
-    fn a_key_the_file_holds_without_a_level_is_weak() {
+    fn a_key_the_file_holds_without_a_claim_is_a_file_and_weak() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("persons.json");
         let key = format!(r#"{{"{}": {{"public": "{}", "label": "old", "at_ms": 1, "alg": "ed25519"}}}}"#, "ab".repeat(32), public(1));
         std::fs::write(&path, key).unwrap();
-        assert_eq!(Persons::open(&path).unwrap().level_of(&public(1)), Level::Weak);
+        let persons = Persons::open(&path).unwrap();
+        assert_eq!((persons.claim_of(&public(1)), persons.level_of(&public(1))), (Some(Claim::file()), Level::Weak));
     }
 
     #[test]

@@ -8,11 +8,13 @@ renames over it, so a reader sees the old contents or the new, never the middle.
 
 from __future__ import annotations
 
+import ctypes
 import errno
 import hashlib
 import json
 import os
 import stat
+import sys
 import tempfile
 from collections.abc import Callable, Iterator, Mapping, Set
 from contextlib import contextmanager
@@ -25,8 +27,8 @@ else:
     open_read = None
     replace = os.replace
 
-__all__ = ["UNVERSIONED", "CrossDevice", "promote", "prune_orphans", "read_json", "reading", "records_in",
-           "sha256_file", "version_of", "versioned", "write_json", "write_text", "writing"]
+__all__ = ["UNVERSIONED", "CrossDevice", "promote", "promote_new", "prune_orphans", "read_json", "reading", "records_in",
+           "sha256_file", "stat_signature", "version_of", "versioned", "write_json", "write_text", "writing"]
 
 #: A record with no version key.
 UNVERSIONED = 0
@@ -34,6 +36,12 @@ UNVERSIONED = 0
 
 class CrossDevice(OSError):
     """The source and the target are on different filesystems."""
+
+
+def stat_signature(row):
+    return (row.st_dev, row.st_ino, row.st_mode, row.st_uid, row.st_nlink,
+            row.st_size, row.st_mtime_ns, row.st_ctime_ns)
+
 
 
 def promote(source: Path | str, target: Path | str, *, directory_fd: int | None = None) -> Path:
@@ -58,12 +66,79 @@ def promote(source: Path | str, target: Path | str, *, directory_fd: int | None 
     return target
 
 
-def _promote_relative(source: Path, target: Path, descriptor: int) -> None:
+def _directory_descriptor(descriptor: int) -> None:
     if type(descriptor) is not int or descriptor < 0 or not stat.S_ISDIR(os.fstat(descriptor).st_mode):
         raise ValueError("Atomic promotion requires an open directory descriptor.")
+
+
+def _encoded_path(path: Path | str | bytes) -> bytes:
+    name = os.fsencode(path)
+    if b"\0" in name:
+        raise ValueError("Atomic promotion rejects embedded null bytes.")
+    return name
+
+
+def _child_name(path: Path | str | bytes) -> bytes:
+    name = _encoded_path(path)
+    if name in (b"", b".", b"..") or b"/" in name:
+        raise ValueError("Descriptor promotion accepts direct child names only.")
+    return name
+
+
+def promote_new(source: Path | str | bytes, target: Path | str | bytes, *,
+                source_fd: int | None = None, target_fd: int | None = None) -> None:
+    """Move an entry without replacement; descriptors pin inode scope, not pathnames.
+
+    Callers retain descriptor ownership and validate source types and links.
+    """
+    relative = source_fd is not None or target_fd is not None
+    if relative:
+        if source_fd is None or target_fd is None:
+            raise ValueError("Atomic promotion requires both directory descriptors.")
+        source_name, target_name = _child_name(source), _child_name(target)
+        _directory_descriptor(source_fd)
+        _directory_descriptor(target_fd)
+    else:
+        source_name, target_name = _encoded_path(source), _encoded_path(target)
+    if os.name == "nt":
+        if relative:
+            raise OSError(errno.ENOTSUP, "Descriptor promotion is unavailable")
+        try:
+            Path(os.fsdecode(source)).rename(os.fsdecode(target))
+        except OSError as exc:
+            if exc.errno != errno.EXDEV:
+                raise
+            raise CrossDevice(exc.errno, "Atomic promotion requires the same filesystem", os.fsdecode(target)) from None
+        return
+    libc = ctypes.CDLL(None, use_errno=True)
+    if sys.platform == 'darwin' and hasattr(libc, 'renameatx_np' if relative else 'renamex_np'):
+        if relative:
+            operation = libc.renameatx_np
+            operation.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+            args = (source_fd, source_name, target_fd, target_name, 0x00000004)  # RENAME_EXCL
+        else:
+            operation = libc.renamex_np
+            operation.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint]
+            args = (source_name, target_name, 0x00000004)  # RENAME_EXCL
+    elif sys.platform == 'linux' and hasattr(libc, 'renameat2'):
+        operation = libc.renameat2
+        operation.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+        args = (source_fd if relative else -100, source_name,
+                target_fd if relative else -100, target_name, 1)  # AT_FDCWD, RENAME_NOREPLACE
+    else:
+        raise OSError(errno.ENOTSUP, 'Atomic promotion without replacement is unavailable')
+    operation.restype = ctypes.c_int
+    if operation(*args) != 0:
+        code = ctypes.get_errno()
+        if code == errno.EXDEV:
+            raise CrossDevice(code, "Atomic promotion requires the same filesystem", os.fsdecode(target))
+        raise OSError(code, os.strerror(code), os.fsdecode(target))
+
+
+def _promote_relative(source: Path, target: Path, descriptor: int) -> None:
+    _directory_descriptor(descriptor)
     for path in (source, target):
-        if path.is_absolute() or len(path.parts) != 1 or path.name in {".", "..", ""}:
-            raise ValueError("Descriptor promotion accepts direct child names only.")
+        _child_name(path)
     info = os.stat(source, dir_fd=descriptor, follow_symlinks=False)
     if not (stat.S_ISDIR(info.st_mode) or (stat.S_ISREG(info.st_mode) and info.st_nlink == 1)):
         raise ValueError("Descriptor promotion requires a regular file or directory without links.")

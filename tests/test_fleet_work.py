@@ -27,7 +27,7 @@ from poolhouse.fleet.rates import Rates
 from poolhouse.fleet.remote import Member
 from poolhouse.fleet.work import Unit, run
 from poolhouse.http import Server
-from tests.pool_support import any_command
+from tests.command_support import any_command
 
 
 def _free_port() -> int:

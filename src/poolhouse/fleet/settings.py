@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from poolhouse import lock
+from poolhouse.files import write_json
+from poolhouse.json_objects import unique_object
 from poolhouse.records import Document
 
 from .themes import default_appearance, validate_appearance
@@ -17,7 +22,7 @@ __all__ = ["Settings", "Suggestion", "apply_preferences", "suggest"]
 
 @dataclass
 class Settings:
-    """Per-machine preferences. Every field is something a person chose."""
+    """Per-device preferences and first-run state."""
 
     name: str = ""
     """What this machine calls itself to the others. Empty means the hostname."""
@@ -27,7 +32,8 @@ class Settings:
     """``stop`` gets the machine back now, at the cost of restarting the current job"""
     autostart: str = "manual"
     setup_done: bool = False
-    pool_mode: str = ""
+    experimental_notice_accepted: bool = False
+    """One local product acknowledgement, independent of pools, versions and authority."""
     gym_python: str = ""
     """The default interpreter for installed simulator libraries."""
     gym_pythons: dict[str, str] = field(default_factory=dict)
@@ -47,11 +53,17 @@ class Settings:
     fetch_slots: int = 2
     autodownload_models: bool = True
     download_sources: str = ""
-    chat_max_output_tokens: int | None = 8192
+    chat_max_output_tokens: int | None = None
+    """Tokens a reply may run to; None is the model's own window."""
     always_show_advanced: bool = False
+    studio_undo_steps: int = 32
+    """The nearest editing states retained independently for Studio undo and redo (1-128)."""
     appearance: dict[str, Any] = field(default_factory=default_appearance)
-    context: int = 8192
-    """How much of a conversation a model is given to read. Costs memory per token."""
+    appearance_initialized: bool = False
+    context: int = 0
+    """How much of a conversation a model is given to read, per slot. Costs memory per token.
+    0 is the largest this machine holds for each model (`serve.suggest.largest_fit`); a number
+    is the person's choice."""
     features: dict[str, bool] = field(default_factory=dict)
     """Experimental features this machine turned on or off by name (`poolhouse.features`); off when absent."""
 
@@ -65,8 +77,24 @@ class Settings:
 
         The `features` map is the file's own: a daemon's copy of it can be stale, so what is on disk is kept.
         """
-        self.features = _DOC.read(path).features
-        return _DOC.write(self, path, atomic=True)
+        with lock.rewriting(path):
+            held = _stored(path)
+            self.features = _build(held).features
+            self.experimental_notice_accepted = (self.experimental_notice_accepted is True
+                                                 or held.get("experimental_notice_accepted") is True)
+            return _DOC.write(self, path, atomic=True)
+
+    def accept_notice(self, path: Path | str, *, current: Callable[[], bool]) -> None:
+        """Persist an explicit authenticated acknowledgement without changing other preferences."""
+        with lock.rewriting(path):
+            if current() is not True:
+                raise PermissionError("Open Poolhouse from its own window to continue.")
+            held = _stored(path)
+            if current() is not True:
+                raise PermissionError("The local connection changed. Please try again.")
+            held["experimental_notice_accepted"] = True
+            write_json(path, held)
+        self.experimental_notice_accepted = True
 
     def public(self) -> dict[str, Any]:
         return asdict(self)
@@ -74,6 +102,13 @@ class Settings:
 
 def _build(raw: dict[str, Any]) -> Settings:
     values = {k: v for k, v in raw.items() if k in Settings.__dataclass_fields__}
+    if "experimental_notice_accepted" in values and type(values["experimental_notice_accepted"]) is not bool:
+        raise ValueError("The experimental notice acknowledgement must be a boolean.")
+    if "studio_undo_steps" in values and (type(values["studio_undo_steps"]) is not int
+                                          or not 1 <= values["studio_undo_steps"] <= 128):
+        raise ValueError("Studio undo steps must be an integer from 1 to 128.")
+    if "appearance_initialized" in values and type(values["appearance_initialized"]) is not bool:
+        raise ValueError("Appearance initialization must be a boolean.")
     if "appearance" in values:
         values["appearance"] = validate_appearance(values["appearance"])
     if "features" in values:
@@ -81,6 +116,18 @@ def _build(raw: dict[str, Any]) -> Settings:
         values["features"] = {k: v for k, v in held.items() if isinstance(k, str) and isinstance(v, bool)} \
             if isinstance(held, dict) else {}
     return Settings(**values)
+
+
+def _stored(path: Path | str) -> dict[str, Any]:
+    try:
+        raw = json.loads(Path(path).read_bytes(), object_pairs_hook=unique_object)
+    except FileNotFoundError:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError("The local settings must be an object.")
+    json.dumps(raw, allow_nan=False)
+    _build(raw)
+    return raw
 
 
 _DOC: Document[Settings] = Document(
@@ -122,23 +169,10 @@ def _has_battery() -> bool:
     return False
 
 
-def suggest(report: dict[str, Any] | None = None) -> dict[str, Suggestion]:
-    """What to pre-tick in the wizard, based on what this machine actually is."""
-    report = report or {}
-    accelerator = bool(report.get("accelerator") or report.get("cuda")
-                       or report.get("rocm"))
-    gpu = report.get("gpu") or "a GPU"
+def suggest() -> dict[str, Suggestion]:
+    """Suggest availability preferences from this device's battery status."""
     portable = _has_battery()
-
     out: dict[str, Suggestion] = {}
-
-    if accelerator:
-        out["labels"] = Suggestion(
-            ["train"], f"it has {gpu}, so it is the machine to train on")
-    else:
-        out["labels"] = Suggestion(
-            ["prep"], "no GPU found, so this is a good machine for preparing data "
-                      "while the others train")
 
     if portable:
         out["autostart"] = Suggestion(
@@ -160,18 +194,27 @@ def suggest(report: dict[str, Any] | None = None) -> dict[str, Suggestion]:
 
 def apply_preferences(settings: Settings, request: dict[str, Any]) -> str:
     """Validate and apply interface and conversation defaults."""
+    if type(settings.appearance_initialized) is not bool:
+        return "Appearance initialization must be a boolean."
+    if "system_theme" in request and (type(request["system_theme"]) is not str
+                                       or request["system_theme"] not in ("light", "dark")):
+        return "Choose a light or dark system theme."
     if "always_show_advanced" in request and not isinstance(request["always_show_advanced"], bool):
         return "Always show advanced options must be a boolean."
+    if "studio_undo_steps" in request and (type(request["studio_undo_steps"]) is not int
+                                          or not 1 <= request["studio_undo_steps"] <= 128):
+        return "Studio undo steps must be an integer from 1 to 128."
     limit = request.get("chat_max_output_tokens")
     if limit is not None and (type(limit) is not int or limit < 1):
         return "Default output tokens must be null or a positive integer."
     if "download_sources" in request and request["download_sources"] not in ("internet", "lan", "both"):
         return "Choose Internet only, LAN only, or Both."
-    values = {key: request[key] for key in ("always_show_advanced", "chat_max_output_tokens", "download_sources")
+    values = {key: request[key] for key in ("always_show_advanced", "chat_max_output_tokens", "download_sources", "studio_undo_steps")
               if key in request}
     if "context" in request:
         try:
-            values["context"] = max(512, min(1 << 20, int(request["context"])))
+            asked = int(request["context"])
+            values["context"] = max(asked, 0)
         except (TypeError, ValueError, OverflowError):
             return "Context length must be an integer."
     if "appearance" in request:
@@ -179,6 +222,14 @@ def apply_preferences(settings: Settings, request: dict[str, Any]) -> str:
             values["appearance"] = validate_appearance(request["appearance"])
         except ValueError as exc:
             return str(exc)
+    if ("system_theme" in request and "appearance" not in values
+            and not settings.setup_done and not settings.appearance_initialized):
+        try:
+            values["appearance"] = validate_appearance({**settings.appearance, "active_theme":request["system_theme"]})
+        except ValueError as exc:
+            return str(exc)
     for key, value in values.items():
         setattr(settings, key, value)
+    if "appearance" in values:
+        settings.appearance_initialized = True
     return ""

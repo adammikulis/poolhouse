@@ -24,7 +24,7 @@ __all__ = ["PREFIX", "SCHEME", "Authenticator", "Lockout", "Stamp", "Verdict", "
            "parts", "sign", "unwrap"]
 
 SCHEME = "Poolhouse-MAC"
-PREFIX = "mlsk1."
+PREFIX = "poolhouse-sk1."
 """What a MAC secret starts with, so a caller holding a ``token`` string knows to sign."""
 WINDOW_S = 120.0
 MOST_NONCES = 100_000
@@ -33,14 +33,14 @@ BODY_LABEL = b"poolhouse-request-body-v1\x00"
 
 
 def derive(key: bytes) -> str:
-    """The request secret two ends compute from the same pool key (HKDF-SHA256)."""
+    """The request secret two ends compute from the same shared key (HKDF-SHA256)."""
     prk = hmac.new(b"poolhouse-hkdf-salt", key, hashlib.sha256).digest()
     okm = hmac.new(prk, INFO + b"\x01", hashlib.sha256).digest()
     return PREFIX + base64.urlsafe_b64encode(okm).decode().rstrip("=")
 
 
 def unwrap(authorization: str) -> str:
-    """The MAC secret a ``Bearer mlsk1.…`` header value carries, else an empty string."""
+    """The MAC secret a ``Bearer poolhouse-sk1.…`` header value carries, else an empty string."""
     bearer = authorization[7:].strip() if authorization.startswith("Bearer ") else ""
     return bearer if bearer.startswith(PREFIX) else ""
 

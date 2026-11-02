@@ -21,7 +21,7 @@ use crate::membership::{Device, Policy, Status};
 use super::act::{Act, ActSig, SigKind, LONG_WINDOW_MS};
 use super::body::{self, Body};
 use super::chain::{self, Chain, Seen};
-use super::charter::{floor_class, Charter, Class};
+use super::charter::{floor_class, Charter, Class, Mode};
 use super::clock::Awake;
 use super::keys::{AdminKey, Role};
 use super::roster::{self, Roster};
@@ -32,6 +32,10 @@ const CHARTER: &str = "charter.json";
 const ACTS: &str = "acts.json";
 const SEEN: &str = "seen.json";
 const REFUSED: &str = "refused.json";
+/// Where a new pool is written before it is renamed into `pools/`.
+const SCRATCH: &str = "pool-scratch";
+/// The files a pool directory holds besides its charter.
+pub const POOL_FILES: [&str; 3] = [ACTS, SEEN, REFUSED];
 
 /// An act that was not accepted, and why.
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -160,6 +164,42 @@ pub fn founding(act: &Act) -> Result<Charter> {
     Ok(*charter)
 }
 
+/// Authenticate persisted signatures before the fold uses their signer names.
+/// Certificates found in admits only supply verification keys; they do not grant
+/// membership or authority, which the fold must determine separately.
+fn authenticate_saved(genesis: &Charter, pool: &str, acts: &[Act]) -> Result<()> {
+    let invalid = || Error::Invalid("saved acts contain invalid or ambiguous evidence".into());
+    let (der, fingerprint) = genesis.first.device().ok_or_else(invalid)?;
+    let mut certificates = BTreeMap::from([(fingerprint, der)]);
+    let mut ids = BTreeSet::new();
+    for act in acts {
+        act.check_shape()?;
+        if act.pool != pool || !ids.insert(act.id()) {
+            return Err(invalid());
+        }
+        if let Body::Admit(admit) = body::parse(act)? {
+            let (der, fingerprint) = body::cert_of(&admit)?;
+            if crate::fsutil::hex(&der) != admit.cert {
+                return Err(invalid());
+            }
+            if let Some(previous) = certificates.insert(fingerprint, der.clone()) {
+                if previous != der {
+                    return Err(invalid());
+                }
+            }
+        }
+    }
+    for act in acts {
+        for signature in &act.signatures {
+            let der = certificates.get(&signature.key).map(Vec::as_slice);
+            if !act.verifies(signature, der) {
+                return Err(invalid());
+            }
+        }
+    }
+    Ok(())
+}
+
 impl GovPool {
     fn assemble(dir: PathBuf, found: Act, clock: Arc<Awake>) -> Result<GovPool> {
         let genesis = founding(&found)?;
@@ -174,26 +214,22 @@ impl GovPool {
         Ok(pool)
     }
 
-    /// Start a pool from its founding act under ``root`` (`pools/<id>/`).
+    /// Start a pool from its founding act under ``root``: the pool is written whole into a scratch directory and renamed to `pools/<id>/`,
+    /// so a directory under `pools/` always holds all of it.
     pub fn create(root: &Path, found: Act) -> Result<GovPool> {
         let id = founding(&found)?.pool_id();
-        let dir = root.join("pools").join(&id);
-        private_dir(&root.join("pools"))?;
-        private_dir(&dir)?;
-        let mut pool = GovPool::assemble(dir, found, Arc::new(Awake::new(0)))?;
+        let (scratch, dir) = (root.join(SCRATCH).join(&id), root.join("pools").join(&id));
+        let _ = std::fs::remove_dir_all(&scratch);
+        private_dir(&root.join(SCRATCH))?;
+        private_dir(&scratch)?;
+        let mut pool = GovPool::assemble(scratch.clone(), found, Arc::new(Awake::new(0)))?;
         write_atomic(&pool.dir.join(CHARTER), &serde_json::to_vec(&pool.found)?)?;
         pool.dirty = Dirty { acts: true, seen: true, refused: true };
         pool.save()?;
+        private_dir(&root.join("pools"))?;
+        std::fs::rename(&scratch, &dir)?;
+        pool.dir = dir;
         Ok(pool)
-    }
-
-    /// Whether the pool kept in ``dir`` is of the format this build reads: its founding act and its charter are of the current versions.
-    /// A directory that cannot be read as JSON is for `load` to report.
-    pub fn current_format(dir: &Path) -> bool {
-        match read_json::<Value>(&dir.join(CHARTER)) {
-            Ok(Some(found)) => found["v"] == super::act::VERSION && found["body"]["v"] == super::charter::VERSION,
-            _ => true,
-        }
     }
 
     /// Open the pool kept in ``dir``.
@@ -202,15 +238,18 @@ impl GovPool {
     }
 
     pub(super) fn load_with_awake_base(dir: &Path, earned_base: Option<i64>) -> Result<GovPool> {
+        let damaged = |what: &str| Error::Damaged(format!("the pool in {} is damaged: {what}", dir.display()));
         let found: Act = read_json(&dir.join(CHARTER))?.ok_or_else(|| Error::Damaged("a pool without its charter".into()))?;
-        let saved: Option<Value> = read_json(&dir.join(SEEN))?;
-        let awake = earned_base.unwrap_or_else(|| saved.as_ref().and_then(|v| v["awake_ms"].as_i64()).unwrap_or(0));
-        let mut pool = GovPool::assemble(dir.into(), found, Arc::new(Awake::new(awake)))?;
-        let acts: Vec<Act> = read_json::<Value>(&dir.join(ACTS))?.and_then(|v| serde_json::from_value(v["acts"].clone()).ok()).unwrap_or_default();
-        pool.acts = acts.into_iter().filter(|a| a.check_shape().is_ok() && a.pool == pool.id).map(|a| (a.id(), a)).collect();
-        pool.seen = saved.as_ref().and_then(|v| serde_json::from_value(v["seen"].clone()).ok()).unwrap_or_default();
-        pool.joined = saved.as_ref().and_then(|v| v["joined_ms"].as_i64());
-        pool.ready = saved.and_then(|v| serde_json::from_value(v["ready"].clone()).ok()).unwrap_or_default();
+        let saved: Value = read_json(&dir.join(SEEN))?.ok_or_else(|| damaged("seen.json is missing"))?;
+        let held: Value = read_json(&dir.join(ACTS))?.ok_or_else(|| damaged("acts.json is missing"))?;
+        let awake = saved["awake_ms"].as_i64().ok_or_else(|| damaged("seen.json holds no awake time"))?;
+        let mut pool = GovPool::assemble(dir.into(), found, Arc::new(Awake::new(earned_base.unwrap_or(awake))))?;
+        let acts: Vec<Act> = serde_json::from_value(held["acts"].clone()).map_err(|_| damaged("acts.json holds no list of acts"))?;
+        authenticate_saved(&pool.genesis, &pool.id, &acts).map_err(|_| damaged("acts.json holds invalid or ambiguous signed evidence"))?;
+        pool.acts = acts.into_iter().map(|a| (a.id(), a)).collect();
+        pool.seen = serde_json::from_value(saved["seen"].clone()).map_err(|_| damaged("seen.json holds no record of when acts were seen"))?;
+        pool.joined = serde_json::from_value(saved["joined_ms"].clone()).map_err(|_| damaged("seen.json holds a join time that is not a number"))?;
+        pool.ready = serde_json::from_value(saved["ready"].clone()).map_err(|_| damaged("seen.json holds no record of when acts were ready"))?;
         pool.refusals = read_json(&dir.join(REFUSED))?.unwrap_or_default();
         pool.refold();
         Ok(pool)
@@ -255,7 +294,7 @@ impl GovPool {
         let roster = roster::build(&chain, &self.acts, &self.seen, now, self.joined.unwrap_or(0));
         self.admits_live = self.acts.iter().filter(|(id, a)| a.kind == "admit" && !roster.void.contains_key(*id) && !roster.short.contains_key(*id)).count();
         let ends = [chain.pending.as_ref().map(|p| p.effective_ms), chain.dispute.as_ref().map(|d| d.ends_ms)];
-        self.deadline = ends.into_iter().flatten().chain(roster.delegates.values().map(|d| d.ends_ms)).min().unwrap_or(i64::MAX);
+        self.deadline = ends.into_iter().flatten().chain(roster.delegates.values().map(|d| d.ends_ms)).chain(roster.next_delegate_start(now)).min().unwrap_or(i64::MAX);
         self.state = State { chain, roster };
         self.folded_at = now;
         self.folds += 1;
@@ -267,11 +306,16 @@ impl GovPool {
         self.folds
     }
 
+    /// Whether a hold, a delegate or a dispute has run out and a second of awake time has passed since the last fold.
+    pub fn due(&self) -> bool {
+        let now = self.clock.now_ms();
+        now >= self.deadline && now.saturating_sub(self.folded_at) >= 1000
+    }
+
     /// Fold again when a second or more of awake time has passed since the last fold and a hold, a delegate or a dispute has run
     /// out, so what it ended takes effect; whether it did.
     pub fn tick(&mut self) -> bool {
-        let now = self.clock.now_ms();
-        let due = now >= self.deadline && now.saturating_sub(self.folded_at) >= 1000;
+        let due = self.due();
         if due {
             self.refold();
         }
@@ -423,15 +467,22 @@ impl GovPool {
         Ok(())
     }
 
-    /// Whether the key with this fingerprint is listed in the charter now in force and accepted being listed: what a grant scoped to
-    /// the pools an admin key administers (`admin:<fingerprint>`) matches.
-    pub fn admin_scope(&self, fingerprint: &str) -> bool {
+    /// The admin keys of the charter in force that count at the sensitive floor and whose own acceptance verifies at the epoch they were listed at; none unless admins run the pool.
+    pub fn authority_keys(&self) -> Vec<&AdminKey> {
         let epochs = &self.state.chain.epochs;
         let accepted = |k: &AdminKey| match usize::try_from(k.since).ok().and_then(|n| n.checked_sub(2)) {
-            None => k.accepted(&self.genesis.anchor(), ""),
-            Some(before) => epochs.get(before).is_some_and(|e| k.accepted(&self.id, &e.hash)),
+            None => k.accepted_memo(&self.genesis.anchor(), ""),
+            Some(before) => epochs.get(before).is_some_and(|e| k.accepted_memo(&self.id, &e.hash)),
         };
-        epochs.last().is_some_and(|e| e.charter.admins.iter().any(|k| k.fingerprint() == fingerprint && accepted(k)))
+        match epochs.last() {
+            Some(e) if e.charter.mode == Mode::Admins => e.charter.counting(Class::Sensitive).filter(|k| accepted(k)).collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// The admin-role keys the pool lists now or listed in any epoch: the keys whose revocations count.
+    pub fn narrowing_keys(&self) -> Vec<&AdminKey> {
+        self.state.chain.epochs.iter().flat_map(|e| e.charter.admins.iter()).filter(|k| k.role == Role::Admin).collect()
     }
 
     /// Hand one act to the pool, ``wall_ms`` being this device's wall clock (read only to refuse an act dated in the future).

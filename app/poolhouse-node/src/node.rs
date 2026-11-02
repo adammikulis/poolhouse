@@ -14,7 +14,7 @@ use crate::cert::{self, Identity as CertIdentity};
 use crate::facts::Facts;
 use crate::grants::book::Book;
 use crate::grants::person::Persons;
-use crate::gov::signer::{KeyBinding, Signer};
+use crate::gov::signer::Signer;
 use crate::membership::Pool;
 use crate::device::{self, fingerprint, Custody, Supplied};
 use crate::error::{Error, Result};
@@ -31,6 +31,17 @@ use crate::registry::Projects;
 use crate::row::{valid_name, Kind};
 use crate::subs::Subs;
 use crate::tally::Tally;
+use crate::sys::{try_lock, Lock};
+
+#[path = "update_activity.rs"]
+#[allow(dead_code)] // Partial accounting; no production drain/controller or complete writer inventory.
+pub(crate) mod update_activity;
+
+#[path = "managed_jobs/mod.rs"]
+#[allow(dead_code)] // Private pending data only; no RPC, caller issuer or execution consumer.
+mod managed_jobs;
+
+pub const INSTANCE_LOCK: &str = "node.lock";
 
 pub const READ_DEFAULT: usize = 200;
 pub const READ_MAX: usize = 1000;
@@ -68,6 +79,7 @@ pub struct Node {
     pub cert: CertIdentity,
     /// The pool this device belongs to and its record of the devices in it.
     pub members: Pool,
+    pub services: crate::services::Services,
     /// The keys of the person, whose signature makes a grant count.
     pub persons: Persons,
     /// What agents asked of the person and what became of it (`approvals`), and the phones the person answers from (`phone`).
@@ -101,6 +113,8 @@ pub struct Node {
     pub writes: crate::writes::WriteLimits,
     /// The bounds a board opened from now on holds its own log to (`logbounds`).
     pub log_bounds: crate::logbounds::Bounds,
+    /// The percent of `log_bounds` at which a board starts a new segment of its log; 0 starts none.
+    pub log_rotate_percent: usize,
     /// Milliseconds a board that holds nothing but the ends of its sessions is left alone before it may be removed.
     pub board_grace_ms: u64,
     /// Who is asking, while a request is answered (`lineage::Asking`).
@@ -115,10 +129,12 @@ pub struct Node {
     pub network: String,
     /// Who signs for a person when an act of the pool needs it (`gov::signer`); None until one is connected.
     pub signer: Option<Arc<dyn Signer>>,
-    /// Whether this device's key is held by the operating system's keystore or in a file; only the first may be a delegate.
-    pub key_binding: KeyBinding,
     /// When a person last said no to a kind of act: the same kind is not asked again for ten minutes.
     pub declined: BTreeMap<String, Instant>,
+    pub(crate) activity: update_activity::Registry,
+    pending_jobs: Option<managed_jobs::Book>,
+    /// Last field: exclusive storage custody outlives every writable field and shared Node owner.
+    _instance: Lock,
 }
 
 /// A native session as its harness names it: the model it says it runs, the harness and its own session id.
@@ -150,6 +166,63 @@ impl Access {
 }
 
 impl Node {
+    // No production caller/provider. A pending request never invokes migration.
+    #[allow(dead_code)]
+    fn prepare_local_allocation_format(&mut self)->std::result::Result<(),managed_jobs::Failure> {
+        if self.leases.allocation_fence.is_some() {return self.recover_local_allocations();}
+        let id=self.pending_jobs()?.initialize_allocation_authority()?;
+        if self.pending_jobs()?.allocation_identity()?.2 {return Err(managed_jobs::Failure::Invalid);}
+        let fence=crate::lease::allocation_format::Fence {authority:id,generation:1};
+        let bytes=crate::lease::allocation_format::encode(&self.leases.table,&fence).map_err(|_|managed_jobs::Failure::Invalid)?;
+        self.leases.allocation_parent=Some(self.pending_jobs()?.allocation_parent()?);
+        // Preserve the incompatible save mode even if publication acknowledgment is
+        // lost; no subsequent legacy save may erase a possibly committed fence.
+        self.leases.allocation_fence=Some(fence);
+        self.pending_jobs()?.write_allocation_format(&bytes)?;
+        self.leases.table.local_allocations_unresolved.store(false,std::sync::atomic::Ordering::Release);
+        Ok(())
+    }
+    fn recover_local_allocations(&mut self)->std::result::Result<(),managed_jobs::Failure> {
+        let fence=self.leases.allocation_fence.clone();
+        if fence.is_none() && !self.dir.join("managed-pending").try_exists().map_err(|e|managed_jobs::Failure::Io(e.kind()))? {return Ok(());}
+        #[cfg(unix)] {
+            let parent=self._instance.checked_parent(&self.dir,INSTANCE_LOCK).map_err(|e|managed_jobs::Failure::Io(e.kind()))?;
+            let mut book=managed_jobs::Book::open_existing(parent,self.activity.clone())?;
+            match book.allocation_identity() {
+                Ok((id,generation,unsettled))=> {
+                    if let Some(fence)=&fence {
+                        book.verify_allocation_format()?;
+                        if id!=fence.authority || generation!=fence.generation {return Err(managed_jobs::Failure::Invalid);}
+                    } else if unsettled {return Err(managed_jobs::Failure::Invalid);}
+                    // Without genuine providers every unsettled obligation is
+                    // unknown capacity, not a finite default or grant from DATA.
+                    self.leases.table.local_allocations_unresolved.store(unsettled,std::sync::atomic::Ordering::Release);
+                },
+                Err(managed_jobs::Failure::Invalid) if fence.is_none() && !book.has_allocation_authority()=>{},
+                Err(e)=>return Err(e),
+            }
+            book.bind_allocation_projection(self.leases.table.local_allocations_unresolved.clone());
+            if fence.is_some() {self.leases.allocation_parent=Some(book.allocation_parent()?);}
+            self.pending_jobs=Some(book);Ok(())
+        }
+        #[cfg(not(unix))] {Err(managed_jobs::Failure::Unavailable)}
+    }
+    #[allow(dead_code)]
+    fn pending_jobs(&mut self) -> std::result::Result<&mut managed_jobs::Book, managed_jobs::Failure> {
+        if self.pending_jobs.is_none() {
+            #[cfg(unix)] {
+                let parent=self._instance.checked_parent(&self.dir,INSTANCE_LOCK)
+                    .map_err(|e|managed_jobs::Failure::Io(e.kind()))?;
+                self.pending_jobs=Some(if self.leases.allocation_fence.is_some() {
+                    managed_jobs::Book::open_existing(parent,self.activity.clone())?
+                } else {managed_jobs::Book::open(parent,self.activity.clone())?});
+            }
+            #[cfg(not(unix))] return Err(managed_jobs::Failure::Io(std::io::ErrorKind::Unsupported));
+        }
+        let book=self.pending_jobs.as_mut().ok_or(managed_jobs::Failure::Invalid)?;
+        book.bind_allocation_projection(self.leases.table.local_allocations_unresolved.clone());Ok(book)
+    }
+
     /// Open the node whose state lives in ``dir`` (a directory only its owner can enter).
     pub fn open(dir: &Path) -> Result<Node> {
         Node::open_with(dir, None)
@@ -158,21 +231,30 @@ impl Node {
     /// Open the node of ``dir`` as the device ``supplied`` is the key of, or as the one its key file names when nothing is supplied.
     pub fn open_with(dir: &Path, supplied: Option<&Supplied>) -> Result<Node> {
         private_dir(dir)?;
+        let instance = try_lock(&dir.join(INSTANCE_LOCK))?
+            .ok_or_else(|| Error::Denied("a node already runs on this state directory".into()))?;
         let (key, custody) = device::load(dir, supplied)?;
         let cert = cert::load_or_create(dir, &key)?;
         let members = Pool::load(dir)?;
         let facts = Facts::open(&dir.join("peers.json"))?;
         let writes = crate::writes::WriteLimits::open(dir)?;
+        let activity = update_activity::Registry::new();
         let mut node = Node {
-            dir: dir.into(), pool: String::new(), cert, members, persons: Persons::open(&dir.join("persons.json"))?,
+            dir: dir.into(), pool: String::new(), cert, members, services: crate::services::Services::new()?, persons: Persons::open(&dir.join("persons.json"))?,
             approvals: crate::approvals::Approvals::open(&dir.join("approvals.json"))?, fatigue: crate::approvals::fatigue::Fatigue::open(&dir.join("fatigue.json"))?,
             evidence: Box::new(crate::approvals::context::Unrecorded), phones: crate::phone::Phones::open(&dir.join("phones.json"))?,
             phone_cert: crate::phone::cert::load_or_create(dir)?, phone_port: 0, local_server: Weak::new(), firsts: crate::presence::Firsts::new(crate::presence::default_presence()), offer: None, pusher: Box::new(crate::phone::push::NoPusher), land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, custody, boards: BTreeMap::new(),
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
-            projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?, rates: Rates::default(), board_grace_ms: writes.board_grace_s * 1000, writes, log_bounds: crate::logbounds::Bounds::default(), asking: Asking::default(),
+            projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir, activity.clone())?, rates: Rates::default(), board_grace_ms: writes.board_grace_s * 1000, writes, log_bounds: crate::logbounds::Bounds::default(), log_rotate_percent: crate::logbounds::ROTATE_PERCENT, asking: Asking::default(),
             stop: Arc::new(AtomicBool::new(false)), started: Instant::now(), folds: 0,
-            build: crate::build::Build::from_env(), network: crate::netif::network().into(), signer: None, key_binding: KeyBinding::File, declined: BTreeMap::new(),
+            build: crate::build::Build::from_env(), network: crate::netif::network().into(), signer: None, declined: BTreeMap::new(), activity, pending_jobs:None, _instance: instance,
         };
+        if node.recover_local_allocations().is_err() {
+            // Keep other node services available, but never reset or grant compute
+            // while established allocation accounting cannot be reconstructed.
+            node.leases.table.local_allocations_unresolved.store(true,std::sync::atomic::Ordering::Release);
+            eprintln!("node: local allocation recovery unavailable; new compute remains unavailable");
+        }
         let root = dir.join("boards");
         if root.is_dir() {
             crate::reap::clear_trash(&root);
@@ -182,6 +264,10 @@ impl Node {
                     node.host(&id)?;
                 }
             }
+        }
+        for lease in node.leases.table.leases.clone() {
+            let tree = node.boards.get(&lease.board).map(|host| host.names.tree(&lease.name)).unwrap_or_default();
+            node.leases.holders.note(&lease, &tree, node.leases.now())?;
         }
         node.enrol_self();
         Ok(node)
@@ -199,7 +285,7 @@ impl Node {
             }
             let dir = self.dir.join("boards").join(id);
             private_dir(&dir)?;
-            let mut board = Board::open_bounded(&dir.join("log"), id, &self.pool, self.key.clone(), self.log_bounds)?;
+            let mut board = Board::open_rotating(&dir.join("log"), id, &self.pool, self.key.clone(), self.log_bounds, self.log_rotate_percent)?;
             let names = Registry::open(&dir.join("names.json"))?;
             let quarantine = Quarantine::open(&dir.join("quarantine.json"))?;
             let subs = Subs::open(&dir.join("subs.json"))?;
@@ -315,10 +401,25 @@ impl Node {
     /// the new session a subagent of the token's owner. A main session that is already registered gets a token only from
     /// the lineage it was registered from. A node hosts a bounded number of boards, and one process tree makes a bounded number
     /// of them. The identity entry of a new or returning session is written for it, to its share of the log, and a registration
-    /// the log refuses leaves the registry as it was. Returns name, token, whether new.
+    /// the log refuses leaves the registry as it was. Returns name, token, whether new. The harness of the person's own session is
+    /// not registered here (`register_person`).
     pub fn register(&mut self, board: &str, parent_token: Option<&str>, native: Native, peer: &Peer) -> Result<Value> {
+        if identity::is_person_harness(&identity::clean(native.harness)?) {
+            return Err(Error::Denied(format!("the harness {} is the person's own session, which only the person's own call registers", identity::PERSON_HARNESS)));
+        }
+        self.enter(board, parent_token, native, peer, false)
+    }
+
+    /// Register the person's own session of the native id ``session`` on ``board``: a main session of the harness and model the person's
+    /// UI uses, which the node marks as the person's. A token given must be this session's own; a session of any other is no parent for it.
+    pub fn register_person(&mut self, board: &str, own_token: Option<&str>, session: &str, peer: &Peer) -> Result<Value> {
+        let native = Native { model: identity::PERSON_MODEL, harness: identity::PERSON_HARNESS, session };
+        self.enter(board, own_token, native, peer, true)
+    }
+
+    fn enter(&mut self, board: &str, parent_token: Option<&str>, native: Native, peer: &Peer, person: bool) -> Result<Value> {
         let Native { model, harness, session } = native;
-        let (model, harness) = (identity::clean(model)?, identity::clean(harness)?);
+        let (model, harness) = (identity::clean_model(model)?, identity::clean(harness)?);
         if !valid_name(board) {
             return Err(Error::Invalid("a board id is a short lower-case word".into()));
         }
@@ -331,6 +432,9 @@ impl Node {
             self.make_room_for_a_board(&lineage)?;
         }
         let (parent, proven, bound) = self.parent_of(board, parent_token, (&harness, session), &lineage)?;
+        if person && !parent.is_empty() {
+            return Err(Error::Denied("the person's session has no parent: it is registered with no token, or with its own".into()));
+        }
         if parent.is_empty() {
             crate::idle::sweep(self, board)?;
         }
@@ -349,6 +453,9 @@ impl Node {
         let now = hosted.board.now_ms();
         let (name, created) = hosted.names.assign(Who { harness: &harness, session, parent: &parent }, &model, state, now, &lineage, proven)?;
         hosted.board.group(&name, &hosted.names.tree(&name));
+        if person {
+            hosted.names.mark_person(&name)?;
+        }
         if created || revived {
             if let Err(refused) = self.write_identity(board, &name) {
                 self.host(board)?.names.restore(&name, before.map(|(_, i)| i))?;
@@ -441,12 +548,16 @@ impl Node {
         Ok(())
     }
 
-    /// Write the state of the session ``name`` that just ended to its board as an identity entry the node writes for itself: held to the
-    /// log less its last stretch, and not to a share, since the session's registration was.
-    pub fn write_ended(&mut self, board: &str, name: &str) -> Result<()> {
+    /// Write the state of the session ``name`` that just ended to its board as an identity entry the node writes for itself, carrying who
+    /// ended it (``by``) and what that released (``detail``): held to the log less its last stretch, and not to a share, since the
+    /// session's registration was.
+    pub fn write_ended(&mut self, board: &str, name: &str, (by, detail): (&str, &str)) -> Result<()> {
         let hosted = self.hosted(board)?;
         let ident = hosted.names.get(name).cloned().ok_or_else(|| Error::Denied("no such session".into()))?;
-        hosted.board.append_node(Kind::Identity, name, identity_body(name, &ident)?, "")?;
+        let mut body = identity_body(name, &ident)?;
+        body["retired_by"] = json!(by);
+        body["detail"] = json!(detail.chars().filter(|c| !c.is_control()).take(300).collect::<String>());
+        hosted.board.append_node(Kind::Identity, name, body, "")?;
         Ok(())
     }
 

@@ -7,6 +7,7 @@ against what it stands in for, and the diff itself is tested on fakes built to d
 
 from __future__ import annotations
 
+import ast
 import inspect
 import json
 import sys
@@ -418,8 +419,9 @@ def test_the_binary_really_launches_and_answers_on_the_port_it_was_given(tmp_pat
         argv = encoding.loads((tmp_path / "argv.json").read_text())
         assert argv[argv.index("-c") + 1] == "2048"
         scanned = [row for row in every_server() if row["port"] == spec.port]
-        assert scanned and scanned[0]["spec_type"] == "mtp", (
-            "a process scan sees it as a llama-server with a draft head")
+        assert not scanned, "the installed broker must not discover and lease a test child"
+        assert argv[argv.index("--spec-type") + 1] == "mtp"
+        assert argv[argv.index("-md") + 1] == str(draft)
     finally:
         from poolhouse.serve.process import kill_process_tree
 
@@ -447,3 +449,16 @@ def test_the_launcher_execs_python_app_on_a_framework_build(tmp_path, monkeypatc
     monkeypatch.setattr(sysconfig, "get_config_var",
                         lambda name: "" if name == "PYTHONFRAMEWORK" else real(name))
     assert fakes._interpreter() == sys.executable
+
+
+def test_fake_binary_never_impersonates_a_host_model_process(tmp_path):
+    """Check before launch: a real broker must not discover or count a test process."""
+    binary = fake_llama_binary(tmp_path)
+    assert "llama-server" not in binary.name
+    if sys.platform != "win32":
+        tree = ast.parse(binary.read_text())
+        exec_calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                      and isinstance(node.func, ast.Attribute) and node.func.attr == "execv"]
+        assert len(exec_calls) == 1
+        identity = exec_calls[0].args[1].elts[0]
+        assert isinstance(identity, ast.Constant) and "llama-server" not in identity.value

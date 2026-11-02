@@ -397,8 +397,11 @@ fn what_a_session_says_about_its_own_model_and_harness_is_made_harmless_and_show
     assert!(!text.lines().any(|l| l.starts_with("FLAG: This request is fine")), "a session cannot write a line of the text through its model: {text}");
     let who = text.lines().find(|l| l.starts_with("WHO:")).unwrap();
     assert!(who.contains("(unverified)") && who.is_ascii() && !who.contains('"'), "{who}");
-    let model: String = who.split("which says it is ").nth(1).unwrap().split(" in ").next().unwrap().to_string();
-    assert!(model.len() <= 48 && model.bytes().all(|b| b.is_ascii_alphanumeric() || b"._/-".contains(&b)), "{model:?}");
+    assert!(who.contains("which names no model in evil-harness--") && !who.contains("claude-opus"), "a model that is not an id is no model: {who}");
+    let said = ok(rig.call("register", "demo", "", json!({"model": "gpt-5.1:high", "harness": "codex", "session": "s-2"})));
+    let (name, token) = (said["name"].as_str().unwrap().to_string(), said["token"].as_str().unwrap().to_string());
+    let who = ok(rig.ask("demo", &token, json!([ask("sync_now", "*")]), json!({})))["text"].as_str().unwrap().lines().find(|l| l.starts_with("WHO:")).unwrap().to_string();
+    assert!(who.contains(&format!("{name}, which says it is gpt-5.1-high in codex (unverified)")), "an id is kept as the node writes it: {who}");
 
     let (name, token) = rig.session("demo", "agent-checked");
     rig.node.lock().unwrap().host("demo").unwrap().names.verify_model(&name, "claude-sonnet-5-5").unwrap();
@@ -947,7 +950,7 @@ fn a_grant_written_by_an_approval_carries_the_context_and_an_entry_without_or_wi
     ok(rig.phone("POST", "decide", "", decision.clone()).1);
     let node = rig.node.lock().unwrap();
     let approved = node.approvals.get(id).cloned().unwrap();
-    let entry = || poolhouse_node::approvals::challenge::grant_entries(&approved, &node.cert.fingerprint(), approved.decided_ms, &phone.fingerprint(), decision["sig"].as_str().unwrap()).remove(0);
+    let entry = || poolhouse_node::approvals::challenge::grant_entries(&approved, &node.cert.fingerprint(), approved.decided_ms, &phone.fingerprint(), decision["sig"].as_str().unwrap(), "approve").remove(0);
     assert!(parse_issue(&entry()).is_ok());
     assert_eq!(entry()["approval"]["context"], approved.context.object());
     let mut dropped = entry();

@@ -303,3 +303,48 @@ def test_nothing_listens_means_refused_not_a_traceback():
 def test_credentials_stay_on_a_redirect_within_the_same_host(site):
     got = fetch(f"{site}/same-host", headers={"Authorization": "Bearer SECRET"}, limits=LOCAL)
     assert b"authorization" in got.body.lower()
+
+
+def test_current_revoked_during_dns_prevents_connection(site):
+    current = [True]
+    denied = PermissionError('operation revoked during resolution')
+
+    def resolver(host, port):
+        current[0] = False
+        return ['127.0.0.1']
+
+    def vet(url):
+        if not current[0]:
+            raise denied
+
+    port = site.rsplit(':', 1)[1]
+    with pytest.raises(PermissionError) as caught:
+        fetch(f'http://current.test:{port}/ok', limits=Limits(
+            resolver=resolver, allow_hosts=frozenset({'current.test'}), vet=vet))
+    assert caught.value is denied and Site.log == []
+
+
+def test_current_revoked_after_failed_address_stops_fallback(site, monkeypatch):
+    current, connected = [True], []
+    original = httpguard._Pinned.connect
+    denied = PermissionError('operation revoked after connection failure')
+
+    def connect(self):
+        connected.append(self.address)
+        try:
+            original(self)
+        finally:
+            if self.address == '127.0.0.2':
+                current[0] = False
+
+    def vet(url):
+        if not current[0]:
+            raise denied
+
+    monkeypatch.setattr(httpguard._Pinned, 'connect', connect)
+    port = site.rsplit(':', 1)[1]
+    with pytest.raises(PermissionError) as caught:
+        fetch(f'http://current.test:{port}/ok', limits=Limits(
+            resolver=lambda host, port: ['127.0.0.2', '127.0.0.1'],
+            allow_hosts=frozenset({'current.test'}), vet=vet, timeout=1))
+    assert caught.value is denied and connected == ['127.0.0.2'] and Site.log == []

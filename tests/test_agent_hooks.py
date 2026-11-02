@@ -33,6 +33,9 @@ timeout = 30
 
 [hooks.state]
 
+[hooks.state."fixture-existing-trust"]
+trusted_hash = "fixture-preserved-record"
+
 [agents]
 max_threads = 32
 '''
@@ -82,7 +85,8 @@ def test_codex_hooks_keep_other_settings_and_replace_fixed_actor_notifications(m
     assert "poolhouse.harnesshook post" not in text
     data = tomllib.loads(text)
     assert data["model"] == "gpt-6.1-sol" and data["agents"] == {"max_threads": 32}
-    assert commands(data, "Stop") == ["poolhouse-workspace codex-hook", "poolhouse-workspace codex-stop"]
+    assert data["hooks"]["state"] == tomllib.loads(CODEX_BEFORE)["hooks"]["state"]
+    assert commands(data, "Stop") == ["poolhouse-workspace codex-hook"]
     assert commands(data, "UserPromptSubmit") == ["poolhouse-workspace codex-hook"]
     assert commands(data, "PostToolUse") == ["poolhouse-workspace codex-hook"]
     for event, _, _ in agent_hooks.CODEX_EVENTS:
@@ -98,6 +102,27 @@ def test_codex_hooks_write_the_post_hook_when_no_launcher_hook_nudges(machine):
     assert data["features"] == {"hooks": True}
     assert data["hooks"]["PostToolUse"][0]["matcher"] == ".*"
     assert commands(data, "PostToolUse") == ["poolhouse-workspace codex-hook"]
+
+
+@pytest.mark.parametrize("assigned", ["", "codex-fixture"])
+@pytest.mark.parametrize("with_post", [False, True])
+def test_codex_context_limits_only_apply_to_events_the_native_host_supports(assigned, with_post):
+    data = tomllib.loads(agent_hooks.codex_hooks(with_post=with_post, assigned=assigned))
+    context_events = {"SessionStart", "SubagentStart", "PostToolUse", "UserPromptSubmit"}
+    suffix = f" --assigned {assigned}" if assigned else ""
+    for event, _, _ in agent_hooks.CODEX_EVENTS:
+        if event == "PostToolUse" and not with_post:
+            assert event not in data["hooks"]
+            continue
+        handlers = data["hooks"][event][0]["hooks"]
+        notification = handlers[0]
+        assert notification["command"] == "poolhouse-workspace codex-hook" + suffix
+        assert notification["timeout"] == (3 if event == "SessionEnd" else 5)
+        if event in context_events:
+            assert notification["additionalContextLimit"] == 4000
+        else:
+            assert "additionalContextLimit" not in notification
+        assert len(handlers) == 1
 
 
 def test_codex_turns_the_hooks_feature_on_and_replaces_an_earlier_notify_nudge(machine):
@@ -135,15 +160,14 @@ def test_install_names_every_agent_it_is_told_to(machine):
     assert agent_hooks.install_report()[0].startswith("claude-code: message-board hooks (PostToolUse, Stop")
 
 
-def test_the_install_command_follows_the_registry(machine, monkeypatch):
+def test_the_install_command_follows_the_registry(machine, monkeypatch, workspace_node):  # noqa: F811
     args = argparse.Namespace(settings=str(machine / "s.json"), codex_config="", only=[], agent="")
+    monkeypatch.setenv("POOLHOUSE_HOME", str(workspace_node.state.parent))
+    monkeypatch.setenv("POOLHOUSE_BOARD", workspace_node.board)
+    lead = workspace_node.member("hooks-lead")
     authority.set_state(["workspace.setup"], authority.PERSON, by="lead")
-    folder = machine / "state" / "node" / "client" / "board"
-    folder.mkdir(parents=True)
-    (folder / "agent-lead01.token").write_text("t\n", encoding="utf-8")
-    (folder / "agent-lead01.parent").write_text("\n", encoding="utf-8")
     monkeypatch.setenv("CLAUDECODE", "1")
-    monkeypatch.setenv("POOLHOUSE_WORKSPACE_AGENT", "agent-lead01")
+    monkeypatch.setenv("POOLHOUSE_WORKSPACE_AGENT", lead.name)
     with pytest.raises(HumanRequired):
         hooks_cli.install(args)
     assert not (machine / "s.json").exists()
@@ -233,3 +257,54 @@ def test_codex_replaces_owned_post_with_quoted_interpreter_path(machine):
     path.write_text('[[hooks.PostToolUse]]\n[[hooks.PostToolUse.hooks]]\ntype = "command"\ncommand = ' + json.dumps(command) + '\n')
     agent_hooks.install_codex(path)
     assert commands(tomllib.loads(path.read_text()), "PostToolUse") == ["poolhouse-workspace codex-hook"]
+
+
+def test_migrate_owned_stop_command_preserves_unrelated_hooks_and_trust(machine):
+    path = machine / 'config.toml'
+    other = '\n[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype="command"\ncommand="unrelated-stop"\n'
+    old = agent_hooks.codex_hooks().replace(
+        '[[hooks.SubagentStop]]',
+        '[[hooks.Stop.hooks]]\ntype="command"\ncommand="poolhouse-workspace codex-stop"\ntimeout=5\n\n[[hooks.SubagentStop]]')
+    path.write_text(CODEX_BEFORE + other + '\n' + old)
+    before = tomllib.loads(path.read_text())['hooks']['state']
+    agent_hooks.install_codex(path)
+    after = tomllib.loads(path.read_text())
+    assert commands(after, 'Stop') == ['unrelated-stop', 'poolhouse-workspace codex-hook']
+    assert after['hooks']['state'] == before
+    assert all(item.good for item in agent_hooks.findings({'codex': path}) if item.name.startswith('codex:'))
+
+
+@pytest.mark.parametrize('foreign', ['echo "poolhouse-workspace nudge"',
+    'poolhouse-workspace nudge --agent claude --hook post && foreign-tool',
+    '/foreign/poolhouse-workspace nudge --agent claude --hook post',
+    'other-tool --note "claude-nudge.sh"', 'echo "poolhouse.codex_lifecycle"'])
+def test_install_preserves_foreign_commands_that_only_mention_owned_hooks(machine, foreign):
+    path = machine / 'settings.json'
+    path.write_text(json.dumps({'hooks': {'PostToolUse': [{'hooks': [{'type': 'command', 'command': foreign}]}]}}))
+    agent_hooks.install_claude(path)
+    assert commands(json.loads(path.read_text()), 'PostToolUse') == [foreign, agent_hooks.command('claude', 'post')]
+
+
+def test_install_preserves_foreign_notify_argv_that_mentions_our_binary(machine):
+    path = machine / 'config.toml'
+    original = 'notify = ["foreign-notifier", "poolhouse-workspace", "nudge"]\n'
+    path.write_text(original + CODEX_BEFORE)
+    agent_hooks.install_codex(path)
+    assert path.read_text().startswith(original)
+    assert tomllib.loads(path.read_text())['notify'] == ['foreign-notifier', 'poolhouse-workspace', 'nudge']
+
+
+@pytest.mark.parametrize('foreign', ['poolhouse-workspace nudge --hook unknown',
+    'poolhouse-workspace nudge --agent own --agent other',
+    'poolhouse-workspace codex-hook --assigned own extra', '"unterminated poolhouse-workspace nudge'])
+def test_unknown_or_malformed_command_shapes_are_not_owned(foreign):
+    assert not agent_hooks._own(foreign)
+
+
+def test_notify_data_inside_a_foreign_table_is_preserved(machine):
+    path = machine / 'config.toml'
+    foreign = '[mcp_servers.plugin]\nnotify = ["poolhouse-workspace", "nudge", "--agent", "codex"]\n'
+    path.write_text(foreign)
+    agent_hooks.install_codex(path)
+    assert path.read_text().startswith(foreign)
+    assert tomllib.loads(path.read_text())['mcp_servers']['plugin']['notify'][0] == 'poolhouse-workspace'

@@ -7,7 +7,8 @@ import java.util.function.Consumer;
 /**
  * Answers a request: checks the challenge against what is on the screen and this device, asks the person (one fingerprint),
  * asks which number the agent showed when the request has one, and gives the node the signature. Nothing is signed for a request
- * that fails a check, and no step asks the person's fingerprint twice.
+ * that fails a check, and no step asks the person's fingerprint twice. The one request that asks twice is the approval of a phone that
+ * is listed as an admin key: it signs the approval, then the listing, and sends both together or neither.
  */
 final class Decider {
     interface Done {
@@ -21,6 +22,7 @@ final class Decider {
         void choose(List<String> options, Consumer<String> chosen, Runnable cancelled);
     }
 
+    static final String LISTING_TITLE = "List the new phone as an admin key";
     private final NodeApi api;
     private final Authorizer key;
     private final String device;
@@ -75,18 +77,33 @@ final class Decider {
             view.challenge.check(device, shown, nodeNowMs);
             if (!view.whole()) throw new SecurityException("That request leaves out something a person needs to decide, so nothing was signed.");
             rules(view, decision, picker);
-            if (strong(view, decision) && !key.strongAvailable()) throw new SecurityException("This needs your fingerprint or a strong face unlock, which this phone has not set up: set one up in the phone's settings, or answer at your computer.");
+            AdminAddAct listing = decision.startsWith("approve") ? AdminAddAct.of(view.challenge, nodeNowMs) : null;
+            boolean strong = strong(view, decision) || listing != null;
+            if (strong && !key.strongAvailable()) throw new SecurityException("This needs your fingerprint or a strong face unlock, which this phone has not set up: set one up in the phone's settings, or answer at your computer.");
             String fingerprint = Hex.sha256(key.publicPoint());
             byte[] bytes = view.challenge.bytes(decision, fingerprint);
-            key.sign(bytes, view.labels()[slot(decision)], strong(view, decision), new Authorizer.Result() {
+            key.sign(bytes, view.labels()[slot(decision)], strong, new Authorizer.Result() {
                 @Override public void signed(byte[] der) {
-                    List<String> options = view.challenge.pick();
-                    if (!decision.startsWith("approve") || options.isEmpty()) {
-                        send(view, decision, fingerprint, der, null, done);
+                    if (listing == null) {
+                        answer(view, decision, fingerprint, new Signed(der, null), picker, done);
                         return;
                     }
-                    picker.choose(options, chosen -> send(view, decision, fingerprint, der, chosen, done),
-                            () -> done.failed("Nothing was sent: no number was chosen, so the request waits."));
+                    key.sign(listing.bytes(), LISTING_TITLE, true, new Authorizer.Result() {
+                        @Override public void signed(byte[] listed) {
+                            byte[] low;
+                            try {
+                                low = P256Signature.normalize(listed);
+                            } catch (IllegalArgumentException unreadable) {
+                                done.failed("The listing could not be signed, so nothing was sent.");
+                                return;
+                            }
+                            answer(view, decision, fingerprint, new Signed(der, low), picker, done);
+                        }
+
+                        @Override public void failed(String sentence) {
+                            done.failed(sentence);
+                        }
+                    });
                 }
 
                 @Override public void failed(String sentence) {
@@ -100,9 +117,32 @@ final class Decider {
         }
     }
 
-    private void send(ApprovalView view, String decision, String fingerprint, byte[] der, String pick, Done done) {
+    /** The signatures an answer carries: the approval's, and for a request that lists a phone, the listing's in the one low-s form (otherwise null). */
+    private static final class Signed {
+        final byte[] approval;
+        final byte[] listing;
+
+        Signed(byte[] approval, byte[] listing) {
+            this.approval = approval;
+            this.listing = listing;
+        }
+    }
+
+    /** Asks which number the agent showed when the request has one, then sends. */
+    private void answer(ApprovalView view, String decision, String fingerprint, Signed signatures, Picker picker, Done done) {
+        List<String> options = view.challenge.pick();
+        if (!decision.startsWith("approve") || options.isEmpty()) {
+            send(view, decision, fingerprint, signatures, null, done);
+            return;
+        }
+        picker.choose(options, chosen -> send(view, decision, fingerprint, signatures, chosen, done),
+                () -> done.failed("Nothing was sent: no number was chosen, so the request waits."));
+    }
+
+    private void send(ApprovalView view, String decision, String fingerprint, Signed signatures, String pick, Done done) {
         try {
-            JSONObject body = pick == null ? body(view, decision, fingerprint, der) : body(view, decision, fingerprint, der, pick);
+            JSONObject body = pick == null ? body(view, decision, fingerprint, signatures.approval) : body(view, decision, fingerprint, signatures.approval, pick);
+            if (signatures.listing != null) body.put("act_sig", Hex.of(signatures.listing));
             done.answered(api.decide(body).optString("state", "approved"));
         } catch (NodeError refused) {
             done.failed(refused.getMessage());

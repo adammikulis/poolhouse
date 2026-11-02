@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from poolhouse import home
+from poolhouse.client import Client, Request, Transport
 from poolhouse.redteam.daemon import Running
 from poolhouse.redteam.egress import local_only
 from poolhouse.redteam.evidence import Canary, Honeypot, Pages, secret_for
@@ -22,7 +23,9 @@ __all__ = ["Lab", "lab"]
 @dataclass(slots=True)
 class Lab:
     """One run's fixtures and the model it attacks. ``model_url`` is the base URL of an
-    OpenAI-compatible server ("" for none); ``seed`` fixes every secret."""
+    OpenAI-compatible server ("" for none) and ``model_key`` the key it was started with,
+    read before the lab's own home hides where the lease keeps it; ``seed`` fixes every
+    secret."""
 
     root: Path
     pages: Pages
@@ -34,6 +37,12 @@ class Lab:
     token: str = ""
     files: Path = Path()
     counter: int = 0
+    model_key: str = ""
+
+    def model_client(self, request: Request) -> Client:
+        """A client for the model under attack, holding the key its server demands."""
+        return Client(self.model_url, request=request,
+                      transport=Transport(api_key=self.model_key or None))
 
     def canary(self, label: str = "") -> Canary:
         """A fresh canary in its own directory, with the honeypot emptied."""
@@ -51,7 +60,7 @@ class Lab:
 def own_home(path: Path) -> Iterator[Path]:
     """Point ``POOLHOUSE_HOME`` at ``path`` for the block and put the old value back after. The lab forges requests, plants
     decoys and rotates keys, and every one of those lands in whatever home is current: without this the red-team
-    command quarantined 127.0.0.1 in the real sentinel store and left key backups beside the real pool key."""
+    command quarantined 127.0.0.1 in the real sentinel store and left key backups beside the real device keys."""
     path.mkdir(parents=True, exist_ok=True)
     before = os.environ.get(home.ROOT_ENV)
     os.environ[home.ROOT_ENV] = str(path)
@@ -66,7 +75,7 @@ def own_home(path: Path) -> Iterator[Path]:
 
 @contextmanager
 def lab(*, model_url: str = "", model_name: str = "", seed: str = "redteam",
-        served: Running | None = None) -> Iterator[Lab]:
+        served: Running | None = None, model_key: str = "") -> Iterator[Lab]:
     """A `Lab` for the block: servers up, aliases resolving, connections confined to this
     machine, everything torn down at the end. ``served`` is the daemon to attack, if any."""
     with ExitStack() as stack:
@@ -78,4 +87,5 @@ def lab(*, model_url: str = "", model_name: str = "", seed: str = "redteam",
         stack.callback(pages.close)
         stack.callback(honeypot.close)
         yield Lab(scratch, pages, honeypot, model_url, model_name, seed, *(
-            (served.url, served.token, served.files) if served else ("", "", Path())))
+            (served.url, served.token, served.files) if served else ("", "", Path())),
+            model_key=model_key)

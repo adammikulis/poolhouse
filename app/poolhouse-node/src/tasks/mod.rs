@@ -16,9 +16,9 @@ use serde_json::{Map, Value};
 use crate::error::{Error, Result};
 use crate::row::{is_line, valid_actor, valid_name};
 
-pub const METHODS: [&str; 17] = [
+pub const METHODS: [&str; 18] = [
     "task_create", "task_list", "task_get", "task_watch", "task_assign", "task_claim", "task_beat", "task_checkpoint", "task_submit",
-    "task_review", "task_block", "task_ready", "task_mode", "task_scope", "task_record", "task_complete", "task_watchers",
+    "task_review", "task_block", "task_ready", "task_mode", "task_scope", "task_record", "task_complete", "task_watchers", "task_admit",
 ];
 /// How long one heartbeat extends a task's lease.
 pub const HEARTBEAT_S: u64 = 120;
@@ -37,7 +37,7 @@ pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
         "task_create" => &["title", "description", "acceptance", "deps", "capabilities", "limits", "source_key", "assignees", "reviewers"],
         "task_list" => &[],
-        "task_get" | "task_beat" | "task_watchers" => &["task"],
+        "task_get" | "task_beat" | "task_watchers" | "task_admit" => &["task"],
         "task_watch" => &["task", "on", "who"],
         "task_assign" => &["task", "worker", "lease", "capabilities"],
         "task_claim" => &["task", "assign"],

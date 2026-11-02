@@ -102,10 +102,10 @@ OPTIONS = [
     flag("--write", default="", metavar="FILE",
          help="write the Markdown for every record to a file -- at this machine's room, "
               "and at --room's as a second section"),
-    option("context", type=parse_context, default=32768, metavar="N",
-           help="the context to measure at -- 32768, 256k, 1m (default: 32768). The "
-                "per-token cost does not depend on it; a long one just measures it "
-                "precisely"),
+    option("context", type=parse_context, default=0, metavar="N",
+           help="the context to measure at -- 32768, 256k, 1m (default: the largest this "
+                "machine holds for the model, what `up` serves). The per-token cost does "
+                "not depend on it; a long one just measures it precisely"),
     option("port", default=DEFAULT_PORT,
            help=f"the port to measure on (default: {DEFAULT_PORT})"),
     option("timeout",

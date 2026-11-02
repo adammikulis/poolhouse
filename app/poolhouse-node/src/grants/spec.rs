@@ -8,12 +8,20 @@ use crate::error::{Error, Result};
 use crate::row::{canonical, valid_name};
 
 /// The actions of this node that need a grant. Anything else is refused by name.
-pub const ACTIONS: [&str; 18] = [
-    "member_remove", "add_device", "join_pool", "sync_now", "shard_call", "shard_consent", "land_trust",
+pub const ACTIONS: [&str; 19] = [
+    "member_remove", "add_device", "join_pool", "sync_now", "shard_call", "shard_consent", "land_trust", "service_bind",
     "task_authority", "note_verify", "quarantine_release", "file_delete", "link_read", "link_write", "link_remove", "source_add", "pool_create", "pool_leave", "admin_manage",
 ];
 /// The actions another device's grant may cover (when that device is trusted); every other action is this device's alone.
 pub const PORTABLE: [&str; 4] = ["task_authority", "note_verify", "sync_now", "shard_call"];
+/// The actions whose whole effect stays in this device's own state; in a governed pool a key enrolled here grants them, and every other
+/// action needs an admin key of the pool.
+pub const DEVICE_LOCAL: [&str; 5] = ["link_read", "link_remove", "source_add", "quarantine_release", "pool_leave"];
+
+/// Whether ``action`` reaches beyond this device: every action that is not device-local, including one added later.
+pub fn pool_wide(action: &str) -> bool {
+    !DEVICE_LOCAL.contains(&action)
+}
 /// Never granted, whatever a board entry says, whoever signed it.
 pub const FLOORS: [&str; 14] = [
     "push_main", "merge_main", "release_main", "tag_release", "force_push", "act_as_person", "agent_is_human", "keystore", "second_gpu", "forge",
@@ -204,6 +212,10 @@ pub fn parse_issue(map: &Map<String, Value>) -> Result<Issue> {
         return bad("a grant's scope is the board it is on");
     }
     let uses = uses(map)?;
+    if action == "service_bind" && (uses != Some(1) || !valid_fingerprint(&place.device)
+        || !place.resource.strip_prefix("service:").is_some_and(valid_fingerprint)) {
+        return bad("a compute service binding grant names its exact resource and device, with one use");
+    }
     if uses.is_some() && PORTABLE.contains(&action) && place.device == "*" {
         return bad("a grant with a number of uses on an action another device may use names the one device it is used on");
     }
@@ -238,17 +250,40 @@ pub fn parse_revoke(map: &Map<String, Value>) -> Result<Revoke> {
     Ok(Revoke { gid: gid.into(), person: person.into(), reason: reason.into(), at_ms })
 }
 
-/// Check the shape of any `grant` entry: an issue, a revoke, or a use.
+/// What a `distrust` entry names: the pool it is for, the key it cuts off, the epoch that key was listed at, and the key that signed it.
+pub struct Distrust {
+    pub pool: String,
+    pub key: String,
+    pub since: u64,
+    pub person: String,
+}
+
+/// Read and check the body of a `distrust` entry.
+pub fn parse_distrust(map: &Map<String, Value>) -> Result<Distrust> {
+    only(map, &["op", "board", "key", "since", "pool", "person", "at_ms", "reason", "sig"])?;
+    number(map, "at_ms")?;
+    let (key, person, pool) = (word(map, "key", 64)?, word(map, "person", 64)?, word(map, "pool", 64)?);
+    if word(map, "board", 48)? != crate::poolops::POOL_BOARD || !valid_fingerprint(key) || !valid_fingerprint(person) {
+        return bad("a distrust is written on the pool board and names a key and the key that signs it");
+    }
+    if !matches!(map.get("reason"), None | Some(Value::String(_))) || map.get("reason").and_then(Value::as_str).is_some_and(|r| r.len() > MOST_TEXT || !r.bytes().all(|b| b.is_ascii_graphic() || b == b' ')) {
+        return bad("a reason is plain text");
+    }
+    Ok(Distrust { pool: pool.into(), key: key.into(), since: number(map, "since")?, person: person.into() })
+}
+
+/// Check the shape of any `grant` entry: an issue, a revoke, a distrust, or a use.
 pub fn check_entry(map: &Map<String, Value>) -> Result<()> {
     match map.get("op").and_then(Value::as_str) {
         Some("issue") => parse_issue(map).map(|_| ()),
         Some("revoke") => parse_revoke(map).map(|_| ()),
+        Some("distrust") => parse_distrust(map).map(|_| ()),
         Some("use") => {
             only(map, &["op", "gid", "action", "target", "user"])?;
             let (gid, action, target, user) = (word(map, "gid", 40)?, word(map, "action", 40)?, word(map, "target", MOST_TEXT)?, word(map, "user", 48)?);
             if valid_gid(gid) && ACTIONS.contains(&action) && valid_name(user) && !target.is_empty() { Ok(()) } else { bad("a use names a grant, an action, a target and the session that used it") }
         }
-        _ => bad("a grant entry is an issue, a revoke or a use"),
+        _ => bad("a grant entry is an issue, a revoke, a distrust or a use"),
     }
 }
 

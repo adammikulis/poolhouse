@@ -1,0 +1,956 @@
+version = 1
+status = "proposal"
+
+[[type]]
+name = "StudioControlDocumentId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "StudioControlUploadId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "StudioControlCatalogId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "StudioControlTemplateId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "StudioControlSnapshotId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "StudioControlNodeId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "StudioControlPortId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "StudioControlManifestEntryId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "StudioControlSelectionId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "StudioControlValidationId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "StudioControlWorkflowId"
+kind = "scalar"
+visibility = "public"
+encoding = "bytes"
+issuer = "node"
+min_bytes = 16
+max_bytes = 16
+
+[[type]]
+name = "StudioControlRunId"
+kind = "scalar"
+visibility = "public"
+encoding = "bytes"
+issuer = "node"
+min_bytes = 16
+max_bytes = 16
+
+[[type]]
+name = "StudioControlDigest"
+kind = "scalar"
+visibility = "public"
+encoding = "hex32"
+issuer = "data"
+
+[[type]]
+name = "StudioControlSubmissionKey"
+kind = "scalar"
+visibility = "public"
+encoding = "utf8"
+issuer = "caller"
+min_bytes = 1
+max_bytes = 1024
+
+[[type]]
+name = "StudioControlChunkLimit"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "data"
+minimum = 1
+maximum = 65536
+
+[[type]]
+name = "StudioControlExpandedCount"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "data"
+minimum = 0
+maximum = 1000
+
+[[type]]
+name = "StudioControlDocumentRole"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "graph_source_v1", type = "Empty"}, {tag = "graph_expanded_v1", type = "Empty"}, {tag = "workflow_title", type = "Empty"}, {tag = "catalog_descriptor", type = "Empty"}, {tag = "template", type = "Empty"}, {tag = "validation_diagnostics", type = "Empty"}, {tag = "run_metrics", type = "Empty"}, {tag = "redacted_logs", type = "Empty"}, {tag = "artifact_metadata", type = "Empty"}, {tag = "selection_resolution", type = "Empty"}]
+
+[[type]]
+name = "StudioControlGraphForm"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "source_v1", type = "Empty"}, {tag = "expanded_v1", type = "Empty"}]
+
+[[type]]
+name = "StudioControlContext"
+kind = "record"
+visibility = "public"
+fields = [{name = "project", type = "ProjectCatalogRef"}, {name = "board", type = "ProjectOptionalBoardRef"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "StudioControlSchemaRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "form", type = "StudioControlGraphForm"}, {name = "definition_digest", type = "StudioControlDigest"}, {name = "catalog_generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "StudioControlDocumentRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "context", type = "StudioControlContext"}, {name = "document_id", type = "StudioControlDocumentId"}, {name = "generation", type = "ResourceGeneration"}, {name = "role", type = "StudioControlDocumentRole"}, {name = "digest", type = "StudioControlDigest"}, {name = "bytes", type = "U64"}]
+
+[[type]]
+name = "StudioControlOptionalJobId"
+kind = "optional"
+visibility = "public"
+item = "JobId"
+
+[[type]]
+name = "StudioControlOptionalDocument"
+kind = "optional"
+visibility = "public"
+item = "StudioControlDocumentRef"
+
+[[type]]
+name = "StudioControlGraphRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "document", type = "StudioControlDocumentRef"}, {name = "schema", type = "StudioControlSchemaRef"}, {name = "form", type = "StudioControlGraphForm"}]
+
+[[type]]
+name = "StudioControlOptionalExpandedCount"
+kind = "optional"
+visibility = "public"
+item = "StudioControlExpandedCount"
+
+[[type]]
+name = "StudioControlOptionalDigest"
+kind = "optional"
+visibility = "public"
+item = "StudioControlDigest"
+
+[[type]]
+name = "StudioControlOptionalGraph"
+kind = "optional"
+visibility = "public"
+item = "StudioControlGraphRef"
+
+[[type]]
+name = "StudioControlGraphNodeRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "graph", type = "StudioControlGraphRef"}, {name = "node_id", type = "StudioControlNodeId"}, {name = "generation", type = "ResourceGeneration"}, {name = "ordinal", type = "U64"}]
+
+[[type]]
+name = "StudioControlPortRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "node", type = "StudioControlGraphNodeRef"}, {name = "port_id", type = "StudioControlPortId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "StudioControlUploadRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "context", type = "StudioControlContext"}, {name = "upload_id", type = "StudioControlUploadId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "StudioControlUploadState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "writing", type = "Empty"}, {tag = "sealed", type = "Empty"}, {tag = "cancelled", type = "Empty"}, {tag = "failed", type = "Empty"}, {tag = "unsupported_profile", type = "Empty"}]
+
+[[type]]
+name = "StudioControlUploadView"
+kind = "record"
+visibility = "public"
+fields = [{name = "upload", type = "StudioControlUploadRef"}, {name = "revision", type = "U64"}, {name = "state", type = "StudioControlUploadState"}, {name = "received_bytes", type = "U64"}, {name = "document", type = "StudioControlOptionalDocument"}]
+
+[[type]]
+name = "StudioControlWorkflowRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "context", type = "StudioControlContext"}, {name = "workflow_id", type = "StudioControlWorkflowId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "StudioControlWorkflowRevisionRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "workflow", type = "StudioControlWorkflowRef"}, {name = "revision", type = "U64"}, {name = "source_graph_digest", type = "StudioControlDigest"}]
+
+[[type]]
+name = "StudioControlWorkflowView"
+kind = "record"
+visibility = "public"
+fields = [{name = "workflow", type = "StudioControlWorkflowRevisionRef"}, {name = "title", type = "StudioControlDocumentRef"}, {name = "graph", type = "StudioControlGraphRef"}, {name = "updated_at", type = "UnixMicros"}]
+
+[[type]]
+name = "StudioControlWorkflowConflict"
+kind = "record"
+visibility = "public"
+fields = [{name = "current", type = "StudioControlWorkflowRevisionRef"}, {name = "preserved_copy", type = "StudioControlWorkflowRevisionRef"}, {name = "attempt_digest", type = "StudioControlDigest"}]
+
+[[type]]
+name = "StudioControlWorkflowSaveResult"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "saved", type = "StudioControlWorkflowView"}, {tag = "conflict", type = "StudioControlWorkflowConflict"}]
+
+[[type]]
+name = "StudioControlCatalogEntryRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "context", type = "StudioControlContext"}, {name = "catalog_id", type = "StudioControlCatalogId"}, {name = "generation", type = "ResourceGeneration"}, {name = "version", type = "U32"}]
+
+[[type]]
+name = "StudioControlOptionalCatalogEntry"
+kind = "optional"
+visibility = "public"
+item = "StudioControlCatalogEntryRef"
+
+[[type]]
+name = "StudioControlCatalogEntryView"
+kind = "record"
+visibility = "public"
+fields = [{name = "entry", type = "StudioControlCatalogEntryRef"}, {name = "descriptor", type = "StudioControlDocumentRef"}, {name = "schema", type = "StudioControlSchemaRef"}]
+
+[[type]]
+name = "StudioControlTemplateRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "context", type = "StudioControlContext"}, {name = "template_id", type = "StudioControlTemplateId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "StudioControlTemplateView"
+kind = "record"
+visibility = "public"
+fields = [{name = "template", type = "StudioControlTemplateRef"}, {name = "title", type = "StudioControlDocumentRef"}, {name = "graph", type = "StudioControlGraphRef"}]
+
+[[type]]
+name = "StudioControlAvailabilityState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "available", type = "Empty"}, {tag = "needs_resources", type = "Empty"}, {tag = "unavailable", type = "Empty"}, {tag = "unknown", type = "Empty"}, {tag = "unsupported_profile", type = "Empty"}]
+
+[[type]]
+name = "StudioControlAvailabilityView"
+kind = "record"
+visibility = "public"
+fields = [{name = "context", type = "StudioControlContext"}, {name = "revision", type = "U64"}, {name = "state", type = "StudioControlAvailabilityState"}, {name = "details", type = "StudioControlOptionalDocument"}, {name = "model", type = "ModelOptionalRef"}]
+
+[[type]]
+name = "StudioControlGraphNodeView"
+kind = "record"
+visibility = "public"
+fields = [{name = "node", type = "StudioControlGraphNodeRef"}, {name = "original_name", type = "StudioControlOptionalDocument"}, {name = "catalog_entry", type = "StudioControlOptionalCatalogEntry"}, {name = "diagnostics", type = "StudioControlOptionalDocument"}]
+
+[[type]]
+name = "StudioControlValidationState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "valid", type = "Empty"}, {tag = "invalid", type = "Empty"}, {tag = "unsupported_profile", type = "Empty"}]
+
+[[type]]
+name = "StudioControlValidationView"
+kind = "record"
+visibility = "public"
+fields = [{name = "validation_id", type = "StudioControlValidationId"}, {name = "context", type = "StudioControlContext"}, {name = "revision", type = "U64"}, {name = "source", type = "StudioControlGraphRef"}, {name = "normalized", type = "StudioControlOptionalGraph"}, {name = "state", type = "StudioControlValidationState"}, {name = "expanded_nodes", type = "StudioControlOptionalExpandedCount"}, {name = "diagnostics", type = "StudioControlOptionalDocument"}]
+
+[[type]]
+name = "StudioControlSelectionRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "context", type = "StudioControlContext"}, {name = "selection_id", type = "StudioControlSelectionId"}, {name = "generation", type = "ResourceGeneration"}, {name = "graph", type = "StudioControlGraphRef"}]
+
+[[type]]
+name = "StudioControlSelectorKind"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "source_node", type = "Empty"}, {tag = "source_group_subtree", type = "Empty"}, {tag = "expanded_node", type = "Empty"}, {tag = "source_variant_family", type = "Empty"}]
+
+[[type]]
+name = "StudioControlOutputSelector"
+kind = "record"
+visibility = "public"
+fields = [{name = "node", type = "StudioControlGraphNodeRef"}, {name = "selection_kind", type = "StudioControlSelectorKind"}]
+
+[[type]]
+name = "StudioControlSelectionState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "writing", type = "Empty"}, {tag = "sealed", type = "Empty"}, {tag = "invalid", type = "Empty"}, {tag = "unsupported_profile", type = "Empty"}]
+
+[[type]]
+name = "StudioControlSelectionView"
+kind = "record"
+visibility = "public"
+fields = [{name = "selection", type = "StudioControlSelectionRef"}, {name = "revision", type = "U64"}, {name = "state", type = "StudioControlSelectionState"}, {name = "source_digest", type = "StudioControlDigest"}, {name = "resolved_digest", type = "StudioControlOptionalDigest"}, {name = "resolved_count", type = "StudioControlOptionalExpandedCount"}, {name = "resolution", type = "StudioControlOptionalDocument"}]
+
+[[type]]
+name = "StudioControlOutputSelection"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "all_outputs", type = "Empty"}, {tag = "selected", type = "StudioControlSelectionRef"}]
+
+[[type]]
+name = "StudioControlRunRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "context", type = "StudioControlContext"}, {name = "run_id", type = "StudioControlRunId"}, {name = "generation", type = "ResourceGeneration"}, {name = "workflow", type = "StudioControlWorkflowRevisionRef"}]
+
+[[type]]
+name = "StudioControlRunNodeRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "run", type = "StudioControlRunRef"}, {name = "node", type = "StudioControlGraphNodeRef"}, {name = "execution_generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "StudioControlRunState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "queued", type = "Empty"}, {tag = "pending", type = "Empty"}, {tag = "running", type = "Empty"}, {tag = "done", type = "Empty"}, {tag = "failed", type = "Empty"}, {tag = "cancelled", type = "Empty"}, {tag = "blocked", type = "Empty"}, {tag = "interrupted", type = "Empty"}, {tag = "skipped", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "StudioControlRunIntent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "none", type = "Empty"}, {tag = "cancel_requested", type = "Empty"}, {tag = "resume_requested", type = "Empty"}]
+
+[[type]]
+name = "StudioControlCustodyState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "not_started", type = "Empty"}, {tag = "unresolved", type = "Empty"}, {tag = "settled", type = "Empty"}, {tag = "unknown", type = "Empty"}]
+
+[[type]]
+name = "StudioControlRunView"
+kind = "record"
+visibility = "public"
+fields = [{name = "run", type = "StudioControlRunRef"}, {name = "revision", type = "U64"}, {name = "graph", type = "StudioControlGraphRef"}, {name = "selection", type = "StudioControlOutputSelection"}, {name = "state", type = "StudioControlRunState"}, {name = "intent", type = "StudioControlRunIntent"}, {name = "custody", type = "StudioControlCustodyState"}, {name = "created_at", type = "UnixMicros"}, {name = "finished_at", type = "OptionalUnixMicros"}, {name = "diagnostics", type = "StudioControlOptionalDocument"}]
+
+[[type]]
+name = "StudioControlRunNodeView"
+kind = "record"
+visibility = "public"
+fields = [{name = "node", type = "StudioControlRunNodeRef"}, {name = "revision", type = "U64"}, {name = "state", type = "StudioControlRunState"}, {name = "custody", type = "StudioControlCustodyState"}, {name = "job_id", type = "StudioControlOptionalJobId"}, {name = "job_generation", type = "ResourceGeneration"}, {name = "diagnostics", type = "StudioControlOptionalDocument"}]
+
+[[type]]
+name = "StudioControlRunMutationResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "operation_id", type = "OperationId"}, {name = "value", type = "StudioControlRunView"}, {name = "settled", type = "Boolean"}]
+
+[[type]]
+name = "StudioControlArtifactRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "node", type = "StudioControlRunNodeRef"}, {name = "port", type = "StudioControlPortRef"}, {name = "manifest_entry", type = "StudioControlManifestEntryId"}, {name = "generation", type = "ResourceGeneration"}, {name = "digest", type = "StudioControlDigest"}, {name = "bytes", type = "U64"}]
+
+[[type]]
+name = "StudioControlArtifactView"
+kind = "record"
+visibility = "public"
+fields = [{name = "artifact", type = "StudioControlArtifactRef"}, {name = "original_node", type = "StudioControlRunNodeRef"}, {name = "original_port", type = "StudioControlPortRef"}, {name = "original_manifest_entry", type = "StudioControlManifestEntryId"}, {name = "original_generation", type = "ResourceGeneration"}, {name = "metadata", type = "StudioControlOptionalDocument"}]
+
+[[type]]
+name = "StudioControlSnapshot"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot_id", type = "StudioControlSnapshotId"}, {name = "context", type = "StudioControlContext"}, {name = "revision", type = "U64"}, {name = "cursor", type = "ProjectCatalogCursor"}]
+
+[[type]]
+name = "StudioControlCatalogItem"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "StudioControlSnapshot"}, {name = "value", type = "StudioControlCatalogEntryView"}]
+
+[[type]]
+name = "StudioControlTemplateItem"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "StudioControlSnapshot"}, {name = "value", type = "StudioControlTemplateView"}]
+
+[[type]]
+name = "StudioControlWorkflowItem"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "StudioControlSnapshot"}, {name = "value", type = "StudioControlWorkflowView"}]
+
+[[type]]
+name = "StudioControlRunItem"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "StudioControlSnapshot"}, {name = "value", type = "StudioControlRunView"}]
+
+[[type]]
+name = "StudioControlNodeItem"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "StudioControlSnapshot"}, {name = "value", type = "StudioControlGraphNodeView"}]
+
+[[type]]
+name = "StudioControlRunNodeItem"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "StudioControlSnapshot"}, {name = "value", type = "StudioControlRunNodeView"}]
+
+[[type]]
+name = "StudioControlArtifactItem"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "StudioControlSnapshot"}, {name = "value", type = "StudioControlArtifactView"}]
+
+[[type]]
+name = "StudioControlReadEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "StudioControlSnapshot"}, {tag = "catalog", type = "StudioControlCatalogItem"}, {tag = "template", type = "StudioControlTemplateItem"}, {tag = "workflow", type = "StudioControlWorkflowItem"}, {tag = "run", type = "StudioControlRunItem"}, {tag = "node", type = "StudioControlNodeItem"}, {tag = "run_node", type = "StudioControlRunNodeItem"}, {tag = "artifact", type = "StudioControlArtifactItem"}, {tag = "complete", type = "StudioControlSnapshot"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "StudioControlDocumentChunk"
+kind = "record"
+visibility = "public"
+fields = [{name = "document", type = "StudioControlDocumentRef"}, {name = "byte_offset", type = "U64"}, {name = "content", type = "Utf8Chunk"}, {name = "end", type = "Boolean"}]
+
+[[type]]
+name = "StudioControlArtifactChunk"
+kind = "record"
+visibility = "public"
+fields = [{name = "artifact", type = "StudioControlArtifactRef"}, {name = "byte_offset", type = "U64"}, {name = "content", type = "BoardContentBytePart"}, {name = "end", type = "Boolean"}]
+
+[[type]]
+name = "StudioControlInspectRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "context", type = "StudioControlContext"}]
+
+[[type]]
+name = "StudioControlListRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "context", type = "StudioControlContext"}, {name = "after", type = "ProjectOptionalCatalogCursor"}]
+
+[[type]]
+name = "StudioControlGraphStageBeginRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "context", type = "StudioControlContext"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_bytes", type = "U64"}, {name = "expected_digest", type = "StudioControlDigest"}]
+
+[[type]]
+name = "StudioControlTitleStageBeginRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "context", type = "StudioControlContext"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_bytes", type = "U64"}, {name = "expected_digest", type = "StudioControlDigest"}]
+
+[[type]]
+name = "StudioControlStageWriteRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "upload", type = "StudioControlUploadRef"}, {name = "byte_offset", type = "U64"}, {name = "content", type = "Utf8Chunk"}]
+
+[[type]]
+name = "StudioControlStageSealRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "upload", type = "StudioControlUploadRef"}, {name = "expected_digest", type = "StudioControlDigest"}]
+
+[[type]]
+name = "StudioControlDocumentReadRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "document", type = "StudioControlDocumentRef"}, {name = "byte_offset", type = "U64"}, {name = "limit", type = "StudioControlChunkLimit"}]
+
+[[type]]
+name = "StudioControlGraphNodeListRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "graph", type = "StudioControlGraphRef"}, {name = "after", type = "ProjectOptionalCatalogCursor"}]
+
+[[type]]
+name = "StudioControlValidateRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "graph", type = "StudioControlGraphRef"}, {name = "catalog_generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "StudioControlWorkflowCreateRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "context", type = "StudioControlContext"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "title", type = "StudioControlDocumentRef"}, {name = "graph", type = "StudioControlGraphRef"}]
+
+[[type]]
+name = "StudioControlWorkflowUpdateRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "workflow", type = "StudioControlWorkflowRef"}, {name = "title", type = "StudioControlDocumentRef"}, {name = "graph", type = "StudioControlGraphRef"}]
+
+[[type]]
+name = "StudioControlWorkflowGetRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "workflow", type = "StudioControlWorkflowRef"}]
+
+[[type]]
+name = "StudioControlSelectionCreateRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "context", type = "StudioControlContext"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "graph", type = "StudioControlGraphRef"}]
+
+[[type]]
+name = "StudioControlSelectionAppendRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "selection", type = "StudioControlSelectionRef"}, {name = "selector", type = "StudioControlOutputSelector"}]
+
+[[type]]
+name = "StudioControlSelectionSealRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "selection", type = "StudioControlSelectionRef"}]
+
+[[type]]
+name = "StudioControlRunSubmitRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "workflow", type = "StudioControlWorkflowRevisionRef"}, {name = "selection", type = "StudioControlOutputSelection"}, {name = "idempotency_key", type = "StudioControlSubmissionKey"}]
+
+[[type]]
+name = "StudioControlRunGetRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "run", type = "StudioControlRunRef"}]
+
+[[type]]
+name = "StudioControlRunNodeListRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "run", type = "StudioControlRunRef"}, {name = "after", type = "ProjectOptionalCatalogCursor"}]
+
+[[type]]
+name = "StudioControlRunCancelRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "run", type = "StudioControlRunRef"}]
+
+[[type]]
+name = "StudioControlRunResumeRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "run", type = "StudioControlRunRef"}, {name = "expected_authorization_generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "StudioControlArtifactListRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "run", type = "StudioControlRunRef"}, {name = "after", type = "ProjectOptionalCatalogCursor"}]
+
+[[type]]
+name = "StudioControlArtifactInspectRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "artifact", type = "StudioControlArtifactRef"}]
+
+[[type]]
+name = "StudioControlArtifactReadRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "artifact", type = "StudioControlArtifactRef"}, {name = "byte_offset", type = "U64"}, {name = "limit", type = "StudioControlChunkLimit"}]
+
+[[type]]
+name = "StudioControlRunNodeDataRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "node", type = "StudioControlRunNodeRef"}, {name = "after", type = "ProjectOptionalCatalogCursor"}]
+
+[[type]]
+name = "StudioControlRunNodeDataView"
+kind = "record"
+visibility = "public"
+fields = [{name = "node", type = "StudioControlRunNodeRef"}, {name = "job_id", type = "StudioControlOptionalJobId"}, {name = "job_generation", type = "ResourceGeneration"}, {name = "state", type = "StudioControlRunState"}, {name = "document", type = "StudioControlOptionalDocument"}, {name = "snapshot", type = "StudioControlSnapshot"}]
+
+[[type]]
+name = "StudioControlErrorDetails"
+kind = "record"
+visibility = "public"
+fields = [{name = "message", type = "SafeMessage"}, {name = "retryable", type = "Boolean"}, {name = "details", type = "StudioControlOptionalDocument"}]
+
+[[type]]
+name = "StudioControlError"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "invalid_request", type = "StudioControlErrorDetails"}, {tag = "unauthenticated", type = "StudioControlErrorDetails"}, {tag = "forbidden", type = "StudioControlErrorDetails"}, {tag = "not_found", type = "StudioControlErrorDetails"}, {tag = "stale_generation", type = "StudioControlErrorDetails"}, {tag = "revision_conflict", type = "StudioControlErrorDetails"}, {tag = "idempotency_conflict", type = "StudioControlErrorDetails"}, {tag = "unsupported_profile", type = "StudioControlErrorDetails"}, {tag = "unsupported_schema", type = "StudioControlErrorDetails"}, {tag = "validation_failed", type = "StudioControlErrorDetails"}, {tag = "resource_unavailable", type = "StudioControlErrorDetails"}, {tag = "selection_invalid", type = "StudioControlErrorDetails"}, {tag = "artifact_lineage_invalid", type = "StudioControlErrorDetails"}, {tag = "cursor_expired", type = "StudioControlErrorDetails"}, {tag = "recovery_required", type = "StudioControlErrorDetails"}, {tag = "unavailable", type = "StudioControlErrorDetails"}]
+
+[[operation]]
+name = "studio.catalog.list"
+symbol = "StudioControlCatalogList"
+request = "StudioControlListRequest"
+response = "StudioControlReadEvent"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "immutable-snapshot-principal-and-context-bound", "reauthorize-every-item-and-error", "redact-secrets-paths-private-resource-existence", "metadata-never-execution-right"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "studio.templates.list"
+symbol = "StudioControlTemplatesList"
+request = "StudioControlListRequest"
+response = "StudioControlReadEvent"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "immutable-snapshot-principal-and-context-bound", "reauthorize-every-item-and-error", "redact-secrets-paths-private-resource-existence", "metadata-never-execution-right"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "studio.availability.inspect"
+symbol = "StudioControlAvailabilityInspect"
+request = "StudioControlInspectRequest"
+response = "StudioControlAvailabilityView"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "current-catalog-and-resource-observations", "metadata-never-install-or-admission-right"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.graphs.stage.begin"
+symbol = "StudioControlGraphStageBegin"
+request = "StudioControlGraphStageBeginRequest"
+response = "StudioControlUploadView"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "node-assigns-exact-fixed-document-role", "source-and-total-expansion-profile-required", "scoped-storage-admission-before-staging", "durable-byte-digest-and-principal-bound"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.titles.stage.begin"
+symbol = "StudioControlTitleStageBegin"
+request = "StudioControlTitleStageBeginRequest"
+response = "StudioControlUploadView"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "node-assigns-exact-fixed-document-role", "source-and-total-expansion-profile-required", "scoped-storage-admission-before-staging", "durable-byte-digest-and-principal-bound"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.documents.stage.write"
+symbol = "StudioControlStageWrite"
+request = "StudioControlStageWriteRequest"
+response = "StudioControlUploadView"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "actual-upload-owner-and-role", "exact-ordered-offset-and-byte-digest", "compare-and-swap-resource-revision", "profile-budget-before-append"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.documents.stage.seal"
+symbol = "StudioControlStageSeal"
+request = "StudioControlStageSealRequest"
+response = "StudioControlUploadView"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "actual-upload-owner-and-role", "freeze-same-complete-bytes-before-hash", "exact-profile-and-digest-before-seal", "compare-and-swap-resource-revision", "sealing-not-validation-or-execution"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.documents.read"
+symbol = "StudioControlDocumentRead"
+request = "StudioControlDocumentReadRequest"
+response = "StudioControlDocumentChunk"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "exact-node-issued-document-role-and-snapshot", "checked-byte-range-and-overflow", "reauthorize-each-range", "no-caller-path-or-role-retagging"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.graphs.nodes.list"
+symbol = "StudioControlGraphNodesList"
+request = "StudioControlGraphNodeListRequest"
+response = "StudioControlReadEvent"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "exact-raw-or-expanded-graph-version", "invalid-draft-node-refs-confer-no-validity", "immutable-snapshot-principal-and-context-bound", "reauthorize-every-item-and-error"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "studio.graphs.validate"
+symbol = "StudioControlGraphValidate"
+request = "StudioControlValidateRequest"
+response = "StudioControlValidationView"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "exact-source-graph-and-versioned-canonical-schema", "unsupported-incomplete-schema-refuses", "no-private-worker-dto-or-parser-cast", "validation-not-run-or-resource-authority", "redact-secrets-paths-private-resource-existence"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.workflows.create"
+symbol = "StudioControlWorkflowCreate"
+request = "StudioControlWorkflowCreateRequest"
+response = "StudioControlWorkflowSaveResult"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "exact-node-issued-title-and-draft-graph-roles", "immutable-attempt-and-principal-binding", "scoped-storage-admission", "compare-and-swap-resource-revision", "save-invalid-draft-never-execution"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.workflows.update"
+symbol = "StudioControlWorkflowUpdate"
+request = "StudioControlWorkflowUpdateRequest"
+response = "StudioControlWorkflowSaveResult"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "exact-node-issued-title-and-draft-graph-roles", "immutable-attempt-and-principal-binding", "recoverable-conflict-copy-once-per-exact-attempt", "scoped-storage-admission", "compare-and-swap-resource-revision", "save-invalid-draft-never-execution"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.workflows.get"
+symbol = "StudioControlWorkflowGet"
+request = "StudioControlWorkflowGetRequest"
+response = "StudioControlWorkflowView"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "current-workflow-read-authority"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.workflows.list"
+symbol = "StudioControlWorkflowList"
+request = "StudioControlListRequest"
+response = "StudioControlReadEvent"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "immutable-snapshot-principal-and-context-bound", "reauthorize-every-item-and-error"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "studio.selections.create"
+symbol = "StudioControlSelectionCreate"
+request = "StudioControlSelectionCreateRequest"
+response = "StudioControlSelectionView"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "exact-immutable-raw-or-expanded-graph", "incomplete-selection-schema-refuses", "no-selection-label-grants-execution"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.selections.append"
+symbol = "StudioControlSelectionAppend"
+request = "StudioControlSelectionAppendRequest"
+response = "StudioControlSelectionView"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "exact-graph-owned-selector-form-and-incarnation", "compare-and-swap-resource-revision", "incomplete-selection-schema-refuses", "no-selection-label-grants-execution"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.selections.seal"
+symbol = "StudioControlSelectionSeal"
+request = "StudioControlSelectionSealRequest"
+response = "StudioControlSelectionView"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "exact-source-group-variant-semantics", "resolve-data-and-control-ancestor-closure", "compare-and-swap-resource-revision", "incomplete-selection-schema-refuses", "no-selection-label-grants-execution"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.runs.submit"
+symbol = "StudioControlRunSubmit"
+request = "StudioControlRunSubmitRequest"
+response = "StudioControlRunView"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "exact-immutable-workflow-revision-and-output-semantics", "current-action-specific-run-and-all-resource-entitlement", "stable-semantic-idempotency-before-new-admission", "prior-result-under-current-auth-or-changed-payload-refusal", "unknown-outcome-never-recomputed", "selected-data-and-control-ancestor-closure", "incomplete-graph-or-selection-schema-refuses"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.runs.get"
+symbol = "StudioControlRunGet"
+request = "StudioControlRunGetRequest"
+response = "StudioControlRunView"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "actual-run-owner-or-current-explicit-controller", "reauthorize-all-run-resource-disclosure"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.runs.list"
+symbol = "StudioControlRunList"
+request = "StudioControlListRequest"
+response = "StudioControlReadEvent"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "actual-run-owner-or-current-explicit-controller", "immutable-snapshot-principal-and-context-bound", "reauthorize-every-item-and-error", "reauthorize-all-run-resource-disclosure"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "studio.runs.nodes.list"
+symbol = "StudioControlRunNodesList"
+request = "StudioControlRunNodeListRequest"
+response = "StudioControlReadEvent"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "actual-run-owner-or-current-explicit-controller", "exact-run-node-execution-incarnation", "immutable-snapshot-principal-and-context-bound", "reauthorize-every-item-and-error"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "studio.runs.cancel"
+symbol = "StudioControlRunCancel"
+request = "StudioControlRunCancelRequest"
+response = "StudioControlRunMutationResult"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "actual-run-owner-or-current-explicit-controller", "current-action-specific-cancel-authority", "durable-single-intent-versus-terminal-winner", "compare-and-swap-resource-revision", "cancel-observation-never-physical-settlement"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.runs.resume"
+symbol = "StudioControlRunResume"
+request = "StudioControlRunResumeRequest"
+response = "StudioControlRunMutationResult"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "actual-run-owner-or-current-explicit-controller", "current-action-specific-renewed-authority", "exact-old-local-and-remote-child-lease-publication-reconciliation", "unknown-effects-never-repeated", "no-principal-reassignment-or-label-takeover", "compare-and-swap-resource-revision"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.runs.artifacts.list"
+symbol = "StudioControlArtifactList"
+request = "StudioControlArtifactListRequest"
+response = "StudioControlReadEvent"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "actual-run-owner-or-current-explicit-controller", "full-original-run-lineage-cycle-and-entitlement-check", "exact-original-node-port-manifest-and-immutable-snapshot", "immutable-snapshot-principal-and-context-bound", "reauthorize-every-item-and-error"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "studio.artifacts.inspect"
+symbol = "StudioControlArtifactInspect"
+request = "StudioControlArtifactInspectRequest"
+response = "StudioControlArtifactView"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "full-original-run-lineage-cycle-and-entitlement-check", "exact-original-node-port-manifest-and-immutable-snapshot", "current-resource-revocation-fence"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.artifacts.read"
+symbol = "StudioControlArtifactRead"
+request = "StudioControlArtifactReadRequest"
+response = "StudioControlArtifactChunk"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "full-original-run-lineage-cycle-and-entitlement-check", "exact-original-node-port-manifest-and-immutable-snapshot", "freeze-revoke-all-writers-and-read-same-validated-bytes", "checked-byte-range-and-overflow", "reauthorize-each-range", "no-path-symlink-or-worker-output-authority"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.runs.logs.read"
+symbol = "StudioControlLogsRead"
+request = "StudioControlRunNodeDataRequest"
+response = "StudioControlRunNodeDataView"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "exact-run-node-job-execution-incarnation", "actual-run-owner-or-current-explicit-controller", "scoped-managed-document-profile-required", "redact-secrets-paths-private-resource-existence", "reauthorize-every-item-and-error"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "studio.runs.metrics.read"
+symbol = "StudioControlMetricsRead"
+request = "StudioControlRunNodeDataRequest"
+response = "StudioControlRunNodeDataView"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "exact-run-node-job-execution-incarnation", "actual-run-owner-or-current-explicit-controller", "scoped-managed-document-profile-required", "redact-secrets-paths-private-resource-existence", "reauthorize-every-item-and-error"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"

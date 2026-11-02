@@ -29,13 +29,15 @@ from poolhouse.client import (
 )
 from poolhouse.extraction import Checking, Prompting
 from poolhouse.http import Options, Retry
-
-
-def _chat_reply(content: str, **message: object):
-    return json_reply(
-        {"choices": [{"message": {"role": "assistant", "content": content, **message},
-                      "finish_reason": "stop"}]}
-    )
+from poolhouse.testing.canned import (
+    CANNED_MARKER,
+    CANNED_MODEL_ID,
+    canned_chat_reply,
+    canned_completion_reply,
+    canned_embedding_reply,
+    canned_stream_reply,
+    marked,
+)
 
 
 class TestRetry:
@@ -59,7 +61,7 @@ class TestRetry:
             state["calls"] += 1
             if state["calls"] < 3:
                 return 500, b"busy"
-            return json_reply({"data": [{"embedding": [0.1, 0.2]}]})
+            return canned_embedding_reply([0.1, 0.2])
 
         instance = server(handler)
         # one stranger on purpose, so the isolation above is exercised every run, not only under load
@@ -90,17 +92,18 @@ class TestRetry:
 
 class TestChat:
     def test_round_trip(self, server):
-        instance = server(lambda m, p, b: _chat_reply("hello there"))
+        instance = server(lambda m, p, b: canned_chat_reply("hello there"))
         reply = Client(instance.base_url).chat([{"role": "user", "content": "hi"}])
-        assert reply.content == "hello there"
+        assert reply.content == marked("hello there")
+        assert reply.raw["model"] == CANNED_MODEL_ID, "the reply says it is not a model"
 
     def test_thinking_is_split_off_the_content(self, server):
-        instance = server(lambda m, p, b: _chat_reply("<think>hmm</think>42"))
+        instance = server(lambda m, p, b: canned_chat_reply("<think>hmm</think>42"))
         reply = Client(instance.base_url).chat([])
-        assert reply.content == "42" and reply.thinking == "hmm"
+        assert reply.content == marked("42") and reply.thinking == "hmm"
 
     def test_the_request_actually_carries_the_slot(self, server):
-        instance = server(lambda m, p, b: _chat_reply("ok"))
+        instance = server(lambda m, p, b: canned_chat_reply("ok"))
         Client(instance.base_url, request=Request(slot=7)).chat([{"role": "user", "content": "x"}])
         _, path, body = instance.requests[-1]
         assert path == "/v1/chat/completions"
@@ -108,32 +111,24 @@ class TestChat:
 
 
     def test_streaming_deltas_are_reported_and_assembled(self, server):
-        chunks = [
-            {"choices": [{"delta": {"reasoning_content": "hmm "}}]},
-            {"choices": [{"delta": {"reasoning_content": "ok"}}]},
-            {"choices": [{"delta": {"content": "4"}}]},
-            {"choices": [{"delta": {"content": "2"}, "finish_reason": "stop"}]},
-        ]
-        body = "".join(f"data: {json.dumps(c)}\n\n" for c in chunks) + "data: [DONE]\n\n"
-        instance = server(lambda m, p, b: (200, body.encode()))
+        stream = canned_stream_reply([{"reasoning_content": "hmm "}, {"reasoning_content": "ok"},
+                                      {"content": "4"}, {"content": "2"}])
+        instance = server(lambda m, p, b: stream)
         got: list[tuple[str, str]] = []
         reply = Client(instance.base_url).chat(
             [{"role": "user", "content": "x"}], on_delta=lambda k, t: got.append((k, t)))
-        assert reply.content == "42" and reply.thinking == "hmm ok"
+        assert reply.content == marked("42") and reply.thinking == "hmm ok"
         assert reply.finish_reason == "stop"
-        assert got == [("thinking", "hmm "), ("thinking", "ok"),
+        assert got == [("content", f"{CANNED_MARKER} "), ("thinking", "hmm "), ("thinking", "ok"),
                        ("content", "4"), ("content", "2")]
         assert json.loads(instance.requests[-1][2])["stream"] is True
 
     def test_streamed_tool_calls_are_assembled_across_chunks(self, server):
-        chunks = [
-            {"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "c9", "function": {
-                "name": "look_up", "arguments": "{\"te"}}]}}]},
-            {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {
-                "arguments": "xt\": \"iron\"}"}}]}, "finish_reason": "tool_calls"}]},
-        ]
-        body = "".join(f"data: {json.dumps(c)}\n\n" for c in chunks) + "data: [DONE]\n\n"
-        instance = server(lambda m, p, b: (200, body.encode()))
+        stream = canned_stream_reply([
+            {"tool_calls": [{"index": 0, "id": "c9", "function": {"name": "look_up", "arguments": "{\"te"}}]},
+            {"tool_calls": [{"index": 0, "function": {"arguments": "xt\": \"iron\"}"}}]}],
+            finish="tool_calls")
+        instance = server(lambda m, p, b: stream)
         reply = Client(instance.base_url).chat([], on_delta=lambda k, t: None)
         assert reply.tool_calls == [{"id": "c9", "type": "function", "function": {
             "name": "look_up", "arguments": '{"text": "iron"}'}}]
@@ -141,12 +136,12 @@ class TestChat:
 
 class TestGrammarTripwire:
     def test_passes_when_the_grammar_is_honoured(self, server):
-        instance = server(lambda m, p, b: json_reply({"content": "ok"}))
+        instance = server(lambda m, p, b: canned_completion_reply("ok", bare=True))
         Client(instance.base_url).assert_grammar_support()
 
     def test_sends_a_non_empty_prompt(self, server):
         """llama-server predicts zero tokens for an empty prompt, grammar or not."""
-        instance = server(lambda m, p, b: json_reply({"content": "ok"}))
+        instance = server(lambda m, p, b: canned_completion_reply("ok", bare=True))
         Client(instance.base_url).assert_grammar_support()
         _, _, body = instance.requests[-1]
         assert json.loads(body)["prompt"].strip()
@@ -154,8 +149,8 @@ class TestGrammarTripwire:
     def test_fails_loudly_when_the_grammar_is_ignored(self, server):
         """A server that ignores GBNF does not error -- it returns fluent prose where a
         single token was required, and every downstream parse produces confident nonsense."""
-        instance = server(lambda m, p, b: json_reply(
-            {"content": "Certainly! I would be happy to help you with that."}))
+        instance = server(lambda m, p, b: canned_completion_reply(
+            "Certainly! I would be happy to help you with that."))
         with pytest.raises(GrammarUnsupportedError, match="not working"):
             Client(instance.base_url).assert_grammar_support()
 
@@ -172,8 +167,8 @@ class TestGrammarTripwire:
             payload = json.loads(body)
             seen.append(payload)
             if len(seen) == 1:
-                return json_reply({"content": "{partial", "stopped_limit": True})
-            return json_reply({"content": '{"done": true}'})
+                return canned_completion_reply("{partial", bare=True, stopped_limit=True)
+            return canned_completion_reply('{"done": true}', bare=True)
 
         instance = server(handler)
         out = Client(instance.base_url).complete("x", grammar="root ::= .+", n_predict=64)
@@ -190,7 +185,7 @@ class TestGrammarTripwire:
         def handler(method: str, path: str, body: bytes):
             if path.endswith("/completion"):     # the family probe is not a retry
                 calls["n"] += 1
-            return json_reply({"content": "cut off", "stopped_limit": True})
+            return canned_completion_reply("cut off", stopped_limit=True)
 
         instance = server(handler)
         Client(instance.base_url).complete("x", n_predict=16)
@@ -201,21 +196,21 @@ class TestEmbeddings:
     def test_dimension_mismatch_raises_rather_than_padding(self, server):
         """Padding or trimming to the expected width so an insert can never fail turns a
         model mismatch into a store full of garbage vectors that still cosine-compare."""
-        instance = server(lambda m, p, b: json_reply({"data": [{"embedding": [0.1] * 384}]}))
+        instance = server(lambda m, p, b: canned_embedding_reply([0.1] * 384))
         with pytest.raises(EmbeddingError, match="corrupt the index"):
             embed("x", base_url=instance.base_url, expect_dim=768, options=Options(timeout=60.0, retry=Retry(tries=1)))
 
     def test_unwraps_a_nested_pooled_vector(self, server):
-        instance = server(lambda m, p, b: json_reply({"data": [{"embedding": [[1.0, 2.0]]}]}))
+        instance = server(lambda m, p, b: canned_embedding_reply([[1.0, 2.0]]))
         assert embed("x", base_url=instance.base_url) == [[1.0, 2.0]]
 
     def test_a_short_batch_is_an_error_not_a_silent_truncation(self, server):
-        instance = server(lambda m, p, b: json_reply({"data": [{"embedding": [1.0]}]}))
+        instance = server(lambda m, p, b: canned_embedding_reply([1.0]))
         with pytest.raises(EmbeddingError, match="asked for 2"):
             embed(["a", "b"], base_url=instance.base_url, options=Options(timeout=60.0, retry=Retry(tries=1)))
 
     def test_empty_input_does_not_hit_the_network(self, server):
-        instance = server(lambda m, p, b: json_reply({"data": []}))
+        instance = server(lambda m, p, b: canned_embedding_reply())
         assert embed([], base_url=instance.base_url) == []
         assert not instance.requests
 
@@ -350,8 +345,7 @@ class TestExtract:
 
     @staticmethod
     def chat_reply(content):
-        return json_reply({"choices": [{"message": {"role": "assistant",
-                                                    "content": content}}]})
+        return canned_chat_reply(content, bare=True)
 
     def test_a_document_comes_back_as_a_dict(self, server):
         found = {"people": [{"name": "Ada", "role": "engineer"}]}
@@ -554,7 +548,7 @@ class TestExtract:
 
         def handler(method, path, body):
             seen.append((path, json.loads(body)))
-            return json_reply({"content": "{}"})
+            return canned_completion_reply("{}", bare=True)
 
         instance = server(handler)
         Client(instance.base_url).extract(
@@ -572,7 +566,7 @@ class TestExtract:
 
         def handler(method, path, body):
             seen.append(json.loads(body))
-            return json_reply({"content": '{"people": []}'})
+            return canned_completion_reply('{"people": []}', bare=True)
 
         instance = server(handler)
         base = "<|im_start|>user\nfind the people<|im_end|>\n<|im_start|>assistant\n"
@@ -594,7 +588,7 @@ class TestExtract:
 
         def handler(method, path, body):
             seen.append(json.loads(body))
-            return json_reply({"content": '{"people": []}'})
+            return canned_completion_reply('{"people": []}', bare=True)
 
         instance = server(handler)
         Client(instance.base_url).extract("Ada is an engineer.", self.SCHEMA,
@@ -612,7 +606,7 @@ class TestExtract:
 
         def handler(method, path, body):
             calls["n"] += 1
-            return json_reply({"content": "{}"})
+            return canned_completion_reply("{}", bare=True)
 
         instance = server(handler)
         with pytest.raises(ContractError):
@@ -638,7 +632,7 @@ class TestStrictSchema:
         assert "required" not in schema  # the caller's schema is left alone
 
     def test_the_chat_request_carries_the_hardened_schema(self, server):
-        instance = server(lambda m, p, b: json_reply({"choices": [{"message": {"content": "{\"a\": \"x\"}"}}]}))
+        instance = server(lambda m, p, b: canned_chat_reply('{"a": "x"}', bare=True))
         Client(instance.base_url).extract("t", {"type": "object", "properties": {"a": {"type": "string"}}})
         _, _, body = instance.requests[-1]
         sent = json.loads(body)["response_format"]["json_schema"]["schema"]
@@ -752,11 +746,11 @@ def test_a_server_that_refuses_the_depth_is_asked_again_without_it(monkeypatch):
         sent.append(dict(payload))
         if any(key.startswith("speculative.") for key in payload):
             raise chat_mod.ServerError("400: unknown field 'speculative.n_max'")
-        return {"choices": [{"message": {"content": "ok"}}]}
+        return json.loads(canned_chat_reply("ok")[1])
 
     monkeypatch.setattr(chat_mod, "request_json", answering)
     client = chat_mod.Client("http://127.0.0.1:1", request=Request(spec_draft_max=2))
-    assert client.chat([{"role": "user", "content": "hi"}]).content == "ok"
+    assert client.chat([{"role": "user", "content": "hi"}]).content == marked("ok")
     assert len(sent) == 2
     assert not [key for key in sent[1] if key.startswith("speculative.")]
 

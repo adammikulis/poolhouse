@@ -1,19 +1,19 @@
-/* <ml-sparkline>: a small line of recent values. */
-import { MlElement, define, s } from "./base.js";
+/* <poolhouse-sparkline>: a small line of recent values. */
+import { PoolhouseElement, define, s } from "./base.js";
 import { fmt } from "./format.js";
 import { normalize } from "./verdict.js";
 
 const STYLES = `
 :host { display: inline-block; vertical-align: middle; }
 svg { display: block; overflow: visible; }
-.line { fill: none; stroke: var(--v, var(--ml-accent)); stroke-width: 1.6; stroke-linejoin: round;
+.line { fill: none; stroke: var(--v, var(--poolhouse-ui-accent)); stroke-width: 1.6; stroke-linejoin: round;
   stroke-linecap: round; vector-effect: non-scaling-stroke; }
-.area { fill: color-mix(in srgb, var(--v, var(--ml-accent)) 16%, transparent); stroke: none; }
-.dot { fill: var(--v, var(--ml-accent)); }
-.none { stroke: var(--ml-line-strong); stroke-width: 1; stroke-dasharray: 3 3; }
+.area { fill: color-mix(in srgb, var(--v, var(--poolhouse-ui-accent)) 16%, transparent); stroke: none; }
+.dot { fill: var(--v, var(--poolhouse-ui-accent)); }
+.none { stroke: var(--poolhouse-ui-line-strong); stroke-width: 1; stroke-dasharray: 3 3; }
 `;
 
-class MlSparkline extends MlElement {
+class PoolhouseSparkline extends PoolhouseElement {
   static props = { values: "object", width: "number", height: "number", min: "number",
                    max: "number", verdict: "string", label: "string", format: "string",
                    unit: "string", area: "bool" };
@@ -32,7 +32,7 @@ class MlSparkline extends MlElement {
     this.svg.setAttribute("width", String(w));
     this.svg.setAttribute("height", String(hgt));
     const v = this.verdict ? normalize(this.verdict) : "";
-    this.style.setProperty("--v", v ? `var(--ml-${v === "none" ? "line-strong" : v})` : "");
+    this.style.setProperty("--v", v ? `var(--poolhouse-ui-${v === "none" ? "line-strong" : v})` : "");
     if (!pts.length) {
       this.svg.setAttribute("aria-label", `${this.label || "trend"}: no data`.trim());
       this.svg.replaceChildren(s("line", { class: "none", x1: pad, x2: w - pad,
@@ -58,4 +58,4 @@ class MlSparkline extends MlElement {
       `${this.label || "trend"}: latest ${f(last)}, low ${f(Math.min(...pts))}, high ${f(Math.max(...pts))}, ${pts.length} points`);
   }
 }
-define("ml-sparkline", MlSparkline);
+define("poolhouse-sparkline", PoolhouseSparkline);

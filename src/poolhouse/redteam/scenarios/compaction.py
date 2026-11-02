@@ -71,7 +71,7 @@ async def _one(lab: Lab, report: Report, client: Client, shot: Shot, kind: str) 
 
 async def run(lab: Lab, report: Report, options: Options) -> None:
     await pyrit_bridge.initialise()
-    client = Client(lab.model_url, request=Request(n_predict=500))
+    client = lab.model_client(Request(n_predict=500))
     for arm in ("bare", "web-guard+policy"):
         for style in capped(["note", "plain", "authority"], options.limit):
             for kind in ("write", "send", "ssrf"):

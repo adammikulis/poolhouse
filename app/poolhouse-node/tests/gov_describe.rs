@@ -19,9 +19,9 @@ fn an_admin_add_names_the_person_the_level_and_the_key() {
     found(&a, person(ANN, "ann"), "secure");
     let added = entry_for(&a, phone_admin(BEN, "ben"), 2);
     let say = summary(&a, "admin_add", json!({"entry": added}));
-    assert!(say.contains("ben") && say.contains("phone") && say.contains(&added.fingerprint()[..12]), "{say}");
+    assert!(say.contains("ben") && say.contains("your phone") && say.contains(&added.fingerprint()[..12]), "{say}");
     let weak_one = entry_for(&a, weak(BEN, "ben"), 2);
-    assert!(summary(&a, "admin_add", json!({"entry": weak_one})).contains("weak"));
+    assert!(summary(&a, "admin_add", json!({"entry": weak_one})).contains("counts for nothing"));
 }
 
 #[test]

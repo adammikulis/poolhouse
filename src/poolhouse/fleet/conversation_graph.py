@@ -7,7 +7,6 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from poolhouse import lock
-from poolhouse.fleet.conversation_legacy import read_legacy
 from poolhouse.fleet.conversation_settings import checked
 from poolhouse.fleet.conversation_types import Conversation, Message
 from poolhouse.graph.columns import column
@@ -15,7 +14,6 @@ from poolhouse.graph.store import GraphStore
 
 CONVERSATION = "conversation"
 MESSAGE = "conversation-message"
-SCHEMA = "_conversations"
 
 
 def node_id(cid: str) -> str:
@@ -26,25 +24,26 @@ def node_id(cid: str) -> str:
 def opened(root: Path) -> Iterator[GraphStore]:
     with (lock.only_one(root / "conversations.lock", timeout=30, announce=lambda text: None),
           GraphStore(root / "conversations.db", buffer_pool_size=32 << 20, max_db_size=1 << 30) as graph):
-        if graph.get_doc(SCHEMA, {}).get("version") != 1:
-            with graph.transaction():
-                imported = 0
-                for path in root.glob("*.json"):
-                    conversation = read_legacy(path)
-                    if conversation is not None:
-                        save(graph, conversation)
-                        for sequence, message in enumerate(conversation.messages):
-                            append(graph, conversation, message, sequence)
-                        imported += 1
-                graph.put_doc(SCHEMA, {"version": 1, "imported": imported})
         yield graph
 
 
-def get(graph: GraphStore, cid: str) -> Conversation | None:
+def record(graph: GraphStore, cid: str) -> Conversation | None:
+    """Read current saved settings without loading conversation history."""
     rows = graph.query("MATCH (c:Node {id:$id}) RETURN c.label AS title, c.attrs AS attrs", {"id": node_id(cid)})
     if not rows:
         return None
     attrs = column(rows[0]["attrs"], cid)
+    revision = attrs.get("policy_revision")
+    if attrs.get("version") != 2 or type(revision) is not int or revision < 0:
+        raise ValueError("This conversation format is unsupported; start a new conversation")
+    return Conversation(id=cid, title=rows[0]["title"], model=attrs.get("model", ""),
+                        created=attrs["created"], policy_revision=revision, settings=checked(attrs.get("settings")))
+
+
+def get(graph: GraphStore, cid: str) -> Conversation | None:
+    conversation = record(graph, cid)
+    if conversation is None:
+        return None
     messages = []
     found = graph.query("MATCH (c:Node {id:$id})-[:Edge {rel:'contains'}]->(m:Node) "
                         "RETURN m.label AS content, m.attrs AS attrs", {"id": node_id(cid)})
@@ -52,8 +51,8 @@ def get(graph: GraphStore, cid: str) -> Conversation | None:
     for info, content in sorted(ordered, key=lambda pair: pair[0]["sequence"]):
         messages.append(Message(role=info["role"], content=content, at=info["at"],
                                 reasoning=info.get("reasoning", ""), status=info.get("status", "complete")))
-    return Conversation(id=cid, title=rows[0]["title"], model=attrs.get("model", ""),
-                        created=attrs["created"], messages=messages, settings=checked(attrs.get("settings")))
+    conversation.messages = messages
+    return conversation
 
 
 def all_ids(graph: GraphStore) -> list[str]:
@@ -64,7 +63,8 @@ def all_ids(graph: GraphStore) -> list[str]:
 def save(graph: GraphStore, conversation: Conversation) -> None:
     source = node_id(conversation.id)
     graph.upsert_node({"id": source, "kind": CONVERSATION, "label": conversation.title,
-                       "attrs": {"version": 1, "created": conversation.created, "model": conversation.model,
+                       "attrs": {"version": 2, "created": conversation.created, "model": conversation.model,
+                                 "policy_revision": conversation.policy_revision,
                                  "settings": conversation.settings}})
     _relation(graph, source, "uses-model", "model", conversation.model)
     _relation(graph, source, "in-project", "project", conversation.settings["project"])

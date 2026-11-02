@@ -37,6 +37,7 @@ while you are logged in; the fourth is per machine:
 | runs | while you are logged in | at boot, before anyone logs in |
 | as | you | still you — see below |
 | the Windows firewall | one approval prompt, once | the same, in the same step |
+| the macOS firewall and Local Network prompts | name "Poolhouse" (never python3.13), asked once; the answer belongs to Poolhouse alone | the same |
 | the macOS wired limit | `sudo` once, offered by the app's first run and by `poolhouse-setup` | applied in the same step, since it already has the rights |
 | the model cache | yours, `~/.cache/huggingface` | **the same one.** One cache per machine, shared, never duplicated |
 
@@ -67,7 +68,7 @@ downloads, one directory per long command's logs -- lives under `~/.cache/poolho
 `POOLHOUSE_CACHE` moves and which is safe to delete.
 
 Unattended, for a machine you are setting up from a script: `POOLHOUSE_NAME`,
-`POOLHOUSE_PASSPHRASE`, `POOLHOUSE_POOL`, `POOLHOUSE_MODE`, `POOLHOUSE_MODELS`,
+`POOLHOUSE_MODE`, `POOLHOUSE_MODELS`,
 `POOLHOUSE_ADOPT_CACHE`, `POOLHOUSE_REF` answer every prompt, and a machine with no terminal
 is never prompted at all. `POOLHOUSE_OFFLINE_ZIP` and `POOLHOUSE_OFFLINE_MODELS` install from
 local files and skip every network step; `POOLHOUSE_OFFLINE_WHEELS` names the directory the
@@ -98,7 +99,7 @@ build option creates local install artifacts; it does not publish or commit eith
 
 Past the install, every step is a Poolhouse command rather than shell -- `poolhouse-setup`
 (what this machine can do), `poolhouse-serve build` (llama.cpp), `poolhouse-models fetch`
-(into the one cache, every download checked against its sha256), `poolhouse-pool join
+(into the one cache, every download checked against its sha256), `poolhouse-traind
 --persist`, and `poolhouse-doctor` at the end, whose lines it prints.
 
 **Or download it yourself** from the [latest release](https://github.com/adammikulis/poolhouse/releases/latest):
@@ -120,13 +121,13 @@ or newer.
 
 ![Setting up a machine](images/setup.jpg)
 
-Do the same on every machine you want to train with, typing the same passphrase. They
-find each other on their own.
+Do the same on every machine you want to train with, then join each to the pool with its join code
+(docs/fleet.md, "Joining a pool").
 
 **On Windows** the same daemon runs, with the handful of things Windows does differently
 decided in one place (`poolhouse/platform.py`): a job gets its own process group and is
 stopped with a `CTRL_BREAK_EVENT` it can catch as `SIGBREAK`, the one-runner lock is
-`msvcrt.locking` where POSIX has `flock`, the pool key is made private with `icacls`
+`msvcrt.locking` where POSIX has `flock`, the daemon token is made private with `icacls`
 where `chmod 600` would only flip the read-only bit, and `poolhouse-traind --persist`
 registers a Scheduled Task at logon (`com.poolhouse.traind.login`) the way `poolhouse-serve
 build --persist` registers its weekly refresh. `--system` registers a second one
@@ -137,22 +138,22 @@ real service because a service needs a wrapper to hold a long-lived Python proce
 startup task is one line and survives a reboot either way. Two things a Windows machine needs that the
 others do not: llama.cpp comes from `poolhouse-serve build --from release` (a release zip,
 since most Windows installs have no compiler), and **Windows Defender Firewall blocks the
-daemon's TCP 8770 and its UDP 8771 beacons inbound by default**, so `poolhouse-members ls` on
+daemon's TCP 8770 inbound by default**, so `poolhouse-pool members` on
 another machine sees nothing until, in a prompt opened as administrator:
 
 ```
-netsh advfirewall firewall add rule name="poolhouse traind" dir=in action=allow protocol=TCP localport=8770 && netsh advfirewall firewall add rule name="poolhouse discovery" dir=in action=allow protocol=UDP localport=8771
+netsh advfirewall firewall add rule name="Poolhouse" dir=in action=allow protocol=TCP localport=8770
 ```
 
-`poolhouse-setup` prints that line as a finding until both rules exist. The first time on a
+`poolhouse-setup` prints that line as a finding until the rule exists. The first time on a
 new Windows machine, in this order, each of which should say what follows it:
 `pip install -e .` (an editable install, so `poolhouse-traind` is on PATH);
-`poolhouse-setup` (the firewall finding, `!` until the rules are added, then `ok`);
+`poolhouse-setup` (the firewall finding, `!` until the rule is added, then `ok`);
 `poolhouse-doctor` (the checkout and hooks);
 `poolhouse-serve build --from release` ("current -> ...\builds\bNNNN" after "verifying");
 `poolhouse-traind --persist` ("installed to start at login", then a `traind.log` under
 `~\.poolhouse` that begins `poolhouse traind on http://0.0.0.0:8770`);
-`poolhouse-members ls` from another machine (the Windows box listed with its GPU). `ci.yml`'s
+`poolhouse-pool members` from another machine (the Windows box listed with its GPU). `ci.yml`'s
 `windows` job runs `install.ps1 -Headless` end to end on a Windows runner -- a venv under a
 scratch prefix, the console scripts on its own PATH, then `-Uninstall` taking the venv away
 again -- against a wheel built in the same job, with no model and no network.
@@ -241,7 +242,7 @@ Checking a reboot is manual, because a test cannot reboot a machine:
 
 1. `prepare`, `install`, then `status` prints `autostart: current`.
 2. Reboot, log in, wait a minute. `status` prints `autostart: current` and
-   `poolhouse-members ls` from another machine lists this one.
+   `poolhouse-pool members` from another machine lists this one.
 3. Kill the daemon process: it returns within the restart interval; kill it six times in
    five minutes and the manager stops restarting it (systemd), which `status` shows as drifted.
 4. Edit the unit file: `status` prints `drifted`. `rollback` restores the file it replaced.
@@ -252,6 +253,21 @@ Checking a reboot is manual, because a test cannot reboot a machine:
 Everything is adjustable later:
 
 ![Settings](images/settings.jpg)
+
+
+## Staying in sync
+
+`scripts/sync-dev` fetches `origin` and fast-forwards the checkout, and does nothing else: it moves only when the current branch is the development branch (`POOLHOUSE_DEV_BRANCH`, else `DEFAULT` in `src/poolhouse/devbranch.py`), the working tree is clean and the merge is `--ff-only`. Otherwise it prints one line saying why and exits 0. It never stashes, resets or merges a changed tree. A pull never builds or updates the installed runtime.
+
+**VS Code.** The tracked `.vscode/settings.json` turns on `git.autofetch` (every 120 seconds), `git.pruneOnFetch` and no sync confirmation. `.vscode/tasks.json` holds the `sync-dev` task, which runs when the folder opens and then every 5 minutes with no panel. VS Code asks once to allow automatic tasks in the folder; allow it. On Windows run it in WSL.
+
+**A headless device.** Run the script from the checkout every few minutes.
+
+```
+*/5 * * * * cd /path/to/poolhouse && ./scripts/sync-dev >> ~/.poolhouse-sync.log 2>&1      # cron
+```
+
+For systemd, a user service with `WorkingDirectory=/path/to/poolhouse` and `ExecStart=/path/to/poolhouse/scripts/sync-dev`, started by a timer with `OnUnitActiveSec=5min`. For launchd, a LaunchAgent with `WorkingDirectory`, `ProgramArguments` of the script and `StartInterval` 300.
 
 
 ## Following the source checkout
@@ -274,7 +290,7 @@ A failed build or smoke removes the new tree, records the failure and leaves the
 
 **Recovery.** A launcher whose tree is missing, has no importable `poolhouse`, or is marked `rejected` runs the newest verified runtime instead; with none left it starts `ensure` from the recorded source checkout (a valid checkout only, at most once a minute, output in `ensure.log`). The launcher prefers the tree `selected.json` names and skips the commit a rollback holds. `ensure` replaces a selection that does not verify with the newest verified fallback, then builds the commit. `packaging/runtime-floor` holds one integer; a runtime records the integer its own source held, and a runtime below the checkout's integer is replaced and marked `rejected`. Raising the integer is how a change retires older runtimes. A rollback hold never blocks recovery of a broken selection. Only trees this command created (a `created.json` naming `poolhouse-runtime`) are ever selected as a fallback, rejected or deleted; trees another tool made in the same directory are left alone and `status` lists them with their size and whether a process is inside. A selection that points at such a tree has epoch 0, so the first `ensure` replaces it. A commit whose build failed is not built again automatically for ten minutes; `ensure --force-build` builds it at once. The newest three of its verified trees besides the selected one are kept; the rest are deleted unless a live process runs from or has its working directory in them.
 
-**Triggers.** The Claude `SessionStart` hook, the `post-merge` git hook and `scripts/primary_sync.py` (after an agent's push has reached `origin` and the primary checkout has followed it) run `ensure --background`, which returns within six seconds and builds in a detached process; one build runs at a time. `POOLHOUSE_RUNTIME_ENSURE=off` disables the triggers. A trigger that fires before the push has reached `origin` (a merge in the primary checkout) finds a tip the local development branch holds and `origin` does not; `ensure --background` then starts one detached waiter (`publish.lock`, at most 15 minutes) that builds when `origin` holds the tip, following the development branch if it moves while it waits; a second `--await-published` run exits non-zero saying nothing was built, and the authority for `ensure` is checked again after the wait. A commit that is not on the development branch is refused, never awaited. A build waits up to `--boundary-wait` seconds (default 120, at most 15 minutes) for another cutover, a node replacement or a landing to leave the boundary before it takes the deploy lock and the install claims, and the node replacement waits the same; the cutover itself refuses a held boundary at once. A refusal shows the text the holder wrote in the lock file.
+**Triggers.** Normal Git hooks, session notifications and primary-checkout synchronization never build or update installed software. Runtime updates run through explicit `poolhouse runtime ensure` or the configured product updater and service lifecycle. An explicit `ensure --background` retains its publication wait and deployment authority checks. A build waits up to `--boundary-wait` seconds (default 120, at most 15 minutes) for another cutover, a node replacement or a landing to leave the boundary before it takes the deploy lock and the install claims, and the node replacement waits the same; the cutover itself refuses a held boundary at once. A refusal shows the text the holder wrote in the lock file.
 
 **Which commits.** A deploy builds only the tip of the development branch in the recorded primary checkout, or a commit that is an ancestor of it. The primary checkout is the main worktree of the repository the first `ensure` recorded; `--checkout` naming a worktree of that repository is a source of objects and nothing more, and naming another repository is refused unless a person runs it at a terminal. The epoch floor is read at the development branch tip, never at the commit being built. `--allow-unmerged` accepts a full source commit SHA from a live lead agent while both `runtime.deploy` and `runtime.deploy-unmerged` are delegated. The agent supplies `--review-branch` naming the branch whose exact commit an independent reviewer accepted on the source project; admission rechecks that decision and the unchanged branch at selection and node replacement. The operation stays in the foreground. A person at a terminal may instead type the ref back. On a fresh machine, a person or a lead agent passing `runtime.deploy` records the first source repository. A process started by an agent ignores `POOLHOUSE_HOME`, `POOLHOUSE_CACHE` and the per-name state variables, and says so. Every `ensure` and `rollback`, including a refused one, appends a `runtime.deploy` record to the activity log with the commit, the command, the agent and whether a person ran it.
 
@@ -282,11 +298,15 @@ A failed build or smoke removes the new tree, records the failure and leaves the
 
 **Board.** A switch posts a `milestone` to `#announcements` and a failed build or recovery posts `blocked` with the `poolhouse-doctor hooks` diagnostic id, as the agent in `POOLHOUSE_WORKSPACE_AGENT` (or `--agent`); the install claims are held by that agent and appear in `poolhouse-workspace claims`; each agent's device profile carries the commit of the runtime it runs.
 
-**Who may deploy.** A person, a launcher and a login unit run `ensure`, `rollback` and `restart-host` as before. An agent process (one the harness marked with `CLAUDECODE`, `POOLHOUSE_AGENT` or `POOLHOUSE_NONINTERACTIVE`) must pass the `runtime.deploy` authority gate: a lead agent passes while the owner has it delegated, which the Dev preset does and `poolhouse-workspace authority preset prod` takes back (`authority set person runtime.deploy` revokes it alone, `authority set delegated runtime.deploy` grants it again, `authority show` says which). A helper agent, and any agent while the gate is the person's, is refused with the reason and the refusal is recorded. Each pass writes an `authority.use` row naming the agent and each command, passed or refused, a `runtime.deploy` activity record with the agent and `delegated`. A delegated agent normally deploys a published development commit in the recorded repository. A reviewed source deployment also requires the `runtime.deploy-unmerged` gate and an independent exact-commit queue approval; another repository stays a person's, a failed smoke still leaves the selection alone and `rollback` still holds the commit it left. `ensure --background`, which the session hook and the post-merge hook run for the merged tip, is not gated; `POOLHOUSE_RUNTIME_ENSURE=off` switches those triggers off.
+**Who may deploy.** A person, a launcher and a login unit run `ensure`, `rollback` and `restart-host` as before. An agent process (one the harness marked with `CLAUDECODE`, `POOLHOUSE_AGENT` or `POOLHOUSE_NONINTERACTIVE`) must pass the `runtime.deploy` authority gate: a lead agent passes while the owner has it delegated, which the Dev preset does and `poolhouse-workspace authority preset prod` takes back (`authority set person runtime.deploy` revokes it alone, `authority set delegated runtime.deploy` grants it again, `authority show` says which). A helper agent, and any agent while the gate is the person's, is refused with the reason and the refusal is recorded. Each pass writes an `authority.use` row naming the agent and each command, passed or refused, a `runtime.deploy` activity record with the agent and `delegated`. A delegated agent normally deploys a published development commit in the recorded repository. A reviewed source deployment also requires the `runtime.deploy-unmerged` gate and an independent exact-commit queue approval; another repository stays a person's, a failed smoke still leaves the selection alone and `rollback` still holds the commit it left. Normal session and Git hooks do not request runtime updates; explicit runtime actions retain their authority checks.
 
 **The app's host.** The daemon Poolhouse starts is the bundled `poolhouse-headless`, a frozen binary whose code is whatever was built into the app. It does not stay there: at start it checks the runtime `ensure` selected, verifies it, and replaces itself (`execve`, so the app keeps the same process id and its quit path still stops it) with that runtime's interpreter running the same launcher, with the same `--port` and `--root`. With no verified selected runtime it carries on as the bundle. The seam is the sidecar and not the Rust launcher so that the selection is verified by one implementation (`poolhouse.runtime.verify`: isolated import, stamped commit, platform) and an older app that has the seam follows without being rebuilt. A host that is already running only picks up a new selection when it restarts, and `poolhouse runtime restart-host [--port 8770] [--root DIR] [--within SECONDS] [--force]` does that: it finds the host on the port, does nothing if it already reports the selected commit, and otherwise runs `poolhouse --restart` from the selected runtime, which asks the old host through its launcher control to stop at the job-preserving boundary (requests drained, jobs checkpointed, stores closed) and starts the new one on the same port and root. It waits until the host reports the selected commit. It never signals a process, so a store writer is never killed; a host that predates the launcher control is refused with the reason and left running (quit and reopen Poolhouse once, after which every deploy restarts it by itself). The window keeps its address; the replacement is started outside the app, so quitting Poolhouse leaves it running and the next launch finds it healthy. When the app does stop a daemon it started, it sends SIGTERM and waits up to 30 seconds for it to close its stores before anything stronger.
 
 The commands a lead runs to deploy and restart after a landing: `poolhouse runtime ensure --agent NAME`, then `poolhouse runtime restart-host --agent NAME`.
+
+Only the installed software can sign and bind the Poolhouse executable. `ensure`, `rollback` and `restart-host` run from anything else (a checkout, an editable install, a worktree) still select and
+restart the runtime, and end their line with `NOT bound to the Poolhouse executable: <why>`, naming the host's current program and the one command that does it:
+`~/.poolhouse/bin/poolhouse runtime ensure` (the launcher directory in use), run from the installed command.
 
 `status` prints:
 

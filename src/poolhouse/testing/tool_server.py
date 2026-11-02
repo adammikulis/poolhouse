@@ -7,18 +7,10 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
+from poolhouse.testing.canned import Turn
 from poolhouse.testing.fakes import FakeLlamaServer, Served, _json
 
 __all__ = ["ToolCallingServer", "Turn"]
-
-
-@dataclass(frozen=True, slots=True)
-class Turn:
-    """One model reply: ``text`` pieces, then ``calls`` as ``(name, arguments text)``."""
-
-    text: tuple[str, ...] = ()
-    calls: tuple[tuple[str, str], ...] = ()
-    completion_tokens: int = 0
 
 
 @dataclass(slots=True)

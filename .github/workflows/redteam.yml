@@ -1,13 +1,12 @@
 name: redteam
-# Gating: the job fails when an attack that the committed baseline
-# (docs/redteam/baseline-deterministic-2026-10-03.json) recorded as blocked now succeeds, when the
-# attack-success rate over the surfaces it attacked rises at all (success tolerance 0: these scenarios
-# do not vary), when sentinel stops noticing an attack, or when it takes more than 1 more tool call
-# than the baseline to notice one (time to detect). It runs only the scenarios that need no model and
-# are deterministic (extraction: what text a page reader hands the model; fleet: the daemon's real
-# request handler; sentinel: the default Agent with sentinel armed, a decoy, a changed model file and
-# a forging member, against a scripted model). The measurement against a real model (chat, loop,
-# compaction, isolation) is run by hand and compared with `compare`.
+# The red-team tests run here. The attacks on a real model do not: a hosted runner has no GPU and no
+# installed model, and nothing stands in for one (AGENTS.md, "Never a fake model"). The last step says so in
+# every run: a warning annotation and the run's summary name what was not run, why, and the command that
+# runs it on a machine that has the model, against docs/redteam/baseline-real-model-2026-10-22.json
+# (docs/redteam.md, "Baselines and the gate"). The tests that need a real model
+# (tests/test_redteam_sentinel_model.py, the end-to-end test in tests/test_redteam_lab_home.py) are marked
+# real_model and slow, are not collected here, and run nightly in the `real-model` job of ci.yml, which fetches
+# the pinned model and a llama-server; on a machine without them they fail, never skip.
 on:
   workflow_dispatch:
   schedule:
@@ -51,14 +50,22 @@ jobs:
           echo "DEV_TEST_NODE_BINARY=$binary" >> "$GITHUB_ENV"
       - name: tests
         run: python -m pytest tests/test_redteam_*.py -q --redteam -n 0
-      - name: attacks that need no model, against the recorded baseline
-        run: >
-          python -m poolhouse.redteam run --model stub --out redteam-stub
-          --scenarios extraction,fleet,sentinel
-          --against docs/redteam/baseline-deterministic-2026-10-03.json
-          --success-tolerance 0 --ttd-tolerance 1
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        if: always()
-        with:
-          name: redteam-report
-          path: redteam-stub.*
+      - name: red-team attacks against a real model are NOT RUN on this runner
+        env:
+          REASON: a hosted runner has no GPU and no installed model, and nothing stands in for one
+          PULL: poolhouse-models pull hf:lmstudio-community/Qwen3-4B-Instruct-2507-GGUF/Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+          COMMAND: python -m poolhouse.redteam run --model Qwen3-4B-Instruct-2507-Q4_K_M.gguf --scenarios extraction,fleet,sentinel --against docs/redteam/baseline-real-model-2026-10-22.json --success-tolerance 0 --ttd-tolerance 1
+        run: |
+          echo "::warning title=red-team attacks against a real model were not run::$REASON. On a machine with the model ($PULL) run: $COMMAND"
+          {
+            echo "### Red-team attacks against a real model: NOT RUN on this runner"
+            echo
+            echo "$REASON."
+            echo
+            echo "On a machine that has the model, fetch it once and run the gate:"
+            echo
+            echo '```'
+            echo "$PULL"
+            echo "$COMMAND"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

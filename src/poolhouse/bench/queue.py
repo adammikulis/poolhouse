@@ -24,12 +24,13 @@ run detaches, `python -m poolhouse.bench status` says which step is running and 
 `python -m poolhouse.bench stop` ends the queue and the step inside it.
 
 Not a second scheduler: the steps are `python -m poolhouse.bench` lines, and everything that decides
-whether a measurement may run -- the self-check, the estimate against the ceiling, the
+whether a measurement may run -- the estimate against the ceiling, the
 smoke, the lock -- stays in the step, where it already is.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -40,12 +41,14 @@ import sys
 import threading
 import time
 from collections import deque
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any
 
 from poolhouse import bench
 from poolhouse.log import say
+from poolhouse.platform import end_child
 from poolhouse.serve.process import pid_exists
 
 #: what a summary line looks like, so the log can be read by eye and by `grep`
@@ -98,7 +101,7 @@ def expand(text: str, variables: dict[str, str], *, line: int) -> str:
     """
     missing: list[str] = []
 
-    def one(m: "re.Match[str]") -> str:
+    def one(m: re.Match[str]) -> str:
         name = m.group(1)
         if name in variables:
             return variables[name]
@@ -284,7 +287,7 @@ def queue_status() -> str:
 
 # -- running it ------------------------------------------------------------------------------
 
-_running: "subprocess.Popen[bytes] | None" = None
+_running: subprocess.Popen[bytes] | None = None
 
 FAST_DEATH_S = 1.0
 """A step that exits non-zero within this many seconds measured nothing; its last stderr
@@ -293,7 +296,7 @@ lines are printed beside its summary."""
 TAIL_LINES = 15
 
 
-def _forward_stderr(stream: Any, kept: "deque[str]") -> None:
+def _forward_stderr(stream: Any, kept: deque[str]) -> None:
     """Copy ``stream`` to this process's stderr line by line, keeping the last few."""
     for raw in iter(stream.readline, b""):
         line = raw.decode("utf-8", "replace")
@@ -307,13 +310,13 @@ def run_step(argv: Sequence[str]) -> int:
     goes -- the terminal, or the detached queue's log.
 
     Its own process, not a function call: that is what puts each step through the measuring
-    lock, the self-check, the estimate and the smoke it already has, and what lets `stop`
+    lock, the estimate and the smoke it already has, and what lets `stop`
     take a step down without taking the queue's own interpreter with it. Its stderr is
     read through a pipe and written on, so a step that dies within `FAST_DEATH_S` can
     have its last lines printed under "died in Ns:".
     """
     global _running
-    command = [sys.executable, "-m", "poolhouse.bench", *argv]
+    command = [sys.executable, "-B", "-m", "poolhouse.bench", *argv]
     sys.stdout.flush()
     began = time.monotonic()
     _running = subprocess.Popen(command, stdin=subprocess.DEVNULL, stderr=subprocess.PIPE,
@@ -345,11 +348,8 @@ def _stop_running(grace: float = 60.0) -> None:
         return
     say("[killed] the queue was told to stop; asking the step in flight to stop too",
         flush=True)
-    try:
-        child.terminate()
-        child.wait(timeout=grace)
-    except (OSError, subprocess.TimeoutExpired):
-        pass
+    with contextlib.suppress(OSError):
+        end_child(child, grace_s=grace)
 
 
 def _for_step(argv: list[str], *, yes: bool, ceiling: float) -> list[str]:
@@ -403,10 +403,8 @@ def run_queue(path: str | Path, *, dry_run: bool = False, resume: bool = False,
         _write_state(state)
 
     previous = None
-    try:
+    with contextlib.suppress(ValueError):
         previous = signal.signal(signal.SIGTERM, lambda *_: (_stop_running(), sys.exit(143)))
-    except ValueError:
-        pass                                 # not the main thread: nothing to hand a signal
     failed_smoke: Step | None = None
     try:
         for step in steps:

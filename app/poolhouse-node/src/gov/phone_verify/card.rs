@@ -29,7 +29,7 @@ fn key(entry: &AdminKey) -> String {
     format!("{}: {}; person {}; {}; {}; key {}; listed since epoch {}",
         match entry.role { Role::Admin => "Admin", Role::Recovery => "Recovery key" }, quote(&entry.label), quote(&entry.person),
         match entry.alg { Alg::Ed25519 => "Ed25519", Alg::P256 => "P-256" },
-        entry.assurance.name(), fingerprint_of(&entry.key), entry.since)
+        entry.claim.map_or("no claim", |c| c.shown()), fingerprint_of(&entry.key), entry.since)
 }
 
 fn terms(charter: &Charter) -> Result<String> {
@@ -119,7 +119,7 @@ fn change(act: &Act, pool: &GovPool, depth: usize) -> Result<String> {
 
 pub(super) fn render(act: &Act, pool: &GovPool, binding: &Binding) -> Result<String> {
     let charter = &pool.state().chain.latest().charter;
-    let Some(selected) = charter.admin(&binding.public).filter(|key| key.role == Role::Admin && key.assurance == super::super::keys::Level::Phone) else {
+    let Some(selected) = charter.admin(&binding.public).filter(|key| key.role == Role::Admin && key.claim.is_some_and(|c| c.method == super::super::keys::Method::PhoneKeystore)) else {
         return bad("This phone key is not a phone admin under these pool terms.");
     };
     if pool.genesis.anchor() != binding.anchor { return bad("The pool does not match this phone's founding pin.") }

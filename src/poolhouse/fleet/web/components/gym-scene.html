@@ -14,8 +14,8 @@ gym-scene canvas { display:block; width:100%; height:100%; }
       this.cameraMode = 'chase';
       try {
         const [T, orbit, room, rounded] = await Promise.all([
-          import('/ui/ml-ui/three.module.js'), import('/ui/ml-ui/OrbitControls.js'),
-          import('/ui/ml-ui/RoomEnvironment.js'), import('/ui/ml-ui/RoundedBoxGeometry.js'),
+          import('/ui/poolhouse-ui/three.module.js'), import('/ui/poolhouse-ui/OrbitControls.js'),
+          import('/ui/poolhouse-ui/RoomEnvironment.js'), import('/ui/poolhouse-ui/RoundedBoxGeometry.js'),
         ]);
         if (!this.isConnected) return;
         this.T = T;

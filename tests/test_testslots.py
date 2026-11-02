@@ -104,13 +104,10 @@ def test_runs_are_granted_in_arrival_order(tmp_path):
 
 
 def test_a_killed_holder_frees_its_workers(tmp_path):
-    holder = _spawn(tmp_path, 4, 4, 60, "doomed")
-    deadline = time.time() + 20
-    while time.time() < deadline and not list((tmp_path / "slots").glob("*.slot")):
-        time.sleep(0.1)
-    time.sleep(0.5)
+    holder = _spawn(tmp_path, 4, 4, tmp_path / "never", "doomed")
+    _wait_for_slot(tmp_path, holder, "doomed", 4)
     waiter = _spawn(tmp_path, 4, 4, 0.1, "waiter")
-    time.sleep(1.0)
+    _wait_for_slot(tmp_path, waiter, "waiter", 0)
     assert waiter.poll() is None                              # still waiting behind the live holder
     holder.kill()
     assert waiter.wait(timeout=30) == 0
@@ -118,21 +115,26 @@ def test_a_killed_holder_frees_its_workers(tmp_path):
 
 
 def test_status_lists_running_and_waiting(tmp_path):
-    holder = _spawn(tmp_path, 4, 4, 3, "holder")
-    time.sleep(1.0)
+    release = tmp_path / "release"
+    holder = _spawn(tmp_path, 4, 4, release, "holder")
+    _wait_for_slot(tmp_path, holder, "holder", 4)
     waiter = _spawn(tmp_path, 4, 4, 0.1, "waiter")
-    time.sleep(1.0)
+    _wait_for_slot(tmp_path, waiter, "waiter", 0)
     out = subprocess.run([sys.executable, str(SCRIPT), "status"], env=_env(tmp_path, 4), capture_output=True, text=True, timeout=30).stdout
+    release.touch()
     assert "running" in out and "holder" in out and "waiting" in out and "waiter" in out
     for p in (holder, waiter):
         assert p.wait(timeout=60) == 0
 
 
 def test_a_run_gets_fewer_workers_when_the_budget_is_partly_used_but_never_below_its_minimum(tmp_path):
-    a = _spawn(tmp_path, 6, 4, 1.5, "a")
-    time.sleep(0.6)
+    release = tmp_path / "release"
+    a = _spawn(tmp_path, 6, 4, release, "a")
+    _wait_for_slot(tmp_path, a, "a", 4)
     b = _spawn(tmp_path, 6, 4, 0.2, "b")                       # 2 free: runs now with 2 (its minimum is min(2, 4))
-    assert b.wait(timeout=30) == 0 and a.wait(timeout=30) == 0
+    assert b.wait(timeout=30) == 0
+    release.touch()
+    assert a.wait(timeout=30) == 0
     got = {r["label"]: r["workers"] for r in _records(tmp_path)}
     assert got == {"a": 4, "b": 2}
 
@@ -186,6 +188,8 @@ import importlib.util, json, sys, time
 spec = importlib.util.spec_from_file_location("testslots", sys.argv[1]); m = importlib.util.module_from_spec(spec); sys.modules["testslots"] = m; spec.loader.exec_module(m)
 log = sys.argv[2]
 with m.heavy_lane("t", say=lambda s: None):
+    if len(sys.argv) > 4:
+        open(sys.argv[4], "w").close()                       # the lane is held: the test may go on
     t0 = time.time(); time.sleep(float(sys.argv[3]))
     with open(log, "w") as f:
         f.write(json.dumps({"start": t0, "end": time.time()}) + "\n")
@@ -205,12 +209,14 @@ def test_heavy_lanes_limit_concurrent_heavy_work_across_processes(tmp_path):
 
 def test_a_killed_heavy_test_frees_its_lane(tmp_path):
     env = {**_env(tmp_path, 8), "DEV_TEST_HEAVY_LANES": "1"}
-    holder = subprocess.Popen([sys.executable, "-c", HEAVY_CHILD, str(SCRIPT), str(tmp_path / "lanes.jsonl"), "60"],
+    holder = subprocess.Popen([sys.executable, "-c", HEAVY_CHILD, str(SCRIPT), str(tmp_path / "lanes.jsonl"), "60", str(tmp_path / "held")],
                               env=env)
-    time.sleep(1.0)
+    deadline = time.monotonic() + 30
+    while not (tmp_path / "held").exists():
+        assert holder.poll() is None and time.monotonic() < deadline
+        time.sleep(0.01)
     waiter = subprocess.Popen([sys.executable, "-c", HEAVY_CHILD, str(SCRIPT), str(tmp_path / "lanes.jsonl"), "0.1"],
                               env=env)
-    time.sleep(1.0)
     assert waiter.poll() is None
     holder.kill()
     assert waiter.wait(timeout=30) == 0
@@ -228,10 +234,13 @@ def test_an_auto_run_on_an_idle_machine_gets_the_whole_budget(tmp_path):
 
 
 def test_an_auto_run_takes_only_what_a_busy_machine_can_spare(tmp_path):
-    holder = _spawn(tmp_path, 14, 8, 1.5, "holder")
-    time.sleep(0.5)
+    release = tmp_path / "release"
+    holder = _spawn(tmp_path, 14, 8, release, "holder")
+    _wait_for_slot(tmp_path, holder, "holder", 8)
     auto = _spawn(tmp_path, 14, 0, 0.1, "auto")
-    assert holder.wait(timeout=60) == 0 and auto.wait(timeout=60) == 0
+    assert auto.wait(timeout=60) == 0
+    release.touch()
+    assert holder.wait(timeout=60) == 0
     got = _grants(tmp_path)
     assert got["holder"] == 8 and got["auto"] == 6, got      # 14 - 8 in use: neither the whole budget nor a fixed default
 
@@ -402,7 +411,7 @@ def test_invalid_rpc_token_cannot_acquire_capacity(tmp_path, monkeypatch):
     rpc = _rpc_module()
     monkeypatch.setenv("DEV_TEST_SLOTS_DIR", str(tmp_path / "slots"))
     monkeypatch.setenv("DEV_TEST_BUDGET", "1")
-    server = rpc.Admission(False)
+    server = rpc.Admission()
     try:
         server.admitted.set()
         server.collected.set()
@@ -418,7 +427,7 @@ def test_disconnected_rpc_waiter_releases_its_queue_entry(tmp_path, monkeypatch)
     rpc = _rpc_module()
     monkeypatch.setenv("DEV_TEST_SLOTS_DIR", str(tmp_path / "slots"))
     monkeypatch.setenv("DEV_TEST_BUDGET", "1")
-    server = rpc.Admission(False)
+    server = rpc.Admission()
     holder = waiter = None
     holder_stream = waiter_stream = None
     try:
@@ -676,7 +685,7 @@ def test_rpc_admission_survives_a_live_incomplete_record(tmp_path, monkeypatch):
     descriptor = os.open(damaged, os.O_RDWR | os.O_CREAT, 0o600)
     assert take(descriptor)
     damaged.write_text('{}')
-    server = rpc.Admission(False)
+    server = rpc.Admission()
     try:
         server.admitted.set()
         server.collected.set()
@@ -750,6 +759,15 @@ def test_record_removed_after_identity_check_is_republished_locked(tmp_path, mon
         assert module._alive(removed[0])
         assert module.status()["in_use"] == 1
     assert not list((tmp_path / "slots").glob("*.slot"))
+
+
+def test_the_wait_for_a_slot_is_outside_the_per_test_timeout():
+    """A test queued behind other runs (the broker's queue is long when many agents test) must not be timed out for waiting: the
+    admission wrapper runs first, so pytest-timeout's clock starts when the slot is held."""
+    import testslots_pytest
+
+    assert testslots_pytest.pytest_runtest_protocol.pytest_impl["tryfirst"] is True
+    assert testslots_pytest.pytest_runtest_protocol.pytest_impl["hookwrapper"] is True
 
 
 def test_a_long_node_id_is_admitted_with_a_bounded_label(monkeypatch):

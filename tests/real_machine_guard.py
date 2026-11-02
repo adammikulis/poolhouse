@@ -29,6 +29,10 @@ def is_the_real_thing(ring: object) -> bool:
 def _keyring_never_resolves_a_real_backend():
     import keyring
 
+    from poolhouse import keystore_guard
+
+    keystore_guard.forbid_prompts()  # whatever still reaches the Keychain from a test process fails there, it does not ask
+
     resolve = keyring.get_keyring
 
     def guarded():

@@ -5,8 +5,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from test_features_routes import daemon, the_passphrase_is_kept  # noqa: F401
-from test_fleet_ui import a_keystore, counting  # noqa: F401
+from test_features_routes import daemon  # noqa: F401
 
 from poolhouse import features, features_cli
 

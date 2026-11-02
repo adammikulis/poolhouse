@@ -50,7 +50,9 @@ class Selection:
     machine: object | None = None
     search: bool = True
     coding: bool = False
-    context: int = 32768
+    context: int = 0
+    """The least context a model must hold to be chosen; 0 asks only that it fits at all (the
+    largest fit is what it is then served at)."""
 
 
 def short_name(name: str) -> str:
@@ -157,18 +159,18 @@ def _fits_context(pick: Pick, context: int) -> bool:
     if not pick.ref or not Path(pick.ref).is_file():
         return True
     try:
-        plan = suggest.suggest(pick.ref, goal="long-context", max_verdict="yellow")
+        plan = suggest.largest_fit(pick.ref)
     except (OSError, ValueError):
         return True
     return plan.context >= context and plan.verdict in FITS
 
 
-def context_for(pick: Pick, *, coding: bool = False) -> int:
-    """Choose a context from this device's memory and the model's trained limit."""
+def context_for(pick: Pick) -> int:
+    """The largest context this device's memory holds for ``pick``, up to the model's trained
+    window: the agent's one conversation (`suggest.largest_fit`, one slot)."""
     if not pick.ref or not Path(pick.ref).is_file():
         raise ValueError(f"cannot determine a safe context for {pick.name or pick.ref}")
-    plan = suggest.suggest(pick.ref, goal="long-context" if coding else "agent",
-                           max_verdict="yellow")
+    plan = suggest.largest_fit(pick.ref)
     if plan.context <= 0 or plan.verdict not in FITS:
         raise ValueError(f"{pick.name} has no context that fits this device's memory")
     return plan.context

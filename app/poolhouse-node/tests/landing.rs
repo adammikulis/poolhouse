@@ -14,7 +14,11 @@ fn review(n: &mut Node, token: &str, branch: &str, at: &str, verdict: &str) -> V
     req(n, "land_review", "demo", token, json!({"branch": branch, "sha": at, "verdict": verdict}))
 }
 
-fn accepts(n: &mut Node, token: &str, branch: &str, at: &str, worktree: &str) -> Value {
+fn accepts(n: &mut Node, token: &str, at: &str) -> Value {
+    ok(req(n, "land_accepts", "demo", token, json!({"sha": at})))
+}
+
+fn accepts_for(n: &mut Node, token: &str, branch: &str, at: &str, worktree: &str) -> Value {
     ok(req(n, "land_accepts", "demo", token, json!({"branch": branch, "sha": at, "worktree": worktree})))
 }
 
@@ -30,61 +34,49 @@ fn claim(n: &mut Node, token: &str, kind: &str, key: &str) {
 fn a_review_names_a_branch_a_full_commit_and_a_verdict_and_is_stamped_with_its_sender() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
-    let ((alice, at), (bob, bt), (_, lt)) = (session(&mut n, "demo", "a"), session(&mut n, "demo", "b"), session(&mut n, "demo", "lander"));
-    claim(&mut n, &at, "branch", "feat");
+    let ((_, _), (bob, bt), (_, lt)) = (session(&mut n, "demo", "a"), session(&mut n, "demo", "b"), session(&mut n, "demo", "pusher"));
     let tip = sha(1);
     for (branch, at_sha, verdict) in [("feat", "abc".to_string(), "accept"), ("feat", tip.clone(), "maybe"), ("main", tip.clone(), "accept"), ("../x", tip.clone(), "accept")] {
         assert_eq!(code(&review(&mut n, &bt, branch, &at_sha, verdict)), "invalid", "{branch} {at_sha} {verdict}");
     }
     ok(review(&mut n, &bt, "feat", &tip, "accept"));
-    let found = accepts(&mut n, &lt, "feat", &tip, "");
+    let found = accepts(&mut n, &lt, &tip);
     assert_eq!((reviewers(&found), found["reviews"][0]["verdict"].clone(), found["reviews"][0]["standing"]["name"].clone()), (vec![bob.clone()], json!("accept"), json!(bob)));
     assert_eq!(found["reviews"][0]["standing"]["model"], "claude-sonnet-5-5");
-    assert_eq!(found["creators"], json!([alice]));
-    assert!(reviewers(&accepts(&mut n, &lt, "feat", &sha(2), "")).is_empty(), "a review stands for its own commit only");
-    assert!(reviewers(&accepts(&mut n, &lt, "other", &tip, "")).is_empty(), "and for its own branch only");
+    assert!(reviewers(&accepts(&mut n, &lt, &sha(2))).is_empty(), "a review stands for its own commit only");
     ok(review(&mut n, &bt, "feat", &tip, "reject"));
-    assert_eq!(accepts(&mut n, &lt, "feat", &tip, "")["reviews"][0]["verdict"], "reject", "a later review of one reviewer replaces its earlier one");
+    assert_eq!(accepts(&mut n, &lt, &tip)["reviews"][0]["verdict"], "reject", "a later review of one reviewer replaces its earlier one");
 }
 
 #[test]
-fn a_session_that_ever_held_the_claim_on_the_branch_or_its_worktree_is_never_counted() {
+fn a_review_stands_for_its_commit_under_whatever_branch_name_the_reviewer_wrote() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
-    let ((maker, mt), (past, pt), (_, ot), (_, lt)) = (session(&mut n, "demo", "maker"), session(&mut n, "demo", "past"), session(&mut n, "demo", "other"), session(&mut n, "demo", "lander"));
+    let ((alice, at), (bob, bt), (_, lt)) = (session(&mut n, "demo", "a"), session(&mut n, "demo", "b"), session(&mut n, "demo", "pusher"));
     let tip = sha(3);
-    assert_eq!(accepts(&mut n, &lt, "feat", &tip, "/w/feat")["creators"], json!([]), "no claim, no creator of record");
-    claim(&mut n, &mt, "branch", "feat");
-    claim(&mut n, &pt, "worktree", "/w/feat");
-    ok(req(&mut n, "release", "demo", &pt, json!({"kind": "worktree", "key": "/w/feat"})));
-    for (token, branch) in [(&mt, "feat"), (&pt, "feat"), (&ot, "feat")] {
-        let done = review(&mut n, token, branch, &tip, "accept");
-        assert_eq!(done["ok"] == false, token == &mt, "the holder is refused at once; the rest are filtered when read: {done}");
-    }
-    ok(review(&mut n, &mt, "elsewhere", &tip, "accept"));
-    ok(review(&mut n, &pt, "feat", &tip, "accept"));
-    let found = accepts(&mut n, &lt, "feat", &tip, "/w/feat");
-    assert_eq!(reviewers(&found).len(), 1, "only the session that held nothing counts: {found}");
-    assert_ne!(found["reviews"][0]["by"], json!(maker));
-    assert_ne!(found["reviews"][0]["by"], json!(past));
-    let mut who = found["creators"].as_array().unwrap().clone();
-    who.sort_by_key(|v| v.as_str().unwrap().to_string());
-    assert_eq!(who.len(), 2, "a released claim is still on record: {found}");
-    assert_eq!(reviewers(&accepts(&mut n, &lt, "feat", &tip, "")).len(), 2, "a worktree only excludes when the caller names it");
+    ok(review(&mut n, &at, "feat", &tip, "accept"));
+    ok(review(&mut n, &bt, "elsewhere", &tip, "reject"));
+    let found = accepts(&mut n, &lt, &tip);
+    let mut by = reviewers(&found);
+    by.sort();
+    let mut expected = vec![alice, bob];
+    expected.sort();
+    assert_eq!(by, expected, "{found}");
+    let branches: Vec<&str> = found["reviews"].as_array().unwrap().iter().map(|r| r["branch"].as_str().unwrap()).collect();
+    assert!(branches.contains(&"feat") && branches.contains(&"elsewhere"), "{branches:?}");
 }
 
 #[test]
-fn a_row_appended_under_the_creator_name_is_dropped_when_read_and_the_caller_never_counts_itself() {
+fn a_row_appended_under_a_reviewers_name_is_read_and_the_caller_never_counts_itself() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
-    let ((maker, mt), (_, bt)) = (session(&mut n, "demo", "maker"), session(&mut n, "demo", "b"));
-    claim(&mut n, &mt, "branch", "feat");
+    let ((maker, _), (_, bt)) = (session(&mut n, "demo", "maker"), session(&mut n, "demo", "b"));
     let tip = sha(4);
     let body = json!({"ev": "review", "branch": "feat", "sha": tip, "verdict": "accept", "standing": {"name": maker, "model": "claude-sonnet-5-5", "model_state": ""}});
     n.host("demo").unwrap().board.append(Kind::Landing, &maker, body, "").unwrap();
-    assert!(reviewers(&accepts(&mut n, &bt, "feat", &tip, "")).is_empty());
+    assert_eq!(reviewers(&accepts(&mut n, &bt, &tip)), vec![maker]);
     ok(review(&mut n, &bt, "feat", &tip, "accept"));
-    assert!(reviewers(&accepts(&mut n, &bt, "feat", &tip, "")).is_empty(), "the caller is the lander and does not count");
+    assert_eq!(reviewers(&accepts(&mut n, &bt, &tip)).len(), 1, "the caller does not count itself");
 }
 
 #[test]
@@ -95,7 +87,7 @@ fn a_session_of_another_board_or_a_retired_one_asks_nothing() {
     let (_, elsewhere) = session(&mut n, "other", "x");
     let kid = ok(req(&mut n, "register", "demo", &lead, json!({"model": "claude-sonnet-5-5", "harness": "claude-code", "session": "kid"})));
     let (name, token) = (kid["name"].as_str().unwrap().to_string(), kid["token"].as_str().unwrap().to_string());
-    assert_eq!(code(&req(&mut n, "land_accepts", "demo", &elsewhere, json!({"branch": "z", "sha": sha(5), "worktree": ""}))), "denied");
+    assert_eq!(code(&req(&mut n, "land_accepts", "demo", &elsewhere, json!({"sha": sha(5)}))), "denied");
     ok(req(&mut n, "retire", "demo", &lead, json!({"target": name})));
     assert_eq!(code(&review(&mut n, &token, "z", &sha(5), "accept")), "denied");
 }
@@ -104,9 +96,8 @@ fn a_session_of_another_board_or_a_retired_one_asks_nothing() {
 fn entries_of_the_retired_landing_queue_fold_and_count_for_nothing() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
-    let ((worker, wt), (judge, _), (_, lt)) = (session(&mut n, "demo", "worker"), session(&mut n, "demo", "judge"), session(&mut n, "demo", "lander"));
+    let ((worker, _), (judge, _), (_, lt)) = (session(&mut n, "demo", "worker"), session(&mut n, "demo", "judge"), session(&mut n, "demo", "pusher"));
     let tip = sha(6);
-    claim(&mut n, &wt, "branch", "feat");
     let standing = json!({"name": judge, "parent": "", "ancestors": [], "model": "claude-sonnet-5-5", "model_state": ""});
     let old = [
         (&worker, json!({"ev": "request", "branch": "feat", "sha": tip, "target": "dev", "selectors": ["tests/test_x.py"], "replaces": "x"})),
@@ -118,6 +109,49 @@ fn entries_of_the_retired_landing_queue_fold_and_count_for_nothing() {
     for (actor, body) in old {
         n.host("demo").unwrap().board.append(Kind::Landing, actor, body, "").unwrap();
     }
-    assert!(reviewers(&accepts(&mut n, &lt, "feat", &tip, "")).is_empty(), "a review of the queue names a request, not a branch, and counts for nothing");
+    assert!(reviewers(&accepts(&mut n, &lt, &tip)).is_empty(), "a review of the queue names a request, not a branch, and counts for nothing");
     assert!(n.host("demo").unwrap().board.rejected().is_empty(), "the old entries fold: {:?}", n.host("demo").unwrap().board.rejected());
+}
+
+fn child(n: &mut Node, parent_token: &str, id: &str) -> (String, String) {
+    let r = ok(req(n, "register", "demo", parent_token, json!({"model": "claude-haiku-5-5", "harness": "claude-code", "session": id})));
+    (r["name"].as_str().unwrap().into(), r["token"].as_str().unwrap().into())
+}
+
+#[test]
+fn a_session_started_by_a_creator_or_by_one_of_its_subagents_is_never_counted_and_cannot_review() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let ((lead, lt), (judge, jt), (_, lander)) = (session(&mut n, "demo", "lead"), session(&mut n, "demo", "judge"), session(&mut n, "demo", "lander"));
+    let ((kid, kt), tip) = (child(&mut n, &lt, "kid"), sha(7));
+    let (grandkid, gt) = child(&mut n, &kt, "grandkid");
+    claim(&mut n, &lt, "branch", "feat");
+    for (who, token) in [(&kid, &kt), (&grandkid, &gt)] {
+        assert_eq!(code(&review(&mut n, token, "feat", &tip, "accept")), "denied", "{who} was started by the session that holds the claim");
+    }
+    ok(review(&mut n, &jt, "feat", &tip, "accept"));
+    for who in [&kid, &grandkid] {
+        let body = json!({"ev": "review", "branch": "feat", "sha": tip, "verdict": "accept", "standing": {"name": who, "model": "claude-haiku-5-5", "model_state": ""}});
+        n.host("demo").unwrap().board.append(Kind::Landing, who, body, "").unwrap();
+    }
+    let found = accepts_for(&mut n, &lander, "feat", &tip, "");
+    assert_eq!(reviewers(&found), vec![judge.clone()], "a row written under the name of a session below the creator is dropped when read: {found}");
+    assert_eq!(found["creators"], json!([lead]));
+    ok(req(&mut n, "retire", "demo", &lt, json!({"target": kid})));
+    assert_eq!(code(&review(&mut n, &gt, "feat", &tip, "accept")), "denied", "the line to the creator runs through a session that has ended");
+    assert_eq!(reviewers(&accepts_for(&mut n, &lander, "feat", &tip, "")), vec![judge], "and so does what the node counts");
+}
+
+#[test]
+fn a_sibling_of_the_session_that_claimed_the_branch_is_independent_of_it() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let ((_, lt), (_, lander)) = (session(&mut n, "demo", "lead"), session(&mut n, "demo", "lander"));
+    let ((worker, wt), (reviewer, rt), tip) = (child(&mut n, &lt, "worker"), child(&mut n, &lt, "reviewer"), sha(8));
+    let (helper, ht) = child(&mut n, &wt, "helper");
+    claim(&mut n, &wt, "branch", "feat");
+    assert_eq!(code(&review(&mut n, &ht, "feat", &tip, "accept")), "denied", "{helper} was started by the session that holds the claim");
+    ok(review(&mut n, &rt, "feat", &tip, "accept"));
+    let found = accepts_for(&mut n, &lander, "feat", &tip, "");
+    assert_eq!((reviewers(&found), found["creators"].clone()), (vec![reviewer], json!([worker])), "the creator's own parent and sibling are not below it");
 }

@@ -321,7 +321,7 @@ def test_a_torn_last_chain_line_is_recovered_not_fatal(project, tmp_path):
 
 def test_a_run_with_no_owner_is_not_queued_and_a_job_left_without_one_is_cancelled_by_any_caller(table):
     jobs, fake, root = table
-    with pytest.raises(testjobs.Refused, match="no workspace identity"):
+    with pytest.raises(testjobs.Refused, match="no valid local or workspace owner"):
         jobs.submit(["tests/x.py"], {"id": ""}, root, fake, {})
     jobs.write("old", "spec.json", {"id": "old", "argv": ["tests/x.py"], "owner": {"id": ""}})
     jobs.write("old", "status.json", {"state": "queued", "at": time.time()})

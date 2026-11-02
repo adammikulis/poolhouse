@@ -23,8 +23,8 @@ from typing import Any
 
 from poolhouse.files import read_json, write_json
 from poolhouse.platform import private_file
+from poolhouse.sentinel.human import HumanGrant
 
-from .human import HumanGrant
 from .manifest import SHARING_LEVELS, Entry
 
 __all__ = ["NEVER", "OPEN", "OWNER", "SHARING", "Access", "Licences", "classify", "decide"]
@@ -46,7 +46,7 @@ def classify(*, gated: bool | None, forbids_copies: bool | None) -> str:
 class Access:
     """Who is asking, as far as the server can tell: the member whose own secret signed
     the request (``device``, its certificate fingerprint) and whether the owner marked it
-    theirs. A request signed with only the pool key has neither."""
+    theirs. A request that names no member has neither."""
 
     device: str = ""
     mine: bool = False

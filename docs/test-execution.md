@@ -1,5 +1,9 @@
 # Shared test execution
 
+> **Replaced by the test runner design.** The fixed numbers this note describes as current (a 30 s backfill wait, a sample clipped to three times the value, an unrecorded test at 30 s, a background class at 180 s, aging at 600 s, a build deadline and a three-day folder age, the reserved core) are replaced by measured or
+> project-set values in the migration of `docs/design-test-runner.md` (section 15 and migration steps 1 to 11); until that step lands
+> they are what the code does, and none is to be copied into new code.
+
 Run tests with `python scripts/test fast`, `full`, `slow`, `all`, or `quick`.
 Explicit test paths are checked before broker admission using pytest’s argument parser.
 A missing file or directory, or a node selector that collects no tests, returns
@@ -23,7 +27,7 @@ For an agent (`CLAUDECODE`, `POOLHOUSE_AGENT`, `POOLHOUSE_NONINTERACTIVE` or a C
 refuses, before anything is queued, the `fast`, `full`, `slow` and `all` tiers that name no test file, and any run that names
 every test file (directories count as the test files under them); the broker (`scripts/testslots_runner.py`) admits no agent
 pytest run that names every test file; `quick` and `gate` stay allowed. The refusal reads `the whole suite runs on a schedule
-and on pull requests; name the files you changed`. A person's terminal sets none of the
+and on pull requests; name the test files your change affects`. A person's terminal sets none of the
 markers and is never refused. The main agent owns `quick`; workers use explicit affected selectors.
 
 `scripts/test <tier>` runs as a background job that the command follows: `submit` prints the job id
@@ -31,6 +35,29 @@ and returns, `status`, `wait`, `result` and `cancel` act on it, and Ctrl-C on a 
 cancels its job. Jobs use the admission below and are owned by the submitting workspace agent,
 which `scripts/testslots.py status` shows beside each lease. A run that names test files reuses
 earlier passes of unchanged files and says so per file ([test-reuse.md](test-reuse.md)).
+
+## `poolhouse-test`: a project describes its tests
+
+A repository describes its tests to the runner in one file, `testfarm.toml` (`docs/design-test-runner.md` is the design; schema 1). It gives
+a LIST command that prints the test ids, a RUN template that runs a subset of ids, and optionally which files each id depends on.
+`poolhouse-test init` writes a file to fill in and never overwrites one. `poolhouse-test check` validates the file and runs LIST;
+`poolhouse-test list [SELECTOR...]` prints the units. `ph.test.config(root)` and `ph.test.units(root, select)` are the same for a program. The project root is the first directory at or above the
+working directory (or the path a command names) that holds a `testfarm.toml` or a `.git` entry; the walk never climbs into a parent repository.
+
+- **Strict.** An unknown key is named with the nearest known one. A command is an array of arguments, never a shell string. A number
+  is finite and above zero (a margin at least 1, `canary` above 0 and at most 1), an integer longer than the parser reads is refused, `slice_base` has no default and no more seconds than the platform's timers take. A
+  name matches `[a-z0-9_-]+`, an environment variable name `[A-Za-z_][A-Za-z0-9_]*`, a glob holds `*`, `**` and `?` only and stays
+  inside the project directory, and no key takes a regular expression. A command line has the placeholders of its place and no other.
+  A file that gives neither both `[schedule]` margins nor a `timeout` on every command the runner starts is refused: a run with no
+  hang guard is not allowed.
+- **An id** is text in normal form C with no control, format, separator or private-use character, not beginning with `-` or with a
+  prefix `[run] refuse_prefix` names. LIST output is split at newlines only.
+- **LIST runs confined**: no network, the project readable and not writable, a scratch directory the only place it writes, an
+  allowlist environment, and the time limit `[list] timeout` gives. A LIST that exits nonzero, is ended by its limit, prints text that
+  is not UTF-8 or prints no unit (unless `[list] allow_empty = true`) is exit status 4 with a sentence naming why.
+- **Exit status 4** is a refusal; 0 is success. `poolhouse.testfarm.model.exitcodes` holds the whole table of the design.
+- The runner keeps what it remembers under the platform's state location (`~/Library/Application Support/poolhouse-testfarm` on a Mac,
+  `$XDG_STATE_HOME/poolhouse-testfarm` on Linux), never under the pool's home.
 
 ## Reuse is the default
 
@@ -122,6 +149,14 @@ running work and not for the queue behind it. Wait limits raise an error;
 they never disable admission. A command started
 inside a live test permit fails promptly instead of queuing behind its parent.
 Run an independent suite after the parent releases its permit.
+
+A test's permit is taken before the test timer starts (`testslots_pytest.py` is the outermost wrapper of
+`pytest_runtest_protocol`), so `pytest-timeout` counts only the time the test runs. The seconds a test waited are its
+`admission_wait` property in the junit file and part of the `queued for CPU` total. A test whose wait reaches the wait limit
+(`DEV_TEST_WAIT_S`) is skipped and listed under `not started` as `NOT STARTED, machine overloaded: waited N s for a permit`, and the
+later tests of that process are listed the same way without waiting again. It is neither a failure nor a pass: a run in which
+nothing failed ends with status 75, and a failure keeps status 1. A test that runs past its timeout fails with `test timed out after N s
+running (the test timeout)`, followed by the seconds it waited for its permit.
 
 Admission is one pass over the directory under its mutex, and a pass grants every request that fits, in
 grant order. A request runs a pass when it arrives (unless the last pass left every worker busy), when it
@@ -271,42 +306,24 @@ excludes a file with `--ignore`, `--deselect`, `-k` or `-m`. Locally they run li
 CI run (the mean over the files that ran it), and `record --history` from the per-test history above.
 `scripts/ci_shards.py summary --shards 8` prints each job's total and the longest file.
 
-## Landing a batch
-
-`scripts/land` (modules `scripts/land_*.py`) lands several ready branches with one verification.
-Every test and gate runs through `scripts/test`, so the broker admits them like any other run.
-
-- `plan [--cover] [BRANCH...]` lists each branch's unique patches (patch-id, `git cherry`
-  semantics), drops branches another one contains, orders the rest so each merges cleanly onto the
-  plan so far (`git merge-tree --write-tree`, no checkout), and reports files, commit and behind
-  counts, predicted conflicts and dirty worktrees. It warns past 50 commits or 20 behind.
-- `run [--dry-run] [--conflicts=eject|stop] [-n N] BRANCH...` merges with `--no-ff` and rerere in a
-  sibling `<repo>-land-<stamp>` worktree on `land/<stamp>`, keeping both sides of `HANDOFF.md`.
-  A documentation-only diff runs `scripts/budgets` and `git diff --check`. A code diff runs
-  `scripts/test gate` and `scripts/test all` on the selectors `scripts/affected.py` computes from the
-  combined diff. The whole suite runs on GitHub for pull requests, `main` and nightly.
-- A pass is recorded with `record_run` under the tree hash; the same tree and check later print
-  `reused from <id>`. A failing check is first run on a clean worktree of the base: failing there
-  too is reported as `baseline`. Otherwise the merge commits are bisected with only the failing
-  selectors, the branch is ejected, the integration branch is rebuilt without it, and the failed
-  checks run again. An ejection prints branch, check, evidence, owner (the tip's `Agent-Label`
-  trailer, else its worktree name) and commit count.
-- `finish [--apply]` is a dry run unless `--apply`. It fast-forwards the target only when the
-  primary checkout is clean and on the target, otherwise prints the command for the lead. It never
-  pushes. Then it removes each landed source branch's worktree and branch (never forced), keeping
-  dirty trees, trees holding the current directory and branches with unique patches, and the
-  integration tree while its landing run is alive.
-
-The last line of every command is a JSON summary.
-
 ## Rust builds in tests
 
 The tests that run `cargo test` (`tests/native_cargo.py`, `test_native_authority_*.py`, `test_phone_native_governance.py`) get a
 staged copy of `app/` and a target folder from `testnode.shared_build`: the copy sits at a fixed path under
 `~/.cache/test-cargo/workspaces/<key of the sources and compiler>/app`, rewritten only where a file differs, and the target
 folder `~/.cache/test-cargo/targets/<key of Cargo.lock and compiler>` is shared by every run with the same lock file and compiler,
-so a run compiles the crates whose files changed and not the registry dependencies again (`DEV_TEST_CARGO_DIR` names another
-folder). The folder is outside every checkout and outside `~/.poolhouse` and `~/.cache/poolhouse`, which a test may not write;
+so registry dependencies remain shared. Each staged source snapshot has a fixed compiler wrapper whose path enters Cargo's workspace artifact hash; returning to an older snapshot cannot reuse a newer snapshot's workspace executable (`DEV_TEST_CARGO_DIR` names another
+folder). A source snapshot that has never been built costs the workspace crates and their test targets, not the registry
+dependencies; a Cargo.lock or compiler that has never been built costs everything. Measured on the 49 targets of
+`tests/test_governed_grants_native.py` at load 20 on a 16-core machine: a snapshot new to a warm target folder took 77 s with
+`CARGO_BUILD_JOBS=1` and 38 s with 4; a target folder new as well took 116 s and 40 s.
+
+`tests/native_cargo.py` therefore compiles in two steps. `NodeUnits.prepare` builds every target a module names in `NATIVE_TARGETS` (`testunits.LIB` for the library's unit tests) or
+its tests are parametrized on in one `cargo test --no-run` call at a quarter of the cores (`testunits.build`), in the module's
+`native_targets_built` fixture; a test that uses it carries `@pytest.mark.timeout(N, func_only=True)`, so N counts the run and
+the build has its own deadline (`testnode.BUILD_TIMEOUT_S`). `run_targets` then runs the executables cargo reported, in the
+package folder, and never asks cargo again: a run no longer waits behind another cargo's lock on the shared target folder or
+walks its fingerprints. The folder is outside every checkout and outside `~/.poolhouse` and `~/.cache/poolhouse`, which a test may not write;
 the reuse plugin counts it as a place a test may write because it holds only what the sources say. Folders idle for three days
 are removed. Cargo's own lock on the target folder serialises two runs that build at once.
 

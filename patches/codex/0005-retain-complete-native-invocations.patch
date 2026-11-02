@@ -1,0 +1,2431 @@
+diff --git a/codex-rs/core/src/hook_runtime.rs b/codex-rs/core/src/hook_runtime.rs
+index 4d9d38b..69373bc 100644
+--- a/codex-rs/core/src/hook_runtime.rs
++++ b/codex-rs/core/src/hook_runtime.rs
+@@ -152,6 +152,7 @@ pub(crate) async fn run_pending_session_start_hooks(
+             },
+         };
+         let request = codex_hooks::SessionStartRequest {
++            turn_id: Some(turn_context.sub_id.clone()),
+             session_id: sess.session_id().into(),
+             #[allow(deprecated)]
+             cwd: turn_context.cwd.clone(),
+@@ -167,7 +168,7 @@ pub(crate) async fn run_pending_session_start_hooks(
+             sess,
+             turn_context,
+             preview_runs,
+-            hooks.run_session_start(request, Some(turn_context.sub_id.clone())),
++            hooks.run_session_start(request),
+         )
+         .await
+         .record_additional_contexts(sess, turn_context)
+diff --git a/codex-rs/core/src/session/config_refresh_tests.rs b/codex-rs/core/src/session/config_refresh_tests.rs
+index 927a286..36f0f85 100644
+--- a/codex-rs/core/src/session/config_refresh_tests.rs
++++ b/codex-rs/core/src/session/config_refresh_tests.rs
+@@ -157,6 +157,7 @@ async fn hook_refresh_retries_current_plugin_policy_after_owner_replacement() ->
+         .original_config_do_not_use = Arc::clone(&initial);
+     session.refresh_hooks(Arc::clone(&initial)).await;
+     let request = codex_hooks::SessionStartRequest {
++        turn_id: None,
+         session_id: session.thread_id,
+         cwd: initial.cwd.clone(),
+         transcript_path: None,
+diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
+index 32f45b5..f94aa09 100644
+--- a/codex-rs/core/src/session/tests.rs
++++ b/codex-rs/core/src/session/tests.rs
+@@ -1008,6 +1008,7 @@ async fn preview_session_start_hooks(
+ 
+     Ok(
+         hooks.preview_session_start(&codex_hooks::SessionStartRequest {
++            turn_id: None,
+             session_id: thread_id,
+             cwd: config.cwd.clone(),
+             transcript_path: None,
+@@ -1929,6 +1930,7 @@ async fn reload_user_config_layer_refreshes_hooks() -> anyhow::Result<()> {
+     }))?;
+ 
+     let request = codex_hooks::SessionStartRequest {
++        turn_id: None,
+         session_id: session.thread_id,
+         cwd: session.get_config().await.cwd.clone(),
+         transcript_path: None,
+@@ -2038,6 +2040,7 @@ async fn refresh_runtime_config_refreshes_hooks() -> anyhow::Result<()> {
+     std::fs::write(&config_toml_path, toml::to_string(&trusted_user_config)?)?;
+ 
+     let request = codex_hooks::SessionStartRequest {
++        turn_id: None,
+         session_id: session.thread_id,
+         cwd: session.get_config().await.cwd.clone(),
+         transcript_path: None,
+diff --git a/codex-rs/hooks/src/engine/command_runner.rs b/codex-rs/hooks/src/engine/command_runner.rs
+index bd0c4b5..d5eef5f 100644
+--- a/codex-rs/hooks/src/engine/command_runner.rs
++++ b/codex-rs/hooks/src/engine/command_runner.rs
+@@ -126,11 +126,7 @@ impl CommandHookRuntime {
+ 
+     pub(crate) fn schedule_async_hook<T: 'static>(
+         &self,
+-        occurrence: Arc<crate::NativeOccurrence>,
+-        handler: ConfiguredHandler,
+-        input_json: String,
+-        cwd: std::path::PathBuf,
+-        turn_id: Option<String>,
++        plan: Arc<super::dispatcher::NativeHandlerPlan>,
+         parse: fn(&ConfiguredHandler, HandlerRunResult, Option<String>) -> ParsedHandler<T>,
+     ) {
+         if self.result_sender.is_closed() {
+@@ -140,23 +136,14 @@ impl CommandHookRuntime {
+         let result_sender = self.result_sender.clone();
+         let runtime = self.clone();
+         self.schedule_async_task(async move {
+-            occurrence.observe("async");
+-            let result = match &handler.kind {
+-                ConfiguredHandlerKind::Command { command, env, .. } => {
+-                    run_command(
+-                        &runtime,
+-                        &occurrence,
+-                        &handler,
+-                        command,
+-                        env,
+-                        &input_json,
+-                        &cwd,
+-                    )
+-                    .await
+-                }
+-                ConfiguredHandlerKind::McpTool { .. } => return,
+-            };
+-            let mut hook_result = parse(&handler, result, turn_id).completed;
++            plan.dispatch().invocation().occurrence().observe("async");
++            if !matches!(plan.handler().kind, ConfiguredHandlerKind::Command { .. }) {
++                return;
++            }
++            let result = run_bound_command(&runtime, Arc::clone(&plan)).await;
++            let mut hook_result =
++                parse(plan.handler(), result, plan.dispatch().turn_id()).completed;
++            let handler = plan.handler();
+             let mut entries = Vec::new();
+             let mut warnings = Vec::new();
+ 
+@@ -214,6 +201,40 @@ impl CommandHookRuntime {
+     }
+ }
+ 
++pub(crate) async fn run_bound_command(
++    runtime: &CommandHookRuntime,
++    plan: Arc<super::dispatcher::NativeHandlerPlan>,
++) -> HandlerRunResult {
++    plan.dispatch().invocation().occurrence().observe("command");
++    let ConfiguredHandlerKind::Command { command, env, .. } = &plan.handler().kind else {
++        unreachable!("command plan kind")
++    };
++    execute_command_transport(
++        runtime,
++        plan.handler(),
++        command,
++        env,
++        plan.dispatch().input(),
++        plan.dispatch().cwd(),
++    )
++    .await
++}
++
++// Plumbing-only fixture entry; production can neither detach nor replace an original request.
++#[cfg(test)]
++async fn run_command(
++    runtime: &CommandHookRuntime,
++    occurrence: &Arc<crate::NativeOccurrence>,
++    handler: &ConfiguredHandler,
++    command_line: &str,
++    env: &HashMap<String, String>,
++    input_json: &str,
++    cwd: &Path,
++) -> HandlerRunResult {
++    occurrence.observe("command");
++    execute_command_transport(runtime, handler, command_line, env, input_json, cwd).await
++}
++
+ #[tracing::instrument(
+     name = "codex.hooks.command",
+     level = "trace",
+@@ -229,16 +250,14 @@ impl CommandHookRuntime {
+         hook.command_outcome = tracing::field::Empty,
+     )
+ )]
+-pub(crate) async fn run_command(
++async fn execute_command_transport(
+     runtime: &CommandHookRuntime,
+-    occurrence: &Arc<crate::NativeOccurrence>,
+     handler: &ConfiguredHandler,
+     command_line: &str,
+     env: &HashMap<String, String>,
+     input_json: &str,
+     cwd: &Path,
+ ) -> HandlerRunResult {
+-    occurrence.observe("command");
+     let started_at = chrono::Utc::now().timestamp();
+     let started = Instant::now();
+     let timeout_started = tokio::time::Instant::now();
+diff --git a/codex-rs/hooks/src/engine/command_runner_tests.rs b/codex-rs/hooks/src/engine/command_runner_tests.rs
+index b4171b7..4ba0480 100644
+--- a/codex-rs/hooks/src/engine/command_runner_tests.rs
++++ b/codex-rs/hooks/src/engine/command_runner_tests.rs
+@@ -1040,7 +1040,10 @@ async fn native_occurrence_async_command_retains_exact_original_arc() {
+         source: HookSource::User,
+         display_order: 0,
+         kind: ConfiguredHandlerKind::Command {
+-            command: "/bin/true".into(),
++            command: format!(
++                "while [ ! -f '{}' ]; do /bin/sleep 0.01; done",
++                temp.path().join("release").display()
++            ),
+             r#async: true,
+             env: HashMap::new(),
+         },
+@@ -1060,12 +1063,29 @@ async fn native_occurrence_async_command_retains_exact_original_arc() {
+         transcript_path: None,
+         model: String::new(),
+         permission_mode: "default".into(),
+-        prompt: String::new(),
++        prompt: "complete-original-prompt".into(),
+     };
+     let event = engine.capture_native_event(request);
+     let occurrence = event.occurrence().clone();
++    let original = event.retained();
+     engine.run_user_prompt_submit(event).await;
++    assert_eq!(
++        original
++            .upgrade()
++            .expect("queued async task lost original body")
++            .request::<UserPromptSubmitRequest>()
++            .prompt,
++        "complete-original-prompt"
++    );
++    std::fs::write(temp.path().join("release"), b"release").unwrap();
+     receiver.recv().await.expect("async command completion");
++    tokio::time::timeout(std::time::Duration::from_secs(1), async {
++        while original.upgrade().is_some() {
++            tokio::task::yield_now().await;
++        }
++    })
++    .await
++    .expect("async task retained completed body");
+     let seen = occurrence.observations();
+     assert!(seen.iter().any(|(stage, _)| *stage == "async"));
+     assert!(seen.iter().any(|(stage, _)| *stage == "command"));
+diff --git a/codex-rs/hooks/src/engine/dispatcher.rs b/codex-rs/hooks/src/engine/dispatcher.rs
+index 79d191f..c7d8d96 100644
+--- a/codex-rs/hooks/src/engine/dispatcher.rs
++++ b/codex-rs/hooks/src/engine/dispatcher.rs
+@@ -1,10 +1,7 @@
+-use std::path::Path;
+ use std::sync::Arc;
+ 
+ use futures::StreamExt;
+ use futures::stream::FuturesUnordered;
+-use serde_json::Map;
+-use serde_json::Value;
+ 
+ use codex_protocol::protocol::HookCompletedEvent;
+ use codex_protocol::protocol::HookEventName;
+@@ -19,8 +16,6 @@ use super::ConfiguredHandler;
+ use super::ConfiguredHandlerKind;
+ use super::HandlerRunResult;
+ use super::HandlerSourcePath;
+-use super::command_runner::run_command;
+-use super::mcp_runner::run_mcp_tool;
+ use crate::events::common::matches_matcher;
+ 
+ #[derive(Debug)]
+@@ -101,71 +96,75 @@ pub(crate) fn running_summary(handler: &ConfiguredHandler) -> HookRunSummary {
+     }
+ }
+ 
++pub(crate) struct NativeHandlerPlan {
++    dispatch: Arc<crate::native_dispatch::NativeDispatch>,
++    handler: ConfiguredHandler,
++}
++impl NativeHandlerPlan {
++    fn new(
++        dispatch: Arc<crate::native_dispatch::NativeDispatch>,
++        handler: ConfiguredHandler,
++    ) -> Arc<Self> {
++        Arc::new(Self { dispatch, handler })
++    }
++    pub(crate) fn dispatch(&self) -> &crate::native_dispatch::NativeDispatch {
++        &self.dispatch
++    }
++    pub(crate) fn handler(&self) -> &ConfiguredHandler {
++        &self.handler
++    }
++    pub(crate) fn metadata(&self) -> Option<&serde_json::Map<String, serde_json::Value>> {
++        // Original request metadata is private to executor-scoped handlers, as before retention.
++        if matches!(
++            &self.handler.source_path,
++            HandlerSourcePath::ExecutorScoped { .. }
++        ) {
++            self.dispatch.metadata()
++        } else {
++            None
++        }
++    }
++}
++
+ pub(crate) async fn execute_handlers<T: 'static>(
+     engine: &ClaudeHooksEngine,
+-    occurrence: Arc<crate::NativeOccurrence>,
++    dispatch: Arc<crate::native_dispatch::NativeDispatch>,
+     handlers: Vec<ConfiguredHandler>,
+-    input_json: String,
+-    cwd: &Path,
+-    turn_id: Option<String>,
+     parse: fn(&ConfiguredHandler, HandlerRunResult, Option<String>) -> ParsedHandler<T>,
+ ) -> Vec<ParsedHandler<T>> {
+-    execute_handlers_with_metadata(
+-        engine, occurrence, handlers, input_json, cwd, turn_id, /*metadata*/ None, parse,
+-    )
+-    .await
++    execute_handlers_with_metadata(engine, dispatch, handlers, parse).await
+ }
+ 
+ pub(crate) async fn execute_handlers_with_metadata<T: 'static>(
+     engine: &ClaudeHooksEngine,
+-    occurrence: Arc<crate::NativeOccurrence>,
++    dispatch: Arc<crate::native_dispatch::NativeDispatch>,
+     handlers: Vec<ConfiguredHandler>,
+-    input_json: String,
+-    cwd: &Path,
+-    turn_id: Option<String>,
+-    metadata: Option<&Map<String, Value>>,
+     parse: fn(&ConfiguredHandler, HandlerRunResult, Option<String>) -> ParsedHandler<T>,
+ ) -> Vec<ParsedHandler<T>> {
+-    occurrence.observe("dispatch");
++    dispatch.invocation().occurrence().observe("dispatch");
+     let mut executor_handlers = Vec::new();
+     let mut pending = FuturesUnordered::new();
+     for (configured_order, handler) in handlers.into_iter().enumerate() {
+-        if matches!(
++        let executor = matches!(
+             handler.source_path,
+             HandlerSourcePath::ExecutorScoped { .. }
+-        ) {
+-            executor_handlers.push(handler);
++        );
++        let mode = handler.execution_mode();
++        let plan = NativeHandlerPlan::new(Arc::clone(&dispatch), handler);
++        if executor {
++            executor_handlers.push(plan);
+             continue;
+         }
+-        if handler.execution_mode() == HookExecutionMode::Async {
+-            engine.command_runtime.schedule_async_hook(
+-                Arc::clone(&occurrence),
+-                handler,
+-                input_json.clone(),
+-                cwd.to_path_buf(),
+-                turn_id.clone(),
+-                parse,
+-            );
++        if mode == HookExecutionMode::Async {
++            engine.command_runtime.schedule_async_hook(plan, parse);
+             continue;
+         }
+-        let occurrence = Arc::clone(&occurrence);
+-        let input_json = input_json.clone();
+-        let turn_id = turn_id.clone();
+         pending.push(async move {
+-            let result = execute_handler(
+-                engine,
+-                &occurrence,
+-                &handler,
+-                &input_json,
+-                cwd,
+-                /*metadata*/ None,
+-            )
+-            .await;
+-            let parsed = parse(&handler, result, turn_id);
++            let result = execute_handler(engine, Arc::clone(&plan)).await;
++            let parsed = parse(plan.handler(), result, plan.dispatch().turn_id());
+             (configured_order, parsed)
+         });
+     }
+-
+     let mut completed = Vec::new();
+     let mut completion_order = 0;
+     let mut should_stop = false;
+@@ -178,76 +177,31 @@ pub(crate) async fn execute_handlers_with_metadata<T: 'static>(
+         completed.push((configured_order, parsed));
+     }
+     completed.sort_by_key(|(configured_order, _)| *configured_order);
+-
+     if should_stop || !should_block {
+-        for handler in executor_handlers {
++        for plan in executor_handlers {
+             let task_engine = engine.clone();
+-            let occurrence = Arc::clone(&occurrence);
+-            let input_json = input_json.clone();
+-            let cwd = cwd.to_path_buf();
+-            let metadata = metadata.cloned();
+             engine.command_runtime.schedule_async_task(async move {
+-                let result = execute_handler(
+-                    &task_engine,
+-                    &occurrence,
+-                    &handler,
+-                    &input_json,
+-                    &cwd,
+-                    metadata.as_ref(),
+-                )
+-                .await;
++                let result = execute_handler(&task_engine, Arc::clone(&plan)).await;
+                 if let Some(error) = result.error {
+-                    tracing::warn!(
+-                        source_path = %handler.source_path,
+-                        %error,
+-                        "executor-scoped hook failed"
+-                    );
++                    tracing::warn!(source_path = %plan.handler().source_path, %error, "executor-scoped hook failed");
+                 }
+             });
+         }
+     }
+-
+     completed.into_iter().map(|(_, parsed)| parsed).collect()
+ }
+ 
+ async fn execute_handler(
+     engine: &ClaudeHooksEngine,
+-    occurrence: &Arc<crate::NativeOccurrence>,
+-    handler: &ConfiguredHandler,
+-    input_json: &str,
+-    cwd: &Path,
+-    metadata: Option<&Map<String, Value>>,
++    plan: Arc<NativeHandlerPlan>,
+ ) -> HandlerRunResult {
+-    occurrence.observe("handler");
+-    match &handler.kind {
+-        ConfiguredHandlerKind::Command { command, env, .. } => {
+-            run_command(
+-                &engine.command_runtime,
+-                occurrence,
+-                handler,
+-                command,
+-                env,
+-                input_json,
+-                cwd,
+-            )
+-            .await
++    plan.dispatch().invocation().occurrence().observe("handler");
++    match &plan.handler().kind {
++        ConfiguredHandlerKind::Command { .. } => {
++            super::command_runner::run_bound_command(&engine.command_runtime, plan).await
+         }
+-        ConfiguredHandlerKind::McpTool {
+-            server,
+-            tool,
+-            input,
+-        } => {
+-            run_mcp_tool(
+-                engine.mcp_executor.as_ref(),
+-                occurrence,
+-                handler,
+-                server,
+-                tool,
+-                input,
+-                input_json,
+-                metadata,
+-            )
+-            .await
++        ConfiguredHandlerKind::McpTool { .. } => {
++            super::mcp_runner::run_bound_mcp_tool(engine.mcp_executor.as_ref(), plan).await
+         }
+     }
+ }
+diff --git a/codex-rs/hooks/src/engine/mcp_runner.rs b/codex-rs/hooks/src/engine/mcp_runner.rs
+index 58c119c..07f7654 100644
+--- a/codex-rs/hooks/src/engine/mcp_runner.rs
++++ b/codex-rs/hooks/src/engine/mcp_runner.rs
+@@ -15,6 +15,56 @@ use super::HandlerSourcePath;
+ use crate::mcp::HookMcpCall;
+ use crate::mcp::HookMcpExecutor;
+ 
++pub(crate) async fn run_bound_mcp_tool(
++    executor: &dyn HookMcpExecutor,
++    plan: std::sync::Arc<super::dispatcher::NativeHandlerPlan>,
++) -> HandlerRunResult {
++    plan.dispatch().invocation().occurrence().observe("mcp");
++    let super::ConfiguredHandlerKind::McpTool {
++        server,
++        tool,
++        input,
++    } = &plan.handler().kind
++    else {
++        unreachable!("MCP plan kind")
++    };
++    execute_mcp_transport(
++        executor,
++        plan.handler(),
++        server,
++        tool,
++        input,
++        plan.dispatch().input(),
++        plan.metadata(),
++    )
++    .await
++}
++
++// Direct transport tests do not construct producer identity or authority.
++#[cfg(test)]
++async fn run_mcp_tool(
++    executor: &dyn HookMcpExecutor,
++    occurrence: &std::sync::Arc<crate::NativeOccurrence>,
++    handler: &ConfiguredHandler,
++    server: &str,
++    tool: &str,
++    argument_template: &Map<String, Value>,
++    hook_event_json: &str,
++    metadata: Option<&Map<String, Value>>,
++) -> HandlerRunResult {
++    occurrence.observe("mcp");
++    execute_mcp_transport(
++        executor,
++        handler,
++        server,
++        tool,
++        argument_template,
++        hook_event_json,
++        metadata,
++    )
++    .await
++}
++
+ /// Expands an MCP argument template against this hook event and invokes the configured tool.
+ #[tracing::instrument(
+     name = "codex.hooks.mcp_tool",
+@@ -26,9 +76,8 @@ use crate::mcp::HookMcpExecutor;
+         hook.timeout_sec = handler.timeout_sec,
+     )
+ )]
+-pub(crate) async fn run_mcp_tool(
++async fn execute_mcp_transport(
+     executor: &dyn HookMcpExecutor,
+-    occurrence: &std::sync::Arc<crate::NativeOccurrence>,
+     handler: &ConfiguredHandler,
+     server: &str,
+     tool: &str,
+@@ -36,7 +85,6 @@ pub(crate) async fn run_mcp_tool(
+     hook_event_json: &str,
+     metadata: Option<&Map<String, Value>>,
+ ) -> HandlerRunResult {
+-    occurrence.observe("mcp");
+     let started_at = chrono::Utc::now().timestamp();
+     let started = Instant::now();
+     let timeout_started = tokio::time::Instant::now();
+diff --git a/codex-rs/hooks/src/engine/mod.rs b/codex-rs/hooks/src/engine/mod.rs
+index 8136b96..50bfc64 100644
+--- a/codex-rs/hooks/src/engine/mod.rs
++++ b/codex-rs/hooks/src/engine/mod.rs
+@@ -441,34 +441,33 @@ impl ClaudeHooksEngine {
+     pub(crate) async fn run_session_start(
+         &self,
+         request: crate::NativeEvent<SessionStartRequest>,
+-        turn_id: Option<String>,
+     ) -> SessionStartOutcome {
+-        let (occurrence, request) = request.into_parts(&self.command_runtime.native_source());
+-        crate::events::session_start::run(self, occurrence, request, turn_id).await
++        let invocation = request.into_invocation(&self.command_runtime.native_source());
++        crate::events::session_start::run(self, invocation).await
+     }
+ 
+     pub(crate) async fn run_pre_tool_use(
+         &self,
+         request: crate::NativeEvent<PreToolUseRequest>,
+     ) -> PreToolUseOutcome {
+-        let (occurrence, request) = request.into_parts(&self.command_runtime.native_source());
+-        crate::events::pre_tool_use::run(self, occurrence, request).await
++        let invocation = request.into_invocation(&self.command_runtime.native_source());
++        crate::events::pre_tool_use::run(self, invocation).await
+     }
+ 
+     pub(crate) async fn run_permission_request(
+         &self,
+         request: crate::NativeEvent<PermissionRequestRequest>,
+     ) -> PermissionRequestOutcome {
+-        let (occurrence, request) = request.into_parts(&self.command_runtime.native_source());
+-        crate::events::permission_request::run(self, occurrence, request).await
++        let invocation = request.into_invocation(&self.command_runtime.native_source());
++        crate::events::permission_request::run(self, invocation).await
+     }
+ 
+     pub(crate) async fn run_post_tool_use(
+         &self,
+         request: crate::NativeEvent<PostToolUseRequest>,
+     ) -> PostToolUseOutcome {
+-        let (occurrence, request) = request.into_parts(&self.command_runtime.native_source());
+-        let mut outcome = crate::events::post_tool_use::run(self, occurrence, request).await;
++        let invocation = request.into_invocation(&self.command_runtime.native_source());
++        let mut outcome = crate::events::post_tool_use::run(self, invocation).await;
+         if let Some(feedback_message) = outcome.feedback_message.take() {
+             outcome.feedback_message = Some(
+                 self.command_runtime
+@@ -488,8 +487,8 @@ impl ClaudeHooksEngine {
+         &self,
+         request: crate::NativeEvent<PreCompactRequest>,
+     ) -> PreCompactOutcome {
+-        let (occurrence, request) = request.into_parts(&self.command_runtime.native_source());
+-        crate::events::compact::run_pre(self, occurrence, request).await
++        let invocation = request.into_invocation(&self.command_runtime.native_source());
++        crate::events::compact::run_pre(self, invocation).await
+     }
+ 
+     pub(crate) fn preview_post_compact(&self, request: &PostCompactRequest) -> Vec<HookRunSummary> {
+@@ -500,8 +499,8 @@ impl ClaudeHooksEngine {
+         &self,
+         request: crate::NativeEvent<PostCompactRequest>,
+     ) -> StatelessHookOutcome {
+-        let (occurrence, request) = request.into_parts(&self.command_runtime.native_source());
+-        crate::events::compact::run_post(self, occurrence, request).await
++        let invocation = request.into_invocation(&self.command_runtime.native_source());
++        crate::events::compact::run_post(self, invocation).await
+     }
+ 
+     pub(crate) fn preview_user_prompt_submit(
+@@ -515,8 +514,8 @@ impl ClaudeHooksEngine {
+         &self,
+         request: crate::NativeEvent<UserPromptSubmitRequest>,
+     ) -> UserPromptSubmitOutcome {
+-        let (occurrence, request) = request.into_parts(&self.command_runtime.native_source());
+-        crate::events::user_prompt_submit::run(self, occurrence, request).await
++        let invocation = request.into_invocation(&self.command_runtime.native_source());
++        crate::events::user_prompt_submit::run(self, invocation).await
+     }
+ 
+     pub(crate) fn preview_stop(&self, request: &StopRequest) -> Vec<HookRunSummary> {
+@@ -531,13 +530,13 @@ impl ClaudeHooksEngine {
+         &self,
+         request: crate::NativeEvent<SessionEndRequest>,
+     ) -> SessionEndOutcome {
+-        let (occurrence, request) = request.into_parts(&self.command_runtime.native_source());
+-        crate::events::session_end::run(self, occurrence, request).await
++        let invocation = request.into_invocation(&self.command_runtime.native_source());
++        crate::events::session_end::run(self, invocation).await
+     }
+ 
+     pub(crate) async fn run_stop(&self, request: crate::NativeEvent<StopRequest>) -> StopOutcome {
+-        let (occurrence, request) = request.into_parts(&self.command_runtime.native_source());
+-        let mut outcome = crate::events::stop::run(self, occurrence, request).await;
++        let invocation = request.into_invocation(&self.command_runtime.native_source());
++        let mut outcome = crate::events::stop::run(self, invocation).await;
+         outcome.continuation_fragments = self
+             .command_runtime
+             .output_spiller()
+@@ -554,8 +553,8 @@ impl ClaudeHooksEngine {
+         &self,
+         request: crate::NativeEvent<InterruptRequest>,
+     ) -> InterruptOutcome {
+-        let (occurrence, request) = request.into_parts(&self.command_runtime.native_source());
+-        crate::events::interrupt::run(self, occurrence, request).await
++        let invocation = request.into_invocation(&self.command_runtime.native_source());
++        crate::events::interrupt::run(self, invocation).await
+     }
+ }
+ 
+diff --git a/codex-rs/hooks/src/engine/mod_tests.rs b/codex-rs/hooks/src/engine/mod_tests.rs
+index 92aeb8a..162e216 100644
+--- a/codex-rs/hooks/src/engine/mod_tests.rs
++++ b/codex-rs/hooks/src/engine/mod_tests.rs
+@@ -2714,7 +2714,7 @@ async fn memory_consolidation_stop_preserves_policy_and_executor_cleanup() {
+ }
+ 
+ #[tokio::test]
+-async fn executor_stop_hooks_do_not_delay_stop_completion() {
++async fn native_original_request_executor_mcp_retains_body_until_completion() {
+     struct BlockingMcpExecutor {
+         started: Arc<Notify>,
+         release: Arc<Notify>,
+@@ -2742,17 +2742,32 @@ async fn executor_stop_hooks_do_not_delay_stop_completion() {
+         release: Arc::clone(&release),
+     });
+ 
+-    let outcome = tokio::time::timeout(
+-        Duration::from_millis(100),
+-        engine.run_stop(engine.capture_native_event(request)),
+-    )
+-    .await
+-    .expect("executor hook must not delay Stop completion");
++    let expected_metadata = request.request_metadata.clone();
++    let event = engine.capture_native_event(request);
++    let original = event.retained();
++    let outcome = tokio::time::timeout(Duration::from_millis(100), engine.run_stop(event))
++        .await
++        .expect("executor hook must not delay Stop completion");
+     assert!(!outcome.should_block);
+     tokio::time::timeout(Duration::from_secs(1), started.notified())
+         .await
+         .expect("executor hook should start in the background");
++    assert_eq!(
++        original
++            .upgrade()
++            .expect("MCP task dropped its original request")
++            .request::<StopRequest>()
++            .request_metadata,
++        expected_metadata
++    );
+     release.notify_one();
++    tokio::time::timeout(Duration::from_secs(1), async {
++        while original.upgrade().is_some() {
++            tokio::task::yield_now().await;
++        }
++    })
++    .await
++    .expect("completed MCP task retained its original request");
+ }
+ 
+ #[tokio::test]
+@@ -2912,7 +2927,7 @@ async fn mcp_interrupt_hooks_expand_event_input_and_bound_timeout() {
+         .to_string(),
+         outputs_by_tool: HashMap::new(),
+     };
+-    let engine = ClaudeHooksEngine::new(
++    let mut engine = ClaudeHooksEngine::new(
+         /*enabled*/ true,
+         /*bypass_hook_trust*/ true,
+         Some(&config_layer_stack),
+@@ -2924,17 +2939,50 @@ async fn mcp_interrupt_hooks_expand_event_input_and_bound_timeout() {
+         }),
+         Arc::new(executor),
+     );
+-    let outcome = engine
+-        .run_interrupt(engine.capture_native_event(InterruptRequest {
+-            session_id: ThreadId::new(),
+-            turn_id: "turn-1".to_string(),
+-            cwd: cwd(),
+-            transcript_path: None,
+-            model: "gpt-test".to_string(),
+-            permission_mode: "default".to_string(),
+-            request_metadata: None,
+-        }))
+-        .await;
++    struct LocalMcpRetention {
++        downstream: Arc<dyn HookMcpExecutor>,
++        original: std::sync::Weak<crate::NativeInvocation>,
++    }
++    impl HookMcpExecutor for LocalMcpRetention {
++        fn execute(&self, call: HookMcpCall) -> BoxFuture<'_, anyhow::Result<HookMcpOutput>> {
++            Box::pin(async move {
++                let original = self
++                    .original
++                    .upgrade()
++                    .expect("local MCP lost original request");
++                assert!(
++                    original
++                        .request::<InterruptRequest>()
++                        .request_metadata
++                        .is_some()
++                );
++                assert_eq!(
++                    call.metadata, None,
++                    "local handler received private request metadata"
++                );
++                self.downstream.execute(call).await
++            })
++        }
++    }
++    let event = engine.capture_native_event(InterruptRequest {
++        session_id: ThreadId::new(),
++        turn_id: "turn-1".to_string(),
++        cwd: cwd(),
++        transcript_path: None,
++        model: "gpt-test".to_string(),
++        permission_mode: "default".to_string(),
++        request_metadata: Some(serde_json::Map::from_iter([(
++            "private-original-context".into(),
++            serde_json::json!("must-not-reach-local-hook"),
++        )])),
++    });
++    let original = event.retained();
++    engine.mcp_executor = Arc::new(LocalMcpRetention {
++        downstream: engine.mcp_executor.clone(),
++        original: original.clone(),
++    });
++    let outcome = engine.run_interrupt(event).await;
++    assert!(original.upgrade().is_none());
+ 
+     assert_eq!(outcome.hook_events.len(), 1);
+     assert_eq!(
+diff --git a/codex-rs/hooks/src/events/compact.rs b/codex-rs/hooks/src/events/compact.rs
+index b63783c..a1381a9 100644
+--- a/codex-rs/hooks/src/events/compact.rs
++++ b/codex-rs/hooks/src/events/compact.rs
+@@ -71,9 +71,10 @@ pub(crate) fn preview_pre(
+ 
+ pub(crate) async fn run_pre(
+     engine: &ClaudeHooksEngine,
+-    occurrence: std::sync::Arc<crate::NativeOccurrence>,
+-    request: PreCompactRequest,
++    invocation: std::sync::Arc<crate::NativeInvocation>,
+ ) -> PreCompactOutcome {
++    let request = invocation.request::<PreCompactRequest>().clone();
++
+     let matched = dispatcher::select_handlers(
+         &engine.handlers,
+         HookEventName::PreCompact,
+@@ -87,8 +88,8 @@ pub(crate) async fn run_pre(
+         };
+     }
+ 
+-    let input_json = match pre_command_input_json(&request) {
+-        Ok(input_json) => input_json,
++    let dispatch = match invocation.dispatch() {
++        Ok(dispatch) => dispatch,
+         Err(error) => {
+             return PreCompactOutcome {
+                 hook_events: common::serialization_failure_hook_events(
+@@ -104,11 +105,8 @@ pub(crate) async fn run_pre(
+ 
+     let results = dispatcher::execute_handlers(
+         engine,
+-        std::sync::Arc::clone(&occurrence),
++        std::sync::Arc::clone(&dispatch),
+         matched,
+-        input_json,
+-        request.cwd.as_path(),
+-        Some(request.turn_id),
+         parse_pre_completed,
+     )
+     .await;
+@@ -123,7 +121,9 @@ pub(crate) async fn run_pre(
+     }
+ }
+ 
+-fn pre_command_input_json(request: &PreCompactRequest) -> Result<String, serde_json::Error> {
++pub(crate) fn pre_command_input_json(
++    request: &PreCompactRequest,
++) -> Result<String, serde_json::Error> {
+     let subagent = SubagentCommandInputFields::from(request.subagent.as_ref());
+     serde_json::to_string(&PreCompactCommandInput {
+         session_id: request.session_id.to_string(),
+@@ -154,9 +154,10 @@ pub(crate) fn preview_post(
+ 
+ pub(crate) async fn run_post(
+     engine: &ClaudeHooksEngine,
+-    occurrence: std::sync::Arc<crate::NativeOccurrence>,
+-    request: PostCompactRequest,
++    invocation: std::sync::Arc<crate::NativeInvocation>,
+ ) -> StatelessHookOutcome {
++    let request = invocation.request::<PostCompactRequest>().clone();
++
+     let matched = dispatcher::select_handlers(
+         &engine.handlers,
+         HookEventName::PostCompact,
+@@ -170,8 +171,8 @@ pub(crate) async fn run_post(
+         };
+     }
+ 
+-    let input_json = match post_command_input_json(&request) {
+-        Ok(input_json) => input_json,
++    let dispatch = match invocation.dispatch() {
++        Ok(dispatch) => dispatch,
+         Err(error) => {
+             return StatelessHookOutcome {
+                 hook_events: common::serialization_failure_hook_events(
+@@ -187,11 +188,8 @@ pub(crate) async fn run_post(
+ 
+     let results = dispatcher::execute_handlers(
+         engine,
+-        std::sync::Arc::clone(&occurrence),
++        std::sync::Arc::clone(&dispatch),
+         matched,
+-        input_json,
+-        request.cwd.as_path(),
+-        Some(request.turn_id),
+         parse_post_completed,
+     )
+     .await;
+@@ -206,7 +204,9 @@ pub(crate) async fn run_post(
+     }
+ }
+ 
+-fn post_command_input_json(request: &PostCompactRequest) -> Result<String, serde_json::Error> {
++pub(crate) fn post_command_input_json(
++    request: &PostCompactRequest,
++) -> Result<String, serde_json::Error> {
+     let subagent = SubagentCommandInputFields::from(request.subagent.as_ref());
+     serde_json::to_string(&PostCompactCommandInput {
+         session_id: request.session_id.to_string(),
+diff --git a/codex-rs/hooks/src/events/interrupt.rs b/codex-rs/hooks/src/events/interrupt.rs
+index f8011c1..3d85da5 100644
+--- a/codex-rs/hooks/src/events/interrupt.rs
++++ b/codex-rs/hooks/src/events/interrupt.rs
+@@ -18,8 +18,6 @@ use crate::engine::HandlerRunResult;
+ use crate::engine::HandlerSourcePath;
+ use crate::engine::dispatcher;
+ use crate::engine::output_parser;
+-use crate::schema::InterruptCommandInput;
+-use crate::schema::NullableString;
+ 
+ #[derive(Debug, Clone)]
+ pub struct InterruptRequest {
+@@ -55,9 +53,10 @@ pub(crate) fn preview(handlers: &[ConfiguredHandler]) -> Vec<HookRunSummary> {
+ 
+ pub(crate) async fn run(
+     engine: &ClaudeHooksEngine,
+-    occurrence: std::sync::Arc<crate::NativeOccurrence>,
+-    request: InterruptRequest,
++    invocation: std::sync::Arc<crate::NativeInvocation>,
+ ) -> InterruptOutcome {
++    let request = invocation.request::<InterruptRequest>().clone();
++
+     let matched = dispatcher::select_handlers(
+         &engine.handlers,
+         HookEventName::Interrupt,
+@@ -67,25 +66,9 @@ pub(crate) async fn run(
+         return InterruptOutcome::default();
+     }
+ 
+-    let InterruptRequest {
+-        session_id,
+-        turn_id,
+-        cwd,
+-        transcript_path,
+-        model,
+-        permission_mode,
+-        request_metadata,
+-    } = request;
+-    let input_json = match serde_json::to_string(&InterruptCommandInput {
+-        session_id: session_id.to_string(),
+-        turn_id: turn_id.clone(),
+-        transcript_path: NullableString::from_path(transcript_path),
+-        cwd: cwd.display().to_string(),
+-        hook_event_name: "Interrupt".to_string(),
+-        model,
+-        permission_mode,
+-    }) {
+-        Ok(input_json) => input_json,
++    let turn_id = request.turn_id.clone();
++    let dispatch = match invocation.dispatch() {
++        Ok(dispatch) => dispatch,
+         Err(error) => {
+             return InterruptOutcome {
+                 hook_events: common::serialization_failure_hook_events(
+@@ -99,12 +82,8 @@ pub(crate) async fn run(
+ 
+     let results = dispatcher::execute_handlers_with_metadata(
+         engine,
+-        std::sync::Arc::clone(&occurrence),
++        std::sync::Arc::clone(&dispatch),
+         matched,
+-        input_json,
+-        cwd.as_path(),
+-        Some(turn_id),
+-        request_metadata.as_ref(),
+         parse_completed,
+     )
+     .await;
+diff --git a/codex-rs/hooks/src/events/model_request.rs b/codex-rs/hooks/src/events/model_request.rs
+index 922394c..471b111 100644
+--- a/codex-rs/hooks/src/events/model_request.rs
++++ b/codex-rs/hooks/src/events/model_request.rs
+@@ -96,9 +96,10 @@ pub(crate) fn preview(
+ 
+ pub(crate) async fn run(
+     engine: &ClaudeHooksEngine,
+-    occurrence: std::sync::Arc<crate::NativeOccurrence>,
+-    request: ModelRequestHookInput,
++    invocation: std::sync::Arc<crate::NativeInvocation>,
+ ) -> Vec<HookCompletedEvent> {
++    let request = invocation.request::<ModelRequestHookInput>().clone();
++
+     let matched = dispatcher::select_handlers(
+         &engine.handlers,
+         request.event.hook_event(),
+@@ -107,8 +108,8 @@ pub(crate) async fn run(
+     if matched.is_empty() {
+         return Vec::new();
+     }
+-    let input = match serde_json::to_string(&request) {
+-        Ok(input) => input,
++    let dispatch = match invocation.dispatch() {
++        Ok(dispatch) => dispatch,
+         Err(error) => {
+             return common::serialization_failure_hook_events(
+                 matched,
+@@ -119,11 +120,8 @@ pub(crate) async fn run(
+     };
+     dispatcher::execute_handlers(
+         engine,
+-        std::sync::Arc::clone(&occurrence),
++        std::sync::Arc::clone(&dispatch),
+         matched,
+-        input,
+-        request.cwd.as_path(),
+-        Some(request.turn_id),
+         parse_completed,
+     )
+     .await
+diff --git a/codex-rs/hooks/src/events/permission_request.rs b/codex-rs/hooks/src/events/permission_request.rs
+index d946cf0..5bb817a 100644
+--- a/codex-rs/hooks/src/events/permission_request.rs
++++ b/codex-rs/hooks/src/events/permission_request.rs
+@@ -86,9 +86,10 @@ pub(crate) fn preview(
+ 
+ pub(crate) async fn run(
+     engine: &ClaudeHooksEngine,
+-    occurrence: std::sync::Arc<crate::NativeOccurrence>,
+-    request: PermissionRequestRequest,
++    invocation: std::sync::Arc<crate::NativeInvocation>,
+ ) -> PermissionRequestOutcome {
++    let request = invocation.request::<PermissionRequestRequest>().clone();
++
+     let matcher_inputs = common::matcher_inputs(&request.tool_name, &request.matcher_aliases);
+     let matched = dispatcher::select_handlers_for_matcher_inputs(
+         &engine.handlers,
+@@ -102,8 +103,8 @@ pub(crate) async fn run(
+         };
+     }
+ 
+-    let input_json = match serde_json::to_string(&build_command_input(&request)) {
+-        Ok(input_json) => input_json,
++    let dispatch = match invocation.dispatch() {
++        Ok(dispatch) => dispatch,
+         Err(error) => {
+             let hook_events = common::serialization_failure_hook_events_for_tool_use(
+                 matched,
+@@ -120,11 +121,8 @@ pub(crate) async fn run(
+ 
+     let results = dispatcher::execute_handlers(
+         engine,
+-        std::sync::Arc::clone(&occurrence),
++        std::sync::Arc::clone(&dispatch),
+         matched,
+-        input_json,
+-        request.cwd.as_path(),
+-        Some(request.turn_id.clone()),
+         parse_completed,
+     )
+     .await;
+@@ -170,7 +168,9 @@ fn resolve_permission_request_decision<'a>(
+     resolved_allow
+ }
+ 
+-fn build_command_input(request: &PermissionRequestRequest) -> PermissionRequestCommandInput {
++pub(crate) fn build_command_input(
++    request: &PermissionRequestRequest,
++) -> PermissionRequestCommandInput {
+     let subagent = SubagentCommandInputFields::from(request.subagent.as_ref());
+     PermissionRequestCommandInput {
+         session_id: request.session_id.to_string(),
+diff --git a/codex-rs/hooks/src/events/post_tool_use.rs b/codex-rs/hooks/src/events/post_tool_use.rs
+index f420d6a..eb65223 100644
+--- a/codex-rs/hooks/src/events/post_tool_use.rs
++++ b/codex-rs/hooks/src/events/post_tool_use.rs
+@@ -70,9 +70,10 @@ pub(crate) fn preview(
+ 
+ pub(crate) async fn run(
+     engine: &ClaudeHooksEngine,
+-    occurrence: std::sync::Arc<crate::NativeOccurrence>,
+-    request: PostToolUseRequest,
++    invocation: std::sync::Arc<crate::NativeInvocation>,
+ ) -> PostToolUseOutcome {
++    let request = invocation.request::<PostToolUseRequest>().clone();
++
+     let matcher_inputs = common::matcher_inputs(&request.tool_name, &request.matcher_aliases);
+     let matched = dispatcher::select_handlers_for_matcher_inputs(
+         &engine.handlers,
+@@ -88,8 +89,8 @@ pub(crate) async fn run(
+         };
+     }
+ 
+-    let input_json = match command_input_json(&request) {
+-        Ok(input_json) => input_json,
++    let dispatch = match invocation.dispatch() {
++        Ok(dispatch) => dispatch,
+         Err(error) => {
+             let hook_events = common::serialization_failure_hook_events_for_tool_use(
+                 matched,
+@@ -103,11 +104,8 @@ pub(crate) async fn run(
+ 
+     let results = dispatcher::execute_handlers(
+         engine,
+-        std::sync::Arc::clone(&occurrence),
++        std::sync::Arc::clone(&dispatch),
+         matched,
+-        input_json,
+-        request.cwd.as_path(),
+-        Some(request.turn_id.clone()),
+         parse_completed,
+     )
+     .await;
+@@ -149,7 +147,9 @@ pub(crate) async fn run(
+ /// the canonical `tool_name` for logs and for consumers that pair pre/post
+ /// events across processes. Shell-like tools pass `{ "command": ... }` as
+ /// `tool_input`; MCP tools pass their resolved JSON arguments.
+-fn command_input_json(request: &PostToolUseRequest) -> Result<String, serde_json::Error> {
++pub(crate) fn command_input_json(
++    request: &PostToolUseRequest,
++) -> Result<String, serde_json::Error> {
+     let subagent = SubagentCommandInputFields::from(request.subagent.as_ref());
+     serde_json::to_string(&PostToolUseCommandInput {
+         session_id: request.session_id.to_string(),
+diff --git a/codex-rs/hooks/src/events/pre_tool_use.rs b/codex-rs/hooks/src/events/pre_tool_use.rs
+index 12ade4d..dffb128 100644
+--- a/codex-rs/hooks/src/events/pre_tool_use.rs
++++ b/codex-rs/hooks/src/events/pre_tool_use.rs
+@@ -71,9 +71,10 @@ pub(crate) fn preview(
+ 
+ pub(crate) async fn run(
+     engine: &ClaudeHooksEngine,
+-    occurrence: std::sync::Arc<crate::NativeOccurrence>,
+-    request: PreToolUseRequest,
++    invocation: std::sync::Arc<crate::NativeInvocation>,
+ ) -> PreToolUseOutcome {
++    let request = invocation.request::<PreToolUseRequest>().clone();
++
+     let matcher_inputs = common::matcher_inputs(&request.tool_name, &request.matcher_aliases);
+     let matched = dispatcher::select_handlers_for_matcher_inputs(
+         &engine.handlers,
+@@ -90,8 +91,8 @@ pub(crate) async fn run(
+         };
+     }
+ 
+-    let input_json = match command_input_json(&request) {
+-        Ok(input_json) => input_json,
++    let dispatch = match invocation.dispatch() {
++        Ok(dispatch) => dispatch,
+         Err(error) => {
+             let hook_events = common::serialization_failure_hook_events_for_tool_use(
+                 matched,
+@@ -105,11 +106,8 @@ pub(crate) async fn run(
+ 
+     let results = dispatcher::execute_handlers(
+         engine,
+-        std::sync::Arc::clone(&occurrence),
++        std::sync::Arc::clone(&dispatch),
+         matched,
+-        input_json,
+-        request.cwd.as_path(),
+-        Some(request.turn_id.clone()),
+         parse_completed,
+     )
+     .await;
+@@ -174,7 +172,7 @@ fn latest_updated_input(
+ /// the canonical `tool_name` so audit logs and downstream policy decisions stay
+ /// stable. Shell-like tools pass `{ "command": ... }` as `tool_input`; MCP
+ /// tools pass their resolved JSON arguments.
+-fn command_input_json(request: &PreToolUseRequest) -> Result<String, serde_json::Error> {
++pub(crate) fn command_input_json(request: &PreToolUseRequest) -> Result<String, serde_json::Error> {
+     let subagent = SubagentCommandInputFields::from(request.subagent.as_ref());
+     serde_json::to_string(&PreToolUseCommandInput {
+         session_id: request.session_id.to_string(),
+diff --git a/codex-rs/hooks/src/events/session_end.rs b/codex-rs/hooks/src/events/session_end.rs
+index 4e7acfb..e79a0b3 100644
+--- a/codex-rs/hooks/src/events/session_end.rs
++++ b/codex-rs/hooks/src/events/session_end.rs
+@@ -14,8 +14,6 @@ use crate::engine::ClaudeHooksEngine;
+ use crate::engine::ConfiguredHandler;
+ use crate::engine::HandlerRunResult;
+ use crate::engine::dispatcher;
+-use crate::schema::NullableString;
+-use crate::schema::SessionEndCommandInput;
+ 
+ pub(crate) const SESSION_END_DEFAULT_TIMEOUT_SEC: u64 = 1;
+ /// Keep below app-server's in-process `SHUTDOWN_TIMEOUT`: SessionEnd runs during
+@@ -49,9 +47,10 @@ pub(crate) fn preview(handlers: &[ConfiguredHandler]) -> Vec<HookRunSummary> {
+ 
+ pub(crate) async fn run(
+     engine: &ClaudeHooksEngine,
+-    occurrence: std::sync::Arc<crate::NativeOccurrence>,
+-    request: SessionEndRequest,
++    invocation: std::sync::Arc<crate::NativeInvocation>,
+ ) -> SessionEndOutcome {
++    let request = invocation.request::<SessionEndRequest>().clone();
++
+     let matched = dispatcher::select_handlers(
+         &engine.handlers,
+         HookEventName::SessionEnd,
+@@ -61,14 +60,8 @@ pub(crate) async fn run(
+         return SessionEndOutcome::default();
+     }
+ 
+-    let input_json = match serde_json::to_string(&SessionEndCommandInput {
+-        session_id: request.session_id.to_string(),
+-        transcript_path: NullableString::from_path(request.transcript_path.clone()),
+-        cwd: request.cwd.display().to_string(),
+-        hook_event_name: "SessionEnd".to_string(),
+-        reason: SESSION_END_REASON.to_string(),
+-    }) {
+-        Ok(input_json) => input_json,
++    let dispatch = match invocation.dispatch() {
++        Ok(dispatch) => dispatch,
+         Err(error) => {
+             return SessionEndOutcome {
+                 hook_events: common::serialization_failure_hook_events(
+@@ -82,11 +75,8 @@ pub(crate) async fn run(
+ 
+     let results = dispatcher::execute_handlers(
+         engine,
+-        std::sync::Arc::clone(&occurrence),
++        std::sync::Arc::clone(&dispatch),
+         matched,
+-        input_json,
+-        request.cwd.as_path(),
+-        Some(request.turn_id),
+         parse_completed,
+     )
+     .await;
+diff --git a/codex-rs/hooks/src/events/session_start.rs b/codex-rs/hooks/src/events/session_start.rs
+index 0182058..2941bb1 100644
+--- a/codex-rs/hooks/src/events/session_start.rs
++++ b/codex-rs/hooks/src/events/session_start.rs
+@@ -16,9 +16,6 @@ use crate::engine::HandlerRunResult;
+ use crate::engine::dispatcher;
+ use crate::engine::output_parser;
+ use crate::output_spill::AdditionalContext;
+-use crate::schema::NullableString;
+-use crate::schema::SessionStartCommandInput;
+-use crate::schema::SubagentStartCommandInput;
+ 
+ #[derive(Debug, Clone, Copy)]
+ pub enum SessionStartSource {
+@@ -43,6 +40,7 @@ impl SessionStartSource {
+ 
+ #[derive(Debug, Clone)]
+ pub struct SessionStartRequest {
++    pub turn_id: Option<String>,
+     pub session_id: ThreadId,
+     pub cwd: AbsolutePathBuf,
+     pub transcript_path: Option<PathBuf>,
+@@ -110,10 +108,12 @@ pub(crate) fn preview(
+ 
+ pub(crate) async fn run(
+     engine: &ClaudeHooksEngine,
+-    occurrence: std::sync::Arc<crate::NativeOccurrence>,
+-    request: SessionStartRequest,
+-    turn_id: Option<String>,
++    invocation: std::sync::Arc<crate::NativeInvocation>,
+ ) -> SessionStartOutcome {
++    let turn_id = invocation.request::<SessionStartRequest>().turn_id.clone();
++
++    let request = invocation.request::<SessionStartRequest>().clone();
++
+     let matched = dispatcher::select_handlers(
+         &engine.handlers,
+         request.target.event_name(),
+@@ -128,68 +128,21 @@ pub(crate) async fn run(
+         };
+     }
+ 
+-    let (input_json, turn_id) = match request.target {
+-        StartHookTarget::SessionStart { source } => {
+-            let input_json = match serde_json::to_string(&SessionStartCommandInput::new(
+-                request.session_id.to_string(),
+-                request.transcript_path.clone(),
+-                request.cwd.display().to_string(),
+-                request.model.clone(),
+-                request.permission_mode.clone(),
+-                source.as_str().to_string(),
+-            )) {
+-                Ok(input_json) => input_json,
+-                Err(error) => {
+-                    return serialization_failure_outcome(
+-                        common::serialization_failure_hook_events(
+-                            matched,
+-                            turn_id,
+-                            format!("failed to serialize session start hook input: {error}"),
+-                        ),
+-                    );
+-                }
+-            };
+-            (input_json, turn_id)
+-        }
+-        StartHookTarget::SubagentStart {
+-            turn_id: subagent_turn_id,
+-            agent_id,
+-            agent_type,
+-        } => {
+-            let input = SubagentStartCommandInput {
+-                session_id: request.session_id.to_string(),
+-                turn_id: subagent_turn_id.clone(),
+-                transcript_path: NullableString::from_path(request.transcript_path.clone()),
+-                cwd: request.cwd.display().to_string(),
+-                hook_event_name: "SubagentStart".to_string(),
+-                model: request.model.clone(),
+-                permission_mode: request.permission_mode.clone(),
+-                agent_id,
+-                agent_type,
+-            };
+-            let input_json = match serde_json::to_string(&input) {
+-                Ok(input_json) => input_json,
+-                Err(error) => {
+-                    return serialization_failure_outcome(
+-                        common::serialization_failure_hook_events(
+-                            matched,
+-                            Some(subagent_turn_id),
+-                            format!("failed to serialize subagent start hook input: {error}"),
+-                        ),
+-                    );
+-                }
+-            };
+-            (input_json, Some(subagent_turn_id))
++    let dispatch = match invocation.dispatch() {
++        Ok(dispatch) => dispatch,
++        Err(error) => {
++            return serialization_failure_outcome(common::serialization_failure_hook_events(
++                matched,
++                turn_id,
++                format!("failed to serialize session start hook input: {error}"),
++            ));
+         }
+     };
+ 
+     let results = dispatcher::execute_handlers(
+         engine,
+-        std::sync::Arc::clone(&occurrence),
++        std::sync::Arc::clone(&dispatch),
+         matched,
+-        input_json,
+-        request.cwd.as_path(),
+-        turn_id,
+         parse_completed,
+     )
+     .await;
+diff --git a/codex-rs/hooks/src/events/stop.rs b/codex-rs/hooks/src/events/stop.rs
+index 3d8529b..aa057a4 100644
+--- a/codex-rs/hooks/src/events/stop.rs
++++ b/codex-rs/hooks/src/events/stop.rs
+@@ -19,9 +19,6 @@ use crate::engine::HandlerRunResult;
+ use crate::engine::HandlerSourcePath;
+ use crate::engine::dispatcher;
+ use crate::engine::output_parser;
+-use crate::schema::NullableString;
+-use crate::schema::StopCommandInput;
+-use crate::schema::SubagentStopCommandInput;
+ 
+ #[derive(Debug, Clone)]
+ pub struct StopRequest {
+@@ -109,9 +106,10 @@ pub(crate) fn preview(
+ 
+ pub(crate) async fn run(
+     engine: &ClaudeHooksEngine,
+-    occurrence: std::sync::Arc<crate::NativeOccurrence>,
+-    request: StopRequest,
++    invocation: std::sync::Arc<crate::NativeInvocation>,
+ ) -> StopOutcome {
++    let request = invocation.request::<StopRequest>().clone();
++
+     let matched = request.target.select_handlers(&engine.handlers);
+     if matched.is_empty() {
+         return StopOutcome {
+@@ -133,78 +131,21 @@ pub(crate) async fn run(
+                 HandlerSourcePath::ExecutorScoped { .. }
+             )
+     });
+-    let input_json = match request.target {
+-        StopHookTarget::Stop | StopHookTarget::MemoryConsolidation => {
+-            let input = StopCommandInput {
+-                session_id: request.session_id.to_string(),
+-                turn_id: request.turn_id.clone(),
+-                transcript_path: NullableString::from_path(request.transcript_path.clone()),
+-                cwd: request.cwd.display().to_string(),
+-                hook_event_name: "Stop".to_string(),
+-                model: request.model.clone(),
+-                permission_mode: request.permission_mode.clone(),
+-                stop_hook_active: request.stop_hook_active,
+-                last_assistant_message: NullableString::from_string(
+-                    request.last_assistant_message.clone(),
+-                ),
+-            };
+-            match serde_json::to_string(&input) {
+-                Ok(input_json) => input_json,
+-                Err(error) => {
+-                    return serialization_failure_outcome(
+-                        common::serialization_failure_hook_events(
+-                            matched,
+-                            Some(request.turn_id),
+-                            format!("failed to serialize stop hook input: {error}"),
+-                        ),
+-                    );
+-                }
+-            }
+-        }
+-        StopHookTarget::SubagentStop {
+-            agent_id,
+-            agent_type,
+-            agent_transcript_path,
+-        } => {
+-            let input = SubagentStopCommandInput {
+-                session_id: request.session_id.to_string(),
+-                turn_id: request.turn_id.clone(),
+-                transcript_path: NullableString::from_path(request.transcript_path.clone()),
+-                agent_transcript_path: NullableString::from_path(agent_transcript_path),
+-                cwd: request.cwd.display().to_string(),
+-                hook_event_name: "SubagentStop".to_string(),
+-                model: request.model.clone(),
+-                permission_mode: request.permission_mode.clone(),
+-                stop_hook_active: request.stop_hook_active,
+-                agent_id,
+-                agent_type,
+-                last_assistant_message: NullableString::from_string(
+-                    request.last_assistant_message.clone(),
+-                ),
+-            };
+-            match serde_json::to_string(&input) {
+-                Ok(input_json) => input_json,
+-                Err(error) => {
+-                    return serialization_failure_outcome(
+-                        common::serialization_failure_hook_events(
+-                            matched,
+-                            Some(request.turn_id),
+-                            format!("failed to serialize subagent stop hook input: {error}"),
+-                        ),
+-                    );
+-                }
+-            }
++    let dispatch = match invocation.dispatch() {
++        Ok(dispatch) => dispatch,
++        Err(error) => {
++            return serialization_failure_outcome(common::serialization_failure_hook_events(
++                matched,
++                Some(request.turn_id.clone()),
++                format!("failed to serialize stop hook input: {error}"),
++            ));
+         }
+     };
+ 
+     let results = dispatcher::execute_handlers_with_metadata(
+         engine,
+-        std::sync::Arc::clone(&occurrence),
++        std::sync::Arc::clone(&dispatch),
+         matched,
+-        input_json.clone(),
+-        request.cwd.as_path(),
+-        Some(request.turn_id.clone()),
+-        request.request_metadata.as_ref(),
+         parse_completed,
+     )
+     .await;
+@@ -212,12 +153,8 @@ pub(crate) async fn run(
+     if !executor_cleanup.is_empty() {
+         dispatcher::execute_handlers_with_metadata(
+             engine,
+-            std::sync::Arc::clone(&occurrence),
++            std::sync::Arc::clone(&dispatch),
+             executor_cleanup,
+-            input_json,
+-            request.cwd.as_path(),
+-            Some(request.turn_id),
+-            request.request_metadata.as_ref(),
+             parse_completed,
+         )
+         .await;
+diff --git a/codex-rs/hooks/src/events/user_prompt_submit.rs b/codex-rs/hooks/src/events/user_prompt_submit.rs
+index 7aa31de..e74d690 100644
+--- a/codex-rs/hooks/src/events/user_prompt_submit.rs
++++ b/codex-rs/hooks/src/events/user_prompt_submit.rs
+@@ -16,9 +16,6 @@ use crate::engine::HandlerRunResult;
+ use crate::engine::dispatcher;
+ use crate::engine::output_parser;
+ use crate::output_spill::AdditionalContext;
+-use crate::schema::NullableString;
+-use crate::schema::SubagentCommandInputFields;
+-use crate::schema::UserPromptSubmitCommandInput;
+ 
+ #[derive(Debug, Clone)]
+ pub struct UserPromptSubmitRequest {
+@@ -63,9 +60,10 @@ pub(crate) fn preview(
+ 
+ pub(crate) async fn run(
+     engine: &ClaudeHooksEngine,
+-    occurrence: std::sync::Arc<crate::NativeOccurrence>,
+-    request: UserPromptSubmitRequest,
++    invocation: std::sync::Arc<crate::NativeInvocation>,
+ ) -> UserPromptSubmitOutcome {
++    let request = invocation.request::<UserPromptSubmitRequest>().clone();
++
+     let matched = dispatcher::select_handlers(
+         &engine.handlers,
+         HookEventName::UserPromptSubmit,
+@@ -80,20 +78,8 @@ pub(crate) async fn run(
+         };
+     }
+ 
+-    let subagent = SubagentCommandInputFields::from(request.subagent.as_ref());
+-    let input_json = match serde_json::to_string(&UserPromptSubmitCommandInput {
+-        session_id: request.session_id.to_string(),
+-        turn_id: request.turn_id.clone(),
+-        agent_id: subagent.agent_id,
+-        agent_type: subagent.agent_type,
+-        transcript_path: NullableString::from_path(request.transcript_path.clone()),
+-        cwd: request.cwd.display().to_string(),
+-        hook_event_name: "UserPromptSubmit".to_string(),
+-        model: request.model.clone(),
+-        permission_mode: request.permission_mode.clone(),
+-        prompt: request.prompt.clone(),
+-    }) {
+-        Ok(input_json) => input_json,
++    let dispatch = match invocation.dispatch() {
++        Ok(dispatch) => dispatch,
+         Err(error) => {
+             return serialization_failure_outcome(common::serialization_failure_hook_events(
+                 matched,
+@@ -105,11 +91,8 @@ pub(crate) async fn run(
+ 
+     let results = dispatcher::execute_handlers(
+         engine,
+-        std::sync::Arc::clone(&occurrence),
++        std::sync::Arc::clone(&dispatch),
+         matched,
+-        input_json,
+-        request.cwd.as_path(),
+-        Some(request.turn_id),
+         parse_completed,
+     )
+     .await;
+diff --git a/codex-rs/hooks/src/legacy_notify.rs b/codex-rs/hooks/src/legacy_notify.rs
+index ba0d69f..ac0c9fd 100644
+--- a/codex-rs/hooks/src/legacy_notify.rs
++++ b/codex-rs/hooks/src/legacy_notify.rs
+@@ -46,10 +46,11 @@ pub(crate) fn notify_hook(argv: Vec<String>, environment: Arc<Vec<(OsString, OsS
+     let argv = Arc::new(argv);
+     Hook {
+         name: "legacy_notify".to_string(),
+-        func: Arc::new(move |occurrence, payload: &HookPayload| {
++        func: Arc::new(move |invocation| {
+             let argv = Arc::clone(&argv);
+             let environment = Arc::clone(&environment);
+             Box::pin(async move {
++                let payload = invocation.request::<HookPayload>();
+                 let mut command = match command_from_argv(&argv, environment.iter().cloned()) {
+                     Some(command) => command,
+                     None => return HookResult::Success,
+@@ -63,9 +64,20 @@ pub(crate) fn notify_hook(argv: Vec<String>, environment: Arc<Vec<(OsString, OsS
+                     .stdout(Stdio::null())
+                     .stderr(Stdio::null());
+ 
+-                occurrence.observe("legacy-command");
++                invocation.occurrence().observe("legacy-command");
+                 match command.spawn() {
+-                    Ok(_) => HookResult::Success,
++                    Ok(mut child) => {
++                        // Keep the original source object through normal child completion without delaying notify.
++                        // Runtime teardown may abort this waiter; this is not protected process-lifetime custody.
++                        tokio::spawn(async move {
++                            let outcome = child.wait().await;
++                            invocation.occurrence().observe("legacy-child-exit");
++                            if let Err(error) = outcome {
++                                tracing::warn!(%error, "legacy notify child wait failed");
++                            }
++                        });
++                        HookResult::Success
++                    }
+                     Err(err) => HookResult::FailedContinue(err.into()),
+                 }
+             })
+diff --git a/codex-rs/hooks/src/lib.rs b/codex-rs/hooks/src/lib.rs
+index 5d2fd2e..0305ed8 100644
+--- a/codex-rs/hooks/src/lib.rs
++++ b/codex-rs/hooks/src/lib.rs
+@@ -6,6 +6,7 @@ pub(crate) mod events;
+ mod legacy_notify;
+ mod mcp;
+ mod native_actor;
++mod native_dispatch;
+ mod native_occurrence;
+ pub use native_actor::{
+     NativeActorContext, NativeActorOwner, NativeContextError, NativeParent, NativeSourcePlacement,
+@@ -140,8 +141,9 @@ pub use events::model_request::ModelRequestHookInput;
+ pub use events::model_request::ModelRequestStatus;
+ 
+ pub use native_occurrence::{
+-    NativeEvent, NativeEventCapture, NativeHookKind, NativeHookRequest, NativeOccurrence,
+-    NativeOccurrenceId, NativeOccurrenceKind, NativeSessionSource, SourceLaunchEpoch,
++    NativeEvent, NativeEventCapture, NativeHookKind, NativeHookRequest, NativeInvocation,
++    NativeOccurrence, NativeOccurrenceId, NativeOccurrenceKind, NativeRequestBody,
++    NativeSessionSource, SourceLaunchEpoch,
+ };
+ pub use native_session::NativeSessionContext;
+ 
+diff --git a/codex-rs/hooks/src/native_dispatch.rs b/codex-rs/hooks/src/native_dispatch.rs
+new file mode 100644
+index 0000000..3fb06d5
+--- /dev/null
++++ b/codex-rs/hooks/src/native_dispatch.rs
+@@ -0,0 +1,208 @@
++//! Private finite projections, retained with their complete immutable native source request.
++use crate::NativeInvocation;
++use crate::events::{compact, permission_request, post_tool_use, pre_tool_use};
++use crate::native_occurrence::NativeRequest;
++use crate::schema::*;
++use serde_json::{Map, Value};
++use std::path::{Path, PathBuf};
++use std::sync::Arc;
++
++pub(crate) struct NativeDispatch {
++    invocation: Arc<NativeInvocation>,
++    input: String,
++    cwd: PathBuf,
++    turn_id: Option<String>,
++    metadata: Option<Map<String, Value>>,
++}
++impl NativeDispatch {
++    pub(crate) fn invocation(&self) -> &Arc<NativeInvocation> {
++        &self.invocation
++    }
++    pub(crate) fn input(&self) -> &str {
++        &self.input
++    }
++    pub(crate) fn cwd(&self) -> &Path {
++        &self.cwd
++    }
++    pub(crate) fn turn_id(&self) -> Option<String> {
++        self.turn_id.clone()
++    }
++    pub(crate) fn metadata(&self) -> Option<&Map<String, Value>> {
++        self.metadata.as_ref()
++    }
++    pub(super) fn capture(
++        invocation: Arc<NativeInvocation>,
++    ) -> Result<Arc<Self>, serde_json::Error> {
++        let (input, cwd, turn_id, metadata) = match invocation.original() {
++            NativeRequest::PreToolUse(r) => (
++                pre_tool_use::command_input_json(r)?,
++                r.cwd.to_path_buf(),
++                Some(r.turn_id.clone()),
++                None,
++            ),
++            NativeRequest::PostToolUse(r) => (
++                post_tool_use::command_input_json(r)?,
++                r.cwd.to_path_buf(),
++                Some(r.turn_id.clone()),
++                None,
++            ),
++            NativeRequest::PermissionRequest(r) => (
++                serde_json::to_string(&permission_request::build_command_input(r))?,
++                r.cwd.to_path_buf(),
++                Some(r.turn_id.clone()),
++                None,
++            ),
++            NativeRequest::PreCompact(r) => (
++                compact::pre_command_input_json(r)?,
++                r.cwd.to_path_buf(),
++                Some(r.turn_id.clone()),
++                None,
++            ),
++            NativeRequest::PostCompact(r) => (
++                compact::post_command_input_json(r)?,
++                r.cwd.to_path_buf(),
++                Some(r.turn_id.clone()),
++                None,
++            ),
++            NativeRequest::ModelRequest(r) => (
++                serde_json::to_string(r)?,
++                r.cwd.to_path_buf(),
++                Some(r.turn_id.clone()),
++                None,
++            ),
++            NativeRequest::UserPromptSubmit(r) => {
++                let subagent = SubagentCommandInputFields::from(r.subagent.as_ref());
++                let input = serde_json::to_string(&UserPromptSubmitCommandInput {
++                    session_id: r.session_id.to_string(),
++                    turn_id: r.turn_id.clone(),
++                    agent_id: subagent.agent_id,
++                    agent_type: subagent.agent_type,
++                    transcript_path: NullableString::from_path(r.transcript_path.clone()),
++                    cwd: r.cwd.display().to_string(),
++                    hook_event_name: "UserPromptSubmit".into(),
++                    model: r.model.clone(),
++                    permission_mode: r.permission_mode.clone(),
++                    prompt: r.prompt.clone(),
++                })?;
++                (input, r.cwd.to_path_buf(), Some(r.turn_id.clone()), None)
++            }
++            NativeRequest::SessionEnd(r) => {
++                let input = serde_json::to_string(&SessionEndCommandInput {
++                    session_id: r.session_id.to_string(),
++                    transcript_path: NullableString::from_path(r.transcript_path.clone()),
++                    cwd: r.cwd.display().to_string(),
++                    hook_event_name: "SessionEnd".into(),
++                    reason: "other".into(),
++                })?;
++                (input, r.cwd.to_path_buf(), Some(r.turn_id.clone()), None)
++            }
++            NativeRequest::Interrupt(r) => {
++                let input = serde_json::to_string(&InterruptCommandInput {
++                    session_id: r.session_id.to_string(),
++                    turn_id: r.turn_id.clone(),
++                    transcript_path: NullableString::from_path(r.transcript_path.clone()),
++                    cwd: r.cwd.display().to_string(),
++                    hook_event_name: "Interrupt".into(),
++                    model: r.model.clone(),
++                    permission_mode: r.permission_mode.clone(),
++                })?;
++                (
++                    input,
++                    r.cwd.to_path_buf(),
++                    Some(r.turn_id.clone()),
++                    r.request_metadata.clone(),
++                )
++            }
++            NativeRequest::SessionStart(r) => {
++                let (input, turn) = match &r.target {
++                    crate::StartHookTarget::SessionStart { source } => (
++                        serde_json::to_string(&SessionStartCommandInput::new(
++                            r.session_id.to_string(),
++                            r.transcript_path.clone(),
++                            r.cwd.display().to_string(),
++                            r.model.clone(),
++                            r.permission_mode.clone(),
++                            source.as_str().to_string(),
++                        ))?,
++                        r.turn_id.clone(),
++                    ),
++                    crate::StartHookTarget::SubagentStart {
++                        turn_id,
++                        agent_id,
++                        agent_type,
++                    } => (
++                        serde_json::to_string(&SubagentStartCommandInput {
++                            session_id: r.session_id.to_string(),
++                            turn_id: turn_id.clone(),
++                            transcript_path: NullableString::from_path(r.transcript_path.clone()),
++                            cwd: r.cwd.display().to_string(),
++                            hook_event_name: "SubagentStart".into(),
++                            model: r.model.clone(),
++                            permission_mode: r.permission_mode.clone(),
++                            agent_id: agent_id.clone(),
++                            agent_type: agent_type.clone(),
++                        })?,
++                        Some(turn_id.clone()),
++                    ),
++                };
++                (input, r.cwd.to_path_buf(), turn, None)
++            }
++            NativeRequest::Stop(r) => {
++                let input = match &r.target {
++                    crate::StopHookTarget::Stop | crate::StopHookTarget::MemoryConsolidation => {
++                        serde_json::to_string(&StopCommandInput {
++                            session_id: r.session_id.to_string(),
++                            turn_id: r.turn_id.clone(),
++                            transcript_path: NullableString::from_path(r.transcript_path.clone()),
++                            cwd: r.cwd.display().to_string(),
++                            hook_event_name: "Stop".into(),
++                            model: r.model.clone(),
++                            permission_mode: r.permission_mode.clone(),
++                            stop_hook_active: r.stop_hook_active,
++                            last_assistant_message: NullableString::from_string(
++                                r.last_assistant_message.clone(),
++                            ),
++                        })?
++                    }
++                    crate::StopHookTarget::SubagentStop {
++                        agent_id,
++                        agent_type,
++                        agent_transcript_path,
++                    } => serde_json::to_string(&SubagentStopCommandInput {
++                        session_id: r.session_id.to_string(),
++                        turn_id: r.turn_id.clone(),
++                        transcript_path: NullableString::from_path(r.transcript_path.clone()),
++                        agent_transcript_path: NullableString::from_path(
++                            agent_transcript_path.clone(),
++                        ),
++                        cwd: r.cwd.display().to_string(),
++                        hook_event_name: "SubagentStop".into(),
++                        model: r.model.clone(),
++                        permission_mode: r.permission_mode.clone(),
++                        stop_hook_active: r.stop_hook_active,
++                        agent_id: agent_id.clone(),
++                        agent_type: agent_type.clone(),
++                        last_assistant_message: NullableString::from_string(
++                            r.last_assistant_message.clone(),
++                        ),
++                    })?,
++                };
++                (
++                    input,
++                    r.cwd.to_path_buf(),
++                    Some(r.turn_id.clone()),
++                    r.request_metadata.clone(),
++                )
++            }
++            // Legacy is rendered only by its finite legacy callback, while it retains this invocation.
++            _ => unreachable!("unsupported configured native request projection"),
++        };
++        Ok(Arc::new(Self {
++            invocation,
++            input,
++            cwd,
++            turn_id,
++            metadata,
++        }))
++    }
++}
+diff --git a/codex-rs/hooks/src/native_occurrence.rs b/codex-rs/hooks/src/native_occurrence.rs
+index 3a944b6..bd7439d 100644
+--- a/codex-rs/hooks/src/native_occurrence.rs
++++ b/codex-rs/hooks/src/native_occurrence.rs
+@@ -270,12 +270,63 @@ impl NativeSessionSource {
+     }
+ }
+ 
++/// Closed, owned source data. Constructing data does not issue an occurrence or grant authority.
++#[doc(hidden)]
++pub struct NativeRequestBody {
++    request: NativeRequest,
++}
++impl NativeRequestBody {
++    fn kind(&self) -> NativeHookKind {
++        self.request.kind()
++    }
++}
++pub(crate) enum NativeRequest {
++    PreToolUse(crate::PreToolUseRequest),
++    PermissionRequest(crate::PermissionRequestRequest),
++    PostToolUse(crate::PostToolUseRequest),
++    PreCompact(crate::PreCompactRequest),
++    PostCompact(crate::PostCompactRequest),
++    UserPromptSubmit(crate::UserPromptSubmitRequest),
++    SessionEnd(crate::SessionEndRequest),
++    Interrupt(crate::InterruptRequest),
++    SessionStart(crate::SessionStartRequest),
++    Stop(crate::StopRequest),
++    ModelRequest(crate::ModelRequestHookInput),
++    Legacy(crate::HookPayload),
++    #[cfg(test)]
++    Test(tests::TestRequest),
++}
++impl NativeRequest {
++    fn kind(&self) -> NativeHookKind {
++        match self {
++            Self::PreToolUse(r) => r.native_kind(),
++            Self::PermissionRequest(r) => r.native_kind(),
++            Self::PostToolUse(r) => r.native_kind(),
++            Self::PreCompact(r) => r.native_kind(),
++            Self::PostCompact(r) => r.native_kind(),
++            Self::UserPromptSubmit(r) => r.native_kind(),
++            Self::SessionEnd(r) => r.native_kind(),
++            Self::Interrupt(r) => r.native_kind(),
++            Self::SessionStart(r) => r.native_kind(),
++            Self::Stop(r) => r.native_kind(),
++            Self::ModelRequest(r) => r.native_kind(),
++            Self::Legacy(r) => r.native_kind(),
++            #[cfg(test)]
++            Self::Test(r) => r.native_kind(),
++        }
++    }
++}
++
+ mod sealed {
+     pub trait Request {}
+ }
+ /// Only maintained native request variants can classify an invocation; this is not an authority trait.
+ pub trait NativeHookRequest: sealed::Request {
+     fn native_kind(&self) -> NativeHookKind;
++    #[doc(hidden)]
++    fn freeze(self) -> NativeRequestBody;
++    #[doc(hidden)]
++    fn original(body: &NativeRequestBody) -> Option<&Self>;
+ }
+ #[derive(Debug)]
+ pub struct NativeEventCapture {
+@@ -298,32 +349,44 @@ impl NativeEventCapture {
+             fatal(OccurrenceError::WrongKind);
+         }
+         NativeEvent {
+-            source: self.source,
+-            occurrence: self.occurrence,
+-            request,
++            invocation: Arc::new(NativeInvocation {
++                source: self.source,
++                occurrence: self.occurrence,
++                original: request.freeze(),
++            }),
++            marker: std::marker::PhantomData,
+         }
+     }
+ }
+-#[derive(Clone, Debug)]
+-pub struct NativeEvent<T> {
++/// One complete source request and its original occurrence. Rendered handler input is only a projection.
++pub struct NativeInvocation {
+     source: Arc<NativeSessionSource>,
+     occurrence: Arc<NativeOccurrence>,
+-    request: T,
++    original: NativeRequestBody,
+ }
+-impl<T: NativeHookRequest> NativeEvent<T> {
+-    pub(crate) fn capture(source: Arc<NativeSessionSource>, request: T) -> Self {
+-        NativeEventCapture::new(source, request.native_kind()).with_request(request)
+-    }
+-    pub fn request(&self) -> &T {
+-        &self.request
++impl std::fmt::Debug for NativeInvocation {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        f.debug_struct("NativeInvocation")
++            .field("occurrence", &self.occurrence)
++            .finish_non_exhaustive()
+     }
++}
++impl NativeInvocation {
+     pub fn occurrence(&self) -> &Arc<NativeOccurrence> {
+         &self.occurrence
+     }
+-    pub(crate) fn into_parts(
+-        self,
+-        source: &Arc<NativeSessionSource>,
+-    ) -> (Arc<NativeOccurrence>, T) {
++    pub(crate) fn original(&self) -> &NativeRequest {
++        &self.original.request
++    }
++    pub(crate) fn dispatch(
++        self: &Arc<Self>,
++    ) -> Result<Arc<crate::native_dispatch::NativeDispatch>, serde_json::Error> {
++        crate::native_dispatch::NativeDispatch::capture(Arc::clone(self))
++    }
++    pub fn request<T: NativeHookRequest>(&self) -> &T {
++        T::original(&self.original).unwrap_or_else(|| fatal(OccurrenceError::WrongKind))
++    }
++    fn validate(&self, source: &Arc<NativeSessionSource>) {
+         if issuer().process != std::process::id() {
+             fatal(OccurrenceError::WrongProcess);
+         }
+@@ -334,16 +397,67 @@ impl<T: NativeHookRequest> NativeEvent<T> {
+         {
+             fatal(OccurrenceError::WrongOwner);
+         }
+-        if self.occurrence.kind != source.hook_kind(self.request.native_kind()) {
++        if self.occurrence.kind != source.hook_kind(self.original.kind()) {
+             fatal(OccurrenceError::WrongKind);
+         }
+-        (self.occurrence, self.request)
+     }
+ }
++pub struct NativeEvent<T> {
++    invocation: Arc<NativeInvocation>,
++    marker: std::marker::PhantomData<T>,
++}
++impl<T> Clone for NativeEvent<T> {
++    fn clone(&self) -> Self {
++        Self {
++            invocation: Arc::clone(&self.invocation),
++            marker: std::marker::PhantomData,
++        }
++    }
++}
++impl<T> std::fmt::Debug for NativeEvent<T> {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        self.invocation.fmt(f)
++    }
++}
++impl<T: NativeHookRequest> NativeEvent<T> {
++    pub(crate) fn capture(source: Arc<NativeSessionSource>, request: T) -> Self {
++        NativeEventCapture::new(source, request.native_kind()).with_request(request)
++    }
++    pub fn request(&self) -> &T {
++        self.invocation.request()
++    }
++    #[cfg(test)]
++    pub(crate) fn retained(&self) -> std::sync::Weak<NativeInvocation> {
++        Arc::downgrade(&self.invocation)
++    }
++    pub fn occurrence(&self) -> &Arc<NativeOccurrence> {
++        self.invocation.occurrence()
++    }
++    pub(crate) fn into_invocation(
++        self,
++        source: &Arc<NativeSessionSource>,
++    ) -> Arc<NativeInvocation> {
++        self.invocation.validate(source);
++        self.invocation
++    }
++}
++
+ macro_rules! fixed_request {
+     ($ty:ty, $kind:ident) => {
+         impl sealed::Request for $ty {}
+         impl NativeHookRequest for $ty {
++            fn freeze(self) -> NativeRequestBody {
++                NativeRequestBody {
++                    request: NativeRequest::$kind(self),
++                }
++            }
++            fn original(body: &NativeRequestBody) -> Option<&Self> {
++                if let NativeRequest::$kind(r) = &body.request {
++                    Some(r)
++                } else {
++                    None
++                }
++            }
+             fn native_kind(&self) -> NativeHookKind {
+                 NativeHookKind::Configured(HookEventName::$kind)
+             }
+@@ -360,24 +474,72 @@ fixed_request!(crate::SessionEndRequest, SessionEnd);
+ fixed_request!(crate::InterruptRequest, Interrupt);
+ impl sealed::Request for crate::SessionStartRequest {}
+ impl NativeHookRequest for crate::SessionStartRequest {
++    fn freeze(self) -> NativeRequestBody {
++        NativeRequestBody {
++            request: NativeRequest::SessionStart(self),
++        }
++    }
++    fn original(body: &NativeRequestBody) -> Option<&Self> {
++        if let NativeRequest::SessionStart(r) = &body.request {
++            Some(r)
++        } else {
++            None
++        }
++    }
+     fn native_kind(&self) -> NativeHookKind {
+         NativeHookKind::Configured(self.target.event_name())
+     }
+ }
+ impl sealed::Request for crate::StopRequest {}
+ impl NativeHookRequest for crate::StopRequest {
++    fn freeze(self) -> NativeRequestBody {
++        NativeRequestBody {
++            request: NativeRequest::Stop(self),
++        }
++    }
++    fn original(body: &NativeRequestBody) -> Option<&Self> {
++        if let NativeRequest::Stop(r) = &body.request {
++            Some(r)
++        } else {
++            None
++        }
++    }
+     fn native_kind(&self) -> NativeHookKind {
+         NativeHookKind::Configured(self.target.event_name())
+     }
+ }
+ impl sealed::Request for crate::ModelRequestHookInput {}
+ impl NativeHookRequest for crate::ModelRequestHookInput {
++    fn freeze(self) -> NativeRequestBody {
++        NativeRequestBody {
++            request: NativeRequest::ModelRequest(self),
++        }
++    }
++    fn original(body: &NativeRequestBody) -> Option<&Self> {
++        if let NativeRequest::ModelRequest(r) = &body.request {
++            Some(r)
++        } else {
++            None
++        }
++    }
+     fn native_kind(&self) -> NativeHookKind {
+         NativeHookKind::Configured(self.event.hook_event())
+     }
+ }
+ impl sealed::Request for crate::HookPayload {}
+ impl NativeHookRequest for crate::HookPayload {
++    fn freeze(self) -> NativeRequestBody {
++        NativeRequestBody {
++            request: NativeRequest::Legacy(self),
++        }
++    }
++    fn original(body: &NativeRequestBody) -> Option<&Self> {
++        if let NativeRequest::Legacy(r) = &body.request {
++            Some(r)
++        } else {
++            None
++        }
++    }
+     fn native_kind(&self) -> NativeHookKind {
+         NativeHookKind::LegacyAfterAgent
+     }
+diff --git a/codex-rs/hooks/src/native_occurrence/tests.rs b/codex-rs/hooks/src/native_occurrence/tests.rs
+index 1a97070..f06d2e9 100644
+--- a/codex-rs/hooks/src/native_occurrence/tests.rs
++++ b/codex-rs/hooks/src/native_occurrence/tests.rs
+@@ -1,9 +1,21 @@
+ use super::*;
+ use codex_protocol::ThreadId;
+ #[derive(Clone, Debug)]
+-struct TestRequest;
++pub struct TestRequest;
+ impl super::sealed::Request for TestRequest {}
+ impl NativeHookRequest for TestRequest {
++    fn freeze(self) -> NativeRequestBody {
++        NativeRequestBody {
++            request: NativeRequest::Test(self),
++        }
++    }
++    fn original(body: &NativeRequestBody) -> Option<&Self> {
++        if let NativeRequest::Test(r) = &body.request {
++            Some(r)
++        } else {
++            None
++        }
++    }
+     fn native_kind(&self) -> NativeHookKind {
+         NativeHookKind::LegacyAfterAgent
+     }
+@@ -37,9 +49,12 @@ fn retries_preserve_exact_arc_and_immutable_native_context() {
+     let event = NativeEventCapture::new(source.clone(), NativeHookKind::LegacyAfterAgent)
+         .with_request(TestRequest);
+     let retry = event.clone();
+-    assert!(Arc::ptr_eq(&event.occurrence, &retry.occurrence));
+-    assert_eq!(event.occurrence.context, source.context());
+-    assert!(Arc::ptr_eq(&event.source, &retry.source));
++    assert!(Arc::ptr_eq(event.occurrence(), retry.occurrence()));
++    assert_eq!(event.occurrence().context, source.context());
++    assert!(Arc::ptr_eq(
++        &event.invocation.source,
++        &retry.invocation.source
++    ));
+ }
+ 
+ #[test]
+@@ -124,7 +139,7 @@ fn wrong_owner_and_kind_are_fatal_before_dispatch() {
+         let owner = source(NativeIdentityOrigin::Birth);
+         if mode == "owner" {
+             let event = NativeEvent::capture(owner, TestRequest);
+-            event.into_parts(&source(NativeIdentityOrigin::Birth));
++            event.into_invocation(&source(NativeIdentityOrigin::Birth));
+         } else {
+             NativeEventCapture::new(owner, NativeHookKind::Configured(HookEventName::Stop))
+                 .with_request(TestRequest);
+@@ -166,13 +181,18 @@ async fn legacy_notify_retains_occurrence_through_real_plumbing_spawn() {
+     };
+     let event = NativeEvent::capture(owner.clone(), payload);
+     let occurrence = event.occurrence().clone();
+-    let (held, payload) = event.into_parts(&owner);
+-    let hook = crate::legacy_notify::notify_hook(vec!["/bin/true".into()], Arc::new(Vec::new()));
+-    let result = hook.execute(held, &payload).await;
+-    assert!(matches!(result.result, crate::HookResult::Success));
+-    assert_eq!(
+-        occurrence.observations(),
+-        vec![("legacy-command", Arc::as_ptr(&occurrence) as usize)]
++    let held = event.into_invocation(&owner);
++    let hook =
++        crate::legacy_notify::notify_hook(vec!["/usr/bin/true".into()], Arc::new(Vec::new()));
++    let result = hook.execute(held).await;
++    assert!(
++        matches!(result.result, crate::HookResult::Success),
++        "{result:?}"
++    );
++    assert!(
++        occurrence
++            .observations()
++            .contains(&("legacy-command", Arc::as_ptr(&occurrence) as usize))
+     );
+ }
+ 
+@@ -189,6 +209,230 @@ fn unavailable_hook_retains_legacy_data_without_native_invocation_context() {
+     );
+     assert_eq!(event.occurrence().actor_context(), None);
+     assert_eq!(event.occurrence().context(), labels);
+-    let (occurrence, _) = event.into_parts(&source);
+-    assert_eq!(occurrence.actor_context(), None);
++    let invocation = event.into_invocation(&source);
++    assert_eq!(invocation.occurrence().actor_context(), None);
++}
++
++#[test]
++fn native_original_request_clone_keeps_one_complete_body_allocation() {
++    let owner = source(NativeIdentityOrigin::Birth);
++    let event = NativeEvent::capture(
++        owner.clone(),
++        crate::PreToolUseRequest {
++            session_id: owner.context().root(),
++            turn_id: "retained-original".into(),
++            subagent: None,
++            cwd: codex_utils_absolute_path::AbsolutePathBuf::try_from(std::env::temp_dir())
++                .unwrap(),
++            transcript_path: None,
++            model: "metadata-only".into(),
++            permission_mode: "default".into(),
++            tool_name: "shell".into(),
++            matcher_aliases: vec!["projection-omits-this".into()],
++            tool_use_id: "original-tool".into(),
++            tool_input: serde_json::json!({"command":"original"}),
++        },
++    );
++    let retry = event.clone();
++    assert!(
++        std::ptr::eq(event.request(), retry.request()),
++        "retry copied the original request instead of retaining it"
++    );
++    assert_eq!(retry.request().matcher_aliases, ["projection-omits-this"]);
++}
++
++#[test]
++fn native_original_request_projection_keeps_omitted_fields_and_original_context() {
++    let owner = source(NativeIdentityOrigin::Birth);
++    let original_cwd =
++        codex_utils_absolute_path::AbsolutePathBuf::try_from(std::env::temp_dir()).unwrap();
++    let event = NativeEvent::capture(
++        owner.clone(),
++        crate::PreToolUseRequest {
++            session_id: owner.context().root(),
++            turn_id: "original-turn".into(),
++            subagent: None,
++            cwd: original_cwd.clone(),
++            transcript_path: None,
++            model: "metadata-only".into(),
++            permission_mode: "default".into(),
++            tool_name: "shell".into(),
++            matcher_aliases: vec!["not-in-handler-JSON".into()],
++            tool_use_id: "original-tool".into(),
++            tool_input: serde_json::json!({"command":"original-command"}),
++        },
++    );
++    let invocation = event.into_invocation(&owner);
++    let weak = Arc::downgrade(&invocation);
++    let dispatch = invocation.dispatch().unwrap();
++    let mut scratch = invocation.request::<crate::PreToolUseRequest>().clone();
++    scratch.turn_id = "different-turn".into();
++    scratch.tool_input = serde_json::json!({"command":"different-command"});
++    drop(invocation);
++    let held = weak
++        .upgrade()
++        .expect("dispatch dropped its complete original request");
++    assert_eq!(
++        held.request::<crate::PreToolUseRequest>().matcher_aliases,
++        ["not-in-handler-JSON"]
++    );
++    assert_eq!(dispatch.cwd(), original_cwd.as_path());
++    assert_eq!(dispatch.turn_id().as_deref(), Some("original-turn"));
++    let rendered: serde_json::Value = serde_json::from_str(dispatch.input()).unwrap();
++    assert_eq!(rendered["turn_id"], "original-turn");
++    assert_eq!(rendered["tool_input"]["command"], "original-command");
++    assert!(rendered.get("matcher_aliases").is_none());
++    drop(held);
++    drop(dispatch);
++    assert!(
++        weak.upgrade().is_none(),
++        "original body outlived all consumers"
++    );
++}
++
++#[test]
++fn native_original_request_session_start_turn_is_internal_and_cannot_be_overridden() {
++    let owner = source(NativeIdentityOrigin::Birth);
++    let event = NativeEvent::capture(
++        owner.clone(),
++        crate::SessionStartRequest {
++            turn_id: Some("actual-source-turn".into()),
++            session_id: owner.context().root(),
++            cwd: codex_utils_absolute_path::AbsolutePathBuf::try_from(std::env::temp_dir())
++                .unwrap(),
++            transcript_path: None,
++            model: "metadata-only".into(),
++            permission_mode: "default".into(),
++            target: crate::StartHookTarget::SessionStart {
++                source: crate::SessionStartSource::Startup,
++            },
++        },
++    );
++    let retry = event.clone();
++    assert!(std::ptr::eq(event.request(), retry.request()));
++    let dispatch = retry.into_invocation(&owner).dispatch().unwrap();
++    assert_eq!(dispatch.turn_id().as_deref(), Some("actual-source-turn"));
++    let json: serde_json::Value = serde_json::from_str(dispatch.input()).unwrap();
++    assert!(
++        json.get("turn_id").is_none(),
++        "internal retention changed the public SessionStart schema"
++    );
++}
++
++#[tokio::test]
++async fn native_original_request_legacy_callback_retains_body_until_completion() {
++    let owner = source(NativeIdentityOrigin::Birth);
++    let event = NativeEvent::capture(
++        owner.clone(),
++        crate::HookPayload {
++            session_id: owner.context().root(),
++            cwd: codex_utils_absolute_path::AbsolutePathBuf::try_from(std::env::temp_dir())
++                .unwrap(),
++            client: Some("original-client".into()),
++            triggered_at: chrono::Utc::now(),
++            hook_event: crate::HookEvent::AfterAgent {
++                event: crate::HookEventAfterAgent {
++                    thread_id: owner.context().actor(),
++                    turn_id: "original-legacy-turn".into(),
++                    input_messages: vec!["original-full-input".into()],
++                    last_assistant_message: None,
++                },
++            },
++        },
++    );
++    let invocation = event.into_invocation(&owner);
++    let weak = Arc::downgrade(&invocation);
++    let entered = Arc::new(tokio::sync::Notify::new());
++    let release = Arc::new(tokio::sync::Notify::new());
++    let notify = entered.clone();
++    let gate = release.clone();
++    let hook = crate::Hook {
++        name: "retention-plumbing".into(),
++        func: Arc::new(move |original| {
++            let notify = notify.clone();
++            let gate = gate.clone();
++            Box::pin(async move {
++                assert_eq!(
++                    original.request::<crate::HookPayload>().client.as_deref(),
++                    Some("original-client")
++                );
++                notify.notify_one();
++                gate.notified().await;
++                assert_eq!(
++                    original.request::<crate::HookPayload>().client.as_deref(),
++                    Some("original-client")
++                );
++                crate::HookResult::Success
++            })
++        }),
++    };
++    let task = tokio::spawn(async move { hook.execute(invocation).await });
++    entered.notified().await;
++    assert!(
++        weak.upgrade().is_some(),
++        "legacy projection replaced the original body"
++    );
++    release.notify_one();
++    task.await.unwrap();
++    assert!(weak.upgrade().is_none());
++}
++
++#[cfg(unix)]
++#[tokio::test]
++async fn native_original_request_real_legacy_child_owns_body_after_nonblocking_return() {
++    let owner = source(NativeIdentityOrigin::Birth);
++    let dir = tempfile::tempdir().unwrap();
++    let event = NativeEvent::capture(
++        owner.clone(),
++        crate::HookPayload {
++            session_id: owner.context().root(),
++            cwd: codex_utils_absolute_path::AbsolutePathBuf::try_from(dir.path()).unwrap(),
++            client: None,
++            triggered_at: chrono::Utc::now(),
++            hook_event: crate::HookEvent::AfterAgent {
++                event: crate::HookEventAfterAgent {
++                    thread_id: owner.context().actor(),
++                    turn_id: "retained-child".into(),
++                    input_messages: vec!["complete-input".into()],
++                    last_assistant_message: None,
++                },
++            },
++        },
++    );
++    let original = event.retained();
++    let command = format!(
++        "touch '{}'; while [ ! -f '{}' ]; do /bin/sleep 0.01; done",
++        dir.path().join("started").display(),
++        dir.path().join("release").display()
++    );
++    let hook = crate::legacy_notify::notify_hook(
++        vec!["/bin/sh".into(), "-c".into(), command],
++        Arc::new(Vec::new()),
++    );
++    let result = tokio::time::timeout(
++        std::time::Duration::from_secs(1),
++        hook.execute(event.into_invocation(&owner)),
++    )
++    .await
++    .expect("legacy callback delayed for child exit");
++    assert!(matches!(result.result, crate::HookResult::Success));
++    tokio::time::timeout(std::time::Duration::from_secs(1), async {
++        while !dir.path().join("started").exists() {
++            tokio::task::yield_now().await;
++        }
++    })
++    .await
++    .unwrap();
++    assert!(
++        original.upgrade().is_some(),
++        "spawn return discarded full original request"
++    );
++    std::fs::write(dir.path().join("release"), b"release").unwrap();
++    tokio::time::timeout(std::time::Duration::from_secs(1), async {
++        while original.upgrade().is_some() {
++            tokio::task::yield_now().await;
++        }
++    })
++    .await
++    .expect("child exit retained request forever");
+ }
+diff --git a/codex-rs/hooks/src/registry.rs b/codex-rs/hooks/src/registry.rs
+index 243d414..652f5bb 100644
+--- a/codex-rs/hooks/src/registry.rs
++++ b/codex-rs/hooks/src/registry.rs
+@@ -206,13 +206,12 @@ impl Hooks {
+         &self,
+         hook_payload: crate::NativeEvent<HookPayload>,
+     ) -> Vec<HookResponse> {
+-        let (occurrence, hook_payload) =
+-            hook_payload.into_parts(&self.engine.command_runtime.native_source());
+-        let hooks = self.hooks_for_event(&hook_payload.hook_event);
++        let invocation = hook_payload.into_invocation(&self.engine.command_runtime.native_source());
++        let hooks = self.hooks_for_event(&invocation.request::<HookPayload>().hook_event);
+         let mut outcomes = Vec::with_capacity(hooks.len());
+         for hook in hooks {
+-            occurrence.observe("legacy");
+-            let outcome = hook.execute(Arc::clone(&occurrence), &hook_payload).await;
++            invocation.occurrence().observe("legacy");
++            let outcome = hook.execute(Arc::clone(&invocation)).await;
+             let should_abort_operation = outcome.result.should_abort_operation();
+             outcomes.push(outcome);
+             if should_abort_operation {
+@@ -261,9 +260,8 @@ impl Hooks {
+     pub async fn run_session_start(
+         &self,
+         request: crate::NativeEvent<SessionStartRequest>,
+-        turn_id: Option<String>,
+     ) -> SessionStartOutcome {
+-        self.engine.run_session_start(request, turn_id).await
++        self.engine.run_session_start(request).await
+     }
+ 
+     pub async fn run_pre_tool_use(
+@@ -388,9 +386,8 @@ impl Hooks {
+         &self,
+         request: crate::NativeEvent<crate::ModelRequestHookInput>,
+     ) -> Vec<codex_protocol::protocol::HookCompletedEvent> {
+-        let (occurrence, request) =
+-            request.into_parts(&self.engine.command_runtime.native_source());
+-        crate::events::model_request::run(&self.engine, occurrence, request).await
++        let invocation = request.into_invocation(&self.engine.command_runtime.native_source());
++        crate::events::model_request::run(&self.engine, invocation).await
+     }
+ }
+ 
+diff --git a/codex-rs/hooks/src/types.rs b/codex-rs/hooks/src/types.rs
+index e99d6c6..fe819d2 100644
+--- a/codex-rs/hooks/src/types.rs
++++ b/codex-rs/hooks/src/types.rs
+@@ -9,11 +9,8 @@ use futures::future::BoxFuture;
+ use serde::Serialize;
+ use serde::Serializer;
+ 
+-pub type HookFn = Arc<
+-    dyn for<'a> Fn(Arc<crate::NativeOccurrence>, &'a HookPayload) -> BoxFuture<'a, HookResult>
+-        + Send
+-        + Sync,
+->;
++pub type HookFn =
++    Arc<dyn Fn(Arc<crate::NativeInvocation>) -> BoxFuture<'static, HookResult> + Send + Sync>;
+ 
+ #[derive(Debug)]
+ pub enum HookResult {
+@@ -49,20 +46,16 @@ impl Default for Hook {
+     fn default() -> Self {
+         Self {
+             name: "default".to_string(),
+-            func: Arc::new(|_, _| Box::pin(async { HookResult::Success })),
++            func: Arc::new(|_| Box::pin(async { HookResult::Success })),
+         }
+     }
+ }
+ 
+ impl Hook {
+-    pub async fn execute(
+-        &self,
+-        occurrence: Arc<crate::NativeOccurrence>,
+-        payload: &HookPayload,
+-    ) -> HookResponse {
++    pub async fn execute(&self, invocation: Arc<crate::NativeInvocation>) -> HookResponse {
+         HookResponse {
+             hook_name: self.name.clone(),
+-            result: (self.func)(occurrence, payload).await,
++            result: (self.func)(invocation).await,
+         }
+     }
+ }

@@ -9,7 +9,6 @@ head, ``ngram``, or nothing -- and ``spec_draft_max`` the most tree nodes a pass
 from __future__ import annotations
 
 import json
-import sys
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -17,7 +16,7 @@ from typing import Any
 from poolhouse import home, hub
 from poolhouse.hub import room
 from poolhouse.hub.modelfile import safetensors_header
-from poolhouse.serve import kvcache
+from poolhouse.serve import kvcache, python_runtime
 from poolhouse.serve.backend import (
     Lease,
     ServerBackend,
@@ -81,14 +80,9 @@ def resident_bytes(where: Path | None) -> int:
     return held
 
 
-def kv_bytes(config: Mapping[str, Any], context: int, bits: int | None) -> tuple[int, int, int]:
-    """``(bytes, attention layers, layers)`` of the KV cache for ``context`` tokens.
-
-    Only attention layers keep a KV cache; a recurrent layer's state is not quantised and not
-    counted here. A ``bits``-bit cache stores ``bits / 8`` bytes a value plus a 16-bit scale
-    and bias per ``GROUP_SIZE`` values; ``None`` is f16, 2 bytes. 0 bytes when the config does
-    not say how wide the heads are.
-    """
+def attention_shape(config: Mapping[str, Any]) -> tuple[int, int, int, int]:
+    """``(attention layers, layers, KV heads, head width)`` a model's config says; 0 where it does
+    not say. Only attention layers keep a KV cache; a recurrent layer's state is not counted."""
     text = config.get("text_config") or config
     layers = int(text.get("num_hidden_layers") or 0)
     kinds = text.get("layer_types")
@@ -102,6 +96,17 @@ def kv_bytes(config: Mapping[str, Any], context: int, bits: int | None) -> tuple
     width = int(text.get("head_dim") or 0)
     if not width and text.get("num_attention_heads"):
         width = int(text.get("hidden_size") or 0) // int(text["num_attention_heads"])
+    return each, layers, heads, width
+
+
+def kv_bytes(config: Mapping[str, Any], context: int, bits: int | None) -> tuple[int, int, int]:
+    """``(bytes, attention layers, layers)`` of the KV cache for ``context`` tokens.
+
+    A ``bits``-bit cache stores ``bits / 8`` bytes a value plus a 16-bit scale and bias per
+    ``GROUP_SIZE`` values; ``None`` is f16, 2 bytes. 0 bytes when the config does not say how
+    wide the heads are.
+    """
+    each, layers, heads, width = attention_shape(config)
     per_value = 2.0 if not bits else bits / 8 + 4 / 64
     return int(2 * each * heads * width * context * per_value), each, layers
 
@@ -150,7 +155,7 @@ class MlxTreeBackend(ServerBackend):
 
     def command(self, spec: ServerSpec) -> list[str]:
         kind = drafter_of(spec.draft)
-        argv = [sys.executable, "-m", "poolhouse.serve.mlx_tree_server", str(spec.model),
+        argv = [*python_runtime.command(self.name), str(spec.model),
                 "--port", str(spec.port), "--context", str(spec.context),
                 "--drafter", kind,
                 "--max-nodes", str(spec.spec_draft_max or MAX_NODES),
@@ -174,6 +179,6 @@ class MlxTreeBackend(ServerBackend):
                 raise ServerFailed(report.said())
         log_path = server_log("mlx-tree", spec.port)
         process, base_url, load_s = launch(argv, lease, log_path=log_path,
-                                           timeout=timeout, env=hub_environment())
+                                           timeout=timeout, env=python_runtime.environment_for_child(hub_environment()))
         return ServerInfo(base_url=base_url, port=spec.port, pid=process.pid, backend=self.name,
                           log_path=log_path, load_s=load_s, process=process)

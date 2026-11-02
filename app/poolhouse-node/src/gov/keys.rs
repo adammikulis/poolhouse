@@ -1,8 +1,12 @@
-//! An admin key: a public key a charter names (an Ed25519 key, or a phone's P-256 key), with the role and assurance level its holder
-//! declared and its own acceptance.
+//! An admin key: a public key a charter names (an Ed25519 key, or a phone's P-256 key), with the role and the claim of how it is held
+//! that its holder declared and its own acceptance.
 //!
-//! The acceptance is the key's signature over the pool it joins, the charter it follows, its algorithm, role, assurance and the person it
-//! belongs to, so a key is listed only by its holder: adding a key needs the added key's signature as well as the admins'.
+//! The acceptance is the key's signature over the pool it joins, the charter it follows, its algorithm, role, claim and the person it
+//! belongs to, so a key is listed only by its holder: adding a key needs the added key's signature as well as the admins'. The charter
+//! stores the claim and never a level: every member computes the level a key counts at from the claim (`Claim::counted`).
+
+use std::collections::BTreeMap;
+use std::sync::Mutex;
 
 use ed25519_dalek::VerifyingKey;
 use serde::{Deserialize, Serialize};
@@ -17,16 +21,13 @@ const ACCEPT_DOMAIN: &str = "poolhouse/pool-accept/v3\n";
 /// The longest label and person name a key carries.
 pub const MOST_LABEL: usize = 40;
 const MOST_PERSON: usize = 64;
-/// Half the order of the P-256 group, rounded down: the largest `s` a canonical signature carries.
-const HALF_ORDER: [u8; 32] = [
-    0x7f, 0xff, 0xff, 0xff, 0x80, 0x00, 0x00, 0x00, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xde, 0x73, 0x7d, 0x56, 0xd3, 0x8b, 0xcf, 0x42, 0x79, 0xdc, 0xe5, 0x61, 0x7e, 0x31,
-    0x92, 0xa8,
-];
+/// How many verdicts of `accepted_memo` are kept.
+const MEMO_MOST: usize = 1024;
 
-/// How much stands between a program of the account and a key's signature, lowest first: `Weak` (a typed yes: a process of the account can
-/// use the key), `Computer` (the computer's own prompt raised the key), `Native` (a protected helper under another operating-system
-/// identity) and `Phone` (a phone's hardware keystore and its biometric). A charter's floors name the lowest level that counts for a class of
-/// act; `Weak` is below every floor.
+/// How much stands between a program of the account and a key's signature, lowest first: `Weak` (a typed yes or a file: a process of the
+/// account can use the key), `Computer` (the computer's own prompt raised the key, or a phone or protected helper whose claim no member
+/// can check), `Native` and `Phone` (levels a member could count only with evidence the pool does not have, so no listed key holds either
+/// yet). A charter's floors name the lowest level that counts for a class of act; `Weak` is below every floor.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum Level {
@@ -58,6 +59,125 @@ impl Level {
     }
 }
 
+/// How a key is held, in the closed vocabulary of the keys document (3.1).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[serde(rename_all = "kebab-case")]
+pub enum Method {
+    /// A phone's hardware keystore key, authentication for each use.
+    PhoneKeystore,
+    /// A protected helper under another operating-system identity.
+    Helper,
+    /// A key sealed under the keystore, made through the operating system's own prompt for this key.
+    KeystorePrompt,
+    /// A key sealed under the keystore, made by a typed yes.
+    KeystoreTyped,
+    /// A passphrase file or a plain file.
+    File,
+}
+
+/// What each use of the key asks the person for.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[serde(rename_all = "kebab-case")]
+pub enum Prompt {
+    Biometric,
+    OsDialog,
+    TypedYes,
+    None,
+}
+
+/// The operating system of the device that vouches for the key, for words.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum Os {
+    Android,
+    Macos,
+    Linux,
+    Windows,
+    Other,
+}
+
+impl Os {
+    /// The operating system this node runs on.
+    pub fn here() -> Os {
+        if cfg!(target_os = "macos") {
+            Os::Macos
+        } else if cfg!(target_os = "linux") {
+            Os::Linux
+        } else if cfg!(windows) {
+            Os::Windows
+        } else {
+            Os::Other
+        }
+    }
+}
+
+/// A claim of how a key is held. The level it counts at is computed from it and never stored or named by a caller.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[serde(deny_unknown_fields)]
+pub struct Claim {
+    pub method: Method,
+    pub os: Os,
+    pub prompt: Prompt,
+}
+
+impl Claim {
+    /// The claim of a key made through the operating system's own prompt on this computer.
+    pub fn keystore_prompt() -> Claim {
+        Claim { method: Method::KeystorePrompt, os: Os::here(), prompt: Prompt::OsDialog }
+    }
+
+    /// The claim of a key a typed yes made on this computer.
+    pub fn keystore_typed() -> Claim {
+        Claim { method: Method::KeystoreTyped, os: Os::here(), prompt: Prompt::TypedYes }
+    }
+
+    /// The claim of a key that sits in a file beside the node.
+    pub fn file() -> Claim {
+        Claim { method: Method::File, os: Os::here(), prompt: Prompt::TypedYes }
+    }
+
+    /// The claim of a phone's own key.
+    pub fn phone_keystore() -> Claim {
+        Claim { method: Method::PhoneKeystore, os: Os::Android, prompt: Prompt::Biometric }
+    }
+
+    /// Whether the prompt fits the method: a claim whose prompt does not is no claim.
+    pub fn fits(&self) -> bool {
+        match self.method {
+            Method::PhoneKeystore => self.prompt == Prompt::Biometric,
+            Method::Helper | Method::KeystorePrompt => matches!(self.prompt, Prompt::OsDialog | Prompt::Biometric),
+            Method::KeystoreTyped => self.prompt == Prompt::TypedYes,
+            Method::File => matches!(self.prompt, Prompt::TypedYes | Prompt::None),
+        }
+    }
+
+    /// The level the words of the claim name, which no member can check beyond `Computer`.
+    pub fn level_of(&self) -> Level {
+        match self.method {
+            Method::PhoneKeystore => Level::Phone,
+            Method::Helper => Level::Native,
+            Method::KeystorePrompt => Level::Computer,
+            Method::KeystoreTyped | Method::File => Level::Weak,
+        }
+    }
+
+    /// The level the key counts at: the claim's, and no more than `Computer`, because the claim is the vouching device's word and no
+    /// member can verify a phone's attestation or a helper's identity (keys document C1, C6).
+    pub fn counted(&self) -> Level {
+        self.level_of().min(Level::Computer)
+    }
+
+    /// The claim in the words a person reads on a card: what the key is, and what nobody else can check about it.
+    pub fn shown(&self) -> &'static str {
+        match self.method {
+            Method::PhoneKeystore => "your phone, as it says; this pool cannot check it",
+            Method::Helper => "this computer, protected, as it says; this pool cannot check it",
+            Method::KeystorePrompt => "this computer, as it says; nothing else can check it",
+            Method::KeystoreTyped | Method::File => "a typed yes or a file; it counts for nothing",
+        }
+    }
+}
+
 /// What a key signs: `Admin` signs and counts; `Recovery` counts toward no immediate threshold.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "lowercase")]
@@ -74,43 +194,6 @@ pub enum Alg {
     Ed25519,
     #[serde(rename = "p256")]
     P256,
-}
-
-/// The `r` and `s` of a DER ECDSA signature, which must be exactly `SEQUENCE { INTEGER r, INTEGER s }` with each integer positive and
-/// as short as it can be.
-fn der_scalars(der: &[u8]) -> Option<(&[u8], &[u8])> {
-    let (&[0x30, len], body) = der.split_first_chunk::<2>()? else { return None };
-    if usize::from(len) != body.len() || len >= 0x80 {
-        return None;
-    }
-    let (r, rest) = der_integer(body)?;
-    let (s, rest) = der_integer(rest)?;
-    rest.is_empty().then_some((r, s))
-}
-
-fn der_integer(bytes: &[u8]) -> Option<(&[u8], &[u8])> {
-    let (&[0x02, n], rest) = bytes.split_first_chunk::<2>()? else { return None };
-    let n = usize::from(n);
-    if n == 0 || n >= 0x80 || rest.len() < n {
-        return None;
-    }
-    let (value, rest) = rest.split_at(n);
-    let padded = value[0] == 0 && value.get(1).is_some_and(|b| b & 0x80 == 0);
-    (value[0] & 0x80 == 0 && !padded).then_some((value, rest))
-}
-
-/// The bytes of ``scalar`` without its sign padding, as 32 big-endian bytes; none when it is zero or longer than 32 bytes.
-fn scalar32(scalar: &[u8]) -> Option<[u8; 32]> {
-    let digits = scalar.strip_prefix(&[0]).unwrap_or(scalar);
-    let mut out = [0u8; 32];
-    out.get_mut(32usize.checked_sub(digits.len())?..)?.copy_from_slice(digits);
-    (out != [0u8; 32]).then_some(out)
-}
-
-/// Whether ``der`` is the one canonical form of an ECDSA P-256 signature: strict DER, no scalar zero, and `s` in the lower half of the group.
-fn canonical_p256(der: &[u8]) -> bool {
-    let Some((r, s)) = der_scalars(der) else { return false };
-    scalar32(r).is_some() && scalar32(s).is_some_and(|s| s <= HALF_ORDER)
 }
 
 impl Alg {
@@ -139,7 +222,7 @@ impl Alg {
         let Some(bytes) = unhex(sig) else { return false };
         match self {
             Alg::Ed25519 => bytes.len() == 64,
-            Alg::P256 => canonical_p256(&bytes),
+            Alg::P256 => poolhouse_authority::phone_candidate::canonical_p256(&bytes),
         }
     }
 
@@ -156,7 +239,9 @@ pub struct AdminKey {
     pub key: String,
     pub alg: Alg,
     pub role: Role,
-    pub assurance: Level,
+    /// How the key is held: stated for an admin key, absent for a recovery key (which counts for nothing). The level it counts at is
+    /// computed from it (`AdminKey::level`).
+    pub claim: Option<Claim>,
     /// The person the key belongs to; two keys with one person count once under `unit: person`.
     pub person: String,
     /// The epoch this key was listed at.
@@ -186,11 +271,16 @@ impl AdminKey {
         fingerprint_of(&self.key)
     }
 
+    /// The level this key counts at, computed from its claim: `Weak` for a key that states none.
+    pub fn level(&self) -> Level {
+        self.claim.map_or(Level::Weak, |c| c.counted())
+    }
+
     /// The bytes this key signs to accept being listed: ``anchor`` is what the pool it joins is known by (the charter without
     /// acceptances for the first epoch, the pool id after) and ``prev`` the hash of the charter the listing follows (empty for the first).
     pub fn acceptance_message(&self, anchor: &str, prev: &str) -> Vec<u8> {
         let body = json!({
-            "v": 3, "key": self.key, "alg": self.alg, "role": self.role, "assurance": self.assurance, "person": self.person, "since": self.since,
+            "v": 3, "key": self.key, "alg": self.alg, "role": self.role, "claim": self.claim, "person": self.person, "since": self.since,
             "anchor": anchor, "prev": prev,
         });
         format!("{ACCEPT_DOMAIN}{}", canonical(&body)).into_bytes()
@@ -199,6 +289,23 @@ impl AdminKey {
     /// Whether the key itself accepted this listing.
     pub fn accepted(&self, anchor: &str, prev: &str) -> bool {
         self.alg.verifies(&self.key, &self.acceptance_message(anchor, prev), &self.acceptance)
+    }
+
+    /// `accepted`, remembering the verdicts: a verification is a pure function of the key, its acceptance and what it accepts.
+    pub fn accepted_memo(&self, anchor: &str, prev: &str) -> bool {
+        static MEMO: Mutex<BTreeMap<String, bool>> = Mutex::new(BTreeMap::new());
+        let id = sha256_hex(&self.acceptance_message(anchor, prev).into_iter().chain(self.acceptance.bytes()).collect::<Vec<u8>>());
+        if let Some(verdict) = MEMO.lock().ok().and_then(|m| m.get(&id).copied()) {
+            return verdict;
+        }
+        let verdict = self.accepted(anchor, prev);
+        if let Ok(mut memo) = MEMO.lock() {
+            if memo.len() >= MEMO_MOST {
+                memo.clear();
+            }
+            memo.insert(id, verdict);
+        }
+        verdict
     }
 
     /// The shape of the entry, not its signatures.
@@ -211,6 +318,12 @@ impl AdminKey {
         }
         if !self.label.is_empty() && !plain_text(&self.label, MOST_LABEL) {
             return Err(Error::Invalid("a key label is at most 40 characters with no control character".into()));
+        }
+        match (self.role, &self.claim) {
+            (Role::Admin, Some(claim)) if claim.fits() => {}
+            (Role::Admin, _) => return Err(Error::Invalid("an admin key states how it is held, in the words of the claim vocabulary".into())),
+            (Role::Recovery, None) => {}
+            (Role::Recovery, Some(_)) => return Err(Error::Invalid("a recovery key states no claim: it counts for nothing".into())),
         }
         if self.since == 0 || !self.alg.sig_shape(&self.acceptance) {
             return Err(Error::Invalid("an admin key carries its own acceptance".into()));

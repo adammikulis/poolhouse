@@ -22,8 +22,8 @@ impl Node {
         let mut out = Vec::new();
         for (id, hosted) in &self.boards {
             for origin in hosted.board.origins_of(&key) {
-                let rows = hosted.board.rows(&origin);
-                out.push(json!({"board": id, "origin": origin, "seq": rows.len(), "hash": rows.last().map(|r| r.hash.clone()).unwrap_or_default()}));
+                let rows = hosted.board.chain(&origin);
+                out.push(json!({"board": id, "origin": origin, "seq": rows.last().map_or(0, |r| r.seq), "hash": rows.last().map(|r| r.hash.clone()).unwrap_or_default()}));
             }
         }
         out.truncate(MOST_LOG_CUTS);

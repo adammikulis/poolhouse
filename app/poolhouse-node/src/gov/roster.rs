@@ -44,6 +44,14 @@ pub struct Roster {
     pub log_cuts: BTreeMap<(String, String), (u64, String)>,
 }
 
+impl Roster {
+    /// The first awake moment after ``now`` at which a delegate's window begins: a delegate act is held, and the pool is folded again when
+    /// the hold has run so that the device may admit.
+    pub fn next_delegate_start(&self, now: i64) -> Option<i64> {
+        self.windows.values().flatten().map(|(from, _)| *from).filter(|from| *from > now).min()
+    }
+}
+
 pub enum Verdict {
     Ok,
     Short(usize, usize, String),
@@ -109,11 +117,9 @@ fn removals(chain: &Chain, acts: &BTreeMap<String, Act>, out: &mut Roster) -> BT
     removed
 }
 
-/// How long a `delegate` act waits before the device may admit: seven days when only `computer` keys signed it.
-fn delegate_hold(chain: &Chain, id: &str, act: &Act) -> i64 {
-    let Some(e) = chain.state_for(act) else { return 0 };
-    let counted: Vec<String> = chain.signers(id, act).into_iter().filter(|k| e.charter.counts_key(k, Class::Governance)).collect();
-    if super::chain::above_computer(&e.charter, &counted) { 0 } else { COMPUTER_HOLD_MS }
+/// How long a `delegate` act waits before the device may admit: seven days, because every key that counts is a `computer` key.
+fn delegate_hold(_chain: &Chain, _id: &str, _act: &Act) -> i64 {
+    COMPUTER_HOLD_MS
 }
 
 /// The span of awake time in which the delegate act first seen at ``at`` counts: from the end of its hold for thirty days, and for a
@@ -127,6 +133,10 @@ fn delegate_span(chain: &Chain, id: &str, act: &Act, at: i64, joined: i64) -> (i
 }
 
 fn delegates(chain: &Chain, acts: &BTreeMap<String, Act>, seen: &Seen, now: i64, joined: i64, out: &mut Roster) {
+    // The founding computer's delegate is in the charter the keys accepted: it has no hold, and runs thirty days from when this device joined.
+    if let Some((_, fingerprint)) = chain.epochs.first().filter(|e| e.charter.first.delegate).and_then(|e| e.charter.first.device()) {
+        out.windows.entry(fingerprint).or_default().push((SETTLED, joined.saturating_add(DELEGATE_DAYS * DAY_MS)));
+    }
     let mut ops: Vec<(i64, u64, &String, &Act)> = acts.iter().filter(|(_, a)| matches!(a.kind.as_str(), "delegate" | "delegate_end")).map(|(id, a)| (seen.get(id).copied().unwrap_or(now), a.at_ms, id, a)).collect();
     ops.sort_by_key(|(first, at, id, _)| (*first, *at, (*id).clone()));
     for (at, _, id, a) in ops {

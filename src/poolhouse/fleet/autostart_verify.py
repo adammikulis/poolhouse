@@ -21,6 +21,7 @@ from .autostart_manifest import (
     Manifest,
     Role,
     destination_problem,
+    identity_problem,
     launcher_problem,
     unit_names,
 )
@@ -61,7 +62,7 @@ def _argv_problem(role: Role, platform: str) -> str:
     want = launcher_path(Path(exe).parent, role.role, platform)
     if Path(exe) != want:
         return f"{exe} is not the {ROLE_INFO[role.role]['launcher']} launcher"
-    problem = launcher_problem(want)
+    problem = launcher_problem(want) or identity_problem(platform)
     if problem:
         return problem
     ok = rest == SCHEDULED[role.role] if role.role in SCHEDULED else all(_POOL_ARG.fullmatch(a) for a in rest)

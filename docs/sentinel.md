@@ -394,7 +394,7 @@ Armed (tests: `tests/test_publisher_trust.py`, `tests/test_supply_chain_pins.py`
   as vouching for another file's bytes only when it came from a pull, a person, or a signed list.
 
 * **Pinned at pull.** Every model file (`gguf`, `safetensors`) that `net.download` or `net.accept` keeps
-  (so `hub.pull`, `hub.fetch`, `hub.snapshot`, a file from a member in member-first, and the other
+  (so `hub.pull`, `hub.fetch`, `hub.snapshot` and the other
   callers of `net.download`) is recorded in the same sealed pin store the load check reads, in `net.download._pin_pulled`,
   after the size, SHA-256, format and scan checks passed and the file was promoted. The pin is
   `source=pull`, with `origin` (the URL the bytes came from, or `device:<name>`) and `digest_from`:
@@ -416,11 +416,10 @@ Not armed:
 * A known publisher's namespace can be compromised: a first pull of a replaced file from a known publisher passes (the
   digest comes from the same Hub listing), and a re-upload under a new commit asks only when this machine pulled that path
   before. The list ships with the code and is not signed or updatable.
-* A copy from another device that is not on the Hub has no publisher and nothing asks about it (member-first copies are
-  checked against the Hub's digest on a pull that already passed the publisher check), and a model a person loads from a path
+* A copy from another device that is not on the Hub has no publisher and nothing asks about it, and a model a person loads from a path
   is asked about once (`model_file`), not checked for who made it.
 * A manifest is matched by file name. A list that names `x.gguf` applies to any local file called `x.gguf`.
-* A list reaches the load check only after a fetch ran on this machine (member-first pull or the onboarding `fetch` command);
+* A list reaches the load check only after a fetch ran on this machine (the onboarding `fetch` command);
   there is no command yet that accepts a list from a file, and no vendor-published digest list is read.
 * The serial high-water mark lives in a sealed file next to its key; code running as the same user can delete both and
   reset it. Expiry is not applied at load (a list bounds how long it can be fetched, not how long held bytes are checked).

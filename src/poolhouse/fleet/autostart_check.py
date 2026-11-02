@@ -12,7 +12,14 @@ from poolhouse import home
 
 from . import autostart_ledger
 from .autostart_backends import Backend, backend_for
-from .autostart_manifest import Manifest, Role, launcher_problem, parse, parse_role
+from .autostart_manifest import (
+    Manifest,
+    Role,
+    identity_problem,
+    launcher_problem,
+    parse,
+    parse_role,
+)
 from .autostart_prepare import platform_of, read_manifest, staging_root
 
 __all__ = ["STATES", "Report", "check", "prepared", "state_word", "summary"]
@@ -61,7 +68,7 @@ def _role_reasons(role: Role, platform: str, backend: Backend) -> list[str]:
                 out.append(f"{unit.destination} is missing")
             elif hashlib.sha256(path.read_bytes()).hexdigest() != unit.sha256:
                 out.append(f"{unit.destination} was edited after it was installed")
-    problem = launcher_problem(Path(role.argv[0]))
+    problem = launcher_problem(Path(role.argv[0])) or identity_problem(platform)
     if problem:
         out.append(problem)
     if not backend.loaded(role):

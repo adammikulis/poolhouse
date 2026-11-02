@@ -16,7 +16,7 @@ from poolhouse.api import _node
 from poolhouse.board import founding, presence
 from poolhouse.board.client import Client, NodeError
 
-__all__ = ["Capacity", "Founding", "Member", "Pool", "Refusal", "add_device", "capacity", "found", "join", "listen", "members",
+__all__ = ["Capacity", "Founding", "Member", "Pool", "Refusal", "add_device", "capacity", "found", "join", "leave", "listen", "members",
            "policy", "remove", "status", "sync"]
 Refusal = founding.Refusal
 """A call that needs the person: ``str`` is one sentence to pass on; ``needs`` (`approval`, `device`, `time`, `none`), ``where`` (where they
@@ -116,10 +116,41 @@ def _missing(gov: dict) -> str:
     return ""
 
 
+def _governance(raw: object) -> dict:
+    """Reject an incomplete node response rather than treating it as no pool."""
+    if not isinstance(raw, dict):
+        raise errors.Error("The pool node returned an invalid governance state.")
+    mode = raw.get("mode")
+    governed_fields = {"name", "epoch", "charter_hash", "admins", "weak_keys_only", "thresholds", "holds",
+                       "pending", "dispute", "waiting_for_signers", "delegates", "refused"}
+    if mode == "unfounded":
+        valid = ({"mode", "say"} <= raw.keys() and not governed_fields.intersection(raw)
+                 and isinstance(raw.get("say"), str) and bool(raw["say"].strip()))
+    elif mode == "governed":
+        expected = {"mode", *governed_fields}
+        epoch = raw.get("epoch")
+        digest = raw.get("charter_hash")
+        dispute = raw.get("dispute")
+        valid = (expected <= raw.keys()
+                 and isinstance(raw.get("name"), str) and bool(raw["name"].strip())
+                 and type(epoch) is int and epoch >= 0 and isinstance(digest, str) and len(digest) == 64
+                 and all(c in "0123456789abcdef" for c in digest)
+                 and isinstance(raw.get("admins"), list) and type(raw.get("weak_keys_only")) is bool
+                 and isinstance(raw.get("thresholds"), dict) and isinstance(raw.get("holds"), dict)
+                 and (raw.get("pending") is None or isinstance(raw["pending"], dict))
+                 and (dispute is None or (isinstance(dispute, dict) and isinstance(dispute.get("say"), str) and bool(dispute["say"].strip())))
+                 and all(isinstance(raw.get(key), list) for key in ("waiting_for_signers", "delegates", "refused")))
+    else:
+        valid = False
+    if not valid:
+        raise errors.Error("The pool node returned an invalid governance state.")
+    return raw
+
+
 def status() -> Pool:
     """The pool this device belongs to, with every member (removed ones too) and what governs it; starts this device's node if needed."""
     raw = _node.call("pool_status")
-    gov = dict(raw.get("governance") or {})
+    gov = _governance(raw.get("governance"))
     return Pool(str(raw["pool"]), str(raw.get("project") or ""), str(raw["policy"]), str(raw["fingerprint"]),
                 str(raw.get("listen") or ""), bool(raw.get("join_code_open")),
                 tuple(_member(m) for m in raw.get("members", [])), "governed" if gov.get("mode") == "governed" else "unfounded",
@@ -201,6 +232,11 @@ def remove(device: str) -> Member:
         raise errors.Error(f"{'no' if not found else 'two'} member is called {device!r} (members: {names})")
     _node.call("member_remove", {"fingerprint": found[0].fingerprint}, token=_node.session().token)
     return next(m for m in members(include_removed=True) if m.fingerprint == found[0].fingerprint)
+
+
+def leave() -> dict[str, object]:
+    """Leave the pool this device is in: the node forgets it and this device becomes a pool of one."""
+    return dict(_node.call("pool_leave", token=_node.session().token))
 
 
 def sync() -> None:

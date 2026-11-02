@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse.files import write_json
+from poolhouse.json_objects import unique_object
 
 __all__ = ["Damaged", "Read", "forget_reads", "reads_beside", "reads_path", "tokens_of",
            "unit_of", "units_of"]
@@ -145,7 +146,7 @@ def _read_json(path: Path) -> Any:
     except OSError as exc:
         raise Damaged(f"{path} cannot be read ({exc})") from exc
     try:
-        return json.loads(text)
+        return json.loads(text, object_pairs_hook=unique_object)
     except ValueError as exc:
         raise Damaged(
             f"{path} is not JSON ({exc}). It holds every extraction kept for this source, "

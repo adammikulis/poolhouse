@@ -6,6 +6,7 @@
       Object.assign(proto, {
         validateEditorControls() {
           this.flushGroup();
+          this.validateRecordControls();
           const root = this.rootGraph();
           for (const [key, draft] of this.sweepDrafts || []) {
             let graph = root;

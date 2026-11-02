@@ -274,17 +274,19 @@ class Board:
 def connect(*, agent: str = "", token_file: str = "", board: str = "", cwd: str | Path | None = None) -> Board:
     """The caller's session on this device's board.
 
-    The board is ``board``, else $POOLHOUSE_BOARD, else the project of ``cwd`` (the working directory). The session
-    is the one registered as ``agent`` (else $POOLHOUSE_WORKSPACE_AGENT), or the token in ``token_file`` or
-    $POOLHOUSE_WORKSPACE_TOKEN; with none of those, `poolhouse.Denied`. Sessions register through the harness
-    hooks or `poolhouse-workspace`; `ph.board.register` makes one for a script.
+    The board is ``board``, else $POOLHOUSE_BOARD, else the existing project of ``cwd`` (the working directory).
+    Codex resolves its registered native session first; other harnesses retain their existing selector rules.
+    Otherwise ``agent``, its environment default or a token selects the registered session. This call creates neither
+    a project nor a session. Unknown projects are refused; project setup is separate. `ph.board.register` explicitly
+    makes a script session on an existing project or selected board.
     """
     return Board(sessions.connect(token_file=token_file, agent=agent, board=board, cwd=Path(cwd) if cwd else None))
 
 
 def register(name: str = "python", *, board: str = "", cwd: str | Path | None = None) -> Board:
-    """Register a session for a script under ``name`` and return it; registering the same name again from the same terminal returns the same session."""
+    """Explicitly register a script session on an existing project or selected board, never create a project.
+    Registering the same name again from the same terminal returns the same session."""
     node = Client()
-    where = place.resolve(node, Path(cwd) if cwd else None, board)
+    where = place.existing(node, Path(cwd) if cwd else None, board)
     got = sessions.register(node, where, sessions.Native("script", "python", f"{name}-{terminal_id()}"))
     return Board(sessions.Session(node, where, got.token, got.name))

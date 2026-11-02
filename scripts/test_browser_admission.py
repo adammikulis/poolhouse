@@ -15,7 +15,7 @@ from test_kernel_browser import prepare as prepare_assets
 from test_kernel_browser_endpoints import EndpointBank
 
 from poolhouse.activity.source_snapshot import SourceSnapshot, private_namespace, protected_roots
-from poolhouse.fleet.discovery import primary_ip
+from poolhouse.fleet.onboard.lan import primary_ip
 from poolhouse.sandbox.policy import Policy
 from poolhouse.sandbox.seatbelt import quote
 

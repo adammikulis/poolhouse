@@ -14,12 +14,14 @@ OWNER = "poolhouse.graph.serve"
 INCREMENTAL = True
 ROOTS = ("src/poolhouse",)
 OWNS = ("src/poolhouse/graph/serve.py", "src/poolhouse/testing/fakes.py",
-        "src/poolhouse/testing/fakehub.py")
+        "src/poolhouse/testing/canned.py", "src/poolhouse/testing/fakehub.py",
+        "src/poolhouse/redteam/evidence.py")
 
 
 def describe() -> str:
-    return ("A second HTTP handler; poolhouse.graph.serve takes a route mixin and\n"
-            "    poolhouse.testing.fakes the stand-in servers.")
+    return ("A second HTTP handler; poolhouse.graph.serve takes a route mixin,\n"
+            "    poolhouse.testing.fakes and poolhouse.testing.canned the stand-in servers and\n"
+            "    poolhouse.redteam.evidence the attack lab's page server and collector (never a model).")
 
 
 def scan(path: Path, where: str) -> list[Finding]:

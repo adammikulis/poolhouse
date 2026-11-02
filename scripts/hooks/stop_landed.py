@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import NamedTuple
 
+import hook_state
 import workspace_hook
 
 from poolhouse import devbranch, trees
@@ -93,7 +94,7 @@ def reason(held: list[Held]) -> str:
     """The sentence that refuses the stop and names the ways out."""
     work = "; ".join(f"{one.branch} in {one.path} holds {one.detail}" for one in held)
     closing = " and ".join(f"scripts/worktrees close {one.path} --bundle" for one in held)
-    return (f"Do not stop yet, {work}: land it with scripts/land, or when it is superseded or cannot land run {closing} "
+    return (f"Do not stop yet, {work}: merge origin's development branch into it and push it with git push origin HEAD:refs/heads/<development branch>, or when it is superseded run {closing} "
             "(--abandon 'reason' in place of --bundle when files are uncommitted) from outside the tree.")
 
 
@@ -104,7 +105,7 @@ def where(held: list[Held]) -> str:
 
 def counter(agent: str) -> Path:
     """The file that counts the refusals of one subagent."""
-    return workspace_hook.state_dir() / "stop-refusals" / hashlib.sha256(agent.encode()).hexdigest()[:24]
+    return hook_state.state_dir() / "stop-refusals" / hashlib.sha256(agent.encode()).hexdigest()[:24]
 
 
 def refused(agent: str) -> int:

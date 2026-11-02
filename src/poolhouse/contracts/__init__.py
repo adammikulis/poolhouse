@@ -15,8 +15,8 @@ from poolhouse.contracts.loader import (
 from poolhouse.contracts.tiers import (
     Budget,
     Tier,
+    first_install_for,
     fits,
-    largest_that_fits,
     tiers,
     weights_plus_overhead_bytes,
 )
@@ -26,10 +26,10 @@ __all__ = [
     "ContractError",
     "Tier",
     "contracts_dir",
+    "first_install_for",
     "fits",
     "grammar",
     "grammar_for",
-    "largest_that_fits",
     "load",
     "recipe",
     "recipes",

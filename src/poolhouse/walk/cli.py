@@ -94,8 +94,6 @@ def _walked(args: argparse.Namespace, page: str, **extra: object) -> int:
                   "models, settings and fit",
     epilog="screens: " + ", ".join(FLEET),
     options=[*_shared(FLEET_BASE),
-             flag("--passphrase", default="",
-                  help="the pool's passphrase, for a daemon that asks for one"),
              flag("--setup", action="store_true",
                   help="press the first-run buttons that save this machine's "
                        "preferences; without it the wizard is walked only as far as it "
@@ -104,7 +102,7 @@ def _walked(args: argparse.Namespace, page: str, **extra: object) -> int:
                   help="a message to send on the chat screen; the walk waits for the "
                        "whole reply and prints it")])
 def cmd_fleet(args: argparse.Namespace) -> int:
-    return _walked(args, "fleet", passphrase=args.passphrase, setup=bool(args.setup),
+    return _walked(args, "fleet", setup=bool(args.setup),
                    say=args.say)
 
 

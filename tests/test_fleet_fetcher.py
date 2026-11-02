@@ -10,7 +10,7 @@ from poolhouse.fleet.jobs import DaemonError
 
 @pytest.mark.parametrize("relpath", ["../../etc/passwd", "/etc/passwd", "a/../../b", "..%2f..%2fx"])
 def test_a_remote_path_that_escapes_is_refused(tmp_path, relpath):
-    fetcher = Fetcher(tmp_path, b"k")
+    fetcher = Fetcher(tmp_path)
     with pytest.raises(DaemonError):
         fetcher.start(source="member", relpath=relpath, to="out.bin")
     assert fetcher.fetches == {}

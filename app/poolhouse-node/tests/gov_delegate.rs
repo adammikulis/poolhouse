@@ -26,6 +26,7 @@ fn delegate_pool() -> (tempfile::TempDir, GovPool, Identity) {
     let delegate = ident(20);
     put_admit(&mut g, &delegate, &[A]);
     put(&mut g, "delegate", json!({"fingerprint": delegate.fingerprint()}), &[A]);
+    advance(&mut g, HELD);
     (d, g, delegate)
 }
 
@@ -179,11 +180,12 @@ fn a_delegate_made_by_a_key_that_is_removed_without_its_act_in_the_cut_admits_no
     let delegate = ident(20);
     put_admit(&mut g, &delegate, &[A]);
     put(&mut g, "delegate", json!({"fingerprint": delegate.fingerprint()}), &[B, 3]);
+    advance(&mut g, HELD);
     let guest = ident(30);
     device_admit(&mut g, 20, &guest, "");
     assert!(is_member(&g, &guest), "while the delegate act stands");
     put(&mut g, "admin_remove", json!({"key": public(3), "cut": []}), &[A, B]);
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert!(!admins(&g).contains(&public(3)));
     assert!(!is_member(&g, &guest), "the delegate act lost the signature of the key that was removed, and one person is not enough to make a delegate");
     assert!(g.state().roster.delegates.is_empty());
@@ -297,6 +299,7 @@ fn a_delegate_end_ends_the_delegate_whatever_time_its_signer_put_on_either_act()
     let mut ahead = Act::new(&g.id, epoch, "delegate", json!({"fingerprint": delegate.fingerprint()}), wall_ms() + 4 * MINUTE as u64, &prev).unwrap();
     sign(&mut ahead, A);
     take(&mut g, ahead);
+    advance(&mut g, HELD);
     assert!(g.state().roster.delegates.contains_key(&delegate.fingerprint()));
     advance(&mut g, 10);
     put(&mut g, "delegate_end", json!({"fingerprint": delegate.fingerprint()}), &[B]);

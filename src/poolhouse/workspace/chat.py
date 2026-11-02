@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from poolhouse import activity
-from poolhouse.board import person
 from poolhouse.board.client import NodeError
 from poolhouse.board.session import Entry, Session
 from poolhouse.errors import Denied
@@ -71,7 +70,7 @@ def run(s: Session, target: Target, console: Console) -> None:
     """Print the last ``target.backlog`` messages of the room or conversation ``target`` names, then each new one as it
     arrives, and send every line of ``console.lines`` to it until ``/quit``, the end of the lines or ``console.cancel``.
     ``s`` must be the person's session (`poolhouse.board.person`)."""
-    if s.whoami().harness != person.HARNESS:
+    if not s.whoami().person:
         raise Denied("chat is for the person")
     if bool(target.board) == bool(target.dm):
         raise ValueError("chat with one board (--board) or one agent (--to)")

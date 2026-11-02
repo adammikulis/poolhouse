@@ -15,6 +15,7 @@ from poolhouse.kvtype import DEFAULT_KV_CACHE
 from poolhouse.log import say, warn
 from poolhouse.serve import plan as plan_mod
 from poolhouse.serve.kvbudget import CACHE_TYPES, kv_row
+from poolhouse.serve.largest import contexts, largest_context, trained_window
 from poolhouse.serve.placement import ShardFacts, cache_bytes, facts_of
 from poolhouse.serve.plan import DEFAULTS, GIB, Hardware, Plan, Shortfall
 from poolhouse.serve.preflight import read_gguf_header
@@ -22,8 +23,6 @@ from poolhouse.serve.tensors import shard_paths, tensors_by_shard
 from poolhouse.units import human_bytes, span
 
 __all__ = ["OPTIONS", "Ask", "auto_fields", "cmd_plan", "hardware_of", "plan_for", "render"]
-
-DEFAULT_CONTEXT = 131072
 
 OPTIONS = [
     flag("model", help="path to the first .gguf file of the model"),
@@ -40,9 +39,9 @@ OPTIONS = [
          help="memory bandwidth, for the estimates (default: %(default)s, an assumption)"),
     flag("--vram-gbps", type=float, default=DEFAULTS["vram_gbps"], metavar="GBPS",
          help="the card's memory bandwidth (default: %(default)s, an assumption)"),
-    flag("--context", type=int, default=DEFAULT_CONTEXT, metavar="TOKENS",
-         help="tokens across all slots the cache is sized for (default: %(default)s, "
-              "what a coding profile needs)"),
+    flag("--context", type=int, default=0, metavar="TOKENS",
+         help="tokens across all slots the cache is sized for (default: the most this "
+              "placement holds on the machine, up to the model's trained window)"),
     flag("--parallel", type=int, default=1, metavar="N", help="slots (default: 1)"),
     flag("--cache-type-k", default=DEFAULT_KV_CACHE, choices=CACHE_TYPES,
          help="how the K cache is stored (default: %(default)s). Quantised K costs more "
@@ -87,11 +86,11 @@ def hardware_of(args: argparse.Namespace, found: MachineMemory | None = None) ->
 
 @dataclass(frozen=True, slots=True)
 class Ask:
-    """What the plan is sized for: the context across all slots, the slots, the K and V cache
-    types, the compute-buffer headroom in bytes, and the micro-batch and TFLOPS the
+    """What the plan is sized for: the context across all slots (0 for the most the placement
+    holds), the slots, the K and V cache types, the compute-buffer headroom in bytes, and the micro-batch and TFLOPS the
     prompt-time estimate uses."""
 
-    context: int = DEFAULT_CONTEXT
+    context: int = 0
     parallel: int = 1
     cache: tuple[str, str] = (DEFAULT_KV_CACHE, DEFAULT_KV_CACHE)
     compute: int = DEFAULTS["compute_buffers"]
@@ -100,9 +99,14 @@ class Ask:
 
 
 def plan_for(model: str | Path, hw: Hardware, ask: Ask = Ask()) -> Plan:  # noqa: B008
-    """The placement of ``model``, read from its headers, on ``hw``. Raises `Shortfall`."""
+    """The placement of ``model``, read from its headers, on ``hw``. Raises `Shortfall`.
+
+    A context of 0 is the largest one the placement holds, found by the same search every
+    default uses (`largest.largest_context`) over this placement's own memory model."""
     first = shard_paths(model)[0]
     meta = read_gguf_header(first)
+    if ask.context <= 0:
+        ask = replace(ask, context=_largest_context(model, hw, ask, meta))
     facts = facts_of(tensors_by_shard(model), meta, Path(str(model)).name)
     kv = cache_bytes(meta, ask.context, ask.cache[0], ask.cache[1], ask.parallel)
     plan = plan_mod.place(facts, hw, context=ask.context, kv_bytes=kv, allowance=ask.compute)
@@ -111,6 +115,23 @@ def plan_for(model: str | Path, hw: Hardware, ask: Ask = Ask()) -> Plan:  # noqa
     rows = (chosen, *(r for r in rows if (r.cache_k, r.cache_v) != ask.cache))
     more = plan_mod.prompt_estimates(plan, ask.context, ask.ubatch, ask.tflops)
     return replace(plan, estimates=(*plan.estimates, *more), kv_rows=rows)
+
+
+def _largest_context(model: str | Path, hw: Hardware, ask: Ask, meta: dict) -> int:
+    """The most tokens across all slots that ``hw`` places ``model`` at, per slot up to the
+    model's trained window. When not even the smallest holds, that smallest, so the caller
+    raises the shortfall with its numbers."""
+    slots = max(1, ask.parallel)
+    steps = contexts(trained_window(meta))
+
+    def holds(each: int) -> bool:
+        try:
+            plan_for(model, hw, replace(ask, context=each * slots))
+        except Shortfall:
+            return False
+        return True
+
+    return (largest_context(holds, steps) or steps[-1]) * slots
 
 
 def _shard_kind(shard: ShardFacts) -> str:
@@ -261,7 +282,7 @@ def auto_fields(model: str, *, context: int, parallel: int, cache: tuple[str, st
     plan = plan_for(model, hardware_of(args, here),
                     Ask(context, parallel, (cache[0] or DEFAULT_KV_CACHE, cache[1] or DEFAULT_KV_CACHE)))
     fields = plan.spec_fields()
-    lines = [f"plan auto: {_machine_line(plan)}, {context:,} tokens of context",
+    lines = [f"plan auto: {_machine_line(plan)}, {plan.context:,} tokens of context",
              "  placement: " + (", ".join(f"{k}={v!r}" for k, v in fields.items())
                                 if fields else "none needed"), *(f"  {why}" for why in plan.reasons)]
     return plan, lines

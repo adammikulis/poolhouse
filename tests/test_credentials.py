@@ -58,9 +58,8 @@ def test_each_source_is_found_when_it_is_the_only_one(isolated, monkeypatch):
 
 def test_the_order_is_argument_then_environment_then_named_file_then_file_then_keychain(
         isolated, monkeypatch, ring):
-    ring.set_password("poolhouse", "WIDGET_KEY", "from-keychain")
-    with credentials.probing_legacy():
-        assert credentials.get("WIDGET_KEY") == "from-keychain"
+    credentials.set("WIDGET_KEY", "from-keychain", keychain=True)
+    assert credentials.get("WIDGET_KEY") == "from-keychain"
     _stored(isolated, 'WIDGET_KEY = "from-file"\n')
     assert credentials.get("WIDGET_KEY") == "from-file"
     monkeypatch.setenv("WIDGET_KEY_FILE", str(_file(isolated / "m", "from-mount")))
@@ -219,6 +218,67 @@ def test_an_entry_that_is_not_a_string_is_refused(isolated):
 def test_a_value_that_is_not_one_printable_line_is_refused(isolated, value):
     with pytest.raises(CredentialError):
         credentials.set("WIDGET_KEY", value)
+
+
+@pytest.mark.parametrize("held", ["not-base64!", 7, None])
+def test_strict_wrapped_read_distinguishes_an_absent_item_from_an_invalid_record(isolated, monkeypatch, held):
+    monkeypatch.setattr(credentials, "_wrapped", lambda **options: {"WIDGET_KEY": held})
+    with pytest.raises(credentials.WrappedCredentialError) as refused:
+        credentials._open("WIDGET_KEY", strict=True)
+    assert refused.value.reason == "invalid_wrapped"
+    assert credentials._open("ABSENT_KEY", strict=True) is None
+    assert refused.value.__cause__ is None
+
+
+@pytest.mark.parametrize("error,reason", [
+    (keystore.KeystoreLocked, "locked"), (keystore.KeystoreDenied, "denied"),
+    (keystore.KeystoreBusy, "busy"), (keystore.KeystoreMissing, "missing_master"),
+    (keystore.KeystoreUnavailable, "unavailable"), (keystore.KeystoreError, "cannot_open"),
+])
+def test_strict_wrapped_read_uses_fixed_diagnostics_without_backend_text(isolated, monkeypatch, error, reason, caplog):
+    import base64
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(credentials, "_wrapped", lambda **options: {"WIDGET_KEY": base64.b64encode(b"envelope").decode()})
+    calls = []
+
+    def refuse(*args):
+        calls.append(args)
+        raise error(SECRET)
+
+    monkeypatch.setattr(keystore, "default", lambda: SimpleNamespace(unwrap=refuse))
+    with caplog.at_level(logging.DEBUG), pytest.raises(credentials.WrappedCredentialError) as refused:
+        credentials._open("WIDGET_KEY", strict=True)
+    assert refused.value.reason == reason and refused.value.__cause__ is None
+    assert SECRET not in str(refused.value) + repr(refused.value) + caplog.text
+    assert len(calls) == 1
+    assert credentials._open("WIDGET_KEY") is None
+
+
+def test_strict_wrapped_read_reports_authentication_failure_without_changing_the_record(isolated, ring):
+    credentials.set("WIDGET_KEY", SECRET, keychain=True)
+    original = credentials.wrapped_path().read_bytes()
+    store = keystore.default()
+    store.lock()
+    ring.held.clear()
+    store.provision()
+    with pytest.raises(credentials.WrappedCredentialError) as refused:
+        credentials._open("WIDGET_KEY", strict=True)
+    assert refused.value.reason == "cannot_open"
+    assert credentials.wrapped_path().read_bytes() == original
+    assert "unlock" not in str(refused.value) and SECRET not in str(refused.value)
+
+
+@pytest.mark.parametrize("plain", [b"\xff", b"two\nlines"])
+def test_strict_wrapped_read_does_not_expose_invalid_decrypted_text(isolated, monkeypatch, plain):
+    import base64
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(credentials, "_wrapped", lambda **options: {"WIDGET_KEY": base64.b64encode(b"envelope").decode()})
+    monkeypatch.setattr(keystore, "default", lambda: SimpleNamespace(unwrap=lambda *args: plain))
+    with pytest.raises(credentials.WrappedCredentialError) as refused:
+        credentials._open("WIDGET_KEY", strict=True)
+    assert refused.value.reason == "invalid_wrapped"
     assert not (isolated / "home" / "credentials.toml").exists()
 
 
@@ -297,19 +357,9 @@ def test_the_keychain_is_used_only_when_asked_for(isolated, ring):
     assert credentials.get("WIDGET_KEY") is None
 
 
-def test_an_item_an_older_version_kept_moves_into_the_wrapped_file_and_is_deleted(isolated, ring):
-    ring.set_password("poolhouse", "WIDGET_KEY", SECRET)
-    with credentials.probing_legacy():
-        assert credentials.get("WIDGET_KEY") == SECRET
-    assert ("poolhouse", "WIDGET_KEY") not in ring.held
-    assert credentials.get("WIDGET_KEY") == SECRET
-    for each in (isolated / "home").rglob("*"):
-        assert not each.is_file() or SECRET.encode() not in each.read_bytes(), each
-
-
 def test_an_ordinary_lookup_never_reads_the_keystore_for_an_old_item(isolated, ring):
     """Library code asking for a credential must not probe the OS keystore (each probe is a real call,
-    a prompt on some machines); only a person's own command (`probing_legacy`) looks for an old item."""
+    a prompt on some machines). Unwrapped per-feature items are not part of the current store."""
     ring.set_password("poolhouse", "WIDGET_KEY", SECRET)
     calls = []
     for name in ("get_password", "set_password", "delete_password"):

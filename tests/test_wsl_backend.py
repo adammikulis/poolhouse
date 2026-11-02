@@ -244,8 +244,8 @@ def test_wsl_start_preserves_service_setup_and_closes_owned_resources(monkeypatc
                         else "/mnt/c/runtime/python.exe")
     class LocalUI:
         def __init__(self, argv, port):
-            assert argv[-3:] == ["-m", "poolhouse.fleet.wsl_ui", "8771"]
-            assert port == 8771
+            assert argv[-3:] == ["-m", "poolhouse.fleet.wsl_ui", "8791"]
+            assert port == 8791
 
         def start(self):
             events.append("local-start")
@@ -257,10 +257,11 @@ def test_wsl_start_preserves_service_setup_and_closes_owned_resources(monkeypatc
     monkeypatch.setattr(wsl, "_bridge", lambda *args: bridge)
     monkeypatch.setattr(wsl, "command", lambda *args: ["wsl.exe", "--exec", *args])
     monkeypatch.setattr(wsl, "launch", owned_launch)
+    monkeypatch.setattr(wsl.windows_firewall, "ensure", lambda: events.append("firewall"))
     monkeypatch.setattr(wsl.subprocess, "run", unexpected_process)
     monkeypatch.delenv("POOLHOUSE_HOME", raising=False)
     monkeypatch.delenv("POOLHOUSE_CACHE", raising=False)
-    arguments = ["--port", "8771", "argument; $(touch injected)"]
+    arguments = ["--port", "8791", "argument; $(touch injected)"]
     assert wsl.start(arguments, executable="/home/test/runtime/bin/python") == 0
     assert len(launches) == 1
     argv, kwargs = launches[0]
@@ -268,7 +269,7 @@ def test_wsl_start_preserves_service_setup_and_closes_owned_resources(monkeypatc
     assert "PATH=/home/test/runtime/bin:/usr/bin:/bin" in argv
     assert wsl.wsl_network.ENV + "=bridge-config" in argv
     assert kwargs == {"stdin": subprocess.PIPE}
-    assert events == ["local-start", ("wait", {}, False), "pipe-close",
+    assert events == ["firewall", "local-start", ("wait", {}, False), "pipe-close",
                       ("wait", {"timeout": 10}, True), "bridge-close", "local-close"]
 
 

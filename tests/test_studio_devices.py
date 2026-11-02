@@ -27,6 +27,9 @@ class Dispatcher:
     def validate(self, nodes, principal):
         return []
 
+    def identity(self, node):
+        return node["execution"]
+
     def start(self, run, node, inputs, context, execution):
         saved = self.store.get("run", run["id"], run["scope"])
         assert saved["nodes"][node["id"]]["execution"] == execution

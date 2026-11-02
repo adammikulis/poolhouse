@@ -57,6 +57,7 @@ import affected
 import gaterun
 import gatescope
 import queue_doctor
+import testapp
 import testcommand
 import testextras
 import testhistory
@@ -78,7 +79,7 @@ import testtime
 
 from poolhouse.activity import reuse
 from poolhouse.devbranch import development_branch
-from poolhouse.activity.gate import Run, record_run, tree_hash
+from poolhouse.activity.gate import Run, read_counts, record_run, tree_hash
 from poolhouse.board.tasks import Tasks
 from poolhouse.workspace import testboard, testruns
 
@@ -241,6 +242,14 @@ def execute_run(command, environment, tier, record: OutputRecord):
         report_run(record, "test: source tree changed during the run; the result does not describe the tree "
                    "(changed now: " + ", ".join(line[3:] for line in moved[:5] if line) + ")")
         status = 4
+    if status == 0:
+        try:
+            counts = read_counts(junit)
+            if not sum(counts.values()) or counts["failed"] or counts["errors"]:
+                raise ValueError("junit does not describe a passing run")
+        except (OSError, ValueError):
+            report_run(record, "test: the run produced no valid junit result")
+            status = 4
     wall = time.monotonic() - began
     phases = testphases.read(phases_file)
     phases_file.unlink(missing_ok=True)
@@ -445,12 +454,10 @@ def gate_lanes(args: argparse.Namespace, named: list[tuple[str, list[str]]]) -> 
     """The structure tests in the first lane (they need the main thread and the broker's slots) and the scripts beside them."""
     steps = []
     for name, command in named:
-        identity = [w for i, w in enumerate(command) if w != "-n" and command[i - 1:i] != ["-n"]]
         if "pytest" in command:
-            steps.append(gaterun.Step(name, lambda c=command: run(c, tier="gate", artifact_output=args.artifact_output),
-                                      identity))
+            steps.append(gaterun.Step(name, lambda c=command: run(c, tier="gate", artifact_output=args.artifact_output)))
         else:
-            steps.append(gaterun.Step(name, lambda n=name, c=command: script_status(n, c), identity))
+            steps.append(gaterun.Step(name, lambda n=name, c=command: script_status(n, c)))
     tests = [s for s in steps if s.name == "structure tests"]
     return [tests, [s for s in steps if s.name != "structure tests"]]
 
@@ -463,8 +470,7 @@ def gate(args: argparse.Namespace, rest: list[str]) -> int:
         return 0
     if failed := build_node():
         return failed
-    held = gaterun.Gate(ROOT, gatescope.base_ref(ROOT, args.base), gaterun.steps_folder(reuse.reuse_base(), testruns.scope(ROOT)),
-                        REUSE["on"])
+    held = gaterun.Gate()
     named = gate_steps(args.workers, rest)
     outcomes = held.run(gate_lanes(args, named))
     order = [name for name, _ in named]
@@ -593,13 +599,25 @@ def doctor_admits(verdict) -> None:
 
 
 def run_owner() -> dict:
-    """The owner of a run this process starts: its workspace identity, or a person's terminal when no agent harness started it.
-
-    An agent with no identity has none, and the job table refuses its run.
-    """
-    if REUSE["agent"].get("id") or testboard.agent_process():
+    """The workspace session or local process that started this run."""
+    if REUSE["agent"].get("id"):
         return REUSE["agent"]
-    return {"id": "person", "parent": "", "source": "terminal"}
+    pid = os.getpid()
+    return {"id": "", "parent": "", "source": "local-process",
+            "pid": pid, "started": testreuse_store.process_start(pid)}
+
+
+def set_session(session, task: str) -> None:
+    """Set the current run's workspace identity and notifications."""
+    REUSE["session"] = session
+    if session is None:
+        REUSE["agent"] = {"id": "", "source": "none"}
+        REUSE["events"] = testboard.Events()
+        os.environ.pop("DEV_TEST_AGENT", None)
+        return
+    REUSE["agent"] = testboard.identity(session)
+    REUSE["events"] = testboard.BoardEvents(session, (lambda: Tasks(session).watchers(task)) if task else None)
+    os.environ["DEV_TEST_AGENT"] = json.dumps({**REUSE["agent"], "job": os.environ.get("DEV_TEST_JOB", "")})
 
 
 def follow(argv: list[str], args: argparse.Namespace) -> int:
@@ -629,6 +647,13 @@ def build_node(files: list[str] | None = None) -> int:
 
     A selection of named files that cannot start a node builds nothing and asks cargo nothing.
     """
+    try:
+        if testapp.needed(ROOT, files, testreuse_key.import_facts(reuse_store().folder)):
+            os.environ[testapp.ENV] = str(testapp.ensure(ROOT, admit=lambda: testslots.lease(2, 1, label="app test build"),
+                                                       say=lambda text: print(text, file=sys.stderr, flush=True)))
+    except (testnode.BuildError, OSError, ValueError) as error:
+        print(f"test: {error}", file=sys.stderr)
+        return 4
     if files and not testnode.needed(ROOT, files, testreuse_key.import_facts(reuse_store().folder)):
         return 0
     try:
@@ -667,17 +692,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--artifact-output", action="store_true", help="macOS with --confine: keep test output in private inert artifacts")
     parser.add_argument("--confine", action="store_true", help="macOS: run pytest under the Seatbelt confinement kernel")
     args, rest = parser.parse_known_args(argv)
+    rest = testselectors.relative(rest, ROOT)           # one spelling of a test file for the store, the node build and the junit file
     REUSE["on"] = not args.no_reuse
     if args.no_reuse and not os.environ.get("DEV_TEST_JOB"):
         print(NO_REUSE_COST, file=sys.stderr, flush=True)
-    session = testboard.acting()
-    REUSE["session"] = session
-    if session is not None:
-        REUSE["agent"] = testboard.identity(session)
-        REUSE["events"] = testboard.BoardEvents(session, (lambda: Tasks(session).watchers(args.task)) if args.task else None)
-        os.environ["DEV_TEST_AGENT"] = json.dumps({**REUSE["agent"], "job": os.environ.get("DEV_TEST_JOB", "")})
-    else:
-        os.environ.pop("DEV_TEST_AGENT", None)
+    set_session(testboard.acting(), args.task)
     if not os.environ.get("DEV_TEST_JOB"):
         queue_doctor.check(ROOT, say=lambda text: print(text, file=sys.stderr, flush=True))
     if args.on:
@@ -713,7 +732,7 @@ def main(argv: list[str] | None = None) -> int:
         return follow(argv, args)
     command = pytest_command(args.workers, *TIER_FLAGS.get(args.tier, []), *rest)
     doctor_admits(testprelude.begin(args, rest, ROOT, reused_files(command)))
-    if args.tier != "gate" and (failed := build_node(testreuse_run.selectors(command, ROOT))):
+    if args.tier != "gate" and (failed := build_node(testselectors.native_files(rest, ROOT))):
         return failed
     if args.tier == "quick":
         return quick(args, rest)

@@ -55,7 +55,10 @@ protocol checks.
 `gradle protocolChecks` runs without a device: `PhoneProtocolTest` (the chat link, pinned HTTPS and the chat setup) and
 `PhoneApprovalTest`, which checks the bytes a key signs against `tests/fixtures/phone-approval-vectors.json` (made by another
 implementation), the RFC 8291 example, what a request is checked for before the fingerprint is asked, every part of a notification,
-what a push channel carries (ciphertext only), and the friction budget in `contracts/phone-friction.json`.
+what a push channel carries (ciphertext only), and the friction budget in `contracts/phone-friction.json`. `AdmitTest` checks
+the listing of a phone added to a pool as an admin key against `tests/fixtures/phone-admit-vectors.json` (made by the device): the terms
+a code carries, the new key's acceptance of them, the act the approving phone checks before its second fingerprint, and the two extra
+fingerprints in `docs/phone-approval.md`.
 
 Android SDK downloads require a person to accept the current SDK license at
 https://developer.android.com/studio#downloads before downloading the command-line tools.

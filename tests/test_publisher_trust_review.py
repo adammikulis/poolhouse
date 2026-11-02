@@ -67,7 +67,7 @@ def test_a_pull_request_of_a_known_publisher_is_not_its_branch(stand):
     pull_request = "ab" * 20
     server.prs[REPO] = {"refs/pr/7": pull_request}
     with pytest.raises(admission.NotApproved, match=r"not from unsloth's own branch"):
-        hub.pull(f"hf:{REPO}/{FILE}@refs/pr/7", members=False)
+        hub.pull(f"hf:{REPO}/{FILE}@refs/pr/7")
     assert server.downloads == {} and pins() == {}
     (waiting,) = asked()
     assert REPO in waiting.reason and pull_request[:12] in waiting.reason
@@ -78,7 +78,7 @@ def test_the_commit_of_a_pull_request_named_by_hash_is_not_its_branch_either(sta
     pull_request = "cd" * 20
     server.prs[REPO] = {"refs/pr/9": pull_request}
     with pytest.raises(admission.NotApproved, match=r"not from unsloth's own branch"):
-        hub.pull(f"hf:{REPO}/{FILE}@{pull_request}", members=False)
+        hub.pull(f"hf:{REPO}/{FILE}@{pull_request}")
     assert server.downloads == {}
 
 
@@ -86,7 +86,7 @@ def test_an_older_commit_of_the_branch_is_the_publishers_own(stand):
     server = stand(repos())
     first = server.commit(REPO)
     server.moved[REPO] = 1
-    assert hub.pull(f"hf:{REPO}/{FILE}@{first}", members=False).name == FILE
+    assert hub.pull(f"hf:{REPO}/{FILE}@{first}").name == FILE
     assert asked() == []
 
 
@@ -95,7 +95,7 @@ def test_a_known_publisher_on_a_mirror_asks_with_the_host_in_the_words_and_the_f
     server = stand(repos(), official=False)
     host = server.url.split("//", 1)[1]
     with pytest.raises(admission.NotApproved, match=r"on 127\.0\.0\.1"):
-        hub.pull(f"hf:{REPO}/{FILE}", members=False)
+        hub.pull(f"hf:{REPO}/{FILE}")
     (waiting,) = asked()
     assert host in waiting.reason and dict(waiting.extra)["host"] == host
     assert server.downloads == {}
@@ -105,13 +105,13 @@ def test_an_approval_on_one_hub_does_not_replay_on_another(stand):
     held = repos("maker/thing-GGUF")
     first = stand(held)
     with pytest.raises(admission.NotApproved):
-        hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     assert approve("model_publisher") == 1
-    assert hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False).name == FILE
+    assert hub.pull(f"hf:maker/thing-GGUF/{FILE}").name == FILE
     second = stand(held, official=False)
     assert first.commit("maker/thing-GGUF") == second.commit("maker/thing-GGUF")
     with pytest.raises(admission.NotApproved):
-        hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     assert second.downloads == {}
 
 
@@ -147,28 +147,28 @@ def test_a_flag_that_is_not_on_the_list_is_not_passed_to_llama_server(tmp_path, 
     backend = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=""))
     for argv in ((flag, "/tmp/evil.gguf"), (f"{flag}=/tmp/evil.gguf",), (f"{flag}/tmp/evil.gguf",)):
         with pytest.raises(ServerFailed, match="is not a flag Poolhouse passes"):
-            backend.command(ServerSpec(model="/m/w.gguf", extra_args=argv))
+            backend.command(ServerSpec(context=4096, model="/m/w.gguf", extra_args=argv))
 
 
 def test_the_flags_a_person_tunes_with_are_passed(tmp_path):
     backend = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=""))
     given = ("-ub", "2048", "-b", "8192", "-lv", "4", "--no-warmup", "--cache-reuse", "256",
              "--draft-max", "3", "-fa", "on", "--threads=8", "-1")
-    assert list(given) == backend.command(ServerSpec(model="/m/w.gguf", extra_args=given))[-len(given):]
+    assert list(given) == backend.command(ServerSpec(context=4096, model="/m/w.gguf", extra_args=given))[-len(given):]
 
 
 def test_the_template_and_the_lookup_cache_a_spec_names_are_verified_at_load(tmp_path):
     from poolhouse.serve.ports import free_port
-    from poolhouse.testing.fakes import fake_llama_binary
+    from poolhouse.testing.canned import canned_binary
 
     model = tmp_path / "model.gguf"
     model.write_bytes(b"GGUF" + b"\x00" * 64)
     approved(model)
     template = tmp_path / "chat.jinja"
     template.write_text("{{ messages }}")
-    manager = ServerManager(backend=LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
+    manager = ServerManager(backend=LlamaServerBackend(binary=canned_binary(tmp_path)),
                             state_file=tmp_path / "servers.json")
-    spec = ServerSpec(model=model, chat_template_file=str(template), port=free_port())
+    spec = ServerSpec(context=4096, model=model, chat_template_file=str(template), port=free_port())
     with pytest.raises(guarded.SentinelRefused, match=r"chat\.jinja was not downloaded"):
         manager.lease(spec, roam=False, timeout=30.0, check_flags=False, preflight=False,
                       warmup_request=False)
@@ -179,7 +179,7 @@ def test_the_words_carry_the_repository_and_the_commit_and_a_forger_cannot_reuse
     server = stand(repos("maker/thing-GGUF"))
     commit = server.commit("maker/thing-GGUF")
     with pytest.raises(admission.NotApproved):
-        hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     (waiting,) = asked()
     assert "maker/thing-GGUF" in waiting.reason and commit[:12] in waiting.reason
     requests.raise_request(requests.Ask(
@@ -189,7 +189,7 @@ def test_the_words_carry_the_repository_and_the_commit_and_a_forger_cannot_reuse
     requests.answer(forged[0].id, "approve", forged[0].fingerprint, "terminal",
                     requests.Context(terminal=(True, True), env={}))
     with pytest.raises(admission.NotApproved):
-        hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     assert server.downloads == {}
 
 
@@ -207,10 +207,10 @@ def test_an_engine_that_downloads_by_repository_name_is_given_a_path_or_nothing(
     for engine in (VllmBackend(), SGLangBackend()):
         for model in ("owner/repo", "hf:owner/repo", "https://example.test/x"):
             with pytest.raises(ServerFailed, match="must be fetched before serving"):
-                engine.command(ServerSpec(model=model))
-        assert str(tmp_path) in engine.command(ServerSpec(model=str(tmp_path)))
+                engine.command(ServerSpec(context=4096, model=model))
+        assert str(tmp_path) in engine.command(ServerSpec(context=4096, model=str(tmp_path)))
         with pytest.raises(ServerFailed, match="is not a flag Poolhouse passes"):
-            engine.command(ServerSpec(model=str(tmp_path), extra_args=("--lora-modules", "a=/tmp/x")))
+            engine.command(ServerSpec(context=4096, model=str(tmp_path), extra_args=("--lora-modules", "a=/tmp/x")))
 
 
 def test_an_engine_never_downloads_for_itself(monkeypatch):
@@ -254,7 +254,9 @@ def test_the_fleets_download_asks_about_an_unknown_publisher_and_refuses_a_plain
         fleet_store.ensure(FILE, source=f"hf:maker/thing-GGUF/{FILE}")
     with pytest.raises(ModelError, match="Hugging Face reference"):
         fleet_store.ensure(FILE, source="http://127.0.0.1:1/thing.gguf")
-    assert server.downloads == {} and list(fleet_store.store.iterdir()) == []
+    assert server.downloads == {}
+    assert all(path.name.startswith(".download-") and path.suffix == ".lock"
+               for path in fleet_store.store.iterdir())
 
 
 # -- F7: one list of names, read through leet and lookalikes ---------------------------------
@@ -282,7 +284,7 @@ def test_the_requests_for_models_are_capped_so_other_kinds_are_not_starved(stand
     server = stand(names)
     for name in names:
         with pytest.raises(admission.NotApproved):
-            hub.pull(f"hf:{name}/{FILE}", members=False)
+            hub.pull(f"hf:{name}/{FILE}")
     assert len(asked()) == 10
     assert server.downloads == {}
     requests.raise_request(requests.Ask("tool_call", "run something", "why", ("allow-once", "deny")))
@@ -293,10 +295,10 @@ def test_a_file_name_from_a_listing_is_shown_bounded(stand):
     long_name = "n" * 200 + ".gguf"
     held = {REPO: {long_name: gguf_bytes(extra=4100)}}
     server = stand(held)
-    hub.pull(f"hf:{REPO}/{long_name}", members=False)
+    hub.pull(f"hf:{REPO}/{long_name}")
     server.moved[REPO] = 1
     held[REPO][long_name] = gguf_bytes(extra=9000)
     with pytest.raises(admission.NotApproved):
-        hub.pull(f"hf:{REPO}/{long_name}", members=False)
+        hub.pull(f"hf:{REPO}/{long_name}")
     (waiting,) = asked()
     assert "n" * 100 not in waiting.reason

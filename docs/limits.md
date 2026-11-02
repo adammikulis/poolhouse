@@ -14,24 +14,34 @@ abuse by one session is not kept (the owner never asked for one). The security f
   refused with the share named and every session of another tree still writes. A session's registration, and the return of a main
   session that ended, write an identity entry to its own share; a registration the log refuses leaves the registry as it was. Three
   stretches of the log are kept for what an agent cannot make at will: author rows stop `RESERVED_ROWS` rows (and `RESERVED_BYTES`
-  bytes) before the end, which leaves room for the node's rows about a session's end (its identity entry, and one audit for each session
-  however often it ends, skipped when there is no room: the registry is the record of an ending); the last `LAST_ROWS` rows (and
+  bytes) before the end, which leaves room for the node's rows about a session's end (its identity entry, which carries who ended it and
+  what that released, skipped when there is no room: the registry is the record of an ending); the last `LAST_ROWS` rows (and
   `LAST_BYTES` bytes) are for a head, so the log is still signed and synced, and for the rows a person's decision makes (a grant they
   signed or approved on the phone, a session they moved). A lease entry or a notice a full log refuses is skipped: the lease table is the
-  record of a lease. A copy of another device's log that would pass the rows or the bytes is refused whole. A log that reaches the end
-  of the last stretch takes nothing more and does not recover: it has no rotation or compaction, which `HANDOFF.md` lists as its own
-  item.
-- **Leases** (`max_leases_per_holder`, `max_leases_per_lineage`, `max_leases`). A request past any of the three is refused with the
+  record of a lease. A copy of another device's log that would pass the rows or the bytes is refused whole. Every count above is of
+  the live segment: a log starts a new segment when it holds `ROTATE_PERCENT` of the rows or of the bytes. The segment is a base row, a
+  carry envelope retaining the original operation identity, order and time of the device's own notes (not superseded, not expired), rooms, tasks and grants (grants always; the others up to
+  `CARRY_PERCENT` of the rows and of the bytes, newest first, and the base says how many were left) and a head; the rows before the base
+  go to `archive/` beside the log, and the shares, the reserve and the last stretch start again on the new segment. A copy takes a base
+  only after a segment of at least `MIN_SEGMENT_PERCENT` of the rows or of the bytes (when it holds that segment), applies the segment
+  once every restated row has arrived (a copy behind the base restarts at it only when the device that wrote the log sends it), and
+  refuses a base that leaves out a grant revocation it holds. An archive is kept `ARCHIVE_MIN_MS` at
+  least and `ARCHIVE_MAX_MS` at most, until every device that synced the board has acknowledged past it, and `MOST_ARCHIVES` of an origin and
+  `MAX_LOG_BYTES` of them at most; a device behind the base is served from the archive while it exists and otherwise starts at the base. Messages, audit,
+  landing, lease, identity and verify rows are not restated: they leave the view with the segment (`docs/notes/2026-10-19-log-rotation.md`).
+- **Leases** (`max_leases_per_holder`, `max_leases_per_lineage`, `max_leases`, `max_worktree_records`). A request past any of the first three is refused with the
   limit; a reserve naming more resources than a session may hold is refused whole before any is looked at, and a reserve writes its
   lease entries to the board in one write, so it holds the node for a fraction of a second whatever its size. The leases of one
   process tree are counted together over every board. A quiet lease with no process behind it is kept `default_ttl_s` between renewals
-  however long it asks.
+  however long it asks. A worktree claim past `max_worktree_records` for its process tree is refused (its record is what the landing reviews read
+  to find a branch's creator, so none is dropped to make room).
 - **`write-limits.json`** names only the keys of the rows above. A file that still holds a removed key (`sends`, `child_sends`,
   `subagent_sends`, `window_s`, `announces`, `announce_window_s`) stops the node starting and names the key: delete the key.
 - **Live main sessions** (`live_main_sessions`, 16). A board holds at most sixteen main sessions that have not ended: a tree's share of a
   log is a quarter (`LINEAGE_SHARE_PERCENT`), so four trees can write all of it, and sixteen is four trees of four terminals each. A
   registration that would make seventeen, or a main session that ended coming back into a full board, is refused with the limit named; an
-  ending (or the node retiring an idle session) frees a place at once. Subagents are not counted: their tree's share holds them. This is a
+  ending (or the node retiring an idle session) frees a place at once. The person's own session counts like any other while its terminal
+  runs and is retired once every process it was registered from has ended. Subagents are not counted: their tree's share holds them. This is a
   count of what exists, not a rate: a process that forks twice is its own process tree with a share of its own, and the count keeps more
   than sixteen of them from writing to a board at once. A board with more terminals than that raises the key in `write-limits.json`.
 - **Boards, rooms, subscriptions and waiting** (`MOST_BOARDS_PER_LINEAGE`, `board_grace_s`, `MOST_ROOMS_PER_LINEAGE`, `MEMBERS_PER_ROOM`,
@@ -79,6 +89,12 @@ abuse by one session is not kept (the owner never asked for one). The security f
 | `LAST_BYTES` | 2 * 1024 * 1024 | `app/poolhouse-node/src/logbounds.rs:18` | bytes at the very end of the log only a head and a person's decisions use | the owner, in source |
 | `AUTHOR_SHARE_PERCENT` | 10 | `app/poolhouse-node/src/logbounds.rs:20` | the share of the rows and of the bytes one session writes: one session cannot fill the log for the others | the owner, in source |
 | `LINEAGE_SHARE_PERCENT` | 25 | `app/poolhouse-node/src/logbounds.rs:22` | the share of the rows and of the bytes the sessions of one process tree write together: a lead with its subagents cannot fill the log for other trees | the owner, in source |
+| `ROTATE_PERCENT` | 75 | `app/poolhouse-node/src/logbounds.rs:24` | the share of the rows or of the bytes of a log at which the device starts a new segment: a full log takes nothing and would never recover | the owner, in source |
+| `MIN_SEGMENT_PERCENT` | 50 | `app/poolhouse-node/src/logbounds.rs:26` | the least a copy holds of a segment before it takes a base that ends it: a member cannot make every copy rewrite its files on each row | the owner, in source |
+| `CARRY_PERCENT` | 25 | `app/poolhouse-node/src/logbounds.rs:28` | the share of the rows and of the bytes of a log the restated notes, rooms and tasks of a new segment may use, and the base a copy takes may restate half the rows at most | the owner, in source |
+| `MOST_ARCHIVES` | 8 | `app/poolhouse-node/src/logbounds.rs:30` | archived segments one origin keeps: disk | the owner, in source |
+| `ARCHIVE_MIN_MS` | 7 * 24 * 3600 * 1000 | `app/poolhouse-node/src/logbounds.rs:32` | how long an archived segment is kept at least, so a device behind the base can be served from it | the owner, in source |
+| `ARCHIVE_MAX_MS` | 30 * 24 * 3600 * 1000 | `app/poolhouse-node/src/logbounds.rs:34` | how long an archived segment is kept at most, whoever has not acknowledged past it: disk | the owner, in source |
 | `MAX_ORIGINS` | 64 | `app/poolhouse-node/src/board.rs:19` | logs a device holds for one board: memory | the owner, in source |
 | `MAX_REJECTED` | 200 | `app/poolhouse-node/src/board.rs:20` | refused foreign rows kept for `status`: memory | the owner, in source |
 | `MAX_ROW_BYTES` | 128 * 1024 | `app/poolhouse-node/src/row.rs:14` | the size of one signed row | the owner, in source |
@@ -118,6 +134,8 @@ abuse by one session is not kept (the owner never asked for one). The security f
 | `memory_mb` | 0 (no budget) | `app/poolhouse-node/src/lease/types.rs:241` | megabytes the table grants and the most one request asks for | the owner, `<state>/lease-config.json` |
 | `MAX_TAG` | 64 | `app/poolhouse-node/src/lease/types.rs:16` | length of a lease tag | the owner, in source |
 | `max_ttl_s` | 86 400 | `app/poolhouse-node/src/lease/types.rs:251` | seconds one renewal keeps a lease; a quiet lease with no pid is kept `default_ttl_s` instead: a dead holder without a pid frees its resource | the owner, `<state>/lease-config.json` |
+| `MOST_HOLDERS` | 8192 | `app/poolhouse-node/src/lease/holders.rs:16` | records of worktree claims (`worktree-holders.json`, which they write whole when one is new) a device holds; a new path past it is refused, and records are retained without age-out | the owner, in source |
+| `max_worktree_records` | 1024 | `app/poolhouse-node/src/lease/types.rs:273` | worktree claims, by path and holder, the sessions of one process tree have on record: a session cannot push its record out by claiming more paths; a new path past it is refused | the owner, `<state>/lease-config.json` |
 | `MOST_WAITERS` | 64 | `app/poolhouse-node/src/lease/rpc.rs:25` | `lease_wait` requests a node holds a thread for at once | the owner, in source |
 | `MOST_WAITERS_PER_LINEAGE` | 16 | `app/poolhouse-node/src/lease/rpc.rs:27` | `lease_wait` requests the processes of one process tree hold a thread for at once: one tree cannot take every place | the owner, in source |
 | `MAX_WAIT_MS` | 600_000 | `app/poolhouse-node/src/lease/rpc.rs:23` | milliseconds a `lease_wait` holds a server thread and keeps its queued request alive: a client that left would otherwise hold both for ever | the owner, in source |
@@ -174,15 +192,13 @@ abuse by one session is not kept (the owner never asked for one). The security f
 | `OPEN_POOL_PER_HOUR` | 10 | `app/poolhouse-node/src/gov/mod.rs:65` | open joins a pool takes in an hour | the owner, in source; a security floor no agent loosens |
 | `DELEGATE_PER_HOUR` | 3 | `app/poolhouse-node/src/gov/mod.rs:60` | devices a delegate admits in an hour | the owner, in source; a security floor no agent loosens |
 | `DELEGATE_PER_DAY` | 10 | `app/poolhouse-node/src/gov/mod.rs:61` | devices a delegate admits in a day | the owner, in source; a security floor no agent loosens |
-| `maxTurns` | 150 | `.claude/agents/branch-worker.md:5`, `.claude/agents/branch-finisher.md:5` | tool turns one worker agent makes before the harness ends it: a worker that never reports | the owner |
 | `pytest timeout` | 120 s a test | `pyproject.toml:268` | one test that hangs; a longer one carries `@pytest.mark.timeout(N)` | the owner |
 | `CI test timeout` | 120 s a test | `.github/workflows/ci.yml:108` | the same limit on the pushed commit | the owner |
 | `CI shard timeout` | 30 minutes | `.github/workflows/ci.yml:46` | one of the eight test shards that hangs | the owner |
-| `STOP_GRACE_S` | 90.0 s | `scripts/land_exec.py:32` | seconds a land leader gets to cancel its test jobs before its process group is killed | the owner |
 | `REFUSALS` | 2 | `scripts/hooks/stop_landed.py:16` | stops of one subagent refused for work development lacks before it may stop; the stop hook's other refusal is a test job it could not cancel (`scripts/hooks/stop_jobs.py`) | the owner |
 | `ci_watch WAIT_S` | 180 | `scripts/ci_watch.py:34` | seconds the watcher waits for a run to appear | the owner |
 | `ci_watch POLL_S` | 60 | `scripts/ci_watch.py:35` | seconds between asks of GitHub while a run is watched | the owner |
-| `ci_watch RUN_TIMEOUT_S` | 100 * 60 | `scripts/ci_watch.py:36` | seconds a run is watched before the watcher gives up | the owner |
+| `ci_watch RUN_TIMEOUT_S` | 130 * 60 | `scripts/ci_watch.py:36` | seconds a run is watched before the watcher gives up | the owner |
 | `ci_watch WARN_S` | 25 * 60 | `scripts/ci_watch.py:37` | seconds into a run when the watcher says it is slow | the owner |
 | `ci_watch BLOCK_S` | 35 * 60 | `scripts/ci_watch.py:38` | seconds into a run when the watcher says it is stuck | the owner |
 | `ci_watch MIN_WATCH_S` | 60.0 | `scripts/ci_watch.py:39` | the shortest a run is watched | the owner |
@@ -201,3 +217,20 @@ abuse by one session is not kept (the owner never asked for one). The security f
 | `DEV_TEST_RESERVED_CORES` | 1 | `scripts/testslots.py:68` | logical cores the test budget leaves to the machine | the owner, in the environment |
 | `DEV_TEST_BUDGET` | logical cores minus the reserved ones, at least 1 | `docs/test-execution.md:86` | CPU permits the test broker grants at once | the owner, in the environment |
 | `hook timeout` | 15 s | `.claude/settings.json:61` | a harness hook that hangs | the owner |
+| `parallel` (serving default) | 1 slot | `src/poolhouse/serve/backend.py` (`ServerSpec.parallel`) | the only fixed serving default: llama.cpp's own (`common_params.n_parallel`); slots beyond it are the caller's demand, `escalate` grows a running server | the person, `--parallel` |
+| `context` (serving default) | none: 0 asks for the fit | `src/poolhouse/serve/fitted.py`, `serve/suggest.py::largest_fit` | derived, never defaulted: the model's header `context_length` (an MLX model's `max_position_embeddings`) as the ceiling, the memory the machine can give a model (rated yellow, below 95%) as the floor; no header or no `context_length` is refused naming the field | the person, `--context` |
+| `PAD` | 256 | `src/poolhouse/serve/largest.py:17` | the step a context is searched in: llama.cpp pads each sequence to a multiple of it (`GGML_PAD(n_ctx, 256)`) | the owner, in source |
+| `STEPS` | 2^9 to 2^20 | `src/poolhouse/serve/suggest.py:35` | the menu of the "bigger and tighter" alternative `models suggest` prints; not a limit | the owner, in source |
+| `BATCHES` | 2048, 1024, 512 | `src/poolhouse/serve/suggest.py:37` | `-ub` values tried, largest first, kept while the memory rating holds: 2048 measured 4.7x on Flash-Next, 512 is llama.cpp's own | the owner, in source |
+| `OFFLOADS` | 1.0 to 0.0 in quarters | `src/poolhouse/serve/suggest.py:40` | shares of a model's layers tried on a card that cannot hold it whole | the owner, in source |
+| `MARGIN` | 0.10 | `src/poolhouse/bench/fitcontext.py:26` | the tenth of a measured fit record's longest context left unused, so a longer conversation than the one measured does not swap | the owner, in source |
+| `CHECKPOINTS` | 32 | `src/poolhouse/serve/wired.py:37` | context checkpoints per slot llama-server allocates (its own `n_ctx_checkpoints`), counted in the wiring plan | llama.cpp |
+| `CACHE_RAM_MB` | 8192 | `src/poolhouse/serve/wired.py:41` | the prompt cache llama-server holds in RAM (its own `cache_ram_mib`), counted in the wiring plan | llama.cpp |
+| `CONTEXTS` | 8K to 1M | `src/poolhouse/serve/wired.py:27` | rows of the wiring table, a display to read across; never a choice | the owner, in source |
+| shard id | 128 random bits | `docs/design-test-runner.md` section 6 (`fleet/shard_spec.py` once built) | a shard id cannot be guessed or collide, so a replayed or cross-sent result is refused: a security floor, never loosened by an agent | a security floor of the owner |
+| run id | 128 random bits | `docs/design-test-runner.md` section 5.3 (`testfarm/jobs.py` once built) | a run id and the canary seed come from the operating system's entropy and cannot be derived from the tree or the arguments, so which cached passes a run re-executes cannot be known beforehand: a security floor, never loosened by an agent | a security floor of the owner |
+| install-instance id | 128 random bits | `docs/design-test-runner.md` section 6.2 (`testfarm/transports/pool_server.py` once built) | the id a runner makes when it is installed on a device and a sender pins with the member's fingerprint, so a copy of the key made without it answers as a second instance and receives no shard: a security floor, never loosened by an agent | a security floor of the owner |
+| store master key | 256 random bits | `docs/design-test-runner.md` section 5.3 (`testfarm/store.py` once built) | the key from which the runner derives each project's signing key, so a hostile repository cannot write or disable a pass, one project's key signs nothing of another's and no child of any run reads it in the turn it runs (a hostile named child can reach it one command later, `docs/design-test-runner.md` section 10.9 item 7); a reader accepts only entries signed under its owner's project key: a security floor, never loosened by an agent | a security floor of the owner |
+| control nonce | 128 random bits | `docs/design-test-runner.md` sections 6.1 and 6.4 (`testfarm/executor.py` once built) | the value the sender makes for each shard and its control units echo, so a stale or mis-routed answer is refused: a security floor, never loosened by an agent | a security floor of the owner |
+| frame nonce | 128 random bits | `docs/design-test-runner.md` section 10.5 (`testfarm/report.py` once built) | the value in the markers of an output frame, so an end marker forged in a unit's text does not match: a security floor, never loosened by an agent | a security floor of the owner |
+| model server slots | 1 (`--parallel 1`) | `docs/agent-policy.md` section 1 (`poolhouse.serve`) | slots of the llama-server a lease starts, including one the test runner delegates to a unit: two pieces of work on a device's compute at once void both numbers; the test runner starts no server and passes no slot count | the owner |

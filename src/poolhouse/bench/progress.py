@@ -17,7 +17,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-# The package is the namespace the tests and `selfcheck` patch -- `bench.home_dir()` -- so
+# The package is the namespace the tests patch -- `bench.home_dir()` -- so
 # anything patchable is looked up there at call time, never bound here at import.
 from poolhouse import bench
 from poolhouse.bench.history import _epoch, _span
@@ -149,7 +149,7 @@ def _how_said(how: Mapping[str, Any]) -> list[str]:
     served.append(f"{how.get('cache_type') or '?'} cache")
     if how.get("reasoning_budget") is not None:
         served.append(f"thinking budget {int(how['reasoning_budget'])}")
-    served.append((f"{context // 1024}k context" if context else "the model's own context")
+    served.append((f"{context // 1024}k context" if context else "the largest context that fits")
                   + f" across {slots} slot" + ("s" if slots != 1 else ""))
     return [f"  asking: {said}", "  serving: " + "; ".join(served)]
 

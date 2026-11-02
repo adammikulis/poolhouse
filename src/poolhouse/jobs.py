@@ -13,17 +13,19 @@ import json
 import os
 import signal
 import subprocess
+import sys
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from poolhouse import runtime, sentinel
+from poolhouse import disclaim, runtime, sentinel
 from poolhouse.command import Group, flag
-from poolhouse.home import expand, state
+from poolhouse.home import expand, home, state
 from poolhouse.lock import Busy
 from poolhouse.log import say, warn
+from poolhouse.paths import source_checkout
 
 
 def home_dir() -> Path:
@@ -39,10 +41,12 @@ __all__ = [
     "Job",
     "alive",
     "detach",
+    "ended",
     "home_dir",
     "main",
     "record",
     "recorded",
+    "start",
     "status",
     "stop",
     "wait",
@@ -77,7 +81,7 @@ def _read(path: Path) -> dict[str, Any]:
     return found if isinstance(found, dict) else {}
 
 
-def _ended(pid: int) -> bool:
+def ended(pid: int) -> bool:
     """Whether ``pid`` is gone. A process this one started is reaped on the way: a child
     that has exited answers ``kill(pid, 0)`` until somebody collects it."""
     try:
@@ -95,7 +99,7 @@ def _ended(pid: int) -> bool:
 
 def _wait_for(pid: int, seconds: float) -> bool:
     deadline = time.time() + max(seconds, 0.0)
-    while not _ended(pid):
+    while not ended(pid):
         if time.time() >= deadline:
             return False
         time.sleep(0.05)
@@ -115,7 +119,7 @@ def alive(kind: str, *, home: Path | None = None) -> int:
     pid = int(record.get("pid") or 0)
     if not pid:
         return 0
-    return 0 if _ended(pid) else pid
+    return 0 if ended(pid) else pid
 
 
 def record(kind: str, *, pid: int, argv: Sequence[str] = (), log: str = "", started: str = "",
@@ -148,39 +152,67 @@ class Detached:
     log: Path
     command: tuple[str, ...]
     started: str
+    process: subprocess.Popen | None = field(default=None, compare=False, repr=False)
+    """The child's own handle, kept so a caller can see how it ended (`poolhouse.spawned`)."""
+
+
+def _start(command: list[str], environment: dict[str, str], out: Any, disclaimed: bool) -> tuple[int, subprocess.Popen | None]:
+    """Start ``command`` detached with its output in ``out``: its pid, and its handle unless it was started with its own
+    responsibility (macOS, `poolhouse.disclaim`), which gives a pid only and starts it in the state root."""
+    if disclaimed and disclaim.available():
+        where = home()
+        where.mkdir(parents=True, exist_ok=True)  # a process of its own never starts inside a folder macOS asks consent for
+        return disclaim.spawn(command, environment, out.fileno(), cwd=where), None
+    from poolhouse.platform import detached_kwargs
+
+    child = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT, env=environment, **detached_kwargs())
+    return child.pid, child
+
+
+def start(command: Sequence[str], *, out: Any, disclaimed: bool = False) -> Detached:
+    """Run exactly ``command`` owned by no terminal, its output going to the open file ``out`` (a caller whose own output is a
+    log passes its own, so the child's lines follow its own); no record is kept."""
+    environment = sentinel.default().scrub_env({**os.environ, "PYTHONUNBUFFERED": "1"})
+    pid, child = _start([str(a) for a in command], environment, out, disclaimed)
+    return Detached(pid=pid, log=Path(), command=tuple(str(a) for a in command), started=time.strftime("%FT%T"), process=child)
 
 
 def detach(module: str, argv: Sequence[str], *, log: Path, lines: Sequence[str] = (),
-           kind: str = "", home: Path | None = None) -> Detached:
+           kind: str = "", home: Path | None = None, same_interpreter: bool = False, disclaimed: bool = False) -> Detached:
     """Run ``python -m module argv`` owned by no terminal, its output appended to ``log``,
     whose header is its ``argv:`` and ``started:`` lines and then ``lines``.
 
     With a ``kind`` the run is recorded under ``home``, so `status`, `wait` and `stop`
-    find it; without one the caller keeps whatever record it keeps.
+    find it; without one the caller keeps whatever record it keeps. ``disclaimed`` makes a
+    process macOS holds responsible for itself, not for the terminal or app that ran this.
     """
-    from poolhouse.platform import detached_kwargs
-
     started = time.strftime("%FT%T")
     rest = [str(a) for a in argv]
-    chosen = runtime.available()
-    python = chosen.python if chosen is not None else runtime.python()
-    command = [str(python), *(["-I"] if chosen is not None else []), "-m", module, *rest]
+    if same_interpreter and getattr(sys, 'frozen', False):
+        raise ValueError('This detached task needs a Python compute interpreter')
+    source = source_checkout() if same_interpreter else None
+    chosen = None if same_interpreter else runtime.available()
+    python = sys.executable if same_interpreter else chosen.python if chosen is not None else runtime.python()
+    options = ['-B', '-u', *([] if source else ['-I'])] if same_interpreter else ['-I'] if chosen is not None else []
+    command = [str(python), *options, "-m", module, *rest]
     environment = {**os.environ, "PYTHONUNBUFFERED": "1"}
-    if chosen is not None:
+    if chosen is not None or same_interpreter:
         environment = runtime.environment(environment)
+    if same_interpreter:
+        environment = {name: value for name, value in environment.items()
+                       if not name.startswith(('PYTHON', 'DYLD_')) and name not in {'LD_PRELOAD', 'LD_AUDIT'}}
+        if source:
+            environment['PYTHONPATH'] = str(source / 'src')
     log = Path(log)
     log.parent.mkdir(parents=True, exist_ok=True)
     head = [f"argv: {' '.join(rest)}", f"started: {started}", *lines]
     with log.open("ab") as out:
         out.write(("\n".join(head) + "\n").encode("utf-8"))
         out.flush()
-        child = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=out,
-                                 stderr=subprocess.STDOUT,
-                                 env=sentinel.default().scrub_env(environment),
-                                 **detached_kwargs())
+        pid, child = _start(command, sentinel.default().scrub_env(environment), out, disclaimed)
     if kind:
-        record(kind, pid=child.pid, argv=rest, log=str(log), started=started, home=home)
-    return Detached(pid=child.pid, log=log, command=tuple(command), started=started)
+        record(kind, pid=pid, argv=rest, log=str(log), started=started, home=home)
+    return Detached(pid=pid, log=log, command=tuple(command), started=started, process=child)
 
 
 def wait(kind: str, *, say: Callable[[str], None] = say, every: float = 60.0,
@@ -249,7 +281,7 @@ def status(*, say: Callable[[str], None] = say, home: Path | None = None) -> int
         kind = path.stem
         record = _read(path)
         pid = int(record.get("pid") or 0)
-        running = bool(pid) and not _ended(pid)
+        running = bool(pid) and not ended(pid)
         said = f"running (pid {pid})" if running else (f"ended (pid {pid})" if pid else "unknown")
         say(f"{kind}: {said} since {record.get('started', '?')}")
         argv = " ".join(str(a) for a in (record.get("argv") or ()))

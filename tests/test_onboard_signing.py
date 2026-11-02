@@ -11,8 +11,8 @@ from onboard_support import FileKeyring, Recorder
 
 from poolhouse import keystore as keystore_module
 from poolhouse.fleet.onboard import manifest as mf, signing
-from poolhouse.fleet.onboard.human import HumanRequired, mint
 from poolhouse.fleet.onboard.signing import KeyStoreError, SigningKeys
+from poolhouse.sentinel.human import HumanRequired, mint
 
 
 @pytest.fixture(autouse=True)

@@ -99,3 +99,123 @@ def test_original_repository_directory_link_cannot_authorize_blob_targets(cached
     monkeypatch.setattr(resources.hfstore, 'repo_root', lambda repo: alias)
     with pytest.raises(ValueError, match='cache directory cannot be a symbolic link'):
         resources.model_files(handle)
+
+
+def test_materialized_base_identity_matches_native_snapshot_without_cache_lookup(cached_model, tmp_path, monkeypatch):
+    handle, _, _ = cached_model
+    staged = tmp_path / 'staged'
+    staged.mkdir()
+    for member in resources.model_files(handle):
+        target = staged / member['relative']
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with resources.open_model_file(member) as source:
+            target.write_bytes(source.read())
+    expected = resources.model_fingerprint(handle)
+    monkeypatch.setattr(resources.hub, 'discover', lambda: pytest.fail('staged base must not query ambient model cache'))
+    assert resources.base_fingerprint({'kind': 'model', 'path': str(staged)}) == expected
+    private = tmp_path / 'private'
+    private.write_bytes(b'private')
+    (staged / 'injected').symlink_to(private)
+    with pytest.raises(ValueError, match='symbolic links'):
+        resources.base_fingerprint({'kind': 'model', 'path': str(staged)})
+
+
+@pytest.fixture
+def shared_model(cached_model):
+    handle, _, blobs = cached_model
+    original = next(blobs.iterdir())
+    digest = 'b' * 64  # Shared storage locators are independent of repository content digests.
+    shared = blobs.parent.parent / 'blobs' / digest[:2] / digest
+    shared.parent.mkdir(parents=True)
+    original.replace(shared)
+    original.symlink_to(Path('../../blobs') / digest[:2] / digest)
+    return handle, original, shared
+
+
+def test_shared_content_addressed_native_blob(shared_model):
+    handle, _, shared = shared_model
+    member = next(m for m in resources.model_files(handle) if m['relative'] == 'model.safetensors')
+    assert member['path'] == str(shared)
+    assert member['blob_digest'] == hashlib.sha256(b'weights').hexdigest()
+    assert member['blob_digest'] != shared.name
+    assert resources.model_fingerprint(handle)
+
+
+@pytest.mark.parametrize('attack', ['wrong-shard', 'nonhex', 'extra-hop', 'outside', 'ancestor', 'changed-bytes'])
+def test_shared_blob_boundary(shared_model, tmp_path, attack):
+    handle, original, shared = shared_model
+    if attack == 'changed-bytes':
+        shared.write_bytes(b'forged')
+    elif attack == 'ancestor':
+        shard = shared.parent
+        moved = shard.with_name('moved')
+        shard.rename(moved)
+        shard.symlink_to(moved, target_is_directory=True)
+    else:
+        original.unlink()
+        if attack == 'wrong-shard':
+            target = shared.parent.parent / 'ff' / shared.name
+        elif attack == 'nonhex':
+            target = shared.with_name('invalid')
+        elif attack == 'extra-hop':
+            target = shared
+            shared.unlink()
+            shared.symlink_to(tmp_path / 'private')
+        else:
+            target = tmp_path / 'private'
+        original.symlink_to(target)
+    with pytest.raises((ValueError, FileNotFoundError)):
+        resources.model_fingerprint(handle)
+
+
+def test_shared_blob_replacement_before_open_is_refused(shared_model, tmp_path):
+    handle, _, shared = shared_model
+    member = next(m for m in resources.model_files(handle) if m['relative'] == 'model.safetensors')
+    shared.unlink()
+    shared.symlink_to(tmp_path / 'private')
+    with pytest.raises(ValueError, match='changed'), resources.open_model_file(member):
+        pytest.fail('replaced shared blob must not be read')
+
+
+def test_shared_blob_resume_hashes_skipped_upload_prefix(shared_model):
+    handle, _, _ = shared_model
+    member = next(m for m in resources.model_files(handle) if m['relative'] == 'model.safetensors')
+    with resources.open_model_file(member) as source:
+        assert source.read(2) == b'we'
+        assert source.seek(5) == 5
+        assert source.read() == b'ts'
+    with resources.open_model_file(member) as source:
+        source.read(2)
+        with pytest.raises(ValueError, match='forward'):
+            source.seek(0)
+    with pytest.raises(ValueError, match='exceeds'), resources.open_model_file(member) as source:
+        source.seek(member['size'] + 1)
+
+
+@pytest.mark.parametrize('changed', [False, True])
+def test_shared_blob_uses_repository_git_object_digest(shared_model, changed):
+    handle, original, shared = shared_model
+    snapshot = Path(handle['path'])
+    oid = hashlib.sha1(b'blob 7\0weights', usedforsecurity=False).hexdigest()
+    git_blob = original.with_name(oid)
+    original.rename(git_blob)
+    link = snapshot / 'model.safetensors'
+    link.unlink()
+    link.symlink_to(Path('../../blobs') / oid)
+    if changed:
+        shared.write_bytes(b'forged!')
+        with pytest.raises(ValueError, match='content digest'):
+            resources.model_fingerprint(handle)
+    else:
+        assert resources.model_fingerprint(handle)
+
+
+def test_shared_blob_requires_valid_repository_content_digest(shared_model):
+    handle, original, _ = shared_model
+    invalid = original.with_name('not-a-content-digest')
+    original.rename(invalid)
+    link = Path(handle['path']) / 'model.safetensors'
+    link.unlink()
+    link.symlink_to(Path('../../blobs') / invalid.name)
+    with pytest.raises(ValueError, match='valid content digest'):
+        resources.model_files(handle)

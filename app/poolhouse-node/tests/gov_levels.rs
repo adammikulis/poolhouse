@@ -1,5 +1,5 @@
-//! Levels and floors: a key counts for a class of act only at or above the floor the charter names for it, and what only `computer`
-//! keys sign waits.
+//! Claims, levels and floors: a key states how it is held, every member computes the level it counts at, a key counts for a class of act
+//! only at or above the floor the charter names for it, and what only `computer` keys sign waits.
 
 mod kit;
 
@@ -39,10 +39,11 @@ fn floors(g: &GovPool) -> Floors {
     g.state().chain.latest().charter.floors
 }
 
-fn all(level: Level) -> Floors {
-    Floors { routine: level, sensitive: level, governance: level }
+fn computer_floors() -> Floors {
+    Floors { routine: Level::Computer, sensitive: Level::Computer, governance: Level::Computer }
 }
 
+/// A pool of a phone's key and a computer's key.
 fn mixed() -> (tempfile::TempDir, GovPool) {
     pool(&[phone_admin(A, "ann"), computer_admin(B, "bob")], Policy::Secure)
 }
@@ -51,8 +52,9 @@ fn mixed() -> (tempfile::TempDir, GovPool) {
 fn a_pool_of_one_computer_key_founds_admits_and_removes() {
     let a = device();
     found_at(&a, person(ANN, "ann"), "secure", Level::Computer);
-    assert_eq!(a.status()["governance"]["floors"], json!({"routine": "computer", "sensitive": "computer", "governance": "computer"}));
-    assert_eq!(a.status()["governance"]["levels"], json!(["computer"]));
+    let gov = a.status()["governance"].clone();
+    assert_eq!(gov["floors"], json!({"routine": "computer", "sensitive": "computer", "governance": "computer"}));
+    assert_eq!((gov["admins"][0]["claim"]["method"].clone(), gov["admins"][0]["counted"].clone()), (json!("keystore-prompt"), json!("computer")), "{gov}");
     let laptop = ident(30);
     let admitted = a.node.lock().unwrap().gov_admit(&laptop.der, "laptop", "join-code").unwrap();
     assert_eq!(admitted.status, Status::Active, "a computer key admits a device");
@@ -61,79 +63,61 @@ fn a_pool_of_one_computer_key_founds_admits_and_removes() {
 }
 
 #[test]
-fn a_floor_of_phone_makes_a_computer_key_count_for_nothing() {
-    let (_d, mut g) = mixed();
-    assert_eq!(floors(&g), Floors { routine: Level::Computer, sensitive: Level::Phone, governance: Level::Phone });
+fn a_phone_claim_counts_as_computer() {
+    let (_d, mut g) = pool(&[phone_admin(A, "ann"), computer_admin(B, "ann")], Policy::Secure);
+    assert_eq!(floors(&g), computer_floors());
+    let keys = &g.state().chain.latest().charter.admins;
+    assert!(keys.iter().all(|k| k.level() == Level::Computer), "a phone's claim and a computer's both count at computer");
     let laptop = ident(10);
-    assert!(refused(put_admit(&mut g, &laptop, &[B])).contains("below the pool's floor"), "a computer key admits no device under a phone floor");
-    put_admit(&mut g, &laptop, &[A]);
-    assert!(is_member(&g, &laptop));
-    for kind in ["remove", "admin_add", "set_holds"] {
-        let body = match kind {
-            "remove" => json!({"fingerprint": laptop.fingerprint()}),
-            "admin_add" => json!({"entry": entry_after(computer_admin(D, "dee"), 2, &g)}),
-            _ => json!({"dispute_d": 3}),
-        };
-        let act = make(&g, kind, body, &[B]);
-        assert!(refused(take(&mut g, act)).contains("below the pool's floor"), "{kind}");
+    put_admit(&mut g, &laptop, &[B]);
+    assert!(is_member(&g, &laptop), "a computer key admits a device in a pool that lists a phone key");
+    put(&mut g, "remove", json!({"fingerprint": laptop.fingerprint()}), &[B]);
+    assert!(is_removed(&g, &laptop), "and removes it: the phone key is one more counting key, not a higher one");
+}
+
+#[test]
+fn a_floor_above_computer_is_refused_because_no_key_holds_it() {
+    for keys in [vec![computer_admin(A, "ann")], vec![phone_admin(A, "ann")], vec![K(A, "ann", Role::Admin, Level::Native)]] {
+        let (_d, mut g) = pool(&keys, Policy::Secure);
+        for level in ["phone", "native"] {
+            let act = make(&g, "set_floors", json!({"sensitive": level}), &[A]);
+            take(&mut g, act.clone());
+            assert!(matches!(g.status(&act.id()), ActStatus::Void(w) if w.contains("no listed key holds that level")), "{level}: {:?}", g.status(&act.id()));
+        }
+        advance(&mut g, 8 * DAY);
+        assert_eq!(floors(&g), computer_floors(), "nothing moved, so the pool still counts");
     }
-    assert!(is_member(&g, &laptop));
-}
-
-#[test]
-fn lowering_a_floor_is_held_and_needs_keys_at_the_old_floor() {
-    let (_d, mut g) = mixed();
-    let thief = make(&g, "set_floors", json!({"sensitive": "computer"}), &[B]);
-    assert!(refused(take(&mut g, thief)).contains("below the pool's floor"), "a computer key cannot lower a phone floor");
-    let lowering = make(&g, "set_floors", json!({"sensitive": "computer"}), &[A]);
-    assert_eq!(take(&mut g, lowering.clone()), Ingest::Accepted);
-    assert_eq!(g.status(&lowering.id()), ActStatus::Pending, "lowering is a weakening: held");
-    advance(&mut g, 23 * HOUR);
-    assert_eq!(floors(&g).sensitive, Level::Phone);
-    advance(&mut g, 2 * HOUR);
-    assert_eq!(floors(&g).sensitive, Level::Computer);
-
-    let loose = charter_floored(&[phone_admin(A, "ann"), computer_admin(B, "ann")], Policy::Secure, Floors { routine: Level::Computer, sensitive: Level::Phone, governance: Level::Computer });
-    let (_d2, mut g) = pool_of(&loose);
-    let act = make(&g, "set_floors", json!({"sensitive": "computer"}), &[B]);
-    assert_eq!(take(&mut g, act.clone()), Ingest::Accepted, "B counts for governance here");
-    advance(&mut g, 8 * DAY);
-    assert_eq!(floors(&g).sensitive, Level::Phone, "but the floor it lowers is the phone's, and B holds no phone key");
-    assert!(matches!(g.status(&act.id()), ActStatus::Short(0, 1)), "{:?}", g.status(&act.id()));
-}
-
-#[test]
-fn raising_a_floor_takes_effect_at_once() {
-    let low = charter_floored(&[phone_admin(A, "ann"), computer_admin(B, "ann")], Policy::Secure, all(Level::Computer));
-    let (_d, mut g) = pool_of(&low);
-    let by_computer = make(&g, "set_floors", json!({"sensitive": "phone"}), &[B]);
-    take(&mut g, by_computer.clone());
-    assert_eq!(g.status(&by_computer.id()), ActStatus::Pending, "a computer key raising a floor waits");
-    let raise = make(&g, "set_floors", json!({"sensitive": "phone"}), &[A]);
-    assert_eq!(take(&mut g, raise.clone()), Ingest::Accepted);
-    assert_eq!(floors(&g).sensitive, Level::Phone, "a phone key's raise has no hold");
-    assert_eq!(g.state().chain.latest().n, 2);
 }
 
 #[test]
 fn a_charter_with_other_floors_is_another_pool() {
     let keys = [phone_admin(A, "ann"), computer_admin(B, "bob")];
-    let one = charter_floored(&keys, Policy::Secure, Floors { routine: Level::Computer, sensitive: Level::Phone, governance: Level::Phone });
+    let one = charter_floored(&keys, Policy::Secure, computer_floors());
     let mut other = one.clone();
-    other.floors.sensitive = Level::Computer;
+    other.floors.sensitive = Level::Phone;
     assert_ne!(one.pool_id(), other.pool_id(), "the floors are part of what the pool id hashes");
     assert_eq!(one.pool_id(), one.clone().pool_id());
 }
 
 #[test]
+fn a_charter_with_another_claim_is_another_pool() {
+    let one = charter(&[computer_admin(A, "ann")], Policy::Secure, poolhouse_node::gov::charter::Unit::Person);
+    let mut other = one.clone();
+    other.admins[0].claim = Some(claim_at(Level::Phone));
+    assert_ne!(one.pool_id(), other.pool_id(), "the claim is part of what the pool id hashes");
+    other.admins[0].claim = None;
+    assert!(other.check_keys(1).is_err(), "an admin key that states no claim is no key");
+}
+
+#[test]
 fn a_key_added_below_the_floor_counts_nothing() {
-    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
-    assert_eq!(floors(&g), all(Level::Phone));
-    let listing = add(&g, computer_admin(B, "bob"), &[A]);
+    let (_d, mut g) = pool(&[computer_admin(A, "ann")], Policy::Secure);
+    assert_eq!(floors(&g), computer_floors());
+    let listing = add(&g, weak(B, "bob"), &[A]);
     take(&mut g, listing);
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, 8 * DAY);
     assert!(admins(&g).contains(&public(B)), "the key is listed");
-    assert_eq!(floors(&g), all(Level::Phone), "adding a key moves no floor");
+    assert_eq!(floors(&g), computer_floors(), "adding a key moves no floor");
     let laptop = ident(10);
     assert!(refused(put_admit(&mut g, &laptop, &[B])).contains("below the pool's floor"));
     let removal = make(&g, "remove", json!({"fingerprint": laptop.fingerprint()}), &[B]);
@@ -141,63 +125,41 @@ fn a_key_added_below_the_floor_counts_nothing() {
 }
 
 #[test]
-fn a_key_is_listed_at_no_level_above_the_keys_that_listed_it() {
-    let (_d, mut g) = pool(&[computer_admin(A, "ann")], Policy::Secure);
-    let claim = add(&g, phone_admin(B, "bob"), &[A]);
-    assert_eq!(take(&mut g, claim.clone()), Ingest::Accepted);
-    assert!(matches!(g.status(&claim.id()), ActStatus::Void(w) if w.contains("no level above")), "{:?}", g.status(&claim.id()));
-    advance(&mut g, 8 * DAY);
-    assert!(!admins(&g).contains(&public(B)), "a computer key cannot list a phone key");
-    let same = add(&g, computer_admin(B, "bob"), &[A]);
-    take(&mut g, same);
-    advance(&mut g, 8 * DAY);
-    assert!(admins(&g).contains(&public(B)), "it can list a computer key");
-
-    let (_d2, mut by_phone) = pool(&[phone_admin(A, "ann")], Policy::Secure);
-    let listing = add(&by_phone, phone_admin(B, "bob"), &[A]);
-    take(&mut by_phone, listing);
-    advance(&mut by_phone, 25 * HOUR);
-    assert!(admins(&by_phone).contains(&public(B)), "a phone key lists a phone key");
-}
-
-#[test]
 fn a_floor_is_never_weak() {
-    let weak_floor = charter_floored(&[phone_admin(A, "ann")], Policy::Secure, Floors { routine: Level::Weak, sensitive: Level::Phone, governance: Level::Phone });
+    let weak_floor = charter_floored(&[computer_admin(A, "ann")], Policy::Secure, Floors { routine: Level::Weak, sensitive: Level::Computer, governance: Level::Computer });
     let why = poolhouse_node::gov::pool::founding(&weak_floor.found_act()).unwrap_err().to_string();
     assert!(why.contains("never a typed yes"), "{why}");
-    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
+    let (_d, mut g) = pool(&[computer_admin(A, "ann")], Policy::Secure);
     let act = make(&g, "set_floors", json!({"routine": "weak"}), &[A]);
     assert!(refused(take(&mut g, act)).contains("never a typed yes"));
-    assert_eq!(floors(&g), all(Level::Phone));
+    assert_eq!(floors(&g), computer_floors());
 }
 
 #[test]
-fn raising_a_floor_to_a_level_nobody_holds_is_refused() {
-    let (_d, mut g) = pool(&[computer_admin(A, "ann")], Policy::Secure);
-    let act = make(&g, "set_floors", json!({"sensitive": "phone"}), &[A]);
-    take(&mut g, act.clone());
-    assert!(matches!(g.status(&act.id()), ActStatus::Void(w) if w.contains("no listed key holds that level")), "{:?}", g.status(&act.id()));
-    advance(&mut g, 8 * DAY);
-    assert_eq!(floors(&g), all(Level::Computer), "nothing moved, so the pool still counts");
+fn a_claim_whose_prompt_does_not_fit_its_method_is_no_claim() {
+    use poolhouse_node::gov::keys::{Claim, Method, Os, Prompt};
+    let mut one = charter(&[computer_admin(A, "ann")], Policy::Secure, poolhouse_node::gov::charter::Unit::Person);
+    for (method, prompt) in [(Method::KeystorePrompt, Prompt::TypedYes), (Method::KeystoreTyped, Prompt::OsDialog), (Method::PhoneKeystore, Prompt::OsDialog), (Method::File, Prompt::Biometric)] {
+        one.admins[0].claim = Some(Claim { method, os: Os::Macos, prompt });
+        assert!(one.check_keys(1).is_err(), "{method:?} with {prompt:?}");
+    }
+    let word = serde_json::from_value::<Claim>(json!({"method": "enclave", "os": "macos", "prompt": "os-dialog"}));
+    assert!(word.is_err(), "a word outside the vocabulary is not a claim");
 }
 
 #[test]
 fn computer_only_governance_is_held_seven_days() {
-    let (_d, mut g) = pool(&[computer_admin(A, "ann")], Policy::Secure);
-    let added = add(&g, computer_admin(B, "bob"), &[A]);
-    assert_eq!(take(&mut g, added.clone()), Ingest::Accepted);
-    advance(&mut g, 25 * HOUR);
-    assert!(!admins(&g).contains(&public(B)), "the pool's own 24 hours are not enough when only a computer signed");
-    advance(&mut g, 5 * DAY);
-    assert!(!admins(&g).contains(&public(B)), "six days and an hour are less than seven");
-    advance(&mut g, 2 * DAY);
-    assert!(admins(&g).contains(&public(B)));
-
-    let (_d2, mut phone) = pool(&[phone_admin(A, "ann")], Policy::Secure);
-    let listing = add(&phone, phone_admin(B, "bob"), &[A]);
-    take(&mut phone, listing);
-    advance(&mut phone, 25 * HOUR);
-    assert!(admins(&phone).contains(&public(B)), "a phone key's governance act keeps the pool's own hold");
+    for keys in [vec![computer_admin(A, "ann")], vec![phone_admin(A, "ann")]] {
+        let (_d, mut g) = pool(&keys, Policy::Secure);
+        let added = add(&g, computer_admin(B, "bob"), &[A]);
+        assert_eq!(take(&mut g, added.clone()), Ingest::Accepted);
+        advance(&mut g, 25 * HOUR);
+        assert!(!admins(&g).contains(&public(B)), "the pool's own 24 hours are not enough: every counting key is a computer key");
+        advance(&mut g, 5 * DAY);
+        assert!(!admins(&g).contains(&public(B)), "six days and an hour are less than seven");
+        advance(&mut g, 2 * DAY);
+        assert!(admins(&g).contains(&public(B)));
+    }
 
     let (_d3, mut g) = pool(&[computer_admin(A, "ann")], Policy::Secure);
     let laptop = ident(11);
@@ -211,26 +173,21 @@ fn computer_only_governance_is_held_seven_days() {
 #[test]
 fn computer_only_file_delete_waits_a_cancel_window() {
     use poolhouse_node::gov::charter::data_act_wait_ms;
-    assert_eq!(data_act_wait_ms("file_delete", &[Level::Computer]), DAY, "an irreversible act that only a computer approved waits a day");
-    assert_eq!(data_act_wait_ms("shard_consent", &[Level::Computer, Level::Computer]), DAY);
-    assert_eq!(data_act_wait_ms("file_delete", &[Level::Computer, Level::Phone]), 0);
-    assert_eq!(data_act_wait_ms("file_delete", &[Level::Native]), 0);
-    assert_eq!(data_act_wait_ms("sync_now", &[Level::Computer]), 0, "a reversible act never waits");
-    assert_eq!(data_act_wait_ms("file_delete", &[Level::Weak]), DAY, "a typed yes is no stronger than a computer's key: it waits too");
-    assert_eq!(data_act_wait_ms("file_delete", &[Level::Weak, Level::Computer]), DAY);
-    assert_eq!(data_act_wait_ms("file_delete", &[]), 0);
+    assert_eq!(data_act_wait_ms("file_delete"), DAY, "an irreversible act waits a day for a key to cancel it");
+    assert_eq!(data_act_wait_ms("shard_consent"), 0, "consent to sharding is turned off again: it is sensitive, not irreversible");
+    assert_eq!(data_act_wait_ms("sync_now"), 0, "a reversible act never waits");
 }
 
 #[test]
 fn member_remove_needs_the_sensitive_floor() {
-    let (_d, mut g) = mixed();
+    let (_d, mut g) = pool(&[phone_admin(A, "ann"), weak(B, "bob")], Policy::Secure);
     let laptop = ident(10);
     put_admit(&mut g, &laptop, &[A]);
-    let by_computer = make(&g, "remove", json!({"fingerprint": laptop.fingerprint()}), &[B]);
-    assert!(refused(take(&mut g, by_computer)).contains("below the pool's floor"));
+    let by_typed_yes = make(&g, "remove", json!({"fingerprint": laptop.fingerprint()}), &[B]);
+    assert!(refused(take(&mut g, by_typed_yes)).contains("below the pool's floor"));
     assert!(is_member(&g, &laptop));
     put(&mut g, "remove", json!({"fingerprint": laptop.fingerprint()}), &[A]);
-    assert!(is_removed(&g, &laptop), "the phone key removes it");
+    assert!(is_removed(&g, &laptop), "the key at the floor removes it");
 
     let (_d2, mut two) = pool(&[phone_admin(A, "ann"), phone_admin(B, "ben")], Policy::Secure);
     let guest = ident(12);
@@ -247,7 +204,7 @@ fn the_first_recovery_key_is_held_seven_days() {
     let act = add(&g, recovery(D, "ann"), &[A]);
     assert_eq!(take(&mut g, act), Ingest::Accepted);
     advance(&mut g, 25 * HOUR);
-    assert!(!admins(&g).contains(&public(D)), "a phone's 24 hours do not list the first recovery key");
+    assert!(!admins(&g).contains(&public(D)), "24 hours do not list the first recovery key");
     advance(&mut g, 6 * DAY);
     assert!(admins(&g).contains(&public(D)));
     assert!(g.state().chain.latest().charter.admins.iter().any(|k| k.role == Role::Recovery));
@@ -277,11 +234,11 @@ fn recovery_replace_is_held_and_the_recovery_key_cancels_it() {
 
 #[test]
 fn only_the_recovery_key_or_a_key_at_the_floor_cancels_a_replace() {
-    let (_d, mut g) = pool(&[phone_admin(A, "ann"), computer_admin(B, "bob"), recovery(D, "ann")], Policy::Secure);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann"), weak(B, "bob"), recovery(D, "ann")], Policy::Secure);
     let swap = replace(&g, recovery(E, "ann"), &[A]);
     take(&mut g, swap.clone());
-    let by_computer = make(&g, "cancel", json!({"act": swap.id()}), &[B]);
-    assert!(refused(take(&mut g, by_computer)).contains("below the pool's floor"), "a computer key under a phone floor cancels nothing");
+    let by_typed_yes = make(&g, "cancel", json!({"act": swap.id()}), &[B]);
+    assert!(refused(take(&mut g, by_typed_yes)).contains("below the pool's floor"), "a typed yes cancels nothing");
     assert_eq!(put(&mut g, "cancel", json!({"act": swap.id()}), &[A]), Ingest::Accepted);
     advance(&mut g, 8 * DAY);
     assert!(admins(&g).contains(&public(D)));
@@ -290,7 +247,7 @@ fn only_the_recovery_key_or_a_key_at_the_floor_cancels_a_replace() {
 #[test]
 fn the_level_line_survives_the_300_character_cut() {
     use poolhouse_node::gov::describe::compose;
-    let level = "LEVEL: This change is approved from this computer. A program running as you could approve it without asking; a phone would stop that.";
+    let level = "LEVEL: This change is approved from this computer. A program running as you could approve it without asking.";
     let long = "x".repeat(450);
     let shown = compose(&long, level);
     let (said, line) = shown.split_once('\n').unwrap();
@@ -303,5 +260,5 @@ fn the_level_line_survives_the_300_character_cut() {
     let text = summary.as_str().unwrap();
     let (said, line) = text.split_once('\n').unwrap();
     assert!(said.chars().count() <= 300 && line.starts_with("LEVEL: This change is approved from this computer."), "{text}");
-    assert!(line.contains("waits 7 days"), "a governance act under a computer floor says it waits: {line}");
+    assert!(line.contains("waits 7 days"), "a governance act says it waits: {line}");
 }

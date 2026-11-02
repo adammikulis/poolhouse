@@ -1,43 +1,5 @@
 #!/bin/sh
-# Install the git hooks from scripts/hooks/ — the one place they live.
-#
-# A machine that wants the hooks to read a local database writes its own untracked
-# wrapper in .git/hooks/ that exports NAMES_GRAPH / NAMES_SCRAPE and execs the script
-# here; this installer leaves any hook it did not put there alone.
-#
-# pre-push refuses an agent's push of any ref but the development branch, and runs pushed:
-# pushed Python parses, pushed files pass no-data-files, and no merged worktree is left.
-#
-# pre-commit runs no-data-files, then no-real-names, then budgets, then budgets-only-fall.
-# no-data-files refuses graph, data and weight files, large files and data directories.
-# budgets refuses a staged file that adds a site to any metric in budgets.json (SKIP_BUDGETS=1 to override);
-# budgets-only-fall refuses a staged budgets.json whose numbers rose, and refuses it
-# outright when CLAUDECODE is set (POOLHOUSE_BUDGET_RISE=yes for a person's own terminal).
-#
-# scripts/hooks/claude-bash-guard is not a git hook and is not installed here. It is a
-# Claude Code PreToolUse hook on Bash; a project wires it into its .claude/settings.json:
-#   {"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command",
-#     "command": "$CLAUDE_PROJECT_DIR/scripts/hooks/claude-bash-guard"}]}]}}
-#
-# scripts/hooks/claude-edit-guard is the same kind of thing on the writing tools:
-#   {"hooks": {"PreToolUse": [{"matcher": "Write|Edit|MultiEdit", "hooks": [{"type": "command",
-#     "command": "$CLAUDE_PROJECT_DIR/scripts/hooks/claude-edit-guard"}]}]}}
-set -e
-cd "$(git rev-parse --show-toplevel)"
-hooks="$(git rev-parse --git-common-dir)/hooks"
-mkdir -p "$hooks"
-for pair in "pre-commit pre-commit" "commit-msg commit-msg" "pre-push pre-push" "post-merge post-merge" "post-commit post-commit"; do
-    hook=${pair% *}
-    script=${pair#* }
-    dst="$hooks/$hook"
-    ours=no
-    case "$(readlink "$dst" 2>/dev/null)" in
-        ../../scripts/hooks/*) ours=yes ;;
-    esac
-    if [ -e "$dst" ] && [ "$ours" = no ]; then
-        echo "install-hooks: $dst exists and is not ours; leaving it alone" >&2
-        continue
-    fi
-    ln -sf "../../scripts/hooks/$script" "$dst"
-    echo "install-hooks: $hook -> scripts/hooks/$script"
-done
+# The explicit repository installer shares ownership and scope checks with Python.
+set -eu
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec "${PYTHON:-python3}" "$here/install-hooks.py" "$@"

@@ -1,0 +1,330 @@
+{
+  "record_id": "macos-producer-original-2026-10-23T21:20:19Z",
+  "observed_utc": "2026-10-23T21:20:19.985314+00:00",
+  "checkpoint_status": {
+    "compile": "passed",
+    "context_tests": "2 passed",
+    "packages": "both built",
+    "original_loader_boundary": "failed for both candidates",
+    "live_server": "unverified",
+    "attach": "unverified",
+    "core": "unverified",
+    "H": "unfinished",
+    "installed": false,
+    "native_admission": false,
+    "active_host_replaced_or_restarted": false,
+    "original_artifacts_modified": false,
+    "probe_tempdirs_remaining": []
+  },
+  "scope": "Original unmodified candidate packages; observation record, not an admission format.",
+  "retention": "Keep these original artifact hashes and failed results unchanged. Record derivative experiments separately.",
+  "host": {
+    "os": "macOS",
+    "version": "26.6",
+    "build": "25G70",
+    "architecture": "arm64",
+    "rust_target": "aarch64-apple-darwin",
+    "rustc_version": "1.99.1",
+    "rustc_commit": "58cf8f9c35b355199727627d07ae34a4e2846d67",
+    "llvm_version": "23.1.1",
+    "package_profile": "dev-small"
+  },
+  "source": {
+    "upstream": "https://github.com/openai/codex.git",
+    "revision": "6aaac694803004a63c6f393d153c96d22521a6b9",
+    "tag": "rust-v0.164.0",
+    "patches": [
+      {
+        "path": "0001-harden-producer-entrypoints.patch",
+        "sha256": "fa8b66bdc178b9649fc1f30dd9d65a6f626536f4f6d0bf1f3e4ee43fcd4ac022"
+      },
+      {
+        "path": "0002-retain-native-session-context.patch",
+        "sha256": "8ab2fdc96d34ab5c8e5acf51b9b4addeb3a6c879b1a3dc76636669ab53200578"
+      }
+    ],
+    "cargo_lock_sha256": "c043b6b7e67bb2f0ae4b1b8dd485cd6a24bd1cb7ef3a42752d303bc5e5ca4be1",
+    "lock_unchanged": true
+  },
+  "retained_evidence": {
+    "codex-mac-checkpoint.json": "e4bd539f984ddbdd94795e32511783fc47b7aa6a25797a70bc8955361f9c45cd",
+    "codex-mac-artifacts.json": "04be6a0436495d994beb1ba7c8263a353530543be29c9899b54e4cfab65c0d3e",
+    "runner_sha256": "5b6171652971e857cf21d9abb34adccbc3115c5c8bb19d9baf9b0e594a2401b9",
+    "helper_sha256": "82ba2135aed4cd362fba02baa702d743c0a771574a06f15dc1c9930a89e51c43",
+    "loader_sha256": "cacb7a6758a96bdae13e39369262ef9fb5606f0852d65d545ab49b39049efa6d"
+  },
+  "compile": {
+    "command": [
+      "cargo",
+      "+1.99.1",
+      "check",
+      "--locked",
+      "--manifest-path",
+      "codex-rs/Cargo.toml",
+      "-p",
+      "codex-cli",
+      "--bin",
+      "codex",
+      "-p",
+      "codex-app-server",
+      "--bin",
+      "codex-app-server",
+      "-j",
+      "2"
+    ],
+    "cwd": "<CODEX_SOURCE>",
+    "workers": 2,
+    "exit_code": 0,
+    "started_utc": "2026-10-23T21:04:46.933712+00:00",
+    "finished_utc": "2026-10-23T21:08:43.059224+00:00",
+    "elapsed_seconds": 236.096
+  },
+  "context_tests": {
+    "command": [
+      "cargo",
+      "+1.99.1",
+      "test",
+      "--locked",
+      "--manifest-path",
+      "codex-rs/Cargo.toml",
+      "-p",
+      "codex-hooks",
+      "--lib",
+      "native_session_context",
+      "-j",
+      "2"
+    ],
+    "workers": 2,
+    "exit_code": 0,
+    "started_utc": "2026-10-23T21:09:07.490751+00:00",
+    "finished_utc": "2026-10-23T21:11:41.603466+00:00",
+    "elapsed_seconds": 154.111,
+    "cwd": "<CODEX_SOURCE>",
+    "passed": 2,
+    "failed": 0,
+    "isolated_test_home": true
+  },
+  "packages": [
+    {
+      "variant": "codex",
+      "command": [
+        "python3",
+        "scripts/build_codex_package.py",
+        "--target",
+        "aarch64-apple-darwin",
+        "--variant",
+        "codex",
+        "--cargo",
+        "<EVIDENCE_ROOT>/cargo-locked",
+        "--cargo-profile",
+        "dev-small",
+        "--package-dir",
+        "<EVIDENCE_ROOT>/package-codex"
+      ],
+      "cwd": "<CODEX_SOURCE>",
+      "environment": {
+        "CARGO_BUILD_JOBS": "2",
+        "RUSTUP_TOOLCHAIN": "1.99.1",
+        "CODEX_REPO_ROOT": "<CODEX_SOURCE>"
+      },
+      "cargo_wrapper": "pins cargo +1.99.1 and appends --locked",
+      "exit_code": 0,
+      "started_utc": "2026-10-23T21:12:21.676201+00:00",
+      "finished_utc": "2026-10-23T21:18:29.425388+00:00",
+      "elapsed_seconds": 367.77,
+      "manifest": {
+        "layoutVersion": 1,
+        "version": "0.164.0",
+        "target": "aarch64-apple-darwin",
+        "variant": "codex",
+        "entrypoint": "bin/codex",
+        "resourcesDir": "codex-resources",
+        "pathDir": "codex-path"
+      },
+      "manifest_sha256": "c77eb3abe21da837655153670c53ccbb89c26995ba3ccad2b72204b4670e1ad8",
+      "entrypoint_sha256": "40a7769c664a5ac81a848830636b75b08c5cc2ea74b9dc2cab26cd3579380412",
+      "entrypoint_bytes": 469876576
+    },
+    {
+      "variant": "codex-app-server",
+      "command": [
+        "python3",
+        "scripts/build_codex_package.py",
+        "--target",
+        "aarch64-apple-darwin",
+        "--variant",
+        "codex-app-server",
+        "--cargo",
+        "<EVIDENCE_ROOT>/cargo-locked",
+        "--cargo-profile",
+        "dev-small",
+        "--package-dir",
+        "<EVIDENCE_ROOT>/package-codex-app-server"
+      ],
+      "cwd": "<CODEX_SOURCE>",
+      "environment": {
+        "CARGO_BUILD_JOBS": "2",
+        "RUSTUP_TOOLCHAIN": "1.99.1",
+        "CODEX_REPO_ROOT": "<CODEX_SOURCE>"
+      },
+      "cargo_wrapper": "pins cargo +1.99.1 and appends --locked",
+      "exit_code": 0,
+      "started_utc": "2026-10-23T21:18:29.430124+00:00",
+      "finished_utc": "2026-10-23T21:18:34.524307+00:00",
+      "elapsed_seconds": 5.094,
+      "manifest": {
+        "layoutVersion": 1,
+        "version": "0.164.0",
+        "target": "aarch64-apple-darwin",
+        "variant": "codex-app-server",
+        "entrypoint": "bin/codex-app-server",
+        "resourcesDir": "codex-resources",
+        "pathDir": "codex-path"
+      },
+      "manifest_sha256": "670975f440d9c6f972c538b7d4fff7af0191c8598d176398453c41b68561530f",
+      "entrypoint_sha256": "cd0c7ccff1eb965f0852521533159d3105ca8c729f3ccea26a8946a856ec3a9c",
+      "entrypoint_bytes": 368125616
+    }
+  ],
+  "probes": [
+    {
+      "variant": "codex",
+      "command": [
+        "python3",
+        "scripts/testslots.py",
+        "run",
+        "--want",
+        "1",
+        "--min",
+        "1",
+        "--label",
+        "Mac Codex CLI isolated boundary probe",
+        "--",
+        "python3",
+        "<EVIDENCE_ROOT>/probes/run_probe.py",
+        "--manifest",
+        "<EVIDENCE_ROOT>/probe-manifest-codex.json",
+        "--execute"
+      ],
+      "cwd": "<POOLHOUSE_SOURCE>",
+      "stdout_json": "probe-result-codex.json",
+      "result_sha256": "2b8c383f578612e3ea9647b63e2b18b43fbca7030a8bbdeab53139efd03562ff",
+      "artifact_sha256": "40a7769c664a5ac81a848830636b75b08c5cc2ea74b9dc2cab26cd3579380412",
+      "signature": {
+        "details_sha256": "5a2d60f20d5c12421913c62e940ab1db68f5f90d2af440bff7de31e73dabc6a9",
+        "display_exit": 0,
+        "entitlement_booleans": {
+          "com.apple.security.cs.allow-dyld-environment-variables": false,
+          "com.apple.security.cs.allow-jit": false,
+          "com.apple.security.cs.allow-unsigned-executable-memory": false,
+          "com.apple.security.cs.debugger": false,
+          "com.apple.security.cs.disable-library-validation": false,
+          "com.apple.security.get-task-allow": false
+        },
+        "flags": "0x20002(adhoc,linker-signed) hashes=113827+0 location=embedded",
+        "verification_exit": 0
+      },
+      "baseline": {
+        "exit": 1,
+        "loader_marker": false,
+        "loader_verdict": "not tested",
+        "unix_listener": false
+      },
+      "loader_positive_control": {
+        "exit": null,
+        "marker": true
+      },
+      "dyld_insertion": {
+        "exit": 1,
+        "loader_marker": true,
+        "loader_verdict": "FAIL: loader executed before producer hardening",
+        "unix_listener": false
+      },
+      "attach_positive_control": {
+        "attached": false,
+        "detached": null,
+        "errno": 1,
+        "exit": 2
+      },
+      "candidate_attach_verification": "unverified: baseline never reached a live Unix listener; positive control received EPERM",
+      "core": {
+        "reason": "no safe external process-limit observer; no crash attempted",
+        "status": "unverified"
+      }
+    },
+    {
+      "variant": "codex-app-server",
+      "command": [
+        "python3",
+        "scripts/testslots.py",
+        "run",
+        "--want",
+        "1",
+        "--min",
+        "1",
+        "--label",
+        "Mac Codex standalone isolated boundary probe",
+        "--",
+        "python3",
+        "<EVIDENCE_ROOT>/probes/run_probe.py",
+        "--manifest",
+        "<EVIDENCE_ROOT>/probe-manifest-codex-app-server.json",
+        "--execute"
+      ],
+      "cwd": "<POOLHOUSE_SOURCE>",
+      "stdout_json": "probe-result-codex-app-server.json",
+      "result_sha256": "81ab4fec46b5c50844c612f908070476d39ee8b2ce3d037e6acfebb58b4e6713",
+      "artifact_sha256": "cd0c7ccff1eb965f0852521533159d3105ca8c729f3ccea26a8946a856ec3a9c",
+      "signature": {
+        "details_sha256": "3fab51783403d4c3d70890a81c819cd500b6e8e6dd6895467c7c5284da3b126c",
+        "display_exit": 0,
+        "entitlement_booleans": {
+          "com.apple.security.cs.allow-dyld-environment-variables": false,
+          "com.apple.security.cs.allow-jit": false,
+          "com.apple.security.cs.allow-unsigned-executable-memory": false,
+          "com.apple.security.cs.debugger": false,
+          "com.apple.security.cs.disable-library-validation": false,
+          "com.apple.security.get-task-allow": false
+        },
+        "flags": "0x20002(adhoc,linker-signed) hashes=89178+0 location=embedded",
+        "verification_exit": 0
+      },
+      "baseline": {
+        "exit": 1,
+        "loader_marker": false,
+        "loader_verdict": "not tested",
+        "unix_listener": false
+      },
+      "loader_positive_control": {
+        "exit": null,
+        "marker": true
+      },
+      "dyld_insertion": {
+        "exit": 1,
+        "loader_marker": true,
+        "loader_verdict": "FAIL: loader executed before producer hardening",
+        "unix_listener": false
+      },
+      "attach_positive_control": {
+        "attached": false,
+        "detached": null,
+        "errno": 1,
+        "exit": 2
+      },
+      "candidate_attach_verification": "unverified: baseline never reached a live Unix listener; positive control received EPERM",
+      "core": {
+        "reason": "no safe external process-limit observer; no crash attempted",
+        "status": "unverified"
+      }
+    }
+  ],
+  "limits": {
+    "startup": "Both original sandboxed baselines exited 1 before a Unix listener. Original stderr was discarded; exact startup cause remains unresolved.",
+    "loader": "Both original candidates executed the insertion marker before producer hardening. The positive control also executed its marker.",
+    "attach": "Positive control failed with EPERM (errno 1), so attachment protection is unverified, not passed.",
+    "core": "No safe external process-limit observer or crash probe; core behavior is unverified.",
+    "cleanup": "no signaling after leader exit; unexpected descendants/abrupt runner death unverified",
+    "admission": "No native actor/root/child turn, private node admission or completion proof is established.",
+    "commands": "Portable argv templates retain the observed commands. Placeholders identify the reviewed source and locally retained evidence; no binaries or logs are committed."
+  }
+}

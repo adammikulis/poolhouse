@@ -165,23 +165,37 @@ def test_a_subscription_never_delivers_from_a_room_the_subscriber_cannot_read(ro
 
 def test_rooms_and_subscriptions_cannot_be_made_without_limit(room):
     node, mallory = room, room.mallory
-    made = 0
-    for number in range(50):
-        done = node.cli("board", "create", f"#spam{number}", who=mallory)
-        if done.returncode:
-            assert done.returncode == 4, done.stderr
-            break
-        made += 1
-    assert made == 5
+    initial = run(node, node.alice, "board", "list")
+    assert {row["name"] for row in initial if row["created_by"]} == {"#ops", "#vault"}
+    for number in range(14):
+        run(node, mallory, "board", "create", f"#spam{number}")
+    rooms = run(node, node.alice, "board", "list")
+    assert len([row for row in rooms if row["created_by"]]) == 16
+    for name in ("#overflow", "#overflow", "#another"):
+        done = node.cli("board", "create", name, who=mallory)
+        assert done.returncode == 4 and "MOST_ROOMS_PER_LINEAGE" in done.stderr, done.stderr
+        assert run(node, node.alice, "board", "list") == rooms
+
+    session = node.session(mallory)
+    assert session.subs() == [{"type": "board", "target": f"#spam{number}", "mode": "digest"}
+                              for number in sorted(range(14), key=lambda value: f"#spam{value}")]
     kinds = ("task", "status", "handoff", "question", "answer", "claim", "release", "note", "file")
-    taken = 0
     for kind in kinds:
-        done = node.cli("subscribe", "kind", kind, "--mode", "digest", who=mallory)
-        if done.returncode:
-            assert done.returncode == 4, done.stderr
-            break
-        taken += 1
-    assert taken == 7 and len(run(node, mallory, "subs")) == 12, "each room made is followed in the digest; twelve a session"
+        session.subscribe("kind", kind, mode="digest")
+    remaining = 256 - 14 - len(kinds)
+    roots = [session.post("#general", "note", f"Subscription capacity thread {number}")["id"] for number in range(remaining + 2)]
+    for root in roots[:remaining]:
+        session.subscribe("thread", root, mode="digest")
+    subscriptions = run(node, mallory, "subs")
+    assert len(subscriptions) == 256
+    assert {sub["target"] for sub in subscriptions if sub["type"] == "kind"} == set(kinds)
+    overflow = roots[remaining:]
+    for target in (overflow[0], overflow[0], overflow[1]):
+        done = node.cli("subscribe", "thread", target, "--mode", "digest", who=mallory)
+        assert done.returncode == 4 and "MOST_SUBS" in done.stderr, done.stderr
+        assert run(node, mallory, "subs") == subscriptions
+    run(node, mallory, "subscribe", "thread", roots[0], "--mode", "digest")
+    assert run(node, mallory, "subs") == subscriptions
     child = node.member("kid", parent=mallory)
     for argv in (("board", "create", "#kid"), ("join-board", "#general"), ("subscribe", "mentions")):
         assert node.cli(*argv, who=child).returncode == 3, argv
@@ -201,7 +215,7 @@ def test_a_subagent_reads_no_room_that_only_its_parent_belongs_to(room):
 def test_a_token_that_was_never_issued_or_belongs_to_another_name_writes_nothing(room):
     node, bob, mallory = room, room.bob, room.mallory
     secret = mallory.token
-    forged = ["f" * 64, secret[:-1] + ("0" if secret[-1] != "0" else "1"), bob.token.replace(bob.token[:8], "0" * 8), "", "nonsense", "mlws1.bob." + secret]
+    forged = ["f" * 64, secret[:-1] + ("0" if secret[-1] != "0" else "1"), bob.token.replace(bob.token[:8], "0" * 8), "", "nonsense", "foreign.workspace." + secret]
     for token in forged:
         error = None
         try:
@@ -252,7 +266,7 @@ def route(trio, monkeypatch):
     def call(path, method="GET", headers=None, body=None):
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
         conn.request(method, path, body=body,
-                     headers={"Cookie": f"ml_session={server.session}", **(headers or {})})
+                     headers={"Cookie": f"poolhouse_session={server.session}", **(headers or {})})
         r = conn.getresponse()
         out = r.status, r.read()
         conn.close()
@@ -277,7 +291,7 @@ def test_the_route_never_writes_and_refuses_other_hosts_sites_and_traversal(trio
     assert route("/board/boards", headers={"Origin": "null"})[0] == 403
     for path in ("/board/messages?board=%23..%2F..%2Fetc", "/board/messages?board=" + "%23" + "a" * 5000,
                  "/board/thread?root=" + "9" * 400, "/board/dm?a=../x&b=y", "/board/../../etc/passwd",
-                 "/ui/ml-ui/%2e%2e/%2e%2e/etc/passwd", "/ui/ml-ui/../daemon.py"):
+                 "/ui/poolhouse-ui/%2e%2e/%2e%2e/etc/passwd", "/ui/poolhouse-ui/../daemon.py"):
         assert route(path)[0] in (400, 403, 404)
     assert heard(route.session) == before
 
@@ -349,7 +363,7 @@ def test_the_route_answers_nobody_without_the_session_the_listener_made(trio, ro
         return out
 
     post = json.dumps({"to": "#ops", "body": "forged"}).encode()
-    for cookie in ("", "ml_session=guess", "ml_session="):
+    for cookie in ("", "poolhouse_session=guess", "poolhouse_session=", f"foreign_cookie={server.session}"):
         assert ask("/board/boards", cookie=cookie)[0] == 401
         assert ask("/board/post", "POST", cookie, post)[0] == 401
     assert heard(route.session) == before
@@ -357,8 +371,10 @@ def test_the_route_answers_nobody_without_the_session_the_listener_made(trio, ro
         status, cookie, _ = ask(path)
         assert status == 200 and cookie is None
     status, cookie, _ = ask(f"/?session={server.session}")
-    assert status == 200 and cookie.startswith(f"ml_session={server.session};") and "HttpOnly" in cookie
-    assert ask("/board/boards", cookie=f"ml_session={server.session}")[0] == 200
+    assert status == 200 and cookie.startswith(f"poolhouse_session={server.session};") and "HttpOnly" in cookie
+    assert ask("/board/boards", cookie=f"poolhouse_session={server.session}")[0] == 200
+    assert ask("/board/boards", cookie=f"foreign_cookie={server.session}; poolhouse_session={server.session}")[0] == 200
+    assert ask("/board/boards", cookie=f"poolhouse_session={server.session}; foreign_cookie={server.session}")[0] == 200
 
 
 @pytest.mark.parametrize("name", NAMES)

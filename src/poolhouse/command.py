@@ -11,9 +11,13 @@ elsewhere adds. A `Group` collects them and answers as ``main``.
 from __future__ import annotations
 
 import argparse
+import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
+
+from poolhouse.log import warn
+from poolhouse.redact.secrets import env_secrets, redact
 
 __all__ = ["SHARED", "Borrowed", "Command", "Group", "Option", "Options", "flag",
            "option"]
@@ -107,7 +111,12 @@ class Group:
     def __init__(self, prog: str, description: str, *,
                  options: Sequence[Option] = (),
                  run: Callable[[argparse.Namespace], int | None] | None = None,
+                 errors: tuple[type[Exception], ...] = (),
                  **kwargs: Any) -> None:
+        if (not isinstance(errors, tuple)
+                or any(not isinstance(error, type) or not issubclass(error, Exception) for error in errors)):
+            raise TypeError("command errors must be a tuple of Exception classes")
+        self.errors = errors
         self.prog = prog
         self.description = description
         self.options = tuple(options)
@@ -162,4 +171,9 @@ class Group:
         handler = getattr(args, "run", None) or self.handler
         if handler is None:
             raise SystemExit(2)
-        return int(handler(args) or 0)
+        try:
+            result = handler(args)
+        except self.errors as error:
+            warn("error: " + redact(str(error), env_secrets(os.environ))[0])
+            return 2
+        return int(result or 0)

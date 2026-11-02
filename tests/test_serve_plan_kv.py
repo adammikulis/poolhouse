@@ -102,18 +102,26 @@ class TestKvBudget:
 
 
 class TestCodingContext:
-    def test_the_default_target_is_128k(self):
+    def test_the_default_target_is_the_most_the_placement_holds(self):
         default = next(o for o in plan_cli.OPTIONS if "--context" in o.flags).kwargs["default"]
-        assert default == plan_cli.DEFAULT_CONTEXT == 131072
+        assert default == 0 and not hasattr(plan_cli, "DEFAULT_CONTEXT")
 
-    def test_up_plan_auto_raises_the_default_context_and_keeps_a_chosen_one(self, model,
-                                                                            monkeypatch):
+    def test_the_default_context_is_the_largest_one_the_placement_holds(self, model):
+        got = plan_cli.plan_for(model, card(24), Ask())
+        assert 0 < got.context <= 262144       # never past the trained window the header names
+        if got.context < 262144:
+            with pytest.raises(plan_cli.Shortfall):
+                plan_cli.plan_for(model, card(24), Ask(context=got.context + 256))
+        assert plan_cli.plan_for(model, card(12), Ask()).context <= got.context
+
+    def test_up_plan_auto_fits_an_unset_context_and_keeps_a_chosen_one(self, model,
+                                                                       monkeypatch):
         monkeypatch.setattr(plan_cli, "machine_memory", lambda: MachineMemory(
             total_ram=128 * GIB, gpus=(Gpu("c", 24 * GIB, 24 * GIB, "nvidia"),)))
         args = argparse.Namespace(on_cpu=[], cpu_moe=False, n_cpu_moe=None, plan="auto")
         default = lifecycle_cli._planned(args, ServerSpec(
             model=str(model), cache_type_k="q8_0", cache_type_v="q8_0"))
-        assert default.context == 131072
+        assert default.context == plan_cli.plan_for(model, card(24, 128), Ask()).context
         chosen = lifecycle_cli._planned(args, ServerSpec(
             model=str(model), context=65536, cache_type_k="q8_0", cache_type_v="q8_0"))
         assert chosen.context == 65536

@@ -17,10 +17,10 @@ from typing import Any
 
 from psutil import Error as ProcessError
 
-# The package is the namespace the tests and `selfcheck` patch -- `bench.footprint`,
+# The package is the namespace the tests patch -- `bench.footprint`,
 # `bench.busy` -- so anything patchable is looked up there at call time, never bound here
 # at import.
-from poolhouse import bench
+from poolhouse import bench, procscan
 from poolhouse.bench.backends import http_of, processes, served_by
 from poolhouse.http import Options, request_json
 from poolhouse.log import warn
@@ -112,18 +112,13 @@ def serving_pids(base_url: str, client: Any = None) -> list[int]:
     if named:
         return named
     try:
-        import psutil
-
         port = int(str(http_of(base_url)).rsplit(":", 1)[-1].strip("/"))
     except Exception:  # noqa: BLE001
         return []
-    try:
-        for process in psutil.process_iter(["pid", "cmdline"]):
-            line = " ".join(process.info.get("cmdline") or ())
-            if "llama-server" in line and f"--port {port}" in line:
-                return [int(process.info.get("pid") or getattr(process, "pid", 0) or 0)]
-    except Exception:  # noqa: BLE001
-        return []
+    for process, info in procscan.readable(["pid", "cmdline"]):
+        line = " ".join(info.get("cmdline") or ())
+        if "llama-server" in line and f"--port {port}" in line:
+            return [int(info.get("pid") or getattr(process, "pid", 0) or 0)]
     return []
 
 
@@ -141,11 +136,13 @@ def serving_process(base_url: str, client: Any = None) -> Any | None:
         return None
 
 
-def _every(psutil: Any) -> list[Any]:
-    try:
-        return list(psutil.process_iter(["pid", "cmdline"]))
-    except Exception:  # noqa: BLE001
-        return []
+def _every() -> list[Any]:
+    """Every process, each with ``info`` holding its pid and command line."""
+    out = []
+    for proc, info in procscan.readable(["pid", "cmdline"]):
+        proc.info = info
+        out.append(proc)
+    return out
 
 
 def process_tree(pids: Sequence[int]) -> list[Any]:
@@ -161,7 +158,7 @@ def process_tree(pids: Sequence[int]) -> list[Any]:
         try:
             parent = psutil.Process(int(pid))
         except Exception:  # noqa: BLE001 - gone, not ours to read, or no such call here
-            parent = next((p for p in _every(psutil)
+            parent = next((p for p in _every()
                            if int((getattr(p, "info", None) or {}).get("pid")
                                   or getattr(p, "pid", 0) or 0) == int(pid)), None)
             if parent is None:

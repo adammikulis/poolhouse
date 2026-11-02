@@ -15,7 +15,7 @@ poolhouse-test-devices                                  the devices: platform, f
 The exit status is the worst of the runs; 70 means a device never ran its part (not in the pool, shards off,
 unreachable, refused, Python 3.13 missing). A refused or unreachable device is named on stderr with its reason.
 
-## How the owner turns it on
+## How the owner turns it on (devices reached through the node)
 
 Nothing runs on a device until its person says so, per device, and the default is off. There are two switches,
 both off, and both audited:

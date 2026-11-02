@@ -54,33 +54,30 @@ def test_actual_fleet_controls_require_auth_origin_header_and_typed_person_paylo
     assert not children
     status_path=localagent.folder(kit.base)/"local-worker.status.json"
     status_path.write_text(json.dumps({"state":"stopped","beat":1,"tasks":99,"lease":{"id":"old"}}))
-    code, result, _ = server.call('/ui/agents/start', method='POST', body=body, headers=origin)
-    assert code == 200, result
-    assert len(children) == 1
-    assert localagent.load(kit.base,'local-worker').identity == worker
-    assert next(a for a in kit.person.agents() if a.name == worker).parent == kit.person.name
+    before = localagent.load(kit.base, 'local-worker')
+    for _ in range(2):
+        code, result, _ = server.call('/ui/agents/start', method='POST', body=body, headers=origin)
+        assert code == 400 and 'isolated session permissions' in result['error']
+    assert not children
+    assert localagent.load(kit.base, 'local-worker') == before
+    assert json.loads(status_path.read_text()) == {"state":"stopped","beat":1,"tasks":99,"lease":{"id":"old"}}
     listed = server.call('/ui/agents/list')[1]
-    assert listed['agents'][0]['state'] == 'starting'
-    assert listed['agents'][0]['tasks'] == 0
-    assert listed['agents'][0]['lease'] is False
-    agent=localagent.load(kit.base,'local-worker')
-    status_path.write_text(json.dumps({'state':'idle','beat':agent.started+1}))
-    assert server.call('/ui/agents/list')[1]['agents'][0]['state'] == 'idle'
     assert listed['saved'][0]['model'] == PICK.ref
     assert listed['saved'][0]['project'] == str(server.ui.settings_path.parent)
     assert 'token' not in listed['saved'][0]
 
 
 @pytest.mark.slow
-def test_person_board_controls_reuse_saved_settings_and_start_through_the_maintained_start(served, browser):
-    server, kit, children, worker = served
+def test_person_board_controls_preserve_saved_settings_when_native_start_is_unavailable(served, browser):
+    server, kit, children, _ = served
     page = browser.new_page()
     try:
         page.goto(f'http://127.0.0.1:{server.port}/ui/#chat')
         page.locator('chat-view #conversation-local-agents > summary').click()
-        controls = page.locator('ml-agents')
+        controls = page.locator('poolhouse-agents')
         controls.locator('input#name').wait_for()
-        page.wait_for_function("() => document.querySelector('ml-agents')?.shadowRoot?.querySelector('#name')?.value === 'local-worker'")
+        page.wait_for_function("() => document.querySelector('poolhouse-agents')?.shadowRoot?.querySelector('#name')?.value === 'local-worker'")
+        page.screenshot(path='/private/tmp/poolhouse-coding-contract-initial.png')
         assert controls.locator('input#model').input_value() == PICK.ref
         assert controls.locator('input#project').input_value() == str(server.ui.settings_path.parent)
         assert controls.get_by_text('Selected model:',exact=False).count() == 1
@@ -94,13 +91,15 @@ def test_person_board_controls_reuse_saved_settings_and_start_through_the_mainta
         controls.locator('input#task-rounds').fill('200')
         controls.locator('input#output-tokens').fill('32000')
         assert controls.get_by_text('Tasks could run indefinitely', exact=False).count() == 0
+        page.screenshot(path='/private/tmp/poolhouse-coding-contract-configured.png')
+        before = localagent.load(kit.base, 'local-worker')
         controls.get_by_role('button',name='Start a local agent',exact=True).click()
-        page.wait_for_function("() => document.querySelector('ml-agents')?.shadowRoot?.querySelector('.note[role=status]')?.textContent.includes('started.')")
-        assert len(children) == 1
-        assert localagent.load(kit.base,'local-worker').identity == worker
-        agent = localagent.load(kit.base, 'local-worker')
-        assert agent.max_output_tokens == 32000
-        assert agent.extra['task_caps'] == {'rounds':200, 'calls':None, 'steps':None, 'seconds':7200}
+        page.wait_for_function("() => document.querySelector('poolhouse-agents')?.shadowRoot?.querySelector('.note[role=status]')?.textContent.includes('isolated session permissions')")
+        page.screenshot(path='/private/tmp/poolhouse-coding-contract-refused.png')
+        assert not children
+        assert localagent.load(kit.base, 'local-worker') == before
+        assert controls.locator('input#output-tokens').input_value() == '32000'
+        assert controls.locator('input#task-rounds').input_value() == '200'
     finally:
         page.close()
 
@@ -123,12 +122,12 @@ def test_auto_context_stays_automatic_when_work_profile_changes(served, browser)
     try:
         page.goto(f"http://127.0.0.1:{server.port}/ui/#chat")
         page.locator("chat-view #conversation-local-agents > summary").click()
-        controls = page.locator("ml-agents")
+        controls = page.locator("poolhouse-agents")
         controls.locator("input#context").wait_for(state="attached")
-        page.wait_for_function("() => document.querySelector('ml-agents')?.shadowRoot?.querySelector('#name')?.value === 'local-worker'")
+        page.wait_for_function("() => document.querySelector('poolhouse-agents')?.shadowRoot?.querySelector('#name')?.value === 'local-worker'")
         assert controls.locator("input#context").input_value() == ""
         assert controls.locator("input#context").get_attribute("placeholder") == "Auto"
-        page.evaluate("document.querySelector('ml-agents').profile.dispatchEvent(new CustomEvent('change', {detail:{value:'chat'}}))")
+        page.evaluate("document.querySelector('poolhouse-agents').profile.dispatchEvent(new CustomEvent('change', {detail:{value:'chat'}}))")
         assert controls.locator("input#context").input_value() == ""
     finally:
         page.close()

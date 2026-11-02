@@ -139,10 +139,18 @@ def _device(asked: str, this: str) -> str:
     return this if asked in ("", "this") else "*" if asked == "any" else asked
 
 
+def _pool_refuses(held: grants.Listing, *actions: str) -> None:
+    """Refuse, before any prompt is shown, a grant that a pool counts only from an admin key's approval on a phone."""
+    if any(held.pool_wide(a) for a in actions):
+        raise Denied("denied", grants.POOL_GRANTS)
+
+
 def grant(args: argparse.Namespace, ctx: Ctx) -> Any:
     """Allow an action: to a session, a model family or a verified model, on a resource, until a time, a number of times."""
+    held = grants.listing(ctx.carrier)
+    _pool_refuses(held, args.action)
     key = _held(ctx)
-    this = grants.listing(ctx.carrier).device
+    this = held.device
     want = grants.Want(args.action, _to(args), args.scope, _device(args.device, this), grants.duration_ms(args.until), args.uses or None, args.review)
     got = grants.issue(ctx.carrier, key, want)
     return {"granted": got["gid"], "action": want.action, "to": _who(want.to), "on": want.resource, "until": grants.when(got["until_ms"]),
@@ -155,9 +163,15 @@ def revoke_grant(args: argparse.Namespace, ctx: Ctx) -> Any:
     return {"revoked": done["gid"]}
 
 
+def distrust(args: argparse.Namespace, ctx: Ctx) -> Any:
+    """Stop counting an admin key of this device's pool, at once, on every board; the pool's other admins remove it for good."""
+    done = grants.distrust(ctx.carrier, _held(ctx), args.key, args.reason)
+    return {"distrusted": done["key"], "next": "an admin removal ends the key for good: `poolhouse-workspace pool status` shows the admin keys"}
+
+
 def _leads(ctx: Ctx) -> dict[str, Any]:
     """The live main sessions of the board, by name: what each said it runs on is a claim."""
-    return {a.name: a for a in sorted(ctx.carrier.agents(), key=lambda a: a.name) if not a.parent and a.harness not in (person_session.HARNESS, place.PLACER)}
+    return {a.name: a for a in sorted(ctx.carrier.agents(), key=lambda a: a.name) if not a.parent and not a.person and a.harness != place.PLACER}
 
 
 def _chosen(args: argparse.Namespace, main: dict[str, Any]) -> list[str]:
@@ -188,8 +202,9 @@ def _who_gets(args: argparse.Namespace, ctx: Ctx) -> list[dict[str, Any]]:
 
 def setup(args: argparse.Namespace, ctx: Ctx) -> Any:
     """Approve once the grants the lead needs: the exact list is printed and asked about at the terminal, every item is revoked by its own id."""
-    who = _who_gets(args, ctx)
     held = grants.listing(ctx.carrier)
+    _pool_refuses(held, *grants.DEFAULT_ACTIONS)
+    who = _who_gets(args, ctx)
     if held.persons and grants.fingerprint(ctx.key.public) not in held.persons:
         raise Denied("denied", "the node already holds another key: carry this one over with `person-proof` here and `person-enroll` where the other key is")
     bundle = grants.default_bundle(who, held.device, args.days)
@@ -225,10 +240,31 @@ def unenroll(args: argparse.Namespace, ctx: Ctx) -> Any:
     return grants.unenrol(ctx.client, ctx.carrier.token, _held(ctx), args.key)
 
 
+REBIND_POLL_S = 2.0
+STARTED = "start the harness in this terminal: it registers as that session"
+
+
+def _rebind_by_phone(args: argparse.Namespace, ctx: Ctx) -> Any:
+    """Move a main session in a pool: an admin phone approves, the person picks the number this terminal shows, and the move completes from here."""
+    board = ctx.carrier.board
+    asked = grants.rebind_ask(ctx.client, board, args.harness, args.session)
+    say(f"Approve the move on your phone and choose {asked['code']}, the number this terminal shows.")
+    until = int(asked["expires_ms"]) / 1000 + REBIND_POLL_S
+    while True:
+        done = grants.rebind_finish(ctx.client, board, args.harness, args.session, str(asked["id"]))
+        if done.get("moved"):
+            return {"moved": done["name"], "tokens_ended": done["tokens_ended"], "next": STARTED}
+        if time.time() >= until:
+            raise Denied("denied", "Nobody approved the move in time: run the command again when your phone is at hand.")
+        time.sleep(REBIND_POLL_S)
+
+
 def rebind(args: argparse.Namespace, ctx: Ctx) -> Any:
     """Move a main session to the terminal this runs in: the node ends the tokens it holds, and the harness registers it from here."""
+    if grants.listing(ctx.carrier).governance == "governed":
+        return _rebind_by_phone(args, ctx)
     done = grants.rebind(ctx.client, ctx.carrier.board, args.harness, args.session, _held(ctx))
-    return {"moved": done["name"], "tokens_ended": done["tokens_ended"], "next": "start the harness in this terminal: it registers as that session"}
+    return {"moved": done["name"], "tokens_ended": done["tokens_ended"], "next": STARTED}
 
 
 TABLE = (
@@ -246,6 +282,9 @@ PERSON = (
       flag("--uses", type=int, default=0, help="how often it may be used (default: as often as it is needed)"),
       flag("--review", action="store_true", help="each use needs an independent review behind it")], grant),
     ("revoke-grant", "a person ends a grant at once", [flag("gid"), flag("--reason", default="")], revoke_grant),
+    ("distrust", "a person stops this pool counting one of its admin keys, at once, on every board",
+     [flag("--key", required=True, metavar="FINGERPRINT", help="the fingerprint of the admin key to stop counting (`pool status` lists them)"),
+      flag("--reason", default="")], distrust),
     ("grants-setup", "a person approves, once, the grants the lead sessions of this board need",
      [flag("--session", action="append", metavar="NAME", help="a lead session, by its unique name (repeat for several; default: pick from the list the board shows)"),
       flag("--family", default="", help="every main session that says it is of this model family; needs " + OPEN),

@@ -18,8 +18,8 @@ from typing import Any
 
 from poolhouse import errors, home, sentinel, serverkeys
 from poolhouse.client import families, wait_for_health
-from poolhouse.platform import process_group_kwargs
-from poolhouse.serve import confined as confinement, exit_guard, grant, kvcache
+from poolhouse.platform import end_child, process_group_kwargs
+from poolhouse.serve import confined as confinement, exit_guard, grant, kvcache, startup
 from poolhouse.serve.binary import child_env, require_binary
 from poolhouse.serve.downloads import LLAMA_FLAGS, clean_env, unlisted_flag
 from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
@@ -233,9 +233,15 @@ class ServerSpec:
 
     model: str | Path
     port: int = 8080
-    context: int = 4096
+    # Tokens across all slots. 0 asks for the largest the machine holds safely for this model
+    # and these slots (`serve.fitted.fitted`), answered where the server is leased, before
+    # anything reads the number; a context given is used as given. A spec that is never fitted
+    # tells llama-server nothing, and it uses its own default.
+    context: int = 0
     n_gpu_layers: int | str = "auto"
     device: str = ""
+    # Conversations at once. One is llama.cpp's own default (common_params.n_parallel) and
+    # what a single caller needs; `poolhouse-serve escalate` grows a running server.
     parallel: int = 1
     embedding: bool = False
     # A reranker (llama-server --reranking, serving /v1/rerank): it scores a query against
@@ -424,6 +430,7 @@ class ServerInfo:
     # The ``Popen`` for a server this process started, for whoever stops it to wait on.
     # Never serialised: it is not a value, and it is None for an adopted server.
     process: Any = field(default=None, repr=False, compare=False)
+    startup: Any = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -492,18 +499,17 @@ def launch(  # noqa: PLR0913 - the independent facts of one spawn; a bundle type
     if lease.stop_on_exit:
         exit_guard.protect(process.pid)
     base_url = f"http://{DEFAULT_HOST}:{port}"
-    if not wait_for_health(base_url, timeout=timeout, is_alive=lambda: process.poll() is None):
+    healthy = False
+    try:
+        healthy = wait_for_health(base_url, timeout=timeout, is_alive=lambda: process.poll() is None)
+    finally:    # a timer, an interrupt or an error while it loads hands the server to no one, so it ends here too
         code = process.poll()
-        process.terminate()
-        with contextlib.suppress(subprocess.TimeoutExpired):
-            process.wait(timeout=5.0)
-        exit_guard.release(process.pid)
-        raise ServerFailed(
-            f"{Path(argv[0]).name} did not become healthy on {base_url}"
-            + (f" (exited {code})" if code is not None else f" within {timeout:.0f}s")
-            + f"\n--- {log_path} ---\n"
-            + tail(log_path)
-        )
+        if not healthy:
+            end_child(process, grace_s=5.0)
+            exit_guard.release(process.pid)
+    if not healthy:
+        how = f" (exited {code})" if code is not None else f" within {timeout:.0f}s"
+        raise ServerFailed(f"{Path(argv[0]).name} did not become healthy on {base_url}{how}\n--- {log_path} ---\n{tail(log_path)}")
     return process, base_url, time.monotonic() - started_at
 
 
@@ -537,6 +543,9 @@ class LlamaServerBackend(ServerBackend):
     def binary(self) -> Path:
         return require_binary("llama-server", explicit=self._explicit,
                               vendor_dir=self._vendor_dir, build=self._build)
+
+    def environment(self, extra=None) -> dict[str, str]:
+        return child_env(self.binary, extra)
 
     def checked(self, argv: list[str]) -> list[str]:
         """``argv`` against this build's own flags, with ``--metrics`` where it has it.
@@ -580,7 +589,8 @@ class LlamaServerBackend(ServerBackend):
     def _model_source_argv(spec: ServerSpec) -> list[str]:
         """The model itself: where it comes from, its context, layers and slots."""
         argv: list[str] = ["-m", str(never_downloaded(spec.model, "model"))]
-        argv += ["-c", str(spec.context)]
+        if spec.context > 0:      # 0 says nothing, and llama-server decides (-c 0 is its default)
+            argv += ["-c", str(spec.context)]
 
         if spec.device == "cpu":
             argv += ["-ngl", "0"]
@@ -740,7 +750,18 @@ class LlamaServerBackend(ServerBackend):
         return replace(spec, rope_scaling="yarn", rope_scale=scale,
                        yarn_orig_ctx=trained), said
 
+    @contextlib.contextmanager
+    def preparing(self, spec: ServerSpec, lease: Lease):
+        """Hold backend preparation through the native launch lifecycle."""
+        yield
+
     def start(self, spec: ServerSpec, *, lease: Lease, timeout: float = 300.0,
+              **starting: bool) -> ServerInfo:
+        grant.require(lease, Lease)
+        with self.preparing(spec, lease):
+            return self._start_native(spec, lease=lease, timeout=timeout, **starting)
+
+    def _start_native(self, spec: ServerSpec, *, lease: Lease, timeout: float = 300.0,
               **starting: bool) -> ServerInfo:
         """Launch and wait until healthy. Raises ``ServerFailed`` with the log tail.
 
@@ -789,13 +810,15 @@ class LlamaServerBackend(ServerBackend):
             # nothing to summarise.
             extra_env["LLAMA_SERVER_SLOTS_DEBUG"] = "1"
 
-        env = child_env(self.binary, extra_env or None)
+        env = self.environment(extra_env or None)
+        evidence = startup.capture(spec, self.binary, argv, environment=env)
         confined = None
         if confinement.wanted(self.sandboxed):
             confined = confinement.confine(
                 argv, env, self.binary, writable=[spec.slot_save_path] if spec.slot_save_path else [])
             argv, env = confined.argv, confined.env
         try:
+            evidence = startup.current(evidence)
             process, base_url, load_s = launch(argv, lease, log_path=log_path, timeout=timeout,
                                                env=env, cwd=confined.cwd if confined else None)
         except ServerFailed as failure:
@@ -819,6 +842,7 @@ class LlamaServerBackend(ServerBackend):
             load_s=load_s,
             warmup_s=warmup_s,
             process=process,
+            startup=evidence.bind(process, spec.port, self.name) if evidence else None,
         )
 
     def _warm_up(self, base_url: str, *, timeout: float) -> float | None:

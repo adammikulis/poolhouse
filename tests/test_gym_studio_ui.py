@@ -53,9 +53,9 @@ def test_rl_text_and_brand_surfaces_remain_readable_across_themes(joined, open_p
       const root=document.documentElement;
       root.dataset.theme=theme==='custom'?'dark':theme;
       if(theme==='custom')for(const [key,value]of Object.entries({
-        '--ml-bg':'#102f28','--ml-surface':'#183d34','--ml-sunken':'#123329',
-        '--ml-text':'#f3fff4','--ml-muted':'#b7d4bf','--ml-accent':'#f6c865',
-        '--ml-on-accent':'#253522','--poolhouse-orange':'#264a73',
+        '--poolhouse-ui-bg':'#102f28','--poolhouse-ui-surface':'#183d34','--poolhouse-ui-sunken':'#123329',
+        '--poolhouse-ui-text':'#f3fff4','--poolhouse-ui-muted':'#b7d4bf','--poolhouse-ui-accent':'#f6c865',
+        '--poolhouse-ui-on-accent':'#253522','--poolhouse-orange':'#264a73',
         '--poolhouse-orange-ink':'#ffffff','--poolhouse-cyan':'#223f3d',
         '--poolhouse-cyan-ink':'#ffffff','--poolhouse-navy':'#edf6fe',
         '--poolhouse-navy-ink':'#1b1f3a'}))root.style.setProperty(key,value);

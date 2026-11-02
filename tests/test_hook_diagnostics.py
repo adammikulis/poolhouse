@@ -51,7 +51,7 @@ def test_unexpected_errors_do_not_expose_exception_contents(monkeypatch, capsys)
 def test_unhandled_denial_reports_redacted_reason_and_blocks(monkeypatch, capsys):
     exits = []
     monkeypatch.setattr(harnesshook.os, "_exit", exits.append)
-    secret = "mlws1.worker." + "a" * 43
+    secret = "poolhouse-ws1.worker." + "a" * 43
     harnesshook._block(Denied, Denied("the token expired " + secret), None)
     assert exits == [2]
     diagnostic = capsys.readouterr().err

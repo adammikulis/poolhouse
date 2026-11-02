@@ -21,7 +21,6 @@ other secret is wrapped (AES-256-GCM, HKDF subkey per purpose and owner) and kep
 | memory store (`memory/vault.py`, `store.py`) | fact store files | beside the store | the user's processes, hooks and daemons | via the master only | closed; `POOLHOUSE_MEMORY_KEYS=passphrase` is a person's explicit choice |
 | fleet signing key (`fleet/onboard/signing.py`) | Ed25519 seed | `signing.key.wrapped` | controller processes | via the master only | no keystore: scrypt passphrase file `signing.key.enc` (encrypted, not plaintext; passphrase from a terminal or `POOLHOUSE_SIGNING_PASSPHRASE`) |
 | credentials `--keychain` (`credentials/__init__.py`) | named tokens | `keystore/credentials.json` | a person's `poolhouse credentials` command; library lookups only unwrap | via the master only | closed (`CredentialError`) |
-| pool passphrase (`fleet/recovery.py`) | pool passphrase | `<memberships>.passphrases` | join (CLI, web button) | via the master only | the join continues and says the passphrase was not saved |
 | activity log, request inbox, workspace file store, reputation ledger (`activity/log.py`, `requests/store.py`, `workspace/filestore.py`, `reputation/sealed.py`) | sealed stores | beside the store | hooks, daemons, agents | via the master only | closed (the caller reports a locked store) |
 | `scripts/release-key` | release signing key | `credentials --keychain` | the owner | via the master only | closed |
 | `scripts/encrypted-volume.sh` | disk image passphrase | macOS login keychain, service `NAME-data`, through the `security` CLI | the owner, macOS only | yes | `set -eu`; see finding F-9 |
@@ -89,14 +88,7 @@ make an in-process test reach a real keychain, because `_keystore_has_a_person` 
 `the former no-real-keystore variable` and `PYTHON_KEYRING_BACKEND=...fail.Keyring` are in the environment every
 child inherits. A test that builds a child environment from scratch without those two variables would
 reach the keychain on a macOS desktop; I found no such test (`test_compare_harnesses`,
-`test_embedding` build scratch environments but never touch the keystore). The sentence "Poolhouse will
-ask your computer to store one encryption key ... Keychain prompt" is `keystore.NOTICE`, printed by
-`Keystore._tell` before the first backend call; in `test_the_join_button_runs_the_same_join` the call
-is `fleet/recovery.remember` on the autouse fake ring with a fresh temporary state root (no
-`noticed.json`), so the sentence is a test artefact and no prompt exists. In a real daemon the same
-path (the web Join button) on a desktop session would show the sentence in the response and then the
-OS prompt, which is right because a person clicked; in a background daemon `remember` gets
-`KeystoreLocked` and reports "the passphrase was not saved".
+`test_embedding` build scratch environments but never touch the keystore).
 
 **(d) Locks.** `flight.lock` and `state.lock` use `lock.only_one`: `flock` on POSIX and
 `msvcrt.locking` on one byte at offset 2^30 on Windows, chosen at call time; both release when the
@@ -147,7 +139,7 @@ uses `security -i`).
 | F-9 | `encrypted-volume.sh` puts a passphrase on argv | code | fixed 2026-10-09 (D-7): `security -i` on stdin, throwaway-keychain test |
 
 Test status at the end: `tests/test_keystore.py`, `test_keystore_platform.py`, `test_keystore_gate.py`,
-`test_redteam_keystore.py` and the memory, credentials, signing, recovery, request, reputation and
+`test_redteam_keystore.py` and the memory, credentials, signing, request, reputation and
 activity suites pass. Failing on `0.2dev` without these commits, so not caused here:
 `tests/test_memory_vault.py::test_a_write_that_dies_midway_leaves_only_ciphertext` and two
 Playwright tests in `tests/test_fleet_credentials.py` (a 30 s locator timeout).

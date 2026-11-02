@@ -35,8 +35,7 @@ def local_base(base: str) -> Path:
 def base_identity(base: Path) -> dict[str, Any]:
     files = sorted([*base.glob('*.safetensors'), base / 'config.json',
                     base / 'tokenizer.json', base / 'tokenizer_config.json'])
-    return {'directory': str(base.resolve()),
-            'files': {p.name: sha256_file(p) for p in files if p.is_file()}}
+    return {'files': {p.name: sha256_file(p) for p in files if p.is_file()}}
 
 
 class AdapterStep(MLXStep):

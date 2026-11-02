@@ -1,0 +1,413 @@
+{
+  "version": 1,
+  "status": "Intended new durable contract proposal for ONE AgentRuntimeRepair intent; not a dispatcher, native approval, replacement runtime or K acceptance.",
+  "source_commit": "4a4fba8cc96c7300c7abbb4af61bc7e33dce58a2",
+  "sources": [
+    {
+      "path": "src/poolhouse/fleet/workspace_routes.py",
+      "sha256": "abe6084619b1da6eaad94161be9a608429b09deec1107cded7c26fadc742d396",
+      "sites": [
+        {
+          "line": 142,
+          "text": "    def job_launch(self, command: str, args: list[str], root: Path) -> tuple[list[str], dict[str, str] | None]:"
+        },
+        {
+          "line": 146,
+          "text": "    def _submit(self, root: Path) -> bool:"
+        },
+        {
+          "line": 160,
+          "text": "            self.send(200, {\"argv\": argv, \"command\": shlex.join(argv)})"
+        },
+        {
+          "line": 165,
+          "text": "            write_json(self.ui.runner.job_dir(job.id) / \"workspace.json\", {**metadata, \"version\": 1})"
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/fleet/jobs.py",
+      "sha256": "0de0338d6e3653afcc84cfa7c0ad10da068d49b88c88e5980ea4bdcb7eb24d9f",
+      "sites": [
+        {
+          "line": 254,
+          "text": "    def submit(self, name: str, argv: Iterable[str], cwd: str,"
+        },
+        {
+          "line": 266,
+          "text": "            if prior := self.jobs.get(job_id):"
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/fleet/runtime_repair_routes.py",
+      "sha256": "1049d9d95a6c90d1acf00b1ed21f283a7abd5b5da89afdfe6502f53ff913c658",
+      "sites": [
+        {
+          "line": 17,
+          "text": "    def _fixed_repair_request(self):"
+        },
+        {
+          "line": 39,
+          "text": "        return True"
+        },
+        {
+          "line": 47,
+          "text": "            return True"
+        },
+        {
+          "line": 56,
+          "text": "        except (ValueError, OSError) as error:"
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/fleet/runtime_repair.py",
+      "sha256": "6a5e8ad58e4e712923a37df8d5c916a59fbdc6eb1a7dbf08010c585fdc02bab4",
+      "sites": [
+        {
+          "line": 28,
+          "text": ""
+        },
+        {
+          "line": 35,
+          "text": ""
+        },
+        {
+          "line": 109,
+          "text": "            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)"
+        },
+        {
+          "line": 119,
+          "text": "    resume(ui, queue)"
+        },
+        {
+          "line": 146,
+          "text": "def install(root, job):"
+        },
+        {
+          "line": 170,
+          "text": "                queue._update(row, note=\"Installing the verified agent runtime\")"
+        },
+        {
+          "line": 184,
+          "text": "            replacement_instance = health.get(\"launcher_control\")"
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/fleet/setup_jobs.py",
+      "sha256": "381908464773d5181b782b228d864cda29ccb79ef1ad273241f59cbb3b5d96ac",
+      "sites": [
+        {
+          "line": 127,
+          "text": "    def prepare(self, request, operation, *, current, provenance=None):"
+        },
+        {
+          "line": 146,
+          "text": "    def cancel_preparation(self, ident, *, binding, current):"
+        },
+        {
+          "line": 174,
+          "text": "    def _enqueue(self, kind, request, operation, *, provenance=None, current=None):"
+        }
+      ]
+    }
+  ],
+  "source_vs_design": {
+    "actual_fixed_intent": "POST /ui/agent-runtime/repair accepts empty body; actual local browser/person_session/managed root checks; runtime_repair.request coalesces one waiting agent-runtime row, then existing owned replacement pipeline.",
+    "actual_idempotency": "Waiting-row coalescence is NOT request-id durable replay; source job identifier is 32 lowercase hex characters.",
+    "actual_cancel": "No fixed-repair cancellation route. New prepare/submit/cancel lifecycle below is explicit intended design, not claimed source equivalence.",
+    "native_authority": "Legacy browser/cookie/person_session labels are not native caller/protected approval. Native/installation capability construction and protected authority bridge remain required.",
+    "existing_argv_api": "workspace_routes._submit accepts command/args/metadata/preview and Jobs.submit persists argv/cwd/env; that shape is deliberately not carried into canonical JobPreparationIntent."
+  },
+  "scope": {
+    "intent": "Only {kind:agent_runtime_repair,value:{}}. No extensible JobIntent, argv, URL, environment, module, caller-selected artifact, path or key.",
+    "local_authority": "Local installation operation requires its actual repair permissions and relevant signed-state revocation; no membership/pool join prerequisite is invented.",
+    "identity_migration": "Canonical JobId is UUID data. Legacy lowercase hex32 IDs require a retained versioned bijective mapping scoped by legacy installation+job generation; never lossy cast, assumed continuity, reused ID or reset of terminal history."
+  },
+  "operation_mapping": [
+    {
+      "operation": "jobs.prepare",
+      "actual_sources": [
+        "fleet/runtime_repair_routes.py:route",
+        "fleet/runtime_repair.py:request/install",
+        "fleet/setup_jobs.py:prepare/cancel_preparation"
+      ],
+      "difference": "NEW intended durable semantics; no installed caller or native adapter implementation"
+    },
+    {
+      "operation": "jobs.submit",
+      "actual_sources": [
+        "fleet/runtime_repair_routes.py:route",
+        "fleet/runtime_repair.py:request/install",
+        "fleet/setup_jobs.py:prepare/cancel_preparation"
+      ],
+      "difference": "NEW intended durable semantics; no installed caller or native adapter implementation"
+    },
+    {
+      "operation": "jobs.preparations.inspect",
+      "actual_sources": [
+        "fleet/runtime_repair_routes.py:route",
+        "fleet/runtime_repair.py:request/install",
+        "fleet/setup_jobs.py:prepare/cancel_preparation"
+      ],
+      "difference": "NEW intended durable semantics; no installed caller or native adapter implementation"
+    },
+    {
+      "operation": "jobs.preparations.cancel",
+      "actual_sources": [
+        "fleet/runtime_repair_routes.py:route",
+        "fleet/runtime_repair.py:request/install",
+        "fleet/setup_jobs.py:prepare/cancel_preparation"
+      ],
+      "difference": "NEW intended durable semantics; no installed caller or native adapter implementation"
+    },
+    {
+      "operation": "jobs.preparations.watch",
+      "actual_sources": [
+        "fleet/runtime_repair_routes.py:route",
+        "fleet/runtime_repair.py:request/install",
+        "fleet/setup_jobs.py:prepare/cancel_preparation"
+      ],
+      "difference": "NEW intended durable semantics; no installed caller or native adapter implementation"
+    }
+  ],
+  "durability": {
+    "prepare": "Authorize before replay. Bind principal+installation incarnation+operation+RequestId+exact normalized input; conflict on different content. Replay attaches same plan/outcome with no new candidate, work, expiry or lease. Different prepare IDs attach/refuse under one installation-scoped unresolved-operation fence, never create a second replacement. After settlement a separately authorized new request may prepare a new repair.",
+    "work_before_plan": "Acquire and validate actual common CPU, memory, storage and input/output ResourceAdmissionEnvelope before verification/staging/reservation work. Checked aggregate sizes and held private files/roots/ACL identity, cancellation and cleanup accounting remain node-owned; no public source paths or hidden allocations.",
+    "freeze": "Node holds actual installation and launcher capabilities plus exact measured candidate artifact, manifest, source, toolchain, verification policy, prior effective installation, source/authority generations, revision, expiry, intent and plan digest. JobFrozenRepairPlan is private untrusted observation data, NOT the capability; issuer code and held OS handles must seal provenance. Plan IDs are lookup only.",
+    "submit": "Fresh current authorization before replay and irreversible action; exact expected revision, same held plan and installation generation, unchanged measured content/launcher/prior state/policy, live admission and active-work drain. At most one submit per plan even under a new RequestId. Existing replacement path only; no parallel scheduler/launcher. Protected installation approval, when genuinely required, binds exact frozen plan digest/operation/installation/nonce/expiry/generation; OS consent is distinct and stale callbacks deny. No public boolean/digest/reference grants approval. Protected authority and OS consent are independent typed observations and may both be required simultaneously; already_authorized describes protected authority only and says nothing about OS consent. Neither DTO grants either condition.",
+    "commit": "Atomic durable intent/consumption fence wins against cancellation BEFORE irreversible owned handoff. Fence records intent, not installed success. Cancellation first means no handoff; commit first means cancellation cannot claim cancelled, even on error.",
+    "recovery": "Crash or lost acknowledgement retains exact operation, candidate, backup, launcher and fence custody as reconciling/outcome_unknown. Protected inspection of exact installed receipt/artifact/source/launcher/backup/current generation resolves observed effects; missing/stale/rollback/contradictory witnesses keep unknown or refuse. Never blind retry, guessed rollback, second worker or automatic success. Ready only after actual installed artifact/health/source/runtime verification; resource holds release only after actual settlement.",
+    "public_projection": "JobState/phase/effect/candidate/authority/progress are untrusted observations. The node validates consistency before delivery. Explicit failed-before/after-commit and outcome-unknown are distinct; commit_fenced never implies success. Public response emits no private path, secret, traceback or raw capability. Redact diagnostics before persistence/output and respect SafeMessage plus actual runtime safe_error limits.",
+    "cancel": "jobs.preparations.cancel and existing jobs.cancel must delegate to one operation-owned fence/settlement implementation. New control RequestIds cannot reset prepared expiry, revive terminal state or bypass unresolved recovery. No public generic cancellation executor.",
+    "watch": "Reuse ordered resource stream semantics and InferenceCursor, bound exact authorized principal/installation/preparation/generation; bounded redacted items, reset on expired cursor, reauthorize every event. Disconnect detaches only. Existing jobs.output.read may carry redacted diagnostic progress after correct scope adapter, never impose its membership prerequisite on local repair."
+  },
+  "census": {
+    "baseline_operations": 300,
+    "added_operations": 5,
+    "jobs": "get/cancel/list/output existed; this adds fixed repair prepare/submit, not training or arbitrary launch.",
+    "training_and_test_execution": "Retained required, no closed launch/admission intents supplied here; train_routes.py14 maps CLI recipe argv; testfarm/cli.py init/check consumes project testfarm config. Separate typed business payloads/source/provenance/admission required.",
+    "runtime_install_update": "Fixed local app agent-runtime repair only; general runtime_cli.ensure/rollback and system installers remain retained required separate operations.",
+    "studio": "Existing control/IR/value declarations do not cover stream sources/subscriptions/destinations/delivery or packages/import. Source studio_stream_routes.py37/69/140/155/163; packages.py148/162,n8n.py157. Remain separate retained required leaf.",
+    "knowledge": "Six inspector operations do not cover graph writes, ingest/import/embed/retry, or encrypted memory admin. Evidence knowledge.json deferred_segments stays authoritative; memory.cli._guarded authorizes before Memory.open; no migration of keys or weakening native approvals."
+  },
+  "independent_attack_review": {
+    "reviewer": "native_authority",
+    "verdict": "PASS intended new design before implementation",
+    "constraints": "Exact single fixed intent, private sealed plan, at-most-once plan/install fences, actual admission before work, fresh exact-plan authority, no invented pool prerequisite, cancel/commit single winner, unknown retained until independent recovery, identity migration explicit."
+  },
+  "enablement_blockers": [
+    "No runtime implementation, native issuer/adapter, private held plan/custody, resource machine validators, durable ledger or operation dispatch implemented by declarations.",
+    "Canonical approval bridge for exact repair plan must be reviewed and implemented before protected operations enable; no incompatible legacy cookie/label/bool path.",
+    "RequestId replay, same-plan newID, reprepare unresolved fence, expiry, cancel/commit, crash/unknown recovery, resource settlement and stale-callback vectors require actual state-machine execution before enablement.",
+    "Legacy JobId mapping and local-installation scope integration with generic jobs.get/cancel/output are required; no pool membership prerequisite or assumed identity continuity.",
+    "Other census gaps remain retained mandatory work, not optional feature deletion. No actual repair/install/model/network/native H/K/P/I proof performed."
+  ],
+  "shape_vectors": {
+    "accepted": [
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "agent_runtime_repair",
+            "value": {}
+          }
+        }
+      },
+      {
+        "type": "JobPreparationControlRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "preparation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "expected_revision": "1"
+        }
+      },
+      {
+        "type": "JobPreparationAuthority",
+        "value": {
+          "protected": {
+            "kind": "protected_approval_required",
+            "value": {}
+          },
+          "os_consent": {
+            "kind": "required",
+            "value": {}
+          }
+        }
+      },
+      {
+        "type": "JobPreparationEffect",
+        "value": {
+          "kind": "outcome_unknown",
+          "value": {}
+        }
+      }
+    ],
+    "refused": [
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "agent_runtime_repair",
+            "value": {}
+          },
+          "command": "anything"
+        }
+      },
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "arbitrary_command",
+            "value": {}
+          }
+        }
+      },
+      {
+        "type": "JobPrepareRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "installation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "intent": {
+            "kind": "agent_runtime_repair",
+            "value": {
+              "approved": true
+            }
+          }
+        }
+      },
+      {
+        "type": "JobPreparationControlRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "preparation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "expected_revision": 1
+        }
+      },
+      {
+        "type": "JobPreparationControlRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "preparation": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "expected_revision": "1",
+          "approval": true
+        }
+      },
+      {
+        "type": "JobPreparationControlRequest",
+        "value": {
+          "request_id": "00000000-0000-4000-8000-000000000001",
+          "generation": "00000000-0000-4000-8000-000000000002",
+          "preparation": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "00000000-0000-4000-8000-000000000002"
+          },
+          "expected_revision": "1"
+        }
+      },
+      {
+        "type": "JobPreparationAuthority",
+        "value": {
+          "protected": {
+            "kind": "already_authorized",
+            "value": {}
+          },
+          "os_consent": true
+        }
+      }
+    ]
+  },
+  "required_transition_vectors": [
+    {
+      "case": "same request/principal/installation/operation/content replay",
+      "expected": "attach same outcome; no work/lease/expiry change",
+      "status": "runtime enforcement required; not a codec assertion"
+    },
+    {
+      "case": "same request different content",
+      "expected": "conflict before work",
+      "status": "runtime enforcement required; not a codec assertion"
+    },
+    {
+      "case": "new request same consumed plan",
+      "expected": "attach prior submit; never second handoff",
+      "status": "runtime enforcement required; not a codec assertion"
+    },
+    {
+      "case": "new prepare ID during unresolved replacement",
+      "expected": "attach/refuse existing fence; no new plan bypass",
+      "status": "runtime enforcement required; not a codec assertion"
+    },
+    {
+      "case": "permission revoked before replay or stale approval callback",
+      "expected": "deny before disclosure/action",
+      "status": "runtime enforcement required; not a codec assertion"
+    },
+    {
+      "case": "resource admission unavailable before staging",
+      "expected": "no staging/verification work; waiting observation only",
+      "status": "runtime enforcement required; not a codec assertion"
+    },
+    {
+      "case": "cancellation wins before submit fence",
+      "expected": "cancelled_before_commit; no handoff",
+      "status": "runtime enforcement required; not a codec assertion"
+    },
+    {
+      "case": "submit fence wins cancellation race",
+      "expected": "not cancelled; retain committed/unknown effect",
+      "status": "runtime enforcement required; not a codec assertion"
+    },
+    {
+      "case": "crash after fence or lost acknowledgement",
+      "expected": "reconciling/outcome_unknown; inspect protected witnesses",
+      "status": "runtime enforcement required; not a codec assertion"
+    },
+    {
+      "case": "missing or contradictory installed/backup witness",
+      "expected": "remain unknown/refuse; no retry/rollback guess",
+      "status": "runtime enforcement required; not a codec assertion"
+    },
+    {
+      "case": "verified exact installed artifact+health/source/runtime",
+      "expected": "verified_installed only after actual checks",
+      "status": "runtime enforcement required; not a codec assertion"
+    }
+  ]
+}

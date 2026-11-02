@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, TypedDict, Unpack
 
-from poolhouse import agent_dependency, jobs, roles
+from poolhouse import agent_dependency, harnessing, jobs, roles
 from poolhouse.board import place
 from poolhouse.board.client import NodeError
 from poolhouse.board.session import Native, Registration, Session
@@ -54,7 +54,7 @@ class Ask:
     name: str = ""
     role: str = roles.DEFAULT
     effort: str = "off"
-    max_effort: str = "medium"
+    max_effort: str = le.DEFAULT_MAX
     profile: str = "chat"
     ctx: int = 0
     project: str = ""
@@ -104,7 +104,7 @@ def _running(have: la.Agent, chosen: localmodel.Pick) -> Started:
 
 def _check_board(s: Session, project: str) -> None:
     """Refuse a project that belongs to another board than the session that starts the agent."""
-    if project and place.resolve(s.client, Path(project)) != s.board:
+    if project and place.at_path(s.client, Path(project)) != s.board:
         raise ValueError("the project belongs to another board than the session that starts the agent")
 
 
@@ -151,6 +151,8 @@ def start(s: Session, ask: Ask, **options: Unpack[StartOptions]) -> Started:
     """Join a local model to the board of ``s`` as a subagent of that session and run its loop detached; the same name
     again reports the agent already running. Raises `Unavailable` when no suitable model is downloaded or it would
     not fit, ValueError for a bad name, role or project."""
+    if ask.profile == "coding":
+        harnessing.require_isolated_execution()
     base, reuse = options.get("base") or limits.root(), options.get("reuse", False)
     output_tokens = _output_tokens(ask.max_output_tokens)
     task_caps = asdict(localloop.checked_caps(ask.task_caps))
@@ -163,7 +165,7 @@ def start(s: Session, ask: Ask, **options: Unpack[StartOptions]) -> Started:
     _check_board(s, folder_)
     if not ctx:
         try:
-            ctx = localmodel.context_for(chosen, coding=prof.name == 'coding')
+            ctx = localmodel.context_for(chosen)
         except (OSError, ValueError) as error:
             raise Unavailable(str(error)) from error
     problem, hint = lp.admit(chosen.ref or chosen.name, ctx)

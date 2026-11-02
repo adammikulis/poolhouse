@@ -333,7 +333,7 @@ a per-model-runtime view keyed by exact model, runtime and artifact exists, repo
 a broker allocation is not shown by any file I read. [unverified]
 
 Must change, in order:
-1. **One account key: `model:<workspace>:<line>:<version>`.** Replace the `family:` account and its hard-coded label dict with a data table (`model_tiers.json` style, package
+1. **One account key: `model:<workspace>:<line>:<version>`.** Replace the `family:` account and its hard-coded label dict with a data table (package
    data, no vendor ids in code) mapping id globs to `(line, version)`. `binding` returns an account for any id that matches; an id that matches nothing becomes its own account
    keyed by the exact id, so no model is unaccounted.
 2. **Version is the exact model id**, with the line (family) as its prefix grouping: `claude-sonnet-5-5` is line `claude-sonnet`, version `5-5`. A dated snapshot with a

@@ -29,9 +29,9 @@ def test_each_engine_builds_its_own_server_command(tmp_path):
 
 def test_the_manager_serves_a_spec_with_the_engine_it_names(tmp_path):
     manager = ServerManager(state_file=tmp_path / "servers.json")
-    assert manager.backend_for(ServerSpec(model="m", engine="sglang")) is ENGINES["sglang"]
+    assert manager.backend_for(ServerSpec(context=4096, model="m", engine="sglang")) is ENGINES["sglang"]
     with pytest.raises(ServerFailed, match="no serving engine"):
-        manager.backend_for(ServerSpec(model="m", engine="nope"))
+        manager.backend_for(ServerSpec(context=4096, model="m", engine="nope"))
 
 
 def test_an_engine_server_is_leased_recorded_and_released(tmp_path, monkeypatch):
@@ -51,7 +51,7 @@ def test_an_engine_server_is_leased_recorded_and_released(tmp_path, monkeypatch)
     monkeypatch.setattr(VllmBackend, "command",
                         lambda self, spec: [sys.executable, str(engine), "--port", str(spec.port)])
     manager = ServerManager(state_file=tmp_path / "servers.json")
-    info = manager.lease(ServerSpec(model="Qwen/Qwen3-0.6B", port=free_port(), engine="vllm"),
+    info = manager.lease(ServerSpec(context=4096, model="Qwen/Qwen3-0.6B", port=free_port(), engine="vllm"),
                          roam=False, timeout=30.0)
     try:
         assert info.backend == "vllm" and pid_exists(info.pid)

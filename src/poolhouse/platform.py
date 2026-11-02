@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import ctypes
 import os
 import platform as _platform
 import re
@@ -16,15 +17,19 @@ from typing import Any
 
 __all__ = [
     "detached_kwargs",
+    "end_child",
+    "exit_said",
     "is_apple_silicon",
     "is_windows",
     "launch",
+    "name_process",
     "on_quit",
     "private_dir",
     "private_file",
     "process_group_kwargs",
     "quit_signals",
     "quitting",
+    "reap_in_background",
     "start_process",
     "stop_gently",
     "stop_pid",
@@ -35,6 +40,7 @@ __all__ = [
 CREATE_NEW_PROCESS_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
 DETACHED_PROCESS = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
 CTRL_BREAK_EVENT = getattr(signal, "CTRL_BREAK_EVENT", 1)
+PR_SET_NAME = 15
 
 
 def is_windows() -> bool:
@@ -45,6 +51,19 @@ def is_windows() -> bool:
 def is_apple_silicon() -> bool:
     """Read when asked: a Mac with an arm64 CPU, the machines llama.cpp's Metal backend runs on."""
     return _platform.system() == "Darwin" and _platform.machine() == "arm64"
+
+
+def name_process(name: str) -> bool:
+    """Linux and WSL: what `ps` and `ss -p` call this process, so a listener is Poolhouse and not python (15 bytes at most). True when set.
+
+    macOS names a process by its executable (`runtime_identity`) and Windows by its file; neither takes a name set from inside.
+    """
+    if not sys.platform.startswith("linux"):
+        return False
+    try:
+        return ctypes.CDLL(None, use_errno=True).prctl(PR_SET_NAME, name.encode()[:15], 0, 0, 0) == 0
+    except (OSError, AttributeError):
+        return False
 
 
 def applescript_quote(text: str) -> str:
@@ -147,6 +166,47 @@ def stop_pid(pid: int) -> str:
     except OSError:
         os.kill(pid, signal.SIGTERM)
         return "TerminateProcess"
+
+
+def exit_said(returncode: int | None) -> str:
+    """What a child's ``returncode`` means in words: ``exited with status 3``, ``killed by
+    SIGKILL`` (POSIX reports a signal death as ``-N``), or ``still running``."""
+    if returncode is None:
+        return "still running"
+    if returncode < 0:
+        try:
+            return f"killed by {signal.Signals(-returncode).name}"
+        except ValueError:
+            return f"killed by signal {-returncode}"
+    return f"exited with status {returncode}"
+
+
+def end_child(proc: Any, *, grace_s: float = 5.0) -> int | None:
+    """Stop a child this process started and wait for it, so it never stays defunct. Returns its
+    ``returncode`` (``None`` only when even a kill did not take effect within ``grace_s``).
+
+    The one way to end a ``Popen``: it asks (``terminate``), waits ``grace_s``, kills, and waits
+    again. A child that already exited is only collected, and its real exit status is what comes
+    back. Whoever calls ``proc.wait()`` or ``proc.poll()`` on the same object at the same time
+    gets the same status; nothing here reaps behind the ``Popen``'s back.
+    """
+    if proc.poll() is None:
+        with contextlib.suppress(OSError):
+            proc.terminate()
+        try:
+            proc.wait(timeout=grace_s)
+        except subprocess.TimeoutExpired:
+            with contextlib.suppress(OSError):
+                proc.kill()
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                proc.wait(timeout=grace_s)
+    return proc.returncode
+
+
+def reap_in_background(proc: Any) -> None:
+    """Collect a child nobody will wait on (a fire-and-forget launch) when it exits, so a
+    long-lived process does not leave a defunct entry behind for every one it started."""
+    threading.Thread(target=proc.wait, daemon=True, name=f"reap-{proc.pid}").start()
 
 
 # -- shutting the daemon itself down ----------------------------------------------------
@@ -271,5 +331,5 @@ def open_path(path: Path | str) -> str:
     tool = "open" if sys.platform == "darwin" else "xdg-open"
     if shutil.which(tool) is None:
         return f"could not open {where}: no {tool} on this machine"
-    subprocess.Popen([tool, where], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    reap_in_background(subprocess.Popen([tool, where], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
     return tool

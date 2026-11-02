@@ -2,20 +2,25 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import os
+import re
 import secrets
 import shutil
+import stat
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from tempfile import TemporaryDirectory
+from typing import TYPE_CHECKING, Any
 
-from poolhouse import hub
+from poolhouse import files, hub, lock
 from poolhouse.files import promote
 from poolhouse.httpguard import Refused
+from poolhouse.hub import hfstore
 from poolhouse.hub.remote import RemoteError
 from poolhouse.log import say
 from poolhouse.net import sniff
@@ -26,8 +31,21 @@ from .download_progress import Transfer
 from .model_library import library
 from .weights import ModelError, is_beside, reference
 
-__all__ = ["CHUNK", "Downloads", "Getting", "Model", "Models", "caches",
-           "draft_beside", "holding", "sized"]
+if TYPE_CHECKING:
+    from .remote import Member
+
+__all__ = [
+    "CHUNK",
+    "Downloads",
+    "Getting",
+    "Model",
+    "ModelTransfer",
+    "Models",
+    "caches",
+    "draft_beside",
+    "holding",
+    "sized",
+]
 
 CHUNK = 1 << 20
 
@@ -38,14 +56,61 @@ STALE_PART_S = 3600.0
 
 
 @dataclass(frozen=True, slots=True)
+class VerifiedReference:
+    """Observed Hub-pinned bytes, never publication cleanup ownership."""
+
+    source: str
+    object_id: str
+    sha256: str
+
+
+@dataclass(frozen=True, slots=True)
 class Model:
     name: str
     path: Path
     size: int
     modified: float
+    verified_reference: VerifiedReference | None = None
 
     def public(self) -> dict[str, Any]:
         return {"name": self.name, "size": self.size, "modified": self.modified}
+
+
+class ModelTransfer(hub.CancelToken):
+    """Trusted transfer observer; no request body may supply these callbacks.
+
+    Ordinary downloads report only. Preparation supplies its actual current/cancel check
+    and uses public Hub references with no member key. Member pulls check delivered chunks;
+    they do not provide current checks at each DNS/redirect connection boundary.
+    """
+
+    def __init__(self, *, progress=None, note=None, current=None) -> None:
+        super().__init__()
+        self._progress, self._note, self._current = progress, note, current
+
+    def check(self) -> bool:
+        if self._current is not None and self._current() is not True:
+            raise PermissionError("The model transfer is no longer authorized")
+        if super().cancelled:
+            raise hub.Cancelled("The model transfer was cancelled")
+        return True
+
+    @property
+    def cancelled(self) -> bool:
+        self.check()
+        return False
+
+    def progress(self, done: int, total: int) -> None:
+        self.check()
+        if self._progress is not None:
+            self._progress(done, total)
+        self.check()
+
+    def note(self, text: str) -> None:
+        self.check()
+        if self._note is not None:
+            self._note(text)
+        self.check()
 
 
 WEIGHTS = (".gguf", ".safetensors")
@@ -112,7 +177,7 @@ class Models:
     roots: list[Path]
     store: Path
     sources: Callable[[], str] = lambda: "both"
-    _digests: dict[tuple[str, int, int], str] = field(default_factory=dict)
+    _digests: dict[tuple[str, tuple[int, ...]], str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.store = Path(self.store).expanduser()
@@ -164,22 +229,44 @@ class Models:
             return Model(path.name, path, stat.st_size, stat.st_mtime)
         return None
 
-    def digest(self, model: Model) -> str:
-        """sha256, cached against size and mtime so a large file is read once."""
-        stat = model.path.stat()
-        key = (str(model.path), stat.st_size, stat.st_mtime_ns)
-        found = self._digests.get(key)
-        if found:
-            return found
-        h = hashlib.sha256()
-        with model.path.open("rb") as fh:
-            while True:
-                block = fh.read(CHUNK)
-                if not block:
-                    break
-                h.update(block)
-        self._digests[key] = h.hexdigest()
-        return self._digests[key]
+    def digest(self, model: Model, *, check=None, object_id='') -> str:
+        """Hash one retained actual file; reuse only an unchanged full identity."""
+        if check is not None:
+            check()
+        if (not isinstance(object_id, str) or (object_id and re.fullmatch(r'[a-f0-9]{40}|[a-f0-9]{64}', object_id) is None)):
+            raise ModelError('The expected model object identity is invalid')
+        target = model.path.resolve(strict=True)
+        with os.fdopen(os.open(target, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), 'rb') as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode):
+                raise ModelError('The selected model is not a regular file')
+            identity = files.stat_signature(info)
+            key = (str(target), identity)
+            found = self._digests.get(key)
+            digest = hashlib.sha256()
+            native = hashlib.sha1(usedforsecurity=False) if len(object_id) == 40 else None
+            if native is not None:
+                native.update(b'blob %d\0' % info.st_size)
+            if found is None or object_id:
+                while block := stream.read(CHUNK):
+                    if check is not None:
+                        check()
+                    digest.update(block)
+                    if native is not None:
+                        native.update(block)
+            if check is not None:
+                check()
+            if (model.path.resolve(strict=True) != target
+                    or files.stat_signature(os.fstat(stream.fileno())) != identity
+                    or files.stat_signature(target.stat(follow_symlinks=False)) != identity):
+                raise ModelError('The selected model changed while its bytes were checked')
+            result = digest.hexdigest() if object_id else found or digest.hexdigest()
+            if object_id and (native.hexdigest() if native is not None else result) != object_id:
+                raise ModelError('The selected model does not match its verified reference')
+            if check is not None:
+                check()
+            self._digests[key] = result
+            return result
 
     def public(self, limit: int = 24) -> list[dict[str, Any]]:
         """What goes in the beacon. Names and sizes only -- a beacon is a UDP packet,
@@ -199,107 +286,155 @@ class Models:
                 "models_total": len(held)}
 
     # -- getting one ----------------------------------------------------
-    def where(self, name: str, key: bytes, *, timeout_s: float = 2.0
-              ) -> list[tuple[str, str, int]]:
-        """Machines on this network holding a model. (member, base_url, size)."""
-        from .discovery import discover
+    def where(self, name: str, *, timeout_s: float = 10.0) -> list[tuple[Member, int]]:
+        """Pool members whose node-authorized compute service holds a model. (member, size)."""
+        from .remote import NO_SERVICES, Member
 
         needle = name.strip().lower()
+        try:
+            members = Member.discover(timeout=timeout_s)
+        except NO_SERVICES:
+            return []                      # the node authorizes no pool service: no LAN holder
         out = []
-        for beacon in discover(key, timeout_s=timeout_s):
-            for row in [*(beacon.device.get("models") or []), *(beacon.device.get("components") or [])]:
+        for member in members:
+            device = member.beacon.device if member.beacon else {}
+            for row in [*(device.get("models") or []), *(device.get("components") or [])]:
                 if needle in str(row.get("name", "")).lower():
-                    out.append((beacon.name, beacon.base_url, int(row.get("size") or 0)))
+                    out.append((member, int(row.get("size") or 0)))
                     break
         return out
 
-    def ensure(self, name: str, *, source: str = "", key: bytes | None = None,
-               on_progress: Callable[[int, int], None] | None = None,
-               on_note: Callable[[str], None] | None = None,
-               autodownload: bool = True) -> Model:
-        """Make sure this machine holds a model, preferring one on the network."""
-        found = self.find(name)
-        if found:
+    def ensure(self, name: str, *, source: str = "",
+               transfer: ModelTransfer | None = None, autodownload: bool = True) -> Model:
+        """Obtain one exact filename under the existing shared target lock."""
+        transfer = transfer or ModelTransfer()
+        transfer.check()
+        try:
+            filename = safe_filename(name)
+            if Path(filename).suffix.lower() not in hub.WEIGHT_SUFFIXES:
+                raise ModelError("Choose an exact model weights filename")
+        except Unsafe as exc:
+            raise ModelError(str(exc)) from None
+        self.store.mkdir(parents=True, exist_ok=True)
+        target_lock = self.store / ('.download-' + hashlib.sha256(filename.encode()).hexdigest() + '.lock')
+        with lock.held(target_lock, check=transfer.check):
+            return self._obtain(filename, source, transfer, autodownload)
+
+    def _held_file(self, name: str) -> Model | None:
+        """An exact installed weights filename, including explicit companion downloads."""
+        for path in hub.weight_paths(self.roots):
+            if path.name != name:
+                continue
+            try:
+                info = path.stat()
+            except OSError:
+                continue
+            if stat.S_ISREG(info.st_mode) and info.st_size >= MIN_SIZE:
+                return Model(path.name, path, info.st_size, info.st_mtime)
+        return None
+
+    def _obtain(self, name: str, source: str,
+                transfer: ModelTransfer, autodownload: bool) -> Model:
+        found = self._held_file(name)
+        transfer.check()
+        if found and not source:
             return found
         policy = self.sources()
         if policy not in ("internet", "lan", "both"):
             raise ModelError("Choose Internet only, LAN only, or Both before downloading models.")
+        if found:
+            if not autodownload:
+                raise ModelError('The remote model reference is unverified, and automatic downloading is off')
+            if policy == 'lan':
+                raise ModelError('Select the current installed model; its remote reference cannot be verified with LAN only')
+            pulled = self._internet_blob(source, transfer)
+            sha256 = self.digest(found, check=transfer.check, object_id=pulled.name)
+            return replace(found, verified_reference=VerifiedReference(source, pulled.name, sha256))
         if not autodownload:
-            raise ModelError(
-                f"{name} is not on this machine, and automatic downloading is off")
-
-        if key is not None and policy != "internet":
-            for member_name, base_url, _size in self.where(name, key):
-                if on_note:
-                    on_note(f"Copying {name} from {member_name}")
+            raise ModelError(f"{name} is not on this machine, and automatic downloading is off")
+        if policy != "internet":
+            for member, _size in self.where(name):
+                transfer.note(f"Copying {name} from {member.name}")
                 try:
-                    return self._from_member(name, base_url, key, on_progress)
+                    return self._from_member(name, member, transfer)
+                except PermissionError:
+                    raise
                 except (ModelError, OSError):
-                    continue
-
+                    transfer.check()
         if policy == "lan":
             raise ModelError(f"No machine on your LAN has {name}; Internet downloads are disabled.")
         if not source:
-            raise ModelError(
-                f"no machine on this network has {name}, and no download was given")
-        if on_note:
-            on_note(f"Downloading {name}")
-        return self._from_internet(name, source, on_progress)
+            raise ModelError(f"no machine on this network has {name}, and no download was given")
+        transfer.note(f"Downloading {name}")
+        return self._from_internet(name, source, transfer)
 
-    def _from_member(self, name: str, base_url: str, key: bytes,
-                   on_progress: Any) -> Model:
-        from .discovery import derive_token
-        from .remote import Member
-
-        member = Member(base_url, derive_token(key))
+    def _from_member(self, name: str, member: Member, transfer: ModelTransfer | None) -> Model:
+        transfer = transfer or ModelTransfer()
+        transfer.check()
         holds = member.models()
+        transfer.check()
         holds += [component for row in list(holds) for component in row.get("components", [])]
-        wanted = name.strip().lower()
-        match = next((m for m in holds
-                      if str(m.get("name", "")).lower() == wanted), None)
-        match = match or next((m for m in holds
-                               if wanted in str(m.get("name", "")).lower()), None)
+        match = next((row for row in holds if row.get('name') == name), None)
         if match is None:
-            raise ModelError(f"{base_url} no longer has {name}")
-        self.store.mkdir(parents=True, exist_ok=True)
+            raise ModelError(f"{member.name} no longer has {name}")
         try:
-            fname = safe_filename(Path(str(match["name"])).name)
+            fname = safe_filename(name)
         except Unsafe as exc:
-            raise ModelError(f"{base_url} offered a model name that is not a file name: {exc}") from None
-        if Path(fname).suffix.lower() not in hub.WEIGHT_SUFFIXES:
-            raise ModelError(f"{base_url} offered {fname!r}, which is not a weights file")
-        target = self.store / fname
-        member.pull(str(match["name"]), target, on_progress=on_progress,
-                  route="/models/")
-        _require_weights(target, fname)
-        stat = target.stat()
-        return Model(target.name, target, stat.st_size, stat.st_mtime)
-
-    def _from_internet(self, name: str, source: str, on_progress: Any) -> Model:
-        """Pull a Hugging Face reference through `hub.pull` (publisher, commit, digest and scan checks, and the
-        pin) and put the file in the store as ``name``."""
-        self.store.mkdir(parents=True, exist_ok=True)
-        report = (lambda got: on_progress(got.done_bytes, got.total_bytes)) if on_progress else None
-        try:
-            pulled = hub.pull(reference(source), on_progress=report, members=False, trust=hub.PERSON).resolve()
-            wanted = Path(name).name
-            if Path(wanted).suffix.lower() not in hub.WEIGHT_SUFFIXES:
-                wanted = pulled.name
-            target = self.store / safe_filename(wanted)
-        except Unsafe as exc:
-            raise ModelError(f"{name}: {exc}") from None
-        except (RemoteError, Refused, OSError, ValueError) as exc:
             raise ModelError(str(exc)) from None
-        target.unlink(missing_ok=True)
-        try:
-            os.link(pulled, target)
-        except OSError:
-            shutil.copyfile(pulled, target)
-        model_components.remember(target, source)
-        stat = target.stat()
-        return Model(target.name, target, stat.st_size, stat.st_mtime)
+        if Path(fname).suffix.lower() not in hub.WEIGHT_SUFFIXES:
+            raise ModelError(f"{fname!r} is not a weights file")
+        self.store.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(prefix='.incoming-', dir=self.store) as staging:
+            staged = Path(staging) / fname
+            transfer.check()
+            member.pull(name, staged, on_progress=transfer.progress, route="/models/")
+            transfer.check()
+            _require_weights(staged, fname)
+            info = staged.stat()
+            model = Model(fname, staged, info.st_size, info.st_mtime)
+            digest = self.digest(model, check=transfer.check)
+            return self._publish(staged, self.store / fname, digest, '', transfer)
 
-    def ensure_draft(self, model: Model, source: str, *, key: bytes | None = None,
+    def _internet_blob(self, source: str, transfer: ModelTransfer) -> Path:
+        """Resolve and obtain the actual guarded Hub pin once per transfer."""
+        transfer.check()
+        try:
+            ref = reference(source, check=transfer.check)
+            transfer.check()
+            pulled = hub.pull(ref, on_progress=lambda got: transfer.progress(got.done_bytes, got.total_bytes),
+                              cancel=transfer, trust=hub.PERSON).resolve()
+            transfer.check()
+            return pulled
+        except PermissionError:
+            raise
+        except (RemoteError, Refused, OSError, ValueError) as exc:
+            transfer.check()
+            raise ModelError(str(exc)) from None
+
+    def _from_internet(self, name: str, source: str, transfer: ModelTransfer) -> Model:
+        """Use the existing pinned/scanned Hub transfer and no-replace model publication."""
+        self.store.mkdir(parents=True, exist_ok=True)
+        pulled = self._internet_blob(source, transfer)
+        return self._publish(pulled, self.store / safe_filename(name), pulled.name, source, transfer)
+
+    def _publish(self, source: Path, target: Path, digest: str,
+                 origin: str, transfer: ModelTransfer) -> Model:
+        """Hold original publication ownership through metadata and final current proof."""
+        with hfstore.Placement(source, target, digest, current=transfer.check) as placement:
+            if placement.publish() != 'new':
+                raise ModelError('The model target changed during transfer; refresh its inventory')
+            transfer.check()
+            if origin:
+                model_components.remember(target, origin)
+            transfer.check()
+            info = target.stat(follow_symlinks=False)
+            model = Model(target.name, target, info.st_size, info.st_mtime)
+            verified = (VerifiedReference(origin, digest, self.digest(model, check=transfer.check, object_id=digest))
+                        if origin else None)
+            info = placement.commit()
+            return Model(target.name, target, info.st_size, info.st_mtime, verified)
+
+    def ensure_draft(self, model: Model, source: str, *,
                      on_progress: Callable[[int, int], None] | None = None) -> Path:
         """Fetch the small model that guesses ahead for ``model``, beside it.
 
@@ -311,24 +446,22 @@ class Models:
         policy = self.sources()
         if policy not in ("internet", "lan", "both"):
             raise ModelError("Choose download sources before getting an MTP head.")
-        if policy != "internet" and key is not None and self._draft_from_members(model, beside, key, on_progress):
+        if policy != "internet" and self._draft_from_members(model, beside, on_progress):
             return beside
         if policy == "lan":
             raise ModelError("No machine on your LAN has this MTP head; Internet downloads are disabled.")
-        got = self._from_internet(beside.name, source, on_progress)
+        got = self._from_internet(beside.name, source, ModelTransfer(progress=on_progress))
         if got.path != beside:
             promote(got.path, beside)
         return beside
 
-    def _draft_from_members(self, model: Model, beside: Path, key: bytes,
-                          on_progress: Any) -> bool:
+    def _draft_from_members(self, model: Model, beside: Path, on_progress: Any) -> bool:
         """Ask the machines holding ``model`` for the draft that sits beside it."""
-        from .discovery import derive_token
-        from .remote import Member, MemberError
+        from .remote import MemberError
 
-        for _name, base_url, _size in self.where(model.name, key):
+        for member, _size in self.where(model.name):
             try:
-                Member(base_url, derive_token(key)).pull(
+                member.pull(
                     beside.name, beside, on_progress=on_progress, route="/models/")
             except (MemberError, OSError):
                 continue
@@ -437,21 +570,23 @@ class Downloads:
         self._lock = threading.Lock()
         self._sem = threading.Semaphore(slots)
 
-    def start(self, name: str, *, source: str = "", key: bytes | None = None,
+    def start(self, name: str, *, source: str = "",
               autodownload: bool = True, components: list[dict] | None = None) -> Getting:
         with self._lock:
             for row in self.getting.values():
                 if row.state == "getting" and row.name == name:
+                    if row.source != source or row.components != (components or []):
+                        raise ModelError('This exact model already has a different transfer in progress')
                     return row
-        row = Getting(id=f"{int(time.time())}-{secrets.token_hex(3)}",
-                      name=name, source=source, pending_draft=bool(components), components=components or [])
-        with self._lock:
+            row = Getting(id=f"{int(time.time())}-{secrets.token_hex(3)}",
+                          name=name, source=source, pending_draft=bool(components),
+                          components=copy.deepcopy(components or []))
             self.getting[row.id] = row
-        threading.Thread(target=self._run, args=(row, key, autodownload),
+        threading.Thread(target=self._run, args=(row, autodownload),
                          daemon=True, name=f"get-{row.id}").start()
         return row
 
-    def _run(self, row: Getting, key: bytes | None, autodownload: bool) -> None:
+    def _run(self, row: Getting, autodownload: bool) -> None:
         with self._sem:
             try:
                 offset = 0
@@ -471,8 +606,8 @@ class Downloads:
                     row.note = text
                     say(f"  {text}")
 
-                got = self.models.ensure(row.name, source=row.source, key=key,
-                                         on_progress=progress, on_note=note,
+                got = self.models.ensure(row.name, source=row.source,
+                                         transfer=ModelTransfer(progress=progress, note=note),
                                          autodownload=autodownload)
                 offset = got.size
                 for offer in row.components:
@@ -486,8 +621,8 @@ class Downloads:
                     row.transfer = Transfer()
                     row.total = offset + offer.get("size_bytes", 0)
                     note(f"Downloading {kind} for {got.name}")
-                    companion = self.models.ensure(offer["name"], source=offer["ref"], key=key,
-                                                   on_progress=progress, on_note=note, autodownload=autodownload)
+                    companion = self.models.ensure(offer["name"], source=offer["ref"],
+                                                   transfer=ModelTransfer(progress=progress, note=note), autodownload=autodownload)
                     model_components.link(got.path, companion.path, offer)
                     offset += companion.size
                     if offer["packaging"] == "integrated":

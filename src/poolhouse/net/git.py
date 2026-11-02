@@ -3,19 +3,22 @@ names it) is spoken, hooks and submodules are off, and the commit that came down
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import shutil
 import subprocess
+import tempfile
 import urllib.parse
 from collections.abc import Sequence
 from pathlib import Path
 
+from poolhouse.activity.source_snapshot import git_environment
 from poolhouse.httpguard import Refused
 from poolhouse.net import policy as hosts, provenance
 from poolhouse.net.hold import staging_dir
 
-__all__ = ["NETWORK", "GitFailed", "clone", "environment", "guarded", "head", "run"]
+__all__ = ["NETWORK", "GitFailed", "clone", "commit_empty", "environment", "guarded", "head", "run"]
 
 NETWORK = frozenset({"clone", "fetch", "pull", "ls-remote", "push", "submodule"})
 TIMEOUT_S = 1800.0
@@ -85,16 +88,52 @@ def run(args: Sequence[str], *, cwd: Path | None = None, url: str = "",
     if args and args[0] in NETWORK:
         target = url or _origin(cwd)
         guarded(target, policy, protocols)
-    hooks = staging_dir() / "no-hooks"
+    return _execute(args, cwd, _execution_env(protocols))
+
+
+def _execution_env(protocols):
+    hooks = staging_dir() / 'no-hooks'
     hooks.mkdir(exist_ok=True)
+    return environment(protocols, hooks)
+
+
+def commit_empty(cwd: Path, identity: tuple[str, str], message: str, *, source: bool = False) -> subprocess.CompletedProcess[str]:
+    """Record an empty local commit with explicit software identity and no signing or hooks."""
+    env = _source_environment(cwd) if source else _execution_env('')
+    name, email = identity
+    env.update(GIT_AUTHOR_NAME=name, GIT_AUTHOR_EMAIL=email,
+               GIT_COMMITTER_NAME=name, GIT_COMMITTER_EMAIL=email)
+    return _execute(['-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null',
+                     'commit', '--allow-empty', '--no-verify', '-m', message], cwd, env)
+
+
+def _execute(args, cwd, env):
     try:
         done = subprocess.run([_git(), *args], cwd=cwd, capture_output=True, text=True,
-                              timeout=TIMEOUT_S, env=environment(protocols, hooks), check=False)
+                              timeout=TIMEOUT_S, env=env, check=False)
     except subprocess.TimeoutExpired as exc:
         raise GitFailed(f"git {args[0] if args else ''} timed out") from exc
     if done.returncode != 0:
         raise GitFailed(f"git {' '.join(args)} failed: {(done.stderr or '').strip()}")
     return done
+
+
+def _source_environment(cwd: Path) -> dict[str, str]:
+    """Exclude inherited Git configuration, selectors and external helpers for source materialization."""
+    env = git_environment()
+    if 'SYSTEMROOT' in env:
+        env.update(TEMP=str(cwd.parent), TMP=str(cwd.parent))
+    env.update(GIT_NO_REPLACE_OBJECTS='1', GIT_CONFIG_COUNT='3',
+               GIT_CONFIG_KEY_0='core.hooksPath', GIT_CONFIG_VALUE_0=os.devnull,
+               GIT_CONFIG_KEY_1='core.fsmonitor', GIT_CONFIG_VALUE_1='false',
+               GIT_CONFIG_KEY_2='commit.gpgsign', GIT_CONFIG_VALUE_2='false')
+    return env
+
+
+def source_init(cwd: Path) -> None:
+    """Initialize a private source checkout without ambient configuration or templates."""
+    with tempfile.TemporaryDirectory(prefix='empty-git-template-', dir=cwd.parent) as template:
+        _execute(['init', '--initial-branch=agent', f'--template={template}'], cwd, _source_environment(cwd))
 
 
 def blobs(digests: list[str], *, cwd: Path, limit: int, total: int) -> dict[str, bytes]:
@@ -104,6 +143,10 @@ def blobs(digests: list[str], *, cwd: Path, limit: int, total: int) -> dict[str,
     identifiers = list(dict.fromkeys(digests))
     if not identifiers:
         return {}
+    object_format = run(["rev-parse", "--show-object-format"], cwd=cwd).stdout.strip()
+    lengths = {"sha1": 40, "sha256": 64}
+    if object_format not in lengths or any(len(value) != lengths[object_format] for value in identifiers):
+        raise GitFailed("Git source object identifiers do not match the repository format")
     query = ("\n".join(identifiers) + "\n").encode()
     hooks = staging_dir() / "no-hooks"
     env = environment("", hooks)
@@ -131,7 +174,14 @@ def blobs(digests: list[str], *, cwd: Path, limit: int, total: int) -> dict[str,
         if newline < offset or done.stdout[offset:newline] != expected:
             raise GitFailed("Git source blob changed while reading")
         offset = newline + 1
-        result[digest] = done.stdout[offset:offset + size]
+        content = done.stdout[offset:offset + size]
+        prefix = f"blob {size}\0".encode()
+        hasher = hashlib.sha1(usedforsecurity=False) if object_format == "sha1" else hashlib.sha256()
+        hasher.update(prefix)
+        hasher.update(content)
+        if hasher.hexdigest() != digest:
+            raise GitFailed("Git source blob does not match its object identity")
+        result[digest] = content
         offset += size
         if done.stdout[offset:offset + 1] != b"\n":
             raise GitFailed("Truncated Git source blob")
@@ -145,8 +195,7 @@ def source_index(entries: list[dict], *, cwd: Path) -> None:
     """Add verified source files to a fresh index without filters."""
     if not entries:
         return
-    hooks = staging_dir() / "no-hooks"
-    env = environment("", hooks)
+    env = _source_environment(cwd)
     paths = ("\n".join(entry["path"] for entry in entries) + "\n").encode()
     hashed = subprocess.run([_git(), "hash-object", "-w", "--no-filters", "--stdin-paths"],
                             cwd=cwd, input=paths, capture_output=True, timeout=30, env=env, check=False)

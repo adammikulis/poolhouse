@@ -2,13 +2,12 @@
 
 use serde_json::{json, Map, Value};
 
-use crate::approvals::content::ROUTINE;
 use crate::approvals::fatigue::{kind_of, requester, Cause, Outcome, Requester};
-use crate::approvals::{challenge, summary, Approval, APPROVED, CANCELLED, DENIED, EXPIRED, FAILED, GRANTS, HELD, HOLD, PENDING, PHONE_ADD, PHONE_REMOVE};
+use crate::approvals::{challenge, summary, Approval, APPROVED, CANCELLED, DENIED, EXPIRED, FAILED, GRANTS, HELD, HOLD, PENDING, PHONE_ADD, PHONE_REMOVE, REBIND};
 use crate::error::{Error, Result};
 use crate::fsutil::sha256_hex;
 use crate::gov::charter::data_act_wait_ms;
-use crate::gov::keys::Level;
+use crate::grants::authority::Authority;
 use crate::grants::spec::parse_issue;
 use crate::node::Node;
 use crate::row::Kind;
@@ -22,6 +21,8 @@ pub struct Decision<'a> {
     pub sig: &'a str,
     pub text_sha256: &'a str,
     pub pick: &'a str,
+    /// The approving key's signature over the act the request lists a phone with, in hex; empty for a request that lists nothing.
+    pub act_sig: &'a str,
 }
 
 fn denied<T>(why: &str) -> Result<T> {
@@ -170,17 +171,6 @@ fn picked(a: &Approval, decision: &str, pick: &str) -> Result<bool> {
     Ok(pick == a.pick_code)
 }
 
-/// What a pool says to the key ``key`` when it approves or signs a grant of the ``risk`` class (`routine`, `sensitive` or `irreversible`)
-/// and sits below the pool's sensitive floor; none for a routine grant, for a node in no pool and for a key at the floor.
-pub(crate) fn below_floor(node: &Node, key: &str, risk: &str) -> Option<String> {
-    if risk == ROUTINE {
-        return None;
-    }
-    let floor = node.members.gov()?.state().chain.latest().charter.floors.sensitive;
-    let level = node.persons.get(key).map_or(Level::Weak, |k| k.assurance);
-    (level < floor).then(|| format!("This pool needs a key approved from {} for that, and this key is approved from {}, so nothing was approved.", floor.shown(), level.shown()))
-}
-
 /// Decide a request with the signature ``d`` carries. The state changes once, and is on disk before anything is done with it.
 pub fn decide(node: &mut Node, d: &Decision) -> Result<Value> {
     sweep(node)?;
@@ -192,15 +182,18 @@ pub fn decide(node: &mut Node, d: &Decision) -> Result<Value> {
     if node.persons.get(d.key).is_none() {
         return Err(refuse_key(node, d.key));
     }
+    if !Authority::of(node).decides(d.key) {
+        return denied("That key is not an admin key of this pool, so nothing was decided.");
+    }
+    if a.kind == PHONE_ADD && d.decision.starts_with("approve") {
+        crate::phone::admit::check_decision(node, &a, d.key, d.act_sig)?;
+    }
     if !d.text_sha256.is_empty() && d.text_sha256 != sha256_hex(a.text.as_bytes()) {
         return denied("The text you were shown is not the text of this request, so nothing was signed.");
     }
     let bytes = challenge::bytes(&challenge::object(&a, &node.cert.fingerprint()), d.decision, d.key);
     if !node.persons.signed(d.key, &bytes, d.sig) {
         return denied(if d.decision.starts_with("approve") { "That signature does not match this request, so nothing was approved." } else { "That signature does not match this request, so nothing changed." });
-    }
-    if let Some(why) = d.decision.starts_with("approve").then(|| below_floor(node, d.key, &a.risk)).flatten() {
-        return denied(&why);
     }
     let matched = picked(&a, d.decision, d.pick)?;
     let now = node.now_ms();
@@ -264,10 +257,10 @@ fn declined(node: &mut Node, a: &Approval, decision: &str, now: u64) -> Result<(
     Ok(())
 }
 
-/// Move the start of the grant ``body`` for an irreversible data act that no key above `Computer` approved a day on, so that a person key
-/// can revoke it first; the milliseconds it moved.
-fn delay_irreversible(body: &mut Map<String, Value>, level: Level) -> u64 {
-    let wait = body.get("action").and_then(Value::as_str).map_or(0, |action| data_act_wait_ms(action, &[level])) as u64;
+/// Move the start of the grant ``body`` for an irreversible data act a day on, so that a person key can revoke it first; the milliseconds
+/// it moved.
+fn delay_irreversible(body: &mut Map<String, Value>) -> u64 {
+    let wait = body.get("action").and_then(Value::as_str).map_or(0, data_act_wait_ms) as u64;
     for field in ["at_ms", "until_ms"] {
         if let Some(at) = body.get(field).and_then(Value::as_u64) {
             body.insert(field.into(), json!(at + wait));
@@ -282,10 +275,9 @@ fn approved(node: &mut Node, a: &Approval, d: &Decision, now: u64) -> Result<()>
         GRANTS => {
             // Every entry is checked before the first is written, so a refusal leaves no ask live while the agent is told none is.
             let mut entries = Vec::new();
-            let level = node.persons.get(d.key).map_or(Level::Weak, |k| k.assurance);
             let mut waited = 0;
-            for mut body in challenge::grant_entries(a, &node.cert.fingerprint(), now, d.key, d.sig) {
-                waited = waited.max(delay_irreversible(&mut body, level));
+            for mut body in challenge::grant_entries(a, &node.cert.fingerprint(), now, d.key, d.sig, d.decision) {
+                waited = waited.max(delay_irreversible(&mut body));
                 parse_issue(&body)?;
                 let gid = body.get("gid").and_then(Value::as_str).unwrap_or("").to_string();
                 let body = Value::Object(body);
@@ -306,7 +298,7 @@ fn approved(node: &mut Node, a: &Approval, d: &Decision, now: u64) -> Result<()>
             let actions: Vec<&str> = asks.iter().map(|k| k["action"].as_str().unwrap_or("")).collect();
             node.fatigue.approved(&who, &kind_of(&actions))?;
             if waited > 0 {
-                audit(node, "approval.waiting", a, &format!("a computer's key or a typed yes approved an act that cannot be undone; it starts in {} hours unless a key revokes it", waited / 3_600_000));
+                audit(node, "approval.waiting", a, &format!("an act that cannot be undone was approved; it starts in {} hours unless a key revokes it", waited / 3_600_000));
             }
             node.approvals.update(&a.id, |x| {
                 x.grants = written;
@@ -316,8 +308,12 @@ fn approved(node: &mut Node, a: &Approval, d: &Decision, now: u64) -> Result<()>
             })
         }
         HOLD => summary::apply(node, a, "approve"),
-        PHONE_ADD => crate::phone::activate(node, a),
+        PHONE_ADD => {
+            crate::phone::admit::submit(node, a, d.key, d.act_sig)?;
+            crate::phone::activate(node, a)
+        }
         PHONE_REMOVE => crate::phone::remove(node, a),
+        REBIND => Ok(()),
         _ => Err(Error::Invalid("That kind of request is not known.".into())),
     }
 }

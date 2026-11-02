@@ -26,14 +26,9 @@
             const validation = await S.api("/validate", {
               graph: this.rootGraph(),
             });
+            this.validationVariants = validation.graph?.variants || {};
             if (!validation.valid) {
-              this.message(
-                (validation.errors || [])
-                  .map((e) =>
-                    typeof e === "string" ? e : e.message || JSON.stringify(e),
-                  )
-                  .join(" · "),
-              );
+              this.showValidation(validation.errors);
               return;
             }
             const prefix = this.context.map((c) => c.node.id).join("/");
@@ -64,6 +59,10 @@
               this.rememberSubmission(null);
             this.message("Run submitted. Edits apply to your next run.");
             await this.refreshRuns();
+          } catch (error) {
+            if (error.response?.errors)
+              this.showValidation(error.response.errors);
+            else throw error;
           } finally {
             this.submitting = false;
             this.querySelector("#studio-run").disabled = false;

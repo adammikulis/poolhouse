@@ -1,6 +1,9 @@
 """A bare `Agent` runs under sentinel: a flagged call is held and refused, a decoy freezes the
-session, and running without it takes a reason that is logged. Real agent loop, scripted model
-server, real sentinel store under the test's own state root."""
+session, and running without it takes a reason that is logged. Real agent loop, canned
+server, real sentinel store under the test's own state root.
+
+These tests exercise the loop and the sentinel wiring, not a model: the replies are scripted turns, each carrying
+the canned marker."""
 
 from __future__ import annotations
 
@@ -15,7 +18,7 @@ from poolhouse.agent import Agent, Denied, Done, FunctionTools, unwatched
 from poolhouse.agent.watched import Watch
 from poolhouse.client import Client
 from poolhouse.sentinel import State, human
-from poolhouse.testing.tool_server import ToolCallingServer, Turn
+from poolhouse.testing.canned import CannedServer, Turn
 
 FETCH = {"name": "web_fetch", "description": "Read a page.", "inputSchema": {
     "type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]},
@@ -32,10 +35,10 @@ ran: list[str] = []
 
 @pytest.fixture
 def served():
-    started: list[ToolCallingServer] = []
+    started: list[CannedServer] = []
 
-    def start(*turns: Turn) -> ToolCallingServer:
-        fake = ToolCallingServer(list(turns))
+    def start(*turns: Turn) -> CannedServer:
+        fake = CannedServer(turns=list(turns))
         started.append(fake)
         return fake
 
@@ -69,7 +72,7 @@ def run(agent: Agent, task: str = "look into it") -> list:
     return asyncio.run(go())
 
 
-def agent_for(fake: ToolCallingServer, page: str = "an ordinary page", **kwargs) -> Agent:
+def agent_for(fake: CannedServer, page: str = "an ordinary page", **kwargs) -> Agent:
     return Agent(Client(fake.base_url), tools(page), **kwargs)
 
 

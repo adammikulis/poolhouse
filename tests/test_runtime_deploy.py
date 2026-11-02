@@ -24,7 +24,7 @@ from poolhouse import (
     runtime_launchers,
     runtime_store,
 )
-from poolhouse.board import session as board_session
+from poolhouse.board import place, session as board_session
 from poolhouse.board.client import Denied, Quota
 from poolhouse.board.session import AGENT_ENV
 from poolhouse.fleet import runtime_wheel
@@ -65,7 +65,6 @@ def world(request, tmp_path, monkeypatch):
     workspace_node = request.getfixturevalue("workspace_node")
     monkeypatch.setenv("PIP_NO_INDEX", "1")
     monkeypatch.delenv("POOLHOUSE_RUNTIME_ENSURE", raising=False)
-    monkeypatch.setenv(AGENT_ENV, workspace_node.member("runtime-agent").name)
     monkeypatch.setitem(NODE, "binary", workspace_node.binary)
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -74,6 +73,11 @@ def world(request, tmp_path, monkeypatch):
     (repo / "src" / "poolhouse" / "__init__.py").write_text("")
     launchers = tmp_path / "bin"
     launchers.mkdir(mode=0o700)
+    monkeypatch.delenv("POOLHOUSE_BOARD", raising=False)
+    workspace_node.board = place.resolve(workspace_node.client, repo)
+    monkeypatch.setenv("POOLHOUSE_BOARD", workspace_node.board)
+    monkeypatch.setenv(AGENT_ENV, workspace_node.member("runtime-agent").name)
+    monkeypatch.chdir(repo)
     return repo, launchers, tmp_path
 
 
@@ -593,25 +597,17 @@ def test_a_switch_to_a_new_build_writes_no_announcement(world, workspace_node, a
     assert announced(me) == []
 
 
-def test_the_session_start_refresh_is_bounded_and_the_smoke_environment_disables_it(monkeypatch):
+def test_legacy_refresh_is_inert_and_smoke_environment_disables_old_hooks(monkeypatch):
     import importlib.util
     spec = importlib.util.spec_from_file_location("workspace_hook_under_test", Path(__file__).resolve().parents[1] / "scripts/hooks/workspace_hook.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     seen = []
-    monkeypatch.setenv("GIT_DIR", "/foreign/repository")
-    monkeypatch.setenv("GIT_WORK_TREE", "/foreign/checkout")
-    monkeypatch.setenv("GIT_INDEX_FILE", "/foreign/index")
-    monkeypatch.setenv("GIT_SSH_COMMAND", "trusted-ssh")
     monkeypatch.delenv("POOLHOUSE_RUNTIME_ENSURE", raising=False)
-    monkeypatch.setattr(module.subprocess, "run", lambda *a, **k: seen.append(k) or subprocess.CompletedProcess(a, 0, "", ""))
+    monkeypatch.setattr(module.subprocess, "run", lambda *a, **k: seen.append(a))
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *a, **k: seen.append(a))
     module.refresh_runtime("SessionStart")
-    assert seen == [], "no variable set, and under a test the refresh never starts a build"
-    monkeypatch.setattr(module.lan, "on_the_persons_machine", lambda: True)
-    module.refresh_runtime("SessionStart")
-    assert len(seen) == 1 and seen[0]["timeout"] <= 6
-    assert not {"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"} & seen[0]["env"].keys()
-    assert seen[0]["env"]["GIT_SSH_COMMAND"] == "trusted-ssh"
+    assert seen == []
     env = runtime_deploy._clean_environment(Path("/tmp/x"), Path("/tmp/y"))
     assert env["POOLHOUSE_RUNTIME_ENSURE"] == "off"
 
@@ -705,9 +701,9 @@ def test_the_acting_session_is_only_one_the_node_knows_on_the_board_of_the_check
     assert (got.name, got.board) == (agent.name, workspace_node.board)
     assert runtime_deploy.acting(plan_for(repo, launchers, agent="no-such-agent")) is None
     helper = workspace_node.member("helper", parent=agent)
-    assert runtime_deploy.acting(plan_for(repo, launchers, agent=helper.name)).name == helper.name
+    assert runtime_deploy.acting(plan_for(repo, launchers, agent=helper.name)) is None
     monkeypatch.setenv("POOLHOUSE_BOARD", "another-board")
-    assert runtime_deploy.acting(plan_for(repo, launchers)) is None
+    assert runtime_deploy.acting(plan_for(repo, launchers)).name == agent.name
     monkeypatch.setenv("POOLHOUSE_BOARD", workspace_node.board)
     workspace_node.session(helper).retire()
     assert runtime_deploy.acting(plan_for(repo, launchers, agent=helper.name)) is None

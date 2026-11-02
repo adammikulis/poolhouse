@@ -7,7 +7,7 @@ import re
 
 import pytest
 
-from poolhouse.contracts import Budget, contracts_dir, fits, largest_that_fits, tiers
+from poolhouse.contracts import Budget, contracts_dir, first_install_for, fits, tiers
 
 GIB = 1024**3
 
@@ -72,15 +72,34 @@ def test_overhead_floor_dominates_for_small_models():
     assert weights_plus_overhead_bytes(200 * 1024**2, budget) == 200 * 1024**2 + 1 * GIB
 
 
-def test_largest_that_fits_walks_down():
-    big = largest_that_fits(128 * GIB)
-    small = largest_that_fits(16 * GIB)
-    assert big.min_ram_gb > small.min_ram_gb
+def test_a_machine_with_room_gets_the_starter_and_one_without_gets_the_floor():
+    """No model is named above the starter: a big machine gets the same first install a
+    small one does, and the fit and the installed models choose from there."""
+    assert first_install_for(128 * GIB).id == "starter"
+    assert first_install_for(16 * GIB).id == "starter"
+    assert first_install_for(2 * GIB).id == tiers()[-1].id
+
+
+def test_the_ladder_names_no_model_or_context_that_a_machine_can_answer():
+    """The stale ladder (gpt-oss-120b at 32768 and the rungs between) is gone: past the
+    starter the model is `suggest.recommend` and the context `suggest.largest_fit`."""
+    raw = json.loads((contracts_dir() / "model_tiers.json").read_text(encoding="utf-8"))
+    assert [t["id"] for t in raw["tiers"]] == ["starter", "device"]
+    assert all("context" not in t for t in raw["tiers"])
+
+
+def test_the_starter_floor_is_the_least_memory_its_budget_holds():
+    """``min_ram_gb`` is derived from ``weights_gb`` by the desktop budget, not guessed:
+    the starter fits at its floor and does not fit a little below it."""
+    starter = tiers()[0]
+    weights = int(starter.weights_gb * GIB)
+    assert fits(weights, int(starter.min_ram_gb * GIB)) == "fits"
+    assert fits(weights, int((starter.min_ram_gb - 0.2) * GIB)) == "too_big"
 
 
 def test_a_tiny_machine_still_gets_a_tier():
     """Never raise, never return None: the floor rung always applies."""
-    assert largest_that_fits(512 * 1024**2).id == tiers()[-1].id
+    assert first_install_for(512 * 1024**2).id == tiers()[-1].id
 
 
 def test_availability_filter_skips_absent_models():
@@ -89,14 +108,15 @@ def test_availability_filter_skips_absent_models():
     ollama_tiers = [t for t in ladder if t.ollama]
     smallest_available = ollama_tiers[-1]
 
-    chosen = largest_that_fits(512 * GIB, available={smallest_available.ollama})
+    chosen = first_install_for(512 * GIB, available={smallest_available.ollama})
     assert chosen.id == smallest_available.id
+    assert first_install_for(512 * GIB, available=set()).id == tiers()[-1].id
 
 
 def test_none_availability_means_do_not_filter_not_nothing_available():
     """Same refusal-to-demote-on-ignorance rule: not knowing what is installed must not
     be read as 'nothing is installed'."""
-    unfiltered = largest_that_fits(512 * GIB, available=None)
+    unfiltered = first_install_for(512 * GIB, available=None)
     assert unfiltered.id == tiers()[0].id
 
 

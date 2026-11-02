@@ -1,7 +1,7 @@
 """Tailscale detection through a real executable on PATH, and how a member is reached
 over a tailnet. No Tailscale is needed: the executable is a script that prints canned output."""
 
-import argparse
+import hashlib
 import json
 import socket
 import ssl
@@ -9,15 +9,12 @@ import stat
 import threading
 
 import pytest
-from onboard_support import Recorder, identity, info, requests
+from onboard_support import Recorder, identity
 
 from poolhouse.fleet import tailnet, tls
-from poolhouse.fleet.onboard import cli
-from poolhouse.fleet.onboard.join_code import fingerprint_of
+from poolhouse.fleet.onboard.devices import Devices
 from poolhouse.fleet.onboard.lan import NotLocal, in_tailnet, require_local
-from poolhouse.fleet.onboard.nearby import decode
-from poolhouse.fleet.onboard.requests import Devices
-from poolhouse.fleet.onboard.routes import Route, learn, pinned_probe, reach, resolve
+from poolhouse.fleet.onboard.routes import Route, pinned_probe, reach, resolve
 
 ME, MEMBER = "100.64.0.1", "100.100.5.7"
 FP = "ab" * 32
@@ -198,13 +195,10 @@ def test_tailnet_ranges():
         require_local("100.128.0.1")
 
 
-def device(tmp_path, *, address="192.168.1.20", name="kitchen-pi", hostname="kitchen-pi", fp=FP):
-    rec = Recorder()
-    rq = requests(tmp_path, rec)
-    r = rq.submit(info(fp, name=name, hostname=hostname), address)
-    rq.accept(r.id, mine=True)
-    rq.joined(r.id, shared_pool_key=False)
-    return Devices(tmp_path / "devices.json", bus=rec.bus)
+def device(tmp_path, *, address="192.168.1.20", name="kitchen-pi", fp=FP):
+    devices = Devices(tmp_path / "devices.json", bus=Recorder().bus)
+    devices.add_accepter(fp, name, address, secret="c2VjcmV0", mine=True)
+    return devices
 
 
 def seen(answers):
@@ -243,7 +237,7 @@ def test_the_certificate_decides_not_the_name(tmp_path):
 
 
 def test_an_offline_member_or_a_down_tailnet_is_unreachable(tmp_path):
-    attic = device(tmp_path, name="attic", hostname="attic").all()[0]
+    attic = device(tmp_path, name="attic").all()[0]
     assert reach(attic, up(), 8772, seen({("100.100.5.8", FP)})).route is Route.UNREACHABLE
     kitchen = device(tmp_path / "b").all()[0]
     stopped = up(BackendState="Stopped")
@@ -258,7 +252,7 @@ def test_without_tailscale_only_the_network_is_tried(tmp_path):
     assert probe.asked == ["192.168.1.20"]
 
 
-def test_a_device_joined_over_the_tailnet_remembers_the_address(tmp_path):
+def test_a_device_recorded_at_a_tailnet_address_remembers_it(tmp_path):
     d = device(tmp_path, address=MEMBER).all()[0]
     assert d.tailnet_address == MEMBER
     assert reach(d, tailnet.Tailnet(), 8772, seen({(MEMBER, FP)})).route is Route.UNREACHABLE
@@ -271,33 +265,6 @@ def test_a_public_address_is_never_a_route(tmp_path):
     probe = seen({("8.8.8.8", FP)})
     assert reach(devices.all()[0], tailnet.Tailnet(), 8772, probe).route is Route.UNREACHABLE
     assert probe.asked == []
-
-
-def test_learning_stores_only_an_address_whose_certificate_matches(tmp_path):
-    devices = device(tmp_path)
-    assert learn(devices, up(), 8772, seen({(MEMBER, "cd" * 32)})) == []
-    assert devices.all()[0].tailnet_address == ""
-    assert learn(devices, up(), 8772, seen({(MEMBER, FP)})) == [FP]
-    assert devices.all()[0].tailnet_address == MEMBER
-
-
-def test_an_announcement_cannot_set_a_tailnet_address(tmp_path):
-    devices = device(tmp_path)
-    forged = decode(json.dumps({"v": 1, "kind": "join-open", "name": "kitchen-pi",
-                                "hostname": "x", "model": "m", "port": 8772,
-                                "fingerprint": FP}).encode(), "100.99.9.9", 0.0)
-    assert forged.address == "100.99.9.9"
-    assert devices.all()[0].tailnet_address == ""
-    for source in ("announcement", "nearby", "", "unauthenticated"):
-        with pytest.raises(ValueError, match="not taken from"):
-            devices.learn_tailnet(FP, "100.99.9.9", source=source)
-    with pytest.raises(ValueError, match="not a tailnet"):
-        devices.learn_tailnet(FP, "8.8.8.8", source="join-code")
-    with pytest.raises(KeyError):
-        devices.learn_tailnet("ef" * 32, "100.99.9.9", source="join-code")
-    assert devices.all()[0].tailnet_address == ""
-    devices.learn_tailnet(FP, "100.99.9.9", source="join-code")
-    assert devices.all()[0].tailnet_address == "100.99.9.9"
 
 
 def test_a_device_name_resolves_to_the_address_that_answers(tmp_path):
@@ -331,22 +298,9 @@ def test_the_probe_checks_the_pinned_certificate_on_a_real_server(tmp_path):
     thread = threading.Thread(target=serve, daemon=True)
     thread.start()
     try:
-        assert pinned_probe("127.0.0.1", port, fingerprint_of(ident.der))
+        assert pinned_probe("127.0.0.1", port, hashlib.sha256(ident.der).hexdigest())
         assert not pinned_probe("127.0.0.1", port, "cd" * 32)
-        assert not pinned_probe("8.8.8.8", 8772, fingerprint_of(ident.der))
+        assert not pinned_probe("8.8.8.8", 8772, hashlib.sha256(ident.der).hexdigest())
     finally:
         listener.close()
         thread.join(2)
-
-
-def test_the_devices_command_reports_the_route_and_whether_tailscale_is_there(
-        tmp_path, fake, capsys):
-    device(tmp_path, address="127.0.0.1", name="stranger", hostname="stranger")
-    fake.say(status())
-    parser = argparse.ArgumentParser()
-    cli.add_commands(parser.add_subparsers(dest="cmd"))
-    args = parser.parse_args(["devices", "--state", str(tmp_path), "--json", "--port", "1"])
-    assert cli.run(args) == 0
-    out = json.loads(capsys.readouterr().out)
-    assert out["tailscale"] == {"detected": True, "up": True, "state": "Running"}
-    assert [d["route"] for d in out["devices"]] == ["unreachable"]

@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import shutil
 import subprocess
 import sys
 import uuid
 import zipfile
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from email.parser import BytesParser
 from pathlib import Path
 
@@ -88,9 +90,80 @@ def build(checkout: Path, commit: str, stage: Path, *, timeout: float, target: T
     found = list(wheels.glob("poolhouse-*.whl"))
     if len(found) != 1:
         raise ValueError("source revision must build exactly one poolhouse wheel")
-    compute_artifact.build(source, found[0], commit)
     stamp(found[0], commit, checkout)
-    return prepare(found[0], commit, timeout=timeout, target=target)
+    return _candidate_prepare(found[0], commit, checkout, timeout=timeout, target=target)
+
+
+CANDIDATE = """import hashlib,json,sys,tempfile
+from pathlib import Path
+wheel=Path(sys.argv[1]).resolve(strict=True)
+payload=json.load(sys.stdin)
+raw=wheel.read_bytes()
+assert hashlib.sha256(raw).hexdigest()==payload['wheel_sha256'], 'Candidate wheel changed'
+private=tempfile.TemporaryDirectory(prefix='poolhouse-candidate-builder-')
+frozen=Path(private.name)/wheel.name
+frozen.write_bytes(raw)
+sys.path.insert(0,str(frozen))
+from poolhouse.fleet import runtime_wheel
+
+def isolated():
+ for name,module in tuple(sys.modules.items()):
+  if name=='poolhouse' or name.startswith('poolhouse.'):
+   assert str(getattr(module,'__file__','')).startswith(str(frozen)+'/poolhouse/'), 'Candidate imported caller code'
+isolated()
+result=runtime_wheel.candidate_prepare(payload)
+isolated()
+print(json.dumps(result,sort_keys=True))
+"""
+
+
+def _candidate_prepare(wheel: Path, commit: str, checkout: Path, *, timeout: float, target: Target) -> runtime.Runtime:
+    """Use the immutable candidate's artifact builder and cache policy, never the caller's."""
+    payload = {'source': str((wheel.parent.parent / 'source').resolve()), 'wheel': str(wheel.resolve()), 'commit': commit,
+               'checkout': str(checkout.resolve()), 'timeout': timeout, 'target': asdict(target),
+               'wheel_sha256': hashlib.sha256(wheel.read_bytes()).hexdigest()}
+    payload['target'] = {key: str(value) if isinstance(value, Path) else value for key, value in payload['target'].items()}
+    output = _run([str(target.host or sys.executable), '-B', '-I', '-c', CANDIDATE, str(wheel.resolve())],
+                  timeout, input=json.dumps(payload))
+    result = json.loads(output)
+    if (not isinstance(result, dict) or set(result) != {'runtime', 'wheel_sha256', 'companion_sha256'}
+            or not isinstance(result['runtime'], dict)
+            or set(result['runtime']) != {'prefix', 'commit', 'version', 'identity'}):
+        raise ValueError('Candidate runtime returned an invalid result')
+    row = result['runtime']
+    if any(not isinstance(value, str) for value in row.values()):
+        raise ValueError('Candidate runtime returned invalid metadata')
+    manifest = compute_artifact.from_wheel(wheel)
+    if (row['commit'] != commit or wheel_commit(wheel) != commit or manifest is None
+            or manifest.get('source') != commit or manifest.get('sha256') != result['companion_sha256']
+            or hashlib.sha256(wheel.read_bytes()).hexdigest() != result['wheel_sha256']
+            or (target.prefix is not None and Path(row['prefix']) != target.prefix)):
+        raise ValueError('Candidate runtime does not match its requested source and artifacts')
+    return runtime.verify(runtime.Runtime(Path(row['prefix']), commit, row['version'], row['identity']))
+
+
+def candidate_prepare(payload: dict) -> dict:
+    """Fixed isolated build continuation, called only by the immutable runtime builder."""
+    if set(payload) != {'source', 'wheel', 'commit', 'checkout', 'timeout', 'target', 'wheel_sha256'}:
+        raise ValueError('Candidate build request has unexpected fields')
+    source, wheel = Path(payload['source']), Path(payload['wheel'])
+    if (source.is_symlink() or wheel.is_symlink() or source.parent != wheel.parent.parent
+            or wheel.parent.name != 'wheels' or source.name != 'source'
+            or wheel_commit(wheel) != payload['commit']
+            or hashlib.sha256(wheel.read_bytes()).hexdigest() != payload['wheel_sha256']):
+        raise ValueError('Candidate build inputs changed or escaped their source stage')
+    fields = dict(payload['target'])
+    if set(fields) != {'prefix', 'creator', 'host'}:
+        raise ValueError('Candidate build target has unexpected fields')
+    for key in ('prefix', 'host'):
+        fields[key] = Path(fields[key]) if fields[key] is not None else None
+    target = Target(**fields)
+    compute_artifact.build(source, wheel, payload['commit'])
+    stamp(wheel, payload['commit'], Path(payload['checkout']))
+    chosen = prepare(wheel, payload['commit'], timeout=payload['timeout'], target=target)
+    return {'runtime': {**asdict(chosen), 'prefix': str(chosen.prefix)},
+            'wheel_sha256': hashlib.sha256(wheel.read_bytes()).hexdigest(),
+            'companion_sha256': compute_artifact.from_wheel(wheel)['sha256']}
 
 
 def prepare(wheel: Path, commit: str, *, timeout: float, target: Target | None = None) -> runtime.Runtime:
@@ -152,9 +225,9 @@ def _install(python: Path, spec: str, timeout: float) -> None:
         raise ValueError(f"{done.stdout}{done.stderr}".strip() or f"uv exited {done.returncode}")
 
 
-def _run(argv: list[str], timeout: float) -> str:
+def _run(argv: list[str], timeout: float, *, input: str | None = None) -> str:
     done = (packages.run(argv[0], argv[3:], timeout=timeout, env=runtime.installer_environment()) if argv[1:3] == ["-m", "pip"]
-            else subprocess.run(argv, capture_output=True, text=True, timeout=timeout, env=(runtime_git.environment(runtime.installer_environment()) if argv[0] == "git"
+            else subprocess.run(argv, input=input, capture_output=True, text=True, timeout=timeout, env=(runtime_git.environment(runtime.installer_environment()) if argv[0] == "git"
                                                                                        else worktreerules._git_environment(runtime.installer_environment()))))
     output = f"{done.stdout}{done.stderr}".strip()
     if done.returncode:

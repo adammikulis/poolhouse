@@ -16,7 +16,6 @@ from typing import Any
 
 from poolhouse.files import sha256_file
 
-from .discovery import derive_token, discover
 from .jobs import DaemonError
 from .remote import Member
 
@@ -119,32 +118,21 @@ class Fetch:
 class Fetcher:
     """Pulls files from other daemons, without going through the job queue."""
 
-    def __init__(self, files_root: Path, key: bytes | None, *, slots: int = 2,
-                 discover_timeout_s: float = 2.0) -> None:
+    DISCOVER_TIMEOUT_S = 10.0
+
+    def __init__(self, files_root: Path, *, slots: int = 2) -> None:
         self.files_root = files_root
-        self.key = key
         self.slots = slots
-        self.discover_timeout_s = discover_timeout_s
         self.fetches: dict[str, Fetch] = {}
         self._lock = threading.Lock()
         self._sem = threading.Semaphore(slots)
-        self._members: dict[str, tuple[float, str]] = {}
 
-    def resolve(self, name: str) -> str:
-        """A member name to a base URL, via signed discovery. Never from the caller."""
-        if self.key is None:
-            raise DaemonError(
-                "this daemon holds no pool key, so it cannot authenticate to a member "
-                "-- run 'poolhouse-members init' and copy the key here")
-        cached = self._members.get(name)
-        if cached and cached[0] > time.time():
-            return cached[1]
-        for beacon in discover(self.key, timeout_s=self.discover_timeout_s):
-            self._members[beacon.name] = (time.time() + 30.0, beacon.base_url)
-        found = self._members.get(name)
-        if not found:
-            raise DaemonError(f"no member named {name!r} answered on this LAN")
-        return found[1]
+    def resolve(self, name: str) -> Member:
+        """A member name to its node-authorized compute service. Never from the caller."""
+        for member in Member.discover(timeout=self.DISCOVER_TIMEOUT_S):
+            if member.name == name:
+                return member
+        raise DaemonError(f"no pool member named {name!r} has a current compute service")
 
     def start(self, *, source: str, relpath: str, to: str,
               sha256: str = "") -> Fetch:
@@ -161,8 +149,7 @@ class Fetcher:
     def _run(self, fetch: Fetch, target: Path, sha256: str) -> None:
         with self._sem:
             try:
-                base_url = self.resolve(fetch.source)
-                member = Member(base_url, derive_token(self.key))  # type: ignore[arg-type]
+                member = self.resolve(fetch.source)
 
                 def progress(done: int, total: int) -> None:
                     fetch.done, fetch.total = done, total

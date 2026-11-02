@@ -91,7 +91,6 @@ def test_a_claimed_model_changes_no_right(duo):
         alice.whoami(model=claim)
         listed = {a["id"]: a for a in json.loads(duo.cli("agents", "--json", who=duo.alice).stdout)}[duo.alice.name]
         assert (listed["role"], listed["parent"], listed["model_state"]) == ("agent", "", "claimed")
-        assert listed["coordinator_eligible"] is False
         with pytest.raises(Denied):
             alice.note_verify("1", 0, "0" * 64)
         with pytest.raises(Denied):

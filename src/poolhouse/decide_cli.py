@@ -21,10 +21,10 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from poolhouse import optional
+from poolhouse import deciders, optional
 from poolhouse.client.systemone import MAX_BYTES, SystemOne, loads
 from poolhouse.command import Group, flag, option
-from poolhouse.decide import jevbench, questions, registry, router
+from poolhouse.decide import jevbench, questions, router
 from poolhouse.decide.calibrate import Calibration, fit
 from poolhouse.decide.cases import Case, fingerprint, read_cases, write_cases
 from poolhouse.decide.eval import FLOOR, Report, evaluate, score
@@ -270,7 +270,7 @@ def _make(args: Namespace) -> int:
 
 
 def _list(args: Namespace) -> int:
-    rows = registry.listing()
+    rows = deciders.listing()
     for row in rows:
         acc = row["metrics"].get("accuracy")
         say(f"{row['name']:<24} {row['base']:<28} "

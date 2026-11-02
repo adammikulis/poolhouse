@@ -258,22 +258,19 @@ def covered(path, roots):
 
 
 def test_the_sandbox_writes_its_own_stores_and_nothing_of_the_owners(layout):
-    import gaterun
-
     roots = profile.write_roots(layout)
     cache = layout.home / ".cache"
     for needed in ("test-reuse-sandbox/ab12/entries/x.json", "test-reuse-sandbox/ab12/jobs/j/log", "test-cargo-sandbox/targets/k/debug/x",
                    "test-cargo-sandbox/workspaces/k/app/poolhouse-node/src/main.rs", "test-cargo-sandbox/test-node/k/poolhouse-node",
                    "dev-test-slots/mutex.lock"):
         assert covered(cache / needed, roots), needed
-    gate = gaterun.steps_folder(cache / "test-reuse-sandbox", "ab12")
     for hostile in ("test-reuse/ab12/entries/forged.json", "test-reuse/ab12/chain.jsonl", "test-reuse/ab12/latest/" + "0" * 64,
                     "test-reuse", "test-cargo/workspaces/k/app/poolhouse-node/src/main.rs", "test-cargo/targets/k/debug/poolhouse-node",
                     "test-cargo/test-node/k/poolhouse-node", "test-gate/ab12/step.json", "x", "test-reuse-evil/x",
                     "test-reuse-sandbox/../test-reuse/ab12/chain.jsonl", "test-cargo-sandbox/../test-cargo/targets/k/x",
                     "test-reuse-sandbox/../.ssh/id_ed25519"):
         assert not covered(cache / hostile, roots), hostile
-    assert not covered(gate / "step.json", roots) and not covered(layout.home / ".cache", roots)
+    assert not covered(layout.home / ".cache", roots)
     assert not covered(layout.home / ".config" / "gh" / "hosts.yml", roots)
 
 

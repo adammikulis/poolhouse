@@ -185,27 +185,6 @@ revision is a 40-character id computed from those, so any tool naming the reposi
 file; a repository holding no `config.json` is not listed as a model. The decider's pinned files are read from and
 downloaded into their own repository's snapshot of the pinned commit.
 
-### Devices first
-
-By default a pull asks the devices you joined before it goes to the Hub, on the local network
-or at an address you stored (a VPN or overlay such as a tailnet; never a public one). The
-stored devices are the device book (`<state>/onboard/members.json`, the `DeviceBook` of
-`poolhouse.hub.memberbook`). **Joining fills it**: when two devices join (`fleet listen` / `fleet
-join`), each keeps the other's share address (the address the join used and the share port,
-`--share-port`, default 8773), pinned certificate, owner signing key and request key, learned from
-the grant and from an offer sealed under the exchange, so it is as authentic as the join; a
-device started with `--no-share` has no share address and no row is made for it. Revoking a
-device removes its rows. `Poolhouse pool devices add NAME --url https://host:port --certificate ...
---signing-key ... [--device-secret ...]` stays as the manual path for a device joined some other
-way, with `remove`, `on` and `off`. A row that came from joining names its device, and its route
-is chosen when the pull starts: the address on this network, else its tailnet address
-(`fleet/onboard/routes.py`), each answering with the pinned certificate; a removed device is not
-asked. For each file of the pull the session asks every device for its signed
-manifest (over TLS pinned to that device's certificate), keeps the devices whose manifest lists
-that very file (name, size and digest), orders them by how fast they answered, and fetches the
-file chunk by chunk, resumably, from several at once. `on_progress`, `CancelToken` and the
-sentinel events work as for a Hub pull.
-
 **Publisher trust.** A pull takes a `trust` argument (`poolhouse.hub.Trust`; `ph.models.pull`, `ph.hub.fetch`, `hub.pull`) and the
 default is `poolhouse.hub.admission.PERSON`, which is the rule in this paragraph. `Trust(publishers=...)` names the owners a program
 fetches from and refuses the rest with a message that names the argument; `Trust()` (`LIBRARY`) fetches from any publisher on any
@@ -230,51 +209,15 @@ repository and commit, and an agent cannot give it. A reference is resolved to i
 listing, the downloads and the pin all name that commit, never `main`. Ranking in `poolhouse-models find` (`PREFER`) never
 approves anything.
 
-**What is trusted.** Not the device. The digest a file must have is the Hub's own listing
-(fetched through `poolhouse.net`); a device whose manifest lists the file with another digest is
-not used, and a digest a device states never replaces the pin. Only when the listing carries no
-digest does an entry of a manifest signed by your own pinned manifest key supply it. Every
-chunk is checked against the signed manifest, the whole file against the pin, and the result
-goes through the same format check, scan and quarantine as an internet download. A device that
-sends bytes failing a digest is dropped for the rest of the pull, the partial bytes are deleted,
-and a critical `onboard.member.bad_copy` event goes to the bus and to sentinel; the Hub is used.
-
-**Who may have what** is decided by the device that serves the file, not by the one asking:
-`never` (the licence forbids copies) is refused, `owner` (gated or licensed models) goes only to
-a device you marked as yours and only after you recorded accepting that licence on the serving
-device (who, when, which licence; keep it with `poolhouse pool share`), `open` goes to any
-member. A copy that sentinel holds in quarantine on the serving device is not served.
-Credentials such as `HF_TOKEN` never leave a device. A device that has no copy, refuses or is
-unreachable costs a few seconds at most (each answer has 4 s) and the pull continues from the Hub.
-
-**Speed.** Each device's rate is measured (bytes completed per second, kept in the device book and
-blended with earlier transfers); devices are ranked by it, unmeasured ones first so that they get
-measured. A device gets at most two requests at a time, and an optional bandwidth cap:
-`poolhouse pool model-sources limit [NAME] [--rate 20MiB/s] [--streams N] [--metered on|off]` (no NAME
-means every device; `--rate off` and `--streams 0` remove a limit; `--metered on` means the link to
-that device costs per byte, so it is not asked and the Hub is used). When the transfer as a whole
-stays under 2 MiB/s for a 15 s window it is given up, the partial bytes are kept for a resume and
-the Hub is used.
-
 **Serving the model store.** `poolhouse pool share --models [--models-dir DIR ...]` serves the
 GGUF and safetensors files `poolhouse-models list` shows (or only those under the `--models-dir`
-folders), by file name with the repository, size and sha256, under the sharing levels above.
+folders), by file name with the repository, size and sha256, under the sharing levels of `docs/onboarding.md`.
 Nothing outside the model roots is served: each path is resolved at every request and a symlink
 or `..` that leaves the roots is refused; a copy sentinel holds is neither listed nor served. A
 model is `owner` unless `--sharing NAME=open` (or `REPO=open`) says it is not gated, so by default
 it goes only to your own devices and only once you accepted its licence on this machine (the
 licence is the repository unless `--licence` says otherwise; you confirm it once at a terminal).
 The manifest is signed with the owner key and its serial only rises.
-
-**What the downloading device keeps.** An append-only local record
-(`<state>/onboard/member-downloads.jsonl`, `poolhouse.hub.origins`): when, which file (name, size,
-sha256), which device, and for an `owner` model the acceptance it relied on (the licence, who
-accepted it and when, as the serving device reported it). `poolhouse-models list` shows it in the
-FROM column and in `--json` as `from_member`.
-
-**Turning it off.** `poolhouse-models pull --no-members` or `fetch --no-members` (or
-`pull(..., devices=False)`) for one pull; `POOLHOUSE_NO_MEMBERS=1` for a shell; `poolhouse pool model-sources off`
-for the machine. Nothing is contacted when it is off.
 
 `search(query, Filters(max_bytes, quant, owner, gated, limit, files))` returns `Repo` rows with
 their files; `Repo.builds()` is `(build, bytes, shards, quantization)` per build. Tests run
@@ -292,19 +235,21 @@ reserve_bytes=None)` is `green` below 80% of the memory the estimate lands in, `
 unified working-set limit or available RAM less the reserve (the larger of 2 GiB and a tenth of RAM), or
 a card's free VRAM for the GPU part, so 95% of it is the real limit. The two numbers are the ones
 `poolhouse.ui.verdict` uses. `meters(estimate, machine)` gives one `Meter` per pool with `segments`
-(`[{label, value}]` in bytes), `capacity_bytes` and `verdict`, which `<ml-meter>` takes as `segments`,
+(`[{label, value}]` in bytes), `capacity_bytes` and `verdict`, which `<poolhouse-meter>` takes as `segments`,
 `capacity` and `verdict`. `max_context(model, machine, setup, max_verdict="yellow")` is the longest
-context in steps of 256.
+context in steps of 256 (the same halving search, `serve.largest.largest_context`, that every default uses).
 
 The KV cache is `q8_0` by default: 34 bytes per 32 values, 53% of f16, near-lossless for chat and
 tool use. `q4_0` saves more and costs quality, so it is a last resort. llama.cpp accepts a
 quantised V cache only with flash attention; where the head size or the build lacks it, V stays f16
 and K stays q8_0 (`"q8_0/f16"`).
 
-`serve.suggest.suggest(model, machine=None, goal="agent", max_verdict="green")` picks context
-(`agent` up to 32k and one slot, `chat` 16k, `long-context` the largest, `fast` 4k; never past the
-trained context), offload, cache types and batch (2048 for `agent` and `long-context` when it keeps
-the rating), with `reasons` and a smaller and a bigger `alternatives`. `lease()` gives `ServerSpec`
+`serve.suggest.suggest(model, machine=None, *, goal="agent", max_verdict="green")` picks context
+(every goal but `fast` takes the largest that keeps the rating, up to the trained window; `fast` aims at 4k),
+offload, cache types and batch (2048 for `agent` and `long-context` when it keeps
+the rating), with `reasons` and a smaller and a bigger `alternatives`. `largest_fit(model, machine=None, *, slots=1, kv,
+draft)` is the one question the serving defaults ask (the machine counted as idle, yellow or better; docs/serving.md, "A
+context nobody names"). `lease()` gives `ServerSpec`
 keywords. `suggest_model(candidates, machine, goal)` ranks models: rating first, then parameters
 times a quantisation quality factor (a mixture of experts counts half); `fast` takes the smaller of
 the models over 1.5 billion parameters. No benchmark scores are used. `recommend(machine, goal,

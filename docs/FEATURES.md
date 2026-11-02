@@ -11,17 +11,12 @@ python docs/verify_release.py
 
 ## Setting up
 
-Create a named pool on one machine, then select it on another and enter its passphrase.
-Pool keys are random. The maintained authenticated password exchange gives an existing
-member's key to a machine with the correct passphrase; it does not derive the key from words.
-Pools created without a passphrase are joined through an authenticated recovery file.
+Found a pool on one machine, then add another with a short join code
+(`poolhouse-pool add-device` on a member, `poolhouse-pool join CODE --host HOST` on the new machine).
 
-- Nearby pool names are discovery hints, not membership or execution authority.
-- Authenticated pool traffic is separated by each pool's independent key.
-- The group name scopes passphrase authentication, even when two groups choose the same words.
-- Passphrases are stretched with scrypt before the PAKE exchange. Failed joining attempts
-  are rate limited; a discovery hint never grants access.
-- At least five characters are required; use a stronger phrase for an actual pool.
+- Nearby device names are discovery hints, not membership or execution authority.
+- Authenticated pool traffic is separated by each pool's own keys.
+- Failed joining attempts are rate limited; a discovery hint never grants access.
 
 Beacons are signed. A device's address is taken from the packet it arrived in, never from
 anything the packet claims about itself.
@@ -31,10 +26,9 @@ Pool screen without touching the others. It answers to each: work sent from any
 pool it belongs to reaches it, and its models and served endpoints are offered to all
 of them. The one it answers as, when something has to pick, is the first in the list.
 Leaving takes effect at once, and a machine that has left stops answering to that
-pool's credential.
+pool.
 
-Settings has a button to walk through first-run setup again, for renaming the machine or
-changing its passphrase.
+Settings has a button to walk through first-run setup again, for renaming the machine.
 
 ## Running work
 
@@ -141,7 +135,7 @@ Talk to a model from the interface, whichever machine is running it.
   one.
 - **A machine that installs nothing extra can still chat**, as long as something on the
   network is serving. Reaching another machine needs no address and no key exchange —
-  the passphrase both machines already share is enough.
+  being in the same pool is enough.
 - **Replies arrive as they are written**, not in one piece at the end.
 - **Conversations are kept** between runs and searched by anything said in them.
 - **Running a model here** is a button beside it in the Models list. The llama.cpp
@@ -229,9 +223,8 @@ screen.
   what the machine is for. The settings are pre-filled from the hardware, with the reason
   shown beside each, so a wrong guess is visible rather than silent.
 - **Pools are optional and there can be several.** The same page lists the ones this
-  machine is in, joins another with a passphrase, and leaves one. A machine that joins
-  none runs models and trains on its own; with no passphrase there is nothing to check,
-  so it answers to that machine and to nobody else.
+  machine is in, joins another with a join code, and leaves one. A machine that joins
+  none runs models and trains on its own, and answers to that machine and to nobody else.
 - **Starting up** — with the computer, when you log in, or only when you open it. The
   boot option asks for permission through the operating system's own password dialog.
 - **The pool view** shows every machine with its vendor, how many jobs are
@@ -246,13 +239,8 @@ chat, models, settings, what fits, first run, signing in — sharing one model o
 routes; a page is the list of them, so a caller leaves one out (`poolhouse-serve fit --ui`
 serves what fits and nothing else). Each screen has a route mixin to match.
 
-Setup on a machine that has not joined a pool is refused from anywhere but that
-machine, because until it joins there is no credential to check and the first person to
-reach it would own it. A headless machine can be set up over the network with a one-time
-code printed on its console.
-
-The pool key never enters the browser. Signing in is the passphrase, checked by
-deriving the key again and comparing.
+The daemon page signs in only with a launch ticket from the Poolhouse window (`poolhouse open`);
+first run asks only for a device name. A pool's keys never enter the browser.
 
 ## Removing it
 

@@ -18,8 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import home, mcp
-from poolhouse.fleet import join
+from poolhouse import home, mcp, pool_cli
 
 ACTING = ("serve_up", "serve_down", "serve_escalate", "models_fetch", "bench_run",
           "world_make", "speech_say", "conversation_compact", "workspace_send", "workspace_ack",
@@ -196,7 +195,7 @@ def test_fleet_join_is_not_a_tool_a_model_can_call():
 
 def test_joining_a_fleet_stays_a_command_a_person_runs():
     with pytest.raises(SystemExit) as left:
-        join.main(["join", "--help"])
+        pool_cli.main(["join", "--help"])
     assert left.value.code == 0
 
 

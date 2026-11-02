@@ -18,17 +18,17 @@ from poolhouse.serve.slotdump import (
     save_all,
     save_slot,
 )
-from poolhouse.testing import FakeLlamaServer, Served
+from poolhouse.testing.canned import Canned, CannedServer
 
 MODEL = "tinyfixture-4B-Q4_K_M.gguf"
 
 
 @pytest.fixture
 def server():
-    started: list[FakeLlamaServer] = []
+    started: list[CannedServer] = []
 
-    def start(**served: object) -> FakeLlamaServer:
-        fake = FakeLlamaServer(Served(model=MODEL, **served))
+    def start(**served: object) -> CannedServer:
+        fake = CannedServer(Canned(served_path=MODEL, **served))
         started.append(fake)
         return fake
 
@@ -69,12 +69,12 @@ def test_restore_after_save_on_the_same_layout(server, tmp_path) -> None:
 
 
 @pytest.mark.parametrize("changed", [
-    {"context": 16384}, {"slots": 2}, {"build_info": "b2-other"}, {"model": "other.gguf"}])
+    {"context": 16384}, {"slots": 2}, {"build_info": "b2-other"}, {"served_path": "other.gguf"}])
 def test_restore_refuses_a_different_layout(server, tmp_path, changed) -> None:
     first = server()
     save_slot(first.base_url, 0, "a.bin", directory=tmp_path)
-    kwargs = {"model": MODEL, **changed}
-    second = FakeLlamaServer(Served(**kwargs))
+    kwargs = {"served_path": MODEL, **changed}
+    second = CannedServer(Canned(**kwargs))
     try:
         with pytest.raises(SlotGuardRefused, match="different server layout"):
             restore_slot(second.base_url, 0, "a.bin", directory=tmp_path)

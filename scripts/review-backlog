@@ -170,7 +170,7 @@ def default_local_model(say: Callable[[str], None]) -> str:
 def reviewer_command(backend: str, model: str, scratch: Path, sha: str) -> list[str]:
     tools = ["-p", "--tools", ""]
     if backend == "local":
-        return ["poolhouse-claude", model, "--role", "read-only", "--project", str(scratch), "--for",
+        return ["poolhouse-claude", model, "--permissions", "read-only", "--project", str(scratch), "--for",
                 f"review of {sha[:12]}", "--", *tools]
     return [harnessing.binary_for("claude") or "claude", "--model", model, *tools]
 

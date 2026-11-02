@@ -9,7 +9,6 @@ from poolhouse import hub
 from poolhouse.sentinel.human import HumanRequired
 from poolhouse.serve import wired, wired_apply
 
-from .discovery import in_pool
 from .session import parse_cookie
 
 __all__ = ["RoomRoutes"]
@@ -65,7 +64,7 @@ class RoomRoutes:
                 row = next((m for m in installed if name in (m.id, m.name, str(m.path))), None)
                 if row is None:
                     raise FileNotFoundError(f"{name} is not installed")
-                ask = wired.Ask(int(self.asked("ctx", "131072")), self.asked("kv", "q8_0"),
+                ask = wired.Ask(int(self.asked("ctx", "0")), self.asked("kv", "q8_0"),
                                 self.asked("mtp", "1") not in ("0", "false", "off"))
                 out["plan"] = wired.plan(str(row.path), ask, hooks).as_dict()
             except (FileNotFoundError, ValueError) as no:
@@ -84,11 +83,9 @@ class RoomRoutes:
         if self.header("Authorization") or self.header("X-Poolhouse-Token"):
             return "an access token cannot change the wiring limit; a person at the page can"
         session = ui.sessions.get(parse_cookie(self.cookie))
-        if session is not None and session.who == "token":
-            return "a session opened with an access token cannot change the wiring limit"
         if session is not None and not session.credentialed:
             return "this session was not opened with a credential; open poolhouse from its own window"
-        if in_pool(ui.pool_key_path) and session is None:
+        if ui.founded() and session is None:
             return "sign in first"
         return ""
 

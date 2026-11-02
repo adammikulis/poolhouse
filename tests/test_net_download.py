@@ -13,7 +13,7 @@ import pytest
 from poolhouse import files, home, net
 from poolhouse.httpguard import Limits, Refused, TooLarge
 from poolhouse.net import provenance
-from poolhouse.net.download import accept
+from poolhouse.net.download import Cancel, accept
 from poolhouse.net.hold import staging_dir
 from poolhouse.net.scan import Outcome, ScanPolicy, ScanResult
 from tests.net_site import EICAR, Site, gguf_bytes, safetensors_bytes
@@ -556,3 +556,74 @@ def test_an_archive_over_the_entry_or_size_limit_is_refused(tmp_path):
     assert audit_archive(path) == []
     assert any("entries" in p for p in audit_archive(path, max_entries=3))
     assert any("unpacks to" in p for p in audit_archive(path, max_bytes=30))
+
+
+def test_cancel_before_body_connection_opens_nothing(tmp_path, site, pipe):
+    route = site.add('/m.gguf', gguf_bytes())
+    cancel = Cancel()
+    cancel.cancelled = True
+    with pytest.raises(net.Truncated, match='cancelled'):
+        pull(pipe, site, '/m.gguf', tmp_path / 'm.gguf', cancel=cancel)
+    assert not route.seen and not (tmp_path / 'm.gguf').exists()
+
+
+def test_cancel_at_redirect_policy_boundary_prevents_second_connection(tmp_path, site, pipe, monkeypatch):
+    target = site.add('/m.gguf', gguf_bytes())
+    first = site.redirect('/go', site.base + '/m.gguf')
+    cancel = Cancel()
+    original = pipe.policy.admit
+    seen = []
+
+    def admit(url, purpose):
+        seen.append(url)
+        result = original(url, purpose)
+        if url.endswith('/m.gguf'):
+            cancel.cancelled = True
+        return result
+
+    monkeypatch.setattr(pipe.policy, 'admit', admit)
+    with pytest.raises(net.Truncated, match='cancelled'):
+        pull(pipe, site, '/go', tmp_path / 'm.gguf', cancel=cancel)
+    assert first.seen and not target.seen
+    assert any(url.endswith('/m.gguf') for url in seen)
+
+
+def test_cancel_during_scan_prevents_cache_promotion(tmp_path, site, pipe):
+    site.add('/m.gguf', gguf_bytes())
+    cancel = Cancel()
+
+    class Stops(Fake):
+        def scan(self, path):
+            cancel.cancelled = True
+            return super().scan(path)
+
+    pipe.scanners = [Stops()]
+    pipe.scan_policy = ScanPolicy(scan_models=True)
+    with pytest.raises(net.Truncated, match='cancelled'):
+        pull(pipe, site, '/m.gguf', tmp_path / 'm.gguf', cancel=cancel)
+    assert not (tmp_path / 'm.gguf').exists()
+
+
+def test_metadata_check_runs_at_redirect_with_host_policy_intact(tmp_path, site, pipe, monkeypatch):
+    target = site.add('/metadata', b'{}')
+    first = site.redirect('/go', site.base + '/metadata')
+    allowed = [True]
+    original = pipe.policy.admit
+    policies = []
+
+    def current():
+        if not allowed[0]:
+            raise PermissionError('current operation revoked')
+
+    def admit(url, purpose):
+        policies.append(url)
+        result = original(url, purpose)
+        if url.endswith('/metadata'):
+            allowed[0] = False
+        return result
+
+    monkeypatch.setattr(pipe.policy, 'admit', admit)
+    with pytest.raises(PermissionError, match='revoked'):
+        pipe.json(site.base + '/go', net.Ask(check=current))
+    assert first.seen and not target.seen
+    assert any(url.endswith('/metadata') for url in policies)

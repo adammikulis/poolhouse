@@ -18,7 +18,7 @@ Every row of sections 3 and 4 has one state word.
 | built untested | The code is on the development branch and no run of its checks on a named tree is recorded here | the branch's author | the commit or branch |
 | tested | Its automated checks (selectors, rig steps, Rust tests) pass on a named tree on a named device | the worker that landed it; the lead repeats the selectors on the batch tree | selector, tree, device, result |
 | driven by a person | A person used it through the real interface on real hardware, following its journey | the person only (the owner, or a person the owner names); an agent writes down what the person reports | date, build, device and operating system, person, steps, what was seen |
-| activated | The landed build runs on the owner's own devices and the original journey ran there | the lead that owns the activation, after the person drove it | installed version, commit and path |
+| updated | The landed build runs on the owner's own devices and the original journey ran there | the lead that owns the update, after the person drove it | installed version, commit and path |
 
 - Nothing is ticked on a green suite alone (AGENTS.md, "Saying that something works"). A suite earns `tested` and nothing higher. A row
   that a person uses stays below `driven by a person` however green its tests.
@@ -62,7 +62,7 @@ three-attempt retry policy. This does not replace the full-suite result above.
 
 The release serves two audiences with one build. A change that adds a visible step for either is redesigned before it lands
 (AGENTS.md, "Onboarding is the product" and "Security without friction"). **A new step is a regression**: a journey's step count only
-falls, a step that is a tap, a plain sentence or a scan never becomes a typed command, and every security step is counted in the same
+falls (the real steps get easier; none is faked or removed to lower it), a step that is a tap, a plain sentence or a scan never becomes a typed command, and every security step is counted in the same
 budget as every other.
 
 Step kinds, from `docs/pools-and-serving.md` section 3: `install`, `os-prompt` (the operating system's own one-time prompt),
@@ -235,7 +235,7 @@ item numbers are used below.
 | WS-1 | The node names each session, records its parent and gives it a token; nobody mints, copies or pastes a token | `app/poolhouse-node/tests/sessions.rs`, `lineage.rs`, `lineage_tokens.rs`; `tests/test_workspace_quickstart.py` | built untested | none |
 | WS-2 | No identity sprawl: a main session retires itself at the end, an idle session is retired, a device refuses a main session past its bound (24 live per harness, 8 per terminal) | `app/poolhouse-node/tests/idle.rs` | built on branch `fix/identity-sprawl`, in the landing queue (land-3971, needs a review); not on the development branch | none |
 | WS-3 | Messages, rooms, claims, leases, notes and files work across devices and survive a restart | `scripts/pool-check` steps of POOL-11; `tests/test_workspace_files.py` | built untested | none |
-| WS-4 | A worker lands its own branch with `scripts/land` (independent `land-review`, checks, push) | `scripts/test all tests/test_land.py tests/test_land_review_policy.py tests/test_pushed_review.py` | built untested | the session-start hook records no model after a clear, so the next landing is refused until `poolhouse-workspace whoami --model` runs (`scripts/hooks/claude-session-start`) |
+| WS-4 | A worker pushes its own branch with git; a standing `land-review` reject of a commit stops the push | `scripts/test all tests/test_sealed_git.py tests/test_pre_push.py` | built untested | the session-start hook records no model after a clear, so the next review is refused until `poolhouse-workspace whoami --model` runs (`scripts/hooks/claude-session-start`) |
 | WS-5 | Board delivery meets the existing latency budgets | HANDOFF names the observer file | not met: a single-recipient message and a Board message exceed their budgets | HANDOFF Priority 2 "Pools across devices" |
 
 ### Workspace delivery evidence (2026-10-15)
@@ -294,7 +294,7 @@ WSL onboarding, execution dispatch or any POOL/GOV completion claim.
 | IDN-3 | The local half is clean: CODEOWNERS and workflows | `scripts/github-protection --check --local` | tested: prints `0 findings (local only)` on `d365522ea`, 2026-10-13, this Mac | none |
 | IDN-4 | A device that is not the lander holds no push credential; the lander's credential lasts at most an hour | `scripts/github-protection --check --agent`; `--agent --lander` | built untested | IDN-1 |
 | IDN-5 | The release signing key exists and `RELEASE_KEY` in `src/poolhouse/fleet/signing.py` is set | `scripts/release-key show-public`; `tests/test_release_key.py`; `tests/test_fleet_signing.py` | not built: `RELEASE_KEY` is empty | OW-3 |
-| IDN-6 | A signed update installs and an unsigned, wrongly signed or altered one is deleted; `poolhouse-pool join --track` accepts only a signed tip | `tests/test_fleet_updates.py`; `tests/test_fleet_signing.py` | tested (both selectors pass); fails closed while the key is empty | IDN-5 |
+| IDN-6 | A signed update installs and an unsigned, wrongly signed or altered one is deleted; `poolhouse-traind --track` accepts only a signed tip | `tests/test_fleet_updates.py`; `tests/test_fleet_signing.py` | tested (both selectors pass); fails closed while the key is empty | IDN-5 |
 | IDN-7 | The runtime and the pinned Box build are signed by the same key (only if Box ships) | none | not built | Question 2 |
 | IDN-8 | Release builds, SBOM and licence checks pass; the release environment needs the owner's approval | `python scripts/notices.py --check`; `python scripts/sbom.py --out sbom.cdx.json`; `release-dry-run.yml`; `audit.yml` | built untested; `audit.yml` has not run on GitHub | `docs/release.md` |
 | IDN-9 | PyPI accepts `poolhouse` | PyPI similarity waiver, then a pending publisher, then `PYPI_ENABLED` | not built: upload is off until the waiver lands | HANDOFF "Getting it onto a machine that is not this one"; Question 13 |
@@ -453,7 +453,7 @@ must be true first.
 | OW-7 | Authorizes the merge of the release pull request (release-please) into `main` under `release-main` (`docs/person-delegation.md`), and approves the `release` environment for the `pypi` and `publish` jobs | OW-3 to OW-6 done; the CHANGELOG draft edited by the owner |
 | OW-8 | Chooses the version number, the tag and the release | the release pull request names the version release-please computed from the `feat:` and `fix:` subjects |
 | OW-9 | Signs the release APK (`ANDROID_SIGNING_STORE`, `ANDROID_SIGNING_PASSWORD`) and sideloads it; accepts the Android SDK licence | `python app/android/build.py GRADLE PLUGIN API debug` passes its protocol checks |
-| OW-10 | Moves each existing device's key into the keystore with `poolhouse node key --migrate` at a terminal; answers the first Keychain prompt | the activation notes for each device |
+| OW-10 | Moves each existing device's key into the keystore with `poolhouse node key --migrate` at a terminal; answers the first Keychain prompt | the update notes for each device |
 | OW-11 | Raises the wired memory limit through the administrator's dialog where a model needs it | `poolhouse-serve memory --for MODEL --ctx N --kv q8_0` printed the need |
 | OW-12 | Answers section 8 | each question's facts, written in the question |
 
@@ -546,7 +546,7 @@ because its feature is not built is a stop-ship unless the owner has moved that 
 | | 6.3 Start a pool founded before the key-strength fix (POOL-8) | refused in one sentence; a new pool is founded | it runs |
 | | 6.4 Shut down a pool, wait 3 days, read the device (POOL-9; needs three days) | live state and secrets gone; the sealed record remains where compromise shut it | the pool is restorable after compromise |
 | 7 Release mechanics | 7.1 Download a release asset and verify it: `ssh-keygen -Y check-novalidate -n poolhouse-release -s ASSET.zip.sig < ASSET.zip`, then against the pinned key | verifies | unsigned or wrong key installs |
-| | 7.2 `poolhouse-pool join --track BRANCH` on an unsigned tip | refused | it fast-forwards |
+| | 7.2 `poolhouse-traind --track BRANCH` on an unsigned tip | refused | it fast-forwards |
 | | 7.3 `scripts/github-protection --check` | `0 findings` | any finding |
 | 8 Upgrade | 8.1 Re-run the installer over the installed build with a model resident | upgraded; the model and board survive | a lost job or model |
 

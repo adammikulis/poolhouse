@@ -13,7 +13,11 @@ from poolhouse.files import read_json, write_json
 from poolhouse.lock import held
 from poolhouse.workspace import integration_git as repo, worktree_archive
 
-__all__ = ["archive_obsolete", "assigned", "assigned_file", "checkpoint", "cleanup", "pending", "record_cleanup", "remember", "require_clean", "scopes"]
+__all__ = ["CompletionPending", "archive_obsolete", "assigned", "assigned_file", "checkpoint", "cleanup", "pending", "record_cleanup", "remember", "require_clean", "scopes"]
+
+class CompletionPending(Denied):
+    """This authenticated worker has attributed work whose cleanup is still pending."""
+
 
 FILE = "worktree-lifecycle.json"
 
@@ -134,6 +138,8 @@ def cleanup(base: Path, owner: str, path: str, claim_owner: Callable[[str], str]
         raise Denied('cleanup preserves locked worktrees')
     commit = repo.git(target, 'rev-parse', 'HEAD')
     landed = repo.git(primary, 'rev-parse', f"refs/heads/{source['development']}")
+    if claim_owner(str(target)) != owner:
+        raise Denied('cleanup requires the live checkout claim of this worker')
     repo.remove_merged(primary, target, branch, landed)
     record_cleanup(base, target, (commit, landed), primary, source['development'])
     return {'path': str(target), 'commit': commit, 'landed': landed, 'cleanup_verified': True}
@@ -216,4 +222,4 @@ def require_clean(base: Path, owner: str, *, within: tuple[str, ...] = ()) -> No
             for r in roots)]
     if rows:
         detail = '; '.join(f"{row['path']} ({row['branch']}): {', '.join(row['reasons'])}" for row in rows)
-        raise Denied('completion requires landed work and verified cleanup: ' + detail)
+        raise CompletionPending('completion requires landed work and verified cleanup: ' + detail)

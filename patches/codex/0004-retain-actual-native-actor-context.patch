@@ -1,0 +1,1682 @@
+diff --git a/codex-rs/core/src/agent/control.rs b/codex-rs/core/src/agent/control.rs
+index 765725d..de7cab8 100644
+--- a/codex-rs/core/src/agent/control.rs
++++ b/codex-rs/core/src/agent/control.rs
+@@ -54,7 +54,6 @@ use codex_protocol::protocol::ThreadSource;
+ use codex_protocol::user_input::UserInput;
+ use codex_thread_store::LoadThreadHistoryParams;
+ use codex_thread_store::ReadThreadParams;
+-use futures::StreamExt;
+ use std::collections::VecDeque;
+ use std::sync::Arc;
+ use std::sync::Weak;
+@@ -470,11 +469,14 @@ impl LocalAgentControl {
+     /// can receive completion notifications.
+     fn maybe_start_completion_watcher(
+         &self,
++        child_thread: Option<&Arc<crate::codex_thread::CodexThread>>,
+         child_thread_id: ThreadId,
+         session_source: Option<SessionSource>,
+         child_reference: String,
+         child_agent_path: Option<AgentPath>,
+     ) {
++        // A retained subject determines its own upstream label; callers cannot retag it.
++        let child_thread_id = child_thread.map_or(child_thread_id, |child| child.session.thread_id);
+         let Some(SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+             parent_thread_id, ..
+         })) = session_source
+@@ -486,29 +488,39 @@ impl LocalAgentControl {
+         };
+         let teardown = membership.into_teardown_guard("completion_watcher", Some(child_thread_id));
+         let control = self.clone();
+-        let watcher = async move {
+-            let status = match control.subscribe_status(child_thread_id).await {
+-                Ok(mut updates) => {
+-                    let mut final_status = None;
+-                    while let Some(Ok(snapshot)) = tokio::select! {
+-                        biased;
+-                        _ = control.runtime.shutdown.cancelled() => return,
+-                        update = updates.next() => update,
+-                    } {
+-                        if let Some(status) = snapshot.status()
+-                            && is_final(status)
+-                        {
+-                            final_status = Some(status.clone());
+-                            break;
+-                        }
+-                    }
+-                    match final_status {
+-                        Some(status) => status,
+-                        None => control.get_status(child_thread_id).await,
+-                    }
++        // Capture from the actual registered object, never a later lookup by history label.
++        let (mut updates, initial_status, child_uses_multi_agent_v2, child_subject) =
++            match child_thread {
++                Some(child) => {
++                    let mut updates = child.subscribe_status();
++                    let status = updates.borrow_and_update().clone();
++                    let version = child.multi_agent_version() == Some(MultiAgentVersion::V2);
++                    (
++                        Some(updates),
++                        status,
++                        version,
++                        Some(child.session.hooks().native_subject()),
++                    )
+                 }
+-                Err(_) => control.get_status(child_thread_id).await,
++                // An explicit missing-child observation is DATA without native subject provenance.
++                None => (None, AgentStatus::NotFound, true, None),
+             };
++        let watcher = async move {
++            let mut status = initial_status;
++            while !is_final(&status) {
++                let Some(updates) = updates.as_mut() else {
++                    return;
++                };
++                let changed = tokio::select! {
++                    biased;
++                    _ = control.runtime.shutdown.cancelled() => return,
++                    update = updates.changed() => update,
++                };
++                if changed.is_err() {
++                    return;
++                }
++                status = updates.borrow_and_update().clone();
++            }
+             // Tree shutdown is a lifecycle handoff, not a child result for the parent.
+             if !is_final(&status)
+                 || (matches!(&status, AgentStatus::Shutdown)
+@@ -520,13 +532,6 @@ impl LocalAgentControl {
+             let Ok(state) = control.runtime.upgrade() else {
+                 return;
+             };
+-            let child_thread = state.get_thread(child_thread_id).await.ok();
+-            let child_uses_multi_agent_v2 = match child_thread.as_ref() {
+-                Some(child_thread) => {
+-                    child_thread.multi_agent_version() == Some(MultiAgentVersion::V2)
+-                }
+-                None => true,
+-            };
+             if child_agent_path.is_some() && child_uses_multi_agent_v2 {
+                 let Some(child_agent_path) = child_agent_path.clone() else {
+                     return;
+@@ -552,8 +557,11 @@ impl LocalAgentControl {
+                     message,
+                     /*trigger_turn*/ false,
+                 );
+-                let context =
++                let mut context =
+                     AgentCommunicationContext::new(AgentCommunicationKind::Result, child_thread_id);
++                if let Some(child_subject) = child_subject {
++                    context = context.with_native_subject(child_subject);
++                }
+                 let _ = control
+                     .send_inter_agent_communication(
+                         parent_thread_id,
+@@ -583,6 +591,9 @@ impl LocalAgentControl {
+                         .unwrap_or(ContentItemNamespace::Functions),
+                 ),
+             };
++            // Keep the historical subject through delivery. The legacy fragment carries
++            // conversation data only; decoding it cannot reconstruct this subject.
++            let _child_subject = child_subject;
+             parent_thread
+                 .inject_fragment_without_turn(
+                     SubagentNotification::new(child_reference.as_str(), status)
+diff --git a/codex-rs/core/src/agent/control/residency_tests.rs b/codex-rs/core/src/agent/control/residency_tests.rs
+index 5bf450e..a00d39b 100644
+--- a/codex-rs/core/src/agent/control/residency_tests.rs
++++ b/codex-rs/core/src/agent/control/residency_tests.rs
+@@ -179,6 +179,7 @@ async fn spawn_v2_subagent(
+             },
+             control.clone(),
+             Some(parent_thread_id),
++            state.get_thread(parent_thread_id).await.ok().and_then(|parent| parent.session.hooks().native_parent_reference().ok()),
+             /*inherited_exec_policy*/ None,
+         )
+         .await
+diff --git a/codex-rs/core/src/agent/control/spawn.rs b/codex-rs/core/src/agent/control/spawn.rs
+index 22cd725..c207752 100644
+--- a/codex-rs/core/src/agent/control/spawn.rs
++++ b/codex-rs/core/src/agent/control/spawn.rs
+@@ -412,6 +412,23 @@ impl LocalAgentControl {
+                 return self.runtime.pin_v2_residency(&state, &thread).await;
+             }
+         }
++        // Only an association retained from actual creation supplies native ancestry.
++        // An owner found by a history ThreadId cannot replace that association.
++        let native_parent = self
++            .runtime
++            .registry
++            .native_parent(thread_id)
++            .filter(codex_hooks::NativeParent::is_live)
++            .filter(|retained| {
++                parent.as_ref().is_none_or(|parent| {
++                    parent
++                        .session
++                        .hooks()
++                        .native_parent_reference()
++                        .ok()
++                        .is_some_and(|actual| retained.same_actor(&actual))
++                })
++            });
+         let parent = if let Some(parent) = parent {
+             let turn = parent
+                 .session
+@@ -653,6 +670,7 @@ impl LocalAgentControl {
+ 
+         match state
+             .resume_thread_with_history_with_source(ResumeThreadWithHistoryOptions {
++                native_parent,
+                 config,
+                 prompt_cache_key,
+                 initial_history,
+@@ -724,6 +742,7 @@ impl LocalAgentControl {
+         session_source: Option<SessionSource>,
+         options: SpawnAgentOptions,
+     ) -> CodexResult<(LiveAgent, ThreadConfigSnapshot)> {
++        let native_parent = options.native_parent.clone();
+         let membership = self.runtime.admit_start()?;
+         let spawn_started_at = Instant::now();
+         let state = self.runtime.upgrade()?;
+@@ -882,6 +901,7 @@ impl LocalAgentControl {
+                 start_options,
+                 self.clone(),
+                 parent_thread_id,
++                native_parent.clone(),
+                 inherited_exec_policy,
+             )
+             .await
+@@ -1006,6 +1026,9 @@ impl LocalAgentControl {
+             None => new_thread.thread.config_snapshot().await,
+         };
+         reservation.commit(agent_metadata.clone());
++        self.runtime
++            .registry
++            .retain_native_parent(new_thread.thread_id, native_parent);
+         if let Some(residency_slot) = residency_slot {
+             residency_slot.commit(new_thread.thread_id);
+         }
+@@ -1022,6 +1045,7 @@ impl LocalAgentControl {
+                 .map(ToString::to_string)
+                 .unwrap_or_else(|| new_thread.thread_id.to_string());
+             self.maybe_start_completion_watcher(
++                Some(&new_thread.thread),
+                 new_thread.thread_id,
+                 notification_source,
+                 child_reference,
+@@ -1534,6 +1558,11 @@ impl LocalAgentControl {
+ 
+         let resumed_thread = state
+             .resume_thread_with_history_with_source(ResumeThreadWithHistoryOptions {
++                native_parent: self
++                    .runtime
++                    .registry
++                    .native_parent(thread_id)
++                    .filter(codex_hooks::NativeParent::is_live),
+                 config: config.clone(),
+                 prompt_cache_key: None,
+                 initial_history,
+@@ -1560,6 +1589,7 @@ impl LocalAgentControl {
+                 .map(ToString::to_string)
+                 .unwrap_or_else(|| resumed_thread.thread_id.to_string());
+             self.maybe_start_completion_watcher(
++                Some(&resumed_thread.thread),
+                 resumed_thread.thread_id,
+                 Some(notification_source.clone()),
+                 child_reference,
+diff --git a/codex-rs/core/src/agent/control_tests.rs b/codex-rs/core/src/agent/control_tests.rs
+index 5902723..e28a32a 100644
+--- a/codex-rs/core/src/agent/control_tests.rs
++++ b/codex-rs/core/src/agent/control_tests.rs
+@@ -110,6 +110,7 @@ use codex_thread_store::PersistContext;
+ use codex_thread_store::ThreadStore;
+ use codex_utils_path_uri::PathUri;
+ use core_test_support::responses::strip_response_item_ids;
++use futures::StreamExt;
+ use pretty_assertions::assert_eq;
+ use std::future::Future;
+ use std::future::poll_fn;
+@@ -4589,6 +4590,7 @@ async fn multi_agent_v2_completion_queues_message_for_direct_parent() {
+     let worker_path = AgentPath::root().join("worker_a").expect("worker path");
+     let tester_path = worker_path.join("tester").expect("tester path");
+     harness.control.maybe_start_completion_watcher(
++        Some(&tester_thread),
+         tester_thread_id,
+         Some(SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+             parent_thread_id: worker_thread_id,
+@@ -4674,6 +4676,7 @@ async fn completion_watcher_notifies_parent_when_child_is_missing() {
+     let child_thread_id = ThreadId::new();
+ 
+     harness.control.maybe_start_completion_watcher(
++        None,
+         child_thread_id,
+         Some(SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+             parent_thread_id,
+@@ -4706,9 +4709,10 @@ async fn completion_watcher_notifies_parent_when_child_is_missing() {
+ async fn completion_watcher_does_not_hide_tree_shutdown_failure() {
+     let harness = AgentControlHarness::new().await;
+     let (parent_thread_id, _parent_thread) = harness.start_thread().await;
+-    let (child_thread_id, _child_thread) = harness.start_thread().await;
++    let (child_thread_id, child_thread) = harness.start_thread().await;
+ 
+     harness.control.maybe_start_completion_watcher(
++        Some(&child_thread),
+         child_thread_id,
+         Some(SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+             parent_thread_id,
+diff --git a/codex-rs/core/src/agent/registry.rs b/codex-rs/core/src/agent/registry.rs
+index 4a34cf7..7a9048a 100644
+--- a/codex-rs/core/src/agent/registry.rs
++++ b/codex-rs/core/src/agent/registry.rs
+@@ -46,6 +46,7 @@ pub(crate) struct EvictedEnvironments {
+ }
+ 
+ struct RegisteredAgent {
++    native_parent: Option<codex_hooks::NativeParent>,
+     path: String,
+     evicted_environments: Option<EvictedEnvironments>,
+ }
+@@ -54,6 +55,7 @@ impl RegisteredAgent {
+     fn new(path: String) -> Self {
+         Self {
+             path,
++            native_parent: None,
+             evicted_environments: None,
+         }
+     }
+@@ -95,6 +97,30 @@ pub(crate) fn exceeds_thread_spawn_depth_limit(depth: i32, max_depth: i32) -> bo
+ }
+ 
+ impl AgentRegistry {
++    pub(crate) fn retain_native_parent(
++        &self,
++        thread: ThreadId,
++        parent: Option<codex_hooks::NativeParent>,
++    ) {
++        let mut agents = self
++            .active_agents
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        if let Some(agent) = agents.thread_paths.get_mut(&thread) {
++            agent.native_parent = parent;
++        }
++    }
++    pub(crate) fn native_parent(&self, thread: ThreadId) -> Option<codex_hooks::NativeParent> {
++        let agents = self
++            .active_agents
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        agents
++            .thread_paths
++            .get(&thread)
++            .and_then(|agent| agent.native_parent.clone())
++    }
++
+     pub(crate) fn reserve_spawn_slot(
+         self: &Arc<Self>,
+         max_threads: Option<usize>,
+@@ -244,9 +270,12 @@ impl AgentRegistry {
+         if let Some(agent_nickname) = agent_metadata.agent_nickname.clone() {
+             active_agents.used_agent_nicknames.insert(agent_nickname);
+         }
+-        if let Some(previous_agent) = active_agents
++        let mut registration = RegisteredAgent::new(key.clone());
++        registration.native_parent = active_agents
+             .thread_paths
+-            .insert(thread_id, RegisteredAgent::new(key.clone()))
++            .get(&thread_id)
++            .and_then(|old| old.native_parent.clone());
++        if let Some(previous_agent) = active_agents.thread_paths.insert(thread_id, registration)
+             && previous_agent.path != key
+         {
+             active_agents
+diff --git a/codex-rs/core/src/agent/types.rs b/codex-rs/core/src/agent/types.rs
+index 2b3626f..154d486 100644
+--- a/codex-rs/core/src/agent/types.rs
++++ b/codex-rs/core/src/agent/types.rs
+@@ -25,6 +25,7 @@ pub enum SpawnAgentForkMode {
+ 
+ #[derive(Clone, Debug, Default)]
+ pub struct SpawnAgentOptions {
++    pub native_parent: Option<codex_hooks::NativeParent>,
+     pub fork_parent_spawn_call_id: Option<String>,
+     pub fork_mode: Option<SpawnAgentForkMode>,
+     pub parent_thread_id: Option<ThreadId>,
+diff --git a/codex-rs/core/src/agent_communication.rs b/codex-rs/core/src/agent_communication.rs
+index 8800852..619ca95 100644
+--- a/codex-rs/core/src/agent_communication.rs
++++ b/codex-rs/core/src/agent_communication.rs
+@@ -43,13 +43,20 @@ impl AgentCommunicationKind {
+ pub(crate) struct AgentCommunicationContext {
+     kind: AgentCommunicationKind,
+     pub(crate) sender_thread_id: ThreadId,
++    native_subject: Option<codex_hooks::NativeSubject>,
+ }
+ 
+ impl AgentCommunicationContext {
++    pub(crate) fn with_native_subject(mut self, subject: codex_hooks::NativeSubject) -> Self {
++        self.native_subject = Some(subject);
++        self
++    }
++
+     pub(crate) fn new(kind: AgentCommunicationKind, sender_thread_id: ThreadId) -> Self {
+         Self {
+             kind,
+             sender_thread_id,
++            native_subject: None,
+         }
+     }
+ }
+diff --git a/codex-rs/core/src/codex_delegate.rs b/codex-rs/core/src/codex_delegate.rs
+index d6742fc..ec34f14 100644
+--- a/codex-rs/core/src/codex_delegate.rs
++++ b/codex-rs/core/src/codex_delegate.rs
+@@ -103,6 +103,10 @@ pub(crate) async fn run_codex_thread_interactive(
+     let mut thread_extension_init = codex_extension_api::ExtensionDataInit::default();
+     thread_extension_init.insert(isolation);
+     let spawn_result = Session::spawn(SessionSpawnArgs {
++        native_placement: parent_session.hooks().native_parent_reference().map_or(
++            codex_hooks::NativeSourcePlacement::ContextUnavailable,
++            codex_hooks::NativeSourcePlacement::Child,
++        ),
+         startup: Some(Arc::clone(&startup)),
+         config,
+         prompt_cache_key: parent_session
+diff --git a/codex-rs/core/src/guardian/review_session_setup.rs b/codex-rs/core/src/guardian/review_session_setup.rs
+index 7131d38..10fbfc1 100644
+--- a/codex-rs/core/src/guardian/review_session_setup.rs
++++ b/codex-rs/core/src/guardian/review_session_setup.rs
+@@ -145,6 +145,7 @@ impl PreparedGuardianContext {
+             history_mode: Some(codex_protocol::protocol::ThreadHistoryMode::Paginated),
+             internal_parent: Some(crate::thread_manager::InternalSessionParent {
+                 thread_id: self.parent.thread_id(),
++                native_parent: self.parent.hooks().native_parent_reference().ok(),
+                 auth_manager: Arc::clone(&self.parent.services.auth_manager),
+                 agent_control: crate::agent::control::AgentControlInit::Provided {
+                     control: Arc::clone(&self.parent.services.agent_control),
+diff --git a/codex-rs/core/src/session/handlers.rs b/codex-rs/core/src/session/handlers.rs
+index 5ded792..aed0a78 100644
+--- a/codex-rs/core/src/session/handlers.rs
++++ b/codex-rs/core/src/session/handlers.rs
+@@ -294,6 +294,11 @@ pub(super) async fn shutdown_session_runtime(sess: &Arc<Session>) {
+     let startup_prewarm = {
+         let mut state = sess.state.lock().await;
+         // Stop admission and take the current warmup together so resume cannot replace it.
++        // Close the native graph before publishing the runtime admission stop.
++        // Both occur under state; a Birth cannot slip between the stop and Closing.
++        sess.native_actor_owner
++            .begin_closing()
++            .expect("native actor graph available during shutdown");
+         state.shutting_down = true;
+         state.take_session_startup_prewarm()
+     };
+@@ -337,6 +342,7 @@ pub(super) async fn shutdown_session_runtime(sess: &Arc<Session>) {
+ 
+     crate::hook_runtime::run_session_end_hooks(sess).await;
+     emit_thread_stop_lifecycle(sess).await;
++    sess.native_actor_owner.retire();
+ }
+ 
+ async fn emit_thread_stop_lifecycle(sess: &Session) {
+diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
+index 96cfaa1..14dce7e 100644
+--- a/codex-rs/core/src/session/mod.rs
++++ b/codex-rs/core/src/session/mod.rs
+@@ -481,6 +481,7 @@ impl From<CompactedHistoryMetadata> for CompactedHistoryInstallation<'_> {
+ }
+ 
+ pub(crate) struct SessionSpawnArgs {
++    pub(crate) native_placement: codex_hooks::NativeSourcePlacement,
+     pub(crate) startup: Option<Arc<startup::SessionStartup>>,
+     pub(crate) config: Config,
+     pub(crate) prompt_cache_key: PromptCacheKey,
+@@ -601,6 +602,7 @@ impl Session {
+             .ensure_config_server_applied()?;
+         args.config.validate_windows_mxc_requirement()?;
+         let SessionSpawnArgs {
++            native_placement,
+             startup,
+             config,
+             prompt_cache_key,
+@@ -992,6 +994,7 @@ impl Session {
+             thread_extension_init,
+             client_mcp_extensions,
+             agent_control,
++            native_placement,
+             reserved_thread_id,
+             environment_manager,
+             inherited_environments,
+diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
+index cec7d11..3109bd8 100644
+--- a/codex-rs/core/src/session/session.rs
++++ b/codex-rs/core/src/session/session.rs
+@@ -58,6 +58,7 @@ type McpToolApprovalMetadataMap =
+ ///
+ /// A session has at most 1 running task at a time, and can be interrupted by user input.
+ pub(crate) struct Session {
++    pub(super) native_actor_owner: codex_hooks::NativeActorOwner,
+     pub(crate) thread_id: ThreadId,
+     pub(crate) installation_id: String,
+     pub(super) tx_event: Sender<Event>,
+@@ -825,6 +826,7 @@ impl Session {
+         mut thread_extension_init: ExtensionDataInit,
+         client_mcp_extensions: ClientMcpExtensions,
+         agent_control: AgentControlInit,
++        native_placement: codex_hooks::NativeSourcePlacement,
+         reserved_thread_id: Option<ThreadId>,
+         environment_manager: Arc<EnvironmentManager>,
+         inherited_environments: Option<TurnEnvironmentSnapshot>,
+@@ -914,13 +916,6 @@ impl Session {
+         let multi_agent_version = multi_agent_version.map(OnceLock::from).unwrap_or_default();
+         let initial_multi_agent_version = multi_agent_version.get().copied();
+ 
+-        // Native identity creation is separate from the public SessionStart hook source label.
+-        let native_identity_origin = match &initial_history {
+-            InitialHistory::Resumed(_) => codex_hooks::NativeIdentityOrigin::Resume,
+-            InitialHistory::New | InitialHistory::Cleared | InitialHistory::Forked(_) => {
+-                codex_hooks::NativeIdentityOrigin::Birth
+-            }
+-        };
+         let thread_id = match (&initial_history, reserved_thread_id) {
+             (
+                 InitialHistory::New | InitialHistory::Cleared | InitialHistory::Forked(_),
+@@ -985,6 +980,14 @@ impl Session {
+                 SessionId::from(thread_id)
+             }
+         });
++        let (native_actor_owner, native_source) = codex_hooks::NativeSessionSource::start(
++            codex_hooks::NativeSessionContext::new(
++                thread_id,
++                ThreadId::from(session_id),
++                parent_thread_id,
++            ),
++            native_placement,
++        )?;
+         let initial_auto_compact_window_ids = AutoCompactWindowIds::new_initial();
+         let restore_child_window = matches!(&initial_history, InitialHistory::Forked(_))
+             && session_configuration.session_source.is_non_root_agent()
+@@ -1661,12 +1664,7 @@ impl Session {
+             .await;
+             let (hooks, async_hook_results) = Hooks::new(
+                 hooks_config,
+-                codex_hooks::NativeSessionContext::new(
+-                    thread_id,
+-                    ThreadId::from(session_id),
+-                    parent_thread_id,
+-                ),
+-                native_identity_origin,
++                native_source,
+                 Arc::new(CoreHookMcpExecutor {
+                     runtime: Arc::clone(&mcp_runtime),
+                     thread_id,
+@@ -1864,6 +1862,7 @@ impl Session {
+             };
+             let (mcp_prewarm_tx, mcp_prewarm_rx) = async_channel::bounded(1);
+             let sess = Arc::new(Session {
++                native_actor_owner,
+                 thread_id,
+                 installation_id,
+                 tx_event: tx_event.clone(),
+diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
+index 274cc23..32f45b5 100644
+--- a/codex-rs/core/src/session/tests.rs
++++ b/codex-rs/core/src/session/tests.rs
+@@ -988,14 +988,17 @@ async fn preview_session_start_hooks(
+     config: &crate::config::Config,
+ ) -> std::io::Result<Vec<codex_protocol::protocol::HookRunSummary>> {
+     let thread_id = ThreadId::new();
++    let (_native_actor_owner, native_source) = codex_hooks::NativeSessionSource::birth_root(
++        codex_hooks::NativeSessionContext::new(thread_id, thread_id, None),
++    )
++    .expect("test native actor");
+     let (hooks, _result_receiver) = Hooks::new(
+         HooksConfig {
+             feature_enabled: true,
+             config_layer_stack: Some(config.config_layer_stack.clone()),
+             ..HooksConfig::default()
+         },
+-        codex_hooks::NativeSessionContext::new(thread_id, thread_id, None),
+-        codex_hooks::NativeIdentityOrigin::Birth,
++        native_source,
+         Arc::new(CoreHookMcpExecutor {
+             runtime: Arc::new(McpRuntime::empty(config.prefix_mcp_tool_names())),
+             thread_id,
+@@ -6884,13 +6887,16 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
+     let mcp_runtime = Arc::new(codex_mcp::McpRuntime::empty(config.prefix_mcp_tool_names()));
+     let executed_tool_calls =
+         crate::state::ExecutedToolCalls::new(&config.features, &InitialHistory::Forked(Vec::new()));
++    let (native_actor_owner, native_source) = codex_hooks::NativeSessionSource::birth_root(
++        codex_hooks::NativeSessionContext::new(thread_id, thread_id, None),
++    )
++    .expect("test native actor");
+     let (hooks, async_hook_results) = Hooks::new(
+         HooksConfig {
+             legacy_notify_argv: config.notify.clone(),
+             ..HooksConfig::default()
+         },
+-        codex_hooks::NativeSessionContext::new(thread_id, thread_id, None),
+-        codex_hooks::NativeIdentityOrigin::Birth,
++        native_source,
+         Arc::new(CoreHookMcpExecutor {
+             runtime: Arc::clone(&mcp_runtime),
+             thread_id,
+@@ -6988,6 +6994,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
+     };
+ 
+     let session = Session {
++        native_actor_owner,
+         thread_id,
+         installation_id: "11111111-1111-4111-8111-111111111111".to_string(),
+         tx_event,
+@@ -7202,6 +7209,7 @@ async fn make_session_with_config_and_rx(
+         codex_extension_api::ExtensionDataInit::default(),
+         ClientMcpExtensions::default(),
+         LocalAgentControl::default().into(),
++        codex_hooks::NativeSourcePlacement::Independent,
+         /*reserved_thread_id*/ None,
+         environment_manager,
+         /*inherited_environments*/ None,
+@@ -7339,6 +7347,7 @@ async fn make_session_with_history_source_and_agent_control_and_rx(
+         codex_extension_api::ExtensionDataInit::default(),
+         ClientMcpExtensions::default(),
+         agent_control.into(),
++        codex_hooks::NativeSourcePlacement::Independent,
+         /*reserved_thread_id*/ None,
+         environment_manager,
+         /*inherited_environments*/ None,
+@@ -9172,13 +9181,16 @@ where
+     let mcp_runtime = Arc::new(codex_mcp::McpRuntime::empty(config.prefix_mcp_tool_names()));
+     let executed_tool_calls =
+         crate::state::ExecutedToolCalls::new(&config.features, &InitialHistory::Forked(Vec::new()));
++    let (native_actor_owner, native_source) = codex_hooks::NativeSessionSource::birth_root(
++        codex_hooks::NativeSessionContext::new(thread_id, thread_id, None),
++    )
++    .expect("test native actor");
+     let (hooks, async_hook_results) = Hooks::new(
+         HooksConfig {
+             legacy_notify_argv: config.notify.clone(),
+             ..HooksConfig::default()
+         },
+-        codex_hooks::NativeSessionContext::new(thread_id, thread_id, None),
+-        codex_hooks::NativeIdentityOrigin::Birth,
++        native_source,
+         Arc::new(CoreHookMcpExecutor {
+             runtime: Arc::clone(&mcp_runtime),
+             thread_id,
+@@ -9276,6 +9288,7 @@ where
+     };
+ 
+     let session = Arc::new(Session {
++        native_actor_owner,
+         thread_id,
+         installation_id: "11111111-1111-4111-8111-111111111111".to_string(),
+         tx_event,
+diff --git a/codex-rs/core/src/session/tests/guardian_tests.rs b/codex-rs/core/src/session/tests/guardian_tests.rs
+index adf4784..e20ee61 100644
+--- a/codex-rs/core/src/session/tests/guardian_tests.rs
++++ b/codex-rs/core/src/session/tests/guardian_tests.rs
+@@ -1288,6 +1288,7 @@ async fn guardian_subagent_does_not_inherit_parent_exec_policy_rules() {
+     let mut thread_extension_init = codex_extension_api::ExtensionDataInit::default();
+     thread_extension_init.insert(codex_extension_api::SessionIsolation::Isolated);
+     let (session, io) = Session::spawn(SessionSpawnArgs {
++        native_placement: codex_hooks::NativeSourcePlacement::Independent,
+         startup: None,
+         config,
+         prompt_cache_key: PromptCacheKey::default(),
+diff --git a/codex-rs/core/src/thread_manager.rs b/codex-rs/core/src/thread_manager.rs
+index b2d2264..67373e9 100644
+--- a/codex-rs/core/src/thread_manager.rs
++++ b/codex-rs/core/src/thread_manager.rs
+@@ -261,6 +261,7 @@ pub struct ThreadManager {
+ /// agent budget remain bound to the parent that created this value.
+ #[derive(Clone)]
+ pub struct InternalSessionParent {
++    pub(crate) native_parent: Option<codex_hooks::NativeParent>,
+     pub(crate) thread_id: ThreadId,
+     pub(crate) auth_manager: Arc<AuthManager>,
+     pub(crate) agent_control: AgentControlInit,
+@@ -353,6 +354,7 @@ impl StartThreadOptions {
+ }
+ 
+ struct ThreadSpawnRequest {
++    native_placement: codex_hooks::NativeSourcePlacement,
+     startup: Option<Arc<crate::session::startup::SessionStartup>>,
+     options: StartThreadOptions,
+     auth_manager: Arc<AuthManager>,
+@@ -374,6 +376,7 @@ impl ThreadSpawnRequest {
+         agent_control: impl Into<AgentControlInit>,
+     ) -> Self {
+         Self {
++            native_placement: codex_hooks::NativeSourcePlacement::Independent,
+             startup: None,
+             options,
+             auth_manager,
+@@ -421,6 +424,7 @@ fn effective_originator_value(
+ }
+ 
+ pub(crate) struct ResumeThreadWithHistoryOptions {
++    pub(crate) native_parent: Option<codex_hooks::NativeParent>,
+     pub(crate) config: Config,
+     pub(crate) prompt_cache_key: Option<PromptCacheKey>,
+     pub(crate) initial_history: InitialHistory,
+@@ -1173,6 +1177,9 @@ impl ThreadManager {
+         let parent = self.get_thread(parent_thread_id).await?;
+         options.initial_history = history;
+         options.internal_parent = Some(InternalSessionParent {
++            // This public entry route has only a ThreadId, not a retained owner carrier.
++            // It preserves upstream association/history but cannot issue native ancestry.
++            native_parent: None,
+             thread_id: parent_thread_id,
+             auth_manager: Arc::clone(&parent.session.services.auth_manager),
+             agent_control: AgentControlInit::Provided {
+@@ -1219,6 +1226,10 @@ impl ThreadManager {
+         let mut request = if let Some(parent) = parent {
+             let mut request =
+                 ThreadSpawnRequest::new(options, parent.auth_manager, parent.agent_control);
++            request.native_placement = parent.native_parent.map_or(
++                codex_hooks::NativeSourcePlacement::ContextUnavailable,
++                codex_hooks::NativeSourcePlacement::Child,
++            );
+             request.parent_thread_id = Some(parent.thread_id);
+             request.parent_originator = Some(parent.originator);
+             request.inherited_instructions = parent.inherited_instructions;
+@@ -1232,6 +1243,10 @@ impl ThreadManager {
+                 agent_control,
+             );
+             request.forked_from_thread_id = forked_from_thread_id;
++            if forked_from_thread_id.is_some() {
++                // The legacy subagent entry supplies a history label, not an owner carrier.
++                request.native_placement = codex_hooks::NativeSourcePlacement::ContextUnavailable;
++            }
+             request
+         };
+         request.startup = startup;
+@@ -2028,6 +2043,7 @@ impl ThreadManagerState {
+         mut options: StartThreadOptions,
+         agent_control: LocalAgentControl,
+         parent_thread_id: Option<ThreadId>,
++        native_parent: Option<codex_hooks::NativeParent>,
+         inherited_exec_policy: Option<Arc<crate::exec_policy::ExecPolicyManager>>,
+     ) -> CodexResult<NewThread> {
+         (options.client_mcp_extensions, options.prompt_cache_key) =
+@@ -2035,6 +2051,10 @@ impl ThreadManagerState {
+         let forked = matches!(options.initial_history, InitialHistory::Forked(_));
+         let mut request =
+             ThreadSpawnRequest::new(options, Arc::clone(&self.auth_manager), agent_control);
++        request.native_placement = native_parent.map_or(
++            codex_hooks::NativeSourcePlacement::ContextUnavailable,
++            codex_hooks::NativeSourcePlacement::Child,
++        );
+         request.parent_thread_id = parent_thread_id;
+         request.inherited_exec_policy = inherited_exec_policy;
+         if forked {
+@@ -2049,6 +2069,7 @@ impl ThreadManagerState {
+         options: ResumeThreadWithHistoryOptions,
+     ) -> CodexResult<NewThread> {
+         let ResumeThreadWithHistoryOptions {
++            native_parent,
+             config,
+             prompt_cache_key,
+             initial_history,
+@@ -2082,6 +2103,10 @@ impl ThreadManagerState {
+         };
+         let mut request =
+             ThreadSpawnRequest::new(options, Arc::clone(&self.auth_manager), agent_control);
++        request.native_placement = native_parent.map_or(
++            codex_hooks::NativeSourcePlacement::ContextUnavailable,
++            codex_hooks::NativeSourcePlacement::Child,
++        );
+         request.parent_thread_id = parent_thread_id;
+         request.inherited_environments = inherited_environments;
+         request.inherited_instructions = inherited_instructions;
+@@ -2136,6 +2161,7 @@ impl ThreadManagerState {
+         let startup_guard =
+             owns_startup.then(|| SessionStartupGuard::new(Arc::clone(&startup_state)));
+         let ThreadSpawnRequest {
++            native_placement,
+             startup,
+             options,
+             auth_manager,
+@@ -2397,6 +2423,7 @@ impl ThreadManagerState {
+         let attachment_source =
+             forked_from_thread_id.filter(|_| matches!(&initial_history, InitialHistory::Forked(_)));
+         let spawn_result = Session::spawn(SessionSpawnArgs {
++            native_placement,
+             startup,
+             config,
+             prompt_cache_key,
+diff --git a/codex-rs/core/src/thread_manager_tests.rs b/codex-rs/core/src/thread_manager_tests.rs
+index 9578c92..8c50545 100644
+--- a/codex-rs/core/src/thread_manager_tests.rs
++++ b/codex-rs/core/src/thread_manager_tests.rs
+@@ -1545,6 +1545,7 @@ async fn spawn_internal_session_preserves_parent_lineage_without_forking_history
+         .start_thread(StartThreadOptions {
+             internal_parent: Some(InternalSessionParent {
+                 thread_id: parent.thread_id,
++                native_parent: parent.thread.session.hooks().native_parent_reference().ok(),
+                 auth_manager: Arc::clone(&parent.thread.session.services.auth_manager),
+                 agent_control: AgentControlInit::Provided {
+                     control: Arc::clone(&parent.thread.session.services.agent_control),
+diff --git a/codex-rs/core/src/thread_spawn.rs b/codex-rs/core/src/thread_spawn.rs
+index 4d8d3f4..c3cd396 100644
+--- a/codex-rs/core/src/thread_spawn.rs
++++ b/codex-rs/core/src/thread_spawn.rs
+@@ -146,6 +146,7 @@ pub(crate) async fn spawn(
+             },
+             source: spawn_source,
+             options: SpawnAgentOptions {
++                native_parent: session.hooks().native_parent_reference().ok(),
+                 fork_parent_spawn_call_id: fork_mode.as_ref().map(|_| call_id.to_string()),
+                 fork_mode,
+                 parent_thread_id: Some(session.thread_id),
+diff --git a/codex-rs/core/src/tools/handlers/multi_agents/spawn.rs b/codex-rs/core/src/tools/handlers/multi_agents/spawn.rs
+index 839874d..422a537 100644
+--- a/codex-rs/core/src/tools/handlers/multi_agents/spawn.rs
++++ b/codex-rs/core/src/tools/handlers/multi_agents/spawn.rs
+@@ -125,6 +125,7 @@ async fn handle_spawn_agent(
+                 /*task_name*/ None,
+             )?,
+             options: SpawnAgentOptions {
++                native_parent: session.hooks().native_parent_reference().ok(),
+                 fork_parent_spawn_call_id: fork_mode.as_ref().map(|_| call_id.clone()),
+                 fork_mode: fork_mode.clone(),
+                 parent_thread_id: Some(session.thread_id),
+diff --git a/codex-rs/hooks/src/engine/mod_tests.rs b/codex-rs/hooks/src/engine/mod_tests.rs
+index 2b421dd..92aeb8a 100644
+--- a/codex-rs/hooks/src/engine/mod_tests.rs
++++ b/codex-rs/hooks/src/engine/mod_tests.rs
+@@ -71,8 +71,7 @@ fn native_session_context_survives_hook_reconfiguration() {
+     let context = crate::NativeSessionContext::new(actor, root, Some(parent));
+     let (hooks, _results) = crate::Hooks::new(
+         crate::HooksConfig::default(),
+-        context,
+-        crate::NativeIdentityOrigin::Birth,
++        crate::NativeSessionSource::new(context, crate::NativeIdentityOrigin::Birth),
+         mcp_executor(),
+     )
+     .expect("initialize native hooks");
+@@ -301,8 +300,10 @@ fn required_managed_hooks_allow_disabled_hooks_feature() {
+                 plugin_hook_sources,
+                 ..Default::default()
+             },
+-            root_native_session(),
+-            crate::NativeIdentityOrigin::Birth,
++            crate::NativeSessionSource::new(
++                root_native_session(),
++                crate::NativeIdentityOrigin::Birth,
++            ),
+             mcp_executor(),
+         )
+         .expect("disabled hooks feature should not enforce managed requirements hooks");
+@@ -327,8 +328,7 @@ fn required_managed_hooks_reject_invalid_matchers() {
+             config_layer_stack: Some(config_layer_stack),
+             ..Default::default()
+         },
+-        root_native_session(),
+-        crate::NativeIdentityOrigin::Birth,
++        crate::NativeSessionSource::new(root_native_session(), crate::NativeIdentityOrigin::Birth),
+         mcp_executor(),
+     )
+     .err()
+@@ -356,8 +356,7 @@ fn required_managed_hooks_allow_invalid_matchers_without_handlers() {
+             config_layer_stack: Some(config_layer_stack),
+             ..Default::default()
+         },
+-        root_native_session(),
+-        crate::NativeIdentityOrigin::Birth,
++        crate::NativeSessionSource::new(root_native_session(), crate::NativeIdentityOrigin::Birth),
+         mcp_executor(),
+     )
+     .expect("an empty matcher group should not prevent required managed hooks from loading");
+@@ -380,8 +379,7 @@ fn required_managed_hooks_reject_empty_commands() {
+             config_layer_stack: Some(config_layer_stack),
+             ..Default::default()
+         },
+-        root_native_session(),
+-        crate::NativeIdentityOrigin::Birth,
++        crate::NativeSessionSource::new(root_native_session(), crate::NativeIdentityOrigin::Birth),
+         mcp_executor(),
+     )
+     .err()
+@@ -411,8 +409,7 @@ fn required_managed_hooks_reject_unsupported_handler_types() {
+             config_layer_stack: Some(config_layer_stack),
+             ..Default::default()
+         },
+-        root_native_session(),
+-        crate::NativeIdentityOrigin::Birth,
++        crate::NativeSessionSource::new(root_native_session(), crate::NativeIdentityOrigin::Birth),
+         mcp_executor(),
+     )
+     .err()
+@@ -452,8 +449,7 @@ fn required_managed_mcp_hooks_reject_empty_targets() {
+             config_layer_stack: Some(config_layer_stack),
+             ..Default::default()
+         },
+-        root_native_session(),
+-        crate::NativeIdentityOrigin::Birth,
++        crate::NativeSessionSource::new(root_native_session(), crate::NativeIdentityOrigin::Birth),
+         mcp_executor(),
+     )
+     .err()
+@@ -493,8 +489,7 @@ fn required_managed_session_end_mcp_hooks_reject_startup() {
+             config_layer_stack: Some(config_layer_stack),
+             ..Default::default()
+         },
+-        root_native_session(),
+-        crate::NativeIdentityOrigin::Birth,
++        crate::NativeSessionSource::new(root_native_session(), crate::NativeIdentityOrigin::Birth),
+         mcp_executor(),
+     )
+     .err()
+@@ -521,8 +516,7 @@ fn required_managed_hooks_with_unknown_source_still_reject_discovery_failures()
+             config_layer_stack: Some(config_layer_stack),
+             ..Default::default()
+         },
+-        root_native_session(),
+-        crate::NativeIdentityOrigin::Birth,
++        crate::NativeSessionSource::new(root_native_session(), crate::NativeIdentityOrigin::Birth),
+         mcp_executor(),
+     )
+     .err()
+@@ -545,8 +539,7 @@ fn valid_required_managed_hooks_allow_startup() {
+             config_layer_stack: Some(config_layer_stack),
+             ..Default::default()
+         },
+-        root_native_session(),
+-        crate::NativeIdentityOrigin::Birth,
++        crate::NativeSessionSource::new(root_native_session(), crate::NativeIdentityOrigin::Birth),
+         mcp_executor(),
+     )
+     .expect("valid managed requirements hook should allow startup");
+@@ -575,8 +568,7 @@ fn managed_config_layer_hook_failures_remain_startup_warnings() {
+             config_layer_stack: Some(config_layer_stack),
+             ..Default::default()
+         },
+-        root_native_session(),
+-        crate::NativeIdentityOrigin::Birth,
++        crate::NativeSessionSource::new(root_native_session(), crate::NativeIdentityOrigin::Birth),
+         mcp_executor(),
+     )
+     .expect("managed config layer hooks should remain optional");
+diff --git a/codex-rs/hooks/src/lib.rs b/codex-rs/hooks/src/lib.rs
+index 5b86f14..5d2fd2e 100644
+--- a/codex-rs/hooks/src/lib.rs
++++ b/codex-rs/hooks/src/lib.rs
+@@ -5,7 +5,11 @@ mod engine;
+ pub(crate) mod events;
+ mod legacy_notify;
+ mod mcp;
++mod native_actor;
+ mod native_occurrence;
++pub use native_actor::{
++    NativeActorContext, NativeActorOwner, NativeContextError, NativeParent, NativeSourcePlacement,
++};
+ mod native_session;
+ mod output_spill;
+ mod registry;
+@@ -136,8 +140,12 @@ pub use events::model_request::ModelRequestHookInput;
+ pub use events::model_request::ModelRequestStatus;
+ 
+ pub use native_occurrence::{
+-    NativeEvent, NativeEventCapture, NativeHookKind, NativeHookRequest, NativeIdentityOrigin,
+-    NativeOccurrence, NativeOccurrenceId, NativeOccurrenceKind, NativeSessionSource,
+-    SourceLaunchEpoch,
++    NativeEvent, NativeEventCapture, NativeHookKind, NativeHookRequest, NativeOccurrence,
++    NativeOccurrenceId, NativeOccurrenceKind, NativeSessionSource, SourceLaunchEpoch,
+ };
+ pub use native_session::NativeSessionContext;
++
++#[cfg(test)]
++pub use native_occurrence::NativeIdentityOrigin;
++
++pub use native_actor::NativeSubject;
+diff --git a/codex-rs/hooks/src/native_actor.rs b/codex-rs/hooks/src/native_actor.rs
+new file mode 100644
+index 0000000..24641eb
+--- /dev/null
++++ b/codex-rs/hooks/src/native_actor.rs
+@@ -0,0 +1,268 @@
++//! Retained source actor lifetime DATA. No constructor authenticates an OS/Node caller.
++use std::fmt;
++use std::sync::Arc;
++use std::sync::Mutex;
++use std::sync::atomic::{AtomicU8, Ordering};
++
++use crate::{NativeOccurrenceId, NativeSessionContext};
++
++// Birth and Closing share one process-local linearization gate. Never hold it across I/O/await.
++static GRAPH: Mutex<()> = Mutex::new(());
++const LIVE: u8 = 0;
++const CLOSING: u8 = 1;
++const RETIRED: u8 = 2;
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum NativeContextError {
++    ForeignSource,
++    ClosingAncestor,
++    Poisoned,
++    Unavailable,
++}
++impl fmt::Display for NativeContextError {
++    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
++        write!(formatter, "native actor context unavailable: {self:?}")
++    }
++}
++impl std::error::Error for NativeContextError {}
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub struct NativeActorContext {
++    actor: NativeOccurrenceId,
++    root: NativeOccurrenceId,
++    parent: Option<NativeOccurrenceId>,
++    labels: NativeSessionContext,
++}
++impl NativeActorContext {
++    pub fn actor(&self) -> NativeOccurrenceId {
++        self.actor
++    }
++    pub fn root(&self) -> NativeOccurrenceId {
++        self.root
++    }
++    pub fn direct_parent(&self) -> Option<NativeOccurrenceId> {
++        self.parent
++    }
++    /// Upstream labels are immutable diagnostics, never native ancestry or admission proof.
++    pub fn history_labels(&self) -> NativeSessionContext {
++        self.labels
++    }
++    pub fn canonical_bytes(&self) -> Vec<u8> {
++        let mut bytes = b"CDXCTX01".to_vec();
++        bytes.extend(self.actor.canonical_event_id());
++        bytes.extend(self.root.canonical_event_id());
++        bytes.push(u8::from(self.parent.is_some()));
++        if let Some(parent) = self.parent {
++            bytes.extend(parent.canonical_event_id());
++        }
++        fn label(value: codex_protocol::ThreadId) -> [u8; 16] {
++            *uuid::Uuid::parse_str(&value.to_string())
++                .expect("ThreadId has UUID representation")
++                .as_bytes()
++        }
++        bytes.extend(label(self.labels.actor()));
++        bytes.extend(label(self.labels.root()));
++        bytes.push(u8::from(self.labels.direct_parent().is_some()));
++        if let Some(parent) = self.labels.direct_parent() {
++            bytes.extend(label(parent));
++        }
++        bytes
++    }
++}
++
++#[derive(Debug)]
++pub(super) struct Actor {
++    id: NativeOccurrenceId,
++    context: Option<NativeActorContext>,
++    phase: AtomicU8,
++    parent: Option<Arc<Actor>>,
++    process: u32,
++}
++/// A clone retains immutable ancestry, never the unique owner's live phase.
++#[derive(Clone, Debug)]
++pub struct NativeParent {
++    actor: Arc<Actor>,
++}
++impl NativeParent {
++    pub fn context(&self) -> NativeActorContext {
++        self.actor
++            .context
++            .expect("NativeParent requires resolved source context")
++    }
++    pub fn same_actor(&self, other: &Self) -> bool {
++        Arc::ptr_eq(&self.actor, &other.actor)
++    }
++    pub fn is_live(&self) -> bool {
++        if !self.actor.current_source() {
++            return false;
++        }
++        let Ok(_gate) = GRAPH.lock() else {
++            return false;
++        };
++        self.actor.live_ancestry(self.actor.id).is_ok()
++    }
++}
++
++/// Retained exactly once by Session. Parent/task references cannot clone or extend this owner.
++#[derive(Debug)]
++pub struct NativeActorOwner {
++    actor: Arc<Actor>,
++}
++impl NativeActorOwner {
++    pub fn begin_closing(&self) -> Result<(), NativeContextError> {
++        if !self.actor.current_source() {
++            return Err(NativeContextError::ForeignSource);
++        }
++        let _gate = GRAPH.lock().map_err(|_| NativeContextError::Poisoned)?;
++        if self.actor.phase.load(Ordering::Relaxed) == LIVE {
++            self.actor.phase.store(CLOSING, Ordering::Relaxed);
++        }
++        Ok(())
++    }
++    pub fn retire(&self) {
++        // A fork must never wait on an inherited graph lock or mutate source ownership.
++        if !self.actor.current_source() {
++            return;
++        }
++        match GRAPH.lock() {
++            Ok(_gate) => self.actor.phase.store(RETIRED, Ordering::Relaxed),
++            Err(_) => self.actor.phase.store(RETIRED, Ordering::Relaxed),
++        }
++    }
++}
++impl Drop for NativeActorOwner {
++    fn drop(&mut self) {
++        self.retire();
++    }
++}
++
++impl Actor {
++    fn current_source(&self) -> bool {
++        self.process == std::process::id() && self.id.belongs_to_current_source()
++    }
++    fn live_ancestry(&self, birth: NativeOccurrenceId) -> Result<(), NativeContextError> {
++        let mut current = Some(self);
++        while let Some(actor) = current {
++            if !actor.current_source() || actor.id.source_uuid_bytes() != birth.source_uuid_bytes()
++            {
++                return Err(NativeContextError::ForeignSource);
++            }
++            if actor.context.is_none() {
++                return Err(NativeContextError::Unavailable);
++            }
++            if actor.phase.load(Ordering::Relaxed) != LIVE {
++                return Err(NativeContextError::ClosingAncestor);
++            }
++            current = actor.parent.as_deref();
++        }
++        Ok(())
++    }
++    pub(super) fn birth(
++        id: NativeOccurrenceId,
++        labels: NativeSessionContext,
++        parent: Option<&NativeParent>,
++    ) -> Result<(NativeActorOwner, Arc<Self>), NativeContextError> {
++        Self::birth_with(id, labels, parent, || {})
++    }
++    // Private observation hook lets pure tests pause the REAL critical section; no public callback.
++    fn birth_with(
++        id: NativeOccurrenceId,
++        labels: NativeSessionContext,
++        parent: Option<&NativeParent>,
++        observed: impl FnOnce(),
++    ) -> Result<(NativeActorOwner, Arc<Self>), NativeContextError> {
++        if !id.belongs_to_current_source() {
++            return Err(NativeContextError::ForeignSource);
++        }
++        let _gate = GRAPH.lock().map_err(|_| NativeContextError::Poisoned)?;
++        if let Some(parent) = parent {
++            parent.actor.live_ancestry(id)?;
++        }
++        observed();
++        let context = NativeActorContext {
++            actor: id,
++            root: parent.map_or(id, |parent| parent.context().root),
++            parent: parent.map(|parent| parent.context().actor),
++            labels,
++        };
++        let actor = Arc::new(Self {
++            id,
++            context: Some(context),
++            phase: AtomicU8::new(LIVE),
++            parent: parent.map(|parent| Arc::clone(&parent.actor)),
++            process: std::process::id(),
++        });
++        Ok((
++            NativeActorOwner {
++                actor: Arc::clone(&actor),
++            },
++            actor,
++        ))
++    }
++    pub(super) fn context(&self) -> Result<NativeActorContext, NativeContextError> {
++        self.context.ok_or(NativeContextError::Unavailable)
++    }
++    pub(super) fn parent_reference(self: &Arc<Self>) -> Result<NativeParent, NativeContextError> {
++        self.context()?;
++        Ok(NativeParent {
++            actor: Arc::clone(self),
++        })
++    }
++    pub(super) fn unavailable(
++        id: NativeOccurrenceId,
++    ) -> Result<(NativeActorOwner, Arc<Self>), NativeContextError> {
++        if !id.belongs_to_current_source() {
++            return Err(NativeContextError::ForeignSource);
++        }
++        let _gate = GRAPH.lock().map_err(|_| NativeContextError::Poisoned)?;
++        let actor = Arc::new(Self {
++            id,
++            context: None,
++            phase: AtomicU8::new(LIVE),
++            parent: None,
++            process: std::process::id(),
++        });
++        Ok((
++            NativeActorOwner {
++                actor: Arc::clone(&actor),
++            },
++            actor,
++        ))
++    }
++}
++
++#[cfg(test)]
++mod tests;
++
++/// Current native creation action; diagnostic labels never select a placement.
++#[derive(Clone, Debug, Default)]
++pub enum NativeSourcePlacement {
++    #[default]
++    Independent,
++    Child(NativeParent),
++    ContextUnavailable,
++}
++
++/// Historical subject identity data; cannot become a parent or extend its owner's live phase.
++#[derive(Clone, Debug)]
++pub struct NativeSubject {
++    actor: Arc<Actor>,
++}
++impl NativeSubject {
++    pub fn context(&self) -> Result<NativeActorContext, NativeContextError> {
++        self.actor.context()
++    }
++}
++impl PartialEq for NativeSubject {
++    fn eq(&self, other: &Self) -> bool {
++        Arc::ptr_eq(&self.actor, &other.actor)
++    }
++}
++impl Eq for NativeSubject {}
++impl Actor {
++    pub(super) fn subject(self: &Arc<Self>) -> NativeSubject {
++        NativeSubject {
++            actor: Arc::clone(self),
++        }
++    }
++}
+diff --git a/codex-rs/hooks/src/native_actor/tests.rs b/codex-rs/hooks/src/native_actor/tests.rs
+new file mode 100644
+index 0000000..a77bc88
+--- /dev/null
++++ b/codex-rs/hooks/src/native_actor/tests.rs
+@@ -0,0 +1,170 @@
++use super::*;
++use crate::{NativeOccurrenceKind, NativeSessionSource, NativeSourcePlacement};
++use codex_protocol::ThreadId;
++
++fn labels() -> NativeSessionContext {
++    let id = ThreadId::new();
++    NativeSessionContext::new(id, id, None)
++}
++
++#[test]
++fn history_reopening_is_fresh_birth_not_resume() {
++    let history = labels();
++    let (_first_owner, first) = NativeSessionSource::birth_root(history).unwrap();
++    let (_second_owner, second) = NativeSessionSource::birth_root(history).unwrap();
++    assert_ne!(
++        first.actor_context().unwrap().actor(),
++        second.actor_context().unwrap().actor()
++    );
++    assert_eq!(first.context(), second.context());
++    assert_eq!(second.lifecycle().kind(), NativeOccurrenceKind::Birth);
++    assert!(second.original_birth_occurrence().is_some());
++}
++
++#[test]
++fn child_ancestry_uses_retained_instances_not_history_labels() {
++    let (_owner, root) = NativeSessionSource::birth_root(labels()).unwrap();
++    let parent = root.parent_reference().unwrap();
++    let (_child_owner, child) = NativeSessionSource::birth_child(labels(), &parent).unwrap();
++    let context = child.actor_context().unwrap();
++    assert_eq!(context.root(), root.actor_context().unwrap().actor());
++    assert_eq!(
++        context.direct_parent(),
++        Some(root.actor_context().unwrap().actor())
++    );
++    assert_ne!(context.history_labels(), root.context());
++}
++
++#[test]
++fn ancestor_closing_blocks_birth_even_with_live_immediate_parent() {
++    let (owner, root) = NativeSessionSource::birth_root(labels()).unwrap();
++    let (_child_owner, child) =
++        NativeSessionSource::birth_child(labels(), &root.parent_reference().unwrap()).unwrap();
++    let child_parent = child.parent_reference().unwrap();
++    owner.begin_closing().unwrap();
++    assert!(!child_parent.is_live());
++    assert!(matches!(
++        NativeSessionSource::birth_child(labels(), &child_parent),
++        Err(NativeContextError::ClosingAncestor)
++    ));
++    // Final-event identity remains readable; identity data does not keep admission live.
++    assert!(root.actor_context().is_ok());
++}
++
++#[test]
++fn retained_reference_does_not_extend_owner_lifetime() {
++    let (owner, root) = NativeSessionSource::birth_root(labels()).unwrap();
++    let parent = root.parent_reference().unwrap();
++    drop(owner);
++    assert!(!parent.is_live());
++    assert!(NativeSessionSource::birth_child(labels(), &parent).is_err());
++}
++
++#[test]
++fn unavailable_context_cannot_become_parent_or_canonical_context() {
++    let (_owner, source) =
++        NativeSessionSource::start(labels(), NativeSourcePlacement::ContextUnavailable).unwrap();
++    assert_eq!(
++        source.lifecycle().kind(),
++        NativeOccurrenceKind::ContextUnavailable
++    );
++    assert!(source.original_birth_occurrence().is_none());
++    assert_eq!(source.actor_context(), Err(NativeContextError::Unavailable));
++    assert!(matches!(
++        source.parent_reference(),
++        Err(NativeContextError::Unavailable)
++    ));
++}
++
++#[test]
++fn raw_occurrence_encoding_is_injective_and_retains_tuple() {
++    let (_owner, source) = NativeSessionSource::birth_root(labels()).unwrap();
++    let id = source.actor_context().unwrap().actor();
++    let event = id.canonical_event_id();
++    assert_eq!(&event[..16], &id.source_uuid_bytes());
++    assert_eq!(&event[16..24], &id.serial().get().to_be_bytes());
++    assert_eq!(&event[24..], &[0; 8]);
++    assert_eq!(&id.canonical_launch_id()[16..], &[0; 16]);
++    assert_eq!(id.source_uuid_bytes()[6] >> 4, 4);
++    assert_eq!(id.source_uuid_bytes()[8] >> 6, 2);
++    let context = source.actor_context().unwrap().canonical_bytes();
++    assert_eq!(&context[..8], b"CDXCTX01");
++    assert_eq!(context.len(), 8 + 32 + 32 + 1 + 16 + 16 + 1);
++    assert_eq!(&context[8..40], &event);
++}
++
++#[test]
++fn birth_and_closing_share_the_actual_linearization_gate() {
++    let (owner, root) = NativeSessionSource::birth_root(labels()).unwrap();
++    let parent = root.parent_reference().unwrap();
++    let (entered_send, entered_recv) = std::sync::mpsc::channel();
++    let (release_send, release_recv) = std::sync::mpsc::channel();
++    let birth = std::thread::spawn(move || {
++        Actor::birth_with(
++            crate::native_occurrence::next_id(),
++            labels(),
++            Some(&parent),
++            || {
++                entered_send.send(()).unwrap();
++                release_recv.recv().unwrap();
++            },
++        )
++        .unwrap()
++    });
++    entered_recv.recv().unwrap();
++    assert!(matches!(
++        GRAPH.try_lock(),
++        Err(std::sync::TryLockError::WouldBlock)
++    ));
++    let closing = std::thread::spawn(move || {
++        owner.begin_closing().unwrap();
++        owner
++    });
++    release_send.send(()).unwrap();
++    let (_child_owner, child) = birth.join().unwrap();
++    let _owner = closing.join().unwrap();
++    assert!(!child.parent_reference().unwrap().is_live());
++}
++
++#[test]
++fn delayed_subject_never_becomes_replacement_with_same_history_id() {
++    let history = labels();
++    let (old_owner, old) = NativeSessionSource::birth_root(history).unwrap();
++    let subject = old.subject();
++    drop(old_owner);
++    let (_new_owner, replacement) = NativeSessionSource::birth_root(history).unwrap();
++    assert_ne!(subject, replacement.subject());
++    assert_eq!(subject.context().unwrap(), old.actor_context().unwrap());
++    assert_ne!(
++        subject.context().unwrap().actor(),
++        replacement.actor_context().unwrap().actor()
++    );
++}
++
++#[test]
++fn unavailable_subject_remains_unavailable_after_retention() {
++    let (owner, source) =
++        NativeSessionSource::start(labels(), NativeSourcePlacement::ContextUnavailable).unwrap();
++    let subject = source.subject();
++    drop(owner);
++    assert_eq!(subject.context(), Err(NativeContextError::Unavailable));
++}
++
++#[test]
++fn foreign_source_ancestor_is_not_a_parent_even_if_phase_is_live() {
++    let (_owner, source) = NativeSessionSource::birth_root(labels()).unwrap();
++    let id = source.actor_context().unwrap().actor();
++    let parent = NativeParent {
++        actor: Arc::new(Actor {
++            id,
++            context: Some(source.actor_context().unwrap()),
++            phase: AtomicU8::new(LIVE),
++            parent: None,
++            process: std::process::id().wrapping_add(1),
++        }),
++    };
++    assert!(matches!(
++        NativeSessionSource::birth_child(labels(), &parent),
++        Err(NativeContextError::ForeignSource)
++    ));
++}
+diff --git a/codex-rs/hooks/src/native_occurrence.rs b/codex-rs/hooks/src/native_occurrence.rs
+index 914acc4..3a944b6 100644
+--- a/codex-rs/hooks/src/native_occurrence.rs
++++ b/codex-rs/hooks/src/native_occurrence.rs
+@@ -18,11 +18,34 @@ pub struct NativeOccurrenceId {
+     launch: SourceLaunchEpoch,
+     serial: NonZeroU64,
+ }
++#[cfg(test)]
+ #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+ pub enum NativeIdentityOrigin {
+     Birth,
+     Resume,
+ }
++impl NativeOccurrenceId {
++    pub fn source_uuid_bytes(&self) -> [u8; 16] {
++        *self.launch.0.as_bytes()
++    }
++    pub fn serial(&self) -> NonZeroU64 {
++        self.serial
++    }
++    pub fn canonical_launch_id(&self) -> [u8; 32] {
++        let mut bytes = [0; 32];
++        bytes[..16].copy_from_slice(&self.source_uuid_bytes());
++        bytes
++    }
++    pub fn canonical_event_id(&self) -> [u8; 32] {
++        let mut bytes = self.canonical_launch_id();
++        bytes[16..24].copy_from_slice(&self.serial.get().to_be_bytes());
++        bytes
++    }
++    pub(crate) fn belongs_to_current_source(&self) -> bool {
++        let current = issuer();
++        current.process == std::process::id() && self.launch == current.epoch
++    }
++}
+ #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+ pub enum NativeHookKind {
+     Configured(HookEventName),
+@@ -33,6 +56,8 @@ pub enum NativeOccurrenceKind {
+     Birth,
+     Resume,
+     Invocation(NativeHookKind),
++    ContextUnavailable,
++    UnavailableHook(NativeHookKind),
+ }
+ #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+ pub(crate) enum OccurrenceError {
+@@ -84,7 +109,7 @@ fn issuer() -> &'static Issuer {
+         Err(error) => fatal(*error),
+     }
+ }
+-fn next_id() -> NativeOccurrenceId {
++pub(super) fn next_id() -> NativeOccurrenceId {
+     issuer()
+         .try_next(std::process::id())
+         .unwrap_or_else(|error| fatal(error))
+@@ -95,6 +120,7 @@ pub struct NativeOccurrence {
+     id: NativeOccurrenceId,
+     native_session_instance: NativeOccurrenceId,
+     context: NativeSessionContext,
++    actor_context: Option<crate::NativeActorContext>,
+     kind: NativeOccurrenceKind,
+     #[cfg(test)]
+     observations: std::sync::Mutex<Vec<(&'static str, usize)>>,
+@@ -104,12 +130,14 @@ impl NativeOccurrence {
+         id: NativeOccurrenceId,
+         instance: NativeOccurrenceId,
+         context: NativeSessionContext,
++        actor_context: Option<crate::NativeActorContext>,
+         kind: NativeOccurrenceKind,
+     ) -> Arc<Self> {
+         Arc::new(Self {
+             id,
+             native_session_instance: instance,
+             context,
++            actor_context,
+             kind,
+             #[cfg(test)]
+             observations: std::sync::Mutex::new(Vec::new()),
+@@ -124,6 +152,9 @@ impl NativeOccurrence {
+     pub fn context(&self) -> NativeSessionContext {
+         self.context
+     }
++    pub fn actor_context(&self) -> Option<crate::NativeActorContext> {
++        self.actor_context
++    }
+     pub fn kind(&self) -> NativeOccurrenceKind {
+         self.kind
+     }
+@@ -145,25 +176,98 @@ impl NativeOccurrence {
+ #[derive(Debug)]
+ pub struct NativeSessionSource {
+     lifecycle: Arc<NativeOccurrence>,
++    actor: Arc<crate::native_actor::Actor>,
+ }
+ impl NativeSessionSource {
+-    /// Called once from native Session construction, never inferred from hook labels/history as proof.
+-    pub fn new(context: NativeSessionContext, origin: NativeIdentityOrigin) -> Arc<Self> {
++    pub fn start(
++        context: NativeSessionContext,
++        placement: crate::NativeSourcePlacement,
++    ) -> Result<(crate::NativeActorOwner, Arc<Self>), crate::NativeContextError> {
++        match placement {
++            crate::NativeSourcePlacement::Independent => Self::birth_root(context),
++            crate::NativeSourcePlacement::Child(parent) => Self::birth_child(context, &parent),
++            crate::NativeSourcePlacement::ContextUnavailable => Self::context_unavailable(context),
++        }
++    }
++
++    pub fn birth_root(
++        context: NativeSessionContext,
++    ) -> Result<(crate::NativeActorOwner, Arc<Self>), crate::NativeContextError> {
++        Self::birth(context, None)
++    }
++    pub fn birth_child(
++        context: NativeSessionContext,
++        parent: &crate::NativeParent,
++    ) -> Result<(crate::NativeActorOwner, Arc<Self>), crate::NativeContextError> {
++        Self::birth(context, Some(parent))
++    }
++    fn birth(
++        context: NativeSessionContext,
++        parent: Option<&crate::NativeParent>,
++    ) -> Result<(crate::NativeActorOwner, Arc<Self>), crate::NativeContextError> {
+         let id = next_id();
+-        let kind = match origin {
+-            NativeIdentityOrigin::Birth => NativeOccurrenceKind::Birth,
+-            NativeIdentityOrigin::Resume => NativeOccurrenceKind::Resume,
+-        };
+-        Arc::new(Self {
+-            lifecycle: NativeOccurrence::new(id, id, context, kind),
+-        })
++        let (owner, actor) = crate::native_actor::Actor::birth(id, context, parent)?;
++        let lifecycle = NativeOccurrence::new(
++            id,
++            id,
++            context,
++            Some(actor.context()?),
++            NativeOccurrenceKind::Birth,
++        );
++        Ok((owner, Arc::new(Self { lifecycle, actor })))
++    }
++    /// Pure source classification fixture, never native authentication or a production issuer.
++    #[cfg(test)]
++    pub(crate) fn new(context: NativeSessionContext, origin: NativeIdentityOrigin) -> Arc<Self> {
++        let (owner, mut source) = Self::birth_root(context).expect("source actor fixture");
++        if origin == NativeIdentityOrigin::Resume {
++            Arc::get_mut(&mut Arc::get_mut(&mut source).unwrap().lifecycle)
++                .unwrap()
++                .kind = NativeOccurrenceKind::Resume;
++        }
++        // Fixtures inspect identity retention only; no production parent comes from this path.
++        drop(owner);
++        source
++    }
++    pub fn subject(&self) -> crate::NativeSubject {
++        self.actor.subject()
+     }
+     pub fn context(&self) -> NativeSessionContext {
+         self.lifecycle.context
+     }
++    pub fn actor_context(&self) -> Result<crate::NativeActorContext, crate::NativeContextError> {
++        self.actor.context()
++    }
++    pub fn parent_reference(&self) -> Result<crate::NativeParent, crate::NativeContextError> {
++        self.actor.parent_reference()
++    }
+     pub fn lifecycle(&self) -> &Arc<NativeOccurrence> {
+         &self.lifecycle
+     }
++    pub fn original_birth_occurrence(&self) -> Option<&Arc<NativeOccurrence>> {
++        matches!(self.lifecycle.kind, NativeOccurrenceKind::Birth).then_some(&self.lifecycle)
++    }
++    pub fn context_unavailable(
++        context: NativeSessionContext,
++    ) -> Result<(crate::NativeActorOwner, Arc<Self>), crate::NativeContextError> {
++        let id = next_id();
++        let (owner, actor) = crate::native_actor::Actor::unavailable(id)?;
++        let lifecycle = NativeOccurrence::new(
++            id,
++            id,
++            context,
++            None,
++            NativeOccurrenceKind::ContextUnavailable,
++        );
++        Ok((owner, Arc::new(Self { lifecycle, actor })))
++    }
++    fn hook_kind(&self, kind: NativeHookKind) -> NativeOccurrenceKind {
++        if self.actor.context().is_ok() {
++            NativeOccurrenceKind::Invocation(kind)
++        } else {
++            NativeOccurrenceKind::UnavailableHook(kind)
++        }
++    }
+ }
+ 
+ mod sealed {
+@@ -184,12 +288,13 @@ impl NativeEventCapture {
+             next_id(),
+             source.lifecycle.id,
+             source.context(),
+-            NativeOccurrenceKind::Invocation(kind),
++            source.actor_context().ok(),
++            source.hook_kind(kind),
+         );
+         Self { source, occurrence }
+     }
+     pub fn with_request<T: NativeHookRequest>(self, request: T) -> NativeEvent<T> {
+-        if self.occurrence.kind != NativeOccurrenceKind::Invocation(request.native_kind()) {
++        if self.occurrence.kind != self.source.hook_kind(request.native_kind()) {
+             fatal(OccurrenceError::WrongKind);
+         }
+         NativeEvent {
+@@ -225,10 +330,11 @@ impl<T: NativeHookRequest> NativeEvent<T> {
+         if !Arc::ptr_eq(source, &self.source)
+             || self.occurrence.context != source.context()
+             || self.occurrence.native_session_instance != source.lifecycle.id
++            || self.occurrence.actor_context != source.actor_context().ok()
+         {
+             fatal(OccurrenceError::WrongOwner);
+         }
+-        if self.occurrence.kind != NativeOccurrenceKind::Invocation(self.request.native_kind()) {
++        if self.occurrence.kind != source.hook_kind(self.request.native_kind()) {
+             fatal(OccurrenceError::WrongKind);
+         }
+         (self.occurrence, self.request)
+diff --git a/codex-rs/hooks/src/native_occurrence/tests.rs b/codex-rs/hooks/src/native_occurrence/tests.rs
+index dc41653..1a97070 100644
+--- a/codex-rs/hooks/src/native_occurrence/tests.rs
++++ b/codex-rs/hooks/src/native_occurrence/tests.rs
+@@ -175,3 +175,20 @@ async fn legacy_notify_retains_occurrence_through_real_plumbing_spawn() {
+         vec![("legacy-command", Arc::as_ptr(&occurrence) as usize)]
+     );
+ }
++
++#[test]
++fn unavailable_hook_retains_legacy_data_without_native_invocation_context() {
++    let labels = NativeSessionContext::new(ThreadId::new(), ThreadId::new(), None);
++    let (_owner, source) =
++        NativeSessionSource::start(labels, crate::NativeSourcePlacement::ContextUnavailable)
++            .unwrap();
++    let event = NativeEvent::capture(source.clone(), TestRequest);
++    assert_eq!(
++        event.occurrence().kind(),
++        NativeOccurrenceKind::UnavailableHook(NativeHookKind::LegacyAfterAgent)
++    );
++    assert_eq!(event.occurrence().actor_context(), None);
++    assert_eq!(event.occurrence().context(), labels);
++    let (occurrence, _) = event.into_parts(&source);
++    assert_eq!(occurrence.actor_context(), None);
++}
+diff --git a/codex-rs/hooks/src/native_session.rs b/codex-rs/hooks/src/native_session.rs
+index 3ffa2ba..003fe90 100644
+--- a/codex-rs/hooks/src/native_session.rs
++++ b/codex-rs/hooks/src/native_session.rs
+@@ -1,6 +1,7 @@
+ use codex_protocol::ThreadId;
+ 
+-/// Native runtime identifiers; admission and authority are validated separately.
++/// Immutable upstream history labels, not actual native actor instances or ancestry.
++/// NativeActorContext carries fresh source-instance identity separately; neither is Node proof.
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+ pub struct NativeSessionContext {
+     actor: ThreadId,
+diff --git a/codex-rs/hooks/src/registry.rs b/codex-rs/hooks/src/registry.rs
+index f9dcbc3..243d414 100644
+--- a/codex-rs/hooks/src/registry.rs
++++ b/codex-rs/hooks/src/registry.rs
+@@ -71,15 +71,26 @@ pub struct Hooks {
+ }
+ 
+ impl Hooks {
++    pub fn native_subject(&self) -> crate::NativeSubject {
++        self.engine.command_runtime.native_source().subject()
++    }
++    /// Opaque retained source data; no parent can be reconstructed from history labels.
++    pub fn native_parent_reference(
++        &self,
++    ) -> Result<crate::NativeParent, crate::NativeContextError> {
++        self.engine
++            .command_runtime
++            .native_source()
++            .parent_reference()
++    }
++
+     /// Bind this session's hook runtime and output files to its thread, rejecting unloadable
+     /// required managed hooks.
+     pub fn new(
+         config: HooksConfig,
+-        native_session: crate::NativeSessionContext,
+-        origin: crate::NativeIdentityOrigin,
++        native_session: Arc<crate::NativeSessionSource>,
+         mcp_executor: Arc<dyn HookMcpExecutor>,
+     ) -> anyhow::Result<(Self, Receiver<codex_protocol::protocol::HookCompletedEvent>)> {
+-        let native_session = crate::NativeSessionSource::new(native_session, origin);
+         let (result_sender, result_receiver) = async_channel::unbounded();
+         let environment = Arc::new(std::env::vars_os().collect());
+         let hooks = Self::from_config(config, mcp_executor, Arc::clone(&environment), |shell| {

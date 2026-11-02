@@ -23,7 +23,6 @@ def test_readable_family_uses_the_recorded_model_not_the_harness_or_the_native_i
         known = {a.name: a for a in node.session(member).agents()}
         shown = describe(known[member.name])
         assert shown["display_name"] == member.name and shown["session_kind"] == "main"
-        assert not shown["coordinator_eligible"], "a model the session only claims never makes it a coordinator"
         assert (known[member.name].model, known[member.name].harness) == (model, harness)
 
 

@@ -21,41 +21,32 @@
                 ? S.compatible(pending, p)
                 : S.compatible(p, pending),
             );
-          const sections = [];
+          const category = this.querySelector("#studio-library-category"), value = category.value,
+            categories = [["", "All"], ...[...new Set(this.specs.map(s => s.family || "Workflow"))].map(f => ["family:" + f, f]),
+              ["templates", "Templates"], ["groups", "Saved groups"]],
+            signature = JSON.stringify(categories),
+            active = box.contains(document.activeElement) ? document.activeElement.closest("[data-library-entry]")?.dataset.libraryEntry : null;
+          if (category.dataset.options !== signature) {
+            category.replaceChildren(...categories.map(([key, title]) => E("option", {value: key}, title)));
+            category.value = categories.some(([key]) => key === value) ? value : "";
+            category.dataset.options = signature;
+          }
+          category.disabled = !!pending;
+          const selected = pending ? "" : category.value, sections = [];
           const nodes = this.specs.filter(
             (spec) =>
               matches((spec.title || spec.type) + " " + spec.family) &&
-              compatible(spec),
+              compatible(spec) && (!selected || selected === "family:" + (spec.family || "Workflow")),
           );
-          if (nodes.length)
-            sections.push(
-              E("h2", {}, pending ? "Compatible nodes" : "Nodes"),
-              ...nodes.map((spec) =>
-                E(
-                  "button",
-                  {
-                    type: "button",
-                    onclick: () => {
-                      const n = this.add(spec);
-                      if (pending) {
-                        const side =
-                            pending.side === "outputs" ? "inputs" : "outputs",
-                          port = spec[side].find((p) =>
-                            pending.side === "outputs"
-                              ? S.compatible(pending, p)
-                              : S.compatible(p, pending),
-                          );
-                        this.canvas.port(n, port, side);
-                      }
-                    },
-                  },
-                  spec.title || spec.type,
-                  E("small", {}, spec.family || "Workflow"),
-                ),
-              ),
-            );
+          if (pending && nodes.length) sections.push(E("h2", {}, "Compatible nodes"));
+          for (const family of new Set(nodes.map(spec => spec.family || "Workflow"))) {
+            sections.push(E("h2", {}, family));
+            for (const spec of nodes.filter(spec => (spec.family || "Workflow") === family))
+              sections.push(this.canvas.libraryPlacement({kind: "node", type: spec.type, version: spec.version},
+                spec.title || spec.type, spec.description || family, pending));
+          }
           const templates = this.templates.filter((t) => matches(t.title));
-          if (templates.length && !pending)
+          if (templates.length && !pending && (!selected || selected === "templates"))
             sections.push(
               E("h2", {}, "Templates"),
               ...templates.map((t) =>
@@ -69,8 +60,8 @@
                         this.graph = S.clone(t.graph);
                         this.normalize();
                         this.querySelector("#studio-title").value = t.title;
+                        this.canvas.fit(false);
                         this.changed();
-                        this.canvas.fit();
                       }),
                   },
                   t.title,
@@ -81,24 +72,24 @@
           const groups = Object.entries(this.graph.groups).filter(([, g]) =>
             matches(g.name || "Group"),
           );
-          if (groups.length && !pending)
+          if (groups.length && !pending && (!selected || selected === "groups"))
             sections.push(
               E("h2", {}, "Saved groups"),
               ...groups.map(([id, g]) =>
-                E(
-                  "button",
-                  { type: "button", onclick: () => this.insertGroup(id) },
-                  g.name || "Group",
-                  E("small", {}, "Independent copy"),
-                ),
+                this.canvas.libraryPlacement({kind: "group", group: id}, g.name || "Group", "Independent copy"),
               ),
             );
           if (!sections.length) sections.push(E("p", {}, "No matching nodes."));
+          if (!pending && matches("Import n8n / Paste JSON workflow Paste n8n workflow")) sections.unshift(E("button", {type:"button", onclick:() => this.importN8n()}, "Import n8n / Paste JSON"));
           box.replaceChildren(...sections);
+          if (active) [...box.querySelectorAll("[data-library-entry]")].find(card => card.dataset.libraryEntry === active)
+            ?.querySelector("button")?.focus({preventScroll: true});
         },
         inspector() {
           const box = this.querySelector(".studio-inspector"),
             nodes = this.graph.nodes.filter((n) => this.selected.has(n.id));
+          box.hidden = !nodes.length && !this.context.length;
+          this.querySelector(".studio-shell").classList.toggle("studio-inspector-empty", box.hidden);
           if (nodes.length !== 1) {
             box.replaceChildren(
               E("h2", {}, "Inspector"),
@@ -117,18 +108,23 @@
             spec = S.spec(this, node);
           box.replaceChildren(E("h2", {}, spec.title || node.type));
           if (spec.description) box.append(E("p", {}, spec.description));
+          this.executionControls(box, node);
+          for (const message of this.nodeIssues(node))
+            box.append(E("p", { class: "error", role: "status" }, message));
+          const record = this.recordControls(box, node);
           for (const [name, schema] of Object.entries(
             spec.parameters?.properties || {},
           ))
-            S.field(box, name, schema, node.parameters[name], (value) => {
-              this.checkpoint();
-              node.parameters[name] = value;
-              this.changed();
-            });
+            if (!(record && name === "sample"))
+              S.field(box, name, schema, node.parameters[name], S.parameterChange({editor: this, node, name, host: box}));
           for (const [name, resource] of Object.entries(spec.bindings || {})) {
             if (!resource.kind) continue;
-            const kind = resource.kind,
-              choices =
+            const kind = resource.kind;
+            if (kind === "dataset") {
+              box.append(S.datasetBinding(this, node, name));
+              continue;
+            }
+            const choices =
                 this.resources?.[kind + "s"] ||
                 (kind === "model"
                   ? this.resources?.models
@@ -153,7 +149,9 @@
             };
             box.append(E("label", {}, "Choose " + name, select));
           }
+          this.decisionSetupControls(box, node);
           this.sweepControls(box, node, spec);
+          this.branchControls(box, node);
           const links = E("div", { class: "studio-links" });
           for (const input of spec.inputs || []) {
             const select = E(
@@ -222,7 +220,7 @@
                 "Unpack group",
               ),
             );
-          if (this.context.length) {
+          if (this.context.length && ((spec.inputs?.length || 0) + (spec.outputs?.length || 0) + Object.keys(spec.parameters?.properties || {}).length)) {
             const definition = this.context.at(-1).definition;
             box.append(E("h2", {}, "Group interface"));
             for (const side of ["inputs", "outputs"])
@@ -269,7 +267,7 @@
         outlineView() {
           const box = this.querySelector(".studio-outline");
           box.replaceChildren(
-            E("h2", {}, "Workflow outline"),
+            E("h2", {}, this.context.length ? "Group outline" : "Workflow outline"),
             ...this.graph.nodes.map((n) => {
               const spec = S.spec(this, n),
                 inputs = this.graph.edges

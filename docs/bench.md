@@ -137,7 +137,7 @@ side by side with the difference.
 another run has the same GPU is not a timing. A server that will not answer `/slots` is
 reported as unknown rather than assumed idle. `--anyway` proceeds regardless.
 
-Every measuring command **estimates itself before it starts** -- after the self-check, before
+Every measuring command **estimates itself before it starts** -- before
 a download or the lock -- from what is kept: seconds per question from the newest run of
 each model (at the same context when one is kept there), else a guess from its weights on
 disk, times the questions, the askings one load is measured with and the models, plus a load each,
@@ -318,7 +318,7 @@ after the eighth measurement, and an unset `${FX}` is refused rather than expand
 nothing and measured as the default model.
 
 It is not a second scheduler. Each step is its own `python -m poolhouse.bench` process, so it brings
-the measuring lock, the self-check, the estimate and the smoke it already has, and a step
+the measuring lock, the estimate and the smoke it already has, and a step
 of a queue and a run started by hand still wait for each other; the queue holds no lock and
 is only the thing that waits. `--yes` and `--ceiling` are given once at the top and passed
 to every step that takes them (never to `show`), `--resume` skips every step whose label the
@@ -353,20 +353,18 @@ if what comes back is not what went in; a `--smoke` run's summary is read from t
 for the same reason. `show` counts any run that still reads back empty, and `forget --empty`
 removes them.
 
-**The runner checks itself before it spends the GPU, and smokes before it measures.** Every
-measuring command -- `run`, `sweep`, `drafts`, `concurrent`, `extract` -- first drives the
-exact command line it was given through the whole path with no server and no GPU: a
-scripted model that takes exactly what `Client` takes, a served model that never starts, a
-preflight that reads nothing, the invented community and two of its questions, into a
-scratch store it reads back. It prints `selfcheck: ok (2.1 s)` and goes on, or refuses with
-exit 4 and the traceback -- before the lock is taken and before anything is fetched;
-`--no-selfcheck` skips it, for a run you are deliberately repeating. Then, unless the run
-*is* a `--smoke` run or is told `--no-smoke`, it smokes for real: two questions (three
-messages, for `extract`) through the real server and the real store, read back, before its
-own questions -- on the same load where a model is served, so a sweep smokes each model as
-it comes up and pays for it once -- and a smoke where every question fails ends the run with
-exit 1 and the reason before anything else starts. The scripted model is
-`bench.selfcheck.ScriptedModel`, bound against `Client`'s signature, and the tests use it too.
+**The runner smokes on the real model before it measures.** Every measuring command -- `run`,
+`sweep`, `drafts`, `concurrent`, `extract` -- unless it *is* a `--smoke` run or is told
+`--no-smoke`, first asks two questions (three messages, for `extract`) through the real
+server and the real store, read back, before its own questions -- on the same load where a
+model is served, so a sweep smokes each model as it comes up and pays for it once. A smoke
+where every question fails ends the run with exit 1 and the reason before anything else
+starts. There is no dry run with a scripted model, a server that never starts or a preflight
+that reads nothing: no model is ever faked, so what checks a command line is the real
+preflight (shards present, architecture read by this build, every flag one the build
+accepts) and this smoke, both on the model that will be measured. A machine with no model or
+no server build fails there, loudly, with the cause; no default, canned or cached answer is
+given in its place.
 
 **A load is fetched, checked and timed before it is measured.** Every `hf:` reference a
 measuring command names -- the models `--serve` puts up, the heads `--serve-draft` and

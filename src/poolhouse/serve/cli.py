@@ -11,6 +11,7 @@ from __future__ import annotations
 from poolhouse.command import Group, flag
 from poolhouse.serve import (
     broker_cli,
+    decision_launch,
     fit_cli,
     lease_cli,
     lifecycle_cli,
@@ -114,6 +115,10 @@ COMMANDS.add(
     "broker", broker_cli.cmd_broker,
     help="run the one process on this machine every model server is asked for",
     options=broker_cli.OPTIONS_BROKER)
+
+COMMANDS.add(
+    "broker-owned", decision_launch.serve_owned,
+    help="the broker started through its owning daemon's private launch pipe")
 
 COMMANDS.add(
     "queue", broker_cli.cmd_queue,

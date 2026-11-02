@@ -8,10 +8,12 @@ import threading
 from http.server import BaseHTTPRequestHandler
 
 import pytest
+from testfarm_kit import devices, found, skip_unless_possible
 
 from poolhouse.fleet import autostart, launch
 from poolhouse.http import Server
-from tests.pool_support import join_pool_by_passphrase
+
+pytest_plugins = ("testfarm_kit",)  # the `node_binary` fixture
 
 
 class _Health(BaseHTTPRequestHandler):
@@ -51,14 +53,19 @@ def test_with_nothing_answering_it_says_how_to_start_the_page():
     assert not any(line.startswith("  pool     ") for line in lines)
     assert f"poolhouse                        -- starts it and opens http://127.0.0.1:{port}/ui/" \
         in text
-    assert "poolhouse-pool join --persist" in text
+    assert "poolhouse-pool status" in text
 
 
-def test_with_a_daemon_answering_it_names_the_page_and_the_pool(daemon):
-    join_pool_by_passphrase("correct horse battery staple", group="attic")
-    lines = launch.last_screen("box", track="main", port=daemon)
+@pytest.mark.slow
+def test_with_a_daemon_answering_it_names_the_page_and_the_pool_the_node_is_in(daemon, node_binary, monkeypatch):
+    skip_unless_possible()
+    with devices(node_binary, "a") as (a,):
+        found(a)
+        monkeypatch.setenv("POOLHOUSE_HOME", str(a.root))
+        name = a.call("pool_status")["governance"]["name"]
+        lines = launch.last_screen("box", track="main", port=daemon)
     assert f"  open        http://127.0.0.1:{daemon}/ui/" in lines
-    assert "  pool     attic" in lines
+    assert f"  pool     {name}" in lines
     assert "  updates     follows main, whenever nothing is running here" in lines
     assert not [line for line in lines if "starts it and opens" in line]
 
@@ -129,15 +136,15 @@ def test_a_vcs_install_names_its_commit_on_the_done_screen(monkeypatch):
     assert running.endswith("  0ce5bc5"), running
 
 
-def test_new_launcher_replaces_owned_older_idle_daemon_before_start(monkeypatch, tmp_path):
+def test_explicit_restart_replaces_owned_older_idle_daemon_before_start(monkeypatch, tmp_path):
     calls = []
     monkeypatch.setattr(launch, "already_running", lambda _port: {"commit": "old", "launcher_control": "a" * 32})
     monkeypatch.setattr(launch, "state", lambda: {"commit": "new"})
     monkeypatch.setattr(launch, "request_replacement", lambda *args, **kwargs: calls.append(("replace", args)))
     monkeypatch.setattr(launch, "_wait_for_exit", lambda _port: True)
-    monkeypatch.setattr(launch, "_open_when_ready", lambda *_args: None)
-    assert launch.main(["--no-browser", "--root", str(tmp_path)],
-                       daemon_main=lambda argv: calls.append(("start", argv)) or 0) == 0
+    monkeypatch.setattr(launch, "finish", lambda argv, previous, probe, release: calls.append(("start", argv)) or 0)
+    assert launch.main(["--restart", "--no-browser", "--root", str(tmp_path)],
+                       daemon_main=lambda argv: pytest.fail("the launcher became the daemon")) == 0
     assert [row[0] for row in calls] == ["replace", "start"]
     assert calls[0][1][0] == tmp_path
 
@@ -148,11 +155,12 @@ def test_new_launcher_keeps_busy_or_unowned_daemon_and_reports_retry(monkeypatch
     def refuse(*_args, **_kwargs):
         raise launch.ControlError("Daemon has active work; retry when it is idle.")
     monkeypatch.setattr(launch, "request_replacement", refuse)
-    assert launch.main(["--no-browser"], daemon_main=lambda _argv: pytest.fail("started over active daemon")) == 1
+    assert launch.main(["--restart", "--no-browser"], daemon_main=lambda _argv: pytest.fail("started over active daemon")) == 1
     assert "retry" in capsys.readouterr().err
 
 
 def test_launcher_reuses_exact_running_commit_without_replacement(monkeypatch):
+    monkeypatch.setattr(launch.launch_health, "authenticated", lambda *_args: {"name": "box"})
     monkeypatch.setattr(launch, "already_running", lambda _port: {"name": "box", "commit": "a" * 40})
     monkeypatch.setattr(launch, "state", lambda: {"commit": "a" * 40})
     monkeypatch.setattr(launch, "request_replacement", lambda *_args: pytest.fail("replaced identical daemon"))
@@ -174,22 +182,35 @@ def test_launcher_waits_for_tcp_close_when_health_is_unavailable(monkeypatch):
     monkeypatch.setattr(launch.time, "sleep", lambda _seconds: None)
     monkeypatch.setattr(launch.socket, "create_connection", connect)
     monkeypatch.setattr(launch, "already_running", lambda _port: None)
-    monkeypatch.setattr(launch, "_can_bind", lambda _port: len(connections) > 2)
+    monkeypatch.setattr(launch, "can_bind", lambda _port: len(connections) > 2)
     assert launch._wait_for_exit(8770)
     assert len(connections) == 3
 
 
-def test_explicit_restart_replaces_same_commit_without_passing_flag_to_daemon(monkeypatch):
+def test_explicit_restart_replaces_same_commit_and_hands_the_successor_to_the_proof_without_the_flag(monkeypatch):
     flag = '--restart'
-    calls = []
+    calls, proved = [], []
     monkeypatch.setattr(launch, 'already_running', lambda _port: {'commit': 'a' * 40})
     monkeypatch.setattr(launch, 'state', lambda: {'commit': 'a' * 40})
     monkeypatch.setattr(launch, 'request_replacement', lambda *args, **kwargs: calls.append(kwargs) or {'preserved': {'queued': 1, 'running': 1}})
+    monkeypatch.setattr(launch, 'launch_of', lambda _root, _port: ['/old/python', '-m', 'poolhouse.fleet.launch'])
     monkeypatch.setattr(launch, '_wait_for_exit', lambda _port: True)
-    monkeypatch.setattr(launch, '_open_when_ready', lambda *_args: None)
-    assert launch.main([flag, '--no-browser'], daemon_main=lambda args: calls.append(args) or 0) == 0
+    monkeypatch.setattr(launch, 'finish', lambda arguments, previous, probe, release: proved.append((arguments, previous)) or 0)
+    assert launch.main([flag, '--no-browser'], daemon_main=lambda args: pytest.fail('the launcher became the daemon')) == 0
     assert calls[0]['restart'] == 'preserve'
-    assert flag not in calls[1]
+    [(arguments, previous)] = proved
+    assert flag not in arguments and previous == ['/old/python', '-m', 'poolhouse.fleet.launch']
+
+
+def test_a_replaced_daemon_that_is_slow_to_exit_is_waited_for_not_given_up_on(monkeypatch, capsys):
+    waits = iter([False, False, True])
+    monkeypatch.setattr(launch, 'already_running', lambda _port: {'commit': 'a' * 40})
+    monkeypatch.setattr(launch, 'state', lambda: {'commit': 'a' * 40})
+    monkeypatch.setattr(launch, 'request_replacement', lambda *args, **kwargs: {})
+    monkeypatch.setattr(launch, '_wait_for_exit', lambda _port: next(waits))
+    monkeypatch.setattr(launch, 'finish', lambda *_args: 0)
+    assert launch.main(['--restart', '--no-browser']) == 0, 'the daemon was told to stop, so the launcher stays until it has, then starts the next'
+    assert capsys.readouterr().out.count('still exiting') == 2
 
 
 def test_launcher_refuses_the_removed_force_restart_flag_as_a_daemon_option(monkeypatch):
@@ -222,7 +243,7 @@ def test_a_held_port_that_answers_slowly_is_the_running_daemon(monkeypatch, caps
     try:
         calls = iter([None])
         monkeypatch.setattr(launch, "already_running", lambda _port: next(calls, None))
-        monkeypatch.setattr(launch, "same_commit", lambda *_args: True)
+        monkeypatch.setattr(launch.launch_health, "authenticated", lambda *_args: {"name": "box"})
         monkeypatch.setattr(launch, "_open_when_ready", lambda *_args: None)
         assert launch.main(["--no-browser", "--port", str(server.server_address[1])],
                            daemon_main=lambda _argv: pytest.fail("started a duplicate")) == 0
@@ -272,7 +293,7 @@ def test_the_restart_the_autostart_path_builds_is_accepted_by_the_launcher_and_t
     monkeypatch.setattr(launch, 'state', lambda: {'commit': 'a' * 40})
     monkeypatch.setattr(launch, 'request_replacement', lambda *_a, **_kw: {})
     monkeypatch.setattr(launch, '_wait_for_exit', lambda _port: True)
-    monkeypatch.setattr(launch, '_open_when_ready', lambda *_args: None)
+    monkeypatch.setattr(launch, 'finish', lambda arguments, previous, probe, release: daemon.run(arguments))
     with pytest.raises(Parsed) as accepted:
         launch.main(argv, daemon_main=daemon.run)
     assert accepted.value.args[0].port == 8770

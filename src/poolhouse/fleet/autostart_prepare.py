@@ -30,6 +30,7 @@ from .autostart_manifest import (
     Unit,
     allowed_dir,
     destination_problem,
+    identity_problem,
     launcher_problem,
     parse,
     unit_names,
@@ -117,7 +118,7 @@ def role_argv(role: str, launcher: Path, spec: Spec) -> tuple[str, ...]:
 
 def _role(name: str, platform: str, spec: Spec, launchers: Path) -> Role:
     launcher = launcher_path(launchers, name, platform)
-    problem = launcher_problem(launcher)
+    problem = launcher_problem(launcher) or identity_problem(platform)
     if problem:
         raise PrepareError(problem)
     run = home.state("autostart", "run", name)

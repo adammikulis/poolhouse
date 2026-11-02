@@ -8,6 +8,7 @@ import json
 import os
 import secrets
 import stat
+import sys
 import threading
 import time
 from functools import wraps
@@ -23,6 +24,8 @@ from poolhouse.windows_private import restrict, validate
 
 ROUTE = '/launcher/replace'
 MAX_RECORD = 4096
+MAX_LAUNCH_WORDS = 64
+MAX_LAUNCH_WORD = 1024
 DRAIN_S = 20.0
 """How long a job-preserving replacement lets requests in flight finish, with new ones refused, before it stops anyway."""
 
@@ -79,6 +82,25 @@ def _record(root: Path, port: int) -> dict:
     if not isinstance(value, dict) or value.get('port') != port or value.get('version') != 1:
         raise ControlError('Daemon launcher control record is invalid.')
     return value
+
+
+def launch_of(root: Path, port: int) -> list[str] | None:
+    """How the daemon on ``port`` was started (its interpreter and arguments, without ``--restart``), read from its control record
+    before it is asked to stop, so a replacement that fails can start it again; None when it recorded nothing usable."""
+    try:
+        command = _record(root, port).get('launch')
+    except ControlError:
+        return None
+    if (not isinstance(command, list) or not 1 <= len(command) <= MAX_LAUNCH_WORDS
+            or not all(isinstance(word, str) and 0 < len(word) <= MAX_LAUNCH_WORD for word in command)
+            or not Path(command[0]).is_absolute() or not Path(command[0]).is_file()):
+        return None
+    return [word for word in command if word != '--restart']
+
+
+def claim_path(root: Path, port: int) -> Path:
+    """The file one launcher at a time holds while it replaces, or starts, the daemon on ``port``."""
+    return _directory(root) / f'{port}.handover.lock'
 
 
 def request_replacement(root: Path, port: int, running: dict, expected: str, *, restart: str = 'idle') -> dict:
@@ -170,11 +192,14 @@ class Control:
         self.held = contextlib.ExitStack()
         self.stopping = False
         self.active = 0
+        row = {'version': 1, 'port': port, 'instance': self.instance, 'capability': self.capability}
+        launch = [sys.executable, *sys.orig_argv[1:]]
+        if len(json.dumps({**row, 'launch': launch})) <= MAX_RECORD:
+            row['launch'] = launch
         with writing(self.path) as temporary:
             if os.name == 'nt':
                 restrict(temporary)
-            temporary.write_text(json.dumps({'version': 1, 'port': port, 'instance': self.instance,
-                                             'capability': self.capability}), encoding='utf-8')
+            temporary.write_text(json.dumps(row), encoding='utf-8')
 
     def route(self, handler) -> bool:
         if handler.path != ROUTE:

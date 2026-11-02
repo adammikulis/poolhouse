@@ -139,7 +139,7 @@ def stall(*a, **k):
     time.sleep(300)
 
 d.fit_model = stall
-settings = d.Settings(name="killed", base=Path({base!r}), steps=4, batch_size=4, device="cpu",
+settings = d.Settings.smoke(name="killed", base=Path({base!r}), steps=4, batch_size=4, device="cpu",
                       dtype="float32", lora=Lora(4, 8, 0.0, ("q_proj", "v_proj")), lr=1e-3,
                       test_fraction=0.25, calibrate_fraction=0.25, baseline="none")
 d.train(tiny_cases(), Path({out!r}), settings)

@@ -57,7 +57,7 @@ def test_a_supervisor_with_no_owner_and_no_stop_request_keeps_running():
 
 def test_a_supervisor_is_started_watching_the_pytest_process_that_asked_for_the_node(monkeypatch, tmp_path):
     started = []
-    monkeypatch.setattr(node_launch.jobs, "detach", lambda module, argv, log: started.append(argv))
+    monkeypatch.setattr(node_launch.jobs, "detach", lambda module, argv, log: started.append(argv) or node_launch.jobs.Detached(1, log, (), ""))
     monkeypatch.setenv(node_supervise.PARENT_ENV, str(os.getpid()))
     node_launch._start_supervisor(tmp_path / "node", ["--presence", "terminal"])
     assert started[0][-2:] == ["--parent-pid", str(os.getpid())]
@@ -69,7 +69,7 @@ def test_a_supervisor_is_started_watching_the_pytest_process_that_asked_for_the_
 
 def test_the_devices_own_node_never_watches_a_process_named_by_the_environment(monkeypatch):
     started = []
-    monkeypatch.setattr(node_launch.jobs, "detach", lambda module, argv, log: started.append(argv))
+    monkeypatch.setattr(node_launch.jobs, "detach", lambda module, argv, log: started.append(argv) or node_launch.jobs.Detached(1, log, (), ""))
     monkeypatch.setenv(node_supervise.PARENT_ENV, "4242")
     node_launch._start_supervisor(node_launch.default_state(), [])
     assert "--parent-pid" not in started[0]
@@ -77,7 +77,7 @@ def test_the_devices_own_node_never_watches_a_process_named_by_the_environment(m
 
 def test_a_hostile_owner_value_that_is_not_a_pid_is_not_passed_on(monkeypatch, tmp_path):
     started = []
-    monkeypatch.setattr(node_launch.jobs, "detach", lambda module, argv, log: started.append(argv))
+    monkeypatch.setattr(node_launch.jobs, "detach", lambda module, argv, log: started.append(argv) or node_launch.jobs.Detached(1, log, (), ""))
     monkeypatch.setenv(node_supervise.PARENT_ENV, "1; rm -rf /")
     node_launch._start_supervisor(tmp_path / "node", [])
     assert "--parent-pid" not in started[0]

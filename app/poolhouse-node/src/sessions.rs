@@ -19,7 +19,7 @@ pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
         "session_lookup" => &["harness", "session"],
         "agents" => &["retired"],
         "retire" => &["target", "reason"],
-        "rebind" => &["harness", "session", "at_ms", "nonce", "anchor", "by", "sig"],
+        "rebind" => &["harness", "session", "at_ms", "nonce", "anchor", "by", "sig", "approval"],
         _ => return None,
     })
 }
@@ -34,7 +34,7 @@ fn text<'a>(p: &'a Map<String, Value>, key: &str) -> Result<&'a str> {
 
 fn show(name: &str, i: &Ident, idle: bool) -> Value {
     json!({"name": name, "parent": i.parent, "family": i.family, "model": i.model, "model_state": i.model_state,
-           "harness": i.harness, "retired": i.retired, "retired_reason": i.retired_reason, "seen_ms": i.seen_ms, "idle": idle})
+           "harness": i.harness, "retired": i.retired, "retired_reason": i.retired_reason, "person": i.person, "seen_ms": i.seen_ms, "idle": idle})
 }
 
 /// Whether ``i`` is idle: not retired and neither heard from lately nor holding a live lease.
@@ -78,6 +78,9 @@ fn rebind(node: &mut Node, board: &str, p: &Map<String, Value>, peer: &Peer) -> 
     if ENFORCED && lineage.is_empty() {
         return Err(Error::Denied("the process asking could not be read, so the session cannot be moved to it".into()));
     }
+    if crate::grants::authority::Authority::of(node).governed() {
+        return crate::rebind::by_phone(node, (board, &name), p, &lineage);
+    }
     let at = crate::grants::calls::fresh(node, p, "at_ms")?;
     let (by, nonce, anchor) = (text(p, "by")?, text(p, "nonce")?, Anchor::signed(p)?);
     if nonce.len() < 16 || nonce.len() > 64 || !nonce.bytes().all(|b| b.is_ascii_alphanumeric()) {
@@ -92,10 +95,15 @@ fn rebind(node: &mut Node, board: &str, p: &Map<String, Value>, peer: &Peer) -> 
     if !node.persons.once(nonce, node.now_ms())? {
         return Err(Error::Denied("that approval was used already".into()));
     }
-    node.host(board)?.names.rebind(&name, &lineage)?;
+    carry_out(node, board, &name, &lineage, &format!("the person key {}", by.chars().take(16).collect::<String>()))
+}
+
+/// Register the main session ``name`` from ``lineage`` from now on, end the tokens it held and say so on the board; ``by`` is who moved it.
+pub fn carry_out(node: &mut Node, board: &str, name: &str, lineage: &[Anchor], by: &str) -> Result<Value> {
+    node.host(board)?.names.rebind(name, lineage)?;
     node.regroup(board)?;
-    let ended = node.tokens.revoke_name(board, &name)?;
-    let detail = format!("moved by the person key {}: {ended} tokens ended", by.chars().take(16).collect::<String>());
+    let ended = node.tokens.revoke_name(board, name)?;
+    let detail = format!("moved by {by}: {ended} tokens ended");
     node.host(board)?.board.append_person(Kind::Audit, "node", json!({"event": "rebind", "subject": name, "detail": detail}))?;
     Ok(json!({"name": name, "moved": true, "tokens_ended": ended}))
 }
@@ -107,8 +115,12 @@ fn whoami(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
         if access.holder.board != board {
             return Err(Error::Denied("a model is claimed on the session's own board".into()));
         }
+        let before = node.host(board)?.names.get(&access.actor).map(|i| (i.model.clone(), i.harness.clone()));
         if node.host(board)?.names.claim_model(&access.actor, model, harness)? {
-            node.write_identity(board, &access.actor)?;
+            let after = node.host(board)?.names.get(&access.actor).map(|i| (i.model.clone(), i.harness.clone()));
+            if before != after {
+                node.write_identity(board, &access.actor)?;
+            }
         }
     }
     let mut out = json!({"name": access.actor, "board": access.holder.board, "target": board});
@@ -165,8 +177,9 @@ fn retire(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
               "subagents_retired": below}))
 }
 
-/// End ``target`` and say so on the board: its tokens, its leases, its subscriptions and its name; how many of each of the first two there were.
-/// The board's entries about the ending are skipped when the log has no room for them: the registry is the record of a session.
+/// End ``target`` and say so on the board with one identity entry that names who ended it and what that released: its tokens, its leases,
+/// its subscriptions and its name; how many of each of the first two there were. The entry is skipped when the log has no room for it: the
+/// registry is the record of a session.
 pub fn end(node: &mut Node, board: &str, target: &str, by: &str, reason: &str) -> Result<(usize, usize)> {
     let freed = release_leases(node, board, target)?;
     let revoked = node.tokens.revoke_name(board, target)?;
@@ -174,9 +187,7 @@ pub fn end(node: &mut Node, board: &str, target: &str, by: &str, reason: &str) -
     node.host(board)?.names.retire(target, reason)?;
     node.host(board)?.subs.drop_for(target)?;
     let detail = format!("retired by {by} ({reason}): {revoked} tokens revoked, {freed} leases released");
-    let audit = json!({"event": "retire", "subject": target, "detail": detail});
-    let written = node.write_ended(board, target).and_then(|()| node.host(board)?.board.append_node(Kind::Audit, by, audit, &format!("retire:{target}")).map(drop));
-    match written {
+    match node.write_ended(board, target, (by, &detail)) {
         Ok(()) | Err(Error::Quota(_)) => {}
         Err(e) => return Err(e),
     }

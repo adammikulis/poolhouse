@@ -3,7 +3,7 @@ import math
 
 import pytest
 
-from poolhouse.studio.catalog import node_catalog
+from poolhouse.studio.catalog import node_catalog, node_spec
 from poolhouse.studio.contracts import validate_graph
 from poolhouse.studio.packages import content_digest, export_package, import_package
 
@@ -247,6 +247,9 @@ def test_tool_training_requires_bound_model_and_rejects_base_parameter():
 def test_typed_models_reject_incompatible_connections_before_compute(source, target, compatible):
     value = graph()
     value["nodes"][1]["type"] = source
+    if source == "gym.train":
+        value["nodes"][1]["parameters"] = {"environment": "warehouse"}
+        value["edges"] = []
     value["nodes"].append({"id": "consumer", "type": target})
     value["edges"].append({"source": {"node": "train", "port": "model"}, "target": {"node": "consumer", "port": "model"}})
     errors = validate_graph(value)["errors"]
@@ -254,3 +257,23 @@ def test_typed_models_reject_incompatible_connections_before_compute(source, tar
     assert bool(connections) is not compatible
     if connections:
         assert all("types do not match" in error["message"] for error in connections)
+
+
+def test_on_policy_gym_template_needs_only_explicit_environment():
+    from poolhouse.studio.templates import templates
+
+    value = next(item for item in templates() if item['id'] == 'gym-training-and-evaluation')
+    checked = validate_graph(value)
+    assert checked['errors'] == []
+    assert [node['type'] for node in checked['graph']['nodes']] == ['gym.train', 'gym.evaluate', 'chart']
+    assert checked['graph']['nodes'][0]['parameters']['environment'] == 'warehouse'
+    assert node_spec('gym.train')['inputs'] == []
+    assert set(node_spec('gym.recordings')['bindings']) == {'trajectory', 'reviews'}
+    assert all(binding['required'] for binding in node_spec('gym.recordings')['bindings'].values())
+
+
+@pytest.mark.parametrize('parameters', [{}, {'environment': ''}, {'environment': 'untrusted-simulator'},
+                                        {'environment': '/tmp/custom.py'}, {'environment': None}])
+def test_gym_environment_must_be_explicit_and_supported(parameters):
+    checked = validate_graph({'nodes': [{'id': 'train', 'type': 'gym.train', 'parameters': parameters}], 'edges': []})
+    assert any(error['node'] == 'train' and error['code'] == 'node' and 'environment' in error['message'] for error in checked['errors'])

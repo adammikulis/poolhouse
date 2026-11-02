@@ -45,4 +45,7 @@ def run(folder: str) -> int:
         shard_spec.check_present(shard["files"], names)
     except (shard_spec.Refused, shard_tree.TreeError, OSError) as exc:
         return refuse(job_dir, job, str(exc))
-    return int(shard_run.run_shard(shard, data, job_dir, cancel=cancel)["exit"])
+    try:
+        return int(shard_run.run_shard(shard, data, job_dir, cancel=cancel)["exit"])
+    finally:
+        (job_dir / "tree.tgz").unlink(missing_ok=True)

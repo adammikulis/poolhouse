@@ -2,7 +2,8 @@
 does to issue or revoke one (docs/node.md, "Standing grants").
 
 The node counts a grant only when a person key enrolled on it signed the grant, so nothing here can make one for a
-caller that does not hold that key. The key is passed in as an object with ``public`` (32 bytes) and ``sign_bytes``.
+caller that does not hold that key. On a device in a pool that holds for the actions that stay on the device; a grant that reaches
+beyond it counts only from an approval an admin key of the pool signed on a phone, so a typed ``yes`` signs none. The key is passed in as an object with ``public`` (32 bytes) and ``sign_bytes``.
 """
 
 from __future__ import annotations
@@ -20,9 +21,9 @@ from poolhouse.board import presence
 from poolhouse.board.client import Client
 from poolhouse.board.session import Session
 
-__all__ = ["DEFAULT_ACTIONS", "Grant", "Listing", "Signs", "Want", "Where", "approval_bytes", "approve", "canonical", "default_bundle", "describe", "duration_ms",
+__all__ = ["DEFAULT_ACTIONS", "POOL_GRANTS", "Grant", "Listing", "Signs", "Want", "Where", "approval_bytes", "approve", "canonical", "default_bundle", "describe", "duration_ms",
            "enrol", "enrol_first", "enrol_line", "enrolment", "fingerprint", "here", "issue", "list_bytes", "listing", "log", "rebind",
-           "revoke", "sign_approval", "sign_issue", "sign_list", "sign_rebind", "sign_revoke", "sign_unenroll", "unenrol", "want_line", "when"]
+           "rebind_ask", "rebind_finish", "revoke", "sign_approval", "sign_issue", "sign_list", "sign_rebind", "sign_revoke", "sign_unenroll", "unenrol", "want_line", "when"]
 
 SIGN_DOMAIN = b"poolhouse/grant/v1\n"
 ENROLL_DOMAIN = b"poolhouse/person-enroll/v1\n"
@@ -35,6 +36,8 @@ FRESH_MS = 5 * 60 * 1000
 """How long the node takes a person's signature as fresh."""
 SPANS = {"s": 1000, "m": 60_000, "h": 3_600_000, "d": 86_400_000}
 MOST_DAYS = 366
+POOL_GRANTS = "In a pool your phone gives standing grants: ask for one and tap approve."
+"""What the node says to a grant of a pool signed by a typed yes."""
 
 
 class Signs(Protocol):
@@ -134,6 +137,24 @@ def revoke(session: Session, key: Signs, gid: str, reason: str = "") -> dict[str
     return dict(session.call("grant_revoke", **sign_revoke(key, session.board, gid, reason)))
 
 
+def sign_distrust(key: Signs, pool: str, subject: str, since: int, reason: str = "") -> dict[str, Any]:
+    """The `grant_distrust` params that cut the admin key ``subject`` (listed at epoch ``since`` in the pool ``pool``) off, signed by ``key``."""
+    body: dict[str, Any] = {"op": "distrust", "board": "pool", "key": subject, "since": since, "pool": pool,
+                            "at_ms": _now_ms(), "person": fingerprint(key.public)}
+    if reason:
+        body["reason"] = reason
+    return _params(key, body, SIGN_DOMAIN)
+
+
+def distrust(session: Session, key: Signs, subject: str, reason: str = "") -> dict[str, Any]:
+    """Ask the node to stop counting the admin key ``subject`` of this device's pool, at once, on every board."""
+    status = session.client.call("pool_status", "", session.token)
+    listed = {a["fingerprint"]: a for a in status["governance"].get("admins", [])}
+    if subject not in listed:
+        raise RuntimeError("this pool does not list that key: `poolhouse-workspace pool status` shows the admin keys it lists")
+    return dict(session.client.call("grant_distrust", "", session.token, **sign_distrust(key, status["pool"], subject, listed[subject]["since"], reason)))
+
+
 def enrolment(key: Signs, about: str, *, now_ms: int | None = None) -> dict[str, Any]:
     """A key's own proof that it holds its private half, to carry to a node: valid for five minutes."""
     body = {"op": "enroll", "public": key.public.hex(), "about": about, "at_ms": _now_ms() if now_ms is None else now_ms}
@@ -150,13 +171,18 @@ class Where:
     anchor: dict[str, int]
 
 
-def here(client: Client) -> Where:
-    """The node ``client`` reaches and the terminal this process runs in, as the node reads them."""
+def terminal(client: Client) -> dict[str, int]:
+    """The terminal this process runs in, as the node reads it: the process at the top of its lineage."""
     lineage = client.call("lineage")["lineage"]
     if not lineage:
         raise ValueError("the node could not read the process this runs in, so a signature cannot be made for its terminal")
     top = lineage[-1]
-    return Where(str(client.call("hello")["device"]), {"pid": int(top["pid"]), "start": int(top["start"])})
+    return {"pid": int(top["pid"]), "start": int(top["start"])}
+
+
+def here(client: Client) -> Where:
+    """The node ``client`` reaches and the terminal this process runs in, as the node reads them."""
+    return Where(str(client.call("hello")["device"]), terminal(client))
 
 
 def approve(proof: dict[str, Any], approver: Signs, where: Where, *, now_ms: int | None = None) -> dict[str, Any]:
@@ -210,6 +236,17 @@ def rebind(client: Client, board: str, harness: str, session: str, key: Signs) -
     return dict(client.call("rebind", board, "", harness=harness, session=session, **sign_rebind(key, board, name, here(client))))
 
 
+def rebind_ask(client: Client, board: str, harness: str, session: str) -> dict[str, Any]:
+    """Ask a device in a pool to move the main session ``session`` of ``harness`` on ``board`` to this terminal on an admin phone's tap: the
+    request, with the number the person picks on the phone."""
+    return dict(client.call("rebind", board, "", harness=harness, session=session, anchor=terminal(client)))
+
+
+def rebind_finish(client: Client, board: str, harness: str, session: str, approval: str) -> dict[str, Any]:
+    """Carry out the move the request ``approval`` got approved, from this terminal; `moved` is false while the phone has not answered."""
+    return dict(client.call("rebind", board, "", harness=harness, session=session, anchor=terminal(client), approval=approval))
+
+
 def unenrol(client: Client, token: str, key: Signs, fingerprint_: str) -> dict[str, Any]:
     """Take the key ``fingerprint_`` off the node, signed by ``key``; the node keeps its last key."""
     return dict(client.call("person_unenroll", "", token, **sign_unenroll(key, fingerprint_, here(client))))
@@ -244,13 +281,23 @@ class Listing:
     registry: dict[str, list[str]] = field(default_factory=dict)
     now_ms: int = 0
     device: str = ""
+    governance: str = "unfounded"
+    authority: list[str] = field(default_factory=list)
+    may_issue: list[str] = field(default_factory=list)
+    may_revoke: list[str] = field(default_factory=list)
+    distrusted: list[str] = field(default_factory=list)
+
+    def pool_wide(self, action: str) -> bool:
+        """Whether a device in a pool counts a grant of ``action`` only from an admin key's approval: every action but the device-local ones."""
+        return self.governance == "governed" and action not in self.registry.get("device_local", ())
 
 
 def listing(session: Session) -> Listing:
     """Every grant of the session's board with its state, the entries that name none that count, and the registry."""
     got = session.call("grants")
     rows = [Grant(**{k: g[k] for k in Grant.__dataclass_fields__}) for g in got["grants"]]
-    return Listing(rows, got["ignored"], got["persons"], got["registry"], got["now_ms"], got["device"])
+    return Listing(rows, got["ignored"], got["persons"], got["registry"], got["now_ms"], got["device"], got["governance"], got["authority"], got["may_issue"],
+                   got["may_revoke"], got.get("distrusted", []))
 
 
 def log(session: Session, limit: int = 50) -> list[dict[str, Any]]:

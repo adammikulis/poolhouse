@@ -6,10 +6,12 @@ pub mod grants;
 pub mod netkit;
 pub mod p256;
 pub mod phone;
+pub mod pool;
 #[cfg(unix)]
 pub mod screen;
 #[cfg(unix)]
 pub mod procs;
+pub mod rotation;
 
 use ed25519_dalek::SigningKey;
 use poolhouse_node::board::Board;
@@ -89,6 +91,7 @@ impl poolhouse_node::presence::Presence for SaysYes {
 pub fn node(dir: &Path) -> Node {
     let mut node = Node::open(dir).unwrap();
     node.firsts = poolhouse_node::presence::Firsts::new(Box::new(SaysYes));
+    node.log_rotate_percent = 0;
     node
 }
 

@@ -1,4 +1,4 @@
-"""Keeps the test queue moving: ends a background test job whose runner is gone or that has no owner, and tells the owner of one that is quiet, old or long."""
+"""Reports invalid jobs and ends jobs whose runner is gone; reports quiet, old or long jobs."""
 
 from __future__ import annotations
 
@@ -94,7 +94,7 @@ def hung(jobs: testjobs.Jobs, job: str, now: float) -> str:
         return ""
     spec = jobs.read(job, "spec.json")
     owner = spec.get("owner") if isinstance(spec, dict) else None
-    if not (isinstance(owner, dict) and isinstance(owner.get("id"), str) and owner["id"]):
+    if not testjobs.valid_owner(owner):
         return "it has no owner"
     pid = int(status.get("pid", 0))
     if pid and not storage.alive(pid, float(status.get("started", 0))):
@@ -129,6 +129,9 @@ def sweep(jobs: testjobs.Jobs, now: float | None = None, say: Callable[[str], No
             if not why:
                 for kind, text in alerts(jobs, job, now):
                     tell(jobs, job, kind, text, say)
+                continue
+            if why == "it has no owner":
+                say(f"queue doctor: skipped job {job}: {why}")
                 continue
             status = jobs.read(job)
             gone = end(int(status.get("pid", 0)), float(status.get("started", 0)), sleep)

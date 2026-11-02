@@ -13,9 +13,10 @@ import sys
 from pathlib import Path
 
 from poolhouse.log import say, warn
-from poolhouse.platform import launch
+from poolhouse.platform import end_child, launch
 
-from . import discovery, runtime_wheel, wsl_network, wsl_ui
+from . import launch_health, runtime_wheel, windows_firewall, wsl_network, wsl_ui
+from .onboard.lan import primary_ip
 
 __all__ = ["WSLError", "command", "prepare", "start"]
 
@@ -119,6 +120,35 @@ print(json.dumps(dict(kernel=platform.release(), python=list(sys.version_info[:2
     return python
 
 
+def authenticated_health(arguments: list[str], port: int) -> dict | None:
+    """Read-only attach proof inside the existing legacy WSL runtime; never prepare it."""
+    executable = _read("python3", "-c", "import os; print(os.path.expanduser('~/.local/share/poolhouse/runtime/bin/python'))")
+    root = ""
+    for index, arg in enumerate(arguments):
+        if arg.startswith("--root="):
+            root = arg.partition("=")[2]
+        elif arg == "--root" and index + 1 < len(arguments):
+            root = arguments[index + 1]
+    if root and not root.startswith("/"):
+        root = _read("wslpath", "-a", "-u", str(Path(root).expanduser().resolve()))
+    environment = []
+    for key in ("POOLHOUSE_HOME", "POOLHOUSE_CACHE"):
+        if value := os.environ.get(key):
+            translated = _read("wslpath", "-a", "-u", str(Path(value).expanduser().resolve()))
+            environment.append(key + "=" + translated)
+    script = """import json, pathlib, sys
+from poolhouse.fleet.launch_health import authenticated
+from poolhouse.fleet.runtime_paths import default_root
+root = pathlib.Path(sys.argv[1]).expanduser() if sys.argv[1] else default_root()
+print(json.dumps(authenticated(int(sys.argv[2]), root)))
+"""
+    try:
+        value = json.loads(_read("env", *environment, executable, "-I", "-c", script, root, str(port)))
+    except (WSLError, subprocess.SubprocessError, ValueError):
+        return None
+    return value if launch_health.valid(value) else None
+
+
 def replace_running(arguments: list[str], port: int, running: dict, expected: str, *, restart: str = 'idle') -> None:
     """Request replacement through the owned WSL daemon's loopback control."""
     executable = _read("python3", "-c", "import os; print(os.path.expanduser('~/.local/share/poolhouse/runtime/bin/python'))")
@@ -170,14 +200,13 @@ def _gateway(host: str) -> str:
 
 
 def _bridge(executable: str, arguments: list[str]) -> wsl_network.NetworkBridge | None:
-    host = discovery.primary_ip()
+    host = primary_ip()
     if not host:
-        warn("LAN discovery is unavailable while Windows has no LAN address.")
+        warn("The LAN bridge is unavailable while Windows has no LAN address.")
         return None
-    linux_host = _read(executable, "-c", "from poolhouse.fleet.discovery import primary_ip; print(primary_ip())")
+    linux_host = _read(executable, "-c", "from poolhouse.fleet.onboard.lan import primary_ip; print(primary_ip())")
     port = _port(arguments)
-    bridge = wsl_network.NetworkBridge(host, (linux_host, port), discovery.default_group(),
-                                      discovery.default_port(), discovery._native_socket)
+    bridge = wsl_network.NetworkBridge(host, (linux_host, port))
     bridge.gateway = _gateway(host)
     try:
         return bridge.start()
@@ -214,7 +243,7 @@ def start(argv: list[str], *, executable: str | None = None) -> int:
             environment.append(name + "=" + translated)
     for index, arg in enumerate(arguments):
         name, separator, value = arg.partition("=")
-        if name not in {"--root", "--bench-home", "--pool-key"}:
+        if name not in {"--root", "--bench-home"}:
             continue
         if not separator:
             if index + 1 >= len(arguments):
@@ -226,6 +255,7 @@ def start(argv: list[str], *, executable: str | None = None) -> int:
                 arguments[index] = name + "=" + value
             else:
                 arguments[index + 1] = value
+    windows_firewall.ensure()
     local_ui, bridge = _bridges(executable, arguments)
     if bridge:
         environment.append(wsl_network.ENV + "=" + bridge.config)
@@ -242,7 +272,7 @@ def start(argv: list[str], *, executable: str | None = None) -> int:
             try:
                 process.wait(timeout=10)
             except subprocess.TimeoutExpired:
-                process.terminate()
+                end_child(process)
     finally:
         if bridge:
             bridge.close()

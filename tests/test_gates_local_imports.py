@@ -38,16 +38,16 @@ def test_the_same_module_deferred_by_two_functions_is_two(tmp_path) -> None:
 
 def test_an_import_module_of_a_literal_poolhouse_name_in_a_function_is_one(tmp_path) -> None:
     assert _count(tmp_path / "a", "import importlib\n\ndef f():\n"
-                                  "    return importlib.import_module('poolhouse.fleet.join')\n") == 1
+                                  "    return importlib.import_module('poolhouse.fleet.launch')\n") == 1
     assert _count(tmp_path / "b", "from importlib import import_module\n\ndef f():\n"
-                                  "    return import_module('poolhouse.fleet.join')\n") == 1
+                                  "    return import_module('poolhouse.fleet.launch')\n") == 1
     assert _count(tmp_path / "c", "def f():\n    return __import__('poolhouse.fleet')\n") == 1
 
 
 def test_an_import_module_and_an_import_of_one_module_in_one_function_are_one(tmp_path) -> None:
     assert _count(tmp_path, "import importlib\n\ndef f():\n"
-                            "    from poolhouse.fleet.join import members\n"
-                            "    return importlib.import_module('poolhouse.fleet.join')\n") == 1
+                            "    from poolhouse.fleet.launch import members\n"
+                            "    return importlib.import_module('poolhouse.fleet.launch')\n") == 1
 
 
 def test_an_import_module_of_a_name_built_at_run_time_or_outside_poolhouse_is_none(

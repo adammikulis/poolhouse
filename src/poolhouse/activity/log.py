@@ -18,7 +18,7 @@ from poolhouse.sentinel.events import Chain, EventLog
 __all__ = ["PURPOSE", "ActivityLog", "Limits", "Unreadable"]
 
 PURPOSE = "activity"
-_AAD = b"ml-stack/activity/v1"
+_AAD = b"poolhouse/activity/v1"
 DAY = 86400.0
 
 

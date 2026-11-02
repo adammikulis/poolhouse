@@ -10,7 +10,7 @@ use poolhouse_node::gov::charter::Unit;
 use poolhouse_node::membership::Policy;
 use serde_json::{json, Value};
 
-const NO_COUNTING_KEY: &str = "A pool needs a key that is approved from a computer or a phone, and that charter lists none.";
+const OVERSTATED_KEY: &str = "That charter says a key is held in a way this device did not record for it, so I will not make that pool.";
 
 fn act_of(keys: &[K]) -> Value {
     serde_json::to_value(found_act(&charter(keys, Policy::Secure, Unit::Person))).unwrap()
@@ -21,12 +21,12 @@ fn draft(a: &Dev, keys: Value) -> Value {
 }
 
 #[test]
-fn a_charter_that_calls_an_unenrolled_key_phone_level_founds_nothing() {
+fn a_charter_that_claims_an_unenrolled_key_is_a_phones_founds_nothing() {
     let a = device();
     let before = a.pool();
     let reply = a.call("pool_found", "", &a.token, json!({"act": act_of(&[phone_admin(ANN, "ann")])}));
     assert_eq!(reply["ok"], false, "{reply}");
-    assert_eq!(reply["error"]["say"], NO_COUNTING_KEY, "{reply}");
+    assert_eq!(reply["error"]["say"], OVERSTATED_KEY, "{reply}");
     assert_eq!(a.pool(), before, "it is still in no pool");
     assert_eq!(a.status()["governance"]["mode"], "unfounded");
 }
@@ -37,7 +37,7 @@ fn the_same_charter_handed_over_whole_founds_nothing() {
     let body = charter(&[phone_admin(ANN, "ann")], Policy::Secure, Unit::Person).body();
     let reply = a.call("pool_found", "", &a.token, json!({"charter": body}));
     assert_eq!(reply["ok"], false, "{reply}");
-    assert_eq!(reply["error"]["say"], NO_COUNTING_KEY, "{reply}");
+    assert_eq!(reply["error"]["say"], OVERSTATED_KEY, "{reply}");
     assert_eq!(a.status()["governance"]["mode"], "unfounded");
 }
 
@@ -52,47 +52,48 @@ fn a_key_a_person_enrolled_with_a_typed_yes_is_weak() {
     let reply = a.call("pool_found", "", &a.token, json!({"act": act_of(&[phone_admin(0x70, "ann")])}));
     assert_eq!(reply["ok"], false, "a key the person typed yes for is a key a process of the account can use: {reply}");
     let drafted = a.ok("pool_draft_found", "", &a.token, json!({"title": "home", "policy": "secure", "project": "", "keys": [{"key": typed, "person": "ann", "label": "x"}]}));
-    assert_eq!(drafted["charter"]["admins"][0]["assurance"], "weak", "{drafted}");
+    assert_eq!(drafted["charter"]["admins"][0]["claim"]["method"], "keystore-typed", "{drafted}");
+    assert_eq!(a.node.lock().unwrap().persons.level_of(&typed), poolhouse_node::gov::keys::Level::Weak, "a typed yes counts for nothing");
 }
 
 #[test]
 fn a_draft_that_names_a_level_is_refused() {
     let a = device();
-    for said in ["phone", "computer", "weak"] {
-        let reply = draft(&a, json!([{"key": public(ANN), "person": "ann", "assurance": said, "label": "x"}]));
-        assert_eq!(reply["ok"], false, "{said}: {reply}");
+    for field in ["assurance", "level", "claim"] {
+        let reply = draft(&a, json!([{"key": public(ANN), "person": "ann", field: "phone", "label": "x"}]));
+        assert_eq!(reply["ok"], false, "{field}: {reply}");
     }
     let unknown = draft(&a, json!([{"key": public(ANN), "person": "ann", "label": "x", "role": "recovery"}]));
     assert_eq!(unknown["ok"], false, "a key is named by its key, person and label: {unknown}");
 }
 
 #[test]
-fn a_draft_gives_every_key_the_level_the_node_derives_and_the_pool_it_founds_keeps_it() {
+fn a_draft_gives_every_key_the_claim_the_node_derives_and_the_pool_it_founds_keeps_it() {
     let a = device();
     let now = poolhouse_node::poolops::wall_ms();
     a.node.lock().unwrap().persons.add_phone_key("ed25519", &public(ANN), "ann's phone", now).unwrap();
     let drafted = a.ok("pool_draft_found", "", &a.token, json!({"title": "home", "policy": "secure", "project": "", "keys": [
         {"key": public(ANN), "person": "ann", "label": "x"}, {"key": public(BEN), "person": "ben", "label": "y"}]}));
-    let level = |key: &str| drafted["charter"]["admins"].as_array().unwrap().iter().find(|k| k["key"] == key).unwrap()["assurance"].clone();
-    assert_eq!((level(&public(ANN)), level(&public(BEN))), (json!("phone"), json!("weak")), "{drafted}");
-    let computer = a.node.lock().unwrap().persons.add_leveled_key("ed25519", &public(0x33), "computer key", poolhouse_node::poolops::wall_ms(), poolhouse_node::gov::keys::Level::Computer).unwrap();
+    let method = |key: &str| drafted["charter"]["admins"].as_array().unwrap().iter().find(|k| k["key"] == key).unwrap()["claim"]["method"].clone();
+    assert_eq!((method(&public(ANN)), method(&public(BEN))), (json!("phone-keystore"), json!("keystore-typed")), "{drafted}");
+    let computer = a.node.lock().unwrap().persons.add_claimed_key("ed25519", &public(0x33), "computer key", poolhouse_node::poolops::wall_ms(), claim_at(poolhouse_node::gov::keys::Level::Computer)).unwrap();
     assert!(!computer.is_empty());
     let again = a.ok("pool_draft_found", "", &a.token, json!({"title": "home", "policy": "secure", "project": "", "keys": [{"key": public(0x33), "person": "cy", "label": "z"}]}));
-    assert_eq!(again["charter"]["admins"][0]["assurance"], "computer", "{again}");
+    assert_eq!(again["charter"]["admins"][0]["claim"]["method"], "keystore-prompt", "{again}");
     assert_eq!(again["charter"]["floors"], json!({"routine": "computer", "sensitive": "computer", "governance": "computer"}), "a pool of one computer key has its floors at computer: {again}");
 }
 
 #[test]
-fn one_enrolled_key_does_not_vouch_for_another_the_charter_calls_strong() {
+fn one_enrolled_key_does_not_vouch_for_another_the_charter_says_is_held_by_a_phone() {
     let a = device();
     let now = poolhouse_node::poolops::wall_ms();
     a.node.lock().unwrap().persons.add_phone_key("ed25519", &public(ANN), "ann's phone", now).unwrap();
     let both = a.call("pool_found", "", &a.token, json!({"act": act_of(&[phone_admin(ANN, "ann"), phone_admin(BEN, "ben")])}));
     assert_eq!(both["ok"], false, "{both}");
-    assert!(both["error"]["say"].as_str().unwrap().contains("stronger than this device"), "{both}");
+    assert!(both["error"]["say"].as_str().unwrap().contains("did not record"), "{both}");
     assert_eq!(a.status()["governance"]["mode"], "unfounded");
     let recovery = a.call("pool_found", "", &a.token, json!({"act": act_of(&[phone_admin(ANN, "ann"), recovery(BEN, "ann")])}));
-    assert_eq!(recovery["ok"], false, "a recovery key the charter calls strong is held to the same rule: {recovery}");
+    assert_eq!(recovery["ok"], false, "a recovery key that states a claim is no recovery key: {recovery}");
     let honest = a.call("pool_found", "", &a.token, json!({"act": serde_json::to_value(found_act(&charter_for(&a, &[phone_admin(ANN, "ann"), weak(BEN, "ben")], Policy::Secure))).unwrap()}));
     assert_eq!(honest["ok"], true, "a key the charter calls weak needs no enrolment: {honest}");
 }

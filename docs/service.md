@@ -25,7 +25,7 @@ Two modes, one system.
 | | Private pool | Open market |
 |---|---|---|
 | Who | Devices of one person, family or team who already trust each other | Providers and consumers who have never met |
-| Trust | Joining with a shared pool key and pinned TLS today [code] `fleet/tls.py`, [docs] `docs/fleet.md`; per-device keys and revocation replace the shared key [plan] `docs/pool-encryption.md` | None assumed; every party untrusted |
+| Trust | Membership by device certificate and pinned TLS today [code] `fleet/tls.py`, [docs] `docs/node.md`; per-device keys and revocation [plan] `docs/pool-encryption.md` | None assumed; every party untrusted |
 | Money | None; runs are free, credits are a record [code] `reputation/economy.py` | Priced, settled, paid out |
 | Operator | Nobody; no host [docs] `docs/board-replication.md` (design note, "nothing is implemented") | An operator for accounts, payments, abuse |
 | Workloads | Anything the owner runs | Only what survives an untrusted provider (section 4) |
@@ -185,10 +185,9 @@ binds proposal and review hashes, not the worker's claims. **[code]**
 ### 3.5 Isolation and keys
 
 Exists: encrypted-at-rest reputation graph under a keystore key [code]; a TLS certificate per daemon
-pinned by devices, with discovery sealed under a key derived from the pool key [docs/code
+pinned by devices [docs/code
 `docs/fleet.md`, `fleet/tls.py`]; an OS sandbox with deny-by-default files, network, programs and
-environment [docs `docs/sandbox.md`]. Gaps: one pool key means every member can read
-every other member's traffic, so it is a *private-pool* primitive only [docs `docs/fleet.md`]; there
+environment [docs `docs/sandbox.md`]. Gaps: every member is fully trusted, so it is a *private-pool* primitive only [docs `docs/security.md`]; there
 are no per-tenant keys, caches or model-cache separation. The per-tenant key plan from
 `docs/pool-encryption.md` cannot be summarised because that file is absent. **[plan]** per-tenant
 data keys, a per-tenant KV and prompt cache that is never shared across tenants, and a job
@@ -344,11 +343,11 @@ touched, without its own task.
 
 | # | Check | Existing code (verified) | Cost | Opportunistic |
 |---|---|---|---|---|
-| 1 | Providers and consumers are untrusted | Complies: sandbox deny-by-default; reviewer cannot be the worker (`task_credit.py`). Violates: one shared pool key trusts every member (`docs/fleet.md`) | L for the pool key; S elsewhere | Yes for new code |
+| 1 | Providers and consumers are untrusted | Complies: sandbox deny-by-default; reviewer cannot be the worker (`task_credit.py`). Violates: a pool member is fully trusted (`docs/security.md`) | L for member trust; S elsewhere | Yes for new code |
 | 2 | No single-owner or single-user assumption in ids, paths, stores or UI | Violates: reputation store is `reputation/u-<id>/graph.enc`; a device has one person-enrolled account; one `owner` token file (`work_reputation.fleet_route`) | M | Yes, when a store path is edited |
 | 3 | Every job and request carries a tenant id | Violates: no `tenant` in `src/` (grep, zero hits); allocations carry worker, task, device only (`resource_allocations.assign`) | M | Yes, add the field as optional on new records |
 | 4 | Every job's resource use flows through the existing credit and attribution path; do not add a parallel ledger | Complies: allocation, `verified_usage`, `economy.summary` (3.1). Violates: usage has only tokens and wall seconds | M | Yes: extend `economy.assessment` usage fields, never a second store |
-| 5 | Keys and caches are per tenant | Violates: one keystore profile `reputation`; one pool key; no per-tenant KV or prompt cache separation | L | No, design first |
+| 5 | Keys and caches are per tenant | Violates: one keystore profile `reputation`; one trust level for every member; no per-tenant KV or prompt cache separation | L | No, design first |
 | 6 | No host or central authority in the data path; an operator is optional and replaceable | Complies for the board: every device holds a signed replica and syncs with whichever devices it reaches (`docs/node.md`, "Sync"). Violates: the coordination of paid work has no design yet | L | No |
 | 7 | Verified-work accounting is independent of who ran it | Complies: awards bind proposal and review hashes and refuse a self-review (`task_credit.py`); `work_dimensions` (unlanded) keeps views derived | S | Yes |
 | 8 | Egress and sandbox policy default-deny for foreign work | Complies: `Net.deny()` is the policy default (`sandbox/policy.py`, `docs/sandbox.md`). Not checked: whether every launcher routes through it | S to M | Yes, route a launcher through it when touched |

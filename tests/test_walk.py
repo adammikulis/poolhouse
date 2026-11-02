@@ -10,8 +10,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 
 from poolhouse.log import to
+from poolhouse.testing.canned import CANNED_MARKER, CANNED_MODEL_ID, marked
 from poolhouse.walk import ops
 from poolhouse.walk.cli import report
 from poolhouse.walk.ops import FLEET, GRAPH, Stop, Walk
@@ -107,11 +109,10 @@ class TestWalkingTheDaemon:
         stops = walked(daemon, tmp_path, playwright)
         by_name = {stop.screen: stop for stop in stops}
 
-        assert [s.screen for s in stops if s.shot] == ["name", "pools", "job", "start"]
+        assert [s.screen for s in stops if s.shot] == ["device"]
         assert all(stop.ok for stop in stops)
-        assert "Set up this machine" in by_name["name"].text
-        assert "Pools" in by_name["pools"].text
-        assert "preferences" in by_name["run"].skipped
+        assert "Welcome to Poolhouse" in by_name["device"].text
+        assert "preferences" in by_name["model"].skipped
         assert "first-run" in by_name["pool"].skipped
 
     def test_every_screen_it_walked_left_a_picture(self, daemon, tmp_path, playwright):
@@ -122,9 +123,9 @@ class TestWalkingTheDaemon:
 
     def test_naming_two_screens_walks_only_those(self, daemon, tmp_path, playwright):
         stops = walked(daemon, tmp_path, playwright,
-                       screens=ops.screens_of("fleet", ["job", "name"]))
-        assert [stop.screen for stop in stops] == ["name", "job"]
-        assert "What should this machine do?" in stops[1].text
+                       screens=ops.screens_of("fleet", ["model", "device"]), setup=True)
+        assert [stop.screen for stop in stops] == ["device", "model"]
+        assert "Make this device ready" in stops[1].text
 
     def test_a_port_with_nothing_on_it_is_refused_rather_than_walked(self, tmp_path,
                                                                      monkeypatch,
@@ -157,11 +158,11 @@ GRAPH_OF_TWO = {
 
 @pytest.fixture
 def slow_model(monkeypatch):
-    """A model streaming for longer than a screen is given to settle."""
-    from poolhouse.testing.fakes import FakeLlamaServer, Served
+    """A canned server streaming for longer than a screen is given to settle; it is not a model."""
+    from poolhouse.testing.canned import Canned, CannedServer
 
     monkeypatch.setattr(ops, "SETTLE_MS", 300)
-    fake = FakeLlamaServer(Served(pieces=SLOW, gap=0.4))
+    fake = CannedServer(Canned(pieces=SLOW, gap=0.4))
     try:
         yield fake
     finally:
@@ -196,40 +197,40 @@ def test_asking_the_graph_page_waits_for_the_whole_streamed_answer(slow_model, t
         except pw.Error as exc:                        # pragma: no cover - depends on setup
             pytest.skip(f"chromium did not launch: {exc}")
     assert [s.screen for s in stops] == ["ask"] and stops[0].ok, stops
-    assert "Ada Lovelace works on iron." in stops[0].text.splitlines(), stops[0].text
+    assert marked("Ada Lovelace works on iron.") in stops[0].text.splitlines(), stops[0].text
 
 
 @pytest.mark.slow
 def test_saying_something_in_the_fleet_chat_waits_for_the_whole_reply(slow_model, tmp_path,
                                                                       monkeypatch,
-                                                                      playwright):
+                                                                      playwright, studio_node):  # noqa: F811
     import time
 
-    from test_fleet_ui import WORDS, Serving
+    from test_fleet_ui import Serving
 
     from poolhouse.fleet.conversations import Conversations
     from poolhouse.fleet.serving import Serving as Models
-    from tests.pool_support import join_pool_by_passphrase
 
     monkeypatch.setenv("POOLHOUSE_CACHE", str(tmp_path / "cache"))
     served = Serving(tmp_path, name="laptop")
     try:
-        join_pool_by_passphrase(WORDS, group="home", path=served.keyfile)
-        served.call("/ui/setup/join", method="POST",
-                    body={"passphrase": WORDS, "group": "home"})
         served.ui.setup_finished()
+        served.ui.root = served.files.parent
         served.ui.conversations = Conversations(tmp_path / "chats")
         models = Models(tmp_path / "serving.json")
-        models.register(slow_model.port, ["quince-2b.gguf"])
+        decoder = models.register(slow_model.port, [CANNED_MODEL_ID])
+        decoder.capabilities = {"chat": True}
+        monkeypatch.setattr(models, "all", lambda: [decoder])
         served.ui.serving = models
         served.ui._members = (time.time(), [])
-        stops = walked(served, tmp_path, playwright, screens=("chat",), passphrase=WORDS,
+        stops = walked(served, tmp_path, playwright, screens=("chat",),
                        say="hello", answer_s=60.0)
     finally:
         served.httpd.shutdown()
         served.httpd.server_close()
     assert [s.screen for s in stops] == ["chat"] and stops[0].ok, stops
-    assert "hello" in stops[0].text and "".join(SLOW) in stops[0].text, stops[0].text
+    assert "hello" in stops[0].text and marked("".join(SLOW)) in stops[0].text, stops[0].text
+    assert CANNED_MARKER in stops[0].text, "the walked page shows the reply is canned"
 
 
 @pytest.mark.slow

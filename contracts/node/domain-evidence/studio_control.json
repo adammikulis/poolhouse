@@ -1,0 +1,1990 @@
+{
+  "version": 1,
+  "status": "proposal",
+  "domain": "studio_public_control_partial_checkpoint",
+  "source_commit": "d9c0d7cc3ebe4a547a9573be5af3d10a6867f9ec",
+  "sources": [
+    {
+      "path": "src/poolhouse/fleet/studio_routes.py",
+      "sha256": "d021e4dd3c2b3723caa94e071a867a1a2a43b413603de84ae3e775fe57ab88a3",
+      "git_blob": "2ab0c7a8c2eb053740e11172f652bcc43d0d0b92"
+    },
+    {
+      "path": "src/poolhouse/studio/engine.py",
+      "sha256": "f8fb0cdf4e64dc61ddbf92cb3077d5e09d0de3190477c4b58c7e1bfa28bd70bf",
+      "git_blob": "5620c902c9d0c5e17ba099ef8e2ad4364d84ffa3"
+    },
+    {
+      "path": "src/poolhouse/studio/store.py",
+      "sha256": "c09631b800ee6bfc973c8e158f631c068df9b2f11b51a70f2523d935f92841b1",
+      "git_blob": "5e2bd3ff90ee99d56bd43375d79ab81ade8fc565"
+    },
+    {
+      "path": "src/poolhouse/studio/contracts.py",
+      "sha256": "5536cfb38922b156048b7b831c2548dcdb66d7918e8b4dc8ac02a3bc211eca56",
+      "git_blob": "c5d495a74743ce54342c86b0168537586340ccce"
+    },
+    {
+      "path": "src/poolhouse/studio/catalog.py",
+      "sha256": "e716bd3d7c2035a36f0cf99e545b537a78886241576e877baa839d91f881dc51",
+      "git_blob": "c8178272cfca0b2e47affdff2549490bdecad653"
+    },
+    {
+      "path": "src/poolhouse/studio/templates.py",
+      "sha256": "cbbf21b47e7ddf6af4772c1e412f63a50c0842ffb567575ad8eb504c6d613da2",
+      "git_blob": "04be1d9864eff113f38ede07117cd4d4ff8a5679"
+    },
+    {
+      "path": "src/poolhouse/studio/decision_templates.py",
+      "sha256": "dc10d741621be52e0fd04bf59e07807fb65de0ab2818e300e6cb09727573b397",
+      "git_blob": "270343dfbcb8f9105c400fdaedf88a846bf987a8"
+    },
+    {
+      "path": "src/poolhouse/studio/rag_template.py",
+      "sha256": "ac579ba88b7f199309b0626c01420b15f87ff0b189ea6bdb4079190ed0d2039b",
+      "git_blob": "40b23133e567af1bdf3dfa296703151654c27a42"
+    },
+    {
+      "path": "src/poolhouse/fleet/studio_artifacts.py",
+      "sha256": "c55a86dd793e3c95cc7cea45ca5c1228fb89fc1a162ab55585a9ef831868cf01",
+      "git_blob": "dea48d233b6f2eac931b256fdde4ae320da46acd"
+    },
+    {
+      "path": "src/poolhouse/fleet/workspace_routes.py",
+      "sha256": "abe6084619b1da6eaad94161be9a608429b09deec1107cded7c26fadc742d396",
+      "git_blob": "1292b096f82b4182e6a378430f455cb0c98ea4a4"
+    },
+    {
+      "path": "src/poolhouse/fleet/studio_service.py",
+      "sha256": "de3dfb0f642b18fd70d7029e8d892ccd5f45b287811f6b6667a85c90dc06296a",
+      "git_blob": "3717e6f24011faaff590bc692641d95bd6754121"
+    },
+    {
+      "path": "src/poolhouse/fleet/studio_stream_routes.py",
+      "sha256": "4954dacf373e34a49892a070356cbd7f7acd3075d3c4412d3462cbccec0cdcfc",
+      "git_blob": "ecb29179dee92d548f4410b6285c92bc52a14ab4"
+    },
+    {
+      "path": "src/poolhouse/studio/packages.py",
+      "sha256": "455194ba1614632eae03c5ebdfe8429b61c30d3f4a1d96c83da390a1067fa394",
+      "git_blob": "e1c6574e1967dcbe07cb565c4fb19bcafefb5c53"
+    },
+    {
+      "path": "src/poolhouse/studio/n8n.py",
+      "sha256": "23400f3ce499978c6ff55f7ca7a7772a5812a2be93f114977209d74bbdfada44",
+      "git_blob": "f93fd276e01b218c384a11302355a3f186d63341"
+    },
+    {
+      "path": "src/poolhouse/studio/adapters.py",
+      "sha256": "4e941ce82059ad7a0984528e08afc17f6d19288249bd3a45f09399946ed355be",
+      "git_blob": "862fcb6d60046ee7313ba4fbb0553f063a6766f8"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-model.html",
+      "sha256": "5f9556b37885733beb7c89bc1a389bb6a7ec0e2bf5e3bf9bdcd96a6ff9f6dd7a",
+      "git_blob": "dd189d56a2e3958d2542f31d1715ae52cad86108"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-view.html",
+      "sha256": "4bd8518612ba517b97950831a84935e90045139b8849795512e86f0e40486b7f",
+      "git_blob": "21e6916cd411e230e5102dbd424bc73010a3c081"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-persistence.html",
+      "sha256": "bc093f7a9fcf8faaf3dbb1fb5a9c4d24b19137af24447205f317fd08475aad69",
+      "git_blob": "27cc63f87f1a006e0703802b15ad39a0ae8e6159"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "sha256": "fcc54c63e9252dd85e40fea2d88249a5eea9cde3ee10875f4e768660f87e1f93",
+      "git_blob": "ffb6340d29093851dbed4ea4b873d5bc42ab869b"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-setup.html",
+      "sha256": "81e16e8009784fb31b27f16a3c573b9bcff897c8ddd1f81fadd720787a817b2c",
+      "git_blob": "de4f0f7ddf4d1f8759803a6af76a80614c82b212"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-sharing.html",
+      "sha256": "b96609c091f52d16bb8488e2adde9eb10e5df832d38cf2ebd382104f9e5c5556",
+      "git_blob": "f743da63fe86633bfbcb8b2bb0d6a74f4030c2d6"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-live.html",
+      "sha256": "29c33759e83d1fd5ac56903e3ccfc6786b1fc56798d62866f5453bebe74f2e72",
+      "git_blob": "a9a9bde0c36efe12185687c8686753b21c46e9eb"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-delivery.html",
+      "sha256": "2cb616d1587a023ebecb67c9f5879a3385cb65cc42f4c3437f9fe712f7734aeb",
+      "git_blob": "f53c0ed9ac94539c380b1608599feb1b3cf1f6e2"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-n8n.html",
+      "sha256": "0a9f02bc6852ee6e1a934ef1dcba3bff4e8c1de00c539d7cebc2911e983c45b7",
+      "git_blob": "c7c35310ed67315ee962b5e695367b6fb3bc3e15"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-webhook.html",
+      "sha256": "1b76179bff0ae24252cafeb515383b0e2dd4d7057854479036809c72e98996f1",
+      "git_blob": "0a877a8153b03da89f7370c6ba9a46ebc9f8be50"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-producer.html",
+      "sha256": "a210003a9082e59736e43da13188280a7078461bad546ad30e6aeda9f60cb02a",
+      "git_blob": "7baf93036f1973a05094aca6dcb0bce48cebc2e8"
+    },
+    {
+      "path": "contracts/node/domains/studio_workers.toml",
+      "sha256": "dd0e31d1be157485c9ced85e7ea7dc8888dd44a704be3a7a521c31f5fd272177",
+      "git_blob": "00a435c26df59579397f0e9f57a6e6306e835b56"
+    },
+    {
+      "path": "contracts/node/domains/board_content.toml",
+      "sha256": "7ae23ba7f19d84ba1c0116fdbd83ce42e80eec948ec32c49778ec0e3cd0f9e8b",
+      "git_blob": "47a81b377ccab4d230dadee02e977aa060c77f49"
+    },
+    {
+      "path": "contracts/node/domains/models.toml",
+      "sha256": "39688adacea0dad8a689e8b45a22cbc7415543ba156815860cea1f0b70424814",
+      "git_blob": "391a2d13b642de867958d36ff1b73805b9ccc9e5"
+    }
+  ],
+  "declarations": {
+    "types": 101,
+    "operations": 28,
+    "visibility": "public-data-only",
+    "partial_scope": "Control/state, immutable scoped transfer/reference and read contracts only. Managed refs/version/role labels do NOT close graph/node/parameter/selection/metric schemas or prove installed callers/native authority. No private StudioWorker DTO export, generator/runtime/adapter/model/scheduler change."
+  },
+  "operation_mapping": [
+    {
+      "operation": "studio.catalog.list",
+      "request": "StudioControlListRequest",
+      "response": "StudioControlReadEvent",
+      "source_and_callers": [
+        "GET /ui/studio/nodes",
+        "studio_routes.py:63",
+        "studio-view.html:246"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "immutable-snapshot-principal-and-context-bound",
+        "reauthorize-every-item-and-error",
+        "redact-secrets-paths-private-resource-existence",
+        "metadata-never-execution-right"
+      ]
+    },
+    {
+      "operation": "studio.templates.list",
+      "request": "StudioControlListRequest",
+      "response": "StudioControlReadEvent",
+      "source_and_callers": [
+        "GET /ui/studio/templates",
+        "studio_routes.py:71",
+        "studio-view.html:247"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "immutable-snapshot-principal-and-context-bound",
+        "reauthorize-every-item-and-error",
+        "redact-secrets-paths-private-resource-existence",
+        "metadata-never-execution-right"
+      ]
+    },
+    {
+      "operation": "studio.availability.inspect",
+      "request": "StudioControlInspectRequest",
+      "response": "StudioControlAvailabilityView",
+      "source_and_callers": [
+        "GET /ui/studio/nodes requirements",
+        "GET /ui/studio/devices",
+        "GET /ui/studio/resources",
+        "studio_routes.py:63,95,102",
+        "studio-view.html:249,267"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "current-catalog-and-resource-observations",
+        "metadata-never-install-or-admission-right"
+      ]
+    },
+    {
+      "operation": "studio.graphs.stage.begin",
+      "request": "StudioControlGraphStageBeginRequest",
+      "response": "StudioControlUploadView",
+      "source_and_callers": [
+        "NEW canonical transfer/reference helper, not an implemented legacy route",
+        "studio-persistence.html:graph/title save payload",
+        "studio-runs.html:selected output references",
+        "studio/contracts.py:source graph grammar"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "node-assigns-exact-fixed-document-role",
+        "source-and-total-expansion-profile-required",
+        "scoped-storage-admission-before-staging",
+        "durable-byte-digest-and-principal-bound"
+      ]
+    },
+    {
+      "operation": "studio.titles.stage.begin",
+      "request": "StudioControlTitleStageBeginRequest",
+      "response": "StudioControlUploadView",
+      "source_and_callers": [
+        "NEW canonical transfer/reference helper, not an implemented legacy route",
+        "studio-persistence.html:graph/title save payload",
+        "studio-runs.html:selected output references",
+        "studio/contracts.py:source graph grammar"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "node-assigns-exact-fixed-document-role",
+        "source-and-total-expansion-profile-required",
+        "scoped-storage-admission-before-staging",
+        "durable-byte-digest-and-principal-bound"
+      ]
+    },
+    {
+      "operation": "studio.documents.stage.write",
+      "request": "StudioControlStageWriteRequest",
+      "response": "StudioControlUploadView",
+      "source_and_callers": [
+        "NEW canonical transfer/reference helper, not an implemented legacy route",
+        "studio-persistence.html:graph/title save payload",
+        "studio-runs.html:selected output references",
+        "studio/contracts.py:source graph grammar"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "actual-upload-owner-and-role",
+        "exact-ordered-offset-and-byte-digest",
+        "compare-and-swap-resource-revision",
+        "profile-budget-before-append"
+      ]
+    },
+    {
+      "operation": "studio.documents.stage.seal",
+      "request": "StudioControlStageSealRequest",
+      "response": "StudioControlUploadView",
+      "source_and_callers": [
+        "NEW canonical transfer/reference helper, not an implemented legacy route",
+        "studio-persistence.html:graph/title save payload",
+        "studio-runs.html:selected output references",
+        "studio/contracts.py:source graph grammar"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "actual-upload-owner-and-role",
+        "freeze-same-complete-bytes-before-hash",
+        "exact-profile-and-digest-before-seal",
+        "compare-and-swap-resource-revision",
+        "sealing-not-validation-or-execution"
+      ]
+    },
+    {
+      "operation": "studio.documents.read",
+      "request": "StudioControlDocumentReadRequest",
+      "response": "StudioControlDocumentChunk",
+      "source_and_callers": [
+        "NEW canonical transfer/reference helper, not an implemented legacy route",
+        "studio-persistence.html:graph/title save payload",
+        "studio-runs.html:selected output references",
+        "studio/contracts.py:source graph grammar"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "exact-node-issued-document-role-and-snapshot",
+        "checked-byte-range-and-overflow",
+        "reauthorize-each-range",
+        "no-caller-path-or-role-retagging"
+      ]
+    },
+    {
+      "operation": "studio.graphs.nodes.list",
+      "request": "StudioControlGraphNodeListRequest",
+      "response": "StudioControlReadEvent",
+      "source_and_callers": [
+        "NEW canonical transfer/reference helper, not an implemented legacy route",
+        "studio-persistence.html:graph/title save payload",
+        "studio-runs.html:selected output references",
+        "studio/contracts.py:source graph grammar"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "exact-raw-or-expanded-graph-version",
+        "invalid-draft-node-refs-confer-no-validity",
+        "immutable-snapshot-principal-and-context-bound",
+        "reauthorize-every-item-and-error"
+      ]
+    },
+    {
+      "operation": "studio.graphs.validate",
+      "request": "StudioControlValidateRequest",
+      "response": "StudioControlValidationView",
+      "source_and_callers": [
+        "POST /ui/studio/validate",
+        "studio_routes.py:74",
+        "studio-runs.html:26"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "exact-source-graph-and-versioned-canonical-schema",
+        "unsupported-incomplete-schema-refuses",
+        "no-private-worker-dto-or-parser-cast",
+        "validation-not-run-or-resource-authority",
+        "redact-secrets-paths-private-resource-existence"
+      ]
+    },
+    {
+      "operation": "studio.workflows.create",
+      "request": "StudioControlWorkflowCreateRequest",
+      "response": "StudioControlWorkflowSaveResult",
+      "source_and_callers": [
+        "GET/POST /ui/studio/workflows",
+        "GET/PUT/POST /ui/studio/workflows/{id}",
+        "studio_routes.py:116",
+        "studio-persistence.html:153"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "exact-node-issued-title-and-draft-graph-roles",
+        "immutable-attempt-and-principal-binding",
+        "scoped-storage-admission",
+        "compare-and-swap-resource-revision",
+        "save-invalid-draft-never-execution"
+      ]
+    },
+    {
+      "operation": "studio.workflows.update",
+      "request": "StudioControlWorkflowUpdateRequest",
+      "response": "StudioControlWorkflowSaveResult",
+      "source_and_callers": [
+        "GET/POST /ui/studio/workflows",
+        "GET/PUT/POST /ui/studio/workflows/{id}",
+        "studio_routes.py:116",
+        "studio-persistence.html:153"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "exact-node-issued-title-and-draft-graph-roles",
+        "immutable-attempt-and-principal-binding",
+        "recoverable-conflict-copy-once-per-exact-attempt",
+        "scoped-storage-admission",
+        "compare-and-swap-resource-revision",
+        "save-invalid-draft-never-execution"
+      ]
+    },
+    {
+      "operation": "studio.workflows.get",
+      "request": "StudioControlWorkflowGetRequest",
+      "response": "StudioControlWorkflowView",
+      "source_and_callers": [
+        "GET/POST /ui/studio/workflows",
+        "GET/PUT/POST /ui/studio/workflows/{id}",
+        "studio_routes.py:116",
+        "studio-persistence.html:153"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "current-workflow-read-authority"
+      ]
+    },
+    {
+      "operation": "studio.workflows.list",
+      "request": "StudioControlListRequest",
+      "response": "StudioControlReadEvent",
+      "source_and_callers": [
+        "GET/POST /ui/studio/workflows",
+        "GET/PUT/POST /ui/studio/workflows/{id}",
+        "studio_routes.py:116",
+        "studio-persistence.html:153"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "immutable-snapshot-principal-and-context-bound",
+        "reauthorize-every-item-and-error"
+      ]
+    },
+    {
+      "operation": "studio.selections.create",
+      "request": "StudioControlSelectionCreateRequest",
+      "response": "StudioControlSelectionView",
+      "source_and_callers": [
+        "NEW canonical transfer/reference helper, not an implemented legacy route",
+        "studio-persistence.html:graph/title save payload",
+        "studio-runs.html:selected output references",
+        "studio/contracts.py:source graph grammar"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "exact-immutable-raw-or-expanded-graph",
+        "incomplete-selection-schema-refuses",
+        "no-selection-label-grants-execution"
+      ]
+    },
+    {
+      "operation": "studio.selections.append",
+      "request": "StudioControlSelectionAppendRequest",
+      "response": "StudioControlSelectionView",
+      "source_and_callers": [
+        "NEW canonical transfer/reference helper, not an implemented legacy route",
+        "studio-persistence.html:graph/title save payload",
+        "studio-runs.html:selected output references",
+        "studio/contracts.py:source graph grammar"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "exact-graph-owned-selector-form-and-incarnation",
+        "compare-and-swap-resource-revision",
+        "incomplete-selection-schema-refuses",
+        "no-selection-label-grants-execution"
+      ]
+    },
+    {
+      "operation": "studio.selections.seal",
+      "request": "StudioControlSelectionSealRequest",
+      "response": "StudioControlSelectionView",
+      "source_and_callers": [
+        "NEW canonical transfer/reference helper, not an implemented legacy route",
+        "studio-persistence.html:graph/title save payload",
+        "studio-runs.html:selected output references",
+        "studio/contracts.py:source graph grammar"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "exact-source-group-variant-semantics",
+        "resolve-data-and-control-ancestor-closure",
+        "compare-and-swap-resource-revision",
+        "incomplete-selection-schema-refuses",
+        "no-selection-label-grants-execution"
+      ]
+    },
+    {
+      "operation": "studio.runs.submit",
+      "request": "StudioControlRunSubmitRequest",
+      "response": "StudioControlRunView",
+      "source_and_callers": [
+        "GET/POST /ui/studio/runs",
+        "GET /ui/studio/runs/{id}",
+        "POST /ui/studio/runs/{id}/{cancel|resume}",
+        "studio_routes.py:141",
+        "studio/engine.py:prepare/submit/_selected/cancel/resume",
+        "studio-runs.html:47,76,91"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "exact-immutable-workflow-revision-and-output-semantics",
+        "current-action-specific-run-and-all-resource-entitlement",
+        "stable-semantic-idempotency-before-new-admission",
+        "prior-result-under-current-auth-or-changed-payload-refusal",
+        "unknown-outcome-never-recomputed",
+        "selected-data-and-control-ancestor-closure",
+        "incomplete-graph-or-selection-schema-refuses"
+      ]
+    },
+    {
+      "operation": "studio.runs.get",
+      "request": "StudioControlRunGetRequest",
+      "response": "StudioControlRunView",
+      "source_and_callers": [
+        "GET/POST /ui/studio/runs",
+        "GET /ui/studio/runs/{id}",
+        "POST /ui/studio/runs/{id}/{cancel|resume}",
+        "studio_routes.py:141",
+        "studio/engine.py:prepare/submit/_selected/cancel/resume",
+        "studio-runs.html:47,76,91"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "actual-run-owner-or-current-explicit-controller",
+        "reauthorize-all-run-resource-disclosure"
+      ]
+    },
+    {
+      "operation": "studio.runs.list",
+      "request": "StudioControlListRequest",
+      "response": "StudioControlReadEvent",
+      "source_and_callers": [
+        "GET/POST /ui/studio/runs",
+        "GET /ui/studio/runs/{id}",
+        "POST /ui/studio/runs/{id}/{cancel|resume}",
+        "studio_routes.py:141",
+        "studio/engine.py:prepare/submit/_selected/cancel/resume",
+        "studio-runs.html:47,76,91"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "actual-run-owner-or-current-explicit-controller",
+        "immutable-snapshot-principal-and-context-bound",
+        "reauthorize-every-item-and-error",
+        "reauthorize-all-run-resource-disclosure"
+      ]
+    },
+    {
+      "operation": "studio.runs.nodes.list",
+      "request": "StudioControlRunNodeListRequest",
+      "response": "StudioControlReadEvent",
+      "source_and_callers": [
+        "GET/POST /ui/studio/runs",
+        "GET /ui/studio/runs/{id}",
+        "POST /ui/studio/runs/{id}/{cancel|resume}",
+        "studio_routes.py:141",
+        "studio/engine.py:prepare/submit/_selected/cancel/resume",
+        "studio-runs.html:47,76,91"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "actual-run-owner-or-current-explicit-controller",
+        "exact-run-node-execution-incarnation",
+        "immutable-snapshot-principal-and-context-bound",
+        "reauthorize-every-item-and-error"
+      ]
+    },
+    {
+      "operation": "studio.runs.cancel",
+      "request": "StudioControlRunCancelRequest",
+      "response": "StudioControlRunMutationResult",
+      "source_and_callers": [
+        "GET/POST /ui/studio/runs",
+        "GET /ui/studio/runs/{id}",
+        "POST /ui/studio/runs/{id}/{cancel|resume}",
+        "studio_routes.py:141",
+        "studio/engine.py:prepare/submit/_selected/cancel/resume",
+        "studio-runs.html:47,76,91"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "actual-run-owner-or-current-explicit-controller",
+        "current-action-specific-cancel-authority",
+        "durable-single-intent-versus-terminal-winner",
+        "compare-and-swap-resource-revision",
+        "cancel-observation-never-physical-settlement"
+      ]
+    },
+    {
+      "operation": "studio.runs.resume",
+      "request": "StudioControlRunResumeRequest",
+      "response": "StudioControlRunMutationResult",
+      "source_and_callers": [
+        "GET/POST /ui/studio/runs",
+        "GET /ui/studio/runs/{id}",
+        "POST /ui/studio/runs/{id}/{cancel|resume}",
+        "studio_routes.py:141",
+        "studio/engine.py:prepare/submit/_selected/cancel/resume",
+        "studio-runs.html:47,76,91"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "actual-run-owner-or-current-explicit-controller",
+        "current-action-specific-renewed-authority",
+        "exact-old-local-and-remote-child-lease-publication-reconciliation",
+        "unknown-effects-never-repeated",
+        "no-principal-reassignment-or-label-takeover",
+        "compare-and-swap-resource-revision"
+      ]
+    },
+    {
+      "operation": "studio.runs.artifacts.list",
+      "request": "StudioControlArtifactListRequest",
+      "response": "StudioControlReadEvent",
+      "source_and_callers": [
+        "GET /ui/studio/runs/{id}/artifacts",
+        "GET/HEAD /ui/studio/runs/{id}/artifacts/file?node&port&name",
+        "studio_routes.py:178,183,197,210",
+        "studio_artifacts.py:artifact_files/open_artifact"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "actual-run-owner-or-current-explicit-controller",
+        "full-original-run-lineage-cycle-and-entitlement-check",
+        "exact-original-node-port-manifest-and-immutable-snapshot",
+        "immutable-snapshot-principal-and-context-bound",
+        "reauthorize-every-item-and-error"
+      ]
+    },
+    {
+      "operation": "studio.artifacts.inspect",
+      "request": "StudioControlArtifactInspectRequest",
+      "response": "StudioControlArtifactView",
+      "source_and_callers": [
+        "GET /ui/studio/runs/{id}/artifacts",
+        "GET/HEAD /ui/studio/runs/{id}/artifacts/file?node&port&name",
+        "studio_routes.py:178,183,197,210",
+        "studio_artifacts.py:artifact_files/open_artifact"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "full-original-run-lineage-cycle-and-entitlement-check",
+        "exact-original-node-port-manifest-and-immutable-snapshot",
+        "current-resource-revocation-fence"
+      ]
+    },
+    {
+      "operation": "studio.artifacts.read",
+      "request": "StudioControlArtifactReadRequest",
+      "response": "StudioControlArtifactChunk",
+      "source_and_callers": [
+        "GET /ui/studio/runs/{id}/artifacts",
+        "GET/HEAD /ui/studio/runs/{id}/artifacts/file?node&port&name",
+        "studio_routes.py:178,183,197,210",
+        "studio_artifacts.py:artifact_files/open_artifact"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "full-original-run-lineage-cycle-and-entitlement-check",
+        "exact-original-node-port-manifest-and-immutable-snapshot",
+        "freeze-revoke-all-writers-and-read-same-validated-bytes",
+        "checked-byte-range-and-overflow",
+        "reauthorize-each-range",
+        "no-path-symlink-or-worker-output-authority"
+      ]
+    },
+    {
+      "operation": "studio.runs.logs.read",
+      "request": "StudioControlRunNodeDataRequest",
+      "response": "StudioControlRunNodeDataView",
+      "source_and_callers": [
+        "GET /ui/studio/runs/{id}/logs?node",
+        "studio_routes.py:184",
+        "workspace_routes.py:169 _job_detail",
+        "studio-runs.html log view"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "exact-run-node-job-execution-incarnation",
+        "actual-run-owner-or-current-explicit-controller",
+        "scoped-managed-document-profile-required",
+        "redact-secrets-paths-private-resource-existence",
+        "reauthorize-every-item-and-error"
+      ]
+    },
+    {
+      "operation": "studio.runs.metrics.read",
+      "request": "StudioControlRunNodeDataRequest",
+      "response": "StudioControlRunNodeDataView",
+      "source_and_callers": [
+        "GET /ui/studio/runs/{id}/logs?node",
+        "studio_routes.py:184",
+        "workspace_routes.py:169 _job_detail",
+        "studio-runs.html log view"
+      ],
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "exact-authorized-studio-project-scope",
+        "no-existence-disclosure-before-authorization",
+        "exact-run-node-job-execution-incarnation",
+        "actual-run-owner-or-current-explicit-controller",
+        "scoped-managed-document-profile-required",
+        "redact-secrets-paths-private-resource-existence",
+        "reauthorize-every-item-and-error"
+      ]
+    }
+  ],
+  "actual_ui_calls": [
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-model.html",
+      "line": 51,
+      "source_line": "const r = await window.fleetModel.api(",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-model.html",
+      "line": 52,
+      "source_line": "\"/ui/studio\" + path,",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-view.html",
+      "line": 246,
+      "source_line": "S.api(\"/nodes\"),",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-view.html",
+      "line": 247,
+      "source_line": "S.api(\"/templates\"),",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-view.html",
+      "line": 248,
+      "source_line": "S.api(\"/workflows\"),",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-view.html",
+      "line": 249,
+      "source_line": "S.api(\"/devices\"),",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-view.html",
+      "line": 267,
+      "source_line": "const resources = await S.api(\"/resources\");",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-persistence.html",
+      "line": 153,
+      "source_line": "const request = S.api(",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 26,
+      "source_line": "const validation = await S.api(\"/validate\", {",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 47,
+      "source_line": "const r = await S.api(\"/runs\", {",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 76,
+      "source_line": "const result = await S.api(\"/runs\");",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 91,
+      "source_line": "await S.api(\"/runs/\" + encodeURIComponent(run.id))",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 113,
+      "source_line": "const latest = await S.api(",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 172,
+      "source_line": "const result = await S.api(",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 191,
+      "source_line": "const response = await window.fleetModel.api(",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 226,
+      "source_line": "const result = await S.api(",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 256,
+      "source_line": "await S.api(",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 274,
+      "source_line": "await S.api(",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-setup.html",
+      "line": 77,
+      "source_line": "S.api(\"/resources\"),",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-setup.html",
+      "line": 78,
+      "source_line": "S.api(\"/nodes\"),",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-setup.html",
+      "line": 111,
+      "source_line": "const response = await M.api(\"/ui/setup/jobs\");",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-setup.html",
+      "line": 144,
+      "source_line": "const result = await S.api(\"/resources/decision/install\", {});",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-sharing.html",
+      "line": 145,
+      "source_line": "const result = await S.api(\"/packages/export\", {",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-sharing.html",
+      "line": 171,
+      "source_line": "await S.api(\"/packages/publish?provider=pool\", { package: pack });",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-sharing.html",
+      "line": 201,
+      "source_line": "const result = await S.api(",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-sharing.html",
+      "line": 270,
+      "source_line": "const result = await S.api(\"/packages/preview\", { package: value });",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-sharing.html",
+      "line": 313,
+      "source_line": "const imported = await S.api(\"/packages/import\", {",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-live.html",
+      "line": 67,
+      "source_line": "const [sources, subscriptions, destinations] = await Promise.all([S.api('/sources'), S.api('/subscriptions'), S.api('/destinations')]);",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-live.html",
+      "line": 126,
+      "source_line": "const result = await S.api(path, this.livePending.get(signature), method);",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-live.html",
+      "line": 139,
+      "source_line": "if (this.liveSub) this.liveSub = (await S.api('/subscriptions/' + encodeURIComponent(this.liveSub.id))).subscription;",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-live.html",
+      "line": 181,
+      "source_line": "const r = await S.api('/sources/pick', {mode, request_key: this.livePickKeys.get(mode)});",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-live.html",
+      "line": 229,
+      "source_line": "const result = await S.api('/subscriptions/' + encodeURIComponent(sub.id) + '/preview?sample_id=' + encodeURIComponent(sample.value));",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-live.html",
+      "line": 287,
+      "source_line": "S.api(path), S.api(path + '/events?tail=1&limit=50'),",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-live.html",
+      "line": 288,
+      "source_line": "!tail && unfinished ? S.api(path + '/events?after=' + encodeURIComponent(unfinished.sequence - 1) + '&limit=50') : null,",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-delivery.html",
+      "line": 64,
+      "source_line": "const result = await S.api('/destinations');",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-delivery.html",
+      "line": 151,
+      "source_line": "const result = await S.api('/subscriptions/' + encodeURIComponent(sub.id) + '/deliveries');",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-delivery.html",
+      "line": 157,
+      "source_line": "const result = await S.api('/deliveries/' + encodeURIComponent(id));",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-n8n.html",
+      "line": 158,
+      "source_line": "const response = await M.api('/ui/studio/import/n8n/preview', {method:'POST', body:JSON.stringify({json:text.value})});",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-webhook.html",
+      "line": 53,
+      "source_line": "try { inventory = await S.api('/sources'); }",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-webhook.html",
+      "line": 109,
+      "source_line": "const result = await S.api('/subscriptions/' + encodeURIComponent(sub.id) + '/test-webhook', this.webhookPending.get(signature));",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-producer.html",
+      "line": 52,
+      "source_line": "try { inventory = await S.api('/sources'); }",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/studio-producer.html",
+      "line": 110,
+      "source_line": "try { await S.api('/sources/' + encodeURIComponent(source.id) + '/' + action, body); }",
+      "precision": "Literal callsite/wrapper evidence only; variable paths followed through method source and route mapping, not a runtime caller proof."
+    }
+  ],
+  "legacy_route_inventory": [
+    {
+      "route": "/ui/studio/",
+      "match_kind": "startswith",
+      "source": [
+        "file0133",
+        228,
+        "route"
+      ],
+      "methods_observed_in_handler": [
+        "DELETE",
+        "GET",
+        "POST",
+        "PUT"
+      ],
+      "callers": [
+        "ui0035",
+        "ui0037",
+        "ui0087",
+        "ui0168"
+      ],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio",
+      "request_result_authorization_evidence": "handler0070"
+    },
+    {
+      "route": "/ui/studio/sources/pick",
+      "match_kind": "comparison",
+      "source": [
+        "file0137",
+        52,
+        "NativePickRoutes.route"
+      ],
+      "methods_observed_in_handler": [
+        "POST"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.sources.pick",
+      "request_result_authorization_evidence": "handler0073"
+    },
+    {
+      "route": "/ui/studio/native-picks/",
+      "match_kind": "startswith",
+      "source": [
+        "file0137",
+        21,
+        "NativePickRoutes.public_route"
+      ],
+      "methods_observed_in_handler": [
+        "POST"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.native.picks",
+      "request_result_authorization_evidence": "handler0074"
+    },
+    {
+      "route": "/ui/studio/workflows",
+      "match_kind": "startswith",
+      "source": [
+        "file0138",
+        110,
+        "StudioRoutes._studio"
+      ],
+      "methods_observed_in_handler": [
+        "GET",
+        "POST"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.workflows",
+      "request_result_authorization_evidence": "handler0075"
+    },
+    {
+      "route": "/ui/studio/runs",
+      "match_kind": "startswith",
+      "source": [
+        "file0138",
+        112,
+        "StudioRoutes._studio"
+      ],
+      "methods_observed_in_handler": [
+        "GET",
+        "POST"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.runs",
+      "request_result_authorization_evidence": "handler0075"
+    },
+    {
+      "route": "/ui/studio/workflows",
+      "match_kind": "comparison",
+      "source": [
+        "file0138",
+        117,
+        "StudioRoutes._workflows"
+      ],
+      "methods_observed_in_handler": [
+        "GET",
+        "POST",
+        "PUT"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.workflows",
+      "request_result_authorization_evidence": "handler0076"
+    },
+    {
+      "route": "/ui/studio/workflows/",
+      "match_kind": "startswith",
+      "source": [
+        "file0138",
+        127,
+        "StudioRoutes._workflows"
+      ],
+      "methods_observed_in_handler": [
+        "GET",
+        "POST",
+        "PUT"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.workflows",
+      "request_result_authorization_evidence": "handler0076"
+    },
+    {
+      "route": "/ui/studio/runs",
+      "match_kind": "comparison",
+      "source": [
+        "file0138",
+        143,
+        "StudioRoutes._runs"
+      ],
+      "methods_observed_in_handler": [
+        "GET",
+        "HEAD",
+        "POST"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.runs",
+      "request_result_authorization_evidence": "handler0077"
+    },
+    {
+      "route": "/ui/studio/runs/",
+      "match_kind": "startswith",
+      "source": [
+        "file0138",
+        160,
+        "StudioRoutes._runs"
+      ],
+      "methods_observed_in_handler": [
+        "GET",
+        "HEAD",
+        "POST"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.runs",
+      "request_result_authorization_evidence": "handler0077"
+    },
+    {
+      "route": "/ui/studio/",
+      "match_kind": "startswith",
+      "source": [
+        "file0138",
+        29,
+        "StudioRoutes.route"
+      ],
+      "methods_observed_in_handler": [
+        "unresolved"
+      ],
+      "callers": [
+        "ui0035",
+        "ui0037",
+        "ui0087",
+        "ui0168"
+      ],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio",
+      "request_result_authorization_evidence": "handler0078"
+    },
+    {
+      "route": "/ui/studio/nodes",
+      "match_kind": "comparison",
+      "source": [
+        "file0138",
+        63,
+        "StudioRoutes._studio"
+      ],
+      "methods_observed_in_handler": [
+        "GET",
+        "POST"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.nodes",
+      "request_result_authorization_evidence": "handler0075"
+    },
+    {
+      "route": "/ui/studio/templates",
+      "match_kind": "comparison",
+      "source": [
+        "file0138",
+        71,
+        "StudioRoutes._studio"
+      ],
+      "methods_observed_in_handler": [
+        "GET",
+        "POST"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.templates",
+      "request_result_authorization_evidence": "handler0075"
+    },
+    {
+      "route": "/ui/studio/validate",
+      "match_kind": "comparison",
+      "source": [
+        "file0138",
+        74,
+        "StudioRoutes._studio"
+      ],
+      "methods_observed_in_handler": [
+        "GET",
+        "POST"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.validate",
+      "request_result_authorization_evidence": "handler0075"
+    },
+    {
+      "route": "/ui/studio/sources",
+      "match_kind": "startswith",
+      "source": [
+        "file0138",
+        89,
+        "StudioRoutes._studio"
+      ],
+      "methods_observed_in_handler": [
+        "GET",
+        "POST"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.sources",
+      "request_result_authorization_evidence": "handler0075"
+    },
+    {
+      "route": "/ui/studio/subscriptions",
+      "match_kind": "startswith",
+      "source": [
+        "file0138",
+        89,
+        "StudioRoutes._studio"
+      ],
+      "methods_observed_in_handler": [
+        "GET",
+        "POST"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.subscriptions",
+      "request_result_authorization_evidence": "handler0075"
+    },
+    {
+      "route": "/ui/studio/destinations",
+      "match_kind": "startswith",
+      "source": [
+        "file0138",
+        89,
+        "StudioRoutes._studio"
+      ],
+      "methods_observed_in_handler": [
+        "GET",
+        "POST"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.destinations",
+      "request_result_authorization_evidence": "handler0075"
+    },
+    {
+      "route": "/ui/studio/deliveries",
+      "match_kind": "startswith",
+      "source": [
+        "file0138",
+        89,
+        "StudioRoutes._studio"
+      ],
+      "methods_observed_in_handler": [
+        "GET",
+        "POST"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.deliveries",
+      "request_result_authorization_evidence": "handler0075"
+    },
+    {
+      "route": "/ui/studio/import/n8n/preview",
+      "match_kind": "comparison",
+      "source": [
+        "file0138",
+        92,
+        "StudioRoutes._studio"
+      ],
+      "methods_observed_in_handler": [
+        "GET",
+        "POST"
+      ],
+      "callers": [
+        "ui0168"
+      ],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.import.n8n.preview",
+      "request_result_authorization_evidence": "handler0075"
+    },
+    {
+      "route": "/ui/studio/devices",
+      "match_kind": "comparison",
+      "source": [
+        "file0138",
+        95,
+        "StudioRoutes._studio"
+      ],
+      "methods_observed_in_handler": [
+        "GET",
+        "POST"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.devices",
+      "request_result_authorization_evidence": "handler0075"
+    },
+    {
+      "route": "/ui/studio/resources/decision/install",
+      "match_kind": "comparison",
+      "source": [
+        "file0138",
+        98,
+        "StudioRoutes._studio"
+      ],
+      "methods_observed_in_handler": [
+        "GET",
+        "POST"
+      ],
+      "callers": [
+        "ui0087"
+      ],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.resources.decision.install",
+      "request_result_authorization_evidence": "handler0075"
+    },
+    {
+      "route": "/ui/studio/resources",
+      "match_kind": "comparison",
+      "source": [
+        "file0138",
+        102,
+        "StudioRoutes._studio"
+      ],
+      "methods_observed_in_handler": [
+        "GET",
+        "POST"
+      ],
+      "callers": [
+        "ui0035",
+        "ui0037"
+      ],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.resources",
+      "request_result_authorization_evidence": "handler0075"
+    },
+    {
+      "route": "/ui/studio/packages",
+      "match_kind": "startswith",
+      "source": [
+        "file0138",
+        237,
+        "StudioRoutes._packages"
+      ],
+      "methods_observed_in_handler": [
+        "GET",
+        "POST"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.packages",
+      "request_result_authorization_evidence": "handler0079"
+    },
+    {
+      "route": "/ui/studio/packages",
+      "match_kind": "comparison",
+      "source": [
+        "file0138",
+        248,
+        "StudioRoutes._packages"
+      ],
+      "methods_observed_in_handler": [
+        "GET",
+        "POST"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.packages",
+      "request_result_authorization_evidence": "handler0079"
+    },
+    {
+      "route": "/ui/studio/packages/export",
+      "match_kind": "comparison",
+      "source": [
+        "file0138",
+        251,
+        "StudioRoutes._packages"
+      ],
+      "methods_observed_in_handler": [
+        "GET",
+        "POST"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.packages.export",
+      "request_result_authorization_evidence": "handler0079"
+    },
+    {
+      "route": "/ui/studio/packages/preview",
+      "match_kind": "comparison",
+      "source": [
+        "file0138",
+        261,
+        "StudioRoutes._packages"
+      ],
+      "methods_observed_in_handler": [
+        "GET",
+        "POST"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.packages.preview",
+      "request_result_authorization_evidence": "handler0079"
+    },
+    {
+      "route": "/ui/studio/packages/import",
+      "match_kind": "comparison",
+      "source": [
+        "file0138",
+        264,
+        "StudioRoutes._packages"
+      ],
+      "methods_observed_in_handler": [
+        "GET",
+        "POST"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.packages.import",
+      "request_result_authorization_evidence": "handler0079"
+    },
+    {
+      "route": "/ui/studio/packages/publish",
+      "match_kind": "comparison",
+      "source": [
+        "file0138",
+        269,
+        "StudioRoutes._packages"
+      ],
+      "methods_observed_in_handler": [
+        "GET",
+        "POST"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.packages.publish",
+      "request_result_authorization_evidence": "handler0079"
+    },
+    {
+      "route": "/ui/studio/sources/",
+      "match_kind": "startswith",
+      "source": [
+        "file0139",
+        145,
+        "route"
+      ],
+      "methods_observed_in_handler": [
+        "unresolved"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.sources",
+      "request_result_authorization_evidence": "handler0080"
+    },
+    {
+      "route": "/ui/studio/sources",
+      "match_kind": "comparison",
+      "source": [
+        "file0139",
+        147,
+        "route"
+      ],
+      "methods_observed_in_handler": [
+        "unresolved"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.sources",
+      "request_result_authorization_evidence": "handler0080"
+    },
+    {
+      "route": "/ui/studio/subscriptions",
+      "match_kind": "comparison",
+      "source": [
+        "file0139",
+        150,
+        "route"
+      ],
+      "methods_observed_in_handler": [
+        "unresolved"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.subscriptions",
+      "request_result_authorization_evidence": "handler0080"
+    },
+    {
+      "route": "/ui/studio/subscriptions/",
+      "match_kind": "startswith",
+      "source": [
+        "file0139",
+        150,
+        "route"
+      ],
+      "methods_observed_in_handler": [
+        "unresolved"
+      ],
+      "callers": [],
+      "authorization": {
+        "profile": "legacy_http_handler"
+      },
+      "cancellation": "unresolved",
+      "subscription": "unresolved",
+      "proposed_operation": "http.ui.studio.subscriptions",
+      "request_result_authorization_evidence": "handler0080"
+    }
+  ],
+  "legacy_source_refs": {
+    "file0138": {
+      "path": "src/poolhouse/fleet/studio_routes.py",
+      "sha256": "d021e4dd3c2b3723caa94e071a867a1a2a43b413603de84ae3e775fe57ab88a3"
+    },
+    "file0139": {
+      "path": "src/poolhouse/fleet/studio_stream_routes.py",
+      "sha256": "4954dacf373e34a49892a070356cbd7f7acd3075d3c4412d3462cbccec0cdcfc"
+    },
+    "file0197": {
+      "path": "src/poolhouse/fleet/web/components/studio-delivery.html",
+      "sha256": "2cb616d1587a023ebecb67c9f5879a3385cb65cc42f4c3437f9fe712f7734aeb"
+    },
+    "file0202": {
+      "path": "src/poolhouse/fleet/web/components/studio-live.html",
+      "sha256": "29c33759e83d1fd5ac56903e3ccfc6786b1fc56798d62866f5453bebe74f2e72"
+    },
+    "file0204": {
+      "path": "src/poolhouse/fleet/web/components/studio-model.html",
+      "sha256": "5f9556b37885733beb7c89bc1a389bb6a7ec0e2bf5e3bf9bdcd96a6ff9f6dd7a"
+    },
+    "file0205": {
+      "path": "src/poolhouse/fleet/web/components/studio-n8n.html",
+      "sha256": "0a9f02bc6852ee6e1a934ef1dcba3bff4e8c1de00c539d7cebc2911e983c45b7"
+    },
+    "file0207": {
+      "path": "src/poolhouse/fleet/web/components/studio-persistence.html",
+      "sha256": "bc093f7a9fcf8faaf3dbb1fb5a9c4d24b19137af24447205f317fd08475aad69"
+    },
+    "file0209": {
+      "path": "src/poolhouse/fleet/web/components/studio-producer.html",
+      "sha256": "a210003a9082e59736e43da13188280a7078461bad546ad30e6aeda9f60cb02a"
+    },
+    "file0212": {
+      "path": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "sha256": "fcc54c63e9252dd85e40fea2d88249a5eea9cde3ee10875f4e768660f87e1f93"
+    },
+    "file0213": {
+      "path": "src/poolhouse/fleet/web/components/studio-setup.html",
+      "sha256": "81e16e8009784fb31b27f16a3c573b9bcff897c8ddd1f81fadd720787a817b2c"
+    },
+    "file0214": {
+      "path": "src/poolhouse/fleet/web/components/studio-sharing.html",
+      "sha256": "b96609c091f52d16bb8488e2adde9eb10e5df832d38cf2ebd382104f9e5c5556"
+    },
+    "file0218": {
+      "path": "src/poolhouse/fleet/web/components/studio-view.html",
+      "sha256": "4bd8518612ba517b97950831a84935e90045139b8849795512e86f0e40486b7f"
+    },
+    "file0219": {
+      "path": "src/poolhouse/fleet/web/components/studio-webhook.html",
+      "sha256": "1b76179bff0ae24252cafeb515383b0e2dd4d7057854479036809c72e98996f1"
+    },
+    "file0239": {
+      "path": "src/poolhouse/fleet/workspace_routes.py",
+      "sha256": "abe6084619b1da6eaad94161be9a608429b09deec1107cded7c26fadc742d396"
+    }
+  },
+  "source_profiles": [
+    {
+      "source": "studio/contracts.py:validate_graph/_expand/_sweeps",
+      "graph_schema_version": 1,
+      "top_fields": [
+        "id",
+        "name",
+        "schema_version",
+        "nodes",
+        "edges",
+        "controls",
+        "groups",
+        "layout",
+        "description"
+      ],
+      "node_fields": [
+        "id",
+        "type",
+        "version",
+        "parameters",
+        "bindings",
+        "group",
+        "name",
+        "sweep",
+        "execution"
+      ],
+      "execution_fields": [
+        "machine"
+      ],
+      "edge_fields": [
+        "source",
+        "target"
+      ],
+      "endpoint_fields": [
+        "node",
+        "port"
+      ],
+      "control_target_shapes": [
+        [
+          "node"
+        ],
+        [
+          "node",
+          "port"
+        ]
+      ],
+      "group_fields": [
+        "name",
+        "nodes",
+        "edges",
+        "controls",
+        "control_inputs",
+        "inputs",
+        "outputs",
+        "parameters"
+      ],
+      "source_node_regex": "^[A-Za-z0-9_.-]+$",
+      "logical_graph_limit": 2000000,
+      "logical_graph_metric": "len(json.dumps(graph)) Python characters, default ensure_ascii=True and default spaced separators; distinct rawUTF8/decoded/expanded totals require separate profile closure.",
+      "max_nodes_before_and_after_group_sweep_expansion": 1000,
+      "max_group_stack_depth": 16,
+      "bounds_note": "These are exact retained constants, not new workload budgets. Source node identifiers, title and many parameter strings have no closed total byte bound; no private worker512-ID limit reused. StudioControlExpandedCount represents known observed count only; optional unknown is not fabricated0."
+    },
+    {
+      "source": "studio/store.py:save_workflow/submit",
+      "workflow_revision": "1 on create or conflict copy, otherwise current+1",
+      "submission_key_max_python_characters": 256,
+      "submission_key_representation_utf8_max": 1024,
+      "derivation": "4UTF8bytes per scalar codepoint preserves256characters; nonblank and actual<=256character semantics still required. No normalization/truncation.",
+      "workflow_title": "No maintained total length bound; fixed dedicated title staging/issued text ref preserves data and retains missing bounded profile as enablement blocker.",
+      "idempotency": "Original store fingerprints selected graph/workflow id/revision/sorted outputs/event and binds key to principal; canonical stable semantic identity must remain independent of mutable current admission observations.",
+      "conflict": "Source creates recoverable copy on revision conflict; canonical durable RequestId retry returns SAME preserved copy instead of repeated copies, with storage/retention admission."
+    },
+    {
+      "source": "fleet/workspace_routes.py:_job_detail",
+      "log_tail_input_bytes": 100000,
+      "log_projection": "decode utf8 errors=replace then CRLF->LF; resultingUTF8 may expand; cannot infer bytes==characters or silently invent total output cap.",
+      "metric_tail_rows": 200,
+      "metric_shape": "Rows are arbitrary parsed JSON today, malformed lines skipped; exact operation-metric semantic type/row/expansion profile closure still missing. A managed RunMetrics ref is NOT canonical typed metric closure."
+    },
+    {
+      "source": "existing canonical Utf8Chunk/BoardContentBytePart",
+      "transfer_chunk_max_bytes": 65536,
+      "meaning": "Reuse existing public scalar framing envelope for transfer chunks, not new graph/title/artifact workload size budget. Checked offsets/full totals/digests and node storage/admission still required."
+    }
+  ],
+  "security_and_behavior": [
+    "Actual authenticated principal/owner/controller is node-derived from protected caller context. No caller owner flag, principal string, role label, path, schema name or resource ID grants authority. Legacy _service local owner=True/cookie labels are not proof for canonical IPC; every public request/item/error requires current scope authentication.",
+    "Graph source vs expanded form/version/digest/ref relationships exact; node-issued graph-owned refs can identify raw invalid draft elements as well as normalized graph nodes. Invalid draft ref or graph validation success alone never creates run/resource rights.",
+    "Only dedicated GraphDraft and WorkflowTitle begin methods accept caller bytes; node chooses/verifies their exact roles. Client cannot create Catalogue/Template/Diagnostics/Metrics profiles or retag a Title ref as Graph. Canonical schema completeness and content/role validation still required at every consuming operation.",
+    "Graph staging seals exact immutable ordered bytes and profile/hash, not validity. Saving invalid source draft remains possible as data without execution. Missing canonical schema/profile refuses validation/run enablement rather than trusting legacyPython or a label. No arbitrary JSON map/value/argv/path/URL/plugin code or privateWorker DTO request escape.",
+    "Catalogue/template/validation documents redact secrets, host paths and unauthorized resource existence. Port/default/parameter strings are declarative data; tools/network/packages/worker route remain separately authorized exact node implementations, never authority from graph literal.",
+    "Workflow updates CAS exact revision/generation. Conflicting exact attempted payload/principal/revision produces same recoverable copy on identical RequestId retry; conflicting payload refuses and copies require retention/storage admission. Retried polling never creates unbounded copies.",
+    "Selection preserves source-node/source-group-subtree/source-variant-family/expanded-node form and original graph identity. Do not silently reduce raw group or sweep selection to a capped flatlist. Source profiles unresolved until canonical public selection grammar and group/sweep resolver vectors close. Resolution computes BOTH data and control ancestor closure before admission.",
+    "Submit idempotency binds immutable semantic request, source/expanded graph+workflow revision+selection meaning/principal/context. Current mutable resource admission generation is separately rechecked, not mixed into retry identity to remint work. Look up original under current authorization, refuse changed payload, never rebind an old key or repeat unknown effects.",
+    "Run original ownership is immutable; current explicit controller rights action-specific. Resume renews authority for THAT action/resources without reassigning principal or taking over a run from a label/lost session. Reconcile every exact old local/remote/reverse child/lease/result/publication before queue/unblock. Unknown effects remain interrupted/recovery_required, no replacement execution.",
+    "Cancel durable intent and terminal result have single atomic winner. CancelObserved/EOF/child exit/source state strings do not establish OS custody settlement or resource release. Late output cannot regain delivery after removal/cancel. Current state/intent/custody remain distinct truthful observations.",
+    "Artifact refs bind exact run and original node incarnation/port/manifest entry/generation/digest/size. Full original-run reuse lineage checks ownership/current authorization/fingerprint+output equality and cycles. Preserve original source auth all the way to actual artifact snapshot.",
+    "Freeze/revoke ALL writers before hash/schema validation and read/publish the SAME retained immutable snapshot. O_NOFOLLOW/regular-file/linkcount checks are useful source evidence but not complete immutability. No path reopening/TOCTOU/symlink/caller arbitraryfilename bypass. Checked range/overflow and current revocation fence on EVERY artifact page/range.",
+    "Run/log/metric data binds exact run/node/job execution incarnation. Log redaction and result separation mandatory; metrics managed document remains incomplete semantic schema, not verified measurement/admission. Missing job represented absentdoc/state, not invented success.",
+    "Frozen snapshot ID/revision/context/cursor bind actual principal/filter/resource generations and allowed itemkind. Explicit beginning/completion even empty; reauthorize each item/error and resync expired cursor. Types do not implement durable streams or access checks.",
+    "All public types remain decoded untrusted data. No casting/From/serde into native proofs, leases, worker handlers, actual principal or publication authority. Existing public Model refs reused only with matching resource meaning, never retag model asset into graph document."
+  ],
+  "source_defects_not_grandfathered": [
+    "studio/engine.py:resume updates principal and state queued before all exact children/resources reconcile. That ordering can transfer ownership/queue too early; canonical resume explicitly forbids this. No runtime fix claimed.",
+    "studio/store.py:save_workflow generates fresh conflict-copy UUID each repeated conflicting save without canonical RequestId ledger/storage admission. Canonical copy-once requirement is not implemented by this leaf.",
+    "Legacy nodes/templates availability path can precede full service authorization; canonical protected scope must validate principal before private availability/resource metadata. No source cookie/local owner heuristic treated as native proof."
+  ],
+  "mandatory_continuation": {
+    "owner": "same retained Studio segment author after control handoff, coordinated by Root",
+    "next_public_graph_leaf": {
+      "required_types": [
+        "closed top-level StudioGraphSourceV1 and StudioGraphExpandedV1",
+        "per-catalogue public node parameter discriminated union",
+        "public resource binding refs/types",
+        "data edge and control endpoints/targets",
+        "reusable group declaration/interface/exposed parameter types",
+        "sweep declaration/variant resolution",
+        "layout and metadata types",
+        "raw/expanded source-group/variant output selector grammar"
+      ],
+      "required_work": "Use existing static catalogue/recipe inventory and actual contracts.py validators as evidence, define versioned canonical public schema/types+generator inputs and exact finite/absence/unknown-field/depth/size/expansion/refusal vectors. Do not export private worker DTOs or call legacy schema name a canonical public type.",
+      "current_state": "UNIMPLEMENTED; semantic validation/selection profiles remain disabled pending closure."
+    },
+    "next_public_metric_and_values_leaf": {
+      "required_types": [
+        "per-operation metric records from actual training/eval/decision/Gym/speech producers",
+        "explicit numeric FiniteF64/integer/unavailable/nonfinite observations as source requires",
+        "exact units/timestamps/counts/expansion limits",
+        "public per-node text/decision/gate/structured result/output value variants"
+      ],
+      "required_work": "Map actual producer records/callers, separate candidate claims from node observations, preserve exact units/absence/nonfinite behavior, add canonical public types+vectors and bind exact node/runtime/source generation. Managed metrics/output documents are transfer/storage only.",
+      "current_state": "UNIMPLEMENTED; metrics semantic/read profile and nonclosed value output metadata remain explicit gaps."
+    }
+  },
+  "remaining_routes": [
+    {
+      "segment": "durable sources/subscriptions/destinations/deliveries",
+      "routes": [
+        "/ui/studio/sources*",
+        "/ui/studio/subscriptions*",
+        "/ui/studio/destinations*",
+        "/ui/studio/deliveries*"
+      ],
+      "sources": [
+        "fleet/studio_stream_routes.py",
+        "studio/events.py",
+        "studio/stream_store.py"
+      ],
+      "ui": [
+        "studio-live.html",
+        "studio-webhook.html",
+        "studio-producer.html",
+        "studio-delivery.html"
+      ],
+      "status": "Separate coherent later public leaf; no authority-bearing source URL/webhook/destination effects declared here."
+    },
+    {
+      "segment": "packages and import",
+      "routes": [
+        "/ui/studio/packages",
+        "/ui/studio/packages/export",
+        "/ui/studio/packages/preview",
+        "/ui/studio/packages/import",
+        "/ui/studio/packages/publish",
+        "/ui/studio/import/n8n/preview"
+      ],
+      "sources": [
+        "fleet/studio_routes.py:_packages",
+        "studio/packages.py",
+        "studio/n8n.py"
+      ],
+      "ui": [
+        "studio-sharing.html",
+        "studio-n8n.html"
+      ],
+      "status": "Separate reviewed package/import grammar/authority leaf; no import/plugin code execution through GraphV1 literal."
+    },
+    {
+      "segment": "resource install/import/availability extras",
+      "routes": [
+        "/ui/studio/resources/decision/install",
+        "/ui/studio/resources"
+      ],
+      "sources": [
+        "fleet/studio_decision_setup.py",
+        "studio/decision_inventory.py",
+        "fleet/studio_saved_models.py",
+        "fleet/studio_datasets.py"
+      ],
+      "ui": [
+        "studio-setup.html",
+        "studio-bindings.html",
+        "studio-managed.html"
+      ],
+      "status": "Read availability mapped here; install/import operations remain actual model/dataset/package/setup domains, no generic privileged installer flag."
+    },
+    {
+      "segment": "workflow DELETE",
+      "routes": [],
+      "source": "studio_routes.py:_workflows has GET/POST/PUT but no DELETE handler",
+      "status": "Unsupported maintained surface; no destructive deletion endpoint invented. Desired CRUD deletion needs explicit fresh design/source semantics and immutable-run reference retention."
+    }
+  ],
+  "unresolved_enablement": [
+    "Coherent PARTIAL public control checkpoint only. Graph/selection/metrics and per-node output value schemas NOT closed by refs. Required same-author continuation above, not optional owner chore. No complete functional Studio/K/native caller proof.",
+    "Current public graph/selection schemas and raw/expanded/total/outstanding staging/text/log/metric bounds/depth/parameter profiles need canonical closure before related profiles enabled. Role/version/digest labels do not stand in for validators.",
+    "No runtime durable dedup/CAS/recovery copies/selection resolution/resource admission/queue/cancel/resume/reconciliation/streams/artifact holder or native proof implementation is supplied. Root handles generatedSDK integration; existing installed callers not yet ported.",
+    "Exact source-equivalent2M json.dumps metric differs from rawUTF8 upload size; unknown total profiles must refuse rather than invent a new cap. Title/node ID/parameter/log/metric gaps remain explicit; no private worker bounds silently imposed.",
+    "Run log current100000-byte tail and200metric rows are source observations; arbitrary metric row payload/layout/catalog descriptor profiles remain undeclared until continuation. No worker/model/canned inference or tests executed."
+  ],
+  "independent_review": {
+    "reviewer": "domain_attack_review",
+    "pre_edit_verdict": "Narrowed control/transfer declaration strategy approved with7 role/ownership/idempotency/selection/lineage constraints and explicit incomplete canonical schema profiles.",
+    "actual_leaf_verdict": "Final actual two-file review APPROVED by domain_attack_review:101publictypes28operations; all29pinned source hashes independently verified. Dedicated roles, raw/expanded refs, selectors, conflict CAS, stable idempotency, resume reconciliation and artifact lineage inspected. Explicitly PARTIAL control/transfer checkpoint with mandatory same-author graph/selection/metrics/value continuation; no runtime/caller-retention/K/native approval implied."
+  }
+}

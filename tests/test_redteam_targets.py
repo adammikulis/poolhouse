@@ -5,36 +5,37 @@ from __future__ import annotations
 import asyncio
 
 from poolhouse.redteam.targets import ToolSpy, chat_endpoint, from_callable, mcp_tool_agent
-from poolhouse.testing.fakes import Served, fake_llama_server
+from poolhouse.testing.canned import CANNED_MARKER, Canned, canned_server, marked
 
 
 def ask(responder, text: str):
     return asyncio.run(responder([{"role": "user", "content": text}]))
 
 
-def test_a_chat_endpoint_returns_what_the_model_said_and_the_status():
-    with fake_llama_server(Served(answer=lambda body: body["messages"][-1]["content"].upper())) \
-            as server:
+def test_a_chat_endpoint_returns_what_the_server_said_and_the_status():
+    """The canned server echoes the last message in capitals, after its marker; it is not a model."""
+    with canned_server(Canned(answer=lambda body: body["messages"][-1]["content"].upper())) as server:
         got = ask(chat_endpoint(server.base_url), "hello there")
-    assert (got.text, got.status, got.blocked) == ("HELLO THERE", 200, False)
+    assert (got.text, got.status, got.blocked) == (marked("HELLO THERE"), 200, False)
+    assert got.text.startswith(CANNED_MARKER)
 
 
 def test_the_system_prompt_and_the_bearer_token_go_with_the_request():
-    with fake_llama_server(Served(answer="ok")) as server:
+    with canned_server() as server:
         ask(chat_endpoint(server.base_url, system="be brief", token="tok-1"), "hi")
         sent = server.sent_to("/v1/chat/completions")[0]
     assert sent["messages"][0] == {"role": "system", "content": "be brief"}
 
 
 def test_a_refusal_with_401_is_reported_as_blocked_with_its_status():
-    with fake_llama_server(Served(answer="ok")) as server:
+    with canned_server() as server:
         server.refuse["/v1/chat/completions"] = 401
         got = ask(chat_endpoint(server.base_url), "hi")
     assert (got.status, got.blocked, got.text) == (401, True, "")
 
 
 def test_a_server_error_is_not_a_guard_block():
-    with fake_llama_server(Served(answer="ok")) as server:
+    with canned_server() as server:
         server.refuse["/v1/chat/completions"] = 500
         got = ask(chat_endpoint(server.base_url), "hi")
     assert (got.status, got.blocked) == (500, False)

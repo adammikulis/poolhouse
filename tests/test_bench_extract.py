@@ -487,7 +487,7 @@ def test_extract_serves_the_model_with_the_best_settings_unless_told_bare(monkey
                           "seed": 1, "sample": 3, "kept": str(tmp_path / "k.ladybug"),
                           "label": "t", "temperature": None, "top_p": None, "top_k": None,
                           "min_p": None, "twice": False, "anyway": False, "base_url": "",
-                          "no_smoke": False, "yes": True, "ceiling": 0, "no_selfcheck": True,
+                          "no_smoke": False, "yes": True, "ceiling": 0,
                           "detach": False, "no_queue": True, "no_prefetch": True})()
     with contextlib.suppress(SystemExit):        # `fake_serve` stops the run at the seam
         ex.run(args)

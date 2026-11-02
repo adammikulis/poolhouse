@@ -9,7 +9,9 @@ __all__ = ["AUTO", "DEFAULT", "DEFAULT_MAX", "LEVELS", "clamp", "pick_for", "thi
 LEVELS = ("off", "low", "medium", "high")
 AUTO = "auto"
 DEFAULT = "off"
-DEFAULT_MAX = "medium"
+DEFAULT_MAX = LEVELS[-1]
+"""The most effort an agent may give itself: the highest level there is. A lower ceiling was a
+choice nobody could source; a person who wants one passes ``--max-effort``."""
 _HARD = re.compile(r"\b(plan|diagnos\w*|debug\w*|review|design|investigat\w*|why)\b", re.I)
 _EASY = re.compile(r"\b(status|list|lookup|look up|show|what is|which|count)\b", re.I)
 

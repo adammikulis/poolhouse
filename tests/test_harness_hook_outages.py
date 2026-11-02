@@ -5,10 +5,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from poolhouse import harness_claims, harnesshook, node_launch
+from poolhouse import coding_policy, harness_claims, harnesshook
 from poolhouse.board.client import Client
 from poolhouse.errors import Denied
-from poolhouse.workspace import harness_session
+from poolhouse.interventions import Call
+from poolhouse.workspace import harness_session, worktree_lifecycle
 
 
 def unavailable(*args, **kwargs):
@@ -27,45 +28,41 @@ def test_post_outage_does_not_reverse_a_completed_tool(monkeypatch, capsys):
 
 def test_stop_is_not_blocked_when_the_board_is_unavailable(monkeypatch):
     monkeypatch.setattr(Client, 'call', lambda *args, **kwargs: pytest.fail('completion asked the node'))
-    assert harnesshook.stop(harnesshook.Rail('plan-and-go', 'worker', ['/project'])) == {}
+    assert harnesshook.stop(harnesshook.Rail(coding_policy.Policy('ask-dangerous'), 'worker', ['/project'])) == {}
 
 
-def test_stop_stays_blocked_by_a_real_refusal(monkeypatch):
+def test_stop_does_not_run_explicit_cleanup_admission(monkeypatch):
     def refused(*args, **kwargs):
         raise Denied('completion refused')
-    monkeypatch.setattr(harnesshook.worktree_lifecycle, 'require_clean', refused)
-    result = harnesshook.stop(harnesshook.Rail('plan-and-go', 'worker', ['/project']))
-    assert result['decision'] == 'block' and 'completion refused' in result['reason']
+    monkeypatch.setattr(worktree_lifecycle, 'require_clean', refused)
+    result = harnesshook.stop(harnesshook.Rail(coding_policy.Policy('ask-dangerous'), 'worker', ['/project']))
+    assert result == {}
 
 
-def test_pre_outage_degrades_to_a_warning_and_a_real_denial_still_denies(monkeypatch):
+def test_pre_does_not_consult_workspace_ownership(monkeypatch):
     payload = {'tool_name': 'Write', 'tool_input': {'file_path': '/project/test.py'}, 'cwd': '/project'}
-    rail = harnesshook.Rail('plan-and-go', 'worker', ['/project'])
-    monkeypatch.setattr(harnesshook.harness_claims, 'conflict', unavailable)
-    monkeypatch.setattr(harnesshook.harness_claims, 'reserve', unavailable)
+    rail = harnesshook.Rail(coding_policy.Policy('ask-dangerous'), 'worker', ['/project'])
+    def forbidden(*args, **kwargs):
+        pytest.fail('ordinary writes must not query or reserve workspace ownership')
+    monkeypatch.setattr(harness_claims, 'conflict', forbidden)
+    monkeypatch.setattr(harness_claims, 'reserve', forbidden)
     answer = harnesshook.pre(payload, rail)['hookSpecificOutput']
     assert answer['permissionDecision'] == 'allow'
-    assert 'connection refused' in answer['permissionDecisionReason']
-
-    def refused(*args, **kwargs):
-        raise Denied('another agent owns this')
-    monkeypatch.setattr(harnesshook.harness_claims, 'conflict', refused)
-    answer = harnesshook.pre(payload, rail)['hookSpecificOutput']
-    assert answer['permissionDecision'] == 'deny' and 'another agent owns this' in answer['permissionDecisionReason']
+    assert 'ownership' not in answer['permissionDecisionReason']
 
 
-def test_an_unreachable_node_degrades_the_pre_hook_to_a_warning(monkeypatch, tmp_path):
+def test_an_ordinary_write_never_contacts_the_node(monkeypatch, tmp_path):
     def down(*args, **kwargs):
-        raise node_launch.NodeUnavailable('the node does not answer')
+        pytest.fail('ordinary write contacted the node')
     monkeypatch.setattr(Client, 'call', down)
     payload = {'tool_name': 'Write', 'tool_input': {'file_path': str(tmp_path / 'test.py')}, 'cwd': str(tmp_path)}
-    answer = harnesshook.pre(payload, harnesshook.Rail('plan-and-go', 'worker', [str(tmp_path)]))['hookSpecificOutput']
+    answer = harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy('ask-dangerous'), 'worker', [str(tmp_path)]))['hookSpecificOutput']
     assert answer['permissionDecision'] == 'allow'
-    assert 'ownership not checked' in answer['permissionDecisionReason'] and 'does not answer' in answer['permissionDecisionReason']
+    assert 'ownership' not in answer['permissionDecisionReason']
 
 
-@pytest.mark.parametrize('secret', ['mlws1.worker.' + 'a' * 43, 'mlws1.worker.one/child.two.' + 'b' * 43,
-                                   'mlsk1.' + 'c' * 43, 'sk-' + 'a' * 30,
+@pytest.mark.parametrize('secret', ['poolhouse-ws1.worker.' + 'a' * 43, 'poolhouse-ws1.worker.one/child.two.' + 'b' * 43,
+                                   'poolhouse-sk1.' + 'c' * 43, 'sk-' + 'a' * 30,
                                    'https://owner:private-password@example.invalid',
                                    '-----BEGIN PRIVATE KEY-----hidden-----END PRIVATE KEY-----'])
 def test_diagnostic_redacts_credentials(secret, monkeypatch):
@@ -76,15 +73,15 @@ def test_diagnostic_redacts_credentials(secret, monkeypatch):
     assert len(harnesshook._diagnostic(Denied('x' * 2000))) < 1100
 
 
-@pytest.mark.parametrize('role', ['read-only', 'approve-first', 'plan-and-go'])
+@pytest.mark.parametrize('role', ['read-only', 'ask-changes', 'ask-dangerous'])
 def test_launcher_keeps_normal_role_policy_without_admission(monkeypatch, tmp_path, role):
     def no_board_session(*args, **kwargs):
         pytest.fail('resource-free launcher requested mutation authority')
     monkeypatch.setattr(harness_claims, 'session_of', no_board_session)
     monkeypatch.setattr(harnesshook, '_ask', lambda *args, **kwargs: (False, 'test declined'))
     args = {'command': 'poolhouse --no-browser'}
-    rail = harnesshook.Rail(role, 'worker', [str(tmp_path)])
-    expected = harnesshook.decide(role, 'Bash', args, roots=rail.roots)
+    rail = harnesshook.Rail(coding_policy.Policy(role), 'worker', [str(tmp_path)])
+    expected = harnesshook.decide(coding_policy.Policy(role), Call('Bash', args), roots=rail.roots)
     result = harnesshook.pre({'tool_name': 'Bash', 'tool_input': args, 'cwd': str(tmp_path)}, rail)
     action = result['hookSpecificOutput']['permissionDecision']
     assert action == ('allow' if expected.action == 'allow' else 'deny')
@@ -95,7 +92,7 @@ def test_a_board_outage_never_waives_the_destructive_call_guard(monkeypatch, tmp
     monkeypatch.setattr(harnesshook, '_ask', lambda *args, **kwargs: (False, 'test declined'))
     args = {'command': f'poolhouse --no-browser; rm -rf {tmp_path / "owned"}'}
     result = harnesshook.pre({'tool_name': 'Bash', 'tool_input': args, 'cwd': str(tmp_path)},
-                            harnesshook.Rail('plan-and-go', 'worker', [str(tmp_path)]))
+                            harnesshook.Rail(coding_policy.Policy('ask-dangerous'), 'worker', [str(tmp_path)]))
     assert result['hookSpecificOutput']['permissionDecision'] == 'deny'
 
 
@@ -139,7 +136,7 @@ def test_post_lifecycle_failure_preserves_stop_message_alert(monkeypatch):
     monkeypatch.setattr(harnesshook, '_reader_run', lambda *args, **kwargs:
                         SimpleNamespace(returncode=1, stdout='urgent message waiting; run inbox',
                                         stderr='checkpoint missing shadow'))
-    result = harnesshook.post('worker', harnesshook.Rail('plan-and-go', 'worker', ['/project']))
+    result = harnesshook.post('worker', harnesshook.Rail(coding_policy.Policy('ask-dangerous'), 'worker', ['/project']))
     context = result['hookSpecificOutput']['additionalContext']
     assert 'checkpoint missing shadow' in context
     assert 'urgent message waiting; run inbox' in context

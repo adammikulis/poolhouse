@@ -105,7 +105,7 @@ Tags: **[V path]** read in that code on `0.3dev` at `34e5e3aef`; **[proposal]** 
   the state root: `_window` keeps a time later than now for ever and raises on an entry that is not a number, and
   `_denial` does the same for `until`. A locked, denied, busy or absent backend raises `KeystoreLocked`,
   `KeystoreDenied`, `KeystoreBusy` or `KeystoreUnavailable`; a vanished master raises `KeystoreMissing`.
-  `Keystore.reset` deletes the master item and `provisioned.json`, `denied.json`, `noticed.json` and `legacy.json`; it
+  `Keystore.reset` deletes the master item and `provisioned.json`, `denied.json`, `noticed.json`; it
   leaves `rate.json`. [V]
 - The keystore is open to Poolhouse code only when `real_machine.refusal()` is empty: not a test run, the state root is
   the account's own `~/.poolhouse`, and this module file lies under `~/.poolhouse/runtimes`. That is a check on where

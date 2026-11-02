@@ -44,9 +44,6 @@ The Python device daemon and the Rust node are separate interfaces with separate
   certificates, while browser and phone clients without a certificate still need their route's own authentication.
   Device requests also have membership and signed-request checks. These are not a claim that every route uses the
   same credentials. See [the daemon security model](docs/security.md) and [the implementation](src/poolhouse/fleet/tls.py).
-- **Python admission:** the default mode is `dev`, which permits automatic admission of nearby devices. `prod`
-  requires explicit admission. The pool key is random; the passphrase protects the production joining exchange,
-  rather than deriving the pool key. These modes are distinct from Rust charter policies and the authority presets.
 - **Rust node:** its local API checks the operating-system principal. Network serving is off unless configured;
   `--lan` selects port 7447 on all interfaces. Device links use TLS 1.3 and certificate-based standing checks.
   An unfounded node defaults to `secure` and admits nobody. A founded charter fixes `secure` or `open` joining;

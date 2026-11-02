@@ -66,6 +66,9 @@ def _declared_files(root: Path, run: dict, node: dict, output: dict) -> list[tup
     if relative.name == "policy.zip" and node["type"] == "gym.train":
         _manifest(root, relative.parent, "policy-manifest.json")
         return [(relative.name, relative), ("policy-manifest.json", relative.parent / "policy-manifest.json")]
+    if node['type'] == 'data.hf-preview':
+        _manifest(root, relative, 'dataset-import.json')
+        return [(name, relative / name) for name in ('dataset.jsonl', 'dataset-import.json')]
     export = _manifest(root, relative, "export.json")
     if export is not None:
         names = export.get("files")

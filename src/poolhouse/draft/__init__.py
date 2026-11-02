@@ -240,7 +240,7 @@ def _run_for(model: str, args: argparse.Namespace, *, workload: str) -> Any:
         config = config.over(slot_context=context) if context else config
     else:
         config = Config(serving=Serving(model=model, port=port, slots=1,
-                              slot_context=context or 32768),
+                              slot_context=context),
                   talking=Talking(n_predict=4096, timeout=300.0))
     if build:
         config = config.over(build=build)

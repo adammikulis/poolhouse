@@ -28,6 +28,21 @@ fn status_of(dev: &Dev, id: &str) -> String {
     format!("{:?}", dev.node.lock().unwrap().members.gov().unwrap().status(id))
 }
 
+/// Stop the listener and wait for its node ownership to be released before reopening its state.
+fn stop_device(dev: Dev) -> tempfile::TempDir {
+    let Dev { dir, node, net, .. } = dev;
+    let weak = std::sync::Arc::downgrade(&node);
+    net.shutdown();
+    drop(net);
+    drop(node);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(35);
+    while weak.upgrade().is_some() {
+        assert!(std::time::Instant::now() < deadline, "node did not shut down");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    dir
+}
+
 
 // -- founding and joining ------------------------------------------------------------------------------------------------
 
@@ -43,8 +58,9 @@ fn a_device_founds_a_pool_whose_id_is_the_hash_of_its_charter_and_is_its_first_m
     assert_eq!(view["governance"]["mode"], "governed");
     assert_eq!(view["governance"]["epoch"], 1);
     assert_eq!(view["governance"]["admins"].as_array().unwrap().len(), 1);
-    assert_eq!(view["governance"]["levels"], json!(["phone"]));
-    assert_eq!(view["governance"]["floors"], json!({"routine": "phone", "sensitive": "phone", "governance": "phone"}));
+    assert_eq!(view["governance"]["admins"][0]["claim"]["method"], "phone-keystore");
+    assert_eq!(view["governance"]["admins"][0]["counted"], "computer", "a phone's claim counts as a computer's");
+    assert_eq!(view["governance"]["floors"], json!({"routine": "computer", "sensitive": "computer", "governance": "computer"}));
     assert!(a.is_member(&a.fp()));
     let again = a.call("pool_create", "", &a.token, json!({"title": "other", "policy": "secure"}));
     assert_eq!(again["ok"], false);
@@ -99,37 +115,9 @@ fn a_fresh_node_is_the_unfounded_pool_of_one_and_needs_no_signer_to_exist() {
     assert_eq!(admit["error"]["say"], "This device is not in a pool yet; make one, or join one.", "it admits nobody");
     let propose = a.call("pool_propose", "", &a.token, json!({"kind": "remove", "body": {"fingerprint": "ab".repeat(32)}}));
     assert_eq!(propose["error"]["say"], "This device is not in a pool yet; make one, or join one.");
-    let reopened = Node::open(a.dir.path());
+    let dir = stop_device(a);
+    let reopened = Node::open(dir.path());
     assert!(reopened.is_ok(), "a fresh state directory opens again as it was");
-}
-
-#[test]
-fn a_pool_json_of_the_old_format_or_of_no_format_is_set_aside_and_the_node_starts_unfounded_with_its_boards() {
-    let old_pool = br#"{"v":1,"pool":"0123456789abcdef","policy":"secure","devices":[]}"#;
-    for (i, content) in [old_pool.as_slice(), b"\x00\xff not json at all {{{".as_slice()].into_iter().enumerate() {
-        let dir = tempfile::tempdir().unwrap();
-        let token = {
-            let mut n = kit::node(dir.path());
-            let (name, token) = kit::session(&mut n, "demo", "a");
-            kit::allow(&mut n, "demo", &token, &name, &[]);
-            kit::ok(kit::post(&mut n, "demo", &token, "kept across the old pool"));
-            token
-        };
-        std::fs::write(dir.path().join("pool.json"), content).unwrap();
-        std::fs::write(dir.path().join("pool.json.old-format"), b"an earlier one").unwrap();
-        let mut n = Node::open(dir.path()).expect("the node is up, not refused");
-        assert!(!dir.path().join("pool.json").exists());
-        assert_eq!(std::fs::read(dir.path().join("pool.json.old-format.1")).unwrap(), content, "case {i}: renamed, never deleted, and the earlier file is untouched");
-        assert_eq!(std::fs::read(dir.path().join("pool.json.old-format")).unwrap(), b"an earlier one");
-        let entries = kit::ok(kit::req(&mut n, "read", "demo", &token, json!({"limit": 100})));
-        assert_eq!(kit::texts(&entries["entries"]), vec!["kept across the old pool"], "the board is served as before");
-        let view = kit::ok(kit::req(&mut n, "pool_status", "", "", json!({})));
-        assert_eq!((view["governance"]["mode"].as_str(), view["pool"].as_str()), (Some("unfounded"), Some("")));
-        assert_eq!(view["governance"]["old_format_file"], "pool.json.old-format.1");
-        assert!(view["governance"]["say"].as_str().unwrap().contains("old-format pool: it now starts unfounded; create a new pool"));
-        drop(n);
-        assert!(Node::open(dir.path()).is_ok(), "and it opens again as it was");
-    }
 }
 
 // -- convergence and removal ---------------------------------------------------------------------------------------------
@@ -158,8 +146,8 @@ fn a_removal_signed_on_one_node_is_the_acts_of_a_pool_and_survives_a_restart() {
     a.node.lock().unwrap().enrol_device(&victim.der, "ghost", "join-code").unwrap();
     a.ok("member_remove", "", &a.token, json!({"fingerprint": victim.fingerprint()}));
     sync(&b);
-    let dir = a.dir.path().to_path_buf();
-    let reopened = poolhouse_node::node::Node::open(&dir).unwrap();
+    let dir = stop_device(a);
+    let reopened = poolhouse_node::node::Node::open(dir.path()).unwrap();
     assert_eq!(reopened.members.get(&victim.fingerprint()).map(|d| d.status), Some(poolhouse_node::membership::Status::Revoked));
     assert!(reopened.members.gov().is_some());
 }
@@ -178,7 +166,7 @@ fn two_admins_removing_different_devices_while_apart_end_with_both_removed_on_bo
     a.ok("pool_propose", "", &a.token, json!({"kind": "admin_add", "body": {"entry": entry}}));
     for d in [&a, &b, &c] {
         sync(d);
-        pass(d, 25 * HOUR);
+        pass(d, HELD);
     }
     b.node.lock().unwrap().set_signer(person(BEN, "ben"));
     let first = a.ok("pool_propose", "", &a.token, json!({"kind": "remove", "body": {"fingerprint": extra.0.fingerprint()}}));
@@ -276,7 +264,7 @@ fn a_second_person_cosigns_on_another_device_and_the_act_takes_effect_everywhere
     }
     assert_eq!(status_of(&b, added["act"].as_str().unwrap()), "Pending", "b holds it and counts its own hold");
     for d in [&a, &b, &c] {
-        pass(d, 25 * HOUR);
+        pass(d, HELD);
     }
     assert_eq!(a.status()["governance"]["admins"].as_array().unwrap().len(), 2);
     assert_eq!(b.status()["governance"]["epoch"], 2);
@@ -287,12 +275,14 @@ fn a_second_person_cosigns_on_another_device_and_the_act_takes_effect_everywhere
     let cosigned = b.ok("pool_cosign", "", &b.token, json!({"act": set["act"]}));
     assert_ne!(cosigned["status"], "needs-signers", "{cosigned}");
     sync(&b);
-    assert_eq!(a.status()["governance"]["holds"]["admin_add_h"], 48, "b pushed the signature to a, which does not dial b");
     for d in [&a, &c] {
         sync(d);
     }
     for d in [&a, &b, &c] {
-        assert_eq!(d.status()["governance"]["holds"]["admin_add_h"], 48, "the longer hold is a strengthening: it takes effect at once, on every device");
+        pass(d, HELD);
+    }
+    for d in [&a, &b, &c] {
+        assert_eq!(d.status()["governance"]["holds"]["admin_add_h"], 48, "b pushed the signature to a, which does not dial b, and the change took effect on every device after its seven days");
     }
 }
 
@@ -363,6 +353,7 @@ fn a_window_opened_with_no_signer_on_the_node_admits_only_the_device_an_admin_al
     enrol_phone_key(&a, ANN);
     let charter = charter_for(&a, &[phone_admin(ANN, "ann")], poolhouse_node::membership::Policy::Secure);
     a.ok("pool_found", "", &a.token, json!({"act": found_act(&charter)}));
+    kit::govnode::grant(&a, "demo", &a.token, &["add_device"]);
     let draft = a.ok("pool_draft", "", &a.token, json!({"kind": "admit", "body": admit_body(&b.net.me, "dev", "join-code", "")}));
     let mut act: Act = serde_json::from_value(draft["act"].clone()).unwrap();
     sign(&mut act, ANN);
@@ -414,6 +405,9 @@ fn a_delegate_needs_a_keystore_bound_device_key_and_each_of_its_admits_is_noted_
     assert_eq!(b.call("add_device", "", &b.token, json!({}))["ok"], false, "a member that is not a delegate opens no window");
     a.ok("pool_propose", "", &a.token, json!({"kind": "delegate", "body": {"fingerprint": b.fp()}}));
     sync(&b);
+    for d in [&a, &b] {
+        pass(d, HELD);
+    }
     assert_eq!(b.call("add_device", "", &b.token, json!({}))["ok"], false, "a device key held in a file makes no delegate: a copy of its state signs nothing");
     b.node.lock().unwrap().rig_bind_device_key();
     let guest = device();

@@ -353,3 +353,15 @@ All Systems Operational
 
 # allowed with `hook allow` on 2026-10-16: not people
 Quillon Thistlewick
+
+# Product-owned coding workspace directory.
+Poolhouse Projects
+
+# Studio control label
+Add Report
+# Blender shader socket names (the room generator) and a comment in the vendored three.js GLTFLoader; no person
+Principled BSDF
+Base Color
+Emission Color
+Emission Strength
+Creates BufferGeometries

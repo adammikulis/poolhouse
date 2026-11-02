@@ -6,6 +6,12 @@ mod identity;
 mod launch;
 mod origin;
 mod settings;
+mod studio_watch;
+mod coding_project;
+mod native_picker;
+mod window_size;
+#[cfg(target_os = "macos")]
+mod service_availability;
 #[cfg(test)]
 mod security_tests;
 
@@ -17,10 +23,11 @@ use tauri::PhysicalPosition;
 use tauri::webview::NewWindowResponse;
 use tauri::{AppHandle, Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_shell::process::CommandChild;
+use tauri_plugin_window_state::{StateFlags, WindowExt};
 
 const TITLE: &str = "Poolhouse";
-const WIDTH: f64 = 1360.0;
-const HEIGHT: f64 = 900.0;
+const WIDTH: f64 = 1600.0;
+const HEIGHT: f64 = 1000.0;
 const MIN_WIDTH: f64 = 760.0;
 const MIN_HEIGHT: f64 = 640.0;
 const BACKGROUND: Color = Color(13, 19, 27, 255);
@@ -56,16 +63,33 @@ fn close_choice(
     serde_json::json!({ "ok": true, "mode": mode, "remembered": remember })
 }
 
-/// Reloads the window with a fresh sign-in ticket from its own daemon.
+/// A one-shot ticket for this window's fixed local daemon; no page-supplied target.
 #[tauri::command]
-fn reopen_page(app: AppHandle, state: State<'_, Shell>) -> bool {
-    let Some(window) = app.get_webview_window("main") else {
-        return false;
-    };
-    let Ok(target) = serde_json::to_string(&launch::page_url(&state.root, state.port)) else {
-        return false;
-    };
-    window.eval(&format!("location.replace({target})")).is_ok()
+async fn renew_session(state: State<'_, Shell>) -> Result<Option<String>, String> {
+    let root = state.root.clone();
+    let port = state.port;
+    tauri::async_runtime::spawn_blocking(move || launch::session_ticket(&root, port))
+        .await.map_err(|_| "The local connection could not be renewed.".to_string())
+}
+
+/// The daemon chooses the mode; only the OS picker can supply the original path.
+#[tauri::command]
+async fn choose_studio_watch_source(app: AppHandle, state: State<'_, Shell>, request_id: String, nonce: String) -> Result<serde_json::Value, String> {
+    let root = state.root.clone();
+    let port = state.port;
+    tauri::async_runtime::spawn_blocking(move || studio_watch::choose(app, root, port, request_id, nonce))
+        .await.map_err(|_| "The file selection was interrupted.".to_string())?
+        .map_err(str::to_string)
+}
+
+/// A fixed folder-only selector for the daemon's one-use coding-project request.
+#[tauri::command]
+async fn choose_coding_project(app: AppHandle, state: State<'_, Shell>, request_id: String, nonce: String) -> Result<serde_json::Value, String> {
+    let root = state.root.clone();
+    let port = state.port;
+    tauri::async_runtime::spawn_blocking(move || coding_project::choose(app, root, port, request_id, nonce))
+        .await.map_err(|_| "The folder selection was interrupted.".to_string())?
+        .map_err(str::to_string)
 }
 
 /// Whether the window may close now, raising the question when nothing is saved.
@@ -133,9 +157,10 @@ fn app_context() -> tauri::Context<tauri::Wry> {
 
 fn main() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_window_state::Builder::default().skip_initial_state("main").build())
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![close_choice, on_closing, reopen_page])
+        .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![close_choice, on_closing, renew_session, choose_studio_watch_source, choose_coding_project])
         .setup(|app| {
             let handle = app.handle().clone();
             let home = app.path().home_dir()?;
@@ -168,9 +193,13 @@ fn main() {
                 .background_color(BACKGROUND)
                 .center()
                 .build()?;
+            window.restore_state(StateFlags::all())?;
+            window_size::constrain(&window)?;
             if let Some(at) = told_where() {
                 window.set_position(at)?;
             }
+            #[cfg(target_os = "macos")]
+            app.manage(service_availability::OptionalDiagnostic::start());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -190,6 +219,7 @@ fn main() {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.set_focus();
+                    let _ = window.eval("window.dispatchEvent(new Event('poolhouse-native-reopen'))");
                 }
             }
             RunEvent::Exit => {

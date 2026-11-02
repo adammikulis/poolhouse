@@ -304,9 +304,10 @@ def test_the_files_a_person_reviews_before_they_land_are_named_in_one_place():
              "src/poolhouse/real_machine.py", "src/poolhouse/board/credentials.py", "scripts/agent_sandbox_profile.py",
              "src/poolhouse/workspace/authority_cli.py", "scripts/hooks/weakened-assertions",
              "src/poolhouse/workspace/person_release.py", ".github/workflows/ci.yml",
-             ".github/CODEOWNERS", "scripts/github-protection", "scripts/land_steps.py", "scripts/land",
+             ".github/CODEOWNERS", "scripts/github-protection", "scripts/sealed_git.py",
              "src/poolhouse/worktreerules.py", "src/poolhouse/protectedwrites.py", "scripts/affected.py", "scripts/affected_rules.py",
-             "scripts/test", "scripts/testslots.py", "scripts/gates/duplicates.py", "tests/conftest.py", "pyproject.toml", "budgets.json"]
+             "scripts/test", "scripts/testslots.py", "scripts/gates/duplicates.py", "tests/conftest.py", "pyproject.toml", "budgets.json",
+             "scripts/hooks/pre-push", "scripts/primary_sync.py", "scripts/ci_watch.py"]
     assert protectedwrites.touches_guards(["src/poolhouse/x.py", *named]) == named
 
 

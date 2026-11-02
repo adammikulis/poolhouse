@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import ipaddress
 import json
+import os
 import time
 import urllib.parse
 from collections.abc import Callable
@@ -25,16 +27,8 @@ from poolhouse.http import (
     request_bytes,
 )
 
-from .discovery import (
-    Beacon,
-    DiscoveryError,
-    derive_token,
-    discover,
-    key_path,
-    load_pool_key,
-    primary_ip,
-)
-from .onboard.lan import secure_scheme
+from . import service_pool, tls
+from .onboard.lan import DEFAULT_HTTP_PORT, primary_ip, secure_scheme
 
 if TYPE_CHECKING:
     from poolhouse.speech.protocols import Transcript
@@ -46,17 +40,42 @@ DIGEST_HEADER = "X-Poolhouse-SHA256"
 READS = Retry(tries=3, when_unreachable=False)
 
 
-@dataclass(frozen=True, slots=True)
-class Discovery:
-    timeout_s: float = 2.0
-    key: bytes | None = field(default=None, repr=False)
-    pool_key_path: Path | str | None = None
-    group: str | None = None
-    port: int | None = None
+class DiscoveryError(RuntimeError):
+    """No current compute service matches what was asked for."""
 
 
-DEFAULT_DISCOVERY = Discovery()
+@dataclass
+class Beacon:
+    """One compute service, as the node authorizes it and as its own health report describes it."""
+
+    name: str
+    port: int = DEFAULT_HTTP_PORT
+    device: dict[str, Any] = field(default_factory=dict)
+    busy: bool = False
+    queued: int = 0
+    slots: int = 1
+    free: int = 1
+    host: str = ""
+    hostname: str = ""
+    instance: str = ""
+    """The node's generation for this service binding."""
+    machine: str = ""
+    """The node's device id for the service."""
+    cert: str = ""
+    """The service certificate, base64 DER, which members pin."""
+
+
+def certificate_fingerprint(cert: str) -> str:
+    """The SHA-256 fingerprint of a certificate given as base64 DER, or ``""`` when it is not base64."""
+    try:
+        return hashlib.sha256(base64.b64decode(cert, validate=True)).hexdigest()
+    except (ValueError, TypeError):
+        return ""
+
+
 DEFAULT_REQUEST = Options(timeout=None)
+AGENT_ENV = "POOLHOUSE_WORKSPACE_AGENT"
+AGENT_HEADER = "X-Poolhouse-Agent"
 
 
 def device_address(member, declared: str) -> bool:
@@ -105,6 +124,11 @@ class MemberError(ServerError):
     """One request to one member did not work."""
 
 
+NO_SERVICES = (PermissionError, MemberError, OSError, tls.TlsUnavailable)
+"""What asking for the pool's compute services raises when there are none to use: the node authorizes none, a member does not answer,
+or this device has no certificate to present."""
+
+
 def _member_error(where: str, exc: ServerError) -> MemberError:
     """One member's failure, said the way its callers read it."""
     if isinstance(exc, ServerUnreachable):
@@ -115,41 +139,86 @@ def _member_error(where: str, exc: ServerError) -> MemberError:
 
 class Member:
     def __init__(self, base_url: str, token: str, *, timeout: float = 60.0,
-                 beacon: Beacon | None = None) -> None:
+                 beacon: Beacon | None = None, identity: tls.Identity | None = None) -> None:
         if not secure_scheme(base_url):
             raise ValueError(f"a member is reached over https, or http on this machine only: {base_url}")
         self.base_url = base_url.rstrip("/")
         self.token = token
         self.timeout = timeout
         self.beacon = beacon
+        self._identity = identity
+        self._binding: service_pool.Binding | None = None
+        self._owner_service = False
+        if urllib.parse.urlsplit(self.base_url).scheme == "https":
+            rows = service_pool.Pool().services()
+            own = service_pool.Pool().own(self._identity)
+            address = urllib.parse.urlsplit(self.base_url)
+            own_address = urllib.parse.urlsplit(own.endpoint)
+            try:
+                loopback = ipaddress.ip_address(address.hostname or "").is_loopback
+            except ValueError:
+                loopback = False
+            self._owner_service = bool(token and loopback and address.port == own_address.port
+                                       and beacon is not None and beacon.cert == own.certificate)
+            matching = [row for row in rows if (row.endpoint.rstrip("/") == self.base_url
+                        or (self._owner_service and row == own))
+                        and (beacon is None or row.certificate == beacon.cert)]
+            if len(matching) != 1:
+                raise PermissionError("This endpoint is not a current node-authorized compute service.")
+            self._binding = matching[0]
+            if not self._owner_service:
+                self.token = service_pool.Pool().secret(self._binding.fingerprint, self._identity)
 
     @property
     def name(self) -> str:
         return self.beacon.name if self.beacon else self.base_url
 
-    # -- discovery -------------------------------------------------------
-    @classmethod
-    def discover(cls, *, discovery: Discovery = DEFAULT_DISCOVERY,
-                 timeout: float = 60.0) -> list[Member]:
-        """Every daemon on the LAN that proves it holds the pool key."""
-        key = discovery.key or load_pool_key(discovery.pool_key_path)
-        if key is None:
-            raise DiscoveryError(
-                f"no pool key at {key_path(discovery.pool_key_path)} -- "
-                "run 'poolhouse-members init' here and copy the key to each box")
-        token = derive_token(key)
-        return [cls(b.base_url, token, timeout=timeout, beacon=b)
-                for b in discover(key, timeout_s=discovery.timeout_s, group=discovery.group, port=discovery.port)]
+    @property
+    def fingerprint(self) -> str:
+        """The certificate fingerprint of the node-authorized service this member reaches, or ``""``."""
+        return self._binding.fingerprint if self._binding is not None else ""
+
+    @property
+    def pool(self) -> str:
+        """The pool whose node authorized this member's service, or ``""``."""
+        return self._binding.pool if self._binding is not None else ""
 
     @classmethod
-    def find_one(cls, *, require: str = "", name: str = "",
-                 discovery: Discovery = DEFAULT_DISCOVERY, timeout: float = 60.0) -> Member:
+    def from_binding(cls, row: service_pool.Binding, *, timeout: float = 60.0) -> Member:
+        """The member for one node-authorized service, with no health report asked for."""
+        address = urllib.parse.urlsplit(row.endpoint)
+        beacon = Beacon(name=row.name, host=address.hostname or "", port=address.port or 443,
+                        machine=row.device, cert=row.certificate, instance=row.generation)
+        return cls(row.endpoint, "", timeout=timeout, beacon=beacon)
+
+    # -- discovery -------------------------------------------------------
+    @classmethod
+    def discover(cls, *, timeout: float = 60.0) -> list[Member]:
+        """Every HTTPS compute service currently authorized by this device's node."""
+        rows = service_pool.Pool().services()
+        own = tls.local().fingerprint
+        out = []
+        for row in rows:
+            if row.fingerprint == own:
+                continue
+            member = cls.from_binding(row, timeout=timeout)
+            beacon = member.beacon
+            report = member.health()
+            beacon.device = report
+            beacon.slots = int(report.get("slots") or 1)
+            beacon.free = int(report.get("free", beacon.slots))
+            beacon.busy = bool(report.get("busy"))
+            beacon.queued = int(report.get("queued") or 0)
+            out.append(member)
+        return out
+
+    @classmethod
+    def find_one(cls, *, require: str = "", name: str = "", timeout: float = 60.0) -> Member:
         """The one member to use, or an error saying exactly why there isn't one."""
-        members = cls.discover(discovery=discovery, timeout=timeout)
+        members = cls.discover(timeout=timeout)
         if not members:
             raise DiscoveryError(
-                "no members answered -- is traind running there, is it on this "
-                "LAN, and does it hold the same pool key?")
+                "this pool has no other current compute service; check the node's pool members")
         pool = members
         if name:
             pool = [p for p in pool if p.beacon and p.beacon.name == name]
@@ -169,13 +238,47 @@ class Member:
         return pool[0]
 
     # -- plumbing --------------------------------------------------------
+    def check_current(self) -> None:
+        """Refuse a replaced, removed or unavailable node service binding."""
+        if self._binding is None:
+            return
+        current = service_pool.Pool().authorize(self._binding.fingerprint)
+        if current != self._binding:
+            raise PermissionError("The selected compute service binding changed.")
+        if self._owner_service:
+            if current != service_pool.Pool().own(self._identity):
+                raise PermissionError("The local compute service binding changed.")
+            return
+        secret = service_pool.Pool().secret(current.fingerprint, self._identity)
+        if not hmac.compare_digest(secret, self.token):
+            raise PermissionError("The local compute service binding changed.")
+
+    def current_options(self, options: Options = DEFAULT_REQUEST) -> Options:
+        """Options pinned to the two currently authorized service identities."""
+        self.check_current()
+        previous = options.guard
+        def guard(url):
+            self.check_current()
+            if not url.startswith(self.base_url + "/"):
+                raise PermissionError("Compute service requests cannot change endpoint.")
+            return previous(url) if previous is not None else url
+        context = options.tls_context
+        if self._binding is not None:
+            context = tls.pinned_context(self._binding.certificate, who=self._identity, context_type=tls.ExactContext)
+            context.expected_der = bytes.fromhex(self._binding.cert)
+        agent = {AGENT_HEADER: os.environ[AGENT_ENV]} if os.environ.get(AGENT_ENV) else {}
+        return replace(options, headers={**options.headers, **agent}, token=self.token,
+                       timeout=options.timeout or self.timeout, guard=guard,
+                       tls_context=context, follow_redirects=False)
+
     def _request(self, method: str, path: str, *, data: bytes | None = None,
                  options: Options = DEFAULT_REQUEST) -> tuple[int, bytes, Any]:
         try:
             reply = request_bytes(f"{self.base_url}{path}", data=data, method=method,
-                                  options=replace(options, token=self.token, timeout=options.timeout or self.timeout))
+                                  options=self.current_options(options))
         except ServerError as exc:
             raise _member_error(f"{method} {path}", exc) from None
+        self.check_current()
         return reply.status, reply.body, reply.headers
 
     def _json(self, method: str, path: str, payload: Any = None) -> Any:
@@ -191,7 +294,7 @@ class Member:
 
     def members(self, group: str, rows: list[dict]) -> dict:
         """Give this member our record of a pool's devices and take back its own."""
-        return self._json("POST", "/fleet/v1/members", {"group": group, "rows": rows})
+        raise PermissionError("Pool membership is managed only by the Rust node.")
 
     def availability(self, action: str = "", **fields: Any) -> dict:
         """Read or change when this member takes work."""
@@ -244,6 +347,33 @@ class Member:
             if deadline and time.time() > deadline:
                 raise MemberError(f"job {job_id} still {job['state']} after timeout")
             time.sleep(poll_s)
+
+    # -- test shards -----------------------------------------------------
+    def shard_caps(self) -> dict:
+        """Whether this member takes test shards (and why not), its platform and its free slots."""
+        return self._json("GET", "/shards/v1/caps")
+
+    def shard_upload(self, shard: str, tree: bytes) -> dict:
+        """Send the packed tree of ``shard`` in order, 8 MB at a time; the last answer."""
+        total, sent, last = len(tree), 0, b"{}"
+        while sent < total:
+            chunk = tree[sent:sent + CHUNK]
+            span = {"Content-Range": f"bytes {sent}-{sent + len(chunk) - 1}/{total}"}
+            _, last, _ = self._request("PUT", f"/shards/v1/{shard}/tree", data=chunk, options=Options(headers=span, timeout=300))
+            sent += len(chunk)
+        return json.loads(last or b"{}")
+
+    def shard_start(self, header: dict) -> dict:
+        """Run the shard ``header`` names on the tree already sent with `shard_upload`."""
+        return self._json("POST", "/shards/v1/start", header)
+
+    def shard_state(self, shard: str, since: int = 0) -> dict:
+        """A shard's state, its output from byte ``since`` and, once it has ended, its result."""
+        return self._json("GET", f"/shards/v1/{shard}?since={since}")
+
+    def shard_cancel(self, shard: str) -> dict:
+        """Stop a shard and what it started."""
+        return self._json("POST", f"/shards/v1/{shard}/cancel", {})
 
     # -- speech ----------------------------------------------------------
     def speech(self) -> dict:
@@ -310,11 +440,12 @@ class Member:
         start = partial.stat().st_size if partial.exists() else 0
 
         try:
-            resp = open_stream(f"{self.base_url}{route}{remote}", method="GET", options=Options(headers={"Range": f"bytes={start}-"} if start else {}, token=self.token, timeout=timeout))
+            resp = open_stream(f"{self.base_url}{route}{remote}", method="GET", options=self.current_options(Options(headers={"Range": f"bytes={start}-"} if start else {}, timeout=timeout)))
         except ServerError as exc:
             if exc.status == 416:
                 size = range_total(exc.headers.get("Content-Range", ""))
                 if size is not None and start == size:
+                    self.check_current()
                     promote(partial, local)
                     return local
                 raise MemberError(
@@ -329,7 +460,9 @@ class Member:
             done = start
             with partial.open("ab" if start else "wb") as fh:
                 while True:
+                    self.check_current()
                     buf = resp.read(CHUNK)
+                    self.check_current()
                     if not buf:
                         break
                     fh.write(buf)
@@ -348,6 +481,7 @@ class Member:
                 raise MemberError(
                     f"{remote}: checksum mismatch (expected {want[:16]}..., "
                     f"got {actual[:16]}...); discarded the download")
+        self.check_current()
         promote(partial, local)
         return local
 

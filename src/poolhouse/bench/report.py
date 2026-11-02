@@ -14,7 +14,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-# The package is the namespace the tests and `selfcheck` patch -- `bench.runs`, `bench.home_dir()`
+# The package is the namespace the tests patch -- `bench.runs`, `bench.home_dir()`
 # -- so anything patchable is looked up there at call time, never bound here at import.
 from poolhouse import bench
 from poolhouse.bench.gathered import (

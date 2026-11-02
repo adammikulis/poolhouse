@@ -7,7 +7,7 @@ use poolhouse_node::cert::{self, Identity};
 use poolhouse_node::fsutil::hex;
 use poolhouse_node::gov::act::{Act, ActSig, SigKind};
 use poolhouse_node::gov::charter::{Charter, Floors, First, Unit};
-use poolhouse_node::gov::keys::{AdminKey, Alg, Role, Level};
+use poolhouse_node::gov::keys::{AdminKey, Alg, Claim, Level, Method, Os, Prompt, Role};
 use poolhouse_node::gov::pool::{GovPool, Ingest};
 use poolhouse_node::gov::signer::RigSigner;
 use poolhouse_node::membership::Policy;
@@ -17,8 +17,12 @@ use tempfile::TempDir;
 
 pub const HOUR: i64 = 3_600_000;
 pub const DAY: i64 = 24 * HOUR;
+/// The hold of a governance act: every key that counts is a `computer` key.
+pub const HOLD: i64 = 7 * DAY;
+/// A moment past the hold of a governance act: every key that counts is a `computer` key, so a change to who governs waits seven days.
+pub const HELD: i64 = 7 * DAY + HOUR;
 
-/// A key of the pool: the seed it is made from, the person it belongs to, its role and assurance level.
+/// A key of the pool: the seed it is made from, the person it belongs to, its role and the level of the claim it makes.
 #[derive(Clone, Copy)]
 pub struct K(pub u8, pub &'static str, pub Role, pub Level);
 
@@ -44,9 +48,25 @@ pub fn public(seed: u8) -> String {
     RigSigner::public(seed)
 }
 
+/// The claim a key that makes it at ``level`` states: a typed yes for `Weak`, the operating system's prompt for `Computer`, a protected
+/// helper for `Native` and a phone's keystore for `Phone`. Every one but the first counts as `Computer`, since no member can check more.
+pub fn claim_at(level: Level) -> Claim {
+    match level {
+        Level::Weak => Claim { method: Method::KeystoreTyped, os: Os::Macos, prompt: Prompt::TypedYes },
+        Level::Computer => Claim { method: Method::KeystorePrompt, os: Os::Macos, prompt: Prompt::OsDialog },
+        Level::Native => Claim { method: Method::Helper, os: Os::Macos, prompt: Prompt::OsDialog },
+        Level::Phone => Claim { method: Method::PhoneKeystore, os: Os::Android, prompt: Prompt::Biometric },
+    }
+}
+
+/// The claim a listing of ``k`` carries: none for a recovery key.
+pub fn claim_of(k: K) -> Option<Claim> {
+    (k.2 == Role::Admin).then(|| claim_at(k.3))
+}
+
 /// The listing of the key ``k`` at epoch ``since``, accepted against ``anchor`` and the charter ``prev`` it follows (empty at epoch 1).
 pub fn entry_on(k: K, since: u64, anchor: &str, prev: &str) -> AdminKey {
-    let mut e = AdminKey { key: public(k.0), alg: Alg::Ed25519, role: k.2, assurance: k.3, person: k.1.into(), since, acceptance: String::new(), label: format!("{}'s key", k.1) };
+    let mut e = AdminKey { key: public(k.0), alg: Alg::Ed25519, role: k.2, claim: claim_of(k), person: k.1.into(), since, acceptance: String::new(), label: format!("{}'s key", k.1) };
     e.acceptance = RigSigner::sign_as(k.0, &e.acceptance_message(anchor, prev));
     e
 }

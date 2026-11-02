@@ -9,6 +9,7 @@ import time
 
 import psutil
 
+from poolhouse import procscan
 from poolhouse.serve.process import kill_pid, pid_exists
 
 logger = logging.getLogger(__name__)
@@ -54,17 +55,13 @@ def wait_until_free(port: int, host: str = DEFAULT_HOST, *, timeout: float = 5.0
 def server_pids_on_port(port: int) -> list[int]:
     """Pids of *our* model-server binaries listening on ``port``."""
     pids: list[int] = []
-    for process in psutil.process_iter(["pid", "name"]):
-        name = process.info.get("name") or ""
+    for process, info in procscan.readable(["pid", "name"]):
+        name = info.get("name") or ""
         if not any(binary in name for binary in SERVER_BINARIES):
             continue
-        try:
-            connections = process.net_connections(kind="inet")
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue
-        for conn in connections:
+        for conn in procscan.connections(process):
             if conn.status == psutil.CONN_LISTEN and conn.laddr and conn.laddr.port == port:
-                pids.append(process.info["pid"])
+                pids.append(info["pid"])
                 break
     return pids
 

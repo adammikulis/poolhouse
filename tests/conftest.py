@@ -90,7 +90,6 @@ def pytest_sessionfinish(session, exitstatus) -> None:
 
 
 # ``src`` goes on the path above, so these cannot be imported with the rest.
-import githooks_ready  # noqa: E402  (``scripts`` is on the path above)
 import testslots  # noqa: E402
 import walkbound  # noqa: E402
 from daemon_guard import daemons_stop_with_the_test  # noqa: E402,F401  (an autouse fixture)
@@ -110,8 +109,6 @@ from poolhouse.testing.fakes import (  # noqa: E402
     fake_binary as fake_binary,
 )
 
-if not os.environ.get("PYTEST_XDIST_WORKER"):
-    githooks_ready.ensure(REPO)
 testslots.pin_slots_dir()
 """The machine-wide slot directory, fixed before the session moves ``HOME`` so every worker and
 every run shares one set of heavy lanes."""
@@ -249,6 +246,11 @@ def _no_machine_state(monkeypatch, tmp_path):
         monkeypatch.delenv(name, raising=False)
 
     import importlib
+
+    # The agent that runs the suite is itself a session on a board, and its shell exports the names of both. Left in place they decide
+    # which board a hook resolves and whose token it looks for, so a rig that registers no session was denied only in an agent's shell.
+    for name in importlib.import_module("poolhouse.testing.identity").IDENTITY_ENV:
+        monkeypatch.delenv(name, raising=False)
 
     progress = sys.modules.get("poolhouse.bench.progress") or importlib.import_module(
         "poolhouse.bench.progress")
@@ -420,7 +422,8 @@ def fake_process(argv: list[str], rss: int, *, pid: int = 0, state: str = "runni
             "memory_info": types.SimpleNamespace(rss=rss)}
     if pid:
         info["pid"] = pid
-    return types.SimpleNamespace(info=info, pid=pid, status=lambda: state)
+    return types.SimpleNamespace(info=info, pid=pid, status=lambda: state,
+                                 as_dict=lambda attrs=None, ad_value=None: {k: info.get(k, ad_value) for k in attrs or info})
 
 
 def fake_memory(*, total: int, available: int, wired: int):
@@ -454,6 +457,46 @@ def scored_rows(label: str, *, questions: int, hits: int, seconds: float, **cont
         row.draft_tokens, row.draft_taken = draft
         out.append(row)
     return out
+
+
+# -- a context named, for tests of what a flag does and not of what fits ------------------
+
+@pytest.fixture
+def named_context(monkeypatch):
+    """Serve every spec that names no context at 4096, in the places that would fit one.
+
+    For tests whose model is a stand-in file with no header: they are about a flag, a lease or
+    a profile, not about the context, which `tests/test_serve_largest_fit.py` covers on real
+    headers. Nothing outside the test module that asks for this fixture changes."""
+    from dataclasses import replace
+
+    from poolhouse.serve import lifecycle_cli, manager, public
+
+    def named(spec, machine=None):
+        return (spec if spec.context else replace(spec, context=4096)), ""
+
+    for module in (lifecycle_cli, manager, public):
+        monkeypatch.setattr(module, "fitted", named)
+
+
+@pytest.fixture
+def bench_context_named(monkeypatch):
+    """A bench run with no ``--context`` serves 32768 a slot, for stand-in model files with no header.
+
+    The benchmark's default is the fit (`bench/fitcontext.py`, covered on real headers by
+    `tests/test_bench_context_levels.py`); a test of sweeps, labels or the serving seam does not
+    want to build a header to get past it."""
+    from poolhouse.bench import fitcontext
+
+    real = fitcontext.total_for
+
+    def named(args, model, *, kv, default=0, headed=False):
+        given = getattr(args, "context", 0)
+        if getattr(given, "fit", False):
+            return real(args, model, kv=kv, default=default, headed=headed)
+        return int(given or 0) or default or 32768 * max(1, int(getattr(args, "parallel", 1) or 1)), ""
+
+    monkeypatch.setattr(fitcontext, "total_for", named)
 
 
 # -- the fit records, pointed away from the ones this repository ships -------------------
@@ -1203,6 +1246,21 @@ def playwright():
         yield play
 
 
+@pytest.fixture(scope="session")
+def browser_owner(tmp_path_factory):
+    """The managed Chromium process owned by this pytest worker."""
+    pytest.importorskip("playwright.sync_api")
+    from browser_worker import BrowserWorker
+
+    profile = tmp_path_factory.mktemp("managed-browser")
+    owner = BrowserWorker(profile)
+    owner.start()
+    try:
+        yield owner
+    finally:
+        owner.close()
+
+
 def heavy_modules() -> frozenset[str]:
     """The test modules listed in ``tests/heavy-modules.txt``, one file name per line."""
     listed = (Path(__file__).parent / "heavy-modules.txt").read_text(encoding="utf-8")
@@ -1220,7 +1278,7 @@ def seatbelt_modules() -> frozenset[str]:
 
 def pytest_collection_modifyitems(config, items) -> None:
     """Mark the modules in ``heavy-modules.txt`` and ``seatbelt-modules.txt``, skip the live tests nobody switched on, leave
-    the slow tests out unless --slow, the whole-tree scans out unless --gate, and the redteam tests out unless --redteam."""
+    the slow tests out unless --slow, the scans out unless --gate, the redteam out unless --redteam, real_model out unless --real-model."""
     heavy, seatbelt = heavy_modules(), seatbelt_modules()
     for item in items:
         if Path(str(item.fspath)).name in heavy:
@@ -1230,7 +1288,7 @@ def pytest_collection_modifyitems(config, items) -> None:
         reason = live.skip_reason((m.name for m in item.iter_markers()), os.environ)
         if reason:
             item.add_marker(pytest.mark.skip(reason=reason))
-    wanted = {name: config.getoption(f"--{name}") for name in ("slow", "gate", "redteam")}
+    wanted = {name: config.getoption(f"--{name.replace('_', '-')}") for name in ("slow", "gate", "redteam", "real_model")}
     wanted["gate"] = wanted["gate"] or wanted["slow"]   # CI runs `--slow`: everything, whole-tree scans too
     left_out = [name for name, given in wanted.items() if not given]
     if not left_out:

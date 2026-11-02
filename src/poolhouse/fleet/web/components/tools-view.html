@@ -1,6 +1,5 @@
 <style>
 tools-view { display:contents; }
-tools-view .workspace { padding:calc(28px * var(--ui-density,1)) calc(32px * var(--ui-density,1)); }
 tools-view .tools-heading { display:flex; align-items:center; justify-content:space-between; gap:24px; margin-bottom:22px; }
 tools-view .tools-heading h1 { margin:0 0 8px; } tools-view .tools-heading p { margin:0; }
 tools-view .tool-tabs { display:flex; gap:8px; border-bottom:1px solid var(--line); margin-bottom:24px; padding-bottom:12px; }
@@ -18,8 +17,8 @@ tools-view #runner { margin-top:24px; max-width:850px; }
 @media(max-width:1100px) { tools-view .workspace-grid { grid-template-columns:1fr; } }
 @media(max-width:650px) { tools-view .workspace { padding:calc(20px * var(--ui-density,1)); } tools-view .tool-tabs { overflow:auto; } tools-view .tool-tabs button { white-space:nowrap; } }
 </style>
-<template><section class="workspace" hidden>
-<header class="tools-heading"><div><h1>Tools</h1></div></header>
+<template><section class="workspace page-shell" hidden>
+<header class="tools-heading page-heading"><div><h1>Tools</h1></div></header>
 <nav class="tool-tabs" role="tablist" aria-label="Tool workspace"><button type="button" role="tab" data-tool="decision" aria-selected="true">Decision lab</button><button type="button" role="tab" data-tool="library" aria-selected="false">Command library</button><button type="button" role="tab" data-tool="jobs" aria-selected="false">Running jobs</button></nav>
 <div class="tool-panel" data-tool-panel="decision"><div class="workspace-grid"><div class="workspace-card" id="decision"></div><aside class="workspace-card"><h2>Decision models</h2><p class="hint">Give a decision model a situation and a closed set of options. Evaluate labelled cases to understand its probabilities.</p><p class="hint">The default decider is Strands 2B. Use the advanced controls to choose a backend or checkpoint.</p></aside></div></div>
 <div class="tool-panel" data-tool-panel="library" hidden><h2>Specialist command library</h2><p id="library-status" class="status" role="status" aria-live="polite"></p><input id="search" type="search" aria-label="Search tools" placeholder="Search graph, speech, security, workspace…"><div class="cards" id="catalogue"></div><div class="workspace-card" id="runner"></div></div>

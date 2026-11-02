@@ -88,7 +88,7 @@ def test_graph_browser_navigation_search_and_neighbor(daemon, tmp_path, playwrig
         page.goto(f'http://127.0.0.1:{daemon.port}/ui')
         reach(page, 'knowledge')
         page.get_by_role('button', name='Graph · knowledge.db', exact=True).click()
-        page.get_by_label('Search nodes').fill('Alpha')
+        page.locator('knowledge-view').get_by_label('Search nodes', exact=True).fill('Alpha')
         page.locator('knowledge-view').get_by_role('button', name='Search', exact=True).click()
         page.get_by_role('button', name='Alpha model · model', exact=True).click()
         detail = page.locator('knowledge-view #detail')

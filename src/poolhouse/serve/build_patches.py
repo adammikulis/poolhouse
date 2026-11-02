@@ -12,13 +12,15 @@ real checkout, so a failure leaves ``src`` and ``current`` exactly as they were.
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
 import re
-import shutil
 import tempfile
 from pathlib import Path
 
 from poolhouse.log import warn
+from poolhouse.redact.secrets import env_secrets, redact
 from poolhouse.serve.build_paths import BuildFailed, patch_files, patch_stamp, patches_dir, root
 
 __all__ = ["MANIFEST", "check_patches", "manifest_path", "rebase_help", "verified_upstream"]
@@ -101,6 +103,9 @@ def check_patches(source: Path, rev: str, git) -> None:
     finally:
         try:
             git("worktree", "remove", "--force", str(trial), cwd=source)
-        except BuildFailed:
-            shutil.rmtree(trial, ignore_errors=True)
-            git("worktree", "prune", cwd=source)
+        except BuildFailed as exc:
+            # A diagnostic must not replace the patch decision or destroy a refused trial.
+            with contextlib.suppress(Exception):
+                reason = str(exc).splitlines()[0] if str(exc) else "Git refused trial removal"
+                message, _ = redact(f"patch trial preserved at {trial}; cleanup failed: {reason}", env_secrets(os.environ))
+                warn(" ".join(message.split())[:1000])

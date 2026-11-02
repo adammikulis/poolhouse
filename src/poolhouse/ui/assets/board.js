@@ -1,14 +1,14 @@
-/* <ml-board endpoint="/board">: the workspace's boards, threads and direct conversations, with a live feed and the person's composer (`readonly` removes it).
+/* <poolhouse-board endpoint="/board">: the workspace's boards, threads and direct conversations, with a live feed and the person's composer (`readonly` removes it).
    Every string from the route is shown as text after control and bidirectional characters are
    removed; nothing is parsed as markup and the only link is a file's download (an attachment, never shown inline). The page holds no token. */
-import { MlElement, define, h } from "./base.js";
+import { PoolhouseElement, define, h } from "./base.js";
 import { loadPage, messageRoute, pageControls, renderFeed } from "./board-pages.js";
 import { INTEGRATED_STYLES } from "./board-styles.js";
 import "./composer.js";
+import { NAV_MAX, bindFocus, focusControls, pinnedChannels, visibleMessages } from "./board-focus.js";
 
 const HIDDEN = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/g;
 const BODY_MAX = 4000;
-const NAV_MAX = 100; // every node costs a frame: a list is cut before it is drawn, never after
 const LINE_MAX = 200;
 const POLL_MIN = 3000;
 const POLL_MAX = 60000;
@@ -39,57 +39,60 @@ const when = (ts) => {
 const STYLES = `
 :host { min-height: 320px; }
 .shell { display: grid; grid-template-columns: minmax(150px, 220px) 1fr; height: 100%;
-  min-height: inherit; border: 1px solid var(--ml-line); border-radius: var(--ml-radius);
-  background: var(--ml-surface); overflow: hidden; }
+  min-height: inherit; border: 1px solid var(--poolhouse-ui-line); border-radius: var(--poolhouse-ui-radius);
+  background: var(--poolhouse-ui-surface); overflow: hidden; }
 @media (max-width: 560px) { .shell { grid-template-columns: 1fr; grid-template-rows:auto minmax(0,1fr); } nav { max-height:180px; } }
-nav { border-right: 1px solid var(--ml-line); background: var(--ml-sunken); overflow-y: auto;
+nav { border-right: 1px solid var(--poolhouse-ui-line); background: var(--poolhouse-ui-sunken); overflow-y: auto;
   padding: 8px 0; }
 nav h3 { margin: 10px 14px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
-  color: var(--ml-muted); font-weight: 600; }
+  color: var(--poolhouse-ui-muted); font-weight: 600; }
 nav button { all: unset; box-sizing: border-box; display: flex; justify-content: space-between;
   gap: 8px; width: 100%; padding: 6px 14px; cursor: pointer; overflow-wrap: anywhere; }
 nav button:hover, nav button[aria-current=true] {
-  background: color-mix(in srgb, var(--ml-accent) 12%, transparent); }
-nav button:focus-visible { outline: 2px solid var(--ml-focus); outline-offset: -2px; }
-.count { font-family: var(--ml-mono); font-size: 12px; color: var(--ml-accent-ink); font-weight: 600; }
+  background: color-mix(in srgb, var(--poolhouse-ui-accent) 12%, transparent); }
+nav button:focus-visible { outline: 2px solid var(--poolhouse-ui-focus); outline-offset: -2px; }
+.count { font-family: var(--poolhouse-ui-mono); font-size: 12px; color: var(--poolhouse-ui-accent-ink); font-weight: 600; }
 main { overflow-y: auto; padding: 12px 16px; min-width: 0; }
 main header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
 main h2 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
-.badge { font-size: 11px; color: var(--ml-muted); border: 1px solid var(--ml-line-strong);
+.badge { font-size: 11px; color: var(--poolhouse-ui-muted); border: 1px solid var(--poolhouse-ui-line-strong);
   border-radius: 999px; padding: 0 8px; }
 .row { all: unset; box-sizing: border-box; display: block; width: 100%; padding: 8px 10px;
-  border-bottom: 1px solid var(--ml-line); cursor: pointer; }
-.row:hover { background: color-mix(in srgb, var(--ml-accent) 8%, transparent); }
-.row:focus-visible { outline: 2px solid var(--ml-focus); outline-offset: -2px; }
+  border-bottom: 1px solid var(--poolhouse-ui-line); cursor: pointer; }
+.row:hover { background: color-mix(in srgb, var(--poolhouse-ui-accent) 8%, transparent); }
+.row:focus-visible { outline: 2px solid var(--poolhouse-ui-focus); outline-offset: -2px; }
 .row .subject { font-weight: 600; overflow-wrap: anywhere; }
-.meta { color: var(--ml-muted); font-size: 12px; }
-.msg { padding: 8px 0; border-bottom: 1px solid var(--ml-line); }
+.meta { color: var(--poolhouse-ui-muted); font-size: 12px; }
+.msg { padding: 8px 0; border-bottom: 1px solid var(--poolhouse-ui-line); }
 .msg.sent { margin-left: 24px; }
 .msg .who { font-weight: 600; font-size: 13px; }
 .msg pre { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
-.cut { color: var(--ml-yellow-ink); font-size: 12px; }
+.cut { color: var(--poolhouse-ui-yellow-ink); font-size: 12px; }
+.focus-controls { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:10px 0; font-size:12px; }
+.focus-controls label { display:flex; align-items:center; gap:5px; }
+.focus-controls input { width:auto; }
 .channel-tabs { display:flex; gap:8px; margin:0 0 12px; }
-.channel-tabs button { background:var(--ml-sunken); border:1px solid var(--ml-line); border-radius:6px; padding:5px 12px; cursor:pointer; }
-.channel-tabs button[aria-pressed=true] { color:var(--ml-accent-ink); border-color:var(--ml-accent); }
-.back { all: unset; cursor: pointer; color: var(--ml-accent-ink); font-size: 13px; }
-.back:focus-visible { outline: 2px solid var(--ml-focus); outline-offset: 2px; }
+.channel-tabs button { background:var(--poolhouse-ui-sunken); border:1px solid var(--poolhouse-ui-line); border-radius:6px; padding:5px 12px; cursor:pointer; }
+.channel-tabs button[aria-pressed=true] { color:var(--poolhouse-ui-accent-ink); border-color:var(--poolhouse-ui-accent); }
+.back { all: unset; cursor: pointer; color: var(--poolhouse-ui-accent-ink); font-size: 13px; }
+.back:focus-visible { outline: 2px solid var(--poolhouse-ui-focus); outline-offset: 2px; }
 .composer { display: grid; gap: 6px; margin-top: 12px; padding-top: 10px;
-  border-top: 1px solid var(--ml-line); }
-.composer textarea, .composer input { font: inherit; color: var(--ml-text); background: var(--ml-sunken);
-  border: 1px solid var(--ml-line-strong); border-radius: 6px; padding: 6px 8px; width: 100%; }
+  border-top: 1px solid var(--poolhouse-ui-line); }
+.composer textarea, .composer input { font: inherit; color: var(--poolhouse-ui-text); background: var(--poolhouse-ui-sunken);
+  border: 1px solid var(--poolhouse-ui-line-strong); border-radius: 6px; padding: 6px 8px; width: 100%; }
 .composer textarea { min-height: 64px; resize: vertical; }
 .composer button { justify-self: start; padding: 5px 14px; border-radius: 6px; cursor: pointer;
-  background: var(--ml-accent); color: var(--ml-on-accent); border: 0; font-weight: 600; }
+  background: var(--poolhouse-ui-accent); color: var(--poolhouse-ui-on-accent); border: 0; font-weight: 600; }
 .composer button[disabled] { opacity: .5; cursor: default; }
-.composer .err { color: var(--ml-red-ink); font-size: 12px; }
+.composer .err { color: var(--poolhouse-ui-red-ink); font-size: 12px; }
 nav .new { display: flex; gap: 4px; padding: 6px 14px; }
-nav .new input { flex: 1; min-width: 0; font: inherit; color: var(--ml-text);
-  background: var(--ml-surface); border: 1px solid var(--ml-line-strong); border-radius: 6px; padding: 2px 6px; }
-.state { padding: 24px 8px; color: var(--ml-muted); }
-.state.error { color: var(--ml-red-ink); }
+nav .new input { flex: 1; min-width: 0; font: inherit; color: var(--poolhouse-ui-text);
+  background: var(--poolhouse-ui-surface); border: 1px solid var(--poolhouse-ui-line-strong); border-radius: 6px; padding: 2px 6px; }
+.state { padding: 24px 8px; color: var(--poolhouse-ui-muted); }
+.state.error { color: var(--poolhouse-ui-red-ink); }
 `;
 
-class MlBoard extends MlElement {
+class PoolhouseBoard extends PoolhouseElement {
   static props = { endpoint: "string", interval: "number", readonly: "bool", channelFeed:"bool", integrated:"bool" };
   static styles = STYLES + INTEGRATED_STYLES;
 
@@ -198,6 +201,7 @@ class MlBoard extends MlElement {
       if (!response.ok) {
         const error = Error(line(answer.error || response.status, 160));
         error.personSetupRequired = answer.person_setup_required === true;
+        error.status = response.status;
         throw error;
       }
       return answer;
@@ -214,16 +218,28 @@ class MlBoard extends MlElement {
   }
 
   async poll() {
+    const revision = this.loadRevision;
     let pause = 0;
     try {
       const { seq } = await this.get("wait", { after: this.seq, timeout: WAIT_S });
       this.delay = nextDelay(this.delay, false);
       if (seq > this.seq) { this.seq = seq; await this.load(); }
-    } catch {
+    } catch (error) {
+      if (revision === this.loadRevision && !this.stopped && [401, 403].includes(error.status)) {
+        this.clearAuthorization(error); this.error = line(error.message, 160); this.update();
+      }
       this.delay = nextDelay(this.delay, true);
       pause = this.delay;
     }
     this.schedule(pause);
+  }
+
+  clearAuthorization(error) {
+    if (![401, 403].includes(error.status)) return;
+    this.me = ""; bindFocus(this, null); this.boards = []; this.dms = []; this.agents = []; this.items = [];
+    this.view = {kind:"none"}; this.page = null; this.loading = false;
+    this.viewRevision++; this.draft = {body:"", subject:"", error:""};
+    this.personSetupRequired = error.personSetupRequired === true;
   }
 
   async load() {
@@ -234,8 +250,12 @@ class MlBoard extends MlElement {
       this.seq = Math.max(this.seq, Number(h.seq) || 0);
       this.me = line(b.me ?? "", 48);
       this.boards = b.boards ?? [];
+      bindFocus(this, b.view_scope);
       this.dms = d.conversations ?? [];
-      try { this.agents = (await this.get("agents")).agents || []; } catch { this.agents = []; }
+      try { this.agents = (await this.get("agents")).agents || []; } catch (error) {
+        if ([401, 403].includes(error.status)) throw error;
+        this.agents = [];
+      }
       if (revision !== this.loadRevision || this.stopped) return;
       this.error = "";
       this.personSetupRequired = false;
@@ -244,8 +264,9 @@ class MlBoard extends MlElement {
       await this.open(view, false);
     } catch (e) {
       if (revision !== this.loadRevision || this.stopped) return;
+      this.clearAuthorization(e);
       this.personSetupRequired = e.personSetupRequired === true;
-      this.error = `The workspace did not answer (${line(e.message, 40)}).`;
+      this.error = `The workspace could not load: ${line(e.message, 160)}`;
     }
     this.update();
   }
@@ -275,11 +296,12 @@ class MlBoard extends MlElement {
       this.error = "";
     } catch (error) {
       if (revision !== this.viewRevision || this.stopped) return;
+      this.clearAuthorization(error);
       this.items = []; this.error = `That did not load (${line(error.message, 160)}).`;
     }
     this.loading = false;
     if (render) this.update();
-    this.emit("ml-board-view", {kind:view.kind});
+    this.emit("poolhouse-board-view", {kind:view.kind});
   }
 
   async markRead() {
@@ -297,7 +319,7 @@ class MlBoard extends MlElement {
   update() {
     if (!this.nav) return;
     const navigation = {boards:this.boards, dms:this.dms, agents:this.agents,
-      me:this.me, view:this.view, personSetupRequired:this.personSetupRequired === true, error:this.error || ""};
+      me:this.me, view:this.view, pinnedChannels:pinnedChannels(this), personSetupRequired:this.personSetupRequired === true, error:this.error || ""};
     const navigationKey = JSON.stringify(navigation);
     if (navigationKey !== this.navigationKey) {
       this.navigationKey = navigationKey; this.emit("board-navigation", navigation);
@@ -317,7 +339,8 @@ class MlBoard extends MlElement {
       ...(this.agents.length ? [h("h3", {}, "Agents"), ...this.agents.slice(0, NAV_MAX).map(agent =>
         item(agent.display_name || agent.id, 0, this.view.kind === "dm" && [this.view.a, this.view.b].includes(agent.id),
           () => this.open({kind:"dm", a:this.me, b:agent.id}), `${agent.id} · ${agent.device?.verification || "unknown"}`))] : []));
-    renderFeed(this, this.pane());
+    const pane = this.pane();
+    renderFeed(this, [focusControls(this), ...pane].filter(Boolean));
     const controls = pageControls(this);
     this.history.replaceChildren(...(controls ? [controls] : []));
     // the draft a conversation was opened with decides the composer too: one built before it was read is stale
@@ -337,7 +360,7 @@ class MlBoard extends MlElement {
     const open = () => {
       const name = line(box.value, 97);
       if (name) {
-        this.emit("ml-board-open", {kind:"dm"});
+        this.emit("poolhouse-board-open", {kind:"dm"});
         this.open({ kind: "dm", a: this.me, b: name });
       }
     };
@@ -388,7 +411,7 @@ class MlBoard extends MlElement {
         this.update();
       }
     };
-    const node = h("ml-composer", {class:"composer", recipient:this.view.kind === "thread"
+    const node = h("poolhouse-composer", {class:"composer", recipient:this.view.kind === "thread"
       ? `Reply in ${to.to}` : `Message ${to.to}`}, subject, text, go,
       this.draft.error ? h("div", { class: "err", role: "alert" }, this.draft.error) : null);
     node.addEventListener("composer-send", post);
@@ -438,7 +461,9 @@ class MlBoard extends MlElement {
 
   messages(first) {
     if (!this.items.length) return [h("p", { class: "state" }, "No messages.")];
-    return this.items.map((m) => h("article", { class: `msg${first && m.from === first ? " sent" : ""}`, "data-seq":String(m.seq) },
+    const shown = visibleMessages(this);
+    if (!shown.length) return [h("p", {class:"state"}, "No messages match this focus. Show all messages or load another page.")];
+    return shown.map((m) => h("article", { class: `msg${first && m.from === first ? " sent" : ""}`, "data-seq":String(m.seq) },
       h("div", { class: "who", title:m.from }, `${line(m.display_name || m.from, 160)}`,
         m.role === "human" ? null : h("span", { class: "meta" }, ` (${m.model ? `${line(m.model, 80)}, ${line(m.model_state, 12)}` : "model unknown"})`),
         h("span", { class: "meta" }, `  ${line(m.type, 16)}, ${when(m.ts)}${m.held ? ", held in quarantine" : ""}`)),
@@ -453,4 +478,4 @@ class MlBoard extends MlElement {
         this.open({kind:"thread", root:Number(m.thread || m.seq), board:this.view.name})}, "Reply in thread") : null));
   }
 }
-define("ml-board", MlBoard);
+define("poolhouse-board", PoolhouseBoard);

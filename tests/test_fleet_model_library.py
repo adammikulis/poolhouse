@@ -68,7 +68,7 @@ def test_serving_refuses_missing_first_shard_and_outside_paths(joined, monkeypat
     first = weights(joined.files / 'Qwen3-27B-Q4_K_M-00002-of-00002.gguf', 'Qwen3-27B')
     weights(joined.files / 'Qwen3-27B-Q4_K_M-00003-of-00002.gguf', 'Qwen3-27B')
     calls = []
-    joined.ui.start_serving = lambda model: calls.append(model) or SimpleNamespace(public=lambda: {'port': 12345})
+    joined.ui.start_serving = lambda model, **_options: calls.append(model) or SimpleNamespace(public=lambda: {'port': 12345})
     for path in (str(first), str(joined.files.parent / 'outside.gguf')):
         status, _, _ = joined.call('/ui/serving', method='POST', body={'path': path}, cookie=joined.cookie)
         assert status == 404
@@ -83,14 +83,14 @@ def test_models_browser_groups_shards_filters_sorts_and_serves_exact_path(joined
     weights(joined.files / 'Qwen3-27B-Q4_K_M-00002-of-00002.gguf', 'Qwen3-27B')
     weights(joined.files / 'Ornith-9B-Q8_0.gguf', 'Ornith-9B', modified=200)
     calls = []
-    joined.ui.start_serving = lambda model: calls.append(model.path) or SimpleNamespace(public=lambda: {'port': 12345})
+    joined.ui.start_serving = lambda model, **_options: calls.append(model.path) or SimpleNamespace(public=lambda: {'port': 12345})
     page, errors = open_page(joined, cookie=joined.cookie, path='/ui/#models')
     library = page.locator('models-library')
     library.locator('article').filter(has_text='Qwen3-27B').wait_for()
     assert library.locator('article').filter(has_text='Qwen3-27B').count() == 1
     row = library.locator('article').filter(has_text='Qwen3-27B')
     assert not row.locator('code').is_visible()
-    row.locator('summary').click()
+    row.get_by_text('Files and model details', exact=True).click()
     assert row.locator('li').count() == 2
     assert '2 shards expected' in row.inner_text()
     library.get_by_text('Advanced library filters', exact=True).click()
@@ -107,7 +107,7 @@ def test_models_browser_groups_shards_filters_sorts_and_serves_exact_path(joined
     assert 'Ornith-9B' in library.locator('article').first.inner_text()
     library.get_by_label('Search installed models').fill('Qwen3')
     assert library.locator('article').count() == 1
-    library.get_by_role('button', name='Serve model').click()
+    library.get_by_role('button', name='Start model').click()
     page.wait_for_selector('#models-note .ok')
     assert calls == [first.resolve()]
     assert not errors

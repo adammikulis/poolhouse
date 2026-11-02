@@ -46,9 +46,8 @@ def _capabilities(value):
     return value if isinstance(value, dict) and 'chat' in value else model_capabilities()
 
 
-def targets(members: list[dict[str, Any]], serving: Any = None,
-            token: str = "") -> list[Target]:
-    """Every model this machine can reach, its own and the ones on the network."""
+def targets(members: list[dict[str, Any]], serving: Any = None) -> list[Target]:
+    """Every model this machine can reach, its own and the ones on the network; a member row's ``token`` is the secret to reach it."""
     out: list[Target] = []
     for served in (serving.live() if serving is not None else []):
         if not allows_chat(getattr(served, 'capabilities', None)):
@@ -73,7 +72,7 @@ def targets(members: list[dict[str, Any]], serving: Any = None,
                     continue
                 out.append(Target(model=str(model),
                                   url=f"{base}/infer{CHAT_PATH}",
-                                  token=token,
+                                  token=str(beacon.get("token") or ""),
                                   capabilities=_capabilities(served.get('capabilities')),
                                   member=str(beacon.get("name") or "")))
     out.sort(key=lambda t: (not t.local, t.member, t.model))
@@ -81,16 +80,11 @@ def targets(members: list[dict[str, Any]], serving: Any = None,
 
 
 def find(available: list[Target], model: str) -> Target | None:
-    """The target for ``model``, preferring one on this machine."""
+    """Resolve one exact advertised model or resource alias without guessing."""
     if not model:
-        return available[0] if available else None
-    for target in available:
-        if target.model == model or target.alias == model or target.model == Path(model).name:
-            return target
-    for target in available:
-        if model.lower() in target.model.lower():
-            return target
-    return None
+        return None
+    matches = [target for target in available if model in (target.model, target.alias)]
+    return matches[0] if len(matches) == 1 else None
 
 
 def stream(target: Target, payload: dict[str, Any], *,

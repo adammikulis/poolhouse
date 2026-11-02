@@ -21,7 +21,7 @@ from poolhouse.client import is_healthy, reported_models
 from poolhouse.client.chat import forget_server
 from poolhouse.client.health import serving_params
 from poolhouse.files import write_json
-from poolhouse.hub import free_memory, installed_for, room as machine_room
+from poolhouse.hub import free_memory, room as machine_room
 from poolhouse.limits import read as limits_read
 from poolhouse.lock import only_one
 from poolhouse.serve import (
@@ -29,6 +29,7 @@ from poolhouse.serve import (
     exit_guard,
     guarded,
     kvcache,
+    llamacpp_provider,
     mtp,
     provenance,
     quant_guard,
@@ -46,6 +47,7 @@ from poolhouse.serve.backend import (
     default_slot_save_path,
 )
 from poolhouse.serve.binary import BinaryNotFound
+from poolhouse.serve.children import Children, Exit
 from poolhouse.serve.escalation import (
     Escalating,
     plan_for,
@@ -55,11 +57,11 @@ from poolhouse.serve.escalation import (
     summarise,
 )
 from poolhouse.serve.events import Caller, Event, Growth, emit
+from poolhouse.serve.fitted import fitted, reusing_installed
 from poolhouse.serve.leases import (
     lease_file,
     merge_state,
     orphaned,
-    reap_one,
     recorded_servers,
     same_process,
 )
@@ -147,19 +149,6 @@ class Starting:
                 "warmup_request": self.warmup_request}
 
 
-def reusing_installed(spec: ServerSpec) -> ServerSpec:
-    """``spec`` with each ``hf:owner/repo/file`` model, projector and draft that is already
-    installed -- from the Hub cache, llama.cpp's cache, LM Studio or Ollama -- replaced by
-    the file, so it is not downloaded again."""
-    changes: dict[str, str] = {}
-    for field in ("model", "mmproj", "draft"):
-        value = getattr(spec, field)
-        found = installed_for(value) if isinstance(value, str) and value.startswith("hf:") else None
-        if found:
-            changes[field] = str(found.path)
-    return replace(spec, **changes) if changes else spec
-
-
 class ServerManager(Admitting):
     """Leases model servers, one per (model, port), shared across this machine."""
 
@@ -177,13 +166,14 @@ class ServerManager(Admitting):
         self.iq = ""
         self.backend = backend or LlamaServerBackend()
         self.tree: ServerBackend = MlxTreeBackend()
+        self._format_backends: dict[str, ServerBackend] = {}
         self.state_file = state_file or lease_file()
         self.say: Callable[[str], None] | None = None
         self._broker = broker
         self.confirm: Callable[[str], bool] | None = None
         self._leases: dict[str, ServerInfo] = {}
         self._mine: dict[str, dict] = {}
-        self._processes: dict[int, Any] = {}
+        self.children = Children()
         self._lock = threading.Lock()
         self._port_locks: dict[int, threading.Lock] = {}
         self._unavailable_until: dict[int, float] = {}
@@ -197,7 +187,9 @@ class ServerManager(Admitting):
                 raise ServerFailed(f"no serving engine {spec.engine!r}; there are "
                                    f"{', '.join(sorted(ENGINES))}")
             return ENGINES[spec.engine]
-        return self.tree if is_mlx(spec.model) else self.backend
+        if is_mlx(spec.model):
+            return self.tree
+        return llamacpp_provider.for_model(self.backend, spec.model, self._format_backends)
 
     # ------------------------------------------------------------------ leasing
 
@@ -205,7 +197,7 @@ class ServerManager(Admitting):
         """A manager over ``backend`` that shares this one's records and processes."""
         other = ServerManager(backend, state_file=self.state_file, broker=self._broker,
                               stop_on_exit=self.stop_on_exit, table=self.table)
-        other._mine, other._processes = self._mine, self._processes
+        other._mine, other.children = self._mine, self.children
         other._lock, other._port_locks = self._lock, self._port_locks
         other.tree = self.tree
         return other
@@ -232,7 +224,7 @@ class ServerManager(Admitting):
         with the machine's broker. The rest of the arguments are those of
         :meth:`_start_server`.
         """
-        spec = reusing_installed(spec)
+        spec, _fit = fitted(reusing_installed(spec))
         wanted = quant_guard.mode(iq or self.iq)
         if wanted == "block":
             quant_guard.enforce(spec.model, gpu_layers=spec.n_gpu_layers, asked=wanted)
@@ -345,7 +337,8 @@ class ServerManager(Admitting):
         """The IQ quantisation ``spec`` is when it was warned about; `BlockedQuant` in strict
         mode. llama.cpp specs only. The mode is the lease's own, else this process's; a
         lease from the broker wire carries none."""
-        if self.backend_for(spec) is not self.backend:
+        selected = self.backend_for(spec)
+        if selected is not self.backend and not isinstance(selected, llamacpp_provider.PrismBackend):
             return None
         return quant_guard.enforce(spec.model, gpu_layers=spec.n_gpu_layers,
                                    asked=how.iq,
@@ -601,9 +594,8 @@ class ServerManager(Admitting):
 
         pid = self._recorded_pid(spec.port)
         emit(on_event, "stopping", port=spec.port, pid=pid)
-        if pid:
-            kill_process_tree(pid)
-            exit_guard.release(pid)
+        self.children.end(spec.port, pid)
+        exit_guard.release(pid)
         self._forget(spec.port)
 
         # kv_unified keeps the cache's stream count at 1 across the relaunch; any other
@@ -640,13 +632,8 @@ class ServerManager(Admitting):
         if info.adopted:
             logger.debug("not stopping %s: we adopted it", info.base_url)
             return
-        held = self._processes.pop(info.port, None)
-        if held is None:
-            held = info.process
-        if info.pid:
-            kill_process_tree(info.pid, grace_s=grace_s)
+        self.children.end(info.port, info.pid, proc=info.process, grace_s=grace_s)
         exit_guard.release(info.pid)
-        reap_one(held, grace_s=grace_s)
         self._forget(info.port)
 
     def detach(self, info: ServerInfo) -> None:
@@ -655,7 +642,7 @@ class ServerManager(Admitting):
 
     def _detach(self, info: ServerInfo) -> None:
         """Record the server under its own pid and stop tracking it in this process."""
-        self._processes.pop(info.port, None)
+        self.children.detach(info.port)
         exit_guard.release(info.pid)
         entry = self._mine.pop(str(info.port), None)
         if entry is None or not info.pid:
@@ -676,12 +663,11 @@ class ServerManager(Admitting):
         for entry in list(self._mine.values()):
             pid = entry.get("pid")
             if isinstance(pid, int) and pid_exists(pid):
-                stopped += kill_process_tree(pid, grace_s=grace_s)
+                stopped += [one.pid for one in self.children.end(int(entry.get("port") or 0), pid,
+                                                                 grace_s=grace_s)]
             exit_guard.release(pid)
             self._given_back(entry)
-        for held in list(self._processes.values()):
-            reap_one(held, grace_s=grace_s)
-        self._processes.clear()
+        self.children.stop_all(grace_s=grace_s)
         self._mine.clear()
         self._save()
         return stopped
@@ -753,12 +739,12 @@ class ServerManager(Admitting):
         }
         forget_server(info.base_url)
         if info.process is not None:
-            self._processes[info.port] = info.process
+            self.children.hold(info.port, info.process)
         self._save()
         self._bound(pending.get("lease", ""), info.pid)
 
     def _forget(self, port: int, *, grace_s: float = 5.0) -> None:
-        reap_one(self._processes.pop(port, None), grace_s=grace_s)
+        self.children.stop(port, grace_s=grace_s)
         self._given_back(self._mine.pop(str(port), None))
         self._save()
 
@@ -779,17 +765,19 @@ class ServerManager(Admitting):
                                   timeout=STATE_LOCK_TIMEOUT_S, announce=logger.debug):
             yield
 
-    def _reap(self) -> None:
-        """Drop every child of ours that has already exited, so none stays defunct."""
-        for port, held in list(self._processes.items()):
-            try:
-                if held.poll() is not None:
-                    self._processes.pop(port, None)
-            except OSError:
-                self._processes.pop(port, None)
+    def settle_exited(self) -> list[Exit]:
+        """Wait on every server of ours that died on its own and take it off the record, so it
+        is neither defunct nor still leased; returns each, once, for the caller to report."""
+        self.children.sweep()
+        gone = self.children.take_untold()
+        for one in gone:
+            exit_guard.release(one.pid)
+            if (self._mine.get(str(one.port)) or {}).get("pid") == one.pid:
+                self._forget(one.port)
+        return gone
 
     def _save(self) -> None:
-        self._reap()
+        self.children.sweep()
         with self._exclusive():
             self._write(merge_state(self._load(), self._mine, os.getpid()))
 
@@ -836,7 +824,7 @@ def serve(
     model: str | Path,
     *,
     port: int | None = None,
-    context: int = 4096,
+    context: int = 0,
     timeout: float | None = None,
     manager: ServerManager | None = None,
     roam: bool = True,

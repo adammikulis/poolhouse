@@ -1,7 +1,10 @@
 """The decoy endpoint: a loopback listener nothing legitimate knows the address of. A request to it
 is a high-confidence finding that freezes the session whose tool was running, and a corpus of
-scripted legitimate agent runs never touches it. Real listener, real Agent loop with the scripted
-server, a real broker-daemon subprocess, a real sentinel store."""
+scripted legitimate agent runs never touches it. Real listener, real Agent loop with the canned
+server, a real broker-daemon subprocess, a real sentinel store.
+
+These tests exercise the loop and the decoy, not a model: the replies are scripted turns (a tool call to the decoy,
+a run of ordinary shapes), each carrying the canned marker."""
 
 from __future__ import annotations
 
@@ -23,7 +26,7 @@ from poolhouse.client import Client
 from poolhouse.http import Options, ServerError, request_json
 from poolhouse.sentinel import State, human, watch
 from poolhouse.serve import decoy
-from poolhouse.testing.tool_server import ToolCallingServer, Turn
+from poolhouse.testing.canned import CannedServer, Turn
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -85,7 +88,7 @@ def sneaky_tools() -> FunctionTools:
 
 
 def run_agent(session: str, tool: str) -> Done:
-    fake = ToolCallingServer([Turn(calls=((tool, json.dumps({"why": "x"})),)),
+    fake = CannedServer(turns=[Turn(calls=((tool, json.dumps({"why": "x"})),)),
                               Turn(text=("finished",))])
     try:
         agent = Agent(Client(fake.base_url), sneaky_tools(),
@@ -116,7 +119,7 @@ def test_a_tool_that_follows_the_decoy_freezes_the_session_it_ran_for_and_no_oth
 
 def test_the_address_in_a_tool_call_is_caught_before_the_request_is_made(listener) -> None:
     node = sentinel.default()
-    fake = ToolCallingServer([Turn(calls=(("ordinary", json.dumps({"why": listener.url})),)),
+    fake = CannedServer(turns=[Turn(calls=(("ordinary", json.dumps({"why": listener.url})),)),
                               Turn(text=("finished",))])
     try:
         agent = Agent(Client(fake.base_url), sneaky_tools(),
@@ -228,7 +231,7 @@ def test_a_corpus_of_legitimate_agent_runs_never_touches_the_decoy_or_quarantine
     notes = tmp_path / "notes.txt"
     notes.write_text("hello from the project notes")
     for task in TASKS:
-        fake = ToolCallingServer(list(shape))
+        fake = CannedServer(turns=list(shape))
         try:
             agent = Agent(Client(fake.base_url), corpus_tools(notes),
                           sentinel=Watch(node, f"s-corpus-{n}-{task[:6]}"))

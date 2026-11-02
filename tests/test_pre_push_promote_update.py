@@ -1,8 +1,4 @@
-"""An agent moves an existing promote/* snapshot forward; a rewrite of it, `main` and a work branch stay refused.
-
-The change is to a protected hook, so it ships as docs/hooks-protected.patch for the owner to apply. These
-tests apply it to a copy of the hooks (or use the hooks as they are once it is applied) and push through that copy.
-"""
+"""The ref-only hook permits fast-forward promotion snapshots and refuses rewrites."""
 
 from __future__ import annotations
 
@@ -39,7 +35,7 @@ def hooks(tmp_path) -> Path:
     """A copy of scripts/hooks with the patch applied unless the real hooks already carry it."""
     root = tmp_path / "copy"
     shutil.copytree(REPO / "scripts" / "hooks", root / "scripts" / "hooks")
-    shutil.copy(REPO / "scripts" / "land_git.py", root / "scripts" / "land_git.py")
+    shutil.copy(REPO / "scripts" / "sealed_git.py", root / "scripts" / "sealed_git.py")
     patch = ["git", "apply", "-p1", str(PATCH)]
     if subprocess.run([*patch[:2], "--check", *patch[2:]], cwd=root, capture_output=True, check=False).returncode == 0:
         subprocess.run(patch, cwd=root, check=True, capture_output=True)
@@ -56,6 +52,7 @@ def checkout(tmp_path):
 
 def push(hook: Path, where: Path, ref: str, sha: str, base: str) -> subprocess.CompletedProcess:
     installed = Path(git(where, "rev-parse", "--path-format=absolute", "--git-common-dir")) / "hooks" / "pre-push"
+    git(where, "config", "--local", "poolhouse.hooks.repository", str(installed.parent.parent.resolve()))
     installed.write_text("#!/bin/sh\nexec sh " + shlex.quote(hook.as_posix()) + ' "$@"\n', encoding="utf-8")
     installed.chmod(installed.stat().st_mode | 0o111)
     source = installed.parent.parent / "push-input"

@@ -1,6 +1,6 @@
 """The PreToolUse and PostToolUse hook a launcher installs in a Claude Code or Codex session.
 
-``python -m poolhouse.harnesshook pre --role ROLE --agent AGENT --root DIR --protect PATH`` reads
+``python -m poolhouse.harnesshook pre --permissions PROFILE --execution-mode MODE --agent AGENT --root DIR --protect PATH`` reads
 one hook event on stdin and writes the decision as JSON: the destructive-action classifier and
 the role decide, and a call that asks is raised in the Requests inbox and waits for the person.
 ``post`` runs ``poolhouse-workspace nudge`` and passes what it prints on as context. The role,
@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Any
 
-from poolhouse import hook_bootstrap, hook_diagnostics, safetext
+from poolhouse import coding_policy, hook_bootstrap, hook_diagnostics, runtime, safetext
 
 if __name__ == "__main__":
     sys.excepthook = hook_bootstrap.block
@@ -28,7 +28,7 @@ if __name__ == "__main__":
     hook_bootstrap.metadata({})
     hook_bootstrap.stage("imports")
 
-from poolhouse import harness_claims, platform, requests
+from poolhouse import platform, requests
 from poolhouse.errors import Denied
 from poolhouse.guard import fetchlog
 from poolhouse.harnesspolicy import (
@@ -39,10 +39,9 @@ from poolhouse.harnesspolicy import (
     primary_decision,
     workspace_authority,
 )
+from poolhouse.interventions import Call
 from poolhouse.keystore import ENV_NONINTERACTIVE
 from poolhouse.serve.process import kill_process_tree
-from poolhouse.workspace import limits, worktree_lifecycle
-from poolhouse.workspace.harness_session import BoardUnavailable
 
 __all__ = ["FAILURES", "WAIT_S", "Rail", "nudge", "post", "pre", "run"]
 
@@ -108,7 +107,7 @@ class Rail:
     """What a launcher fixes for a session: the ``role``, the workspace ``agent``, the directories
     writes may go to, the ``protected`` paths no call may name and how long a request waits."""
 
-    role: str
+    policy: coding_policy.Policy
     agent: str
     roots: Sequence[str] = ()
     protected: Sequence[str] = ()
@@ -117,22 +116,16 @@ class Rail:
 
 def pre(payload: dict[str, Any], rail: Rail, inbox: requests.Inbox | None = None) -> dict[str, Any]:
     """The PreToolUse answer for ``payload``: allow, deny, or the person's answer to a request."""
-    role, agent, roots, protected, wait_s = rail.role, rail.agent, rail.roots, rail.protected, rail.wait_s
+    policy, agent, roots, protected, wait_s = rail.policy, rail.agent, rail.roots, rail.protected, rail.wait_s
     event = HOOK_EVENTS["pre"]
     args = payload.get("tool_input")
-    warning = ""
     try:
         name = str(payload.get("tool_name", ""))
         inputs = args if isinstance(args, dict) else None
         fetched = fetchlog.read(agent)
-        try:
-            ownership = harness_claims.conflict(name, inputs, str(payload.get('cwd') or (roots[0] if roots else Path.cwd())), agent, roots)
-        except BoardUnavailable as error:  # no board to ask: local work goes on, with a warning
-            ownership = ""
-            warning = f" (ownership not checked: {hook_diagnostics.record(error, 'pre', 'claim', metadata=hook_bootstrap.timings())})"
-        decision = (Decision('deny', 'destructive', ownership) if ownership else None) or (primary_decision(name, inputs, str(payload.get("cwd", "")))
+        decision = (primary_decision(name, inputs, str(payload.get("cwd", "")))
                     or workspace_authority(_shell_line(name, inputs), agent)
-                    or decide(role, name, inputs, roots=roots, protected=protected))
+                    or decide(policy, Call(name, inputs), roots=roots, protected=protected))
         decision = after_downloads(decision, name, inputs, roots, fetched)
     except Denied as error:
         decision = Decision('deny', 'destructive', hook_diagnostics.record(error, 'pre', 'classification', metadata=hook_bootstrap.timings()))
@@ -140,7 +133,7 @@ def pre(payload: dict[str, Any], rail: Rail, inbox: requests.Inbox | None = None
         decision = Decision("deny", "unsure", f"the call could not be classified: {hook_diagnostics.record(error, 'pre', 'classification', metadata=hook_bootstrap.timings())}")
     if decision.action == "deny":
         return _answer(event, "deny", f"poolhouse: {decision.reason}")
-    reason = f"poolhouse: {decision.label}{warning}"
+    reason = f"poolhouse: {decision.label}"
     if decision.action == "ask":
         approved, state = _ask(payload, decision, agent, wait_s, inbox)
         if not approved:
@@ -150,19 +143,6 @@ def pre(payload: dict[str, Any], rail: Rail, inbox: requests.Inbox | None = None
         fetchlog.note(agent, fetchlog.targets(_shell_line(str(payload.get("tool_name", "")), args if isinstance(args, dict) else None), roots, str(payload.get("cwd") or ""), fetched))
     except FAILURES as error:
         return _answer(event, "deny", f"poolhouse: a download could not be recorded: {hook_diagnostics.record(error, 'pre', 'classification', metadata=hook_bootstrap.timings())}")
-    return _owned_answer(payload, rail, event, reason)
-
-
-def _owned_answer(payload, rail, event, reason):
-    try:
-        harness_claims.reserve(str(payload.get('tool_name', '')), payload.get('tool_input'),
-                               str(payload.get('cwd') or (rail.roots[0] if rail.roots else Path.cwd())),
-                               rail.agent, rail.roots)
-    except BoardUnavailable as error:
-        note = hook_diagnostics.record(error, 'pre', 'claim', metadata=hook_bootstrap.timings())
-        return _answer(event, 'allow', f"{reason} (ownership not recorded: {note})")
-    except FAILURES as error:
-        return _answer(event, 'deny', f"poolhouse: ownership refused: {hook_diagnostics.record(error, 'pre', 'claim', metadata=hook_bootstrap.timings())}")
     return _answer(event, 'allow', reason)
 
 
@@ -185,8 +165,8 @@ def nudge(agent: str, rail: Rail | None = None, *, board=None) -> str:
     """Return unread metadata and redacted advisory failure references."""
     try:
         timeout = min(NUDGE_S, max(0.05, hook_bootstrap.remaining() - CLEANUP_RESERVE_S))
-        done = _reader_run([sys.executable, "-m", NOTIFIER, agent,
-                            str(rail.roots[0] if rail and rail.roots else Path.cwd())], capture_output=True, text=True,
+        done = _reader_run(runtime.module_argv(NOTIFIER, Path(rail.roots[0]) if rail and rail.roots else Path.cwd(), agent,
+                            str(rail.roots[0] if rail and rail.roots else Path.cwd())), capture_output=True, text=True,
                            timeout=timeout, check=False, stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired as error:
         partial = error.stdout or ""
@@ -219,21 +199,17 @@ def post(agent: str, rail: Rail | None = None) -> dict[str, Any]:
 
 
 def stop(rail: Rail) -> dict[str, Any]:
-    """Block an authenticated harness completion until its recorded checkouts are cleaned."""
-    try:
-        worktree_lifecycle.require_clean(limits.root(), rail.agent, within=tuple(rail.roots))
-    except (Denied, OSError, RuntimeError) as error:
-        return {"decision": "block", "reason": hook_diagnostics.record(error, "stop", "completion", metadata=hook_bootstrap.timings())}
+    """Ending a harness turn does not perform task integration or cleanup admission."""
     return {}
 
 
 def _options(words: Sequence[str]) -> tuple[str, dict[str, list[str]]]:
     """The event and the ``--name value`` pairs the launcher wrote; ``ValueError`` for anything else."""
     if not words or words[0] not in HOOK_EVENTS or len(words) % 2 == 0:
-        raise ValueError("usage: harnesshook pre|post|stop [--role R] [--agent A] [--root D] [--protect P] [--wait S]")
+        raise ValueError("usage: harnesshook pre|post|stop [--permissions PROFILE] [--execution-mode MODE] [--agent A] [--root D] [--protect P] [--wait S]")
     found: dict[str, list[str]] = {}
     for key, value in zip(words[1::2], words[2::2], strict=True):
-        if key not in ("--role", "--agent", "--root", "--protect", "--wait"):
+        if key not in ("--permissions", "--execution-mode", "--agent", "--root", "--protect", "--wait"):
             raise ValueError(f"no option {key}")
         found.setdefault(key[2:], []).append(value)
     return words[0], found
@@ -254,7 +230,8 @@ def run(argv: Sequence[str] | None = None, stdin: IO[str] | None = None,
         payload = payload if isinstance(payload, dict) else {}
         hook_bootstrap.metadata(payload)
         agent = opts.get("agent", ["harness"])[-1]
-        rail = Rail(opts.get("role", ["read-only"])[-1], agent, opts.get("root") or [str(payload.get("cwd", ""))],
+        rail = Rail(coding_policy.Policy(opts.get("permissions", [coding_policy.READ_ONLY])[-1],
+                                        opts.get("execution-mode", [coding_policy.EXECUTE])[-1]), agent, opts.get("root") or [str(payload.get("cwd", ""))],
                     opts.get("protect", []), float(opts.get("wait", [WAIT_S])[-1]))
         stage = event
         hook_bootstrap.stage(stage)

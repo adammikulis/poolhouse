@@ -39,7 +39,7 @@ own `N` below `parallel`.
 
 | Call | Returns |
 |---|---|
-| `serve(model, *, port=None, context=4096, timeout=None, manager=None, roam=True, **ServerSpec fields)` | a context manager yielding `ServerInfo(base_url, port, pid, backend, adopted, log_path, load_s, warmup_s)` |
+| `serve(model, *, port=None, context=0, timeout=None, manager=None, roam=True, **ServerSpec fields)` | a context manager yielding `ServerInfo(base_url, port, pid, backend, adopted, log_path, load_s, warmup_s)` |
 | `ServerManager(backend=None, *, state_file=None)` | `lease(spec, ...)` and `release(info)`: the same lifecycle without the block |
 | `ServerSpec(model, port, context, parallel, ...)` | every `llama-server` setting as a field |
 | `find_binary()` / `require_binary()` | the `llama-server` path, or `None` / `BinaryNotFound` |

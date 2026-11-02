@@ -1,6 +1,9 @@
 """Fitting a conversation into its context: each stage on its own, the invariants every
-result keeps, and an agent that compacts before a request would overflow -- against a
-llama-server on a real socket whose ``/tokenize`` counts words."""
+result keeps, and an agent that compacts before a request would overflow -- against the canned server on a real
+socket whose ``/tokenize`` counts words.
+
+These tests exercise the compaction code and the loop, not a model: the replies are scripted turns and each carries
+the canned marker, which `unmarked` takes off where a test compares the text."""
 
 from __future__ import annotations
 
@@ -32,8 +35,7 @@ from poolhouse.agent import (
 )
 from poolhouse.agent.compact import ELIDED, SUMMARY_PREFIX
 from poolhouse.client import Client
-from poolhouse.testing import FakeLlamaServer, Served
-from poolhouse.testing.tool_server import ToolCallingServer, Turn
+from poolhouse.testing.canned import Canned, CannedServer, Turn, unmarked
 
 OFF = guard.off("these tests are about the loop, not the guard")
 
@@ -97,7 +99,7 @@ def total(messages: list[dict]) -> int:
 
 
 def test_usage_is_counted_by_the_server_when_it_can() -> None:
-    fake = FakeLlamaServer(Served(context=1000))
+    fake = CannedServer(Canned(context=1000))
     try:
         messages = [{"role": "user", "content": words(10)}]
         tools = [{"type": "function", "function": {"name": "t"}}]
@@ -112,7 +114,7 @@ def test_usage_is_counted_by_the_server_when_it_can() -> None:
 
 
 def test_an_unreachable_server_falls_back_to_the_estimator() -> None:
-    fake = FakeLlamaServer(Served())
+    fake = CannedServer()
     client = Client(fake.base_url)
     fake.close()
     count = Counter(client)
@@ -244,10 +246,10 @@ def test_open_calls_are_seen() -> None:
 
 @pytest.fixture
 def served():
-    started: list[ToolCallingServer] = []
+    started: list[CannedServer] = []
 
-    def start(*turns: Turn, context: int = 2000) -> ToolCallingServer:
-        fake = ToolCallingServer(list(turns), context=context)
+    def start(*turns: Turn, context: int = 2000) -> CannedServer:
+        fake = CannedServer(Canned(context=context), turns=list(turns))
         started.append(fake)
         return fake
 
@@ -372,7 +374,7 @@ def test_the_model_summarizer_asks_for_the_sections_and_the_identifiers(served) 
     write = model_summarizer(Client(fake.base_url), words=120)
     got = write([{"role": "user", "content": "order ZX-9981 please"},
                  *tool_turn(1, size=5)], "earlier: ZX-1")
-    assert got == "Goals: x"
+    assert unmarked(got) == "Goals: x"
     system, user = fake.bodies[0]["messages"]
     assert "Goals:" in system["content"] and "Open tasks:" in system["content"]
     assert "under 120 words" in system["content"]
@@ -388,7 +390,7 @@ def test_a_wrapped_client_compacts_the_messages_it_is_handed(served, tmp_path) -
     client = Compacting(Client(fake.base_url), config, on_event=seen.append)
     messages = conversation(turns=6, size=200)
     reply = client.chat(messages)
-    assert reply.content == "fine"
+    assert unmarked(reply.content) == "fine"
     assert [type(e) for e in seen] == [Context, Compacted]
     assert messages[1]["content"].startswith(SUMMARY_PREFIX) and fake.bodies[0]["messages"] == messages
     assert client.base_url == fake.base_url

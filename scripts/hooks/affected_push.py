@@ -1,0 +1,240 @@
+"""Run the tests a push can break before it goes through: the ones ``scripts/affected.py`` selects for the pushed paths.
+
+The selection is the import graph from each pushed path to the test files that reach it, the tests that read the whole tree (the
+glossary and the switch table) when a path they scan changed, and the tree-wide guards. The run is ``scripts/test full FILES`` in the
+pushing checkout, so a file whose tree already passed is reused and the broker admits the rest. A test that fails is run again on a
+checkout of the commit the push is measured from: one that fails there too was red before this push and is named, not held against
+it. A selection or a run that cannot be made refuses the push with its cause; nothing passes because the check could not run.
+"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path[:0] = [str(HERE.parent), str(HERE.parents[1] / "src")]
+import affected  # noqa: E402
+import sealed_git as lg  # noqa: E402
+import testselectors  # noqa: E402
+
+SHOWN = 8
+"""How many test files the opening line names before it only counts them."""
+RUNNER = Path("scripts") / "test"
+TIER = "all"
+FLAGS = ("--redteam",)
+"""The tier and flags the selected files run with: every test of them, the slow ones, the whole-tree scans and the red-team ones too.
+A test marked ``real_model`` needs a served model under a lease, which a push never takes; it is named in a warning instead."""
+FAILED = ("FAILED ", "ERROR ")
+
+
+def say(text: str) -> None:
+    """One line on stderr, where git shows a hook's output."""
+    print(f"affected-tests: {text}", file=sys.stderr, flush=True)
+
+
+def moved_on(root: Path, base: str, tip: str) -> str:
+    """Why the remote will turn this push away, or an empty string: its old tip ``base`` is not one the pushed ``tip`` contains.
+
+    A push is the difference between what the remote holds and ``tip``, and the remote only takes a push that adds to its tip. A
+    ``base`` this repository lacks, or holds but ``tip`` does not contain, is a remote that took commits ``tip`` has not merged.
+    """
+    if not lg.HEX.fullmatch(base) or set(base) == {"0"}:
+        return ""    # a branch the remote does not have yet: every commit on no remote-tracking ref is the push
+    held = lg.commit_id(root, base)
+    if not held:
+        return f"the remote's tip {base[:12]} is not in this repository"
+    return "" if lg.is_ancestor(root, held, tip) else f"the remote's tip {base[:12]} is not in the history of {tip[:12]}"
+
+
+def pushed_paths(root: Path, base: str, tip: str) -> tuple[list[str], frozenset[str], str]:
+    """The paths the push changes, those it deletes, and the commit the push is measured from (empty when it is not known).
+
+    That is the difference between the trees of the remote's old tip ``base`` and ``tip``, whatever merges lie between them. A
+    ``base`` of no commit (a branch the remote lacks) measures the commits on no remote-tracking ref.
+    """
+    held = lg.commit_id(root, base)
+    if not held:
+        names = sorted(set(lg.unpushed_names(root, tip)))
+        return names, frozenset(n for n in names if lg.blob(root, tip, n) is None), ""
+    return lg.changed(root, held, tip), frozenset(lg.changed(root, held, tip, "--diff-filter=D")), held
+
+
+def moved_module(root: Path, start: str, tip: str, names: list[str]) -> bool:
+    """Whether the push adds, deletes or renames a Python or Rust source (any it changes, when the start is not known)."""
+    found = lg.changed(root, start, tip, "--diff-filter=AD") if start else names
+    return any(n.endswith((".py", ".rs")) for n in found)
+
+
+def needing_a_model(root: Path, files: list[str]) -> list[str]:
+    """The test files that hold tests marked ``real_model``."""
+    return [f for f in files if "real_model" in (root / f).read_text(encoding="utf-8", errors="replace")]
+
+
+def whole_file_needs_a_model(root: Path, name: str) -> bool:
+    """Whether every test of ``name`` is marked ``real_model``, which the runner refuses to run without ``--real-model``."""
+    try:
+        testselectors.refuse_unrequested(root / name, name, [])
+    except ValueError:
+        return True
+    return False
+
+
+def selected(root: Path, dev: str, base: str, tip: str) -> tuple[list[str], list[str], str]:
+    """The test files to run, the notes (a path no rule could place, files left to CI or the gate) and the start commit, for ``tip``."""
+    names, gone, start = pushed_paths(root, base, tip)
+    picked = affected.select(root, names, gone, base=start or f"origin/{dev}")
+    files = set(picked.files) - picked.loose
+    notes = [f"{p}: {picked.reasons.get(p, 'nothing says which tests it affects')}" + (
+        "; the tests that import or name it run" if p in gone else "; only the tree-wide guards run for it") for p in picked.unmapped]
+    if picked.unmapped or moved_module(root, start, tip, names):    # a new, deleted or renamed module is for the layer and wiring guards
+        files.update(f"tests/{g}" for g in affected.GUARDS if (root / "tests" / g).is_file())
+    if picked.loose:
+        notes.append(f"{len(picked.loose)} more test file(s) are reached only by a bare word in a string or a directory listing, "
+                     "which CI runs")
+    if held := needing_a_model(root, sorted(files)):
+        notes.append(f"{', '.join(held)} hold tests marked real_model, which need a served model under a lease; this check does not "
+                     "run them, the gate and CI do")
+        files -= {name for name in held if whole_file_needs_a_model(root, name)}    # the runner refuses a file that is only those
+    return sorted(files), notes, start
+
+
+def run_tests(root: Path, selectors: list[str], echo: bool = True) -> tuple[int, list[str]]:
+    """Run ``scripts/test full SELECTORS`` in ``root``; its exit status and the failing test lines it printed (all of it too when ``echo``)."""
+    env = {k: v for k, v in os.environ.items() if not lg.REDIRECTS.match(k)}
+    failing: list[str] = []
+    with subprocess.Popen([sys.executable, str(root / RUNNER), TIER, *selectors, *FLAGS], cwd=root, env=env, text=True, errors="replace",
+                          stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as child:
+        for line in child.stdout:
+            if echo:
+                print(line, end="", file=sys.stderr, flush=True)
+            if line.startswith(FAILED):
+                failing.append(line.rstrip())
+        return child.wait(), failing
+
+
+def test_id(line: str) -> str:
+    """The test id a ``FAILED id - reason`` line names."""
+    return line.split(" ", 1)[1].split(" - ", 1)[0].strip()
+
+
+def failing_at(root: Path, commit: str, ids: list[str]) -> set[str]:
+    """Which of the test ``ids`` fail on a checkout of ``commit``, made beside ``root``'s repository and removed again. A test of a file
+    ``commit`` does not hold cannot fail there, and it is left out of the run, which would otherwise end naming no test."""
+    ids = [one for one in ids if lg.blob(root, commit, one.split("::", 1)[0]) is not None]
+    if not ids:
+        return set()
+    with tempfile.TemporaryDirectory(prefix="affected-base-") as scratch:
+        where = Path(scratch) / "base"
+        lg.git(root, "worktree", "add", "--detach", str(where), commit)
+        try:
+            return {test_id(line) for line in run_tests(where, ids, echo=False)[1]}
+        finally:
+            lg.git(root, "worktree", "remove", "--force", str(where), check=False)
+
+
+def split_old(root: Path, start: str, failing: list[str]) -> tuple[list[str], list[str]]:
+    """The failing lines this push breaks and those that fail on ``start`` too (all of them new when ``start`` is not known)."""
+    if not start:
+        return failing, []
+    say(f"running the {len(failing)} failed test(s) again on {start[:12]}, the commit the push is measured from, to tell new from old")
+    try:
+        old = failing_at(root, start, [test_id(line) for line in failing])
+    except (RuntimeError, OSError) as exc:
+        say(f"warning: the commit {start[:12]} could not be checked out ({exc}); every failure is held against the push")
+        return failing, []
+    return [line for line in failing if test_id(line) not in old], [line for line in failing if test_id(line) in old]
+
+
+def still_failing(root: Path, lines: list[str]) -> tuple[list[str], list[str]]:
+    """The failing ``lines`` that fail again when run alone on the pushed tree, and those that pass: a test that fails among
+    hundreds on a loaded machine and passes alone failed for the load, which the push did not cause."""
+    say(f"running the {len(lines)} new failure(s) again, alone, on the tree being pushed, to tell a break from a failure under load")
+    again = {test_id(line) for line in run_tests(root, [test_id(line) for line in lines], echo=False)[1]}
+    return [line for line in lines if test_id(line) in again], [line for line in lines if test_id(line) not in again]
+
+
+def failing_files(lines: list[str]) -> list[str]:
+    """The test files the ``FAILED id`` lines name, each once."""
+    seen = []
+    for line in lines:
+        path = test_id(line).split("::", 1)[0]
+        if path.startswith("tests/") and path not in seen:
+            seen.append(path)
+    return seen
+
+
+def rerun(files: list[str]) -> str:
+    """The command that runs ``files`` again."""
+    return " ".join(["scripts/test", TIER, *files, *FLAGS])
+
+
+def refuse(why: str, again: str = "") -> int:
+    """Say that the push is refused, why, and the command that tries again; the return value is the hook's failure."""
+    say(f"refused: {why}")
+    if again:
+        say(f"run it again with: {again}")
+    return 1
+
+
+def check(dev: str, base: str, tip: str) -> int:
+    """0 when every test the push can break passes; 1, with the reason on stderr, when one fails or the check cannot be made."""
+    root = lg.toplevel(Path.cwd())
+    try:
+        head = lg.out(root, "rev-parse", "HEAD")
+        if head != tip:
+            return refuse(f"this checkout is at {head[:12]} and the push is of {tip[:12]}; the tests run on the checked-out tree, "
+                          "so push from a checkout of the commit", f"git push origin HEAD:refs/heads/{dev}")
+        if why := moved_on(root, base, tip):
+            return refuse(f"{why}, so the remote will not take the push; no test is run for it",
+                          f"git fetch origin && git merge origin/{dev} && git push origin HEAD:refs/heads/{dev}")
+        files, notes, start = selected(root, dev, base, tip)
+    except (RuntimeError, OSError, ValueError, SyntaxError, KeyError, ImportError) as exc:
+        return refuse(f"the tests this push can break could not be selected ({type(exc).__name__}: {exc})", "python scripts/hooks/affected_push.py")
+    for note in notes:
+        say(f"warning: {note}")
+    if not files:
+        return 0
+    if not (root / RUNNER).is_file():
+        return refuse(f"{RUNNER} is missing from {root}, so the {len(files)} selected test file(s) cannot run")
+    named = ", ".join(files[:SHOWN]) + (f" and {len(files) - SHOWN} more" if len(files) > SHOWN else "")
+    say(f"running {len(files)} test file(s) the pushed paths reach, a file whose tree already passed is reused: {named}")
+    status, failing = run_tests(root, files)
+    if status == 0:
+        return 0
+    if not failing:
+        return refuse(f"scripts/test exited {status} without naming a failing test (see its output above)", rerun(files))
+    new, old = split_old(root, start, failing)
+    if old:
+        say(f"warning: {len(old)} test(s) were already red before this push and are not held against it:")
+        for line in old:
+            say(f"  {line}")
+    if new:
+        new, passed = still_failing(root, new)
+        if passed:
+            say(f"warning: {len(passed)} test(s) failed in the big run and pass alone, so they failed for the load and are not held against the push:")
+            for line in passed:
+                say(f"  {line}")
+    if not new:
+        return 0
+    say("these tests fail on the tree being pushed and passed before it:")
+    for line in new:
+        say(f"  {line}")
+    return refuse("the push breaks the tests above", rerun(failing_files(new) or files))
+
+
+def before_pushing() -> int:
+    """The check of HEAD against ``origin/<dev>``, as the push hook would run it."""
+    from poolhouse.devbranch import development_branch
+    root = lg.toplevel(Path.cwd())
+    dev = development_branch(root)
+    return check(dev, lg.out(root, "rev-parse", f"origin/{dev}"), lg.out(root, "rev-parse", "HEAD"))
+
+
+if __name__ == "__main__":
+    if len(sys.argv) not in (1, 4):
+        raise SystemExit("usage: affected_push.py [DEV BASE TIP]   (no arguments: HEAD against origin/<dev>)")
+    raise SystemExit(check(*sys.argv[1:]) if len(sys.argv) == 4 else before_pushing())

@@ -98,6 +98,14 @@ def test_fit_prints_the_breakdown_and_a_verdict(machine, capsys):
     assert "verdict green" in text and "Weights" in text
 
 
+def test_fit_without_a_context_costs_what_up_would_serve(machine, capsys):
+    from poolhouse.serve import suggest
+
+    _, out = run(capsys, "fit", "thing-Q4_K_M.gguf", "--json")
+    served = suggest.largest_fit(hub.located("thing-Q4_K_M.gguf", loose=True)).context
+    assert json.loads(out)["context"] == served > 0
+
+
 def test_suggest_prints_settings_and_reasons(machine, capsys):
     _, out = run(capsys, "suggest", "thing-Q4_K_M.gguf", "--goal", "chat")
     assert "kv q8_0" in out and "context " in out and "alternative" in out

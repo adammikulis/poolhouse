@@ -16,8 +16,9 @@ use serde_json::{json, Map, Value};
 use crate::approvals::calls::pending;
 use crate::approvals::decide::{decide, sweep, view, Decision};
 use crate::error::{Error, Result};
+use crate::grants::authority::Authority;
 use crate::node::Node;
-use crate::phone::enrol::{ask_to_remove, enrol, make_offer_by, offer_is_live};
+use crate::phone::enrol::{ask_to_remove, enrol, make_offer_from_phone, offer_is_live};
 use crate::phone::gate::{Gate, Permit};
 use crate::phone::{shown, ACTIVE, PENDING};
 
@@ -63,10 +64,15 @@ pub fn push_address(url: &str) -> bool {
     url.len() <= MOST_ENDPOINT && url.bytes().all(|b| b.is_ascii_graphic()) && !host.is_empty() && !host.contains('@') && rest.len() > host.len()
 }
 
+/// Whether the phone ``id`` holds an authority key of the pool its device is in (any phone, on a device in no pool): only such a phone reads requests.
+fn reads(node: &Node, id: &str) -> bool {
+    node.phones.get(id).is_some_and(|f| Authority::of(node).decides(&f.fingerprint))
+}
+
 fn list(node: &mut Node, me: &str) -> Value {
     let now = node.now_ms();
-    let mut shown_now = pending(node);
-    let mut done: Vec<&crate::approvals::Approval> = node.approvals.all().iter().filter(|a| !a.live()).collect();
+    let mut shown_now = if reads(node, me) { pending(node) } else { Vec::new() };
+    let mut done: Vec<&crate::approvals::Approval> = if reads(node, me) { node.approvals.all().iter().filter(|a| !a.live()).collect() } else { Vec::new() };
     done.sort_by_key(|a| std::cmp::Reverse(a.seq));
     shown_now.extend(done.into_iter().take(RECENT).map(|a| view(node, a)));
     json!({"approvals": shown_now, "phones": node.phones.all().filter(|p| p.state != crate::phone::REMOVED).map(|p| shown(p, me)).collect::<Vec<_>>(),
@@ -88,6 +94,7 @@ fn wait(node: &Mutex<Node>, me: &str, p: &Map<String, Value>) -> Result<Value> {
     loop {
         {
             let mut n = lock(node)?;
+            n.gov_tick()?;
             still_added(&n, me)?;
             sweep(&mut n)?;
             if n.approvals.version() != after || start.elapsed() >= limit {
@@ -103,14 +110,18 @@ fn offer(node: &mut Node, id: &str) -> Result<Value> {
     if offer_is_live(node, node.now_ms()) {
         return Err(Error::Denied("A code for a phone is already waiting to be scanned; use it or wait for it to run out.".into()));
     }
+    let Some(maker) = node.phones.get(id).map(|f| (f.fingerprint.clone(), f.name.clone())) else { return Err(Error::Denied("This phone is not added to this device, or it was removed.".into())) };
+    if !Authority::of(node).decides(&maker.0) {
+        return Err(Error::Denied("Only an admin's phone makes a code for another phone.".into()));
+    }
     let key = format!("phone offer {id}");
     if !node.rates.permits(&key, MOST_CODES_PER_PHONE, Duration::from_secs(3600)) {
         return Err(crate::limits::floor("This phone has asked for as many codes as it may; try again later."));
     }
     node.rates.record(&key, Duration::from_secs(3600));
-    let by = format!("the phone {}", node.phones.get(id).map(|f| f.name.clone()).unwrap_or_default());
+    let by = format!("the phone {}", maker.1);
     let now = node.now_ms();
-    let secret = make_offer_by(node, now, &by)?;
+    let secret = make_offer_from_phone(node, now, &by, &maker.0)?;
     let expires = node.now_ms() + crate::phone::enrol::OFFER_TTL_MS;
     Ok(json!({"link": crate::phone::calls::link(node, &secret, expires), "expires_ms": expires}))
 }
@@ -121,6 +132,7 @@ fn phone_op(node: &Mutex<Node>, id: &str, op: &str, p: &Map<String, Value>) -> R
         return wait(node, id, p);
     }
     let mut n = lock(node)?;
+    n.gov_tick()?;
     still_added(&n, id)?;
     sweep(&mut n)?;
     let now = n.now_ms();
@@ -128,7 +140,7 @@ fn phone_op(node: &Mutex<Node>, id: &str, op: &str, p: &Map<String, Value>) -> R
     match op {
         "status" => Ok(json!({"state": ACTIVE})),
         "list" => Ok(list(&mut n, id)),
-        "get" => n.approvals.get(text(p, "id")).filter(|a| a.state != crate::approvals::HELD).cloned().map(|a| view(&n, &a)).ok_or_else(|| Error::Invalid("There is no request with that id.".into())),
+        "get" => n.approvals.get(text(p, "id")).filter(|a| a.state != crate::approvals::HELD && reads(&n, id)).cloned().map(|a| view(&n, &a)).ok_or_else(|| Error::Invalid("There is no request with that id.".into())),
         "phones" => Ok(json!({"phones": n.phones.all().filter(|f| f.state != crate::phone::REMOVED).map(|f| shown(f, id)).collect::<Vec<_>>()})),
         "push" => {
             let endpoint = text(p, "endpoint");
@@ -160,6 +172,9 @@ pub fn handle(node: &Mutex<Node>, ip: IpAddr, http: &str, path: &str, token: &st
         Err(e) => return reply(Err(e)),
     };
     let mut n = guard;
+    if let Err(e) = n.gov_tick() {
+        return reply(Err(e));
+    }
     match (http, op) {
         ("GET", "hello") => {
             let name = n.members.get(&n.cert.fingerprint()).map(|d| d.name.clone()).unwrap_or_default();
@@ -172,7 +187,7 @@ pub fn handle(node: &Mutex<Node>, ip: IpAddr, http: &str, path: &str, token: &st
             }
             n.rates.record(&key, Duration::from_secs(60));
             return reply(if op == "add" { enrol(&mut n, ip, &params) } else {
-                decide(&mut n, &Decision { id: text(&params, "id"), decision: text(&params, "decision"), key: text(&params, "key"), sig: text(&params, "sig"), text_sha256: text(&params, "text_sha256"), pick: text(&params, "pick") })
+                decide(&mut n, &Decision { id: text(&params, "id"), decision: text(&params, "decision"), key: text(&params, "key"), sig: text(&params, "sig"), text_sha256: text(&params, "text_sha256"), pick: text(&params, "pick"), act_sig: text(&params, "act_sig") })
             });
         }
         ("POST", _) => {}

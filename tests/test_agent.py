@@ -1,5 +1,9 @@
-"""The tool-calling loop against a llama-server on a real socket that follows a script, with
-tools that are Python callables and, in the last test, an MCP server over stdio."""
+"""The tool-calling loop against the canned server on a real socket following a script of turns, with tools that are
+Python callables and, in the last tests, an MCP server over stdio.
+
+These tests exercise the loop (parsing, repair, budgets, ordering), not a model: every reply is scripted and carries the
+canned marker, which `unmarked` and `spoken` take off where a test compares the text. What a real model does with
+the loop is tests/test_agent_real_model.py."""
 
 from __future__ import annotations
 
@@ -28,7 +32,7 @@ from poolhouse.agent import (
     validate,
 )
 from poolhouse.client import Client
-from poolhouse.testing.tool_server import ToolCallingServer, Turn
+from poolhouse.testing.canned import CANNED_MARKER, CannedServer, Turn, unmarked
 from tests.sandbox_kit import no_sandbox_here
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -54,10 +58,10 @@ def call(name: str, **arguments: object) -> tuple[str, str]:
 
 @pytest.fixture
 def served():
-    started: list[ToolCallingServer] = []
+    started: list[CannedServer] = []
 
-    def start(*turns: Turn) -> ToolCallingServer:
-        fake = ToolCallingServer(list(turns))
+    def start(*turns: Turn) -> CannedServer:
+        fake = CannedServer(turns=list(turns))
         started.append(fake)
         return fake
 
@@ -73,7 +77,12 @@ def collect(agent: Agent, task: str = "go") -> list:
     return asyncio.run(go())
 
 
-def agent_for(fake: ToolCallingServer, **kwargs: object) -> Agent:
+def spoken(events: list) -> list:
+    """The events without the marker the canned server opens each reply with."""
+    return [e for e in events if not (isinstance(e, Text) and e.delta.strip() == CANNED_MARKER)]
+
+
+def agent_for(fake: CannedServer, **kwargs: object) -> Agent:
     return Agent(Client(fake.base_url), FunctionTools([ADD], {"add": add}), **kwargs)
 
 
@@ -117,10 +126,10 @@ def test_mcp_tools_become_openai_schemas_and_lean_trims_them() -> None:
 def test_a_tool_call_is_run_and_its_answer_goes_back(served) -> None:
     fake = served(Turn(calls=(call("add", a=2, b=3),)), Turn(text=("the sum ", "is 5")))
     events = collect(agent_for(fake))
-    assert [type(e) for e in events] == [ToolCall, ToolResult, Text, Text, Done]
-    assert events[1] == ToolResult("call_0", "add", "5")
+    assert [type(e) for e in spoken(events)] == [ToolCall, ToolResult, Text, Text, Done]
+    assert spoken(events)[1] == ToolResult("call_0", "add", "5")
     done = events[-1]
-    assert (done.reason, done.text, done.steps, done.tool_calls) == ("answer", "the sum is 5", 2, 1)
+    assert (done.reason, unmarked(done.text), done.steps, done.tool_calls) == ("answer", "the sum is 5", 2, 1)
     second = fake.bodies[1]["messages"]
     assert second[-1] == {"role": "tool", "tool_call_id": "call_0", "name": "add", "content": "5"}
     assert second[-2]["tool_calls"][0]["function"]["arguments"] == '{"a": 2, "b": 3}'
@@ -147,7 +156,7 @@ def test_a_malformed_call_is_repaired_and_a_bad_one_is_sent_back(served) -> None
         Turn(calls=(("add", '{"a": 1, "b": 2,}'),)),
         Turn(calls=call("add", a="x", b=2) and (call("add", a="x", b=2),)),
         Turn(text=("fine",)))
-    events = collect(agent_for(fake))
+    events = spoken(collect(agent_for(fake)))
     assert events[0] == ToolCall("call_0", "add", {"a": 1, "b": 2})
     assert events[1].text == "3"
     repair = next(e for e in events if isinstance(e, Repair))
@@ -213,11 +222,12 @@ def test_text_deltas_arrive_before_the_run_ends(served) -> None:
 
     async def first() -> tuple[str, bool]:
         stream = agent_for(fake).run("hi")
+        opening = await anext(stream)
         got = await anext(stream)
         await stream.aclose()
-        return got.delta, fake.turns == []
+        return opening.delta + got.delta, fake.turns == []
 
-    assert asyncio.run(first()) == ("a", True)
+    assert asyncio.run(first()) == (f"{CANNED_MARKER} a", True)
 
 
 def test_cancelling_the_task_stops_a_slow_tool(served) -> None:

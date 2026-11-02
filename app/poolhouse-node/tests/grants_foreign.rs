@@ -37,6 +37,9 @@ fn holds(d: &Dev, name: &str, action: &str) -> bool {
 }
 
 fn issue(d: &Dev, gid: &str, spec: &Spec) {
+    if poolhouse_node::grants::spec::pool_wide(&spec.action) {
+        return kit::govnode::inject_approved(d, "demo", gid, spec, "claude-bbbbbb");
+    }
     let reply = person().issue(&mut |m: &str, b: &str, t: &str, p: Value| d.call(m, b, t, p), "demo", &d.token, gid, spec);
     assert_eq!(reply["ok"], true, "{reply}");
 }
@@ -85,7 +88,7 @@ fn a_revocation_or_a_use_from_an_untrusted_device_changes_nothing() {
     issue(&a, NV, &Spec::session(&x, "note_verify").uses(1).device(&a.fp()));
     both_ways(&a, &b);
 
-    let revoked = person().revoke(&mut |m: &str, bd: &str, t: &str, p: Value| b.call(m, bd, t, p), "demo", &b.token, NV);
+    let revoked = kit::govnode::authority_person(&b).revoke(&mut |m: &str, bd: &str, t: &str, p: Value| b.call(m, bd, t, p), "demo", &b.token, NV);
     assert_eq!(revoked["ok"], true, "{revoked}");
     for _ in 0..3 {
         let body = json!({"op": "use", "gid": NV, "action": "note_verify", "target": "n", "user": "claude-aaaaaa"});

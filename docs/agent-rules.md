@@ -30,29 +30,15 @@ is not restated here except where the detail adds to it; where the two meet, AGE
 
 ### Shared ownership
 
-Shared claims are enforced by maintained mutation and launch tooling, not advisory board messages (docs/workspace.md,
-"Mutation ownership").
+Ordinary editing, shell/Git/package/test commands, imports and ending a turn do not require a Poolhouse project,
+daemon, session, claim or manual agent argument. Hooks provide advisory notifications, not generic mutation approval.
+Use separate sibling checkouts for concurrent work and preserve unrelated changes.
 
-- Before editing a shared file area, using a worktree or port, changing an installed runtime, or reserving
-  model/compute resources, acquire the applicable authenticated claim or broker allocation. File areas use
-  repository identity plus relative path across worktrees; physical worktree claims stay separate. Claim only the
-  required area, not an entire repository that would serialize unrelated changes.
-- A clean checkout can fast-forward or switch to an exact independently reviewed commit under its physical worktree
-  and branch claims. Do not reserve every incoming source file for that baseline move, and preserve unique branch
-  history before switching. New source edits, custom staging and conflict resolutions still require their named
-  source-area claims.
-- Overlap checks and handoffs are atomic. Record the authenticated owner, actual process identity and birth time,
-  source commit and environment where the maintained allocation supports them.
-- Claims never grant project permissions, bypass person approval or permit another agent's credentials; tool policy
-  and registry/project scope remain required. Broker-controlled resources use that broker's authoritative lease, not
-  a parallel informal GPU lock.
-- A claim covers a step: heartbeat while working, release when idle, never hold one across a wait. Ask a stale
-  claim's owner once, then use the documented recovery. Refresh active claims before expiry. An expired claim or dead worker needs verified recovery or an explicit
-  task-scoped handoff before mutation; do not infer permission from an old PID or steal a live claim. Use
-  authenticated task-scoped handoffs rather than stealing, preserve checkpoints and exact task/resource identity
-  during recovery, and do not let released or expired ownership race a new reservation. Read-only inspection needs
-  no mutation claim; ambiguous destructive commands are refused or confined to the explicitly claimed authorized
-  project.
+Explicit workspace resource/task operations retain authenticated ownership checks. Their maintained tooling acquires
+only the necessary scoped claim atomically, renews live owned leases and releases them when finished. Manual claims
+serve coordination, diagnosis and recovery. Claims grant no project permission, person approval or another agent's
+credentials. Expired resource ownership needs verified recovery or an authenticated handoff, never takeover; explicit
+model/GPU work retains its authoritative broker allocation. Repeated cleanup must not reacquire absent ownership.
 
 ### Delegation, accounts and limits
 
@@ -127,23 +113,21 @@ gate.
 
 ### Landing in detail
 
-- **Commit, merge and sync continuously.** Every agent commits completed, bounded pieces by named files in its
-  claimed branch and promptly obtains independent review and affected checks. Authorized main agents integrate and
-  push their reviewed batches themselves; no designated publisher or coordinator acknowledgment is required.
-  Serialize development mutations with a short-lived checked branch claim, fetch before integration and again
-  before push, reconcile remote advancement, and run the required combined gates. Release the claim promptly after
-  sync. A busy claim delays only that integration; continue useful work in the claimed leaf tree. Managed subagents
-  retain their assigned permissions and send ready commits to their parent; the parent carries integration and
-  pushing through without waiting for another publisher. Do not accumulate ready branches or local-only commits until
-  the end of a session, wait for every worker to finish, or defer publication behind cleanup, unrelated work or
-  the GitHub run. After publication, promptly complete the merged branch's maintained worktree cleanup.
+- **Commit, merge and sync continuously.** Immediately after every completed bounded commit by named files, fetch
+  `origin` and reconcile `origin/<dev>` in the agent's own claimed checkout at a safe boundary, before the next piece.
+  Hand the exact SHA, affected-check results and required independent security review to the shared development
+  branch's single coordinator immediately. The coordinator integrates and pushes each verified checkpoint after its
+  required combined gates, without waiting for session end, other workers, cleanup or unrelated work. Fetch before
+  integration and again before push and reconcile remote advancement; a push takes no claim and no lock. Managed
+  workers retain their assigned permissions and never race the coordinator to publish the shared branch. After
+  publication, promptly complete the merged branch's maintained worktree cleanup.
 - **Pull and push as work lands.** Fetch before preparing each integration batch and again immediately before
   pushing. Reconcile upstream advancement, conflicts included, in an isolated integration worktree, review the
   resulting changes and run the incremental affected gates before landing the exact tree; equivalent recovered
   patches do not require repeated tests. Push the development branch normally after its batch gates pass; if another
   device advances the remote before the push succeeds, fetch, reconcile and gate the new changes, then retry a normal
-  push. Every agent that starts a task, finishes a task or returns from a wait fetches and fast-forwards the
-  development branch first, so no one works on history another device has already moved. Keep local and upstream
+  push. Every agent that starts a task, finishes a task or returns from a wait fetches and reconciles its own claimed
+  checkout first, so no one works on history another device has already moved. Keep local and upstream
   development synchronized throughout landing batches and cleanup; report the resulting commit and final upstream
   state.
 - **Keep landing short.** Throughput is limited by unlanded work, not typing speed. Branches are cut from
@@ -154,10 +138,9 @@ gate.
   separately landing batches instead of carrying it. Run `git cherry <dev> <branch>` before porting and
   drop equivalent patches. Record the tree hash a gate ran on; a tree already gated is not gated again. Finish before
   starting: no new branch while your own ready branches await landing; about ten open worktrees at most per lead.
-- **`scripts/land BRANCH`** lands one branch: it fetches, rebases when no review is needed (merges `origin/<dev>` into a reviewed tip),
-  checks the accept, runs the checks the diff calls for in a clean environment, pushes exactly the tested commit to the development branch (never
-  `main`, never forced), fast-forwards the primary checkout and removes the worktree and branch. One lander runs at a time;
-  a stop names its cause on the last line, and running it again repairs an interrupted run (docs/landing.md).
+- **The coordinator lands each verified checkpoint with git:** fetch, merge `origin/<dev>`, check newly changed
+  surfaces where relevant, then `git push origin HEAD:refs/heads/<dev>` (never `main`, never forced). The mandatory push
+  hook guards refs only and runs no tests or builds; the coordinator keeps the primary checkout in sync (docs/landing.md).
 - The primary development checkout may receive reviewed changes through a fast-forward merge or authorized direct
   edits and named-file commits; resolve conflicts in an isolated worktree. The retained primary checkout is never
   removed as temporary-worktree cleanup. Coding tasks own their worktree lifecycle: assignment reserves the path and
@@ -178,13 +161,13 @@ not proof that it is disposable.
 
 ### Gate cost, Linux and the broker
 
-- Gate cost is per batch: combine all ready leaves into one run and start it whenever a leaf is ready and no gate is
-  in flight. Scale it to the diff: documentation-only or handoff-only batches need a clean diff and `scripts/budgets`.
-  A failure of the GitHub run blocks only landings touching the failing surface and gets one named owner at once.
-  `scripts/land` applies this: documentation-only diffs get `scripts/budgets` and a clean diff; code diffs get
-  `scripts/test gate` and the affected selectors of the diff; the whole suite runs on GitHub for pull requests, `main` and nightly
-  (docs/landing.md, "The CI run"). A tree that already passed a check is not checked again (`reused from <id>`), and a
-  failure that also fails on the clean target is `baseline`.
+- Choose reviewed explicit selectors for the changed behavior, informed by `scripts/affected.py`. Include relevant
+  integration and platform checks, without treating its import graph as a mandatory broad campaign. Run shared
+  structural/security checks when the changed surface or a plan milestone requires them; reuse valid unchanged
+  evidence through maintained checks. Documentation-only changes need consistency review, clean diffs and relevant
+  targeted text checks. Fetches and pushes trigger no test campaign; the mandatory push hook guards refs only.
+  Broader verification belongs in CI on development pushes, pull requests, `main` and nightly schedules
+  (docs/landing.md, "The CI run"). A failure that also fails on the clean target is `baseline`, with evidence and an owner.
 - Known failures remain named tasks with evidence and ownership. A scoped pass is not a full-suite pass. Fix a known
   relevant regression before the affected change lands. A missing cold selector cache does not require a full suite
   for a leaf change; use reviewed explicit affected tests.
@@ -192,7 +175,8 @@ not proof that it is disposable.
   reviewed-selector policy as other platforms. Report the exact device, operating system,
   runtime and tested commit; a Mac result or historical Linux receipt is not verification of the current WSL setup.
   Report platform gaps and known failures honestly. Do not run a second full suite before every merge.
-- Use the maintained test broker for every run; shared CPU/GPU admission and ownership apply before work starts. Do
+- For this repository's maintained test runs, use its test broker; this does not require a library consumer's pytest
+  command to register or contact Poolhouse. Shared CPU/GPU admission applies to explicitly admitted work. Do
   not bypass a queue, start a competing full run, or extend a temporary preview pause indefinitely to obtain a quiet
   gate. Attribute external writes from actual writer evidence; unknown or test-owned writes still fail isolation
   checks. `scripts/test` and `scripts/test-on-linux` acquire maintained CPU admission;
@@ -219,7 +203,7 @@ not proof that it is disposable.
   (including slow); `tests/README.md` describes their mechanics and AGENTS.md controls when each is authorized.
   Scoped runs default to an automatic pool of what the broker grants. Use `-n 1` for sequential ordering; explicit
   `-n 0` requests an automatic pool up to broker capacity; explicit worker ceilings remain effective. Never run
-  bare `pytest -n N` outside maintained admission.
+  maintained parallel repository tests outside their admission; ordinary external pytest remains independent.
 
 ## Models (AGENTS.md, section 6)
 

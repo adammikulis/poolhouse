@@ -1,4 +1,4 @@
-"""Installed source discovery and local Windows checkout registration."""
+"""Installed source discovery and local checkout path resolution."""
 
 import subprocess
 from pathlib import PurePosixPath
@@ -6,9 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from poolhouse.fleet import project_client, projects, runtime_wheel
+from poolhouse.fleet import projects, runtime_wheel
 from poolhouse.fleet.project_source import ProjectError
-from poolhouse.http import ServerUnreachable
 from poolhouse.net import git
 
 
@@ -75,44 +74,6 @@ def test_windows_registration_in_wsl_uses_literal_argv_and_verified_git_root(tmp
 
 
 @pytest.mark.redteam
-@pytest.mark.parametrize("matching", [False, True])
-def test_sealed_wsl_registration_checks_identity_before_persisting(tmp_path, monkeypatch, matching):
-    checkout = repository(tmp_path / "source")
-    identifier = projects.identity(checkout) if matching else "a" * 32
-    original = subprocess.run
-    monkeypatch.setattr(projects.wsl_startup, "guest", lambda: True)
-    monkeypatch.setattr(projects.project_enrollment, "local", lambda *args: True)
-
-    def translate(args, **kwargs):
-        return SimpleNamespace(stdout=str(checkout) + "\n") if args[0] == "wslpath" else original(args, **kwargs)
-
-    monkeypatch.setattr(projects.subprocess, "run", translate)
-    responses = []
-    handler = SimpleNamespace(path="/workspace/v1/local-project", client_address=("127.0.0.1", 0),
-                              _sealing=lambda: object(), _send=lambda *args: responses.append(args),
-                              _object=lambda body: {"root": r"C:\repos\project", "project_id": identifier})
-    registry = projects.ProjectRegistry(tmp_path / "registry", "device")
-    assert projects.register(handler, registry, tmp_path / "pool", b"request")
-    assert responses[0][0] == (200 if matching else 400)
-    assert bool(registry.boards()) is matching
-    assert registry.path.exists() is matching
-    assert registry.list() == []
-
-
-@pytest.mark.redteam
-def test_registration_rejects_unauthenticated_caller_before_path_translation(tmp_path, monkeypatch):
-    monkeypatch.setattr(projects.project_enrollment, "local", lambda *args: False)
-    monkeypatch.setattr(projects.subprocess, "run", lambda *args, **kwargs: pytest.fail("unauthorized spawn"))
-    responses = []
-    handler = SimpleNamespace(path="/workspace/v1/local-project", client_address=("192.168.4.8", 0),
-                              _sealing=lambda: object(), _send=lambda *args: responses.append(args))
-    registry = projects.ProjectRegistry(tmp_path / "registry", "device")
-    assert projects.register(handler, registry, tmp_path / "pool", b"request")
-    assert responses[0][0] == 403
-    assert registry.boards() == []
-
-
-@pytest.mark.redteam
 @pytest.mark.parametrize("value", [r"C:relative", r"\\host\share\project", r"\\?\C:\project",
                                   "relative", "/bad\npath", "x" * 2049, None, []])
 def test_registration_refuses_invalid_path_without_spawning(tmp_path, monkeypatch, value):
@@ -152,10 +113,13 @@ def test_windows_drive_path_is_not_translated_outside_wsl(monkeypatch):
         projects.local_root(r"C:\repos\project")
 
 
-def test_local_registration_requires_available_daemon(tmp_path, monkeypatch):
-    def unreachable(*args, **kwargs):
-        raise ServerUnreachable("offline")
-
-    monkeypatch.setattr(project_client, "open_stream", unreachable)
-    with pytest.raises(ProjectError, match="start poolhouse and retry"):
-        project_client.register_local(tmp_path, b"k" * 32, "a" * 32, 8770)
+def test_board_availability_rechecks_checkout_identity_without_sharing(tmp_path):
+    checkout = repository(tmp_path / 'current')
+    registry = projects.ProjectRegistry(tmp_path / 'registry', 'device', (checkout,))
+    assert registry.boards()[0]['available'] is True
+    assert registry.boards()[0]['preferred'] is True
+    git.run(['remote', 'set-url', 'origin', 'https://code.example.invalid/team/changed.git'], cwd=checkout)
+    assert registry.boards()[0]['available'] is False
+    assert registry.boards()[0]['preferred'] is False
+    assert registry.list() == []
+    assert not registry.path.exists()

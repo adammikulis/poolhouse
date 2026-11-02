@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, jobs, runtime
+from poolhouse import home, jobs, runtime, runtime_identity
 from poolhouse.log import say, warn
 
 from . import autostart_cli, autostart_keystore, wsl_startup
@@ -118,7 +118,7 @@ def _mac_install(mode: str, argv: list[str], log_dir: Path) -> Autostart:
     path = _mac_path(mode)
     plist = {
         "Label": LABEL,
-        "ProgramArguments": argv,
+        "ProgramArguments": runtime_identity.launch_argv(argv) if Path(argv[0]).name == SERVICE else argv,
         "RunAtLoad": True,
         "KeepAlive": {"SuccessfulExit": False},
         "StandardOutPath": str(log_dir / "traind.log"),
@@ -334,6 +334,9 @@ def install(mode: str, *, slots: int = 1, labels: tuple[str, ...] = (),
             note="This machine has no working poolhouse to start. Installing it here "
                  "would leave the operating system retrying a command that fails.")
     if sys.platform == "darwin":
+        problem = runtime_identity.unit_problem()
+        if problem:
+            return Autostart(mode, installed=False, command=" ".join(argv), note=problem)
         return _mac_install(mode, argv, logs)
     if sys.platform == "win32":
         return _windows_install(mode, argv, logs)
@@ -517,7 +520,7 @@ def restart(*, run: Callable[[list[str]], int] | None = None,
     if chosen is not None and (getattr(sys, "frozen", False) or Path(sys.prefix) != chosen.prefix):
         args = [arg for arg in sys.argv[1:] if arg not in {"--restart", "--no-browser"}]
         jobs.detach("poolhouse.fleet.launch", ["--restart", "--no-browser", *args],
-                    log=runtime.directory() / "restart.log")
+                    log=runtime.directory() / "restart.log", disclaimed=True)
         return "launcher"
     call = run or _run
     mode = str(status()["mode"])

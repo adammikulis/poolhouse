@@ -23,7 +23,6 @@ from poolhouse import activity, files, home, windows_private
 from poolhouse.chatpolicy import (
     _TOOL_NAME,
     CONFIRM,
-    LEGACY_ROLE_NAMES,
     READ,
     ROLE_NAMES,
     _outside_state,
@@ -100,9 +99,8 @@ def _valid(row: Any) -> Rule:
     if not isinstance(match, dict) or not all(isinstance(k, str) and isinstance(v, str)
                                               for k, v in match.items()):
         raise ValueError("match must map argument names to patterns")
-    role = str(row.get("role") or "")
-    role = LEGACY_ROLE_NAMES.get(role, role)
-    if role and role not in ROLE_NAMES:
+    role = row.get("role", "")
+    if not isinstance(role, str) or (role and role not in ROLE_NAMES):
         raise ValueError(f"role {role!r}")
     rule = Rule(str(row.get("tool")), tuple(sorted(match.items())), str(row.get("verdict")), role,
                 str(row.get("created") or ""), int(row.get("fired") or 0), bool(row.get("tainted_ok", False)))
@@ -178,7 +176,7 @@ class Rules:
         """The rule that decides this call: a never rule first, then an always rule that
         applies (not one barred by outside text unless it says ``tainted_ok``)."""
         self.load()
-        if arguments is None or self.broken:
+        if arguments is None or self.broken or role not in ROLE_NAMES:
             return None
         found = [r for r in self.rules if r.tool == name and r.role in ("", role)
                  and {k for k, _ in r.match} == set(arguments)

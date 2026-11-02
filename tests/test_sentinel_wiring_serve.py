@@ -30,7 +30,7 @@ from poolhouse.serve.guarded import SentinelRefused, _first_use as FIRST_USE
 from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.ports import free_port
 from poolhouse.serve.process import kill_process_tree, pid_exists
-from poolhouse.testing.fakes import fake_llama_binary
+from poolhouse.testing.canned import canned_binary
 from tests.model_approval import approve
 
 pytest_plugins = ["serve_node"]
@@ -41,7 +41,7 @@ REPO = Path(__file__).resolve().parent.parent
 
 @pytest.fixture
 def manager(tmp_path):
-    return ServerManager(LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
+    return ServerManager(LlamaServerBackend(binary=canned_binary(tmp_path)),
                          state_file=tmp_path / "servers.json")
 
 
@@ -111,7 +111,7 @@ def test_a_tampered_model_is_refused_through_the_manager_too(manager, model):
     node.manifest.pin(model, "model", source="hf://org/repo@rev")
     model.write_bytes(b"GGUF" + b"\x01" * 4096)
     with pytest.raises(SentinelRefused, match="pin"):
-        manager.lease(ServerSpec(model=str(model), port=free_port()), roam=False, timeout=5)
+        manager.lease(ServerSpec(context=4096, model=str(model), port=free_port()), roam=False, timeout=5)
     assert recorded_servers(manager.state_file) == {}
 
 

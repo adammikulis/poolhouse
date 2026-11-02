@@ -1,8 +1,9 @@
 """One call, written down once -- and a `Spent` that is the sum of its calls.
 
-Every reply here is invented, built in the test, and no server is started: the whole point
-of `telemetry.Call` is that it is a record and its arithmetic, so a fake reply with a
-``raw`` dict on it is the real input.
+Every reply here is built in the test, and no server is started: the whole point
+of `telemetry.Call` is that it is a record and its arithmetic, so a reply with a
+``raw`` dict on it is the real input. None of them is a model's: each names the canned model id
+and its text begins with the marker.
 
 What these guard is drift. Three records counted the same reply -- the page's `Spent`, the
 bench's per-call trace, and what a scraper reads -- and every timing added to one of them
@@ -15,12 +16,14 @@ from __future__ import annotations
 
 import json
 
+from poolhouse.client import estimate_tokens
 from poolhouse.client.chat import Reply
 from poolhouse.client.spent import Spent
 from poolhouse.telemetry import ARGS_CAP, Call, args_summary
+from poolhouse.testing.canned import CANNED_MARKER, CANNED_MODEL_ID, marked
 
 
-def reply(*, content="ok", model="tiny-Q4.gguf", prompt_n=300, cache_n=600, predicted_n=40,
+def reply(*, content="ok", model=CANNED_MODEL_ID, prompt_n=300, cache_n=600, predicted_n=40,
           prompt_ms=100.0, predicted_ms=400.0, draft_n=0, draft_taken=0, prompt_tokens=900,
           completion_tokens=40, finish="stop", thinking="", tool=None, args="{}",
           draft_ms=None, verify_ms=None, verify_n=None, draft_n_verified=None):
@@ -34,9 +37,9 @@ def reply(*, content="ok", model="tiny-Q4.gguf", prompt_n=300, cache_n=600, pred
                        ("verify_n", verify_n), ("draft_n_verified", draft_n_verified)):
         if value is not None:
             timings[key] = value
-    return Reply(content=content, tool_calls=calls, finish_reason=finish,
+    return Reply(content=marked(content), tool_calls=calls, finish_reason=finish,
                  thinking=thinking or None,
-                 raw={"model": model,
+                 raw={"model": model, "x_canned": CANNED_MARKER,
                       "usage": {"prompt_tokens": prompt_tokens,
                                 "completion_tokens": completion_tokens},
                       "timings": timings})
@@ -47,12 +50,13 @@ class TestOneCall:
     def test_it_reads_every_number_the_server_reported(self):
         one = Call.from_reply(reply(draft_n=20, draft_taken=15), 0.8,
                               host="127.0.0.1", port=8099)
-        assert one.model == "tiny-Q4.gguf" and one.host == "127.0.0.1" and one.port == 8099
+        assert reply().content.startswith(CANNED_MARKER), "every reply built here says it is not a model's"
+        assert one.model == CANNED_MODEL_ID and one.host == "127.0.0.1" and one.port == 8099
         assert (one.prompt_n, one.cache_n, one.predicted_n) == (300, 600, 40)
         assert (one.prompt_ms, one.predicted_ms) == (100.0, 400.0)
         assert (one.draft_n, one.draft_n_accepted) == (20, 15)
         assert (one.prompt_tokens, one.completion_tokens) == (900, 40)
-        assert one.seconds == 0.8 and one.finish == "stop" and one.result_chars == 2
+        assert one.seconds == 0.8 and one.finish == "stop" and one.result_chars == len(marked("ok"))
         assert one.when > 0, "a call that does not say when is not telemetry"
 
     def test_the_slot_held_the_prefix_the_prompt_and_the_answer(self):
@@ -122,8 +126,9 @@ class TestFromTheBenchsTrace:
         """Exactly the dict `bench.counting.Counting._reply` appends, by hand: the
         point of the mapping is that it works on what the bench already wrote, and a run
         store full of these is what it has to keep working on."""
-        return {"role": "assistant", "call": 2, "model": "tiny-Q4.gguf",
-                "content": "Iris surveys land.", "chars": 18, "thinking_chars": 340,
+        return {"role": "assistant", "call": 2, "model": CANNED_MODEL_ID,
+                "content": marked("Iris surveys land."), "chars": len(marked("Iris surveys land.")),
+                "thinking_chars": 340,
                 "finish": "stop", "seconds": 0.8, "offered": ["look_up", "look_at"],
                 "tool_calls": [{"name": "look_up", "args": {"word": "surveying"}}],
                 "tokens": {"prompt": 900, "completion": 40},
@@ -167,7 +172,7 @@ class TestSpentIsTheSumOfItsCalls:
         assert s.calls == 2 and round(s.seconds, 3) == 1.2
         assert s.read_tokens == 400 and s.cached_tokens == 1500
         assert s.completion_tokens == 60 and s.draft_tokens == 30 and s.draft_taken == 20
-        assert s.model == "tiny-Q4.gguf" and s.acceptance == 20 / 30
+        assert s.model == CANNED_MODEL_ID and s.acceptance == 20 / 30
 
     def test_the_peak_is_the_largest_single_call_and_not_the_last(self):
         """With a rolling window a conversation's length says nothing about what a slot
@@ -213,7 +218,7 @@ class TestSpentIsTheSumOfItsCalls:
         folded.add(Call.from_reply(reply(draft_n=20, draft_taken=15), 0.8))
         assert {k: v for k, v in noted.public().items() if k != "parts"} == \
                {k: v for k, v in folded.public().items() if k != "parts"}
-        assert noted.public()["parts"] == {"answer": 1} and folded.public()["parts"] == {}
+        assert noted.public()["parts"] == {"answer": estimate_tokens(marked("ok"))} and folded.public()["parts"] == {}
 
     def test_the_public_record_still_has_exactly_the_keys_the_page_holds(self):
         """The conversation store is full of these under ``meta.spent`` and the page reads
@@ -238,7 +243,7 @@ class TestSpentIsTheSumOfItsCalls:
         got = Spent.totals([a.public(), b.public()])
         assert got["answers"] == 2 and got["calls"] == 2
         assert got["read_tokens"] == 400 and got["completion_tokens"] == 60
-        assert got["models"] == ["tiny-Q4.gguf"]
+        assert got["models"] == [CANNED_MODEL_ID]
 
 
 # -- generation split into drafting and checking -----------------------------------------

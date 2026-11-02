@@ -119,10 +119,10 @@ public final class MainActivity extends Activity {
                 new SecureRandom().nextBytes(pushSecret);
                 String name = Build.MODEL == null || !Build.MODEL.matches("[\\x20-\\x7e]{1,40}") ? "Android phone" : Build.MODEL.trim();
                 JSONObject body = AddRequest.body(link, name, ApprovalKey.publicPoint(), WebPushCipher.point(push.getPublic()), pushSecret, hello.getLong("now_ms"));
-                byte[] proof = AddRequest.proofBytes(hello.getString("device"), body);
-                runOnUiThread(() -> new BiometricAuthorizer(this).sign(proof, "Add this phone", false, new Authorizer.Result() {
-                    @Override public void signed(byte[] der) {
-                        worker.execute(() -> finishAdding(epoch, api, hello, name, body, der, push, pushSecret, link));
+                String device = hello.getString("device");
+                runOnUiThread(() -> AddSigning.sign(new BiometricAuthorizer(this), link, device, body, new AddSigning.Done() {
+                    @Override public void signed(JSONObject request) {
+                        worker.execute(() -> finishAdding(epoch, api, hello, name, request, push, pushSecret, link));
                     }
 
                     @Override public void failed(String sentence) {
@@ -142,9 +142,9 @@ public final class MainActivity extends Activity {
         });
     }
 
-    private void finishAdding(long epoch, NodeApi api, JSONObject hello, String name, JSONObject body, byte[] der, KeyPair push, byte[] pushSecret, AddLink link) {
+    private void finishAdding(long epoch, NodeApi api, JSONObject hello, String name, JSONObject request, KeyPair push, byte[] pushSecret, AddLink link) {
         try {
-            JSONObject added = api.add(AddRequest.withProof(body, der));
+            JSONObject added = api.add(request);
             store.keepAdded(link, hello.getString("device"), hello.optString("name", "your computer"), added.getString("phone"), name, added.getString("token"), push, pushSecret);
             store.set("state", added.getString("state"));
             store.set("words", added.optString("words", ""));

@@ -1,0 +1,583 @@
+{
+  "source_commit": "c061149aa2d0c77925fc218a95874af70b4c4018",
+  "sources": [
+    {
+      "path": "app/poolhouse-node/src/tasks/calls.rs",
+      "sha256": "95f553c3d92db3b65e34332f838f30da95f9c29c1120b0fc85bd74e57ded1777"
+    },
+    {
+      "path": "app/poolhouse-node/src/tasks/mod.rs",
+      "sha256": "618000ba6d62270cd77a94939726df72682c24bd393e95ce19deb813fb552afd"
+    },
+    {
+      "path": "app/poolhouse-node/src/tasks/fold.rs",
+      "sha256": "951b3116634e301e4419fdaa124f23df71959b6098fa2af790e7e233755ad4a9"
+    },
+    {
+      "path": "app/poolhouse-node/src/tasks/show.rs",
+      "sha256": "8fa876dbb31fd31d7b399cee5299b9ae212bff42eac6ec314dbbb4ab183d060b"
+    },
+    {
+      "path": "app/poolhouse-node/src/claims.rs",
+      "sha256": "1188d045b2e992ff0d07b4582f162b532730d7862cfbd5030cdb043076803821"
+    },
+    {
+      "path": "app/poolhouse-node/src/row.rs",
+      "sha256": "0a3fb941e60ed9dc926f6459d340d3893d1c84fdac9f852af392bcb863cf3283"
+    },
+    {
+      "path": "app/poolhouse-node/src/wire.rs",
+      "sha256": "15904e77cc2ddb3474376be9631df59ead32b328cd8380b1d32dca3ce0fbb83d"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/mod.rs",
+      "sha256": "dffcc27bc2fdb662a62cea62481d7137cfb840f6e59a45ca95bbdaf83518238f"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/types.rs",
+      "sha256": "567473304623ea1f4d502506b4da80f72f459a78617fd59ff293b18c1156bba6"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/rpc.rs",
+      "sha256": "1681cd334d4acf7e22e99bde77d80f9e041c1614e1fa6290a31853ce5f18fbfd"
+    },
+    {
+      "path": "src/poolhouse/board/tasks.py",
+      "sha256": "c6dee73ec77ab49247b803c5f9687a1050306563324f68854e719bb52192d912"
+    },
+    {
+      "path": "src/poolhouse/board/session.py",
+      "sha256": "4055b11e0f8ed2dfa0396372fda3df84a0b315bae11f4eca1cca857fd1791f87"
+    },
+    {
+      "path": "src/poolhouse/workspace/task_worktrees.py",
+      "sha256": "5236e81a201986907c53bb22c71a9099cfe158f4f22d8f09fa96e5d0064c0242"
+    },
+    {
+      "path": "src/poolhouse/workspace/task_scheduler.py",
+      "sha256": "db38c8c1bb0be49090cd9a2636f4c486dbbaabea3c61703c61be24f4e02680e9"
+    },
+    {
+      "path": "src/poolhouse/workspace/task_integration.py",
+      "sha256": "36bf9ba9bcb76fa06f0364760f456671c3f2d529fe4b82c0051a4a69a4950a15"
+    },
+    {
+      "path": "src/poolhouse/workspace/task_source_recovery.py",
+      "sha256": "177237bfff751d3a586db1a6fb193426450846c00b7be18f6355063d344ac7b5"
+    },
+    {
+      "path": "src/poolhouse/workspace/task_worktree_recovery.py",
+      "sha256": "dc05cf3638507bcc90015586cef5f9d8859d9cf1fbf4e8590f2f7f2f38dbca51"
+    },
+    {
+      "path": "src/poolhouse/workspace/testruns.py",
+      "sha256": "d82c4413e88f5898639a93930f256005ff6f19d56ab1c35f2d1bc301804175f4"
+    },
+    {
+      "path": "src/poolhouse/workspace/integration_git.py",
+      "sha256": "7ab0de96f6760de59577204be53d32e45ccbe63ef944a9cac56e7983ef184ded"
+    },
+    {
+      "path": "src/poolhouse/workspace/worktree_cleanup.py",
+      "sha256": "0d5d3c9ca75155c7fdd1d3d13a2d6a991026d2be6484b662c52672f202e8b573"
+    },
+    {
+      "path": "src/poolhouse/harness_claims.py",
+      "sha256": "5aea73a17639daf8d0260105e699b8189fc0bf48675d4d597afc98e65dadd9fe"
+    },
+    {
+      "path": "src/poolhouse/serve/broker_runtime.py",
+      "sha256": "3b72492ab02bfd713733feabbaa55deda07ec87d102fdbc5330ab23ba9a25fc0"
+    },
+    {
+      "path": "src/poolhouse/activity/reuse.py",
+      "sha256": "e5c79651c043d15be11a187a5530d8f39f2e3b79cc25519646234f8e2605056c"
+    },
+    {
+      "path": "scripts/testreuse_run.py",
+      "sha256": "32e0e19690c06f0c85874fbb073f8ace179587e5e0d138bc46bcd858efae76ce"
+    },
+    {
+      "path": "scripts/testreuse_store.py",
+      "sha256": "3c964ff13300e5de8ee47ce4e8d0167dfe703960d31d01cd2277c3551d12ec80"
+    },
+    {
+      "path": "contracts/node/retained-features.json",
+      "sha256": "3a99a8d4856851ff01e9082829a6a2a1d9e00177ea8f2595efa279af43e2a592"
+    }
+  ],
+  "version": 1,
+  "status": "proposal; declarations and source retention requirements only; no runtime, backend, shared-resource admission, platform or K acceptance",
+  "sites": [
+    {
+      "path": "app/poolhouse-node/src/tasks/calls.rs",
+      "line": 30,
+      "symbol": "fn member(",
+      "line_sha256": "45879967dea8064828a06094ea49cc8b5acd6e8cdc1c3f9e6aebf8f402c5b1e3"
+    },
+    {
+      "path": "app/poolhouse-node/src/tasks/calls.rs",
+      "line": 488,
+      "symbol": "fn landing_hand(",
+      "line_sha256": "23b824854aa3567886ccc3c38151a067945357b260f80eb63eed927472d65902"
+    },
+    {
+      "path": "app/poolhouse-node/src/tasks/calls.rs",
+      "line": 499,
+      "symbol": "fn standing(",
+      "line_sha256": "fee2100194a5d028371bc804772a1c8ea392f629881d5dde268dfcd4b14ca80a"
+    },
+    {
+      "path": "app/poolhouse-node/src/tasks/calls.rs",
+      "line": 516,
+      "symbol": "fn sponsors(",
+      "line_sha256": "1025a5faa9ad9c320022cf165dd5f35e79a378030124ff629a1f41b685200fe0"
+    },
+    {
+      "path": "app/poolhouse-node/src/tasks/calls.rs",
+      "line": 529,
+      "symbol": "fn host_step(",
+      "line_sha256": "76ddae9ff3be65ce337acdb1da6b95f3c53b85e9108b48665fd3a72d00edffb1"
+    },
+    {
+      "path": "app/poolhouse-node/src/tasks/mod.rs",
+      "line": 245,
+      "symbol": "\"scope\" => small",
+      "line_sha256": "ea15d2caa1e7e22f9d7c4465d9e98d0c97ab9aff34340cb502a9dd564b8dff42"
+    },
+    {
+      "path": "app/poolhouse-node/src/tasks/mod.rs",
+      "line": 246,
+      "symbol": "\"record\" if",
+      "line_sha256": "4af500f16d8c6b478af45c4ac38ef9a513af4b99a4421068af874a445cf92eec"
+    },
+    {
+      "path": "app/poolhouse-node/src/tasks/fold.rs",
+      "line": 307,
+      "symbol": "\"scope\" => t.scope",
+      "line_sha256": "9b0ef02f74232d579f6023379b429a6bd42284a473cf37d6a2039eda5136ad57"
+    },
+    {
+      "path": "app/poolhouse-node/src/tasks/fold.rs",
+      "line": 313,
+      "symbol": "Some(old) if kind != \"event\"",
+      "line_sha256": "d939b082e5c2ef6922bdfd3322ed1753246c879f7ae7e2a499905dcdf6105188"
+    },
+    {
+      "path": "app/poolhouse-node/src/tasks/show.rs",
+      "line": 26,
+      "symbol": "fn records(",
+      "line_sha256": "e35114f87cca76241cf462313d9ac1901bda8be5e6586fa885e6a33f0488bad4"
+    },
+    {
+      "path": "app/poolhouse-node/src/claims.rs",
+      "line": 105,
+      "symbol": "fn wanted(",
+      "line_sha256": "79bbf09101a9f4c1e8865c483fa1252233d170dbd631e74cf3f49a9d83dde247"
+    },
+    {
+      "path": "app/poolhouse-node/src/claims.rs",
+      "line": 151,
+      "symbol": "fn reserve(",
+      "line_sha256": "52fe4a360510c1390f66509be445520172f625648504e1bea5bc5d23fd2999d9"
+    },
+    {
+      "path": "app/poolhouse-node/src/claims.rs",
+      "line": 166,
+      "symbol": "fn take_all(",
+      "line_sha256": "930a2715f4144abc4869f6e096238ccbc34ab4344be72bf015add2171419a908"
+    },
+    {
+      "path": "app/poolhouse-node/src/claims.rs",
+      "line": 139,
+      "symbol": "fn give_back(",
+      "line_sha256": "78ede982eae5aca107374f09edbd3b57297cef5eb9fc009dfe9e2b70c15f1f25"
+    },
+    {
+      "path": "app/poolhouse-node/src/claims.rs",
+      "line": 45,
+      "symbol": "fn held_as(",
+      "line_sha256": "8d2832e6d76e468285521032b7db37718d8800b14f92f793813ccbac33110f90"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/mod.rs",
+      "line": 125,
+      "symbol": "pub fn batch<",
+      "line_sha256": "2792e4a2d9a8f044daa0bcec9378f7a0ad299f749832f8360bc13185c9ad1d29"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/types.rs",
+      "line": 281,
+      "symbol": "max_leases_per_holder: 512",
+      "line_sha256": "694097c7ce58d5a8d0466ce03233fa44a4b84a287608c0d23062a2b17d77d58f"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/types.rs",
+      "line": 127,
+      "symbol": "pub fn check(",
+      "line_sha256": "a4dc5f2dbfd1837b2a1ed73a7ab5b3e056deec18acb4b4e95678bb99801bf8f5"
+    },
+    {
+      "path": "app/poolhouse-node/src/row.rs",
+      "line": 14,
+      "symbol": "pub const MAX_ROW_BYTES",
+      "line_sha256": "e77882c78a1dc597922c168090dae82a2d3e060667ce566d46e7778322e8dcb9"
+    },
+    {
+      "path": "app/poolhouse-node/src/row.rs",
+      "line": 17,
+      "symbol": "const MAX_DEPTH",
+      "line_sha256": "d6bbd09f28de5d67b9a9086c8b35d0575f8a58e46fc477e5573fed4d0ffb9d30"
+    },
+    {
+      "path": "app/poolhouse-node/src/row.rs",
+      "line": 160,
+      "symbol": "fn walk(",
+      "line_sha256": "d3ab075dd1890b86fdf39cc1d444883241b06978d678f10e0b9a3f9ff14fc1ac"
+    },
+    {
+      "path": "app/poolhouse-node/src/wire.rs",
+      "line": 10,
+      "symbol": "pub const MAX_FRAME",
+      "line_sha256": "3a291e63c667b5afc8896bb06134e177a94985a143844f4eeedce3b7388305f3"
+    },
+    {
+      "path": "src/poolhouse/board/tasks.py",
+      "line": 117,
+      "symbol": "def scope(",
+      "line_sha256": "d630fc2c404d371db6b6b300422529d9a3bf91ea94aae8eac39649dae23d6658"
+    },
+    {
+      "path": "src/poolhouse/board/tasks.py",
+      "line": 121,
+      "symbol": "def record(",
+      "line_sha256": "ae96d931d8ba2e73954b6f9472068b6a778535674c8b2200961a7ec6b8b7d134"
+    },
+    {
+      "path": "src/poolhouse/board/session.py",
+      "line": 369,
+      "symbol": "def reserve(",
+      "line_sha256": "410898abdf870d807103918c492ca399697f8bad7a4c6e12bd20e41bb31aebe2"
+    },
+    {
+      "path": "src/poolhouse/workspace/task_worktrees.py",
+      "line": 29,
+      "symbol": "def plan(",
+      "line_sha256": "d00659727d528d73142cb75dac8c86182a6d4a38893489e6ec0d2629c54fd6c5"
+    },
+    {
+      "path": "src/poolhouse/workspace/task_worktrees.py",
+      "line": 79,
+      "symbol": "def activate(",
+      "line_sha256": "a2685eaf0b5716b446165d2123d1aa50cbe1d5c13965f879128724b5f1480a6a"
+    },
+    {
+      "path": "src/poolhouse/workspace/task_scheduler.py",
+      "line": 57,
+      "symbol": "def assign_next(",
+      "line_sha256": "4ecd043eb7a80bf991a5ac1a51f48ea3dc0c099ea37107bcb268e43194c692a4"
+    },
+    {
+      "path": "src/poolhouse/workspace/task_scheduler.py",
+      "line": 82,
+      "symbol": "def integrate_completed(",
+      "line_sha256": "773e0ee73e1348f37b9a31a65684530d87bf382b9fbf4063e27adbf2ae5d87a1"
+    },
+    {
+      "path": "src/poolhouse/workspace/task_integration.py",
+      "line": 31,
+      "symbol": "PUBLIC =",
+      "line_sha256": "c2bcfeb576121e45a86fa49b59f88c61c849aabf95c5e6b9504956ad38d17155"
+    },
+    {
+      "path": "src/poolhouse/workspace/task_integration.py",
+      "line": 96,
+      "symbol": "def public(",
+      "line_sha256": "b1b6f6738495431e7e91818ee16bd5a11ad47825576d42bb6d9d548e510699bc"
+    },
+    {
+      "path": "src/poolhouse/workspace/task_integration.py",
+      "line": 110,
+      "symbol": "def _event(",
+      "line_sha256": "f852dcc6c0b06d98e2ce42e36a46d129e59294027fe197817c7f47117611daf4"
+    },
+    {
+      "path": "src/poolhouse/workspace/task_integration.py",
+      "line": 229,
+      "symbol": "def finish(",
+      "line_sha256": "20e90b4ff075a80a0a79ee8f1d3aa6b4122fc54b0993b00ab5dfc742fc8b9cf8"
+    },
+    {
+      "path": "src/poolhouse/workspace/task_worktree_recovery.py",
+      "line": 66,
+      "symbol": "def dematerialize(",
+      "line_sha256": "96854edebeb59e0c8bed05f0367cdb68d015c375c8ae3d7d3f141e3dcfd4693d"
+    },
+    {
+      "path": "src/poolhouse/workspace/task_source_recovery.py",
+      "line": 107,
+      "symbol": "tasks.scope(",
+      "line_sha256": "2bf358da71379b42a9eb7b62b54b36dcfd99b6afa8a2f55893e80476d99521b9"
+    },
+    {
+      "path": "src/poolhouse/workspace/testruns.py",
+      "line": 46,
+      "symbol": "def verified(",
+      "line_sha256": "bf0a0cb6fde6ed9ff8a6b3c40800c2a143d4ed252fff442dffd857ffe7308d5d"
+    },
+    {
+      "path": "src/poolhouse/workspace/testruns.py",
+      "line": 74,
+      "symbol": "def evidence(",
+      "line_sha256": "c3a4bbbe2d05ea45f2f5fcfd7084be2b7c021aade420352fad13657e1fc8dc25"
+    },
+    {
+      "path": "src/poolhouse/workspace/testruns.py",
+      "line": 84,
+      "symbol": "def checkpoint(",
+      "line_sha256": "3c0f16562767f2345f69bd506e3e7aa69e9b18dd5958ddf8b3c00d3de2ae9c60"
+    },
+    {
+      "path": "src/poolhouse/workspace/testruns.py",
+      "line": 97,
+      "symbol": "def submit(",
+      "line_sha256": "7bb2385d9b15b75f7006e0b6e7e9d01c6bdb0a9a7a6fa09413487f4b3a2400a7"
+    },
+    {
+      "path": "src/poolhouse/workspace/integration_git.py",
+      "line": 93,
+      "symbol": "def gates(",
+      "line_sha256": "5fffeaf89a8bb144cc3e8ed4e05be29e9e38541995c3caff86693f803694d70f"
+    },
+    {
+      "path": "src/poolhouse/workspace/worktree_cleanup.py",
+      "line": 72,
+      "symbol": "s.reserve(",
+      "line_sha256": "1e0d9735a69f8487f7dab97eee9c58692bdd68548c17c108d796b041fd34e7ab"
+    },
+    {
+      "path": "src/poolhouse/harness_claims.py",
+      "line": 151,
+      "symbol": "s.reserve(",
+      "line_sha256": "a50470d720a7f2a561bbfb0d6f52e42f3d3dbe15ea0f03b70aeaf7cae0be3df7"
+    },
+    {
+      "path": "src/poolhouse/serve/broker_runtime.py",
+      "line": 42,
+      "symbol": "def reported(",
+      "line_sha256": "52055793ef3e03d4c9599652f332a9714174423197b3f2ca233739621b42ba00"
+    },
+    {
+      "path": "scripts/testreuse_run.py",
+      "line": 447,
+      "symbol": "def put_entry(",
+      "line_sha256": "5182a244c9a670c5e42016838361d3d656f355852696784f3727c10858075baf"
+    },
+    {
+      "path": "scripts/testreuse_store.py",
+      "line": 122,
+      "symbol": "def disable(",
+      "line_sha256": "82de82d392b6d077d56ea92feb665c6759af816c36fbea9b7ba6da0e8607d628"
+    }
+  ],
+  "contract_dependency": {
+    "tasks_leaf": "9d841a0356bf66818a39a6041453bcab1b42c92c",
+    "reused_types": [
+      "TaskScopedRef",
+      "TaskActorRef",
+      "TaskAllocationRef",
+      "TaskReviewRef",
+      "TaskSnapshotBoundary",
+      "TaskContractError",
+      "CoordinationClaimResource",
+      "CoordinationClaimTakeResult",
+      "CatalogBoardRef"
+    ],
+    "note": "Root merges reviewed tasks leaf before generation; no shared definitions edited."
+  },
+  "operation_mapping": [
+    {
+      "operation": "tasks.scope.replace",
+      "request": "TaskExtensionScopeReplaceRequest",
+      "response": "TaskExtensionScopeView",
+      "error": "TaskContractError",
+      "retained_method": "task_scope",
+      "status": "proposed typed source projection; no dispatch",
+      "cancellation": "request-detach-only",
+      "subscription": "none"
+    },
+    {
+      "operation": "tasks.scope.inspect",
+      "request": "TaskExtensionScopeInspectRequest",
+      "response": "TaskExtensionOptionalScopeView",
+      "error": "TaskContractError",
+      "retained_method": "task_scope",
+      "status": "proposed typed source projection; no dispatch",
+      "cancellation": "request-detach-only",
+      "subscription": "none"
+    },
+    {
+      "operation": "tasks.records.merge",
+      "request": "TaskExtensionRecordMergeRequest",
+      "response": "TaskExtensionRecordReceipt",
+      "error": "TaskContractError",
+      "retained_method": "task_record",
+      "status": "proposed typed source projection; no dispatch",
+      "cancellation": "request-detach-only",
+      "subscription": "none"
+    },
+    {
+      "operation": "tasks.records.list",
+      "request": "TaskExtensionRecordsListRequest",
+      "response": "TaskExtensionRecordsEvent",
+      "error": "TaskContractError",
+      "retained_method": "task_record",
+      "status": "proposed typed source projection; no dispatch",
+      "cancellation": "request-detach-only",
+      "subscription": "ordered-resource-stream"
+    },
+    {
+      "operation": "claims.reservations.begin",
+      "request": "CoordinationReservationBeginRequest",
+      "response": "CoordinationReservationView",
+      "error": "TaskContractError",
+      "retained_method": "reserve",
+      "status": "proposed typed source projection; no dispatch",
+      "cancellation": "request-detach-only",
+      "subscription": "none"
+    },
+    {
+      "operation": "claims.reservations.input.set",
+      "request": "CoordinationReservationInputRequest",
+      "response": "CoordinationReservationInputReceipt",
+      "error": "TaskContractError",
+      "retained_method": "reserve",
+      "status": "proposed typed source projection; no dispatch",
+      "cancellation": "request-detach-only",
+      "subscription": "none"
+    },
+    {
+      "operation": "claims.reservations.commit",
+      "request": "CoordinationReservationCommitRequest",
+      "response": "CoordinationReservationView",
+      "error": "TaskContractError",
+      "retained_method": "reserve",
+      "status": "proposed typed source projection; no dispatch",
+      "cancellation": "atomic-cancel-versus-domain-commit",
+      "subscription": "none"
+    },
+    {
+      "operation": "claims.reservations.cancel",
+      "request": "CoordinationReservationCancelRequest",
+      "response": "CoordinationReservationView",
+      "error": "TaskContractError",
+      "retained_method": "reserve",
+      "status": "proposed typed source projection; no dispatch",
+      "cancellation": "atomic-cancel-versus-domain-commit",
+      "subscription": "none"
+    },
+    {
+      "operation": "claims.reservations.inspect",
+      "request": "CoordinationReservationInspectRequest",
+      "response": "CoordinationReservationEvent",
+      "error": "TaskContractError",
+      "retained_method": "reserve",
+      "status": "proposed typed source projection; no dispatch",
+      "cancellation": "request-detach-only",
+      "subscription": "ordered-resource-stream"
+    }
+  ],
+  "retained_features": {
+    "task_scope": {
+      "source": "task_worktrees.plan/activate; task_integration.finish; task_source_recovery; task_worktree_recovery",
+      "fields": [
+        "task",
+        "worker",
+        "owner",
+        "project",
+        "source_project",
+        "baseline_commit",
+        "branch",
+        "state",
+        "landed_commit",
+        "dematerialized_at"
+      ],
+      "states": [
+        "reserved",
+        "active",
+        "cleaned"
+      ],
+      "behavior": "Whole scope replacement, not shallow patch; actual known complete caller object preserved. Node resolves current task/worker/owner refs for new writes. Original source path/branch strings are content only. Reserved missing checkout may refresh baseline through actual authorized parent source recovery; never silently overwrite live active scope."
+    },
+    "task_record": {
+      "allocation": "execution_config model,harness,ctx,effort,max_effort,max_output_tokens,role,profile,project; broker_runtime; worker; interpreter;python;scheduler_pid",
+      "integration": "Exact PUBLIC projection task,state,owner,worker,review_id,review_hash,proposal_hash,source_commit,commit,development,policy,at,blocking_owner,publish_requested,publication_verified,cleanup_verified; reason and checks. Private candidate/base/credential fields stay omitted. scope_owner is omitted by public() and is NOT invented as a retained field.",
+      "attempt": "started task/worker/owner/review_hash/state/started/owner_pid/owner_started; finish state/outcome/finished; interrupted recovery_required. Omitted field retains existing top-level value.",
+      "event": "Integration public event plus integration ID; dematerialize summary/transition/authorized_by/baseline_commit/at; rebind-source adds recovery/source_project/target_project. Always append even same rid, except exact RequestId replay.",
+      "evidence": "Exact runner entry id,file,key,tree,commit,outcome,junit_sha256,counts,agent,created_ms,covers; up to16 entries; commit. Facts are reported claims until independently validated."
+    },
+    "reserve": {
+      "source": "claims.rs wanted/reserve/take_all/give_back and Leases::batch; Session.reserve; harness_claims.reserve; worktree_cleanup.recover",
+      "semantics": "Complete raw indexed source set preserved, raw count checked before source-equality dedup; one atomic reservation with same existing lease renewal/new lease rollback behavior, no sequential ownership substitute. Source local flag retained even Python Session.reserve currently omits it. PID becomes actual authenticated original native process lifetime, never arbitrary PID nomination.",
+      "canonical_transport": "Begin+immutable indexed input+commit/cancel+inspect is necessary representation adaptation. No complete typed resources list, frame increase, truncation or fixed512 cap. No lease effect before commit."
+    }
+  },
+  "source_bounds": {
+    "legacy_frame_bytes": 1048576,
+    "legacy_signed_row_bytes": 131072,
+    "legacy_body_max_depth": 16,
+    "scope_max_fields": 16,
+    "record_kind_max_bytes": 32,
+    "record_rid_max_bytes": 200,
+    "claim_key_max_bytes": 300,
+    "runner_evidence_max_items": 16,
+    "reserve_raw_count_derivation": {
+      "shortest_valid_item": "{\"kind\":\"port\",\"key\":\"1\"}",
+      "shortest_item_utf8_bytes": 25,
+      "array_minimum_bytes": "26*N+1",
+      "allocation_count_upper_bound": 40329,
+      "calculation": "floor((1048576-1)/26)",
+      "meaning": "Allocation/index envelope only; old actual envelope is larger so original exact source frame independently recomputed from complete typed snapshot. Canonical tagged encoding overhead is separate and never a new source admission cap."
+    },
+    "runtime_policy": "max_leases_per_holder default512/max_leases4096/max_leases_per_lineage1024 and TTL defaults are source observations, NOT frozen contract caps. Current actual config/generation checked at commit and independently shared-resource staging admission required.",
+    "chunk_envelope": "Existing Utf8Chunk max65536 bytes unchanged. Up to3 chunks preserves any original rowbounded131072-byte UTF8 field: maximal boundary packing can leave<=3bytes at first split. Concatenate ordinal chunks exactly; validate full decoded source bytes/depth/whole source row/frame; never reorder, truncate or normalize/reparse-reserialize old signed text. Envelope cardinality is math, not workload cap.",
+    "literal_reports": "Broker runtime, runner counts and integration check reports are distinct role-specific content wrappers. JSON integer-only source row profile; no fractions/unsupported numeric ranges, source depth16, each original source contribution<=row budget; merged aggregate not capped to a source row. Checks decoder validates only command:list-of-literal-strings,passed:boolean,exit:signed32,output_hash:sha256 and exact known keys, with count bounded by original row bytes rather than arbitrary3/32/1024. Counts remain claimed JSON data (source can emit incident detail), no use as acceptance proof. Broker reported() can retain unknown advertised keys; they stay quarantined inside broker-report data role, never configuration/identity/API parameters."
+  },
+  "semantic_requirements": [
+    "Every new durable mutation has top generation/RequestId; updates have exact stage/task CAS, begin is new Node-ID creation with no nonexistent prior-stage CAS; exact actual principal, installation, project/board/task/allocation/review incarnations and full immutable intent bind dedup. Validate current authorization/generations BEFORE replay lookup/disclosure. Same RequestId another payload/principal/index/resource conflicts; matching authorized retry returns original receipt before old expected-revision rejection.",
+    "Scope replace and record merge enforce current actual source-authorized task controller/standing allocation sponsorship; sameboard live membership, independent reviewer/current task authority per existing rules. No parent/owner/role/model/person label bypass, no new execution or shared-compute gate. Current relation checked per write; linked-board visibility grants no participation.",
+    "Typed scope task and outer request task must be identical; owner/worker refs must resolve to actual authorized current relation. Reported paths, branch/baseline, recovery fields, content role, label and timestamp never create local filesystem/process/Git/compute/installer authority or prove native custody. Exact local handle/source authorization remains separate. Scope recorded before claim cannot imply lease granted.",
+    "TaskExtensionPatch types explicitly retain or set; no optional null silently means delete. Nested structures replace atomically when set, not deepmerge. Actual allocation broker_runtime:null and config max_output_tokens:null retain their exact nullable content meaning. First integration/attempt insert may retain absent fields only where actual source caller emits them; required immutable task/owner/worker/review associations must resolve independently before later merge. Rebinding those associations or overwriting newer state refuses.",
+    "Non-event record merges by exact kind+rid, updates source top-level keys only, and revalidates current immutable associations/semanticprofile; original depth/row/frame limits apply each original contribution, never a new merged-aggregate cap; current scope checked. Evidence/allocations use known full source producer objects. Event appends with node-issued entry ID even repeated rid, except exact RequestId retry cannot duplicate. Projection task/rid/by provenance comes from outer node binding and original signed entry, never content overrides.",
+    "Legacy signed rows, original hashes, actor labels, integer milliseconds and canonical source representations remain byte-exact and read-only historical observations. Unknown/retired legacy actor incarnation is not re-admitted merely to populate a new ref; historical unavailable projections explicitly refuse unsupported_record/unsupported_scope until safe observation representation exists. New typed refs and digest versions never migrate legacy authority.",
+    "All fixed-role report JSON is untrusted content only. Reject source-role shape mismatch and unknown authority-bearing fields outside role; never materialize report as RPC request, configuration, command, PID handle, identity, grant, approval, provider trust or proof. Command/source filename/claim key text is inert. Actual publication_verified/cleanup_verified/pass/digest strings remain claimed observations and cannot feed task complete/admission without independent current exact evidence.",
+    "Staging begins only after actual shared CPU/memory/storage admission; caller raw_count/total/hash is untrusted, not reservation rights. Actual owner principal/install/board/generation/source profile bind node-issued ReservationRef and immutable begin intent. No new hardcoded staging quota or bypass through changing RequestIds; admission implementation remains unfinished.",
+    "Capture original authenticated native process lifetime at begin if bound; revalidate exact captured process at commit, never commit caller PID/lifetime or claimed scheduler PID. Unbound intent remains TTL-bound under current policy. Removal/restart/rebind/incarnation change cannot resurrect old stage or process rights.",
+    "Each input index is immutable; preserve duplicate exact source tuples at distinct indices, reject a different occupied index payload even if later normalized equivalent. Same authorized input retry returns original receipt despite old CAS. Freeze full ordered complete snapshot; node derives rawcount and digest and checks holes/extra index. Input and cancel after commit freeze cannot mutate snapshot.",
+    "Commit digest is equality guard only, Node recomputes domain-separated versioned digest over exact principal/install/board/stage/generations/profile/rawcount/ordinal kind+key/TTL/process/local scope. Canonical digest codec/vectors not yet implemented. Complete typed snapshot recomputes original source frame and rawcount-before-dedup/config limits; source-equality dedup then actual native path/port/device/board conflict normalization without duplicate lease renewals. Exact normalization does not grant resource authority.",
+    "Commit/cancel has one atomic durable winner across batch/own renewals/new leases/mirror outcomes. Unknown effect is outcome_unknown or recovery_required and reconciles SAME immutable batch; never returns false absent/performed or retries as fresh acquisition. Source refused batch may retain already existing renewed leases but releases only exact newly acquired leases. Each raw ordinal maps to deduplicated input ordinal and explicit acquired/renewed/rolled_back/unresolved/refused/cancelled observation; no invented result for untouched rows.",
+    "Commit authorized replay returns original expiry/result, never renews TTL or mints another lease, even with a new transport request on same reservation. Only new authorized reservation can renew. Cancel only uncommitted bytes; after commit winner returns terminal/unknown result without releasing committed leases or rolling back renewals. Cancelled stage keeps terminal dedup/tombstone after byte cleanup; orphan/crash/late inputs never recreate rights or adopt another caller stage.",
+    "Reservation state/ref/snapshot/receipt only observes durable progress, never dispatches execution. Inspect ownerbound current authorization before each frozen event; boundary includes exact reservation/install/board generation/revision and cursor projection/principal. While still collecting, once every immutable index is present, input handling and inspect node-compute the stable complete input_digest BEFORE commit; caller obtains it through inspect (no commit-only digest/freeze circularity). Commit expected_input_digest is only an equality guard; commit freezes this already immutable complete snapshot. Begin does not guarantee cached policy or TTL: node atomically checks actual current claim table/config inside commit, never caller table-generation/revision guards; effective policy/expiry are observed results. Empty snapshot/view/complete valid; no live-page mixture, explicit resync_required on expiry.",
+    "Claim conflict scope preserves branch actual board and path/port/server/install actual device, including source normalization. No foreign board/ref/lease/PID/holder disclosure on contention; foreign rows entirely omitted, sanitized lease_busy. Coordination claims do not open port/run server/install/edit file/use model or permit Git. External effects require their owning domain current authorization."
+  ],
+  "unmapped_and_enablement_gaps": [
+    "All9 operations and69 types are declaration proposals only. Staging durable backend, actual shared resource admission, bounded parsing/CPU/memory/storage custody, Node authority/CAS/replay/transaction ledgers and recovery are unimplemented. No runtime/K acceptance.",
+    "Exact new source-projection/digest/typed-reference transcript codecs and cross-language/refusal/replay/transport expansion vectors remain unimplemented. No old row/hash/descriptor normalization or trust migration. Original source bytes/frame accounting must be proven before dispatch, not inferred from count/chunk DTO bounds.",
+    "Original broker_runtime.snapshot can emit fractional pid_started; old row.check_body rejects all fractions. Preserve this actual incompatibility explicitly; do not silently truncate float or claim provenance recording works for that input. Literal report profile cannot escape old integer-only signed-row checks.",
+    "Generic Tasks.record permits arbitrary kinds/dynamic maps and scope supports arbitrary<=16key object, but retained inventory supplies only named actual five record producers and known complete scope fields. Unknown/custom record kinds or unknown scope/record fields remain unsupported/refused, not a JSON/RPC escape. Historical unknown data is retained verbatim in signed logs, never discarded or promoted to authority. Further actual caller evidence requires its own reviewed named schema.",
+    "Arbitrary partial allocation/evidence map updates without any actual retained producer remain unsupported; known producers submit complete objects. Known integration/attempt patches and event append semantics preserved explicitly.",
+    "Privileged task integration/Git creation/publication/cleanup/source relocation/test-runner execution/reward/credit remain outside these observation operations; exact trusted native custody/independent verification still needed before task completion can consume reported results. No new installed adapter or model behavior.",
+    "records.merge returns immutable receipt only; records.list emits every original typed contribution in frozen original log order, not a potentially oversized merged-record object. Consumers apply source exact kind/rid shallowmerge and event append to reconstruct complete current records; no aggregate row/frame cap, history truncation or hidden field cap. Each source contribution is rowbounded and independently fits canonical transport; exact codec proof remains required. Tasks base read projections stay unchanged; scope.inspect and records.list provide exact missing extension projections. Unknown historical actor incarnation has no data-only historical union in base TaskActorRef yet; do not synthesize current refs to satisfy decoding."
+  ],
+  "independent_review": {
+    "reviewer": "approval_attack_review",
+    "pre_edit_verdict": "Written conditional source closure pass followed by written reservation-specific staging approval and chunk-role approval. Required immutable indexed inputs, original source admission distinct canonical overhead, exact process lifetime, one commit/cancel winner/tombstones, fixed replay expiry, shared resource admission and inert role reports incorporated.",
+    "actual_leaf_verdict": "Final targeted actual-file review approved by approval_attack_review:69types9ops; new stage creation without fictitious CAS, exact stage commit CAS and node current policy checks, collecting-time input digest, original contribution streams, atomic source-faithful staged reservation, fixed replay expiry/native lifetime and cancellation tombstones verified. No declaration blocker; no reviewer edits/tests/runtime. Resource-admission/backend/recovery/source-codec vectors remain unimplemented acceptance requirements."
+  },
+  "counts": {
+    "types": 69,
+    "operations": 9,
+    "sources": 26,
+    "sites": 45
+  }
+}

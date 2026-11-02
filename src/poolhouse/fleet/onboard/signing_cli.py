@@ -12,8 +12,8 @@ from typing import Any
 from poolhouse import home, person
 from poolhouse.files import read_json, write_json
 from poolhouse.log import say
+from poolhouse.sentinel.human import HumanRequired, mint
 
-from .human import HumanRequired, mint
 from .manifest import key_fingerprint
 from .signing import KeyStoreError, SigningKeys
 

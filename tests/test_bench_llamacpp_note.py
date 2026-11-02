@@ -64,7 +64,7 @@ def test_a_sweep_announces_before_it_measures(monkeypatch):
     monkeypatch.setattr(run, "_estimated", lambda rest: 0)
     monkeypatch.setattr(run, "_main", lambda rest: called.append("measure") or 0)
     monkeypatch.setattr(run, "note_beside_the_run", lambda: None)
-    assert run.main(["sweep", "--no-selfcheck", "--no-prefetch", "--serve", "x.gguf"]) == 0
+    assert run.main(["sweep", "--no-prefetch", "--serve", "x.gguf"]) == 0
     assert called == ["announce", "measure"]
 
 

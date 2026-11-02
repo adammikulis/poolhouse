@@ -1,18 +1,18 @@
 """Which way a member is reached: its address on this network, its tailnet address, or not.
 
 A route is only a path. The device on the other end is still proved by its pinned certificate
-(`probe`), so a tailnet address, however it was learned, reaches the device whose certificate
-was pinned at joining or nobody. Addresses come from the join exchange, or from a member in
-the local ``tailscale status`` whose certificate matched; never from an announcement.
+(`probe`), so a tailnet address reaches the device whose certificate was recorded or nobody.
+Addresses come from the device's record, or from a member in the local ``tailscale status``
+whose certificate matched; never from an announcement.
 
-Every network path that reaches a member goes through here: a member-first model download
-(`memberfirst`), ``fleet fetch``, the SSH bootstrap target (`ssh_address`, where the SSH host key,
-not a certificate, is what proves the machine) and ``fleet nearby`` (`beyond_the_lan`, since a
-multicast beacon never crosses a tailnet).
+Every network path that reaches a recorded device goes through here: ``fleet fetch`` and the SSH
+bootstrap target (`ssh_address`, where the SSH host key, not a certificate, is what proves the
+machine).
 """
 
 from __future__ import annotations
 
+import hashlib
 import socket
 import ssl
 from collections.abc import Callable
@@ -20,12 +20,10 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from ..tailnet import Tailnet
-from .join_code import fingerprint_of, unverified_context
+from .devices import Device, Devices
 from .lan import NotLocal, in_tailnet, require_local
-from .requests import Device, Devices
 
-__all__ = ["Probe", "Reach", "Route", "beyond_the_lan", "learn", "open_probe", "pinned_probe",
-           "reach", "resolve", "ssh_address"]
+__all__ = ["Probe", "Reach", "Route", "open_probe", "pinned_probe", "reach", "resolve", "ssh_address"]
 
 Probe = Callable[[str, int, str], bool]
 """``probe(address, port, fingerprint)``: whether ``address`` answers with that certificate."""
@@ -49,6 +47,16 @@ class Reach:
                 "address": self.address}
 
 
+def unverified_context() -> ssl.SSLContext:
+    """A client context that accepts any certificate and so authenticates nothing; used only
+    to learn which certificate the other end presents, which the caller then compares."""
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_3
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
 def pinned_probe(address: str, port: int, fingerprint: str, timeout_s: float = 2.0) -> bool:
     """Whether a TLS server at ``address:port`` presents the certificate with ``fingerprint``;
     False for a public address, no answer or a different certificate."""
@@ -59,11 +67,11 @@ def pinned_probe(address: str, port: int, fingerprint: str, timeout_s: float = 2
             der = tls.getpeercert(binary_form=True) or b""
     except (OSError, ssl.SSLError):
         return False
-    return fingerprint_of(der) == fingerprint
+    return hashlib.sha256(der).hexdigest() == fingerprint
 
 
 def lan_address(device: Device) -> str:
-    """The address on this network the device was joined from, or ''."""
+    """The address on this network recorded for the device, or ''."""
     if not device.address or in_tailnet(device.address):
         return ""
     try:
@@ -110,21 +118,6 @@ def reach(device: Device, tailnet: Tailnet | Callable[[], Tailnet], port: int,
     return Reach(device.fingerprint, device.name, Route.UNREACHABLE)
 
 
-def learn(devices: Devices, tailnet: Tailnet, port: int, probe: Probe = pinned_probe) -> list[str]:
-    """Store the tailnet address of each active device a tailnet member reaches with that
-    device's certificate; returns the fingerprints updated."""
-    updated = []
-    for device in devices.all():
-        if device.status != "active":
-            continue
-        for address in tailnet_candidates(device, tailnet):
-            if address != device.tailnet_address and probe(address, port, device.fingerprint):
-                devices.learn_tailnet(device.fingerprint, address, source="tailscale-verified")
-                updated.append(device.fingerprint)
-                break
-    return updated
-
-
 def _joined(host: str, devices: Devices) -> Device | None:
     name = host.strip().lower()
     return next((d for d in devices.all() if d.status == "active"
@@ -144,21 +137,6 @@ def ssh_address(host: str, port: int, devices: Devices, tailnet: Callable[[], Ta
     if found.route is Route.UNREACHABLE:
         raise NotLocal(f"{device.name} does not answer on port {port} on the network or the tailnet")
     return found.address
-
-
-def beyond_the_lan(devices: Devices, heard: set[str], tailnet: Tailnet, port: int,
-                   probe: Probe = pinned_probe) -> list[Reach]:
-    """Members a multicast beacon cannot have reached: those not in ``heard`` (their
-    fingerprints) whose pinned certificate answers at a tailnet address."""
-    out = []
-    for device in devices.all():
-        if device.status != "active" or device.fingerprint in heard:
-            continue
-        for address in tailnet_candidates(device, tailnet):
-            if probe(address, port, device.fingerprint):
-                out.append(Reach(device.fingerprint, device.name, Route.TAILNET, address))
-                break
-    return out
 
 
 def resolve(host: str, port: int, devices: Devices, tailnet: Callable[[], Tailnet],

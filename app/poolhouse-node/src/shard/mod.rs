@@ -19,6 +19,8 @@ pub mod host;
 pub mod proc;
 pub mod runtime;
 pub mod spec;
+#[allow(dead_code)] // Owned envelope dependency; host launch/settlement integration is a separate reviewed batch.
+mod worker;
 
 use serde_json::{json, Map, Value};
 

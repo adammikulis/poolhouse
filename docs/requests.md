@@ -5,8 +5,8 @@ needs a yes, a fact the agent wants remembered, something sentinel holds: each i
 the terminal, the browser page and the desktop dialog are three ways to answer the same one.
 
 Code: `poolhouse.requests` (`raise_request`, `answer`, `list_requests`), the terminal command
-`poolhouse-requests`, the route `poolhouse.inbox.route` with the element `ml-requests`
-(`ui/assets/ml-requests.js`).
+`poolhouse-requests`, the route `poolhouse.inbox.route` with the element `poolhouse-requests`
+(`ui/assets/poolhouse-requests.js`).
 
 ## What a request holds
 
@@ -105,8 +105,8 @@ holds no token. "Answer all of this kind" is offered only for waiting requests o
 agent and project, none destructive or human-only, lists exactly what it covers before it sends,
 and the server refuses a destructive or human-only request in it.
 
-The shell puts `<ml-requests></ml-requests>` in its page with the `<meta>` from
-`RequestsApp.meta(session)` (or serves `/requests` itself); the element emits `ml-requests-count`
+The shell puts `<poolhouse-requests></poolhouse-requests>` in its page with the `<meta>` from
+`RequestsApp.meta(session)` (or serves `/requests` itself); the element emits `poolhouse-requests-count`
 (`{pending}`) for a chip, and takes the attributes `api`, `csrf`, `agent`, `project`, `kind` and
 `history`.
 

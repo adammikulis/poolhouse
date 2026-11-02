@@ -1,0 +1,162 @@
+<script>
+  (function () {
+    const S = window.studioModel,
+      E = window.fleetModel.el,
+      M = window.fleetModel;
+    const FIXED = "decision:strands-v19";
+    S.installSetup = (proto) =>
+      Object.assign(proto, {
+        decisionSetupIssues() {
+          const fixed = this.resources?.models?.find(
+            (model) => model.id === FIXED,
+          );
+          return [
+            ...new Set([
+              ...(fixed?.issues || []),
+              ...this.specs
+                .filter((spec) =>
+                  ["decision.predict", "guard.injection"].includes(spec.type),
+                )
+                .flatMap((spec) => spec.requirements || []),
+            ]),
+          ];
+        },
+        decisionSetupControls(host, node) {
+          if (node.type !== "model") return;
+          const fixed = this.resources?.models?.find(
+              (model) => model.id === FIXED,
+            ),
+            selected = node.bindings?.model?.id;
+          if (!fixed || (selected && selected !== FIXED)) return;
+          const needed =
+            selected === FIXED ||
+            this.graph.edges.some((edge) => {
+              const target = this.graph.nodes.find(
+                (n) => n.id === edge.target.node,
+              );
+              return (
+                edge.source.node === node.id &&
+                target &&
+                S.spec(this, target).inputs?.some(
+                  (port) =>
+                    port.name === edge.target.port &&
+                    port.type === "decision-model",
+                )
+              );
+            });
+          if (!needed) return;
+          const issues = this.decisionSetupIssues();
+          if (this.decisionSetupMessage)
+            host.append(E("p", { role: "status" }, this.decisionSetupMessage));
+          else if (selected && fixed.available && !issues.length)
+            host.append(E("p", {}, "Decision model ready."));
+          for (const issue of issues) host.append(E("p", {}, issue));
+          if (
+            this.decisionSetupBusy ||
+            !selected ||
+            !fixed.available ||
+            issues.length
+          )
+            host.append(
+              E(
+                "button",
+                {
+                  type: "button",
+                  disabled: !!this.decisionSetupBusy,
+                  onclick: () =>
+                    this.perform(() => this.configureDecision(node)),
+                },
+                this.decisionSetupBusy
+                  ? "Configuring decision model…"
+                  : "Configure decision model",
+              ),
+            );
+        },
+        async refreshDecisionSetup() {
+          const [resources, nodes] = await Promise.all([
+            S.api("/resources"),
+            S.api("/nodes"),
+          ]);
+          this.resources = resources;
+          this.specs = nodes.nodes || [];
+          const fixed = resources.models?.find((model) => model.id === FIXED),
+            issues = this.decisionSetupIssues();
+          this.decisionSetupMessage =
+            fixed?.available && !issues.length
+              ? "Decision model ready."
+              : "Configuration needs attention: " +
+                (issues.join(" · ") || "The decision model is unavailable.");
+          this.render();
+          this.message(this.decisionSetupMessage);
+        },
+        async followDecisionSetup(job) {
+          this.decisionSetupBusy = true;
+          try {
+            await M.followSetupJob(job, (update) => {
+              this.decisionSetupMessage = update.note || update.state;
+              this.render();
+            });
+            await this.refreshDecisionSetup();
+          } catch (error) {
+            this.decisionSetupMessage = error.message;
+            this.render();
+            throw error;
+          } finally {
+            this.decisionSetupBusy = false;
+            this.render();
+          }
+        },
+        async attachDecisionSetup() {
+          if (this.decisionSetupBusy) return;
+          const response = await M.api("/ui/setup/jobs");
+          if (!response.ok) return;
+          const jobs = (response.jobs || []).filter(
+            (job) =>
+              job.kind === "studio-decision-install" &&
+              job.request?.resource === FIXED,
+          );
+          jobs.sort((a, b) => (b.created || 0) - (a.created || 0));
+          const pending = jobs.find((job) =>
+            ["queued", "installing"].includes(job.state),
+          );
+          if (pending) await this.followDecisionSetup(pending);
+          else if (jobs[0]?.state === "failed") {
+            this.decisionSetupMessage =
+              jobs[0].error ||
+              jobs[0].note ||
+              "Decision model configuration failed.";
+            this.render();
+          }
+        },
+        async configureDecision(node) {
+          if (this.decisionSetupBusy) return;
+          this.decisionSetupBusy = true;
+          this.decisionSetupMessage = "Preparing decision model…";
+          if (!node.bindings?.model?.id) {
+            this.checkpoint();
+            node.bindings ||= {};
+            node.bindings.model = { kind: "model", id: FIXED };
+            this.changed();
+          }
+          this.render();
+          try {
+            await this.save();
+            const result = await S.api("/resources/decision/install", {});
+            if (result.job) await this.followDecisionSetup(result.job);
+            else if (result.ready) await this.refreshDecisionSetup();
+            else
+              throw Error(
+                "Decision model configuration status is unavailable.",
+              );
+          } catch (error) {
+            this.decisionSetupMessage = error.message;
+            this.render();
+            throw error;
+          } finally {
+            this.decisionSetupBusy = false;
+            this.render();
+          }
+        },
+      });
+  })();
+</script>

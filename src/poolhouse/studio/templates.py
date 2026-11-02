@@ -3,6 +3,9 @@ from __future__ import annotations
 
 from copy import deepcopy
 
+from poolhouse.studio.decision_templates import templates as decision_templates
+from poolhouse.studio.rag_template import template as rag_template
+
 
 def _graph(name: str, types: list[tuple[str, str]], connections: list[tuple[str, str, str, str]]) -> dict:
     return {'id': name, 'name': name.replace('-', ' ').title(), 'schema_version': 1,
@@ -50,15 +53,15 @@ def templates() -> list[dict]:
             node['parameters'] = {'template': 'Return an empty JSON object.'}
         elif node['id'] == 'generate':
             node['parameters'] = {'json_schema': '{"type":"object","properties":{},"additionalProperties":false}'}
-    gym = _graph('gym-training-and-evaluation', [('recordings', 'gym.recordings'),
-                 ('train', 'gym.train'), ('evaluate', 'gym.evaluate'), ('chart', 'chart')],
-                 [('recordings', 'dataset', 'train', 'dataset'), ('train', 'model', 'evaluate', 'model'),
-                  ('evaluate', 'metrics', 'chart', 'metrics')])
+    gym = _graph('gym-training-and-evaluation', [('train', 'gym.train'),
+                 ('evaluate', 'gym.evaluate'), ('chart', 'chart')],
+                 [('train', 'model', 'evaluate', 'model'), ('evaluate', 'metrics', 'chart', 'metrics')])
+    gym['nodes'][0]['parameters'] = {'environment': 'warehouse', 'timesteps': 2048, 'seed': 0}
     sweep = _graph('benchmark-sweep', [('data', 'dataset'), ('model', 'model'),
                    ('evaluate', 'evaluate'), ('chart', 'chart')],
                    [('data', 'dataset', 'evaluate', 'dataset'), ('model', 'model', 'evaluate', 'model'),
                     ('evaluate', 'metrics', 'chart', 'metrics')])
     sweep['nodes'][2]['parameters'] = {'suite': 'tool-calls'}
     sweep['nodes'][2]['sweep'] = {'temperature': [0, 0.7]}
-    return deepcopy([training, comparison, sweep, inference, tools, gym])
+    return deepcopy([training, comparison, sweep, inference, tools, gym]) + decision_templates() + [rag_template()]
 

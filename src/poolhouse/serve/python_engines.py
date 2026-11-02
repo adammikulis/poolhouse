@@ -1,18 +1,17 @@
 """Serving Hugging Face weights with vLLM or SGLang, behind the same lease as llama-server.
 
 A spec whose ``engine`` is ``"vllm"`` or ``"sglang"`` is served by that engine's OpenAI
-server, run as ``python -m`` in the interpreter this process runs on. ``context`` is the
+server, run in the verified compute interpreter. ``context`` is the
 longest sequence, ``parallel`` the most concurrent sequences, and the weights are split
 across every CUDA device the machine has.
 """
 
 from __future__ import annotations
 
-import sys
 from dataclasses import replace
 from pathlib import Path
 
-from poolhouse.credentials import child_environment
+from poolhouse.serve import python_runtime
 from poolhouse.serve.backend import (
     Lease,
     ServerBackend,
@@ -32,7 +31,7 @@ __all__ = ["ENGINES", "SGLangBackend", "VllmBackend", "cuda_devices", "engine_en
 
 def engine_environment() -> dict[str, str]:
     """The environment of an engine: no tokens, and Hugging Face downloads and checks switched off."""
-    return {**child_environment(), "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"}
+    return {**python_runtime.environment_for_child(), "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"}
 
 
 def _arguments(spec: ServerSpec) -> tuple[str, list[str]]:
@@ -87,7 +86,7 @@ class VllmBackend(_PythonEngine):
 
     def command(self, spec: ServerSpec) -> list[str]:
         model, extra = _arguments(spec)
-        argv = [sys.executable, "-m", "vllm.entrypoints.openai.api_server",
+        argv = [*python_runtime.command(self.name),
                 "--model", model, "--host", "127.0.0.1", "--port", str(spec.port),
                 "--dtype", "auto", "--max-num-seqs", str(max(1, spec.parallel))]
         if spec.context > 0:
@@ -104,7 +103,7 @@ class SGLangBackend(_PythonEngine):
 
     def command(self, spec: ServerSpec) -> list[str]:
         model, extra = _arguments(spec)
-        argv = [sys.executable, "-m", "sglang.launch_server", "--model-path", model,
+        argv = [*python_runtime.command(self.name), "--model-path", model,
                 "--host", "127.0.0.1", "--port", str(spec.port),
                 "--max-running-requests", str(max(1, spec.parallel))]
         if spec.context > 0:

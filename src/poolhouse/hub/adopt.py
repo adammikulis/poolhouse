@@ -166,7 +166,10 @@ def _place(row: Row, name: str, folder: Folder, apply: bool) -> Row:
     if not apply:
         return Row(row.rel, row.path, row.size, action, row.how)
     if twin is not target:
-        got = hfstore.into_blobs(path, blob, name, copy=False)
+        with hfstore.Placement(path, blob, name) as placement:
+            got = placement.publish(copy=False)
+            if got in ("new", "have"):
+                placement.commit()
         if got not in ("new", "have"):
             return _blocked(row, got)
         hfstore.link(target, blob)

@@ -51,7 +51,8 @@
   }
 
   M.agentRuntimeAlert = async function (chat) {
-    if (chat.runtimeChecking || chat.runtimeAlert?.isConnected) return;
+    // Readiness is unknown until the page has read /ui/chat; an alert built before then would pick repair for install.
+    if (chat.runtimeReady === undefined || chat.runtimeChecking || chat.runtimeAlert?.isConnected) return;
     chat.runtimeChecking = true;
     try {
       const current = await status().catch(() => ({}));

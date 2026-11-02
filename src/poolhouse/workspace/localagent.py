@@ -17,13 +17,14 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import home, node_launch, roles
-from poolhouse.board import credentials, grants, person
+from poolhouse.board import credentials, grants
 from poolhouse.board.client import Client
 from poolhouse.board.names import valid_id, valid_name
 from poolhouse.board.session import Agent as Registered, Session
 from poolhouse.chatpolicy import APPROVE_FIRST, PLAN_AND_GO, READ_ONLY
 from poolhouse.files import read_json, write_json
 from poolhouse.serve.process import pid_exists, started_at
+from poolhouse.workspace import localeffort as le
 
 __all__ = ["APPROVE_FIRST", "DEFAULT_ORDERS_FROM", "ORDER_KINDS", "PLAN_AND_GO", "READ_ONLY",
            "Agent", "Status", "alive", "check_name", "check_orders", "check_project", "folder",
@@ -97,9 +98,9 @@ class Agent:
     role: str = roles.DEFAULT
     profile: str = "chat"
     harness: str = "poolhouse-agent"
-    ctx: int = 32768
+    ctx: int = 0
     effort: str = "off"
-    max_effort: str = "medium"
+    max_effort: str = le.DEFAULT_MAX
     project: str = ""
     orders_from: tuple[str, ...] = DEFAULT_ORDERS_FROM
     started: float = 0.0
@@ -204,7 +205,7 @@ def status_of(base: Path, name: str) -> dict[str, Any]:
 def is_person(s: Session) -> bool:
     """Whether ``s`` is a session of the person's own screen or terminal."""
     me = next((a for a in s.agents() if a.name == s.name), None)
-    return bool(me and not me.parent and me.harness == person.HARNESS and me.model == person.MODEL)
+    return bool(me and not me.parent and me.person)
 
 
 def manages(s: Session, agent: Agent) -> bool:
@@ -230,7 +231,7 @@ def _giver(agent: Agent, known: dict[str, Registered], lead: Callable[[], frozen
         if who is None or who.retired:
             return ""
         reason = ""
-        if not who.parent and who.harness == person.HARNESS and who.model == person.MODEL:
+        if not who.parent and who.person:
             reason = "the person"
         elif name in agent.orders_from:
             reason = f"{name}, whom the person named"

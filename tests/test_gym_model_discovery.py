@@ -18,7 +18,7 @@ def test_fastvlm_safetensors_is_discovered_as_vision_and_explicitly_unsupported(
     config.write_text(json.dumps({'model_type': 'qwen2'}))
     assert hub.discover([tmp_path], kind='vision', refresh=True) == []
     monkeypatch.setattr(models.hub, 'discover', lambda **_: discovered)
-    monkeypatch.setattr(models.registry, 'listing', lambda: [])
+    monkeypatch.setattr(models.deciders, 'listing', lambda: [])
     row = next(row for row in models.model_choices()['vision'] if 'FastVLM' in row['label'])
     assert row['status'] == 'unsupported' and row['available'] is False and row['backend'] is None
     assert 'not implemented' in row['reason']

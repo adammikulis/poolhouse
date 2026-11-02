@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from poolhouse import coding, roles
+from poolhouse import coding, harnessing, roles
 from poolhouse.board import person
 from poolhouse.board.session import Session
 from poolhouse.errors import Denied
@@ -95,6 +95,8 @@ def _write(base: Path, session: Callable[[], Session], route: str, body: bytes) 
     if route == "start":
         data = _typed(body, START_KEYS)
         profile = data.get("profile") or "coding"
+        if profile == "coding":
+            harnessing.require_isolated_execution()
         role = data.get("role") or (la.PLAN_AND_GO if profile == "coding" else roles.DEFAULT)
         context = lp.parse_ctx(data.get("ctx", "")) or lp.profile(profile).ctx
         try:
@@ -143,9 +145,9 @@ def respond(base: Path, session: Callable[[], Session], req: Request, body: byte
 
 AGENTS_PAGE = """<!doctype html><meta charset="utf-8"><title>Agents</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="stylesheet" href="/ui/ml-ui/ml-ui.css">
-<body style="margin:0;background:var(--ml-bg);padding:16px"><ml-agents endpoint="/agents"></ml-agents>
-<script type="module" src="/ui/ml-ui/ml-ui.js"></script>"""
+<link rel="stylesheet" href="/ui/poolhouse-ui/poolhouse-ui.css">
+<body style="margin:0;background:var(--poolhouse-ui-bg);padding:16px"><poolhouse-agents endpoint="/agents"></poolhouse-agents>
+<script type="module" src="/ui/poolhouse-ui/poolhouse-ui.js"></script>"""
 
 
 class _Route(boardroute._Route):

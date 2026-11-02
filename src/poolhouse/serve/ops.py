@@ -42,6 +42,7 @@ from poolhouse.serve.backend import (
     default_slot_save_path,
 )
 from poolhouse.serve.binary import BinaryNotFound
+from poolhouse.serve.fitted import fitted
 from poolhouse.serve.leases import lease_file, orphaned, recorded_servers
 from poolhouse.serve.manager import ServerManager
 from poolhouse.serve.mlx_tree import report_for
@@ -559,7 +560,7 @@ def measure(names: Sequence[str], *, spec: ServerSpec, backend: LlamaServerBacke
             from poolhouse.hub import spec_for
 
             kind = spec_for(head)
-        one = replace(spec, model=model, draft=head or None, spec_type=kind)
+        one, _fit = fitted(replace(spec, model=model, draft=head or None, spec_type=kind))
         try:
             measured = measuring_mod.measure(one, backend=backend, timeout=timeout)
         except Exception as exc:

@@ -132,11 +132,12 @@ fn a_retired_subagent_loses_its_token_its_leases_and_its_name() {
     assert_eq!(code(&again), "denied", "the retired session cannot register itself back");
     let listed = |n: &mut poolhouse_node::node::Node, all: bool| ok(req(n, "agents", "demo", &lt, json!({"retired": all})))["agents"].as_array().unwrap().len();
     assert_eq!((listed(&mut n, false), listed(&mut n, true)), (1, 2));
-    let audit = ok(req(&mut n, "read", "demo", &lt, json!({"kind": "audit"})));
-    let event = audit["entries"].as_array().unwrap().iter().find(|e| e["fields"]["event"] == "retire").expect("retire is audited");
-    assert_eq!(event["fields"]["subject"], child.as_str());
     let identity = ok(req(&mut n, "read", "demo", &lt, json!({"kind": "identity"})));
-    assert_eq!(identity["entries"].as_array().unwrap().last().unwrap()["fields"]["retired"], true);
+    let ended = identity["entries"].as_array().unwrap().last().unwrap()["fields"].clone();
+    assert_eq!((ended["name"].clone(), ended["retired"].clone(), ended["retired_by"].clone()), (json!(child), json!(true), json!(child)), "the ending names who ended it");
+    assert!(ended["detail"].as_str().unwrap().contains("2 leases released"), "{ended}");
+    let audit = ok(req(&mut n, "read", "demo", &lt, json!({"kind": "audit"})));
+    assert!(audit["entries"].as_array().unwrap().iter().all(|e| e["fields"]["event"] != "retire"), "the ending is one identity entry, not a second audit entry");
 }
 
 #[test]
@@ -189,10 +190,12 @@ fn models_are_claimed_listed_and_a_verified_one_is_not_overwritten() {
     assert_eq!(me(&mut n)["model_state"], "verified");
     assert_eq!(code(&req(&mut n, "whoami", "demo", &token, json!({"model": "claude-haiku-5-5"}))), "denied", "a claim cannot lower a verified model");
     assert_eq!(ok(req(&mut n, "whoami", "demo", &token, json!({"model": "claude-opus-5-5"})))["identity"]["model_state"], "verified");
-    assert_eq!(code(&req(&mut n, "whoami", "demo", &token, json!({"model": "x\ny"}))), "denied", "whatever it is made into, it cannot lower a verified model");
+    assert_eq!(ok(req(&mut n, "whoami", "demo", &token, json!({"model": "x\ny"})))["identity"]["model"], "claude-opus-5-5", "a claim that is not an id changes nothing");
     let (other, other_token) = session(&mut n, "demo", "b");
     let said = ok(req(&mut n, "whoami", "demo", &other_token, json!({"model": "x\ny \"z\" \u{202e}", "harness": "claude-code"})));
-    assert_eq!((said["name"].as_str().unwrap(), said["identity"]["model"].clone()), (other.as_str(), json!("x-y--z---")), "what a session says about its model is made harmless before it is kept");
+    assert_eq!((said["name"].as_str().unwrap(), said["identity"]["model"].clone()), (other.as_str(), json!("claude-sonnet-5-5")), "a model that is not an id is not kept");
+    let colon = ok(req(&mut n, "whoami", "demo", &other_token, json!({"model": "gpt-5.1:high", "harness": "claude-code"})));
+    assert_eq!(colon["identity"]["model"], "gpt-5.1-high", "an id is kept with its odd characters as hyphens");
     let trimmed = ok(req(&mut n, "whoami", "demo", &other_token, json!({"model": "  spaced-model \t", "harness": "claude-code"})));
     assert_eq!(trimmed["identity"]["model"], "spaced-model", "the space around it is not part of it");
     let entries = ok(req(&mut n, "read", "demo", &token, json!({"kind": "identity"})));

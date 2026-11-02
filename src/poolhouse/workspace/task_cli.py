@@ -18,6 +18,7 @@ from poolhouse.workspace import (
     task_outcomes,
     task_source_recovery,
     testruns,
+    worktree_cleanup,
     worktree_lifecycle,
 )
 from poolhouse.workspace.cli_options import FOR_AGENT
@@ -39,8 +40,7 @@ def _worktrees(args: argparse.Namespace, s: Session) -> Any:
     if args.bundle:
         raise ValueError('--bundle requires --archive-obsolete')
     if args.cleanup:
-        return worktree_lifecycle.cleanup(base, s.name, args.cleanup,
-                                          lambda path: next((c.owner for c in s.claims("worktree") if c.key == path), ""))
+        return worktree_cleanup.cleanup(s, base, args.cleanup)
     return worktree_lifecycle.pending(base, s.name)
 
 

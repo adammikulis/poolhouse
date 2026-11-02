@@ -1,0 +1,27 @@
+{
+  "project": "three.js",
+  "package": "three",
+  "version": "0.186.1",
+  "licence": "MIT",
+  "licence_file": "three.LICENSE",
+  "copyright": "Copyright (c) 2010-2026 three.js authors",
+  "upstream": "https://github.com/mrdoob/three.js",
+  "changes": "none; byte-identical to the npm package three@0.186.1",
+  "files": [
+    {
+      "path": "loaders/GLTFLoader.js",
+      "source": "examples/jsm/loaders/GLTFLoader.js",
+      "sha256": "131c0f78c01d19368ae495caa65b3adaa10487810a36a05bb5901b769a35ac16"
+    },
+    {
+      "path": "utils/BufferGeometryUtils.js",
+      "source": "examples/jsm/utils/BufferGeometryUtils.js",
+      "sha256": "9fb63427ce6641fa14fd0baff9cc4d1b5f9c3d85fd084bf2e90e803c44ec1797"
+    },
+    {
+      "path": "utils/SkeletonUtils.js",
+      "source": "examples/jsm/utils/SkeletonUtils.js",
+      "sha256": "b1632a703206c3d830de9fcbe515696770d04b71a15ee6b50afa6d2c3298c86f"
+    }
+  ]
+}

@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import re
 import urllib.parse
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 
 from poolhouse import credentials, errors, http, net
@@ -124,25 +125,28 @@ class RemoteFile:
         return _SHARD.sub("", self.name)
 
 
-def _get(url: str, *, auth: str, repo: str) -> object:
+def _get(url: str, *, auth: str, repo: str, check: Callable[[], None] | None = None) -> object:
+    if check is not None:
+        check()
     try:
-        return net.default().json(url, net.Ask(purpose="model hub", token=auth, tries=3))
+        return net.default().json(url, net.Ask(purpose="model hub", token=auth, tries=3, check=check))
     except http.ServerError as exc:
         if exc.status in (401, 403):
             raise GatedRepo(hint(repo, exc.status)) from exc
         if exc.status == 404:
             raise NotFound(f"{repo} is not on {endpoint()}") from exc
         raise RemoteError(str(exc)) from exc
-    except Refused as exc:
-        raise RemoteError(str(exc)) from exc
+    finally:
+        if check is not None:
+            check()
 
 
-def listing(repo: str, revision: str = "main", auth: str | None = None) -> list[RemoteFile]:
+def listing(repo: str, revision: str = "main", auth: str | None = None, *, check: Callable[[], None] | None = None) -> list[RemoteFile]:
     """Every file of a repository with its size and, for large files, its sha256."""
     quoted = urllib.parse.quote(repo, safe="/")
     rev = urllib.parse.quote(revision, safe="")
     got = _get(f"{endpoint()}/api/models/{quoted}/tree/{rev}?recursive=true",
-               auth=token() if auth is None else auth, repo=repo)
+               auth=token() if auth is None else auth, repo=repo, check=check)
     out = []
     for row in got if isinstance(got, list) else ():
         if isinstance(row, dict) and row.get("type") == "file":
@@ -152,14 +156,14 @@ def listing(repo: str, revision: str = "main", auth: str | None = None) -> list[
     return out
 
 
-def commit(repo: str, revision: str = "main", auth: str | None = None) -> str:
+def commit(repo: str, revision: str = "main", auth: str | None = None, *, check: Callable[[], None] | None = None) -> str:
     """The 40-character commit a revision of a repository resolves to, as the Hub cache names it."""
     if re.fullmatch(r"[a-f0-9]{40}", revision):
         return revision
     quoted = urllib.parse.quote(repo, safe="/")
     rev = urllib.parse.quote(revision, safe="")
     got = _get(f"{endpoint()}/api/models/{quoted}/revision/{rev}",
-               auth=token() if auth is None else auth, repo=repo)
+               auth=token() if auth is None else auth, repo=repo, check=check)
     sha = got.get("sha") if isinstance(got, dict) else None
     if not isinstance(sha, str) or not re.fullmatch(r"[a-f0-9]{40}", sha):
         raise RemoteError(f"{endpoint()} did not name a commit for {repo}@{revision}")
@@ -171,19 +175,19 @@ def endpoint_host() -> str:
     return urllib.parse.urlsplit(endpoint()).netloc.lower()
 
 
-def on_branch(repo: str, sha: str, auth: str | None = None) -> bool:
+def on_branch(repo: str, sha: str, auth: str | None = None, *, check: Callable[[], None] | None = None) -> bool:
     """Whether ``sha`` is the head of a branch or tag of ``repo``, or one of the newest commits of its
     ``main``: a pull request's commit is neither. False when the Hub cannot say."""
     quoted = urllib.parse.quote(repo, safe="/")
     token_ = token() if auth is None else auth
     try:
-        refs = _get(f"{endpoint()}/api/models/{quoted}/refs", auth=token_, repo=repo)
+        refs = _get(f"{endpoint()}/api/models/{quoted}/refs", auth=token_, repo=repo, check=check)
         heads = refs if isinstance(refs, dict) else {}
         named = [row for key in ("branches", "tags") for row in heads.get(key) or () if isinstance(row, dict)]
         if sha in {row.get("targetCommit") for row in named}:
             return True
         for page in range(HISTORY_PAGES):
-            rows = _get(f"{endpoint()}/api/models/{quoted}/commits/main?p={page}", auth=token_, repo=repo)
+            rows = _get(f"{endpoint()}/api/models/{quoted}/commits/main?p={page}", auth=token_, repo=repo, check=check)
             if not isinstance(rows, list) or not rows:
                 return False
             if any(isinstance(row, dict) and row.get("id") == sha for row in rows):
@@ -197,9 +201,9 @@ HISTORY_PAGES = 4
 """How many pages of a branch's history are read to find a commit named by hash."""
 
 
-def resolve(ref: Ref, auth: str | None = None) -> Ref:
+def resolve(ref: Ref, auth: str | None = None, *, check: Callable[[], None] | None = None) -> Ref:
     """``ref`` with its commit named; a revision that already is a commit costs no request."""
-    return ref if ref.commit else replace(ref, commit=commit(ref.repo, ref.revision, auth))
+    return ref if ref.commit else replace(ref, commit=commit(ref.repo, ref.revision, auth, check=check))
 
 
 def members(files: list[RemoteFile], ref: Ref) -> list[RemoteFile]:

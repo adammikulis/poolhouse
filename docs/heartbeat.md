@@ -19,8 +19,7 @@ instruction to schedule the next firing.
 > (1) read the inbox (`poolhouse-workspace inbox --agent <lead>`) and answer what is addressed to you;
 > (2) check which workers have reported or gone idle and which branch is ready, and run
 > `scripts/worktrees sweep` and `scripts/worktrees` (a `NOTE` line is information; a work tree is landed, bundled
-> or abandoned with `scripts/worktrees close`, never removed by hand); (3) read `digest --status`; land a ready branch with
-> `scripts/land BRANCH` (a stop names its cause on the last line); (4) run
+> or abandoned with `scripts/worktrees close`, never removed by hand); (3) read `digest --status`; a worker pushes its own ready branch (docs/landing.md); (4) run
 > `poolhouse-serve llama-cpp ensure` and log one line only if it updated or deferred; (5) resume or brief
 > workers for the next item; (6) append one line to the log. If nothing needs doing, end with one line and
 > do nothing else.

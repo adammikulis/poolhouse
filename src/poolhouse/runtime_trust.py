@@ -75,7 +75,7 @@ def primary_for(supplied: Path, *, deploying: bool = True, delegated: bool = Fal
     if recorded is None:
         raise DeployError("no source repository is recorded: a person, or a lead agent while `runtime.deploy` is delegated, "
                           "runs `poolhouse runtime ensure --checkout PATH`")
-    raise DeployError(f"{supplied} is not a worktree of the recorded repository {recorded}; only a person at a terminal may deploy another repository")
+    raise DeployError(f"{supplied} is not a worktree of the recorded repository {recorded}; another source repository requires person authentication")
 
 
 def _git(primary: Path, *words: str) -> subprocess.CompletedProcess:
@@ -98,28 +98,49 @@ def floor(primary: Path) -> int:
 
 
 def ignore_redirects() -> list[str]:
-    """Remove the variables that move the state or cache root from an agent-started process; returns their names."""
+    """Remove agent redirects; return only those that differ from the account's state root."""
     if not person.marked():
         return []
     names = [home.ROOT_ENV, home.CACHE_ENV, *home.OVERRIDES.values()]
-    return [name for name in names if os.environ.pop(name, None)]
+    warnings = []
+    for name in names:
+        value = os.environ.pop(name, None)
+        if not value:
+            continue
+        if name == home.ROOT_ENV:
+            try:
+                if home.expand(value).resolve() == home.account_roots()[0].resolve():
+                    continue
+            except (OSError, RuntimeError, ValueError):
+                pass
+        warnings.append(name)
+    return warnings
 
 
-def authorize(command: str) -> str:
+def authorize(command: str, *, cwd: Path | None = None) -> str:
     """Who may run a deploy command here: "person" for a process no agent started, "delegated" for a lead agent
     while the owner has delegated the `runtime.deploy` gate; HumanRequired for an agent while it is the person's.
 
     A launcher or login unit carries no agent marker, so it is not gated; the `authority.use` row this writes for a
     delegated pass names the agent.
     """
-    if not person.marked():
+    if not (person.marked() or os.environ.get(authority.SUBAGENT_ENV)):
         return authority.PERSON
-    return authority.require(GATE, f"runtime {command}")
+    return authority.require(GATE, f"runtime {command}", scope=authority.Scope(cwd=recorded_primary() or cwd))
 
 
 def audit(command: str, commit: str, result: str, *, agent: str = "", detail: str = "", **passed: str) -> bool:
     """Append a sealed activity record for one deploy command; True when it was written."""
-    who = agent or os.environ.get(AGENT_ENV, "")
-    return writer.record(KIND, actor=f"agent:{who}" if who else None, subject=commit, outcome=result,
-                         meta={"command": command, "agent": who, "person": is_person(), "authority": passed.get("via", ""),
+    context = bool(person.marked() or agent or os.environ.get(AGENT_ENV) or os.environ.get("POOLHOUSE_WORKSPACE_TOKEN") or
+                   os.environ.get(authority.SUBAGENT_ENV))
+    who = ""
+    if context:
+        try:
+            source = Path(passed["source"]) if passed.get("source") else recorded_primary()
+            who = authority.current_agent(cwd=source).name
+        except (OSError, ValueError):
+            pass
+    actor = f"agent:{who}" if who else "agent:unavailable" if context else "person" if is_person() else "system:runtime"
+    return writer.record(KIND, actor=actor, subject=commit, outcome=result,
+                         meta={"command": command, "agent": who, "person": not context and is_person(), "authority": passed.get("via", ""),
                                "detail": detail[:DETAIL_LIMIT]})

@@ -1,0 +1,5 @@
+[mcp_servers.blender]
+enabled = false
+
+[mcp_servers.langchain-docs]
+enabled = false

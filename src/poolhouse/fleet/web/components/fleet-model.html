@@ -6,12 +6,22 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
 <script>
 (function () {
   const M = window.fleetModel = {};
+  let sessionEpoch = 0, nativeAttempt = -1, nativePending = null, nativeSignedOut = false;
+  let sessionInvalid = false, manualPending = null, signoutPending = null, nativeWaiting = null;
+  M.sessionContext = () => sessionEpoch;
+  const responseEpoch = new WeakMap();
   const H = M.headers = { "X-Poolhouse-UI": "1", "Content-Type": "application/json" };
 
   let releaseBoot;
   const bootReady = new Promise(resolve => { releaseBoot = resolve; });
 
-  M.MIN_PASS = 5;
+  /** A random v4 UUID on any origin: the browser's own UUID call is only on https and loopback pages, a LAN address has none. */
+  M.uuid = () => {
+    const b = crypto.getRandomValues(new Uint8Array(16));
+    b[6] = b[6] & 15 | 64; b[8] = b[8] & 63 | 128;
+    const h = Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
+    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+  };
 
   M.downloadMessage = function (g) {
     if (g.error) return g.error;
@@ -46,8 +56,31 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
       if (aborted) signal.removeEventListener("abort", aborted);
     }
     signal?.throwIfAborted();
-    return request(path, opts);
+    if (path === "/ui/session" && opts.method?.toUpperCase() === "POST") return establishSession(opts);
+    const epoch = sessionEpoch, result = await request(path, opts);
+    responseEpoch.set(result, epoch);
+    return result;
   };
+
+  function establishSession(opts) {
+    const busy = () => ({ok:false, status:409, error:"The local connection is already being established."});
+    if (nativePending || signoutPending) return Promise.resolve(busy());
+    if (manualPending) return manualPending.key === opts.body ? manualPending.promise : Promise.resolve(busy());
+    const epoch = sessionEpoch, operation = {key:opts.body, promise:null};
+    manualPending = operation;
+    operation.promise = (async () => {
+      try {
+        const result = await request("/ui/session", opts);
+        if (result.ok && result.signed_in === true) {
+          if (epoch !== sessionEpoch) return {ok:false, status:409, error:"The local connection changed. Try signing in again."};
+          sessionEpoch++; sessionInvalid = false; nativeSignedOut = false;
+        }
+        responseEpoch.set(result, result.ok && result.signed_in === true ? sessionEpoch : epoch);
+        return result;
+      } finally { if (manualPending === operation) manualPending = null; }
+    })();
+    return operation.promise;
+  }
 
   /** One element, its attributes and its children. */
   M.el = function (tag, attrs = {}, ...kids) {
@@ -95,8 +128,8 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
     root.dataset.density = theme?.density || "comfortable";
     const colors = {
       pink:"--poolhouse-pink", orange:"--poolhouse-orange", yellow:"--poolhouse-yellow",
-      cyan:"--poolhouse-cyan", navy:"--poolhouse-navy", background:"--ml-bg",
-      panel:"--ml-surface", sunken:"--ml-sunken", text:"--ml-text", muted:"--ml-muted", border:"--ml-line"
+      cyan:"--poolhouse-cyan", navy:"--poolhouse-navy", background:"--poolhouse-ui-bg",
+      panel:"--poolhouse-ui-surface", sunken:"--poolhouse-ui-sunken", text:"--poolhouse-ui-text", muted:"--poolhouse-ui-muted", border:"--poolhouse-ui-line"
     };
     for (const [key, variable] of Object.entries(colors)) {
       if (theme?.colors?.[key]) root.style.setProperty(variable, theme.colors[key]);
@@ -107,8 +140,8 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
       root.style.setProperty(`--poolhouse-${color}-ink`,
         foreground(palette.getPropertyValue(`--poolhouse-${color}`).trim(),navy));
     }
-    if (theme?.colors?.pink) root.style.setProperty("--ml-accent", theme.colors.pink);
-    else root.style.removeProperty("--ml-accent");
+    if (theme?.colors?.pink) root.style.setProperty("--poolhouse-ui-accent", theme.colors.pink);
+    else root.style.removeProperty("--poolhouse-ui-accent");
     root.style.setProperty("--ui-font-size", `${theme?.font_size || 14}px`);
   };
   M.setPreferences = function (settings) {
@@ -134,7 +167,7 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
     if (result.ok && !result.error) M.setPreferences({...result.settings, resolved_theme:result.resolved_theme});
   };
 
-  /** An ml-ui element with its properties set; a property set before the element is defined
+  /** An poolhouse-ui element with its properties set; a property set before the element is defined
       is kept by the element when it upgrades. */
   M.ui = function (tag, props = {}) {
     const n = document.createElement(tag);
@@ -175,24 +208,28 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
 
   M.ctxWords = (tokens) => `${Number(tokens).toLocaleString()} tokens`;
 
-  M.contextPicker = function (start, onPick) {
-    const slider = M.ui("ml-slider", {
-      label: "Context length", stops: CTX_STEPS,
-      value: CTX_STEPS.includes(start) ? start : 8192,
-      hint: "Maximum tokens in the model's context. Larger contexts require more memory." });
+  M.contextPicker = function (start, onPick, {maximum} = {}) {
+    const slider = M.ui("poolhouse-slider", {label:"Context length"});
     slider.id = "ctx";
-    const paint = (n) => {
-      slider.valueText = `${new Intl.NumberFormat().format(n)} tokens`;
-      slider.hint = n > 262144
-        ? "Extended context: Qwen uses YaRN above its native 256K window. Larger contexts require more memory."
+    const meter = el("div", {class:"meter"}, slider);
+    meter.configure = (value, cap = maximum) => {
+      maximum = Number.isSafeInteger(cap) && cap > 0 ? cap : null;
+      const stops = CTX_STEPS.filter(n => !maximum || n <= maximum);
+      if (maximum && !stops.includes(maximum)) stops.push(maximum);
+      const nearest = stops.reduce((best, n) => Math.abs(n - value) < Math.abs(best - value) ? n : best);
+      slider.stops = stops;
+      slider.value = nearest;
+      slider.valueText = `${new Intl.NumberFormat().format(value)} tokens${stops.includes(value) ? "" : " requested · custom"}`;
+      slider.hint = value > 262144
+        ? "Extended context requires more memory. Supported limits are checked when starting the model."
         : "Maximum tokens in the model’s context. Larger contexts require more memory.";
-      onPick(n);
     };
-    slider.addEventListener("input", (e) => {
-      if (Number.isFinite(e.detail?.value)) paint(e.detail.value);
+    slider.addEventListener("input", e => {
+      if (!Number.isFinite(e.detail?.value)) return;
+      meter.configure(e.detail.value); onPick(e.detail.value);
     });
-    paint(slider.value);
-    return el("div", { class: "meter" }, slider);
+    meter.configure(start); onPick(start);
+    return meter;
   };
 
   // ------------------------------------------------------------- which screen is showing
@@ -205,6 +242,7 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
   M.inPool = false;
   M.signInMessage = "";
   M.launchOnly = false;
+  M.noticeAccepted = false;
 
   /** Show one screen by name, and tell every component that is watching. */
   M.go = function (name, remember = true) {
@@ -213,6 +251,8 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
     }
     if (name === "pool" && ["sign-in", "first-run"].includes(M.route) && !available(M.requestedRoute)) name = available("studio") ? "studio" : available("chat") ? "chat" : "fit";
     if (IN_APP.includes(name) && !available(name)) name = available("studio") ? "studio" : available("chat") ? "chat" : "fit";
+    if ((IN_APP.includes(name) || name === "first-run") && M.noticeAccepted !== true
+        && customElements.get("experimental-notice")) name = "experimental-notice";
     if (IN_APP.includes(name)) {
       M.requestedRoute = name;
       if (remember && location.hash !== `#${name}`) history.pushState(null, "", `#${name}`);
@@ -241,8 +281,9 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
     if (M.route) fn(M.route);
   };
 
-  /** Ask for the passphrase, saying why. */
+  /** Say the page is opened from this computer's own window, and why. */
   M.signIn = function (message) {
+    if (IN_APP.includes(M.route)) M.requestedRoute = M.route;
     M.signInMessage = message || "";
     M.go(M.launchOnly && document.querySelector("launch-needed") ? "launch-needed" : "sign-in");
   };
@@ -250,20 +291,85 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
   /** True when the route refused for want of a session, and the screen has been changed. */
   M.refused = function (r) {
     if (r && r.status === 401) {
+      if (responseEpoch.has(r) && responseEpoch.get(r) !== sessionEpoch) return true;
+      if (!sessionInvalid) { sessionEpoch++; sessionInvalid = true; }
       if (M.route !== "first-run") M.signIn();
       return true;
     }
     return false;
   };
 
-  M.signOut = async function (e) {
+  M.signOut = function (e) {
     if (e) e.preventDefault();
-    await M.api("/ui/session", { method: "DELETE" });
+    if (signoutPending) return signoutPending;
+    nativeSignedOut = true; sessionInvalid = true; sessionEpoch++;
     M.signIn();
+    signoutPending = (async () => {
+      try {
+        if (nativePending) await nativePending;
+        if (manualPending) await Promise.allSettled([manualPending.promise]);
+        await M.api("/ui/session", { method: "DELETE" });
+      } finally { signoutPending = null; }
+    })();
+    return signoutPending;
+  };
+
+  function afterNative(prior, epoch) {
+    if (nativeWaiting?.epoch === epoch) return nativeWaiting.promise;
+    const operation = {epoch, promise:null};
+    nativeWaiting = operation;
+    operation.promise = prior.then(() => {
+      if (nativeWaiting !== operation || sessionEpoch !== epoch || !sessionInvalid || nativeSignedOut ||
+          signoutPending || manualPending || M.route !== "launch-needed" || nativeAttempt === epoch) return false;
+      return M.renewNativeSession(false);
+    }).finally(() => { if (nativeWaiting === operation) nativeWaiting = null; });
+    return operation.promise;
+  }
+
+  /** Renew only the native window's local connection; never replay a failed operation. */
+  M.renewNativeSession = function (explicit = false) {
+    const invoke = window.__TAURI__?.core?.invoke;
+    if (!invoke || !M.launchOnly || location.hostname !== "127.0.0.1" || signoutPending) return Promise.resolve(false);
+    if (nativePending) return sessionInvalid && nativeAttempt !== sessionEpoch
+      ? afterNative(nativePending, sessionEpoch) : nativePending;
+    if (manualPending) return Promise.resolve(false);
+    if (!explicit && (nativeSignedOut || nativeAttempt === sessionEpoch)) return Promise.resolve(false);
+    if (explicit) nativeSignedOut = false;
+    const epoch = sessionEpoch, origin = location.origin;
+    nativeAttempt = epoch;
+    const current = () => sessionEpoch === epoch && !nativeSignedOut && location.origin === origin && M.route === "launch-needed";
+    nativePending = (async () => {
+      try {
+        const ticket = await invoke("renew_session");
+        if (!current() || typeof ticket !== "string" || !/^[A-Za-z0-9_-]{1,256}$/.test(ticket)) return false;
+        const redeemed = await request("/ui/session", {method:"POST", body:JSON.stringify({ticket})});
+        if (!redeemed.ok || !current()) return false;
+        const confirmed = await request("/ui/session");
+        if (!confirmed.ok || confirmed.signed_in !== true || !current()) return false;
+        sessionEpoch++; sessionInvalid = false;
+        await M.boot(() => sessionEpoch === epoch + 1 && !nativeSignedOut && location.origin === origin && M.route === "launch-needed");
+        return sessionEpoch === epoch + 1 && !nativeSignedOut && location.origin === origin;
+      } catch { return false; }
+      finally { nativePending = null; }
+    })();
+    return nativePending;
+  };
+
+  M.reopenNative = async function () {
+    if (signoutPending) return false;
+    if (nativePending) return M.renewNativeSession(true);
+    if (manualPending) return false;
+    const epoch = sessionEpoch, origin = location.origin;
+    const session = await request("/ui/session");
+    if (sessionEpoch !== epoch || location.origin !== origin || nativePending || manualPending || signoutPending) return false;
+    if (session.ok && session.signed_in === true) return true;
+    if (!sessionInvalid) { sessionEpoch++; sessionInvalid = true; }
+    M.signIn();
+    return M.renewNativeSession(true);
   };
 
   /** What to show when the page opens: setup, sign in, or a screen. */
-  M.boot = async function () {
+  M.boot = async function (current = () => true) {
     try {
       const launchURL = new URL(location.href);
       const ticket = launchURL.searchParams.get("launch_ticket");
@@ -282,17 +388,22 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
         : (IN_APP.find((n) => document.querySelector(`${n}-view`)) || asked);
       M.requestedRoute = opened;
       const setup = await request("/ui/setup");
+      if (!current()) return false;
+      M.noticeAccepted = setup.experimental_notice_accepted === true;
       M.group = setup.group || "";
-      M.inPool = !!setup.needs_password;
+      M.inPool = !!setup.needs_sign_in;
       const launched = (await request("/ui/session")).signed_in;
+      if (!current()) return false;
       M.launchOnly = !!document.querySelector("launch-needed")
-        && ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname)
-        && (!setup.in_pool || setup.pool_mode === "dev");
+        && ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname);
       if (!launched && M.launchOnly) { releaseBoot(); return M.go("launch-needed"); }
+      if (!launched && setup.needs_sign_in) { releaseBoot(); return M.signIn(); }
       if (setup.needs_setup && document.querySelector("first-run")) { releaseBoot(); return M.go("first-run"); }
-      if (!setup.needs_password) { await M.loadPreferences(); releaseBoot(); return M.go(M.requestedRoute); }
+      if (!setup.needs_sign_in) { await M.loadPreferences(); if (!current()) return false; releaseBoot(); return M.go(M.requestedRoute); }
       const s = await request("/ui/session");
+      if (!current()) return false;
       if (s.signed_in) await M.loadPreferences();
+      if (!current()) return false;
       releaseBoot();
       return s.signed_in ? M.go(M.requestedRoute) : M.signIn();
     } finally {

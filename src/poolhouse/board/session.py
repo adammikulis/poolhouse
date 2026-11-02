@@ -83,6 +83,8 @@ class Agent:
     seen_ms: int
     retired_reason: str = ""
     idle: bool = False
+    person: bool = False
+    """Whether the node marked this as the person's own session (`register_person`); no claim sets it."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,7 +146,7 @@ def _entry(raw: dict[str, Any]) -> Entry:
 def _agent(raw: dict[str, Any]) -> Agent:
     return Agent(raw["name"], raw["parent"], raw["family"], raw["model"], raw["model_state"], raw["harness"],
                  raw["retired"], raw["seen_ms"], raw.get("retired_reason", ""),
-                 bool(raw.get("idle", False)))
+                 bool(raw.get("idle", False)), bool(raw.get("person", False)))
 
 
 def _claim(raw: dict[str, Any], changed: bool = True) -> Claim:
@@ -193,7 +195,7 @@ class Session:
         """End ``target`` (default this session): its tokens, leases and name, and its subagents when it is a main session.
 
         ``reason`` is ``done`` (the default, an ordinary end) or, only for a subagent and by its parent, ``revoked``
-        or ``forged``: an end for cause, which the landing runner holds against the work it asked for.
+        or ``forged``: an end for cause, which the reviews and the push check hold against the work it did.
         """
         return dict(self.call("retire", target=target, **({"reason": reason} if reason else {})))
 
@@ -410,27 +412,28 @@ def _own_token(client: Client, board: str, native: Native) -> str:
         return ""
 
 
-def register(client: Client, board: str, native: Native, parent_token: str = "") -> Registration:
+def register(client: Client, board: str, native: Native, parent_token: str = "", *, person: bool = False) -> Registration:
     """Register a native session on ``board`` (as a subagent of ``parent_token``'s owner when given);
     its token is kept in a private file for later commands. A session registered before keeps presenting its own token, which
-    is how the node takes a session it holds no lineage for."""
+    is how the node takes a session it holds no lineage for. ``person`` registers the person's own session, which the node marks."""
     own = "" if parent_token else _own_token(client, board, native)
+    method, params = ("register_person", {"session": native.id}) if person else ("register", {"model": native.model, "harness": native.harness, "session": native.id})
     try:
-        got = client.call("register", board, parent_token or own, model=native.model, harness=native.harness, session=native.id)
+        got = client.call(method, board, parent_token or own, **params)
     except Denied:
         if not own:
             raise
-        got = client.call("register", board, "", model=native.model, harness=native.harness, session=native.id)
+        got = client.call(method, board, "", **params)
     credentials.store(client.state, board, got["name"], got["token"], got["parent"])
     return Registration(got["name"], got["token"], got["parent"], got["created"], board)
 
 
 def find(harness: str, native_id: str, *, cwd: Path | None = None, client: Client | None = None) -> str:
     """The name the node gave the native session ``native_id`` of ``harness`` on this directory's board,
-    or an empty string when it has none."""
+    or an empty string when it has none; never creates a project or session."""
     node = client or Client()
     try:
-        return str(node.call("session_lookup", place.resolve(node, cwd), harness=harness, session=native_id)["name"])
+        return str(node.call("session_lookup", place.existing(node, cwd), harness=harness, session=native_id)["name"])
     except Denied:
         return ""
 
@@ -480,13 +483,47 @@ def _native(node: Client, where: str) -> Session | None:
     return None
 
 
+def _codex(node: Client, where: str, native: str, agent: str, token_file: str) -> Session:
+    """Resolve an already registered Codex session; other selectors must corroborate it.
+
+    The native environment selects credentials, not authority. Node grants and process-lineage
+    checks remain responsible for privileged operations; this lookup never registers a session.
+    """
+    name = str(node.call("session_lookup", where, harness="codex", session=native)["name"])
+    actor = Session(node, where, credentials.load(node.state, where, name), name)
+    identity = actor.whoami()
+    if identity.name != name or identity.harness != "codex" or identity.retired:
+        raise Denied("denied", "native Codex session has no matching live registration")
+    if any(named and named != name for named in (agent, os.environ.get(AGENT_ENV, ""))):
+        raise Denied("denied", "workspace name conflicts with the native Codex session")
+    if os.environ.get(SUBAGENT_ENV, "").strip():
+        raise Denied("denied", "another harness's subagent context conflicts with the native Codex session")
+    for harness_env, id_env in NATIVE_SESSIONS:
+        if other := os.environ.get(id_env, "").strip():
+            harness = os.environ.get(harness_env, "") or SUBAGENT_HARNESS
+            if harness != "codex" or other != native:
+                raise Denied("denied", "native session selectors conflict with the native Codex session")
+    tokens = [os.environ.get(TOKEN_ENV, "").strip()]
+    if token_file:
+        tokens.append(home.expand(token_file).read_text(encoding="utf-8").strip())
+    for token in filter(None, tokens):
+        supplied = Session(node, where, token).whoami()
+        if supplied.name != name or supplied.harness != "codex" or supplied.retired:
+            raise Denied("denied", "provided credentials conflict with the native Codex session")
+    return actor
+
+
 def connect(*, token_file: str = "", agent: str = "", board: str = "", cwd: Path | None = None,
             client: Client | None = None) -> Session:
-    """The session of the caller: the subagent the harness names in $POOLHOUSE_SUBAGENT, else its token from a file,
-    the agent named (or $POOLHOUSE_WORKSPACE_AGENT), $POOLHOUSE_WORKSPACE_TOKEN or the native session it runs in,
-    on the board of the directory it runs in."""
+    """Connect on an existing project or selected board without creating a project or session.
+    Codex resolves its registered native thread first
+    and requires supplied selectors to match. Other harnesses use their subagent context, token file,
+    named workspace session, token environment or registered native session, in that order.
+    """
     node = client or Client()
-    where = place.resolve(node, cwd, board)
+    where = place.existing(node, cwd, board)
+    if native := os.environ.get("CODEX_THREAD_ID", "").strip():
+        return _codex(node, where, native, agent, token_file)
     if native := os.environ.get(SUBAGENT_ENV, "").strip():
         return _subagent(node, where, native, agent)
     if token_file:

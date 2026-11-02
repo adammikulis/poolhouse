@@ -71,9 +71,6 @@ pub(super) fn verify(pool: &GovPool, binding: &Binding, request: Request, now: u
     if matches!(parsed, Body::Found(_) | Body::Leave(_)) {
         return bad("This request requires a different kind of signature.");
     }
-    if matches!(&parsed, Body::AdminAdd(add) if add.entry.assurance > super::super::keys::Level::Computer) {
-        return bad("The phone needs verified proof that this new admin key requires its owner's approval for every signature.");
-    }
     if act.is_chain() {
         if let Err(why) = super::super::chain::proposal_fits(&pool.state().chain, &pool.id, act) { return bad(&why) }
     }

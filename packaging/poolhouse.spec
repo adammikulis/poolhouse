@@ -33,7 +33,7 @@ if _wheels.is_dir():
 hidden = [
     "poolhouse.fleet.daemon", "poolhouse.fleet.api", "poolhouse.fleet.jobs",
     "poolhouse.fleet.files", "poolhouse.fleet.device", "poolhouse.fleet.measuring",
-    "poolhouse.fleet.members", "poolhouse.fleet.launch",
+    "poolhouse.fleet.launch",
     "poolhouse.fleet.ui", "poolhouse.fleet.autostart",
     "poolhouse.fleet.telemetry", "poolhouse.fleet.settings",
     "poolhouse.agent.sdk_runtime", "poolhouse.agent.conversation",

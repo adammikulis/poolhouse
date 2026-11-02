@@ -283,7 +283,7 @@ _BENCH_FLAGS = frozenset({
     "--reasoning-budget", "--plain-only", "--resume", "--shortlist", "--shortlist-for",
     "--margin", "--smoke", "--sample", "--short", "--trace", "--no-trace", "--temperature",
     "--top-p", "--top-k", "--min-p", "--n-predict", "--card", "--anyway", "--ceiling", "--yes",
-    "--no-selfcheck", "--no-smoke", "--per-question", "--no-queue", "--no-prefetch",
+    "--no-smoke", "--per-question", "--no-queue", "--no-prefetch",
 })
 """The ``python -m poolhouse.bench`` subcommands and flags a tool may pass: none takes a path to run, a
 store or kept file to read or write, or an endpoint to call."""
@@ -346,13 +346,11 @@ def bench_show(last: int = 0, since: str = "", extract: bool = False,
 
 
 def fleet_members(timeout_s: float = 2.0) -> list[dict[str, Any]]:
-    """Every member on the LAN holding this machine's pool key: what each serves, its
-    room, whether it is busy or measuring, and its commit (``poolhouse-pool status``)."""
-    from poolhouse.fleet.join import members
-    from poolhouse.fleet.launch import already_running
+    """Every compute device of the pool this machine's node lists that answers: what each
+    serves, its room, whether it is busy or measuring, and its commit."""
+    from poolhouse.fleet import roster
 
-    me = already_running() or {}
-    return members(timeout_s=timeout_s, self_machine=str(me.get("machine") or ""))
+    return roster.members(timeout_s=timeout_s)
 
 
 def world_make(kind: str = "company", size: str = "small", seed: int = 0,

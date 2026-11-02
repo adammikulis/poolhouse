@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from poolhouse import harnessing
 from poolhouse.board.client import NodeError
 from poolhouse.board.session import Session
 from poolhouse.board.tasks import Tasks
@@ -40,6 +41,7 @@ def _verified(runner: la.Agent, allocation: dict[str, Any]) -> None:
 
 def run(base: Path, name: str) -> None:
     """Execute assigned tasks until the worker's maintained stop flag is set."""
+    harnessing.require_isolated_execution()
     status = la.Status(base, name)
     held, slot, keeper = None, '', contextlib.ExitStack()
     try:

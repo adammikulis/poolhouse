@@ -34,10 +34,10 @@ from poolhouse.fleet import tls
 from poolhouse.fleet.framing import Malformed, requested_range
 from poolhouse.safenames import Unsafe, safe_filename, safe_join
 
+from .devices import Device
 from .events import BUS, Bus
 from .lan import require_local_url
 from .manifest import Entry, Manifest
-from .requests import Device
 from .sharing import NEVER, OPEN, Access, Licences, decide
 from .throughput import Limiter, Rolling
 from .web import Call, Listener, Reply, json_reply

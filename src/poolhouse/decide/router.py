@@ -35,7 +35,7 @@ class Config:
 
     ``url`` is a chat server for the logprob backend (default ``$POOLHOUSE_DECIDE_URL`` or
     the local llama-server port). ``embed_url`` and ``embed_head`` enable the embed backend.
-    ``pointer`` names a trained decider (registered name or directory) instead of the released
+    ``batched`` makes the pointer backend score many questions in padded batches. ``pointer`` names a trained decider (registered name or directory) instead of the released
     checkpoint. ``rules`` enables the rules backend. ``order`` is the preference for ``auto``. A config
     is compared by identity: deciders built for it stay warm for as long as it is used.
     """
@@ -50,6 +50,7 @@ class Config:
     calibration: Calibration | None = None
     rules: RulesDecider | None = None
     download: bool = False
+    batched: bool = False
     order: tuple[str, ...] = BACKENDS
 
     @property
@@ -133,7 +134,7 @@ def build(name: str, config: Config) -> Decider:
         made: Decider
         if name == "pointer":
             made = PointerDecider(_trained(config.pointer) if config.pointer else STRANDS_V19,
-                                  download=config.download, calibration=config.calibration)
+                                  download=config.download, calibration=config.calibration, batched=config.batched)
         elif name == "logprob":
             made = LogprobDecider(Chat(config.chat_url, config.model, config.token),
                                   calibration=config.calibration)

@@ -315,3 +315,61 @@ def test_a_pull_pins_each_file_to_the_size_and_digest_the_listing_gives():
     assert want.pin_notes == {"publisher": "unsloth", "commit": "c" * 40, "host": remote.endpoint_host(),
                               "source_ref": "unsloth/thing/UD/a-Q4_K_M.gguf"}
     assert pulling._want(parsed, remote.RemoteFile("README.md", 5), "").kind == ""
+
+
+class CurrentDenied(PermissionError):
+    """The originating operation lost its current authority."""
+
+
+class CurrentToken(pulling.CancelToken):
+    def __init__(self):
+        super().__init__()
+        self.allowed = True
+
+    @property
+    def cancelled(self):
+        if not self.allowed:
+            raise CurrentDenied('operation no longer current')
+        return super().cancelled
+
+
+def test_current_denial_before_metadata_opens_no_connection(server, tmp_path):
+    token = CurrentToken()
+    token.allowed = False
+    with pytest.raises(CurrentDenied):
+        hub.pull('hf:maker/thing-GGUF/thing-Q4_K_M.gguf', tmp_path, cancel=token)
+    assert server.hub_seen == [] and server.cdn_seen == []
+
+
+def test_revocation_after_revision_prevents_next_metadata_connection(server, tmp_path, monkeypatch):
+    token = CurrentToken()
+    original = remote._get
+
+    def get(url, **kwargs):
+        answer = original(url, **kwargs)
+        if '/revision/' in url:
+            token.allowed = False
+        return answer
+
+    monkeypatch.setattr(remote, '_get', get)
+    with pytest.raises(CurrentDenied):
+        hub.pull('hf:maker/thing-GGUF/thing-Q4_K_M.gguf', tmp_path, cancel=token)
+    assert len(server.hub_seen) == 1 and '/revision/' in server.hub_seen[0][1]
+    assert server.cdn_seen == []
+
+
+def test_revocation_during_metadata_response_wins_before_result(server, tmp_path, monkeypatch):
+    from poolhouse import net
+
+    token = CurrentToken()
+    original = net.Pipeline.json
+
+    def json(self, url, ask):
+        answer = original(self, url, ask)
+        token.allowed = False
+        return answer
+
+    monkeypatch.setattr(net.Pipeline, 'json', json)
+    with pytest.raises(CurrentDenied):
+        hub.pull('hf:maker/thing-GGUF/thing-Q4_K_M.gguf', tmp_path, cancel=token)
+    assert len(server.hub_seen) == 1 and server.cdn_seen == []

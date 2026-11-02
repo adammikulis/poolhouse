@@ -70,7 +70,7 @@ def run_artifact_pytest(command: list[str], want: int, environment: dict[str, st
 def open_admission(environment: dict[str, str], label: str, want: int, unix: bool):
     """The run's class, its admission endpoint and its run record."""
     run_class = policy.environment_class(environment)
-    admission = testslots_rpc.UnixAdmission(False, run_class) if unix else testslots_rpc.Admission(False, run_class)
+    admission = testslots_rpc.UnixAdmission(run_class) if unix else testslots_rpc.Admission(run_class)
     estimate = environment.get("DEV_TEST_ESTIMATE_S")
     record = testqueue.RunRecord(testslots.slots_dir(), label, run_class, float(estimate) if estimate else None, want)
     record.update(owner=testqueue.owner_of(environment))

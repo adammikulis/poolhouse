@@ -22,7 +22,7 @@ from poolhouse.serve.broker import Ask, Broker
 from poolhouse.serve.broker_wire import _Server, spec_from
 from poolhouse.serve.process import kill_process_tree
 from poolhouse.serve.quant_guard import BlockedQuant
-from poolhouse.testing.fakes import fake_llama_binary
+from poolhouse.testing.canned import canned_binary
 
 pytest_plugins = ["serve_node"]
 pytestmark = pytest.mark.usefixtures("serve_leases")
@@ -126,7 +126,7 @@ def test_nothing_is_blocked_off_metal(monkeypatch, iq_model, machine):
 
 @pytest.fixture
 def manager(tmp_path):
-    return ServerManager(LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
+    return ServerManager(LlamaServerBackend(binary=canned_binary(tmp_path)),
                          state_file=tmp_path / "servers.json")
 
 
@@ -188,7 +188,7 @@ def test_status_shows_the_warning_while_the_server_runs(metal, tmp_path, iq_mode
     from poolhouse.serve import status_cli
 
     monkeypatch.setenv("POOLHOUSE_BROKER_LOCAL", "1")
-    manager = ServerManager(LlamaServerBackend(binary=fake_llama_binary(tmp_path)))
+    manager = ServerManager(LlamaServerBackend(binary=canned_binary(tmp_path)))
     info = lease(manager, str(iq_model))
     try:
         status_cli.cmd_status(argparse.Namespace(
@@ -202,7 +202,7 @@ def test_status_shows_the_warning_while_the_server_runs(metal, tmp_path, iq_mode
 
 @pytest.fixture
 def wire(tmp_path):
-    manager = ServerManager(LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
+    manager = ServerManager(LlamaServerBackend(binary=canned_binary(tmp_path)),
                             state_file=tmp_path / "servers.json")
     server = _Server(Broker(manager, idle_s=3600.0, room=lambda: None, scan=lambda: []))
     yield server
@@ -275,7 +275,7 @@ def test_the_smoke_test_serves_an_iq_model_with_no_flag(metal, tmp_path, monkeyp
     root = tmp_path / "user" / ".cache" / "huggingface" / "hub"
     only = gguf(root / "small-IQ2_XXS.gguf", "IQ2_XXS", (("a", 4, 19),))
     assert llamacpp_smoke.smallest_model() == only
-    got = llamacpp_smoke.run(fake_llama_binary(tmp_path), only, timeout=60)
+    got = llamacpp_smoke.run(canned_binary(tmp_path), only, timeout=60)
     assert next(c for c in got.checks if c[0] == "lease")[1] is True
 
 
@@ -287,7 +287,7 @@ def test_poolhouse_serve_up_takes_the_mode_and_exits_3_when_strict(
     from poolhouse.serve.cli import COMMANDS
 
     monkeypatch.setenv("POOLHOUSE_BROKER_LOCAL", "1")
-    manager = ServerManager(LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
+    manager = ServerManager(LlamaServerBackend(binary=canned_binary(tmp_path)),
                             state_file=tmp_path / "servers.json")
     manager._broker = Broker(manager, scan=lambda: [], room=lambda: None)
     monkeypatch.setattr(ops, "manager_for", lambda *_: manager)
@@ -318,7 +318,7 @@ def test_a_strict_client_refuses_before_any_broker_is_asked(metal, tmp_path, iq_
             Machine.asked += 1
             raise AssertionError("the broker was asked")
 
-    manager = ServerManager(LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
+    manager = ServerManager(LlamaServerBackend(binary=canned_binary(tmp_path)),
                             state_file=tmp_path / "servers.json", broker=Machine())
     with pytest.raises(BlockedQuant):
         lease(manager, str(iq_model), iq="block")

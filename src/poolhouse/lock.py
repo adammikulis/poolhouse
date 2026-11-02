@@ -54,6 +54,16 @@ def _fileno(handle: Any) -> int:
     return handle if isinstance(handle, int) else handle.fileno()
 
 
+def _windows():
+    import msvcrt
+    return msvcrt
+
+
+def windows_handle(fd: int) -> int:
+    """Return the native handle for a CRT descriptor used by Windows file locks."""
+    return _windows().get_osfhandle(fd)
+
+
 def take(handle: Any, *, shared: bool = False) -> bool:
     """Take the lock on an open file without waiting.
 
@@ -63,7 +73,7 @@ def take(handle: Any, *, shared: bool = False) -> bool:
     """
     handle = _fileno(handle)
     if sys.platform == "win32":
-        import msvcrt
+        msvcrt = _windows()
 
         os.lseek(handle, _LOCKED_BYTE, os.SEEK_SET)
         try:
@@ -90,7 +100,7 @@ def release(handle: Any) -> None:
     """Give back the lock taken on an open file by `take`."""
     handle = _fileno(handle)
     if sys.platform == "win32":
-        import msvcrt
+        msvcrt = _windows()
 
         os.lseek(handle, _LOCKED_BYTE, os.SEEK_SET)
         msvcrt.locking(handle, msvcrt.LK_UNLCK, 1)
@@ -100,9 +110,9 @@ def release(handle: Any) -> None:
     fcntl.flock(handle, fcntl.LOCK_UN)
 
 
-def _open(path: Path, *, create: bool) -> int:
+def _open(path: Path, *, create: bool, mode: int = 0o644) -> int:
     """Open the lock file `path` read-write; never through a symlink, and only a regular file this account owns."""
-    handle = os.open(path, os.O_RDWR | (os.O_CREAT if create else 0) | getattr(os, "O_NOFOLLOW", 0), 0o644)
+    handle = os.open(path, os.O_RDWR | (os.O_CREAT if create else 0) | getattr(os, "O_NOFOLLOW", 0), mode)
     info = os.fstat(handle)
     if not stat.S_ISREG(info.st_mode) or (hasattr(os, "getuid") and info.st_uid != os.getuid()):
         os.close(handle)
@@ -169,15 +179,25 @@ def only_one(what: str | Path, *, wait: bool = True, timeout: float = 0.0,
 
 
 @contextmanager
-def held(path: str | Path, *, shared: bool = False) -> Iterator[None]:
-    """Hold the lock file ``path`` for the block, exclusively or ``shared``, polling every few milliseconds."""
+def held(path: str | Path, *, shared: bool = False, check=None) -> Iterator[None]:
+    """Hold ``path`` exclusively or shared; trusted ``check`` may cancel admission.
+
+    It runs before each kernel attempt and after acquisition, inside owned cleanup.
+    Raise to cancel; return values are ignored.
+    """
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    handle = os.open(target, os.O_RDWR | os.O_CREAT, 0o600)
+    handle = _open(target, create=True, mode=0o600)
     try:
+        if check is not None:
+            check()
         while not take(handle, shared=shared):
             time.sleep(0.005)
+            if check is not None:
+                check()
         try:
+            if check is not None:
+                check()
             yield
         finally:
             release(handle)

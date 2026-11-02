@@ -1,0 +1,164 @@
+# Intended managed exact-unit test proposal; direct library/pytest use remains independent.
+version = 1
+status = "proposal"
+operation = []
+
+[[type]]
+name = "TestingSourceSnapshotId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "TestingExactSelector"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "caller"
+min_bytes = 1
+max_bytes = 65536
+
+[[type]]
+name = "TestingSourceRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "TestingSourceSnapshotId"}, {name = "generation", type = "ResourceGeneration"}, {name = "installation", type = "JobInstallationRef"}]
+
+[[type]]
+name = "JobManagedTestUnitIntent"
+kind = "record"
+visibility = "public"
+fields = [{name = "source", type = "TestingSourceRef"}, {name = "selector", type = "TestingExactSelector"}]
+
+[[type]]
+name = "TestingProfile"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "maintained_pytest_explicit_unit_v1", type = "Empty"}]
+
+[[type]]
+name = "TestingSourceIdentity"
+kind = "record"
+visibility = "public"
+fields = [{name = "source", type = "TestingSourceRef"}, {name = "source_manifest_digest", type = "JobPreparationDigest"}, {name = "configuration_digest", type = "JobPreparationDigest"}, {name = "toolchain_digest", type = "JobPreparationDigest"}, {name = "environment_digest", type = "JobPreparationDigest"}, {name = "plugins_digest", type = "JobPreparationDigest"}, {name = "dependency_closure_digest", type = "JobPreparationDigest"}, {name = "profile_digest", type = "JobPreparationDigest"}, {name = "confinement_profile_digest", type = "JobPreparationDigest"}, {name = "execution_policy_generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "TestingUnitIdentity"
+kind = "record"
+visibility = "public"
+fields = [{name = "selector", type = "TestingExactSelector"}, {name = "catalog_digest", type = "JobPreparationDigest"}, {name = "unit_manifest_digest", type = "JobPreparationDigest"}, {name = "ordered_ids_digest", type = "JobPreparationDigest"}, {name = "id_count", type = "U64"}]
+
+[[type]]
+name = "TestingPlanIdentity"
+kind = "record"
+visibility = "public"
+fields = [{name = "source", type = "TestingSourceIdentity"}, {name = "profile", type = "TestingProfile"}, {name = "unit", type = "TestingUnitIdentity"}, {name = "collection_timeout_seconds", type = "FiniteF64"}, {name = "run_timeout_seconds", type = "FiniteF64"}, {name = "collection_output_bytes", type = "U64"}, {name = "run_output_bytes", type = "U64"}, {name = "resource_profile_digest", type = "JobPreparationDigest"}]
+
+[[type]]
+name = "TestingOptionalPlan"
+kind = "optional"
+visibility = "public"
+item = "TestingPlanIdentity"
+
+[[type]]
+name = "TestingEffect"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "not_collected", type = "Empty"}, {tag = "collection_fenced", type = "Empty"}, {tag = "collecting", type = "Empty"}, {tag = "collection_outcome_unknown", type = "Empty"}, {tag = "collected", type = "Empty"}, {tag = "run_fenced", type = "Empty"}, {tag = "running", type = "Empty"}, {tag = "run_outcome_unknown", type = "Empty"}, {tag = "output_publication_fenced", type = "Empty"}, {tag = "published", type = "Empty"}, {tag = "cancelled_before_collection", type = "Empty"}, {tag = "cancelled_before_run", type = "Empty"}, {tag = "settled_cancelled", type = "Empty"}, {tag = "failed", type = "Empty"}]
+
+[[type]]
+name = "TestingPhase"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "waiting_for_admission", type = "Empty"}, {tag = "collecting", type = "Empty"}, {tag = "resolving_exact_unit", type = "Empty"}, {tag = "prepared", type = "Empty"}, {tag = "running", type = "Empty"}, {tag = "reconciling", type = "Empty"}, {tag = "publishing", type = "Empty"}, {tag = "finished", type = "Empty"}]
+
+[[type]]
+name = "TestingReportedOutcome"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "passed", type = "Empty"}, {tag = "failed", type = "Empty"}, {tag = "error", type = "Empty"}, {tag = "skipped", type = "Empty"}, {tag = "timed_out", type = "Empty"}, {tag = "cancelled", type = "Empty"}, {tag = "unknown", type = "Empty"}]
+
+[[type]]
+name = "TestingReportStatus"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "source_report", type = "Empty"}, {tag = "missing", type = "Empty"}, {tag = "malformed", type = "Empty"}, {tag = "conflicting", type = "Empty"}, {tag = "unavailable", type = "Empty"}]
+
+[[type]]
+name = "TestingReportedCounts"
+kind = "record"
+visibility = "public"
+fields = [{name = "passed", type = "U64"}, {name = "failed", type = "U64"}, {name = "errors", type = "U64"}, {name = "skipped", type = "U64"}, {name = "unknown", type = "U64"}]
+
+[[type]]
+name = "TestingProgress"
+kind = "record"
+visibility = "public"
+fields = [{name = "phase", type = "TestingPhase"}, {name = "collected_ids", type = "U64"}, {name = "completed_ids", type = "U64"}, {name = "total_ids", type = "OptionalU64"}, {name = "elapsed_seconds", type = "FiniteF64"}, {name = "message", type = "SafeMessage"}]
+
+[[type]]
+name = "TestingExecutionReceipt"
+kind = "record"
+visibility = "public"
+fields = [{name = "operation_id", type = "OperationId"}, {name = "job_id", type = "JobId"}, {name = "generation", type = "ResourceGeneration"}, {name = "source_digest", type = "JobPreparationDigest"}, {name = "unit_digest", type = "JobPreparationDigest"}, {name = "environment_digest", type = "JobPreparationDigest"}, {name = "native_runtime_digest", type = "JobPreparationDigest"}, {name = "confinement_identity_digest", type = "JobPreparationDigest"}, {name = "dependency_closure_digest", type = "JobPreparationDigest"}, {name = "transcript_digest", type = "JobPreparationDigest"}, {name = "exit_code", type = "OptionalExitCode"}, {name = "wall_seconds", type = "FiniteF64"}]
+
+[[type]]
+name = "TestingReuseReceipt"
+kind = "record"
+visibility = "public"
+fields = [{name = "original", type = "TestingExecutionReceipt"}, {name = "current_source_digest", type = "JobPreparationDigest"}, {name = "current_environment_digest", type = "JobPreparationDigest"}]
+
+[[type]]
+name = "TestingOptionalReuseReceipt"
+kind = "optional"
+visibility = "public"
+item = "TestingReuseReceipt"
+
+[[type]]
+name = "TestingOptionalDigest"
+kind = "optional"
+visibility = "public"
+item = "JobPreparationDigest"
+
+[[type]]
+name = "TestingResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "execution", type = "TestingExecutionReceipt"}, {name = "reported_outcome", type = "TestingReportedOutcome"}, {name = "report_status", type = "TestingReportStatus"}, {name = "reported_counts", type = "TestingReportedCounts"}, {name = "report_digest", type = "TestingOptionalDigest"}, {name = "redacted_output_digest", type = "JobPreparationDigest"}, {name = "reuse", type = "TestingOptionalReuseReceipt"}]
+
+[[type]]
+name = "TestingOptionalResult"
+kind = "optional"
+visibility = "public"
+item = "TestingResult"
+
+[[type]]
+name = "JobTestingPreparationDetails"
+kind = "record"
+visibility = "public"
+fields = [{name = "plan", type = "TestingOptionalPlan"}, {name = "effect", type = "TestingEffect"}, {name = "authority", type = "JobPreparationAuthority"}, {name = "progress", type = "TestingProgress"}, {name = "result", type = "TestingOptionalResult"}]
+
+[[type]]
+name = "JobFrozenTestingCollectionPlan"
+kind = "record"
+visibility = "private"
+fields = [{name = "preparation", type = "JobPreparationRef"}, {name = "installation", type = "JobInstallationRef"}, {name = "job_id", type = "JobId"}, {name = "operation_id", type = "OperationId"}, {name = "intent", type = "JobManagedTestUnitIntent"}, {name = "source", type = "TestingSourceIdentity"}, {name = "profile", type = "TestingProfile"}, {name = "collection_timeout_seconds", type = "FiniteF64"}, {name = "collection_output_bytes", type = "U64"}, {name = "resource_profile_digest", type = "JobPreparationDigest"}, {name = "collection_plan_digest", type = "JobPreparationDigest"}, {name = "authority_generation", type = "ResourceGeneration"}, {name = "expires_at", type = "UnixMicros"}, {name = "admission", type = "ResourceAdmissionEnvelope"}, {name = "transaction", type = "StateTransactionBinding"}, {name = "commit", type = "StateCommitState"}, {name = "effect", type = "StateEffectState"}]
+
+[[type]]
+name = "JobTestingPlanStages"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "collection", type = "JobFrozenTestingCollectionPlan"}, {tag = "prepared_run", type = "JobFrozenTestingPlan"}]
+
+[[type]]
+name = "JobFrozenTestingPlan"
+kind = "record"
+visibility = "private"
+fields = [{name = "preparation", type = "JobPreparationRef"}, {name = "installation", type = "JobInstallationRef"}, {name = "job_id", type = "JobId"}, {name = "operation_id", type = "OperationId"}, {name = "intent", type = "JobManagedTestUnitIntent"}, {name = "plan", type = "TestingPlanIdentity"}, {name = "plan_digest", type = "JobPreparationDigest"}, {name = "collection_plan_digest", type = "JobPreparationDigest"}, {name = "source_generation", type = "ResourceGeneration"}, {name = "authority_generation", type = "ResourceGeneration"}, {name = "expires_at", type = "UnixMicros"}, {name = "collection_admission", type = "ResourceAdmissionEnvelope"}, {name = "run_admission", type = "ResourceAdmissionEnvelope"}, {name = "collection_transaction", type = "StateTransactionBinding"}, {name = "collection_commit", type = "StateCommitState"}, {name = "run_transaction", type = "StateTransactionBinding"}, {name = "run_commit", type = "StateCommitState"}, {name = "publication_transaction", type = "StateTransactionBinding"}, {name = "publication_commit", type = "StateCommitState"}, {name = "effect", type = "StateEffectState"}]

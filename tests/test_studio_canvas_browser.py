@@ -8,9 +8,10 @@ import uuid
 
 import pytest
 from browser_expect import expect
+from studio_commands import studio_command, workflow_picker
 from test_fleet_ui import Serving
 
-from poolhouse.scrape.browser import Window, browser
+from poolhouse.fleet import studio_service
 
 pytestmark = pytest.mark.slow
 
@@ -37,13 +38,19 @@ SPECS.extend([
 ])
 
 
+@pytest.fixture(scope='module')
+def studio_browser(browser_owner):
+    """Fresh isolated pages on the worker's managed browser."""
+    return browser_owner.pages
+
+
 @pytest.fixture
-def studio_page(tmp_path):
+def studio_page(tmp_path, studio_browser):
     pytest.importorskip('playwright.sync_api')
     served = Serving(tmp_path)
     served.ui.settings.setup_done = True
     state = {'workflows': [], 'runs': [], 'submissions': [], 'saved': []}
-    with browser(Window(profile=tmp_path / 'browser', headless=True)) as page:
+    with studio_browser() as page:
         page.set_viewport_size({'width': 1440, 'height': 1000})
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
@@ -93,7 +100,10 @@ def studio_page(tmp_path):
 
 
 def add(page, title):
-    page.locator('.studio-library').get_by_role('button', name=title).click()
+    name = title if isinstance(title, re.Pattern) else 'Add ' + title
+    button = page.locator('.studio-library').get_by_role('button', name=name, exact=isinstance(name, str))
+    button.focus()
+    button.press('Enter')
 
 
 def test_build_connect_configure_run_and_snapshot(studio_page):
@@ -124,7 +134,7 @@ def test_keyboard_copy_group_nested_edit_and_outline(studio_page):
     add(page, 'Prompt template')
     page.locator('.studio-node').focus()
     page.keyboard.press('Control+a')
-    page.get_by_role('button', name='Group selection', exact=True).click()
+    studio_command(page, 'Group selection').click()
     expect(page.locator('.studio-node')).to_have_count(1)
     page.get_by_role('button', name='Open group', exact=True).first.click()
     expect(page.get_by_label('Group name')).to_be_visible()
@@ -135,10 +145,10 @@ def test_keyboard_copy_group_nested_edit_and_outline(studio_page):
     page.locator('.studio-viewport').focus()
     page.keyboard.press('Escape')
     expect(page.get_by_label('Group name')).to_have_count(0)
-    page.get_by_role('button', name='Copy', exact=True).click()
-    page.get_by_role('button', name='Paste', exact=True).click()
+    studio_command(page, 'Copy').click()
+    studio_command(page, 'Paste').click()
     expect(page.locator('.studio-node')).to_have_count(2)
-    page.get_by_role('button', name='Outline', exact=True).click()
+    studio_command(page, 'Outline').click()
     expect(page.locator('.studio-outline')).to_be_visible()
     page.set_viewport_size({'width': 390, 'height': 844})
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
@@ -151,7 +161,7 @@ def test_node_labels_and_prompt_text_remain_inert(studio_page):
     value = '<img src=x onerror="window.studioInjected=true">'
     page.locator('.studio-inspector').get_by_label('Prompt text', exact=True).fill(value)
     page.locator('.studio-inspector').get_by_label('Prompt text', exact=True).press('Tab')
-    page.get_by_role('button', name='Share', exact=True).click()
+    studio_command(page, 'Share').click()
     expect(page.locator('#studio-portable')).to_contain_text(value)
     assert page.locator('#studio-portable img').count() == 0
     assert not page.evaluate('Boolean(window.studioInjected)')
@@ -161,10 +171,10 @@ def test_node_labels_and_prompt_text_remain_inert(studio_page):
 def test_nested_group_copies_and_exposed_parameter_undo(studio_page):
     page, _state, errors = studio_page
     add(page, 'Prompt template')
-    page.get_by_role('button', name='Group selection', exact=True).click()
-    page.get_by_role('button', name='Group selection', exact=True).click()
-    page.get_by_role('button', name='Copy', exact=True).click()
-    page.get_by_role('button', name='Paste', exact=True).click()
+    studio_command(page, 'Group selection').click()
+    studio_command(page, 'Group selection').click()
+    studio_command(page, 'Copy').click()
+    studio_command(page, 'Paste').click()
     expect(page.locator('.studio-node')).to_have_count(2)
     page.locator('.studio-node').first.get_by_role('button', name='Open group').click()
     page.locator('.studio-node').get_by_role('button', name='Open group').click()
@@ -173,18 +183,18 @@ def test_nested_group_copies_and_exposed_parameter_undo(studio_page):
     field = page.get_by_label('Expose parameter template')
     field.fill('shared_prompt')
     field.press('Tab')
-    page.get_by_role('button', name='Undo', exact=True).click()
+    studio_command(page, 'Undo').click()
     page.locator('.studio-node').focus()
     page.keyboard.press('Enter')
     expect(page.get_by_label('Expose parameter template')).to_have_value('')
-    page.get_by_role('button', name='Redo', exact=True).click()
+    studio_command(page, 'Redo').click()
     page.locator('.studio-node').focus()
     page.keyboard.press('Enter')
     expect(page.get_by_label('Expose parameter template')).to_have_value('shared_prompt')
     page.locator('.studio-inspector').get_by_label('Prompt text', exact=True).fill('Changed original')
     page.locator('.studio-inspector').get_by_label('Prompt text', exact=True).press('Tab')
-    page.get_by_role('button', name='← Back to parent').click()
-    page.get_by_role('button', name='← Back to parent').click()
+    page.locator('.studio-group-back').click()
+    page.locator('.studio-group-back').click()
     page.locator('.studio-node').nth(1).get_by_role('button', name='Open group').click()
     page.locator('.studio-node').get_by_role('button', name='Open group').click()
     page.locator('.studio-node').focus()
@@ -209,23 +219,23 @@ def make_prompt_group(page):
     add(page, 'Prompt template')
     page.locator('.studio-inspector').get_by_label('template', exact=True).fill('Reusable prompt')
     page.locator('.studio-inspector').get_by_label('template', exact=True).press('Tab')
-    page.get_by_role('button', name='Group selection', exact=True).click()
+    studio_command(page, 'Group selection').click()
     page.locator('.studio-node').get_by_role('button', name='Open group').click()
     page.locator('.studio-node').focus()
     page.keyboard.press('Enter')
     page.get_by_label('Expose outputs prompt').fill('prompt')
     page.get_by_label('Expose outputs prompt').press('Tab')
-    page.get_by_role('button', name='← Back to parent').click()
+    page.locator('.studio-group-back').click()
 
 
-def test_actual_catalogue_template_run_and_package_round_trip(tmp_path):
+def test_actual_catalogue_template_run_and_package_round_trip(tmp_path, studio_browser):
     pytest.importorskip('playwright.sync_api')
     served = Serving(tmp_path)
     served.ui.settings.setup_done = True
     served.ui.root = tmp_path / 'traind'
     served.files.joinpath('examples.jsonl').write_text('{"prompt":"Example","response":"Answer"}\n')
     try:
-        with browser(Window(profile=tmp_path / 'actual-browser', headless=True)) as page:
+        with studio_browser() as page:
             errors = []
             page.on('pageerror', lambda error: errors.append(str(error)))
             page.set_viewport_size({'width': 1440, 'height': 1000})
@@ -243,13 +253,13 @@ def test_actual_catalogue_template_run_and_package_round_trip(tmp_path):
             expect(page.locator('#studio-runs')).to_contain_text('done', timeout=10000)
             page.get_by_role('button', name='Run workflow', exact=True).click()
             expect(page.locator('.studio-run-row')).to_have_count(2)
-            page.get_by_role('button', name='Share', exact=True).click()
+            studio_command(page, 'Share').click()
             page.get_by_label('Package content').select_option('selection')
             page.locator('#studio-portable input[type=checkbox]').check()
             with page.expect_download() as download:
                 page.get_by_role('button', name='Export file', exact=True).click()
             package_path = download.value.path()
-            page.get_by_role('button', name='Import', exact=True).click()
+            studio_command(page, 'Import').click()
             page.locator('#studio-import-file').set_input_files(package_path)
             expect(page.locator('#studio-import-preview')).to_contain_text('Import adds configuration only')
             page.get_by_role('button', name='Import configuration', exact=True).click()
@@ -276,13 +286,13 @@ def hold_next_save(page):
     return pending, hold
 
 
-def test_actual_conflict_keeps_copy_and_edits_made_during_save(tmp_path):
+def test_actual_conflict_keeps_copy_and_edits_made_during_save(tmp_path, studio_browser):
     pytest.importorskip('playwright.sync_api')
     served = Serving(tmp_path)
     served.ui.settings.setup_done = True
     served.ui.root = tmp_path / 'traind'
     try:
-        with browser(Window(profile=tmp_path / 'conflict-browser', headless=True)) as page:
+        with studio_browser() as page:
             page.goto(f'http://127.0.0.1:{served.port}/ui/')
             add(page, 'Prompt template')
             page.get_by_role('button', name='Save', exact=True).click()
@@ -310,7 +320,7 @@ def test_actual_conflict_keeps_copy_and_edits_made_during_save(tmp_path):
             expect(other.locator('#studio-workflows option')).to_have_count(3)
             selected = other.get_by_label('Saved workflows').input_value()
             other.reload()
-            other.get_by_label('Saved workflows').select_option(selected)
+            workflow_picker(other).select_option(selected)
             other.locator('.studio-node').focus()
             other.keyboard.press('Enter')
             expect(other.locator('.studio-inspector').get_by_label('template', exact=True)).to_have_value('Local newer')
@@ -321,13 +331,13 @@ def test_actual_conflict_keeps_copy_and_edits_made_during_save(tmp_path):
         served.close()
 
 
-def test_actual_new_waits_for_pending_workflow_save(tmp_path):
+def test_actual_new_waits_for_pending_workflow_save(tmp_path, studio_browser):
     pytest.importorskip('playwright.sync_api')
     served = Serving(tmp_path)
     served.ui.settings.setup_done = True
     served.ui.root = tmp_path / 'traind'
     try:
-        with browser(Window(profile=tmp_path / 'navigation-browser', headless=True)) as page:
+        with studio_browser() as page:
             page.goto(f'http://127.0.0.1:{served.port}/ui/')
             add(page, 'Prompt template')
             page.get_by_role('button', name='Save', exact=True).click()
@@ -349,7 +359,7 @@ def test_actual_new_waits_for_pending_workflow_save(tmp_path):
             page.get_by_role('button', name='Save', exact=True).click()
             expect(page.locator('.studio-status')).to_contain_text('Saved')
             assert page.get_by_label('Saved workflows').input_value() != original
-            page.get_by_label('Saved workflows').select_option(original)
+            workflow_picker(page).select_option(original)
             page.locator('.studio-node').focus()
             page.keyboard.press('Enter')
             expect(page.locator('.studio-inspector').get_by_label('template', exact=True)).to_have_value('Original pending edit')
@@ -389,13 +399,13 @@ def test_subtype_port_suggestions_and_inspector_connections(studio_page):
     assert not errors
 
 
-def test_actual_sweep_controls_save_typed_choices(tmp_path):
+def test_actual_sweep_controls_save_typed_choices(tmp_path, studio_browser):
     pytest.importorskip('playwright.sync_api')
     served = Serving(tmp_path)
     served.ui.settings.setup_done = True
     served.ui.root = tmp_path / 'traind'
     try:
-        with browser(Window(profile=tmp_path / 'sweep-browser', headless=True)) as page:
+        with studio_browser() as page:
             page.goto(f'http://127.0.0.1:{served.port}/ui/')
             page.locator('.studio-library').get_by_role('button', name='Inference Ready to configure', exact=True).click()
             page.locator('.studio-node[aria-label="Generate"]').focus()
@@ -416,9 +426,10 @@ def test_actual_sweep_controls_save_typed_choices(tmp_path):
         served.close()
 
 
-def seed_report_artifact(served):
+def seed_report_artifact(served, source_id):
     engine = served.ui.studio
-    source = engine._all_runs()[0]
+    source = engine.store.get('run', source_id, studio_service.scope(served.ui))
+    assert source['state'] == 'done'
     ident = uuid.uuid4().hex
     node = {'id': 'report', 'type': 'report', 'version': 1, 'parameters': {}, 'bindings': {}}
     folder = served.files / 'studio' / ident / hashlib.sha256(b'report').hexdigest()[:24]
@@ -433,18 +444,21 @@ def seed_report_artifact(served):
     })
 
 
-def test_actual_run_logs_and_declared_artifact_download(tmp_path):
+def test_actual_run_logs_and_declared_artifact_download(tmp_path, studio_browser):
     pytest.importorskip('playwright.sync_api')
     served = Serving(tmp_path)
     served.ui.settings.setup_done = True
     served.ui.root = tmp_path / 'traind'
     try:
-        with browser(Window(profile=tmp_path / 'artifacts-browser', headless=True)) as page:
+        with studio_browser() as page:
             page.goto(f'http://127.0.0.1:{served.port}/ui/')
             add(page, 'Prompt template')
-            page.get_by_role('button', name='Run workflow', exact=True).click()
+            with page.expect_response(lambda response: response.request.method == 'POST' and response.url.endswith('/ui/studio/runs')) as submitted:
+                page.get_by_role('button', name='Run workflow', exact=True).click()
+            source_id = submitted.value.json()['run']['id']
             expect(page.locator('#studio-runs')).to_contain_text('done')
-            seed_report_artifact(served)
+            page.get_by_role('tab', name='Runs and Results', exact=True).click()
+            seed_report_artifact(served, source_id)
             page.get_by_role('button', name='Refresh', exact=True).click()
             page.get_by_role('button', name='Report artifact', exact=True).click()
             page.get_by_role('button', name='View logs · report', exact=True).click()
@@ -482,3 +496,16 @@ def test_invalid_sweep_draft_blocks_submission_and_survives_selection(studio_pag
     expect(page.locator('#studio-runs')).to_contain_text('done')
     assert len(state['submissions']) == 1
     assert not errors
+
+
+def test_managed_browser_contexts_do_not_share_state(studio_browser):
+    with studio_browser() as first:
+        first.route('http://studio.invalid/**', lambda route: route.fulfill(body='<p>isolated</p>'))
+        first.goto('http://studio.invalid/')
+        first.context.add_cookies([{'name': 'session', 'value': 'private', 'url': 'http://studio.invalid/'}])
+        first.evaluate("localStorage.setItem('studio', 'private'); sessionStorage.setItem('studio', 'private')")
+    with studio_browser() as second:
+        second.route('http://studio.invalid/**', lambda route: route.fulfill(body='<p>isolated</p>'))
+        second.goto('http://studio.invalid/')
+        assert second.context.cookies() == []
+        assert second.evaluate("[localStorage.getItem('studio'), sessionStorage.getItem('studio')]") == [None, None]

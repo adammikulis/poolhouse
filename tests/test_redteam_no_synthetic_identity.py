@@ -137,7 +137,6 @@ def test_a_subagent_is_a_standard_agent_of_its_parent_and_holds_none_of_its_gran
     row = next(a for a in node.session(worker).agents() if a.name == kid.name)
     shown = agent_display.describe(row)
     assert (row.parent, row.model_state, shown["session_kind"]) == (worker.name, "claimed", "subagent")
-    assert shown["coordinator_eligible"] is False
     assert [g.action for g in board_grants.listing(node.session(worker)).grants if g.mine] == ["note_verify"]
     assert [g for g in board_grants.listing(node.session(kid)).grants if g.mine] == []
 

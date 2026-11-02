@@ -16,8 +16,10 @@ from urllib.parse import urlsplit
 
 from poolhouse.httpguard import allowed_address
 
-__all__ = ["NotLocal", "in_tailnet", "loopback_host", "require_local", "require_local_url",
-           "secure_scheme"]
+__all__ = ["DEFAULT_HTTP_PORT", "NotLocal", "can_bind", "in_tailnet", "loopback_host", "primary_ip", "require_local",
+           "require_local_url", "secure_scheme"]
+
+DEFAULT_HTTP_PORT = 8770
 
 TAILNET_V4 = ipaddress.ip_network("100.64.0.0/10")
 TAILNET_V6 = ipaddress.ip_network("fd7a:115c:a1e0::/48")
@@ -76,3 +78,25 @@ def require_local(host: str, port: int = 0) -> None:
 def require_local_url(url: str) -> None:
     parts = urlsplit(url)
     require_local(parts.hostname or "", parts.port or 0)
+
+
+def can_bind(port: int) -> bool:
+    """Whether this machine can listen on the loopback port right now (false when something else holds it)."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        try:
+            probe.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+    return True
+
+
+def primary_ip() -> str:
+    """This machine's address on the interface that reaches the LAN."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except OSError:
+        return ""
+    finally:
+        s.close()

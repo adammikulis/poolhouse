@@ -1,8 +1,9 @@
 //! The grant entries of one board, kept as they arrive, and what they add up to now.
 //!
 //! An entry counts only when it was written by this device or by a trusted one (the landing trust list), the key
-//! that signed it is enrolled on this node, and, from another device, the action may travel. A revocation beats
-//! the grant it names whatever the order; a use counts toward the grant's limit.
+//! that signed it has the authority `authority` gives it (any key enrolled on this node, or in a pool an admin key of the pool for
+//! an action that reaches beyond the device) and, from another device, the action may travel. A revocation beats the grant it
+//! names whatever the order; a use counts toward the grant's limit.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -14,8 +15,11 @@ use crate::node::Node;
 use crate::row::{Kind, Row};
 use crate::rules::held_back;
 
+use super::authority::{Authority, NO_APPROVAL};
 use super::person::Persons;
 use super::spec::{parse_issue, parse_revoke, signing_bytes, Issue, PORTABLE};
+
+/// Why an entry written before a pool of another version was set aside counts for nothing.
 
 /// How many entries of each device this one does not trust are read for the listing; the rest are not looked at.
 const MOST_UNTRUSTED: usize = 200;
@@ -25,6 +29,8 @@ const MOST_UNTRUSTED: usize = 200;
 #[derive(Default)]
 pub struct Book {
     rows: BTreeMap<String, Vec<usize>>,
+    /// Where the distrust rows of each origin sit in its log.
+    distrusts: BTreeMap<String, Vec<usize>>,
     used: BTreeMap<String, BTreeMap<String, u64>>,
     seen: BTreeMap<String, (usize, String)>,
 }
@@ -34,6 +40,7 @@ impl Book {
     pub fn refresh(&mut self, board: &Board) {
         let origins = board.origins();
         self.rows.retain(|o, _| origins.contains(o));
+        self.distrusts.retain(|o, _| origins.contains(o));
         self.used.retain(|o, _| origins.contains(o));
         self.seen.retain(|o, _| origins.contains(o));
         for origin in origins {
@@ -41,6 +48,7 @@ impl Book {
             let changed = self.seen.get(&origin).is_some_and(|(n, h)| *n > log.len() || (*n > 0 && log[*n - 1].hash != *h));
             if changed {
                 self.rows.remove(&origin);
+                self.distrusts.remove(&origin);
                 self.used.remove(&origin);
                 self.seen.remove(&origin);
             }
@@ -50,6 +58,8 @@ impl Book {
                 if body.and_then(|b| b.get("op")).and_then(Value::as_str) == Some("use") {
                     let gid = body.and_then(|b| b.get("gid")).and_then(Value::as_str).unwrap_or("").to_string();
                     *self.used.entry(origin.clone()).or_default().entry(gid).or_default() += 1;
+                } else if body.and_then(|b| b.get("op")).and_then(Value::as_str) == Some("distrust") {
+                    self.distrusts.entry(origin.clone()).or_default().push(at);
                 } else {
                     self.rows.entry(origin.clone()).or_default().push(at);
                 }
@@ -70,6 +80,24 @@ impl Book {
         }).filter(|r| r.origin == board.origin() || !held_back(r, now_ms)).collect();
         all.sort_by(|a, b| a.order().cmp(&b.order()));
         all.into_iter().cloned().collect()
+    }
+
+    /// The newest distrust rows of each origin of ``board``: those indexed, and any written since the last refresh.
+    pub fn distrusts<'a>(&'a self, board: &'a Board) -> Vec<&'a Row> {
+        let is_distrust = |r: &&Row| r.kind == Kind::Grant && r.body.get("op").and_then(Value::as_str) == Some("distrust");
+        let mut found = Vec::new();
+        for origin in board.origins() {
+            let log = board.rows(&origin);
+            let indexed = self.seen.get(&origin).filter(|(n, h)| *n <= log.len() && (*n == 0 || log[*n - 1].hash == *h));
+            let mut rows: Vec<&Row> = match indexed {
+                Some((n, _)) => self.distrusts.get(&origin).into_iter().flatten().filter_map(|i| log.get(*i)).chain(log[*n..].iter().filter(is_distrust)).collect(),
+                None => log.iter().filter(is_distrust).collect(),
+            };
+            rows.reverse();
+            rows.truncate(MOST_UNTRUSTED);
+            found.extend(rows);
+        }
+        found
     }
 
     /// Whether another device wrote any entry of this board's grants.
@@ -100,7 +128,7 @@ pub struct Standing {
     pub ignored: Vec<(String, String)>,
 }
 
-fn refusal(persons: &Persons, own: &str, row: &Row, issue: &Issue, map: &Map<String, Value>, counted: bool) -> Option<&'static str> {
+fn refusal(authority: &Authority, persons: &Persons, own: &str, row: &Row, issue: &Issue, map: &Map<String, Value>, counted: bool) -> Option<&'static str> {
     if !counted {
         return Some("written by a device this one does not trust");
     }
@@ -108,6 +136,12 @@ fn refusal(persons: &Persons, own: &str, row: &Row, issue: &Issue, map: &Map<Str
         return Some("this action is granted on the device it applies to");
     }
     let sig = map.get("sig").and_then(Value::as_str).unwrap_or("");
+    if authority.pool_wide(&issue.action) {
+        if !map.contains_key("approval") {
+            return Some(NO_APPROVAL);
+        }
+        return authority.issue_refusal(&issue.person, &signing_bytes(map), sig);
+    }
     if !persons.signed(&issue.person, &signing_bytes(map), sig) {
         return Some(if persons.was_removed(&issue.person) { "signed by a person key that was removed from this device" } else { "not signed by a person key enrolled on this device" });
     }
@@ -129,6 +163,10 @@ fn status(issue: &Issue, used: u64, now_ms: u64) -> &'static str {
 /// What the grant entries of ``board`` come to at this moment.
 pub fn standing(node: &mut Node, board: &str) -> Result<Standing> {
     let now = node.now_ms();
+    if node.members.gov().is_some() && board != crate::poolops::POOL_BOARD {
+        let pool = node.host(crate::poolops::POOL_BOARD)?;
+        pool.book.refresh(&pool.board);
+    }
     let (own, foreign) = {
         let hosted = node.host(board)?;
         hosted.book.refresh(&hosted.board);
@@ -142,7 +180,8 @@ pub fn standing(node: &mut Node, board: &str) -> Result<Standing> {
         let hosted = node.host(board)?;
         hosted.book.ordered(&hosted.board, now, &counted)
     };
-    let mut revoked: BTreeMap<String, String> = BTreeMap::new();
+    let authority = Authority::of(node);
+    let (mut revoked_by_admin, mut revoked_by_key): (BTreeMap<String, String>, BTreeMap<String, String>) = (BTreeMap::new(), BTreeMap::new());
     let mut found: Vec<(Row, Issue, Option<&'static str>)> = Vec::new();
     let mut ignored = Vec::new();
     for row in &rows {
@@ -151,15 +190,19 @@ pub fn standing(node: &mut Node, board: &str) -> Result<Standing> {
             Some("issue") => match parse_issue(map) {
                 Ok(issue) if found.iter().any(|(_, i, why)| why.is_none() && i.gid == issue.gid) => ignored.push((row.id(), "that grant id was used before".to_string())),
                 Ok(issue) => {
-                    let why = refusal(&node.persons, &own, row, &issue, map, counted(&row.origin));
+                    let why = refusal(&authority, &node.persons, &own, row, &issue, map, counted(&row.origin));
                     found.push((row.clone(), issue, why));
                 }
                 Err(e) => ignored.push((row.id(), e.to_string())),
             },
             Some("revoke") if counted(&row.origin) => {
                 if let Ok(r) = parse_revoke(map) {
-                    if node.persons.signed(&r.person, &signing_bytes(map), map.get("sig").and_then(Value::as_str).unwrap_or("")) {
-                        revoked.entry(r.gid).or_insert(r.reason);
+                    let (bytes, sig) = (signing_bytes(map), map.get("sig").and_then(Value::as_str).unwrap_or(""));
+                    if authority.narrows(&r.person, &bytes, sig) {
+                        revoked_by_admin.entry(r.gid.clone()).or_insert_with(|| r.reason.clone());
+                    }
+                    if node.persons.signed(&r.person, &bytes, sig) {
+                        revoked_by_key.entry(r.gid).or_insert(r.reason);
                     }
                 }
             }
@@ -169,7 +212,7 @@ pub fn standing(node: &mut Node, board: &str) -> Result<Standing> {
     let book = &node.host(board)?.book;
     let spent: Vec<u64> = found.iter().map(|(_, issue, _)| book.uses(&issue.gid, &counted)).collect();
     let grants = found.into_iter().zip(spent).map(|((row, issue, why), n)| {
-        let gone = revoked.get(&issue.gid);
+        let gone = revoked_by_admin.get(&issue.gid).or_else(|| revoked_by_key.get(&issue.gid).filter(|_| !authority.pool_wide(&issue.action)));
         let (state, why) = match (why, gone) {
             (_, Some(reason)) => ("revoked", reason.clone()),
             (Some(why), None) => ("ignored", why.to_string()),

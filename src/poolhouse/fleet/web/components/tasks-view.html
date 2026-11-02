@@ -1,6 +1,5 @@
 <style>
 tasks-view { display:contents; }
-tasks-view .workspace { padding:calc(28px * var(--ui-density,1)) calc(32px * var(--ui-density,1)); }
 tasks-view .work-heading { display:flex; justify-content:space-between; gap:24px; align-items:center; margin-bottom:24px; }
 tasks-view .work-heading h1 { margin:0 0 8px; }
 tasks-view .work-heading p { margin:0; max-width:650px; }
@@ -50,8 +49,8 @@ tasks-view .task-composer { background:var(--bg-raised); border:1px solid var(--
 @media(max-width:650px) { tasks-view .workspace { padding:calc(20px * var(--ui-density,1)); } tasks-view .task-list { grid-template-columns:1fr; } tasks-view .task-column { min-height:0; } tasks-view .task-metrics { grid-template-columns:repeat(2,1fr); } tasks-view .work-mark { display:none; } tasks-view .task-controls { flex-wrap:wrap; } }
 </style>
 <template>
-<section class="workspace" hidden>
-<header class="work-heading"><h1>Tasks</h1></header>
+<section class="workspace page-shell" hidden>
+<header class="work-heading page-heading"><h1>Tasks</h1></header>
 <div class="task-project-bar"><label>Project workspace<select class="task-project" aria-label="Task project workspace"><option value="">Loading projects…</option></select></label></div>
 <div class="task-overview"><section class="task-remaining" aria-label="Remaining tasks"><strong class="task-remaining-number">—</strong><span>tasks remaining</span><p class="task-total">Choose a project workspace</p></section><div class="task-metrics"></div></div>
 <div class="task-context"><article><h2>Estimated completion</h2><div class="task-eta-value">Unknown</div><p class="hint task-eta-reason">Waiting for project task data.</p></article><article><h2>Current workers</h2><div class="task-worker-list"><p class="hint">Choose a project to inspect worker assignments.</p></div></article></div>

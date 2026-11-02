@@ -170,6 +170,12 @@ fn a_dead_holder_is_detected_and_its_lease_taken_over_with_an_audit_entry() {
     // still alive: nothing changes
     assert_eq!(state(&mut n, &tb, &queued["id"]), "queued");
     child.kill().unwrap(); // kill -9, deliberately left unreaped: a zombie is dead too
+    // the signal is delivered at the kernel's pace, which under load is not at once: wait until the system itself says the holder is dead
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while live::is_alive(child.id(), None) && std::time::Instant::now() < until {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(!live::is_alive(child.id(), None), "the killed holder never became a zombie");
     assert_eq!(state(&mut n, &tb, &queued["id"]), "held");
     let audit = ok(req(&mut n, "read", "demo", &tb, json!({"kind": "audit"})));
     let text = audit["entries"].as_array().unwrap().iter().map(|e| e["fields"]["detail"].as_str().unwrap().to_string()).collect::<Vec<_>>().join("\n");

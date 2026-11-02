@@ -16,7 +16,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-# The package is the namespace the tests and `selfcheck` patch -- `bench.home_dir()`,
+# The package is the namespace the tests patch -- `bench.home_dir()`,
 # `bench._parser()` -- so anything patchable is looked up there at call time.
 from poolhouse import bench, jobs
 from poolhouse.bench.askings import sampling_from
@@ -130,7 +130,7 @@ def detach(argv: Sequence[str]) -> Path:
     commit = _commit()
     # `history` reads the log's header back once `measuring.json` has moved on; a second
     # `--detach` queues behind the measuring lock rather than being refused here
-    ran = jobs.detach("poolhouse.bench", rest, log=log,
+    ran = jobs.detach("poolhouse.bench", rest, log=log, same_interpreter=True,
                       lines=[f"commit: {commit}"] if commit else [])
     remember(rest, pid=ran.pid, log=str(ran.log), started=ran.started, commit=commit)
     jobs.record("bench", pid=ran.pid, argv=rest, log=str(ran.log), started=ran.started,

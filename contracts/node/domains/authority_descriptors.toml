@@ -1,0 +1,108 @@
+# Private descriptor DATA only. No root, signer, membership or person approval is admitted.
+version = 1
+status = "proposal"
+operation = []
+
+[[type]]
+name = "AuthorityDescriptorVersion"
+kind = "scalar"
+visibility = "private"
+encoding = "u32"
+issuer = "data"
+minimum = 1
+maximum = 1
+
+[[type]]
+name = "AuthorityAdmissionPolicyDigest"
+kind = "scalar"
+visibility = "private"
+encoding = "hex32"
+issuer = "data"
+
+[[type]]
+name = "AuthorityOperationProfile"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "approval_immutable_v1", type = "Empty"}, {tag = "local_authority_scoped_v1", type = "Empty"}]
+
+[[type]]
+name = "AuthorityOperationProfiles"
+kind = "list"
+visibility = "private"
+item = "AuthorityOperationProfile"
+min_items = 1
+max_items = 2
+unique = true
+
+[[type]]
+name = "AuthoritySubjectSignaturePolicy"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "ed25519_raw_message", type = "Empty"}, {tag = "p256_sha256_low_s_der", type = "Empty"}]
+
+[[type]]
+name = "AuthorityRequiredKeyPolicy"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "process_accessible", type = "Empty"}, {tag = "os_per_signature_presence", type = "Empty"}]
+
+[[type]]
+name = "AuthorityRoleEligibility"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "admin_candidate", type = "Empty"}, {tag = "recovery_candidate", type = "Empty"}]
+
+[[type]]
+name = "AuthorityPersonRelation"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "same", type = "Empty"}, {tag = "distinct", type = "Empty"}, {tag = "unknown", type = "Empty"}]
+
+[[type]]
+name = "AuthorityGovernanceEligibility"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "founding_allowed", type = "Empty"}, {tag = "admin", type = "Empty"}, {tag = "recovery", type = "Empty"}, {tag = "not_member", type = "Empty"}, {tag = "unknown", type = "Empty"}]
+
+[[type]]
+name = "AuthorityGenesisDescriptorScope"
+kind = "record"
+visibility = "private"
+fields = [{name = "context", type = "ApprovalGenesisContext"}, {name = "role_eligibility", type = "AuthorityRoleEligibility"}]
+
+[[type]]
+name = "AuthorityGovernedDescriptorScope"
+kind = "record"
+visibility = "private"
+fields = [{name = "issuance_context", type = "ApprovalGovernanceContext"}, {name = "role_eligibility", type = "AuthorityRoleEligibility"}]
+
+[[type]]
+name = "AuthorityDescriptorScope"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "genesis", type = "AuthorityGenesisDescriptorScope"}, {tag = "governed", type = "AuthorityGovernedDescriptorScope"}, {tag = "installation_credential", type = "LocalAuthorityInstallationContext"}]
+
+[[type]]
+name = "AuthorityRootDescription"
+kind = "record"
+visibility = "private"
+fields = [{name = "context", type = "LocalAuthorityInstallationContext"}, {name = "issuer_public_key", type = "ApprovalSignerPublicKey"}, {name = "admission_policy_digest", type = "AuthorityAdmissionPolicyDigest"}, {name = "revision", type = "U64"}, {name = "revocation_generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "AuthorityDescriptorBody"
+kind = "record"
+visibility = "private"
+fields = [{name = "version", type = "AuthorityDescriptorVersion"}, {name = "descriptor_id", type = "AuthorityDescriptorId"}, {name = "authority_root", type = "AuthorityRootId"}, {name = "authority_generation", type = "AuthorityGeneration"}, {name = "signer_id", type = "ApprovalSignerId"}, {name = "signer_incarnation", type = "ResourceGeneration"}, {name = "person_id", type = "ApprovalPersonId"}, {name = "public_key", type = "ApprovalSignerPublicKey"}, {name = "scope", type = "AuthorityDescriptorScope"}, {name = "operation_profiles", type = "AuthorityOperationProfiles"}, {name = "signature_policy", type = "AuthoritySubjectSignaturePolicy"}, {name = "required_key_policy", type = "AuthorityRequiredKeyPolicy"}, {name = "issued_at", type = "UnixMicros"}, {name = "expires_at", type = "UnixMicros"}, {name = "issued_under_root_revision", type = "U64"}, {name = "revocation_generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "AuthoritySignedDescriptor"
+kind = "record"
+visibility = "private"
+fields = [{name = "body", type = "AuthorityDescriptorBody"}, {name = "issuer_signature", type = "ApprovalSignatureMaterial"}]

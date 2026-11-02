@@ -1,22 +1,21 @@
-"""What a coding harness's tool call is allowed to do under a session role.
+"""What a coding harness's tool call is allowed to do under explicit session permissions.
 
-`decide` takes the role, the tool's name and its arguments and returns allow, deny or ask. The
-destructive-action classifier labels the call; the role decides what each label gets. A call
+`decide` takes the immutable coding policy and tool call and returns allow, deny or ask. The
+destructive-action classifier labels the call; the permission profile decides what each label gets. A call
 the classifier cannot read is ``unsure`` and asks. Text naming the launcher's session files, the
-state root or an action only a person can take is denied in every role.
+state root or an action only a person can take is denied in every profile.
 """
 
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from poolhouse import worktreerules
-from poolhouse.chatpolicy import APPROVE_FIRST, PLAN_AND_GO, READ_ONLY, refusal_for
+from poolhouse import coding_policy, worktreerules
+from poolhouse.chatpolicy import refusal_for
 from poolhouse.guard import fetchlog
 from poolhouse.guard.destructive import classify, reason_text
 from poolhouse.guard.shellscan import segments
@@ -91,33 +90,13 @@ def primary_decision(name: str, args: dict[str, Any] | None, cwd: str) -> Decisi
     return _denied("destructive", why) if why else None
 
 
-def _unbrokered_tests(line):
-    commands, _ = segments(line)
-    for command in commands:
-        words = command.argv
-        if not words:
-            continue
-        names = [Path(word).name for word in words]
-        if names[0] in ("pytest", "py.test", "tox", "nox"):
-            return True
-        if re.fullmatch(r"python(?:[0-9.]+)?", names[0]) and "-m" in words:
-            at = words.index("-m")
-            if at + 1 < len(words) and words[at + 1] in ("pytest", "unittest", "tox", "nox"):
-                return True
-        if (names[0] in ("uv", "pipenv", "poetry") and "run" in words
-                and any(name in ("pytest", "py.test", "tox", "nox") for name in names[words.index("run") + 1:])):
-            return True
-    return False
-
-
-def decide(role: str, name: str, args: dict[str, Any] | None, *, roots: Sequence[str] = (),
+def decide(policy: coding_policy.Policy, call: Call, *, roots: Sequence[str] = (),
            protected: Sequence[str] = ()) -> Decision:
     """The decision for one tool call. ``protected`` are path strings no call may name."""
+    name, args = call.name, call.arguments
     if hit := _mentions(args, protected):
         return _denied("destructive", f"the call names {hit}, which belongs to the launcher")
-    if _unbrokered_tests(_shell_line(name, args)):
-        return _denied("reversible", "tests must use the maintained scripts/test broker queue")
-    verdict = classify(Call(name, args), roots=roots, catalog=CATALOG)
+    verdict = classify(call, roots=roots, catalog=CATALOG)
     why = reason_text(verdict)
     if verdict.forbidden:
         return _denied(verdict.label, f"{why}; an agent never opens one")
@@ -125,11 +104,11 @@ def decide(role: str, name: str, args: dict[str, Any] | None, *, roots: Sequence
         return Decision("allow", "safe", why)
     if refusal := refusal_for(_shell_line(name, args)):
         return _denied("destructive", f"{refusal[0]} is for a person; run `{refusal[1]}` yourself")
-    if role == READ_ONLY or role not in (APPROVE_FIRST, PLAN_AND_GO):
-        return _denied(verdict.label, f"the read-only role runs no acting call: {why}")
-    if verdict.label in ("destructive", "unsure"):
+    if not policy.writable:
+        return _denied(verdict.label, f"{policy.execution_mode}/{policy.permissions} runs no acting call: {why}")
+    if verdict.label == "unsure" or (verdict.label == "destructive" and policy.permissions != coding_policy.YOLO):
         return Decision("ask", verdict.label, why, "tool_call_destructive")
-    if role == APPROVE_FIRST:
+    if policy.permissions == coding_policy.ASK_CHANGES:
         return Decision("ask", verdict.label, why)
     return Decision("allow", verdict.label, why)
 
@@ -146,7 +125,7 @@ def after_downloads(decision: Decision, name: str, args: dict[str, Any] | None, 
 
 
 def workspace_authority(line: str, actor: str) -> Decision | None:
-    """A model's workspace CLI call must use its launcher-bound session, never another token."""
+    """Reject explicit foreign credentials; omitted selectors use the CLI's own authentication."""
     commands, _ = segments(line)
     for command in commands:
         words = command.argv
@@ -162,6 +141,6 @@ def workspace_authority(line: str, actor: str) -> Decision | None:
                 found.append(words[at + 1] if at + 1 < len(words) else "")
             elif word.startswith("--agent="):
                 found.append(word.split("=", 1)[1])
-        if not found or any(value != actor for value in found):
+        if any(value != actor for value in found):
             return _denied("destructive", "use the workspace identity assigned by the launcher")
     return None

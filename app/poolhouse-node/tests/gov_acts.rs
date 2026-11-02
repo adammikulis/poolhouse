@@ -104,6 +104,105 @@ fn a_forged_act_is_refused_and_recorded_with_its_reason() {
 }
 
 #[test]
+fn persisted_forged_admin_signature_is_never_replayed_as_authority() {
+    let (dir, mut pool) = pool(&[phone_admin(A, "ann")], Policy::Secure);
+    let device = ident(10);
+    assert_eq!(put_admit(&mut pool, &device, &[A]), Ingest::Accepted);
+    pool.save().unwrap();
+    let pool_dir = dir.path().join("pools").join(&pool.id);
+    drop(pool);
+    let acts_path = pool_dir.join("acts.json");
+    let mut saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&acts_path).unwrap()).unwrap();
+    saved["acts"][0]["signatures"][0]["sig"] = json!("ab".repeat(64));
+    std::fs::write(&acts_path, serde_json::to_vec(&saved).unwrap()).unwrap();
+    assert!(GovPool::load(&pool_dir).is_err(), "a forged signature on disk is not an admission");
+}
+
+#[test]
+fn persisted_forged_device_signature_is_never_replayed_as_authority() {
+    let (dir, mut pool) = pool(&[phone_admin(A, "ann")], Policy::Secure);
+    let first = ident(FIRST);
+    let mut leave = pool.new_act("leave", json!({"fingerprint": first.fingerprint()}), wall_ms()).unwrap();
+    device_sign(&mut leave, FIRST);
+    assert_eq!(take(&mut pool, leave), Ingest::Accepted);
+    pool.save().unwrap();
+    let pool_dir = dir.path().join("pools").join(&pool.id);
+    drop(pool);
+    let acts_path = pool_dir.join("acts.json");
+    let mut saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&acts_path).unwrap()).unwrap();
+    saved["acts"][0]["signatures"][0]["sig"] = json!("cd".repeat(64));
+    std::fs::write(&acts_path, serde_json::to_vec(&saved).unwrap()).unwrap();
+    assert!(GovPool::load(&pool_dir).is_err(), "a forged device signature on disk is not a departure");
+}
+
+#[test]
+fn persisted_duplicate_acts_and_votes_are_rejected() {
+    let (dir, mut pool) = pool(&[phone_admin(A, "ann")], Policy::Secure);
+    assert_eq!(put_admit(&mut pool, &ident(10), &[A]), Ingest::Accepted);
+    pool.save().unwrap();
+    let pool_dir = dir.path().join("pools").join(&pool.id);
+    drop(pool);
+    let path = pool_dir.join("acts.json");
+    let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    let mut duplicate = saved.clone();
+    let act = duplicate["acts"][0].clone();
+    duplicate["acts"].as_array_mut().unwrap().push(act);
+    std::fs::write(&path, serde_json::to_vec(&duplicate).unwrap()).unwrap();
+    assert!(GovPool::load(&pool_dir).is_err());
+    let mut duplicate_vote = saved;
+    let signature = duplicate_vote["acts"][0]["signatures"][0].clone();
+    duplicate_vote["acts"][0]["signatures"].as_array_mut().unwrap().push(signature);
+    std::fs::write(&path, serde_json::to_vec(&duplicate_vote).unwrap()).unwrap();
+    assert!(GovPool::load(&pool_dir).is_err());
+}
+
+#[test]
+fn valid_partial_governance_draft_survives_reload() {
+    let (dir, mut pool) = pool(&[phone_admin(A, "ann"), phone_admin(B, "ben")], Policy::Secure);
+    let proposal = add(&pool, phone_admin(C, "cam"), &[A]);
+    let id = proposal.id();
+    assert_eq!(take(&mut pool, proposal), Ingest::Accepted);
+    pool.save().unwrap();
+    let pool_dir = dir.path().join("pools").join(&pool.id);
+    drop(pool);
+    let loaded = GovPool::load(&pool_dir).unwrap();
+    assert!(matches!(loaded.status(&id), ActStatus::Short(..)));
+}
+
+#[test]
+fn persisted_malformed_admission_certificate_is_rejected() {
+    let (dir, mut pool) = pool(&[phone_admin(A, "ann")], Policy::Secure);
+    assert_eq!(put_admit(&mut pool, &ident(10), &[A]), Ingest::Accepted);
+    pool.save().unwrap();
+    let pool_dir = dir.path().join("pools").join(&pool.id);
+    drop(pool);
+    let path = pool_dir.join("acts.json");
+    let mut saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    saved["acts"][0]["body"]["cert"] = json!("00");
+    std::fs::write(&path, serde_json::to_vec(&saved).unwrap()).unwrap();
+    assert!(GovPool::load(&pool_dir).is_err());
+}
+
+#[test]
+fn a_valid_signature_by_an_unadmitted_device_cannot_self_admit_on_reload() {
+    let (dir, mut pool) = pool(&[phone_admin(A, "ann")], Policy::Secure);
+    let stranger = ident(10);
+    let mut act = pool.new_act("admit", admit_body(&stranger, "stranger", "join-code", ""), wall_ms()).unwrap();
+    device_sign(&mut act, 10);
+    pool.save().unwrap();
+    let pool_dir = dir.path().join("pools").join(&pool.id);
+    drop(pool);
+    let path = pool_dir.join("acts.json");
+    let mut saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    saved["acts"].as_array_mut().unwrap().push(serde_json::to_value(act).unwrap());
+    std::fs::write(&path, serde_json::to_vec(&saved).unwrap()).unwrap();
+    match GovPool::load(&pool_dir) {
+        Ok(loaded) => assert!(!is_member(&loaded, &stranger)),
+        Err(_) => {} // Refusing inconsistent evidence also prevents admission.
+    }
+}
+
+#[test]
 fn a_replayed_act_is_a_no_op_and_a_signature_counted_twice_counts_once() {
     let (_d, mut g) = pool(&[phone_admin(A, "ann"), phone_admin(B, "ben")], Policy::Secure);
     let laptop = ident(10);
@@ -116,7 +215,7 @@ fn a_replayed_act_is_a_no_op_and_a_signature_counted_twice_counts_once() {
     let dup = twice.signatures[0].clone();
     twice.signatures.push(dup);
     assert!(refused(take(&mut g, twice.clone())).contains("once by each signer"), "a signer signs an act once");
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert!(!admins(&g).contains(&public(C)), "one person signed it twice; two are needed once a second person is listed");
     assert_eq!(g.status(&twice.id()), ActStatus::Unknown);
 }
@@ -130,7 +229,7 @@ fn a_signature_repeated_to_pad_an_act_does_not_win_a_fork() {
     (0..6).for_each(|_| padded.signatures.push(again.clone()));
     take(&mut g, honest.clone());
     assert!(refused(take(&mut g, padded.clone())).contains("once by each signer"));
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert!(admins(&g).contains(&public(D)) && !admins(&g).contains(&public(5)), "the act the two people signed wins");
     assert!(g.state().chain.dispute.is_none());
 }
@@ -160,7 +259,7 @@ fn a_sensitive_act_needs_both_people_once_there_are_two_and_one_person_with_two_
     let mut both = act.clone();
     sign(&mut both, C);
     assert_eq!(take(&mut g, both), Ingest::Merged);
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert_eq!(g.state().chain.latest().charter.holds.admin_add_h, 48, "two people signed it");
 }
 
@@ -176,7 +275,7 @@ fn under_unit_key_two_keys_of_one_person_count_twice() {
     take(&mut g, act.clone());
     assert_eq!(g.status(&act.id()), ActStatus::Short(1, 2));
     put_add(&mut g, phone_admin(C, "cy"), &[A, B]);
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert!(admins(&g).contains(&public(C)), "two keys of one person are two keys");
     let mut people = charter(&[phone_admin(A, "ann")], Policy::Secure, Unit::Person);
     people.thresholds.sensitive = 2;
@@ -197,7 +296,7 @@ fn a_weak_key_counts_toward_no_sensitive_act_no_removal_and_no_cancel() {
     take(&mut g, pending.clone());
     let weak_cancel = make(&g, "cancel", json!({"act": pending.id()}), &[B]);
     assert!(refused(take(&mut g, weak_cancel)).contains("below the pool's floor"));
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert!(admins(&g).contains(&public(C)), "the weak key cancelled nothing");
 }
 
@@ -214,6 +313,7 @@ fn a_weak_key_may_end_a_delegate_and_nothing_else() {
     let laptop = ident(10);
     put_admit(&mut g, &laptop, &[A]);
     put(&mut g, "delegate", json!({"fingerprint": laptop.fingerprint()}), &[A]);
+    advance(&mut g, HELD);
     assert!(g.state().roster.delegates.contains_key(&laptop.fingerprint()));
     assert_eq!(put(&mut g, "delegate_end", json!({"fingerprint": laptop.fingerprint()}), &[B]), Ingest::Accepted);
     assert!(!g.state().roster.delegates.contains_key(&laptop.fingerprint()), "a reduction of power needs no key at a floor");
@@ -242,9 +342,9 @@ fn the_admins_remove_the_recovery_key_after_seven_days_and_its_own_cancel_stops_
     let (_d, mut g) = pool(&[phone_admin(A, "ann"), phone_admin(B, "ben"), recovery(D, "ann")], Policy::Secure);
     let removal = make(&g, "admin_remove", json!({"key": public(D), "cut": []}), &[A, B]);
     take(&mut g, removal.clone());
-    advance(&mut g, 25 * HOUR);
-    assert!(admins(&g).contains(&public(D)), "the admins' own 24 hours are not enough to take the recovery key out");
-    advance(&mut g, 7 * DAY);
+    advance(&mut g, HOLD - HOUR);
+    assert!(admins(&g).contains(&public(D)), "six days and 23 hours are not enough to take the recovery key out");
+    advance(&mut g, 2 * HOUR);
     assert!(!admins(&g).contains(&public(D)), "after seven days it goes");
     let (_d2, mut g) = pool(&[phone_admin(A, "ann"), phone_admin(B, "ben"), recovery(D, "ann")], Policy::Secure);
     let removal = make(&g, "admin_remove", json!({"key": public(D), "cut": []}), &[A, B]);
@@ -264,8 +364,8 @@ fn an_admin_add_takes_effect_only_after_its_hold_counted_on_this_devices_clock()
     take(&mut g, act.clone());
     assert!(!admins(&g).contains(&public(B)));
     assert_eq!(g.status(&act.id()), ActStatus::Pending);
-    advance(&mut g, 23 * HOUR);
-    assert!(!admins(&g).contains(&public(B)), "23 hours is not 24");
+    advance(&mut g, HOLD - HOUR);
+    assert!(!admins(&g).contains(&public(B)), "six days and 23 hours are not seven days");
     advance(&mut g, 2 * HOUR);
     assert!(admins(&g).contains(&public(B)));
     assert_eq!(g.state().chain.latest().n, 2);
@@ -281,7 +381,7 @@ fn a_partly_signed_act_is_held_from_the_moment_it_is_complete_and_not_from_the_m
     let mut whole = act.clone();
     sign(&mut whole, B);
     assert_eq!(take(&mut g, whole), Ingest::Merged);
-    advance(&mut g, 23 * HOUR);
+    advance(&mut g, HOLD - HOUR);
     assert!(!admins(&g).contains(&public(C)), "a thief with all the signatures but one gets no head start");
     advance(&mut g, 2 * HOUR);
     assert!(admins(&g).contains(&public(C)));
@@ -292,14 +392,14 @@ fn a_hold_keeps_running_across_a_restart() {
     let (_dir, mut g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
     let act = add(&g, phone_admin(B, "ben"), &[A]);
     take(&mut g, act);
-    advance(&mut g, 20 * HOUR);
+    advance(&mut g, HOLD - 4 * HOUR);
     g.save().unwrap();
     let dir = g.dir().to_path_buf();
     drop(g);
     let mut again = poolhouse_node::gov::pool::GovPool::load(&dir).unwrap();
     again.clock.freeze();
     advance(&mut again, 3 * HOUR);
-    assert!(!admins(&again).contains(&public(B)), "23 hours of awake time in all: a restart gives none back");
+    assert!(!admins(&again).contains(&public(B)), "seven days less an hour of awake time in all: a restart gives none back");
     advance(&mut again, 2 * HOUR);
     assert!(admins(&again).contains(&public(B)));
 }
@@ -330,7 +430,7 @@ fn a_backdated_act_and_a_wall_clock_a_month_ahead_shorten_no_hold() {
     assert!(matches!(relayed[0].1, Ingest::Accepted), "a member relays it a month on: {relayed:?}");
     advance(&mut g, HOUR);
     assert!(!admins(&g).contains(&public(B)), "the signer wrote three days ago and the wall clock says a month later: the hold is awake time here");
-    advance(&mut g, 24 * HOUR);
+    advance(&mut g, HOLD);
     assert!(admins(&g).contains(&public(B)));
 }
 
@@ -350,12 +450,13 @@ fn an_admin_act_that_follows_a_charter_the_pool_has_left_behind_is_refused_and_h
     let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
     let old_prev = g.context();
     put(&mut g, "set_holds", json!({"dispute_d": 9}), &[A]);
-    assert_eq!(g.state().chain.latest().n, 2, "a longer dispute is a strengthening: it is in force at once");
+    advance(&mut g, HELD);
+    assert_eq!(g.state().chain.latest().n, 2, "a governance act is in force once its seven days have run");
     advance(&mut g, HOUR);
     let mut stale = poolhouse_node::gov::act::Act::new(&g.id, old_prev.0, "set_holds", json!({"dispute_d": 30}), wall_ms(), &old_prev.1).unwrap();
     sign(&mut stale, A);
     assert!(refused(take(&mut g, stale.clone())).contains("left behind"));
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert_eq!(g.state().chain.latest().charter.holds.dispute_d, 9);
     assert_eq!(g.status(&stale.id()), ActStatus::Unknown);
 }
@@ -366,7 +467,7 @@ fn an_act_signed_by_an_admin_that_has_been_removed_is_refused_unless_the_cut_kep
     let kept = admit(&g, &ident(10), &[C]);
     take(&mut g, kept.clone());
     put(&mut g, "admin_remove", json!({"key": public(C), "cut": [kept.id()]}), &[A, B]);
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert!(!admins(&g).contains(&public(C)));
     let late = admit(&g, &ident(11), &[C]);
     assert!(refused(take(&mut g, late)).contains("is an admin of this pool"), "a removed admin signs nothing new");
@@ -379,7 +480,7 @@ fn an_act_signed_by_an_admin_that_has_been_removed_is_refused_unless_the_cut_kep
     let mut other = GovPool::create(dir.path(), g.found_act().clone()).unwrap();
     other.clock.freeze();
     other.ingest_many(g.acts().values().filter(|a| a.id() != kept.id()).cloned().collect(), wall_ms(), false);
-    advance(&mut other, 25 * HOUR);
+    advance(&mut other, HELD);
     assert!(!admins(&other).contains(&public(C)));
     assert_eq!(take(&mut other, kept.clone()), Ingest::Accepted, "a device that never held the act takes it, for the cut names it");
     let mut copy = kept;
@@ -393,7 +494,7 @@ fn a_removed_admins_flood_of_acts_for_an_old_epoch_evicts_no_act_of_the_admins_t
     let (_d, mut g) = pool(&[phone_admin(A, "ann"), phone_admin(B, "ben"), phone_admin(C, "cy")], Policy::Secure);
     let epoch_one = g.context();
     put(&mut g, "admin_remove", json!({"key": public(C), "cut": []}), &[A, B]);
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert!(!admins(&g).contains(&public(C)));
     let legit = make(&g, "admin_add", json!({"entry": entry_after(phone_admin(D, "dee"), 3, &g)}), &[A, B]);
     assert_eq!(take(&mut g, legit.clone()), Ingest::Accepted);
@@ -403,7 +504,7 @@ fn a_removed_admins_flood_of_acts_for_an_old_epoch_evicts_no_act_of_the_admins_t
         assert!(matches!(take(&mut g, act), Ingest::Refused(_)));
     }
     assert!(g.acts().contains_key(&legit.id()), "the act the two admins signed is still held");
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert!(admins(&g).contains(&public(D)), "and it takes effect");
 }
 
@@ -462,7 +563,7 @@ fn a_joiner_that_took_a_pending_act_as_settled_still_takes_a_cancel_that_reaches
 #[test]
 fn a_cancel_that_reaches_a_joiner_after_the_hold_counted_from_the_join_ends_nothing() {
     let (_dir, mut joiner, cancel) = joiner_with_settled_add();
-    advance(&mut joiner, 25 * HOUR);
+    advance(&mut joiner, HELD);
     joiner.ingest(cancel, wall_ms());
     assert!(admins(&joiner).contains(&public(D)));
 }
@@ -481,10 +582,10 @@ fn a_cancel_during_the_hold_ends_the_act_and_a_cancel_after_it_ends_nothing() {
     let (_d2, mut h) = pool(&[phone_admin(A, "ann"), phone_admin(B, "ben")], Policy::Secure);
     let two = add(&h, phone_admin(C, "cy"), &[A, B]);
     take(&mut h, two.clone());
-    advance(&mut h, 25 * HOUR);
+    advance(&mut h, HELD);
     assert!(admins(&h).contains(&public(C)));
     put(&mut h, "cancel", json!({"act": two.id()}), &[B]);
-    advance(&mut h, 25 * HOUR);
+    advance(&mut h, HELD);
     assert!(admins(&h).contains(&public(C)), "it was in effect before the cancel arrived");
 }
 
@@ -514,7 +615,7 @@ fn removals_commute_and_apply_together_when_enough_admins_are_left() {
     let (_d, mut g) = pool(&[phone_admin(A, "ann"), phone_admin(B, "ben"), phone_admin(C, "cy"), phone_admin(D, "di")], Policy::Secure);
     put(&mut g, "admin_remove", json!({"key": public(C), "cut": []}), &[A, B]);
     put(&mut g, "admin_remove", json!({"key": public(D), "cut": []}), &[A, B]);
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert_eq!(admins(&g).len(), 2, "{:?}", g.state().chain);
     assert_eq!(g.state().chain.latest().n, 2, "one step for both");
 }
@@ -524,7 +625,7 @@ fn the_last_admin_rule_is_checked_after_the_fold_and_the_conflicting_removals_op
     let (_d, mut g) = pool(&[phone_admin(A, "ann"), phone_admin(B, "ben"), phone_admin(C, "cy")], Policy::Secure);
     put(&mut g, "admin_remove", json!({"key": public(B), "cut": []}), &[A, C]);
     put(&mut g, "admin_remove", json!({"key": public(C), "cut": []}), &[A, B]);
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert_eq!(admins(&g).len(), 3, "together they would leave one admin where two are needed: neither applies");
     assert!(g.state().chain.dispute.is_some());
 }
@@ -534,7 +635,7 @@ fn the_last_admin_cannot_be_removed() {
     let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
     let act = make(&g, "admin_remove", json!({"key": public(A), "cut": []}), &[A]);
     take(&mut g, act.clone());
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert_eq!(admins(&g), vec![public(A)]);
     assert!(matches!(g.status(&act.id()), ActStatus::Void(w) if w.contains("too few")));
 }
@@ -545,7 +646,7 @@ fn an_add_whose_signer_is_removed_in_the_same_step_is_void() {
     let adds = add(&g, phone_admin(D, "di"), &[B, C]);
     take(&mut g, adds.clone());
     put(&mut g, "admin_remove", json!({"key": public(C), "cut": [adds.id()]}), &[A, B]);
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert!(!admins(&g).contains(&public(D)));
     assert!(admins(&g).contains(&public(A)) && !admins(&g).contains(&public(C)));
     assert!(matches!(g.status(&adds.id()), ActStatus::Void(w) if w.contains("signers were removed")), "{:?}", g.status(&adds.id()));
@@ -557,7 +658,7 @@ fn an_add_signed_by_a_key_that_is_removed_without_the_add_in_its_cut_is_struck()
     let adds = add(&g, phone_admin(D, "di"), &[B, C]);
     take(&mut g, adds.clone());
     put(&mut g, "admin_remove", json!({"key": public(C), "cut": []}), &[A, B]);
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert!(!admins(&g).contains(&public(D)), "the removed key's signature on an act the removal did not keep counts for nothing");
     assert_ne!(g.status(&adds.id()), ActStatus::Effective);
 }
@@ -569,7 +670,7 @@ fn two_acts_that_cannot_both_hold_are_settled_by_signers_and_never_by_a_nonce() 
     let three = make(&g, "set_holds", json!({"dispute_d": 4}), &[A, B, C]);
     take(&mut g, two);
     take(&mut g, three);
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert_eq!(g.state().chain.latest().charter.holds.dispute_d, 4, "more distinct signers at the floor wins");
     assert!(g.state().chain.dispute.is_none());
 }
@@ -596,7 +697,7 @@ fn a_removed_keys_act_that_is_not_in_the_cut_is_void_and_one_in_the_cut_stays() 
     take(&mut g, drawer_admit.clone());
     assert!(is_member(&g, &kept) && is_member(&g, &drawer));
     put(&mut g, "admin_remove", json!({"key": public(C), "cut": [kept_admit.id()]}), &[A, B]);
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert!(!admins(&g).contains(&public(C)));
     assert!(is_member(&g, &kept), "the act the removing admins saw and listed stays");
     assert!(!is_member(&g, &drawer), "an act of the removed key that was not in the cut is void on every device");
@@ -638,15 +739,16 @@ fn a_key_that_floods_admin_acts_replaces_its_own_oldest_and_never_the_acts_of_an
 }
 
 #[test]
-fn the_scope_of_an_admin_fingerprint_matches_a_pool_only_where_the_key_is_listed_and_accepted() {
+fn the_authority_keys_of_a_pool_are_the_strong_admin_keys_listed_now_and_accepted() {
     let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
     let fp = |seed: u8| poolhouse_node::gov::keys::fingerprint_of(&public(seed));
-    assert!(g.admin_scope(&fp(A)) && !g.admin_scope(&fp(B)));
+    let holds = |g: &poolhouse_node::gov::pool::GovPool, f: &str| g.authority_keys().iter().any(|k| k.fingerprint() == f);
+    assert!(holds(&g, &fp(A)) && !holds(&g, &fp(B)));
     put_add(&mut g, phone_admin(B, "ben"), &[A]);
-    assert!(!g.admin_scope(&fp(B)), "a key asked to be listed is not listed until the add takes effect");
-    advance(&mut g, 25 * HOUR);
-    assert!(g.admin_scope(&fp(B)));
-    assert!(!g.admin_scope(&"ab".repeat(32)));
+    assert!(!holds(&g, &fp(B)), "a key asked to be listed is not listed until the add takes effect");
+    advance(&mut g, HELD);
+    assert!(holds(&g, &fp(B)));
+    assert!(!holds(&g, &"ab".repeat(32)));
 }
 
 #[test]
@@ -667,13 +769,13 @@ fn the_acceptance_of_a_key_is_for_the_pool_and_epoch_it_names_and_cannot_list_a_
     borrowed.acceptance = RigSigner::sign_as(C, b"someone else's acceptance");
     let act = make(&g, "admin_add", json!({"entry": borrowed}), &[A]);
     take(&mut g, act.clone());
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert!(!admins(&g).contains(&public(B)), "a pool cannot list a public key its holder did not accept");
     assert!(matches!(g.status(&act.id()), ActStatus::Void(w) if w.contains("did not accept")));
     let stale = entry_after(phone_admin(B, "ben"), 5, &g);
     let act = make(&g, "admin_add", json!({"entry": stale}), &[A]);
     take(&mut g, act.clone());
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert!(!admins(&g).contains(&public(B)), "an acceptance for another epoch is no acceptance for this one");
 }
 
@@ -682,6 +784,6 @@ fn an_unknown_role_that_names_the_recovery_key_twice_is_refused() {
     let (_d, mut g) = pool(&[phone_admin(A, "ann"), recovery(D, "ann")], Policy::Secure);
     let act = add(&g, K(C, "ann", Role::Recovery, poolhouse_node::gov::keys::Level::Phone), &[A]);
     take(&mut g, act.clone());
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert!(!admins(&g).contains(&public(C)), "a recovery key is replaced by a recovery_replace, not listed a second time");
 }

@@ -367,12 +367,3 @@ def test_show_speed_prints_the_speed_runs_and_the_answering_table_leaves_them_ou
     assert second.split()[2:5] == ["-", "-", "-"], "not measured is a dash"
     table(runs(kept))
     assert "flash-speed" not in capsys.readouterr().out
-
-
-def test_the_selfcheck_drives_speed_through_the_whole_path():
-    from poolhouse.bench.selfcheck import selfcheck
-
-    said = selfcheck(["speed", "--serve", "tiny.gguf", "--serve-label", "tiny"])
-    assert said.startswith("speed: ") and "tiny-speed" in said and "read back" in said
-    said = selfcheck(["speed", "--on", "flash=http://127.0.0.1:8080", "--smoke"])
-    assert "flash-speed" in said

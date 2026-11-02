@@ -1,6 +1,9 @@
 """Repeated guard denials, refused leases and sandbox refusals add up to a score per session or
 caller: watch at 3, quarantine at 10, a person's release starts again. Real Agent loop with the
-scripted tool-calling server, real Broker, real sandbox runs, real sentinel store."""
+canned tool-calling server, real Broker, real sandbox runs, real sentinel store.
+
+These tests exercise the loop and the score, not a model: the replies are scripted worst-case turns (a model that
+obeys an injection and calls `wipe`), each carrying the canned marker; the lease tests use the canned binary."""
 
 from __future__ import annotations
 
@@ -22,8 +25,7 @@ from poolhouse.serve import LlamaServerBackend, ServerManager
 from poolhouse.serve.broker import Ask, Broker, BrokerError
 from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.process import kill_process_tree
-from poolhouse.testing.fakes import fake_llama_binary
-from poolhouse.testing.tool_server import ToolCallingServer, Turn
+from poolhouse.testing.canned import CannedServer, Turn, canned_binary
 from tests.model_approval import approved
 from tests.sandbox_kit import policy, seatbelt  # noqa: F401
 
@@ -50,7 +52,7 @@ def call(name: str, **arguments: str) -> tuple[str, str]:
 
 def denied_run(session: str, denials: int, *, page: str = INJECTION) -> list:
     """An agent that reads a hostile page and then keeps asking for ``wipe`` ``denials`` times."""
-    fake = ToolCallingServer([Turn(calls=(call("web_fetch", url="http://127.0.0.1/a"),)),
+    fake = CannedServer(turns=[Turn(calls=(call("web_fetch", url="http://127.0.0.1/a"),)),
                               Turn(calls=tuple(call("wipe", path=f"/x{n}") for n in range(denials))),
                               Turn(text=("done",))])
     try:
@@ -106,7 +108,7 @@ def test_a_person_releases_a_frozen_session_and_the_count_starts_again() -> None
 
 @pytest.fixture
 def broker(tmp_path, serve_leases):
-    manager = ServerManager(LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
+    manager = ServerManager(LlamaServerBackend(binary=canned_binary(tmp_path)),
                             state_file=tmp_path / "servers.json")
     made = Broker(manager, idle_s=3600.0, room=lambda: None, scan=lambda: [])
     yield made
@@ -195,7 +197,7 @@ class NoWipe:
 
 def test_flat_denials_by_a_rail_are_counted_from_the_guards_log() -> None:
     node = sentinel.default()
-    fake = ToolCallingServer([
+    fake = CannedServer(turns=[
         Turn(calls=tuple(call("wipe", path=f"/y{n}") for n in range(12))), Turn(text=("done",))])
     try:
         agent = Agent(Client(fake.base_url),

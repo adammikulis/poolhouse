@@ -160,3 +160,23 @@ def test_a_process_that_cannot_be_read_is_left_out_of_the_command_lines(monkeypa
 def test_a_process_that_cannot_be_read_is_not_among_those_running_within_a_folder(monkeypatch):
     process = _unreadable_among_readable(monkeypatch)
     assert process.running_within(Path("/opt/x")) == [8] and process.running_within(Path("/opt/y")) == []
+
+
+def test_unknown_process_attributes_remain_visible_to_conservative_idle_checks(monkeypatch):
+    import psutil
+
+    from poolhouse.serve import process
+
+    class Unreadable:
+        def __init__(self, error):
+            self.error = error
+        def as_dict(self, attrs):
+            raise self.error
+    attrs = ['pid', 'cmdline', 'username']
+    for error in (psutil.AccessDenied(123), SystemError('unavailable'), OSError('unavailable')):
+        current = Unreadable(error)
+        monkeypatch.setattr(psutil, 'process_iter', lambda current=current: [current])
+        assert process.readable(attrs) == []
+        assert process.readable(attrs, uncertain=True) == [(current, dict.fromkeys(attrs))]
+    monkeypatch.setattr(psutil, 'process_iter', lambda: [Unreadable(psutil.NoSuchProcess(123))])
+    assert process.readable(attrs, uncertain=True) == []

@@ -23,7 +23,7 @@ names and layout. `AGENTS.md` holds the working rules in full; the short version
 - Comments say what the code does, not why it was written that way.
 - Submit a pull request from a topic branch with the affected test command and result. Contributor
   completion means the proposed change is reviewable; maintainers own queue integration, development
-  publication, installed-runtime activation and hardware verification. Maintainer agents use a claimed
+  publication, installed-runtime update and hardware verification. Maintainer agents use a claimed
   sibling worktree and the landing rules in `AGENTS.md`.
 - The gates in `scripts/gates/` refuse a new violation; run `python scripts/budgets` before submitting your pull request. A number in
   `budgets.json` may fall, never rise.

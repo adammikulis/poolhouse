@@ -1,37 +1,35 @@
 """``poolhouse-pool plan``: which model each member serves, and how many slots, for N users.
 
-Profiles, memory records and members are invented; the command is driven through `join.main`
-against daemons on loopback, and ``--apply`` against the real daemon handler over a
-llama-server that is a script. Every name is invented.
+Profiles, memory records and members are invented; the command is driven through `pool_cli.main`
+against a daemon on loopback and the node's answer about the pool, and ``--apply`` against the
+real daemon handler over a llama-server that is a script. Every name is invented.
 """
 
 from __future__ import annotations
 
 import json
+import socket
 import threading
 from pathlib import Path
 
 import pytest
-from test_fleet_join import WORDS, FakeDaemon, _free_tcp, _free_udp, loopback_advertisers
 
-from poolhouse.fleet import join as joining
+from poolhouse import pool_cli
+from poolhouse.fleet import compute_cli, service_pool, tls
 from poolhouse.fleet.api import Daemon, make_handler
 from poolhouse.fleet.daemon import load_or_create_token
-from poolhouse.fleet.discovery import Advertiser, Beacon, load_pool_key
 from poolhouse.fleet.jobs import JobRunner
-from poolhouse.fleet.join import main
 from poolhouse.fleet.models import Models
 from poolhouse.fleet.plan import Room, fit_for, place, ranked, room_of, table
 from poolhouse.fleet.remote import Member, MemberError
+from poolhouse.fleet.roster import describe
 from poolhouse.fleet.serving import Hosting, NoRoom, ServeSettings, Serving
 from poolhouse.http import Options, Server
 from poolhouse.serve.fit import Fit
 from poolhouse.serve.profile import Profile
-from poolhouse.testing.fakes import fake_llama_binary
+from poolhouse.testing.canned import CANNED_MODEL_ID, canned_binary
 from tests.model_approval import approved
-from tests.pool_support import join as join_pool_by_passphrase
 
-__all__ = ["loopback_advertisers"]
 pytest_plugins = ["node_kit"]
 
 G = 1 << 30
@@ -85,12 +83,10 @@ class TestRanking:
         assert fit_for(BIG, fits).per_token == 2
         assert fit_for(BIG, fits, cache_type="q8_0").per_token == 1
 
-    def test_a_room_is_read_off_a_beacon_a_row_and_a_health_body(self):
-        beacon = Beacon(name="roomy", port=8770, host="10.0.0.2",
-                        device={"room_bytes": 96 * G,
-                                "serving": [{"port": 1, "models": [BIG]}]})
-        assert room_of(beacon) == Room("roomy", 96 * G, "http://10.0.0.2:8770", (BIG,))
-        assert room_of(joining.describe(beacon)).room == 96 * G
+    def test_a_room_is_read_off_a_roster_row_and_a_health_body(self):
+        row = describe("roomy", "http://10.0.0.2:8770", "machine",
+                       {"room_bytes": 96 * G, "serving": [{"port": 1, "models": [BIG]}]})
+        assert room_of(row) == Room("roomy", 96 * G, "http://10.0.0.2:8770", (BIG,))
         assert room_of({"name": "small", "room_bytes": 24 * G}) == Room("small", 24 * G)
 
 
@@ -205,20 +201,30 @@ class TestPreference:
 
 
 # -- the command --------------------------------------------------------------------
-@pytest.fixture
-def udp() -> int:
-    return _free_udp()
+def _free_tcp() -> int:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
 
 
 @pytest.fixture
-def key(tmp_path) -> Path:
-    path = tmp_path / "pool.key"
-    join_pool_by_passphrase(WORDS, group="home", path=path)
-    return path
+def pool_answers(tmp_path, monkeypatch):
+    """The node's answer about the pool: this device alone, its compute services none (the daemon it asks is on loopback)."""
+    identity = tls.identity(tmp_path / "tls", "here")
+    monkeypatch.setattr(tls, "local", lambda: identity)
+    rows: list[dict] = []
+
+    def node(_state, method, params=None):
+        if method == "service_members":
+            return {"pool": "a" * 32, "services": rows}
+        raise ValueError("not authorized")
+
+    monkeypatch.setattr(service_pool.node_health, "call", node)
+    return rows
 
 
 @pytest.fixture
-def daemons(loopback_advertisers):
+def daemons(pool_answers):
     started: list = []
     yield started
     for d in started:
@@ -227,37 +233,27 @@ def daemons(loopback_advertisers):
 
 @pytest.fixture
 def measured(monkeypatch):
-    monkeypatch.setattr(joining, "_measurements", lambda: (list(PROFILES), list(FITS)))
+    monkeypatch.setattr(compute_cli, "_measurements", lambda: (list(PROFILES), list(FITS)))
 
 
-def _device(room: int) -> dict:
-    return {"gpu": "Pellard P40", "room_bytes": room, "serving": [], "models": []}
+def _plan(d, *words: str) -> int:
+    return pool_cli.main(["plan", "--root", str(d.root), "--port", str(d.port), "--timeout", "1", *words])
 
 
 class TestCommand:
-    def test_it_prints_the_split_as_json(self, key, udp, daemons, measured, monkeypatch,
-                                         capsys):
-        raw = load_pool_key(key)
-        roomy, small = _free_tcp(), _free_tcp()
-        daemons.append(FakeDaemon(roomy, raw, udp, name="roomy", device=_device(96 * G)))
-        daemons.append(FakeDaemon(small, raw, udp, name="small", device=_device(24 * G)))
-        monkeypatch.setenv("POOLHOUSE_DISCOVERY_PORT", str(udp))
-        code = main(["--pool-key", str(key), "--port", str(roomy), "plan", "--users", "5",
-                     "--context", "16384", "--json", "--timeout", "1"])
+    def test_it_prints_the_split_as_json(self, tmp_path, llama_binary, daemons, measured, capsys):
+        d = ServingDaemon(tmp_path, llama_binary, name="roomy", room=96 * G)
+        daemons.append(d)
+        code = _plan(d, "--users", "5", "--context", "16384", "--json")
         got = json.loads(capsys.readouterr().out)
-        assert code == 0
-        assert [(r["member"], r["model"], r["slots"]) for r in got["rows"]] == [
-            ("roomy", BIG, 3), ("small", MID, 2)]
-        assert got["unplaced"] == 0 and got["applied"] == []
+        assert code == 1, "two of the five users have no slot, which is a nonzero status"
+        assert [(r["member"], r["model"], r["slots"]) for r in got["rows"]] == [("roomy", BIG, 3)]
+        assert got["unplaced"] == 2 and got["applied"] == []
 
-    def test_it_prints_a_table_and_says_who_is_without_a_slot(
-            self, key, udp, daemons, measured, monkeypatch, capsys):
-        raw = load_pool_key(key)
-        small = _free_tcp()
-        daemons.append(FakeDaemon(small, raw, udp, name="small", device=_device(24 * G)))
-        monkeypatch.setenv("POOLHOUSE_DISCOVERY_PORT", str(udp))
-        code = main(["--pool-key", str(key), "--port", str(small), "plan", "--users", "4",
-                     "--timeout", "1"])
+    def test_it_prints_a_table_and_says_who_is_without_a_slot(self, tmp_path, llama_binary, daemons, measured, capsys):
+        d = ServingDaemon(tmp_path, llama_binary, name="small", room=24 * G)
+        daemons.append(d)
+        code = _plan(d, "--users", "4", "--context", "16384")
         out = capsys.readouterr().out
         assert code == 1
         assert "MEMBER" in out and "small" in out and MID in out
@@ -265,34 +261,33 @@ class TestCommand:
         assert "1 user(s) without a slot" in out
         assert f"small: {BIG}: room 24.0G < 41.0G loaded" in out
 
-    def test_the_preference_reaches_the_planner_and_the_table(
-            self, key, udp, daemons, measured, monkeypatch, capsys):
-        raw = load_pool_key(key)
-        port = _free_tcp()
-        daemons.append(FakeDaemon(port, raw, udp, name="midsize", device=_device(57 * G)))
-        monkeypatch.setenv("POOLHOUSE_DISCOVERY_PORT", str(udp))
-        argv = ["--pool-key", str(key), "--port", str(port), "plan", "--users", "3",
-                "--context", "16384", "--timeout", "1"]
-        assert main([*argv, "--json"]) == 1
+    def test_the_preference_reaches_the_planner_and_the_table(self, tmp_path, llama_binary, daemons, measured, capsys):
+        d = ServingDaemon(tmp_path, llama_binary, name="midsize", room=57 * G)
+        daemons.append(d)
+        argv = ["--users", "3", "--context", "16384"]
+        assert _plan(d, *argv, "--json") == 1
         good = json.loads(capsys.readouterr().out)
-        assert main([*argv, "--prefer", "slots", "--json"]) == 0
+        assert _plan(d, *argv, "--prefer", "slots", "--json") == 0
         many = json.loads(capsys.readouterr().out)
         assert good["prefer"] == "quality"
-        assert [(r["member"], r["model"], r["slots"]) for r in good["rows"]] == [
-            ("midsize", BIG, 1)]
+        assert [(r["member"], r["model"], r["slots"]) for r in good["rows"]] == [("midsize", BIG, 1)]
         assert good["unplaced"] == 2
         assert many["prefer"] == "slots"
-        assert [(r["member"], r["model"], r["slots"]) for r in many["rows"]] == [
-            ("midsize", MID, 3)]
+        assert [(r["member"], r["model"], r["slots"]) for r in many["rows"]] == [("midsize", MID, 3)]
         assert many["unplaced"] == 0
-        main([*argv, "--prefer", "slots"])
+        _plan(d, *argv, "--prefer", "slots")
         out = capsys.readouterr().out
         assert "--prefer slots: the model that slots the most users on each member" in out
         assert "3 of 3 user(s) placed at 16384 tokens each" in out
 
-    def test_in_no_pool_it_says_join(self, tmp_path, capsys):
-        assert main(["--pool-key", str(tmp_path / "none.key"), "plan", "--users", "1"]) == 1
-        assert "poolhouse-pool join" in capsys.readouterr().err
+    def test_with_no_node_answering_it_says_how_to_join(self, tmp_path, monkeypatch, capsys):
+        def dead(*_args):
+            raise OSError("node disconnected")
+
+        monkeypatch.setattr(service_pool.node_health, "call", dead)
+        assert pool_cli.main(["plan", "--root", str(tmp_path), "--users", "1", "--context", "16384"]) == 1
+        said = capsys.readouterr().err
+        assert "the node must answer" in said and "poolhouse-pool join --host" in said
 
 
 # -- POST /serve, and --apply -------------------------------------------------------------
@@ -301,24 +296,23 @@ def llama_binary(tmp_path, monkeypatch, workspace_node):
     from poolhouse.serve import backend as backend_module
 
     monkeypatch.setattr(backend_module, "log_dir", lambda: tmp_path / "logs")
-    return fake_llama_binary(tmp_path)
+    return canned_binary(tmp_path)
 
 
 class ServingDaemon:
     """The real daemon handler on loopback with a model store of one file, a `Hosting`
-    over a llama-server that is a script, and a beacon saying how much room it has."""
+    over a llama-server that is a script, and a health report saying how much room it has."""
 
-    def __init__(self, tmp_path: Path, binary: Path, *, name: str, room: int,
-                 key: bytes | None = None, udp: int = 0, fits=None) -> None:
+    def __init__(self, tmp_path: Path, binary: Path, *, name: str, room: int, fits=None) -> None:
         from poolhouse.serve import LlamaServerBackend, ServerManager
 
-        root = tmp_path / name
+        root = self.root = tmp_path / name
         (root / "files").mkdir(parents=True)
         (root / "models").mkdir()
         self.model = root / "models" / MID
         self.model.write_bytes(b"GGUF" + b"\x00" * (1 << 20))
         approved(self.model)
-        self.token = load_or_create_token(root, key)
+        self.token = load_or_create_token(root)
         self.runner = JobRunner(root)
         self.serving = Serving(root / "serving.json")
         manager = ServerManager(LlamaServerBackend(binary=binary),
@@ -334,15 +328,8 @@ class ServingDaemon:
                          models=self.models, hosting=self.hosting)))
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
         self.client = Member(f"http://127.0.0.1:{self.port}", self.token)
-        self.advertiser = None
-        if key is not None:
-            self.advertiser = Advertiser(
-                Beacon(name=name, port=self.port, device=_device(room)), key, port=udp,
-                interval_s=0.2).start()
 
     def close(self) -> None:
-        if self.advertiser is not None:
-            self.advertiser.stop()
         for port in list(self.hosting.leases):
             self.hosting.stop(port)
         self.runner.shutdown()
@@ -357,11 +344,11 @@ class TestServeRoute:
         daemons.append(d)
         served = d.client._json("POST", "/serve", {"model": MID, "context": 16384,
                                                    "parallel": 2})
-        assert served["models"] == [MID] and served["slots"] == 2
+        assert served["models"] == [CANNED_MODEL_ID, MID] and served["slots"] == 2
         assert [s.port for s in d.serving.live(force=True)] == [served["port"]]
         argv = json.loads((tmp_path / "argv.json").read_text())
         assert argv[argv.index("-np") + 1] == "2"
-        assert argv[argv.index("-c") + 1] == "16384"
+        assert argv[argv.index("-c") + 1] == "32768", "16384 a slot, two slots: the server is asked for the total"
         health = d.client.health()
         assert health["serving"][0]["slots"] == 2
 
@@ -372,7 +359,7 @@ class TestServeRoute:
         first = d.client._json("POST", "/serve", {"model": MID, "context": 16384,
                                                   "parallel": 2})
         status, body, _ = d.client._request(
-            "POST", "/serve", data=json.dumps({"model": MID, "parallel": 1}).encode(),
+            "POST", "/serve", data=json.dumps({"model": MID, "context": 16384, "parallel": 1}).encode(),
             options=Options(headers={"Content-Type": "application/json"}))
         assert status == 200 and json.loads(body)["port"] == first["port"]
         assert len(d.hosting.leases) == 1
@@ -382,7 +369,7 @@ class TestServeRoute:
         daemons.append(d)
         d.model.write_bytes(d.model.read_bytes()[:-1] + b"\x01")
         with pytest.raises(MemberError, match="does not match its pin"):
-            d.client._json("POST", "/serve", {"model": MID, "parallel": 1})
+            d.client._json("POST", "/serve", {"model": MID, "context": 16384, "parallel": 1})
         assert d.hosting.leases == {}
 
     def test_a_model_it_does_not_hold_is_404(self, tmp_path, llama_binary, daemons):
@@ -410,56 +397,40 @@ class TestServeRoute:
     def test_hosting_refuses_before_leasing(self, tmp_path):
         hosting = Hosting(tmp_path, Serving(tmp_path / "serving.json"),
                           fits=lambda: list(FITS))
-        with pytest.raises(NoRoom, match="24.0G"):
+        with pytest.raises(NoRoom, match=r"24\.0G"):
             hosting.start(tmp_path / MID, ServeSettings(name=MID, context=16384, parallel=8, room=24 * G))
 
 
 class TestApply:
-    def test_apply_serves_the_plan_through_each_daemon(
-            self, tmp_path, llama_binary, key, udp, daemons, measured, monkeypatch,
-            capsys):
-        raw = load_pool_key(key)
-        d = ServingDaemon(tmp_path, llama_binary, name="small", room=24 * G, key=raw,
-                          udp=udp)
+    def test_apply_serves_the_plan_through_each_daemon(self, tmp_path, llama_binary, daemons, measured, capsys):
+        d = ServingDaemon(tmp_path, llama_binary, name="small", room=24 * G)
         daemons.append(d)
-        monkeypatch.setenv("POOLHOUSE_DISCOVERY_PORT", str(udp))
-        code = main(["--pool-key", str(key), "--port", str(d.port), "plan", "--users",
-                     "2", "--context", "16384", "--apply", "--timeout", "1"])
+        code = _plan(d, "--users", "2", "--context", "16384", "--apply")
         out = capsys.readouterr().out
         assert code == 0, out
         assert f"small: {MID}: 2 slot(s) on port" in out
         live = d.serving.live(force=True)
-        assert len(live) == 1 and live[0].models == [MID] and live[0].slots == 2
-        assert f"small            {MID}:{live[0].port} (2 slot(s))" in out
+        assert len(live) == 1 and live[0].models == [CANNED_MODEL_ID, MID] and live[0].slots == 2
+        port = live[0].port
+        assert f"small            {CANNED_MODEL_ID}:{port} (2 slot(s)), {MID}:{port} (2 slot(s))" in out
 
-    def test_apply_as_json_carries_each_answer(
-            self, tmp_path, llama_binary, key, udp, daemons, measured, monkeypatch,
-            capsys):
-        raw = load_pool_key(key)
-        d = ServingDaemon(tmp_path, llama_binary, name="small", room=24 * G, key=raw,
-                          udp=udp)
+    def test_apply_as_json_carries_each_answer(self, tmp_path, llama_binary, daemons, measured, capsys):
+        d = ServingDaemon(tmp_path, llama_binary, name="small", room=24 * G)
         daemons.append(d)
-        monkeypatch.setenv("POOLHOUSE_DISCOVERY_PORT", str(udp))
-        main(["--pool-key", str(key), "--port", str(d.port), "plan", "--users", "2",
-              "--apply", "--json", "--timeout", "1"])
+        _plan(d, "--users", "2", "--context", "16384", "--apply", "--json")
         got = json.loads(capsys.readouterr().out)
         assert got["applied"][0]["status"] == 201
         assert got["applied"][0]["served"]["slots"] == 2
-        assert got["applied"][0]["serving"][0]["models"] == [MID]
+        assert got["applied"][0]["serving"][0]["models"] == [CANNED_MODEL_ID, MID]
 
-    def test_a_member_that_refuses_is_reported_not_dropped(
-            self, tmp_path, llama_binary, key, udp, daemons, monkeypatch, capsys):
-        raw = load_pool_key(key)
-        d = ServingDaemon(tmp_path, llama_binary, name="small", room=24 * G, key=raw,
-                          udp=udp, fits=lambda: [])
+    def test_a_member_that_refuses_is_reported_not_dropped(self, tmp_path, llama_binary, daemons, monkeypatch, capsys):
+        d = ServingDaemon(tmp_path, llama_binary, name="small", room=24 * G, fits=lambda: [])
         daemons.append(d)
         # The planner believes a record the daemon does not hold; the daemon holds BIG nowhere.
-        monkeypatch.setattr(joining, "_measurements", lambda: (
+        monkeypatch.setattr(compute_cli, "_measurements", lambda: (
             [Profile(model=BIG, questions=100, right=0.9)],
             [Fit(model=BIG, weights_gpu=G, compute=0, per_token=1024)]))
-        monkeypatch.setenv("POOLHOUSE_DISCOVERY_PORT", str(udp))
-        code = main(["--pool-key", str(key), "--port", str(d.port), "plan", "--users",
-                     "1", "--apply", "--json", "--timeout", "1"])
+        code = _plan(d, "--users", "1", "--context", "16384", "--apply", "--json")
         got = json.loads(capsys.readouterr().out)
         assert code == 0
         assert got["applied"][0]["status"] == 404

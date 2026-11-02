@@ -52,7 +52,7 @@ def local(now: float) -> tuple[list[str], list[str]]:
     problems = []
     idle = not st["running"] and not any(r["state"] == "running" for r in runs)
     for run in runs:
-        est, owner = run.get("estimate_s"), run.get("owner") or "person"
+        est, owner = run.get("estimate_s"), run.get("owner") or "unknown"
         running = run["state"] == "running"
         age = now - float(run.get("started" if running else "enqueued") or now)
         lines.append(f"  {run['state']:<8} {testslots.policy.run_class(run):<11} owner {owner} est {'?' if est is None else f'{est:.0f}s'} "

@@ -30,7 +30,7 @@ fn join() -> (Dev, Dev, String) {
 }
 
 fn reviews(d: &Dev) -> Vec<Value> {
-    d.ok("land_accepts", "demo", &d.token, json!({"branch": "feat", "sha": TIP, "worktree": ""}))["reviews"].as_array().unwrap().clone()
+    d.ok("land_accepts", "demo", &d.token, json!({"sha": TIP}))["reviews"].as_array().unwrap().clone()
 }
 
 fn trust(a: &Dev, b: &Dev, on: bool) -> Value {
@@ -41,7 +41,7 @@ fn trust(a: &Dev, b: &Dev, on: bool) -> Value {
 fn a_review_written_on_another_device_counts_for_nothing_here_trusted_or_not() {
     let (a, b, judge) = join();
     b.ok("land_review", "demo", &judge, json!({"branch": "feat", "sha": TIP, "verdict": "accept"}));
-    assert_eq!(b.ok("land_accepts", "demo", &b.token, json!({"branch": "feat", "sha": TIP, "worktree": ""}))["reviews"].as_array().unwrap().len(), 1, "it counts where it was written");
+    assert_eq!(b.ok("land_accepts", "demo", &b.token, json!({"sha": TIP}))["reviews"].as_array().unwrap().len(), 1, "it counts where it was written");
     both_ways(&a, &b);
     assert!(reviews(&a).is_empty(), "foreign entries are not reviews here");
     assert_eq!(trust(&a, &b, true)["ok"], true);

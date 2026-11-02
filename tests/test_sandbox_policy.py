@@ -193,10 +193,11 @@ def test_bubblewrap_arguments_unshare_everything_and_bind_the_allow_list(tree):
     assert str(tree / "c") not in args
 
 
-def test_bubblewrap_keeps_the_network_only_for_loopback_policies():
-    assert "--share-net" in arguments(Policy("p", net=Net.loopback()).validated(), "/bin/sh")
-    assert "--share-net" in arguments(Policy("p", net=Net.only(80)).validated(), "/bin/sh")
+def test_bubblewrap_never_shares_the_hosts_network_and_asks_for_ports_by_name(tmp_path):
     assert "--share-net" not in arguments(Policy("p").validated(), "/bin/sh")
+    assert "--share-net" not in arguments(Policy("p", net=Net.only(80)).validated(), "/bin/sh", relay=str(tmp_path))
+    with pytest.raises(PolicyError, match=r"Net\.only"):
+        arguments(Policy("p", net=Net.loopback()).validated(), "/bin/sh")
 
 
 def test_without_a_backend_the_command_is_not_run_and_the_refusal_is_an_event(tmp_path):
@@ -264,3 +265,11 @@ def test_native_probe_skips_namespace_denial_and_fails_other_errors(monkeypatch,
     with pytest.raises((AssertionError, pytest.skip.Exception)) as observed:
         require_native_sandbox()
     assert isinstance(observed.value, expected)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="the process limit is a POSIX one")
+def test_every_shipped_policy_bounds_the_processes_it_may_start(tmp_path):
+    shipped = [policies.bash(tmp_path, tmp_path), policies.mcp_server(sys.executable, tmp_path, tmp_path),
+               policies.model_server(sys.executable, tmp_path)]
+    for each in shipped:
+        assert isinstance(each.limits.processes, int) and each.limits.processes > 0, each.name

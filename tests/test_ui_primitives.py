@@ -1,4 +1,4 @@
-"""ml-ui: the verdict definition, the tokens' contrast, the served assets, and every element
+"""poolhouse-ui: the verdict definition, the tokens' contrast, the served assets, and every element
 driven in headless Chromium through the gallery page the daemon serves."""
 
 from __future__ import annotations
@@ -27,10 +27,22 @@ def test_every_verdict_has_a_word():
 
 def test_the_folder_holds_what_the_page_loads():
     names = set(assets())
-    assert {"ml-ui.css", "ml-ui.js", "gallery.html", "verdict.json"} <= names
-    html = (assets_dir() / "ml-ui.js").read_text(encoding="utf-8")
+    assert {"poolhouse-ui.css", "poolhouse-ui.js", "gallery.html", "verdict.json"} <= names
+    html = (assets_dir() / "poolhouse-ui.js").read_text(encoding="utf-8")
     for module in re.findall(r'from "\./([\w.-]+)"|import "\./([\w.-]+)"', html):
         assert (module[0] or module[1]) in names
+
+
+def test_primitives_use_one_poolhouse_namespace():
+    definitions = []
+    for path in assets_dir().glob("*.js"):
+        definitions.extend(re.findall(r'(?m)^(?:customElements\.)?define\("([^"\n]+)"', path.read_text(encoding="utf-8")))
+    assert len(definitions) >= 15
+    assert all(name.startswith("poolhouse-") for name in definitions)
+    assert len(definitions) == len(set(definitions))
+    css = (assets_dir() / "poolhouse-ui.css").read_text(encoding="utf-8")
+    tokens = re.findall(r"(--[\w-]+)\s*:", css)
+    assert tokens and all(name.startswith("--poolhouse-ui-") for name in tokens)
 
 
 # -- the tokens ----------------------------------------------------------------------------
@@ -52,12 +64,12 @@ def blend(fill, over, share):
 
 
 def tokens():
-    css = (assets_dir() / "ml-ui.css").read_text(encoding="utf-8")
-    dark = dict(re.findall(r"--ml-([\w-]+):\s*(#[0-9a-f]{6})", css.split("@media")[0]))
+    css = (assets_dir() / "poolhouse-ui.css").read_text(encoding="utf-8")
+    dark = dict(re.findall(r"--poolhouse-ui-([\w-]+):\s*(#[0-9a-f]{6})", css.split("@media")[0]))
     media = css.split("@media (prefers-color-scheme: light)")[1].split('}\n}')[0]
-    light = dict(re.findall(r"--ml-([\w-]+):\s*(#[0-9a-f]{6})", media))
+    light = dict(re.findall(r"--poolhouse-ui-([\w-]+):\s*(#[0-9a-f]{6})", media))
     forced = css.split(':root[data-theme="light"]')[1].split("}")[0]
-    assert dict(re.findall(r"--ml-([\w-]+):\s*(#[0-9a-f]{6})", forced)) == light
+    assert dict(re.findall(r"--poolhouse-ui-([\w-]+):\s*(#[0-9a-f]{6})", forced)) == light
     return {"dark": dark, "light": {**dark, **light}}
 
 
@@ -122,21 +134,21 @@ def open_page(browser):
 
 
 def test_the_daemon_serves_the_folder_flat_and_nothing_else(daemon):
-    status, _, headers = daemon.call("/ui/ml-ui/ml-ui.css")
+    status, _, headers = daemon.call("/ui/poolhouse-ui/poolhouse-ui.css")
     assert status == 200 and "text/css" in headers["Content-Type"]
     assert headers["X-Content-Type-Options"] == "nosniff"
-    status, _, headers = daemon.call("/ui/ml-ui/ml-ui.js")
+    status, _, headers = daemon.call("/ui/poolhouse-ui/poolhouse-ui.js")
     assert status == 200 and "javascript" in headers["Content-Type"]
-    assert daemon.call("/ui/ml-ui/../daemon.py")[0] == 404
-    assert daemon.call("/ui/ml-ui/nothing.js")[0] == 404
+    assert daemon.call("/ui/poolhouse-ui/../daemon.py")[0] == 404
+    assert daemon.call("/ui/poolhouse-ui/nothing.js")[0] == 404
     assert daemon.call("/ui/gallery")[0] == 302
 
 
 @pytest.fixture
 def gallery(daemon, open_page):
     def _open(theme="dark"):
-        page, errors = open_page(daemon, path=f"/ui/ml-ui/gallery.html?theme={theme}")
-        page.wait_for_selector("ml-meter")
+        page, errors = open_page(daemon, path=f"/ui/poolhouse-ui/gallery.html?theme={theme}")
+        page.wait_for_selector("poolhouse-meter")
         page.wait_for_timeout(300)
         return page, errors
     return _open
@@ -148,8 +160,8 @@ class TestGallery:
         page, errors = gallery()
         assert errors == []
         assert page.evaluate("window.__pwned") is None
-        for tag in ("ml-meter", "ml-chip", "ml-progress", "ml-sparkline", "ml-table",
-                    "ml-stepper", "ml-select", "ml-slider", "ml-toggle", "ml-path"):
+        for tag in ("poolhouse-meter", "poolhouse-chip", "poolhouse-progress", "poolhouse-sparkline", "poolhouse-table",
+                    "poolhouse-stepper", "poolhouse-select", "poolhouse-slider", "poolhouse-toggle", "poolhouse-path"):
             assert page.locator(tag).count() > 0, tag
 
     def test_hostile_text_is_shown_as_text_and_never_becomes_markup(self, gallery):
@@ -159,7 +171,7 @@ class TestGallery:
             (n) => [n, ...(n.shadowRoot ? n.shadowRoot.querySelectorAll('*') : [])]);
           return {
             images: hostile.filter((n) => n.tagName === 'IMG').length,
-            shown: [...document.querySelectorAll('ml-meter')].some((m) =>
+            shown: [...document.querySelectorAll('poolhouse-meter')].some((m) =>
               m.shadowRoot.querySelector('.label').textContent.includes('<img src=x')),
           };
         }""")
@@ -168,11 +180,11 @@ class TestGallery:
     def test_a_meter_names_its_verdict_in_words_and_in_the_aria_value(self, gallery):
         page, _ = gallery()
         red = page.evaluate("""() => {
-          const m = [...document.querySelectorAll('ml-meter')].find(
+          const m = [...document.querySelectorAll('poolhouse-meter')].find(
             (x) => x.getAttribute('label') === 'Video memory' && x.capacity && x.segments[0].value === 20e9
               && x.segments[1].value === 9e9);
           const track = m.shadowRoot.querySelector('[role=meter]');
-          const chip = m.shadowRoot.querySelector('ml-chip').shadowRoot;
+          const chip = m.shadowRoot.querySelector('poolhouse-chip').shadowRoot;
           return { text: track.getAttribute('aria-valuetext'), now: track.getAttribute('aria-valuenow'),
                    word: chip.textContent, icon: !!chip.querySelector('svg') };
         }""")
@@ -213,7 +225,7 @@ class TestGallery:
         assert bar.verdict == verdict            # the estimator itself, before the element
         page, errors = gallery()
         seen = page.evaluate("""(bar) => {
-          const m = document.createElement('ml-meter');
+          const m = document.createElement('poolhouse-meter');
           m.setAttribute('label', 'Memory');
           m.setAttribute('format', 'bytes');
           m.segments = bar.segments;             // no `verdict`: the element works it out
@@ -222,7 +234,7 @@ class TestGallery:
           return new Promise((r) => setTimeout(() => {
             const root = m.shadowRoot, track = root.querySelector('[role=meter]');
             r({ cls: root.firstElementChild.className,
-                chip: root.querySelector('ml-chip').getAttribute('verdict'),
+                chip: root.querySelector('poolhouse-chip').getAttribute('verdict'),
                 widths: [...track.querySelectorAll('.seg')].map((s) => s.style.width),
                 max: track.getAttribute('aria-valuemax'), now: track.getAttribute('aria-valuenow'),
                 legend: [...root.querySelectorAll('.legend li')].length });
@@ -243,7 +255,7 @@ class TestGallery:
         page, _ = gallery()
         text = page.evaluate("""() => {
           const other = document.implementation.createHTMLDocument('');
-          const m = other.createElement('ml-meter');
+          const m = other.createElement('poolhouse-meter');
           m.segments = [{ label: 'early', value: 3 }];
           m.capacity = 10;
           document.body.append(document.adoptNode(m));
@@ -255,9 +267,9 @@ class TestGallery:
     def test_progress_cancel_fires_an_event_and_indeterminate_has_no_value(self, gallery):
         page, _ = gallery()
         got = page.evaluate("""() => {
-          const [bar, loose] = [...document.querySelectorAll('ml-progress')];
+          const [bar, loose] = [...document.querySelectorAll('poolhouse-progress')];
           let n = 0;
-          bar.addEventListener('ml-cancel', () => { n += 1; });
+          bar.addEventListener('poolhouse-cancel', () => { n += 1; });
           bar.shadowRoot.querySelector('button').click();
           return [n, bar.shadowRoot.querySelector('[role=progressbar]').getAttribute('aria-valuenow'),
                   loose.shadowRoot.querySelector('[role=progressbar]').hasAttribute('aria-valuenow')];
@@ -274,7 +286,7 @@ class TestGallery:
           await wait();
           const alert = bad.shadowRoot.querySelector('[role=alert]');
           const seen = [];
-          good.addEventListener('ml-step', (e) => seen.push(e.detail.to));
+          good.addEventListener('poolhouse-step', (e) => seen.push(e.detail.to));
           good.shadowRoot.querySelector('.primary').click();
           await wait();
           return { refused: !alert.hidden && alert.textContent, stayed: bad.current,
@@ -316,13 +328,13 @@ class TestGallery:
     def test_a_table_sorts_by_a_column_and_reports_the_chosen_row(self, gallery):
         page, _ = gallery()
         got = page.evaluate("""async () => {
-          const t = document.querySelector('ml-table[selectable]');
+          const t = document.querySelector('poolhouse-table[selectable]');
           const names = () => [...t.shadowRoot.querySelectorAll('tbody tr .name')].map((n) => n.textContent);
           t.shadowRoot.querySelectorAll('th button')[2].click();
           await new Promise((r) => setTimeout(r, 30));
           const first = names()[0];
           let picked = null;
-          t.addEventListener('ml-row', (e) => { picked = e.detail.id; });
+          t.addEventListener('poolhouse-row', (e) => { picked = e.detail.id; });
           t.shadowRoot.querySelector('tbody tr').click();
           return [first, picked, t.sortKey, t.sortDir];
         }""")
@@ -333,7 +345,7 @@ class TestGallery:
     def test_a_slider_over_stops_reports_the_stop_not_the_index(self, gallery):
         page, _ = gallery()
         got = page.evaluate("""async () => {
-          const s = document.querySelector('ml-slider');
+          const s = document.querySelector('poolhouse-slider');
           const seen = [];
           s.addEventListener('change', (e) => seen.push(e.detail.value));
           const input = s.shadowRoot.querySelector('input');
@@ -348,7 +360,7 @@ class TestGallery:
     def test_a_toggle_flips_on_a_click_and_says_which_it_is(self, gallery):
         page, _ = gallery()
         got = page.evaluate("""async () => {
-          const t = document.querySelector('ml-toggle');
+          const t = document.querySelector('poolhouse-toggle');
           const b = t.shadowRoot.querySelector('[role=switch]');
           const before = b.getAttribute('aria-checked');
           b.click();
@@ -375,5 +387,5 @@ class TestGallery:
         page, _ = gallery()
         page.emulate_media(reduced_motion="reduce")
         name = page.evaluate("""() => getComputedStyle(
-          document.querySelectorAll('ml-progress')[1].shadowRoot.querySelector('.fill')).animationName""")
+          document.querySelectorAll('poolhouse-progress')[1].shadowRoot.querySelector('.fill')).animationName""")
         assert name == "none"

@@ -43,7 +43,7 @@ def wired_page(joined, tmp_path, monkeypatch, open_page):  # noqa: F811
 
 def test_the_slider_starts_at_the_default_share_and_shows_what_is_left(wired_page):
     page, errors, _ = wired_page
-    assert page.locator("#settings-wired ml-slider").get_attribute("class") == "wired-slider"
+    assert page.locator("#settings-wired poolhouse-slider").get_attribute("class") == "wired-slider"
     text = page.locator("#settings-wired").inner_text()
     assert "96.0 GB" in text and "Keep this after restart" in text
     assert "before anyone logs in" in text
@@ -52,14 +52,14 @@ def test_the_slider_starts_at_the_default_share_and_shows_what_is_left(wired_pag
 
 def test_dragging_to_the_top_warns_that_the_rest_of_the_machine_may_swap(wired_page):
     page, _, _ = wired_page
-    page.evaluate("""() => { const s = document.querySelector('#settings-wired ml-slider');
+    page.evaluate("""() => { const s = document.querySelector('#settings-wired poolhouse-slider');
         s.value = s.max; s.dispatchEvent(new CustomEvent('input', {detail: {value: s.max}})); }""")
     page.wait_for_selector("#settings-wired .err:has-text('may swap')")
 
 
 def test_apply_with_keep_sends_one_prompt_and_shows_the_new_state(wired_page):
     page, errors, ran = wired_page
-    page.evaluate("""() => { const s = document.querySelector('#settings-wired ml-slider');
+    page.evaluate("""() => { const s = document.querySelector('#settings-wired poolhouse-slider');
         s.value = 110592; s.dispatchEvent(new CustomEvent('input', {detail: {value: 110592}})); }""")
     page.check("#settings-wired .wired-keep")
     page.click("#settings-wired .wired-apply")

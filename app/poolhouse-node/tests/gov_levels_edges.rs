@@ -1,11 +1,10 @@
-//! The edges of levels and floors that a non-author review broke: a removal that leaves a class out of reach, a recovery key that claims a
-//! level its listers do not hold, two acts that cannot both hold ranked by level, and a joiner that must honor a delegate as the others do.
+//! The edges of claims and floors that a non-author review broke: a removal that leaves a class out of reach, a recovery key that states a
+//! claim, and a joiner that must honor a delegate as the others do.
 
 mod kit;
 
 use kit::gov::*;
 use poolhouse_node::gov::act::Act;
-use poolhouse_node::gov::charter::{Charter, Floors};
 use poolhouse_node::gov::keys::{Level, Role};
 use poolhouse_node::gov::pool::{ActStatus, GovPool, Ingest};
 use poolhouse_node::membership::Policy;
@@ -13,7 +12,6 @@ use serde_json::json;
 
 const A: u8 = 1;
 const B: u8 = 2;
-const C: u8 = 3;
 const D: u8 = 4;
 
 fn add(g: &GovPool, k: K, seeds: &[u8]) -> Act {
@@ -21,75 +19,48 @@ fn add(g: &GovPool, k: K, seeds: &[u8]) -> Act {
     make(g, "admin_add", json!({"entry": entry_after(k, since, g)}), seeds)
 }
 
-fn all(level: Level) -> Floors {
-    Floors { routine: level, sensitive: level, governance: level }
-}
-
-fn floors(g: &GovPool) -> Floors {
-    g.state().chain.latest().charter.floors
-}
-
-/// Two phone people and a computer key under a phone floor for sensitive acts, which need both phone people.
-fn two_phones_needed() -> Charter {
-    let keys = [phone_admin(A, "p1"), phone_admin(B, "p2"), computer_admin(C, "c")];
-    let mut c = charter_floored(&keys, Policy::Secure, Floors { routine: Level::Computer, sensitive: Level::Phone, governance: Level::Computer });
-    c.thresholds.sensitive = 2;
-    let anchor = c.anchor();
-    c.admins = keys.iter().map(|k| entry(*k, 1, &anchor)).collect();
-    c.admins.sort_by(|a, b| a.key.cmp(&b.key));
-    c
-}
-
 #[test]
 fn a_removal_that_leaves_a_class_out_of_reach_is_void() {
-    let (_d, mut g) = pool_of(&two_phones_needed());
-    let removal = make(&g, "admin_remove", json!({"key": public(B), "cut": []}), &[A, C]);
+    let (_d, mut g) = pool_with_two_needed();
+    let removal = make(&g, "admin_remove", json!({"key": public(B), "cut": []}), &[A]);
     assert_eq!(take(&mut g, removal.clone()), Ingest::Accepted);
-    advance(&mut g, 25 * HOUR);
-    assert!(admins(&g).contains(&public(B)), "the second phone key stays listed");
+    advance(&mut g, 8 * DAY);
+    assert!(admins(&g).contains(&public(B)), "the second key stays listed");
     assert!(matches!(g.status(&removal.id()), ActStatus::Void(w) if w.contains("too few admins")), "{:?}", g.status(&removal.id()));
     assert!(g.state().chain.latest().charter.reachable(), "every class stays within reach of the keys listed");
     let laptop = ident(10);
     put_admit(&mut g, &laptop, &[A, B]);
-    assert!(is_member(&g, &laptop), "both phone people still admit a device");
+    assert!(is_member(&g, &laptop), "both people still admit a device");
+}
+
+/// Two people, each with a key that counts, and sensitive acts that need both.
+fn pool_with_two_needed() -> (tempfile::TempDir, GovPool) {
+    let keys = [phone_admin(A, "p1"), computer_admin(B, "p2")];
+    let mut c = charter(&keys, Policy::Secure, poolhouse_node::gov::charter::Unit::Person);
+    c.thresholds.sensitive = 2;
+    let anchor = c.anchor();
+    c.admins = keys.iter().map(|k| entry(*k, 1, &anchor)).collect();
+    c.admins.sort_by(|a, b| a.key.cmp(&b.key));
+    pool_of(&c)
 }
 
 #[test]
-fn a_recovery_key_is_listed_at_no_level_above_the_keys_that_listed_it() {
+fn a_recovery_key_that_states_a_claim_is_no_recovery_key() {
     let (_d, mut g) = pool(&[computer_admin(A, "ann")], Policy::Secure);
-    let claim = add(&g, recovery(D, "ann"), &[A]);
-    assert_eq!(take(&mut g, claim.clone()), Ingest::Accepted);
-    assert!(matches!(g.status(&claim.id()), ActStatus::Void(w) if w.contains("no level above")), "{:?}", g.status(&claim.id()));
+    let since = g.state().chain.latest().n + 1;
+    let mut entry = entry_after(recovery(D, "ann"), since, &g);
+    entry.claim = Some(claim_at(Level::Computer));
+    entry.acceptance = poolhouse_node::gov::signer::RigSigner::sign_as(D, &entry.acceptance_message(&g.id, &g.context().1));
+    let act = make(&g, "admin_add", json!({"entry": entry}), &[A]);
+    let kept = take(&mut g, act.clone());
+    assert!(matches!(kept, Ingest::Refused(ref why) if why.contains("no claim")) || matches!(g.status(&act.id()), ActStatus::Void(_)), "{kept:?} {:?}", g.status(&act.id()));
     advance(&mut g, 8 * DAY);
-    assert!(!g.state().chain.latest().charter.admins.iter().any(|k| k.role == Role::Recovery), "a computer key lists no phone-level recovery key");
+    assert!(!g.state().chain.latest().charter.admins.iter().any(|k| k.role == Role::Recovery), "no recovery key was listed");
 
-    let honest = add(&g, K(D, "ann", Role::Recovery, Level::Computer), &[A]);
+    let honest = add(&g, recovery(D, "ann"), &[A]);
     take(&mut g, honest);
     advance(&mut g, 8 * DAY);
-    assert!(g.state().chain.latest().charter.admins.iter().any(|k| k.role == Role::Recovery && k.assurance == Level::Computer), "it lists a recovery key at its own level");
-}
-
-#[test]
-fn a_replacement_recovery_key_is_listed_at_no_level_above_the_keys_that_listed_it() {
-    let (_d, mut g) = pool(&[computer_admin(A, "ann"), K(D, "ann", Role::Recovery, Level::Computer)], Policy::Secure);
-    let since = g.state().chain.latest().n + 1;
-    let claim = make(&g, "recovery_replace", json!({"entry": entry_after(recovery(C, "ann"), since, &g)}), &[A]);
-    take(&mut g, claim.clone());
-    assert!(matches!(g.status(&claim.id()), ActStatus::Void(w) if w.contains("no level above")), "{:?}", g.status(&claim.id()));
-}
-
-#[test]
-fn an_act_signed_at_a_higher_level_outranks_one_with_more_signers() {
-    let loose = charter_floored(&[phone_admin(A, "ann"), computer_admin(B, "ann"), computer_admin(C, "ann")], Policy::Secure, all(Level::Computer));
-    let (_d, mut g) = pool_of(&loose);
-    let thief = add(&g, computer_admin(D, "mal"), &[B, C]);
-    let defence = make(&g, "set_floors", json!({"sensitive": "phone", "governance": "phone"}), &[A]);
-    take(&mut g, thief.clone());
-    take(&mut g, defence.clone());
-    advance(&mut g, 8 * DAY);
-    assert_eq!(floors(&g).sensitive, Level::Phone, "the phone key's raise of the floor took effect");
-    assert!(!admins(&g).contains(&public(D)), "the act two computer keys signed did not");
-    assert!(matches!(g.status(&thief.id()), ActStatus::Void(_)), "{:?}", g.status(&thief.id()));
+    assert!(g.state().chain.latest().charter.admins.iter().any(|k| k.role == Role::Recovery && k.claim.is_none()), "a recovery key states none and counts for nothing");
 }
 
 /// A pool of ``keys`` with a delegate device granted by key `A`, and a joiner that took its history as settled.
@@ -118,7 +89,7 @@ fn delegate_admits(g: &mut GovPool, seed: u8) -> bool {
 
 #[test]
 fn a_joiner_honors_a_delegate_for_thirty_days_as_the_others_do() {
-    for (label, keys) in [("computer only", vec![computer_admin(A, "ann")]), ("phone", vec![phone_admin(A, "ann")])] {
+    for (label, keys) in [("computer", vec![computer_admin(A, "ann")]), ("phone", vec![phone_admin(A, "ann")])] {
         let (mut owner, mut joiner, _od, _jd, delegate) = delegated(&keys);
         assert!(joiner.state().roster.delegates.contains_key(&delegate.fingerprint()), "{label}: the joiner knows the delegate");
         advance(&mut owner, 21 * DAY);

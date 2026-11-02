@@ -1,5 +1,8 @@
 """Interventions on an agent: a refusal reaches the model as a tool error, a question waits
-for the person, guidance rides on the next turn, and a hook that fails refuses."""
+for the person, guidance rides on the next turn, and a hook that fails refuses.
+
+These tests exercise the interventions and the loop, not a model: the canned server replies with the scripted turns,
+including a model that calls `wipe` on demand, every reply carrying the canned marker."""
 
 from __future__ import annotations
 
@@ -23,7 +26,7 @@ from poolhouse.agent import (
     ToolResult,
 )
 from poolhouse.client import Client
-from poolhouse.testing.tool_server import ToolCallingServer, Turn
+from poolhouse.testing.canned import CANNED_MARKER, CannedServer, Turn
 
 SPEC = {"name": "wipe", "description": "Delete a path.", "inputSchema": {
     "type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}
@@ -64,10 +67,10 @@ class Rule:
 
 @pytest.fixture
 def served():
-    started: list[ToolCallingServer] = []
+    started: list[CannedServer] = []
 
-    def start(*turns: Turn) -> ToolCallingServer:
-        fake = ToolCallingServer(list(turns))
+    def start(*turns: Turn) -> CannedServer:
+        fake = CannedServer(turns=list(turns))
         started.append(fake)
         return fake
 
@@ -101,7 +104,8 @@ def test_a_call_nothing_objects_to_runs(served) -> None:
     rule = Rule()
     events = collect(agent_for(served(wiping(), Turn(text=("ok",))), rule))
     assert ran == ["/tmp/x"]
-    assert [type(e) for e in events] == [ToolCall, ToolResult, type(events[2]), Done]
+    spoken = [e for e in events if getattr(e, "delta", None) != f"{CANNED_MARKER} "]
+    assert [type(e) for e in spoken] == [ToolCall, ToolResult, type(spoken[2]), Done]
     assert rule.seen[0] == ("invocation", 1)
     assert ("tool", "wipe", {"path": "/tmp/x"}, 1) in rule.seen
 

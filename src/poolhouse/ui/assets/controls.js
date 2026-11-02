@@ -1,9 +1,9 @@
-/* <ml-select>, <ml-toggle>, <ml-path>. */
+/* <poolhouse-select>, <poolhouse-toggle>, <poolhouse-path>. */
 import "./chip.js";
 import { define, h } from "./base.js";
 import { FIELD_STYLES, FieldElement } from "./field.js";
 
-class MlSelect extends FieldElement {
+class PoolhouseSelect extends FieldElement {
   static props = { ...FieldElement.common, value: "string", options: "object", placeholder: "string" };
   static styles = FIELD_STYLES;
 
@@ -26,24 +26,24 @@ class MlSelect extends FieldElement {
     this.paintChrome(this.control);
   }
 }
-define("ml-select", MlSelect);
+define("poolhouse-select", PoolhouseSelect);
 
 const TOGGLE = `
 ${FIELD_STYLES}
 .row { display: flex; align-items: center; gap: 12px; }
 .row .text { flex: 1; min-width: 0; }
-.row label { margin: 0; color: var(--ml-text); cursor: pointer; }
+.row label { margin: 0; color: var(--poolhouse-ui-text); cursor: pointer; }
 .sw { flex: none; position: relative; width: 42px; height: 24px; border-radius: 999px; padding: 0;
-  background: var(--ml-sunken); border: 1.5px solid var(--ml-line-strong); cursor: pointer;
+  background: var(--poolhouse-ui-sunken); border: 1.5px solid var(--poolhouse-ui-line-strong); cursor: pointer;
   transition: background .15s, border-color .15s; }
 .sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 15px; height: 15px; border-radius: 50%;
-  background: var(--ml-muted); transition: transform .15s, background .15s; }
-.sw[aria-checked=true] { background: var(--ml-accent); border-color: var(--ml-accent); }
-.sw[aria-checked=true]::after { transform: translateX(18px); background: var(--ml-on-accent); }
-.state { font-size: 12px; color: var(--ml-muted); min-width: 2.2em; text-align: right; }
+  background: var(--poolhouse-ui-muted); transition: transform .15s, background .15s; }
+.sw[aria-checked=true] { background: var(--poolhouse-ui-accent); border-color: var(--poolhouse-ui-accent); }
+.sw[aria-checked=true]::after { transform: translateX(18px); background: var(--poolhouse-ui-on-accent); }
+.state { font-size: 12px; color: var(--poolhouse-ui-muted); min-width: 2.2em; text-align: right; }
 `;
 
-class MlToggle extends FieldElement {
+class PoolhouseToggle extends FieldElement {
   static props = { ...FieldElement.common, checked: "bool", onLabel: "string", offLabel: "string" };
   static styles = TOGGLE;
 
@@ -74,20 +74,20 @@ class MlToggle extends FieldElement {
     this.control.setAttribute("aria-labelledby", this.ids.l);
   }
 }
-define("ml-toggle", MlToggle);
+define("poolhouse-toggle", PoolhouseToggle);
 
 const PATH = `
 ${FIELD_STYLES}
 .row { display: flex; gap: 8px; align-items: center; }
-.row input { flex: 1; min-width: 0; font-family: var(--ml-mono); font-size: 13px; }
+.row input { flex: 1; min-width: 0; font-family: var(--poolhouse-ui-mono); font-size: 13px; }
 .row button { flex: none; padding: 8px 14px; border-radius: 8px; cursor: pointer; font-weight: 600;
-  background: transparent; border: 1px solid var(--ml-line-strong); }
+  background: transparent; border: 1px solid var(--poolhouse-ui-line-strong); }
 .row button[hidden] { display: none; }
 .status { margin-top: 6px; }
 .status[hidden] { display: none; }
 `;
 
-class MlPath extends FieldElement {
+class PoolhousePath extends FieldElement {
   static props = { ...FieldElement.common, value: "string", placeholder: "string", browse: "string",
                    verdict: "string", verdictText: "string" };
   static styles = PATH;
@@ -96,7 +96,7 @@ class MlPath extends FieldElement {
     this.control = h("input", { type: "text", id: "c", spellcheck: "false", autocomplete: "off",
       oninput: () => { this.value = this.control.value; this.announce({ value: this.control.value }); } });
     this.browseBtn = h("button", { type: "button",
-      onclick: () => this.emit("ml-browse", { value: this.value }) });
+      onclick: () => this.emit("poolhouse-browse", { value: this.value }) });
     this.status = h("div", { class: "status" });
     this.chrome(h("div", { class: "row" }, this.control, this.browseBtn));
     this.field.insertBefore(this.status, this.hintEl);
@@ -110,8 +110,8 @@ class MlPath extends FieldElement {
     this.browseBtn.toggleAttribute("disabled", this.disabled);
     this.status.hidden = !this.verdict;
     this.status.replaceChildren(this.verdict
-      ? h("ml-chip", { verdict: this.verdict }, this.verdictText || "") : null);
+      ? h("poolhouse-chip", { verdict: this.verdict }, this.verdictText || "") : null);
     this.paintChrome(this.control);
   }
 }
-define("ml-path", MlPath);
+define("poolhouse-path", PoolhousePath);

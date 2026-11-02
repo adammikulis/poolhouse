@@ -54,8 +54,8 @@ def primary(checkout: Path) -> Path:
 
 
 def boundary(checkout: Path) -> Path:
-    """Return the primary repository's shared landing and runtime cutover lock."""
-    return primary(checkout) / ".git" / "land" / "runner.lock"
+    """Return the primary repository's runtime cutover lock."""
+    return primary(checkout) / ".git" / "runtime-cutover.lock"
 
 
 def holder(path: Path) -> str:
@@ -65,7 +65,7 @@ def holder(path: Path) -> str:
 
 @contextmanager
 def crossing(checkout: Path, *, wait_s: float = 0.0, note: str = "") -> Iterator[Path]:
-    """Hold the primary repository's landing and cutover boundary for the block, waiting up to `wait_s` seconds (at most
+    """Hold the primary repository's runtime cutover boundary for the block, waiting up to `wait_s` seconds (at most
     `BOUNDARY_WAIT_MAX_S`); `Busy` names the holder."""
     path = boundary(checkout)
     wait_s = min(BOUNDARY_WAIT_MAX_S, max(0.0, wait_s))

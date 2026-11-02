@@ -18,7 +18,7 @@ def _args(tmp_path, **over):
               "per_message": 1, "seed": 1, "sample": 3, "kept": str(tmp_path / "k.ladybug"),
               "label": "t", "temperature": None, "top_p": None, "top_k": None, "min_p": None,
               "twice": False, "anyway": False, "base_url": "", "no_smoke": False, "yes": True,
-              "ceiling": 0, "no_selfcheck": True, "detach": False, "no_queue": True,
+              "ceiling": 0, "detach": False, "no_queue": True,
               "no_prefetch": True, "n_max": None}
     fields.update(over)
     return type("A", (), fields)()

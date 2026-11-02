@@ -9,6 +9,15 @@ pub mod board;
 pub mod build;
 pub mod cert;
 pub mod claims;
+pub mod contract;
+#[allow(dead_code)] // Sealed interface only; no native root/provider admission implementation.
+mod contract_authority_admission;
+#[allow(dead_code)] // Reference mathematics only; no admitted descriptor or production issuer.
+mod contract_transcripts;
+#[cfg(test)]
+mod contract_private_tests;
+pub mod contract_lifecycle;
+pub mod contract_operations;
 pub mod client;
 pub mod device;
 pub mod error;
@@ -26,6 +35,8 @@ pub mod landtrust;
 pub mod lease;
 pub mod limits;
 pub mod lineage;
+#[allow(dead_code)] // Dormant until independently reviewed native provenance can issue sealed proofs.
+mod lifecycle;
 pub mod links;
 pub mod log;
 pub mod logbounds;
@@ -51,11 +62,13 @@ pub mod reach;
 pub mod reap;
 pub mod registry;
 pub mod row;
+pub mod rebind;
 pub mod rooms;
 pub mod rules;
 pub mod scratch;
 pub mod sessions;
 pub mod server;
+pub mod services;
 pub mod shard;
 pub mod state;
 pub mod subs;
@@ -66,3 +79,6 @@ pub mod tally;
 pub mod tls;
 pub mod wire;
 pub mod writes;
+
+#[allow(dead_code)] // Dormant model; no authenticated control or writer-registry witness issuer.
+mod update_handoff;

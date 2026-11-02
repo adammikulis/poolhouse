@@ -10,11 +10,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, runtime
+from poolhouse import home, runtime, runtime_identity
 
 __all__ = [
     "DAEMON_PORT", "ENV_ALLOWED", "ROLES", "SCHEDULED", "TTL_S", "VERSION", "Manifest", "ManifestError", "Role",
-    "Unit", "allowed_dir", "destination_problem", "launcher_problem", "parse", "parse_role", "unit_names",
+    "Unit", "allowed_dir", "destination_problem", "identity_problem", "launcher_problem", "parse", "parse_role", "unit_names",
 ]
 
 VERSION = 1
@@ -197,6 +197,11 @@ def destination_problem(destination: str, role: str, name: str, platform: str, s
     if target.is_symlink() or (target.exists() and not target.is_file()):
         return f"{destination} exists and is not a regular file"
     return ""
+
+
+def identity_problem(platform: str) -> str:
+    """Why a unit for ``platform`` cannot start under the Poolhouse executable (macOS names a program by its executable), or ''."""
+    return runtime_identity.unit_problem() if platform == "darwin" else ""
 
 
 def launcher_problem(path: Path) -> str:

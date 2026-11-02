@@ -36,6 +36,11 @@ def header(home, identifier, parent, **extra):
 
 @pytest.fixture
 def node(workspace_node, monkeypatch, tmp_path):  # noqa: F811
+    project_owner = workspace_node.member("notification-project-owner")
+    workspace_node.allow(project_owner, "source_add")
+    workspace_node.client.call("project_add", "", project_owner.token, id=workspace_node.board,
+                               kind="folder", path=str(tmp_path))
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("CODEX_THREAD_ID", IDS["native-root"])
     monkeypatch.setenv("POOLHOUSE_BOARD", workspace_node.board)
     monkeypatch.setenv("POOLHOUSE_HOME", str(workspace_node.state.parent))
@@ -54,9 +59,9 @@ def test_root_child_nested_are_separate_authenticated_sessions(node):
     child_name = session.find("codex", IDS["native-child"], client=node.client)
     lifecycle.handle(event("SubagentStart", agent_id="native-nested", parent_agent_id="native-child"), node=node.client)
     nested_name = session.find("codex", IDS["native-nested"], client=node.client)
-    root = session.connect(client=node.client, board=node.board, agent=root_name)
-    child = session.connect(client=node.client, board=node.board, agent=child_name)
-    nested = session.connect(client=node.client, board=node.board, agent=nested_name)
+    root = node.session(node.adopt(root_name))
+    child = node.session(node.adopt(child_name))
+    nested = node.session(node.adopt(nested_name))
     assert root.name != child.name != nested.name
     assert child.whoami().parent == root.name
     assert nested.whoami().parent == child.name
@@ -79,7 +84,7 @@ def test_child_turn_stop_keeps_authenticated_session_for_followup(node):
     lifecycle.handle(event("SessionStart"), node=node.client)
     lifecycle.handle(event("SubagentStart", agent_id="child", parent_agent_id="native-root"), node=node.client)
     child_name = session.find("codex", IDS["child"], client=node.client)
-    child = session.connect(client=node.client, board=node.board, agent=child_name)
+    child = node.session(node.adopt(child_name))
     before = child.whoami()
     for _ in range(2):
         lifecycle.handle(event("SubagentStop", agent_id="child", turn_id="turn-one"), node=node.client)
@@ -92,11 +97,11 @@ def test_explicit_retirement_still_refuses_ended_child_identity(node):
     lifecycle.handle(event("SessionStart"), node=node.client)
     lifecycle.handle(event("SubagentStart", agent_id="child", parent_agent_id="native-root"), node=node.client)
     child_name = session.find("codex", IDS["child"], client=node.client)
-    session.connect(client=node.client, board=node.board, agent=child_name).retire()
+    node.session(node.adopt(child_name)).retire()
     with pytest.raises(Exception, match=r"ended|retired|session"):
         lifecycle.handle(event("SubagentStart", agent_id="child", parent_agent_id="native-root"), node=node.client)
     name = session.find("codex", IDS["native-root"], client=node.client)
-    assert not session.connect(client=node.client, board=node.board, agent=name).whoami().retired
+    assert not node.session(node.adopt(name)).whoami().retired
 
 
 def test_root_session_end_retires_root_and_stopped_children(node):
@@ -107,17 +112,25 @@ def test_root_session_end_retires_root_and_stopped_children(node):
     lifecycle.handle(event("SessionEnd"), node=node.client)
     for name in names:
         with pytest.raises(Exception, match=r"token|ended|retired|session"):
-            session.connect(client=node.client, board=node.board, agent=name).whoami()
+            node.session(node.adopt(name)).whoami()
 
 
 def test_assigned_launcher_identity_is_not_replaced_and_child_not_parent(node):
-    assigned = node.member("launcher-native", harness="codex", model="gpt-6.1-sol")
+    assigned = node.member(IDS["native-root"], harness="codex", model="gpt-6.1-sol")
     result = lifecycle.handle(event("SessionStart"), assigned.name, node=node.client)
     assert assigned.name in result["hookSpecificOutput"]["additionalContext"]
-    assert session.find("codex", IDS["native-root"], client=node.client) == ""
+    assert session.find("codex", IDS["native-root"], client=node.client) == assigned.name
     lifecycle.handle(event("SubagentStart", agent_id="child", parent_agent_id="native-root"), assigned.name, node=node.client)
     lifecycle.handle(event("SubagentStop", agent_id="child"), assigned.name, node=node.client)
     assert not node.session(assigned).whoami().retired
+
+
+def test_assigned_identity_must_match_the_registered_native_thread(node):
+    lifecycle.handle(event("SessionStart"), node=node.client)
+    unrelated = node.member("unrelated-launcher", harness="codex", model="gpt-6.1-sol")
+    with pytest.raises(ValueError, match="does not own"):
+        lifecycle.handle(event("SessionStart"), unrelated.name, node=node.client)
+    assert not node.session(unrelated).whoami().retired
 
 
 def test_unregistered_child_does_not_use_assigned_or_inherited_parent(node, monkeypatch):
@@ -127,15 +140,16 @@ def test_unregistered_child_does_not_use_assigned_or_inherited_parent(node, monk
         lifecycle.handle(event("PostToolUse", agent_id="unregistered-child"), assigned.name, node=node.client)
 
 
-def test_stopped_daemon_warns_quickly_and_does_not_block_or_restart(node):
+@pytest.mark.parametrize("completion", [False, True])
+def test_stopped_daemon_warns_quickly_and_does_not_block_or_restart(node, completion):
     lifecycle.handle(event("SessionStart"), node=node.client)
     node.stop()
     before = time.monotonic()
-    done = subprocess.run([sys.executable, "-m", "poolhouse.workspace.cli", "codex-hook"],
-                          input=json.dumps(event("PostToolUse")), text=True, capture_output=True,
+    done = subprocess.run([sys.executable, "-m", "poolhouse.workspace.cli", "codex-stop" if completion else "codex-hook"],
+                          input=json.dumps(event("Stop" if completion else "PostToolUse")), text=True, capture_output=True,
                           env=node.env(extra={"CODEX_THREAD_ID": IDS["native-root"]}), timeout=5, check=False)
     assert done.returncode == 0 and time.monotonic() - before < 5
-    assert "workspace lifecycle:" in done.stderr
+    assert ("workspace lifecycle:" in done.stderr) != completion
     assert not done.stdout
     assert node_health.node_health(node.state) is None
 
@@ -155,7 +169,7 @@ def test_documented_child_event_uses_actual_header_parent(node):
     lifecycle.handle(event("SubagentStart", agent_id="native-nested"), node=node.client)
     parent_name = session.find("codex", IDS["native-child"], client=node.client)
     nested_name = session.find("codex", IDS["native-nested"], client=node.client)
-    assert session.connect(client=node.client, board=node.board, agent=nested_name).whoami().parent == parent_name
+    assert node.session(node.adopt(nested_name)).whoami().parent == parent_name
 
 
 def test_spoofed_parent_field_and_native_header_id_are_refused(node):
@@ -193,7 +207,7 @@ def test_child_notification_without_agent_id_uses_actual_child(node, monkeypatch
     if result:
         assert child_name in result["hookSpecificOutput"]["additionalContext"]
     lifecycle.handle(event("SessionEnd"), root_name, node=node.client)
-    assert not session.connect(client=node.client, board=node.board, agent=root_name).whoami().retired
+    assert not node.session(node.adopt(root_name)).whoami().retired
     retired = {actor.name: actor.retired for actor in node.session(node.adopt(root_name)).agents(retired=True)}
     assert retired[child_name]
 
@@ -215,7 +229,7 @@ def test_nested_ambient_notification_proves_native_parent_chain(node, monkeypatc
     lifecycle.handle(event("PostToolUse"), node=node.client)
 
 
-def test_stop_guard_uses_own_child_and_preserves_cleanup_check(node, monkeypatch):
+def test_cached_stop_does_not_run_cleanup_admission_for_own_child(node, monkeypatch):
     lifecycle.handle(event("SessionStart"), node=node.client)
     lifecycle.handle(event("SubagentStart", agent_id="native-child"), node=node.client)
     root_name = session.find("codex", IDS["native-root"], client=node.client)
@@ -224,14 +238,15 @@ def test_stop_guard_uses_own_child_and_preserves_cleanup_check(node, monkeypatch
     checked = []
     monkeypatch.setattr(lifecycle.worktree_lifecycle, "require_clean", lambda base, owner, **kw: checked.append(owner))
     assert lifecycle.completion(event("Stop"), root_name, node=node.client) == {}
-    assert checked == [child_name]
+    assert checked == []
+    assert child_name != root_name
 
 
-def test_completion_guard_failures_block_separately_from_advisory_notices(monkeypatch, capsys):
+def test_malformed_completion_payload_is_advisory(monkeypatch, capsys):
     monkeypatch.setattr(sys, "stdin", __import__("io").StringIO("[]"))
     assert lifecycle.run(argparse.Namespace(assigned="", completion=True, worker=True)) == 0
-    result = json.loads(capsys.readouterr().out)
-    assert result["decision"] == "block"
+    output = capsys.readouterr()
+    assert not output.out and 'must be an object' in output.err
 
 
 @pytest.mark.parametrize("completion,stage", [(False, 'PostToolUse'), (True, 'Stop'), (False, 'SessionEnd')])
@@ -253,10 +268,7 @@ def test_hostile_worker_arguments_are_single_argv_values_with_deadline(monkeypat
     assert captured['timeout'] == (2.0 if stage == 'SessionEnd' else lifecycle.WAIT)
     assert not captured.get('shell', False)
     output = capsys.readouterr()
-    if completion:
-        assert json.loads(output.out)['decision'] == 'block'
-    else:
-        assert not output.out and 'workspace lifecycle:' in output.err
+    assert not output.out and 'workspace lifecycle:' in output.err
 
 
 def test_session_end_timeout_reaps_its_owned_worker(monkeypatch, capsys):
@@ -279,3 +291,81 @@ def test_session_end_timeout_reaps_its_owned_worker(monkeypatch, capsys):
         os.kill(stopped[0], 0)
     output = capsys.readouterr()
     assert not output.out and 'workspace lifecycle:' in output.err
+
+
+@pytest.mark.parametrize('active', [False, True])
+def test_ambiguous_stop_warns_without_a_parent_or_completion_decision(node, monkeypatch, capsys, active):
+    lifecycle.handle(event('SessionStart'), node=node.client)
+    monkeypatch.delenv('CODEX_THREAD_ID', raising=False)
+    checked = []
+    monkeypatch.setattr(lifecycle.worktree_lifecycle, 'require_clean', lambda *a, **k: checked.append(1))
+    monkeypatch.setattr(sys, 'stdin', __import__('io').StringIO(json.dumps(event('Stop', stop_hook_active=active))))
+    assert lifecycle.run(argparse.Namespace(assigned='', completion=True, worker=True)) == 0
+    output = capsys.readouterr()
+    assert not output.out and not output.err
+    assert checked == []
+
+
+@pytest.mark.parametrize('active', [False, True])
+@pytest.mark.parametrize('child', [False, True])
+def test_cached_stop_does_not_check_pending_cleanup_even_an_active_stop(node, monkeypatch, capsys, active, child):
+    lifecycle.handle(event('SessionStart'), node=node.client)
+    if child:
+        lifecycle.handle(event('SubagentStart', agent_id='native-child'), node=node.client)
+        monkeypatch.setenv('CODEX_THREAD_ID', IDS['native-child'])
+    expected = session.find('codex', IDS['native-child' if child else 'native-root'], client=node.client)
+    checked = []
+    def pending(base, owner):
+        checked.append(owner)
+        return [{'path': str(Path.cwd()), 'branch': 'worker/change', 'reasons': ['checkout remains']}]
+    monkeypatch.setattr(lifecycle.worktree_lifecycle, 'pending', pending)
+    monkeypatch.setattr(sys, 'stdin', __import__('io').StringIO(json.dumps(event('Stop', cwd=str(Path.cwd()), stop_hook_active=active))))
+    assert lifecycle.run(argparse.Namespace(assigned='', completion=True, worker=True)) == 0
+    output = capsys.readouterr()
+    assert not output.out and not output.err and checked == []
+    assert expected
+
+
+def test_untyped_cleanup_transport_denial_does_not_invent_pending_work(node, monkeypatch, capsys):
+    from poolhouse.errors import Denied
+    lifecycle.handle(event('SessionStart'), node=node.client)
+    def unavailable(*args, **kwargs):
+        raise Denied('unavailable')
+    monkeypatch.setattr(lifecycle.worktree_lifecycle, 'pending', unavailable)
+    monkeypatch.setattr(sys, 'stdin', __import__('io').StringIO(json.dumps(event('Stop'))))
+    assert lifecycle.run(argparse.Namespace(assigned='', completion=True, worker=True)) == 0
+    output = capsys.readouterr()
+    assert not output.out and not output.err
+
+
+def test_completion_worker_exit_warns_without_block(monkeypatch, capsys):
+    monkeypatch.setattr(sys, 'stdin', __import__('io').StringIO(json.dumps(event('Stop'))))
+    monkeypatch.setattr(lifecycle.subprocess, 'run', lambda *a, **k: subprocess.CompletedProcess(a[0], 3, '', ''))
+    assert lifecycle.run(argparse.Namespace(assigned='', completion=True, worker=False)) == 0
+    output = capsys.readouterr()
+    assert not output.out and 'completion worker exited 3' in output.err
+
+
+def test_cached_stop_needs_no_project_or_native_identity(monkeypatch, capsys):
+    monkeypatch.delenv('CODEX_THREAD_ID', raising=False)
+    monkeypatch.setattr(lifecycle, 'context', lambda *a, **k: pytest.fail('automatic Stop requested workspace admission'))
+    monkeypatch.setattr(sys, 'stdin', __import__('io').StringIO(json.dumps({'hook_event_name': 'Stop', 'cwd': '/no-project'})))
+    assert lifecycle.run(argparse.Namespace(assigned='', completion=True, worker=True)) == 0
+    assert capsys.readouterr() == ('', '')
+
+
+@pytest.mark.redteam
+def test_notification_in_unknown_git_project_leaves_running_node_projects_and_sessions_unchanged(workspace_node, tmp_path, monkeypatch):  # noqa: F811
+    from poolhouse.net import git
+
+    root = tmp_path / 'unregistered'
+    root.mkdir()
+    git.run(['init', '-q', '-b', 'development'], cwd=root)
+    probe = workspace_node.member('project-observer')
+    before_projects = workspace_node.client.call('project_list')
+    before_agents = workspace_node.session(probe).agents()
+    monkeypatch.setenv('CODEX_THREAD_ID', IDS['native-root'])
+    monkeypatch.setenv('POOLHOUSE_BOARD', workspace_node.board)
+    assert lifecycle.handle(event('SessionStart', cwd=str(root)), node=workspace_node.client) == {}
+    assert workspace_node.client.call('project_list') == before_projects
+    assert workspace_node.session(probe).agents() == before_agents

@@ -158,13 +158,13 @@ fn the_first_device_is_part_of_the_anchor_and_of_what_each_key_accepted() {
 fn a_first_device_that_is_not_the_certificate_of_an_ed25519_device_is_no_charter() {
     let own = ident(FIRST).der;
     let with = |first: First| charter_of(&[phone_admin(A, "ann")], Policy::Secure, Unit::Person, wall_ms(), first).check_founding().unwrap_err().to_string();
-    assert!(with(First { cert: "zz".into(), name: "x".into() }).contains("first device"), "not hex");
-    assert!(with(First { cert: hex(&own[..own.len() - 1]), name: "x".into() }).contains("first device"), "a cut certificate");
-    assert!(with(First { cert: hex(&ecdsa_cert()), name: "x".into() }).contains("Ed25519"), "a certificate of another kind of key");
-    assert!(with(First { cert: hex(&own).to_uppercase(), name: "x".into() }).contains("first device"), "one device is one spelling");
-    assert!(with(First { cert: hex(&own), name: String::new() }).contains("name"), "no name");
-    assert!(with(First { cert: hex(&own), name: "n".repeat(41) }).contains("name"), "a long name");
-    assert!(with(First { cert: hex(&own), name: "a\nb".into() }).contains("name"), "a control character");
+    assert!(with(First { cert: "zz".into(), name: "x".into(), delegate: false }).contains("first device"), "not hex");
+    assert!(with(First { cert: hex(&own[..own.len() - 1]), name: "x".into(), delegate: false }).contains("first device"), "a cut certificate");
+    assert!(with(First { cert: hex(&ecdsa_cert()), name: "x".into(), delegate: false }).contains("Ed25519"), "a certificate of another kind of key");
+    assert!(with(First { cert: hex(&own).to_uppercase(), name: "x".into(), delegate: false }).contains("first device"), "one device is one spelling");
+    assert!(with(First { cert: hex(&own), name: String::new(), delegate: false }).contains("name"), "no name");
+    assert!(with(First { cert: hex(&own), name: "n".repeat(41), delegate: false }).contains("name"), "a long name");
+    assert!(with(First { cert: hex(&own), name: "a\nb".into(), delegate: false }).contains("name"), "a control character");
     assert!(charter_of(&[phone_admin(A, "ann")], Policy::Secure, Unit::Person, wall_ms(), first_of(&own)).check_founding().is_ok());
 }
 
@@ -218,6 +218,7 @@ fn a_charter_copied_to_another_device_makes_no_pool_and_no_member_there() {
     assert_ne!(b.pool(), founded["pool"].as_str().unwrap());
     assert_eq!(b.status()["governance"]["mode"], "unfounded");
     assert!(b.node.lock().unwrap().members.get(&a.fp()).is_none(), "and made no member of the device it names");
+    kit::govnode::grant(&a, "demo", &a.token, &["pool_create"]);
     let again = refusal(&a.call("pool_found", "", &a.token, json!({"act": act})));
     assert!(again.contains("already runs a pool"), "a replay on the device that founded it founds no second pool: {again}");
     assert_eq!(a.pool(), founded["pool"].as_str().unwrap());
@@ -234,7 +235,7 @@ fn an_agents_own_software_key_founds_no_pool_whatever_the_charter_names() {
     for (said_of_it, k) in [("weak", weak(0x55, "agent")), ("phone", phone_admin(0x55, "agent")), ("computer", computer_admin(0x55, "agent"))] {
         let c = charter_of(&[k], Policy::Secure, Unit::Person, wall_ms(), first_of(&own(&a)));
         let said = refusal(&a.call("pool_found", "", &a.token, json!({"act": found_act(&c)})));
-        assert!(said.contains("approved from a computer or a phone") || said.contains("stronger than this device"), "a key it calls {said_of_it}: {said}");
+        assert!(said.contains("approved from a computer or a phone") || said.contains("did not record"), "a key it calls {said_of_it}: {said}");
     }
     assert_eq!(a.status()["governance"]["mode"], "unfounded", "a key the node did not enrol at a level founds nothing, with this device named first or not");
     assert!(a.node.lock().unwrap().members.get(&a.fp()).is_some_and(|d| d.by == "self"), "this device is the pool of one it was");
@@ -261,23 +262,6 @@ fn a_charter_of_version_two_founds_nothing_and_says_it_is_another_version() {
         assert!(said.contains("another version of Poolhouse") && said.contains("make a new pool"), "{how}: {said}");
         assert_eq!(a.status()["governance"]["mode"], "unfounded", "{how}");
     }
-}
-
-#[test]
-fn a_pool_of_charter_version_two_on_disk_is_set_aside_and_a_new_pool_may_be_founded() {
-    let dir = tempfile::tempdir().unwrap();
-    let c = charter(&[phone_admin(A, "ann")], Policy::Secure, Unit::Person);
-    let id = c.pool_id();
-    GovPool::create(dir.path(), found_act(&c)).unwrap();
-    let held = dir.path().join("pools").join(&id);
-    let mut old: Value = serde_json::from_slice(&std::fs::read(held.join("charter.json")).unwrap()).unwrap();
-    old["body"].as_object_mut().unwrap().remove("first");
-    old["body"]["v"] = json!(2);
-    std::fs::write(held.join("charter.json"), serde_json::to_vec(&old).unwrap()).unwrap();
-    let pool = Pool::load(dir.path()).unwrap();
-    assert!(pool.is_unfounded(), "a pool made under version 2 is not run");
-    assert_eq!(pool.retired, format!("pools-old-format/{id}"));
-    assert!(dir.path().join("pools-old-format").join(&id).join("charter.json").is_file(), "it is kept, never deleted");
 }
 
 // -- the first device in the roster ------------------------------------------------------------------------------------------------

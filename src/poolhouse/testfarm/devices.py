@@ -55,9 +55,9 @@ def table(rows: list[dict]) -> list[str]:
         takes = "yes" if caps["accepts"] else "no"
         lines.append(f"{row['name']:<20} {row.get('reach', 'unknown'):<8} {platform:<34} {slots:<6} {takes:<12} {last_line(row['last'])}")
         if not caps["accepts"]:
-            lines.append(f"{'':<20} {caps.get('reason', '')}")
+            lines.append(f"{'':<26} {caps.get('reason', '')}")
         if row.get("reach_hint"):
-            lines.append(f"{'':<20} {row['reach_hint']}")
+            lines.append(f"{'':<26} {row['reach_hint']}")
     return lines
 
 
@@ -65,8 +65,8 @@ def run(args: argparse.Namespace) -> int:
     """List the devices; 1 when no node answers or no registered session is available."""
     try:
         chosen = choose(args.device, pool_devices())
-        ledger = Ledger(reuse.reuse_base() / testruns.scope(Path.cwd()))
         shards = Shards()
+        ledger = Ledger(reuse.reuse_base() / testruns.scope(Path.cwd()))
         rows = [describe(shards, device, ledger) for device in chosen]
     except (ShardError, NodeError) as exc:
         say(f"test-devices: {exc}")

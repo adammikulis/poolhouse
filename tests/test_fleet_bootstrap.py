@@ -6,15 +6,11 @@ from test_fleet_initial_setup import initial
 from test_fleet_ui import Serving, no_release_lookup
 from test_workspace_board_ui import browser
 
-from poolhouse.fleet import automatic_pools
-from poolhouse.fleet.discovery import mint_pool
-
 __all__ = ["browser", "no_release_lookup"]
 
 
 @pytest.fixture
-def device(tmp_path, monkeypatch):
-    monkeypatch.setattr(automatic_pools, "offers", lambda port=None: [])
+def device(tmp_path):
     served = Serving(tmp_path, secure=False)
     try:
         yield served
@@ -74,21 +70,17 @@ def test_delayed_ticket_redemption_orders_eager_requests_and_expiry_asks_for_the
         }""")
         assert status == 401
         page.wait_for_function("() => fleetModel.route === 'launch-needed'")
-        assert page.locator("#launch-needed-command").is_visible()
+        assert page.get_by_role("heading", name="Reconnect to Poolhouse").is_visible()
     finally:
         page.close()
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("mode,expected", [("first", "first-run"), ("prod", "sign-in")])
-def test_bootstrap_preserves_setup_and_password_routes(device, browser, mode, expected):
-    if mode == "prod":
-        mint_pool("private", device.keyfile, mode="prod")
-        device.ui.settings.setup_done = True
+def test_bootstrap_preserves_the_setup_route(device, browser):
     page = browser.new_page()
     try:
         page.goto(f"http://127.0.0.1:{device.port}/ui/#pool")
-        page.wait_for_function(f"() => fleetModel.route === '{expected}'")
+        page.wait_for_function("() => fleetModel.route === 'first-run'")
         assert page.evaluate("fleetModel.requestedRoute") == "pool"
     finally:
         page.close()

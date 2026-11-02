@@ -15,35 +15,17 @@ from __future__ import annotations
 
 import plistlib
 import shutil
-import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
-from poolhouse import node_binary, node_signing, runtime
+from poolhouse import app_bundle, node_binary, node_signing, runtime
+from poolhouse.app_bundle import ICON_SVG, NAME, AppError, apps_directory, icns
 from poolhouse.files import read_json, write_json
-from poolhouse.home import home
 from poolhouse.log import say, warn
 
 BUNDLE_ID = "app.poolhouse.node"
-NAME = "Poolhouse"
 EXECUTABLE = "poolhouse-node"
-USAGE = "Poolhouse finds and joins your other devices on this network."
-BONJOUR = ["_poolhouse._tcp"]
 SOURCE_RECORD = "source.json"
-MINIMUM_SYSTEM = "13.0"
-ICON_SVG = Path(__file__).parent / "fleet" / "web" / "poolhouse.svg"
-ICON_SIZES = (16, 32, 128, 256, 512)
-TOOL_TIMEOUT = 60.0
-
-
-class AppError(OSError):
-    """The bundle could not be built or signed."""
-
-
-def apps_directory() -> Path:
-    """Where the bundles live: outside every checkout."""
-    return home() / "apps"
 
 
 def bundle_path() -> Path:
@@ -57,16 +39,8 @@ def executable_path(bundle: Path | None = None) -> Path:
 
 
 def info_plist(version: str = "0", *, icon: bool = True) -> dict:
-    """The bundle's Info.plist as a dict: fixed id, no dock icon, and the keys macOS reads to show the Local Network prompt."""
-    plist = {
-        "CFBundleIdentifier": BUNDLE_ID, "CFBundleName": NAME, "CFBundleDisplayName": NAME, "CFBundleExecutable": EXECUTABLE,
-        "CFBundlePackageType": "APPL", "CFBundleVersion": version, "CFBundleShortVersionString": version,
-        "LSUIElement": True, "LSMinimumSystemVersion": MINIMUM_SYSTEM, "NSLocalNetworkUsageDescription": USAGE,
-        "NSBonjourServices": list(BONJOUR),
-    }
-    if icon:
-        plist["CFBundleIconFile"] = NAME
-    return plist
+    """The node bundle's Info.plist as a dict."""
+    return app_bundle.info_plist(BUNDLE_ID, EXECUTABLE, version, icon=icon)
 
 
 def requirement(certificate_sha1: str) -> str:
@@ -87,30 +61,6 @@ def launch_command(bundle: Path, args: list[str]) -> list[str]:
 def uses_bundle(args: list[str]) -> bool:
     """Whether a node start with these arguments goes through Poolhouse.app: on macOS, when the network is on (`--lan`)."""
     return sys.platform == "darwin" and "--lan" in args
-
-
-def _tool(argv: list[str]) -> None:
-    done = subprocess.run(argv, capture_output=True, text=True, timeout=TOOL_TIMEOUT, check=False)
-    if done.returncode:
-        raise AppError(f"{argv[0]} failed: {(done.stderr or done.stdout).strip()[-400:]}")
-
-
-def _icns(svg: Path, into: Path) -> bool:
-    """Write Poolhouse.icns from the SVG with macOS's own renderer; False when it cannot (the bundle then has no icon)."""
-    with tempfile.TemporaryDirectory(prefix="poolhouse-icon") as scratch:
-        work = Path(scratch)
-        try:
-            _tool(["qlmanage", "-t", "-s", "1024", "-o", str(work), str(svg)])
-            iconset = work / "Poolhouse.iconset"
-            iconset.mkdir()
-            for size in ICON_SIZES:
-                for scale in (1, 2):
-                    _tool(["sips", "-z", str(size * scale), str(size * scale), str(work / f"{svg.name}.png"), "--out",
-                           str(iconset / f"icon_{size}x{size}{'@2x' if scale == 2 else ''}.png")])
-            _tool(["iconutil", "-c", "icns", str(iconset), "-o", str(into)])
-        except (AppError, OSError, subprocess.SubprocessError):
-            return False
-    return True
 
 
 def current_source(bundle: Path | None = None) -> str:
@@ -144,7 +94,7 @@ def _assemble(bundle: Path, binary: Path, icon: Path | None) -> str:
     executable.chmod(0o755)
     resources = bundle / "Contents" / "Resources"
     resources.mkdir()
-    has_icon = icon is not None and _icns(icon, resources / f"{NAME}.icns")
+    has_icon = icon is not None and icns(icon, resources / f"{NAME}.icns")
     version = str(read_json(binary.parent / node_binary.RECORD, {}).get("commit", "0"))[:12] or "0"
     (bundle / "Contents" / "Info.plist").write_bytes(plistlib.dumps(info_plist(version, icon=has_icon)))
     sha = node_binary.sha256(binary)

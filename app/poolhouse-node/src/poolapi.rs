@@ -15,12 +15,15 @@ use crate::membership::Policy;
 use crate::node::Node;
 
 /// The methods that act on the network and so run without the node lock held.
-pub const NETWORK: [&str; 4] = ["add_device", "join_pool", "sync_now", "shard_call"];
+pub const NETWORK: [&str; 5] = ["add_device", "join_pool", "sync_now", "shard_call", "service_authorize"];
 
 /// The params each pool method accepts; None for any other method.
 pub fn params(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
         "pool_status" | "sync_now" => &[],
+        "service_members" => &[],
+        "service_authorize" => &["fingerprint"],
+        "service_draft" | "service_bind" => &["cert", "endpoint"],
         "member_remove" => &["fingerprint"],
         "pool_create" => &["title", "policy", "project"],
         "pool_leave" => &[],
@@ -85,6 +88,9 @@ fn text<'a>(p: &'a Map<String, Value>, key: &str) -> Result<&'a str> {
 
 pub fn dispatch(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     match method {
+        "service_members" => node.service_members(),
+        "service_authorize" => node.service_authorize_local(text(p, "fingerprint")?),
+        "service_draft" | "service_bind" => crate::services::call(node, method, token, p),
         "pool_status" => {
             node.gov_tick()?;
             Ok(node.pool_status())
@@ -115,8 +121,13 @@ pub fn dispatch(node: &mut Node, method: &str, token: &str, p: &Map<String, Valu
         }
         "pool_found" => {
             let act = crate::gov::ops::founding_act(p.get("act"), p.get("charter"))?;
-            let name = crate::gov::ops::founding_name(&act)?;
-            authorize(node, token, "pool_create", &name)?;
+            let (name, anchor) = crate::gov::ops::founding_name(&act)?;
+            let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("a registered session is needed".into()))?;
+            let now = node.now_ms();
+            // The person's yes at the computer's prompt for this very charter is the grant to found it; otherwise the session needs the grant.
+            if !node.firsts.founding_confirmed(&format!("{}/{}", holder.board, holder.name), &anchor, now) {
+                authorize(node, token, "pool_create", &name)?;
+            }
             node.pool_found(&act)
         }
         "pool_draft_found" => node.pool_draft_found(text(p, "title")?, Policy::parse(text(p, "policy")?)?, text(p, "project")?, p.get("keys").unwrap_or(&Value::Null)),

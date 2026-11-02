@@ -5,6 +5,7 @@ import subprocess
 import threading
 import time
 
+from poolhouse import maintenance
 from poolhouse.credentials import child_environment
 
 _LOCK = threading.Lock()
@@ -32,6 +33,7 @@ def process_environment():
     return child
 
 
+@maintenance.reading
 def report(environment):
     """Return cached capabilities verified by the managed job interpreter."""
     if not environment.exists:
@@ -49,7 +51,7 @@ def report(environment):
         if cached and now - cached[0] < 60:
             return dict(cached[1])
         try:
-            done = subprocess.run([str(environment.python), "-I", "-c", _PROBE],
+            done = subprocess.run([str(environment.python), "-B", "-I", "-c", _PROBE],
                                   capture_output=True, text=True, timeout=20, env=process_environment())
             result = json.loads(done.stdout) if done.returncode == 0 else {}
             if not isinstance(result, dict) or not isinstance(result.get("compute_runtime"), dict):

@@ -9,11 +9,15 @@
 //! |---|---|
 //! | `spec` | the action registry, the floors, the shape of a grant, the bytes a person signs |
 //! | `person` | the person keys enrolled on this node and the signature check |
+//! | `authority` | which key may sign what: any enrolled key on an ungoverned device, the pool's admin keys in a pool |
 //! | `book` | the grant rows of a board, which of them count, and their state now |
-//! | `calls` | `grant_issue`, `grant_revoke`, `grants`, `grant_log`, `person_enroll`, `person_keys` |
+//! | `distrust` | the rows that cut an admin key off from granting and deciding |
+//! | `calls` | `grant_issue`, `grant_revoke`, `grant_distrust`, `grants`, `grant_log`, `person_enroll`, `person_keys` |
 
+pub mod authority;
 pub mod book;
 pub mod calls;
+pub mod distrust;
 pub mod person;
 pub mod spec;
 

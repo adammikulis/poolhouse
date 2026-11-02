@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from pathlib import Path
 
+from poolhouse import harnessing
 from poolhouse.board.session import Session
 from poolhouse.errors import Denied
 from poolhouse.workspace import localagent as la, localloop, localstart
@@ -15,6 +16,7 @@ __all__ = ["start", "stop"]
 
 def start(s: Session, base: Path, worker: str, task: str) -> localstart.Started:
     """Start the assigned worker with its saved model, session and execution limits."""
+    harnessing.require_isolated_execution()
     runner, spec = authorize(s, base, worker, task)
     if set(spec['capabilities']) - {'coding'}:
         raise Denied('native task launch cannot satisfy the requested capabilities')

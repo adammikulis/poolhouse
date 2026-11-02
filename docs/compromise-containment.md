@@ -11,7 +11,9 @@ It does not rebuild what exists. Governance, holds, delegates, reissue, routing 
 `docs/compromised-agents.md`; the phone is `docs/phone-approval.md` (on the phone branch, read at `d4373986e`, not in this
 tree); encryption and key custody are `docs/pool-encryption.md`, `docs/node.md` ("Key custody", "Limits") and
 `docs/keystore.md`; the harness sandbox is `docs/agent-sandbox.md`; the GitHub side is `docs/github-protection.md`. Where this
-document builds on one it says so and adds only what that one does not hold.
+document builds on one it says so and adds only what that one does not hold. The **lander** below is the device that holds the push
+credential and pushes the development branch for its agents; no landing script exists. Its gate is the tests it runs on a branch before the push, and the gate result of a
+pushed commit is the GitHub `gates` run of it.
 
 **The rule: one compromise buys no more than its tier's blast radius, and each tier's radius is stated, bounded and visible to
 the owner. A defence that the thing it defends against can switch off is not a defence**, so nothing here is enforced only by
@@ -393,12 +395,12 @@ release { kind: build|rollback, commit: 40 hex, tree_sha256, seq, prev: hash of 
           builders: [{id, artifacts_sha256}], not_after_ms }
 ```
 
-* **The three signatures a follower verifies (K2).** `landing` is the lander's signed record (`{commit, tree_sha256, gate
-  result at that SHA, lander_fp}`, `docs/compromised-agents.md` 4.9); `review` is the independent review's accept, signed by the
+* **The three signatures a follower verifies (K2).** `landing` is the signed record of the device that pushed the commit
+  (`{commit, tree_sha256, the GitHub gates result at that SHA, pusher_fp}`, `docs/compromised-agents.md` 4.9); `review` is the independent review's accept, signed by the
   device key of the device the reviewing session runs on; `attest` is the build attestation `{commit, tree_sha256, artifacts,
   builder_fp}` signed by a **builder key pinned in the charter** (role `builder`, added at founding or by a root act, never a
   key of the delegate or of the lander). Every follower checks that all three verify against the signed roster (a removed,
-  flagged or probation device is no one), name the same commit and tree, and that **`reviewer_fp` differs from `lander_fp`,
+  flagged or probation device is no one), name the same commit and tree, and that **`reviewer_fp` differs from `pusher_fp`,
   the builder key is neither, and the signer is none of the three**. One compromised device, the delegate's included, therefore
   cannot make a release: it would need three. The builder is by default a second device of the owner's that runs the
   build in the nested sandbox and holds nothing else; a hosted CI key is allowed and is the weaker choice (its secret is on
@@ -455,8 +457,7 @@ release { kind: build|rollback, commit: 40 hex, tree_sha256, seq, prev: hash of 
 
 **The release root is pinned at founding.** The founding charter lists the phone's key with `role: release` as well as admin, by
 default and with one plain line in the founding text: "this key also decides which version of Poolhouse your devices run".
-A pool with no release key follows nothing (a device keeps its build and `runtime status` says why in one sentence); there is no
-legacy pool and no migration. A lost root is rotated by the recovery phrase (section 6, key loss).
+A pool with no release key follows nothing (a device keeps its build and `runtime status` says why in one sentence). A lost root is rotated by the recovery phrase (section 6, key loss).
 
 **The follow rule.** `build_update` no longer asks which commit is newest; the pool's build is the verified, soaked, uncancelled
 `release` act with the highest `seq`. **The verified commit is the whole build input, so the user's checkout is never part of it

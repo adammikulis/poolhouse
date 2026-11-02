@@ -17,14 +17,17 @@ from typing import Any
 from poolhouse import hub
 from poolhouse.log import say
 from poolhouse.serve import fit as fits
-from poolhouse.serve.estimate import Setup, _bytes_of, estimate_meta, read_meta
+from poolhouse.serve.estimate import read_meta
+from poolhouse.serve.largest import PAD, trained_window
+from poolhouse.serve.suggest import largest_fit
 
 __all__ = ["Context", "DoesNotFit", "Fitted", "context_arg", "resolve", "total_for"]
 
 MARGIN = 0.10
-STEP = 256
-CEILING = 1 << 24
-"""Where the estimate's search stops: past any context a model is trained on."""
+"""The share of a measured fit record's longest context left unused: the record was measured on
+one load, and a conversation that runs longer than the cache it was measured with must not swap
+(a stated safety margin; the header estimate has none, `largest_fit` already stops at yellow)."""
+STEP = PAD
 
 _COUNT = re.compile(r"(\d+)([km]?)", re.IGNORECASE)
 _UNITS = {"": 1, "k": 1024, "m": 1024 * 1024}
@@ -91,62 +94,46 @@ def _record(model: str, kv: str, headed: bool) -> fits.Fit | None:
     return found[0] if found else None
 
 
-def _estimated(meta: dict[str, object], weights: int, kv: str, parallel: int, room: int) -> int:
-    """The largest per-slot context whose estimated load is within ``room``, in steps."""
-    best, low, high = 0, 1, CEILING // STEP
-    while low <= high:
-        mid = (low + high) // 2
-        need = estimate_meta(meta, weights, Setup(context=mid * STEP, parallel=parallel,
-                                                  kv_cache_type=kv)).total_bytes
-        if need <= room:
-            best, low = mid * STEP, mid + 1
-        else:
-            high = mid - 1
-    return best
-
-
 def resolve(model: str, *, kv: str, parallel: int = 1, cap: int = 0,
             headed: bool = False) -> Fitted:
     """The largest per-slot context ``model`` holds with ``parallel`` slots and cache ``kv``.
 
-    Raises `DoesNotFit` when there is no record and the file cannot be read, or when
-    nothing is left once the weights are in.
+    A measured fit record for the same file is read first, a tenth short of what it says; with
+    none, `suggest.largest_fit` answers from the header. Raises `DoesNotFit` when the header
+    cannot be read or names no context length, or when nothing is left once the weights are in.
     """
     parallel = max(1, int(parallel))
     path = hub.located(str(model), loose=True)
     meta = read_meta(path) if path else {}
-    arch = str(meta.get("general.architecture") or "")
-    native = int(meta.get(f"{arch}.context_length") or 0)  # type: ignore[call-overload]
-    room = int(hub.room() or 0)
-    found = _record(str(model), kv, headed)
     name = Path(str(model)).name
-    if found is not None:
-        source = "fit record"
-        raw = (found.at_room(room) if room else found).longest(parallel)
-    elif path is not None and meta and room:
-        source = "estimated from the header"
-        raw = _estimated(meta, _bytes_of(Path(path)), kv, parallel, room)
-    else:
-        raise DoesNotFit(f"{name} has no fit record and its header cannot be read here, so "
-                         "what fits cannot be worked out")
-    per_slot = int(raw * (1 - MARGIN)) // STEP * STEP
-    for ceiling in (native, cap):
-        if ceiling:
-            per_slot = min(per_slot, ceiling)
+    try:
+        native = trained_window(meta)
+        found = _record(str(model), kv, headed)
+        if found is not None:
+            source, room = "fit record", int(hub.room() or 0)
+            raw = (found.at_room(room) if room else found).longest(parallel)
+            raw = int(raw * (1 - MARGIN)) // STEP * STEP
+        else:
+            source, raw = "estimated from the header", largest_fit(path, slots=parallel, kv=kv).context
+    except (ValueError, OSError) as why:
+        raise DoesNotFit(f"{name}: what fits cannot be worked out ({why})") from why
+    per_slot = min(raw, native, *([cap] if cap else []))
     if per_slot <= 0:
         raise DoesNotFit(f"{name} leaves no room for a conversation on this machine "
                          f"({source})")
     return Fitted(per_slot, parallel, source)
 
 
-def total_for(args: Any, model: str, *, kv: str, default: int,
+def total_for(args: Any, model: str, *, kv: str, default: int = 0,
               headed: bool = False) -> tuple[int, str]:
-    """``(total context, label tag)`` for ``model``: the number ``--context`` gave, else
-    ``default``; with ``fit``, what fits (said on one line) and ``-ctxNk`` for the label."""
+    """``(total context, label tag)`` for ``model``: the number ``--context`` gave; else
+    ``default`` where the caller derives one; else (and with ``fit``) what fits, said on one
+    line, with ``-ctxNk`` for the label."""
     given = getattr(args, "context", 0)
-    if not getattr(given, "fit", False):
+    fit = getattr(given, "fit", False)
+    if not fit and (int(given or 0) or default):
         return int(given or 0) or default, ""
     slots = int(getattr(args, "parallel", 1) or 1)
-    got = resolve(model, kv=kv, parallel=slots, cap=given.cap, headed=headed)
+    got = resolve(model, kv=kv, parallel=slots, cap=getattr(given, "cap", 0), headed=headed)
     say(got.said())
     return got.total, f"-ctx{got.per_slot // 1024}k"

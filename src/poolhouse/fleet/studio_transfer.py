@@ -20,7 +20,8 @@ MANIFEST_BYTES = 1024 * 1024
 _DIGEST = re.compile(r"[a-f0-9]{64}")
 _DISPATCH = re.compile(r"[a-f0-9]{32}(?:[a-f0-9]{32})?")
 _METADATA = {"recipe": str, "framework": str, "quantization": str, "decision": bool,
-             "gym": bool, "rows": int, "count": int, "format": str}
+             "gym": bool, "rows": int, "count": int, "format": str, "model_kind": str,
+             "base_resource": str, "base_digest": str}
 
 
 def _digest(value: dict) -> str:
@@ -301,6 +302,14 @@ class TransferStore:
             path = self.root.joinpath(*self._parts(source, dispatch, resource["id"]), "files")
             checked.pop("resource")
             checked["path"] = str(path / resource["entrypoint"] if resource["shape"] == "file" else path)
+            if "base_resource" in checked or "base_digest" in checked:
+                if not _DIGEST.fullmatch(checked.get("base_resource", "")) or not _DIGEST.fullmatch(checked.get("base_digest", "")):
+                    raise ValueError("Checkpoint base resource and digest must be explicit.")
+                base = self.finish(source, dispatch, checked["base_resource"])
+                if base["kind"] != "model" or base["shape"] != "directory":
+                    raise ValueError("Checkpoint bases require an explicitly staged model directory.")
+                base_path = self.root.joinpath(*self._parts(source, dispatch, base["id"]), "files")
+                checked["base"] = {"kind": "model", "path": str(base_path), "digest": checked["base_digest"], "files": base["files"]}
             hydrated[name] = checked
         return hydrated
 
@@ -318,6 +327,10 @@ class TransferStore:
                 raise ValueError("Remote outputs must belong to this dispatch.")
             resource = manifest(path, value["kind"], gym=value.get("gym", False))
             safe[name] = resource_handle(value, resource)
+            if "base" in value:
+                base = self._result_base(source, dispatch, value["base"])
+                resources[base["id"]] = base
+                safe[name]["base_resource"] = base["id"]
             if resource["id"] in resources:
                 continue
             self.begin(source, dispatch, resource)
@@ -334,6 +347,19 @@ class TransferStore:
             self.finish(source, dispatch, resource["id"])
             resources[resource["id"]] = resource
         return {"outputs": safe, "resources": list(resources.values())}
+
+    def _result_base(self, source: str, dispatch: str, value: dict) -> dict:
+        root = self.root.joinpath(*self._prefix(source, dispatch), "resources")
+        path = Path(value["path"])
+        if ".." in path.parts or not path.is_relative_to(root):
+            raise ValueError("Output bases require this dispatch's explicitly staged resources.")
+        parts = path.relative_to(root).parts
+        if len(parts) != 2 or parts[1] != "files":
+            raise ValueError("Output bases require a complete staged model directory.")
+        resource = self.finish(source, dispatch, parts[0])
+        if resource["kind"] != "model" or resource["shape"] != "directory":
+            raise ValueError("Output bases require a complete staged model directory.")
+        return resource
 
     def discard(self, source: str, dispatch: str) -> dict:
         prefix = self._prefix(source, dispatch)

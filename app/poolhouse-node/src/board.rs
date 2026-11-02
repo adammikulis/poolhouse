@@ -16,6 +16,8 @@ use crate::row::{check_body, valid_actor, valid_name, valid_origin, is_line, Kin
 use crate::rules::{self, head_message, held_back, tick};
 use crate::state::{Cut, Pin, State};
 
+mod rotate;
+
 pub const MAX_ORIGINS: usize = 64;
 const MAX_REJECTED: usize = 200;
 /// A head is written after this many rows, or this many bytes of rows, without one.
@@ -47,6 +49,10 @@ pub struct Board {
     lineages: BTreeMap<String, Held>,
     /// The group each author was put in.
     groups: BTreeMap<String, String>,
+    /// The percent of the rows or bytes at which this device starts a new segment of its log; 0 starts none.
+    rotate_percent: usize,
+    /// Rows of a new segment of a copy that restarts at a base, held until the segment is whole.
+    staged: BTreeMap<String, Vec<Row>>,
 }
 
 /// Rows built to follow the log but not written yet, and what they come to for the log, their authors and their groups.
@@ -78,6 +84,14 @@ impl Board {
         Board::open_with_clock(dir, id, pool, key, Box::new(wall_ms))
     }
 
+    /// `open_bounded` that starts a new segment of this device's log at ``percent`` of the rows or of the bytes the bounds keep.
+    pub fn open_rotating(dir: &Path, id: &str, pool: &str, key: SigningKey, bounds: Bounds, percent: usize) -> Result<Board> {
+        let mut board = Board::open_bounded(dir, id, pool, key, bounds)?;
+        board.rotate_percent = percent;
+        board.try_rotate();
+        Ok(board)
+    }
+
     /// `open` with the bounds ``bounds`` on the log.
     pub fn open_bounded(dir: &Path, id: &str, pool: &str, key: SigningKey, bounds: Bounds) -> Result<Board> {
         Board::open_with(dir, (id, pool, key), Box::new(wall_ms), bounds)
@@ -102,9 +116,12 @@ impl Board {
                 logs.insert(origin.clone(), Log::open(&path, id, &origin)?);
             }
         }
-        let mut board = Board { id: id.into(), dir: dir.into(), pool: pool.into(), key, origin: origin.clone(), logs, state, clock, removed: BTreeSet::new(), bounds, authors: BTreeMap::new(), lineages: BTreeMap::new(), groups: BTreeMap::new() };
+        let mut board = Board { id: id.into(), dir: dir.into(), pool: pool.into(), key, origin: origin.clone(), logs, state, clock, removed: BTreeSet::new(), bounds, authors: BTreeMap::new(), lineages: BTreeMap::new(), groups: BTreeMap::new(), rotate_percent: 0, staged: BTreeMap::new() };
+        for origin in board.origins() {
+            board.apply_segment(&origin)?;
+        }
         let mut authors: BTreeMap<String, Held> = BTreeMap::new();
-        for row in board.log_mut(&origin)?.rows().iter().filter(|r| r.kind != Kind::Head) {
+        for row in board.log_mut(&origin)?.rows().iter().filter(|r| !matches!(r.kind, Kind::Head | Kind::Base)) {
             authors.entry(row.actor.clone()).or_default().add(row.size() as u64 + 1);
         }
         board.lineages = authors.clone();
@@ -150,8 +167,19 @@ impl Board {
         Ok(self.logs.get_mut(origin).expect("inserted above"))
     }
 
+    /// The rows of ``origin`` a view reads: its live segment, less a segment whose restated rows have not all arrived.
     pub fn rows(&self, origin: &str) -> &[Row] {
+        self.logs.get(origin).map_or(&[], |l| l.view())
+    }
+
+    /// Every row of ``origin`` held in its live segment, the chain a peer is given and checks.
+    pub fn chain(&self, origin: &str) -> &[Row] {
         self.logs.get(origin).map_or(&[], |l| l.rows())
+    }
+
+    /// The seq of the first row of the live segment of ``origin``: 1 until a segment starts.
+    pub fn first_seq(&self, origin: &str) -> u64 {
+        self.logs.get(origin).map_or(1, |l| l.first_seq())
     }
 
     pub fn origins(&self) -> Vec<String> {
@@ -161,20 +189,29 @@ impl Board {
     /// For each held origin, the tip of its log.
     pub fn vector(&self) -> BTreeMap<String, Tip> {
         let tip = |l: &Log| l.rows().last().map(|r| Tip { seq: r.seq, hash: r.hash.clone() });
-        self.logs.iter().filter_map(|(o, l)| tip(l).map(|t| (o.clone(), t))).collect()
+        let mut out: BTreeMap<String, Tip> = self.logs.iter().filter_map(|(o, l)| tip(l).map(|t| (o.clone(), t))).collect();
+        out.extend(self.staged_tips());
+        out
+    }
+
+    /// The tip of each segment a copy holds apart until it is whole.
+    fn staged_tips(&self) -> Vec<(String, Tip)> {
+        self.staged.iter().filter_map(|(o, rows)| rows.last().map(|r| (o.clone(), Tip { seq: r.seq, hash: r.hash.clone() }))).collect()
     }
 
     /// The rows of ``origin`` through its last head: the part a peer may be given.
     pub fn trusted(&self, origin: &str) -> &[Row] {
-        let rows = self.rows(origin);
-        let last = rows.iter().filter(|r| r.kind == Kind::Head).map(|r| r.seq).max().unwrap_or(0);
-        &rows[..last as usize]
+        let Some(log) = self.logs.get(origin) else { return &[] };
+        let last = log.rows().iter().rev().find(|r| r.kind == Kind::Head).map_or(0, |r| r.seq);
+        &log.rows()[..log.through(last)]
     }
 
     /// Like `vector`, over the trusted rows only.
     pub fn trusted_vector(&self) -> BTreeMap<String, Tip> {
         let tip = |r: &[Row]| r.last().map(|r| Tip { seq: r.seq, hash: r.hash.clone() });
-        self.logs.keys().filter_map(|o| tip(self.trusted(o)).map(|t| (o.clone(), t))).collect()
+        let mut out: BTreeMap<String, Tip> = self.logs.keys().filter_map(|o| tip(self.trusted(o)).map(|t| (o.clone(), t))).collect();
+        out.extend(self.staged_tips());
+        out
     }
 
     pub fn damaged(&self) -> &BTreeMap<String, String> {
@@ -212,7 +249,7 @@ impl Board {
     }
 
     fn write(&mut self, class: Class, kind: Kind, actor: &str, body: Value, idem: &str) -> Result<Row> {
-        if kind == Kind::Head || !(actor.is_empty() || valid_actor(actor)) || idem.len() > 128 || !is_line(idem) {
+        if matches!(kind, Kind::Head | Kind::Base | Kind::Carry) || !(actor.is_empty() || valid_actor(actor)) || idem.len() > 128 || !is_line(idem) {
             return Err(Error::Invalid("a row needs a real kind, a usable actor and a clean key".into()));
         }
         check_body(&body)?;
@@ -222,9 +259,24 @@ impl Board {
             return Ok(found.clone());
         }
         let row = self.add(class, kind, actor, idem, body)?;
+        self.after_write()?;
+        Ok(row)
+    }
+
+    /// Sign the tip when enough rows are unsigned, and start a new segment when the log is due one.
+    fn after_write(&mut self) -> Result<()> {
         match self.seal_when_due() {
-            Ok(()) | Err(Error::Quota(_)) => Ok(row),
-            Err(e) => Err(e),
+            Ok(()) | Err(Error::Quota(_)) => {}
+            Err(e) => return Err(e),
+        }
+        self.try_rotate();
+        Ok(())
+    }
+
+    /// Start a new segment of this device's log if it is due; a failure is said on stderr and leaves the log as it was.
+    fn try_rotate(&mut self) {
+        if let Err(e) = self.rotate_if_due() {
+            eprintln!("poolhouse-node: board {} could not start a new segment of its log: {e}", self.id);
         }
     }
 
@@ -233,7 +285,7 @@ impl Board {
     /// a run longer than a batch would otherwise never arrive.
     fn seal_when_due(&mut self) -> Result<()> {
         let (mut rows, mut bytes) = (0, 0);
-        for r in self.rows(&self.origin).iter().rev().take_while(|r| r.kind != Kind::Head) {
+        for r in self.chain(&self.origin).iter().rev().take_while(|r| r.kind != Kind::Head) {
             rows += 1;
             bytes += r.size();
         }
@@ -256,7 +308,7 @@ impl Board {
     pub fn append_many(&mut self, drafts: Vec<(Kind, String, Value)>) -> Result<usize> {
         let mut staged = Staged::default();
         for (kind, actor, body) in drafts {
-            if kind == Kind::Head || !valid_actor(&actor) {
+            if matches!(kind, Kind::Head | Kind::Base | Kind::Carry) || !valid_actor(&actor) {
                 return Err(Error::Invalid("a row needs a real kind and a usable actor".into()));
             }
             check_body(&body)?;
@@ -272,10 +324,8 @@ impl Board {
         let origin = self.origin.clone();
         self.log_mut(&origin)?.extend(staged.rows.clone())?;
         staged.rows.iter().for_each(|r| self.count(r));
-        match self.seal_when_due() {
-            Ok(()) | Err(Error::Quota(_)) => Ok(staged.rows.len()),
-            Err(e) => Err(e),
-        }
+        self.after_write()?;
+        Ok(staged.rows.len())
     }
 
     /// The group ``actor`` counts in: the one it was put in, or itself.
@@ -285,26 +335,32 @@ impl Board {
 
     /// Count a row written to the log toward its author and its group.
     fn count(&mut self, row: &Row) {
-        if row.kind != Kind::Head {
+        if !matches!(row.kind, Kind::Head | Kind::Base) {
             let bytes = row.size() as u64 + 1;
             self.authors.entry(row.actor.clone()).or_default().add(bytes);
             self.lineages.entry(self.group_of(&row.actor)).or_default().add(bytes);
         }
     }
 
+    /// The signed-chain row of this device's log that follows ``last``.
+    fn next_row(&self, last: Option<&Row>, (kind, actor, idem): (Kind, &str, &str), body: Value) -> Row {
+        let (seen, now) = (self.state.t.seen, self.now_ms());
+        let (wall, counter) = tick(last.map_or((0, 0), |r| (r.hlc.0, r.hlc.1)), now, seen);
+        let mut row = Row {
+            v: VERSION, board: self.id.clone(), origin: self.origin.clone(),
+            seq: last.map_or(1, |r| r.seq + 1),
+            prev: last.map_or(GENESIS.to_string(), |r| r.hash.clone()),
+            hlc: (wall, counter, self.origin.clone()), kind, actor: actor.into(), idem: idem.into(), body, hash: String::new(),
+        };
+        row.hash = row.digest();
+        row
+    }
+
     /// The row that follows the rows the log holds and the ``staged`` ones after them, when the bounds admit it.
     fn stage(&mut self, class: Class, (kind, actor, idem): (Kind, &str, &str), body: Value, staged: &Staged) -> Result<Row> {
         let origin = self.origin.clone();
-        let (seen, now) = (self.state.t.seen, self.now_ms());
-        let last = staged.rows.last().or_else(|| self.rows(&origin).last()).cloned();
-        let (wall, counter) = tick(last.as_ref().map_or((0, 0), |r| (r.hlc.0, r.hlc.1)), now, seen);
-        let mut row = Row {
-            v: VERSION, board: self.id.clone(), origin: origin.clone(),
-            seq: last.as_ref().map_or(1, |r| r.seq + 1),
-            prev: last.as_ref().map_or(GENESIS.to_string(), |r| r.hash.clone()),
-            hlc: (wall, counter, origin.clone()), kind, actor: actor.into(), idem: idem.into(), body, hash: String::new(),
-        };
-        row.hash = row.digest();
+        let last = staged.rows.last().or_else(|| self.chain(&origin).last()).cloned();
+        let row = self.next_row(last.as_ref(), (kind, actor, idem), body);
         let bytes = row.size() as u64;
         if bytes as usize > MAX_ROW_BYTES {
             return Err(crate::limits::refuse("the row is larger than a row may be", MAX_ROW_BYTES, "MAX_ROW_BYTES", "row.rs"));
@@ -322,13 +378,18 @@ impl Board {
 
     /// Sign the last row of this device's log with a head row; None when already covered.
     pub fn seal(&mut self) -> Result<Option<Row>> {
-        let Some(tip) = self.rows(&self.origin.clone()).last().cloned() else { return Ok(None) };
+        let Some(tip) = self.chain(&self.origin.clone()).last().cloned() else { return Ok(None) };
         if tip.kind == Kind::Head {
             return Ok(None);
         }
-        let signature = self.key.sign(&head_message(&self.pool, &self.id, &self.origin, tip.seq, &tip.hash));
-        let body = json!({"head": tip.seq, "hash": tip.hash, "public": public_hex(&self.key), "sig": hex(&signature.to_bytes())});
+        let body = self.head_body(&tip);
         self.add(Class::Last, Kind::Head, "", "", body).map(Some)
+    }
+
+    /// The body of the head that signs ``tip``.
+    fn head_body(&self, tip: &Row) -> Value {
+        let signature = self.key.sign(&head_message(&self.pool, &self.id, &self.origin, tip.seq, &tip.hash));
+        json!({"head": tip.seq, "hash": tip.hash, "public": public_hex(&self.key), "sig": hex(&signature.to_bytes())})
     }
 
     /// Store the rows of another device's log that verify; returns how many. A forged or
@@ -344,7 +405,8 @@ impl Board {
         if let Some(why) = self.state.t.damaged.get(origin) {
             return Err(Error::Damaged(format!("log {origin} was refused: {why}")));
         }
-        if !self.logs.contains_key(origin) && self.logs.len() >= MAX_ORIGINS {
+        let origins: BTreeSet<_> = self.logs.keys().chain(self.staged.keys()).collect();
+        if !origins.contains(&origin.to_string()) && origins.len() >= MAX_ORIGINS {
             return Err(crate::limits::refuse("this device holds as many logs as it may", MAX_ORIGINS, "MAX_ORIGINS", "board.rs"));
         }
         match self.store(origin, incoming, authoritative) {
@@ -374,12 +436,15 @@ impl Board {
         let cap = cut.as_ref().map(|c| c.seq);
         let kept: Vec<Row> = incoming.iter().filter(|r| cap.is_none_or(|c| r.seq <= c)).cloned().collect();
         let (dropped, incoming) = (kept.len() < incoming.len(), kept);
-        let held: Vec<Row> = self.rows(origin).to_vec();
+        let mut held: Vec<Row> = self.chain(origin).to_vec();
         let (board, pool) = (self.id.clone(), self.pool.clone());
-        let (mut took, pin) = match rules::accept(&board, origin, &held, &incoming, key_of(&pin), &pool) {
+        let staged = self.staged.get(origin).cloned().unwrap_or_default();
+        let (mut took, pin) = match rules::accept(&board, origin, if staged.is_empty() { &held } else { &staged }, &incoming, key_of(&pin), &pool) {
             Ok(t) => (t, pin),
             Err(Error::Damaged(_)) if authoritative && pin.as_ref().is_some_and(|p| !p.bound) => {
                 self.reset(origin)?;
+                self.staged.remove(origin);
+                held.clear();
                 (rules::accept(&board, origin, &[], &incoming, None, &pool)?, None)
             }
             Err(e) => return Err(e),
@@ -390,21 +455,29 @@ impl Board {
         }
         let blocked = dropped || took.rows.len() < before;
         if let Some(c) = cut.filter(|c| c.seq > 0) {
-            let held = self.rows(origin);
-            let reached = |at: usize| if at < held.len() { Some(held[at].hash.as_str()) } else { took.rows.get(at - held.len()).map(|r| r.hash.as_str()) };
-            if reached(c.seq as usize - 1).is_some_and(|h| h != c.hash) {
+            let reached = held.iter().chain(took.rows.iter()).find(|r| r.seq == c.seq);
+            if reached.is_some_and(|r| r.hash != c.hash) {
                 return Err(Error::Invalid("that log does not pass through the point the removal of its device named".into()));
             }
         }
-        let held = self.logs.get(origin).map_or_else(Held::default, |l| Held { rows: l.rows().len(), bytes: l.bytes() });
-        let incoming = Held { rows: took.rows.len(), bytes: took.rows.iter().map(|r| r.size() as u64 + 1).sum() };
-        self.bounds.admit_copy(held, incoming)?;
+        let restarting = took.restart && !held.is_empty();
+        if restarting && !authoritative {
+            return Err(Error::Gap("these rows start at a base past the rows held, which only the device that wrote them may send".into()));
+        }
+        self.check_bases(if staged.is_empty() { &held } else { &staged }, &took)?;
+        let (held_size, incoming) = self.segment_sizes(origin, &took);
+        self.bounds.admit_copy(held_size, incoming)?;
         if took.rows.is_empty() {
             return if blocked { Err(Error::Invalid("the device that wrote that log was removed from the pool".into())) } else { Ok(0) };
         }
         let count = took.rows.len();
         self.observe(&took.rows);
-        self.log_mut(origin)?.extend(took.rows)?;
+        if took.restart || !staged.is_empty() {
+            self.hold_segment(origin, (took.restart, &held), took.rows)?;
+        } else {
+            self.log_mut(origin)?.extend(took.rows)?;
+        }
+        self.apply_segment(origin)?;
         if pin.as_ref().is_none_or(|p| authoritative && !p.bound) {
             let public = took.public.map(|p| hex(&p)).unwrap_or_default();
             self.state.t.keys.insert(origin.into(), Pin { public, bound: authoritative });
@@ -414,6 +487,7 @@ impl Board {
     }
 
     fn reset(&mut self, origin: &str) -> Result<()> {
+        self.staged.remove(origin);
         if let Some(log) = self.logs.remove(origin) {
             log.remove()?;
         }
@@ -459,8 +533,10 @@ impl Board {
         if self.state.t.cuts.insert(origin.into(), cap.clone()) != Some(cap.clone()) {
             self.state.save()?;
         }
-        let keep = usize::try_from(cap.seq).unwrap_or(usize::MAX);
-        let forked = self.rows(origin).get(keep.wrapping_sub(1)).is_some_and(|r| cap.seq > 0 && r.hash != cap.hash);
+        let Some((forked, keep)) = self.logs.get(origin).map(|log| {
+            let outside = cap.seq > 0 && cap.seq < log.first_seq();
+            (outside || log.at(cap.seq).is_some_and(|r| cap.seq > 0 && r.hash != cap.hash), log.through(cap.seq))
+        }) else { return Ok(()) };
         if forked {
             self.reset(origin)?;
         } else if let Some(log) = self.logs.get_mut(origin) {
@@ -488,7 +564,7 @@ impl Board {
         }
         for origin in self.origins() {
             if writer_in(self, &origin) == Some(true) && !self.state.t.cuts.contains_key(&origin) {
-                let tip = self.rows(&origin).last().map(|r| (r.seq, r.hash.clone())).unwrap_or_default();
+                let tip = self.chain(&origin).last().map(|r| (r.seq, r.hash.clone())).unwrap_or_default();
                 self.cut(&origin, tip.0, &tip.1)?;
             }
         }
@@ -533,12 +609,12 @@ impl Board {
     /// Record how much of this device's log the device ``fingerprint`` holds, when its hash
     /// for that row is the one held here; true when it holds less than it claimed before.
     pub fn acknowledge(&mut self, fingerprint: &str, vector: &BTreeMap<String, Tip>) -> Result<bool> {
-        let rows = self.rows(&self.origin);
-        let seq = vector.get(&self.origin).filter(|t| t.seq >= 1 && t.seq as usize <= rows.len() && rows[t.seq as usize - 1].hash == t.hash).map_or(0, |t| t.seq);
+        let seq = vector.get(&self.origin).filter(|t| t.seq >= 1 && self.hash_at(&self.origin, t.seq).is_some_and(|h| h == t.hash)).map_or(0, |t| t.seq);
         let before = self.state.t.acks.get(fingerprint).copied().unwrap_or(0);
         if seq > before {
             self.state.t.acks.insert(fingerprint.into(), seq);
             self.state.save()?;
+            self.prune_archives()?;
         }
         Ok(seq < before)
     }
@@ -587,7 +663,7 @@ impl Board {
         let now = self.now_ms();
         let own = &self.origin;
         let trimmed: Vec<Vec<Row>> = self.logs.iter().map(|(o, l)| {
-            let rows = l.rows();
+            let rows = l.view();
             let cut = if o == own { rows.len() } else { rows.iter().position(|r| held_back(r, now)).unwrap_or(rows.len()) };
             rows[..cut].to_vec()
         }).collect();

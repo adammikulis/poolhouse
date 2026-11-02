@@ -14,7 +14,7 @@ import secrets
 import tarfile
 
 import pytest
-from testfarm_kit import enable, jobs_on, member, until
+from testfarm_kit import enable, enter, jobs_on, member, until
 
 from poolhouse import node_health
 from poolhouse.board import session as board_session
@@ -202,7 +202,7 @@ def test_a_shard_past_the_running_cap_is_refused(pool):
     fp = member(a)["fingerprint"]
     held = [shards.send(fp, tree, "all", ["tests/test_hang.py"], 600) for _ in range(2)]
     until("both to run", 30, lambda: shards.capability(fp)["free"] == 0)
-    with pytest.raises(ShardError, match="2 shards are already running"):
+    with pytest.raises(ShardError, match="as many shards as may run are already running here"):
         shards.send(fp, tree, "all", ["tests/test_a.py"], 60)
     for shard in held:
         shards.cancel(fp, shard)
@@ -219,15 +219,14 @@ def test_a_device_with_shards_off_runs_nothing_and_says_so(pool):
     assert shards.capability(fp)["accepts"] is False and jobs_on(b) == 0
 
 
-def test_a_joined_device_that_is_not_marked_as_the_owners_is_refused(pool, third):
+def test_a_joined_device_that_is_not_marked_as_the_owners_is_refused(pool, joiner):
     """Being the owner's device is standing in the pool: a device put out of it asks nothing, however it got in."""
     a, b, _shards, _tree = pool
     enable(b)
-    code = b.call("add_device", token=b.token)
-    third.call("join_pool", token=third.token, host="127.0.0.1", port=code["port"], passphrase=code["code"])
-    ours, fp_b = Shards(session(third)), member(a)["fingerprint"]
+    enter(b, joiner)
+    ours, fp_b = Shards(session(joiner)), member(a)["fingerprint"]
     assert ours.capability(fp_b)["accepts"] is False, "a member is answered, and told it is not allowed"
-    b.call("member_remove", token=b.token, fingerprint=node_health.call(third.state, "pool_status")["fingerprint"])
+    b.person.remove_member(b, node_health.call(joiner.state, "pool_status")["fingerprint"])
     with pytest.raises(ShardError):
         ours.capability(fp_b)
     with pytest.raises(ShardError):
@@ -270,13 +269,12 @@ def session(device):
     return board_session.Session(device.client, "demo", device.token)
 
 
-def test_a_member_that_is_not_on_the_allowed_list_is_refused_every_op_but_the_question(pool, third):
+def test_a_member_that_is_not_on_the_allowed_list_is_refused_every_op_but_the_question(pool, joiner):
     """Joining the pool, however it happened (a code, or `open` on the same network), does not let a device run anything here."""
     a, b, _shards, _tree = pool
     enable(b)
-    code = b.call("add_device", token=b.token)
-    third.call("join_pool", token=third.token, host="127.0.0.1", port=code["port"], passphrase=code["code"])
-    ours, fp_b = Shards(session(third)), member(a)["fingerprint"]
+    enter(b, joiner)
+    ours, fp_b = Shards(session(joiner)), member(a)["fingerprint"]
     asked = ours.capability(fp_b)
     assert asked["accepts"] is False and asked["allowed"] is False
     for op, args in [("shard_put", {"id": GOOD_ID, "offset": 0, "data": "00"}), ("shard_start", start_request(b"x")),

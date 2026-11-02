@@ -12,7 +12,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-# The package is the namespace the tests and `selfcheck` patch -- `bench.home_dir()` -- so
+# The package is the namespace the tests patch -- `bench.home_dir()` -- so
 # anything patchable is looked up there at call time, never bound here at import.
 from poolhouse import bench
 from poolhouse.bench import fitcontext, thinking
@@ -34,8 +34,7 @@ __all__ = ["animate_options", "asking_options", "checking", "concurrent_options"
 
 def checking() -> tuple[Option, ...]:
     """The flags every measuring subcommand has for the checks it makes before it measures:
-    the self-check on no GPU, the estimate against the ceiling, and the smoke on the real
-    one."""
+    the estimate against the ceiling and the smoke on the real server."""
     return (
         flag("--ceiling", type=float, default=ceiling_default(), metavar="MINUTES",
              help="refuse to start when the estimate -- seconds per question from "
@@ -46,13 +45,6 @@ def checking() -> tuple[Option, ...]:
                   "refused. No more eight-hour tests"),
         flag("--yes", action="store_true",
              help="run it even when the estimate is over --ceiling"),
-        flag("--no-selfcheck", action="store_true",
-             help="skip the dry run made first, before the lock is taken: this exact "
-                  "command through the whole path with a scripted model, no server "
-                  "and no GPU, into a scratch store read back -- what catches a flag "
-                  "the client does not take before a load is paid for it. For a run "
-                  "you are deliberately repeating, whose path the last one proved. "
-                  "Read before the rest of the line is parsed, like --no-queue"),
         flag("--no-smoke", action="store_true",
              help=f"skip the {SMOKE}-question smoke a real run makes first on the "
                   f"real server and the real store, read back, before its own "
@@ -249,7 +241,8 @@ def drafts_options() -> tuple[Option, ...]:
                   "f16, q4_0); a label ends -kv-TYPE for anything but q8_0 and "
                   "the table's ctx column shows it"),
         flag("--port", type=int, default=8099),
-        flag("--context", type=fitcontext.context_arg, default=32768, metavar="N|fit[:MAX]"),
+        flag("--context", type=fitcontext.context_arg, default=0, metavar="N|fit[:MAX]",
+             help="total context for a --serve'd model (default: fit, the most one user holds)"),
         flag("--parallel", type=int, default=1, metavar="N",
              help="slots for a --serve'd model (default: %(default)s)"),
         flag("--binary", default="", help="a llama-server that reads this model"),
@@ -368,7 +361,7 @@ def sweep_options() -> tuple[Option, ...]:
                   "else started -- which leaves the starting, stopping and waiting "
                   "to a shell loop that dies with its terminal"),
         flag("--context", type=fitcontext.context_arg, default=0, metavar="N|fit[:MAX]",
-             help="total context for a --serve'd model (default: 32768 per slot); "
+             help="total context for a --serve'd model (default: fit); "
                   "fit is the most one user holds on this machine for each model, "
                   "its cache type and --parallel, a tenth short of it, and at most "
                   "the model's own context or MAX"),

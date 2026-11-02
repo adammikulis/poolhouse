@@ -1,4 +1,4 @@
-"""Walk the automatic pool join on this device, one step at a time, and say which step fails and the exact change that fixes it.
+"""Walk the pool join on this device, one step at a time, and say which step fails and the exact change that fixes it.
 
 Run `scripts/pool-join-check` on each of two devices on the same network. Each step is PASS, FAIL (with a `fix:` line) or SKIP
 (an earlier step failed). Nothing secret is printed: fingerprints are public and no key, code or token is shown.
@@ -77,10 +77,10 @@ def firewall_fix(port: int, beacon_port: int) -> str:
     """How to let the node's two ports in on this kind of machine."""
     if sys.platform == "darwin":
         return ("System Settings > Privacy & Security > Local Network: turn on the terminal app you run this from, then run it again. "
-                "If a firewall prompt appears for poolhouse-node, choose Allow")
+                "If a firewall prompt appears for Poolhouse, choose Allow")
     if sys.platform == "win32":
-        return (f'in an administrator PowerShell: New-NetFirewallRule -DisplayName poolhouse-node -Direction Inbound -Action Allow '
-                f'-Profile Private -Protocol TCP -LocalPort {port}; New-NetFirewallRule -DisplayName poolhouse-beacon -Direction Inbound '
+        return (f'in an administrator PowerShell: New-NetFirewallRule -DisplayName "Poolhouse node" -Direction Inbound -Action Allow '
+                f'-Profile Private -Protocol TCP -LocalPort {port}; New-NetFirewallRule -DisplayName "Poolhouse node discovery" -Direction Inbound '
                 f'-Action Allow -Profile Private -Protocol UDP -LocalPort {beacon_port}')
     if is_wsl():
         return (f"in an administrator PowerShell on Windows: Set-NetFirewallHyperVVMSetting -Name '{HYPERV_ID}' -DefaultInboundAction Allow "

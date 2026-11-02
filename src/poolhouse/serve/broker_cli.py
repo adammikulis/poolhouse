@@ -53,6 +53,9 @@ def cmd_queue(args: argparse.Namespace) -> int:
                  else "ours" if held["ours"] else "adopted, not ours")
         say(f":{held['port']}  {held['purpose'] or '-':<10} {held['model']}  [{held['device'] or '-'}, {state}]  "
             f"held by {holders}")
+    for gone in snapshot.get("exits") or ():
+        say(f"ended :{gone['port']}  pid {gone['pid']} {gone['said']} "
+            f"({'stopped by the broker' if gone['expected'] else 'DIED ON ITS OWN'})")
     for at, waiting in enumerate(snapshot["queue"], start=1):
         say(f"waiting #{at}: {waiting['purpose']} {waiting['model']} for pid {waiting['pid']} "
             f"({waiting['requester']}: {waiting['reason']}), "

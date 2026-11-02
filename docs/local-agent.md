@@ -56,21 +56,27 @@ Anything the role says needs a person goes to `localtools.ask_a_person`, which a
 answer in a detached process. That function is the one seam the Requests inbox replaces. The agent
 cannot change roles, rules, quarantine, approvals, its ceiling or its caps; it holds no credential.
 
-Caps per task: 12 tool-calling rounds, 30 tool calls, 24 model calls, 600 s, and the kill switch
-(the stop file, checked before every model call).
+A task has no cap unless the person sets one: `--max-rounds`, `--max-tool-calls`, `--max-model-calls` and
+`--max-task-seconds` default to none, and the same four fields in the Agents panel's Advanced options and in `task_caps` on
+`/agents/start` are the only way a cap exists. The kill switch is always there: the stop file, checked before every model call.
+An agent record saved by an older version with the former profile caps (12 rounds, 30 calls, 24 model calls and 600 s for chat;
+60, 150, 120 and an hour for coding) is read as no caps, because those numbers were a default and never a choice.
 
 ## Effort and the prompt cache
 
 Effort selects reasoning: `off`, `low`, `medium`, or `high`. Native coding sends the
 selected model family's thinking flag in `CLAUDE_CODE_EXTRA_BODY`; `off` explicitly disables
 Qwen template thinking. It does not impose an output limit from the effort level. Explicit
-caller output budgets are retained. `--max-output-tokens` sets an independent response cap
-(default 8192 tokens) for Chat and Pi coding; Codex and Claude use their native output settings.
-The Agents panel exposes the same cap under Advanced options and preserves it with saved settings.
+caller output budgets are retained. `--max-output-tokens` sets an independent response cap for Chat
+and Pi coding; with none given there is no cap and a reply may run to the context (Pi is told the context as its
+`maxTokens`), and Codex and Claude use their native output settings. The Agents panel exposes the same
+cap under Advanced options and preserves it with saved settings; a record saved with the former default of 8192 and no
+explicit choice is read as no cap.
 An explicit caller `MAX_THINKING_TOKENS=0` also disables template thinking. The runtime
 does not generate a thinking-token limit that can carry over when effort changes.
 The default is `off`. The model may raise or lower its own effort with `set_effort(level, reason)` up
-to `--max-effort` (default `medium`); above the ceiling is refused with the ceiling in the message.
+to `--max-effort` (default `high`, the top level, so by default nothing is refused); above a lower ceiling a
+person set it is refused with the ceiling in the message.
 The change applies from the next task, so a task's prompt is never rewritten; the agent's status file records it.
 `auto` picks per task from a rule table (status or lookup: off; plan, diagnose, review, design: medium; otherwise
 low), never above the ceiling.
@@ -84,10 +90,11 @@ checks this against a fake server.
 
 ## Profiles
 
-`--profile chat` (default) and `--profile coding` set task caps; context defaults to the largest safe fit
-for the selected model and this device's memory. `--ctx 256k` (k and K are accepted) overrides that choice.
-Coding prefers Qwen3.8-27B (Q4_K_XL first; `poolhouse-serve memory` rates it 27.2 GiB at 256K,
-q8_0 cache, MTP head shared) and caps of 60 rounds, 150 calls, 120 model calls and an hour. A coding
+`--profile chat` (default) and `--profile coding` differ in the model and the harness, not in limits: the context of both is the
+largest safe fit for the selected model on this device's memory (`serve.suggest.largest_fit`, one slot: the model's trained window,
+as much of it as the memory holds, the same answer `poolhouse-serve up` serves). `--ctx 256k` (k and K are accepted) overrides that
+choice. Coding prefers Qwen3.8-27B (Q4_K_XL first; `poolhouse-serve memory` rates it 27.2 GiB at 256K,
+q8_0 cache, MTP head shared) and has no task caps. A coding
 agent runs on Pi by default through `poolhouse.coding.launch_coding_agent(model, role, project,
 harness='pi')`; Codex and Claude Code are also supported.
 Flash-Next is used only when named with `--model`. Before starting, the memory estimator checks the

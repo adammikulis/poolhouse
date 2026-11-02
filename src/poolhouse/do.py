@@ -106,7 +106,7 @@ EXAMPLES: dict[str, tuple[tuple[str, str], ...]] = {
                    ("what is downloaded?", "setup_look()")),
     "doctor": (("is the checkout healthy?", "doctor()"),
                ("check the repos under ~/Documents/repos",
-                'doctor(repos=["~/Documents/repos/ml-stack"])')),
+                'doctor(repos=["~/Documents/repos/poolhouse"])')),
     "bench_compare": (("compare the last three runs",
                        'bench_compare(args=["Qwen3.8-Flash--plain", "Qwen3.8-Flash--nodraft-plain", '
                        '"Qwen3.8-Flash--ollama-plain", "--export", "compare.json"])'),
@@ -652,8 +652,7 @@ def client_for(args: argparse.Namespace) -> Any:
             f"({config.serving.note}): {said(measured)}")
         config = drafted(config, "none", say=say)
     else:
-        config = Config(serving=Serving(model=found, port=args.port, slots=1, slot_context=32768,
-                              reasoning_budget=0))
+        config = Config(serving=Serving(model=found, port=args.port, slots=1, reasoning_budget=0))
         config = drafted(config, args.draft, say=say)
     return slot(config, index=0)
 

@@ -35,7 +35,7 @@ def test_a_secret_never_reaches_the_log(tmp_path):
 
 
 @pytest.mark.parametrize("secret", [
-    "hf_" + "Z" * 30, "mlsk1." + "q" * 30, "sk-" + "a" * 30, "ghp_" + "b" * 30,
+    "hf_" + "Z" * 30, "poolhouse-sk1." + "q" * 30, "sk-" + "a" * 30, "ghp_" + "b" * 30,
     "AKIA" + "A" * 16, "Bearer " + "c" * 20, "password = hunter2hunter2",
     "https://x.example/path?token=abcdef123456", "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----",
 ])

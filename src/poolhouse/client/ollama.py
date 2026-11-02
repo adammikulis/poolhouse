@@ -28,6 +28,7 @@ import re
 import sys
 from typing import Any
 
+from poolhouse import procscan
 from poolhouse.client.settings import Request
 from poolhouse.http import Options, request_json
 
@@ -221,12 +222,8 @@ def listeners(port: int) -> list[Any]:
     import psutil
 
     found = []
-    for process in psutil.process_iter(["pid", "name", "cmdline"]):
-        try:
-            connections = process.net_connections(kind="inet")
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue
-        for conn in connections:
+    for process in (found for found, _info in procscan.readable(["pid"])):
+        for conn in procscan.connections(process):
             if conn.status == psutil.CONN_LISTEN and conn.laddr and conn.laddr.port == port:
                 found.append(process)
                 break

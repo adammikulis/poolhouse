@@ -8,7 +8,7 @@ import re
 
 import pytest
 
-from poolhouse.decide import registry
+from poolhouse.decide import registry, window
 from poolhouse.decide.cases import Case
 from poolhouse.decide.guards import guard_cases
 from poolhouse.decide.sources import local_source
@@ -16,6 +16,7 @@ from poolhouse.decide.types import DecideError, options_of
 from poolhouse.train.decider import Settings, collate, encode, metrics_of, splits
 
 OPTS = options_of({"yes": "it is", "no": "it is not"})
+DIM = window.Dimensions(window=1000, hidden=8, layers=1, heads=1, where="the test model")
 
 
 def tiny_cases(n: int = 48) -> list[Case]:
@@ -63,17 +64,17 @@ class Words:
 
 def test_encode_finds_the_last_word_of_each_option_line_in_the_chosen_order():
     case = Case("q", "s", options_of({"alpha": "", "beta": ""}), "beta")
-    straight, flipped = (encode(Words(), case, order, 1000) for order in ([0, 1], [1, 0]))
+    straight, flipped = (encode(Words(), case, order, DIM) for order in ([0, 1], [1, 0]))
     assert straight["order"] == [0, 1] and flipped["order"] == [1, 0]
     assert len(straight["spots"]) == 2 and straight["spots"][0] < straight["spots"][1]
     assert straight["ids"][straight["spots"][0]] == len("alpha")
     assert flipped["ids"][flipped["spots"][0]] == len("beta")
 
 
-def test_a_case_over_the_token_limit_is_refused_by_name():
+def test_a_case_over_the_limit_the_person_set_is_refused_by_name():
     case = Case("q", "word " * 50, OPTS, "yes", id="long-one")
     with pytest.raises(DecideError, match="long-one"):
-        encode(Words(), case, [0, 1], 20)
+        encode(Words(), case, [0, 1], DIM, 20)
 
 
 def test_collate_right_pads_and_marks_the_query_and_option_positions():
@@ -125,10 +126,27 @@ def run_tiny(tiny_base, tmp_path, steps=6):
     from poolhouse.train.decider import train
     from poolhouse.train.lora import Lora
     out = tmp_path / "decider"
-    settings = Settings(name="tiny", base=tiny_base, steps=steps, batch_size=4, device="cpu",
+    settings = Settings.smoke(name="tiny", base=tiny_base, steps=steps, batch_size=4, device="cpu",
                         dtype="float32", lora=Lora(4, 8, 0.0, ("q_proj", "v_proj")), lr=1e-3,
                         test_fraction=0.25, calibrate_fraction=0.25, baseline="none")
     return train(tiny_cases(), out, settings), out
+
+
+def test_a_run_trains_on_and_a_decider_serves_a_prompt_longer_than_the_old_4096_limit(tiny_base, tmp_path):
+    from poolhouse.decide.pointer import PointerDecider
+    from poolhouse.train.decider import train
+    from poolhouse.train.lora import Lora
+    long_state = "the number is " + "4 " * 4500
+    cases = [*tiny_cases(), Case("Is the number even?", long_state, OPTS, "yes", id="long", group="long")]
+    settings = Settings.smoke(name="tiny-long", base=tiny_base, steps=2, batch_size=2, device="cpu",
+                              dtype="float32", lora=Lora(4, 8, 0.0, ("q_proj", "v_proj")), lr=1e-3,
+                              test_fraction=0.25, calibrate_fraction=0.25, baseline="none")
+    out = tmp_path / "decider"
+    train(cases, out, settings)
+    assert json.loads((out / "decider.json").read_text())["training"]["max_tokens"] is None
+    decider = PointerDecider(out, device="cpu")
+    got = decider.decide("Is the number even?", long_state, OPTS)
+    assert sum(got.scores.values()) == pytest.approx(1.0) and got.details["tokens"] > 4500
 
 
 def test_a_whole_run_writes_a_directory_that_loads_and_decides(tiny_base, tmp_path):
@@ -164,3 +182,17 @@ def test_the_loss_falls_when_the_model_can_learn_the_rule(tiny_base, tmp_path):
     result, _ = run_tiny(tiny_base, tmp_path, steps=40)
     early, late = result.losses[:8], result.losses[-8:]
     assert sum(late) / 8 < sum(early) / 8
+
+
+def test_a_run_by_epochs_with_accumulation_and_checkpointing_takes_the_steps_the_epochs_make(
+        tiny_base, tmp_path):
+    from poolhouse.train.decider import train
+    from poolhouse.train.lora import Lora
+    settings = Settings.smoke(
+        name="epochs", base=tiny_base, steps=None, epochs=2.0, batch_size=2, grad_accum=2,
+        device="cpu", dtype="float32", lora=Lora(4, 8, 0.0, ("q_proj", "v_proj")), lr=1e-3,
+        gradient_checkpointing=True, test_fraction=0.25, calibrate_fraction=0.25, baseline="none")
+    result = train(tiny_cases(), tmp_path / "decider", settings)
+    assert len(result.losses) == settings.steps_for(result.n_train) > 4
+    assert json.loads((tmp_path / "decider" / "decider.json").read_text())["training"][
+        "grad_accum"] == 2

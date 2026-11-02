@@ -365,15 +365,14 @@ def test_a_nested_subagent_is_a_child_of_its_spawner_and_stop_speaks_as_itself(b
     assert posts[0][1].startswith('done: finished')
 
 
-def test_subagents_and_their_children_never_become_coordinators(board, tmp_path):
+def test_subagents_and_their_children_are_listed_as_subagents(board, tmp_path):
     events = spawn_events(tmp_path, nested=True)
     names = [start(board, events['child']).name, start(board, events['grandchild']).name]
     known = {a.name: a for a in board.session(board.lead).agents()}
     assert agent_display.describe(known[board.lead.name])['session_kind'] == 'main'
     for name in names:
         shown = agent_display.describe(known[name])
-        assert shown['coordinator_eligible'] is False and shown['session_kind'] == 'subagent'
-        assert shown['coordinator_reason'] == 'not a main session'
+        assert shown['session_kind'] == 'subagent'
         assert shown['spawned_by'] == known[name].parent
     assert agent_display.spoken(agent_display.describe(known[names[1]])) == f'{names[1]} (spawned by {names[0]})'
     listed = json.loads(run(board.lead.name, 'agents', '--json').stdout)

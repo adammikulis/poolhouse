@@ -18,7 +18,6 @@ python -m poolhouse.ingest ask     --out ./sources.ladybug "how is heart rate co
 python -m poolhouse.ingest ask     --out ./sources.ladybug --gold ./questions.json  # score the answers, not the reading
 python -m poolhouse.ingest retry   --out ./sources.ladybug   # read again the units that gave up
 python -m poolhouse.ingest tidy    --out ./sources.ladybug   # the hygiene pass; --apply to write it
-python -m poolhouse.ingest migrate --out ./sources.ladybug   # a store from the books era becomes a sources store
 python -m poolhouse.ingest stop                              # end the run, after it folds what it read
 ```
 

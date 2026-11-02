@@ -1,5 +1,9 @@
 # Test result reuse and the async runner
 
+> **Replaced by the test runner design.** The fixed numbers this note describes as current (the canary rate of 0.05, the 900 s single-flight wait and the three-day pruning of finished jobs) are replaced by measured or
+> project-set values in the migration of `docs/design-test-runner.md` (section 15 and migration steps 1 to 11); until that step lands
+> they are what the code does, and none is to be copied into new code.
+
 `scripts/test` counts a passing test file from an earlier run when that run executed the identical
 file against identical code under identical settings, and runs suites as background jobs. This note
 defines what counts as identical, what is never reused, how entries are protected, and where the

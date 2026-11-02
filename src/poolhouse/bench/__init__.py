@@ -6,7 +6,7 @@ put a model up and drive the subcommands; `show`, `detail`, `frontier`, `gathere
 `profiles` and `report` read runs back; `truth`, `folding` and `extract` read a graph out
 of messages.
 
-Everything is imported here, and a call between modules to something a test or `selfcheck`
+Everything is imported here, and a call between modules to something a test
 patches (`served`, `measure`, `footprint`, `runs`, `home_dir`) goes through ``bench.<name>``.
 """
 

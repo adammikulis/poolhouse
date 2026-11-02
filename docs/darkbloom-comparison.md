@@ -281,8 +281,7 @@ SIP-downgrade-and-restore behaviour (to be qualified), and everything that attes
 ## 9. Comparison with this repository
 
 Our side, from sibling-branch notes [this repo: docs/pool-encryption.md, docs/service.md,
-docs/pool.md]: the pool is a replica of the owner's own devices with pinned per-device TLS and a
-shared pool key; guest tenancy Level 1 ("no casual visibility") is buildable now; Level 2
+docs/pool.md]: the pool is a replica of the owner's own devices with pinned per-device TLS; guest tenancy Level 1 ("no casual visibility") is buildable now; Level 2
 (resistance to a determined owner) "is not buildable in this pool today" and its Apple-silicon entry
 says secure enclave and device attestation prove a device and app to Apple's service, "not a sandboxed
 job to a third party" [this repo: docs/pool-encryption.md, section 7.4]. The service note limits

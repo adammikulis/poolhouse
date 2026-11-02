@@ -31,6 +31,7 @@ from poolhouse import (
     runtime_git,
     runtime_store,
     runtime_unmerged,
+    spawned,
     win32,
 )
 from poolhouse.command import Group, flag
@@ -91,16 +92,30 @@ def _presence(extra: list[str] | None) -> list[str]:
     return [*out, PRESENCE_FLAG, "os"] if real else out
 
 
-def _start_supervisor(state: Path, extra: list[str]) -> None:
+def _start_supervisor(state: Path, extra: list[str]) -> spawned.Child:
     parent = "" if state == default_state() else os.environ.get(node_supervise.PARENT_ENV, "")
     argv = ["supervise", "--state", str(state), *(f"--arg={word}" for word in extra), *(["--parent-pid", parent] if parent.isdigit() else [])]
-    jobs.detach("poolhouse.node_launch", argv, log=state / "supervisor.log")
+    return spawned.child_of(jobs.detach("poolhouse.node_launch", argv, log=state / "supervisor.log"))
+
+
+def _answers_or_ends(state: Path, supervisor: spawned.Child, wait_s: float) -> dict | None:
+    """The node's health once it answers; None when ``wait_s`` passes with the supervisor still
+    running; `NodeUnavailable` the moment the supervisor ends, with the reason it last gave for
+    refusing the node."""
+    try:
+        return spawned.wait(supervisor, lambda: node_health(state), what="the node supervisor",
+                            timeout_s=wait_s, watch=spawned.Watch(log=state / "supervisor.log", poll_s=POLL_S))
+    except spawned.StartFailed as exc:
+        if exc.kind == "timeout":
+            return None
+        why = node_supervise.refusal(state, wait_s + 30)
+        raise NodeUnavailable(f"{exc}{f' ({why})' if why else ''}") from exc
 
 
 def ensure_node(state: Path | None = None, *, extra: list[str] | None = None, wait_s: float = START_WAIT_S) -> dict:
     """The node's health, after starting it under a supervisor when it was not answering.
 
-    The device's own node (the default state directory) starts on the LAN, so it joins its project's open pool or makes one
+    The device's own node (the default state directory) starts on the LAN, so it joins its project's open pool when it hears one
     (`node_pool.network_args`), but only where `lan.allowed` (the installed software on the account's real state root, never a test or a
     moved root: `--lan` is dropped there); a node in any other state directory stays local unless ``extra`` says otherwise.
     Raises `NodeUnavailable` when it still does not answer after ``wait_s``, and `node_binary.NodeBinaryError` before starting
@@ -120,9 +135,11 @@ def ensure_node(state: Path | None = None, *, extra: list[str] | None = None, wa
         with only_one(state / START_LOCK, timeout=wait_s, announce=lambda _: None, note="node start"):
             if (said := node_health(state)) is not None:
                 return said
-            if not supervised(state):
-                _start_supervisor(state, extra or [])
-            said = _until(deadline, lambda: node_health(state))
+            supervisor = None if supervised(state) else _start_supervisor(state, extra or [])
+            if supervisor is None:
+                said = _until(deadline, lambda: node_health(state))
+            else:
+                said = _answers_or_ends(state, supervisor, max(deadline - time.monotonic(), 0.0))
     except Busy as exc:
         raise NodeUnavailable(f"another client is still starting the node: {exc}") from exc
     if said is None:
@@ -168,10 +185,10 @@ def status(state: Path | None = None) -> dict:
             "pinned": bool(node_supervise.pointer(state))}
 
 
-def _answers_as(state: Path, sha: str, not_pid: int) -> dict | None:
+def _answers_as(state: Path, sha: str) -> dict | None:
     said = node_health(state)
     run = node_supervise.running(state)
-    return said if said and run.get("sha256") == sha and said.get("pid") == run.get("pid") != not_pid else None
+    return said if said and run.get("sha256") == sha and said.get("pid") == run.get("pid") else None
 
 
 def swap(state: Path | None = None, *, wait_s: float = SWAP_WAIT_S, allow_unmerged_commit: str | runtime_unmerged.Approval = "",
@@ -215,26 +232,26 @@ def swap(state: Path | None = None, *, wait_s: float = SWAP_WAIT_S, allow_unmerg
                 try:
                     stop_node(state)
                     _start_supervisor(state, [])
-                    came = _until(time.monotonic() + wait_s, lambda: _answers_as(state, new_sha, int(run.get("pid", -1))))
+                    came = _until(time.monotonic() + wait_s, lambda: _answers_as(state, new_sha))
                 except (OSError, subprocess.SubprocessError):
                     came = None
                 if came is not None:
                     return {"action": "swapped", "detail": f"node {came['pid']} runs {new_sha[:12]}"}
                 return _rolled_back(state, pin, new_sha, wait_s, direct=True)
     except Busy:
-        return {"action": "deferred", "detail": "node replacement waits for landing"}
+        return {"action": "deferred", "detail": "node replacement waits for the runtime cutover"}
     except (OSError, ValueError, RuntimeError) as exc:
         return {"action": "failed", "detail": f"node replacement is refused: {exc}"}
-    came = _until(time.monotonic() + wait_s, lambda: _answers_as(state, new_sha, int(run.get("pid", -1))))
+    came = _until(time.monotonic() + wait_s, lambda: _answers_as(state, new_sha))
     if came is not None:
         return {"action": "swapped", "detail": f"node {came['pid']} runs {new_sha[:12]}"}
     try:
         with runtime_git.crossing(Path(source), wait_s=boundary_wait_s, note="node rollback"):
-            if current := _answers_as(state, new_sha, int(run.get("pid", -1))):
+            if current := _answers_as(state, new_sha):
                 return {"action": "swapped", "detail": f"node {current['pid']} runs {new_sha[:12]}"}
             rollback = _rollback_pointer(state, pin, new_sha)
     except Busy:
-        return {"action": "deferred", "detail": "node replacement waits for landing"}
+        return {"action": "deferred", "detail": "node replacement waits for the runtime cutover"}
     if rollback is None:
         return {"action": "failed", "detail": "the previous node runtime is refused"}
     return _rollback_answer(state, rollback, new_sha, wait_s)
@@ -255,7 +272,7 @@ def _rollback_pointer(state: Path, pin: dict, new_sha: str) -> tuple[Path, str] 
 
 def _rollback_answer(state: Path, rollback: tuple[Path, str], new_sha: str, wait_s: float) -> dict:
     _, sha = rollback
-    back = _until(time.monotonic() + wait_s, lambda: _answers_as(state, sha, -1))
+    back = _until(time.monotonic() + wait_s, lambda: _answers_as(state, sha))
     return {"action": "failed", "detail": f"the new node ({new_sha[:12]}) did not answer; "
             + (f"node {back['pid']} runs the previous binary again" if back else "the previous binary did not answer either")}
 
@@ -278,11 +295,13 @@ def smoke(prefix: Path, *, wait_s: float = START_WAIT_S) -> dict:
         child = start_process([str(binary), "run", "--state", str(state)], stdin=subprocess.DEVNULL,
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
-            said = _until(time.monotonic() + wait_s, lambda: node_health(state))
+            said = spawned.wait(child, lambda: node_health(state), what=f"the node {binary}",
+                                timeout_s=wait_s, watch=spawned.Watch(poll_s=POLL_S))
+        except spawned.StartFailed as exc:
+            raise NodeUnavailable(f"{binary} did not answer hello within {wait_s:.0f}s"
+                                  if exc.kind == "timeout" else str(exc)) from exc
         finally:
             node_supervise.end(child, state)
-    if said is None:
-        raise NodeUnavailable(f"{binary} did not answer hello within {wait_s:.0f}s")
     return said
 
 

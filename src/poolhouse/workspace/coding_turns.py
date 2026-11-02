@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from poolhouse import coding, platform, roles
+from poolhouse import coding, coding_policy, harnessing, platform
 from poolhouse.board import person
 from poolhouse.fleet import conversation_graph as graph
 from poolhouse.fleet.conversation_types import safe
@@ -84,13 +84,16 @@ class Manager:
     def start(self, cid: str, prompt: str) -> Turn:
         if not safe(cid) or not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 200000:
             raise ValueError("a turn needs an existing conversation and a nonempty message under 200000 characters")
+        harnessing.require_isolated_execution()
         conversation = self.store.get(cid)
-        if conversation is None or conversation.settings["mode"] != "coding":
-            raise ValueError("select a Coding conversation first")
+        if conversation is None:
+            raise ValueError("choose an existing conversation first")
         settings = conversation.settings
         if settings["harness"] not in coding.HARNESSES:
             raise ValueError("unsupported coding harness")
-        roles.get(settings["role"] or roles.DEFAULT)
+        coding_policy.Policy(settings["permissions"], settings["execution_mode"])
+        if not harnessing.binary_for(settings["harness"]):
+            raise ValueError("the selected tool runtime is not installed")
         folder = Path(settings["project"]).expanduser().resolve()
         if not settings["project"] or not folder.is_dir():
             raise ValueError("choose an existing project directory")
@@ -158,6 +161,7 @@ class Manager:
         return self.status(cid)
 
     def _run(self, turn: Turn, conversation, prompt: str) -> None:
+        harnessing.require_isolated_execution()
         settings = conversation.settings
         fingerprint = hashlib.sha256(json.dumps({"model": conversation.model, **settings}, sort_keys=True).encode()).hexdigest()[:24]
         home = self.store.root / "harness" / conversation.id / fingerprint
@@ -185,13 +189,13 @@ class Manager:
                 args = ["--print", "--verbose", "--output-format", "stream-json", "--include-partial-messages"]
                 if turn.session:
                     args += ["--resume", turn.session]
-            launch_options = {}
+            launch_options = {"protected_paths": self._protected_paths(home)}
             if harness == "pi":
                 launch_options["max_turns"] = self._max_turns()
                 launch_options["max_output_tokens"] = settings["max_output_tokens"]
                 launch_options["effort"] = (localeffort.pick_for(prompt, settings["max_effort"])
                     if settings["effort"] == "auto" else localeffort.clamp(settings["effort"], settings["max_effort"]))
-            result = coding.launch_coding_agent(conversation.model, settings["role"] or roles.DEFAULT,
+            result = coding.launch_coding_agent(conversation.model, coding_policy.Policy(settings["permissions"], settings["execution_mode"]),
                 settings["project"], harness=harness, context=settings["context"], draft=settings.get("draft", "auto"), name=f"chat-{conversation.id}",
                 parent=self._parent(settings["project"]),
                 harness_args=args, say=lambda text: turn.emit({"status": text}),
@@ -208,9 +212,12 @@ class Manager:
                 self.store.append(conversation.id, "assistant", turn.text)
             turn.state = "cancelled" if turn.cancelled.is_set() else "failed" if turn.error else "completed"
             with graph.opened(self.store.root) as store, store.transaction():
-                store.put_doc(f"coding:{conversation.id}", {"version": 1, "session": turn.session,
+                store.put_doc(f"coding:{conversation.id}", {**store.get_doc(f"coding:{conversation.id}", {}), "version": 1, "session": turn.session,
                     "fingerprint": fingerprint, "state": turn.state, "updated": time.time()})
             turn.emit({"state": turn.state, "done": True})
+
+    def _protected_paths(self, _home: Path) -> tuple[str, ...]:
+        return ()
 
     def _parent(self, project):
         return person.session(project).name

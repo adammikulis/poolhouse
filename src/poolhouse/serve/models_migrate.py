@@ -185,7 +185,10 @@ def place(item: Item, one: remote.RemoteFile | None, commit: str, cache: Path) -
         if problem:
             return "left", problem
         root = cache / f"models--{item.repo.replace('/', '--')}"
-        got = hfstore.into_blobs(item.path, root / "blobs" / name, name)
+        with hfstore.Placement(item.path, root / "blobs" / name, name) as placement:
+            got = placement.publish()
+            if got in ("new", "have"):
+                placement.commit()
         if got not in ("new", "have"):
             return "left", got
         target = root / "snapshots" / commit / item.rel

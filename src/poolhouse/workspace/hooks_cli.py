@@ -28,8 +28,6 @@ def install(args: argparse.Namespace) -> int:
     where = {agent: home.expand(given) for agent, given in
              (("claude-code", args.settings), ("codex", args.codex_config)) if given}
     only = tuple(args.only) or agent_hooks.AGENTS
-    for line in agent_hooks.removed_lines(agent_hooks.remove_stale(only, where), where):
-        say(line)
     done = agent_hooks.install(only, where)
     for agent, events in done.items():
         say(f"{agent}: {', '.join(events)} written to {where.get(agent) or agent_hooks.paths()[agent]}")

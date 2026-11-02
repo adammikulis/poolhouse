@@ -4,47 +4,6 @@ from functools import partial
 from pathlib import Path
 
 
-def copy_from_member(TMP, free_port):
-    import os
-    import threading
-    from http.server import ThreadingHTTPServer
-
-    from poolhouse.fleet import Daemon, JobRunner, Models, make_handler
-    from poolhouse.fleet.daemon import load_or_create_token
-    from poolhouse.fleet.discovery import mint_pool
-
-    key = mint_pool("verify-models", TMP / "models.key").key
-    where = TMP / "haver"
-    where.mkdir(parents=True, exist_ok=True)
-    payload = os.urandom(3 * 1024 * 1024)
-    (where / "tiny-test.gguf").write_bytes(payload)
-
-    root = TMP / "haver-daemon"
-    files = root / "files"
-    files.mkdir(parents=True, exist_ok=True)
-    runner = JobRunner(root, files)
-    port = free_port()
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(Daemon(
-        runner, files, load_or_create_token(root, key), "haver",
-        models=Models([where], where), pool_key_path=TMP / "models.key")))
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    try:
-        want = TMP / "wanter"
-        want.mkdir(parents=True, exist_ok=True)
-        # Several daemons on one box share the discovery port, so the address that
-        # discovery would supply is given directly.
-        got = Models([want], want)._from_member(
-            "tiny-test.gguf", f"http://127.0.0.1:{port}", key, None)
-        assert got.path.read_bytes() == payload, "the copy does not match"
-        assert got.path.parent == want
-    finally:
-        runner.shutdown()
-        httpd.shutdown()
-        httpd.server_close()
-    return f"{len(payload) // 1024} KB over the network"
-
-
-
 def discard_foreign_partial(TMP, free_port):
     import http.server
     import json as js
@@ -203,76 +162,6 @@ def catalogue_files(TMP, free_port):
 
 
 
-def remote_chat(TMP, free_port):
-    """The install with no model server is the common one. If this fails, the
-    product does not work for the people it is for."""
-    import json as js
-    import threading
-    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
-    from poolhouse.fleet import Daemon, JobRunner, Serving, make_handler
-    from poolhouse.fleet.chat import find, reply_text, stream, targets
-    from poolhouse.fleet.daemon import load_or_create_token
-    from poolhouse.fleet.discovery import derive_token, mint_pool
-
-    class Model(BaseHTTPRequestHandler):
-        def log_message(self, *a):
-            pass
-
-        def do_GET(self):
-            self.send_response(200)
-            self.send_header("Content-Length", "2")
-            self.end_headers()
-            self.wfile.write(b"{}")
-
-        def do_POST(self):
-            self.rfile.read(int(self.headers.get("Content-Length", "0")))
-            self.send_response(200)
-            self.send_header("Content-Type", "text/event-stream")
-            self.end_headers()
-            for piece in ("It ", "works"):
-                self.wfile.write(
-                    f"data: {js.dumps({'choices': [{'delta': {'content': piece}}]})}\n\n"
-                    .encode())
-                self.wfile.flush()
-            self.wfile.write(b"data: [DONE]\n\n")
-
-    model = ThreadingHTTPServer(("127.0.0.1", free_port()), Model)
-    threading.Thread(target=model.serve_forever, daemon=True).start()
-
-    key = mint_pool("verify-chat", TMP / "chat.key").key
-    root = TMP / "host-daemon"
-    files = root / "files"
-    files.mkdir(parents=True, exist_ok=True)
-    serving = Serving(root / "serving.json")
-    serving.register(model.server_address[1], ["tiny-test.gguf"])
-    runner = JobRunner(root, files)
-    port = free_port()
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(Daemon(
-        runner, files, load_or_create_token(root, key), "host", serving=serving)))
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-
-    try:
-        # This machine: no model store, nothing serving, no way to run one.
-        beacon = {"name": "host", "base_url": f"http://127.0.0.1:{port}",
-                  "is_self": False, "device": {"serving": serving.public()}}
-        reachable = targets([beacon], serving=None, token=derive_token(key))
-        assert reachable, "a member is serving and this machine cannot see it"
-        target = find(reachable, "tiny-test.gguf")
-        assert target is not None and not target.local
-        said = b"".join(stream(target, {"model": target.model, "stream": True,
-                                        "messages": [{"role": "user", "content": "hi"}]}))
-    finally:
-        runner.shutdown()
-        httpd.shutdown()
-        httpd.server_close()
-        model.shutdown()
-
-    assert reply_text(said) == "It works", reply_text(said)
-    return "no model store, nothing serving, still answered"
-
-
-
 def remote_speech(TMP, free_port):
     """The engine is a fake: what is verified is that a recording crosses the wire under
     the fleet's own credential and comes back as text with times."""
@@ -349,13 +238,11 @@ def stored_conversation(TMP, free_port):
 
 
 CHECKS = (
-    ('Models', 'a model is copied from another machine rather than downloaded again', False, copy_from_member),
     ('Models', 'a part-file left by a different download is discarded, not resumed', False, discard_foreign_partial),
     ('Models', 'a download that stopped is listed, and can be discarded', False, discard_stopped_download),
     ('Models', 'getting a model reports how far along it is', False, report_download_progress),
     ('Models', 'the model list is what Hugging Face says is popular now', True, live_catalogue),
     ('Models', 'the offline model list names available files at a pinned Hub commit', True, catalogue_files),
-    ('Chat', "a machine that can run nothing itself still talks to a member's model", False, remote_chat),
     ('Chat', 'a machine with no speech model sends audio to one that has it', False, remote_speech),
     ('Chat', 'a conversation is still there after a restart', False, stored_conversation),
 )

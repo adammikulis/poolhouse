@@ -1,0 +1,183 @@
+# Private DATA proposal only; no native authority, scoped transcript or proof issuer implementation.
+version = 1
+status = "proposal"
+operation = []
+
+[[type]]
+name = "LocalAuthorityEndpointId"
+kind = "scalar"
+visibility = "private"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "LocalAuthorityChannelIncarnationId"
+kind = "scalar"
+visibility = "private"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "LocalAuthorityInitiationId"
+kind = "scalar"
+visibility = "private"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "LocalAuthorityCustodyAttemptId"
+kind = "scalar"
+visibility = "private"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "LocalAuthorityHeadDigest"
+kind = "scalar"
+visibility = "private"
+encoding = "hex32"
+issuer = "data"
+
+[[type]]
+name = "LocalAuthorityTranscriptDigest"
+kind = "scalar"
+visibility = "private"
+encoding = "hex32"
+issuer = "data"
+
+[[type]]
+name = "LocalAuthorityProfileVersion"
+kind = "scalar"
+visibility = "private"
+encoding = "u32"
+issuer = "data"
+minimum = 1
+maximum = 1
+
+[[type]]
+name = "LocalAuthorityOwnerDescription"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "unix_uid", type = "U32"}, {tag = "windows_sid", type = "WindowsSid"}]
+
+[[type]]
+name = "LocalAuthorityInstallationContext"
+kind = "record"
+visibility = "private"
+fields = [{name = "installation_id", type = "InstallationId"}, {name = "installation_incarnation", type = "ResourceGeneration"}, {name = "device_id", type = "DeviceId"}, {name = "configured_owner", type = "LocalAuthorityOwnerDescription"}, {name = "authority_root", type = "AuthorityRootId"}, {name = "authority_generation", type = "AuthorityGeneration"}]
+
+[[type]]
+name = "LocalAuthorityProcessLifetimeDescription"
+kind = "record"
+visibility = "private"
+fields = [{name = "observation", type = "ProcessObservation"}, {name = "lifetime_incarnation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "LocalAuthorityChannelDirection"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "native_settings_to_authority", type = "Empty"}, {tag = "authority_to_native_settings", type = "Empty"}]
+
+[[type]]
+name = "LocalAuthoritySettingsChannelDescription"
+kind = "record"
+visibility = "private"
+fields = [{name = "endpoint_id", type = "LocalAuthorityEndpointId"}, {name = "channel_incarnation", type = "LocalAuthorityChannelIncarnationId"}, {name = "process", type = "LocalAuthorityProcessLifetimeDescription"}, {name = "direction", type = "LocalAuthorityChannelDirection"}]
+
+[[type]]
+name = "LocalAuthorityNativeInitiationDescription"
+kind = "record"
+visibility = "private"
+fields = [{name = "initiation_id", type = "LocalAuthorityInitiationId"}, {name = "operation_id", type = "OperationId"}, {name = "channel", type = "LocalAuthoritySettingsChannelDescription"}, {name = "initiated_at", type = "UnixMicros"}]
+
+[[type]]
+name = "LocalAuthorityExpectedSource"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "absent", type = "Empty"}, {tag = "present", type = "CredentialSourceRef"}, {tag = "unknown", type = "Empty"}]
+
+[[type]]
+name = "LocalAuthorityStoredTarget"
+kind = "record"
+visibility = "private"
+fields = [{name = "name", type = "CredentialName"}, {name = "target_alias", type = "CredentialName"}, {name = "storage", type = "CredentialStorageKind"}, {name = "expected_source", type = "LocalAuthorityExpectedSource"}, {name = "credential_revision", type = "U64"}, {name = "precedence_revision", type = "U64"}]
+
+[[type]]
+name = "LocalAuthoritySelectedTarget"
+kind = "record"
+visibility = "private"
+fields = [{name = "name", type = "CredentialName"}, {name = "selected_alias", type = "CredentialName"}, {name = "source_kind", type = "CredentialSourceKind"}, {name = "expected_source", type = "LocalAuthorityExpectedSource"}, {name = "credential_revision", type = "U64"}, {name = "precedence_revision", type = "U64"}]
+
+[[type]]
+name = "LocalAuthorityCredentialTarget"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "stored_slot", type = "LocalAuthorityStoredTarget"}, {tag = "selected_source", type = "LocalAuthoritySelectedTarget"}]
+
+[[type]]
+name = "LocalAuthorityCredentialAction"
+kind = "record"
+visibility = "private"
+fields = [{name = "request", type = "CredentialPrivateActionData"}, {name = "target", type = "LocalAuthorityCredentialTarget"}]
+
+[[type]]
+name = "LocalAuthorityCustodyKind"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "credential_input", type = "Empty"}, {tag = "existing_source", type = "Empty"}, {tag = "removal_target", type = "Empty"}]
+
+[[type]]
+name = "LocalAuthorityCustodyDescription"
+kind = "record"
+visibility = "private"
+fields = [{name = "attempt_id", type = "LocalAuthorityCustodyAttemptId"}, {name = "input_source_incarnation", type = "ResourceGeneration"}, {name = "holder_channel", type = "LocalAuthoritySettingsChannelDescription"}, {name = "initiation_id", type = "LocalAuthorityInitiationId"}, {name = "operation_id", type = "OperationId"}, {name = "kind", type = "LocalAuthorityCustodyKind"}, {name = "locked_at", type = "UnixMicros"}]
+
+[[type]]
+name = "LocalAuthorityHeadDescription"
+kind = "record"
+visibility = "private"
+fields = [{name = "authority_generation", type = "AuthorityGeneration"}, {name = "revision", type = "U64"}, {name = "head_digest", type = "LocalAuthorityHeadDigest"}]
+
+[[type]]
+name = "LocalAuthorityExpectedHead"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "absent", type = "Empty"}, {tag = "present", type = "LocalAuthorityHeadDescription"}, {tag = "unknown", type = "Empty"}]
+
+[[type]]
+name = "LocalAuthorityCredentialOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "context", type = "LocalAuthorityInstallationContext"}, {name = "initiation", type = "LocalAuthorityNativeInitiationDescription"}, {name = "custody", type = "LocalAuthorityCustodyDescription"}, {name = "action", type = "LocalAuthorityCredentialAction"}, {name = "state_transaction", type = "StateTransactionBinding"}, {name = "expected_authority_head", type = "LocalAuthorityExpectedHead"}, {name = "nonce", type = "ApprovalNonce"}, {name = "created_at", type = "UnixMicros"}, {name = "expires_at", type = "UnixMicros"}]
+
+[[type]]
+name = "LocalAuthorityScope"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "pool_approval", type = "ApprovalImmutableOperation"}, {tag = "installation_credential", type = "LocalAuthorityCredentialOperation"}]
+
+[[type]]
+name = "LocalAuthorityScopedOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "profile_version", type = "LocalAuthorityProfileVersion"}, {name = "scope", type = "LocalAuthorityScope"}, {name = "transcript_digest", type = "LocalAuthorityTranscriptDigest"}]
+
+[[type]]
+name = "LocalAuthorityBoundActionState"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "prepared", type = "Empty"}, {tag = "committed", type = "Empty"}, {tag = "cancelled", type = "Empty"}, {tag = "denied", type = "Empty"}, {tag = "expired", type = "Empty"}, {tag = "outcome_unknown", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "LocalAuthorityBoundObservation"
+kind = "record"
+visibility = "private"
+fields = [{name = "operation_id", type = "OperationId"}, {name = "transcript_digest", type = "LocalAuthorityTranscriptDigest"}, {name = "state_transaction", type = "StateTransactionBinding"}, {name = "custody_attempt_id", type = "LocalAuthorityCustodyAttemptId"}, {name = "state", type = "LocalAuthorityBoundActionState"}, {name = "observed_at", type = "UnixMicros"}]

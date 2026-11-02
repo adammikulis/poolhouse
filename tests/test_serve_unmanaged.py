@@ -27,7 +27,8 @@ from poolhouse.serve.leases import lease_file, recorded_servers
 from poolhouse.serve.manager import ServerManager, stop_all_servers
 from poolhouse.serve.ports import free_port
 from poolhouse.serve.process import pid_exists
-from poolhouse.testing.fakes import FakeBackend, FakeLlamaServer, Served
+from poolhouse.testing.canned import Canned, CannedServer
+from poolhouse.testing.fakes import FakeBackend
 
 pytest_plugins = ["serve_node"]
 pytestmark = pytest.mark.usefixtures("serve_leases")
@@ -43,10 +44,10 @@ def listener_of(**changed):
 
 @pytest.fixture
 def served():
-    made: list[FakeLlamaServer] = []
+    made: list[CannedServer] = []
 
-    def start(model: str = "model.gguf", **held) -> FakeLlamaServer:
-        made.append(FakeLlamaServer(Served(model=f"/models/{model}", context=4096, **held)))
+    def start(model: str = "model.gguf", **held) -> CannedServer:
+        made.append(CannedServer(Canned(served_path=f"/models/{model}", context=4096, **held)))
         return made[-1]
 
     yield start
@@ -171,7 +172,7 @@ def test_a_llama_server_is_counted_against_the_memory_and_listed_as_unmanaged(
     try:
         broker.adopt()
         with pytest.raises(admission.AdmissionRefused, match=f"unmanaged.51000.{process.pid}"):
-            broker.start(ServerSpec(model=weights, port=free_port()), timeout=5)
+            broker.start(ServerSpec(context=4096, model=weights, port=free_port()), timeout=5)
         process.kill()
         process.wait()
         assert not [lease for lease in serve_leases.listing()["leases"] if lease["tag"].startswith("unmanaged.")]
@@ -185,7 +186,7 @@ def lease_beside(tmp_path, served_port: int, *, model: str, roam: bool, state=No
     told: list[str] = []
     manager.say = told.append
     return manager, told, lambda: manager.lease(
-        ServerSpec(model=model, port=served_port), roam=roam, preflight=False)
+        ServerSpec(context=4096, model=model, port=served_port), roam=roam, preflight=False)
 
 
 def test_by_default_a_busy_port_with_an_unmanaged_server_is_left_alone(served, tmp_path,
@@ -241,7 +242,7 @@ def test_adopted_servers_survive_every_way_poolhouse_stops_servers(served, tmp_p
     monkeypatch.setattr(unmanaged, "listener", listener_of(pid=process.pid))
     manager = ServerManager(FakeBackend(), state_file=lease_file())
     try:
-        manager.lease(ServerSpec(model="model.gguf", port=fake.port), roam=False, preflight=False)
+        manager.lease(ServerSpec(context=4096, model="model.gguf", port=fake.port), roam=False, preflight=False)
         from poolhouse.serve import ops
         from poolhouse.serve.reclaim import _recorded
 

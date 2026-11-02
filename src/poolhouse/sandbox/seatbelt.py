@@ -171,6 +171,15 @@ def profile(policy: Policy, program: str, tag: str) -> str:
     out += _network(policy)
     if policy.gpu:
         out += _gpu()
+    if policy.deny_read or policy.deny_write:
+        policy = policy.validated()
+        protected = tuple(dict.fromkeys((*policy.deny_read, *policy.deny_write)))
+        out += ["(deny file-link)", "(deny file-clone)"]
+        if policy.deny_read:
+            out.append(f"(deny file-read* {_filter('subpath', policy.deny_read)})")
+        out.append(f"(deny file-write* {_filter('subpath', protected)})")
+        ancestors = tuple(dict.fromkeys(str(parent) for path in protected for parent in Path(path).parents))
+        out.append(f"(deny file-write-unlink {_filter('literal', ancestors)})")
     return "\n".join(out) + "\n"
 
 

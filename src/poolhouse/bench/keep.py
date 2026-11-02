@@ -18,7 +18,7 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
 
-# The package is the namespace the tests and `selfcheck` patch -- `bench.home_dir`,
+# The package is the namespace the tests patch -- `bench.home_dir`,
 # `bench.runs` -- so anything patchable is looked up there at call time, never bound here
 # at import.
 from poolhouse import activity, bench
@@ -384,7 +384,7 @@ def resumable(store: str | Path, *, questions: int, context: int, parallel: int,
             if (one.get("label") == label
                     and str(one.get("at", "")) >= floor
                     and len(one.get("rows") or ()) == questions
-                    and int(server.get("context") or 0) == per_slot
+                    and (not per_slot or int(server.get("context") or 0) == per_slot)
                     and int(server.get("slots") or 0) == parallel):
                 return one
         return None

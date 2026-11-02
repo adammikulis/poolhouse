@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import argparse
-import base64
 import contextlib
 import hashlib
 import json
 import os
 import secrets
 import socket
+import sys
 import threading
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -17,27 +17,24 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, lan as lan_policy, macauth, sentinel
+from poolhouse import home, lan as lan_policy, macauth, runtime_identity, sentinel
 from poolhouse.files import write_text
-from poolhouse.fleet.onboard.requests import Devices
+from poolhouse.fleet.onboard.devices import Devices
 from poolhouse.hub import default_roots
 from poolhouse.limits import read as limits_read
 from poolhouse.lock import only_one
 from poolhouse.log import say, warn
-from poolhouse.platform import private_file, quitting
+from poolhouse.platform import name_process, private_file, quitting
 from poolhouse.serve import canaries, guarded
 from poolhouse.serve.leases import lease_file
 from poolhouse.serve.reclaim import watching
 from poolhouse.speech import service as speech
 
 from . import (
-    automatic_pools,
     autostart,
     autostart_check,
     autostart_guard,
-    invite_client,
-    invite_routes,
-    pool_modes,
+    managed_alignment,
     runtime_repair,
     tls,
     updates as updating,
@@ -48,31 +45,20 @@ from .conversations import Conversations
 from .daemon_control import create as create_control
 from .deciding import Deciding
 from .device import device_report as default_report, resolve_report, stdlib_device_report
-from .discovery import (
-    Advertiser,
-    Beacon,
-    DiscoveryError,
-    derive_token,
-    key_path,
-    load_pool_key,
-    memberships,
-)
 from .environment import Environment
 from .files import Fetcher
 from .framing import LimitedServer
-from .invites import Invitations
 from .jobs import JobRunner
 from .launch_secret import LaunchSecret
 from .measuring import BenchHost, bench_home as bench_home_beside
-from .membership_sync import admit, start as start_syncing
 from .models import Downloads, Models
-from .onboard.joining import PLAIN, Joining
 from .pausing import ADOPT_S, adopt_pause, member_pause
-from .pool_roster import Pool
 from .projects import ProjectRegistry, lan_host, local_candidates
-from .runtime_paths import announce_token, configure as configure_runtime_paths, default_root
+from .runtime_paths import configure as configure_runtime_paths, default_root
+from .service_pool import Pool
 from .serving import Hosting, Serving
 from .settings import Settings
+from .studio_service import initialize as initialize_studio
 from .ui import UI
 
 DEFAULT_PORT = 8770
@@ -80,36 +66,22 @@ LOOPBACK = "127.0.0.1"
 ALL_INTERFACES = "0.0.0.0"  # noqa: S104 - what LAN mode means
 
 
-def bind_address(host: str | None, *, lan: bool, joined: bool) -> str:
+def bind_address(host: str | None, *, lan: bool) -> str:
     """Return the configured loopback or LAN listening address."""
     if host:
         return host
-    return ALL_INTERFACES if (lan or joined) and lan_policy.allowed() else LOOPBACK
+    return ALL_INTERFACES if lan and lan_policy.allowed() else LOOPBACK
 
 
-def load_or_create_token(
-    root: Path, pool_key: bytes | None = None, *, profile: Path | str | None = None,
-    rotate: bool = False
-) -> str:
-    """Return the owner-only machine token for the selected pool profile."""
+def load_or_create_token(root: Path) -> str:
+    """Return the owner-only machine token: a random secret made once and kept under ``root``."""
     p = root / "token"
-    if profile is not None:
-        identity = str(home.expand(profile).resolve()).encode()
-        p = root / "machine-tokens" / hashlib.sha256(identity).hexdigest()
-        p.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        if p.parent.is_symlink() or p.is_symlink():
-            raise ValueError("machine token profile paths cannot be symbolic links")
-        p.parent.chmod(0o700)
-    if pool_key is not None:
-        tok = derive_token(pool_key)
-    elif not rotate and p.exists() and p.read_text().strip().startswith(macauth.PREFIX):
+    if p.exists() and p.read_text().strip().startswith(macauth.PREFIX):
         private_file(p)
         return p.read_text().strip()
-    else:
-        tok = macauth.PREFIX + secrets.token_urlsafe(32)
+    tok = macauth.PREFIX + secrets.token_urlsafe(32)
     root.mkdir(parents=True, exist_ok=True)
-    if not p.exists() or p.read_text().strip() != tok:
-        write_text(p, tok)
+    write_text(p, tok)
     private_file(p)
     return tok
 
@@ -127,9 +99,6 @@ class DaemonOptions:
     lan: bool = False
     ui_from_lan: bool = False
     name: str = ""
-    announce: bool = True
-    pool_key_path: Path | str | None = None
-    pool_mode: str | None = None
     device_report: Callable[[], dict[str, Any]] | None = None
     slots: int = 1
     labels: Iterable[str] = ()
@@ -152,9 +121,6 @@ class DaemonRuntime:
         self.lan = options.lan
         self.ui_from_lan = options.ui_from_lan
         self.name = options.name
-        self.announce = options.announce and lan_policy.allowed()  # no beacon, no multicast, outside the real home or under a test
-        self.pool_key_path = options.pool_key_path
-        self.pool_mode = options.pool_mode
         self.device_report = options.device_report
         self.slots = options.slots
         self.labels = options.labels
@@ -176,29 +142,7 @@ class DaemonRuntime:
         self.files_root.mkdir(exist_ok=True)
         self.settings_path = self.root / "settings.json"
         self.settings = Settings.load(self.settings_path)
-        self.selected = memberships(self.pool_key_path)
-        self.effective_mode = pool_modes.validate(
-            self.pool_mode or (self.selected[0].mode if self.selected else self.settings.pool_mode or "dev")
-        )
-        if self.selected and self.selected[0].mode != self.effective_mode:
-            raise DiscoveryError(
-                "select a pool with the requested mode before starting this daemon"
-            )
-        pending = (self.web and self.initial_setup and not self.selected
-                   and not self.settings.pool_mode and not self.pool_mode)
-        saved_prod = not self.selected and self.settings.pool_mode == "prod" and not self.pool_mode
-        if self.announce and not pending and not saved_prod:
-            self.selected_member = automatic_pools.ensure(
-                self.pool_key_path, mode=self.effective_mode
-            )
-            self.effective_mode = self.selected_member.mode
-        say(pool_modes.notice(self.effective_mode))
-        self.key = load_pool_key(self.pool_key_path)
-        self.token = load_or_create_token(
-            self.root,
-            self.key,
-            profile=self.pool_key_path or os.environ.get("POOLHOUSE_POOL_KEY"),
-        )
+        self.token = load_or_create_token(self.root)
         self.name = self.name or os.environ.get("POOLHOUSE_MEMBER_NAME") or self.settings.name or socket.gethostname()
         if self.slots == 1 and self.settings.slots != 1:
             self.slots = self.settings.slots
@@ -215,7 +159,7 @@ class DaemonRuntime:
         if self.busy_hours or self.free_hours:
             self.schedule.save(self.schedule_path)
         self.taken = adopt_pause(
-            self.schedule, member_pause(self.pool_key_path, timeout_s=ADOPT_S)
+            self.schedule, member_pause(timeout_s=ADOPT_S)
         )
         if self.taken is not None:
             self.schedule.save(self.schedule_path)
@@ -232,6 +176,7 @@ class DaemonRuntime:
 
     def services(self) -> None:
         self.environment = Environment(self.root)
+        self.managed_alignment = managed_alignment.Alignment(self.environment)
         self.serving = Serving(self.root / "serving.json")
         self.hosting = Hosting(self.root, self.serving)
         self.models = Models(
@@ -255,15 +200,14 @@ class DaemonRuntime:
             environment=self.environment,
         )
         self.bench_host = BenchHost(self.runner, home=self.measuring_home, name=self.name)
-        self.fetcher = Fetcher(self.files_root, self.key, slots=self.fetch_slots)
+        self.fetcher = Fetcher(self.files_root, slots=self.fetch_slots)
         self.interface = None
         self.setup_token = ""
         if self.web:
-            if self.key is None and self.setup_from_lan:
+            if self.setup_from_lan:
                 self.setup_token = secrets.token_urlsafe(9)
             self.interface = UI(
                 name=self.name,
-                pool_key_path=self.pool_key_path,
                 member_port=self.port,
                 setup_token=self.setup_token,
             )
@@ -275,7 +219,7 @@ class DaemonRuntime:
 
     def initialize_listener(self) -> None:
         self.projects = ProjectRegistry(self.root, self.bench_host.machine, local_candidates())
-        self.members = Pool(self.pool_key_path)
+        self.members = Pool()
         self.daemon = Daemon(
                 self.runner,
                 self.files_root,
@@ -290,34 +234,17 @@ class DaemonRuntime:
                 schedule_path=self.schedule_path,
                 serving=self.serving,
                 models=self.models,
-                pool_key_path=self.pool_key_path,
-                pool_mode=self.effective_mode,
-                tokens=self.every_token,
                 devices=lambda: Devices(home.state("onboard", "devices.json")).all(),
                 bench=self.bench_host,
                 hosting=self.hosting,
                 decide=Deciding(self.serving),
                 ui_from_lan=self.ui_from_lan or self.setup_from_lan,
                 launcher_control=lambda: self.control,
-                joining=Joining(lambda: memberships(self.pool_key_path), self.fingerprint,
-                                enrol=lambda group, cert, name: admit(self.members, group, cert, name)),
                 members=self.members,
             )
         self.handler = make_handler(self.daemon)
-        self.listening = bind_address(
-            self.host, lan=self.lan or self.setup_from_lan, joined=self.key is not None
-        )
-        self.widen = threading.Event()
+        self.listening = bind_address(self.host, lan=self.lan or self.setup_from_lan)
         self.cert: tls.Identity | None = None
-        if self.interface is not None:
-            self.interface.invitations = Invitations(
-                lambda: memberships(self.pool_key_path),
-                lambda: (lan_host(self.port), self.fingerprint()),
-                enrol=lambda group, cert, name: admit(self.members, group, cert, name),
-            )
-            self.interface.join_invitation = lambda code: invite_routes.joined(
-                self.interface, invite_client.redeem(code, self.name)
-            )
         self.httpd = self.listen(self.listening)
 
     def updates(self) -> None:
@@ -326,7 +253,8 @@ class DaemonRuntime:
             measuring=lambda: bool(self.bench_host.measuring()),
             leases=lambda: bool(self.serving.live()),
         )
-        updating.follow_runtime(idle=self.nothing_running, admission=self.update_admission)
+        self.managed_alignment.start(self.runner, self.nothing_running, self.update_admission)
+        updating.follow_runtime(idle=self.nothing_running, admission=self.code_update_admission)
         self.control = create_control(self)
         self.tracked = str(getattr(self.settings, "track_branch", "") or "").strip()
         self.tracked_from = str(getattr(self.settings, "track_repo", "") or "") or updating.GIT_URL
@@ -336,7 +264,7 @@ class DaemonRuntime:
             updating.track(
                 updating.TrackedBranch(self.tracked_from, self.tracked, self.checkout),
                 idle=self.nothing_running,
-                runtime=updating.UpdateRuntime(admission=self.update_admission),
+                runtime=updating.UpdateRuntime(admission=self.code_update_admission),
             )
         else:
             if self.tracked:
@@ -346,18 +274,13 @@ class DaemonRuntime:
             updating.watch(
                 wanted=lambda: bool(getattr(self.settings, "auto_update", False)),
                 idle=self.nothing_running,
-                admission=self.update_admission,
+                admission=self.code_update_admission,
             )
-
-    def announcements(self) -> None:
-        self.advertiser: Advertiser | None = None
-        self.advertisers: dict[str, Advertiser] = {}
-        self.announcement_lock = threading.RLock()
 
     def configure_interface(self) -> None:
         if self.interface is not None:
             self.interface.rename = self.rename
-            self.interface.on_join = self.joined_a_pool
+            self.interface.studio_token = lambda: self.token
             self.interface.runner = self.runner
             self.interface.schedule = self.schedule
             self.interface.settings = self.settings
@@ -373,19 +296,18 @@ class DaemonRuntime:
             self.interface.root = self.root
             self.interface.projects = self.projects
             self.interface.display_url = lan_host(self.port)
+            self.interface.studio_identity = lambda: self.cert
+            self.interface.studio_endpoint = lambda: (f"https://127.0.0.1:{self.httpd.server_address[1]}"
+                                                       if self.listening != LOOPBACK else None)
+            if (self.root / "studio.ladybug").exists():
+                initialize_studio(self.interface)
 
     def report_startup(self) -> None:
-        if self.announce:
-            self.start_announcing()
         say(
             f"poolhouse traind on {('http' if self.listening == LOOPBACK else 'https')}://{self.listening}:{self.port}"
             + ("" if self.listening != LOOPBACK else "  (this machine only; --lan opens it)")
         )
         say(f"  name  {self.name}")
-        self.members.ensure_self(self.identity, self.name)
-        for member in memberships(self.pool_key_path):
-            alone = member.group in self.members.alone()
-            say(f"  pool {member.group}" + ("  (no other device enrolled: join, or 'poolhouse-members roster adopt')" if alone else ""))
         say(f"  root  {self.root}")
         say(f"  bench {self.measuring_home}")
         say(f"  slots {self.slots}")
@@ -396,16 +318,6 @@ class DaemonRuntime:
             say(f"  NOT TAKING WORK -- {self.state['unavailable_because']}")
         if self.labels:
             say(f"  labels {' '.join(self.labels)}")
-        if self.advertiser is not None:
-            say(
-                f"  members announcing on {self.advertiser.group}:{self.advertiser.port} (key {key_path(self.pool_key_path)})"
-            )
-            say("  token derived from the pool key -- members compute it themselves")
-        elif self.key is None:
-            announce_token(self.token)
-            say(f"  discovery OFF: no pool key at {key_path(self.pool_key_path)}")
-            if self.interface is None:
-                say("  run 'poolhouse-members setup' to join one")
         say(f"  device {json.dumps(self.report())}")
         if self.slots > 1:
             say(
@@ -414,12 +326,8 @@ class DaemonRuntime:
         if self.interface is not None:
             self.shown = LOOPBACK if self.listening in (ALL_INTERFACES, "") else self.listening
             say(f"  open   http://{self.shown}:{self.port}/ui/")
-            if self.key is None:
-                say(
-                    "  this machine has not joined a pool yet -- open the address above ON THIS MACHINE to set it up"
-                )
-                if self.setup_token:
-                    say(f"  setup from the LAN with this one-time code: {self.setup_token}")
+            if self.setup_token:
+                say(f"  setup from the LAN with this one-time code: {self.setup_token}")
         say("  EVERY MACHINE IN THIS POOL CAN RUN COMMANDS HERE. Trusted LAN only.", flush=True)
 
     def run(self) -> None:
@@ -433,44 +341,15 @@ class DaemonRuntime:
         if self.idle_s:
             say(f"  reclaiming a server unused for {self.idle_s:.0f}s")
             self.reclaiming.enter_context(watching(older_than=self.idle_s, say=print))
-        self.convergence_stop = threading.Event()
-        self.convergence = None
-        if self.announce and self.effective_mode == "dev":
-            self.convergence = threading.Thread(
-                target=automatic_pools.converge,
-                args=(self.convergence_stop, self.start_announcing, self.pool_key_path),
-                name="automatic-pool-convergence",
-                daemon=True,
-            )
-            self.convergence.start()
         runtime_repair.resume_stored(self.interface, self.root)
-        self.syncing = start_syncing(self.members)
         try:
-            while True:
-                self.httpd.serve_forever()
-                if self.control.stopping or not self.widen.is_set():
-                    break
-                self.widen.clear()
-                self.httpd.server_close()
-                self.listening = ALL_INTERFACES
-                self.httpd = self.listen(ALL_INTERFACES)
-                for one in self.advertisers.values():
-                    one.beacon.cert = self.served_cert()
-                    one.announce()
-                say(f"  listening on {ALL_INTERFACES}:{self.port}")
+            self.httpd.serve_forever()
         except KeyboardInterrupt:
             pass
         finally:
             try:
-                self.syncing.set()
-                self.convergence_stop.set()
-                if self.convergence is not None:
-                    self.convergence.join(timeout=12.0)
                 self.reclaiming.close()
                 self.scanner.stop()
-                _stop_advertisers(self.advertisers)
-                if self.advertiser is not None:
-                    self.advertiser.stop()
                 self._shutdown_jobs()
             finally:
                 try:
@@ -479,14 +358,18 @@ class DaemonRuntime:
                     self.control.close()
 
     def _shutdown_jobs(self):
+        self.managed_alignment.close()
         studio = getattr(self.interface, "studio", None)
         if studio is not None:
             studio.close()
+        executions = getattr(self.interface, "studio_executions", None)
         try:
             self.runner.shutdown()
         finally:
             if studio is not None:
                 studio.store.close()
+            if executions is not None:
+                executions.close()
             pool_store = getattr(self.interface, "_studio_pool_store", None)
             if pool_store is not None:
                 pool_store.close()
@@ -494,15 +377,11 @@ class DaemonRuntime:
     def update_admission(self):
         return only_one(self.root / "runtime-install.lock", wait=False)
 
-    def background_busy(self) -> bool:
-        return (bool(self.web and self.initial_setup and not self.settings.setup_done) or bool(self.runner.status()["busy"]) or any(row.state == "getting" for row in self.downloads.active())
-                or bool(self.interface and self.interface.setup_jobs and self.interface.setup_jobs.active()))
+    code_update_admission = managed_alignment.code_update_admission
 
-    def may_start(self) -> tuple[bool, str]:
-        """A measurement holds the GPU and blocks new work."""
-        if self.bench_host and self.bench_host.measuring():
-            return (False, "a benchmark is measuring on this machine")
-        return self.schedule.may_start()
+    background_busy = managed_alignment.background_busy
+
+    may_start = managed_alignment.may_start
 
     def probe_speech(self) -> None:
         self.heard[:] = speech.working()
@@ -515,16 +394,10 @@ class DaemonRuntime:
             **updating.state(),
             "autostart": autostart_check.state_word(),
             "launcher_control": self.control.instance if hasattr(self, "control") else "",
+            "runtime_prefix_digest": hashlib.sha256(str(Path(sys.prefix).resolve()).encode()).hexdigest(),
+            "process": runtime_identity.process_report(),
             "speech": list(self.heard),
         }
-
-    def every_token(self) -> set[str]:
-        """Every token this machine answers to, one per pool it is in."""
-        return {derive_token(m.key) for m in memberships(self.pool_key_path)}
-
-    def fingerprint(self) -> str:
-        offered = self.served_cert()
-        return hashlib.sha256(base64.b64decode(offered)).hexdigest() if offered else PLAIN
 
     def identity(self) -> tls.Identity:
         """This daemon's certificate, made on first use."""
@@ -533,88 +406,12 @@ class DaemonRuntime:
             tls.present(self.cert)
         return self.cert
 
-    def served_cert(self) -> str:
-        """The certificate members should pin: this daemon's, if it listens beyond this machine."""
-        return "" if self.listening == LOOPBACK else self.identity().beacon
-
     def listen(self, address: str) -> LimitedServer:
         """A server on ``address``: a machine-only one speaks plain HTTP, any other TLS."""
         if address in (LOOPBACK, "localhost", "::1"):
             return LimitedServer((address, self.port), self.handler)
         return LimitedServer((address, self.port), self.handler,
                              tls=tls.member_context(self.identity(), self.members))
-
-    def refresh(self, b: Beacon) -> None:
-        """Bring the beacon's mutable half up to date before it goes on the wire."""
-        status = self.runner.status()
-        available = self.schedule.public()
-        b.busy, b.queued = (status["busy"], status["queued"])
-        b.slots, b.free = (status["slots"], status["free"])
-        if not available["available"]:
-            b.free = 0
-        b.device = {
-            **self.report(),
-            "availability": available,
-            "serving": self.serving.public(),
-            **self.models.beacon(),
-        }
-
-    def start_announcing(self) -> None:
-        """Advertise on every pool this machine is in, and stop on any it left."""
-        with self.announcement_lock:
-            joined = {m.group: m for m in memberships(self.pool_key_path)}
-            self.members.ensure_self(self.identity, self.name)
-            for group in [g for g in self.advertisers if g not in joined]:
-                with contextlib.suppress(Exception):
-                    self.advertisers.pop(group).stop()
-            for group, member in (joined.items() if self.announce else ()):
-                if group in self.advertisers and self.advertisers[group].key != member.key:
-                    self.advertisers.pop(group).stop()
-                if group in self.advertisers:
-                    self.advertisers[group].mode = member.mode
-                    self.advertisers[group].joinable = member.mode == "dev" or bool(member.join)
-                    continue
-                try:
-                    offered = self.served_cert()
-                except tls.TlsUnavailable as exc:
-                    say(f"  discovery OFF for {group}: {exc}")
-                    continue
-                beacon = Beacon(
-                    name=self.name,
-                    port=self.port,
-                    device=self.report(),
-                    cert=offered,
-                    slots=self.runner.slots,
-                    free=self.runner.slots,
-                    machine=self.bench_host.machine,
-                )
-                try:
-                    tell = Advertiser(beacon, member.key, pool=group, refresh=self.refresh)
-                    tell.mode = member.mode
-                    tell.joinable = member.mode == "dev" or bool(member.join)
-                    self.advertisers[group] = tell.start()
-                except DiscoveryError as exc:
-                    say(f"  discovery OFF for {group}: {exc}")
-            self.reconcile_pool(next(iter(joined.values()), None))
-
-    def reconcile_pool(self, first) -> None:
-        if first is not None:
-            self.key = first.key
-            self.fetcher.key = first.key
-            self.token = load_or_create_token(
-                self.root,
-                first.key,
-                profile=self.pool_key_path or os.environ.get("POOLHOUSE_POOL_KEY"),
-            )
-            self.advertiser = self.advertisers.get(first.group)
-        else:
-            self.token = load_or_create_token(
-                self.root, profile=self.pool_key_path or os.environ.get("POOLHOUSE_POOL_KEY"),
-                rotate=self.key is not None,
-            )
-            self.key = None
-            self.fetcher.key = None
-            self.advertiser = None
 
     def rename(self, called: str) -> str:
         """Give this machine a new name now, on the page and on the network."""
@@ -625,29 +422,14 @@ class DaemonRuntime:
         self.bench_host.name = called
         if self.interface is not None:
             self.interface.name = called
-        for one in self.advertisers.values():
-            one.beacon.name = called
         return called
-
-    def joined_a_pool(self) -> None:
-        """Announce, and listen on the network now that members are meant to reach this."""
-        selected = memberships(self.pool_key_path)
-        self.effective_mode = selected[0].mode if selected else self.settings.pool_mode or "dev"
-        self.daemon.pool_mode = self.effective_mode
-        self.start_announcing()
-        if not selected:
-            return
-        for member in selected:
-            say(f"  joined pool {member.group!r}")
-        if not self.host and self.listening == LOOPBACK and lan_policy.allowed():
-            self.widen.set()
-            self.httpd.shutdown()
 
     def _quit(self, signum: int, _frame: Any) -> None:
         raise KeyboardInterrupt(f"signal {signum}")
 
 
 def serve(options: DaemonOptions) -> None:
+    name_process("poolhouse")
     runtime = DaemonRuntime(options)
     runtime.configure()
     with autostart_guard.running(runtime.root) as sole:
@@ -657,18 +439,9 @@ def serve(options: DaemonOptions) -> None:
         runtime.services()
         runtime.initialize_listener()
         runtime.updates()
-        runtime.announcements()
         runtime.configure_interface()
         runtime.report_startup()
         runtime.run()
-
-
-def _stop_advertisers(advertisers: dict[str, Any]) -> None:
-    """Stop every pool's advertiser and empty the mapping."""
-    for one in list(advertisers.values()):
-        with contextlib.suppress(Exception):
-            one.stop()
-    advertisers.clear()
 
 
 def persist(*, slots: int = 1, labels: tuple[str, ...] = (), report: str = "") -> int:
@@ -680,7 +453,7 @@ def persist(*, slots: int = 1, labels: tuple[str, ...] = (), report: str = "") -
             say(f"  {done.path}")
         if done.note:
             say(f"  {done.note}")
-        say("  starting now; 'poolhouse-members ls' from another machine should list it")
+        say("  starting now; 'poolhouse-pool ls' from another machine should list it")
         return 0
     warn("not installed")
     if done.note:
@@ -711,7 +484,7 @@ def run(argv: list[str] | None = None) -> int:
         "--host",
         default=None,
         help="the address to listen on (default: this machine only, or every "
-        "interface when --lan is given or this machine is in a pool)",
+        "interface when --lan is given)",
     )
     ap.add_argument(
         "--lan",
@@ -721,8 +494,8 @@ def run(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--ui-from-lan",
         action="store_true",
-        help="let other machines open the web interface. It signs in with the "
-        "passphrase over plain HTTP, so only on a network you trust",
+        help="let other machines open the web interface, over plain HTTP, so "
+        "only on a network you trust",
     )
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument(
@@ -730,20 +503,6 @@ def run(argv: list[str] | None = None) -> int:
         default="",
         help="how this box identifies itself to members "
         "(default: $POOLHOUSE_MEMBER_NAME, else the hostname)",
-    )
-    ap.add_argument(
-        "--pool-key",
-        default=None,
-        help="path to the pool key (default: ~/.poolhouse/pool.key)",
-    )
-    ap.add_argument(
-        "--mode",
-        choices=("dev", "prod"),
-        default=None,
-        help="pool admission mode (default: existing pool mode, otherwise dev)",
-    )
-    ap.add_argument(
-        "--no-announce", action="store_true", help="serve, but stay invisible to member discovery"
     )
     ap.add_argument(
         "--busy",
@@ -774,7 +533,7 @@ def run(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--setup-from-lan",
         action="store_true",
-        help="on a machine that has not joined a pool, allow first-run "
+        help="allow first-run "
         "setup from another machine using the one-time code printed "
         "at startup. For a headless box you cannot open a browser on.",
     )
@@ -864,9 +623,6 @@ def run(argv: list[str] | None = None) -> int:
             name=a.name,
             lan=a.lan,
             ui_from_lan=a.ui_from_lan,
-            announce=not a.no_announce,
-            pool_key_path=a.pool_key,
-            pool_mode=a.mode,
             slots=a.slots,
             device_report=report if probes else None,
             labels=a.label or os.environ.get("POOLHOUSE_LABELS", "").split(","),

@@ -1,0 +1,164 @@
+version = 1
+status = "sealed-interface-only"
+native_graph = "NativeInstallationGraph"
+serialization = "forbidden"
+descriptor_profile = "authority-descriptor-v1"
+descriptor_domain = "poolhouse.authority.descriptor.v1\u0000"
+signer_id_domain = "poolhouse.authority.signer-id.v1\u0000"
+subject_profiles = ["approval-immutable-v1", "local-authority-scoped-v1"]
+issuer_profiles = ["authority-descriptor-v1"]
+requirements = ["root-data-self-signature-labels-and-hashes-never-admit-root", "first-root-is-software-led-protected-native-setup-not-tofu-or-terminal", "independent-root-configuration-and-native-observation-select-issuer-key-and-policy", "provider-algorithm-exportability-hardware-account-and-dialog-success-are-not-assurance", "actual-os-per-signature-key-policy-and-fresh-operation-authentication-are-independent", "unknown-provider-policy-remains-unavailable-with-original-key-custody", "unsupported-windows-algorithms-never-rekey-coerce-or-downgrade", "descriptor-id-excludes-only-own-id-and-issuer-signature-is-outside-body", "signer-id-binds-canonical-algorithm-and-exact-raw-key-bytes", "descriptor-context-is-historical-issuance-not-current-membership-or-head-proof", "no-future-charter-or-self-admitting-act-reference-in-descriptor-body", "unrelated-current-revision-does-not-require-new-descriptor", "current-root-generation-revocation-expiry-provider-lifetime-and-governance-revalidated-at-use", "role-eligibility-is-not-active-membership-quorum-or-person-approval", "cross-root-person-relation-unknown-adds-no-vote-and-same-aliases-deduplicate", "subject-profiles-exclude-descriptor-issuer-purpose", "no-data-to-handle-constructor-public-clone-serde-or-v1-fallback", "unknown-retirement-retains-root-provider-operation-and-cleanup-custody", "graph-needs-installation-not-unrelated-startup-ui-or-producer-graphs", "no-platform-observation-admission-constructor-key-or-os-implementation-in-this-boundary"]
+
+[[role]]
+name = "RootObservation"
+getters = [{name = "description", type = "AuthorityRootDescription"}, {name = "process", type = "native.Process"}, {name = "code", type = "native.MeasuredAsset"}]
+retains = []
+
+[[role]]
+name = "RootSetupPrepared"
+getters = [{name = "operation_id", type = "OperationId"}]
+retains = []
+
+[[role]]
+name = "RootSetupAuthentication"
+getters = [{name = "prepared", type = "RootSetupPrepared"}, {name = "owner_process", type = "native.Process"}, {name = "helper_code", type = "native.MeasuredAsset"}]
+retains = [{name = "prepared", type = "RootSetupPrepared"}]
+
+[[role]]
+name = "AdmittedRoot"
+getters = [{name = "description", type = "AuthorityRootDescription"}, {name = "observation", type = "RootObservation"}, {name = "origin", type = "RootAdmissionOrigin"}]
+retains = [{name = "origin", type = "RootAdmissionOrigin"}]
+
+[[role]]
+name = "ProviderCustody"
+getters = [{name = "process", type = "native.Process"}, {name = "code", type = "native.MeasuredAsset"}]
+retains = []
+
+[[role]]
+name = "ProviderObservation"
+getters = [{name = "public_key", type = "ApprovalSignerPublicKey"}, {name = "incarnation", type = "ResourceGeneration"}, {name = "policy", type = "NativeKeyPolicy"}]
+retains = [{name = "policy", type = "NativeKeyPolicy"}, {name = "root", type = "AdmittedRoot", ownership = "shared"}]
+
+[[role]]
+name = "AdmittedDescriptor"
+getters = [{name = "provider", type = "ProviderObservation"}, {name = "description", type = "AuthorityDescriptorBody"}, {name = "assurance", type = "ApprovalSignerAssurance"}]
+retains = [{name = "provider", type = "ProviderObservation"}]
+
+[[role]]
+name = "CurrentGovernance"
+getters = [{name = "context", type = "ApprovalDomainContext"}, {name = "eligibility", type = "AuthorityGovernanceEligibility"}]
+retains = [{name = "signature", type = "BoundSignatureMath"}]
+
+[[role]]
+name = "IdentityComparison"
+getters = [{name = "relation", type = "AuthorityPersonRelation"}]
+retains = [{name = "left", type = "AdmittedDescriptor", ownership = "shared"}, {name = "right", type = "AdmittedDescriptor", ownership = "shared"}]
+
+[[role]]
+name = "BoundSignatureMath"
+getters = [{name = "descriptor", type = "AdmittedDescriptor"}, {name = "operation", type = "LocalAuthorityScopedOperation"}]
+retains = [{name = "descriptor", type = "AdmittedDescriptor"}]
+
+[[role]]
+name = "RetirementCustody"
+getters = []
+retains = [{name = "original", type = "ProviderObservation"}]
+
+[[role]]
+name = "Recovery"
+getters = [{name = "operation_id", type = "OperationId"}, {name = "origin", type = "RecoveryOrigin"}]
+retains = [{name = "origin", type = "RecoveryOrigin"}]
+
+[[role]]
+name = "NativeKeyPolicy"
+getters = [{name = "custody", type = "ProviderCustody"}, {name = "enforced_policy", type = "AuthorityRequiredKeyPolicy"}]
+retains = [{name = "custody", type = "ProviderCustody"}]
+
+[[role]]
+name = "RetiredRoot"
+getters = [{name = "original", type = "RetirementCustody"}]
+retains = [{name = "original", type = "RetirementCustody"}]
+
+[[method]]
+name = "prepare_first_root_setup"
+arguments = [{name = "scope", type = "scope", ownership = "borrow"}]
+result = "RootSetupPrepared"
+failure = "Recovery"
+
+[[method]]
+name = "authenticate_first_root_setup"
+arguments = [{name = "prepared", type = "RootSetupPrepared", ownership = "move"}]
+result = "RootSetupAuthentication"
+failure = "Recovery"
+
+[[method]]
+name = "finish_first_root_setup"
+arguments = [{name = "authentication", type = "RootSetupAuthentication", ownership = "move"}]
+result = "AdmittedRoot"
+failure = "Recovery"
+
+[[method]]
+name = "observe_existing_root"
+arguments = [{name = "scope", type = "scope", ownership = "borrow"}]
+result = "RootObservation"
+failure = "Recovery"
+
+[[method]]
+name = "admit_existing_root"
+arguments = [{name = "observation", type = "RootObservation", ownership = "move"}]
+result = "AdmittedRoot"
+failure = "Recovery"
+
+[[method]]
+name = "observe_provider"
+arguments = [{name = "root", type = "AdmittedRoot", ownership = "borrow"}, {name = "candidate", type = "AuthorityDescriptorBody", ownership = "borrow"}]
+result = "ProviderObservation"
+failure = "Recovery"
+
+[[method]]
+name = "verify_descriptor"
+arguments = [{name = "candidate", type = "AuthoritySignedDescriptor", ownership = "borrow"}, {name = "provider", type = "ProviderObservation", ownership = "move"}]
+result = "AdmittedDescriptor"
+failure = "Recovery"
+
+[[method]]
+name = "observe_current_governance"
+arguments = [{name = "signature", type = "BoundSignatureMath", ownership = "move"}, {name = "operation", type = "ApprovalImmutableOperation", ownership = "borrow"}]
+result = "CurrentGovernance"
+failure = "Recovery"
+
+[[method]]
+name = "compare_identity"
+arguments = [{name = "left", type = "AdmittedDescriptor", ownership = "borrow"}, {name = "right", type = "AdmittedDescriptor", ownership = "borrow"}]
+result = "IdentityComparison"
+failure = "Recovery"
+
+[[method]]
+name = "verify_bound_signature_math"
+arguments = [{name = "descriptor", type = "AdmittedDescriptor", ownership = "move"}, {name = "operation", type = "LocalAuthorityScopedOperation", ownership = "borrow"}, {name = "material", type = "ApprovalSignatureMaterial", ownership = "borrow"}]
+result = "BoundSignatureMath"
+failure = "Recovery"
+
+[[method]]
+name = "retire"
+arguments = [{name = "provider", type = "ProviderObservation", ownership = "move"}]
+result = "RetirementCustody"
+failure = "Recovery"
+
+[[method]]
+name = "inspect_retirement"
+arguments = [{name = "custody", type = "RetirementCustody", ownership = "move"}]
+result = "RetirementOutcome"
+failure = "Recovery"
+
+[[view]]
+name = "RootAdmissionOrigin"
+variants = ["RootObservation", "RootSetupAuthentication"]
+
+[[view]]
+name = "RecoveryOrigin"
+variants = ["scope", "RootObservation", "RootSetupPrepared", "RootSetupAuthentication", "AdmittedRoot", "ProviderCustody", "ProviderObservation", "AdmittedDescriptor", "CurrentGovernance", "BoundSignatureMath", "RetirementCustody"]
+
+[[view]]
+name = "RetirementOutcome"
+variants = ["RetiredRoot", "RetirementCustody", "Recovery"]

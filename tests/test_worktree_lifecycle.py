@@ -51,7 +51,7 @@ def test_scoped_done_blocks_retained_checkout_after_claim_release(setup):
     claim(kit)
     kit.s.release('worktree', str(kit.checkout.resolve()))
     for _ in range(3):
-        with pytest.raises(Denied, match=r'checkout.*worker/change'):
+        with pytest.raises(lifecycle.CompletionPending, match=r'checkout.*worker/change'):
             done(kit)
     assert kit.checkout.exists()
     with pytest.raises(Denied, match='verified cleanup'):
@@ -180,8 +180,8 @@ def test_claude_settings_wire_stop_and_subagent_stop():
 def opened(kit, monkeypatch, messages):
     """The harness session of the worker over its recorded checkouts, as a launcher opens it."""
     session = harnessid.HarnessSession(kit.name, base=kit.base)
-    args = argparse.Namespace(project=str(kit.checkout), parent='', name=kit.name, role='plan-and-go',
-                              orders_from='owner', session_factory=lambda *args: session)
+    args = argparse.Namespace(project=str(kit.checkout), parent='', name=kit.name, permissions='ask-dangerous',
+                              execution_mode='execute', protect=[], orders_from='owner', session_factory=lambda *args: session)
     return harnessing.opened(args, 'codex', ('http://127.0.0.1:9', 'fixture', 0), messages.append)
 
 

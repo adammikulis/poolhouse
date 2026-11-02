@@ -11,20 +11,20 @@ from poolhouse.fleet.conversations import Conversations
 from poolhouse.fleet.serving import Serving as ModelsServing
 from poolhouse.fleet.setup_jobs import Jobs
 from poolhouse.scrape.browser import Window, browser
-from poolhouse.testing.fakes import FakeLlamaServer, Served
+from poolhouse.testing.canned import CANNED_MODEL_ID, Canned, CannedServer
 
 
 @pytest.mark.slow
 def test_healthy_chat_and_advanced_maintenance_repair_use_saved_preferences(tmp_path, playwright, monkeypatch):
     monkeypatch.setattr(agent_dependency, "problem", lambda: "")
     monkeypatch.setattr(runtime_repair, "resume", lambda *args: None)
-    model = FakeLlamaServer(Served(model="qwen3.8-maintenance.gguf", pieces=("hello",)))
+    model = CannedServer(Canned(pieces=("hello",)))
     served = Serving(tmp_path)
     served.ui.root = tmp_path
     served.ui.setup_jobs = Jobs(tmp_path)
     served.ui.settings.setup_done = True
     served.ui.serving = ModelsServing(tmp_path / "models.json")
-    served.ui.serving.register(model.port, ["qwen3.8-maintenance.gguf"])
+    served.ui.serving.register(model.port, [CANNED_MODEL_ID])
     served.ui.conversations = Conversations(tmp_path / "chats")
     try:
         with browser(Window(profile=tmp_path / "maintenance-browser", channel="chromium"), playwright) as page:

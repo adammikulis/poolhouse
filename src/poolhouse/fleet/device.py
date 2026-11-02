@@ -139,6 +139,9 @@ def device_report(extra: Callable[[], dict[str, Any]] | None = None, *, environm
             out.update(fn() or {})
         except Exception:                             # noqa: BLE001
             _LOG.debug("Device capability probe unavailable")
-    if environment is not None and getattr(sys, "frozen", False):
-        out.update(managed_compute.report(environment))
+    if environment is not None:
+        managed = managed_compute.report(environment)
+        out['serving_backends'] = managed.get('serving_backends', [])
+        if getattr(sys, "frozen", False):
+            out.update(managed)
     return out

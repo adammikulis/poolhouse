@@ -6,7 +6,7 @@ from importlib import metadata
 
 BUILT_DIRS = frozenset({"dist"})
 """Build output at the checkout root: the tree snapshot leaves it out and a read of a file in one is stamped when it happens."""
-SWITCHES = {"redteam": "--redteam", "slow": "--slow", "live_api": "POOLHOUSE_LIVE_API=1", "live_net": "POOLHOUSE_LIVE_NET=1",
+SWITCHES = {"redteam": "--redteam", "real_model": "--real-model and a real model", "slow": "--slow", "live_api": "POOLHOUSE_LIVE_API=1", "live_net": "POOLHOUSE_LIVE_NET=1",
             "gpu": "a model or GPU lease on the serving machine", "model": "a model or GPU lease on the serving machine"}
 
 
@@ -38,3 +38,9 @@ def changed_pins(pins: list[str]) -> str:
         if now.get(name) != version:
             return f"installed distribution changed: {name} {version} -> {now.get(name)}"
     return ""
+
+
+def stat_fields(value: object) -> dict[str, int | float]:
+    """The primitive metadata fields returned by the platform's stat syscall."""
+    return {name: field for name in dir(value) if name.startswith("st_")
+            and isinstance(field := getattr(value, name), (int, float))}

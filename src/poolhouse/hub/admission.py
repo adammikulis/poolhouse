@@ -108,7 +108,7 @@ def _held(path: str, ref: Ref) -> str:
             f"by sentinel; a person releases it with `poolhouse-security release`")
 
 
-def _reasons(ref: Ref, files: list[RemoteFile], trust: Trust, moved: list[str]) -> list[tuple[str, str]]:
+def _reasons(ref: Ref, files: list[RemoteFile], trust: Trust, moved: list[str], check=None) -> list[tuple[str, str]]:
     """Why ``trust`` does not allow ``files`` of ``ref``: each reason as the sentence a person is asked and
     as the phrase a program reads."""
     publisher = publishers.namespace(ref.repo)
@@ -121,7 +121,7 @@ def _reasons(ref: Ref, files: list[RemoteFile], trust: Trust, moved: list[str]) 
     elif not trust.allows(publisher):
         why.append((f"This model is from {publisher}, who Poolhouse does not know.",
                     f"{publisher} is not among the trusted publishers"))
-    elif trust.restricts() and official and not remote.on_branch(ref.repo, ref.commit):
+    elif trust.restricts() and official and not remote.on_branch(ref.repo, ref.commit, check=check):
         why.append((f"This file is not from {publisher}'s own branch.", f"it is not from {publisher}'s own branch"))
     if trust.markers and publishers.marker(ref.repo, *(f.path for f in files)):
         why.append(("Its name says it was changed to answer what the original would refuse.",
@@ -144,7 +144,7 @@ def question(repo: str, commit: str, reasons: str) -> tuple[str, str]:
     return f"{repo}@{commit[:12]}", " ".join((reasons, f"It is {repo} at {commit[:12]}.", CLOSING))
 
 
-def admit(ref: Ref, files: list[RemoteFile], trust: Trust = PERSON) -> str:
+def admit(ref: Ref, files: list[RemoteFile], trust: Trust = PERSON, *, check=None) -> str:
     """Return when ``files`` of ``ref`` (resolved to a commit) may be fetched under ``trust``: the words of
     what a person would have been asked and ``trust`` did not ask (the pin of the files keeps them, and serving
     them asks), empty when nothing is left. `NotApproved` for what ``trust`` does not allow, after asking a
@@ -153,8 +153,8 @@ def admit(ref: Ref, files: list[RemoteFile], trust: Trust = PERSON) -> str:
     if len(ref.commit) != 40:
         raise ValueError(f"{ref.text} must be resolved to a commit before it is fetched")
     moved = _changed(ref, files)
-    why = _reasons(ref, files, trust, moved)
-    person = why if trust == PERSON else _reasons(ref, files, PERSON, moved)
+    why = _reasons(ref, files, trust, moved, check)
+    person = why if trust == PERSON else _reasons(ref, files, PERSON, moved, check)
     left = " ".join(words for words, code in person if (words, code) not in why)
     if not why:
         return left

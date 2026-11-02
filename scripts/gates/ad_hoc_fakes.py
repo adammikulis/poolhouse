@@ -16,7 +16,8 @@ ROOTS = ("tests",)
 
 
 def describe() -> str:
-    return "A fake written in the suite; poolhouse.testing.fakes holds the shared ones."
+    return ("A fake written in the suite; poolhouse.testing.fakes holds the shared ones and "
+            "poolhouse.testing.canned the servers that stand in for a model, each marked canned.")
 
 
 def scan(path: Path, where: str) -> list[Finding]:

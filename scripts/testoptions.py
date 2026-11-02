@@ -8,6 +8,7 @@ OPTIONS = (
     ("--slow", "also run the tests marked slow (a browser, a subprocess, a wheel build, a network timeout)"),
     ("--gate", "also run the tests marked gate (whole-tree scans that `scripts/test gate` runs)"),
     ("--redteam", "also run the tests marked redteam (they need the redteam extra)"),
+    ("--real-model", "also run the tests marked real_model (a real model on a real llama-server; one missing fails the test)"),
 )
 
 
@@ -25,14 +26,21 @@ def parse_arguments(arguments: list[str]):
 
 
 @functools.cache
-def _positional(arguments: tuple[str, ...]) -> tuple[str, ...]:
+def _positional(arguments: tuple[str, ...]) -> tuple[tuple[str, ...], bool]:
     config = parse_arguments(list(arguments))
     try:
-        return tuple(config.args)
+        return tuple(config.args), config.args_source == config.ArgsSource.ARGS
     finally:
         config._ensure_unconfigure()
 
 
 def positional(arguments: list[str]) -> list[str]:
     """The test paths and node ids among the pytest arguments; the same arguments are parsed once per process."""
-    return list(_positional(tuple(arguments)))
+    return list(_positional(tuple(arguments))[0])
+
+
+
+def explicit_positional(arguments: list[str]) -> list[str] | None:
+    """Explicit test paths/node ids, or None for pytest's implicit configured/default selection."""
+    selected, explicit = _positional(tuple(arguments))
+    return list(selected) if explicit else None

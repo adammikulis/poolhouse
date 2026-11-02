@@ -57,7 +57,7 @@ def settings(base, name="flow", **changes):
               "dtype": "float32", "lora": Lora(4, 8, 0.0, ("q_proj", "v_proj")), "lr": 1e-3,
               "baseline": "none"}
     fields.update(changes)
-    return Settings(**fields)
+    return Settings.smoke(**fields)
 
 
 # --- the data -------------------------------------------------------------------------------
@@ -340,7 +340,7 @@ def test_the_train_command_dry_runs_trains_registers_and_the_eval_command_scores
     write_cases(data, numbers(0, 120))
     write_cases(held, numbers(1000, 40, group="h"))
     common = ["train", "--data", str(data), "--name", "cli", "--base", str(tiny_base),
-              "--device", "cpu", "--steps", "3", "--baseline", "none", "--rank", "4"]
+              "--device", "cpu", "--smoke", "--steps", "3", "--baseline", "none", "--rank", "4"]
     assert main([*common, "--dry-run", "--out", str(tmp_path / "o")]) == 0
     assert not registry.taken("cli") and not (tmp_path / "o").exists()
     assert main([*common, "--eval", str(held), "--out", str(tmp_path / "o")]) == 0
@@ -362,3 +362,14 @@ def test_a_missing_or_bad_base_is_an_error_not_a_traceback(tmp_path, capsys):
     assert main(["train", "--data", str(data), "--name", "n", "--base", str(tmp_path / "nope"),
                  "--dry-run"]) == 2
     assert main(["train", "--data", str(data), "--name", "Bad/Name", "--dry-run"]) == 2
+
+
+def test_unbounded_gpu_wait_is_explicit_and_passed_to_broker():
+    class Queued(Wire):
+        def claim(self, name, info, *, timeout=0.0):
+            assert timeout is None
+            return super().claim(name, info, timeout=timeout)
+    wire = Queued([{"model": "busy", "port": 1, "loading": False, "holders": [{"pid": 3}]}])
+    with gpu.hold("queued model", wait_s=None, wire=wire):
+        assert wire.calls == [("claim", gpu.CLAIM)]
+    assert wire.calls[-1] == ("unclaim", gpu.CLAIM)

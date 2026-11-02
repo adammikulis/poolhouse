@@ -50,10 +50,11 @@ fn a_join_whose_history_does_not_fit_the_frame_is_refused_whole_and_says_so() {
     let (_d, mut g) = pool(&[phone_admin(1, "ann")], Policy::Secure);
     for n in 0..4u64 {
         put(&mut g, "set_holds", json!({"dispute_d": 8 + n}), &[1]);
+        advance(&mut g, HELD);
     }
     let joiner = ident(40);
     put_admit(&mut g, &joiner, &[1]);
-    assert!(g.state().chain.latest().n >= 5, "each longer dispute is in force at once");
+    assert!(g.state().chain.latest().n >= 5, "each longer dispute is in force once its seven days have run");
     assert!(g.join_payload(1 << 20, &joiner.fingerprint()).is_ok());
     let refused = g.join_payload(600, &joiner.fingerprint());
     assert!(refused.is_err_and(|e| e.to_string().contains("too long")), "a history that does not fit is not cut short");

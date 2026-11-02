@@ -28,7 +28,7 @@ def terminal_eof(stream) -> None:
 
 
 def held_shutdown() -> None:
-    server = testslots_rpc.UnixAdmission(False)
+    server = testslots_rpc.UnixAdmission()
     channels = []
     finished = False
     try:

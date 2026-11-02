@@ -10,10 +10,11 @@ import os
 import subprocess
 import sys
 import textwrap
+import threading
 
 import pytest
 
-from poolhouse.lock import Busy, held_by, only_one, release, take
+from poolhouse.lock import Busy, held, held_by, only_one, release, take
 
 
 def test_a_second_holder_is_refused_rather_than_allowed_to_overlap(tmp_path):
@@ -177,3 +178,59 @@ def test_a_refusal_shows_the_holders_text_as_printable_characters_only(tmp_path)
     assert str(why.value).isprintable() and f"pid {os.getpid()} ?[31mred?[0m?next" in str(why.value)
     with only_one(path, note="\x1b[31mred"):
         assert held_by(path) == f"pid {os.getpid()} ?[31mred"
+
+
+class StopWaiting(RuntimeError):
+    """A trusted operation no longer has current permission to proceed."""
+
+
+def test_cancelled_waiter_never_enters_or_changes_competing_holder(tmp_path):
+    path = tmp_path / 'cancellable.lock'
+    waiting, cancelled = threading.Event(), threading.Event()
+    outcomes, checks = [], []
+
+    def current():
+        checks.append(1)
+        if len(checks) >= 2:
+            waiting.set()
+        if cancelled.is_set():
+            raise StopWaiting('cancelled')
+
+    def waiter():
+        try:
+            with held(path, check=current):
+                outcomes.append('entered')
+        except StopWaiting:
+            outcomes.append('cancelled')
+
+    with only_one(path, wait=False):
+        original = path.read_bytes()
+        thread = threading.Thread(target=waiter)
+        thread.start()
+        try:
+            assert waiting.wait(5)
+            cancelled.set()
+            thread.join(5)
+            assert not thread.is_alive() and outcomes == ['cancelled']
+            assert path.read_bytes() == original
+            with pytest.raises(Busy), only_one(path, wait=False):
+                pytest.fail('competing holder must remain held')
+        finally:
+            cancelled.set()
+            thread.join(5)
+
+
+def test_denial_after_actual_acquisition_releases_only_that_lock(tmp_path):
+    path = tmp_path / 'cancellable.lock'
+    checks = []
+
+    def current():
+        checks.append(1)
+        if len(checks) == 2:
+            raise StopWaiting('revoked after acquisition')
+
+    with pytest.raises(StopWaiting), held(path, check=current):
+        pytest.fail('must not enter after denial')
+    assert checks == [1, 1]
+    with only_one(path, wait=False):
+        assert str(os.getpid()) in path.read_text()

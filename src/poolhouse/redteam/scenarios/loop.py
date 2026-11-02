@@ -12,7 +12,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from poolhouse.agent import Agent, Budget, Denied, Deny, Done, FunctionTools, Proceed, ToolResult
-from poolhouse.client import Client, Request, ServerError
+from poolhouse.client import Request, ServerError
 from poolhouse.guard import off
 from poolhouse.interventions import Call
 from poolhouse.redteam import corpus, pages, pyrit_bridge
@@ -95,7 +95,7 @@ def responder(lab: Lab, canary: Canary, kind: str, arm: str):
     """The agent as a target for the goal ``kind`` under ``arm``."""
     goal = GOALS[kind]
     guarded, policy, rails = ARMS[arm]
-    client = Client(lab.model_url, request=Request(n_predict=N_PREDICT))
+    client = lab.model_client(Request(n_predict=N_PREDICT))
 
     async def respond(messages: list[dict[str, Any]]) -> Answer:
         toolbox = lab.toolbox(canary, guarded=guarded)

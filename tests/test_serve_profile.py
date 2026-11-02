@@ -24,6 +24,7 @@ from poolhouse.serve import cli as serve_cli, holding, ops as serve_ops, profile
 from poolhouse.serve.fit import Fit
 from poolhouse.serve.profile import Profile, add, asking_for, profile_for, profiles, record, said
 
+pytestmark = pytest.mark.usefixtures("named_context")
 MODEL = "thornfield-8B-UD-Q4_K_XL.gguf"
 OTHER = "alderpost-2B-Q4_K_M.gguf"
 HEAD = "mtp-thornfield-8B-Q8_0.gguf"
@@ -331,7 +332,7 @@ def upped(*argv: str, root: Path) -> list[str]:
 
 def test_up_with_a_profile_fills_every_flag_that_was_not_given(leases, tmp_path):
     add(measured(mmproj=""))
-    assert serve_cli.main(upped("--profile", root=tmp_path)) == 0
+    assert serve_cli.main(upped("--profile", "--workload", "ask", root=tmp_path)) == 0
 
     spec = leases[0]
     assert spec.context == 65536 and spec.parallel == 1, \
@@ -352,7 +353,7 @@ def test_up_with_a_profile_serves_the_draft_p_min(leases, tmp_path):
 
 def test_a_flag_that_was_given_wins_over_the_record(leases, tmp_path):
     add(measured(mmproj=""))
-    assert serve_cli.main(upped("--profile", "--kv", "f16", "--parallel", "4",
+    assert serve_cli.main(upped("--profile", "--workload", "ask", "--kv", "f16", "--parallel", "4",
                                 "--spec-n-max", "2", root=tmp_path)) == 0
 
     spec = leases[0]
@@ -360,6 +361,17 @@ def test_a_flag_that_was_given_wins_over_the_record(leases, tmp_path):
     assert spec.parallel == 4 and spec.spec_draft_max == 2
     assert spec.context == 32768 * 4, "each slot asked for gets what one measured slot got"
     assert spec.reasoning_budget == 0, "and what nobody named still comes from the record"
+
+
+def test_a_profiles_context_and_slots_apply_only_to_the_workload_they_were_measured_for(
+        leases, tmp_path, capsys):
+    add(measured(mmproj=""))
+    assert serve_cli.main(upped("--profile", root=tmp_path)) == 0
+
+    spec = leases[0]
+    assert spec.context != 65536 and spec.parallel == 1, "no workload named: the context is the fit's"
+    assert str(spec.draft) == str(Path(f"/models/{HEAD}")), "what else it measured still applies"
+    assert "not the 32,768 x 2 measured for ask" in capsys.readouterr().err
 
 
 def test_a_context_that_was_given_wins_over_the_whole_measured_cache(leases, tmp_path):

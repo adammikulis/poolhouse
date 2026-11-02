@@ -1,11 +1,20 @@
-"""First-run device name and mode selection from the browser this daemon launched."""
+"""First-run device name from the browser this daemon launched."""
 from __future__ import annotations
 
+import ipaddress
 import urllib.parse
 
-from . import automatic_pools, invite_routes, pool_modes
-from .discovery import DiscoveryError, memberships, require_name
 from .session import parse_cookie
+
+NAME_MOST = 64
+
+
+def _loopback(address: str) -> bool:
+    try:
+        parsed = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    return (getattr(parsed, "ipv4_mapped", None) or parsed).is_loopback
 
 
 class InitialSetupRoutes:
@@ -22,7 +31,9 @@ class InitialSetupRoutes:
         presented = self.ui.sessions.get(parse_cookie(self.cookie))
         if presented is None or not presented.credentialed:
             self.ui.record("session.refused", reason="setup-without-credential", source=self.client_ip)
-            self.send(403, {"error": "open poolhouse from its own window, or run: poolhouse members open"})
+            self.send(401 if presented is None else 403,
+                      {"error": "Reconnect this Poolhouse window to continue setup." if presented is None
+                       else "Open setup from the Poolhouse window."})
             return True
         try:
             self._initial_preferences()
@@ -30,55 +41,58 @@ class InitialSetupRoutes:
             self.ui.record("session.open", who="setup", origin=presented.origin, source=self.client_ip)
             self.send(200, {"ok": True, **self.ui.state()},
                       {"Set-Cookie": self.ui.sessions.cookie_header(session), "Cache-Control": "no-store"})
-        except (DiscoveryError, ValueError, OSError) as error:
+        except (ValueError, OSError) as error:
             self.send(400, {"error": str(error)})
         return True
 
-    def _local_browser(self) -> bool:
+    def _local_browser(self, *, read=False) -> bool:
+        """This computer's own window of the Poolhouse page, addressed as loopback from loopback."""
+        host = self._window_host()
+        return (host is not None and _loopback(self.client_ip)
+                and host.hostname in {"localhost", "127.0.0.1", "::1"} and self._own_window(host, read=read))
+
+    def _signed_in_window(self, *, read=False) -> bool:
+        """A window of the Poolhouse page the person opened at the address they reached this daemon by, wherever
+        that is: a LAN address as much as loopback. The loopback tests of `_local_browser` are left out, and so is
+        the need for Sec-Fetch-Site: a browser sends none from a plain-http page that is not loopback."""
+        host = self._window_host()
+        return host is not None and self._own_window(host, read=read, untrusted_origin=True)
+
+    def _window_host(self):
         try:
-            host = urllib.parse.urlsplit("//" + self.host_header).hostname
-        except ValueError:
-            return False
-        session = self.ui.sessions.get(parse_cookie(self.cookie))
+            host = urllib.parse.urlsplit("//" + self.host_header)
+            int(host.port or 0)                  # a malformed port raises here
+            return host if type(self.handler.server.server_address[1]) is int else None
+        except (ValueError, AttributeError, IndexError, TypeError):
+            return None
+
+    def _own_window(self, host, *, read=False, untrusted_origin=False) -> bool:
+        port = 80 if host.port is None else host.port
         origin = self.header("Origin")
-        return (invite_routes.local(self.client_ip) and host in {"localhost", "127.0.0.1", "::1"}
-                and origin in {"http://" + self.host_header, "https://" + self.host_header}
-                and self.header("Sec-Fetch-Site") == "same-origin"
+        origin_ok = origin in {"http://" + self.host_header, "https://" + self.host_header}
+        if read is True and self.method == "GET" and not origin:
+            origin_ok = True
+        return (host.username is None and host.password is None
+                and not host.path and not host.query and not host.fragment
+                and port == self.handler.server.server_address[1] and self.ui.host_ok(self.host_header)
+                and self.header("X-Poolhouse-UI") == "1" and origin_ok
+                and self.header("Sec-Fetch-Site") in (("same-origin", "") if untrusted_origin else ("same-origin",))
                 and not any(self.header(name) for name in
-                            ("Authorization", "X-Poolhouse-Token", "X-Poolhouse-Agent"))
-                and (session is None or session.who != "token"))
+                            ("Authorization", "X-Poolhouse-Token", "X-Poolhouse-Agent")))
 
     def _initial_preferences(self) -> None:
         length = int(self.header("Content-Length", "0"))
         if not 0 < length <= 4096:
             raise ValueError("setup request must be between 1 and 4096 bytes")
         body = self.body()
-        if not isinstance(body, dict) or set(body) - {"name", "pool_mode", "automatic"}:
-            raise ValueError("choose a device name and mode")
-        if "automatic" in body and not isinstance(body["automatic"], bool):
-            raise ValueError("automatic must be a boolean")
-        name = require_name(body.get("name", ""))
-        mode = pool_modes.validate(body.get("pool_mode"))
+        if not isinstance(body, dict) or set(body) != {"name"}:
+            raise ValueError("choose a device name")
+        name = body["name"]
+        if (not isinstance(name, str) or not name.strip() or len(name.strip()) > NAME_MOST
+                or any(ord(char) < 32 or ord(char) == 127 for char in name)):
+            raise ValueError(f"a device name is 1 to {NAME_MOST} characters without control characters")
         if self.ui.settings is None or self.ui.settings_path is None:
-            raise DiscoveryError("device settings are unavailable")
-        selected = memberships(self.ui.pool_key_path)
-        if (selected and selected[0].mode == "prod" and self.ui.settings.setup_done
-                and not invite_routes.person_session(self)):
-            raise DiscoveryError("sign in before changing Production setup")
-        fresh_auto = (len(selected) == 1 and selected[0].mode == "dev"
-                      and selected[0].selection == "automatic" and not self.ui.settings.setup_done
-                      and not self.ui.settings.pool_mode)
-        if selected and selected[0].mode != mode and not (fresh_auto and mode == "prod"):
-            raise DiscoveryError("leave the current pool before changing modes")
-        with self.ui.join_guard():
-            if selected and selected[0].mode != mode:
-                self.ui.leave(selected[0].group)
-            if mode == "dev":
-                if body.get("automatic") is True:
-                    automatic_pools.select_automatic(self.ui.pool_key_path, port=self.ui.discovery_port)
-                else:
-                    automatic_pools.ensure(self.ui.pool_key_path, mode="dev", port=self.ui.discovery_port)
-            self.ui.set_name(name)
-            self.ui.settings.pool_mode = mode
-            self.ui.settings.save(self.ui.settings_path)
-            self.ui.rejoined()
+            raise OSError("device settings are unavailable")
+        self.ui.set_name(name.strip())
+        self.ui.settings.save(self.ui.settings_path)
+        self.ui.refresh()

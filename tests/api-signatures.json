@@ -51,7 +51,7 @@
  "decide.Calibration": "(temperature: 'float' = 1.0, knots: 'tuple[tuple[float, float], ...]' = <factory>, n: 'int' = 0) -> None",
  "decide.Calibration.apply": "(self, probs: 'Sequence[float]') -> 'list[float]'",
  "decide.Calibration.public": "(self) -> 'dict[str, Any]'",
- "decide.Config": "(backend: 'str' = 'auto', url: 'str' = '', model: 'str' = '', token: 'str' = '', embed_url: 'str' = '', embed_head: 'str' = '', pointer: 'str' = '', calibration: 'Calibration | None' = None, rules: 'RulesDecider | None' = None, download: 'bool' = False, order: 'tuple[str, ...]' = ('pointer', 'logprob', 'embed', 'rules')) -> None",
+ "decide.Config": "(backend: 'str' = 'auto', url: 'str' = '', model: 'str' = '', token: 'str' = '', embed_url: 'str' = '', embed_head: 'str' = '', pointer: 'str' = '', calibration: 'Calibration | None' = None, rules: 'RulesDecider | None' = None, download: 'bool' = False, batched: 'bool' = False, order: 'tuple[str, ...]' = ('pointer', 'logprob', 'embed', 'rules')) -> None",
  "decide.DecideError": "__new__(*args, **kwargs); __init__(self, /, *args, **kwargs)",
  "decide.Decision": "(choice: 'str', scores: 'Mapping[str, float]', margin: 'float', abstained: 'bool' = False, latency_ms: 'float' = 0.0, backend: 'str' = '', model: 'str' = '', details: 'Mapping[str, object]' = <factory>) -> None",
  "decide.Decision.public": "(self) -> 'dict[str, object]'",
@@ -103,8 +103,12 @@
  "serve.down": "(target: 'str') -> 'list[str]'",
  "serve.status": "() -> 'list[Served]'",
  "serve.up": "(model: 'str', *, context: 'int' = 0, parallel: 'int' = 0, wait: 'bool' = True, reason: 'str' = '') -> 'Served'",
+ "test.Config": "(sha256: 'str', preset: 'str | None' = None, project_name: 'str | None' = None, tree_include: 'tuple[str, ...]' = (), tree_exclude: 'tuple[str, ...]' = (), list: 'ListSpec | None' = None, run: 'RunSpec | None' = None, deps: 'DepsSpec' = <factory>, steps: 'tuple[Step, ...]' = (), labels: 'tuple[LabelSpec, ...]' = (), sets: 'tuple[SetSpec, ...]' = (), reuse: 'ReuseSpec' = <factory>, failfirst: 'FailfirstSpec' = <factory>, schedule: 'ScheduleSpec' = <factory>, requires: 'RequiresSpec' = <factory>, units: 'tuple[CommandUnit, ...]' = (), hooks: 'HooksSpec' = <factory>, notes: 'tuple[str, ...]' = ()) -> None",
  "test.Device": "(name: 'str', fingerprint: 'str', connected: 'bool', accepts: 'bool', reason: 'str', platform: 'str', free_slots: 'int') -> None",
  "test.Result": "(device: 'str', tier: 'str', exit_code: 'int', passed: 'int', failed: 'int', skipped: 'int', wall_s: 'float', failures: 'tuple[str, ...]', summary: 'str') -> None",
+ "test.Unit": "(name: 'str', ids: 'tuple[str, ...]', labels: 'tuple[str, ...]' = (), deps: 'tuple[str, ...] | None' = None, seconds: 'float | None' = None, digests: 'tuple[tuple[str, str], ...]' = ()) -> None",
+ "test.config": "(root: 'str | Path' = '.') -> 'Config'",
  "test.devices": "() -> 'list[Device]'",
- "test.run": "(tier: 'str', *, on: 'str', root: 'str | Path' = '.', files: 'tuple[str, ...]' = (), timeout_s: 'int' = 1800) -> 'Result'"
+ "test.run": "(tier: 'str', *, on: 'str', root: 'str | Path' = '.', files: 'tuple[str, ...]' = (), timeout_s: 'int' = 1800) -> 'Result'",
+ "test.units": "(root: 'str | Path' = '.', select: 'Sequence[str]' = ()) -> 'list[Unit]'"
 }

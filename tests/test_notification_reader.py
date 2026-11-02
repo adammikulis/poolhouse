@@ -2,13 +2,14 @@
 
 import io
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from harness_kit import SRC
 from node_kit import node_binary, workspace_node  # noqa: F401
 
-from poolhouse import harnesshook
+from poolhouse import harnesshook, runtime
 from poolhouse.board.client import Client
 from poolhouse.errors import Denied
 from poolhouse.net import git
@@ -89,7 +90,8 @@ def test_nudge_subprocess_is_bounded_and_session_explicit(monkeypatch):
     rail = harnesshook.Rail('read-only', 'codex', ['/fixture'])
     assert harnesshook.nudge('codex', rail) == 'one unread'
     command, options = captured[0]
-    assert command[-3:] == ['poolhouse.workspace.notification_reader', 'codex', '/fixture'] and command[-4] == '-m'
+    assert command == runtime.module_argv(harnesshook.NOTIFIER, Path('/fixture'), 'codex', '/fixture')
+    assert command[1:3] == ['-I', '-c'] and harnesshook.NOTIFIER in command[3] and command[-2:] == ['codex', '/fixture']
     assert options['timeout'] == harnesshook.NUDGE_S
 
 

@@ -24,7 +24,10 @@ from typing import NamedTuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+import testartifacts
+
 from poolhouse import home, node_binary, worktreerules
+from poolhouse.files import writing
 from poolhouse.lock import only_one
 from poolhouse.redact.secrets import env_secrets, redact
 
@@ -34,7 +37,15 @@ FOLDER = "test-node"
 CARGO_FOLDER = "test-cargo"
 CARGO_ENV = "DEV_TEST_CARGO_DIR"
 """Names the shared Rust build folder instead of the account's ``~/.cache/test-cargo``."""
-MEMBERS = ("Cargo.toml", "Cargo.lock", "poolhouse-node", "phone-governance-jni", "src-tauri", "poolhouse-authority")
+FIXTURES = ("tests/fixtures/phone-approval-vectors.json", "contracts/node/vectors.json",
+            "contracts/node/native_boundaries/transcript-vectors.json")
+"""Files of the repository, outside the Rust workspace, that a Rust test includes at compile time."""
+MEMBERS = ("Cargo.toml", "Cargo.lock", "poolhouse-node", "phone-governance-jni", "src-tauri", "poolhouse-authority", "poolhouse-manifest",
+           "native-host/NativeIdentity.c", "native-host/NativeIdentity.h", "native-host/NativeStaticImage.c", "native-host/NativeStaticImage.h", "native-host/NativeCaller.c", "native-host/NativeCaller.h",
+           "native-host/MachCode.c", "native-host/MachCode.h", "native-host/MachSender.c", "native-host/MachSender.h", "native-host/NativeRequest.h",
+           "native-host/AuthorityChannel.c", "native-host/AuthorityChannel.h",
+           "native-service/Inspection.swift", "native-service/Bridge.swift",
+           "native-service/generated/PassiveServiceData.swift", "native-service/generated/PassiveServiceData.h")
 KEY_LENGTH = 20
 IDLE_S = 3 * 24 * 3600
 BUILD_TIMEOUT_S = 1800.0
@@ -109,10 +120,32 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def key_of(app: Path, files: list[str], toolchain: str) -> str:
-    """The key of these workspace files built by this compiler."""
-    rows = [f"{name} {digest(app / name)}" for name in files]
-    return hashlib.sha256("\n".join([*rows, toolchain]).encode()).hexdigest()[:KEY_LENGTH]
+def key_of(app: Path, files: list[str], toolchain: str, *, salts: tuple[str, ...] = ()) -> str:
+    """Hash a versioned, unambiguous inventory and compiler identity."""
+    encoded = [(os.fsencode(name), name) for name in files]
+    if (len({name for name, _ in encoded}) != len(encoded)
+            or any(not raw or b"\0" in raw or Path(name).is_absolute() or any(part in ("", ".", "..") for part in name.split("/"))
+                   or (os.name == "nt" and (Path(name).drive or "\\" in name)) for raw, name in encoded)):
+        raise BuildError("Invalid or duplicate native source path")
+    encoded.sort(key=lambda item: item[0])
+    value = hashlib.sha256(b"poolhouse-native-source-key-v2\0")
+    value.update(len(encoded).to_bytes(8, "big"))
+    for raw, name in encoded:
+        info = (app / name).lstat()
+        value.update(len(raw).to_bytes(8, "big"))
+        value.update(raw)
+        value.update((info.st_mode & 0o170111).to_bytes(4, "big"))
+        value.update(info.st_size.to_bytes(8, "big"))
+        value.update(bytes.fromhex(digest(app / name)))
+    identity = os.fsencode(toolchain)
+    value.update(len(identity).to_bytes(8, "big"))
+    value.update(identity)
+    value.update(len(salts).to_bytes(8, "big"))
+    for salt in salts:
+        identity = os.fsencode(salt)
+        value.update(len(identity).to_bytes(8, "big"))
+        value.update(identity)
+    return value.hexdigest()[:KEY_LENGTH]
 
 
 def stage(app: Path, files: list[str], work: Path) -> None:
@@ -126,6 +159,15 @@ def stage(app: Path, files: list[str], work: Path) -> None:
     for found in [p for p in work.rglob("*") if p.is_file()]:
         if found.relative_to(work).as_posix() not in wanted:
             found.unlink()
+
+
+def stage_fixtures(repository: Path, work: Path) -> None:
+    """Copy the repository files in ``FIXTURES`` beside the staged workspace, where the tests' compile-time includes look for them."""
+    for name in FIXTURES:
+        target = work / name
+        if (repository / name).is_file() and (not target.is_file() or digest(target) != digest(repository / name)):
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(repository / name, target)
 
 
 def prune(base: Path, keep: str) -> None:
@@ -157,22 +199,46 @@ def node_folder(cache: Path | None = None) -> Path:
     return (cache or cargo_root()) / FOLDER
 
 
-def shared_build(app: Path, *, root: Path | None = None) -> SharedBuild:
+def workspace_wrapper(workspace: Path) -> None:
+    """Pin workspace artifact hashes to this content-keyed staging directory."""
+    if any(name in os.environ for name in ('RUSTC_WORKSPACE_WRAPPER', 'CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER')):
+        raise BuildError('Native tests require their maintained workspace compiler wrapper, without environment overrides')
+    wrapper = workspace / 'rustc-workspace'
+    configuration = workspace / '.cargo' / 'config.toml'
+    if any(path.is_symlink() for path in (wrapper, configuration, configuration.parent)):
+        raise BuildError('Native compiler controls cannot contain links')
+    controls = ((wrapper, '#!/bin/sh\nexec "$@"\n', 0o700),
+                (configuration, '[build]\nrustc-workspace-wrapper = ' + json.dumps(str(wrapper)) + '\nincremental = false\n', 0o600))
+    for path, content, mode in controls:
+        if path.exists() and not path.is_file():
+            raise BuildError('Native compiler controls must be regular files')
+        if not path.exists() or path.read_text() != content or path.stat().st_mode & 0o777 != mode:
+            with writing(path) as temporary:
+                temporary.write_text(content)
+                temporary.chmod(mode)
+
+
+def shared_build(app: Path, *, root: Path | None = None, source_key_extra: str = "") -> SharedBuild:
     """The workspace of ``app`` staged at a fixed path and the target folder every run with the same ``Cargo.lock`` and compiler shares, so
-    only the crates whose files changed are compiled again; a run that stages different sources gets its own staged copy."""
+    only the crates whose files changed are compiled again; a run that stages different sources gets its own staged copy.
+    App-only native toolchain metadata may salt the source key without splitting Rust dependency targets."""
     toolchain = version("rustc", tool("rustc"), ["--version", "--verbose"])
     files = sources(app)
-    key = key_of(app, files, toolchain)
+    salts = (("extra:" + source_key_extra,) if source_key_extra else ())
+    key = key_of(app, files, toolchain, salts=salts)
     locked = hashlib.sha256(b"\n".join([(app / "Cargo.lock").read_bytes(), toolchain.encode()])).hexdigest()[:KEY_LENGTH]
     base = root or cargo_root()
     staged, target = base / "workspaces" / key / "app", base / "targets" / locked
     target.mkdir(parents=True, exist_ok=True)
     with only_one(base / "stage.lock", announce=lambda _text: None, note="staging the Rust workspace for the tests"):
+        workspace_wrapper(staged.parent)
         stage(app, files, staged)
+        stage_fixtures(app.parent, staged.parent)
         for folder in (staged.parent, target):
             os.utime(folder)
         prune(base / "workspaces", key)
         prune(base / "targets", locked)
+        testartifacts.prune_when_due(target, app, files, IDLE_S)
     return SharedBuild(staged, target)
 
 

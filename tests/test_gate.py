@@ -23,6 +23,12 @@ import pytest
 from poolhouse import gate, home, leasetable
 from poolhouse.http import Options, Server, ServerError, request_json
 from poolhouse.serve.process import kill_process_tree
+from poolhouse.testing.canned import (
+    CANNED_HEADER,
+    CANNED_HEADER_VALUE,
+    CANNED_MARKER,
+    canned_chat_reply,
+)
 
 pytest_plugins = ["node_kit"]
 
@@ -31,7 +37,7 @@ HOLD_S = 0.3
 
 
 class Recorder:
-    """A server that records when each generation began and ended."""
+    """A canned server that records when each generation began and ended; every reply says it is not a model."""
 
     def __init__(self, hold_s: float = HOLD_S) -> None:
         self.windows: list[tuple[float, float, str]] = []
@@ -50,8 +56,9 @@ class Recorder:
                 ended = time.time()
                 with recorder.lock:
                     recorder.windows.append((began, ended, self.headers.get("X-Who", "")))
-                body = b'{"choices": [{"message": {"content": "ok"}}]}'
+                _, body = canned_chat_reply("ok")
                 self.send_response(200)
+                self.send_header(CANNED_HEADER, CANNED_HEADER_VALUE)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
@@ -258,8 +265,9 @@ def test_devices_queue_apart(servers):
 def test_a_thread_holding_the_device_can_send_a_nested_request(servers):
     (one,) = servers(1, hold_s=0.01)
     with gate.turn(one.url):
-        request_json(one.url, payload={}, options=Options(timeout=5))
+        answered = request_json(one.url, payload={}, options=Options(timeout=5))
     assert len(one.windows) == 1
+    assert answered["choices"][0]["message"]["content"].startswith(CANNED_MARKER), "the server says it is canned"
 
 
 def test_the_turn_is_held_until_a_streamed_answer_is_read(servers):
@@ -353,6 +361,36 @@ def test_a_turn_is_a_quiet_lease_of_the_nodes_table_that_belongs_to_its_process(
     finally:
         kill_process_tree(held.process.pid, grace_s=0.1)
         held.process.wait(timeout=10)
+
+
+def test_turn_yields_only_its_new_actual_ticket_and_reentrant_keeps_owner(servers):
+    (one,) = servers(1, hold_s=0.01)
+    with gate.turn(one.url) as ticket:
+        assert isinstance(ticket, str) and ticket
+        rows = gate.snapshot()['gpu']
+        assert [(row['ticket'], row['pid'], row['running']) for row in rows] == [
+            (ticket, os.getpid(), True)]
+        with gate.turn(one.url) as inner:
+            assert inner is None
+        assert gate.snapshot()['gpu'][0]['ticket'] == ticket
+    assert gate.snapshot().get('gpu', []) == []
+
+
+def test_turn_bypasses_never_claim_new_ticket(servers):
+    (one,) = servers(1, hold_s=0.01)
+    with gate.turn('http://127.0.0.1:1/v1/chat/completions') as unknown:
+        assert unknown is None
+    with gate.parallel('isolated explicit test'), gate.turn(one.url) as parallel:
+        assert parallel is None
+    assert gate.snapshot().get('gpu', []) == []
+
+
+def test_turn_ticket_exception_releases_only_actual_turn(servers):
+    (one,) = servers(1, hold_s=0.01)
+    with pytest.raises(ValueError, match='fixed test failure'), gate.turn(one.url) as ticket:
+        assert any(row['ticket'] == ticket for row in gate.snapshot()['gpu'])
+        raise ValueError('fixed test failure')
+    assert gate.snapshot().get('gpu', []) == []
 
 
 def test_a_request_that_is_cancelled_while_it_waits_leaves_the_line(servers):

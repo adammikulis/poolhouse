@@ -6,6 +6,7 @@ import subprocess
 import sys
 from importlib.util import find_spec
 
+from poolhouse import maintenance
 from poolhouse.gym.transport import interpreter, python_environment
 from poolhouse.gym.worlds import schema
 
@@ -60,6 +61,7 @@ def catalogue():
     return entries
 
 
+@maintenance.reading
 def probe(python):
     """Ask one installed interpreter without forwarding parent interpreter routing."""
     environment = python_environment()

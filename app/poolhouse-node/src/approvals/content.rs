@@ -18,13 +18,14 @@ pub fn risk_of(action: &str) -> (&'static str, &'static str) {
         "sync_now" => (ROUTINE, "It swaps board entries with the pool's devices and changes nothing else."),
         "link_read" => (SENSITIVE, "Another board can read what this one holds: it leaves this board, and a link cannot take it back."),
         "link_remove" => (ROUTINE, "It ends a sharing link, and sharing can be made again."),
+        "pool_leave" => (ROUTINE, "It makes this device leave the pool; the pool goes on without it."),
         "note_verify" => (ROUTINE, "It records that a note's command was run; it runs nothing."),
         "add_device" => (SENSITIVE, "It makes a code that lets another device join this pool."),
         "join_pool" => (SENSITIVE, "It joins this device to another pool and shares its boards with it."),
         "shard_call" => (SENSITIVE, "It sends tests and their files to run on another device."),
         "shard_consent" => (SENSITIVE, "It lets other devices run code here."),
         "land_trust" => (SENSITIVE, "It makes this device count the tasks, grants and reviews another device wrote."),
-        "task_authority" => (SENSITIVE, "It acts for you on tasks, including accepting them and recording landings."),
+        "task_authority" => (SENSITIVE, "It acts for you on tasks, including accepting them and marking them done."),
         "quarantine_release" => (SENSITIVE, "It releases a held message that may carry instructions meant to mislead an agent."),
         "link_write" => (SENSITIVE, "Another board can write into this one."),
         "source_add" => (SENSITIVE, "It makes a folder part of a project, so the project's agents can read it."),
@@ -127,7 +128,7 @@ pub fn sentence(action: &str, resource: &str) -> String {
         "shard_call" => format!("Send test runs to the device {named}."),
         "shard_consent" => format!("Let other devices send test runs here ({named})."),
         "land_trust" => format!("Count the board entries of the device {named} as if they were made here."),
-        "task_authority" => format!("Act for you on tasks ({named}): assign, review, record a landing."),
+        "task_authority" => format!("Act for you on tasks ({named}): assign, review, mark done."),
         "note_verify" => format!("Record that a note's command was run ({named})."),
         "quarantine_release" => format!("Release the held message {named} so agents can read it."),
         "file_delete" => format!("Delete the shared file {named} for good."),
@@ -207,7 +208,7 @@ pub fn grants_text(d: &Draft) -> (String, String, &'static str) {
     out.push(format!("RISK: {}. {worst}", risk.to_uppercase()));
     out.push(d.ctx.said_line());
     let kind = if d.who.parent.is_empty() { "a main session".to_string() } else { format!("a subagent of {}", d.who.parent) };
-    let claim = if d.who.verified { format!("verified as {} in {}", d.who.model, d.who.harness) } else { format!("which says it is {} in {} (unverified)", d.who.model, d.who.harness) };
+    let claim = if d.who.verified { format!("verified as {} in {}", d.who.model, d.who.harness) } else if d.who.model.is_empty() { format!("which names no model in {} (unverified)", d.who.harness) } else { format!("which says it is {} in {} (unverified)", d.who.model, d.who.harness) };
     out.push(format!("WHO: {}, {claim}, {kind}, on device {}, board {}.", d.who.name, d.who.device, d.who.board));
     out.push(d.ctx.verdict_line());
     out.push(d.ctx.taint_line());
@@ -237,6 +238,9 @@ pub fn grants_text(d: &Draft) -> (String, String, &'static str) {
 
 /// What a phone's own request shows: a title, the text and the risk, for adding or removing a phone. ``phone`` is its name and ``key``
 /// the first twenty-four characters of its key in groups of four.
+/// The line that says what a phone added to a device may do.
+pub const ADD_SCOPE: &str = "SCOPE: From the moment you approve, that phone can approve or deny anything for this device, until you remove it.";
+
 pub fn phone_text(adding: bool, phone: &str, key: &str, by: &str, policy: &str, flags: &[String], ctx: &Context, expires_ms: u64) -> (String, String, &'static str) {
     let action = if adding { "phone_add" } else { "phone_remove" };
     let (risk, why) = risk_of(action);
@@ -248,7 +252,7 @@ pub fn phone_text(adding: bool, phone: &str, key: &str, by: &str, policy: &str, 
     out.push(format!("WHO: {by}."));
     out.push(format!("ASK: {} the phone {phone} (key {key}).", if adding { "Add" } else { "Remove" }));
     out.push(if adding {
-        "SCOPE: From the moment you approve, that phone can approve or deny anything for this device, until you remove it.".into()
+        ADD_SCOPE.into()
     } else {
         "SCOPE: That phone stops being able to approve at once, and what it already approved stays as signed.".into()
     });
@@ -264,6 +268,25 @@ pub fn phone_text(adding: bool, phone: &str, key: &str, by: &str, policy: &str, 
     out.push("DENY: If you deny, nothing changes.".into());
     out.push(format!("EXPIRES: This request ends at {}.", utc(expires_ms)));
     (format!("{} the phone {phone}", if adding { "Add" } else { "Remove" }), out.join("\n"), risk)
+}
+
+/// The request to move the main session ``session`` of ``board`` to the terminal that asked: what the person is shown and what is signed.
+pub fn rebind_text(session: &str, board: &str, policy: &str, ctx: &Context, expires_ms: u64) -> (String, String, &'static str) {
+    let why = "The terminal that asked then acts as the session, with the grants approved for it.";
+    let out = [
+        "FLAG: A terminal asked to take this session over. Approve only if you ran the command there just now and it shows the number you choose below.".to_string(),
+        pool_line(policy, false),
+        format!("RISK: {}. {why}", SENSITIVE.to_uppercase()),
+        "WHO: A terminal on this device, through `poolhouse-workspace rebind`.".into(),
+        format!("ASK: Move the session {session} on board {board} to the terminal that asked."),
+        format!("SCOPE: From then on only that terminal registers as {session}; the tokens it holds now stop working and the grants approved for it go with it."),
+        if ctx.pick.is_empty() { "NOTE: No number is matched.".into() } else { "PICK: After your fingerprint you choose the number that terminal shows, out of three. A wrong choice counts as a decline.".into() },
+        "CANNOT: Nothing else changes. No grant is added or widened.".into(),
+        "WHY: A person ran `poolhouse-workspace rebind` in a terminal.".into(),
+        "DENY: If you deny, nothing changes and the session stays where it is.".into(),
+        format!("EXPIRES: This request ends at {}.", utc(expires_ms)),
+    ];
+    (format!("Move the session {session}"), out.join("\n"), SENSITIVE)
 }
 
 #[cfg(test)]

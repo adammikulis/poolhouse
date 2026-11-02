@@ -22,7 +22,7 @@ from poolhouse.serve.broker import Ask, Broker
 from poolhouse.serve.leases import lease_file
 from poolhouse.serve.manager import ServerManager
 from poolhouse.serve.process import kill_process_tree
-from poolhouse.testing.fakes import fake_llama_binary
+from poolhouse.testing.canned import canned_binary
 
 pytest_plugins = ["serve_node"]
 pytestmark = pytest.mark.usefixtures("serve_leases")
@@ -33,7 +33,7 @@ SLEEP = "import time; time.sleep(120)"
 
 @pytest.fixture
 def broker(tmp_path):
-    manager = ServerManager(LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
+    manager = ServerManager(LlamaServerBackend(binary=canned_binary(tmp_path)),
                             state_file=tmp_path / "servers.json")
     made = Broker(manager, idle_s=3600.0, room=lambda: None, scan=lambda: [])
     yield made
@@ -214,7 +214,7 @@ def machine(tmp_path, monkeypatch):
 
     def manager_for(binary_arg="", build=""):
         if "m" not in made:
-            m = ServerManager(LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
+            m = ServerManager(LlamaServerBackend(binary=canned_binary(tmp_path)),
                               state_file=lease_file())
             m._broker = Broker(m, room=lambda: memory.free, scan=lambda: [])
             made["m"] = m

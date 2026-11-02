@@ -1,4 +1,4 @@
-/* The base class and the DOM builders every ml-ui element is made from. Text only ever
+/* The base class and the DOM builders every poolhouse-ui element is made from. Text only ever
    reaches the page through textContent or setAttribute. */
 
 const HTML = "http://www.w3.org/1999/xhtml";
@@ -26,17 +26,17 @@ export const h = (tag, attrs, ...kids) => build(HTML, tag, attrs, kids);
 export const s = (tag, attrs, ...kids) => build(SVG, tag, attrs, kids);
 
 const SHARED = `
-:host { display: block; box-sizing: border-box; font-family: var(--ml-font);
-  color: var(--ml-text); font-size: 14px; line-height: 1.45; }
+:host { display: block; box-sizing: border-box; font-family: var(--poolhouse-ui-font);
+  color: var(--poolhouse-ui-text); font-size: 14px; line-height: 1.45; }
 :host([hidden]) { display: none !important; }
 *, *::before, *::after { box-sizing: inherit; }
 .sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden;
   clip: rect(0 0 0 0); white-space: nowrap; border: 0; padding: 0; }
-:focus-visible { outline: 2px solid var(--ml-focus); outline-offset: 2px; }
-.v-green { --v: var(--ml-green); --v-ink: var(--ml-green-ink); }
-.v-yellow { --v: var(--ml-yellow); --v-ink: var(--ml-yellow-ink); }
-.v-red { --v: var(--ml-red); --v-ink: var(--ml-red-ink); }
-.v-none { --v: var(--ml-line-strong); --v-ink: var(--ml-muted); }
+:focus-visible { outline: 2px solid var(--poolhouse-ui-focus); outline-offset: 2px; }
+.v-green { --v: var(--poolhouse-ui-green); --v-ink: var(--poolhouse-ui-green-ink); }
+.v-yellow { --v: var(--poolhouse-ui-yellow); --v-ink: var(--poolhouse-ui-yellow-ink); }
+.v-red { --v: var(--poolhouse-ui-red); --v-ink: var(--poolhouse-ui-red-ink); }
+.v-none { --v: var(--poolhouse-ui-line-strong); --v-ink: var(--poolhouse-ui-muted); }
 .vicon { flex: none; }
 button { font: inherit; color: inherit; }
 @media (prefers-reduced-motion: reduce) {
@@ -57,7 +57,7 @@ function sheetFor(css) {
 const OBJECT = "object";
 
 /** Base of every element: typed attribute-backed properties, a shadow root, batched renders. */
-export class MlElement extends HTMLElement {
+export class PoolhouseElement extends HTMLElement {
   static props = {};
   static styles = "";
 

@@ -7,14 +7,11 @@ guess, because a wrong "supported" is worse than no answer.
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
 import socket
 import subprocess
-import sys
-import time
-from pathlib import Path
+import threading
 
 import pytest
 
@@ -28,6 +25,28 @@ def test_it_reports_rather_than_changes(capsys):
     assert all(isinstance(f, Finding) for f in findings)
     assert findings, "a machine that reports nothing at all is a bug in the looking"
     assert all(f.name and f.said for f in findings)
+
+
+@pytest.mark.parametrize('arguments', [[], ['--quiet'], ['--quiet', '--yes']])
+def test_setup_diagnostics_never_install_optional_agent_hooks(tmp_path, monkeypatch, arguments):
+    from poolhouse import agent_hooks, setup
+
+    isolated = tmp_path / 'empty-home'
+    isolated.mkdir()
+    monkeypatch.setenv('HOME', str(isolated))
+    monkeypatch.setenv('CODEX_HOME', str(isolated / '.codex'))
+    monkeypatch.setattr(setup, 'look', lambda: [Finding(name='runtime', good=True, said='ready')])
+    monkeypatch.setattr(agent_hooks, 'install_report', lambda: pytest.fail('changed optional agent settings'))
+    assert setup.main(arguments) == 0
+    assert list(isolated.iterdir()) == []
+
+
+def test_runtime_readiness_never_requires_optional_agent_hook_settings(monkeypatch):
+    from poolhouse import agent_hooks
+
+    monkeypatch.setattr(agent_hooks, 'findings', lambda: pytest.fail('optional harness became required readiness'))
+    findings = look()
+    assert findings and all(isinstance(row, Finding) for row in findings)
 
 
 def test_a_machine_that_will_not_answer_says_so_rather_than_guessing(monkeypatch):
@@ -60,7 +79,6 @@ def test_an_architecture_is_only_claimed_when_the_names_were_read(monkeypatch, t
 def test_nothing_is_run_without_being_asked(capsys, monkeypatch):
     """A wizard that fixes things by itself is a wizard nobody can safely run twice."""
     ran = []
-    import subprocess
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: ran.append(a))
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
@@ -70,7 +88,6 @@ def test_nothing_is_run_without_being_asked(capsys, monkeypatch):
 
 
 def test_a_fix_runs_only_when_it_is_wanted(capsys, monkeypatch):
-    import subprocess
     ran = []
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: ran.append(a[0]))
     ask([Finding(name="a thing", good=False, said="wrong", fix=["echo", "yes"])], yes=True)
@@ -296,7 +313,6 @@ def test_the_printed_report_names_the_missing_command_and_the_line(monkeypatch, 
 
 
 def test_the_models_finding_names_each_cache_and_its_size(monkeypatch, capsys, tmp_path):
-    import os
 
     hub = tmp_path / "hf" / "hub" / "models--maker--big-GGUF" / "snapshots" / "abc"
     hub.mkdir(parents=True)
@@ -386,14 +402,14 @@ def test_the_speech_findings_are_printed_with_the_rest(monkeypatch, capsys):
     assert "speech recognition: nothing on this machine" in out
 
 
-def test_the_firewall_finding_names_both_inbound_rules_and_how_to_add_them():
-    """Windows hears no beacon and answers no member until TCP 8770 and UDP 8771 are let in.
-    `_firewall_rule_present` asks ``netsh``; where there is none, every rule reads absent."""
-    from poolhouse.fleet.discovery import windows_firewall_line, windows_firewall_rules
+def test_the_firewall_finding_names_the_inbound_rule_and_how_to_add_it():
+    """Windows answers no member until TCP 8770 is let in. `_firewall_rule_present` asks ``netsh``;
+    where there is none, every rule reads absent. The node's own ports belong to `device_host`."""
+    from poolhouse.fleet.windows_firewall import line, rules
     from poolhouse.setup import _firewall_finding
 
     finding = _firewall_finding()
-    named = [name for name, _ in windows_firewall_rules()]
+    named = [name for name, _, _ in rules()]
 
     assert isinstance(finding, Finding)
     assert finding.name == "firewall"
@@ -403,12 +419,13 @@ def test_the_firewall_finding_names_both_inbound_rules_and_how_to_add_them():
     assert bool(finding.fix) is not finding.good
     if not finding.good:
         assert finding.said.startswith("no inbound rule for ")
-        assert finding.fix == ["cmd", "/c", windows_firewall_line()]
-        assert "protocol=TCP" in finding.fix[2] and "protocol=UDP" in finding.fix[2]
+        assert finding.fix == ["cmd", "/c", line()]
+        assert "protocol=TCP" in finding.fix[2] and "UDP" not in finding.fix[2]
         assert "Windows blocks inbound TCP 8770" in finding.note
     else:
         assert finding.said.startswith("inbound rules present: ")
         assert finding.note == ""
+
 
 
 def test_a_rule_netsh_cannot_confirm_reads_as_absent():
@@ -475,17 +492,10 @@ def _free_tcp_port() -> int:
         return s.getsockname()[1]
 
 
-def _free_udp_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
 def test_ports_finding_says_free_when_nothing_listens():
     from poolhouse.setup import _ports_finding
 
-    http_port, disco_port = _free_tcp_port(), _free_udp_port()
-    found = _ports_finding(http_port, disco_port, None)
+    found = _ports_finding(_free_tcp_port(), None)
     assert found.good
     assert found.said == "free"
 
@@ -493,155 +503,99 @@ def test_ports_finding_says_free_when_nothing_listens():
 def test_ports_finding_says_what_holds_a_taken_port():
     from poolhouse.setup import _ports_finding
 
-    http_port, disco_port = _free_tcp_port(), _free_udp_port()
+    http_port = _free_tcp_port()
     holder = socket.socket()
     holder.bind(("127.0.0.1", http_port))
     holder.listen(1)
     try:
-        found = _ports_finding(http_port, disco_port, None)
+        found = _ports_finding(http_port, None)
     finally:
         holder.close()
     assert not found.good
     assert str(http_port) in found.said
-    assert ["lsof", "-nP", f"-iTCP:{http_port}", f"-iUDP:{disco_port}"] == found.fix
+    assert ["lsof", "-nP", f"-iTCP:{http_port}"] == found.fix
 
 
 def test_ports_finding_says_held_by_the_given_daemon():
     from poolhouse.setup import _ports_finding
 
-    found = _ports_finding(8770, 8771, {"name": "testbox", "ok": True})
+    found = _ports_finding(8770, {"name": "testbox", "ok": True})
     assert found.good
     assert "this machine's own daemon" in found.said
 
 
 # -- the fleet ----------------------------------------------------------------
 
-def test_fleet_finding_says_in_no_pool_when_never_joined(tmp_path):
+@pytest.fixture
+def pool_answers(tmp_path, monkeypatch):
+    """What this device's node says about the pool's compute services (the one stand-in, at its wire)."""
+    from poolhouse.fleet import service_pool, tls
+
+    identity = tls.identity(tmp_path / "tls", "here")
+    monkeypatch.setattr(tls, "local", lambda: identity)
+    rows: list[dict] = []
+
+    def node(_state, method, params=None):
+        if method == "service_members":
+            return {"pool": "a" * 32, "services": rows}
+        raise ValueError("not authorized")
+
+    monkeypatch.setattr(service_pool.node_health, "call", node)
+    return rows
+
+
+def test_fleet_finding_says_the_node_does_not_answer_and_how_to_join(monkeypatch):
+    from poolhouse.fleet import service_pool
     from poolhouse.setup import _fleet_findings
 
-    found = {f.name: f for f in
-             _fleet_findings(pool_key_path=tmp_path / "pool.key")}
+    def dead(*_args):
+        raise OSError("node disconnected")
+
+    monkeypatch.setattr(service_pool.node_health, "call", dead)
+    found = {f.name: f for f in _fleet_findings(port=_free_tcp_port())}
     assert found.keys() == {"fleet: joined", "ports"}
     assert not found["fleet: joined"].good
-    assert found["fleet: joined"].said == "in no pool"
-    assert found["fleet: joined"].fix[:2] == ["poolhouse-pool", "join"] and "--passphrase" in found["fleet: joined"].fix
+    assert "node must answer" in found["fleet: joined"].said
+    assert "poolhouse-pool join --host" in found["fleet: joined"].note
 
 
-def test_fleet_finding_says_the_daemon_does_not_answer(tmp_path):
-    from poolhouse.fleet.discovery import create_pool_key
+def test_fleet_finding_says_the_daemon_does_not_answer(pool_answers):
     from poolhouse.setup import _fleet_findings
 
-    keyfile = tmp_path / "pool.key"
-    create_pool_key(keyfile, group="poolhouse")
-    found = {f.name: f for f in
-             _fleet_findings(port=_free_tcp_port(), discovery_port=_free_udp_port(),
-                             pool_key_path=keyfile)}
+    found = {f.name: f for f in _fleet_findings(port=_free_tcp_port())}
     assert found["fleet: joined"].good
     assert not found["fleet: daemon"].good
-    assert found["fleet: daemon"].fix == ["poolhouse-pool", "join"]
+    assert found["fleet: daemon"].fix == ["poolhouse"]
     assert "fleet: seen" not in found
     assert found["ports"].good
 
 
-REPO = Path(__file__).resolve().parent.parent
-
-
-@contextlib.contextmanager
-def _booted_daemon(tmp_path):
-    """A real ``poolhouse-traind``, on its own pool key and its own ports, for the
-    fleet findings to answer and be heard by."""
-    from poolhouse.fleet.discovery import create_pool_key
-    from poolhouse.fleet.launch import already_running
-
-    keyfile = tmp_path / "pool.key"
-    create_pool_key(keyfile, group="poolhouse")
-    http_port, disco_port = _free_tcp_port(), _free_udp_port()
-    env = {**os.environ, "POOLHOUSE_DISCOVERY_PORT": str(disco_port),
-          "PYTHONPATH": str(REPO / "src"), "PYTHONUNBUFFERED": "1"}
-    log = tmp_path / "traind.out"
-    fh = log.open("wb")
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "poolhouse.fleet.daemon",
-         "--root", str(tmp_path / "traind"), "--host", "127.0.0.1",
-         "--port", str(http_port), "--name", "setuptestbox",
-         "--pool-key", str(keyfile), "--no-web"],
-        env=env, stdout=fh, stderr=subprocess.STDOUT)
-    deadline = time.time() + 20
-    try:
-        while time.time() < deadline:
-            if already_running(http_port) is not None:
-                break
-            if proc.poll() is not None:
-                pytest.fail(f"traind died:\n{log.read_text(errors='replace')}")
-            time.sleep(0.1)
-        else:
-            proc.kill()
-            pytest.fail(f"traind never answered /health:\n{log.read_text(errors='replace')}")
-        yield keyfile, http_port, disco_port, log
-    finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-        fh.close()
-
-
-def daemon_discovery_failure(log: Path, port: int, said: str) -> str:
-    from poolhouse.sentinel.redaction import redact
-
-    with log.open("rb") as stream:
-        recorded = stream.read(65536).decode("utf-8", errors="replace")
-    return f"{said}\nloopback UDP port {port}\ndaemon log:\n{redact(recorded)}"
-
-
 @pytest.mark.slow
-def test_fleet_findings_see_a_real_booted_daemon(tmp_path):
+def test_fleet_findings_see_a_real_daemon_on_loopback(tmp_path, pool_answers):
+    from poolhouse.fleet.api import Daemon, make_handler
+    from poolhouse.fleet.daemon import load_or_create_token
+    from poolhouse.fleet.jobs import JobRunner
+    from poolhouse.fleet.launch import wait_for_health
+    from poolhouse.http import Server
     from poolhouse.setup import _fleet_findings
 
-    with _booted_daemon(tmp_path) as (keyfile, http_port, disco_port, log):
-        found = {f.name: f for f in _fleet_findings(
-            port=http_port, discovery_port=disco_port, pool_key_path=keyfile)}
+    root = tmp_path / "traind"
+    (root / "files").mkdir(parents=True)
+    runner = JobRunner(root)
+    port = _free_tcp_port()
+    httpd = Server(("127.0.0.1", port), make_handler(Daemon(runner, root / "files", load_or_create_token(root), "setuptestbox")))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        assert wait_for_health(port, seconds=30) is not None, "the first /health samples telemetry and is slow on a loaded machine"
+        found = {f.name: f for f in _fleet_findings(port=port)}
+    finally:
+        runner.shutdown()
+        httpd.shutdown()
+        httpd.server_close()
     assert found["fleet: joined"].good
-    assert found["fleet: daemon"].good
-    assert "setuptestbox" in found["fleet: daemon"].said
-    assert not found["fleet: seen"].good, daemon_discovery_failure(log, disco_port, found["fleet: seen"].said)
-    assert found["fleet: seen"].said == "discovery hears 0 member(s), none itself"
-    assert "members announcing on" not in daemon_discovery_failure(log, disco_port, "")
-    assert found["ports"].good
-    assert "this machine's own daemon" in found["ports"].said
-
-
-@pytest.mark.slow
-def test_owned_loopback_advertiser_is_found_only_with_its_pool_key(tmp_path):
-    from poolhouse.fleet.discovery import (
-        Advertiser,
-        Beacon,
-        create_pool_key,
-        discover,
-        load_pool_key,
-    )
-    from poolhouse.fleet.join import members
-
-    class OwnedLoopbackAdvertiser(Advertiser):
-        def announce(self):
-            assert isinstance(self._sock, socket.socket)
-            address, self.port = self._sock.getsockname()
-            assert address == "127.0.0.1" and self.port > 0
-            super().announce()
-
-    keyfile = tmp_path / "pool.key"
-    create_pool_key(keyfile, group="setup-evidence")
-    key = load_pool_key(keyfile)
-    assert isinstance(key, bytes)
-    beacon = Beacon(name="setup-local-advertiser", machine="setup-fixture-machine")
-    with OwnedLoopbackAdvertiser(beacon, key, port=0) as advertised:
-        rows = members(pool_key_path=keyfile, port=advertised.port, self_machine=beacon.machine, timeout_s=0.2)
-        assert len(rows) == 1 and rows[0]["is_self"]
-        assert rows[0]["name"] == beacon.name and rows[0]["host"] == "127.0.0.1"
-        assert discover(b"\xff" * 32, port=advertised.port, timeout_s=0.2) == []
-        different = members(pool_key_path=keyfile, port=advertised.port, self_machine="another-fixture", timeout_s=0.2)
-        assert len(different) == 1 and not different[0]["is_self"]
+    assert found["fleet: daemon"].good and "setuptestbox" in found["fleet: daemon"].said
+    assert found["fleet: seen"].good and found["fleet: seen"].said == "listed with 1 device(s) that answer"
+    assert found["ports"].good and "this machine's own daemon" in found["ports"].said
 
 
 def test_a_named_build_that_is_not_here_is_a_finding(monkeypatch, tmp_path):

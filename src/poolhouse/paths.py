@@ -7,8 +7,10 @@ every such writer asks is the same one: is this destination inside a repository?
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
+import poolhouse
 from poolhouse.home import expand
 
 
@@ -37,3 +39,16 @@ def inside_a_repo(path: str | Path) -> bool:
     reasoning is `repo_root`'s; this is the yes-or-no most callers want.
     """
     return repo_root(path) is not None
+
+
+def source_checkout() -> Path | None:
+    """Return the imported package's unmarked source checkout, or None."""
+    package = Path(poolhouse.__file__).resolve().parent
+    root = package.parent.parent
+    immutable = package / 'fleet'
+    if (not getattr(sys, 'frozen', False)
+            and package == root / 'src' / 'poolhouse' and (root / '.git').exists()
+            and not any((immutable / name).exists() or (immutable / name).is_symlink()
+                        for name in ('built-from', 'compute-artifact.json'))):
+        return root
+    return None

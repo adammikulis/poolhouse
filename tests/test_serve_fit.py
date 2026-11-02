@@ -505,9 +505,9 @@ class TestTheCommand:
             return ISWA_LOG
 
         monkeypatch.setattr(measuring, "_load_log", fake)
-        assert self.run([str(model), "--measure"]) == 0
+        assert self.run([str(model), "--measure", "--context", "4096"]) == 0
         assert seen == [1]
-        assert self.run([str(model), "--measure", "--parallel", "4"]) == 0
+        assert self.run([str(model), "--measure", "--context", "4096", "--parallel", "4"]) == 0
         assert seen == [1, 4]
         assert records()[0].per_seq == 24 * MIB
 

@@ -36,7 +36,7 @@ def session(root: str | Path, client: Client | None = None, board: str = "") -> 
     """
     state = node_launch.default_state()
     node = client or Client(state, person=person_key.provider(state, attended=True))
-    return on(node, place.resolve(node, Path(root), board))
+    return on(node, place.existing(node, Path(root), board))
 
 
 def acting(state: Path) -> Callable[[str], tuple[str, str]]:
@@ -59,5 +59,5 @@ def on(node: Client, board: str) -> sessions.Session:
             return sessions.Session(node, board, credentials.load(node.state, board, name), name)
         except Denied:
             pass
-    made = sessions.register(node, board, sessions.Native(MODEL, HARNESS, native_id()))
+    made = sessions.register(node, board, sessions.Native(MODEL, HARNESS, native_id()), person=True)
     return sessions.Session(node, board, made.token, made.name)

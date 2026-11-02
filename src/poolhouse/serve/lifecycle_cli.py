@@ -17,6 +17,7 @@ from poolhouse.log import say, warn
 from poolhouse.serve import build, holding, kvcache, ops, plan_cli, quant_guard, warm
 from poolhouse.serve.backend import ServerFailed, ServerSpec, parse_context
 from poolhouse.serve.binary import BinaryNotFound
+from poolhouse.serve.fitted import fitted
 from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
 from poolhouse.serve.ops import Refused
 from poolhouse.serve.profile import ASK, WORKLOADS, profile_for, resolved
@@ -42,7 +43,9 @@ def from_profile(args: argparse.Namespace, model: str,
     Only the startup half: the draft depth goes in as the server's default, and a caller
     that can override it per request sends its own. "Not given" is "still the parser's own
     default", which is the only thing argparse can be asked afterwards. Returns the profile
-    (or None) and one line per field it filled.
+    (or None) and one line per field it filled. The profile's context and slots were measured
+    for one workload, so they apply only when the person named a workload (``--workload``);
+    otherwise the context is the fit for this machine and the line says so.
     """
     found = profile_for(model, workload=workload or ASK)
     if found is None:
@@ -70,6 +73,8 @@ def from_profile(args: argparse.Namespace, model: str,
         "mmproj": found.mmproj,
         "reasoning_budget": found.reasoning_budget,
     }
+    if not getattr(args, "workload", ""):
+        del wanted["context"], wanted["parallel"]
     defaults = {"context": DEFAULT_CONTEXT, "parallel": DEFAULT_PARALLEL, "build": "",
                 "draft": "", "spec": "", "spec_n_max": None, "spec_p_min": None, "kv": "",
                 "draft_kv": "", "mmproj": "", "reasoning_budget": None}
@@ -83,6 +88,10 @@ def from_profile(args: argparse.Namespace, model: str,
         took.append(" ".join(found.extra_args))
     if serving.note:
         took.append(serving.note)
+    if not getattr(args, "workload", ""):
+        took.append(f"context and slots are the fit for this machine, not the {found.slot_context:,} "
+                    f"x {max(1, found.parallel)} measured for {found.workload} "
+                    "(--workload applies them)")
     return found, took
 
 
@@ -150,12 +159,15 @@ OPTIONS_UP = [
                 "when it is free; a port held by another process is never taken or "
                 "fought over (default: the broker picks)"),
     option("context", type=parse_context, default=DEFAULT_CONTEXT,
-           help=f"tokens across all slots -- 32768, 256k, 1m (default: "
-                f"{DEFAULT_CONTEXT}). Beyond what the model trained at, YaRN is "
-                "turned on by itself; it scales every position, so shorter "
-                "conversations on this server pay for it too"),
+           help="tokens across all slots -- 32768, 256k, 1m (default: the largest this "
+                "machine holds safely for the model and the slots, up to what the model "
+                "trained at; `poolhouse-serve fit` and `plan` show the arithmetic). Beyond "
+                "what the model trained at, YaRN is turned on by itself; it scales every "
+                "position, so shorter conversations on this server pay for it too"),
     option("parallel", default=DEFAULT_PARALLEL,
-           help=f"slots to serve at once (default: {DEFAULT_PARALLEL})"),
+           help=f"slots to serve at once, each with its share of the context "
+                f"(default: {DEFAULT_PARALLEL}; `poolhouse-serve escalate` grows a running "
+                "server)"),
     flag("--escalate", action="store_true",
          help="refused: `poolhouse-serve escalate PORT` grows the slots of a server you hold"),
     flag("--wait", action=argparse.BooleanOptionalAction, default=True,
@@ -277,10 +289,11 @@ OPTIONS_UP = [
     flag("--for", dest="reason", default="", metavar="TEXT",
          help="why this lease is taken, in one line; `status`, `leases` and `history` show it "
               "(default: $POOLHOUSE_LEASE_FOR, else none given)"),
-    flag("--workload", default=ASK, choices=sorted(WORKLOADS), metavar="WORKLOAD",
+    flag("--workload", default="", choices=["", *sorted(WORKLOADS)], metavar="WORKLOAD",
          help=f"which workload the profile is for: "
-              f"{'; '.join(f'{k}, {v}' for k, v in WORKLOADS.items())} "
-              f"(default: {ASK})"),
+              f"{'; '.join(f'{k}, {v}' for k, v in WORKLOADS.items())}. Naming one also takes "
+              f"the context and slots it was measured at (default: the {ASK} profile's "
+              "settings, with the context fitted to this machine)"),
     flag("--iq", choices=quant_guard.MODES, default="",
          help="what an IQ-family quantisation on Apple silicon gets: warn (default; one "
               "warning, may be slower and less accurate than a K-quant), off (no warning) "
@@ -321,6 +334,10 @@ def cmd_up(args: argparse.Namespace) -> int:
             return planned
         spec = planned
 
+    spec, said = fitted(spec)
+    if said:
+        warn(said)
+
     if getattr(args, "preflight_only", False):
         try:
             report = ops.preflight(spec, manager=manager)
@@ -345,8 +362,6 @@ def _planned(args: argparse.Namespace, spec: ServerSpec) -> ServerSpec | int:
     if not Path(str(spec.model)).is_file():
         warn("plan auto: the model is not on disk yet, so there is no header to plan from")
         return spec
-    if int(spec.context) == DEFAULT_CONTEXT:
-        spec = replace(spec, context=plan_cli.DEFAULT_CONTEXT)
     try:
         plan, lines = plan_cli.auto_fields(
             str(spec.model), context=int(spec.context), parallel=int(spec.parallel),
@@ -360,7 +375,7 @@ def _planned(args: argparse.Namespace, spec: ServerSpec) -> ServerSpec | int:
     warm_thread = warm.start(spec.model, plan.host_in_ram or plan.fast_experts)
     if warm_thread is not None:
         warn("plan auto: reading the ranges the last run touched ahead in the background")
-    return replace(spec, **plan.spec_fields())
+    return replace(spec, context=plan.context, **plan.spec_fields())
 
 
 def _idle_seconds(args: argparse.Namespace) -> float:

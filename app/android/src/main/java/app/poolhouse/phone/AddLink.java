@@ -20,19 +20,50 @@ final class AddLink {
     static final String PREFIX = "poolhouse://add-phone?data=";
     /** How far the phone's clock may differ from the computer's before the code reads as ended: the node decides the real end. */
     static final long CLOCK_SLACK_S = 300;
+    /** The largest epoch a JSON number carries without losing a digit. */
+    private static final long MOST_EPOCH = 9007199254740991L;
     final String pin;
     final List<String> endpoints;
     final String secret;
     final long expires;
     final String name;
     final String policy;
+    /** What the code says this phone would be listed under in a pool; null when the code carries no terms (the device is in no pool). */
+    final Admit admit;
+
+    /** The terms a code carries for a phone that is to be listed as an admin key: the pool, the charter its listing follows, the epoch it joins at and its person. */
+    static final class Admit {
+        final String pool;
+        final String prev;
+        final long since;
+        final String person;
+
+        private Admit(JSONObject terms) throws Exception {
+            Set<String> fields = new HashSet<>();
+            terms.keys().forEachRemaining(fields::add);
+            if (!fields.equals(Set.of("pool", "prev", "since", "person"))) throw malformed();
+            Object when = terms.get("since");
+            if (!(when instanceof Integer || when instanceof Long) || !(terms.get("pool") instanceof String) || !(terms.get("prev") instanceof String)
+                    || !(terms.get("person") instanceof String)) {
+                throw malformed();
+            }
+            pool = terms.getString("pool");
+            prev = terms.getString("prev");
+            person = terms.getString("person");
+            since = ((Number) when).longValue();
+            if (!pool.matches("[a-f0-9]{32}") || !prev.matches("[a-f0-9]{64}") || !person.matches("[A-Za-z0-9_:.-]{1,64}") || since < 2 || since > MOST_EPOCH) throw malformed();
+        }
+    }
 
     private AddLink(JSONObject data, long now) throws Exception {
         Set<String> fields = new HashSet<>();
         data.keys().forEachRemaining(fields::add);
-        if (!fields.equals(Set.of("v", "pin", "endpoints", "secret", "expires", "name", "policy")) || data.optInt("v", 0) != 1) {
+        Set<String> expected = new HashSet<>(Set.of("v", "pin", "endpoints", "secret", "expires", "name", "policy"));
+        if (fields.contains("admit")) expected.add("admit");
+        if (!fields.equals(expected) || data.optInt("v", 0) != 1) {
             throw new IllegalArgumentException("This is not a code that adds a phone.");
         }
+        admit = fields.contains("admit") ? new Admit(data.getJSONObject("admit")) : null;
         pin = data.getString("pin");
         secret = data.getString("secret");
         name = data.getString("name");
@@ -57,6 +88,10 @@ final class AddLink {
             found.add(endpoint);
         }
         endpoints = Collections.unmodifiableList(found);
+    }
+
+    private static IllegalArgumentException malformed() {
+        return new IllegalArgumentException("The code is malformed.");
     }
 
     static AddLink parse(String text, long now) throws Exception {

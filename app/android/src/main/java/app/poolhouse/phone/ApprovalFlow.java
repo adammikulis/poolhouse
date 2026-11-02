@@ -39,6 +39,26 @@ final class ApprovalFlow {
     }
 
     /**
+     * What a person does to add a later phone to a device, on that phone: the scan and one fingerprint to sign its own addition, and, when the
+     * code carries terms because the pool lists its admins, a second fingerprint to accept being listed as an admin key.
+     */
+    static List<Step> addingLater(boolean listed) {
+        List<Step> steps = new ArrayList<>(List.of(Step.SCAN_CODE, Step.FINGERPRINT));
+        if (listed) steps.add(Step.FINGERPRINT);
+        return steps;
+    }
+
+    /**
+     * The same as {@link #approving(String, boolean, boolean)} for a phone that the approval lists as an admin key: a second fingerprint,
+     * for the listing, comes right after the first and before the pick.
+     */
+    static List<Step> approvingListing(String level, boolean flagged, boolean locked) {
+        List<Step> steps = approving(level, flagged, locked);
+        steps.add(steps.indexOf(Step.FINGERPRINT) + 1, Step.FINGERPRINT);
+        return steps;
+    }
+
+    /**
      * The same for a phone that is {@code locked}: Android does not run an action on a notification until the phone is unlocked, so the
      * unlock is a step of its own, before the rest.
      */

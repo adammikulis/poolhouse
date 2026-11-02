@@ -20,6 +20,10 @@ import testslots_policy
 from test_kernel_endpoint import connection, private_directory, socket_identity, verify_socket
 
 
+class AdmissionWaitExpired(RuntimeError):
+    """The admission server ended a request because its wait limit passed before a permit was free."""
+
+
 def _read(stream) -> dict:
     value = stream.readline(65537)
     if not value or len(value) > 65536:
@@ -88,7 +92,7 @@ class Admission(socketserver.ThreadingTCPServer):
     daemon_threads = False
     block_on_close = False
 
-    def __init__(self, container: bool, run_class: str = testslots_policy.INTERACTIVE):
+    def __init__(self, run_class: str = testslots_policy.INTERACTIVE):
         self.terminals = None
         self.run_class = run_class
         self.token = secrets.token_hex(24)
@@ -107,19 +111,18 @@ class Admission(socketserver.ThreadingTCPServer):
         self.wait_limit = testslots.wait_limit()
         if not math.isfinite(self.wait_limit) or self.wait_limit <= 0:
             raise ValueError(f"testslots: DEV_TEST_WAIT_S is {self.wait_limit}; it must be a finite number of seconds above 0 (default {testslots.WAIT_S:.0f})")
-        address = self.address(container)
+        address = self.address()
         super().__init__(address, Handler)
-        host = "host.docker.internal" if container else "127.0.0.1"
-        self.endpoint = "unix:" + self.server_address if self.address_family == socket.AF_UNIX else f"{host}:{self.server_address[1]}"
+        self.endpoint = "unix:" + self.server_address if self.address_family == socket.AF_UNIX else f"127.0.0.1:{self.server_address[1]}"
         self.identity = socket_identity(self.server_address) if self.address_family == socket.AF_UNIX else None
         self.thread = threading.Thread(target=self.serve_forever, daemon=True)
         self.thread.start()
 
-    def address(self, container):
+    def address(self):
         if self.address_family == socket.AF_UNIX:
             self.directory = private_directory()
             return str(self.directory / "admission.sock")
-        return ("0.0.0.0" if container else "127.0.0.1", 0)  # noqa: S104 - authenticated Docker host endpoint
+        return ("127.0.0.1", 0)
 
     def server_bind(self):
         super().server_bind()
@@ -272,7 +275,10 @@ class Handler(socketserver.StreamRequestHandler):
             finally:
                 testslots.CHECK_CANCELLED.reset(cancel)
                 testslots.EXPORT_LEASE.reset(export)
-        except (OSError, ValueError, RuntimeError, TimeoutError) as error:
+        except testslots.WaitExpired as error:
+            with contextlib.suppress(OSError):
+                _write(self.wfile, {"error": str(error), "expired": True})
+        except (OSError, ValueError, RuntimeError) as error:
             with contextlib.suppress(OSError):
                 _write(self.wfile, {"error": str(error)})
 
@@ -285,7 +291,7 @@ class Handler(socketserver.StreamRequestHandler):
 
     def check_connection(self):
         if time.monotonic() >= self.deadline:
-            raise TimeoutError("testslots: admission caller wait expired")
+            raise testslots.WaitExpired("testslots: admission caller wait expired")
         if self.server.stopped.is_set():
             raise ConnectionAbortedError("testslots: supervisor stopped")
         if select.select([self.connection], [], [], 0)[0] and not self.connection.recv(1, socket.MSG_PEEK):
@@ -300,6 +306,8 @@ def request(operation: str, *, label: str = "pytest", phase: str = "test", heavy
             _write(stream, {"operation": operation, "token": os.environ["DEV_TEST_PYTEST_TOKEN"],
                             "parent": os.environ.get("DEV_TEST_REMOTE_LEASE"), "label": label, "phase": phase, "heavy": heavy})
             response = _read(stream)
+            if response.get("expired"):
+                raise AdmissionWaitExpired(response["error"])
             if "error" in response:
                 raise RuntimeError(response["error"])
             previous = os.environ.get("DEV_TEST_REMOTE_LEASE")

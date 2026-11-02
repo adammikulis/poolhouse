@@ -19,7 +19,7 @@ def arms(lab: Lab) -> dict[str, tuple[str, str | None]]:
     """The routes to the model: ``server`` straight to it, ``daemon`` through the proxy."""
     out: dict[str, tuple[str, str | None]] = {}
     if lab.model_url:
-        out["server"] = (lab.model_url, None)
+        out["server"] = (lab.model_url, lab.model_key or None)
     if lab.daemon_url:
         out["daemon"] = (f"{lab.daemon_url}/infer", lab.token)
     return out

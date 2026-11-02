@@ -57,6 +57,19 @@ def guard(command: str, tool: str = "Bash", **env: str) -> int:
     ('git add x.py && git stash && git pull', "a bare stash in a chain"),
     ('git stash -u', "untracked files stashed with no tag"),
     ('git stash push -u', "a push with no tag cannot be found again"),
+    ('git stash save x', "save is a push by another name"),
+    ('git stash push -u -m "tag"', "a tagged push still lands on the shared stack"),
+    ('git stash apply 9f7ee3e3', "an apply is no safer than a pop"),
+    ('git stash drop stash@{0}', "a drop can delete another agent's entry"),
+    ('git stash clear', "clear deletes every agent's entries"),
+    ('git stash branch b', "branch pops the shared stack"),
+    ('git stash create', "create builds a stash commit"),
+    ('git stash store abc', "store pushes onto the shared stack"),
+    ('git stash -u -m x', "untracked, with a message"),
+    ('git -C /w stash', "past a -C path"),
+    ('GIT_TRACE=1 git stash pop', "past a NAME=value prefix"),
+    ('git stash list && git stash drop', "a read-only list then a drop"),
+    ('git stash list; git stash pop', "a list then a pop"),
     ('git push origin main', "a push to main is the owner's to make"),
     ('git push origin 0.2dev:main', "the same, through a refspec"),
     ('git push --force origin main', "a forced push most of all"),
@@ -111,8 +124,8 @@ def test_the_shells_that_should_have_been_commands_are_refused(command, why):
     'git merge --ff-only work && git push origin 0.2dev',
     'git stash list --format="%H %gs"',
     'git stash show --stat 9f7ee3e3',
-    'git stash apply 9f7ee3e3',
-    'git stash push -u -m "wip-tag-1" src/one.py',
+    'git -C /w stash list',
+    'git stash show -p',
     'git commit -m "fix: a bare git stash is refused"',
     'git log --oneline origin/main..main',
     'git rev-list --left-right --count origin/main...main',
@@ -159,7 +172,24 @@ def test_the_refusal_names_the_command_that_leases():
     assert "poolhouse-serve up MODEL" in done.stderr and "poolhouse-serve down" in done.stderr
 
 
-@pytest.mark.parametrize("command", ["SKIP_BUDGETS=1 git commit -m x", "git commit --no-verify -m x", "git commit -n -m x"])
+def test_the_stash_refusal_names_the_stash_free_ways():
+    done = subprocess.run(
+        [sys.executable, str(GUARD)], text=True, capture_output=True,
+        input=json.dumps({"tool_name": "Bash", "tool_input": {"command": "git stash"}}))
+    assert done.returncode == BLOCKED
+    for text in ("shared by every worktree", "wip:", "git restore --source=<parent-sha>",
+                 "git restore --source=HEAD", "git worktree add", "WIP commit first"):
+        assert text in done.stderr
+
+
+def test_the_guard_is_wired_to_the_bash_tool():
+    """A refusal rule that nothing calls does not exist: settings.json runs this file before every Bash call."""
+    settings = json.loads((GUARD.parents[2] / ".claude" / "settings.json").read_text())
+    bash = [h for entry in settings["hooks"]["PreToolUse"] if entry["matcher"] == "Bash" for h in entry["hooks"]]
+    assert any(h["command"].endswith("scripts/hooks/claude-bash-guard") for h in bash)
+
+
+@pytest.mark.parametrize("command", ["SKIP_BUDGETS=1 git commit -m x", "git stash", "git stash pop", "git commit --no-verify -m x", "git commit -n -m x"])
 def test_skipping_the_commit_hooks_stays_refused_with_the_guard_off(command):
     """The off switch is for the soft rules: no spelling of a hook skip is one of them."""
     assert guard(command, POOLHOUSE_GUARD="off") == BLOCKED

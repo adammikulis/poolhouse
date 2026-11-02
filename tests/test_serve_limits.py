@@ -109,12 +109,12 @@ def test_a_lease_past_the_server_limit_never_starts_a_process(tmp_path, monkeypa
     caps.changed(servers=1)
     manager = ServerManager(backend=Backend(), state_file=state)
     with pytest.raises(ServerFailed, match="1 server\\(s\\) at once"):
-        manager.lease(ServerSpec(model="two.gguf", port=8101), roam=False)
+        manager.lease(ServerSpec(context=4096, model="two.gguf", port=8101), roam=False)
     assert started == []
 
     caps.changed(servers=0, slots=1)
     with pytest.raises(ServerFailed, match="asks for 4 slot"):
-        manager.lease(ServerSpec(model="two.gguf", port=8101, parallel=4), roam=False)
+        manager.lease(ServerSpec(context=4096, model="two.gguf", port=8101, parallel=4), roam=False)
     assert started == []
 
 

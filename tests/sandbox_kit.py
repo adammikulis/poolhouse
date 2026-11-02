@@ -171,12 +171,14 @@ def _open_lock(path: str) -> int:
     except OSError as exc:
         why = "is a symbolic link" if exc.errno == errno.ELOOP else f"cannot be opened ({exc})"
         pytest.fail(f"the machine-wide Seatbelt log lock file {path} {why}", pytrace=False)
-    info = Path(f"/dev/fd/{fd}").stat()
-    if not stat.S_ISREG(info.st_mode) or info.st_uid != _uid():
-        os.close(fd)
-        why = "is not a regular file" if not stat.S_ISREG(info.st_mode) else "is owned by another user"
-        pytest.fail(f"the machine-wide Seatbelt log lock file {path} {why}", pytrace=False)
-    return fd
+    with contextlib.ExitStack() as cleanup:
+        cleanup.callback(os.close, fd)
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != _uid():
+            why = "is not a regular file" if not stat.S_ISREG(info.st_mode) else "is owned by another user"
+            pytest.fail(f"the machine-wide Seatbelt log lock file {path} {why}", pytrace=False)
+        cleanup.pop_all()
+        return fd
 
 
 def _lock(fd: int, mode: int, name: str) -> None:

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import json
 import logging
 import os
 import tomllib
@@ -27,18 +28,37 @@ from poolhouse.credentials.reading import (
     valid_name,
 )
 from poolhouse.credentials.writing import write
-from poolhouse.files import read_json, write_json
+from poolhouse.files import read_json, reading, write_json
+from poolhouse.json_objects import unique_object
 
-__all__ = ["FILE_ENV", "INSECURE_ENV", "CredentialError", "Secret", "child_environment",
+__all__ = ["FILE_ENV", "INSECURE_ENV", "CredentialError", "Secret", "WrappedCredentialError", "child_environment",
            "describe", "file_path", "get", "set", "status", "unset"]
 
 logger = logging.getLogger(__name__)
 
 FILE_ENV = "POOLHOUSE_CREDENTIALS_FILE"
-KEYRING_SERVICE = "poolhouse"
 HF_NAMES = ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN")
 KNOWN = ("HF_TOKEN", "ANTHROPIC_API_KEY")
 PURPOSE = "credentials"
+_WRAPPED_FAILURES = {
+    "invalid_wrapped": "the stored credential is not a valid encrypted credential record",
+    "cannot_open": "the stored credential cannot be opened with the current encryption key or credential context; its bytes may have changed",
+    "missing_master": "the encryption key for the stored credential is missing from the OS keystore",
+    "locked": "the OS keystore is not ready to open the stored credential",
+    "denied": "the OS keystore refused access to the stored credential",
+    "busy": "the OS keystore is busy; the stored credential has not been opened",
+    "unavailable": "the OS keystore is unavailable to this installed holder",
+}
+
+
+class WrappedCredentialError(CredentialError):
+    """A fixed, value-free reason an existing encrypted credential could not be opened."""
+
+    def __init__(self, reason: str):
+        if reason not in _WRAPPED_FAILURES:
+            raise ValueError("unknown encrypted credential failure")
+        self.reason = reason
+        super().__init__(_WRAPPED_FAILURES[reason])
 
 
 class Secret(str):
@@ -116,7 +136,21 @@ def wrapped_path() -> Path:
     return home.state("keystore", "credentials.json")
 
 
-def _wrapped() -> dict[str, str]:
+def _wrapped(*, strict: bool = False) -> dict[str, str]:
+    if strict:
+        try:
+            with reading(wrapped_path()) as source:
+                record = json.load(source, object_pairs_hook=unique_object)
+        except FileNotFoundError:
+            if wrapped_path().is_symlink():
+                raise WrappedCredentialError("invalid_wrapped") from None
+            return {}
+        except (OSError, ValueError):
+            raise WrappedCredentialError("invalid_wrapped") from None
+        if (not isinstance(record, dict) or type(record.get("schema_version")) is not int
+                or record["schema_version"] != 1 or not isinstance(record.get("values"), dict)):
+            raise WrappedCredentialError("invalid_wrapped")
+        return record["values"]
     table = read_json(wrapped_path(), {}).get("values", {})
     return table if isinstance(table, dict) else {}
 
@@ -142,62 +176,33 @@ def _keep(name: str, value: str) -> None:
     with _rewriting():
         write_json(wrapped_path(), {"schema_version": 1, "values": {**_wrapped(), name: blob}})
         wrapped_path().chmod(0o600)
-    ks.mark_migrated(KEYRING_SERVICE, name)
 
 
-def _open(name: str) -> str | None:
-    held = _wrapped().get(name)
-    if held is None:
+def _open(name: str, *, strict: bool = False) -> str | None:
+    """Open the encrypted item; an admitted holder uses ``strict`` to distinguish absence from failure."""
+    wrapped = _wrapped(strict=True) if strict else _wrapped()
+    if name not in wrapped:
+        return None
+    held = wrapped[name]
+    if not strict and held is None:
         return None
     try:
-        return clean(keystore.default().unwrap(PURPOSE, name, base64.b64decode(held)).decode(),
+        if strict and not isinstance(held, str):
+            raise ValueError("invalid encrypted credential record")
+        return clean(keystore.default().unwrap(PURPOSE, name, base64.b64decode(held, validate=strict)).decode(),
                      "the keychain entry")
-    except (keystore.KeystoreError, ValueError) as exc:
+    except (keystore.KeystoreError, ValueError, CredentialError) as exc:
+        if strict:
+            reason = next((reason for kind, reason in (
+                (keystore.KeystoreLocked, "locked"), (keystore.KeystoreDenied, "denied"),
+                (keystore.KeystoreBusy, "busy"), (keystore.KeystoreMissing, "missing_master"),
+                (keystore.KeystoreUnavailable, "unavailable"), (keystore.KeystoreError, "cannot_open"),
+            ) if isinstance(exc, kind)), "invalid_wrapped")
+            raise WrappedCredentialError(reason) from None
+        if isinstance(exc, CredentialError):
+            raise
         logger.debug("keystore unavailable: %s", type(exc).__name__)
         return None
-
-
-_probing_legacy = False
-"""True only while a person's own command runs (`probing_legacy`): library code that merely asks for a
-credential never reads the OS keystore, because most names never had an item there and every
-probe is a real keystore call (a prompt on some machines)."""
-
-
-@contextlib.contextmanager
-def probing_legacy() -> Iterator[None]:
-    """Let credential lookups inside this block look for an item an older version kept in the OS keystore."""
-    global _probing_legacy
-    before, _probing_legacy = _probing_legacy, True
-    try:
-        yield
-    finally:
-        _probing_legacy = before
-
-
-def _migrate(name: str) -> None:
-    """Move an item an older version kept in the OS keystore into the wrapped file, once; the
-    old item is deleted after the wrapped value reads back equal. Only inside `probing_legacy`."""
-    if not _probing_legacy:
-        return
-    ks = keystore.default()
-    if ks.migrated(KEYRING_SERVICE, name):
-        return
-    try:
-        old = ks.legacy_get(KEYRING_SERVICE, name, PURPOSE)
-        if old:
-            if _open(name) != clean(old, "the keychain entry"):
-                _keep(name, old)
-            if _open(name) != clean(old, "the keychain entry"):
-                return
-            ks.legacy_drop(KEYRING_SERVICE, name, PURPOSE)
-        ks.mark_migrated(KEYRING_SERVICE, name)
-    except keystore.KeystoreError as exc:
-        logger.debug("keystore unavailable: %s", type(exc).__name__)
-
-
-def _from_keyring(name: str) -> str | None:
-    _migrate(name)
-    return _open(name)
 
 
 SOURCES: tuple[tuple[str, Callable[[str], str | None]], ...] = (
@@ -205,7 +210,7 @@ SOURCES: tuple[tuple[str, Callable[[str], str | None]], ...] = (
     ("environment file", _from_named_file),
     ("credentials file", _from_file),
     ("huggingface token file", _from_hf_file),
-    ("keychain", _from_keyring),
+    ("keychain", _open),
 )
 
 
@@ -279,7 +284,6 @@ def unset(name: str, *, keychain: bool = False) -> bool:
     """Remove ``name`` from the credentials file (or the keychain). Whether it was there."""
     valid_name(name)
     if keychain:
-        _migrate(name)
         with _rewriting():
             table = _wrapped()
             if name not in table:

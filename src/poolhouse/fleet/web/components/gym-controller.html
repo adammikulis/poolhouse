@@ -1,0 +1,116 @@
+<script>
+(() => {
+  const M = window.fleetModel, W = window.workspaceModel, E = M.el;
+  window.GymController = {
+    connectController() {
+      this.controllerStatus = E('p', {role:'status', class:'intro'});
+      this.controllerRefresh = W.button('Refresh controller status', () => this.refreshController());
+      this.controllerRefresh.hidden = true;
+      this.applyController.after(this.controllerStatus, this.controllerRefresh);
+      this.controllerEpoch = 0;
+      const fields = [this.controller, this.checkpoint, this.decisionCheckpoint, this.modelOptions.decision,
+        this.modelOptions.device, this.modelOptions.age, this.worldOptions.learning];
+      for (const field of fields) field.addEventListener('change', () => this.controllerDraftChanged());
+      M.onRoute(route => {
+        if (['sign-in', 'launch-needed', 'first-run'].includes(route)) {
+          this.controllerEpoch++; this.controllerOperation = null; this.controllerUnknown = false;
+          this.decisionInstall = null;
+          this.decisionDownload.disabled = false; this.decisionDownload.textContent = 'Set up default decision model';
+        }
+      });
+    },
+    controllerResult(result) {
+      if (!result.ok) throw Object.assign(Error(M.refused(result) ? 'Open Poolhouse to reconnect.' : result.error || `Request failed (${result.status})`), {status:result.status});
+      return result;
+    },
+    async controllerRead(path, allowed=()=>true) {
+      const auth = M.sessionContext(), result = await M.api(path);
+      return auth === M.sessionContext() && allowed() ? this.controllerResult(result) : null;
+    },
+    controllerPayload() {
+      return {controller:this.controller.value, learning_mode:this.worldOptions.value().learning_mode,
+        checkpoint:this.checkpoint.value.trim(), decision_checkpoint:this.decisionCheckpoint.value.trim() || null,
+        decision_max_age_s:Number(this.modelOptions.age.value), decision_device:this.modelOptions.device.value};
+    },
+    controllerContext() {
+      return JSON.stringify([this.session, this.environment.value, this.worldOptions.value(), this.controllerPayload()]);
+    },
+    activeController() { return this.session ? this.lastSnapshot?.controller : this.controller.value; },
+    controllerDraftChanged() { this.paintController(); },
+    paintController() {
+      if (!this.controllerStatus) return;
+      if (this.controllerSession !== this.session) {
+        this.controllerSession = this.session; this.controllerApplied = this.controllerContext();
+        this.controllerUnknown = false;
+      }
+      const changed = this.controllerApplied !== this.controllerContext() || (this.session && this.activeController() !== this.controller.value);
+      const actual = this.lastSnapshot?.controller || 'Not reported';
+      this.controllerStatus.textContent = !this.session ? 'Choose a controller for the next session.'
+        : this.controllerUnknown ? 'The controller update outcome is unknown. Refresh status before applying again.'
+        : this.controllerOperation ? `Current controller: ${actual}. Applying selected settings…`
+        : changed ? `Current controller: ${actual}. Selected settings have not been applied.` : `Current controller: ${actual}.`;
+      this.applyController.hidden = !this.session;
+      this.applyController.disabled = !this.session || !!this.controllerOperation || this.controllerUnknown;
+      this.controllerRefresh.hidden = !this.controllerUnknown;
+    },
+    async refreshController() {
+      const id = this.session, epoch = this.controllerEpoch, auth = M.sessionContext(), context = this.controllerContext();
+      if (!id) return;
+      try {
+        const snapshot = await this.controllerRead('/ui/gym/sessions/' + encodeURIComponent(id), () => this.session === id && this.controllerEpoch === epoch && this.controllerContext() === context && M.route === 'gym');
+        if (!snapshot || this.session !== id || this.controllerEpoch !== epoch || M.route !== 'gym') return;
+        this.controllerUnknown = false;
+        this.draw(snapshot); this.paintController();
+      } catch (error) { if (this.session === id && this.controllerEpoch === epoch && auth === M.sessionContext() && this.controllerContext() === context && M.route === 'gym') W.status(this.note, error); }
+    },
+    async apply() {
+      if (this.controllerOperation || this.controllerUnknown || !this.session) return;
+      try { this.worldOptions.validate(); } catch (error) { W.status(this.note, error); return; }
+      const id = this.session, epoch = this.controllerEpoch, auth = M.sessionContext(), context = this.controllerContext();
+      if (this.lastSnapshot?.environment && this.lastSnapshot.environment !== this.environment.value) {
+        this.note.textContent = 'Start or attach to the selected environment before applying its controller.'; return;
+      }
+      const operation = {}; this.controllerOperation = operation; this.paintController();
+      try {
+        await this.control('controller', this.controllerPayload(), true);
+        if (this.session !== id || this.controllerEpoch !== epoch || auth !== M.sessionContext() || this.controllerContext() !== context || M.route !== 'gym') return;
+        this.controllerApplied = context;
+      } catch (error) {
+        if (this.session !== id || this.controllerEpoch !== epoch || auth !== M.sessionContext()) return;
+        this.controllerUnknown = !error.status || error.status >= 500;
+        if (this.controllerContext() === context && M.route === 'gym') W.status(this.note, error);
+      } finally {
+        if (this.controllerOperation === operation) this.controllerOperation = null;
+        if (this.session === id && this.controllerEpoch === epoch && M.route === 'gym') this.paintController();
+      }
+    },
+    async installDefaultDecision() {
+      if (this.decisionInstall) return;
+      const operation = {}, epoch = this.controllerEpoch, auth = M.sessionContext(), context = this.controllerContext();
+      this.decisionInstall = operation; this.decisionDownload.disabled = true;
+      this.decisionDownload.textContent = 'Setting up decision model…';
+      const current = () => this.decisionInstall === operation && epoch === this.controllerEpoch && auth === M.sessionContext();
+      try {
+        const result = await M.api('/ui/studio/resources/decision/install', {method:'POST',body:JSON.stringify({})});
+        if (!current()) return;
+        if (!result.ok && (M.route !== 'gym' || context !== this.controllerContext())) return;
+        this.controllerResult(result);
+        if (result.job) await M.followSetupJob(result.job, job => {
+          if (current() && M.route === 'gym' && context === this.controllerContext()) this.note.textContent = job.note || job.state;
+        });
+        else if (!result.ready) throw Error('Decision model setup status is unavailable.');
+        if (!current() || M.route !== 'gym' || context !== this.controllerContext()) return;
+        await this.load(() => current() && M.route === 'gym' && context === this.controllerContext());
+        if (current() && M.route === 'gym' && context === this.controllerContext())
+          this.note.textContent = 'Default decision model ready. Apply it to a session when you choose.';
+      } catch (error) { if (current() && M.route === 'gym' && context === this.controllerContext()) W.status(this.note, error); }
+      finally {
+        if (this.decisionInstall === operation) {
+          this.decisionInstall = null; this.decisionDownload.disabled = false;
+          this.decisionDownload.textContent = 'Set up default decision model';
+        }
+      }
+    }
+  };
+})();
+</script>

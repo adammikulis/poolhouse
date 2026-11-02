@@ -47,6 +47,9 @@ pub const GRANTS: &str = "grants";
 pub const HOLD: &str = "hold";
 pub const PHONE_ADD: &str = "phone_add";
 pub const PHONE_REMOVE: &str = "phone_remove";
+/// The move of a main session to the terminal that asked, and the state of one that was carried out.
+pub const REBIND: &str = "rebind";
+pub const USED: &str = "used";
 
 /// How many requests wait on a node, how many one session has waiting, and how many a session makes in ten minutes.
 pub const MOST_PENDING: usize = 64;

@@ -7,22 +7,22 @@ import pytest
 from test_fleet_ui import Serving
 
 from poolhouse.fleet.conversations import Conversations
+from poolhouse.testing.canned import CANNED_HEADER, CANNED_HEADER_VALUE, canned_stream_reply, marked
 
 pytestmark = pytest.mark.slow
 
 
 @pytest.fixture
-def chat_browser(tmp_path, playwright):
+def chat_browser(tmp_path, browser_owner):
     served = Serving(tmp_path)
-    served.ui.settings.setup_done = True
-    served.ui.conversations = Conversations(tmp_path / "chats")
-    browser = playwright.chromium.launch(headless=True)
-    page = browser.new_page()
-    page.route("**/ui/chat", lambda route: route.fulfill(json={"models": [{"model": "model-a", "local": True}]}))
     try:
-        yield served, page
+        served.ui.settings.setup_done = True
+        served.ui.root = tmp_path
+        served.ui.conversations = Conversations(tmp_path / "chats")
+        with browser_owner.pages() as page:
+            page.route("**/ui/chat", lambda route: route.fulfill(json={"models": [{"model": "model-a", "local": True}]}))
+            yield served, page
     finally:
-        browser.close()
         served.close()
 
 
@@ -77,8 +77,9 @@ def test_one_composer_enter_sends_and_shift_enter_keeps_the_draft(chat_browser):
         calls.append(request)
         cid = request["conversation"]
         served.ui.conversations.append(cid, "user", request["messages"][-1]["content"])
-        served.ui.conversations.append(cid, "assistant", "Saved answer")
-        route.fulfill(content_type="text/event-stream", body='data: {"choices":[{"delta":{"content":"Saved answer"}}]}\n\ndata: [DONE]\n\n')
+        served.ui.conversations.append(cid, "assistant", marked("Saved answer"))
+        route.fulfill(content_type="text/event-stream", headers={CANNED_HEADER: CANNED_HEADER_VALUE},
+                      body=canned_stream_reply([{"content": "Saved answer"}])[1])
 
     page.unroute("**/ui/chat")
     page.route("**/ui/chat", model)
@@ -89,13 +90,13 @@ def test_one_composer_enter_sends_and_shift_enter_keeps_the_draft(chat_browser):
     composer.type("Second line")
     assert not calls
     composer.press("Enter")
-    expect(page.locator("chat-view #chat-messages")).to_contain_text("Saved answer")
+    expect(page.locator("chat-view #chat-messages")).to_contain_text(marked("Saved answer"))
     assert calls[0]["messages"][-1]["content"] == "First line\nSecond line"
     assert page.locator("chat-view textarea:visible").count() == 1
-    expect(page.locator("chat-view ml-composer .composer-recipient")).to_have_text("Message model-a")
+    expect(page.locator("chat-view poolhouse-composer .composer-recipient")).to_have_text("Message model-a")
     assert not page.locator("chat-view #chat-options").evaluate("node => node.open")
     page.reload()
-    expect(page.locator("chat-view #chat-messages")).to_contain_text("Saved answer")
+    expect(page.locator("chat-view #chat-messages")).to_contain_text(marked("Saved answer"))
 
 
 def test_shared_composer_cancel_and_failed_send_keep_the_next_draft(chat_browser):
@@ -116,6 +117,7 @@ def test_shared_composer_cancel_and_failed_send_keep_the_next_draft(chat_browser
     composer.fill("First request")
     page.locator("chat-view #chat-send").click()
     expect(page.locator("chat-view #chat-cancel")).to_be_visible()
+    page.wait_for_function("() => typeof window.failComposerSend === 'function'")
     composer.fill("Next draft")
     page.locator("chat-view #chat-cancel").click()
     expect(page.locator("chat-view #chat-note")).to_have_text("Generation stopped.")
@@ -153,6 +155,7 @@ def test_model_picker_groups_and_searches_loaded_and_installed_models(chat_brows
     from playwright.sync_api import expect
 
     served, page = chat_browser
+    page.route("**/ui/chat", lambda route: route.fulfill(json={"models": [{"model":"model-a", "local":True, "path":"/models/model-a.gguf"}]}))
     page.route("**/ui/models", lambda route: route.fulfill(json={"ok": True, "library": [
         {"path": "/models/model-a.gguf", "name": "model-a", "family": "Qwen", "quantization": "Q4_K_XL", "servable": True},
         {"path": "/models/other.gguf", "name": "Other model", "family": "Gemma", "quantization": "Q8_0", "servable": True}]}))
@@ -160,18 +163,18 @@ def test_model_picker_groups_and_searches_loaded_and_installed_models(chat_brows
     page.locator("chat-view #chat-model-button").click()
     expect(page.get_by_role("heading", name="Qwen", exact=True)).to_be_visible()
     expect(page.get_by_role("heading", name="Gemma", exact=True)).to_be_visible()
-    expect(page.locator("chat-view #chat-model-list")).to_contain_text("Loaded · Q4_K_XL")
-    expect(page.locator("chat-view #chat-model-list")).to_contain_text("Installed · Q8_0")
-    page.locator("chat-view").get_by_label("Search models", exact=True).fill("Qwen")
+    expect(page.locator("chat-view #chat-model-list")).to_contain_text("Running · Q4_K_XL")
+    expect(page.locator("chat-view #chat-model-list")).to_contain_text("Available · Q8_0")
+    page.locator("chat-view").get_by_label("Search models and workspace agents", exact=True).fill("Qwen")
     expect(page.locator("chat-view .chat-model-choice")).to_have_count(1)
-    page.locator("chat-view").get_by_label("Search models", exact=True).press("Enter")
+    page.locator("chat-view").get_by_label("Search models and workspace agents", exact=True).press("Enter")
     expect(page.locator("chat-view #chat-model-dialog")).not_to_be_visible()
-    expect(page.locator("chat-view #model")).to_have_value("model-a")
+    expect(page.locator("chat-view #model")).to_have_value("/models/model-a.gguf")
     page.locator("chat-view #chat-model-button").click()
-    page.locator("chat-view").get_by_label("Search models", exact=True).fill("no matches")
+    page.locator("chat-view").get_by_label("Search models and workspace agents", exact=True).fill("no matches")
     expect(page.locator("chat-view #chat-model-list p")).to_have_text("No models match your search.")
-    expect(page.locator("chat-view #chat-model-list").get_by_role("button", name="Browse model library")).to_be_visible()
-    page.locator("chat-view").get_by_label("Search models", exact=True).press("Escape")
+    expect(page.locator("chat-view #chat-model-list").get_by_role("button", name="Add New Model (Model Library)")).to_be_visible()
+    page.locator("chat-view").get_by_label("Search models and workspace agents", exact=True).press("Escape")
     expect(page.locator("chat-view #chat-model-dialog")).not_to_be_visible()
     assert page.locator("chat-view textarea:visible").count() == 1
 
@@ -201,10 +204,11 @@ def test_picker_excludes_known_non_chat_and_keeps_unknown_models(chat_browser):
     expect(choices).to_contain_text('Chat decoder')
     expect(choices).not_to_contain_text('Embedding model')
     expect(choices).not_to_contain_text('Speech model')
-    expect(choices.get_by_role('button', name='Unknown loaded decoder Loaded · Chat capability unverified', exact=True)).to_be_visible()
-    expect(choices.get_by_role('button', name='Known loaded decoder Loaded', exact=True)).to_be_visible()
+    expect(choices.get_by_role('button', name='Unknown loaded decoder Running · Chat capability unverified', exact=True)).to_be_visible()
+    expect(choices.get_by_role('button', name='Known loaded decoder Running', exact=True)).to_be_visible()
     assert len(page.locator('chat-view').evaluate('node => node.modelPicker.library')) == 4
-    choices.get_by_role('button', name='Future decoder Installed · Chat capability unverified Configure in Models →', exact=True).click()
+    expect(choices.get_by_role('button', name='Future decoder Available · Chat capability unverified Start in Chat', exact=True)).to_be_visible()
+    choices.get_by_role('button', name='Add New Model (Model Library)', exact=True).click()
     expect(page.locator('models-view #models')).to_be_visible()
 
 
@@ -218,18 +222,19 @@ def test_installed_model_picker_remains_visible_with_no_loaded_server(chat_brows
         {"path": "/models/qwen.gguf", "name": "Qwen3.8-27B", "family": "Qwen", "servable": True}]}))
     _open(served, page)
     page.locator("chat-view #chat-model-button").click()
-    expect(page.get_by_role("button", name="Qwen3.8-27B Installed Configure in Models →", exact=True)).to_be_visible()
-    expect(page.locator("chat-view #chat-askrow")).to_be_hidden()
+    expect(page.get_by_role("button", name="Qwen3.8-27B Available Start in Chat", exact=True)).to_be_visible()
+    expect(page.locator("chat-view #chat-askrow")).to_be_visible()
+    expect(page.locator("chat-view #chat-send")).to_be_disabled()
 
 
-def test_learning_prompts_preserve_draft_and_team_channels_are_connected(chat_browser):
+def test_learning_prompts_preserve_draft_and_team_channels_are_connected(chat_browser, tmp_path):
     from playwright.sync_api import expect
 
     served, page = chat_browser
     _open(served, page)
     expect(page.locator("chat-view .chat-welcome strong")).to_have_text("Start a conversation")
-    expect(page.locator("chat-view .conversation-space small")).to_have_count(0)
-    page.screenshot(path="/private/tmp/poolhouse-conversations-welcome.png", full_page=True)
+    expect(page.locator("#conversation-workspace-status")).to_be_visible()
+    page.screenshot(path=str(tmp_path / "conversations-welcome.png"), full_page=True)
     page.get_by_role("button", name="Plan an experiment", exact=True).click()
     composer = page.get_by_role("textbox", name="Message", exact=True)
     expect(composer).to_have_value("Help me design a reproducible training experiment. Ask me about the model, data, and success criteria.")
@@ -239,13 +244,13 @@ def test_learning_prompts_preserve_draft_and_team_channels_are_connected(chat_br
     expect(page.locator("chat-view .chats")).to_be_visible()
     page.get_by_role("button", name="● model-a", exact=True).click()
     expect(composer).to_have_value("Help me design a reproducible training experiment. Ask me about the model, data, and success criteria.")
-    page.screenshot(path="/private/tmp/poolhouse-conversations-desktop.png", full_page=True)
+    page.screenshot(path=str(tmp_path / "conversations-desktop.png"), full_page=True)
     page.set_viewport_size({"width": 390, "height": 844})
     expect(page.locator("chat-view .chats")).to_be_hidden()
     page.get_by_role("button", name="Channels and model chats ▾").click()
     expect(page.locator("chat-view .chats")).to_be_visible()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-    page.screenshot(path="/private/tmp/poolhouse-conversations-mobile.png", full_page=True)
+    page.screenshot(path=str(tmp_path / "conversations-mobile.png"), full_page=True)
 
 
 def test_saved_model_switch_updates_visible_picker(chat_browser):
@@ -255,7 +260,7 @@ def test_saved_model_switch_updates_visible_picker(chat_browser):
     served.ui.conversations.start(model="offline-model", title="Offline model chat")
     _open(served, page)
     page.get_by_role("link", name="Offline model chat", exact=True).click()
-    expect(page.locator("chat-view #chat-model-button")).to_have_text("offline-model — unavailable")
+    expect(page.locator("chat-view #chat-model-button")).to_have_text("Selected model — unavailable")
     expect(page.locator("chat-view #chat-send")).to_be_disabled()
 
 
@@ -268,13 +273,15 @@ def test_output_token_control_uses_backend_defaults_and_accepts_no_cap(chat_brow
     _open(served, page)
     page.locator("chat-view #conversation-details").click()
     cap = page.get_by_label("Maximum output tokens", exact=True)
-    expect(cap).to_have_value("13579")
-    cap.fill("")
+    expect(cap).to_have_attribute("aria-valuetext", "Custom · 13,579 tokens")
+    expect(page.locator("#chat-output-tokens output")).to_have_text("Custom · 13,579 tokens")
+    assert page.locator("chat-view").evaluate("node => node.settings().max_output_tokens") == 13579
+    cap.press("Home")
     cap.press("Tab")
     assert page.locator("chat-view").evaluate("node => node.settings().max_output_tokens") is None
 
 
-def test_installed_model_selection_hands_off_the_selected_model(chat_browser):
+def test_only_explicit_add_model_option_opens_the_library(chat_browser):
     from playwright.sync_api import expect
 
     served, page = chat_browser
@@ -283,6 +290,33 @@ def test_installed_model_selection_hands_off_the_selected_model(chat_browser):
     page.add_init_script("window.addEventListener('fleet-select-model', e => { window.modelHandoff = e.detail; });")
     _open(served, page)
     page.locator("chat-view #chat-model-button").click()
-    page.get_by_role("button", name="Installed model Installed Configure in Models →", exact=True).click()
+    expect(page.get_by_role("button", name="Installed model Available Start in Chat", exact=True)).to_be_visible()
+    page.get_by_role("button", name="Add New Model (Model Library)", exact=True).click()
     expect(page).to_have_url(f"http://127.0.0.1:{served.port}/ui#models")
-    assert page.evaluate("window.modelHandoff") == {"path": "/models/installed.gguf", "name": "Installed model", "from": "chat"}
+    assert page.evaluate("window.modelHandoff === undefined")
+
+
+def test_token_slider_keeps_existing_conversation_selections(chat_browser):
+    from playwright.sync_api import expect
+
+    served, page = chat_browser
+    first = served.ui.conversations.start(model='model-a', title='Long output',
+                                         settings={'max_output_tokens': 12000})
+    second = served.ui.conversations.start(model='model-a', title='Automatic output',
+                                          settings={'max_output_tokens': None})
+    _open(served, page)
+    page.locator('chat-view #conversation-details').click()
+    page.get_by_role('link', name='Long output', exact=True).click()
+    cap = page.get_by_role('slider', name='Maximum output tokens', exact=True)
+    expect(page.locator('#chat-output-tokens output')).to_have_text('Custom · 12,000 tokens')
+    page.evaluate('fleetModel.setPreferences({context:4096})')
+    assert cap.evaluate('node => node.getRootNode().host.stops.at(-1)') == 4096
+    expect(cap).to_have_attribute('aria-valuetext', 'Custom · 12,000 tokens')
+    assert page.locator('chat-view').evaluate('node => node.settings().max_output_tokens') == 12000
+    page.get_by_role('link', name='Automatic output', exact=True).click()
+    expect(cap).to_have_value('0')
+    expect(page.locator('#chat-output-tokens output')).to_have_text('No output cap')
+    page.get_by_role('link', name='Long output', exact=True).click()
+    expect(page.locator('#chat-output-tokens output')).to_have_text('Custom · 12,000 tokens')
+    assert served.ui.conversations.get(first.id).settings['max_output_tokens'] == 12000
+    assert served.ui.conversations.get(second.id).settings['max_output_tokens'] is None

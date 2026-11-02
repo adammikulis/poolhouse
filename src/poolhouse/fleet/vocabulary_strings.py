@@ -29,7 +29,7 @@ CATALOGUE: dict[str, tuple[str, str]] = {
     "wizard.pool": ("Pools", "Pick a house"),
     "wizard.stage.0": ("Device", "Your room"),
     "wizard.stage.1": ("Pool", "The house"),
-    "wizard.stage.2": ("Work", "The chores"),
+    "wizard.stage.2": ("Availability", "When to help"),
     "wizard.stage.3": ("Startup", "Wake-up"),
     "wizard.stage.4": ("Downloads", "Groceries"),
     "wizard.stage.5": ("Capabilities", "Your skills"),

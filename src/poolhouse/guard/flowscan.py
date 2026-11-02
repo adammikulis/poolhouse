@@ -11,7 +11,7 @@ from collections.abc import Sequence
 
 __all__ = ["flows"]
 
-FETCHED = re.compile(r"(?i)(?:urlopen|urllib\.request|requests\.(?:get|post)|httpx\.|http\.client|\bfetch\s*\(|XMLHttpRequest|\bcurl\b|\bwget\b|aria2c)")
+FETCHED = re.compile(r"(?i)(?:urlopen|urllib\.request|requests\.(?:get|post)|httpx2?\.|http\.client|\bfetch\s*\(|XMLHttpRequest|\bcurl\b|\bwget\b|aria2c)")
 ENVIRONMENT = re.compile(r"(?i)(?:dict\(os\.environ\)|os\.environ\.copy\(\)|json\.dumps\(os\.environ|JSON\.stringify\(process\.env\)|\{\s*\.\.\.process\.env\s*\}|\$\(\s*env\s*\)|\bprintenv\b)")
 ASSIGNED = re.compile(r"^\s*(?:(?:const|let|var|export|local|declare|readonly)\s+)?([A-Za-z_]\w*)\s*(?::\s*[\w\[\], .]+)?=(?!=)\s*(.*)$", re.S)
 RUNS = re.compile(r"(?:\bexec\s*\(|\beval\b|\bFunction\s*\(|os\.system|os\.popen|subprocess\.\w+|\bsystem\s*\(|child_process|execSync|\bspawn\w*\("

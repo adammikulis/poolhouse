@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import home
+from poolhouse.macauth import PREFIX
 from poolhouse.sentinel.events import Severity
 from poolhouse.sentinel.findings import HEURISTIC, HIGH, Finding, finding
 from poolhouse.sentinel.sealed import SealedFile
@@ -67,7 +68,7 @@ class Honey:
             "env": (".env", lambda v: f"HF_TOKEN={v}\n", _make("hf_", 34)),
             "creds": ("credentials.toml.bak",
                       lambda v: f'[tokens]\nhf = "{v}"\n', _make("hf_", 34)),
-            "pool": ("pool.key.old", lambda v: f"{v}\n", _make("mlsk1.", 43)),
+            "pool": ("pool.key.old", lambda v: f"{v}\n", _make(PREFIX, 43)),
         }
         out = []
         for ident, (name, render, value) in specs.items():

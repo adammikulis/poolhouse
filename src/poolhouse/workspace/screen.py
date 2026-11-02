@@ -22,7 +22,7 @@ SECRETS: tuple[tuple[str, re.Pattern[str]], ...] = tuple((n, re.compile(p)) for 
     ("jwt", r"\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"),
     ("bearer", r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{20,}"),
     ("url-password", r"(?i)\b[a-z][a-z0-9+.-]*://[^\s/:@]+:[^\s/@]{3,}@"),
-    ("workspace-token", r"\bmlws1\.[a-z0-9._-]{1,48}\.[A-Za-z0-9_-]{20,}"),
+    ("workspace-token", r"\bpoolhouse-ws1\.[a-z0-9._-]{1,48}\.[A-Za-z0-9_-]{20,}"),
     ("assigned-secret", r"(?i)\b[\w.-]*(?:api[_-]?key|secret|token|passw(?:or)?d|passphrase)"
                         r"[\w.-]*\s*[:=]\s*[\"']?[^\s\"',;]{8,}"),
 ))

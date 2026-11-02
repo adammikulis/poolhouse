@@ -3,21 +3,13 @@
 from __future__ import annotations
 
 import pytest
-from test_fleet_ui import Serving, a_keystore, counting  # noqa: F401
+from test_fleet_ui import Serving
 
 from poolhouse import features
 
 
-@pytest.fixture(autouse=True)
-def the_passphrase_is_kept(a_keystore):  # noqa: F811
-    """Joining stores the passphrase and signing in compares against it."""
-
-
 @pytest.fixture
 def daemon(tmp_path, monkeypatch):
-    from poolhouse.fleet.onboard import joining
-
-    monkeypatch.setattr(joining, "find_joiners", lambda *a, **k: [])
     monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "home"))
     s = Serving(tmp_path)
     try:

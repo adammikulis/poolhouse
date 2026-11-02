@@ -62,12 +62,20 @@ class TestReadingBadFiles:
         (store.root / "empty.json").write_text("{}")
         assert [c.id for c in store.all()] == [good.id]
 
-    def test_a_message_missing_its_role_is_dropped_not_fatal(self, store):
+    def test_json_transcripts_are_never_adopted_or_modified(self, store):
         import json
+
         store.root.mkdir(parents=True)
-        (store.root / "legacy.json").write_text(json.dumps({"id": "legacy", "created": 1,
-            "messages": [{"rle": "user", "content": "invalid"}]}))
-        assert store.get("legacy").messages == []
+        path = store.root / "saved.json"
+        raw = json.dumps({"id": "saved", "created": 1,
+                          "messages": [{"role": "user", "content": "Unadopted data"}]})
+        path.write_text(raw)
+        for _ in range(2):
+            current = Conversations(store.root)
+            assert current.get("saved") is None
+            assert current.all() == []
+            assert current.remove("saved") is False
+            assert path.read_text() == raw
 
 
 
@@ -97,17 +105,17 @@ class TestSearching:
 
 
 def test_conversation_settings_and_model_survive_reopening(store, tmp_path):
-    made = store.start(model="small", settings={"mode": "coding", "project": "/tmp/project", "effort": "low", "max_output_tokens": 23456})
+    made = store.start(model="small", settings={"project": "/tmp/project", "effort": "low", "max_output_tokens": 23456})
     store.append(made.id, "user", "Review the brakes")
     store.update(made.id, model="large", settings={"temperature": .3, "max_effort": "high"}, title="Brake review")
     again = Conversations(tmp_path / "chats").get(made.id)
     assert again.model == "large"
-    assert again.settings["mode"] == "coding"
+    assert "mode" not in again.settings
     assert again.settings["project"] == "/tmp/project"
     assert again.settings["temperature"] == .3
     assert again.settings["effort"] == "low"
     assert again.settings["max_effort"] == "high"
-    assert again.settings["harness"] == "pi"
+    assert again.settings["harness"] == ""
     assert again.settings["context"] == 0
     assert again.settings["max_output_tokens"] == 23456
     assert [message.content for message in again.messages] == ["Review the brakes"]
@@ -125,25 +133,6 @@ def test_invalid_settings_leave_the_conversation_unchanged(store, settings):
     assert store.get(made.id).settings == made.settings
 
 
-def test_old_saved_messages_acquire_default_settings_and_version_on_update(store):
-    import json
-    store.root.mkdir(parents=True)
-    path = store.root / "legacy.json"
-    raw = {"id": "legacy", "title": "Old chat", "model": "old-model", "created": 1,
-           "messages": [{"role": "user", "content": "Keep this message", "at": 1}]}
-    path.write_text(json.dumps(raw))
-    old = store.get("legacy")
-    assert old.model == "old-model"
-    assert old.settings["mode"] == "chat"
-    assert old.settings["max_output_tokens"] is None
-    store.update("legacy", settings={"temperature": .7})
-    saved = store.get("legacy").public()
-    assert saved["version"] == 1
-    assert saved["messages"][0]["content"] == "Keep this message"
-    assert saved["settings"]["temperature"] == .7
-    assert json.loads(path.read_text()) == raw
-    store.remove("legacy")
-    assert Conversations(store.root).get("legacy") is None
 
 
 def test_conversations_link_messages_models_and_projects_in_the_graph(store):

@@ -8,6 +8,8 @@ not by the pull request triggering it.
 
 from __future__ import annotations
 
+import ast
+import re
 from pathlib import Path
 from typing import Any
 
@@ -95,15 +97,73 @@ def test_no_checkout_takes_its_ref_from_an_input(step):
     assert "inputs." not in str((step.get("with") or {}).get("ref", ""))
 
 
-def test_concurrent_runs_of_one_ref_share_a_group():
-    assert CI["concurrency"]["group"] == "ci-${{ github.ref }}"
+def test_development_pushes_have_their_own_concurrency_group():
+    assert CI["concurrency"]["group"] == (
+        "ci-${{ github.ref }}${{ github.event_name == 'push' && github.ref == 'refs/heads/0.3dev' && ':push' || '' }}")
 
 
 @pytest.mark.parametrize("name", ["ci.yml", "release-dry-run.yml", "pool-check.yml"])
-def test_only_a_superseded_pull_request_run_is_cancelled(name):
-    """A newer push cancels the older run of a pull request and no run of any other event."""
+def test_only_superseded_pull_requests_and_ci_development_pushes_are_cancelled(name):
     concurrency = read(name)["concurrency"]
-    assert concurrency["cancel-in-progress"] == "${{ github.event_name == 'pull_request' }}"
+    expected = ("${{ github.event_name == 'pull_request' || "
+                "(github.event_name == 'push' && github.ref == 'refs/heads/0.3dev') }}"
+                if name == "ci.yml" else "${{ github.event_name == 'pull_request' }}")
+    assert concurrency["cancel-in-progress"] == expected
+
+
+def concurrency_expression(expression, event, ref):
+    # Interpret only the literal, equality and short-circuit operations used by
+    # the exact pinned expressions, without executing workflow text as Python.
+    source = expression.replace("github.event_name", "event").replace("github.ref", "ref")
+
+    def value(node):
+        if isinstance(node, ast.Constant):
+            return node.value
+        if isinstance(node, ast.Name):
+            return {"event": event, "ref": ref}[node.id]
+        if isinstance(node, ast.Compare) and len(node.ops) == 1 and isinstance(node.ops[0], ast.Eq):
+            return value(node.left) == value(node.comparators[0])
+        if isinstance(node, ast.BoolOp) and isinstance(node.op, (ast.And, ast.Or)):
+            result = value(node.values[0])
+            for operand in node.values[1:]:
+                if (isinstance(node.op, ast.And) and not result) or (isinstance(node.op, ast.Or) and result):
+                    return result
+                result = value(operand)
+            return result
+        raise AssertionError("unsupported concurrency expression")
+
+    return value(ast.parse(source.replace("&&", " and ").replace("||", " or ").strip(), mode="eval").body)
+
+
+def concurrency_group(event, ref):
+    return re.sub(r"\$\{\{ (.*?) \}\}",
+                  lambda match: str(concurrency_expression(match[1], event, ref)), CI["concurrency"]["group"])
+
+
+@pytest.mark.parametrize(("incoming", "existing", "ref", "cancelled"), [
+    ("push", "push", "refs/heads/0.3dev", True),
+    ("push", "workflow_dispatch", "refs/heads/0.3dev", False),
+    ("push", "schedule", "refs/heads/0.3dev", False),
+    ("workflow_dispatch", "push", "refs/heads/0.3dev", False),
+    ("pull_request", "pull_request", "refs/pull/42/merge", True),
+    ("push", "push", "refs/heads/main", False),
+    ("push", "push", "refs/heads/release-please--branches--main", False),
+    ("push", "push", "refs/heads/otherdev", False),
+    ("push", "push", "refs/tags/0.3dev", False),
+    ("schedule", "schedule", "refs/heads/main", False),
+])
+def test_supersession_preserves_other_event_runs(incoming, existing, ref, cancelled):
+    expression = CI["concurrency"]["cancel-in-progress"][3:-3]
+    cancel = concurrency_expression(expression, incoming, ref)
+    same_group = concurrency_group(incoming, ref) == concurrency_group(existing, ref)
+    assert bool(cancel and same_group) is cancelled
+
+
+def test_development_push_group_cannot_collide_with_a_literal_branch_suffix():
+    # A colon cannot occur inside a Git ref; a hyphen could alias another branch.
+    current = concurrency_group("push", "refs/heads/0.3dev")
+    assert current != concurrency_group("workflow_dispatch", "refs/heads/0.3dev-push")
+    assert current != concurrency_group("push", "refs/heads/0.3dev-push")
 
 
 def test_a_shard_that_hangs_ends_within_thirty_minutes():

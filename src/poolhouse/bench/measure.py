@@ -13,7 +13,7 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-# The package is the namespace the tests and `selfcheck` patch -- `bench.slot_count` -- so
+# The package is the namespace the tests patch -- `bench.slot_count` -- so
 # anything patchable is looked up there at call time, never bound here at import.
 from poolhouse import bench, gate
 from poolhouse.bench.counting import PER_QUESTION, Counting, wants_trace

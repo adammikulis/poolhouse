@@ -12,7 +12,7 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from poolhouse import harnessing, serverkeys
+from poolhouse import coding_policy, harnessing, serverkeys
 from poolhouse.client import reported_models
 from poolhouse.log import say
 from poolhouse.serve import provenance
@@ -105,8 +105,10 @@ def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = sa
         say("error: --on names a server already running; do not name a model as well")
         return 2
     try:
-        harnessing.check_role(args.role)
-    except ValueError as why:
+        coding_policy.Policy(args.permissions, args.execution_mode)
+        args.project = str(harnessing.check_project(args.project))
+        harnessing.require_isolated_execution()
+    except (OSError, RuntimeError, ValueError) as why:
         say(f"error: {why}")
         return 2
     runner = run_claude or (lambda cmd, env: subprocess.call(cmd, env=env, cwd=args.project or None))
@@ -143,7 +145,7 @@ def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, st
             brief = run.files.write("brief.md", run.brief)
             run.files.lock()
             env = environment(base_url, alias, offline=not args.online, context=window)
-            say(f"role {args.role}; every tool call goes through poolhouse's classifier "
+            say(f"permissions {args.permissions}; mode {args.execution_mode}; every tool call goes through poolhouse's classifier "
                 f"(settings {path}, outside the working tree)")
             return int(runner([binary, "--settings", str(path), "--append-system-prompt-file", str(brief),
                                *extra], env))

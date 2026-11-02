@@ -82,10 +82,8 @@ a file into, and a `chmod -R` that only adds permissions is not refused. The per
 and the other settings that decide what git runs, `gh pr merge` without the person's release approval, and `gh` or
 `curl` writing to rulesets, secrets, releases or settings are refused. `scripts/hooks/claude-tool-guard` applies
 the same paths to `Read`, `Glob`, `Grep` and MCP tools, refuses the owner's own browser, and lets only the main
-session stop a task. `scripts/land` and the pre-push hook require a standing independent accept of the exact commit for guarded
-repository source changes (`protectedwrites.REVIEWED`). Keystore, system approval and release
-authorization remain person-only. Tests: `tests/test_protected_writes.py`, `tests/test_protected_tools.py`,
-`tests/test_land_guards.py`.
+session stop a task. Keystore, system approval and release
+authorization remain person-only. Tests: `tests/test_protected_writes.py`, `tests/test_protected_tools.py`.
 
 What `no-real-names` takes for a name, and what stands a name-shaped pair down, is data:
 `contracts/name-shapes.json` holds the place prefixes and suffixes (a gazetteer's
@@ -102,10 +100,10 @@ rules file instead of the shipped one.
 
 ### Hook failures and runtime cutover checks
 
-The rules are in AGENTS.md, "Hook failures are active incidents" and "Activating a fix"; this is
+The rules are in AGENTS.md, "Hook failures are active incidents" and "Updating to a fix"; this is
 the procedure.
 
-After changing or activating a runtime, exercise the installed hook commands for pre, post and
+After changing or updating a runtime, exercise the installed hook commands for pre, post and
 stop under the owning authenticated session. Check the actual launcher interpreter, the
 distribution revision, the structured output and the exit status: source tests and a daemon
 health response do not establish which hook runtime is active. Preserve any diagnostic ID and
@@ -138,7 +136,7 @@ When a development hook fails repeatedly, or the owner asks to fix it:
   though a broken hook succeeded.
 - Complete the authorized build, isolated installation and exact-command smoke before
   requesting any required host trust review. Preserve active jobs, original configuration and
-  rollback artifacts. Never fabricate a trust hash or bypass authorization to activate a change.
+  rollback artifacts. Never fabricate a trust hash or bypass authorization to update to a change.
 - Completion requires the actual configuration selecting the repaired artifact, required trust
   approval saved, and a successful installed invocation on the available hardware. Verify the
   normal host-triggered hook too; report any remaining reload or verification step. A source
@@ -198,7 +196,11 @@ integration batch before publication. The full suite runs on GitHub for pull req
 | `scripts/test ratchet` | compares the last `full` run with `tests/full-tier-time.json` (10 % tolerance) | |
 
 The main agent owns `quick`; its cold-map recording and fallback can start full runs.
-Workers use explicit affected selectors. `quick` needs a per-checkout testmon map (`.testmondata`, not committed). The first `quick` in a
+Workers use explicit affected selectors: the files they changed and the files `scripts/affected.py` selects for their diff.
+The push hook runs that selection (`scripts/test all FILES --redteam`, reuse on) and refuses the push while a selected test is red
+(docs/landing.md, "The push hook"); `python scripts/hooks/affected_push.py` runs the same check on `HEAD` before pushing. A
+selected file whose tree already passed is `reused from <id>`, so the check costs the files not yet run; a push that has to
+run many files can outlast a tool's default timeout, so give the push the long timeout or run it in the background. `quick` needs a per-checkout testmon map (`.testmondata`, not committed). The first `quick` in a
 checkout runs the test files the import graph reaches and starts `scripts/test record` detached
 (three workers, a lock file, a log in `.testmondata.log`); the map is written to a scratch file and
 moved into place when the run ends, so the second `quick` is fast and never sees half a map. A
@@ -238,6 +240,14 @@ UDP on a real interface, on randomised ports so a run never answers -- or gets a
 by -- a daemon you actually have running on your LAN. A forged beacon, a replayed reply,
 a multicast group a router quietly drops: a fake socket reproduces none of those either.
 
+A test of what a model says, decides, ranks or calls runs a real one. `tests/real_model.py` is the harness: a test asks
+the `real` fixture for a use (`chat`, `decide`, `judge`, `tool_calling`, `embedding`, `rerank`, `vision`, `other`) and gets
+the smallest pinned GGUF for it on a llama-server leased through the broker, never started by hand. Run these tests with
+`--real-model` (`scripts/test all tests/test_serve_real_llama.py --real-model`); nothing in them skips: a missing model
+fails the test and names the `poolhouse-models fetch` command, a missing llama-server names `poolhouse-serve llama-cpp
+update`, and a machine without the Apple GPU a test needs says so. The nightly `real-model` job in `.github/workflows/ci.yml`
+runs the CPU-sized ones on a hosted runner. Detail: tests/README.md, "Real models".
+
 What *is* faked -- the model's answers, a `serve()` that would load 87G, a preflight that
 would read it -- is faked once, in `poolhouse.testing.fakes`, with the real signature.
 `FakeClient` is built exactly as `Client` is built, `fake_serve` / `FakeServe` take what
@@ -247,6 +257,15 @@ that accepts every keyword lets a test pass on a keyword the real thing refuses,
 how a `--also tight` flag once reached `Client.__init__` in a benchmark and took the load
 down with it. `tests/test_testing_fakes.py` diffs every fake's signature against the real
 one (`mirrors`, `drift`), so a change to the real one fails the suite until the fake follows.
+
+A test that needs a model's HTTP server and tests no model behaviour (ports, queues, framing) uses
+`poolhouse.testing.canned.CannedServer`, which says it is not a model: it reports the model
+`CANNED-NOT-A-MODEL`, begins every reply body `[CANNED RESPONSE, NOT A MODEL]` and sets
+`X-Canned-Response: not-a-model` on every response, errors and streams included, with no switch to turn that off.
+`unmarked()` drops only the text prefix, for a test whose subject is the framing text itself (JSON the client
+must parse); the header, the model id and the metadata stay. The `model-replies` gate refuses a model-shaped reply
+built anywhere else under `tests/`, and `scripts/gates/model_replies.txt` lists the files that still build them and
+only shrinks.
 
 ## Commit history by type
 

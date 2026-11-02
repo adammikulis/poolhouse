@@ -27,17 +27,12 @@ class WalkFailed(RuntimeError):
 
 
 FLEET_STEPS: tuple[tuple[str, str, str], ...] = (
-    ("name", "", "Set up this machine"),
-    ("pools", "Continue", "Pools"),
-    ("job", "Continue", "What should this machine do?"),
-    ("start", "Continue", "When should it start?"),
-    ("run", "Continue", "What should it be able to do?"),
-    ("away", "Not now", "When you are not using it"),
-    ("done", "Continue", ""),
+    ("device", "", "Welcome to Poolhouse"),
+    ("model", "Continue", "Make this device ready"),
 )
-"""Each first-run step: its name, the button that reaches it, the heading it lands on."""
+"""Read setup screens; the walk deliberately defers compute instead of preparing a model."""
 
-FLEET_WRITES = "run"
+FLEET_WRITES = "model"
 """The first step reached by a button that saves this machine's preferences."""
 
 FLEET_VIEWS = ("pool", "chat", "models", "settings", "fit")
@@ -56,6 +51,9 @@ BEAT_MS = 300
 SETTLE_MS = 8000
 """How long a screen is given to stop fetching before it is read."""
 
+READY_MS = 15000
+"""How long a screen is given to draw the control the walk is about to use."""
+
 ANSWERED = """([list, turn, before]) => {
   const box = document.querySelector(list);
   return !!box && box.getAttribute('aria-busy') !== 'true'
@@ -73,7 +71,6 @@ class Walk:
     out: Path = Path()
     screens: tuple[str, ...] = ()
     headless: bool = True
-    passphrase: str = ""
     setup: bool = False
     ask: str = ""
     say: str = ""
@@ -220,7 +217,7 @@ class Walker:
 
 def _landing(heading: str) -> str:
     """The selector that says a first-run step has painted."""
-    return f'#first-run h1:text-is("{heading}")' if heading else "#first-run pre.cmd"
+    return f'#first-run h1:text-is("{heading}")'
 
 
 def _press(page: Any, button: str, landing: str) -> None:
@@ -235,7 +232,7 @@ def _unwalked(walker: Walker, steps: Sequence[tuple[str, str, str]], why: str) -
 
 
 def _open_app(page: Any) -> None:
-    page.click("#first-run button:has-text('Open')")
+    page.get_by_role("button", name="Set up models later", exact=True).click()
     page.wait_for_selector("#signin:not([hidden]), #app:not([hidden])")
 
 
@@ -275,29 +272,16 @@ def _setup(walker: Walker) -> None:
     walker.through("done", partial(_open_app, walker.page))
 
 
-def _signed(page: Any, passphrase: str) -> None:
-    page.fill("#p", passphrase)
-    page.click("#signin-go")
-    page.wait_for_selector("#app:not([hidden])")
-
-
 def _sign_in(walker: Walker) -> str:
-    """The passphrase screen, and past it; returns why the app is still shut, or ""."""
+    """The sign-in screen; returns why the app is still shut, or ""."""
     page = walker.page
     if page.locator("#signin").is_hidden():
         if walker.wants("sign-in"):
-            walker.skip("sign-in", "this machine is in no pool; nothing asks for a "
-                                   "passphrase")
+            walker.skip("sign-in", "nothing asks for a sign-in")
     else:
         if walker.wants("sign-in"):
             walker.stop("sign-in", "#signin")
-        if not walker.what.passphrase:
-            return "this pool wants its passphrase; --passphrase signs in"
-        try:
-            _signed(page, walker.what.passphrase)
-        except walker.failure as exc:
-            walker.failed("sign-in", f"the passphrase was refused: {_first_line(exc)}")
-            return "the passphrase was refused"
+        return "this page signs in from the Poolhouse window of a computer in the pool"
     if page.locator("#first-run").is_visible():
         return "this machine is still in first-run; --setup walks the wizard through it"
     return ""
@@ -341,8 +325,9 @@ def _chat(walker: Walker) -> None:
         return
     if not walker.through("chat", partial(_tab, page, "chat")):
         return
-    walker.settle()
-    if page.locator("#chat-askrow").is_hidden():
+    try:                          # the row draws once the models are listed, however long a settle was
+        page.wait_for_selector("#chat-askrow:not([hidden])", timeout=READY_MS)
+    except walker.failure:
         walker.failed("chat", "no model is being served, so there is nothing to say "
                               "anything to")
         return

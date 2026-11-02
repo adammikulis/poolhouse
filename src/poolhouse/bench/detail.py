@@ -12,7 +12,7 @@ import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-# The package is the namespace the tests and `selfcheck` patch -- `bench.SHORT` -- so
+# The package is the namespace the tests patch -- `bench.SHORT` -- so
 # anything patchable is looked up there at call time, never bound here at import.
 from poolhouse import bench
 from poolhouse.bench import system

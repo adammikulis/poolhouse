@@ -713,3 +713,53 @@ def test_a_run_whose_server_reset_reads_the_unit_again_and_carries_on(tmp_path, 
     assert len(tries) == 3, "two units, one of them read twice"
     assert "read again after a reset" in capsys.readouterr().out
     assert in_store(store) >= {"source:lattice", "concept:glimmer-node"}
+
+
+@pytest.mark.parametrize("change", ["progress", "null", "duplicate", "container", "source", "unit", "pages", "extracted"])
+def test_unsupported_fold_inputs_are_refused_before_any_write(tmp_path, change):
+    where = a_part_read_source(tmp_path)
+    progress = ingest.Progress.beside(where)
+    reads = ingest.reads_path(where, "velthorne-open-texts")
+    if change == "progress":
+        progress.write_text(json.dumps({"unrecognized": {}}))
+    elif change == "null":
+        progress.write_text("null")
+    elif change == "duplicate":
+        reads.write_text('{"one": {}, "one": {}}')
+    else:
+        held = json.loads(reads.read_text())
+        row = next(iter(held.values()))
+        if change == "container":
+            held = []
+        elif change == "source":
+            row.pop("source")
+        elif change == "unit":
+            row["unit"] = "another-unit"
+        elif change == "pages":
+            row["pages"] = "2"
+        else:
+            row["extracted"] = []
+        reads.write_text(json.dumps(held))
+    before = {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()}
+    for _ in range(2):
+        lines = []
+        assert ingest.fold(where, say=lines.append) == 1
+        assert "Unsupported ingest" in lines[0] or "is not JSON" in lines[0]
+        assert not where.exists()
+        assert {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()} == before
+
+
+def test_foreign_source_provenance_is_not_added_beside_current_sources(tmp_path):
+    from poolhouse.graph.store import GraphStore
+
+    where = a_part_read_source(tmp_path)
+    with GraphStore(where) as store:
+        store.write({"nodes": [{"id": "foreign:source", "kind": "foreign", "label": "Foreign"},
+                               {"id": "concept:held", "kind": "concept", "label": "Held"}],
+                     "edges": [{"source": "concept:held", "rel": "read_from",
+                                "target": "foreign:source", "weight": 1}]})
+    with GraphStore(where, read_only=True) as store:
+        before = (store.nodes(), store.edges())
+    assert ingest.fold(where, say=lambda _: None) == 1
+    with GraphStore(where, read_only=True) as store:
+        assert (store.nodes(), store.edges()) == before

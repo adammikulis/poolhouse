@@ -12,6 +12,7 @@ from typing import Any
 
 from poolhouse import hub
 from poolhouse.serve import estimate as est_mod, mtp as mtp_mod
+from poolhouse.serve.largest import PAD, contexts, largest_context, trained_window
 from poolhouse.serve.preflight import _recurrent_layers
 from poolhouse.serve.process import machine_memory
 
@@ -24,6 +25,7 @@ KEY = "iogpu.wired_limit_mb"
 SYSCTL = "/usr/sbin/sysctl"
 KV_TYPES = ("q8_0", "f16", "q4_0")
 CONTEXTS = (8192, 16384, 32768, 65536, 131072, 196608, 262144, 393216, 524288, 1048576)
+"""The contexts the wiring table lists as rows to read across (a display, never a choice)."""
 MIN_MB = 4096
 RESERVE_FLOOR = 8 * GIB
 """The least the rest of the machine is left; a plan never proposes a limit under it."""
@@ -33,18 +35,21 @@ MARGIN_MIN = 2 * GIB
 MARGIN_SHARE = 0.03
 HEAD_COMPUTE = 32 * MIB
 CHECKPOINTS = 32
+"""Context checkpoints per slot llama-server keeps (`n_ctx_checkpoints`, common/common.h): its own
+default, counted because the server allocates them, not a choice made here."""
 NGRAM_MOD = 16 * MIB
 CACHE_RAM_MB = 8192
+"""The prompt cache llama-server holds in RAM (`cache_ram_mib`, common/common.h): its own default."""
 
 Runner = Callable[[Sequence[str], bool], tuple[int, str, str]]
 
 
 @dataclass(frozen=True, slots=True)
 class Ask:
-    """What to size: the context, the cache type, whether the MTP head is shared, and the
-    prompt cache cap."""
+    """What to size: the context (0 for the model's whole trained window), the cache type,
+    whether the MTP head is shared, and the prompt cache cap."""
 
-    context: int = 131072
+    context: int = 0
     kv: str = "q8_0"
     mtp: bool = True
     cache_ram_mb: int = CACHE_RAM_MB
@@ -210,15 +215,7 @@ def _limit_for(need: int) -> int:
 
 
 def _largest(row: Callable[[int], Row], cap: int) -> int:
-    low, high, best = 0, 4096, 0
-    while low <= high:
-        mid = (low + high) // 2
-        ctx = mid * 256
-        if ctx and ctx <= cap and row(ctx).fits:
-            best, low = ctx, mid + 1
-        else:
-            high = mid - 1
-    return best
+    return largest_context(lambda ctx: row(ctx).fits, contexts(cap)) if cap > 0 else 0
 
 
 def plan(model: str, ask: Ask | None = None, hooks: Hooks | None = None) -> Plan:
@@ -230,8 +227,10 @@ def plan(model: str, ask: Ask | None = None, hooks: Hooks | None = None) -> Plan
     ask, hooks = ask or Ask(), hooks or Hooks()
     if ask.kv not in KV_TYPES:
         raise ValueError(f"cache type {ask.kv!r} is not one of {', '.join(KV_TYPES)}")
-    if isinstance(ask.context, bool) or not isinstance(ask.context, int) or ask.context < 256:
-        raise ValueError("context must be a whole number of tokens, at least 256")
+    if isinstance(ask.context, bool) or not isinstance(ask.context, int) or ask.context < 0 or (
+            0 < ask.context < PAD):
+        raise ValueError(f"context must be 0 (the trained window) or a whole number of tokens, "
+                         f"at least {PAD}")
     total, now = hooks.total_bytes(), hooks.live_mb()
     held = (int((machine_memory() or {}).get("others") or 0) if hooks.others is None
             else hooks.others)
@@ -239,14 +238,15 @@ def plan(model: str, ask: Ask | None = None, hooks: Hooks | None = None) -> Plan
     effective = now or default_mb
     path = est_mod._locate(model)
     found, weights = est_mod.read_meta(path), est_mod._bytes_of(path)
-    setup = est_mod.Setup(context=ask.context, kv_cache_type=ask.kv)
+    context = ask.context or trained_window(found)
+    setup = est_mod.Setup(context=context, kv_cache_type=ask.kv)
 
     def need_at(ctx: int) -> tuple[Any, list[tuple[str, int]], list[str]]:
         est = est_mod.estimate_meta(found, weights, setup, context=ctx)
         extra, said = _mtp_part(path, found, est, ask.mtp)
         return est, extra, said
 
-    est, extra, said = need_at(ask.context)
+    est, extra, said = need_at(context)
     counted = [(k, int(v)) for k, v in est.breakdown.items() if v] + extra
     need = sum(v for _, v in counted)
     margin = max(MARGIN_MIN, int(need * MARGIN_SHARE))
@@ -261,18 +261,18 @@ def plan(model: str, ask: Ask | None = None, hooks: Hooks | None = None) -> Plan
 
     arch = est_mod._layers(found)[0]
     trained = int(found.get(f"{arch}.context_length") or 0)  # type: ignore[call-overload]
-    shown = sorted({c for c in hooks.contexts if not trained or c <= trained} | {ask.context})
+    shown = sorted({c for c in hooks.contexts if not trained or c <= trained} | {context})
     fits = needed_mb <= limit_cap
     left = max(total - needed_mb * MIB, 0) if fits else 0
     warn = ""
     if fits and left < warn_below_bytes(total):
         warn = (f"this leaves {left / GIB:.1f} GiB for the rest of the machine, under "
                 f"{WARN_BELOW // GIB} GiB; it may swap")
-    return Plan(model=Path(path).name, context=ask.context, kv=ask.kv, mtp=ask.mtp, total=total,
+    return Plan(model=Path(path).name, context=context, kv=ask.kv, mtp=ask.mtp, total=total,
                 current_mb=now, default_mb=default_mb, held_others=held,
                 counted=tuple(counted), grows=_growers(est, ask.cache_ram_mb),
                 notes=tuple(list(est.notes) + said), need_bytes=need, margin_bytes=margin,
                 needed_mb=needed_mb, max_mb=limit_cap, fits=fits,
                 enough_now=needed_mb <= effective, proposed_mb=needed_mb if fits else 0,
-                left_bytes=left, warn=warn, largest_context=_largest(row, trained or 1_048_576),
+                left_bytes=left, warn=warn, largest_context=_largest(row, trained_window(found)),
                 table=tuple(row(c) for c in shown))

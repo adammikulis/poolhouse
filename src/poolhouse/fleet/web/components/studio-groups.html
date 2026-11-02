@@ -9,21 +9,26 @@
           return {
             graph: S.clone(this.rootGraph()),
             path: this.context.map((c) => c.node.id),
+            title: this.querySelector("#studio-title").value,
           };
         },
         restoreSnapshot(saved) {
-          this.openContext(saved.graph, saved.path);
+          this.openContext(S.clone(saved.graph), saved.path);
+          this.querySelector("#studio-title").value = saved.title;
         },
         openContext(graph, path) {
           this.graph = graph;
           this.context = [];
           for (const id of path) {
-            const node = this.graph.nodes.find((n) => n.id === id),
-              definition = this.graph.groups[node.group];
+            const node = this.graph.nodes.find((n) => n.id === id);
+            if (!node || !this.graph.groups[node.group]) break;
+            const definition = this.graph.groups[node.group];
             this.context.push({ parent: this.graph, node, definition });
             this.graph = {
               nodes: definition.nodes,
               edges: definition.edges,
+              controls: definition.controls || [],
+              control_inputs: definition.control_inputs || {},
               groups: this.graph.groups,
               layout: this.graph.layout.groups?.[node.group] || {
                 nodes: {},
@@ -66,6 +71,19 @@
               });
             }
           }
+          if (previous && previous !== name && side === "outputs")
+            current.parent.controls = (current.parent.controls || []).filter(
+              (edge) => {
+                if (
+                  edge.source.node !== current.node.id ||
+                  edge.source.port !== previous
+                )
+                  return true;
+                if (!name) return true;
+                edge.source.port = name;
+                return true;
+              },
+            );
           this.changed();
         },
         reorderInterface(side, name, direction) {
@@ -99,6 +117,11 @@
               name: "Reusable group",
               nodes: S.clone(nodes),
               edges: S.clone(edges),
+              controls: S.clone(
+                (this.graph.controls || []).filter(
+                  (e) => ids.has(e.source.node) && ids.has(e.target.node),
+                ),
+              ),
               inputs: {},
               outputs: {},
               parameters: {},
@@ -123,7 +146,12 @@
             definition.inputs[key] = S.clone(edge.target);
             edge.target = { node: instanceId, port: key };
           }
-          for (const edge of outgoing) {
+          for (const edge of [
+            ...outgoing,
+            ...(this.graph.controls || []).filter(
+              (e) => ids.has(e.source.node) && !ids.has(e.target.node),
+            ),
+          ]) {
             let key = Object.entries(definition.outputs).find(
               ([, p]) =>
                 p.node === edge.source.node && p.port === edge.source.port,
@@ -134,6 +162,22 @@
             }
             edge.source = { node: instanceId, port: key };
           }
+          const outer = this.context.at(-1)?.definition;
+          if (outer)
+            for (const side of ["inputs", "outputs", "parameters"])
+              for (const [name, ref] of Object.entries(outer[side] || {})) {
+                if (!ids.has(ref.node)) continue;
+                const key = unique(definition[side], name);
+                definition[side][key] = S.clone(ref);
+                outer[side][name] = {
+                  node: instanceId,
+                  [side === "parameters" ? "parameter" : "port"]: key,
+                };
+              }
+          this.groupControlInputs(ids, definition, instanceId);
+          this.graph.controls = (this.graph.controls || []).filter(
+            (e) => !ids.has(e.source.node) && !ids.has(e.target.node),
+          );
           this.graph.groups[id] = definition;
           this.graph.nodes = this.graph.nodes.filter((n) => !ids.has(n.id));
           this.graph.nodes.push({
@@ -177,6 +221,8 @@
           Object.assign(current.definition, {
             nodes: this.graph.nodes,
             edges: this.graph.edges,
+            controls: this.graph.controls,
+            control_inputs: this.graph.control_inputs,
           });
           current.parent.layout.groups ||= {};
           current.parent.layout.groups[current.node.group] = this.graph.layout;
@@ -189,6 +235,8 @@
           this.graph = {
             nodes: definition.nodes,
             edges: definition.edges,
+            controls: definition.controls || [],
+            control_inputs: definition.control_inputs || {},
             groups: this.graph.groups,
             layout: this.graph.layout.groups?.[node.group] || {
               nodes: {},
@@ -197,103 +245,115 @@
           };
           this.normalize();
           this.selected.clear();
-          this.undoStack = [];
-          this.redoStack = [];
+          this.historyAnchor();
           this.render();
         },
-        leaveGroup() {
-          if (!this.context.length) return;
-          this.flushGroup();
-          const left = this.context.pop();
-          this.graph = left.parent;
+        leaveGroup(depth = this.context.length - 1) {
+          if (!Number.isInteger(depth) || depth < 0 || depth >= this.context.length) return;
+          let left;
+          while (this.context.length > depth) {
+            this.flushGroup();
+            left = this.context.pop();
+            this.graph = left.parent;
+          }
           this.selected = new Set([left.node.id]);
-          this.undoStack = [];
-          this.redoStack = [];
-          this.changed();
+          this.historyAnchor();
+          this.render();
+          this.querySelector("#studio-group-path [aria-current]")?.focus();
         },
-        groupPath() {
-          const box = this.querySelector("#studio-group-path");
+        groupPath(settings = true) {
+          const box = this.querySelector("#studio-group-path"),
+            title = this.querySelector("#studio-title").value || "Untitled experiment";
+          box.setAttribute("role", "navigation");
+          box.setAttribute("aria-label", "Canvas location");
           box.replaceChildren();
-          if (!this.context.length) return;
-          box.append(
-            E(
-              "button",
-              { type: "button", onclick: () => this.leaveGroup() },
-              "← Back to parent",
-            ),
-            E(
-              "span",
-              {},
-              this.context.map((c) => c.definition.name).join(" / "),
-            ),
-          );
-          const current = this.context.at(-1);
+          if (settings) this.querySelector(".studio-group-settings")?.remove();
+          const origin = this.context.at(-1);
+          const navigate = (event, depth) => {
+            if (event.currentTarget.isConnected && this.context.at(-1) === origin) this.leaveGroup(depth);
+          };
+          const crumb = (name, depth) => E("button", {
+            type: "button", title: name,
+            "aria-label": depth === 0 ? "Workflow: " + name : "Group: " + name,
+            onclick: event => navigate(event, depth),
+          }, name);
+          if (this.context.length) {
+            const parent = this.context.at(-2)?.definition.name || title;
+            box.append(E("button", {
+              type: "button", class: "studio-group-back",
+              "aria-label": "Back to " + parent, title: "Back to " + parent + " (Escape)",
+              onclick: event => navigate(event, this.context.length - 1),
+            }, "← Back"), crumb(title, 0));
+            for (const [index, current] of this.context.entries()) {
+              box.append(E("span", {"aria-hidden": "true"}, "›"));
+              box.append(index < this.context.length - 1
+                ? crumb(current.definition.name, index + 1)
+                : E("span", {"aria-current": "location", tabindex: -1}, current.definition.name));
+            }
+            if (settings) {
+              const inspector = this.querySelector(".studio-inspector");
+              if (!this.selected.size) inspector.replaceChildren(this.groupSettings());
+              else inspector.append(this.groupSettings());
+            }
+          } else box.append(E("span", {"aria-current": "location", tabindex: -1}, title));
+          this.querySelector("#studio-run").title = this.context.length
+            ? "Run the entire workflow, including nodes outside this group" : "Run the entire workflow";
+        },
+        groupSettings() {
+          const current = this.context.at(-1),
+            box = E("details", {class: "studio-group-settings"}, E("summary", {}, "Group settings"));
+          box.open = !this.selected.size;
+          const currentContext = () => box.isConnected && this.context.at(-1) === current;
+          const name = E("input", {"aria-label": "Group name", value: current.definition.name});
+          name.onchange = () => {
+            if (!currentContext()) return;
+            this.checkpoint();
+            current.definition.name = name.value || "Reusable group";
+            this.changed(false);
+            this.groupPath(false);
+            this.library();
+          };
+          box.append(E("label", {}, "Group name", name));
           for (const side of ["inputs", "outputs", "parameters"])
-            for (const [name, ref] of Object.entries(
-              current.definition[side] || {},
-            )) {
-              const row = E("span", {}, side + " · " + name);
-              row.append(
-                E(
-                  "button",
-                  {
-                    type: "button",
-                    "aria-label": "Move " + side + " " + name + " earlier",
-                    onclick: () => this.reorderInterface(side, name, -1),
-                  },
-                  "↑",
-                ),
-                E(
-                  "button",
-                  {
-                    type: "button",
-                    "aria-label": "Move " + side + " " + name + " later",
-                    onclick: () => this.reorderInterface(side, name, 1),
-                  },
-                  "↓",
-                ),
-                E(
-                  "button",
-                  {
-                    type: "button",
-                    "aria-label": "Hide " + side + " " + name,
-                    onclick: () => this.expose(side, "", ref, name),
-                  },
-                  "Hide",
-                ),
-              );
+            for (const [name, ref] of Object.entries(current.definition[side] || {})) {
+              const row = E("div", {class: "studio-group-interface"}, E("span", {}, side + " · " + name));
+              for (const [label, direction] of [["earlier", -1], ["later", 1]])
+                row.append(E("button", {
+                  type: "button", "aria-label": "Move " + side + " " + name + " " + label,
+                  onclick: () => { if (currentContext()) this.reorderInterface(side, name, direction); },
+                }, direction < 0 ? "↑" : "↓"));
+              row.append(E("button", {
+                type: "button", "aria-label": "Hide " + side + " " + name,
+                onclick: () => { if (currentContext()) this.expose(side, "", ref, name); },
+              }, "Hide"));
               box.append(row);
             }
-
-          const name = E("input", {
-            "aria-label": "Group name",
-            value: current.definition.name,
-          });
-          name.onchange = () => {
-            current.definition.name = name.value;
-            this.changed(false);
-          };
-          box.append(
-            name,
-            E(
-              "button",
-              {
-                type: "button",
-                onclick: () => {
-                  this.flushGroup();
-                  this.changed();
-                  this.message(
-                    "Group changes saved. Existing independent copies are unchanged.",
-                  );
-                },
-              },
-              "Update saved group",
-            ),
-          );
+          box.append(E("p", {}, "Edits are saved with this workflow. Other copies of this group stay independent."));
+          return box;
         },
         unpackGroup(node) {
           const group = this.graph.groups[node.group];
           if (!group) return;
+          const missing = Object.keys(group.control_inputs || {}).filter(
+            (name) =>
+              !(this.graph.controls || []).some(
+                (edge) =>
+                  edge.target.node === node.id && edge.target.port === name,
+              ) &&
+              !Object.values(this.graph.control_inputs || {})
+                .flat()
+                .some(
+                  (target) => target.node === node.id && target.port === name,
+                ),
+          );
+          if (missing.length) {
+            this.message(
+              "Connect required branch " +
+                missing.join(", ") +
+                " before unpacking this group.",
+            );
+            return;
+          }
           this.checkpoint();
           const ids = new Map(group.nodes.map((n) => [n.id, S.id()])),
             offset = S.position(this, node.id);
@@ -325,6 +385,50 @@
               edge.target = { node: ids.get(ref.node), port: ref.port };
             }
           }
+          const outer = this.context.at(-1)?.definition;
+          if (outer)
+            for (const side of ["inputs", "outputs", "parameters"])
+              for (const [name, ref] of Object.entries(outer[side] || {})) {
+                if (ref.node !== node.id) continue;
+                const target =
+                  group[side][
+                    ref[side === "parameters" ? "parameter" : "port"]
+                  ];
+                outer[side][name] = { ...target, node: ids.get(target.node) };
+              }
+          const controls = [];
+          for (const edge of S.clone(this.graph.controls || [])) {
+            if (edge.source.node === node.id) {
+              const ref = group.outputs[edge.source.port];
+              edge.source = { node: ids.get(ref.node), port: ref.port };
+            }
+            if (edge.target.node === node.id) {
+              const targets = edge.target.port
+                ? group.control_inputs[edge.target.port]
+                : group.nodes.map((n) => ({ node: n.id }));
+              for (const target of targets)
+                controls.push({
+                  ...S.clone(edge),
+                  target: { ...target, node: ids.get(target.node) },
+                });
+            } else controls.push(edge);
+          }
+          for (const edge of S.clone(group.controls || [])) {
+            edge.source.node = ids.get(edge.source.node);
+            edge.target.node = ids.get(edge.target.node);
+            controls.push(edge);
+          }
+          this.graph.controls = controls;
+          for (const [name, targets] of Object.entries(
+            this.graph.control_inputs || {},
+          ))
+            this.graph.control_inputs[name] = targets.flatMap((target) => {
+              if (target.node !== node.id) return [target];
+              const refs = target.port
+                ? group.control_inputs[target.port]
+                : group.nodes.map((n) => ({ node: n.id }));
+              return refs.map((ref) => ({ ...ref, node: ids.get(ref.node) }));
+            });
           for (const [name, ref] of Object.entries(group.parameters || {}))
             if (name in node.parameters)
               this.graph.nodes.find(

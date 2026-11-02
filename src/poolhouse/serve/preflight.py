@@ -654,12 +654,9 @@ def Preflight(spec, *, binary: str | Path, limit_bytes: int = 0,
     `known_architectures`, ``flags(binary)`` is `flags_of`, ``ref_bytes(ref)`` is
     `_ref_bytes` (a companion's size, local or on the Hub), ``fits()`` is
     `poolhouse.serve.fit.records` (every model this machine or the package has measured).
-    They exist for one caller: the bench's self-check, which hands in facts that touch
-    nothing so that every check's own code -- the shard arithmetic, the KV estimate, the
-    fit, and above all the argv `_flags_check` builds -- runs over the exact spec a run is
-    about to serve. Twice on 2026-09-02 a self-check that replaced this whole function said
-    ok, and the run then died in here. A fake that skips the checks is not a check of the
-    checks.
+    They exist so a test can hand in facts that touch no file and no binary, and every
+    check's own code -- the shard arithmetic, the KV estimate, the fit, and the argv
+    `_flags_check` builds -- still runs over the spec. A caller serving a model passes none.
     """
     report = Report()
 

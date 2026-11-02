@@ -59,15 +59,23 @@ def test_a_selection_that_names_no_file_needs_the_node(toy):
     assert testnode.needed(toy, [])
 
 
-def test_the_runner_asks_cargo_for_nothing_when_the_selection_needs_no_node(monkeypatch):
+def runner_without_app_tests(monkeypatch):
+    """The runner with the native app side asked for nothing, so a test of the node build reads the node's selection alone."""
     runner = load_runner()
+    monkeypatch.setattr(runner.testapp, "needed", lambda root, files, facts=None: False)
+    monkeypatch.setattr(runner.testapp, "ensure", lambda *a, **k: pytest.fail("asked for the app tests"))
+    return runner
+
+
+def test_the_runner_asks_cargo_for_nothing_when_the_selection_needs_no_node(monkeypatch):
+    runner = runner_without_app_tests(monkeypatch)
     monkeypatch.setattr(runner.testnode, "ensure", lambda *a, **k: pytest.fail("asked for the node"))
     monkeypatch.setattr(runner.testnode, "needed", lambda root, files, facts: False)
     assert runner.build_node(["tests/test_plain.py"]) == 0
 
 
 def test_the_runner_builds_the_node_when_the_selection_needs_it(monkeypatch, tmp_path):
-    runner = load_runner()
+    runner = runner_without_app_tests(monkeypatch)
     built = []
     monkeypatch.setattr(runner.testnode, "ensure", lambda *a, **k: built.append(1) or Path(tmp_path / "node"))
     monkeypatch.setattr(runner.testnode, "needed", lambda root, files, facts: True)

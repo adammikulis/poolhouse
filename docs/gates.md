@@ -60,6 +60,18 @@ single finding. A file over the limit is a file to split, never an allowance to 
 `tests/test_gates_duplicates.py` names duplicates that must still be found, so a normalisation that quietly
 tightens is caught.
 
+## Nothing listens beyond loopback in development
+
+macOS asks the person to allow every new binary that listens on every interface, and again after every rebuild or new path
+(a cargo test binary, a copy of the node in a test's temporary directory, a Python path of a new version). So development and
+test code binds `127.0.0.1` and nothing else. `wildcard-binds` (`HARD`, no number) reads `src/poolhouse`, `scripts`, `tests`,
+`examples` and `app/**/*.rs`, and fails on a listener, a `--host`/`--listen`/`--bind` word, a `(host, port)` address, a
+`host=` argument or a Docker `-p` with no address that names the wildcard (`0.0.0.0`, `::`, `''` as a host). The files in
+`scripts/gates/wildcard_binds.py` `LAN` are the network on purpose (the pool daemon's LAN mode, the node's `--lan` listener
+and beacon, `add-device`, `share`, the rig's containers), each with its reason, and they listen beyond loopback only for the
+installed software on the account's real state root (`poolhouse.lan.allowed`). `tests/network_guard.py` refuses the same
+at run time inside a test process, and `app/poolhouse-node/tests/loopback_only.rs` guards the node's default tests.
+
 ## Mutation
 
 `scripts/mutate` samples functions out of `src/poolhouse`, changes one thing each (a flipped comparison, a swapped
@@ -82,6 +94,13 @@ poolhouse.sources import rows` does not name `poolhouse.sources.rows`, so a well
 `pyproject.toml` selects ruff's rules and pyright's checks, and `scripts/gates/` budgets both: `ruff-blind-except`,
 `ruff-bugbear`, `ruff-security`, `ruff-other`, `pyright-errors`. Neither tool is a dependency, so a checker that
 cannot find its tool prints why and its metric is left out rather than counted as zero.
+
+A whole pyright run over `src/poolhouse` takes 80 to 100 seconds (it checks 1252 files; `include` already leaves out
+worktrees, examples, vendored assets and build output), so `pyright-errors` is incremental: findings are kept per file
+and only files whose import closure changed are re-checked. The `executionEnvironments` in `pyproject.toml` that only
+add `extraPaths` are followed as extra import roots; any other setting there runs the whole project. The cache is
+keyed by content and shared by every worktree of one repository, so a new worktree starts warm. `POOLHOUSE_GATES_FULL=1`
+(CI) forces the whole run.
 
 ## Writes the edit guard and the hooks refuse
 

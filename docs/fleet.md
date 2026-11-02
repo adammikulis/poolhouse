@@ -86,7 +86,7 @@ there; `import_runs(FILE.json, into, host=...)` does the same by hand from a
 `refused` saying which) when its checkout's commit is not the dispatcher's, when its
 `measuring.lock` is held or a bench of its own is still running, or when a model's
 estimated bytes exceed its room; otherwise it runs `python -m poolhouse.bench ... --detach` on itself
-and adopts the pid into its job list, so `poolhouse-members ls` shows it `measuring` and no
+and adopts the pid into its job list, so `poolhouse-pool status` shows it `measuring` and no
 training job starts beside it. The dispatcher counts as a device through `here()`.
 
 ## Restarting the daemon
@@ -101,46 +101,43 @@ finishes while the daemon is down keeps its exit code, which the job's own launc
 its log. A process whose identity cannot be verified is reported `interrupted` and keeps holding its slot. `poolhouse` without the option still replaces a daemon only at its idle
 boundary when its commit differs.
 
+A replacement always ends with a daemon answering on the port. The launcher that asks the old daemon to stop does not become the new
+one: it starts the new daemon as a process of its own and stays until it answers (its exit status is 0 only then). A new daemon that
+ends first is answered by starting the old one again from the command its control record kept (`launch`), and the launcher says so in
+its log and exits 1; one that is still starting after two minutes is left running and reported. One launcher at a time replaces or
+starts the daemon on a port (`launcher-control/<port>.handover.lock`), so a second restart waits for the first to be proved. A daemon
+told to stop is waited for however long it takes, because giving up then would leave nothing. A process started to answer for itself
+on macOS (`poolhouse runtime restart-host`) starts in the state root, not where it was run from, because a process that answers for itself
+waits for its own consent to read Documents, Desktop and Downloads.
+
+## What the daemon is called
+
+A firewall list, a Local Network prompt and the list of background items name a program by its executable, so the daemon runs
+under the same name on every system, and the name is Poolhouse:
+
+| | the process | the firewall |
+|---|---|---|
+| macOS | `Poolhouse`, the executable in `~/.poolhouse/apps/runtime/<platform>-<machine>-<python>/Poolhouse.app`, bundle id `app.poolhouse.runtime`, signed with the local certificate (docs/node.md, "The runtime's identity on macOS") | one entry, "Poolhouse", asked once; the launchd unit and the Login Items list say Poolhouse too |
+| Linux and WSL | `poolhouse` (what `ps` and `ss -p` print; the daemon names itself with `prctl`) | the rules are by port, never by program: TCP 8770, comment it "Poolhouse" |
+| Windows | `python.exe` of the runtime (the file name and the version resource are Python's, and the path changes with every runtime, so a rule that names the program would be asked again at every update) | an inbound rule by port named "Poolhouse" (TCP 8770), added with one administrator prompt |
+
+`/health` says which program answered: `process` holds its `executable` (relative to the state root when it is inside it, else its
+name alone), its `name` and its `bundle_id` (empty when it is not Poolhouse's own). `poolhouse-setup` shows "fleet: daemon runs as",
+and `poolhouse runtime restart-host` replaces a host on the selected commit that is not yet running as Poolhouse.
+
 ## Joining a pool
 
-Development is the default mode. Start the pool daemon on each device with
-`poolhouse-traind`; nearby devices discover one another and join the same pool (dev mode)
-over pinned TLS. No passphrase, join code or recovery file is needed. Running a workspace
-command from matching Git checkouts connects agents to the shared board.
-Memberships and recovery files record their mode explicitly. Legacy key-only files and
-records without a mode are not imported. Explicit Production memberships retain Production admission.
-
-For explicit Production enrollment on a new machine:
+A pool is founded and approved by a person's admin key on the Rust node (docs/node.md). Each device runs
+`poolhouse-traind`; a device joins with a short join code:
 
 ```
-pip install git+https://github.com/adammikulis/poolhouse
-poolhouse-pool join --group "Cedar lab" --mode prod --persist
-poolhouse-pool status
+owner$   poolhouse-pool add-device                     # prints a short join code
+newbox$  poolhouse-pool join CODE --host 192.168.2.44  # joins the owner's pool
+owner$   poolhouse-pool members                        # the new device is a member
+poolhouse-pool status                                  # the devices that answered
 ```
 
-First-time setup lists nearby pools by name. Password pools offer **Join**: select
-one, then enter its passphrase to confirm. Random-key pools offer **Join with recovery
-file**: choose a file exported by a pool owner. The app checks the file’s name and key
-and authenticates a live beacon before saving membership. Recovery-file joining never
-touches the keystore. Refresh repeats the LAN search; manual
-entry remains available when discovery is blocked. Names in that list are unverified
-LAN hints: the maintained SPAKE2 handshake authenticates the pool before membership is saved.
-If a selected pool disappears, joining fails rather than creating a replacement.
-
-A pool name is required when creating or joining with a passphrase. Names are at most
-64 characters, without control characters. In a terminal, use `--group NAME` (or answer
-the required name prompt); random-key creation uses `poolhouse-members init --group NAME`.
-Existing memberships retain their recorded names. Manual entry creates a new pool
-when no matching pool answers, so use exactly the same name and passphrase on each
-machine. Joining explicitly may save the passphrase to the keystore; merely discovering
-nearby pools never reads or writes it. Discovery reports password joining from the membership’s stored PAKE join-secret
-presence; it never decrypts a keystore record. Random-key recovery
-joining authenticates a protocol-3 encrypted beacon using the supplied key.
-
-`join` runs the checks serving depends on (the memory a model may use, a llama-server --
-downloaded if there is none), asks for the passphrase every machine shares (or takes
-`--passphrase WORDS`), starts the daemon, installs it at logon with `--persist`, announces on
-the discovery port, and prints the devices that answered. `status` is that listing on its own:
+`status` is that listing on its own:
 
 ```
 NAME             URL                          ROOM             STATE        COMMIT       UPDATES      SERVING
@@ -154,90 +151,36 @@ current and when it last looked. A pool half on one commit and half on another i
 thing those two columns exist to make visible -- `harrowgate` above is six days behind and
 following nothing, which is a machine somebody has to visit.
 
-### Choosing the pool
+### Two devices on a LAN
 
-In a terminal, `join` looks for pools before it asks for the passphrase: the ones this
-machine is already in and the ones daemons on the network offer to take a machine into. They
-are listed with the machines that hold each, and the person picks a number, types a name, or
-types `n` for a new pool (enter takes `poolhouse` when none is found):
-
-```
-Pools found:
-  1) lab - studio, larch
-  2) home - harrowgate
-  n) a new pool
-  Pick a number, or type a name:
-```
-
-Picking a listed pool asks for that pool's passphrase once; a new name asks for a
-passphrase twice and makes the pool. `--group NAME` (or `POOLHOUSE_POOL`) names the
-pool and skips the question, as does a passphrase from `--passphrase` or
-`POOLHOUSE_PASSPHRASE`; a process with no terminal or with `POOLHOUSE_NONINTERACTIVE` set is never
-asked and joins `poolhouse` when no name is given. `poolhouse-members setup` asks the same way.
-`poolhouse-pool pools [--json]` prints the listing without joining. The first-run page and the
-Pool view offer the discovered pools in a select beside a field for a new name.
-
-A name is trimmed, 1 to 64 characters, and cannot contain `/`, `\` or control characters.
-
-Daemons find pools with the same datagram that finds a pool by name (`join?`): an empty
-group asks every pool, and each daemon answers once per pool it holds with the pool's
-name, its own name and its port. The datagram is unsealed, so anyone on the network segment who
-asks learns those three things; it carries no key and no passphrase hash.
-
-### Adding a machine that is next to you
-
-When the passphrase is not to hand, or the machine is a phone-sized job away, a machine that
-already runs Poolhouse can take another in with a short code instead:
+1. Update Poolhouse on the second device (`poolhouse runtime ensure`; a device that follows releases or main does it by itself).
+2. Open Poolhouse there. On Windows, open it from Windows: it adds the inbound rule the first time (TCP 8770 for the daemon, on
+   private networks) after one Windows prompt that says why, and says in one sentence what to do when the
+   prompt was declined or the network is classed Public. Opened inside WSL on Windows' private network, it says that no other device
+   can reach it and the one command that fixes it (`python -m poolhouse.device_setup --yes`).
+3. Join it with the code from the first device, as above. Then, from the first device:
 
 ```
-owner$   poolhouse pool add-device --for 10m          # joining is open; nothing listens otherwise
-newbox$  poolhouse pool nearby                    # who is open to joining
-newbox$  poolhouse pool join-with-code --host 192.168.2.44  # asks; waits for the owner
-owner$   poolhouse pool requests                  # name, host, model, address, certificate
-owner$   poolhouse pool accept 3f9a1c20 --mine    # (or answer the dialog) prints a six digit code
-newbox$  (type the code)                          # joins the pool
+poolhouse-pool members                                    the second device is a member
+poolhouse-test-devices                                    each member, whether it takes tests, its platform, Python and last result
+scripts/test all tests/test_x.py --on NAME                those files there; its output arrives as it is written, prefixed [NAME]
+scripts/test all tests/test_x.py tests/test_y.py --on NAME --split     divide the files between this machine and NAME
 ```
 
-The owner is asked by a dialog with Decline / Accept as mine / Accept as someone else's buttons
-(macOS and Linux). Accepting is not enough on its own: the code has to be read to the person at the new machine, and three wrong tries close
-the request. `add-device --no-pool` adds a device without handing over the pool key. A machine with
-**nothing installed** cannot be pushed to; `poolhouse pool bootstrap --share DIR` offers the
+A member takes tests from the pool's other members once the node authorizes the compute service for it (docs/test-farm.md). It runs them on
+its own Python 3.13 that imports pytest: the one `scripts/setup-wsl-dev` makes (`~/.venvs/poolhouse-dev`), else
+the Python the daemon runs, else the one `POOLHOUSE_SHARD_PYTHON` names; with none it says so and what to run. A job on a member records the
+device that asked and the agent behind the request (`GET /jobs`, the `by` field), and the reuse record, the exit status and the printed
+report are those of a run on the node's pool. A member that stops answering while its tests run ends the run with a message that says its
+tests did not finish and were not run anywhere else; the other parts of a split run go on and the exit status is 70.
+
+A member can run tests, which is code, on every other member as that member's user. `poolhouse features
+disable remote-tests` on a device stops it taking tests and sending them.
+
+A machine with **nothing installed** cannot be pushed to; `poolhouse pool bootstrap --share DIR` offers the
 wheel on the LAN for ten minutes to somebody who opens the address on it, and `bootstrap --ssh
 user@host --share DIR` (try `--dry-run` first) installs it over your own ssh keys. The design, the
 threat model and what is not built are in `docs/onboarding.md`.
-
-### How a machine joins
-
-Creating a pool makes its key: 256 random bits that no passphrase derives.
-A machine that joins later runs a password-authenticated key exchange (SPAKE2) with a daemon
-already in the pool: both sides prove they know the passphrase, the passphrase is never
-sent and a listener cannot test a guess against anything it captures, and the daemon then sends
-the pool key sealed under the key the exchange made. The exchange's password is a scrypt hash
-of the passphrase under the pool's name; each machine that joined with the passphrase keeps
-that hash in `pool.json` beside the key (mode 600), so a daemon started at logon takes
-machines in and checks a sign-in without reading the keystore. The exchange binds the daemon's
-certificate fingerprint, so a machine impersonating it is refused. A daemon counts every attempt
-against the address it came from; five attempts in ten minutes without a success lock that
-address out for ten minutes, and every attempt is logged with its source and outcome. A
-passphrase needs at least 5 characters. The routes are `POST /join/v1/start` and
-`/join/v1/finish` on the daemon, found by a datagram asking to join a pool by name.
-
-### The passphrase and the recovery file
-
-Joining with a passphrase stores it in the operating system's keystore (one Keychain prompt the
-first time). `poolhouse-pool passphrase [--group G]` prints it; it runs for a person at a
-terminal and refuses when `CLAUDECODE` or `POOLHOUSE_NONINTERACTIVE` is set. If the keystore
-cannot store it, the join says so once and the pool still works. `poolhouse-pool leave`
-removes the stored passphrase with the pool.
-
-`poolhouse-pool recovery export FILE` writes the pool's group and key to a mode 600 file,
-and `poolhouse-pool recovery import FILE` joins a machine from it. The file is a replacement for
-the passphrase when joining; it does not reveal the passphrase. Anyone holding it can run commands
-on every machine in the pool. A machine that joined from a file holds no hash of the passphrase,
-so it cannot take other machines in or sign the web interface in by passphrase.
-
-With neither the passphrase nor a recovery file, run `poolhouse-pool leave` on every machine,
-then join each with a new passphrase.
 
 ### Placing users
 
@@ -278,7 +221,7 @@ A machine that is a git checkout with an editable install can follow a branch in
 waiting for a release:
 
 ```
-poolhouse-pool join --persist --track main     # or: poolhouse-traind --track main
+poolhouse-traind --persist --track main
 ```
 
 Every five minutes it asks `git ls-remote` for the head of `main`, and when it has moved it
@@ -301,46 +244,23 @@ the signature and the machine. `--track off` goes back to releases, and it is of
 for. It is remembered in the daemon's settings, so it is asked for once and
 survives a reboot.
 
-Discovery is multicast on UDP port **8771** (`239.255.77.70`, TTL 1 -- it never leaves the
-segment), one above the daemon's HTTP port 8770 so one firewall rule covers both;
-`$POOLHOUSE_DISCOVERY_PORT` moves it. Each datagram is sealed with AES-256-GCM under a key
-derived from the pool key, so a machine that does not hold it hears nothing, is heard by
-nobody and captures nothing a passphrase guess can be tested against. There is one
-discovery mechanism: `poolhouse-members ls`, the app's Pool view and `poolhouse-pool status`
-all read the same beacons.
-
-**Who can reach it.** A daemon listens on this machine alone until it joins a pool (or
-`--lan`, `--host ADDRESS` or `--setup-from-lan` says otherwise); joining from the app's page
-makes it listen on the network from that moment. Every request to it is signed with
-HMAC-SHA256 over the method, target, `Host`, body, a timestamp and a nonce, keyed by a secret
-derived from the pool key, so the secret never crosses the wire; a request is refused
-outside a two minute window or if its nonce was seen, and an address that fails ten times in a
-minute is locked out for a minute. Beyond this machine the connection is TLS 1.3 with the client's certificate
-asked for: a caller must show the certificate of a device listed in the pool's record
-(`poolhouse-members roster list`) and sign with that pool's secret, or it is refused (403), and a device put out
-is refused at its next request even on a connection already open. A caller with no certificate (a phone) is held
-to its own device credential. An unsigned `/health` from another machine says only that
-a daemon is there.
-
-**What is encrypted.** A signed request's body is sealed with AES-256-GCM under a second key
-derived from the pool key, separate from the signing secret. The method, target, `Host`,
-timestamp and nonce are authenticated data, so a body cannot be moved to another request, and
-the answer is sealed with the request's nonce and the status as authenticated data, so it
-cannot be moved to another answer. A body that is not sealed, or does not authenticate, is
-refused with 400, and a device refuses an answer that should have been sealed and was not.
-Beacons are sealed under the same derived key. File downloads, model downloads and the
-streamed output of the `/infer` proxy are signed but not sealed by the application; they travel
-inside the daemon's TLS, which every connection from another machine uses. The web interface
-answers other machines (`--ui-from-lan`) over TLS only; it signs in with the passphrase, which
-is sent to this machine's own address or inside TLS and never over plain HTTP.
+**Who can reach it.** The daemon listens on TCP 8770 and nothing else. It listens on this machine alone
+until `--lan`, `--host ADDRESS` or `--setup-from-lan` says otherwise. A request from another machine
+arrives over TLS 1.3 and is authorized by the node for the pool it belongs to
+(docs/pool-node-services.md); a device the pool has put out is refused. An unsigned `/health` from another
+machine says only that a daemon is there. File downloads, model downloads and the streamed output of the
+`/infer` proxy travel inside the daemon's TLS. The web interface answers other machines (`--ui-from-lan`)
+over TLS only and signs in with a launch ticket from the Poolhouse window (`poolhouse open`).
 
 **What a device may run.** `POST /jobs` accepts `python -m poolhouse.bench ...` and
 `python -m poolhouse.fleet.calibration ...`, run in the daemon's own folder with its own
-environment, and refuses any other program, any `cwd` and any `env` from the wire. A pool
+environment, and refuses any other program, any `cwd` and any `env` from the wire. A member
+also takes test shards (`/shards/v1/...`): a tier, test files and a time limit
+in a typed request, run by the same executor as the node's shards, never a command line. A pool
 sweep (`python -m poolhouse.bench sweep --fleet`) dispatches measurements through `POST /bench`, which
 takes a typed job and no command line.
 
-The app's Pool view has the same Join button, and a "Run across the pool" form that
+The app's Pool view has a "Run across the pool" form that
 builds `python -m poolhouse.bench sweep --fleet --serve MODEL ...` from the models the devices hold,
 starts it detached, and shows `status` and `history` beside it.
 

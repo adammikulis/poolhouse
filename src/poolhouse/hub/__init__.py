@@ -6,7 +6,7 @@ model, `cards` reads the sampler settings a publisher asks for, `memory` says ho
 this machine will give a model, and `cli` is ``poolhouse-models``.
 
 This module is the namespace: everything is imported here, and every call between the
-modules to something a test or `bench.selfcheck` patches -- `files`, `located`, `room`,
+modules to something a test patches -- `files`, `located`, `room`,
 `on_disk`, `default_roots`, `hub_cache`, `forks`, `choose_head` -- goes through
 ``hub.<name>`` at call time, so patching it here patches it everywhere.
 """

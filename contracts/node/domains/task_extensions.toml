@@ -1,0 +1,555 @@
+version = 1
+status = "proposal"
+
+[[type]]
+name = "TaskExtensionRecordId"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 1
+max_bytes = 200
+
+[[type]]
+name = "TaskExtensionSignedExit"
+kind = "scalar"
+visibility = "public"
+encoding = "i32"
+issuer = "data"
+
+[[type]]
+name = "TaskExtensionGitObjectId"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 1
+max_bytes = 64
+
+[[type]]
+name = "CoordinationReservationId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "CoordinationReservationRawCount"
+kind = "scalar"
+visibility = "public"
+encoding = "u64"
+issuer = "data"
+minimum = 1
+maximum = 40329
+
+[[type]]
+name = "CoordinationReservationInputIndex"
+kind = "scalar"
+visibility = "public"
+encoding = "u64"
+issuer = "data"
+minimum = 0
+maximum = 40328
+
+[[type]]
+name = "TaskExtensionTextChunks"
+kind = "list"
+visibility = "public"
+item = "Utf8Chunk"
+max_items = 3
+min_items = 1
+
+[[type]]
+name = "TaskExtensionReportedText"
+kind = "record"
+visibility = "public"
+fields = [{name = "chunks", type = "TaskExtensionTextChunks"}]
+
+[[type]]
+name = "TaskExtensionBrokerRuntimeReport"
+kind = "record"
+visibility = "public"
+fields = [{name = "source_json", type = "TaskExtensionReportedText"}]
+
+[[type]]
+name = "TaskExtensionRunnerCountsReport"
+kind = "record"
+visibility = "public"
+fields = [{name = "source_json", type = "TaskExtensionReportedText"}]
+
+[[type]]
+name = "TaskExtensionIntegrationChecksReport"
+kind = "record"
+visibility = "public"
+fields = [{name = "source_json", type = "TaskExtensionReportedText"}]
+
+[[type]]
+name = "TaskExtensionOptionalBrokerRuntime"
+kind = "optional"
+visibility = "public"
+item = "TaskExtensionBrokerRuntimeReport"
+
+[[type]]
+name = "TaskExtensionOptionalGitObjectId"
+kind = "optional"
+visibility = "public"
+item = "TaskExtensionGitObjectId"
+
+[[type]]
+name = "TaskExtensionScopeState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "reserved", type = "Empty"}, {tag = "active", type = "Empty"}, {tag = "cleaned", type = "Empty"}]
+
+[[type]]
+name = "TaskExtensionScope"
+kind = "record"
+visibility = "public"
+fields = [{name = "task", type = "TaskScopedRef"}, {name = "worker", type = "TaskActorRef"}, {name = "owner", type = "TaskActorRef"}, {name = "project", type = "TaskExtensionReportedText"}, {name = "source_project", type = "TaskExtensionReportedText"}, {name = "baseline_commit", type = "TaskExtensionGitObjectId"}, {name = "branch", type = "TaskExtensionReportedText"}, {name = "state", type = "TaskExtensionScopeState"}, {name = "landed_commit", type = "TaskExtensionOptionalGitObjectId"}, {name = "dematerialized_at", type = "OptionalUnixMicros"}]
+
+[[type]]
+name = "TaskExtensionScopeView"
+kind = "record"
+visibility = "public"
+fields = [{name = "task", type = "TaskScopedRef"}, {name = "revision", type = "U64"}, {name = "value", type = "TaskExtensionScope"}, {name = "recorded_by", type = "TaskActorRef"}, {name = "recorded_at", type = "UnixMicros"}]
+
+[[type]]
+name = "TaskExtensionOptionalScopeView"
+kind = "optional"
+visibility = "public"
+item = "TaskExtensionScopeView"
+
+[[type]]
+name = "TaskExtensionScopeReplaceRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "task", type = "TaskScopedRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "value", type = "TaskExtensionScope"}]
+
+[[type]]
+name = "TaskExtensionScopeInspectRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "task", type = "TaskScopedRef"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "TaskExtensionExecutionConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "model", type = "TaskExtensionReportedText"}, {name = "harness", type = "TaskExtensionReportedText"}, {name = "ctx", type = "U64"}, {name = "effort", type = "TaskExtensionReportedText"}, {name = "max_effort", type = "TaskExtensionReportedText"}, {name = "max_output_tokens", type = "OptionalU64"}, {name = "role", type = "TaskExtensionReportedText"}, {name = "profile", type = "TaskExtensionReportedText"}, {name = "project", type = "TaskExtensionReportedText"}]
+
+[[type]]
+name = "TaskExtensionAllocationRecord"
+kind = "record"
+visibility = "public"
+fields = [{name = "allocation", type = "TaskAllocationRef"}, {name = "worker", type = "TaskActorRef"}, {name = "execution_config", type = "TaskExtensionExecutionConfig"}, {name = "broker_runtime", type = "TaskExtensionOptionalBrokerRuntime"}, {name = "interpreter", type = "TaskExtensionReportedText"}, {name = "python", type = "TaskExtensionReportedText"}, {name = "scheduler_pid", type = "U64"}]
+
+[[type]]
+name = "TaskExtensionIntegrationState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "candidate", type = "Empty"}, {tag = "scope_returned", type = "Empty"}, {tag = "integrated", type = "Empty"}, {tag = "publication_confirmed", type = "Empty"}, {tag = "cleanup_required", type = "Empty"}, {tag = "published", type = "Empty"}, {tag = "completed", type = "Empty"}, {tag = "blocked", type = "Empty"}]
+
+[[type]]
+name = "TaskExtensionPatchTaskActorRef"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "set", type = "TaskActorRef"}]
+
+[[type]]
+name = "TaskExtensionPatchTaskReviewRef"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "set", type = "TaskReviewRef"}]
+
+[[type]]
+name = "TaskExtensionPatchTaskContentDigest"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "set", type = "TaskContentDigest"}]
+
+[[type]]
+name = "TaskExtensionPatchGitObjectId"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "set", type = "TaskExtensionGitObjectId"}]
+
+[[type]]
+name = "TaskExtensionPatchReportedText"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "set", type = "TaskExtensionReportedText"}]
+
+[[type]]
+name = "TaskExtensionPatchIntegrationState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "set", type = "TaskExtensionIntegrationState"}]
+
+[[type]]
+name = "TaskExtensionPatchUnixMicros"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "set", type = "UnixMicros"}]
+
+[[type]]
+name = "TaskExtensionPatchBoolean"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "set", type = "Boolean"}]
+
+[[type]]
+name = "TaskExtensionPatchIntegrationChecksReport"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "set", type = "TaskExtensionIntegrationChecksReport"}]
+
+[[type]]
+name = "TaskExtensionIntegrationPatch"
+kind = "record"
+visibility = "public"
+fields = [{name = "owner", type = "TaskExtensionPatchTaskActorRef"}, {name = "worker", type = "TaskExtensionPatchTaskActorRef"}, {name = "review", type = "TaskExtensionPatchTaskReviewRef"}, {name = "proposal_hash", type = "TaskExtensionPatchTaskContentDigest"}, {name = "source_commit", type = "TaskExtensionPatchGitObjectId"}, {name = "commit", type = "TaskExtensionPatchGitObjectId"}, {name = "development", type = "TaskExtensionPatchReportedText"}, {name = "policy", type = "TaskExtensionPatchReportedText"}, {name = "state", type = "TaskExtensionPatchIntegrationState"}, {name = "at", type = "TaskExtensionPatchUnixMicros"}, {name = "blocking_owner", type = "TaskExtensionPatchReportedText"}, {name = "publish_requested", type = "TaskExtensionPatchBoolean"}, {name = "publication_verified", type = "TaskExtensionPatchBoolean"}, {name = "cleanup_verified", type = "TaskExtensionPatchBoolean"}, {name = "reason", type = "TaskExtensionPatchReportedText"}, {name = "checks", type = "TaskExtensionPatchIntegrationChecksReport"}]
+
+[[type]]
+name = "TaskExtensionAttemptState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "started", type = "Empty"}, {tag = "candidate", type = "Empty"}, {tag = "scope_returned", type = "Empty"}, {tag = "integrated", type = "Empty"}, {tag = "publication_confirmed", type = "Empty"}, {tag = "cleanup_required", type = "Empty"}, {tag = "published", type = "Empty"}, {tag = "completed", type = "Empty"}, {tag = "blocked", type = "Empty"}]
+
+[[type]]
+name = "TaskExtensionPatchAttemptState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "set", type = "TaskExtensionAttemptState"}]
+
+[[type]]
+name = "TaskExtensionPatchU64"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "set", type = "U64"}]
+
+[[type]]
+name = "TaskExtensionPatchIntegrationPatch"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "set", type = "TaskExtensionIntegrationPatch"}]
+
+[[type]]
+name = "TaskExtensionAttemptPatch"
+kind = "record"
+visibility = "public"
+fields = [{name = "worker", type = "TaskExtensionPatchTaskActorRef"}, {name = "owner", type = "TaskExtensionPatchTaskActorRef"}, {name = "review", type = "TaskExtensionPatchTaskReviewRef"}, {name = "state", type = "TaskExtensionPatchAttemptState"}, {name = "started", type = "TaskExtensionPatchUnixMicros"}, {name = "finished", type = "TaskExtensionPatchUnixMicros"}, {name = "owner_pid", type = "TaskExtensionPatchU64"}, {name = "owner_started", type = "TaskExtensionPatchU64"}, {name = "outcome", type = "TaskExtensionPatchIntegrationPatch"}, {name = "recovery_required", type = "TaskExtensionPatchBoolean"}]
+
+[[type]]
+name = "TaskExtensionIntegrationEvent"
+kind = "record"
+visibility = "public"
+fields = [{name = "integration", type = "TaskExtensionRecordId"}, {name = "details", type = "TaskExtensionIntegrationPatch"}]
+
+[[type]]
+name = "TaskExtensionDematerializeEvent"
+kind = "record"
+visibility = "public"
+fields = [{name = "summary", type = "TaskExtensionReportedText"}, {name = "authorized_by", type = "TaskActorRef"}, {name = "baseline_commit", type = "TaskExtensionGitObjectId"}, {name = "at", type = "UnixMicros"}]
+
+[[type]]
+name = "TaskExtensionRebindSourceEvent"
+kind = "record"
+visibility = "public"
+fields = [{name = "summary", type = "TaskExtensionReportedText"}, {name = "authorized_by", type = "TaskActorRef"}, {name = "recovery", type = "TaskExtensionReportedText"}, {name = "source_project", type = "TaskExtensionReportedText"}, {name = "target_project", type = "TaskExtensionReportedText"}, {name = "baseline_commit", type = "TaskExtensionGitObjectId"}, {name = "at", type = "UnixMicros"}]
+
+[[type]]
+name = "TaskExtensionEventRecord"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "integration_event", type = "TaskExtensionIntegrationEvent"}, {tag = "dematerialize", type = "TaskExtensionDematerializeEvent"}, {tag = "rebind_source", type = "TaskExtensionRebindSourceEvent"}]
+
+[[type]]
+name = "TaskExtensionRunnerEvidence"
+kind = "record"
+visibility = "public"
+fields = [{name = "entry_id", type = "TaskExtensionReportedText"}, {name = "file", type = "TaskExtensionReportedText"}, {name = "lookup_key", type = "TaskExtensionReportedText"}, {name = "tree", type = "TaskExtensionGitObjectId"}, {name = "commit", type = "TaskExtensionGitObjectId"}, {name = "outcome", type = "TaskExtensionReportedText"}, {name = "junit_sha256", type = "TaskContentDigest"}, {name = "counts", type = "TaskExtensionRunnerCountsReport"}, {name = "reported_agent", type = "TaskExtensionReportedText"}, {name = "created_at", type = "UnixMicros"}, {name = "covers", type = "TaskExtensionReportedText"}]
+
+[[type]]
+name = "TaskExtensionRunnerEvidenceEntries"
+kind = "list"
+visibility = "public"
+item = "TaskExtensionRunnerEvidence"
+max_items = 16
+min_items = 0
+
+[[type]]
+name = "TaskExtensionEvidenceRecord"
+kind = "record"
+visibility = "public"
+fields = [{name = "entries", type = "TaskExtensionRunnerEvidenceEntries"}, {name = "commit", type = "TaskExtensionGitObjectId"}]
+
+[[type]]
+name = "TaskExtensionRecordPayload"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "allocation", type = "TaskExtensionAllocationRecord"}, {tag = "integration", type = "TaskExtensionIntegrationPatch"}, {tag = "attempt", type = "TaskExtensionAttemptPatch"}, {tag = "event", type = "TaskExtensionEventRecord"}, {tag = "evidence", type = "TaskExtensionEvidenceRecord"}]
+
+[[type]]
+name = "TaskExtensionRecordReceipt"
+kind = "record"
+visibility = "public"
+fields = [{name = "task", type = "TaskScopedRef"}, {name = "record_id", type = "TaskExtensionRecordId"}, {name = "entry_id", type = "TaskEntryId"}, {name = "revision", type = "U64"}, {name = "recorded_by", type = "TaskActorRef"}, {name = "recorded_at", type = "UnixMicros"}]
+
+[[type]]
+name = "TaskExtensionRecordContributionView"
+kind = "record"
+visibility = "public"
+fields = [{name = "receipt", type = "TaskExtensionRecordReceipt"}, {name = "payload", type = "TaskExtensionRecordPayload"}]
+
+[[type]]
+name = "TaskExtensionRecordMergeRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "task", type = "TaskScopedRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "record_id", type = "TaskExtensionRecordId"}, {name = "payload", type = "TaskExtensionRecordPayload"}]
+
+[[type]]
+name = "TaskExtensionRecordsListRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "task", type = "TaskScopedRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "after", type = "ProjectOptionalCatalogCursor"}]
+
+[[type]]
+name = "TaskExtensionRecordStreamItem"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "TaskSnapshotBoundary"}, {name = "value", type = "TaskExtensionRecordContributionView"}]
+
+[[type]]
+name = "TaskExtensionRecordsEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "TaskSnapshotBoundary"}, {tag = "record", type = "TaskExtensionRecordStreamItem"}, {tag = "complete", type = "TaskSnapshotBoundary"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "CoordinationReservationSourceProfile"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "legacy_reserve_v1", type = "Empty"}]
+
+[[type]]
+name = "CoordinationReservationState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "collecting", type = "Empty"}, {tag = "committing", type = "Empty"}, {tag = "committed", type = "Empty"}, {tag = "refused", type = "Empty"}, {tag = "cancelled", type = "Empty"}, {tag = "outcome_unknown", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "CoordinationReservationRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "reservation_id", type = "CoordinationReservationId"}, {name = "board", type = "CatalogBoardRef"}, {name = "installation_id", type = "InstallationId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "CoordinationReservationIntent"
+kind = "record"
+visibility = "public"
+fields = [{name = "source_profile", type = "CoordinationReservationSourceProfile"}, {name = "raw_count", type = "CoordinationReservationRawCount"}, {name = "requested_ttl_seconds", type = "OptionalU64"}, {name = "bind_current_native_process", type = "Boolean"}, {name = "local_only", type = "Boolean"}]
+
+[[type]]
+name = "CoordinationReservationView"
+kind = "record"
+visibility = "public"
+fields = [{name = "reservation", type = "CoordinationReservationRef"}, {name = "revision", type = "U64"}, {name = "intent", type = "CoordinationReservationIntent"}, {name = "state", type = "CoordinationReservationState"}, {name = "received_count", type = "U64"}, {name = "input_digest", type = "CoordinationReservationOptionalDigest"}]
+
+[[type]]
+name = "CoordinationReservationOptionalDigest"
+kind = "optional"
+visibility = "public"
+item = "TaskContentDigest"
+
+[[type]]
+name = "CoordinationReservationBeginRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "installation_id", type = "InstallationId"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "intent", type = "CoordinationReservationIntent"}]
+
+[[type]]
+name = "CoordinationReservationInputRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "reservation", type = "CoordinationReservationRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "index", type = "CoordinationReservationInputIndex"}, {name = "resource", type = "CoordinationClaimResource"}]
+
+[[type]]
+name = "CoordinationReservationInputReceipt"
+kind = "record"
+visibility = "public"
+fields = [{name = "reservation", type = "CoordinationReservationRef"}, {name = "revision", type = "U64"}, {name = "index", type = "CoordinationReservationInputIndex"}, {name = "resource", type = "CoordinationClaimResource"}]
+
+[[type]]
+name = "CoordinationReservationCommitRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "reservation", type = "CoordinationReservationRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "expected_input_digest", type = "TaskContentDigest"}]
+
+[[type]]
+name = "CoordinationReservationCancelRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "reservation", type = "CoordinationReservationRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "CoordinationReservationInspectRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "reservation", type = "CoordinationReservationRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "after", type = "ProjectOptionalCatalogCursor"}]
+
+[[type]]
+name = "CoordinationReservationSnapshot"
+kind = "record"
+visibility = "public"
+fields = [{name = "reservation", type = "CoordinationReservationRef"}, {name = "revision", type = "U64"}, {name = "snapshot_id", type = "TaskContractSnapshotId"}, {name = "cursor", type = "ProjectCatalogCursor"}]
+
+[[type]]
+name = "CoordinationReservationDisposition"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "acquired", type = "Empty"}, {tag = "renewed", type = "Empty"}, {tag = "rolled_back", type = "Empty"}, {tag = "unresolved", type = "Empty"}, {tag = "refused", type = "Empty"}, {tag = "cancelled", type = "Empty"}]
+
+[[type]]
+name = "CoordinationReservationOptionalClaimResult"
+kind = "optional"
+visibility = "public"
+item = "CoordinationClaimTakeResult"
+
+[[type]]
+name = "CoordinationReservationResultItem"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "CoordinationReservationSnapshot"}, {name = "input_index", type = "CoordinationReservationInputIndex"}, {name = "deduplicated_index", type = "CoordinationReservationInputIndex"}, {name = "disposition", type = "CoordinationReservationDisposition"}, {name = "claim_result", type = "CoordinationReservationOptionalClaimResult"}]
+
+[[type]]
+name = "CoordinationReservationStreamView"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "CoordinationReservationSnapshot"}, {name = "value", type = "CoordinationReservationView"}]
+
+[[type]]
+name = "CoordinationReservationEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "CoordinationReservationSnapshot"}, {tag = "view", type = "CoordinationReservationStreamView"}, {tag = "result", type = "CoordinationReservationResultItem"}, {tag = "complete", type = "CoordinationReservationSnapshot"}, {tag = "resync_required", type = "Empty"}]
+
+[[operation]]
+name = "tasks.scope.replace"
+symbol = "TaskExtensionScopeReplace"
+request = "TaskExtensionScopeReplaceRequest"
+response = "TaskExtensionScopeView"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "same-board-task-or-claim-access", "compare-and-swap-resource-revision", "durable-full-payload-and-principal-bound-transition", "current-actual-task-scope-controller", "typed-observation-never-local-custody", "immutable-task-assignment-and-source-baseline-binding"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "tasks.scope.inspect"
+symbol = "TaskExtensionScopeInspect"
+request = "TaskExtensionScopeInspectRequest"
+response = "TaskExtensionOptionalScopeView"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "same-board-task-or-claim-access"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "tasks.records.merge"
+symbol = "TaskExtensionRecordsMerge"
+request = "TaskExtensionRecordMergeRequest"
+response = "TaskExtensionRecordReceipt"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "same-board-task-or-claim-access", "compare-and-swap-resource-revision", "durable-full-payload-and-principal-bound-transition", "current-actual-task-record-controller", "closed-source-record-role-and-field-validation", "reported-content-never-authority-or-execution", "source-exact-shallow-merge-and-event-append"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "tasks.records.list"
+symbol = "TaskExtensionRecordsList"
+request = "TaskExtensionRecordsListRequest"
+response = "TaskExtensionRecordsEvent"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "same-board-task-or-claim-access", "principal-bound-immutable-complete-snapshot", "current-authorization-before-each-item"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "claims.reservations.begin"
+symbol = "CoordinationReservationsBegin"
+request = "CoordinationReservationBeginRequest"
+response = "CoordinationReservationView"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "same-board-task-or-claim-access", "current-installation-generation", "actual-reservation-owner-principal", "durable-full-payload-and-principal-bound-transition", "actual-shared-resource-admission-before-staging", "capture-actual-native-process-lifetime-if-requested", "no-lease-effect-before-commit"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "claims.reservations.input.set"
+symbol = "CoordinationReservationsInputSet"
+request = "CoordinationReservationInputRequest"
+response = "CoordinationReservationInputReceipt"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "same-board-task-or-claim-access", "current-installation-generation", "actual-reservation-owner-principal", "durable-full-payload-and-principal-bound-transition", "immutable-indexed-raw-source-input", "duplicates-retained-before-source-count-check", "no-lease-effect-before-commit"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "claims.reservations.commit"
+symbol = "CoordinationReservationsCommit"
+request = "CoordinationReservationCommitRequest"
+response = "CoordinationReservationView"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "same-board-task-or-claim-access", "current-installation-generation", "actual-reservation-owner-principal", "durable-full-payload-and-principal-bound-transition", "freeze-complete-ordered-input-snapshot", "node-recomputed-purpose-bound-digest-equality-only", "exact-source-frame-count-and-config-admission", "revalidate-original-native-process-lifetime", "atomic-whole-reservation-and-fixed-expiry", "durable-unknown-effect-reconciliation"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "claims.reservations.cancel"
+symbol = "CoordinationReservationsCancel"
+request = "CoordinationReservationCancelRequest"
+response = "CoordinationReservationView"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "same-board-task-or-claim-access", "current-installation-generation", "actual-reservation-owner-principal", "durable-full-payload-and-principal-bound-transition", "atomic-uncommitted-input-versus-reservation-commit", "no-committed-lease-release-or-renewal-rollback", "terminal-dedup-and-cancellation-tombstone-retained"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "claims.reservations.inspect"
+symbol = "CoordinationReservationsInspect"
+request = "CoordinationReservationInspectRequest"
+response = "CoordinationReservationEvent"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "same-board-task-or-claim-access", "current-installation-generation", "actual-reservation-owner-principal", "principal-bound-immutable-complete-snapshot", "current-authorization-before-each-item", "no-foreign-claim-row-disclosure"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"

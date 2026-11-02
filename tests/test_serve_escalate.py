@@ -1,7 +1,7 @@
 """Growing a server's slots without losing a live conversation.
 
 `FakeBackend` stands in for the relaunch -- it never binds a socket, so the same real
-llama-server (`FakeLlamaServer`, on a real port) answers before and after, and every call
+llama-server (`CannedServer`, on a real port) answers before and after, and every call
 the manager made is in its ``requests`` log to check. ``fit.json`` is pointed at
 ``tmp_path`` by the autouse fixture in ``conftest.py``, so a "grow fits" test writes its
 own record there rather than reading a real machine's.
@@ -19,7 +19,8 @@ from poolhouse import home
 from poolhouse.serve.backend import ServerFailed, ServerSpec
 from poolhouse.serve.escalation import EscalationRefused
 from poolhouse.serve.manager import ServerManager
-from poolhouse.testing.fakes import FakeBackend, FakeLlamaServer, Served
+from poolhouse.testing.canned import Canned, CannedServer, marked
+from poolhouse.testing.fakes import FakeBackend
 from poolhouse.testing.registry import record_server
 
 pytest_plugins = ["serve_node"]
@@ -43,17 +44,17 @@ def _slot(id_slot: int, n_ctx: int, tokens: int = 0, prompt: str = "") -> dict:
 def serving(tmp_path):
     """A llama-server on a real socket holding the slots the test hands it, on the lease
     registry the test's manager reads."""
-    started: list[FakeLlamaServer] = []
+    started: list[CannedServer] = []
     processes: list[subprocess.Popen] = []
 
-    def start(slots: list[dict], *, chat_reply: str = SUMMARY) -> FakeLlamaServer:
+    def start(slots: list[dict], *, chat_reply: str = SUMMARY) -> CannedServer:
         def said(body: dict) -> str:
             if "messages" in body:
                 return chat_reply
             # a real seed-the-cache prefill asks for one token; a summary asks for more
             return SUMMARY if int(body.get("n_predict") or 0) > 1 else ""
 
-        fake = FakeLlamaServer(Served(model=MODEL, context=32768, slots=len(slots),
+        fake = CannedServer(Canned(served_path=MODEL, context=32768, slots=len(slots),
                                       answer=said))
         fake.slots = list(slots)
         process = subprocess.Popen(["sleep", "60"])
@@ -179,7 +180,7 @@ class TestSummarize:
         assert instance.saved == [(0, instance.saved[0][1])], "the full cache is still saved"
         assert not instance.restored, "a summary was re-seeded instead of the saved cache"
         sent = instance.sent_to("/completion")
-        assert sent and sent[0]["prompt"] == "short summary"
+        assert sent and sent[0]["prompt"] == marked("short summary")
         events = [e["event"] for e in seen]
         assert events == ["escalating", "saving", "summarizing", "summarized", "stopping",
                           "loading", "ready", "restoring", "done"]

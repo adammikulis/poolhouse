@@ -4,7 +4,6 @@ import pytest
 from test_fleet_initial_setup import initial
 from test_fleet_ui import Serving, no_release_lookup
 
-from poolhouse.fleet import automatic_pools
 from poolhouse.fleet.ui import UI
 from poolhouse.scrape.browser import Window, browser
 
@@ -36,7 +35,6 @@ def test_unadvertised_self_address_has_no_invented_lan_host():
 @pytest.mark.parametrize("advertised", ["http://192.168.4.8:8770", ""])
 def test_fleet_card_displays_authoritative_lan_address(tmp_path, monkeypatch, advertised):
     pytest.importorskip("playwright.sync_api", reason="poolhouse[scrape]")
-    monkeypatch.setattr(automatic_pools, "offers", lambda port=None: [])
     served = Serving(tmp_path, secure=False)
     try:
         served.ui.display_url = advertised

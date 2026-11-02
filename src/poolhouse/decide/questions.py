@@ -3,7 +3,7 @@ probabilities by the router's backends."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 from poolhouse.decide import router
@@ -11,7 +11,7 @@ from poolhouse.decide.base import Request, State, text_of
 from poolhouse.decide.logprob import defang
 from poolhouse.decide.types import DecideError, Decision, Option, clip, options_of
 
-__all__ = ["Answer", "Question", "choice", "decide", "noul", "prepare", "score"]
+__all__ = ["Answer", "Question", "choice", "decide", "decide_batch", "noul", "prepare", "score"]
 
 NO, YES = "no", "yes"
 FAILURES = (DecideError, ValueError, OSError, RuntimeError)
@@ -142,6 +142,32 @@ def decide(state: State, questions: Mapping[str, Question], *,
     for backend, items in groups.items():
         out.update(_run(backend, cfg, text, items, abstain_below))
     return {n: out[n] for n in questions}
+
+
+def decide_batch(rounds: Sequence[tuple[State, Mapping[str, Question]]], *, config: router.Config | None = None,
+                 abstain_below: float | None = None) -> list[dict[str, Answer]]:
+    """One answer map per ``(state, questions)`` pair, every question asked of one backend in a single batched call.
+
+    The pointer backend answers the whole batch in one padded forward pass. A batch that cannot be
+    answered gives every question an abstained `Answer` with ``error`` set.
+    """
+    cfg = config or router.DEFAULT
+    out: list[dict[str, Answer]] = [{} for _ in rounds]
+    items: list[tuple[int, str, Question, str]] = []
+    try:
+        for i, (state, qs) in enumerate(rounds):
+            text = prepare(state)
+            items += [(i, n, q, text) for n, q in qs.items()]
+        if not items:
+            return out
+        backend = cfg.backend if cfg.backend != "auto" else router.choose(max(len(q.options) for _, _, q, _ in items), cfg)
+        asks = [Request(q.text, text, q.options, abstain_below=abstain_below) for _, _, q, text in items]
+        made = router.build(backend, cfg).decide_many(asks)
+    except FAILURES as exc:
+        return [{n: _failed(n, q, exc) for n, q in qs.items()} for _, qs in rounds]
+    for (i, n, q, _), d in zip(items, made, strict=True):
+        out[i][n] = _answer(n, q, d)
+    return out
 
 
 def parse(kind: str, spec: str) -> tuple[str, Question]:

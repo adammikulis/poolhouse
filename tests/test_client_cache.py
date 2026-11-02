@@ -1,12 +1,14 @@
 """An extraction already done is not done again — and the wrong ones are not remembered."""
 
 import json
+from contextlib import ExitStack
 
-from conftest import json_reply
+import pytest
 
 from poolhouse.client import Client
 from poolhouse.client.cache import extraction_key
 from poolhouse.extraction import Checking, Kept, Prompting
+from poolhouse.testing.canned import Canned, canned_server
 
 SCHEMA = {
     "type": "object",
@@ -14,23 +16,25 @@ SCHEMA = {
 }
 
 
-def chat_reply(content):
-    return json_reply({"choices": [{"message": {"role": "assistant", "content": content}}]})
+@pytest.fixture
+def counting():
+    """A canned server that answers every extraction the same way and counts what it was asked.
+
+    The answer is JSON the client must parse, so the server runs unmarked: its text carries no prefix, and
+    its header, model id and metadata still say it is not a model.
+    """
+    with ExitStack() as stack:
+        def start(content='{"people": ["Ada Lovelace"]}'):
+            asked: list[dict] = []
+            server = stack.enter_context(canned_server(Canned(answer=lambda body: asked.append(body) or content)))
+            stack.enter_context(server.unmarked())
+            return server, asked
+
+        yield start
 
 
-def counting(server, content='{"people": ["Ada Lovelace"]}'):
-    """A server that answers every extraction the same way and counts what it was asked."""
-    asked: list[dict] = []
-
-    def handler(method, path, body):
-        asked.append(json.loads(body))
-        return chat_reply(content)
-
-    return server(handler), asked
-
-
-def test_a_second_identical_call_does_not_hit_the_model(server, tmp_path):
-    instance, asked = counting(server)
+def test_a_second_identical_call_does_not_hit_the_model(counting, tmp_path):
+    instance, asked = counting()
     client = Client(instance.base_url)
 
     first = client.extract("Ada is an engineer.", SCHEMA, cache=Kept(tmp_path))
@@ -40,16 +44,16 @@ def test_a_second_identical_call_does_not_hit_the_model(server, tmp_path):
     assert len(asked) == 1, "the second answer came off disk"
 
 
-def test_a_second_client_reads_what_the_first_one_wrote(server, tmp_path):
+def test_a_second_client_reads_what_the_first_one_wrote(counting, tmp_path):
     """The cache is the directory, not the object: a new run is the whole point."""
-    instance, asked = counting(server)
+    instance, asked = counting()
     Client(instance.base_url).extract("Ada is an engineer.", SCHEMA, cache=Kept(tmp_path))
     Client(instance.base_url).extract("Ada is an engineer.", SCHEMA, cache=Kept(tmp_path))
     assert len(asked) == 1
 
 
-def test_different_text_a_different_schema_or_a_bumped_version_are_asked_again(server, tmp_path):
-    instance, asked = counting(server)
+def test_different_text_a_different_schema_or_a_bumped_version_are_asked_again(counting, tmp_path):
+    instance, asked = counting()
     client = Client(instance.base_url)
 
     client.extract("Ada is an engineer.", SCHEMA, cache=Kept(tmp_path))
@@ -62,9 +66,9 @@ def test_different_text_a_different_schema_or_a_bumped_version_are_asked_again(s
     assert len(asked) == 5
 
 
-def test_rewording_the_instructions_does_not_re_read_the_corpus(server, tmp_path):
+def test_rewording_the_instructions_does_not_re_read_the_corpus(counting, tmp_path):
     """The point of the key: rephrasing a prompt must stay cheap, or it stops happening."""
-    instance, asked = counting(server)
+    instance, asked = counting()
     client = Client(instance.base_url)
 
     client.extract("Ada is an engineer.", SCHEMA,
@@ -76,9 +80,9 @@ def test_rewording_the_instructions_does_not_re_read_the_corpus(server, tmp_path
     assert len(asked) == 1
 
 
-def test_an_answer_the_check_never_accepted_is_not_cached(server, tmp_path):
+def test_an_answer_the_check_never_accepted_is_not_cached(counting, tmp_path):
     """A run that gave up is asked again next time, not remembered as settled."""
-    instance, asked = counting(server)
+    instance, asked = counting()
     client = Client(instance.base_url)
 
     out = client.extract("Ada is an engineer.", SCHEMA,
@@ -94,8 +98,8 @@ def test_an_answer_the_check_never_accepted_is_not_cached(server, tmp_path):
 
 
 def test_without_a_cache_directory_nothing_is_written_and_the_model_is_asked_every_time(
-        server, tmp_path):
-    instance, asked = counting(server)
+        counting, tmp_path):
+    instance, asked = counting()
     client = Client(instance.base_url)
     client.extract("Ada is an engineer.", SCHEMA)
     client.extract("Ada is an engineer.", SCHEMA)
@@ -103,8 +107,8 @@ def test_without_a_cache_directory_nothing_is_written_and_the_model_is_asked_eve
     assert list(tmp_path.iterdir()) == []
 
 
-def test_a_corrupt_cache_file_is_a_miss_and_not_an_error(server, tmp_path):
-    instance, asked = counting(server)
+def test_a_corrupt_cache_file_is_a_miss_and_not_an_error(counting, tmp_path):
+    instance, asked = counting()
     key = extraction_key("Ada is an engineer.", SCHEMA)
     (tmp_path / f"{key}.json").write_text("{ half a file")
 

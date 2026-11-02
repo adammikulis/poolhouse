@@ -56,8 +56,8 @@ fn a_session_that_ends_loses_its_token_and_its_subagents_and_retires_nobody_else
     let state = |who: &str| all.iter().find(|a| a["name"] == who).map(|a| (a["retired"].clone(), a["retired_reason"].clone())).unwrap();
     assert_eq!((state(&lead), state(&kid_name)), ((json!(true), json!("done")), (json!(true), json!("done"))));
     assert_eq!(code(&req(&mut n, "retire", "demo", &lt, json!({}))), "denied", "a retired token retires nothing");
-    let audit = ok(req(&mut n, "read", "demo", &ot, json!({"kind": "audit"})));
-    assert!(audit["entries"].as_array().unwrap().iter().any(|e| e["fields"]["event"] == "retire" && e["fields"]["subject"] == lead.as_str()));
+    let identities = ok(req(&mut n, "read", "demo", &ot, json!({"kind": "identity"})));
+    assert!(identities["entries"].as_array().unwrap().iter().any(|e| e["fields"]["retired"] == true && e["fields"]["name"] == lead.as_str() && e["fields"]["retired_by"] == lead.as_str()));
 }
 
 #[test]
@@ -127,8 +127,8 @@ fn idle_sessions_are_marked_and_are_retired_after_a_day() {
     assert_eq!((find(&stale)["retired"].clone(), find(&stale)["retired_reason"].clone()), (json!(true), json!("idle")), "idle for a day: retired by the node");
     let me = me();
     ok(start(&mut n, &me, "claude-code", "newcomer"));
-    let audit = ok(req(&mut n, "read", "demo", &busy_token, json!({"kind": "audit"})));
-    assert!(audit["entries"].as_array().unwrap().iter().any(|e| e["fields"]["event"] == "retire" && e["fields"]["subject"] == stale.as_str()), "the node says it retired it");
+    let identities = ok(req(&mut n, "read", "demo", &busy_token, json!({"kind": "identity"})));
+    assert!(identities["entries"].as_array().unwrap().iter().any(|e| e["fields"]["retired"] == true && e["fields"]["name"] == stale.as_str() && e["fields"]["retired_reason"] == "idle"), "the node says it retired it");
 }
 
 #[test]
@@ -146,4 +146,51 @@ fn a_token_of_a_session_the_node_retired_for_idleness_is_refused() {
     assert_eq!(names(&mut n, &watcher, false).len(), 1, "listing retires it");
     assert_eq!(code(&req(&mut n, "whoami", "demo", &token, json!({}))), "denied");
     assert_eq!(code(&req(&mut n, "post", "demo", &token, json!({"kind": "message", "fields": {"type": "status", "body": "still here"}}))), "denied");
+}
+
+fn person(n: &mut Node, from: &Peer, id: &str) -> Value {
+    req_from(n, from, "register_person", "demo", "", json!({"session": id}))
+}
+
+#[test]
+fn the_person_session_of_a_terminal_that_ended_is_retired_and_every_other_session_stays() {
+    let dir = tempdir().unwrap();
+    let mut n = open(dir.path());
+    let most = n.writes.live_main_sessions;
+    let running = process(true);
+    let kept = ok(person(&mut n, &peer(&running), "person-running"));
+    let token = kept["token"].as_str().unwrap().to_string();
+    let unread = ok(person(&mut n, &Peer::none(), "person-unread"));
+    let agent_terminal = process(true);
+    let agent = ok(start(&mut n, &peer(&agent_terminal), "claude-code", "lead"));
+    let command = process(false);
+    let from_command = ok(person(&mut n, &peer(&command), "person-command"));
+    for i in 0..2 * most {
+        let terminal = process(true);
+        assert_eq!(ok(person(&mut n, &peer(&terminal), &format!("person-{i}")))["created"], true, "terminal {i}, one more than the board holds live at once");
+        done(vec![terminal]);
+    }
+    done(vec![agent_terminal, command]);
+    let live: Vec<String> = names(&mut n, &token, false).iter().map(|a| a["name"].as_str().unwrap().to_string()).collect();
+    let expected = [&kept, &unread, &agent, &from_command].map(|r| r["name"].as_str().unwrap().to_string());
+    assert_eq!(live.len(), expected.len(), "live are the terminal still running, the one nothing was read from, the agent's session and the command whose parents run: {live:?}");
+    assert!(expected.iter().all(|e| live.contains(e)), "{live:?} holds {expected:?}");
+    let retired: Vec<Value> = names(&mut n, &token, true).into_iter().filter(|a| a["retired"] == true).collect();
+    assert_eq!(retired.len(), 2 * most);
+    assert!(retired.iter().all(|a| a["person"] == true && a["retired_reason"] == "done"), "{retired:?}");
+    done(vec![running]);
+}
+
+#[test]
+fn the_person_sessions_of_terminals_that_run_are_bound_by_the_number_a_board_holds_live() {
+    let dir = tempdir().unwrap();
+    let mut n = open(dir.path());
+    let most = n.writes.live_main_sessions;
+    let terminal = process(true);
+    for i in 0..most {
+        assert_eq!(ok(person(&mut n, &peer(&terminal), &format!("person-{i}")))["created"], true);
+    }
+    let refused = person(&mut n, &peer(&terminal), "person-more");
+    assert_eq!(code(&refused), "quota", "a process that keeps registering the person's session fills the board like any other: {refused}");
+    done(vec![terminal]);
 }

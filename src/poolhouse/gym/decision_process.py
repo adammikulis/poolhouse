@@ -9,6 +9,7 @@ import threading
 import time
 from pathlib import Path
 
+from poolhouse import maintenance
 from poolhouse.decide.pointer import PointerDecider, device_name
 from poolhouse.decide.sources import local_source
 from poolhouse.gym.transport import interpreter, python_environment
@@ -39,7 +40,7 @@ class DecisionProcess:
         self.pending = None
         self.status, self.error = "loading", None
         self.device = device
-        self.handle = start_process(
+        self.handle = maintenance.spawn(start_process, 
             [interpreter(), "-m", module, json.dumps(checkpoint), device],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=sys.stderr,
             text=True, bufsize=1, env={**python_environment(), "OMP_NUM_THREADS": "1",

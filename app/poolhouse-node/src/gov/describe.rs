@@ -6,7 +6,7 @@ use serde::Serialize;
 use super::act::Act;
 use super::body::{self, Body};
 use super::charter::{floor_class, Charter, Class};
-use super::keys::{fingerprint_of, AdminKey, Level, Role};
+use super::keys::{fingerprint_of, AdminKey, Role};
 use super::pool::GovPool;
 
 /// ``name`` as one line a person reads: at most 40 characters, no control character, in quotes.
@@ -33,16 +33,17 @@ fn device(g: &GovPool, fingerprint: &str) -> String {
     }
 }
 
-fn level_words(level: Level) -> &'static str {
-    match level {
-        Level::Weak => "weak, which ends a delegate and nothing else",
-        other => other.name(),
+/// How a key is held, in the words a person reads: the claim as it says, and that nobody else can check it.
+fn claim_words(k: &AdminKey) -> &'static str {
+    match k.claim {
+        Some(claim) => claim.shown(),
+        None => "it counts for nothing until the pool is recovered",
     }
 }
 
 fn key_line(k: &AdminKey) -> String {
     let role = if k.role == Role::Recovery { "the recovery key" } else { "an admin" };
-    format!("{} (person {}, {}, {}) as {role}", quoted(&k.label), quoted(&k.person), level_words(k.assurance), short(&k.fingerprint()))
+    format!("{} (person {}, {}, {}) as {role}", quoted(&k.label), quoted(&k.person), claim_words(k), short(&k.fingerprint()))
 }
 
 fn floors_line(f: &body::Floors) -> String {
@@ -82,18 +83,12 @@ pub fn founding_line(c: &Charter) -> String {
     format!("Make the pool {} and put the computer {} (certificate {fingerprint}) in it. It is approved from {}.", quoted(&c.name), quoted(&c.first.name), c.floors.sensitive.shown())
 }
 
-/// The `LEVEL:` line of ``act``: where this pool's floor for the kind of act puts the approval, and what that does not stop.
-fn level_line(act: &Act, g: &GovPool) -> String {
-    let c = &g.state().chain.latest().charter;
+/// The `LEVEL:` line of ``act``: where this pool's keys approve it from, and what that does not stop. Every key that counts is a
+/// `Computer` key (no member can check a phone or a helper), so every governance act waits seven days.
+fn level_line(act: &Act, _g: &GovPool) -> String {
     let class = floor_class(&act.kind).unwrap_or(Class::Routine);
-    let floor = c.floors.of(class);
-    let how = match floor {
-        Level::Phone => "from your phone.",
-        Level::Native => "from this computer, protected. Only root on this computer could approve it without asking.",
-        Level::Computer | Level::Weak => "from this computer. A program running as you could approve it without asking; a phone would stop that.",
-    };
-    let wait = if class == Class::Governance && floor <= Level::Computer { " Signed by computer keys alone it waits 7 days, and a key can cancel it." } else { "" };
-    format!("LEVEL: This change is approved {how}{wait}")
+    let wait = if class == Class::Governance { " It waits 7 days, and a key can cancel it." } else { "" };
+    format!("LEVEL: This change is approved from this computer. A program running as you could approve it without asking.{wait}")
 }
 
 /// What a person is asked to sign ``act`` under, as this pool reads it now: a sentence of at most 300 characters, then the `LEVEL:` line,

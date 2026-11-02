@@ -199,7 +199,7 @@ class Recording:
 def test_every_public_entry_of_the_manager_reaches_the_broker(tmp_path):
     broker = Recording()
     held = ServerManager(FakeBackend(), state_file=tmp_path / "servers.json", broker=broker)
-    spec = ServerSpec(model="m.gguf", port=1)
+    spec = ServerSpec(context=4096, model="m.gguf", port=1)
 
     info = held.lease(spec)
     held.escalate(spec)
@@ -229,4 +229,4 @@ def test_no_flag_to_lease_skips_the_broker(tmp_path):
     broker = Recording()
     held = ServerManager(FakeBackend(), state_file=tmp_path / "servers.json", broker=broker)
     with pytest.raises(TypeError):
-        held.lease(ServerSpec(model="m.gguf", port=1), direct=True)  # type: ignore[call-arg]
+        held.lease(ServerSpec(context=4096, model="m.gguf", port=1), direct=True)  # type: ignore[call-arg]

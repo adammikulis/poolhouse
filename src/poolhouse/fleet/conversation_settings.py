@@ -4,11 +4,15 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from poolhouse import coding_policy
+
+from .project_source import project_id
 from .settings import Settings
 
-DEFAULTS: dict[str, Any] = {"mode": "chat", "temperature": None, "project": "", "role": "",
-                            "effort": "off", "max_effort": "medium", "harness": "pi", "context": 0, "draft": "auto", "max_output_tokens": None}
 LEVELS = ("off", "low", "medium", "high")
+DEFAULTS: dict[str, Any] = {"temperature": None, "project": "", "project_id": "", "role": "",
+                            "permissions": coding_policy.READ_ONLY, "execution_mode": coding_policy.EXECUTE,
+                            "effort": "off", "max_effort": LEVELS[-1], "harness": "", "context": 0, "draft": "auto", "max_output_tokens": None}
 
 
 def checked(settings: dict | None = None) -> dict[str, Any]:
@@ -19,9 +23,7 @@ def checked(settings: dict | None = None) -> dict[str, Any]:
     if set(supplied) - set(DEFAULTS):
         raise ValueError("unknown conversation setting")
     result = {**DEFAULTS, **supplied}
-    if result["mode"] not in ("chat", "coding"):
-        raise ValueError("mode is chat or coding")
-    for key in ("project", "role", "effort", "max_effort", "harness", "draft"):
+    for key in ("project", "project_id", "role", "effort", "max_effort", "harness", "draft"):
         if not isinstance(result[key], str):
             raise ValueError(f"{key} must be text")
     if (isinstance(result["context"], bool) or not isinstance(result["context"], int)
@@ -30,6 +32,7 @@ def checked(settings: dict | None = None) -> dict[str, Any]:
     if result["max_output_tokens"] is not None and (isinstance(result["max_output_tokens"], bool)
             or not isinstance(result["max_output_tokens"], int) or result["max_output_tokens"] < 1):
         raise ValueError("maximum output tokens must be null or a positive integer")
+    coding_policy.Policy(result["permissions"], result["execution_mode"])
     if len(result["harness"]) > 64:
         raise ValueError("harness identifier is too long")
     if len(result["role"]) > 128:
@@ -40,6 +43,8 @@ def checked(settings: dict | None = None) -> dict[str, Any]:
         raise ValueError("draft model path is too long")
     if len(result["project"]) > 4096:
         raise ValueError("project path is too long")
+    if result["project_id"]:
+        project_id(result["project_id"])
     temperature = result["temperature"]
     if temperature is not None:
         if isinstance(temperature, bool) or not isinstance(temperature, (int, float)):

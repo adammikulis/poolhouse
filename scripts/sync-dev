@@ -1,0 +1,31 @@
+#!/bin/sh
+# Keep this checkout on origin's development branch: fetch, then fast-forward the current branch
+# only when it is the development branch, the tree is clean and the merge is a straight line.
+# Anything else exits 0 with one line saying why. Never stashes, resets or merges a changed tree.
+# The development branch is POOLHOUSE_DEV_BRANCH, else DEFAULT in src/poolhouse/devbranch.py.
+self=$0
+while [ -L "$self" ]; do
+    link=$(readlink "$self")
+    case "$link" in /*) self=$link ;; *) self=$(dirname "$self")/$link ;; esac
+done
+here=$(cd "$(dirname "$self")" && pwd)
+say() { printf 'sync-dev: %s\n' "$1"; exit 0; }
+export GIT_TERMINAL_PROMPT=0
+dev=${POOLHOUSE_DEV_BRANCH:-$(sed -n 's/^DEFAULT = "\(.*\)"$/\1/p' "$here/../src/poolhouse/devbranch.py" 2>/dev/null)}
+[ -n "$dev" ] || say "left alone: no development branch is named"
+git rev-parse --git-dir >/dev/null 2>&1 || say "left alone: not inside a git checkout"
+branch=$(git branch --show-current)
+[ "$branch" = "$dev" ] || say "left alone: on ${branch:-no branch}, not $dev"
+gitdir=$(git rev-parse --git-dir)
+for under in MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD BISECT_LOG rebase-merge rebase-apply; do
+    [ -e "$gitdir/$under" ] && say "left alone: a $under is under way"
+done
+[ -z "$(git status --porcelain)" ] || say "left alone: the working tree has changes"
+git fetch --quiet origin "+refs/heads/$dev:refs/remotes/origin/$dev" 2>/dev/null || say "left alone: fetch from origin failed"
+head=$(git rev-parse HEAD)
+target=$(git rev-parse "refs/remotes/origin/$dev")
+[ "$head" != "$target" ] || say "up to date with origin/$dev"
+git merge-base --is-ancestor "$target" "$head" && say "ahead of origin/$dev, nothing to pull"
+git merge-base --is-ancestor "$head" "$target" || say "left alone: $dev and origin/$dev have each moved on"
+git merge --quiet --ff-only "refs/remotes/origin/$dev" >/dev/null 2>&1 || say "left alone: the fast-forward was refused"
+say "fast-forwarded $dev to $(git rev-parse --short HEAD)"

@@ -226,9 +226,17 @@ impl Person {
         call("grant_revoke", board, token, self.revoke_params(board, gid, "test"))
     }
 
+    /// The `approval_decide` params approving the request ``made`` (as `approval_request` answered it), signed by this key.
+    pub fn decision(&self, made: &Value) -> Value {
+        let fingerprint = self.fingerprint();
+        let sig = hex(&self.key.sign(&poolhouse_node::approvals::challenge::bytes(&made["challenge"], "approve", &fingerprint)).to_bytes());
+        json!({"id": made["id"], "decision": "approve", "key": fingerprint, "sig": sig, "text_sha256": sha256_hex(made["text"].as_str().unwrap().as_bytes()),
+               "pick": made["code"].as_str().unwrap_or("")})
+    }
+
     /// Grant every action of the registry (`only` limits it) to the session ``name`` for an hour.
     pub fn allow(&self, call: Call, board: &str, token: &str, name: &str, only: &[&str]) {
-        for action in ACTIONS.iter().filter(|a| only.is_empty() || only.contains(a)) {
+        for action in ACTIONS.iter().filter(|a| **a != "service_bind" && (only.is_empty() || only.contains(a))) {
             let reply = self.issue(call, board, token, &gid_of(name, action), &Spec::session(name, action));
             assert_eq!(reply["ok"], true, "grant {action} to {name}: {reply}");
         }

@@ -2,7 +2,7 @@
 
 Every subcommand parses its arguments and prints; the work is in `poolhouse.bench.ops` and
 the modules beside it, and its flags are in `poolhouse.bench.options`. `main` is what the
-console script calls -- the self-check and the prefetch before the lock, the lock itself,
+console script calls -- the prefetch before the lock, the lock itself,
 SIGTERM taken as an exit so a served model comes down, and ``--detach`` re-running the
 command in its own session with `status`, `tail` and `stop` reading the same file.
 """
@@ -16,13 +16,12 @@ import json
 import os
 import signal
 import sys
-import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 # `bench.served`, `bench.home_dir`, `poolhouse.client.Client` and `lock.only_one` are patched by
-# the tests and `selfcheck`, so each is read off its module at call time.
+# the tests, so each is read off its module at call time.
 import poolhouse.client
 from poolhouse import bench, hub, jobs, lock
 from poolhouse.bench import (
@@ -32,7 +31,6 @@ from poolhouse.bench import (
     ops,
     options,
     retrieval,
-    selfcheck as bench_selfcheck,
     speed as bench_speed,
     system,
     thinking,
@@ -193,7 +191,7 @@ def cmd_drafts(args: Any) -> int:
                       smoke=sample(everything, SMOKE) if wants_smoke(args) else ())
     total_context, _ = fitcontext.total_for(
         args, model, kv=getattr(args, "serve_kv", "") or DEFAULT_KV_CACHE,
-        default=int(args.context), headed=any(heads.heads))
+        headed=any(heads.heads))
     rows = drafts(ops.swept(args, model, None, context=total_context, head=None)
                   .over(port=int(args.port)), heads, asked, invented(), loading)
     say()
@@ -330,13 +328,13 @@ def _served_by_the_sweep(args: Any, questions: Any, graph: Any, already: Any,
               or DEFAULT_KV_CACHE)
         try:
             total_context, fitted = fitcontext.total_for(
-                args, model, kv=kv, default=32768 * max(1, args.parallel), headed=bool(head))
+                args, model, kv=kv, headed=bool(head))
         except fitcontext.DoesNotFit as why:
             say(f"{model}: {why}")
             unmeasured.append(f"{Path(model).name}: {why}")
             continue
         stem = ((str(getattr(args, "serve_label", "") or "")
-                 or str(model).rsplit("/", 1)[-1].removesuffix(".gguf")[:14])
+                 or Path(model).name.removesuffix(".gguf")[:14])
                 + ("-nodraft" if getattr(args, "no_draft", False) else "")
                 + str(getattr(args, "label_suffix", "") or "")
                 + (f"-{level.name}" if level and level.name else "") + fitted)
@@ -383,7 +381,7 @@ def _measured_on(args: Any, named: Sequence[tuple[str, str]], questions: Any, gr
                  already: Any) -> list[str]:
     """Every ``--on`` server measured both halves; the keys of the runs it kept."""
     saved: list[str] = []
-    total_context = args.context or 32768 * max(1, args.parallel)
+    total_context = int(args.context or 0)   # 0: the server is measured as it stands
     for name, url in named:
         for suffix, shortlist in halves(args, name):
             label = f"{name}-{suffix}"
@@ -443,7 +441,7 @@ def cmd_sweep(args: Any) -> int:
         standing.serve = []
         smoke_first(standing)
     already = (resumable(args.kept, questions=len(questions),
-                         context=args.context or 32768 * max(1, args.parallel),
+                         context=int(args.context or 0),
                          parallel=getattr(args, "parallel", 1), since=args.since)
                if args.resume else None)
     try:
@@ -712,20 +710,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     refuse = "--no-queue" in rest
     rest = [a for a in rest if a != "--no-queue"]
-    if "--no-selfcheck" not in rest:
-        began = time.monotonic()
-        try:
-            proved = bench_selfcheck.selfcheck(rest)
-        except bench_selfcheck.SelfCheckFailed as why:
-            warn(f"selfcheck: FAILED -- this command would not get through with a "
-                 f"scripted model, so nothing was loaded:\n{why}")
-            warn("error: the self-check failed; fix it, or pass --no-selfcheck to "
-                 "repeat a run whose path the last one proved")
-            return 4
-        say(f"selfcheck: ok ({time.monotonic() - began:.1f} s) -- {proved}", flush=True)
     if cmd == "sweep":
         llamacpp_note.announce()
-    # After the self-check and before the prefetch and the lock: what this will cost, from
+    # Before the prefetch and the lock: what this will cost, from
     # what is kept, and a refusal over the ceiling before a download or a load is paid
     refused = _estimated(rest)
     if refused:

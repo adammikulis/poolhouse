@@ -13,12 +13,15 @@ import re
 import subprocess
 import sys
 import tokenize
+from collections import Counter
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
+sys.path.insert(0, str(REPO / "tests"))
 
 import affected  # noqa: E402
 import affected_rules as rules  # noqa: E402
@@ -110,6 +113,55 @@ def test_tests_that_enumerate_scripts_follow_any_script_change(toy) -> None:
 def test_a_script_selects_nothing_it_cannot_reach(toy) -> None:
     got = chosen(toy, "scripts/runner")
     assert not got & {"tests/test_import.py", "tests/test_unrelated.py", "tests/test_doc.py"}
+
+
+def test_reference_index_reuses_exact_matches_across_changed_scripts(toy, monkeypatch):
+    files = rules.corpus(toy)
+    expected = {rel: rules.script_tests(files, rel)
+                for rel in ("scripts/runner", "scripts/alpha.py", "scripts/beta.py")}
+    matched = Counter()
+    original = rules.refers
+
+    def counted(source, target):
+        matched[(source.rel, target.rel)] += 1
+        return original(source, target)
+
+    monkeypatch.setattr(rules, "refers", counted)
+    prepared = rules.ReferenceIndex(files)
+    for _ in range(2):
+        for rel, result in expected.items():
+            assert prepared.script_tests(rel) == result
+    assert matched and max(matched.values()) == 1
+
+
+def test_reference_index_owns_an_immutable_source_snapshot(toy):
+    files = rules.corpus(toy)
+    prepared = rules.ReferenceIndex(files)
+    previous = prepared.script_tests("scripts/runner")
+    del files["tests/test_string.py"]
+    files["tests/test_added.py"] = rules.parse("tests/test_added.py", "RUNNER = 'scripts/runner'")
+    files["tests/test_helper.py"] = rules.parse("tests/test_helper.py", "VALUE = 0")
+    assert prepared.script_tests("scripts/runner") == previous
+    fresh, _, _ = rules.script_tests(files, "scripts/runner")
+    assert "tests/test_string.py" not in fresh
+    assert "tests/test_helper.py" not in fresh
+    assert "tests/test_added.py" in fresh
+    with pytest.raises(FrozenInstanceError):
+        files["tests/test_added.py"].text = "VALUE = 0"
+
+
+def test_multiple_changed_scripts_share_one_selection_snapshot(toy, monkeypatch):
+    scanned = []
+    original = rules.corpus
+
+    def counted(root):
+        scanned.append(root)
+        return original(root)
+
+    monkeypatch.setattr(rules, "corpus", counted)
+    got = chosen(toy, "scripts/runner", "scripts/alpha.py")
+    assert {"tests/test_subprocess.py", "tests/test_import.py", "tests/test_chain.py"} <= got
+    assert scanned == [toy]
 
 
 def test_a_script_no_test_reaches_is_unmapped_unless_it_is_python(toy) -> None:
@@ -207,6 +259,61 @@ def test_an_unknown_file_type_still_runs_everything_and_says_why(toy) -> None:
     assert affected.select(toy, ["pyproject.toml"]).reasons["pyproject.toml"]
 
 
+def glossary_toy(toy: Path, with_policy: bool) -> Path:
+    """The toy repository with a glossary test, a Rust test file that one other test names, and optionally the real policy."""
+    (toy / "tests" / "test_glossary.py").write_text("def test_it():\n    assert 1\n", encoding="utf-8")
+    (toy / "tests" / "test_native.py").write_text("def test_it():\n    assert 'native_case.rs'\n", encoding="utf-8")
+    (toy / "app").mkdir()
+    (toy / "app" / "native_case.rs").write_text("struct Duo;\n", encoding="utf-8")
+    (toy / "docs" / "notes").mkdir(parents=True, exist_ok=True)
+    (toy / "docs" / "notes" / "old.rs").write_text("struct Duo;\n", encoding="utf-8")
+    if with_policy:
+        (toy / "contracts").mkdir()
+        for name in ("glossary-rules.toml", "glossary-allowlist.toml"):
+            (toy / "contracts" / name).write_text((REPO / "contracts" / name).read_text(encoding="utf-8"), encoding="utf-8")
+    return toy
+
+
+def test_a_rust_file_a_test_names_still_selects_the_glossary_scan(toy) -> None:
+    root = glossary_toy(toy, with_policy=True)
+    got = chosen(root, "app/native_case.rs")
+    assert got == {"tests/test_native.py", "tests/test_glossary.py"}
+
+
+def test_the_glossary_scan_is_selected_when_its_policy_cannot_be_read(toy) -> None:
+    root = glossary_toy(toy, with_policy=False)
+    assert "tests/test_glossary.py" in chosen(root, "app/native_case.rs")
+
+
+def test_a_file_the_glossary_scan_leaves_out_does_not_select_it(toy) -> None:
+    root = glossary_toy(toy, with_policy=True)
+    assert "tests/test_glossary.py" not in chosen(root, "docs/notes/old.rs")
+    assert "tests/test_glossary.py" not in chosen(root, "app/native_case.rs", deleted=frozenset({"app/native_case.rs"}))
+
+
+def env_toy(toy: Path) -> Path:
+    """The toy repository with the switch-table test, which no module imports."""
+    (toy / "tests" / "test_documented_env_vars.py").write_text("def test_it():\n    assert 1\n", encoding="utf-8")
+    (toy / "src" / "poolhouse").mkdir(parents=True)
+    (toy / "src" / "poolhouse" / "reads.py").write_text("import os\nV = os.environ.get('POOLHOUSE_X')\n", encoding="utf-8")
+    return toy
+
+
+def test_a_changed_source_file_selects_the_switch_table_test_though_no_test_imports_it(toy) -> None:
+    root = env_toy(toy)
+    assert "tests/test_documented_env_vars.py" in chosen(root, "src/poolhouse/reads.py")
+    assert "tests/test_documented_env_vars.py" in chosen(root, "scripts/alpha.py")
+    assert "tests/test_documented_env_vars.py" not in chosen(root, "tests/test_unrelated.py")
+
+
+def test_the_paths_selecting_the_switch_table_test_cover_what_it_scans() -> None:
+    import test_documented_env_vars as env
+    for d in env.SOURCE_DIRS:
+        assert f"{d}/" in affected.ENV_READS, d
+    for f in env.SOURCE_FILES:
+        assert f in affected.ENV_READS, f
+
+
 def recent_scripts(count: int) -> list[str]:
     """Scripts that still exist and were touched by the latest commits that touched scripts/."""
     done = subprocess.run(["git", "log", "-n", "400", "--no-renames", "--name-only", "--format=@@%h",
@@ -279,10 +386,11 @@ def test_every_test_a_plain_search_finds_for_a_recently_changed_script_is_select
     scripts = recent_scripts(30)
     assert len(scripts) >= 5
     files = rules.corpus(REPO)
+    references = rules.ReferenceIndex(files)
     sources = oracle_sources(REPO)
     missed = {}
     for script in scripts:
-        why, _, shared = rules.script_tests(files, script)
+        why, _, shared = references.script_tests(script)
         if not shared and (gap := plain_oracle(script, sources) - set(why)):
             missed[script] = sorted(gap)
     assert not missed

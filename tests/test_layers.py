@@ -25,22 +25,22 @@ REPO = Path(__file__).resolve().parents[1]
 ROOT = REPO / "src" / "poolhouse"
 
 LAYERS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("core", ("activity", "agent_dependency", "agent_hooks", "agent_hooks_stale", "asking", "authority", "briefing", "checks", "command", "command_capture", "contracts", "credentials", "data",
+    ("core", ("activity", "coding_policy", "coding_workspace", "coding_workspace_state", "executable_libraries", "agent_dependency", "agent_hooks", "agent_hooks_stale", "asking", "authority", "authority_caller", "briefing", "checks", "command", "command_capture", "contracts", "credentials", "data",
               "entities", "errors", "extraction", "files", "files_windows", "gate", "geo", "gitstate",
-              "home", "hook_bootstrap", "hook_diagnostics", "hookcheck", "http", "http_cancel", "httpguard", "installed", "interventions", "features", "jobs", "json_objects", "jsonl", "keystore", "keystore_guard", "kvtype", "lan", "leasetable", "legacy", "limits",
-              "runtime", "runtime_launchers", "runtime_git", "runtime_bridges",
-              "lock", "log", "macauth", "sealing",
+              "home", "hook_bootstrap", "hook_diagnostics", "hookcheck", "http", "http_cancel", "httpguard", "installed", "interventions", "features", "jobs", "json_objects", "jsonl", "keystore", "keystore_guard", "kvtype", "lan", "leasetable", "limits",
+              "runtime", "runtime_launchers", "runtime_git", "runtime_inputs", "runtime_bridges", "runtime_identity", "app_bundle", "macho", "node_signing", "disclaim",
+              "lock", "log", "macauth", "maintenance", "maintenance_windows", "sealing",
               "markup", "sandbox",
               "deciders", "desktop", "devbranch", "media", "messages", "net", "node_health", "node_pool", "optional", "paths", "platform", "safenames", "redact", "sentinel",
-              "real_machine", "records", "requests", "person", "private_path", "private_counters", "protectedwrites", "safetext", "secretpaths",
-              "serverkeys",
-              "subscribers", "taint", "tar_libraries", "telemetry", "tool_schema", "trees", "ui", "units", "win32", "windows_private", "worktreerules")),
+              "real_machine", "records", "requests", "person", "private_path", "private_counters", "procscan", "protectedwrites", "safetext", "secretpaths",
+              "serverkeys", "spawned",
+              "studio_launch", "subscribers", "taint", "tar_libraries", "telemetry", "tool_schema", "trees", "ui", "unix_socket", "units", "win32", "windows_private", "worktreerules")),
     ("model", ("client", "decide", "hub", "spec", "speech")),
     ("graph", ("board_names", "graph")),
     ("machine", ("doctor", "fleet", "serve", "setup", "studio")),
-    ("tools", ("coordination", "agent", "chat", "chatpolicy", "claude", "cli", "codex", "coding", "decide_cli",
-               "do", "guard", "harness", "harness_claims", "harnessid", "harnessing", "harnesshook", "harnesspolicy", "mcp", "migrate", "migrate_paths", "migrate_scan", "memory", "reputation", "inbox", "roles", "rules",
-               "api", "testfarm", "workspace", "pi", "features_cli", "board", "node_app", "device_host", "device_setup", "node_binary", "node_build", "node_join", "node_join_check", "node_key", "node_launch", "node_permission", "node_signing", "node_supervise", "build_update", "runtime_await", "runtime_board", "runtime_cli", "runtime_coalesce", "runtime_deploy", "runtime_host", "runtime_stale", "runtime_source", "runtime_store", "runtime_trust", "runtime_unmerged")),
+    ("tools", ("coordination", "agent", "chat", "chatpolicy", "claude", "cli", "codex", "coding", "coding_actions", "decide_cli", "pi_tools",
+               "do", "guard", "harness", "harness_claims", "harnessid", "harnessing", "harnesshook", "harnesspolicy", "mcp", "memory", "reputation", "inbox", "roles", "rules",
+               "api", "testfarm", "workspace", "pi", "features_cli", "board", "node_app", "device_host", "device_setup", "node_binary", "node_build", "node_join", "node_join_check", "pool_cli", "node_key", "node_launch", "node_permission", "node_supervise", "build_update", "runtime_await", "runtime_board", "runtime_cli", "runtime_coalesce", "runtime_deploy", "runtime_host", "runtime_stale", "runtime_source", "runtime_store", "runtime_trust", "runtime_unmerged")),
     ("experimental", ("backend", "bench", "datasheet", "draft", "gguf", "gym", "ingest", "redteam", "scrape", "sources", "surface",
                       "testing", "train", "vision", "walk", "web", "world")),
 )
@@ -61,13 +61,12 @@ RANK = {package: height for height, (_, packages) in enumerate(LAYERS)
 RANK["graph_extras"] = RANK["bench"]
 
 KNOWN = {
+    ("fleet", "coding_actions"),
     ("fleet", "serve"),
-    ("fleet", "setup"),
     ("graph", "serve"),
     ("hub", "serve"),
     ("serve", "fleet"),
     ("serve", "setup"),
-    ("setup", "fleet"),
     ("setup", "serve"),
 }
 
@@ -116,6 +115,20 @@ def _imports() -> dict[tuple[str, str], set[str]]:
     return found
 
 
+def imported(path: Path) -> set[str]:
+    """The absolute module names a file imports; ``from poolhouse.x import y`` counts as ``poolhouse.x`` and ``poolhouse.x.y``."""
+    found: set[str] = set()
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"), str(path))):
+        if isinstance(node, ast.Import):
+            found |= {alias.name for alias in node.names}
+        elif isinstance(node, ast.ImportFrom):
+            assert not node.level, f"{path}: a relative import"
+            if node.module != "poolhouse":
+                found.add(node.module or "")
+            found |= {f"{node.module}.{alias.name}" for alias in node.names}
+    return found
+
+
 def _packages() -> set[str]:
     return {_package_of_file(path) for path in ROOT.rglob("*.py") if path != ROOT / "__init__.py"}
 
@@ -127,6 +140,15 @@ def _violations(edges: dict[tuple[str, str], set[str]]) -> set[tuple[str, str]]:
         if RANK[source] < RANK[target] or (RANK[source] == RANK[target] and (target, source) in edges):
             out.add((source, target))
     return out
+
+
+def test_the_testfarm_model_imports_only_the_standard_library() -> None:
+    files = sorted((ROOT / "testfarm" / "model").glob("*.py"))
+    assert files, "poolhouse.testfarm.model holds no module"
+    for path in files:
+        outside = {name for name in imported(path)
+                   if name.split(".")[0] not in sys.stdlib_module_names and not name.startswith("poolhouse.testfarm.model")}
+        assert not outside, f"{path.relative_to(REPO)} imports {sorted(outside)}; the model is standard library only"
 
 
 def test_every_package_is_placed_in_a_layer() -> None:
@@ -161,7 +183,7 @@ def _loaded(module: str, then: str = "pass") -> set[str]:
 
 
 def test_a_client_does_not_load_the_fleet() -> None:
-    unwanted = {"poolhouse.fleet.daemon", "poolhouse.fleet.discovery"}
+    unwanted = {"poolhouse.fleet.daemon"}
     for module in ("poolhouse.client", "poolhouse.hub", "poolhouse.serve.cli"):
         pulled = _loaded(module) & unwanted
         assert not pulled, f"{module} loads {sorted(pulled)}"

@@ -105,7 +105,7 @@ def test_an_ordinary_name_is_not_marked(name):
 def test_a_model_from_an_unlisted_publisher_is_refused_and_asks_a_person(stand):
     server = stand(repos("maker/thing-GGUF"))
     with pytest.raises(admission.NotApproved) as raised:
-        hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     said = SENTENCE.format(who="maker", repo="maker/thing-GGUF", commit=server.commit("maker/thing-GGUF")[:12])
     assert str(raised.value).startswith(said)
     assert server.downloads == {} and pins() == {}
@@ -121,22 +121,22 @@ def test_a_refusal_is_not_lifted_by_asking_again_or_by_a_denial(stand):
     server = stand(repos("maker/thing-GGUF"))
     for _ in range(2):
         with pytest.raises(admission.NotApproved):
-            hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+            hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     assert len(asked()) == 1
     (waiting,) = asked()
     requests.answer(waiting.id, "deny", waiting.fingerprint, "terminal",
                     requests.Context(terminal=(True, True), env={}))
     with pytest.raises(admission.NotApproved):
-        hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     assert server.downloads == {}
 
 
 def test_a_person_approves_one_repository_at_one_commit_and_the_pin_records_both(stand):
     server = stand(repos("maker/thing-GGUF"))
     with pytest.raises(admission.NotApproved):
-        hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     assert approve("model_publisher") == 1
-    got = hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+    got = hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     assert got.name == FILE and server.downloads
     commit = server.commit("maker/thing-GGUF")
     (pin,) = pins().values()
@@ -149,16 +149,16 @@ def test_an_approval_covers_neither_another_commit_nor_another_repository_of_the
     held = {**repos("maker/thing-GGUF"), **repos("maker/other-GGUF")}
     server = stand(held)
     with pytest.raises(admission.NotApproved):
-        hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     approve("model_publisher")
-    hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+    hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     with pytest.raises(admission.NotApproved):
-        hub.pull(f"hf:maker/other-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:maker/other-GGUF/{FILE}")
     server.moved["maker/thing-GGUF"] = 1
     with pytest.raises(admission.NotApproved):
-        hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     approve("model_publisher")
-    assert hub.pull(f"hf:maker/other-GGUF/{FILE}", members=False).name == FILE
+    assert hub.pull(f"hf:maker/other-GGUF/{FILE}").name == FILE
 
 
 def test_an_agent_cannot_approve_a_publisher_even_where_answers_are_delegated(stand, monkeypatch):
@@ -166,7 +166,7 @@ def test_an_agent_cannot_approve_a_publisher_even_where_answers_are_delegated(st
     monkeypatch.delenv(authority.FLOOR_ENV, raising=False)
     assert authority.state_of("requests.answer") == authority.DELEGATED
     with pytest.raises(admission.NotApproved):
-        hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     (waiting,) = asked()
     for env in ({"CLAUDECODE": "1"}, {"POOLHOUSE_AGENT": "claude-x"}):
         with pytest.raises(person.HumanRequired):
@@ -176,7 +176,7 @@ def test_an_agent_cannot_approve_a_publisher_even_where_answers_are_delegated(st
         requests.answer(waiting.id, "approve", waiting.fingerprint, "ui",
                         requests.Context(env={"CLAUDECODE": "1"}))
     with pytest.raises(admission.NotApproved):
-        hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     assert server.downloads == {}
 
 
@@ -192,15 +192,15 @@ def test_a_request_in_other_words_is_not_an_approval_of_the_pull(stand):
                ("host", server.url.split("//", 1)[1]))))
     assert approve("model_publisher") == 1
     with pytest.raises(admission.NotApproved):
-        hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     assert server.downloads == {}
     assert approve("model_publisher") == 1
-    assert hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False).name == FILE
+    assert hub.pull(f"hf:maker/thing-GGUF/{FILE}").name == FILE
 
 
 def test_a_known_publisher_is_fetched_without_asking(stand):
     server = stand(repos("unsloth/thing-GGUF"))
-    got = hub.pull(f"hf:unsloth/thing-GGUF/{FILE}", members=False)
+    got = hub.pull(f"hf:unsloth/thing-GGUF/{FILE}")
     assert got.name == FILE and server.downloads
     assert asked() == [] and requests.list_requests() == []
     (pin,) = pins().values()
@@ -211,7 +211,7 @@ def test_a_lookalike_of_a_known_publisher_is_asked_about(stand):
     held = {"Unsloth/thing-GGUF": {FILE: gguf_bytes(extra=4100)}}
     server = stand(held)
     with pytest.raises(admission.NotApproved, match="This model is from Unsloth"):
-        hub.pull(f"hf:Unsloth/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:Unsloth/thing-GGUF/{FILE}")
     assert server.downloads == {}
 
 
@@ -219,19 +219,19 @@ def test_a_lookalike_of_a_known_publisher_is_asked_about(stand):
 def test_an_abliterated_repository_of_a_known_publisher_asks(stand):
     server = stand(repos("unsloth/thing-abliterated-GGUF"))
     with pytest.raises(admission.NotApproved, match="changed to answer what the original would refuse"):
-        hub.pull(f"hf:unsloth/thing-abliterated-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:unsloth/thing-abliterated-GGUF/{FILE}")
     assert server.downloads == {}
     (waiting,) = asked()
     assert waiting.human_only and waiting.reason.endswith("Use it anyway?")
     assert approve("model_publisher") == 1
-    assert hub.pull(f"hf:unsloth/thing-abliterated-GGUF/{FILE}", members=False).name == FILE
+    assert hub.pull(f"hf:unsloth/thing-abliterated-GGUF/{FILE}").name == FILE
 
 
 def test_an_uncensored_file_in_an_ordinary_repository_asks(stand):
     name = "thing-uncensored-Q4_K_M.gguf"
     server = stand(repos("google/thing-GGUF", file=name))
     with pytest.raises(admission.NotApproved, match="changed to answer"):
-        hub.pull(f"hf:google/thing-GGUF/{name}", members=False)
+        hub.pull(f"hf:google/thing-GGUF/{name}")
     assert server.downloads == {}
 
 
@@ -239,7 +239,7 @@ def test_an_uncensored_file_in_an_ordinary_repository_asks(stand):
 def test_a_floating_revision_is_resolved_and_every_request_names_the_commit(stand):
     server = stand(repos("unsloth/thing-GGUF"))
     commit = server.commit("unsloth/thing-GGUF")
-    hub.pull(f"hf:unsloth/thing-GGUF/{FILE}", members=False)
+    hub.pull(f"hf:unsloth/thing-GGUF/{FILE}")
     paths = [path for _, path, _, _ in server.hub_seen]
     assert any(f"/resolve/{commit}/" in path for path in paths)
     assert not any("/main" in path.split("?")[0] for path in paths if "/resolve/" in path or "/tree/" in path)
@@ -250,7 +250,7 @@ def test_a_floating_revision_is_resolved_and_every_request_names_the_commit(stan
 def test_a_reference_names_a_commit_as_written(stand):
     server = stand(repos("unsloth/thing-GGUF"))
     commit = server.commit("unsloth/thing-GGUF")
-    hub.pull(f"hf:unsloth/thing-GGUF/{FILE}@{commit}", members=False)
+    hub.pull(f"hf:unsloth/thing-GGUF/{FILE}@{commit}")
     assert not any("/revision/" in path for _, path, _, _ in server.hub_seen)
     (pin,) = pins().values()
     assert pin.commit == commit
@@ -260,35 +260,35 @@ def test_a_reference_names_a_commit_as_written(stand):
 def test_other_bytes_for_a_commit_already_pulled_are_refused_and_quarantined(stand):
     held = repos("unsloth/thing-GGUF")
     server = stand(held)
-    hub.pull(f"hf:unsloth/thing-GGUF/{FILE}", members=False)
+    hub.pull(f"hf:unsloth/thing-GGUF/{FILE}")
     before = dict(server.downloads)
     held["unsloth/thing-GGUF"][FILE] = gguf_bytes(extra=9000)
     with pytest.raises(admission.DigestChanged, match="quarantined by sentinel"):
-        hub.pull(f"hf:unsloth/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:unsloth/thing-GGUF/{FILE}")
     assert server.downloads == before
     commit = server.commit("unsloth/thing-GGUF")
     key = f"hub:unsloth/thing-GGUF/{FILE}@{commit}"
     assert sentinel.default().store.state_of("model", key) == sentinel.State.QUARANTINED
     with pytest.raises(admission.DigestChanged):
-        hub.pull(f"hf:unsloth/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:unsloth/thing-GGUF/{FILE}")
     assert len(pins()) == 1
 
 
 def test_other_bytes_under_a_new_commit_ask_a_person_and_the_same_bytes_do_not(stand):
     held = repos("unsloth/thing-GGUF")
     server = stand(held)
-    hub.pull(f"hf:unsloth/thing-GGUF/{FILE}", members=False)
+    hub.pull(f"hf:unsloth/thing-GGUF/{FILE}")
     server.moved["unsloth/thing-GGUF"] = 1
-    assert hub.pull(f"hf:unsloth/thing-GGUF/{FILE}", members=False).name == FILE
+    assert hub.pull(f"hf:unsloth/thing-GGUF/{FILE}").name == FILE
     assert asked() == []
     server.moved["unsloth/thing-GGUF"] = 2
     held["unsloth/thing-GGUF"][FILE] = gguf_bytes(extra=9000)
     before = dict(server.downloads)
     with pytest.raises(admission.NotApproved, match="is not the file Poolhouse pulled from"):
-        hub.pull(f"hf:unsloth/thing-GGUF/{FILE}", members=False)
+        hub.pull(f"hf:unsloth/thing-GGUF/{FILE}")
     assert server.downloads == before
     assert approve("model_publisher") == 1
-    hub.pull(f"hf:unsloth/thing-GGUF/{FILE}", members=False)
+    hub.pull(f"hf:unsloth/thing-GGUF/{FILE}")
     newest = max(pins().values(), key=lambda p: p.pinned_at)
     assert newest.commit == server.commit("unsloth/thing-GGUF") and newest.source_ref.endswith(FILE)
 
@@ -296,7 +296,7 @@ def test_other_bytes_under_a_new_commit_ask_a_person_and_the_same_bytes_do_not(s
 # -- llama-server downloads nothing ----------------------------------------------------------
 def test_a_draft_from_an_unlisted_publisher_is_refused_before_the_server_is_started(stand, tmp_path):
     stand({**repos("unsloth/thing-GGUF"), **repos("maker/head-GGUF", file="head-Q8_0.gguf")})
-    spec = ServerSpec(model="/m/w.gguf", draft="hf:maker/head-GGUF")
+    spec = ServerSpec(context=4096, model="/m/w.gguf", draft="hf:maker/head-GGUF")
     with pytest.raises(ServerFailed, match=r"could not fetch the draft.*This model is from maker"):
         LlamaServerBackend.resolved_draft(spec)
     approve("model_publisher")
@@ -308,10 +308,10 @@ def test_a_draft_from_an_unlisted_publisher_is_refused_before_the_server_is_star
 
 def test_an_unfetched_reference_never_reaches_the_command_line(tmp_path):
     backend = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=""))
-    for spec in (ServerSpec(model="hf:maker/x-GGUF/w.gguf"),
-                 ServerSpec(model="/m/w.gguf", draft="hf:maker/x-GGUF"),
-                 ServerSpec(model="/m/w.gguf", draft="hf:maker/x-GGUF/h.gguf"),
-                 ServerSpec(model="/m/w.gguf", mmproj="hf:maker/x-GGUF/mmproj-F16.gguf")):
+    for spec in (ServerSpec(context=4096, model="hf:maker/x-GGUF/w.gguf"),
+                 ServerSpec(context=4096, model="/m/w.gguf", draft="hf:maker/x-GGUF"),
+                 ServerSpec(context=4096, model="/m/w.gguf", draft="hf:maker/x-GGUF/h.gguf"),
+                 ServerSpec(context=4096, model="/m/w.gguf", mmproj="hf:maker/x-GGUF/mmproj-F16.gguf")):
         with pytest.raises(ServerFailed, match="must be fetched before serving"):
             backend.command(spec)
 
@@ -332,16 +332,16 @@ def test_the_download_flags_and_variables_of_llama_server_are_never_passed(monke
 # -- the projector is checked at load like the model and the draft ----------------------------
 def test_a_projector_that_is_not_pinned_waits_for_a_person_at_load(tmp_path):
     from poolhouse.serve.ports import free_port
-    from poolhouse.testing.fakes import fake_llama_binary
+    from poolhouse.testing.canned import canned_binary
 
     model = tmp_path / "model.gguf"
     model.write_bytes(b"GGUF" + b"\x00" * 64)
     approved(model)
     projector = tmp_path / "mmproj-F16.gguf"
     projector.write_bytes(b"GGUF" + b"\x01" * 64)
-    manager = ServerManager(backend=LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
+    manager = ServerManager(backend=LlamaServerBackend(binary=canned_binary(tmp_path)),
                             state_file=tmp_path / "servers.json")
-    spec = ServerSpec(model=model, mmproj=projector, port=free_port())
+    spec = ServerSpec(context=4096, model=model, mmproj=projector, port=free_port())
     with pytest.raises(guarded.SentinelRefused, match=r"mmproj-F16\.gguf was not downloaded by Poolhouse"):
         manager.lease(spec, roam=False, timeout=30.0, check_flags=False, preflight=False,
                       warmup_request=False)
@@ -350,7 +350,7 @@ def test_a_projector_that_is_not_pinned_waits_for_a_person_at_load(tmp_path):
 
 def test_a_projector_that_no_longer_matches_its_pin_is_refused_at_load(tmp_path):
     from poolhouse.serve.ports import free_port
-    from poolhouse.testing.fakes import fake_llama_binary
+    from poolhouse.testing.canned import canned_binary
 
     model = tmp_path / "model.gguf"
     model.write_bytes(b"GGUF" + b"\x00" * 64)
@@ -359,9 +359,9 @@ def test_a_projector_that_no_longer_matches_its_pin_is_refused_at_load(tmp_path)
     approved(model)
     approved(projector)
     projector.write_bytes(b"GGUF" + b"\x02" * 64)
-    manager = ServerManager(backend=LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
+    manager = ServerManager(backend=LlamaServerBackend(binary=canned_binary(tmp_path)),
                             state_file=tmp_path / "servers.json")
-    spec = ServerSpec(model=model, mmproj=projector, port=free_port())
+    spec = ServerSpec(context=4096, model=model, mmproj=projector, port=free_port())
     with pytest.raises(guarded.SentinelRefused, match="does not match its pin"):
         manager.lease(spec, roam=False, timeout=30.0, check_flags=False, preflight=False,
                       warmup_request=False)

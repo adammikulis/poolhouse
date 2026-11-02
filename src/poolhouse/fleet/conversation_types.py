@@ -11,6 +11,24 @@ from poolhouse.fleet.conversation_settings import checked
 TITLE_CHARS = 60
 ROLES = ("system", "user", "assistant")
 
+
+@dataclass(frozen=True, slots=True)
+class CodingState:
+    """Immutable current settings bound to one coding conversation."""
+
+    conversation: str
+    revision: int
+    model: str
+    settings: tuple[tuple[str, Any], ...]
+
+    @classmethod
+    def from_conversation(cls, conversation: Conversation) -> CodingState:
+        if not conversation.settings["harness"] or not conversation.settings["project_id"]:
+            raise ValueError("Choose a registered project for this coding session")
+        return cls(conversation.id, conversation.policy_revision, conversation.model,
+                   tuple(sorted(conversation.settings.items())))
+
+
 @dataclass
 class Message:
     role: str
@@ -29,12 +47,13 @@ class Conversation:
     title: str = ""
     model: str = ""
     created: float = field(default_factory=time.time)
+    policy_revision: int = 0
     messages: list[Message] = field(default_factory=list)
     settings: dict[str, Any] = field(default_factory=checked)
 
     def public(self, *, full: bool = True) -> dict[str, Any]:
         out: dict[str, Any] = {"version": 1, "id": self.id, "title": self.title,
-                               "settings": dict(self.settings),
+                               "settings": dict(self.settings), "policy_revision": self.policy_revision,
                                "model": self.model, "created": self.created,
                                "count": len(self.messages)}
         if full:

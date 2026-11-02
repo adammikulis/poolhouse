@@ -1,6 +1,5 @@
 <style>
 history-view { display:contents; }
-history-view .workspace { padding:calc(28px * var(--ui-density,1)) calc(32px * var(--ui-density,1)); }
 history-view .activity-heading { display:flex; justify-content:space-between; align-items:center; margin-bottom:22px; }
 history-view .activity-heading h1 { margin:0 0 8px; } history-view .activity-heading p { margin:0; }
 history-view .history-controls { background:var(--bg-raised); border:1px solid var(--line); border-radius:14px; padding:calc(18px * var(--ui-density,1)); }
@@ -31,8 +30,8 @@ history-view .history-links { display:flex; flex-wrap:wrap; gap:12px; margin-top
 @media(max-width:640px){history-view .history-action dl{grid-template-columns:80px minmax(0,1fr)}}
 </style>
 <template>
-<section class="workspace" hidden>
-  <header class="activity-heading"><div><h1>Activity</h1></div></header>
+<section class="workspace page-shell" hidden>
+  <header class="activity-heading page-heading"><div><h1>Activity</h1></div></header>
   <div class="history-controls">
     <label>Agent<select id="history-agent"><option value="">All agents</option></select></label>
     <label>Reputation view<select id="history-dimension"><option value="family">Model family</option><option value="agent">Overall agent</option><option value="model">Exact model and runtime</option></select></label>

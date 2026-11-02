@@ -31,7 +31,7 @@ from poolhouse.fleet.jobs import DaemonError, JobRunner
 from poolhouse.fleet.remote import Member, MemberError
 from poolhouse.fleet.settings import Settings
 from poolhouse.http import Options, Server, ServerError, request_bytes
-from tests.pool_support import any_command, join_pool_by_passphrase
+from tests.command_support import any_command
 
 
 def _free_port() -> int:
@@ -780,7 +780,6 @@ def test_serve_forever_prefers_the_settings_name_over_the_hostname(tmp_path):
     root = tmp_path / "traind"
     (root / "files").mkdir(parents=True)
     Settings(name="briarcombe-loop").save(root / "settings.json")
-    join_pool_by_passphrase("copper willow river", group="default")
     port = _free_port()
     repo = Path(__file__).resolve().parent.parent
     env = {**os.environ, "PYTHONPATH": str(repo / "src"), "PYTHONUNBUFFERED": "1"}
@@ -789,7 +788,7 @@ def test_serve_forever_prefers_the_settings_name_over_the_hostname(tmp_path):
     proc = subprocess.Popen(
         [sys.executable, "-m", "poolhouse.fleet.daemon",
          "--root", str(root), "--host", "127.0.0.1", "--port", str(port),
-         "--no-web", "--no-announce"],
+         "--no-web"],
         env=env, stdout=fh, stderr=subprocess.STDOUT)
     client = Member(f"http://127.0.0.1:{port}", "")
     deadline = time.time() + 20
@@ -815,7 +814,6 @@ def test_serve_forever_prefers_the_settings_name_over_the_hostname(tmp_path):
 
     assert health is not None and health["name"] == "briarcombe-loop"
     assert health["name"] != socket.gethostname()
-    assert "  pool default" in log.read_text(errors="replace")
 
 
 def test_a_job_can_write_something_the_coordinator_can_actually_pull(daemon):
@@ -963,44 +961,6 @@ class TestWhatAMachineIsDoing:
 
         got = stdlib_device_report()
         assert got["ram_used_gb"] <= got["ram_gb"]
-
-
-def test_every_pool_advertiser_is_stopped_at_shutdown():
-    """A machine in three pools runs three advertisers; leaving stops all of them."""
-    from poolhouse.fleet.daemon import _stop_advertisers
-
-    class Fake:
-        def __init__(self) -> None:
-            self.stops = 0
-
-        def stop(self) -> None:
-            self.stops += 1
-
-    first, second, third = Fake(), Fake(), Fake()
-    advertisers = {"alpha": first, "beta": second, "gamma": third}
-    _stop_advertisers(advertisers)
-
-    assert [first.stops, second.stops, third.stops] == [1, 1, 1]
-    assert advertisers == {}
-
-
-def test_an_advertiser_that_raises_does_not_leave_the_others_running():
-    from poolhouse.fleet.daemon import _stop_advertisers
-
-    class Angry:
-        def stop(self) -> None:
-            raise RuntimeError("socket already gone")
-
-    class Fake:
-        def __init__(self) -> None:
-            self.stops = 0
-
-        def stop(self) -> None:
-            self.stops += 1
-
-    last = Fake()
-    _stop_advertisers({"alpha": Angry(), "beta": last})
-    assert last.stops == 1
 
 
 # -- speech --------------------------------------------------------------

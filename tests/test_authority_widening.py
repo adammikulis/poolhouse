@@ -56,9 +56,10 @@ def test_a_name_the_node_never_recorded_passes_no_delegated_gate():
 
 
 def test_a_name_with_a_parent_record_is_a_helper_not_a_lead():
+    """A local role record authenticates neither the alleged root nor its helper."""
     record("agent-aaaaaa")
     record("claude-bbbbbb", parent="agent-aaaaaa")
-    assert passes("agent-aaaaaa")
+    assert not passes("agent-aaaaaa")
     assert not passes("claude-bbbbbb")
 
 

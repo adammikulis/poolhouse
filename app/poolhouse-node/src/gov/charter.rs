@@ -48,13 +48,14 @@ pub fn floor_class(kind: &str) -> Option<Class> {
     }
 }
 
-/// The data acts that cannot be undone once done.
-pub const IRREVERSIBLE_DATA_ACTS: [&str; 2] = ["file_delete", "shard_consent"];
+/// The data acts that cannot be undone once done. Consent to sharding is not one: it is turned off again, and the node's own table of
+/// what an action costs (`approvals::content::risk_of`) calls it sensitive.
+pub const IRREVERSIBLE_DATA_ACTS: [&str; 1] = ["file_delete"];
 
-/// How long the data act ``action``, approved by keys at ``levels``, waits for a key to cancel it: a day when it cannot be undone and the
-/// highest level that approved it is `Computer` or `Weak`, none otherwise (a `Native` or `Phone` key is above the computer).
-pub fn data_act_wait_ms(action: &str, levels: &[Level]) -> i64 {
-    if IRREVERSIBLE_DATA_ACTS.contains(&action) && levels.iter().max().is_some_and(|top| *top <= Level::Computer) { DATA_WINDOW_MS } else { 0 }
+/// How long the data act ``action`` waits for a key to cancel it after it is approved: a day when it cannot be undone, none otherwise.
+/// Every key that approves is a `Computer` key or a typed yes, because no member can check a higher level (keys document C6).
+pub fn data_act_wait_ms(action: &str) -> i64 {
+    if IRREVERSIBLE_DATA_ACTS.contains(&action) { DATA_WINDOW_MS } else { 0 }
 }
 
 /// The lowest level at which an admin key counts for each class of act. A floor is never `Weak`.
@@ -75,12 +76,12 @@ impl Floors {
         }
     }
 
-    /// The floors of a pool founded by ``admins``: the lowest level among its admin keys for routine acts, the highest for sensitive acts
-    /// and governance; none when no admin key is above `Weak`.
-    pub fn default_for(admins: &[AdminKey]) -> Option<Floors> {
-        let levels: Vec<Level> = admins.iter().filter(|k| k.role == Role::Admin && k.assurance > Level::Weak).map(|k| k.assurance).collect();
-        let (lowest, highest) = (levels.iter().min().copied()?, levels.iter().max().copied()?);
-        Some(Floors { routine: lowest, sensitive: highest, governance: highest })
+}
+
+impl Default for Floors {
+    /// Every floor is `Computer`, the one level a listed key can hold: a floor selects the counting keys and nothing more.
+    fn default() -> Floors {
+        Floors { routine: Level::Computer, sensitive: Level::Computer, governance: Level::Computer }
     }
 }
 
@@ -136,6 +137,9 @@ impl Default for Holds {
 pub struct First {
     pub cert: String,
     pub name: String,
+    /// Whether the keys that accepted the charter let this device admit devices for thirty days without asking them again: the founding
+    /// computer's delegate, which the one answer to the founding card gives.
+    pub delegate: bool,
 }
 
 /// The longest name a device carries in a charter.
@@ -144,7 +148,13 @@ pub const MOST_DEVICE_NAME: usize = 40;
 impl First {
     /// The first device of the device whose certificate is ``der``, called ``name``.
     pub fn of(der: &[u8], name: &str) -> First {
-        First { cert: crate::fsutil::hex(der), name: name.chars().filter(|c| !c.is_control()).take(MOST_DEVICE_NAME).collect() }
+        First { cert: crate::fsutil::hex(der), name: name.chars().filter(|c| !c.is_control()).take(MOST_DEVICE_NAME).collect(), delegate: false }
+    }
+
+    /// This first device, with the founding computer's thirty days as a delegate.
+    pub fn delegating(mut self) -> First {
+        self.delegate = true;
+        self
     }
 
     /// The certificate as DER and its fingerprint, when it is a device certificate of an Ed25519 key spelled in lower-case hex, so one
@@ -197,10 +207,9 @@ impl Charter {
     /// An epoch-1 charter with the default thresholds and holds; the keys are sorted.
     pub fn new(name: &str, policy: Policy, project: &str, mut admins: Vec<AdminKey>, first: First, at_ms: u64) -> Charter {
         admins.sort_by(|a, b| a.key.cmp(&b.key));
-        let floors = Floors::default_for(&admins).unwrap_or(Floors { routine: Level::Computer, sensitive: Level::Computer, governance: Level::Computer });
         Charter {
             v: VERSION, epoch: 1, name: name.into(), policy, mode: Mode::Admins, project: project.into(), first, admins, thresholds: Thresholds::default(),
-            holds: Holds::default(), floors, recover_delay_days: 7, succession: None, from: None, at_ms,
+            holds: Holds::default(), floors: Floors::default(), recover_delay_days: 7, succession: None, from: None, at_ms,
         }
     }
 
@@ -253,7 +262,7 @@ impl Charter {
 
     /// Whether the admin key ``key`` counts for ``class``: an admin role key at or above the floor of the class.
     pub fn counts(&self, key: &AdminKey, class: Class) -> bool {
-        key.role == Role::Admin && key.assurance >= self.floors.of(class)
+        key.role == Role::Admin && key.level() >= self.floors.of(class)
     }
 
     /// The keys that count for ``class``.
@@ -268,7 +277,7 @@ impl Charter {
 
     /// Whether a listed admin key is at or above ``level``.
     pub fn holds_level(&self, level: Level) -> bool {
-        self.admins.iter().any(|k| k.role == Role::Admin && k.assurance >= level)
+        self.admins.iter().any(|k| k.role == Role::Admin && k.level() >= level)
     }
 
     /// How many distinct people hold a key that counts for ``class``.
@@ -359,7 +368,7 @@ impl Charter {
         if [f.routine, f.sensitive, f.governance].contains(&Level::Weak) {
             return bad("a floor is never a typed yes: a pool needs a key that counts");
         }
-        if !self.admins.iter().any(|k| k.role == Role::Admin && k.assurance > Level::Weak) {
+        if !self.admins.iter().any(|k| k.role == Role::Admin && k.level() > Level::Weak) {
             return bad(NO_COUNTING_KEY);
         }
         if ![Class::Routine, Class::Sensitive, Class::Governance].into_iter().all(|c| self.holds_level(f.of(c))) {

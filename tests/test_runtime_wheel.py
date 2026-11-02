@@ -74,7 +74,7 @@ def test_build_uses_the_committed_snapshot_of_the_named_commit(tmp_path, monkeyp
     monkeypatch.setattr(runtime_wheel, "_run", run)
     monkeypatch.setattr(runtime_wheel.runtime_git, "object_view", lambda checkout, view: None)
     chosen = runtime.Runtime(tmp_path / "new-prefix", COMMIT, "0.1.0", runtime.identity())
-    monkeypatch.setattr(runtime_wheel, "prepare", lambda wheel, commit, timeout, **kw: chosen)
+    monkeypatch.setattr(runtime_wheel, "_candidate_prepare", lambda wheel, commit, checkout, **kw: chosen)
     stage = tmp_path / "stage"
     stage.mkdir()
     assert runtime_wheel.build(tmp_path, COMMIT, stage, timeout=7, target=runtime_wheel.Target(host=host)) == chosen

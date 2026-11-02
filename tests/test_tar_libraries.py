@@ -48,6 +48,41 @@ class LibraryArchiveTests(unittest.TestCase):
             self.assertFalse(found.is_symlink())
             self.assertEqual(found.read_bytes(), b"library")
 
+    def test_macos_dylib_chain_is_materialized_only_in_explicit_library_flow(self):
+        archive = self.archive([
+            ("bin/libcore.dylib", tarfile.SYMTYPE, "libcore.0.dylib"),
+            ("bin/libcore.0.dylib", tarfile.SYMTYPE, "libcore.0.1.dylib"),
+            ("bin/libcore.0.1.dylib", tarfile.REGTYPE, b"library"),
+        ])
+        self.assertTrue(audit_archive(archive))
+        self.assertFalse(audit_archive(archive, library_links=True))
+        into = self.root / "unpacked"
+        tar_libraries.unpack(archive, into)
+        for name in ("libcore.dylib", "libcore.0.dylib", "libcore.0.1.dylib"):
+            found = into / "bin" / name
+            self.assertFalse(found.is_symlink())
+            self.assertEqual(found.read_bytes(), b"library")
+
+    def test_macos_aliases_cannot_escape_or_point_at_nonlibraries(self):
+        hostile = [
+            [("bin/lib.dylib", tarfile.SYMTYPE, "/outside/lib.dylib")],
+            [("bin/lib.dylib", tarfile.SYMTYPE, "../../outside/lib.dylib")],
+            [("bin/lib.dylib", tarfile.SYMTYPE, "missing.dylib")],
+            [("bin/lib.dylib", tarfile.SYMTYPE, "other.dylib"),
+             ("bin/other.dylib", tarfile.SYMTYPE, "lib.dylib")],
+            [("bin/lib.dylib", tarfile.SYMTYPE, "tool"),
+             ("bin/tool", tarfile.REGTYPE, b"executable")],
+            [("bin/lib.dylib.sh", tarfile.SYMTYPE, "lib.dylib"),
+             ("bin/lib.dylib", tarfile.REGTYPE, b"library")],
+        ]
+        for rows in hostile:
+            with self.subTest(rows=rows):
+                source = self.archive(rows)
+                self.assertTrue(audit_archive(source, library_links=True))
+                with self.assertRaises(Unsafe):
+                    tar_libraries.unpack(source, self.root / "hostile")
+                self.assertFalse((self.root / "hostile").exists())
+
     def test_hostile_links_and_devices_are_refused_before_writing(self):
         hostile = [
             [("bin/lib.so", tarfile.SYMTYPE, "/outside/lib.so")],

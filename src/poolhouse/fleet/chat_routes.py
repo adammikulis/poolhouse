@@ -4,11 +4,17 @@ from __future__ import annotations
 
 from poolhouse import agent_dependency
 
+from . import roster
 from .chat import find, reply_parts, targets
 from .conversation_routes import ConversationRoutes
-from .discovery import derive_token, load_pool_key
 
 __all__ = ["ChatRoutes"]
+
+
+def _secret(row: dict, root) -> str:
+    """The request secret for one other pool member, or empty when the node authorizes none for it."""
+    member = None if row.get("is_self") else roster.client_for(row, root=root)
+    return member.token if member is not None else ""
 
 
 class ChatRoutes(ConversationRoutes):
@@ -21,9 +27,7 @@ class ChatRoutes(ConversationRoutes):
 
     def _chat(self) -> bool:
         ui = self.ui
-        key = load_pool_key(ui.pool_key_path)
-        available = targets(ui.members() if key is not None else [], ui.serving,
-                            derive_token(key) if key else "")
+        available = targets([{**row, "token": _secret(row, ui.root)} for row in ui.members()], ui.serving)
         if self.method == "GET":
             problem = agent_dependency.problem()
             self.send(200, {"models": [t.public() for t in available], "runtime_ready": not problem,
@@ -35,11 +39,11 @@ class ChatRoutes(ConversationRoutes):
 
     def _say(self, available: list) -> bool:
         from .chat_stream import Transfer, frame, release, reserve
-        try:
-            from .sdk_chat import stream
-        except ImportError:
-            self.send(503, {"error": "chat requires the agents extra: pip install poolhouse[agents]"})
+        problem = agent_dependency.problem()
+        if problem:
+            self.send(503, {"error": problem})
             return True
+        stream = agent_dependency.chat_runtime().stream
         req = self.body()
         target = find(available, str(req.get("model") or ""))
         if target is None:

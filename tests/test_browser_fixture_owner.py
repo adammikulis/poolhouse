@@ -1,0 +1,198 @@
+"""Worker-owned browser lifetime and isolation between application journeys."""
+
+import asyncio
+from contextlib import contextmanager
+from types import SimpleNamespace
+
+import pytest
+import test_coding_browser as coding_fixtures
+import test_fleet_chat_browser as chat_fixtures
+from test_fleet_chat_browser import chat_browser  # noqa: F401
+from test_fleet_usability_browser import usability_page  # noqa: F401
+from test_studio_canvas_browser import studio_browser  # noqa: F401
+
+pytestmark = pytest.mark.slow
+pytest_plugins = ['node_kit']
+
+ORIGIN = 'http://browser-fixture.invalid/'
+
+
+@pytest.mark.parametrize('scenario', [('chat', 'page'), ('coding', 'page'), ('chat', 'route'), ('coding', 'route')])
+def test_browser_setup_failure_closes_daemon_and_driver(browser_owner, tmp_path, monkeypatch, workspace_node, scenario):
+    kind, failure = scenario
+    closed = []
+    close = chat_fixtures.Serving.close
+    pages = browser_owner.pages
+
+    def close_served(served):
+        closed.append(served)
+        close(served)
+
+    @contextmanager
+    def broken_pages():
+        if failure == 'page':
+            raise RuntimeError('page setup failed')
+        with pages() as page:
+            def fail_route(*args, **kwargs):
+                raise RuntimeError('route setup failed')
+            monkeypatch.setattr(page, 'route', fail_route)
+            yield page
+
+    monkeypatch.setattr(chat_fixtures.Serving, 'close', close_served)
+    monkeypatch.setattr(browser_owner, 'pages', broken_pages)
+    fixture = (coding_fixtures.coding_browser.__wrapped__(tmp_path, monkeypatch, browser_owner, workspace_node)
+               if kind == 'coding' else chat_fixtures.chat_browser.__wrapped__(tmp_path, browser_owner))
+    with pytest.raises(RuntimeError, match='setup failed'):
+        next(fixture)
+    assert len(closed) == 1
+    assert browser_owner.client is None
+
+
+def test_coding_then_chat_release_driver_and_isolate_contexts(browser_owner, tmp_path, monkeypatch, workspace_node):
+    coding = coding_fixtures.coding_browser.__wrapped__(tmp_path / 'coding', monkeypatch, browser_owner, workspace_node)
+    try:
+        _served, first, _project = next(coding)
+        first_context = first.context
+        assert first_context.browser is browser_owner.client
+        first.route(ORIGIN + '**', lambda route: route.fulfill(body='<p>coding journey</p>'))
+        first.add_init_script('window.privateCoding = true')
+        first.goto(ORIGIN)
+        first_context.add_cookies([{'name': 'session', 'value': 'private', 'url': ORIGIN}])
+        first.evaluate("localStorage.setItem('coding', 'private'); sessionStorage.setItem('coding', 'private')")
+    finally:
+        coding.close()
+    assert first.is_closed()
+    assert browser_owner.client is None
+
+    async def after_coding():
+        return 'driver released'
+
+    assert asyncio.run(after_coding()) == 'driver released'
+    chat = chat_fixtures.chat_browser.__wrapped__(tmp_path / 'chat', browser_owner)
+    try:
+        _served, second = next(chat)
+        assert second.context is not first_context
+        assert second.context.browser is browser_owner.client
+        second.route(ORIGIN + '**', lambda route: route.fulfill(body='<p>chat journey</p>'))
+        second.goto(ORIGIN)
+        assert second.locator('p').inner_text() == 'chat journey'
+        assert second.context.cookies() == []
+        assert second.evaluate("[localStorage.getItem('coding'), sessionStorage.getItem('coding'), window.privateCoding ?? null]") == [None, None, None]
+    finally:
+        chat.close()
+    assert second.is_closed()
+    assert browser_owner.client is None
+    assert browser_owner.thread.is_alive()
+    assert asyncio.run(after_coding()) == 'driver released'
+
+
+def test_coding_cancellation_failure_still_closes_daemon_and_driver(browser_owner, tmp_path, monkeypatch, workspace_node):
+    closed = []
+    close = coding_fixtures.Serving.close
+
+    def close_served(served):
+        closed.append(served)
+        close(served)
+
+    def fail_cancel():
+        raise RuntimeError('cancellation failed')
+
+    monkeypatch.setattr(coding_fixtures.Serving, 'close', close_served)
+    fixture = coding_fixtures.coding_browser.__wrapped__(tmp_path, monkeypatch, browser_owner, workspace_node)
+    served, page, _project = next(fixture)
+    served.ui.coding_turns = SimpleNamespace(turns={'pending': SimpleNamespace(state='running', cancel=fail_cancel)})
+    with pytest.raises(RuntimeError, match='cancellation failed'):
+        fixture.close()
+    assert closed == [served]
+    assert page.is_closed()
+    assert browser_owner.client is None
+
+
+def test_chat_uses_owner_with_isolated_storage_routes_and_scripts(browser_owner, chat_browser):  # noqa: F811
+    _served, chat = chat_browser
+    assert chat.context.browser is browser_owner.client
+    chat.route(ORIGIN + '**', lambda route: route.fulfill(body='<p>chat journey</p>'))
+    chat.add_init_script('window.privateChat = true')
+    chat.goto(ORIGIN)
+    chat.context.add_cookies([{'name': 'session', 'value': 'private', 'url': ORIGIN}])
+    chat.evaluate("localStorage.setItem('chat', 'private'); sessionStorage.setItem('chat', 'private')")
+    with browser_owner.pages() as other:
+        assert other.context.browser is chat.context.browser
+        assert other.context is not chat.context
+        other.route(ORIGIN + '**', lambda route: route.fulfill(body='<p>next journey</p>'))
+        other.goto(ORIGIN)
+        assert other.locator('p').inner_text() == 'next journey'
+        assert other.context.cookies() == []
+        assert other.evaluate("[localStorage.getItem('chat'), sessionStorage.getItem('chat'), window.privateChat ?? null]") == [None, None, None]
+    assert not chat.is_closed()
+
+
+def test_consumers_share_owner_and_driver_with_private_contexts(browser_owner, studio_browser, usability_page):  # noqa: F811
+    _served, other, _errors = usability_page
+    with studio_browser() as page:
+        assert page.context.browser is browser_owner.client
+        assert other.context.browser is browser_owner.client
+        assert page.context is not other.context
+    assert not other.is_closed()
+
+
+def test_storage_routes_and_init_scripts_do_not_cross_journeys(browser_owner, studio_browser):  # noqa: F811
+    with studio_browser() as first:
+        first.route(ORIGIN + '**', lambda route: route.fulfill(body='<p>first journey</p>'))
+        first.add_init_script('window.privateJourney = true')
+        first.goto(ORIGIN)
+        first.context.add_cookies([{'name': 'session', 'value': 'private', 'url': ORIGIN}])
+        first.evaluate("localStorage.setItem('journey', 'private'); sessionStorage.setItem('journey', 'private')")
+    with studio_browser() as second:
+        assert second.context.browser is browser_owner.client
+        second.context.route(ORIGIN + '**', lambda route: route.fulfill(body='<p>second journey</p>'))
+        second.goto(ORIGIN)
+        assert second.locator('p').inner_text() == 'second journey'
+        assert second.context.cookies() == []
+        assert second.evaluate("[localStorage.getItem('journey'), sessionStorage.getItem('journey'), window.privateJourney ?? null]") == [None, None, None]
+
+
+def test_journey_failure_closes_only_its_context(browser_owner, studio_browser):  # noqa: F811
+    with browser_owner.connection() as client:
+        before = list(client.contexts)
+        with pytest.raises(RuntimeError, match='journey failed'), studio_browser() as page:
+            assert page.context in client.contexts
+            raise RuntimeError('journey failed')
+        assert client.contexts == before
+        assert client.is_connected()
+
+
+def test_page_creation_failure_closes_its_context(browser_owner, studio_browser, monkeypatch):  # noqa: F811
+    with browser_owner.connection() as client:
+        before = list(client.contexts)
+        make_context = client.new_context
+
+        def context_with_failed_page(**options):
+            context = make_context(**options)
+
+            def fail():
+                raise RuntimeError('page creation failed')
+
+            monkeypatch.setattr(context, 'new_page', fail)
+            return context
+
+        monkeypatch.setattr(client, 'new_context', context_with_failed_page)
+        with pytest.raises(RuntimeError, match='page creation failed'), studio_browser():
+            pytest.fail('a page must not be yielded')
+        assert client.contexts == before
+
+
+def test_completed_journey_allows_asyncio_and_an_independent_driver(browser_owner, studio_browser):  # noqa: F811
+    from playwright.sync_api import sync_playwright
+
+    async def answer():
+        return 'independent event loop'
+
+    with studio_browser() as page:
+        assert page.context.browser.is_connected()
+    assert browser_owner.client is None
+    assert asyncio.run(answer()) == 'independent event loop'
+    with sync_playwright() as driver, browser_owner.pages(play=driver) as page:
+        assert page.context.browser.browser_type is driver.chromium
+    assert asyncio.run(answer()) == 'independent event loop'
+    assert browser_owner.thread.is_alive()

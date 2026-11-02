@@ -10,14 +10,15 @@ from collections.abc import Callable
 from pathlib import Path
 
 from poolhouse import agent_hooks
-from poolhouse.board import client, place, session
-from poolhouse.guard.secrets import env_secrets, redact
+from poolhouse.board import client, credentials, session
+from poolhouse.errors import Denied
 from poolhouse.log import say
 from poolhouse.workspace import (
     board_cli,
     codex_native,
     device_metadata,
     limits,
+    notification_context,
     nudge,
     worktree_lifecycle,
 )
@@ -34,13 +35,15 @@ def native_id(value: object) -> str:
     return value
 
 
-def own(node: client.Client, board: str, identifier: str) -> session.Session:
+def own(node: client.Client, board: str, identifier: str, expected: str = '') -> session.Session:
     name = str(node.call("session_lookup", board, harness="codex", session=identifier)["name"])
     if not name:
         raise ValueError('native session has no authenticated workspace registration')
-    found = session.connect(client=node, board=board, agent=name)
+    if expected and name != expected:
+        raise ValueError('assigned session does not own this Codex registration')
+    found = session.Session(node, board, credentials.load(node.state, board, name), name)
     identity = found.whoami()
-    if identity.name != name or identity.harness != 'codex':
+    if identity.name != name or identity.harness != 'codex' or identity.retired:
         raise ValueError('native workspace registration belongs to another harness')
     return found
 
@@ -48,11 +51,7 @@ def own(node: client.Client, board: str, identifier: str) -> session.Session:
 def assigned_session(node: client.Client, board: str, name: str, identifier: str) -> session.Session:
     if os.environ.get('CODEX_THREAD_ID') != identifier:
         raise ValueError('assigned identity requires the actual native root thread context')
-    actor = session.connect(client=node, board=board, agent=name)
-    identity = actor.whoami()
-    if identity.name != name or identity.harness != 'codex':
-        raise ValueError('assigned session does not own this Codex registration')
-    return actor
+    return own(node, board, identifier, expected=name)
 
 
 def actor_for(event: dict, node: client.Client, board: str, child: str | None, assigned: str) -> session.Session:
@@ -70,28 +69,30 @@ def actor_for(event: dict, node: client.Client, board: str, child: str | None, a
             parent = assigned_session(node, board, assigned, identifier)
         else:
             parent = own(node, board, parent_id)
-        made = parent.register(session.Native(str(event.get('model') or ''), 'codex', child))
-        actor = session.connect(client=node, board=board, agent=made.name)
+        parent.register(session.Native(str(event.get('model') or ''), 'codex', child))
+        actor = own(node, board, child)
     elif child:
         actor = own(node, board, child)
     elif assigned:
         actor = assigned_session(node, board, assigned, identifier)
     elif stage == 'SessionStart':
-        made = session.register(node, board, session.Native(str(event.get('model') or ''), 'codex', identifier))
-        actor = session.connect(client=node, board=board, agent=made.name)
+        session.register(node, board, session.Native(str(event.get('model') or ''), 'codex', identifier))
+        actor = own(node, board, identifier)
     else:
         actor = own(node, board, identifier)
     return actor
 
 
-def context(event: dict, assigned: str, node: client.Client | None = None) -> tuple[str, session.Session, Path]:
+def context(event: dict, assigned: str, node: client.Client | None = None) -> tuple[str, session.Session, Path] | None:
     stage = event.get('hook_event_name')
     if stage not in EVENTS:
         raise ValueError('unsupported lifecycle event')
     identifier = native_id(event.get('session_id'))
     cwd = Path(str(event.get('cwd') or Path.cwd()))
     node = node or client.Client(autostart=False, timeout=2.0)
-    board = place.resolve(node, cwd)
+    board = notification_context.existing_board(node, cwd)
+    if not board:
+        return None
     child = event.get('agent_id')
     if child is not None:
         child = native_id(child)
@@ -112,7 +113,10 @@ def context(event: dict, assigned: str, node: client.Client | None = None) -> tu
 
 def handle(event: dict, assigned: str = '', *, node: client.Client | None = None,
            emit: Callable[[str], None] | None = None) -> dict:
-    stage, actor, _cwd = context(event, assigned, node)
+    resolved = context(event, assigned, node)
+    if resolved is None:
+        return {}
+    stage, actor, _cwd = resolved
     child = event.get('agent_id')
     if stage == 'SubagentStop' and not child:
         raise ValueError('subagent stop has no native child identifier')
@@ -138,16 +142,11 @@ def handle(event: dict, assigned: str = '', *, node: client.Client | None = None
 
 
 def completion(event: dict, assigned: str = '', *, node: client.Client | None = None) -> dict:
-    stage, actor, cwd = context(event, assigned, node)
-    if stage != 'Stop':
-        raise ValueError('completion guard requires the native Stop event')
-    worktree_lifecycle.require_clean(limits.root(), actor.name, within=(str(cwd),))
+    """Compatibility for cached Stop commands: ending a turn needs no workspace admission."""
+    if event.get('hook_event_name') != 'Stop':
+        raise ValueError('completion notification requires the native Stop event')
     return {}
 
-
-def block(reason: object) -> None:
-    text, _ = redact(str(reason), env_secrets(os.environ))
-    say(json.dumps({'decision': 'block', 'reason': 'workspace completion: ' + ' '.join(text.split())[:1000]}))
 
 def run(args: argparse.Namespace) -> int:
     try:
@@ -172,17 +171,11 @@ def run(args: argparse.Namespace) -> int:
             if done.stderr:
                 warning(done.stderr)
             if done.returncode:
-                if args.completion:
-                    block(f'completion worker exited {done.returncode}')
-                else:
-                    warning(f'notification worker exited {done.returncode}')
+                warning(f'{"completion" if args.completion else "notification"} worker exited {done.returncode}')
             elif done.stdout:
                 say(done.stdout.strip())
-    except (OSError, ValueError, RuntimeError, LookupError, TypeError, AttributeError, client.NodeError, subprocess.SubprocessError) as error:
-        if args.completion:
-            block(error)
-        else:
-            warning(error)
+    except (OSError, ValueError, RuntimeError, LookupError, TypeError, AttributeError, Denied, client.NodeError, subprocess.SubprocessError) as error:
+        warning(error)
     return 0
 
 
