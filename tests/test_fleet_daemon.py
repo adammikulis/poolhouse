@@ -786,7 +786,7 @@ def test_serve_forever_prefers_the_settings_name_over_the_hostname(tmp_path):
     log = tmp_path / "traind.out"
     fh = log.open("wb")
     proc = subprocess.Popen(
-        [sys.executable, "-m", "poolhouse.fleet.daemon",
+        [sys.executable, "-m", "poolhouse.cli.daemon",
          "--root", str(root), "--host", "127.0.0.1", "--port", str(port),
          "--no-web"],
         env=env, stdout=fh, stderr=subprocess.STDOUT)

@@ -111,6 +111,9 @@ class DaemonOptions:
     on_paused: str = "stop"
     bench_home: Path | str | None = None
     track: str | None = None
+    pool_actions: Any = None
+    """The module of pool actions (`poolhouse.api.pool`) the page's pool routes call; the command that starts the daemon hands it in, since a
+    machine-layer module may not import the tools layer. None answers every pool action with a refusal."""
 
 
 class DaemonRuntime:
@@ -133,6 +136,7 @@ class DaemonRuntime:
         self.on_paused = options.on_paused
         self.bench_home = options.bench_home
         self.track = options.track
+        self.pool_actions = options.pool_actions
 
     def configure(self) -> None:
         self.root = home.expand(self.root) if self.root else default_root()
@@ -280,6 +284,7 @@ class DaemonRuntime:
     def configure_interface(self) -> None:
         if self.interface is not None:
             self.interface.rename = self.rename
+            self.interface.pool_actions = self.pool_actions
             self.interface.studio_token = lambda: self.token
             self.interface.runner = self.runner
             self.interface.schedule = self.schedule
@@ -463,7 +468,7 @@ def persist(*, slots: int = 1, labels: tuple[str, ...] = (), report: str = "") -
     return 2
 
 
-def run(argv: list[str] | None = None) -> int:
+def run(argv: list[str] | None = None, *, pool_actions: Any = None) -> int:
     ap = argparse.ArgumentParser(prog="poolhouse-traind")
     ap.add_argument("--root", default=str(default_root()))
     ap.add_argument(
@@ -635,10 +640,7 @@ def run(argv: list[str] | None = None) -> int:
             on_paused=a.on_paused,
             bench_home=a.bench_home,
             track=a.track,
+            pool_actions=pool_actions,
         )
     )
     return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(run())
