@@ -52,14 +52,12 @@ def command_refusal(event: dict, given: dict, rules) -> str:
 def main() -> int:
     try:
         event = json.load(sys.stdin)
-        rules = rules_loader.load()
+        given = event.get("tool_input") if isinstance(event, dict) else None
+        name = str(event.get("tool_name") or "") if isinstance(given, dict) else ""
+        rules = rules_loader.load() if name and name not in HELD_ELSEWHERE else None
     except Exception:
         return 0
-    given = event.get("tool_input") if isinstance(event, dict) else None
-    if rules is None or not isinstance(given, dict):
-        return 0
-    name = str(event.get("tool_name") or "")
-    if name in HELD_ELSEWHERE:
+    if rules is None:
         return 0
     why = rules.protected().tool_refusal(name, given, cwd=str(event.get("cwd") or ""), subagent=bool(event.get("agent_id")))
     if why:
