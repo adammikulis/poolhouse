@@ -14,7 +14,7 @@ import pytest
 from service_kit import node_binary, shared, three_nodes, two_nodes  # noqa: F401  (fixtures)
 from test_studio_device_http import devices as enrolled_servers  # noqa: F401
 
-from poolhouse import macauth, node_launch
+from poolhouse import macauth
 from poolhouse.fleet import producer_devices as devices, studio_pool, tls
 from poolhouse.fleet.remote import Member
 from poolhouse.fleet.service_pool import Pool
@@ -47,21 +47,21 @@ def opened(nodes, tmp_path, monkeypatch):
     machine.write_text('f' * 16)
     identity = nodes.ida
     remote = Member.from_binding(Pool().authorize(nodes.idb.fingerprint))
-    context = {'pool': studio_pool.current(), 'device': identity.fingerprint, 'scope': 'scope', 'active': True}
+    context = {'pool': studio_pool.current(Pool()), 'device': identity.fingerprint, 'scope': 'scope', 'active': True}
     token = macauth.derive(b'local-owner')
     state = {'context': context, 'identity': identity, 'found': [remote],
              'discoveries': [], 'calls': [], 'replies': {}, 'during': None, 'endpoint': 'https://127.0.0.1:12345'}
     ui = SimpleNamespace(name='Local device', studio_identity=lambda: state['identity'],
-                         studio_endpoint=lambda: state['endpoint'], studio_token=lambda: token)
+                         studio_endpoint=lambda: state['endpoint'], studio_token=lambda: token, pool=Pool())
     service = SimpleNamespace(authority=SimpleNamespace(_context=lambda: copy.deepcopy(state['context'])),
                               store=SimpleNamespace(lock=threading.RLock()))
     control = {'certificate': identity.beacon, 'pool': context['pool'], 'runtime': '1' * 64,
                'control_path': '/tmp/control.sock', 'daemon': {'pid': os.getpid(), 'started': 100.0, 'instance': '2' * 64}}
 
-    def discover(*, timeout):
+    def discover(*, timeout, pool, identity):
         assert not service.store.lock._is_owned()
         state['discoveries'].append(timeout)
-        assert timeout == 5
+        assert timeout == 5 and pool is ui.pool and identity is state['identity']
         return list(state['found'])
     monkeypatch.setattr(Member, 'discover', discover)
 
@@ -162,7 +162,7 @@ def test_cached_addresses_never_override_current_pool_identity_or_membership(set
     if change == 'pool':
         setup.state['context']['pool'] = '0' * 64
     elif change == 'node-unavailable':
-        monkeypatch.setattr(node_launch, 'default_state', lambda: setup.root / 'no-node')
+        monkeypatch.setattr(setup.ui.pool, 'state', setup.root / 'no-node')  # a state directory with no node in it
     elif change == 'identity':
         setup.state['identity'] = replace(setup.identity)
     elif change == 'machine':
@@ -288,15 +288,15 @@ def test_actual_self_adapter_uses_existing_identity_over_sealed_tls(request, mon
     opened, _ = request.getfixturevalue('enrolled_servers')
     row = opened[0]
     nodes = request.getfixturevalue('three_nodes')
-    monkeypatch.setattr(node_launch, 'default_state', lambda: row.node.state)
+    pool = Pool(row.node.state)  # the node of this daemon, not of the process's first device
     monkeypatch.setattr(tls, 'local', lambda: row.identity)
     path = devices.home.state('machine-id')
     if not path.exists():
         path.write_text('f' * 16)
-    context = {'pool': studio_pool.current(), 'device': row.identity.fingerprint, 'scope': 'scope', 'active': True}
+    context = {'pool': studio_pool.current(pool), 'device': row.identity.fingerprint, 'scope': 'scope', 'active': True}
     ui = SimpleNamespace(name='Local device', studio_identity=lambda: row.identity,
                          studio_endpoint=lambda: f'https://127.0.0.1:{row.server.server_port}',
-                         studio_token=lambda: macauth.derive(b'device-a'))
+                         studio_token=lambda: macauth.derive(b'device-a'), pool=pool)
     service = SimpleNamespace(authority=SimpleNamespace(_context=lambda: context),
                               store=SimpleNamespace(lock=threading.RLock()))
     calls = []

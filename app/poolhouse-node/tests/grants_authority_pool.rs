@@ -137,13 +137,13 @@ fn typed_sign(who: &Person) -> impl Fn(&[u8]) -> String + '_ {
 }
 
 #[test]
-fn the_founding_phone_approves_a_file_delete_and_the_delete_works_once() {
+fn the_founding_phone_approves_a_file_delete_and_it_waits_a_day_before_the_delete_works() {
     let pool = Pool::new();
     let (handle, path, _) = pool.file();
     let done = pool.approve("file_delete", &handle);
     assert_eq!(done["state"], "approved", "{done}");
     let gid = pool.only_gid();
-    assert_eq!(pool.state(&gid).0, "live");
+    assert_eq!(pool.state(&gid).0, "not-yet", "a phone counts as a computer: an irreversible act waits a day for a key to revoke it");
     let row = {
         let mut node = pool.rig.node.lock().unwrap();
         let board = &node.host("demo").unwrap().board;
@@ -153,11 +153,8 @@ fn the_founding_phone_approves_a_file_delete_and_the_delete_works_once() {
     assert_eq!(row["approval"]["decision"], "approve", "the row names the decision the phone signed: {row}");
     assert_eq!(row["person"], pool.phone.fingerprint().as_str(), "{row}");
     assert_eq!(pool.grants()["authority"], json!([pool.phone.fingerprint()]), "the founding phone is the one authority key of the pool");
-    assert_eq!(pool.delete(&handle)["ok"], true);
-    assert!(!path.exists(), "the delete the phone approved ran");
-    let log = ok(pool.rig.call("grant_log", "demo", &pool.token, json!({"limit": 20})));
-    assert!(log["log"].as_array().unwrap().iter().any(|e| e["op"] == "use" && e["action"] == "file_delete"), "{log}");
-    assert_eq!(pool.state(&gid).0, "exhausted", "it was asked for once");
+    assert_eq!(pool.delete(&handle)["ok"], false, "the delete waits for the day");
+    assert!(path.exists(), "nothing was deleted");
 }
 
 #[test]
@@ -229,9 +226,12 @@ fn a_key_that_is_no_admin_neither_revokes_a_pool_wide_grant_nor_has_a_revoke_row
 fn a_device_local_grant_by_an_enrolled_key_counts_in_a_pool_and_a_pool_wide_one_does_not() {
     let pool = Pool::new();
     let typed = person();
-    let local = pool.rig.call("grant_issue", "demo", &pool.token, typed.issue_params("demo", "g-00000000000000b1", &Spec::session(&pool.name, "link_read")));
+    let local = pool.rig.call("grant_issue", "demo", &pool.token, typed.issue_params("demo", "g-00000000000000b1", &Spec::session(&pool.name, "link_remove")));
     assert_eq!(local["ok"], true, "{local}");
     assert_eq!(pool.state("g-00000000000000b1").0, "live");
+    let sensitive = pool.rig.call("grant_issue", "demo", &pool.token, typed.issue_params("demo", "g-00000000000000b5", &Spec::session(&pool.name, "link_read")));
+    assert_eq!(code(&sensitive), "denied", "a typed yes counts for nothing toward a sensitive grant, even of a device-local act: {sensitive}");
+    assert!(sensitive["error"]["message"].as_str().unwrap().contains("This pool needs a key approved from"), "{sensitive}");
     let wide = pool.rig.call("grant_issue", "demo", &pool.token, typed.issue_params("demo", "g-00000000000000b2", &Spec::session(&pool.name, "sync_now")));
     assert_eq!(code(&wide), "denied", "{wide}");
     assert!(wide["error"]["message"].as_str().unwrap().contains("your phone gives standing grants"), "{wide}");
@@ -282,7 +282,7 @@ fn rows_a_non_admin_or_a_weak_key_signed_are_listed_ignored_with_the_reason() {
     pool.append("g-00000000000000d2", &spec, &admin, &typed_sign(&outsider));
     assert!(pool.state("g-00000000000000d2").1.contains("signature is not that admin key's"), "a relabelled row: {:?}", pool.state("g-00000000000000d2"));
     pool.append("g-00000000000000d3", &spec, &typed.fingerprint(), &typed_sign(&typed));
-    assert!(pool.state("g-00000000000000d3").1.contains("not strong"), "{:?}", pool.state("g-00000000000000d3"));
+    assert!(pool.state("g-00000000000000d3").1.contains("counts for nothing"), "{:?}", pool.state("g-00000000000000d3"));
     let raw = typed.issue_params("demo", "g-00000000000000d4", &Spec::session(&pool.name, "file_delete"));
     let mut raw = raw.as_object().unwrap().clone();
     raw.insert("op".into(), json!("issue"));
@@ -323,7 +323,7 @@ fn a_key_enrolled_here_ends_a_device_local_grant_by_a_call_and_by_a_row_where_it
     let (typed, outsider) = (person(), agent());
     pool.enrol_typed(&outsider);
     for gid in ["g-00000000000000b3", "g-00000000000000b4"] {
-        assert_eq!(pool.rig.call("grant_issue", "demo", &pool.token, typed.issue_params("demo", gid, &Spec::session(&pool.name, "link_read")))["ok"], true);
+        assert_eq!(pool.rig.call("grant_issue", "demo", &pool.token, typed.issue_params("demo", gid, &Spec::session(&pool.name, "link_remove")))["ok"], true);
         assert_eq!(pool.state(gid).0, "live");
     }
     let ended = pool.rig.call("grant_revoke", "demo", &pool.token, outsider.revoke_params("demo", "g-00000000000000b3", "done"));
@@ -331,7 +331,7 @@ fn a_key_enrolled_here_ends_a_device_local_grant_by_a_call_and_by_a_row_where_it
     assert_eq!(pool.state("g-00000000000000b3").0, "revoked");
     pool.append_revoke(outsider.revoke_params("demo", "g-00000000000000b4", "done"));
     assert_eq!(pool.state("g-00000000000000b4").0, "revoked", "a revoke row of a key enrolled here counts for a grant that stays on this device");
-    assert!(!pool.holds("link_read"));
+    assert!(!pool.holds("link_remove"));
     pool.approve("sync_now", "*");
     let wide = pool.only_gid_of("sync_now");
     pool.append_revoke(outsider.revoke_params("demo", &wide, "done"));
@@ -349,7 +349,11 @@ fn a_typed_key_grants_exactly_the_device_local_actions_in_a_pool_and_every_other
     for (n, action) in ACTIONS.iter().enumerate() {
         let gid = format!("g-{:016x}", 0xc000 + n);
         let reply = pool.rig.call("grant_issue", "demo", &pool.token, typed.issue_params("demo", &gid, &Spec::session(&pool.name, action)));
-        if DEVICE_LOCAL.contains(action) {
+        let sensitive = poolhouse_node::approvals::content::risk_of(action).0 != poolhouse_node::approvals::content::ROUTINE;
+        if DEVICE_LOCAL.contains(action) && sensitive {
+            assert!(Pool::denial(&reply).contains("This pool needs a key approved from"), "{action}: a typed yes counts for nothing toward a sensitive grant: {reply}");
+            assert!(!pool.holds(action), "{action}");
+        } else if DEVICE_LOCAL.contains(action) {
             assert_eq!(reply["ok"], true, "{action}: {reply}");
             assert_eq!(pool.state(&gid).0, "live", "{action}");
             assert!(pool.holds(action), "{action}");

@@ -45,8 +45,8 @@ def pool(two_nodes, tmp_path):  # noqa: F811
     root = tmp_path / "traind"
     root.mkdir()
     runner = JobRunner(root, slots=1)
-    ui = SimpleNamespace(root=root, runner=runner)
     members = Pool(two_nodes.b.state)
+    ui = SimpleNamespace(root=root, runner=runner, pool=members)
     daemon = Daemon(runner, runner.files_root, macauth.derive(b"owner"), name="served", members=members, ui=ui,
                     service_identity=lambda: two_nodes.idb)
     server = LimitedServer(("127.0.0.1", 0), make_handler(daemon), tls=tls.member_context(two_nodes.idb, members))

@@ -7,7 +7,7 @@ use crate::approvals::content::ADD_SCOPE;
 use crate::approvals::Approval;
 use crate::error::{Error, Result};
 use crate::gov::act::{Act, ActSig, SigKind};
-use crate::gov::keys::{AdminKey, Alg, Role, Strength};
+use crate::gov::keys::{AdminKey, Alg, Claim, Role};
 use crate::gov::MAX_ADMINS;
 use crate::grants::authority::Authority;
 use crate::node::Node;
@@ -51,7 +51,7 @@ pub fn draft(node: &Node, person: &str, name: &str, key: &str, acceptance: &str)
     if charter.admin(key).is_some() {
         return Err(Error::Denied("That key is already listed in this pool, so it is not listed again.".into()));
     }
-    let entry = AdminKey { key: key.into(), alg: Alg::P256, role: Role::Admin, strength: Strength::Strong, person: person.into(), since: epoch + 1, acceptance: acceptance.into(), label: name.into() };
+    let entry = AdminKey { key: key.into(), alg: Alg::P256, role: Role::Admin, claim: Some(Claim::phone_keystore()), person: person.into(), since: epoch + 1, acceptance: acceptance.into(), label: name.into() };
     if entry.check().is_err() || !entry.accepted(&gov.id, &prev) {
         return Err(Error::Denied(STALE.into()));
     }

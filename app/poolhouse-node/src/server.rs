@@ -78,7 +78,8 @@ impl Server {
                         let _ = connection(stream, &node, &who, net.as_deref(), connection_lifetime);
                     });
                 }
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => std::thread::sleep(Duration::from_millis(10)),
+                // `accept` itself waits a short while for a client, so a request is taken the moment it comes.
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
                 Err(e) => return Err(e.into()),
             }
         }

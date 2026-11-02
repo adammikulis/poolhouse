@@ -14,7 +14,7 @@ use crate::cert::{self, Identity as CertIdentity};
 use crate::facts::Facts;
 use crate::grants::book::Book;
 use crate::grants::person::Persons;
-use crate::gov::signer::{KeyBinding, Signer};
+use crate::gov::signer::Signer;
 use crate::membership::Pool;
 use crate::device::{self, fingerprint, Custody, Supplied};
 use crate::error::{Error, Result};
@@ -129,8 +129,6 @@ pub struct Node {
     pub network: String,
     /// Who signs for a person when an act of the pool needs it (`gov::signer`); None until one is connected.
     pub signer: Option<Arc<dyn Signer>>,
-    /// Whether this device's key is held by the operating system's keystore or in a file; only the first may be a delegate.
-    pub key_binding: KeyBinding,
     /// When a person last said no to a kind of act: the same kind is not asked again for ten minutes.
     pub declined: BTreeMap<String, Instant>,
     pub(crate) activity: update_activity::Registry,
@@ -249,7 +247,7 @@ impl Node {
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
             projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir, activity.clone())?, rates: Rates::default(), board_grace_ms: writes.board_grace_s * 1000, writes, log_bounds: crate::logbounds::Bounds::default(), log_rotate_percent: crate::logbounds::ROTATE_PERCENT, asking: Asking::default(),
             stop: Arc::new(AtomicBool::new(false)), started: Instant::now(), folds: 0,
-            build: crate::build::Build::from_env(), network: crate::netif::network().into(), signer: None, key_binding: KeyBinding::File, declined: BTreeMap::new(), activity, pending_jobs:None, _instance: instance,
+            build: crate::build::Build::from_env(), network: crate::netif::network().into(), signer: None, declined: BTreeMap::new(), activity, pending_jobs:None, _instance: instance,
         };
         if node.recover_local_allocations().is_err() {
             // Keep other node services available, but never reset or grant compute

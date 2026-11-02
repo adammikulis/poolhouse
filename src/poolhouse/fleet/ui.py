@@ -17,7 +17,7 @@ from poolhouse.home import machine_id
 from poolhouse.http import Options, Server, ServerError, open_stream
 from poolhouse.optional import module
 
-from . import pausing, roster
+from . import pausing, roster, service_pool
 from .launch_secret import LaunchSecret
 from .member_rows import named_apart
 from .page import FIT_ONLY
@@ -72,7 +72,9 @@ class UI:
     """Route handling for ``/ui/*``. Holds the session store and the login throttle."""
 
     def __init__(self, *, name: str = "", member_port: int = 8770, setup_token: str = "",
-                 gated: bool = True) -> None:
+                 gated: bool = True, pool: service_pool.Pool | None = None) -> None:
+        self.pool = pool or service_pool.default()
+        """The node pool this page and its Studio read: the one of the daemon that serves it. Two daemons in one process each hold their own."""
         self.runner: Any = None
         self.parts: Any = None
         """The page's components, `page.COMPONENTS` unless a caller leaves some out."""
@@ -97,6 +99,8 @@ class UI:
         """``() -> dict``: this process's own answering telemetry, when it answers anything.
         `AskRoutes.metrics` is that callable. None on a daemon that only serves models,
         which is most of them -- the Telemetry view is then pointed at a page that does."""
+        self.pool_actions: Any = None
+        """`poolhouse.api.pool`, handed in by the command that starts the daemon (this layer may not import it); None on a page that serves alone."""
         self.rename: Any = None
         """``(str) -> str``: renames this machine now. Set by the daemon that owns it."""
         self.name = name

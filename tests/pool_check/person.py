@@ -3,7 +3,7 @@
 A node allows a session nothing beyond its own board's messages, notes, claims and leases until a grant names it, and counts a grant only
 when a person key enrolled on that node signed it (docs/node.md, "Standing grants"). The key is an in-memory Ed25519 key that belongs to this
 run alone: never in a keystore and never the key of the account. It is enrolled the way a phone's key is, as a file the account owns that the
-node reads when it starts (`wire.plant_phone_key`), because a node derives a key as strong only when a phone enrolled it, and no call of the
+node reads when it starts (`wire.plant_key`), because a node lists a key in a pool at the level it recorded when the key was enrolled, and no call of the
 node, and no switch it honours, can enrol one that way. The rig signs each grant through the real `grant_issue`. What the rig does not exercise
 is the person's yes to the question the node writes on a terminal, the custody of a person's real key and the phone's own signing
 (docs/pool-check.md); founding no longer asks for it, and only the node's own tests and the test kit's `enrol_first` type it.

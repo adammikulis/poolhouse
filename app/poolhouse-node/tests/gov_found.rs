@@ -17,15 +17,15 @@ fn founding(a: &Dev, keys: &[K]) -> Value {
 }
 
 #[test]
-fn a_charter_with_no_strong_admin_key_founds_nothing_because_nobody_could_admit_a_device() {
+fn a_charter_with_no_key_above_weak_founds_nothing_because_nobody_could_admit_a_device() {
     let a = device();
     let before = a.pool();
     let reply = a.call("pool_found", "", &a.token, json!({"act": founding(&a, &[weak(ANN, "ann")])}));
     assert_eq!(reply["ok"], false, "{reply}");
-    assert!(reply["error"]["say"].as_str().unwrap().contains("strong"), "{reply}");
+    assert!(reply["error"]["say"].as_str().unwrap().contains("approved from a computer or a phone"), "{reply}");
     assert_eq!(a.pool(), before, "it is still in no pool");
     enrol_phone_key(&a, ANN);
-    assert_eq!(a.ok("pool_found", "", &a.token, json!({"act": founding(&a, &[strong(ANN, "ann")])}))["policy"], "secure");
+    assert_eq!(a.ok("pool_found", "", &a.token, json!({"act": founding(&a, &[phone_admin(ANN, "ann")])}))["policy"], "secure");
 }
 
 #[test]
@@ -37,23 +37,24 @@ fn pool_found_asks_for_the_grant_by_the_name_of_the_pool_it_founds() {
     enrolled(a.dir.path(), &mut call, &token);
     let reply = grantor().issue(&mut call, "demo", &token, gid_of(&name, "pool_create").as_str(), &Spec::session(&name, "pool_create").on("other"));
     assert_eq!(reply["ok"], true, "{reply}");
-    let denied = a.call("pool_found", "", &token, json!({"act": founding(&a, &[strong(ANN, "ann")])}));
+    let denied = a.call("pool_found", "", &token, json!({"act": founding(&a, &[phone_admin(ANN, "ann")])}));
     assert_eq!(denied["ok"], false, "a grant for another pool's name does not found this one: {denied}");
     let reply = grantor().issue(&mut call, "demo", &token, gid_of(&format!("{name} again"), "pool_create").as_str(), &Spec::session(&name, "pool_create").on("home"));
     assert_eq!(reply["ok"], true, "{reply}");
-    let founded = a.call("pool_found", "", &token, json!({"act": founding(&a, &[strong(ANN, "ann")])}));
+    let founded = a.call("pool_found", "", &token, json!({"act": founding(&a, &[phone_admin(ANN, "ann")])}));
     assert_eq!(founded["ok"], true, "{founded}");
 }
 
 #[test]
 fn a_join_whose_history_does_not_fit_the_frame_is_refused_whole_and_says_so() {
-    let (_d, mut g) = pool(&[strong(1, "ann")], Policy::Secure);
+    let (_d, mut g) = pool(&[phone_admin(1, "ann")], Policy::Secure);
     for n in 0..4u64 {
         put(&mut g, "set_holds", json!({"dispute_d": 8 + n}), &[1]);
+        advance(&mut g, HELD);
     }
     let joiner = ident(40);
     put_admit(&mut g, &joiner, &[1]);
-    assert!(g.state().chain.latest().n >= 5, "each longer dispute is in force at once");
+    assert!(g.state().chain.latest().n >= 5, "each longer dispute is in force once its seven days have run");
     assert!(g.join_payload(1 << 20, &joiner.fingerprint()).is_ok());
     let refused = g.join_payload(600, &joiner.fingerprint());
     assert!(refused.is_err_and(|e| e.to_string().contains("too long")), "a history that does not fit is not cut short");
@@ -99,7 +100,7 @@ fn a_charter_a_key_did_not_accept_founds_nothing() {
     let refused = a.call("pool_found", "", &a.token, json!({"charter": charter}));
     assert_eq!(refused["ok"], false, "{refused}");
     assert_eq!(a.pool(), before, "it is still in no pool");
-    let both = a.call("pool_found", "", &a.token, json!({"charter": accepted(&draft, &[ANN, BEN]), "act": founding(&a, &[strong(ANN, "ann")])}));
+    let both = a.call("pool_found", "", &a.token, json!({"charter": accepted(&draft, &[ANN, BEN]), "act": founding(&a, &[phone_admin(ANN, "ann")])}));
     assert_eq!(both["ok"], false, "a charter and an act together name two things to found: {both}");
 }
 

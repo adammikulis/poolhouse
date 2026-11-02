@@ -79,7 +79,7 @@ def answer(handler, ui, path, body=None):
         return False
     opening = handler._sealing() if ui else None
     try:
-        pool = studio_pool.of_service(handler._member) if opening is not None and opening[2] and handler._member else ""
+        pool = studio_pool.of_service(ui.pool, handler._member) if opening is not None and opening[2] and handler._member else ""
     except PermissionError:
         pool = ""
     if not pool:
@@ -217,16 +217,16 @@ class MemberLibrary:
 def provider(ui):
     """Return the active pool's package provider using the node's current compute services."""
     try:
-        selected = studio_pool.current()
+        selected = studio_pool.current(ui.pool)
     except PermissionError as exc:
         raise ValueError("Join a pool to share packages. File sharing is available here.") from exc
 
     def authorize():
-        if studio_pool.current() != selected:
+        if studio_pool.current(ui.pool) != selected:
             raise PermissionError("The active pool changed; open its library again.")
 
     def members():
         authorize()
-        return Member.discover(timeout=5)
+        return Member.discover(timeout=5, pool=ui.pool, identity=getattr(ui, "studio_identity", lambda: None)())
 
     return MemberLibrary(_local(ui, selected), members, authorize)

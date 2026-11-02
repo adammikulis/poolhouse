@@ -1,11 +1,12 @@
 //! Deciding a request: the checks on the key and the signature, the one change of state, and what an approval does.
 
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
 use crate::approvals::fatigue::{kind_of, requester, Cause, Outcome, Requester};
 use crate::approvals::{challenge, summary, Approval, APPROVED, CANCELLED, DENIED, EXPIRED, FAILED, GRANTS, HELD, HOLD, PENDING, PHONE_ADD, PHONE_REMOVE, REBIND};
 use crate::error::{Error, Result};
 use crate::fsutil::sha256_hex;
+use crate::gov::charter::data_act_wait_ms;
 use crate::grants::authority::Authority;
 use crate::grants::spec::parse_issue;
 use crate::node::Node;
@@ -256,13 +257,27 @@ fn declined(node: &mut Node, a: &Approval, decision: &str, now: u64) -> Result<(
     Ok(())
 }
 
+/// Move the start of the grant ``body`` for an irreversible data act a day on, so that a person key can revoke it first; the milliseconds
+/// it moved.
+fn delay_irreversible(body: &mut Map<String, Value>) -> u64 {
+    let wait = body.get("action").and_then(Value::as_str).map_or(0, data_act_wait_ms) as u64;
+    for field in ["at_ms", "until_ms"] {
+        if let Some(at) = body.get(field).and_then(Value::as_u64) {
+            body.insert(field.into(), json!(at + wait));
+        }
+    }
+    wait
+}
+
 /// Do what an approved request asked.
 fn approved(node: &mut Node, a: &Approval, d: &Decision, now: u64) -> Result<()> {
     match a.kind.as_str() {
         GRANTS => {
             // Every entry is checked before the first is written, so a refusal leaves no ask live while the agent is told none is.
             let mut entries = Vec::new();
-            for body in challenge::grant_entries(a, &node.cert.fingerprint(), now, d.key, d.sig, d.decision) {
+            let mut waited = 0;
+            for mut body in challenge::grant_entries(a, &node.cert.fingerprint(), now, d.key, d.sig, d.decision) {
+                waited = waited.max(delay_irreversible(&mut body));
                 parse_issue(&body)?;
                 let gid = body.get("gid").and_then(Value::as_str).unwrap_or("").to_string();
                 let body = Value::Object(body);
@@ -282,7 +297,15 @@ fn approved(node: &mut Node, a: &Approval, d: &Decision, now: u64) -> Result<()>
             let asks = a.asks();
             let actions: Vec<&str> = asks.iter().map(|k| k["action"].as_str().unwrap_or("")).collect();
             node.fatigue.approved(&who, &kind_of(&actions))?;
-            node.approvals.update(&a.id, |x| x.grants = written)
+            if waited > 0 {
+                audit(node, "approval.waiting", a, &format!("an act that cannot be undone was approved; it starts in {} hours unless a key revokes it", waited / 3_600_000));
+            }
+            node.approvals.update(&a.id, |x| {
+                x.grants = written;
+                if waited > 0 {
+                    x.reason = format!("It takes effect in {} hours unless a key revokes it.", waited / 3_600_000);
+                }
+            })
         }
         HOLD => summary::apply(node, a, "approve"),
         PHONE_ADD => {

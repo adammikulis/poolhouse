@@ -1,7 +1,7 @@
 """Coordinated pool pauses: which pause a starting machine takes, and how a pause reaches the node's devices.
 
-The devices are real daemons over TLS pinned to the certificates the node vouches for (the node's answer is the one
-stand-in, at its wire, as in tests/test_fleet_tls.py); the fan-out and the listing are in tests/test_fleet_roster.py.
+The devices are real daemons over TLS pinned to the certificates the node vouches for (PLUMBING ONLY: the node's answer is canned
+at its wire, as in tests/test_fleet_tls.py); the fan-out and the listing are in tests/test_fleet_roster.py.
 """
 
 from __future__ import annotations
@@ -93,13 +93,10 @@ class TestAdoptingThePauseOnStartup:
         finally:
             stop(*larch)
 
-    def test_a_machine_whose_node_does_not_answer_does_not_wait(self, monkeypatch):
-        from poolhouse.fleet import service_pool
+    def test_a_machine_whose_node_does_not_answer_does_not_wait(self, monkeypatch, tmp_path):
+        from poolhouse import node_health
 
-        def dead(*_args):
-            raise OSError("node disconnected")
-
-        monkeypatch.setattr(service_pool.node_health, "call", dead)
+        monkeypatch.setattr(node_health, "default_state", lambda: tmp_path / "no-node")  # a state directory no node runs in: the real refusal
         started = time.time()
         assert member_pause(timeout_s=30.0, port=free_port()) is None
         assert time.time() - started < 1.0

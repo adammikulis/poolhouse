@@ -21,9 +21,9 @@ use crate::membership::{Device, Policy, Status};
 use super::act::{Act, ActSig, SigKind, LONG_WINDOW_MS};
 use super::body::{self, Body};
 use super::chain::{self, Chain, Seen};
-use super::charter::{Charter, Class, Mode};
+use super::charter::{floor_class, Charter, Class, Mode};
 use super::clock::Awake;
-use super::keys::{AdminKey, Role, Strength};
+use super::keys::{AdminKey, Role};
 use super::roster::{self, Roster};
 use super::room::Junk;
 use super::{HAVE_ACTS, MAX_REFUSALS, PAGE_ACTS, PAGE_BYTES, SETTLED};
@@ -291,10 +291,10 @@ impl GovPool {
             self.ready.entry(id.clone()).or_insert(now);
         }
         self.dirty.seen |= self.ready.len() != known;
-        let roster = roster::build(&chain, &self.acts, &self.seen, now);
+        let roster = roster::build(&chain, &self.acts, &self.seen, now, self.joined.unwrap_or(0));
         self.admits_live = self.acts.iter().filter(|(id, a)| a.kind == "admit" && !roster.void.contains_key(*id) && !roster.short.contains_key(*id)).count();
         let ends = [chain.pending.as_ref().map(|p| p.effective_ms), chain.dispute.as_ref().map(|d| d.ends_ms)];
-        self.deadline = ends.into_iter().flatten().chain(roster.delegates.values().map(|d| d.ends_ms)).min().unwrap_or(i64::MAX);
+        self.deadline = ends.into_iter().flatten().chain(roster.delegates.values().map(|d| d.ends_ms)).chain(roster.next_delegate_start(now)).min().unwrap_or(i64::MAX);
         self.state = State { chain, roster };
         self.folded_at = now;
         self.folds += 1;
@@ -360,7 +360,7 @@ impl GovPool {
         let (epoch, prev) = self.context();
         let mut act = Act::new(&self.id, epoch, kind, body, at_ms, &prev)?;
         let c = &self.state.chain.latest().charter;
-        if !matches!(kind, "admit" | "leave" | "veto") && (c.needed(Class::Routine) > 1 || c.needed(Class::Sensitive) > 1) {
+        if !matches!(kind, "admit" | "leave" | "veto") && (c.needed(Class::Routine) > 1 || c.needed(Class::Governance) > 1) {
             act.not_after = at_ms.saturating_add(LONG_WINDOW_MS);
         }
         Ok(act)
@@ -394,21 +394,22 @@ impl GovPool {
         if !act.is_chain() && !admin.is_empty() && !self.admin_now(act) {
             return Err("none of the keys that signed is an admin of this pool now, and a removed admin's cut does not keep the act".into());
         }
-        let counts = |key: &&str| named.is_some_and(|c| c.admin(key).is_some_and(|k| k.role == Role::Admin && k.strength == Strength::Strong));
+        let counts = |key: &&str| named.zip(floor_class(&act.kind)).is_some_and(|(c, class)| c.counts_key(key, class));
         match act.kind.as_str() {
             "admit" if admin.is_empty() && device.is_empty() => Err("an admit is signed".into()),
             "leave" if !admin.is_empty() || device.len() != 1 => Err("a device leaves by its own signature alone".into()),
             "admit" | "leave" if device.iter().any(|d| !self.device_fits(act, d)) => Err("a device signs its own leave, and an admit only as a delegate or, in an open pool, as a member that says it checked the device is on its network".into()),
-            "admit" if !admin.is_empty() && !admin.iter().any(counts) => Err("a weak key, or the recovery key, admits no device".into()),
+            "admit" if !admin.is_empty() && !admin.iter().any(counts) => Err("a key below the pool's floor, or the recovery key, admits no device".into()),
             "admit" | "leave" => Ok(()),
             _ if !device.is_empty() => Err("only a device's own act is signed by a device".into()),
             "delegate_end" if !admin.is_empty() => Ok(()),
-            "veto" if admin.iter().any(|k| named.is_some_and(|c| c.admin(k).is_some_and(|x| x.strength == Strength::Strong))) => Ok(()),
-            "veto" => Err("a key that is not strong cannot veto".into()),
+            "veto" if admin.iter().any(|k| named.is_some_and(|c| c.counts_key(k, Class::Governance))) => Ok(()),
+            "veto" => Err("a key below the pool's floor cannot veto".into()),
             _ if admin.is_empty() => Err("this act is signed by an admin".into()),
+            "cancel" if admin.iter().all(|k| named.is_some_and(|c| c.admin(k).is_some_and(|x| x.role == Role::Recovery))) => Ok(()),
             _ if admin.iter().all(|k| named.is_some_and(|c| c.admin(k).is_some_and(|x| x.role == Role::Recovery))) => Err("the recovery key signs no immediate act".into()),
             _ if admin.iter().any(counts) => Ok(()),
-            _ => Err("a weak key counts toward nothing but the end of a delegate".into()),
+            _ => Err("a key below the pool's floor counts toward nothing but the end of a delegate".into()),
         }
     }
 
@@ -466,7 +467,7 @@ impl GovPool {
         Ok(())
     }
 
-    /// The strong admin keys of the charter in force whose own acceptance verifies at the epoch they were listed at; none unless admins run the pool.
+    /// The admin keys of the charter in force that count at the sensitive floor and whose own acceptance verifies at the epoch they were listed at; none unless admins run the pool.
     pub fn authority_keys(&self) -> Vec<&AdminKey> {
         let epochs = &self.state.chain.epochs;
         let accepted = |k: &AdminKey| match usize::try_from(k.since).ok().and_then(|n| n.checked_sub(2)) {
@@ -474,7 +475,7 @@ impl GovPool {
             Some(before) => epochs.get(before).is_some_and(|e| k.accepted_memo(&self.id, &e.hash)),
         };
         match epochs.last() {
-            Some(e) if e.charter.mode == Mode::Admins => e.charter.strong().filter(|k| accepted(k)).collect(),
+            Some(e) if e.charter.mode == Mode::Admins => e.charter.counting(Class::Sensitive).filter(|k| accepted(k)).collect(),
             _ => Vec::new(),
         }
     }

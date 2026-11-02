@@ -159,13 +159,10 @@ class TestTheTools:
         (reply,) = drive(rpc(1, "tools/call", name="bench_show", arguments={}))
         assert said(reply) == [], "an empty bench home holds no runs"
 
-    def test_fleet_members_with_no_node_answering_says_so(self, monkeypatch):
-        from poolhouse.fleet import service_pool
+    def test_fleet_members_with_no_node_answering_says_so(self, monkeypatch, tmp_path):
+        from poolhouse import node_health
 
-        def dead(*_args):
-            raise OSError("node disconnected")
-
-        monkeypatch.setattr(service_pool.node_health, "call", dead)
+        monkeypatch.setattr(node_health, "default_state", lambda: tmp_path / "no-node")  # a state directory no node runs in: the real refusal
         (reply,) = drive(rpc(1, "tools/call", name="fleet_members", arguments={"timeout_s": 0.2}))
         assert reply["result"]["isError"]
         assert "node must answer" in reply["result"]["content"][0]["text"]

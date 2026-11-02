@@ -75,6 +75,10 @@ class Nodes:
         """Bind each node's service at its port on ``host`` and wait until every node lists them all."""
         for device, identity, port in zip(self.devices, self.ids, ports, strict=True):
             self.bind(device, identity, f"https://{host}:{port}")
+        self.settle()
+
+    def settle(self) -> None:
+        """Wait until every node lists the services its pool mates have bound."""
         for number, device in enumerate(self.devices):
             until("the services on " + device.name, 30, lambda device=device, number=number: self._synced(device, number))
 
@@ -104,7 +108,7 @@ def build(node_binary, tmp_path, monkeypatch, count: int):  # noqa: F811
             for later in made[2:]:
                 enter(made[0], later)
         ids = [tls.identity(tmp_path / f"service-{name}", name) for name in names]
-        monkeypatch.setattr("poolhouse.node_launch.default_state", lambda: made[0].state)
+        monkeypatch.setattr(node_health, "default_state", lambda: made[0].state)  # this process is the first node's device; the tools and the fleet both read it here
         monkeypatch.setattr(tls, "local", lambda: ids[0])
         yield Nodes(made, ids)
 

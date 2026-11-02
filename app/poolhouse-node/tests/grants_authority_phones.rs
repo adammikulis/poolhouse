@@ -144,6 +144,6 @@ fn a_second_listed_phone_approves_live_and_a_device_that_forgets_it_ignores_what
     pool.rig.node.lock().unwrap().persons.remove(&second.fingerprint(), now_ms()).unwrap();
     let (state, why) = pool.state(&gid);
     assert_eq!(state, "ignored");
-    assert!(why.contains("does not know that key as a phone's"), "{why}");
+    assert!(why.contains("does not hold that key"), "{why}");
     assert_eq!(authority(&pool), vec![pool.phone.fingerprint()], "the authority shrinks to the key this device still knows");
 }

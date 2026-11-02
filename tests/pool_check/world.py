@@ -97,14 +97,14 @@ class World:
         """Every device, the one behind NAT included; `devices` are the ones the others can dial."""
         return [*self.devices, *self.wsl]
 
-    def fresh(self, builds: dict[int, tuple[str, int]] | None = None, *, wire: dict[int, int] | None = None) -> None:
-        """Every device alone in a pool of its own, on a clean state, running ``BUILD`` (or the build given for its index)."""
+    def fresh(self, builds: dict[int, tuple[str, int]] | None = None, *, wire: dict[int, int] | None = None, level: str = "phone") -> None:
+        """Every device alone in a pool of its own, on a clean state, running ``BUILD`` (or the build given for its index), the person's key planted in each at ``level``."""
         for device in self.everyone:
             self.wipe(device)
         for index, device in enumerate(self.everyone):
             build, seq = (builds or {}).get(index, BUILD)
             device.build_args = ["--build-id", build, "--build-seq", str(seq), *(["--wire-version", str(wire[index])] if wire and index in wire else [])]
-            device.phone_key = self.person.key.public.hex()
+            device.key, device.key_level = self.person.key.public.hex(), level
             device.start_node()
             device.token = device.admin_token = device.admin_name = ""
             device.register(f"dev{index}")

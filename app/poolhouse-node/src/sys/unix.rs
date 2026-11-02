@@ -200,6 +200,9 @@ pub fn lock(path: &Path) -> Result<Lock> {
     flock(path, true).map(|l| l.expect("a blocking lock is held when it returns"))
 }
 
+/// How long `Listener::accept` waits for a client before it gives its caller the chance to stop.
+const ACCEPT_POLL_MS: libc::c_int = 20;
+
 /// The socket the node of a state directory listens on.
 pub struct Listener {
     inner: UnixListener,
@@ -216,8 +219,19 @@ impl Listener {
         Ok(Listener { inner })
     }
 
-    /// The next client; `WouldBlock` when none is waiting.
+    /// The next client, waiting up to `ACCEPT_POLL_MS` for one to connect (so a caller that checks a stop flag between
+    /// calls neither spins nor makes a client wait out a sleep); `WouldBlock` when none came.
     pub fn accept(&self) -> std::io::Result<Stream> {
+        let mut waiting = libc::pollfd { fd: self.inner.as_raw_fd(), events: libc::POLLIN, revents: 0 };
+        // SAFETY: one valid pollfd, and the count says so.
+        let ready = unsafe { libc::poll(&mut waiting, 1, ACCEPT_POLL_MS) };
+        if ready < 0 {
+            let error = std::io::Error::last_os_error();
+            return Err(if error.kind() == std::io::ErrorKind::Interrupted { std::io::ErrorKind::WouldBlock.into() } else { error });
+        }
+        if ready == 0 {
+            return Err(std::io::ErrorKind::WouldBlock.into());
+        }
         let (stream, _) = self.inner.accept()?;
         stream.set_nonblocking(false)?;
         Ok(stream)
@@ -251,5 +265,18 @@ mod tests {
         assert_eq!(peer(&one).unwrap(), Principal::me().unwrap());
         #[cfg(any(target_os = "linux", target_os = "android"))]
         assert_eq!(peer_pid(&one), Some(std::process::id()));
+    }
+
+    #[test]
+    fn an_idle_listener_waits_for_a_client_and_takes_one_that_is_pending() {
+        let directory = tempfile::tempdir().unwrap();
+        let listener = Listener::bind(directory.path()).unwrap();
+        let began = std::time::Instant::now();
+        let idle = listener.accept();
+        assert_eq!(idle.err().map(|e| e.kind()), Some(std::io::ErrorKind::WouldBlock));
+        // A node that answered a request only after a sleep made every call to it cost the sleep: the wait is the listener's.
+        assert!(began.elapsed() >= std::time::Duration::from_millis(15), "an idle accept returned at once");
+        let _client = connect(directory.path()).unwrap();
+        assert!(listener.accept().is_ok(), "a client that was already connected was not taken");
     }
 }

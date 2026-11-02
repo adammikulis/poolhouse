@@ -55,7 +55,7 @@ from .models import Downloads, Models
 from .pausing import ADOPT_S, adopt_pause, member_pause
 from .projects import ProjectRegistry, lan_host, local_candidates
 from .runtime_paths import configure as configure_runtime_paths, default_root
-from .service_pool import Pool
+from .service_pool import default as default_pool
 from .serving import Hosting, Serving
 from .settings import Settings
 from .studio_service import initialize as initialize_studio
@@ -111,6 +111,9 @@ class DaemonOptions:
     on_paused: str = "stop"
     bench_home: Path | str | None = None
     track: str | None = None
+    pool_actions: Any = None
+    """The module of pool actions (`poolhouse.api.pool`) the page's pool routes call; the command that starts the daemon hands it in, since a
+    machine-layer module may not import the tools layer. None answers every pool action with a refusal."""
 
 
 class DaemonRuntime:
@@ -133,6 +136,7 @@ class DaemonRuntime:
         self.on_paused = options.on_paused
         self.bench_home = options.bench_home
         self.track = options.track
+        self.pool_actions = options.pool_actions
 
     def configure(self) -> None:
         self.root = home.expand(self.root) if self.root else default_root()
@@ -203,6 +207,8 @@ class DaemonRuntime:
         self.fetcher = Fetcher(self.files_root, slots=self.fetch_slots)
         self.interface = None
         self.setup_token = ""
+        self.members = default_pool()
+        """This daemon's node pool: held once and handed to the page, the request handler and the member TLS context."""
         if self.web:
             if self.setup_from_lan:
                 self.setup_token = secrets.token_urlsafe(9)
@@ -210,6 +216,7 @@ class DaemonRuntime:
                 name=self.name,
                 member_port=self.port,
                 setup_token=self.setup_token,
+                pool=self.members,
             )
             self.interface.launch = LaunchSecret(self.root, self.port)
         self.base_report = self.device_report or partial(default_report, environment=self.environment)
@@ -219,7 +226,6 @@ class DaemonRuntime:
 
     def initialize_listener(self) -> None:
         self.projects = ProjectRegistry(self.root, self.bench_host.machine, local_candidates())
-        self.members = Pool()
         self.daemon = Daemon(
                 self.runner,
                 self.files_root,
@@ -280,6 +286,7 @@ class DaemonRuntime:
     def configure_interface(self) -> None:
         if self.interface is not None:
             self.interface.rename = self.rename
+            self.interface.pool_actions = self.pool_actions
             self.interface.studio_token = lambda: self.token
             self.interface.runner = self.runner
             self.interface.schedule = self.schedule
@@ -463,7 +470,7 @@ def persist(*, slots: int = 1, labels: tuple[str, ...] = (), report: str = "") -
     return 2
 
 
-def run(argv: list[str] | None = None) -> int:
+def run(argv: list[str] | None = None, *, pool_actions: Any = None) -> int:
     ap = argparse.ArgumentParser(prog="poolhouse-traind")
     ap.add_argument("--root", default=str(default_root()))
     ap.add_argument(
@@ -635,10 +642,7 @@ def run(argv: list[str] | None = None) -> int:
             on_paused=a.on_paused,
             bench_home=a.bench_home,
             track=a.track,
+            pool_actions=pool_actions,
         )
     )
     return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(run())

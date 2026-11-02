@@ -7,7 +7,7 @@ use std::sync::Mutex;
 use poolhouse_node::approvals::challenge;
 use poolhouse_node::fsutil::{hex, sha256_hex};
 use poolhouse_node::gov::act::Act;
-use poolhouse_node::gov::keys::{AdminKey, Alg, Role, Strength};
+use poolhouse_node::gov::keys::{AdminKey, Alg, Claim, Role};
 use poolhouse_node::node::Node;
 use poolhouse_node::phone::enrol::{add_bytes, make_offer};
 use super::grants::first_secret;
@@ -96,7 +96,7 @@ impl FakePhone {
 
     /// Its acceptance of being listed under the ``terms`` a code carries (`pool`, `prev`, `since`, `person`), in the canonical low-`s` form.
     pub fn accept(&self, terms: &Value) -> String {
-        let entry = AdminKey { key: self.public.clone(), alg: Alg::P256, role: Role::Admin, strength: Strength::Strong, person: terms["person"].as_str().unwrap().into(),
+        let entry = AdminKey { key: self.public.clone(), alg: Alg::P256, role: Role::Admin, claim: Some(Claim::phone_keystore()), person: terms["person"].as_str().unwrap().into(),
                                since: terms["since"].as_u64().unwrap(), acceptance: String::new(), label: self.name.clone() };
         self.sign_low(&entry.acceptance_message(terms["pool"].as_str().unwrap(), terms["prev"].as_str().unwrap()))
     }

@@ -103,7 +103,10 @@ pub fn check_entry(map: &Map<String, Value>, issue: &Issue) -> Result<()> {
     if !same || !to_ok {
         return bad("the grant is not the ask the approval names");
     }
-    if issue.at_ms < created || issue.at_ms > expires {
+    // The approving key's claim is not in the signed text and every key that counts is a computer's, so every irreversible ask may start up to a
+    // day late; later is never wider.
+    let slack = crate::gov::charter::data_act_wait_ms(&issue.action) as u64;
+    if issue.at_ms < created || issue.at_ms > expires.saturating_add(slack) {
         return bad("the grant starts outside the life of the request that approved it");
     }
     Ok(())

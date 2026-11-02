@@ -1,7 +1,7 @@
 """The devices a node lists for the pool: who ``poolhouse-pool plan | pause | resume`` and the fleet bench reach.
 
 Real daemons answer over TLS pinned to the certificate the node vouches for. The node's own answer about
-the pool is the one stand-in, at its wire (`service_pool.node_health.call`), as in tests/test_fleet_tls.py.
+PLUMBING ONLY: the node's answers about the pool are canned at its wire (`service_pool.node_health.call`), as in tests/test_fleet_tls.py; a node that is not running is a real one that is absent.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import threading
 import pytest
 from test_fleet_tls import stop
 
-from poolhouse import pool_cli
+from poolhouse import node_health, pool_cli
 from poolhouse.fleet import roster, service_pool, tls
 from poolhouse.fleet.api import Daemon, make_handler
 from poolhouse.fleet.availability import Availability
@@ -114,10 +114,7 @@ def test_a_client_for_another_device_is_signed_by_the_node_derived_secret_and_a_
 
 
 def test_no_node_answering_means_no_list(tmp_path, monkeypatch):
-    def dead(*_args):
-        raise OSError("node disconnected")
-
-    monkeypatch.setattr(service_pool.node_health, "call", dead)
+    monkeypatch.setattr(node_health, "default_state", lambda: tmp_path / "no-node")  # a state directory no node runs in: the real refusal
     with pytest.raises(PermissionError, match="node must answer"):
         roster.members(port=free_port())
 

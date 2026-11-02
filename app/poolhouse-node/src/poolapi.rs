@@ -45,6 +45,12 @@ pub fn handles(method: &str) -> bool {
     params(method).is_some()
 }
 
+/// Whether ``token`` is the person's own session: the one that opens a join window of a pool no phone governs and sees its code, and joins
+/// a pool with a code, with no grant to hold (the person at their own terminal is the tap).
+pub fn is_person(node: &mut Node, token: &str) -> bool {
+    node.tokens.resolve(token).cloned().is_some_and(|holder| crate::presence::person_session(node, &holder))
+}
+
 /// The session behind ``token``, if it holds a grant for ``action`` on ``resource``; nothing is spent. For what can still fail
 /// once it is allowed: `spend` the use after it was done.
 pub fn require(node: &mut Node, token: &str, action: &str, resource: &str) -> Result<Holder> {
@@ -121,8 +127,13 @@ pub fn dispatch(node: &mut Node, method: &str, token: &str, p: &Map<String, Valu
         }
         "pool_found" => {
             let act = crate::gov::ops::founding_act(p.get("act"), p.get("charter"))?;
-            let name = crate::gov::ops::founding_name(&act)?;
-            authorize(node, token, "pool_create", &name)?;
+            let (name, anchor) = crate::gov::ops::founding_name(&act)?;
+            let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("a registered session is needed".into()))?;
+            let now = node.now_ms();
+            // The person's yes at the computer's prompt for this very charter is the grant to found it; otherwise the session needs the grant.
+            if !node.firsts.founding_confirmed(&format!("{}/{}", holder.board, holder.name), &anchor, now) {
+                authorize(node, token, "pool_create", &name)?;
+            }
             node.pool_found(&act)
         }
         "pool_draft_found" => node.pool_draft_found(text(p, "title")?, Policy::parse(text(p, "policy")?)?, text(p, "project")?, p.get("keys").unwrap_or(&Value::Null)),

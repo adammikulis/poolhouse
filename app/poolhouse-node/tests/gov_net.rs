@@ -58,7 +58,9 @@ fn a_device_founds_a_pool_whose_id_is_the_hash_of_its_charter_and_is_its_first_m
     assert_eq!(view["governance"]["mode"], "governed");
     assert_eq!(view["governance"]["epoch"], 1);
     assert_eq!(view["governance"]["admins"].as_array().unwrap().len(), 1);
-    assert_eq!(view["governance"]["weak_keys_only"], false);
+    assert_eq!(view["governance"]["admins"][0]["claim"]["method"], "phone-keystore");
+    assert_eq!(view["governance"]["admins"][0]["counted"], "computer", "a phone's claim counts as a computer's");
+    assert_eq!(view["governance"]["floors"], json!({"routine": "computer", "sensitive": "computer", "governance": "computer"}));
     assert!(a.is_member(&a.fp()));
     let again = a.call("pool_create", "", &a.token, json!({"title": "other", "policy": "secure"}));
     assert_eq!(again["ok"], false);
@@ -160,15 +162,20 @@ fn two_admins_removing_different_devices_while_apart_end_with_both_removed_on_bo
     sync(&b);
     sync(&c);
     // ben becomes a second admin of the pool and signs on b
-    let entry = json!(entry_for(&a, strong(BEN, "ben"), 2));
+    let entry = json!(entry_for(&a, phone_admin(BEN, "ben"), 2));
     a.ok("pool_propose", "", &a.token, json!({"kind": "admin_add", "body": {"entry": entry}}));
     for d in [&a, &b, &c] {
         sync(d);
-        pass(d, 25 * HOUR);
+        pass(d, HELD);
     }
     b.node.lock().unwrap().set_signer(person(BEN, "ben"));
-    a.ok("pool_propose", "", &a.token, json!({"kind": "remove", "body": {"fingerprint": extra.0.fingerprint()}}));
-    b.ok("pool_propose", "", &b.token, json!({"kind": "remove", "body": {"fingerprint": extra.1.fingerprint()}}));
+    let first = a.ok("pool_propose", "", &a.token, json!({"kind": "remove", "body": {"fingerprint": extra.0.fingerprint()}}));
+    let second = b.ok("pool_propose", "", &b.token, json!({"kind": "remove", "body": {"fingerprint": extra.1.fingerprint()}}));
+    assert_eq!((first["status"].as_str(), second["status"].as_str()), (Some("needs-signers"), Some("needs-signers")), "a removal is a sensitive act: two people hold keys, so it takes both");
+    sync(&a);
+    sync(&b);
+    a.ok("pool_cosign", "", &a.token, json!({"act": second["act"]}));
+    b.ok("pool_cosign", "", &b.token, json!({"act": first["act"]}));
     sync(&a);
     sync(&b);
     sync(&a);
@@ -207,7 +214,7 @@ fn a_plain_member_cannot_remove_the_founder_enrol_a_device_or_move_the_policy_in
     let mut self_admit = Act::new(&pool, 1, "admit", admit_body(&stranger, "stranger", "join-code", ""), wall_ms(), &first_hash(&c)).unwrap();
     sign(&mut self_admit, 77);
     // 4. a second founding act
-    let other_charter = charter(&[strong(77, "mallory")], poolhouse_node::membership::Policy::Secure, poolhouse_node::gov::charter::Unit::Person);
+    let other_charter = charter(&[phone_admin(77, "mallory")], poolhouse_node::membership::Policy::Secure, poolhouse_node::gov::charter::Unit::Person);
     let other_found = found_act(&other_charter);
     let reply = to_c.call(&json!({"op": "acts", "pool": pool, "push": [founder_remove, self_admit, other_found]})).unwrap();
     assert_eq!(reply["refused"].as_array().unwrap().len(), 3, "{reply}");
@@ -249,7 +256,7 @@ fn a_member_cannot_replay_a_stale_act_or_flood_the_acts_op() {
 #[test]
 fn a_second_person_cosigns_on_another_device_and_the_act_takes_effect_everywhere() {
     let (a, b, c) = pool_of_three();
-    let entry = json!(entry_for(&a, strong(BEN, "ben"), 2));
+    let entry = json!(entry_for(&a, phone_admin(BEN, "ben"), 2));
     let added = a.ok("pool_propose", "", &a.token, json!({"kind": "admin_add", "body": {"entry": entry}}));
     assert_eq!(added["status"], "pending", "{added}");
     for d in [&a, &b, &c] {
@@ -257,7 +264,7 @@ fn a_second_person_cosigns_on_another_device_and_the_act_takes_effect_everywhere
     }
     assert_eq!(status_of(&b, added["act"].as_str().unwrap()), "Pending", "b holds it and counts its own hold");
     for d in [&a, &b, &c] {
-        pass(d, 25 * HOUR);
+        pass(d, HELD);
     }
     assert_eq!(a.status()["governance"]["admins"].as_array().unwrap().len(), 2);
     assert_eq!(b.status()["governance"]["epoch"], 2);
@@ -268,12 +275,14 @@ fn a_second_person_cosigns_on_another_device_and_the_act_takes_effect_everywhere
     let cosigned = b.ok("pool_cosign", "", &b.token, json!({"act": set["act"]}));
     assert_ne!(cosigned["status"], "needs-signers", "{cosigned}");
     sync(&b);
-    assert_eq!(a.status()["governance"]["holds"]["admin_add_h"], 48, "b pushed the signature to a, which does not dial b");
     for d in [&a, &c] {
         sync(d);
     }
     for d in [&a, &b, &c] {
-        assert_eq!(d.status()["governance"]["holds"]["admin_add_h"], 48, "the longer hold is a strengthening: it takes effect at once, on every device");
+        pass(d, HELD);
+    }
+    for d in [&a, &b, &c] {
+        assert_eq!(d.status()["governance"]["holds"]["admin_add_h"], 48, "b pushed the signature to a, which does not dial b, and the change took effect on every device after its seven days");
     }
 }
 
@@ -320,7 +329,7 @@ fn a_device_in_no_pool_that_hears_the_beacon_of_an_open_governed_pool_of_its_pro
 fn a_pool_is_founded_drafted_and_signed_by_a_key_outside_the_node_with_no_signer_on_it() {
     let (a, b) = (device(), device());
     enrol_phone_key(&a, ANN);
-    let charter = charter_for(&a, &[strong(ANN, "ann")], poolhouse_node::membership::Policy::Secure);
+    let charter = charter_for(&a, &[phone_admin(ANN, "ann")], poolhouse_node::membership::Policy::Secure);
     let founded = a.ok("pool_found", "", &a.token, json!({"act": found_act(&charter)}));
     assert_eq!(founded["pool"], charter.pool_id().as_str());
     assert!(a.is_member(&a.fp()), "the charter names the device, which is the pool's first member with no admit");
@@ -342,7 +351,7 @@ fn a_pool_is_founded_drafted_and_signed_by_a_key_outside_the_node_with_no_signer
 fn a_window_opened_with_no_signer_on_the_node_admits_only_the_device_an_admin_already_signed_for() {
     let (a, b, c) = (device(), device(), device());
     enrol_phone_key(&a, ANN);
-    let charter = charter_for(&a, &[strong(ANN, "ann")], poolhouse_node::membership::Policy::Secure);
+    let charter = charter_for(&a, &[phone_admin(ANN, "ann")], poolhouse_node::membership::Policy::Secure);
     a.ok("pool_found", "", &a.token, json!({"act": found_act(&charter)}));
     kit::govnode::grant(&a, "demo", &a.token, &["add_device"]);
     let draft = a.ok("pool_draft", "", &a.token, json!({"kind": "admit", "body": admit_body(&b.net.me, "dev", "join-code", "")}));
@@ -396,6 +405,9 @@ fn a_delegate_needs_a_keystore_bound_device_key_and_each_of_its_admits_is_noted_
     assert_eq!(b.call("add_device", "", &b.token, json!({}))["ok"], false, "a member that is not a delegate opens no window");
     a.ok("pool_propose", "", &a.token, json!({"kind": "delegate", "body": {"fingerprint": b.fp()}}));
     sync(&b);
+    for d in [&a, &b] {
+        pass(d, HELD);
+    }
     assert_eq!(b.call("add_device", "", &b.token, json!({}))["ok"], false, "a device key held in a file makes no delegate: a copy of its state signs nothing");
     b.node.lock().unwrap().rig_bind_device_key();
     let guest = device();
@@ -484,7 +496,7 @@ fn a_pool_is_not_founded_on_weak_keys_alone_and_nothing_is_left_half_made() {
     a.node.lock().unwrap().set_signer(std::sync::Arc::new(RigSigner::new().with_key(ANN, "ann")));
     let denied = a.call("pool_create", "", &a.token, json!({"title": "home"}));
     assert_eq!(denied["ok"], false);
-    assert!(denied["error"]["say"].as_str().unwrap().contains("asks for your presence"), "{denied}");
+    assert!(denied["error"]["say"].as_str().unwrap().contains("approved from a computer or a phone"), "{denied}");
     assert_eq!(a.pool(), before, "it is still in no pool");
     assert!(!a.dir.path().join("pools").exists() || std::fs::read_dir(a.dir.path().join("pools")).unwrap().count() == 0);
 }

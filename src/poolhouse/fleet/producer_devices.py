@@ -16,7 +16,6 @@ from . import studio_epoch, studio_pool, tls
 from .producer_member import FIELDS
 from .producer_offers import _process, _text
 from .remote import Beacon, Member
-from .service_pool import Pool
 from .studio_transport import MemberExecution
 
 _HEX32 = re.compile('[0-9a-f]{32}')
@@ -68,36 +67,38 @@ class Devices:
         if not isinstance(self.identity, tls.Identity) or self.identity.fingerprint != self.anchor['device']:
             raise PermissionError('The existing daemon identity is unavailable.')
         self.machine = _machine()
-        self._current()
-        own = self._self()
+        own = self._self(self._current())
         self._members[self.identity.beacon] = (own, _address(own))
 
     def _current(self):
         if (self.service.authority._context() != self.anchor or self.ui.studio_identity() is not self.identity
                 or _machine() != self.machine):
             raise PermissionError('The selected producer pool or daemon changed.')
-        if studio_pool.current() != self.anchor['pool']:
-            raise PermissionError('The selected producer pool changed.')
         try:
-            return Pool().own(self.identity)
+            bound = self.ui.pool.own(self.identity)
         except PermissionError as exc:
             raise PermissionError('The current daemon is not enrolled in this pool.') from exc
+        if studio_pool.scope_of(bound.pool) != self.anchor['pool']:
+            raise PermissionError('The selected producer pool changed.')
+        return bound
 
-    def _self(self):
+    def _self(self, bound=None):
+        """This daemon as the pool lists it: under the name its node gives the device, the one every other device reads."""
+        bound = bound or self._current()
         endpoint = self.ui.studio_endpoint()
         location = urlsplit(endpoint or '')
         if (location.scheme != 'https' or location.hostname != '127.0.0.1'
                 or location.username or location.password or location.path not in ('', '/')
                 or location.query or location.fragment or not location.port or _machine() != self.machine):
             raise PermissionError('The existing encrypted daemon listener is unavailable.')
-        name = self.ui.name or 'This device'
+        name = bound.name
         if not _text(name):
             raise PermissionError('The daemon device label is invalid.')
         token = getattr(self.ui, 'studio_token', lambda: '')()
         if not token:
             raise PermissionError('The existing daemon owner credential is unavailable.')
         beacon = Beacon(name=name, port=location.port, host='127.0.0.1', machine=self.machine, cert=self.identity.beacon)
-        return Member(endpoint, token, beacon=beacon, timeout=5, identity=self.identity)
+        return Member(endpoint, token, beacon=beacon, timeout=5, identity=self.identity, pool=self.ui.pool)
 
     def _network(self):
         if self.service.store.lock._is_owned():
@@ -112,16 +113,16 @@ class Devices:
             cached = self._members.get(member.beacon.cert)
         if (member.pool != selected.pool or cached is None or cached[0] is not member or cached[1] != expected):
             raise PermissionError('The producer device is no longer a current node-authorized service.')
-        if member.beacon.cert == self.identity.beacon and _address(self._self()) != expected:
+        if member.beacon.cert == self.identity.beacon and _address(self._self(selected)) != expected:
             raise PermissionError('The current encrypted daemon listener changed.')
         return True
 
     def refresh(self):
         self._network()
         selected = self._current()
-        own = self._self()
+        own = self._self(selected)
         found = {self.identity.beacon: (own, _address(own))}
-        for member in Member.discover(timeout=5):
+        for member in Member.discover(timeout=5, pool=self.ui.pool, identity=self.identity):
             beacon = member.beacon
             if not beacon or not beacon.cert or not beacon.machine or member.pool != selected.pool:
                 raise PermissionError('The node returned an invalid compute device.')

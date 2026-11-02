@@ -12,7 +12,7 @@
 
 [ratchet]
 uncovered = 51
-partial = 184
+partial = 183
 
 [[group]]
 match = ["parser:fleet/producer_devices.py", "handler:fleet/producer_devices.py:Devices.discover", "handler:fleet/producer_devices.py:Devices.inspect", "handler:fleet/producer_devices.py:Devices.control", "egress:fleet/producer_devices.py:Devices.request"]
@@ -1710,6 +1710,18 @@ status = "covered"
 count = 1
 tests = ["tests/test_hub_cache_store.py::test_a_planted_ref_is_not_followed_out_of_the_cache"]
 note = "refs/main is read back from a cache any tool can write; anything but a commit id is ignored, so a planted path never leaves the snapshots folder"
+
+[[group]]
+match = ["parser:decide/window.py", "parser:sandbox/run.py"]
+status = "covered"
+count = 2
+tests = ["tests/test_redteam_planted_files.py::test_a_config_that_is_not_a_json_object_is_a_refusal_not_a_crash",
+         "tests/test_redteam_planted_files.py::test_a_window_or_size_that_is_not_a_plain_positive_whole_number_is_refused",
+         "tests/test_redteam_planted_files.py::test_a_text_config_that_is_not_an_object_never_supplies_the_flat_numbers",
+         "tests/test_redteam_planted_files.py::test_a_config_that_is_a_directory_or_a_dangling_link_is_a_refusal",
+         "tests/test_redteam_planted_files.py::test_a_hostile_pid_max_leaves_a_run_room_or_no_limit_and_never_crashes",
+         "tests/test_redteam_planted_files.py::test_the_share_is_never_less_than_one_however_many_runs_are_alive"]
+note = "a planted model config.json is refused unless every window and size is a plain positive whole number, and a hostile pid_max leaves a sandbox run a share of at least one process or no limit"
 
 [[group]]
 match = ["parser:hub/*", "parser:ingest/*", "parser:sources/*", "parser:media/*",

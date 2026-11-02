@@ -5,7 +5,7 @@ use kit::phone::FakePhone;
 use poolhouse_node::fsutil::hex;
 use poolhouse_node::gov::act::Act;
 use poolhouse_node::gov::body;
-use poolhouse_node::gov::keys::{AdminKey, Alg, Role, Strength};
+use poolhouse_node::gov::keys::{AdminKey, Alg, Claim, Role};
 use poolhouse_node::row::canonical;
 use serde_json::{json, Value};
 
@@ -14,7 +14,7 @@ const PATH: &str = "../../tests/fixtures/phone-admit-vectors.json";
 fn entry(vectors: &Value) -> AdminKey {
     let terms = &vectors["terms"];
     AdminKey {
-        key: vectors["key"].as_str().unwrap().into(), alg: Alg::P256, role: Role::Admin, strength: Strength::Strong, person: terms["person"].as_str().unwrap().into(),
+        key: vectors["key"].as_str().unwrap().into(), alg: Alg::P256, role: Role::Admin, claim: Some(Claim::phone_keystore()), person: terms["person"].as_str().unwrap().into(),
         since: terms["since"].as_u64().unwrap(), acceptance: vectors["acceptance"].as_str().unwrap().into(), label: vectors["label"].as_str().unwrap().into(),
     }
 }

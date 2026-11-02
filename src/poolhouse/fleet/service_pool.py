@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from poolhouse import macauth, node_health, node_launch
+from poolhouse import macauth, node_health
 
 from . import tls
 
@@ -69,7 +69,7 @@ class Pool:
     """Read compute authorization from the live Rust node."""
 
     def __init__(self, state: Path | None = None) -> None:
-        self.state = state or node_launch.default_state()
+        self.state = state or node_health.default_state()
 
     def _call(self, method: str, params: dict | None = None) -> dict:
         try:
@@ -140,6 +140,14 @@ class Pool:
                 or local.endpoint.rstrip("/") == remote.endpoint.rstrip("/")):
             raise PermissionError("Compute requests need two distinct services in the same current pool.")
         return request_secret(own, local, remote)
+
+
+def default() -> Pool:
+    """The pool of this machine's node: the one place that builds a `Pool` nobody handed in.
+
+    A daemon, a `UI` and a `Member` are given a `Pool` and hold it; a process with one node passes the default, and a test that
+    runs two daemons in one process gives each its own node's."""
+    return Pool()
 
 
 def request_secret(identity: tls.Identity, local: Binding, remote: Binding) -> str:

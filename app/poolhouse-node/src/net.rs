@@ -730,7 +730,12 @@ impl Net {
             let resource=if c.method=="join_pool" { text("host") } else { "*" };
             let mut node=tracked_node(&self.node,Source::Network)?;
             node.gov_tick()?;
-            authorize_from(&mut node,&c.token,peer,&c.method,resource)?;
+            if !crate::poolapi::is_person(&mut node,&c.token) {
+                if c.method=="add_device" && node.members.gov().is_some_and(|g| !g.state().chain.latest().charter.has_phone()) {
+                    return Err(Error::say("denied","Only you open a window for another device on this pool, at a terminal of your own: run `poolhouse-pool add-device` there. The code is for you alone.","approval","ask-owner"));
+                }
+                authorize_from(&mut node,&c.token,peer,&c.method,resource)?;
+            }
         }
         if c.method=="add_device" {
             self.add_device_admitted(text("passphrase"),c.params.get("ttl_s").and_then(Value::as_u64).unwrap_or(120),

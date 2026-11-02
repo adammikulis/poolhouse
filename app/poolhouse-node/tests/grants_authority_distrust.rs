@@ -123,7 +123,7 @@ fn a_distrust_that_should_not_count_changes_nothing_and_no_row_ends_one() {
     let by_outsider = pool.rig.call("grant_distrust", "", &pool.token, outsider.sign_params(body(&phone, since, &pool_id(&pool), &outsider.fingerprint())));
     assert!(Founded::denial(&by_outsider).contains("counts for nothing"), "{by_outsider}");
     ok(pool.act("admin_remove", json!({"key": pool.typed.public()})));
-    pool.pass(48 * 3_600_000);
+    pool.pass(8 * 24 * 3_600_000);
     let removed_signer = body(&phone, since, &pool_id(&pool), &typed);
     let sig = sign_with(&pool.typed, &removed_signer);
     plant(&pool, removed_signer, sig).unwrap();
