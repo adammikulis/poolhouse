@@ -40,7 +40,7 @@ Add a second device. Both devices run `poolhouse` once. On the first, turn the n
 
 ```python
 ph.pool.listen(agreed=True)                  # a person said yes to turning the network on
-print(ph.pool.add_device())                  # {"code": "...", "ttl_s": 300}
+print(ph.pool.add_device())                  # {"code": "...", "expires_in_s": 300, "port": 7447, ...}
 ```
 
 On the second device the person tells their agent the code, or the script passes it:
@@ -110,8 +110,9 @@ member can be removed.
 | `ph.pool.members(include_removed=False)` | The devices of the pool as `Member`s: name, fingerprint, `this_device`, `connected`, `address`, `last_seen_ms`, `last_sync_ms`, `last_error`, `reach` (`direct`, `channel`, `none`, `self` or `unknown`: how this device reaches it) and `reach_hint` (the exact fix when it is not `direct`). |
 | `ph.pool.policy()` | `"open"` or `"secure"`: how devices join. |
 | `ph.pool.listen(*, agreed=False)` | Turn this device's network on (TCP 7447, signed beacon on UDP 7448) so devices can join. `agreed=True` is required: it is a person's decision. |
-| `ph.pool.add_device(ttl_s=300)` | Make the short-lived code another device joins with (policy `secure`). |
-| `ph.pool.join(host, code="", *, port=7447, fingerprint="")` | Join the pool of the device at `host`: with the `code` its `add_device` made (`secure`), or, for an `open` pool on this device's own network, with the `fingerprint` of the device that answers (64 hex digits, from its beacon). A device already in a pool does not change pool. When a phone is linked, the grant to join is asked of it and the call goes on after the tap. |
+| `ph.pool.add_device(ttl_s=300, *, say=None)` | Make the short-lived code another device joins with (policy `secure`). A window to a pool is opened by the person: the computer's own prompt shows what it opens (the pool, for ten minutes) and the person's yes, for that one window, is enough, so a pool approved by a typed yes, or a Mac whose 30 days of admitting have lapsed, still adds a device. `say` is called with the sentence that tells the person where to answer. |
+| `ph.pool.join(host, code="", *, port=7447, fingerprint="", say=None)` | Join the pool of the device at `host`: with the `code` its `add_device` made (`secure`), or, for an `open` pool on this device's own network, with the `fingerprint` of the device that answers (64 hex digits, from its beacon). A device already in a pool does not change pool. When a phone is linked, the grant to join is asked of it and the call goes on after the tap. |
+| `ph.pool.renew(*, say=None)` | Give this device another 30 days of admitting devices without asking (the delegate a pool starts with). It changes who governs the pool, so it is approved at this computer's prompt and takes effect after the pool's wait; until then a window is opened with the person's yes. Returns this device's `Member`. Raises `ph.pool.Refusal`. |
 | `ph.pool.remove(device)` | Remove a member by name or fingerprint; it stops syncing and taking work. Not this device. In a governed pool it is an act of the pool's admins, signed by a person's key; a device's word alone removes nobody. |
 | `ph.pool.sync()` | Exchange board entries with every connected member now. |
 | `ph.pool.capacity()` | `Capacity` of this device: cores, CPU slots and how many are leased, memory and what is free, accelerators and their memory, leases held and queued. |

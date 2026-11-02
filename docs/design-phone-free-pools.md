@@ -524,7 +524,12 @@ Built, each with tests written and run first (`app/poolhouse-node/tests/gov_leve
 Differences from the text: `shard_consent` is not an irreversible data act (the node's table calls it sensitive and a day's wait would delay every sharing consent); the notification
 of a pending governance act, which 2.6 names as the precondition of real `computer` keys, is not built (the hold is shown in `pool_status`), at the owner's order that a pool must
 be founded now; the join code is still six digits and windows are not limited to two an hour; the delegate caps of a computer-only pool are not built; the person's own session is proven by the secret
-the node keeps for the person (`identity::proves_person`), a join window and a join are each one prompt for exactly that operation (`window.rs`, `op_draft`), the key a founding yes enrols is made by the node and handed
-to the person's session once, the limits of prompts are one session's and are kept in `prompts.json`, a ticket lives two minutes from the yes, a delegate act waits its seven days from the moment it carried all
+the node keeps for the person (`identity::proves_person`), a join window and a join are each one prompt for exactly that operation (`window.rs`, `op_draft`), the key a founding yes hands over is made by the node and
+handed to the person's session once and is entered as the charter's key only when the pool is founded (a founding that fails leaves no key and does not spend the yes), the limits of prompts are one session's, count the first
+key and the first phone as well as cards, and are kept in `prompts.json`, a ticket lives two minutes from the yes, a delegate act waits its seven days from the moment it carried all
 its signatures, a grant of an irreversible act waits its day however it was signed (`grants::book::span`), the macOS and Linux prompts are used only where the account or session can answer them (`presence::can_prompt`,
-otherwise the person's terminal), and the Windows prompt is started from the system directory.
+otherwise the person's terminal, which the node finds from the asking process and never takes from the asker: `presence::tty`), and the Windows prompt is started from the system directory the system reports
+(`GetSystemDirectoryW`). **A window is also an act.** The person's yes for a join window is the ticket the computer's key signs a `window` act under (a `Sensitive` act with no hold, ten awake minutes, naming
+this device): the device admits what proves the window's code with its own key, so a pool approved by a typed yes (which has no delegate) or a computer whose delegate has lapsed opens a window with the
+person's yes alone; `ph.pool.renew()` is the held `delegate` act that gives the device thirty days without asking. The prompt of a change of admins names the key it adds or removes by the words of its
+fingerprint, and the founding sentence lists every key of the charter.

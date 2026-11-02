@@ -235,8 +235,8 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `pool_draft` | | `kind`, `body` | `{act, sign_bytes, summary}`: the act this pool would take next, unsigned, the bytes a key signs and what a person is shown, for a key that signs outside the node |
 | `pool_draft_found` | | `title`, `policy`, `project`, `keys` (each `{key, person, label}`; `key` is an Ed25519 key of 64 hex digits or a phone's P-256 point of 130, and the charter says which as `alg`; a key that names its level is refused) | `{charter, anchor, accept, summary, counting, card, card_why}`: the charter with this device as its `first` device (a delegate for thirty days) and blank acceptances, each key with the `claim` this device recorded for it when the key was enrolled (`phone-keystore` when a phone enrolled it, `keystore-prompt` through the computer's prompt, `keystore-typed` for a typed yes; for a key not enrolled yet, the claim the node's way of asking would record), `counting` (whether any key counts), and for each key its `alg` and the bytes it signs to accept it; `card` names the draft the person may answer at the computer's prompt (null, with `card_why`, when the one sentence it shows would be cut or changed); the rig or person signs them (a P-256 key in strict DER with `s` in the lower half of the group) and hands the charter back to `pool_found` |
 | `pool_found` | token with the grant `pool_create` | `act` (a founding act whose keys accepted it), or `charter` (the drafted one with the acceptances filled; the node makes the act) | `{pool, name, policy, epoch}`: founds the pool of an act signed elsewhere; the charter must name this device as its `first`, which is then the pool's first member with no admit |
-| `add_device` | token with the grant `add_device` | `passphrase` (else a six-digit code is made), `ttl_s`, `presigned` (true: open the window with no signer on this node, for a device an admin already signed an admit for and submitted here; the window admits no other) | `{code, expires_in_s, port, fingerprint}` |
-| `join_pool` | token with the grant `join_pool` | `host, port, passphrase`; without a passphrase `fingerprint` (join under `open`) | `{pool, peer}` |
+| `add_device` | token with the grant `add_device`, or the person's own session with the `ticket` of its yes (and `window`, the act this computer's key signed under it) | `passphrase` (else a six-digit code is made), `ttl_s`, `presigned` (true: open the window with no signer on this node, for a device an admin already signed an admit for and submitted here; the window admits no other), `ticket`, `window` | `{code, expires_in_s, port, fingerprint}` |
+| `join_pool` | token with the grant `join_pool`, or the person's own session with the `ticket` of its yes | `host, port, passphrase`; without a passphrase `fingerprint` (join under `open`); `ticket` | `{pool, peer}` |
 | `sync_now` | token with the grant `sync_now` | | `{reached}` |
 | `shard_call` | token with the grant `shard_call` | `device` (name or fingerprint), `op`, `args` | the device's answer to one test-shard op (docs/test-farm.md); the node adds `op` and the session as `by`, and refuses `op`/`by` in `args` |
 | `shard_consent` | (token with the grant `shard_consent` to change) | `enabled`, `python`, `repo` | `{enabled, python, repo, by, at_ms}`; turning it on or off writes an audit entry to the pool board; shards are off until a person turns them on at that device |
@@ -464,7 +464,10 @@ on macOS and Linux, raised only by the installed software on the real home: the 
 `poolhouse.real_machine.allowed()`, and the node itself asks only for the account's own node directory (`~/.poolhouse/node`, that directory and
 no other under it, never as the administrator account). **On the real home the operating system's prompt is the only presence**: a computer
 with no such prompt (a Linux without `pkexec` or a desktop session, a standard macOS account) asks on the person's terminal instead, and
-what that makes counts as a typed yes (`presence::can_prompt`, `Mode::Os`): it is never left with no way to ask, and never counted above what it is. The prompt shows the words of the key being added, the yes
+what that makes counts as a typed yes (`presence::can_prompt`, `Mode::Os`): it is never left with no way to ask, and never counted above what it is. **That terminal is found by the node and never
+named by the asker:** it is the controlling terminal of the process on the other end of the request (`presence::tty`, from the system's own record of that process), so a program that opens a
+terminal of its own and names it asks nowhere it can answer, and a request from a process with no terminal (a sandbox with none) is refused with a sentence that sends the person to run the
+command in a terminal of theirs. The prompt shows the words of the key being added, the yes
 is for that key only (`presence_ask` takes its `public`; another key presented with the secret is refused), and the prompt ends when two minutes
 are up whether or not anything polls. For a node on any other state directory (a server, a container, the pool check's rig, a test) started
 with `--presence terminal`, the node writes the question on the terminal device the asker names and reads the typed `yes` itself; it refuses that
@@ -472,24 +475,31 @@ mode on the real home, because the program that asks could open a terminal of it
 cannot ask and refuses the first key and the first phone. On a yes the node makes the random secret in its memory (never a file), hands it
 once to the session that asked (`presence_status`), accepts it once and for ten minutes, and spends it on any guess, so a wrong secret ends the
 attempt; a node that holds a key never asks. **A change the node drafted is answered at the same prompt**, and so is every operation the person's own session does without a grant. Who may ask is proven: only the
-person's own session (`register_person` with the secret the node keeps for the person) drafts a card, receives a key the node made, or raises a prompt, so an agent's draft is a
-charter with no card. A card is asked for with `presence_ask` (`purpose: pool_key` for a card that made a key for this computer, `card` for any other, and the `card` that `pool_draft_found`,
-`pool_draft` or `op_draft` returned; it never takes a key from the request). Every limit counts one asker alone: one prompt open, ten minutes of quiet after a no, three prompts in ten
+person's own session (`register_person` with the secret the node keeps for the person) drafts a card, receives a key the node made, or raises a prompt of any purpose (the first key and the first phone included:
+`presence_ask` from an agent's session is refused whatever terminal it names), so an agent's draft is a charter with no card. A card is asked for with `presence_ask` (`purpose: pool_key` for a card that made a key for this computer, `card` for any other, and the `card` that `pool_draft_found`,
+`pool_draft` or `op_draft` returned; it never takes a key from the request). Every limit counts one asker alone, whatever the prompt is for (a card, the first key, the first phone): one prompt open, ten minutes of quiet after a no, three prompts in ten
 minutes, twenty a day and sixteen cards, so a session that fills its own allowance or is refused takes nothing from the person's; the counts are kept in `prompts.json`, so a restart does not
 forget them. The sentence the prompt shows is the node's, written from the pool's name, its policy, whether its first computer may admit devices for 30 days, the words of the key's fingerprint
 and (for a removal) the words of the device's fingerprint, never a device's own name; it says that the yes adds a key and what it allows. A sentence the prompt would cut or change (over 240
 characters, or with a character outside letters, digits, spaces and `.,-/()`) gets no card, and a pool name is at most 40 letters, digits, spaces, dots and dashes, so a pool that cannot be
 administered is never made. A yes makes a **ticket**: a secret handed once to the session that asked, kept by the node only as a hash, good for two minutes from the yes (the moment the prompt
-ended, noted by the node and not by the poll that found it) and for the SHA-256 of each payload the card names, each once (`ticket_spend`). A `pool_key` yes enrols the key **the node made for that
-card** (`keystore-prompt` through the operating system's prompt, `keystore-typed` through a terminal's), hands its seed to the person's session once, and for a founding card is the grant `pool_found` needs.
-Opening a join window (`add_device`) and joining a pool (`join_pool`) by the person's session are cards too (`op_draft`): the call carries the ticket, and the node recomputes the bytes from the call it
-received and spends the ticket on them, so one yes opens one window or makes one join; a session with a grant needs none. The computer's key (`src/poolhouse/board/computer_key.py`)
+ended, noted by the node and not by the poll that found it) and for the SHA-256 of each payload the card names, each once (`ticket_spend`). A `pool_key` yes hands the seed of the key **the node made for that
+card** to the person's session once and is the grant `pool_found` needs for that charter (for ten minutes, and not spent until a pool is founded, so a founding that fails leaves the yes and no key behind);
+the key is entered as the charter's own (`keystore-prompt` through the operating system's prompt, `keystore-typed` through a terminal's, `file` where the computer can prompt but cannot keep a key in its
+keystore) only when `pool_found` makes the pool.
+Opening a join window (`add_device`) and joining a pool (`join_pool`) by the person's session are cards too (`op_draft`, which needs the node's network to be on): the call carries the ticket, and the node recomputes the bytes from the call it
+received and spends the ticket on them, so one yes opens one window or makes one join; a session with a grant needs none. The yes for a window is also what lets this computer's key sign a **`window` act**
+(`add_device` takes it as `window`; `op_draft` returns its bytes): a `Sensitive` act with no hold that lets this device admit what proves the code for ten awake minutes, signed under the same ticket, so a pool
+approved by a typed yes, or a Mac whose thirty days as a delegate have lapsed, still adds a device with the person's yes alone. A joiner receives the window acts with the pool; a window names this device or is
+refused. `ph.pool.renew()` makes a `delegate` act (held seven days) that gives this device thirty days of admitting without asking again. The computer's key (`src/poolhouse/board/computer_key.py`)
 unseals only after the node accepts the payload. There is no cargo feature, argument or environment variable that answers for the person, in any
 binary: the crate's own tests put a stand-in on a library field that no binary sets, and the rig's person types `yes` at a pseudo-terminal
 (`tests/pool_check/wire.py`, `answer_presence`). On Windows the prompt is Windows Hello (a PIN, a fingerprint or a face) through the user consent verifier, and the system's credential dialog checked against the account's
-password where Hello is not set up (Windows PowerShell, `windows_dialog` in `presence/mod.rs`; built, not yet run on a Windows device). Windows has the terminal presence for any other state
+password where Hello is not set up (Windows PowerShell, started by its place under the directory `GetSystemDirectoryW` reports and never by an environment variable; `windows_dialog` in `presence/os.rs`;
+built, not yet run on a Windows device). Windows has the terminal presence for any other state
 directory (a server, a test, the pool check's rig): the asker names the console by the id of a process that runs in it (`terminal` is a decimal
-process id, which `poolhouse.board.presence.terminal_name` gives for the command window it runs in), the node attaches to that console (a node
+process id, which `poolhouse.board.presence.terminal_name` gives for the command window it runs in; where the node asks on the person's terminal for the real home, it uses the id of the process on the
+other end of the pipe, `GetNamedPipeClientProcessId`), the node attaches to that console (a node
 started by its supervisor has none of its own), writes the question there, reads the typed `yes` itself with no echo or line editing but its own,
 and leaves the console before the answer is known. Only a process of the node's own user may be named, and only one question is on a console at a
 time. The real-home check there asks the system for the account's directory (never `USERPROFILE`) and refuses when it cannot. The pool check's
