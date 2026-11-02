@@ -10,6 +10,11 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 
 
+NESTED = ("blocked: the tool input is nested deeper than the guard can read in bounded work; it is refused, not passed. "
+          "Split the call into smaller ones.")
+"""What a guard says when the event is nested too deeply for the JSON decoder (the rules refuse the less deep ones themselves)."""
+
+
 def guard_off() -> bool:
     """Whether POOLHOUSE_GUARD=off turns the soft rules off; the hooks run only for an agent's calls, so the hard
     rules stay in force."""

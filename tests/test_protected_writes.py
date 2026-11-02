@@ -28,8 +28,13 @@ def tree(tmp_path):
     return tmp_path
 
 
+def home_of(tree: Path) -> Path:
+    """The home folder of the tests: beside the tree, so that the tree is not a folder above the person record."""
+    return tree.parent / f"{tree.name}-home"
+
+
 def why(command: str, tree: Path, released: bool = False, environ: dict | None = None) -> str:
-    return protectedwrites.refusal(command, str(tree), lambda cwd: released, environ or {"HOME": str(tree / "home")})
+    return protectedwrites.refusal(command, str(tree), lambda cwd: released, environ or {"HOME": str(home_of(tree))})
 
 
 WRITES_A_GUARD = [
@@ -123,7 +128,7 @@ def test_the_person_record_and_the_tokens_are_not_read_or_listed(command, tree):
 
 def test_the_active_state_root_is_protected_where_it_is(tree):
     root = tree / "elsewhere"
-    environ = {"HOME": str(tree / "home"), "POOLHOUSE_HOME": str(root)}
+    environ = {"HOME": str(home_of(tree)), "POOLHOUSE_HOME": str(root)}
     for command in (f"cat {root}/node/client/b/x.token", f"echo x > {root}/authority.json", f"ls {root}/person"):
         assert why(command, tree, environ=environ), command
     assert not why(f"ls {root}/sentinel", tree, environ=environ)
@@ -309,6 +314,101 @@ def test_the_files_a_person_reviews_before_they_land_are_named_in_one_place():
              "scripts/test", "scripts/testslots.py", "scripts/gates/duplicates.py", "tests/conftest.py", "pyproject.toml", "budgets.json",
              "scripts/hooks/pre-push", "scripts/primary_sync.py", "scripts/ci_watch.py"]
     assert protectedwrites.touches_guards(["src/poolhouse/x.py", *named]) == named
+
+
+READS_THE_RECORD = [
+    "cat < ~/.poolhouse/person/key",
+    "while read line; do echo $line; done < ~/.poolhouse/person/key",
+    "grep -r . ~/.poolhouse",
+    "grep -rn token ~/.poolhouse/",
+    "grep -R token ~/.poolhouse/node",
+    "grep --recursive token ~/.poolhouse",
+    "rg token ~/.poolhouse",
+    "find ~/.poolhouse -type f -exec cat {} +",
+    "find ~ -path '*poolhouse/person*' -type f -exec cat {} +",
+    "find ~/.poolhouse -type f | xargs cat",
+    "tar cf - ~/.poolhouse | base64",
+    "cp -r ~/.poolhouse /tmp/x",
+    "rsync -a ~/.poolhouse/ /tmp/x",
+    "cd ~/.poolhouse && rg token",
+    "cd ~/.poolhouse; grep -r token .",
+    "bash -c 'grep -r token ~/.poolhouse'",
+    "grep -r KEY ~",
+    "cp -r ~ /tmp/x",
+    "cd ~ && grep -r KEY",
+    "cd ~ && rg --hidden KEY",
+    "cd -P ~ && grep -r KEY",
+    "cd -- ~ && grep -r KEY",
+    "find ~ -name key | xargs cat",
+    "cat $(find ~ -name key)",
+    "cd -P ~/.poolhouse && cat person/key",
+    "cd -L ~/.poolhouse && cat person/key",
+    "cd -- ~/.poolhouse && cat person/key",
+    "cd -P ~/.poolhouse && rg KEY",
+    "tar czf x.tgz -C ~ .poolhouse",
+]
+
+
+@pytest.mark.parametrize("command", READS_THE_RECORD)
+def test_a_command_that_reads_the_person_record_or_the_tokens_through_a_redirect_or_a_folder_above_them_is_refused(tree, command):
+    (home_of(tree) / ".poolhouse" / "person").mkdir(parents=True, exist_ok=True)
+    assert why(command, tree), command
+
+
+@pytest.mark.parametrize("command", [
+    "ls ~/.poolhouse",
+    "ls -ltr ~/.poolhouse",
+    "ls -R src",
+    "tree",
+    "find ~/.poolhouse/node -name '*.log'",
+    "rm -rf ~/.poolhouse/node",
+    "mkdir -p ~/.poolhouse/node",
+    "poolhouse-node --state ~/.poolhouse/node",
+    "tar -C ~ -czf x.tgz Documents",
+    "cd ~ && grep -r KEY src",
+    "cd -P src && grep -r VALUE .",
+    "cd ~/.poolhouse && ls",
+    "du -sh ~/.poolhouse",
+    "cat ~/.poolhouse/sentinel/events.log",
+    "grep -r foo ~/projects",
+    "grep foo src/poolhouse/x.py",
+    "find ~ -name '*.py'",
+    "find src -name '*.py' -exec wc -l {} +",
+    "cat < src/poolhouse/x.py",
+    "cd src && grep -r VALUE .",
+    "git status",
+])
+def test_reading_what_is_not_the_person_record_stays_allowed(tree, command):
+    (home_of(tree) / ".poolhouse" / "person").mkdir(parents=True, exist_ok=True)
+    assert not why(command, tree), command
+
+
+@pytest.mark.parametrize("command", [
+    "cat link/../key",
+    "cat ./link/../key",
+    "head -c 9 link/../key",
+    "cd -P link/.. && cat key",
+    "grep -r k link/..",
+])
+def test_a_link_is_followed_before_a_parent_step_collapses_in_a_shell_path(tree, command):
+    record = home_of(tree) / ".poolhouse" / "person"
+    (record / "inside").mkdir(parents=True, exist_ok=True)
+    (record / "key").write_text("k")
+    (tree / "key").write_text("not a secret")
+    (tree / "link").symlink_to(record / "inside", target_is_directory=True)
+    assert why(command, tree), command
+    assert not why("cat key", tree)
+
+
+def test_the_release_question_names_every_hook_and_harness_setting_though_an_agent_may_edit_them():
+    """The guards let an agent change these files (an owner's order), so the person who releases `main` is told of each."""
+    wiring = [".claude/settings.json", ".claude/settings.local.json", ".claude/agents/branch-worker.md",
+              ".claude/commands/x.md", ".claude/skills/s/SKILL.md", ".claude/hooks/h.sh", "scripts/hooks/claude-bash-guard",
+              "scripts/hooks/claude-edit-guard", "scripts/hooks/claude-tool-guard", "scripts/hooks/rules_loader.py",
+              "scripts/hooks/subagent_records.py", "scripts/hooks/workspace_hook.py", "scripts/hooks/claude-subagent-start",
+              "scripts/hooks/a-hook-added-next-year", ".codex/config.toml", ".codex/hooks/x.sh", ".agents/skills/x/SKILL.md",
+              ".vscode/tasks.json", ".mcp.json"]
+    assert protectedwrites.touches_guards(["src/poolhouse/x.py", "docs/a.md", *wiring]) == wiring
 
 
 def test_a_path_that_differs_only_in_case_is_the_same_guard_and_the_same_reviewed_file():

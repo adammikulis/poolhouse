@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
-"""A PreToolUse hook on the tools the Bash and edit guards do not see: reads and searches of the person record and the
-session tokens, MCP tools, the owner's browser, and task control.
+"""A PreToolUse hook on every tool the Bash and edit guards do not see: reads and searches of the person record and the
+session tokens, MCP tools, the owner's browser, task control, and any tool nobody has listed.
 
 Claude Code runs this before every call of those tools. Exit 2 blocks the call and hands the message back. Every rule
 here is a hard rule: POOLHOUSE_GUARD=off does not open it.
 
-Wire it in as a PreToolUse hook in `.claude/settings.json`:
+A tool that is not listed is read by the shape of its input, so a tool added tomorrow is covered the day it appears: a string
+under a key that names a path is checked as the Read tool's path is, and a `command` meets the shell rules the Bash guard
+applies (a subagent's command in such a tool is refused, because only Bash and Monitor commands are stamped as the subagent).
 
-    {"matcher": "Read|Glob|Grep|Agent|TaskStop|LSP|mcp__.*", "hooks": [
-        {"type": "command", "command": "$CLAUDE_PROJECT_DIR/scripts/hooks/claude-tool-guard"}]}
+Wire it in as a PreToolUse hook on every tool in `.claude/settings.json` (it passes the tools the other two guards hold at once):
+
+    {"matcher": ".*", "hooks": [{"type": "command", "command": "$CLAUDE_PROJECT_DIR/scripts/hooks/claude-tool-guard"}]}
 """
 
 from __future__ import annotations
 
+import importlib.machinery
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -20,20 +25,56 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import rules_loader
 
+HERE = Path(__file__).resolve().parent
+HELD_ELSEWHERE = frozenset({"Bash", "Monitor", "Write", "Edit", "MultiEdit", "NotebookEdit"})
+"""The tools the shell guard and the edit guard hold: they run before them, and this guard leaves them to those."""
+
+
+def shell_guard():
+    """The Bash guard as a module, whose `judge` is the one decision about a shell command."""
+    loader = importlib.machinery.SourceFileLoader("_poolhouse_claude_bash_guard", str(HERE / "claude-bash-guard"))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def command_refusal(event: dict, given: dict, rules) -> str:
+    """Why a shell command in the input of a tool nobody listed may not run, however the input spells it (`command`, `cmd`,
+    `script`, `argv`, a list of commands, one nested in another object): the rules that read a shell command apply to each."""
+    texts = rules.protected().command_texts(given)
+    if texts and event.get("agent_id"):
+        return ("blocked: a subagent's command is stamped as the subagent only when Bash or Monitor runs it; "
+                "run it with one of them.")
+    for text in texts:
+        if refused := shell_guard().judge({**event, "tool_name": "Bash", "tool_input": {"command": text}},
+                                          rules_loader.guard_off(), rules):
+            return refused
+    return ""
+
 
 def main() -> int:
     try:
         event = json.load(sys.stdin)
-        rules = rules_loader.load()
+    except RecursionError:
+        print(rules_loader.NESTED, file=sys.stderr)
+        return 2
     except Exception:
         return 0
-    given = event.get("tool_input")
-    if rules is None or not isinstance(event, dict) or not isinstance(given, dict):
+    try:
+        given = event.get("tool_input") if isinstance(event, dict) else None
+        name = str(event.get("tool_name") or "") if isinstance(given, dict) else ""
+        rules = rules_loader.load() if name and name not in HELD_ELSEWHERE else None
+    except Exception:
         return 0
-    why = rules.protected().tool_refusal(str(event.get("tool_name") or ""), given, cwd=str(event.get("cwd") or ""),
-                                         subagent=bool(event.get("agent_id")))
+    if rules is None:
+        return 0
+    why = rules.protected().tool_refusal(name, given, cwd=str(event.get("cwd") or ""), subagent=bool(event.get("agent_id")))
     if why:
         print(f"blocked: {why}\n\n(poolhouse scripts/hooks/claude-tool-guard. No switch opens this rule.)", file=sys.stderr)
+        return 2
+    if refused := command_refusal(event, given, rules):
+        print(refused, file=sys.stderr)
         return 2
     return 0
 

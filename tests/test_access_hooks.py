@@ -30,17 +30,29 @@ def bash(command: str, **env: str) -> subprocess.CompletedProcess:
     return hook(BASH, {"tool_name": "Bash", "cwd": str(ROOT), "tool_input": {"command": command}}, **env)
 
 
-def test_the_settings_wire_the_tool_guard_to_every_tool_the_other_guards_do_not_see():
+def guards_of(tool: str) -> set[str]:
+    """The guard scripts the settings run before ``tool``."""
     settings = json.loads((ROOT / ".claude" / "settings.json").read_text(encoding="utf-8"))
-    wired = {entry["matcher"]: [h["command"] for h in entry["hooks"]] for entry in settings["hooks"]["PreToolUse"]}
-    tools = [m for m, commands in wired.items() if any(c.endswith("scripts/hooks/claude-tool-guard") for c in commands)]
-    assert len(tools) == 1
-    for name in ("Read", "Glob", "Grep", "Agent", "TaskStop", "mcp__files__write_file", "mcp__claude-in-chrome__navigate",
-                 "mcp__ide__executeCode"):
-        assert re.fullmatch(tools[0], name), name
-    for name in ("Bash", "Write", "Edit"):
-        assert not re.fullmatch(tools[0], name), name
-    assert any(c.endswith("claude-bash-guard") for c in wired["Bash"])
+    return {Path(h["command"]).name for entry in settings["hooks"]["PreToolUse"] if re.fullmatch(entry["matcher"], tool)
+            for h in entry["hooks"]}
+
+
+SHELLS = ("Bash", "Monitor")
+EDITORS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
+OTHERS = ("Read", "Glob", "Grep", "Agent", "Task", "TaskStop", "LSP", "WebFetch", "WebSearch", "SendMessage", "EnterWorktree",
+          "ExitWorktree", "Skill", "BashOutput", "mcp__files__write_file", "mcp__claude-in-chrome__navigate",
+          "mcp__ide__executeCode", "A_Tool_Added_Next_Year")
+
+
+def test_every_tool_reaches_a_guard_and_a_tool_that_runs_a_command_reaches_the_shell_guard():
+    for tool in SHELLS:
+        assert "claude-bash-guard" in guards_of(tool), tool
+    for tool in EDITORS:
+        assert "claude-edit-guard" in guards_of(tool), tool
+    for tool in (*SHELLS, *EDITORS, *OTHERS):
+        assert guards_of(tool), f"no guard runs before {tool}"
+    for tool in OTHERS:
+        assert "claude-tool-guard" in guards_of(tool), tool
 
 
 HARD = (
@@ -108,3 +120,117 @@ def test_the_release_question_names_the_guards_the_release_changes(tmp_path):
     question = proposal(repo, state)[0]
     assert "Guards changed: AGENTS.md, scripts/hooks/person-consume" in question
     assert "Commits ahead of origin/main: 3" in question
+
+
+TOOLS = HOOKS / "claude-tool-guard"
+UNKNOWN = "A_Tool_Added_Next_Year"
+
+
+def test_a_command_run_by_the_monitor_tool_meets_the_shell_rules():
+    for command in HARD:
+        asked = {"tool_name": "Monitor", "cwd": str(ROOT), "tool_input": {"command": command, "description": "x", "timeout_ms": 1000}}
+        assert hook(BASH, asked).returncode == 2, command
+        assert hook(BASH, asked, POOLHOUSE_GUARD="off").returncode == 2, command
+    ok = {"tool_name": "Monitor", "cwd": str(ROOT), "tool_input": {"command": "git status --short", "description": "x", "timeout_ms": 1000}}
+    assert hook(BASH, ok).returncode == 0
+    over_a_socket = {"tool_name": "Monitor", "cwd": str(ROOT), "tool_input": {"ws": {"url": "wss://example.invalid/s"}, "description": "x"}}
+    assert hook(BASH, over_a_socket).returncode == 0
+
+
+def test_a_command_in_a_tool_no_guard_knows_meets_the_shell_rules():
+    for command in HARD:
+        asked = {"tool_name": UNKNOWN, "cwd": str(ROOT), "tool_input": {"command": command}}
+        assert hook(TOOLS, asked).returncode == 2, command
+    assert hook(TOOLS, {"tool_name": UNKNOWN, "cwd": str(ROOT), "tool_input": {"command": "git status"}}).returncode == 0
+    subagent = {"tool_name": UNKNOWN, "agent_id": "a1", "cwd": str(ROOT), "tool_input": {"command": "git status"}}
+    assert hook(TOOLS, subagent).returncode == 2, "a subagent's command in an unknown tool cannot be stamped as the subagent"
+
+
+def test_a_path_in_a_tool_no_guard_knows_is_checked_like_the_read_tool():
+    for key in ("filePath", "file_path", "path", "notebook_path"):
+        asked = {"tool_name": "LSP", "cwd": str(ROOT), "tool_input": {key: "~/.poolhouse/person/statements.log", "line": 1}}
+        assert hook(TOOLS, asked).returncode == 2, key
+    ordinary = {"tool_name": "LSP", "cwd": str(ROOT), "tool_input": {"filePath": str(ROOT / "src" / "poolhouse" / "authority.py")}}
+    assert hook(TOOLS, ordinary).returncode == 0
+
+
+SED = "sed -i s/a/b/ .git/hooks/pre-push"
+SHAPES = {
+    "cmd": {"cmd": SED},
+    "script": {"script": f"set -e\n{SED}\n"},
+    "argv": {"argv": ["sed", "-i", "s/a/b/", ".git/hooks/pre-push"]},
+    "nested command": {"exec": {"command": SED}},
+    "commands": {"commands": ["git status", SED]},
+    "a list for command": {"command": ["sed", "-i", "s/a/b/", ".git/hooks/pre-push"]},
+    "a list of commands in a list": {"steps": [{"run": SED}]},
+}
+
+
+def test_a_command_in_any_shape_of_input_meets_the_shell_rules():
+    for label, given in SHAPES.items():
+        assert hook(TOOLS, {"tool_name": UNKNOWN, "cwd": str(ROOT), "tool_input": given}).returncode == 2, label
+    assert hook(TOOLS, {"tool_name": UNKNOWN, "cwd": str(ROOT), "tool_input": {"argv": ["git", "status"]}}).returncode == 0
+
+
+PERSON_RECORD = "~/.poolhouse/person/statements.log"
+PATH_SHAPES = {
+    "file-path": {"file-path": PERSON_RECORD},
+    "targetPath": {"targetPath": PERSON_RECORD},
+    "file_paths": {"file_paths": [PERSON_RECORD]},
+    "a list of lists": {"locations": {"paths": [["a.py"], [PERSON_RECORD]]}},
+    "source": {"source": PERSON_RECORD},
+    "cwd": {"cwd": PERSON_RECORD},
+}
+
+
+def test_a_path_in_any_shape_of_input_is_checked_like_the_read_tool():
+    for label, given in PATH_SHAPES.items():
+        assert hook(TOOLS, {"tool_name": UNKNOWN, "cwd": str(ROOT), "tool_input": given}).returncode == 2, label
+    assert hook(TOOLS, {"tool_name": UNKNOWN, "cwd": str(ROOT), "tool_input": {"file-path": "src/poolhouse/x.py"}}).returncode == 0
+
+
+def deep(depth: int) -> str:
+    return '{"a":' * depth + "1" + "}" * depth
+
+
+def test_an_input_too_nested_to_read_is_refused_and_not_passed():
+    for script, name in ((TOOLS, UNKNOWN), (BASH, "Bash")):
+        for depth in (100, 1500):
+            text = f'{{"tool_name": "{name}", "cwd": "/", "tool_input": {{"command": "git status", "more": {deep(depth)}}}}}'
+            done = subprocess.run([sys.executable, str(script)], input=text, text=True, capture_output=True, env=CLEAN, check=False)
+            assert done.returncode == 2 and "nested" in done.stderr, (script.name, depth, done.stderr[-200:])
+
+
+def test_a_command_the_rules_cannot_read_in_bounded_work_is_refused_and_not_expanded():
+    import time
+    bomb = 'echo "' + "{a,b}" * 40 + '"'
+    began = time.monotonic()
+    done = bash(bomb)
+    assert done.returncode == 2 and "too" in done.stderr, done.stderr[-300:]
+    assert time.monotonic() - began < 10
+    assert bash("echo " + "x" * 300_000).returncode == 2
+
+
+def test_a_subagent_command_in_the_monitor_tool_is_stamped_as_the_subagent(monkeypatch, capsys):
+    guard = load_bash_guard()
+    import subagent_records
+    monkeypatch.setattr(subagent_records, "load", lambda *_args, **_kwargs: {"name": "claude-aaaaaa", "board": "demo"})
+    event = {"tool_name": "Monitor", "cwd": str(ROOT), "agent_id": "a1",
+             "tool_input": {"command": "tail -f x", "description": "x", "timeout_ms": 1000}}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(event)))
+    assert guard.main() == 0
+    stamped = json.loads(capsys.readouterr().out)["hookSpecificOutput"]["updatedInput"]
+    assert stamped["command"].endswith("\ntail -f x") and "POOLHOUSE_WORKSPACE_AGENT=claude-aaaaaa" in stamped["command"]
+    assert stamped["timeout_ms"] == 1000
+
+
+def test_the_stamp_takes_the_leads_native_session_out_of_a_subagent_s_shell(monkeypatch, capsys):
+    guard = load_bash_guard()
+    import subagent_records
+    monkeypatch.setattr(subagent_records, "load", lambda *_args, **_kwargs: {"name": "claude-aaaaaa"})
+    event = {"tool_name": "Bash", "cwd": str(ROOT), "agent_id": "a1", "tool_input": {"command": "env"}}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(event)))
+    assert guard.main() == 0
+    stamp = json.loads(capsys.readouterr().out)["hookSpecificOutput"]["updatedInput"]["command"].splitlines()
+    for name in ("CLAUDE_CODE_SESSION_ID", "POOLHOUSE_SESSION_ID", "POOLHOUSE_SESSION_HARNESS", "CODEX_THREAD_ID"):
+        assert f"unset {name}" in stamp, name

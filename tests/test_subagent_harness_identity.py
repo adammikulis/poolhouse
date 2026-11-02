@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -26,6 +27,9 @@ class Scene:
 
     def __init__(self, tmp_path: Path, node, monkeypatch) -> None:
         self.node, self.world = node, World(tmp_path, node)
+        owner = node.member("project-owner")
+        node.allow(owner, "source_add")  # the hooks act only within a project the node already holds
+        node.client.call("project_add", "", owner.token, id=node.board, kind="git", path=str(self.world.proj.root))
         self.lead = node.member("sess1")
         self.hooks = ROOT / "scripts/hooks"
         binary = tmp_path / "bin"
@@ -43,8 +47,10 @@ class Scene:
         monkeypatch.chdir(tmp_path)
 
     def inherited(self) -> dict[str, str]:
-        """The environment every command of the lead's session, and so of its subagents, starts with."""
-        return {**self.node.env(self.lead, {"POOLHOUSE_DEV_BRANCH": DEV, "PATH": os.environ["PATH"]}), "CLAUDECODE": "1"}
+        """The environment every command of the lead's session, and so of its subagents, starts with: the lead's name and the
+        native session the harness exports for it."""
+        native = {"CLAUDE_CODE_SESSION_ID": "sess1", "POOLHOUSE_SESSION_ID": "sess1", "POOLHOUSE_SESSION_HARNESS": "claude-code"}
+        return {**self.node.env(self.lead, {"POOLHOUSE_DEV_BRANCH": DEV, "PATH": os.environ["PATH"], **native}), "CLAUDECODE": "1"}
 
     def hook(self, name: str, event: dict) -> subprocess.CompletedProcess:
         return subprocess.run([sys.executable, str(self.hooks / name)], input=json.dumps(event), text=True,
@@ -73,9 +79,10 @@ class Scene:
     def name(self, agent: str) -> str:
         return board_session.find("claude-code", agent, client=self.node.client)
 
-    def run(self, agent: str, command: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
-        """Run ``command`` as the Bash hook leaves it for the subagent ``agent``, in the shell the lead started."""
-        asked = {"tool_name": "Bash", "agent_id": agent, "session_id": "sess1", "cwd": str(cwd or self.world.proj.root),
+    def run(self, agent: str, command: str, cwd: Path | None = None, tool: str = "Bash") -> subprocess.CompletedProcess:
+        """Run ``command`` as the Bash hook leaves it for the subagent ``agent`` (``tool`` is the tool that runs it), in the shell
+        the lead started."""
+        asked = {"tool_name": tool, "agent_id": agent, "session_id": "sess1", "cwd": str(cwd or self.world.proj.root),
                  "tool_input": {"command": command, "description": "a step"}}
         guard = self.hook("claude-bash-guard", asked)
         assert guard.returncode == 0, guard.stderr
@@ -202,3 +209,30 @@ def test_a_subagent_never_passes_a_delegated_gate_even_with_the_leads_name_in_it
     assert authority.require("sentinel.policy", "mode", (False, False), lead) == authority.DELEGATED
     with pytest.raises(HumanRequired):
         authority.require("sentinel.policy", "mode", (False, False), {**lead, "POOLHOUSE_SUBAGENT": "rev1"})
+
+
+def without_marker(*argv: str) -> str:
+    """A command that takes the subagent's own marker out of the environment from inside a program, where no rule of the Bash
+    guard reads it, and runs ``argv`` in what is left."""
+    code = ("import os, subprocess, sys\n"
+            "for name in list(os.environ):\n"
+            "    if name.startswith(('POOLHOUSE_SUB', 'POOLHOUSE_WORKSPACE')):\n"
+            "        del os.environ[name]\n"
+            "raise SystemExit(subprocess.run(sys.argv[1:]).returncode)\n")
+    return " ".join(shlex.quote(word) for word in (sys.executable, "-c", code, *argv))
+
+
+def test_a_subagent_that_drops_its_own_marker_has_no_identity_instead_of_the_leads(scene):
+    scene.start("rev1")
+    whoami = scene.run("rev1", without_marker("poolhouse-workspace", "whoami", "--json"))
+    assert whoami.returncode != 0 and scene.lead.name not in whoami.stdout, whoami.stdout
+    gate = "from poolhouse import authority; print(authority.require('sentinel.policy', 'mode', (False, False)))"
+    passed = scene.run("rev1", without_marker(sys.executable, "-c", gate))
+    assert passed.returncode != 0 and "delegated" not in passed.stdout, (passed.stdout, passed.stderr)
+
+
+def test_a_subagent_that_runs_a_command_through_the_monitor_tool_acts_as_the_subagent(scene):
+    scene.start("rev1")
+    child = scene.name("rev1")
+    done = scene.run("rev1", "poolhouse-workspace whoami --json", tool="Monitor")
+    assert done.returncode == 0 and json.loads(done.stdout)["id"] == child, done.stderr
