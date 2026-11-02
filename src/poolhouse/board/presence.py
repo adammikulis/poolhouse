@@ -14,11 +14,11 @@ import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, NamedTuple
 
 from poolhouse.board.client import Client, Denied
 
-__all__ = ["SILENT", "WAIT_S", "Voice", "ask", "terminal_name"]
+__all__ = ["SILENT", "WAIT_S", "Card", "Voice", "ask", "ask_card", "terminal_name"]
 
 WAIT_S = 150.0
 """A little longer than the node waits for an answer (two minutes), so its word on a late answer is the one that is read."""
@@ -68,6 +68,13 @@ SILENT = Voice()
 """The question put on this process's own terminal, with nothing said to the person about it."""
 
 
+class Card(NamedTuple):
+    """A change the node drafted (``id``) and the public key (hex) whose yes enrols it or that signs it."""
+
+    id: str
+    public: str
+
+
 def ask(
     client: Client, token: str, purpose: str, public: str = "", voice: Voice = SILENT
 ) -> dict[str, Any]:
@@ -77,8 +84,19 @@ def ask(
     ``public`` is the public key (hex) of the first key: the person's yes is for that key and no other, and the question shows its words;
     a phone has none. Raises `Denied` when the person said no or did not answer, or when the node has no way to ask.
     """
+    return _asked(client, token, voice, purpose=purpose, public=public, card="")
+
+
+def ask_card(client: Client, token: str, purpose: str, card: Card, voice: Voice = SILENT) -> dict[str, Any]:
+    """Ask the person, through the node, to answer the change ``card`` names (``purpose`` `pool_key` for a key not yet enrolled, `card` for
+    one that is): the sentence the prompt shows is the node's, written from its draft, and the reply's `secret` is the ticket a signer shows
+    the node for each payload it signs. Raises `Denied` as `ask` does."""
+    return _asked(client, token, voice, purpose=purpose, public=card.public, card=card.id)
+
+
+def _asked(client: Client, token: str, voice: Voice, **params: str) -> dict[str, Any]:
     named = terminal_name() if voice.terminal is None else voice.terminal
-    said = client.call("presence_ask", "", token, purpose=purpose, public=public, terminal=named)
+    said = client.call("presence_ask", "", token, terminal=named, **params)
     told = False
     end = time.monotonic() + WAIT_S
     while said["state"] == "asking" and time.monotonic() < end:

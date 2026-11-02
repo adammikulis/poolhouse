@@ -94,12 +94,12 @@ def enrol_first(client: board_client.Client, token: str, key: Signer | Confirmed
 
 
 def enrol_as_phone_key(node: WorkspaceNode, key: Signer) -> None:
-    """Write ``key`` into the person keys file of ``node`` marked as a phone's own enrolment marks a key, and start the node again, which
-    reads the file only when it starts: the node then derives the key as strong. Nothing but a file the account owns can do this."""
+    """Write ``key`` into the person keys file of ``node`` with the claim of a phone's own enrolment, and start the node again, which reads the
+    file only when it starts: the node then lists the key in a pool with that claim. Nothing but a file the account owns can do this."""
     node.stop()
     path = node.state / "persons.json"
     held = json.loads(path.read_text()) if path.exists() else {}
-    held[board_grants.fingerprint(key.public)] = {"public": key.public.hex(), "label": "a test phone", "at_ms": 1, "alg": "ed25519", "phone": True}
+    held[board_grants.fingerprint(key.public)] = {"public": key.public.hex(), "label": "a test phone", "at_ms": 1, "alg": "ed25519", "claim": {"method": "phone-keystore", "os": "android", "prompt": "biometric"}}
     path.write_text(json.dumps(held))
     node.start()
 

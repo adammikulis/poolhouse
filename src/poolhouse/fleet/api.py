@@ -38,7 +38,6 @@ from . import (
     commands,
     device_auth,
     projects as project_routes,
-    shard_routes,
     studio_device_routes,
     studio_library,
     studio_webhooks,
@@ -83,6 +82,13 @@ PROXIED = re.compile(r"/(v1/[A-Za-z0-9/_.-]*|completions?|chat/completions|token
                      r"embeddings?|infill|apply-template|props|health|models|metrics|slots)"
                      r"(\?[^\s#]*)?")
 """The paths of a model server the proxy passes on; nothing else, and no way up out of them."""
+AGENT = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+
+
+def submitter(handler: Any) -> str:
+    """Who asked, for the label of a job: the device the node authorized and, when it named one, the agent behind the request."""
+    agent = handler.headers.get("X-Poolhouse-Agent", "")
+    return "/".join(p for p in (handler._member or "local", agent if AGENT.match(agent) else "") if p)
 
 
 @dataclass
@@ -371,8 +377,6 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             if not (path == "/health" and here and "Authorization" not in self.headers) \
                     and not self._guard():
                 return
-            if shard_routes.answer(self, daemon, "GET", self.path, None):
-                return
             if project_routes.answer(self, daemon.projects, parsed):
                 return
             if studio_device_routes.answer(self, ui, path) or studio_library.answer(self, ui, path):
@@ -560,8 +564,6 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             body = self._unsealed(body)
             if body is None:
                 return
-            if shard_routes.answer(self, daemon, "POST", self.path, body):
-                return
             if studio_device_routes.answer(self, ui, self.path.split("?")[0], body) or studio_library.answer(self, ui, self.path.split("?")[0], body):
                 return
             try:
@@ -626,7 +628,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                     if isinstance(argv, str):
                         argv = shlex.split(argv)
                     job = runner.label(runner.submit(req.get("name", ""), command(argv or []),
-                                                     str(files_root)), shard_routes.who(self))
+                                                     str(files_root)), submitter(self))
                 except (DaemonError, ValueError) as e:
                     self._send(400, {"error": str(e)})
                     return
@@ -776,7 +778,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             if body is None:
                 return
             parsed = urllib.parse.urlparse(self.path)
-            if studio_device_routes.answer(self, ui, parsed.path, body) or shard_routes.answer(self, daemon, "PUT", self.path, body):
+            if studio_device_routes.answer(self, ui, parsed.path, body):
                 return
             if not parsed.path.startswith("/files/"):
                 self._send(404, {"error": "no such route"})

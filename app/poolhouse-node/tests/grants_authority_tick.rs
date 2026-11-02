@@ -36,7 +36,7 @@ fn requests_fold_a_quiet_pool_never_and_an_expired_hold_once(entry: fn(&kit::poo
     let began = Instant::now();
     entry(&pool);
     assert_eq!(folds(&pool), before, "a hold that has not run out costs a request no fold");
-    pool.advance(25 * 3_600_000);
+    pool.advance(8 * 24 * 3_600_000);
     entry(&pool);
     assert_eq!(folds(&pool), before + 1, "a hold that ran out is folded by the first request after it and by no other");
     assert!(pool.authority().contains(&second.fingerprint()), "the fold made the second phone an admin key");

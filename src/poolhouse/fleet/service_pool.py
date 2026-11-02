@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from poolhouse import macauth, node_health, node_launch
+from poolhouse import macauth, node_health
 
 from . import tls
 
@@ -69,7 +69,7 @@ class Pool:
     """Read compute authorization from the live Rust node."""
 
     def __init__(self, state: Path | None = None) -> None:
-        self.state = state or node_launch.default_state()
+        self.state = state or node_health.default_state()
 
     def _call(self, method: str, params: dict | None = None) -> dict:
         try:

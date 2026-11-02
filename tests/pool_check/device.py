@@ -67,8 +67,10 @@ class Device:
     admin_token: str = ""
     admin_name: str = ""
     extra: list[str] = field(default_factory=list)
-    phone_key: str = ""
-    """The public key (hex) the node of this device holds as a phone's from its next start: the key the pool check's pools are governed by."""
+    key: str = ""
+    """The public key (hex) planted in the node's person keys from its next start at `key_level`: the key the pool check's pools are governed by."""
+    key_level: str = "phone"
+    """The level the planted key is recorded at: `phone`, `native`, `computer` or `weak`. Planted, not custody: nothing behind it is a phone or a prompt."""
     driver: Driver | None = field(default=None, repr=False)
 
     state_text = ""
@@ -179,8 +181,8 @@ class Device:
         return out["result"]
 
     def planted(self) -> list[str]:
-        """The arguments that have `wire.py start` write ``phone_key`` into the node's person keys file before the node starts."""
-        return ["--phone-key", self.phone_key] if self.phone_key else []
+        """The arguments that have `wire.py start` plant ``key`` at ``key_level`` in the node's person keys file before the node starts."""
+        return ["--key", self.key, "--level", self.key_level] if self.key else []
 
     def start_node(self, *more: str) -> dict:
         raise NotImplementedError

@@ -35,10 +35,10 @@ def claim(root: Path, port: int) -> Iterator[None]:
 
 
 def command(arguments: Sequence[str]) -> list[str]:
-    """The daemon started the way the selected runtime starts one: its interpreter, isolated, running the daemon module."""
+    """The daemon started the way the selected runtime starts one: its interpreter, isolated, running the daemon command (which hands the daemon the pool actions it may not import)."""
     chosen = runtime.available()
     python = str(chosen.python) if chosen is not None else sys.executable
-    return [python, *(["-I"] if chosen is not None or sys.flags.isolated else []), "-m", "poolhouse.fleet.daemon", *arguments]
+    return [python, *(["-I"] if chosen is not None or sys.flags.isolated else []), "-m", "poolhouse.cli.daemon", *arguments]
 
 
 def _answering(words: Sequence[str], probe: Probe, what: str) -> dict:

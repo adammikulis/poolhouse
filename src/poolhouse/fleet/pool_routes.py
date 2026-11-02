@@ -1,6 +1,6 @@
 """``/ui/pool*`` and ``/ui/fleet``: this device's pool as its node reports it, acting on it, and the machines in it.
 
-Every pool action here is the node's own (`poolhouse.api.pool`): the page founds a pool, makes the short code that adds a device,
+Every pool action here is the node's own (`poolhouse.api.pool`, which the command that starts the daemon hands in as `ui.pool_actions`): the page founds a pool, makes the short code that adds a device,
 joins another device's pool and removes a member by asking the node, which asks the person where only they can answer. Nothing in
 this module holds a key, a join code or a membership record.
 """
@@ -12,8 +12,6 @@ from dataclasses import asdict
 from typing import Any
 
 from poolhouse import errors
-from poolhouse.api import pool as pool_api
-from poolhouse.board.client import NodeError
 
 from .pausing import minutes_of
 
@@ -56,7 +54,7 @@ class PoolRoutes:
         if self.path == "/ui/pool/remove-device" and self.method == "POST":
             return self._guarded(self._remove)
         if self.path == "/ui/pool" and self.method == "DELETE":
-            return self._guarded(lambda: {"left": pool_api.leave()})
+            return self._guarded(lambda: {"left": self.ui.pool_actions.leave()})
         if self.path == "/ui/fleet" and self.method == "GET":
             self.send(200, self.ui.fleet())
             return True
@@ -66,13 +64,16 @@ class PoolRoutes:
 
     def _guarded(self, act) -> bool:
         """Answer with what ``act`` returns, or the one sentence the node or the request gave for refusing."""
+        if self.ui.pool_actions is None:
+            self.send(501, {"error": "this page was started without the pool actions"})
+            return True
         try:
             answer = act()
         except _Refused as exc:
             self.send(400, {"error": str(exc)})
-        except pool_api.Refusal as exc:
+        except self.ui.pool_actions.Refusal as exc:
             self.send(409, {"error": str(exc), "needs": exc.needs, "where": exc.where, "then": exc.then})
-        except (errors.Error, NodeError, OSError, ValueError) as exc:
+        except (errors.Error, OSError, ValueError) as exc:
             self.send(400, {"error": str(exc)})
         else:
             self.ui.refresh()
@@ -83,7 +84,7 @@ class PoolRoutes:
         """The pool as the node reports it; asks nothing of a node that is not running, and starts none."""
         if self.ui.pool(force=True) is None:
             return {"pool": None, "error": "No node answers on this device, so it has no pool to show."}
-        return {"pool": asdict(pool_api.status())}
+        return {"pool": asdict(self.ui.pool_actions.status())}
 
     def _found(self) -> dict[str, Any]:
         req = self.body()
@@ -91,11 +92,11 @@ class PoolRoutes:
         if policy not in POLICIES:
             raise _Refused("policy must be secure or open")
         said: list[str] = []
-        made = pool_api.found(_text(req, "name", most=64), policy, say=said.append)
+        made = self.ui.pool_actions.found(_text(req, "name", most=64), policy, say=said.append)
         return {"pool": asdict(made.pool), "already": made.already, "say": made.say, "asked": said}
 
     def _add_device(self) -> dict[str, Any]:
-        return dict(pool_api.add_device(_whole(self.body(), "ttl_s", 300, 30, 3600)))
+        return dict(self.ui.pool_actions.add_device(_whole(self.body(), "ttl_s", 300, 30, 3600)))
 
     def _join(self) -> dict[str, Any]:
         req = self.body()
@@ -103,11 +104,11 @@ class PoolRoutes:
         fingerprint = _text(req, "fingerprint", most=64, required=False)
         if bool(code) == bool(fingerprint) or (fingerprint and not FINGERPRINT.match(fingerprint)):
             raise _Refused("give the code the other device showed, or for an open pool its 64 hex digit fingerprint")
-        return {"joined": pool_api.join(_text(req, "host"), code, port=_whole(req, "port", pool_api.DEFAULT_PORT, 1, 65535),
+        return {"joined": self.ui.pool_actions.join(_text(req, "host"), code, port=_whole(req, "port", self.ui.pool_actions.DEFAULT_PORT, 1, 65535),
                                         fingerprint=fingerprint)}
 
     def _remove(self) -> dict[str, Any]:
-        return {"removed": asdict(pool_api.remove(_text(self.body(), "device", most=128)))}
+        return {"removed": asdict(self.ui.pool_actions.remove(_text(self.body(), "device", most=128)))}
 
     def _pause_fleet(self) -> bool:
         req = self.body()

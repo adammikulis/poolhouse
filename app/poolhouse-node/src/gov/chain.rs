@@ -3,15 +3,16 @@
 //! An act that adds or removes an admin, or moves a threshold, a hold or the mode, names the charter it follows (`prev`) and takes
 //! the pool to the next epoch. Acts that follow the same charter form one step:
 //!
-//! * Removals commute: every removal of the step applies, unless together they would leave fewer strong admins than the
-//!   sensitive threshold needs, in which case none applies and a dispute opens. One removal that alone would leave too few is void.
+//! * Removals commute: every removal of the step applies, unless together they would leave fewer counting admins than the
+//!   governance threshold needs, in which case none applies and a dispute opens. One removal that alone would leave too few is void.
 //! * An add or a threshold change counts only if its signers survive the removals of the step.
-//! * Two such acts that cannot both hold are settled by the number of distinct strong signers, then by the lower signer
-//!   fingerprints; a tie that remains applies neither and opens a dispute that the signers settle by signing one of them again.
+//! * Two such acts that cannot both hold are settled by the number of signers, then by the lower signer fingerprints; a tie that
+//!   remains applies neither and opens a dispute that the signers settle by signing one of them again.
 //!
 //! An act complete on this device only after the first act of its step has run its hold arrives too late to join or contest the step.
 //!
-//! A step takes effect when the longest hold among its acts has run on this device, counted in awake time from the first moment
+//! A step takes effect when the longest hold among its acts has run on this device (seven days for every act of the step, because every
+//! key that counts is a `computer` key and no member can check a higher level), counted in awake time from the first moment
 //! this device saw each act with all the signatures it needs, with no valid `cancel` seen before then; a `veto` by the key a removal names ends the removal and
 //! opens a dispute. While a dispute is open no step is taken. A key that is removed loses every signature of its that is not in the
 //! cut its removal carried, wherever it was counted.
@@ -22,8 +23,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::act::Act;
 use super::body::{self, Body};
 use super::charter::{Charter, Class, Mode, Unit};
-use super::keys::{Role, Strength};
-use super::{DAY_MS, HOUR_MS, MAX_ADMINS, MAX_ADMIN_ACTS, SETTLED};
+use super::keys::Role;
+use super::{COMPUTER_HOLD_MS, DAY_MS, HOUR_MS, MAX_ADMINS, MAX_ADMIN_ACTS, SETTLED};
 
 /// The first moment (awake milliseconds) this device saw each act.
 pub type Seen = BTreeMap<String, i64>;
@@ -146,13 +147,28 @@ fn hours(h: u64) -> i64 {
     i64::try_from(h).unwrap_or(0).saturating_mul(HOUR_MS)
 }
 
-fn hold_ms(body: &Body, c: &Charter) -> i64 {
+/// Whether ``body`` lists the first recovery key, replaces the recovery key or removes it: the acts a thief of one computer's key could use
+/// to put a recovery key of its own beyond the owner's reach.
+fn touches_recovery(body: &Body, c: &Charter) -> bool {
     match body {
+        Body::RecoveryReplace(_) => true,
+        Body::AdminAdd(add) => add.entry.role == Role::Recovery,
+        Body::AdminRemove(d) => c.admin(&d.key).is_some_and(|k| k.role == Role::Recovery),
+        _ => false,
+    }
+}
+
+/// How long a governance act ``body`` is held: seven days, because every key that counts is a `Computer` key (no member can check a higher
+/// level, keys document C6), and never less than the pool's own hold for the kind of act. An act that touches the recovery key is
+/// held seven days too.
+fn hold_ms(body: &Body, c: &Charter) -> i64 {
+    let own = match body {
         Body::AdminAdd(_) => hours(c.holds.admin_add_h),
         Body::AdminRemove(_) => hours(c.holds.admin_remove_h),
         b if weakens(b, c) => hours(c.holds.admin_add_h.max(c.holds.admin_remove_h)),
         _ => 0,
-    }
+    };
+    own.max(COMPUTER_HOLD_MS)
 }
 
 /// Whether the change gives a signer less to do or a thief more room: a smaller threshold, a shorter hold or `mode: members`.
@@ -160,8 +176,8 @@ fn weakens(body: &Body, c: &Charter) -> bool {
     let sooner = |new: Option<u64>, now: u64| new.is_some_and(|n| n < now);
     match body {
         Body::SetThreshold(t) => {
-            let sensitive = t.sensitive.map(|x| if x == 0 { c.people().clamp(1, 2) } else { x as usize });
-            t.routine.is_some_and(|r| r < c.thresholds.routine) || sensitive.is_some_and(|x| x < c.needed(Class::Sensitive)) || (t.unit == Some(Unit::Key) && c.thresholds.unit == Unit::Person)
+            let sensitive = t.sensitive.map(|x| if x == 0 { c.people(Class::Governance).clamp(1, 2) } else { x as usize });
+            t.routine.is_some_and(|r| r < c.thresholds.routine) || sensitive.is_some_and(|x| x < c.needed(Class::Governance)) || (t.unit == Some(Unit::Key) && c.thresholds.unit == Unit::Person)
         }
         Body::SetHolds(h) => sooner(h.admin_add_h, c.holds.admin_add_h) || sooner(h.admin_remove_h, c.holds.admin_remove_h) || sooner(h.handoff_min, c.holds.handoff_min) || sooner(h.dispute_d, c.holds.dispute_d),
         Body::SetMode(m) => m.mode == Mode::Members,
@@ -183,9 +199,15 @@ fn apply_set(c: &mut Charter, body: &Body) -> Result<(), String> {
             c.holds.dispute_d = h.dispute_d.unwrap_or(c.holds.dispute_d);
         }
         Body::SetMode(m) if m.mode == Mode::Members => return Err("members-governed mode is not in this build".into()),
+        Body::SetFloors(f) => {
+            c.floors.routine = f.routine.unwrap_or(c.floors.routine);
+            c.floors.sensitive = f.sensitive.unwrap_or(c.floors.sensitive);
+            c.floors.governance = f.governance.unwrap_or(c.floors.governance);
+            return c.check_numbers().map_err(|e| e.to_string());
+        }
         _ => {}
     }
-    c.check_numbers().map_err(|_| "the new thresholds need more people than the strong keys listed".to_string())
+    c.check_numbers().map_err(|_| "the new thresholds need more people than the keys that count at these floors".to_string())
 }
 
 fn check_add(add: &body::Add, s: &EpochState, pool: &str) -> Option<Check> {
@@ -197,7 +219,7 @@ fn check_add(add: &body::Add, s: &EpochState, pool: &str) -> Option<Check> {
     } else if s.charter.admins.len() >= MAX_ADMINS {
         "a pool names at most sixteen keys"
     } else if e.role == Role::Recovery && s.charter.admins.iter().any(|k| k.role == Role::Recovery) {
-        "the recovery key is replaced only by its own signature"
+        "a recovery key is already listed: it is replaced by a recovery_replace, which the recovery key can cancel"
     } else if !e.accepted(pool, &s.hash) {
         "the added key did not accept being listed"
     } else {
@@ -206,13 +228,38 @@ fn check_add(add: &body::Add, s: &EpochState, pool: &str) -> Option<Check> {
     Some(Check::Void(why.into()))
 }
 
+/// The reason the replacement of the recovery key ``add`` is void against ``s``, if it is.
+fn check_replace(add: &body::Add, s: &EpochState, pool: &str) -> Option<Check> {
+    let e = &add.entry;
+    let why = if !s.charter.admins.iter().any(|k| k.role == Role::Recovery) {
+        "no recovery key is listed to replace: list one with an admin_add"
+    } else if e.since != s.n + 1 {
+        "a key is listed at the epoch it joins"
+    } else if s.charter.admin(&e.key).is_some() {
+        "that key is already listed"
+    } else if !e.accepted(pool, &s.hash) {
+        "the added key did not accept being listed"
+    } else {
+        return None;
+    };
+    Some(Check::Void(why.into()))
+}
+
+/// Whether ``c`` still has an admin key at each floor, enough people at the governance floor and every threshold within reach of the keys
+/// that count for its class, once ``targets`` are gone.
+fn survivors_ok(c: &Charter, targets: &BTreeSet<String>, need: usize) -> bool {
+    let mut rest = c.clone();
+    rest.admins.retain(|k| !targets.contains(&k.key));
+    rest.units(Class::Governance) >= need && rest.check_floors().is_ok() && rest.reachable()
+}
+
 /// Whether ``cand`` has the signatures its kind needs against the charter of ``s``.
 fn check(act: &Act, signed: &[String], body: &Body, s: &EpochState, pool: &str) -> Check {
     let c = &s.charter;
-    let strong = |k: &&String| c.is_strong(k);
+    let counts = |k: &&String| c.counts_key(k, Class::Governance);
     let counted: Vec<String> = match body {
-        Body::AdminRemove(d) => signed.iter().filter(strong).filter(|k| **k != d.key).cloned().collect(),
-        _ => signed.iter().filter(strong).cloned().collect(),
+        Body::AdminRemove(d) => signed.iter().filter(counts).filter(|k| **k != d.key).cloned().collect(),
+        _ => signed.iter().filter(counts).cloned().collect(),
     };
     match body {
         Body::AdminAdd(add) => {
@@ -220,24 +267,26 @@ fn check(act: &Act, signed: &[String], body: &Body, s: &EpochState, pool: &str) 
                 return why;
             }
         }
+        Body::RecoveryReplace(add) => {
+            if let Some(why) = check_replace(add, s, pool) {
+                return why;
+            }
+        }
         Body::AdminRemove(d) => match c.admin(&d.key) {
             None => return Check::Void("that key is not an admin of this pool".into()),
-            Some(_) if left_after(c, &BTreeSet::from([d.key.clone()])) < c.needed(Class::Sensitive).max(1) => {
-                return Check::Void("it would leave the pool with too few admins".into());
-            }
-            Some(t) if t.role == Role::Recovery && !signed.contains(&t.key) => {
-                return Check::Short(c.count(&counted.iter().map(String::as_str).collect::<Vec<_>>()), c.needed(Class::Sensitive), "the recovery key is removed only by its own signature".into());
+            Some(_) if !survivors_ok(c, &BTreeSet::from([d.key.clone()]), c.needed(Class::Governance).max(1)) => {
+                return Check::Void("it would leave the pool with too few admins, or no key at a floor".into());
             }
             Some(_) => {}
         },
-        Body::SetThreshold(_) | Body::SetHolds(_) | Body::SetMode(_) => {
+        Body::SetThreshold(_) | Body::SetHolds(_) | Body::SetMode(_) | Body::SetFloors(_) => {
             if let Err(why) = apply_set(&mut c.clone(), body) {
                 return Check::Void(why);
             }
         }
         _ => return Check::Void(format!("a {} act is not a step of the admin chain", act.kind)),
     }
-    let (have, need) = (c.count(&counted.iter().map(String::as_str).collect::<Vec<_>>()), c.needed(Class::Sensitive));
+    let (have, need) = (c.count(Class::Governance, &counted.iter().map(String::as_str).collect::<Vec<_>>()), c.needed(Class::Governance));
     if have < need {
         return Check::Short(have, need, format!("it needs {need} signers and has {have}"));
     }
@@ -259,20 +308,26 @@ pub(super) fn proposal_fits(chain: &Chain, pool: &str, act: &Act) -> std::result
     }
 }
 
+/// Whether ``cancel`` is signed by the recovery key the charter ``c`` lists and the act ``target`` it names replaces or removes that key.
+fn recovery_cancels(cx: &Ctx, c: &Charter, cancel: &Act, target: &str) -> bool {
+    let signed = cancel.admin_keys().into_iter().any(|k| c.admin(k).is_some_and(|x| x.role == Role::Recovery));
+    signed && cx.acts.get(target).and_then(|t| body::parse(t).ok()).is_some_and(|b| matches!(b, Body::RecoveryReplace(_) | Body::AdminRemove(_)) && touches_recovery(&b, c))
+}
+
 /// The earliest first-sight of a valid `cancel` or `veto` for each act it names, against the charter of ``s``.
 fn stops(cx: &Ctx, s: &EpochState) -> (BTreeMap<String, i64>, BTreeMap<String, i64>) {
     let (mut cancels, mut vetoes) = (BTreeMap::new(), BTreeMap::new());
     let c = &s.charter;
     for (id, a) in cx.acts.iter().filter(|(_, a)| matches!(a.kind.as_str(), "cancel" | "veto")) {
         let (Ok(Body::Cancel(t) | Body::Veto(t)), Some(_)) = (body::parse(a), (a.prev == s.hash).then_some(())) else { continue };
-        let signers: Vec<String> = a.admin_keys().into_iter().filter(|k| c.is_strong(k)).map(str::to_string).collect();
+        let signers: Vec<String> = a.admin_keys().into_iter().filter(|k| c.counts_key(k, Class::Governance)).map(str::to_string).collect();
         let at = cx.seen_at(id);
         let held = signers.iter().map(String::as_str).collect::<Vec<_>>();
-        if a.kind == "cancel" && c.count(&held) >= c.needed(Class::Routine) {
+        if a.kind == "cancel" && (c.count(Class::Governance, &held) >= c.needed(Class::Routine) || recovery_cancels(cx, c, a, &t.act)) {
             cancels.entry(t.act.clone()).and_modify(|e: &mut i64| *e = (*e).min(at)).or_insert(at);
         }
         let named = cx.acts.get(&t.act).and_then(|r| match body::parse(r) { Ok(Body::AdminRemove(d)) => Some(d.key), _ => None });
-        let named_signed = named.as_deref().and_then(|k| c.admin(k)).is_some_and(|x| x.strength == Strength::Strong && a.admin_keys().contains(&x.key.as_str()));
+        let named_signed = named.as_deref().and_then(|k| c.admin(k)).is_some_and(|x| c.counts(x, Class::Governance) && a.admin_keys().contains(&x.key.as_str()));
         if a.kind == "veto" && named_signed {
             vetoes.entry(t.act.clone()).and_modify(|e: &mut i64| *e = (*e).min(at)).or_insert(at);
         }
@@ -309,8 +364,9 @@ fn candidates(cx: &Ctx, chain: &mut Chain, dropped: &BTreeSet<String>) -> Vec<Ca
             Check::Short(have, need, why) => drop(chain.short.insert(id.clone(), (have, need, why))),
             Check::Ok(signers) => {
                 chain.validated.insert(id.clone());
-                let effective = cx.ready_at(id).saturating_add(hold_ms(&parsed, &s.charter));
-                let stoppable_until = if cx.ready_at(id) == SETTLED { cx.joined.saturating_add(hold_ms(&parsed, &s.charter)) } else { effective };
+                let hold = hold_ms(&parsed, &s.charter);
+                let effective = cx.ready_at(id).saturating_add(hold);
+                let stoppable_until = if cx.ready_at(id) == SETTLED { cx.joined.saturating_add(hold) } else { effective };
                 if cancels.get(id).is_some_and(|c| *c <= stoppable_until) {
                     chain.void.insert(id.clone(), "an admin cancelled it".into());
                 } else if vetoes.get(id).is_some_and(|v| *v <= stoppable_until) {
@@ -329,17 +385,7 @@ fn veto_dispute(cx: &Ctx, chain: &Chain, s: &EpochState) -> Option<Dispute> {
     vetoes.iter().filter(|(id, _)| chain.void.get(*id).is_some_and(|w| w.contains("vetoed"))).map(|(id, at)| dispute(vec![id.clone()], *at, &s.charter, "the key a removal names vetoed it")).max_by_key(|d| d.ends_ms)
 }
 
-/// The survivors of removing ``targets`` from ``c``, and how many strong admins they are by the unit of the thresholds.
-fn left_after(c: &Charter, targets: &BTreeSet<String>) -> usize {
-    let mut rest = c.clone();
-    rest.admins.retain(|k| !targets.contains(&k.key));
-    match rest.thresholds.unit {
-        Unit::Person => rest.people(),
-        Unit::Key => rest.strong().count(),
-    }
-}
-
-/// How an act ranks against one that cannot hold beside it: more distinct strong signers first, then the lower signer fingerprints.
+/// How an act ranks against one that cannot hold beside it: more signers first, then the lower signer fingerprints.
 fn rank(cand: &Cand, c: &Charter) -> (Reverse<usize>, Vec<String>) {
     let mut fingerprints: Vec<String> = cand.signers.iter().filter_map(|k| c.admin(k)).map(|k| k.fingerprint()).collect();
     fingerprints.sort();
@@ -364,25 +410,25 @@ fn round(cx: &Ctx, chain: &mut Chain, dropped: &mut BTreeSet<String>) -> Round {
     if cands.is_empty() {
         return Round::Done;
     }
-    let need = s.charter.needed(Class::Sensitive).max(1);
+    let need = s.charter.needed(Class::Governance).max(1);
     let (mut removals, mut others): (Vec<&Cand>, Vec<&Cand>) = (Vec::new(), Vec::new());
     for cand in &cands {
         match &cand.body {
-            Body::AdminRemove(d) if left_after(&s.charter, &BTreeSet::from([d.key.clone()])) < need => drop(chain.void.insert(cand.id.clone(), "it would leave the pool with too few admins".into())),
+            Body::AdminRemove(d) if !survivors_ok(&s.charter, &BTreeSet::from([d.key.clone()]), need) => drop(chain.void.insert(cand.id.clone(), "it would leave the pool with too few admins, or no key at a floor".into())),
             Body::AdminRemove(_) => removals.push(cand),
             _ => others.push(cand),
         }
     }
     let targets: BTreeSet<String> = removals.iter().filter_map(|r| if let Body::AdminRemove(d) = &r.body { Some(d.key.clone()) } else { None }).collect();
-    if removals.len() > 1 && left_after(&s.charter, &targets) < need {
+    if removals.len() > 1 && !survivors_ok(&s.charter, &targets, need) {
         let ids: Vec<String> = removals.iter().map(|r| r.id.clone()).collect();
-        let since = removals.iter().map(|r| cx.ready_at(&r.id)).max().unwrap_or(cx.now);
+        let since = removals.iter().map(|r| r.effective).max().unwrap_or(cx.now);
         return settle(cx, dispute(ids, since, &s.charter, "removals together would leave too few admins"), dropped);
     }
     let survive = |k: &&String| !targets.contains(*k);
     others.retain(|o| {
         let held: Vec<&str> = o.signers.iter().filter(survive).map(String::as_str).collect();
-        let kept = s.charter.count(&held) >= need;
+        let kept = s.charter.count(Class::Governance, &held) >= need;
         if !kept {
             chain.void.insert(o.id.clone(), "its signers were removed in the same step".into());
         }
@@ -391,11 +437,11 @@ fn round(cx: &Ctx, chain: &mut Chain, dropped: &mut BTreeSet<String>) -> Round {
     others.sort_by_key(|o| rank(o, &s.charter));
     if others.len() > 1 && rank(others[0], &s.charter) == rank(others[1], &s.charter) {
         let ids: Vec<String> = others.iter().filter(|o| rank(o, &s.charter) == rank(others[0], &s.charter)).map(|o| o.id.clone()).collect();
-        let since = others.iter().map(|o| cx.ready_at(&o.id)).max().unwrap_or(cx.now);
+        let since = others.iter().map(|o| o.effective).max().unwrap_or(cx.now);
         return settle(cx, dispute(ids, since, &s.charter, "two acts that cannot both hold have the same signers"), dropped);
     }
     for loser in others.iter().skip(1) {
-        chain.void.insert(loser.id.clone(), "another act that follows the same charter has more signers".into());
+        chain.void.insert(loser.id.clone(), "another act that follows the same charter outranks it: its signers hold a higher level or are more".into());
     }
     let step: Vec<&Cand> = removals.into_iter().chain(others.into_iter().take(1)).collect();
     if step.is_empty() {
@@ -425,6 +471,10 @@ fn next_charter(s: &EpochState, step: &[&Cand], ids: &[String]) -> Round {
         match &cand.body {
             Body::AdminRemove(d) => next.admins.retain(|k| k.key != d.key),
             Body::AdminAdd(a) => next.admins.push(a.entry.clone()),
+            Body::RecoveryReplace(a) => {
+                next.admins.retain(|k| k.role != Role::Recovery);
+                next.admins.push(a.entry.clone());
+            }
             other => {
                 if let Err(why) = apply_set(&mut next, other) {
                     return Round::Drop(cand.id.clone(), why);

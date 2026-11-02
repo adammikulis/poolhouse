@@ -10,6 +10,8 @@ use poolhouse_node::gov::act::Act;
 use serde_json::{json, Value};
 
 const HOUR: i64 = 3_600_000;
+/// A moment past the hold of a governance act: seven days.
+const HELD: i64 = 7 * 24 * HOUR + HOUR;
 
 fn acts(pool: &Founded) -> usize {
     pool.rig.node.lock().unwrap().members.gov().unwrap().acts().len()
@@ -65,7 +67,7 @@ fn a_replacement_phone_is_listed_at_the_tap_and_approves_for_the_pool_when_the_h
     let refused = pool.rig.phone("POST", "decide", "", second.decision(&pool.rig.get(&pool.phone, &asked), "approve")).1;
     assert!(Founded::denial(&refused).contains("not an admin key of this pool"), "{refused}");
     assert_eq!(state(&pool, &asked), "pending", "its refused decision moved nothing");
-    pool.pass(25 * HOUR);
+    pool.pass(HELD);
     let mut both = vec![pool.phone.fingerprint(), second.fingerprint()];
     both.sort();
     assert_eq!(authority_sorted(&pool), both, "the hold ran out");
@@ -151,7 +153,7 @@ fn a_phone_that_did_not_accept_the_terms_its_code_carries_is_not_added() {
     let message = {
         let entry = poolhouse_node::gov::keys::AdminKey {
             key: phone.public.clone(), alg: poolhouse_node::gov::keys::Alg::P256, role: poolhouse_node::gov::keys::Role::Admin,
-            strength: poolhouse_node::gov::keys::Strength::Strong, person: "ann".into(), since: 2, acceptance: String::new(), label: "replacement".into(),
+            claim: Some(poolhouse_node::gov::keys::Claim::phone_keystore()), person: "ann".into(), since: 2, acceptance: String::new(), label: "replacement".into(),
         };
         entry.acceptance_message(terms["pool"].as_str().unwrap(), terms["prev"].as_str().unwrap())
     };

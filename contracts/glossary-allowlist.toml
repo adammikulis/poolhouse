@@ -210,9 +210,9 @@ reason = "a 3D mesh (three.js Mesh, MeshStandardMaterial, Blender's bpy.data.mes
 # -- "peer" in the node's wire protocol ------------------------------------------------------------------
 
 [[allow]]
-path = ["tests/test_xpc_connection.py"]
+path = ["tests/test_xpc_connection.py", "app/native-host/AuthorityChannel.c"]
 words = ["peer"]
-reason = "the fixture calls Apple's exact xpc_connection_set_peer_code_signing_requirement SDK symbol and checks its XPC error constant"
+reason = "the authority channel and its fixture call Apple's exact xpc_connection_set_peer_code_signing_requirement SDK symbol and check its XPC error constant (XPC_ERROR_PEER_CODE_SIGNING_REQUIREMENT); an SDK name cannot be renamed"
 
 [[allow]]
 path = ["app/poolhouse-node/*", "docs/node.md", "docs/limits.md", "docs/sentinel-open-join.md", "docs/design-node-contract.md"]

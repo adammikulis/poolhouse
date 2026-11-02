@@ -1,17 +1,18 @@
 //! Who may sign what: the one place that turns the charter in force and this device's keys into the authority a signature has.
 //!
 //! An ungoverned device (a pool of one) counts any key enrolled on it. In a governed pool an action that reaches beyond this device
-//! (`spec::pool_wide`) counts only when a key the charter in force lists as a strong admin key signed it, the key accepted being
-//! listed, and this device knows the key as a phone's. A revocation counts from any admin-role key the pool listed in any epoch.
+//! (`spec::pool_wide`) counts only when a key the charter in force lists as an admin key that counts at the sensitive floor signed it, the
+//! key accepted being listed, and this device holds the key (a row of `persons.json` is a cache of what this device enrolled and adds no
+//! approver the charter does not list). A revocation counts from any admin-role key the pool listed in any epoch.
 //! The snapshot is built from the node at each call and kept nowhere.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
-use crate::gov::charter::{Charter, Mode};
+use crate::gov::charter::{Charter, Class, Mode};
 use crate::fsutil::sha256_hex;
-use crate::gov::keys::{Role, Strength};
+use crate::gov::keys::Role;
 use crate::node::Node;
 
 use super::person::verifies_with;
@@ -19,12 +20,12 @@ use super::spec::pool_wide;
 
 const NOT_LISTED: &str = "signed by a key that is not an admin of this pool now";
 const RECOVERY: &str = "the recovery key signs no grant";
-const WEAK: &str = "signed by a key that is not strong";
+const WEAK: &str = "signed by a key that counts for nothing in this pool";
 const UNACCEPTED: &str = "that admin key never accepted being listed";
-const UNKNOWN_PHONE: &str = "this device does not know that key as a phone's";
+const UNKNOWN_KEY: &str = "this device does not hold that key";
 const DISTRUSTED: &str = "that admin key is distrusted";
 const NOT_ADMINS: &str = "this pool is not run by its admins";
-const NO_STRONG: &str = "this pool lists no strong admin key";
+const NO_COUNTING: &str = "this pool lists no admin key that counts";
 const BAD_SIGNATURE: &str = "the signature is not that admin key's";
 /// Why a key the charter in force lists is not removed from this device by the device's own acts.
 pub const LISTED: &str = "That key is an admin key of this pool: it leaves through an admin removal.";
@@ -75,9 +76,9 @@ struct Pool {
     closed: Option<&'static str>,
     /// The fingerprints the charter in force lists, with any role.
     listed: BTreeSet<String>,
-    /// The keys that stand as strong admin keys of the charter in force, whether or not this device knows them as a phone's.
+    /// The keys that stand as counting admin keys of the charter in force, whether or not this device holds them.
     stands: BTreeMap<String, Material>,
-    /// The keys of `stands` this device knows as a phone's: the authority keys.
+    /// The keys of `stands` this device holds: the authority keys.
     issuers: BTreeMap<String, Material>,
     /// The person each authority key belongs to.
     people: BTreeMap<String, String>,
@@ -87,13 +88,13 @@ struct Pool {
     narrowers: BTreeMap<String, Material>,
 }
 
-/// Why no key can sign a grant of a pool run by ``charter``, when the charter itself rules it out: its members run the pool, or it lists no strong
-/// admin key.
+/// Why no key can sign a grant of a pool run by ``charter``, when the charter itself rules it out: its members run the pool, or it lists no
+/// admin key that counts.
 pub fn closed_reason(charter: &Charter) -> Option<&'static str> {
     if charter.mode != Mode::Admins {
         Some(NOT_ADMINS)
-    } else if charter.weak_only() {
-        Some(NO_STRONG)
+    } else if charter.counting(Class::Sensitive).next().is_none() {
+        Some(NO_COUNTING)
     } else {
         None
     }
@@ -117,7 +118,7 @@ impl Authority {
             pool.listed.insert(fp.clone());
             let bar = if k.role == Role::Recovery {
                 Some(RECOVERY)
-            } else if k.strength != Strength::Strong {
+            } else if !charter.counts(k, Class::Sensitive) {
                 Some(WEAK)
             } else if !accepted.iter().any(|a| a.key == k.key) {
                 Some(UNACCEPTED)
@@ -130,11 +131,11 @@ impl Authority {
                 pool.barred.insert(fp, why);
                 continue;
             }
-            if node.persons.get(&fp).is_some_and(|p| p.phone && p.alg == material.alg && p.public == material.public) {
+            if node.persons.get(&fp).is_some_and(|p| p.alg == material.alg && p.public == material.public) {
                 pool.issuers.insert(fp.clone(), material.clone());
                 pool.people.insert(fp.clone(), k.person.clone());
             } else {
-                pool.barred.insert(fp.clone(), UNKNOWN_PHONE);
+                pool.barred.insert(fp.clone(), UNKNOWN_KEY);
             }
             pool.stands.insert(fp, material);
         }
@@ -180,8 +181,8 @@ impl Authority {
         self.pool.as_ref().is_some_and(|p| p.listed.contains(fingerprint))
     }
 
-    /// Whether the key ``public`` (fingerprint ``fingerprint``) stands as a strong admin key of the charter in force, so a phone that holds it is
-    /// an authority key once this device enrols it.
+    /// Whether the key ``public`` (fingerprint ``fingerprint``) stands as a counting admin key of the charter in force, so a phone that holds it
+    /// is an authority key once this device enrols it.
     pub fn would_hold(&self, fingerprint: &str, public: &str) -> bool {
         self.pool.as_ref().is_some_and(|p| p.closed.is_none() && p.stands.get(fingerprint).is_some_and(|m| m.public == public))
     }

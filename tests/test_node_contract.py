@@ -440,9 +440,9 @@ def test_retained_operation_mapping_matches_current_declarations():
 
 
 def domain_fixture(tmp_path):
+    """A copy of the real contract: the native service declarations need the real domains' types, so a test adds its fragment beside them."""
     source = tmp_path / "node"
-    shutil.copytree(ROOT / "contracts/node", source, ignore=shutil.ignore_patterns("domains"))
-    (source / "domains").mkdir()
+    shutil.copytree(ROOT / "contracts/node", source)
     return source
 
 
@@ -459,7 +459,9 @@ def test_domain_fragments_merge_before_global_type_validation(tmp_path):
         '[[type]]\nname = "DomainEnvelope"\nkind = "record"\nvisibility = "public"\n'
         'fields = [{name = "value", type = "DomainValue"}]\n')
     meta, rows, first = load(source)
-    assert [row["file"] for row in meta["domains"]] == ["a_envelope.toml", "z_value.toml"]
+    files = [row["file"] for row in meta["domains"]]
+    assert files == sorted(files) and {"a_envelope.toml", "z_value.toml"} <= set(files)
+    assert files.index("a_envelope.toml") < files.index("z_value.toml")
     assert [row["name"] for row in rows].index("DomainValue") < [row["name"] for row in rows].index("DomainEnvelope")
     assert load(source)[2] == first
     value = source / "domains" / "z_value.toml"

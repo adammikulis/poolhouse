@@ -9,7 +9,7 @@ use kit::p256::PhoneKey;
 use poolhouse_node::fsutil::{hex, unhex};
 use poolhouse_node::gov::act::{Act, ActSig, SigKind};
 use poolhouse_node::gov::charter::{Charter, Unit};
-use poolhouse_node::gov::keys::{AdminKey, Alg, Role, Strength};
+use poolhouse_node::gov::keys::{AdminKey, Alg, Role, Level};
 use poolhouse_node::gov::pool::{founding, ActStatus, GovPool, Ingest};
 use poolhouse_node::gov::signer::RigSigner;
 use poolhouse_node::grants::person::{fingerprint_of, verifies_p256, verifies_with};
@@ -22,7 +22,7 @@ const B: u8 = 2;
 const C: u8 = 3;
 
 fn phone_entry(phone: &PhoneKey, person: &str, since: u64) -> AdminKey {
-    AdminKey { key: phone.public.clone(), alg: Alg::P256, role: Role::Admin, strength: Strength::Strong, person: person.into(), since, acceptance: String::new(), label: format!("{person}'s phone") }
+    AdminKey { key: phone.public.clone(), alg: Alg::P256, role: Role::Admin, claim: Some(claim_at(Level::Phone)), person: person.into(), since, acceptance: String::new(), label: format!("{person}'s phone") }
 }
 
 /// A charter of one phone key, accepted by the phone with the signature ``sign`` makes.
@@ -62,7 +62,7 @@ fn refused(i: Ingest) -> String {
 fn a_phone_key_founds_a_pool_and_its_signature_admits_a_device() {
     let phone = PhoneKey::new();
     let (_d, mut g) = phone_pool(&phone);
-    assert!(g.state().chain.latest().charter.is_strong(&phone.public), "the phone key counts toward the thresholds");
+    assert!(g.state().chain.latest().charter.counts_key(&phone.public, poolhouse_node::gov::charter::Class::Governance), "the phone key counts toward the thresholds");
     let laptop = ident(10);
     let mut act = admit(&g, &laptop, &[]);
     sign_phone(&mut act, &phone);
@@ -76,7 +76,7 @@ fn a_phone_key_founds_a_pool_and_its_signature_admits_a_device() {
 fn a_phone_key_and_a_typed_key_of_two_people_count_as_two_for_a_change_of_admins() {
     let phone = PhoneKey::new();
     let mut c = phone_charter(&phone, canonical);
-    c.admins.push(entry(strong(B, "ben"), 1, ""));
+    c.admins.push(entry(phone_admin(B, "ben"), 1, ""));
     c.admins.sort_by(|a, b| a.key.cmp(&b.key));
     let anchor = c.anchor();
     for k in c.admins.iter_mut() {
@@ -84,7 +84,7 @@ fn a_phone_key_and_a_typed_key_of_two_people_count_as_two_for_a_change_of_admins
         k.acceptance = if k.alg == Alg::P256 { phone.sign(&message) } else { RigSigner::sign_as(B, &message) };
     }
     let (_d, mut g) = pool_of(&c);
-    let added = entry_after(strong(C, "cy"), 2, &g);
+    let added = entry_after(phone_admin(C, "cy"), 2, &g);
     let mut one = make(&g, "admin_add", json!({"entry": added}), &[]);
     sign_phone(&mut one, &phone);
     take(&mut g, one.clone());
@@ -92,7 +92,7 @@ fn a_phone_key_and_a_typed_key_of_two_people_count_as_two_for_a_change_of_admins
     let mut both = one.clone();
     sign(&mut both, B);
     assert_eq!(take(&mut g, both.clone()), Ingest::Merged);
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert!(admins(&g).contains(&public(C)), "the phone's signature and a typed key's make two people");
 }
 
@@ -177,7 +177,7 @@ fn a_founding_key_that_accepts_with_a_high_s_signature_founds_nothing() {
 
 #[test]
 fn a_later_keys_high_s_acceptance_lists_nothing() {
-    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
     let phone = PhoneKey::new();
     let mut listed = phone_entry(&phone, "ben", 2);
     let (anchor, prev) = (g.id.clone(), g.context().1);
@@ -223,7 +223,7 @@ fn a_signature_of_the_wrong_form_for_its_key_is_refused_before_it_is_checked() {
 
 #[test]
 fn an_ed25519_key_is_never_asked_for_a_der_signature_and_a_short_one_is_refused() {
-    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
     let laptop = ident(10);
     let mut act = admit(&g, &laptop, &[A]);
     act.signatures[0].sig = act.signatures[0].sig[..126].to_string();
@@ -277,28 +277,28 @@ fn a_public_key_is_an_ed25519_key_or_a_p256_point_and_nothing_else() {
 
 #[test]
 fn a_later_keys_acceptance_names_the_charter_it_follows() {
-    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
     let prev = g.context().1;
-    let without = entry_on(strong(B, "ben"), 2, &g.id, "");
+    let without = entry_on(phone_admin(B, "ben"), 2, &g.id, "");
     let act = make(&g, "admin_add", json!({"entry": without}), &[A]);
     take(&mut g, act.clone());
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert!(!admins(&g).contains(&public(B)), "an acceptance that names no charter lists nothing");
     assert!(matches!(g.status(&act.id()), ActStatus::Void(w) if w.contains("did not accept")));
-    let elsewhere = entry_on(strong(B, "ben"), 2, &g.id, &"cd".repeat(32));
+    let elsewhere = entry_on(phone_admin(B, "ben"), 2, &g.id, &"cd".repeat(32));
     let act = make(&g, "admin_add", json!({"entry": elsewhere}), &[A]);
     take(&mut g, act.clone());
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert!(!admins(&g).contains(&public(B)), "nor does one made for another charter's follower");
-    let right = entry_on(strong(B, "ben"), 2, &g.id, &prev);
+    let right = entry_on(phone_admin(B, "ben"), 2, &g.id, &prev);
     put(&mut g, "admin_add", json!({"entry": right}), &[A]);
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert!(admins(&g).contains(&public(B)), "the acceptance of the charter the add follows lists the key");
 }
 
 #[test]
 fn an_acceptance_signed_for_another_algorithm_than_the_entry_names_lists_nothing() {
-    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
     let phone = PhoneKey::new();
     let (anchor, prev) = (g.id.clone(), g.context().1);
     let mut as_listed = phone_entry(&phone, "ben", 2);
@@ -307,12 +307,12 @@ fn an_acceptance_signed_for_another_algorithm_than_the_entry_names_lists_nothing
     as_listed.acceptance = phone.sign(&signed_as_other.acceptance_message(&anchor, &prev));
     let act = make(&g, "admin_add", json!({"entry": as_listed}), &[A]);
     take(&mut g, act.clone());
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert!(!admins(&g).contains(&phone.public), "the algorithm is part of what the key accepted");
     let mut honest = phone_entry(&phone, "ben", 2);
     honest.acceptance = phone.sign(&honest.acceptance_message(&anchor, &prev));
     put(&mut g, "admin_add", json!({"entry": honest}), &[A]);
-    advance(&mut g, 25 * HOUR);
+    advance(&mut g, HELD);
     assert!(admins(&g).contains(&phone.public), "a phone key listed by an Ed25519 admin counts once it has accepted");
 }
 
@@ -320,7 +320,7 @@ fn an_acceptance_signed_for_another_algorithm_than_the_entry_names_lists_nothing
 fn an_acceptance_holds_only_for_the_pool_and_the_charter_it_names() {
     let (id, other_id) = ("ab".repeat(16), "cd".repeat(16));
     let (prev, other_prev) = ("12".repeat(32), "34".repeat(32));
-    let key = entry_on(strong(B, "ben"), 3, &id, &prev);
+    let key = entry_on(phone_admin(B, "ben"), 3, &id, &prev);
     assert!(key.accepted(&id, &prev));
     assert!(!key.accepted(&id, &other_prev), "the same pool and epoch after another charter is not the charter it accepted");
     assert!(!key.accepted(&id, ""), "an acceptance that names a charter is not one that names none");
@@ -334,7 +334,7 @@ fn an_acceptance_holds_only_for_the_pool_and_the_charter_it_names() {
 
 #[test]
 fn a_charter_of_another_version_founds_nothing_and_says_so_in_one_sentence() {
-    let mut c = charter(&[strong(A, "ann")], Policy::Secure, Unit::Person);
+    let mut c = charter(&[phone_admin(A, "ann")], Policy::Secure, Unit::Person);
     c.v = 1;
     let err = c.check_founding().unwrap_err().to_string();
     assert!(err.contains("another version of Poolhouse") && err.contains("make a new pool"), "{err}");
@@ -348,7 +348,7 @@ fn a_charter_of_another_version_founds_nothing_and_says_so_in_one_sentence() {
 
 // -- the founding path of a node -------------------------------------------------------------------------------------------------
 
-/// Enrol the P-256 key of ``phone`` on the node of ``dev`` the way a phone's own enrolment does, which is what makes a key strong there.
+/// Enrol the P-256 key of ``phone`` on the node of ``dev`` the way a phone's own enrolment does, which is what makes a key count at the phone level there.
 fn enrol_phone(dev: &Dev, phone: &PhoneKey) {
     dev.node.lock().unwrap().persons.add_phone_key("p256", &phone.public, "ann's phone", wall_ms()).unwrap();
 }
@@ -360,7 +360,7 @@ fn a_node_drafts_a_charter_for_a_phone_key_and_founds_the_pool_of_what_the_phone
     enrol_phone(&a, &phone);
     let draft = a.ok("pool_draft_found", "", &a.token, json!({"title": "home", "policy": "secure", "project": "", "keys": [{"key": phone.public, "person": "ann", "label": "ann's phone"}]}));
     assert_eq!(draft["charter"]["admins"][0]["alg"], "p256", "{draft}");
-    assert_eq!(draft["charter"]["admins"][0]["strength"], "strong", "the node derives it from the key the phone enrolled: {draft}");
+    assert_eq!(draft["charter"]["admins"][0]["claim"]["method"], "phone-keystore", "the node derives it from the key the phone enrolled: {draft}");
     assert_eq!(draft["accept"][0]["alg"], "p256", "{draft}");
     let mut charter = draft["charter"].clone();
     let bytes = unhex(draft["accept"][0]["sign_bytes"].as_str().unwrap()).unwrap();

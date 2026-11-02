@@ -3,7 +3,7 @@
 mod kit;
 
 use ed25519_dalek::SigningKey;
-use kit::gov::{entry_after, person, put, strong, public};
+use kit::gov::{entry_after, person, put, phone_admin, public};
 use kit::govnode::{approved, enrol_phone_key, found as found_dev, ANN, BEN};
 use kit::grants::{Person, Spec};
 use kit::netkit::device;
@@ -34,7 +34,7 @@ fn removal_pending() -> (Founded, FakePhone, String) {
 #[test]
 fn a_removed_admins_earlier_grant_stops_counting_when_the_removal_takes_effect() {
     let (pool, second, gid) = removal_pending();
-    pool.pass(48 * HOURS);
+    pool.pass(8 * 24 * HOURS);
     assert_eq!(pool.authority(), vec![pool.phone.fingerprint()]);
     let (state, why) = pool.state(&gid);
     assert_eq!(state, "ignored");
@@ -48,7 +48,7 @@ fn a_removed_admins_earlier_grant_stops_counting_when_the_removal_takes_effect()
 #[test]
 fn a_removal_whose_hold_ran_out_unticked_is_seen_by_the_local_api() {
     let (pool, _second, gid) = removal_pending();
-    pool.advance(48 * HOURS);
+    pool.advance(8 * 24 * HOURS);
     let (state, why) = pool.state(&gid);
     assert!((state.as_str(), why.contains(NOT_NOW)) == ("ignored", true), "the request ticks the pool first: {state} {why}");
 }
@@ -58,7 +58,7 @@ fn a_removal_whose_hold_ran_out_unticked_is_seen_by_the_phone_endpoint() {
     let (pool, second, _gid) = removal_pending();
     let id = pool.request("task_authority", "*");
     let seen = pool.rig.get(&pool.phone, &id);
-    pool.advance(48 * HOURS);
+    pool.advance(8 * 24 * HOURS);
     let refused = pool.rig.phone("POST", "decide", "", second.decision(&seen, "approve")).1;
     assert!(Founded::denial(&refused).contains("not an admin key of this pool"), "{refused}");
     assert_eq!(pool.rig.node.lock().unwrap().approvals.get(&id).unwrap().state, "pending");
@@ -90,9 +90,9 @@ fn a_removal_whose_hold_ran_out_unticked_is_seen_by_the_network_path() {
     {
         let mut node = dev.node.lock().unwrap();
         let gov = node.members.gov_mut().unwrap();
-        let entry = entry_after(strong(BEN, "ann"), gov.context().0 + 1, gov);
+        let entry = entry_after(phone_admin(BEN, "ann"), gov.context().0 + 1, gov);
         put(gov, "admin_add", json!({"entry": entry}), &[ANN]);
-        kit::gov::advance(gov, 48 * HOURS);
+        kit::gov::advance(gov, 8 * 24 * HOURS);
     }
     let (_, session) = dev.session("demo", "syncer");
     let ben = Person { key: SigningKey::from_bytes(&[BEN; 32]) };
@@ -102,7 +102,7 @@ fn a_removal_whose_hold_ran_out_unticked_is_seen_by_the_network_path() {
         let mut node = dev.node.lock().unwrap();
         let gov = node.members.gov_mut().unwrap();
         put(gov, "admin_remove", json!({"key": public(BEN), "cut": []}), &[ANN]);
-        gov.clock.advance_ms(48 * HOURS);
+        gov.clock.advance_ms(8 * 24 * HOURS);
     }
     let after = dev.call("sync_now", "", &session, json!({}));
     assert_eq!(after["ok"], false, "the removal is in force once the clock says so, ticked or not: {after}");

@@ -10,6 +10,7 @@ use ed25519_dalek::{Signer as _, SigningKey};
 use serde_json::{json, Value};
 
 use crate::cert::{cert_fingerprint, valid_fingerprint};
+use crate::device::Custody;
 use crate::error::{Error, Result};
 use crate::fsutil::hex;
 use crate::grants::spec::SKEW_MS;
@@ -18,11 +19,11 @@ use crate::node::Node;
 use crate::poolops::wall_ms;
 
 use super::act::{Act, ActSig, SigKind};
-use super::charter::{Charter, Class, First, Unit};
+use super::charter::{floor_class, Charter, Class, First, Unit, NO_COUNTING_KEY};
 use super::describe::{describe, founding_line, quoted};
-use super::keys::{Alg, AdminKey, Role, Strength};
+use super::keys::{Alg, AdminKey, Claim, Level, Role};
 use super::pool::{ActStatus, GovPool, Ingest};
-use super::signer::{KeyBinding, Signer, SignerKey};
+use super::signer::{Signer, SignerKey};
 
 const MOST_REPLIES: usize = 8;
 /// How long a person's no to a kind of act is respected before the same kind is asked again, and the window in which a person is
@@ -50,22 +51,24 @@ fn declined(why: &str) -> Error {
     Error::say("denied", why, "none", "stop")
 }
 
-/// How many signers an act of ``kind`` needs: a class, or one strong admin (`None`).
-fn class_of(kind: &str) -> Result<Option<Class>> {
+/// How many signers an act of ``kind`` needs: a class, or one key at the sensitive floor (`None`).
+pub(super) fn class_of(kind: &str) -> Result<Option<Class>> {
     match kind {
         "admit" | "veto" => Ok(None),
-        "remove" | "cancel" | "delegate_end" => Ok(Some(Class::Routine)),
-        "admin_add" | "admin_remove" | "set_threshold" | "set_holds" | "set_mode" | "delegate" => Ok(Some(Class::Sensitive)),
-        _ => Err(Error::Invalid("a person's key signs an admit, a removal, a change of admins or thresholds, a delegate, a cancel or a veto".into())),
+        "cancel" | "delegate_end" => Ok(Some(Class::Routine)),
+        "remove" => Ok(Some(Class::Sensitive)),
+        "admin_add" | "admin_remove" | "set_threshold" | "set_holds" | "set_mode" | "set_floors" | "recovery_replace" | "delegate" => Ok(Some(Class::Governance)),
+        _ => Err(Error::Invalid("a person's key signs an admit, a removal, a change of admins, thresholds or floors, a delegate, a cancel or a veto".into())),
     }
 }
 
-/// The keys of ``signer`` that count in ``charter``, one per person (or per key under `unit: key`), at most ``need``.
-fn keys_for(signer: &dyn Signer, charter: &Charter, need: usize, weak_ok: bool, skip: &[&str]) -> Vec<SignerKey> {
+/// The keys of ``signer`` that count in ``charter`` at the floor of ``floor`` (any admin key when none), one per person (or per key under
+/// `unit: key`), at most ``need``.
+fn keys_for(signer: &dyn Signer, charter: &Charter, floor: Option<Class>, need: usize, skip: &[&str]) -> Vec<SignerKey> {
     let mut seen: BTreeSet<String> = BTreeSet::new();
     let mut chosen = Vec::new();
     for key in signer.keys().into_iter().filter(|k| !skip.contains(&k.public.as_str())) {
-        let Some(listed) = charter.admin(&key.public).filter(|l| l.role == Role::Admin && (weak_ok || charter.is_strong(&key.public))) else { continue };
+        let Some(listed) = charter.admin(&key.public).filter(|l| l.role == Role::Admin && floor.is_none_or(|c| charter.counts(l, c))) else { continue };
         let who = if charter.thresholds.unit == Unit::Person { listed.person.clone() } else { key.public.clone() };
         if seen.len() < need && seen.insert(who) {
             chosen.push(key);
@@ -106,14 +109,32 @@ fn charter_of(act: &Value) -> Result<(Act, Charter)> {
     Ok((found, charter))
 }
 
-/// The name of the pool an act a person's keys signed elsewhere would found, for the grant that lets a session found it; what this device
+/// The name and anchor of the pool an act a person's keys signed elsewhere would found, for the grant that lets a session found it; what this device
 /// derives about the keys is not read, so a session that holds no grant learns none of it.
-pub fn founding_name(act: &Value) -> Result<String> {
-    Ok(charter_of(act)?.1.name)
+pub fn founding_name(act: &Value) -> Result<(String, String)> {
+    let charter = charter_of(act)?.1;
+    Ok((charter.name.clone(), charter.anchor()))
 }
 
-const NO_STRONG_KEY: &str = "A pool needs a strong key, one that asks for your presence each time it signs, and that charter lists none.";
-const UNCONFIRMED_STRONG_KEY: &str = "That charter calls a key strong that is not a phone's key on this device, so I will not make that pool.";
+/// What the operating system's prompt says to found the pool of ``c``, written from its name and its first key and nothing a session said.
+fn founding_prompt(c: &Charter) -> String {
+    let key = c.admins.iter().find(|k| k.role == Role::Admin).map(|k| crate::phone::words(&k.fingerprint())).unwrap_or_default();
+    format!("Poolhouse - make the pool {} and let this computer approve changes to it. Key {key}.", c.name)
+}
+
+/// What the operating system's prompt says to sign ``act``, written from its kind, the device it names and the pool's name.
+fn act_prompt(act: &Act, g: &GovPool) -> String {
+    let pool = &g.state().chain.latest().charter.name;
+    let device = |fingerprint: &str| g.devices().get(fingerprint).map_or_else(|| "a device".to_string(), |d| d.name.clone());
+    match (act.kind.as_str(), act.body["fingerprint"].as_str()) {
+        ("remove", Some(fp)) => format!("Poolhouse - remove the device {} from the pool {pool}. It stops working with every device at once.", device(fp)),
+        ("admit", _) => format!("Poolhouse - add a new device to the pool {pool}."),
+        ("delegate", Some(fp)) => format!("Poolhouse - let the device {} admit devices to the pool {pool} for 30 days.", device(fp)),
+        (kind, _) => format!("Poolhouse - change who governs the pool {pool} ({}).", kind.replace('_', " ")),
+    }
+}
+
+const OVERSTATED_KEY: &str = "That charter says a key is held in a way this device did not record for it, so I will not make that pool.";
 const OTHER_FIRST: &str = "That charter puts another computer in the pool first, and a pool is made on the computer it names: draft it again here.";
 
 fn reply(g: &GovPool, id: &str, kept: Ingest) -> Result<Value> {
@@ -138,9 +159,12 @@ fn propose(g: &mut GovPool, signer: Option<&Arc<dyn Signer>>, kind: &str, body: 
     let signer = signer.ok_or_else(no_signer)?;
     let charter = g.state().chain.state_for(&act).ok_or_else(unknown_epoch)?.charter.clone();
     let named = if kind == "veto" { g.acts().get(act.body["act"].as_str().unwrap_or("")).and_then(|a| a.body["key"].as_str().map(str::to_string)) } else { None };
-    let mut keys = keys_for(signer.as_ref(), &charter, class.map_or(1, |c| charter.needed(c)), kind == "delegate_end", &[]);
+    let mut keys = keys_for(signer.as_ref(), &charter, floor_class(kind), class.map_or(1, |c| charter.needed(c)), &[]);
     if let Some(key) = named {
         keys = signer.keys().into_iter().filter(|k| k.public == key).collect();
+    }
+    if keys.is_empty() && kind == "cancel" {
+        keys = signer.keys().into_iter().filter(|k| charter.admin(&k.public).is_some_and(|l| l.role == Role::Recovery)).take(1).collect();
     }
     if keys.is_empty() {
         return Err(not_admin());
@@ -153,27 +177,28 @@ fn propose(g: &mut GovPool, signer: Option<&Arc<dyn Signer>>, kind: &str, body: 
 }
 
 impl Node {
-    /// The strength of ``public`` in a charter this device founds: strong for a key a phone enrolled on this device, weak for every other.
-    pub fn key_strength(&self, public: &str) -> Strength {
-        if self.persons.is_phone_key(public) { Strength::Strong } else { Strength::Weak }
+    /// The claim a charter this device drafts makes for ``public``: what this device's person keys record for it, and for a key not
+    /// enrolled yet what the way this device asks a person would record when the person says yes for that key.
+    pub fn key_claim(&self, public: &str) -> Claim {
+        self.persons.claim_of(public).unwrap_or_else(|| self.firsts.pool_key_claim())
     }
 
     /// The first device a charter this device makes names: this device, called by its host name.
     fn first_device(&self) -> First {
-        First::of(&self.cert.der, &crate::poolops::host_name())
+        First::of(&self.cert.der, &crate::poolops::host_name()).delegating()
     }
 
-    /// The founding act in ``act`` and its charter, when the strong keys it lists are keys this device derives as strong and at
-    /// least one is an admin key: without one nobody could admit a device. The first device it names is this one, so a charter copied
-    /// to another device makes no pool there.
+    /// The founding act in ``act`` and its charter, when every key it lists that counts says it is held the way this device recorded it
+    /// (a key that counts for nothing needs no record) and at least one is an admin key above `Weak`: without one nobody could admit a
+    /// device. The first device it names is this one, so a charter copied to another device makes no pool there.
     fn founding_of(&self, act: &Value) -> Result<(Act, Charter)> {
         let (found, charter) = charter_of(act)?;
-        let confirmed = |k: &&AdminKey| k.strength == Strength::Strong && self.key_strength(&k.key) == Strength::Strong;
-        if !charter.admins.iter().filter(confirmed).any(|k| k.role == Role::Admin) {
-            return Err(declined(NO_STRONG_KEY));
+        let overstated = |k: &AdminKey| k.claim.is_some_and(|c| c.counted() > Level::Weak && Some(c) != self.persons.claim_of(&k.key));
+        if charter.admins.iter().any(overstated) {
+            return Err(declined(OVERSTATED_KEY));
         }
-        if charter.admins.iter().any(|k| k.strength == Strength::Strong && !confirmed(&k)) {
-            return Err(declined(UNCONFIRMED_STRONG_KEY));
+        if !charter.admins.iter().any(|k| k.role == Role::Admin && k.level() > Level::Weak) {
+            return Err(declined(NO_COUNTING_KEY));
         }
         if charter.first.cert != hex(&self.cert.der) {
             return Err(declined(OTHER_FIRST));
@@ -188,7 +213,13 @@ impl Node {
 
     /// A rig's stand-in for a device key the operating system's keystore holds: only such a key may belong to a delegate.
     pub fn rig_bind_device_key(&mut self) {
-        self.key_binding = KeyBinding::Keystore;
+        self.custody = Custody::Keystore;
+    }
+
+    /// Whether the key of this device is kept by the operating system's keystore, which hands it only to the process that starts the node:
+    /// a copy of the state directory holds no such key, so only this device's key may sign a delegate's admit.
+    fn keystore_keyed(&self) -> bool {
+        self.custody == Custody::Keystore
     }
 
     /// Run ``f``, which asks a person to sign an act of ``kind``, unless that person said no to this kind a moment ago; a no starts
@@ -258,12 +289,12 @@ impl Node {
     /// Whether this device can admit a device now: only in a pool, and then with a signer whose key is an admin, or as a live delegate.
     pub fn can_admit(&self) -> Result<()> {
         let g = self.members.gov().ok_or_else(no_pool)?;
-        if self.key_binding == KeyBinding::Keystore && g.state().roster.delegates.contains_key(&self.cert.fingerprint()) {
+        if self.keystore_keyed() && g.state().roster.delegates.contains_key(&self.cert.fingerprint()) {
             return Ok(());
         }
         match &self.signer {
             None => Err(no_signer()),
-            Some(s) if keys_for(s.as_ref(), &g.state().chain.latest().charter, 1, false, &[]).is_empty() => Err(not_admin()),
+            Some(s) if keys_for(s.as_ref(), &g.state().chain.latest().charter, floor_class("admit"), 1, &[]).is_empty() => Err(not_admin()),
             Some(_) => Ok(()),
         }
     }
@@ -277,12 +308,12 @@ impl Node {
         let signer = self.signer.clone().ok_or_else(no_signer)?;
         let now = wall_ms();
         let held = signer.keys();
-        let admins: Vec<AdminKey> = held.iter().map(|k| AdminKey { key: k.public.clone(), alg: Alg::of_public(&k.public).unwrap_or(Alg::Ed25519), role: Role::Admin, strength: self.key_strength(&k.public), person: k.person.clone(), since: 1, acceptance: String::new(), label: k.label.clone() }).collect();
+        let admins: Vec<AdminKey> = held.iter().map(|k| AdminKey { key: k.public.clone(), alg: Alg::of_public(&k.public).unwrap_or(Alg::Ed25519), role: Role::Admin, claim: Some(self.key_claim(&k.public)), person: k.person.clone(), since: 1, acceptance: String::new(), label: k.label.clone() }).collect();
         if admins.is_empty() {
             return Err(no_signer());
         }
-        if !admins.iter().any(|k| k.strength == Strength::Strong) {
-            return Err(declined("A pool needs a key that asks for your presence each time it signs, and none is connected yet."));
+        if !admins.iter().any(|k| k.level() > Level::Weak) {
+            return Err(declined(NO_COUNTING_KEY));
         }
         let mut charter = Charter::new(name, policy, project, admins, self.first_device(), now);
         let (anchor, summary) = (charter.anchor(), founding_line(&charter));
@@ -304,14 +335,14 @@ impl Node {
             Some(d) if d.status == Status::Revoked => return Err(declined(&format!("{} was removed from this pool and does not come back; it needs a new certificate.", quoted(&d.name)))),
             _ => {}
         }
-        let (signer, binding, key, me) = (self.signer.clone(), self.key_binding, self.key.clone(), self.cert.fingerprint());
+        let (signer, keyed, key, me) = (self.signer.clone(), self.keystore_keyed(), self.key.clone(), self.cert.fingerprint());
         let name: String = name.chars().filter(|c| !c.is_control()).take(80).collect();
         let body = json!({"cert": hex(der), "name": name, "how": how, "via": if how == "open" { "segment" } else { "" }});
         let admit = move |n: &mut Node| n.with_gov(|g, wall| {
             let mut act = g.new_act("admit", body, wall)?;
             let (charter, roster) = (g.state().chain.latest().charter.clone(), &g.state().roster);
             let live = roster.devices.get(&me).is_some_and(|d| d.status == Status::Active);
-            let delegate = live && binding == KeyBinding::Keystore && roster.delegates.contains_key(&me);
+            let delegate = live && keyed && roster.delegates.contains_key(&me);
             if how == "open" {
                 if charter.policy != Policy::Open || !live {
                     return Err(declined("This pool takes a device only when a person approves it."));
@@ -321,7 +352,7 @@ impl Node {
                 device_sign(&mut act, &key, &me);
             } else {
                 let signer = signer.as_ref().ok_or_else(no_signer)?;
-                let keys = keys_for(signer.as_ref(), &charter, 1, false, &[]);
+                let keys = keys_for(signer.as_ref(), &charter, floor_class("admit"), 1, &[]);
                 if keys.is_empty() {
                     return Err(not_admin());
                 }
@@ -383,7 +414,7 @@ impl Node {
             let charter = g.state().chain.state_for(&act).ok_or_else(unknown_epoch)?.charter.clone();
             let class = class_of(&act.kind)?;
             let signed = act.admin_keys().into_iter().map(str::to_string).collect::<Vec<_>>();
-            let keys = keys_for(signer.as_ref(), &charter, class.map_or(1, |c| charter.needed(c)), act.kind == "delegate_end", &signed.iter().map(String::as_str).collect::<Vec<_>>());
+            let keys = keys_for(signer.as_ref(), &charter, floor_class(&act.kind), class.map_or(1, |c| charter.needed(c)), &signed.iter().map(String::as_str).collect::<Vec<_>>());
             if keys.is_empty() {
                 return Err(not_admin());
             }
@@ -410,7 +441,8 @@ impl Node {
     }
 
     /// Become a member of the governed pool ``found`` founded, which the device that admitted this one described: the admin-set acts
-    /// in effect there (``settled``) and the rest that stand. This device must be in it, and must not be in a pool of its own.
+    /// in effect there (``settled``), the acts of the delegates that are live there (their holds ran before this device arrived, so they
+    /// are taken as held, and run thirty days from the join) and the rest that stand. This device must be in it, and must not be in a pool of its own.
     pub fn adopt_governed(&mut self, found: Act, settled: Vec<Act>, delegates: Vec<Act>, rest: Vec<Act>) -> Result<()> {
         if !self.members.can_join_other() {
             return Err(Error::Denied("a device that is in a pool does not change pool".into()));
@@ -418,7 +450,7 @@ impl Node {
         let wall = wall_ms();
         let mut pool = GovPool::create(&self.dir, found)?;
         pool.ingest_many(settled, wall, true);
-        pool.ingest_many(delegates, wall, false);
+        pool.ingest_many(delegates, wall, true);
         pool.ingest_many(rest, wall, true);
         if !pool.devices().get(&self.cert.fingerprint()).is_some_and(|d| d.status == Status::Active) {
             let dir = pool.dir().to_path_buf();
@@ -455,19 +487,19 @@ impl Node {
         Ok(json!({"pool": id, "name": charter.name, "policy": charter.policy.name(), "epoch": 1}))
     }
 
-    /// The charter of a pool of ``keys`` (each `{key, person, label}`, an admin, strong when this device derives it so) with every
+    /// The charter of a pool of ``keys`` (each `{key, person, label}`, an admin, with the claim this device derives for it) with every
     /// acceptance blank, and the bytes each key signs to accept it: for keys that sign elsewhere, which hand the accepted charter back
     /// through `pool_found`.
-    pub fn pool_draft_found(&self, name: &str, policy: Policy, project: &str, keys: &Value) -> Result<Value> {
+    pub fn pool_draft_found(&mut self, name: &str, policy: Policy, project: &str, keys: &Value) -> Result<Value> {
         let listed = keys.as_array().filter(|k| !k.is_empty() && k.len() <= super::MAX_ADMINS).ok_or_else(|| Error::Invalid("a pool names one to sixteen admin keys".into()))?;
         let text = |k: &Value, field: &str| k[field].as_str().unwrap_or("").to_string();
         let mut admins = Vec::new();
         for k in listed {
             if !k.as_object().is_some_and(|o| o.keys().all(|f| matches!(f.as_str(), "key" | "person" | "label"))) {
-                return Err(Error::Invalid("a key is named by its key, person and label; how strong it is, this device says".into()));
+                return Err(Error::Invalid("a key is named by its key, person and label; how it is held, this device says".into()));
             }
             let key = text(k, "key");
-            admins.push(AdminKey { alg: Alg::of_public(&key).unwrap_or(Alg::Ed25519), strength: self.key_strength(&key), key, role: Role::Admin, person: text(k, "person"), since: 1, acceptance: String::new(), label: text(k, "label") });
+            admins.push(AdminKey { alg: Alg::of_public(&key).unwrap_or(Alg::Ed25519), claim: Some(self.key_claim(&key)), key, role: Role::Admin, person: text(k, "person"), since: 1, acceptance: String::new(), label: text(k, "label") });
         }
         if let Some(bad) = admins.iter().find(|k| !super::keys::valid_public(&k.key)) {
             return Err(Error::Invalid(format!("{} is not a public key", bad.key.chars().take(16).collect::<String>())));
@@ -475,7 +507,15 @@ impl Node {
         let charter = Charter::new(name, policy, project, admins, self.first_device(), wall_ms());
         let anchor = charter.anchor();
         let accept: Vec<Value> = charter.admins.iter().map(|k| json!({"key": k.key, "alg": k.alg, "sign_bytes": hex(&k.acceptance_message(&anchor, ""))})).collect();
-        Ok(json!({"charter": charter.body(), "anchor": anchor, "accept": accept, "summary": founding_line(&charter)}))
+        let payloads: Vec<Vec<u8>> = charter.admins.iter().map(|k| k.acceptance_message(&anchor, "")).collect();
+        let held: Vec<String> = charter.admins.iter().map(|k| k.key.clone()).collect();
+        let card = self.firsts.cards.add(&founding_prompt(&charter), &payloads, held, Some(anchor.clone()), wall_ms());
+        let (card_id, card_why) = match card {
+            Ok(id) => (Value::String(id), Value::Null),
+            Err(why) => (Value::Null, Value::String(why.into())),
+        };
+        let counting = charter.admins.iter().any(|k| k.role == Role::Admin && k.level() > Level::Weak);
+        Ok(json!({"charter": charter.body(), "anchor": anchor, "accept": accept, "summary": founding_line(&charter), "counting": counting, "card": card_id, "card_why": card_why}))
     }
 
     /// The act of ``kind`` this device's pool would take next, with the bytes a person's key signs and what the person is shown: for
@@ -485,7 +525,13 @@ impl Node {
         let g = self.members.gov().ok_or_else(no_pool)?;
         let act = g.new_act(kind, body, wall_ms())?;
         super::body::parse(&act).map_err(|e| declined(&e.to_string()))?;
-        Ok(json!({"act": act, "sign_bytes": hex(&act.sign_bytes()), "summary": describe(&act, g)}))
+        let (summary, prompt) = (describe(&act, g), act_prompt(&act, g));
+        let card = self.firsts.cards.add(&prompt, &[act.sign_bytes()], Vec::new(), None, wall_ms());
+        let (card_id, card_why) = match card {
+            Ok(id) => (Value::String(id), Value::Null),
+            Err(why) => (Value::Null, Value::String(why.into())),
+        };
+        Ok(json!({"act": act, "sign_bytes": hex(&act.sign_bytes()), "summary": summary, "card": card_id, "card_why": card_why}))
     }
 
     /// An `admin_remove` keeps every act of that key this device holds, whatever the caller names: a cut the caller chose would strike what the person was never shown. A `remove` names the logs of the device that
@@ -510,14 +556,14 @@ impl Node {
         let (s, now) = (g.state(), g.clock.now_ms());
         let latest = s.chain.latest();
         let c = &latest.charter;
-        let admins: Vec<Value> = c.admins.iter().map(|k| json!({"fingerprint": k.fingerprint(), "role": k.role, "strength": k.strength, "person": k.person, "label": k.label, "since": k.since})).collect();
+        let admins: Vec<Value> = c.admins.iter().map(|k| json!({"fingerprint": k.fingerprint(), "role": k.role, "claim": k.claim, "counted": k.level(), "person": k.person, "label": k.label, "since": k.since})).collect();
         let secs = |at: i64| (at.saturating_sub(now) / 1000).max(0);
         let pending = s.chain.pending.as_ref().map(|p| json!({"acts": p.acts, "takes_effect_in_s": secs(p.effective_ms)}));
         let dispute = s.chain.dispute.as_ref().map(|d| json!({"contested": d.contested, "why": d.why, "ends_in_s": secs(d.ends_ms), "say": format!("Two admins disagree about {}. Changes to who runs this pool are paused.", quoted(&c.name))}));
         let waiting: Vec<Value> = s.chain.short.iter().chain(s.roster.short.iter()).take(MOST_REPLIES).map(|(id, (have, need, why))| json!({"act": id, "have": have, "need": need, "why": why})).collect();
         let delegates: Vec<&String> = s.roster.delegates.keys().collect();
         json!({
-            "mode": "governed", "name": c.name, "epoch": latest.n, "charter_hash": latest.hash, "admins": admins, "weak_keys_only": c.weak_only(),
+            "mode": "governed", "name": c.name, "epoch": latest.n, "charter_hash": latest.hash, "admins": admins, "floors": c.floors, "approved_from": c.floors.sensitive.shown(),
             "thresholds": c.thresholds, "holds": c.holds, "pending": pending, "dispute": dispute, "waiting_for_signers": waiting, "delegates": delegates,
             "refused": g.refusals().iter().rev().take(MOST_REPLIES).collect::<Vec<_>>(),
         })

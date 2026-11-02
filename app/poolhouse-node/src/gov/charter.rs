@@ -19,19 +19,70 @@ use crate::membership::Policy;
 use crate::row::canonical;
 
 use super::act::{Act, WINDOW_MS};
-use super::keys::{AdminKey, Role, Strength};
-use super::MAX_ADMINS;
+use super::keys::{AdminKey, Level, Role};
+use super::{DATA_WINDOW_MS, MAX_ADMINS};
 
 /// The version of the charter this build reads and writes; a pool of another version is not one this build can run.
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
+/// What a device says of a charter that lists no admin key above `Weak`: nobody could admit a device under it.
+pub const NO_COUNTING_KEY: &str = "A pool needs a key that is approved from a computer or a phone, and that charter lists none.";
 /// What a device that meets a charter of another version says.
 pub const OTHER_VERSION: &str = "this pool was made by another version of Poolhouse and cannot be used: make a new pool";
 
-/// Which threshold an act is held to.
+/// Which threshold and which floor an act is held to: `Routine` (a cancel, ending a delegate), `Sensitive` (a removal, admitting a device,
+/// a grant of a sensitive action) and `Governance` (a change to who governs the pool, its thresholds, holds, floors or delegate).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Class {
     Routine,
     Sensitive,
+    Governance,
+}
+
+/// The class whose floor the keys that sign an act of ``kind`` must meet; none for a kind that a device, a key of any level or the key a
+/// removal names signs.
+pub fn floor_class(kind: &str) -> Option<Class> {
+    match kind {
+        "admit" | "remove" => Some(Class::Sensitive),
+        "cancel" | "delegate" | "admin_add" | "admin_remove" | "set_threshold" | "set_holds" | "set_mode" | "set_floors" | "recovery_replace" => Some(Class::Governance),
+        _ => None,
+    }
+}
+
+/// The data acts that cannot be undone once done. Consent to sharding is not one: it is turned off again, and the node's own table of
+/// what an action costs (`approvals::content::risk_of`) calls it sensitive.
+pub const IRREVERSIBLE_DATA_ACTS: [&str; 1] = ["file_delete"];
+
+/// How long the data act ``action`` waits for a key to cancel it after it is approved: a day when it cannot be undone, none otherwise.
+/// Every key that approves is a `Computer` key or a typed yes, because no member can check a higher level (keys document C6).
+pub fn data_act_wait_ms(action: &str) -> i64 {
+    if IRREVERSIBLE_DATA_ACTS.contains(&action) { DATA_WINDOW_MS } else { 0 }
+}
+
+/// The lowest level at which an admin key counts for each class of act. A floor is never `Weak`.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Floors {
+    pub routine: Level,
+    pub sensitive: Level,
+    pub governance: Level,
+}
+
+impl Floors {
+    pub fn of(&self, class: Class) -> Level {
+        match class {
+            Class::Routine => self.routine,
+            Class::Sensitive => self.sensitive,
+            Class::Governance => self.governance,
+        }
+    }
+
+}
+
+impl Default for Floors {
+    /// Every floor is `Computer`, the one level a listed key can hold: a floor selects the counting keys and nothing more.
+    fn default() -> Floors {
+        Floors { routine: Level::Computer, sensitive: Level::Computer, governance: Level::Computer }
+    }
 }
 
 /// What a threshold counts: distinct people, or distinct keys.
@@ -86,6 +137,9 @@ impl Default for Holds {
 pub struct First {
     pub cert: String,
     pub name: String,
+    /// Whether the keys that accepted the charter let this device admit devices for thirty days without asking them again: the founding
+    /// computer's delegate, which the one answer to the founding card gives.
+    pub delegate: bool,
 }
 
 /// The longest name a device carries in a charter.
@@ -94,7 +148,13 @@ pub const MOST_DEVICE_NAME: usize = 40;
 impl First {
     /// The first device of the device whose certificate is ``der``, called ``name``.
     pub fn of(der: &[u8], name: &str) -> First {
-        First { cert: crate::fsutil::hex(der), name: name.chars().filter(|c| !c.is_control()).take(MOST_DEVICE_NAME).collect() }
+        First { cert: crate::fsutil::hex(der), name: name.chars().filter(|c| !c.is_control()).take(MOST_DEVICE_NAME).collect(), delegate: false }
+    }
+
+    /// This first device, with the founding computer's thirty days as a delegate.
+    pub fn delegating(mut self) -> First {
+        self.delegate = true;
+        self
     }
 
     /// The certificate as DER and its fingerprint, when it is a device certificate of an Ed25519 key spelled in lower-case hex, so one
@@ -132,6 +192,7 @@ pub struct Charter {
     pub admins: Vec<AdminKey>,
     pub thresholds: Thresholds,
     pub holds: Holds,
+    pub floors: Floors,
     pub recover_delay_days: u64,
     pub succession: Option<Value>,
     pub from: Option<Value>,
@@ -148,7 +209,7 @@ impl Charter {
         admins.sort_by(|a, b| a.key.cmp(&b.key));
         Charter {
             v: VERSION, epoch: 1, name: name.into(), policy, mode: Mode::Admins, project: project.into(), first, admins, thresholds: Thresholds::default(),
-            holds: Holds::default(), recover_delay_days: 7, succession: None, from: None, at_ms,
+            holds: Holds::default(), floors: Floors::default(), recover_delay_days: 7, succession: None, from: None, at_ms,
         }
     }
 
@@ -199,62 +260,74 @@ impl Charter {
         self.admins.iter().find(|k| k.key == key)
     }
 
-    /// The keys that count toward a threshold: admin role and strong.
-    pub fn strong(&self) -> impl Iterator<Item = &AdminKey> {
-        self.admins.iter().filter(|k| k.role == Role::Admin && k.strength == Strength::Strong)
+    /// Whether the admin key ``key`` counts for ``class``: an admin role key at or above the floor of the class.
+    pub fn counts(&self, key: &AdminKey, class: Class) -> bool {
+        key.role == Role::Admin && key.level() >= self.floors.of(class)
     }
 
-    pub fn is_strong(&self, key: &str) -> bool {
-        self.strong().any(|k| k.key == key)
+    /// The keys that count for ``class``.
+    pub fn counting(&self, class: Class) -> impl Iterator<Item = &AdminKey> {
+        self.admins.iter().filter(move |k| self.counts(k, class))
     }
 
-    /// How many distinct people hold a strong key.
-    pub fn people(&self) -> usize {
-        self.strong().map(|k| k.person.as_str()).collect::<BTreeSet<_>>().len()
+    /// Whether the key ``public`` is listed and counts for ``class``.
+    pub fn counts_key(&self, public: &str, class: Class) -> bool {
+        self.admin(public).is_some_and(|k| self.counts(k, class))
     }
 
-    /// Whether no strong admin key is listed.
-    pub fn weak_only(&self) -> bool {
-        self.strong().next().is_none()
+    /// Whether a phone holds one of the admin keys: a pool with none is governed from computers alone.
+    pub fn has_phone(&self) -> bool {
+        self.admins.iter().any(|k| k.role == Role::Admin && k.claim.is_some_and(|c| c.method == super::keys::Method::PhoneKeystore))
     }
 
-    /// How many signers an act of ``class`` needs.
+    /// Whether a listed admin key is at or above ``level``.
+    pub fn holds_level(&self, level: Level) -> bool {
+        self.admins.iter().any(|k| k.role == Role::Admin && k.level() >= level)
+    }
+
+    /// How many distinct people hold a key that counts for ``class``.
+    pub fn people(&self, class: Class) -> usize {
+        self.counting(class).map(|k| k.person.as_str()).collect::<BTreeSet<_>>().len()
+    }
+
+    /// How many signers an act of ``class`` needs; governance acts take the sensitive threshold.
     pub fn needed(&self, class: Class) -> usize {
         match (class, self.thresholds.sensitive) {
             (Class::Routine, _) => self.thresholds.routine as usize,
-            (Class::Sensitive, 0) => self.people().clamp(1, 2),
-            (Class::Sensitive, n) => n as usize,
+            (_, 0) => self.people(class).clamp(1, 2),
+            (_, n) => n as usize,
         }
     }
 
-    fn counted(&self, keys: &[&str], all: bool) -> usize {
-        let held: Vec<&AdminKey> = self.admins.iter().filter(|k| keys.contains(&k.key.as_str()) && k.role == Role::Admin && (all || k.strength == Strength::Strong)).collect();
+    fn counted(&self, class: Option<Class>, keys: &[&str]) -> usize {
+        let held: Vec<&AdminKey> = self.admins.iter().filter(|k| keys.contains(&k.key.as_str()) && k.role == Role::Admin && class.is_none_or(|c| self.counts(k, c))).collect();
         match self.thresholds.unit {
             Unit::Person => held.iter().map(|k| k.person.as_str()).collect::<BTreeSet<_>>().len(),
             Unit::Key => held.iter().map(|k| k.key.as_str()).collect::<BTreeSet<_>>().len(),
         }
     }
 
-    /// How many of ``keys`` count: the strong admin keys of this charter among them, by person or by key.
-    pub fn count(&self, keys: &[&str]) -> usize {
-        self.counted(keys, false)
+    /// How many of ``keys`` count for ``class``: the admin keys of this charter among them at or above its floor, by person or by key.
+    pub fn count(&self, class: Class, keys: &[&str]) -> usize {
+        self.counted(Some(class), keys)
     }
 
-    /// Like `count`, weak admin keys included: only the end of a delegate is signed by them.
+    /// Like `count`, keys below every floor included: only the end of a delegate is signed by them.
     pub fn count_any(&self, keys: &[&str]) -> usize {
-        self.counted(keys, true)
+        self.counted(None, keys)
     }
 
-    /// Whether the thresholds can be met by the keys listed.
-    pub fn reachable(&self) -> bool {
-        self.needed(Class::Routine) <= self.strong_units() && self.needed(Class::Sensitive) <= self.strong_units()
-    }
-
-    fn strong_units(&self) -> usize {
+    /// How many of the keys that count for ``class`` the thresholds can draw on, by person or by key.
+    pub fn units(&self, class: Class) -> usize {
         match self.thresholds.unit {
-            Unit::Person => self.people(),
-            Unit::Key => self.strong().count(),
+            Unit::Person => self.people(class),
+            Unit::Key => self.counting(class).count(),
         }
+    }
+
+    /// Whether the thresholds can be met by the keys listed, at the floor of each class.
+    pub fn reachable(&self) -> bool {
+        [Class::Routine, Class::Sensitive, Class::Governance].into_iter().all(|c| self.needed(c) <= self.units(c))
     }
 
     /// Whether this is a charter a pool can start from: the shape, the keys and each key's acceptance.
@@ -294,6 +367,21 @@ impl Charter {
         Ok(())
     }
 
+    /// The floors: none is `Weak`, and a listed admin key holds each, so the pool can act at every class.
+    pub fn check_floors(&self) -> Result<()> {
+        let f = &self.floors;
+        if [f.routine, f.sensitive, f.governance].contains(&Level::Weak) {
+            return bad("a floor is never a typed yes: a pool needs a key that counts");
+        }
+        if !self.admins.iter().any(|k| k.role == Role::Admin && k.level() > Level::Weak) {
+            return bad(NO_COUNTING_KEY);
+        }
+        if ![Class::Routine, Class::Sensitive, Class::Governance].into_iter().all(|c| self.holds_level(f.of(c))) {
+            return bad("no listed key holds that level, so no change would count again");
+        }
+        Ok(())
+    }
+
     /// The thresholds, holds and delays are in range and the thresholds can be met.
     pub fn check_numbers(&self) -> Result<()> {
         let (t, h) = (&self.thresholds, &self.holds);
@@ -303,8 +391,9 @@ impl Charter {
         if !(1..=30).contains(&h.dispute_d) || !(1..=30).contains(&self.recover_delay_days) {
             return bad("a dispute and a recovery last one to thirty days");
         }
-        if !self.weak_only() && !self.reachable() {
-            return bad("the thresholds need more people than the strong keys listed");
+        self.check_floors()?;
+        if !self.reachable() {
+            return bad("the thresholds need more people than the keys that count at these floors");
         }
         Ok(())
     }

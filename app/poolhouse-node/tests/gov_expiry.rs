@@ -33,7 +33,7 @@ fn old_admit(g: &poolhouse_node::gov::pool::GovPool, ago: u64) -> Act {
 
 #[test]
 fn an_act_signed_and_kept_past_its_window_is_refused_when_a_person_hands_it_in() {
-    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
     let stale = old_admit(&g, 2 * HOUR_U);
     assert_eq!(stale.not_after - stale.at_ms, WINDOW_MS, "an act a person signs alone is good for an hour");
     assert!(refused(take(&mut g, stale.clone())).contains("ran out"), "the signature was good for an hour and it has been two");
@@ -44,7 +44,7 @@ fn an_act_signed_and_kept_past_its_window_is_refused_when_a_person_hands_it_in()
 
 #[test]
 fn a_window_a_signer_did_not_sign_is_no_window() {
-    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
     let mut stale = old_admit(&g, 2 * HOUR_U);
     stale.not_after = wall_ms() + HOUR_U;
     assert!(refused(take(&mut g, stale)).contains("does not verify"), "moving not_after after the signature makes the signature fail");
@@ -56,7 +56,7 @@ fn a_window_a_signer_did_not_sign_is_no_window() {
 
 #[test]
 fn a_window_that_is_empty_or_longer_than_a_week_is_no_act() {
-    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
     for (what, window) in [("none", 0), ("a week and a millisecond", LONG_WINDOW_MS + 1), ("a year", 365 * 24 * HOUR_U)] {
         let mut act = g.new_act("admit", admit_body(&ident(10), "laptop", "join-code", ""), wall_ms()).unwrap();
         act.not_after = act.at_ms + window;
@@ -75,7 +75,7 @@ fn a_window_that_is_empty_or_longer_than_a_week_is_no_act() {
 
 #[test]
 fn an_act_of_the_version_before_is_refused_in_one_sentence() {
-    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
     let mut old = g.new_act("admit", admit_body(&ident(10), "laptop", "join-code", ""), wall_ms()).unwrap();
     old.v = 1;
     sign(&mut old, A);
@@ -86,8 +86,8 @@ fn an_act_of_the_version_before_is_refused_in_one_sentence() {
 
 #[test]
 fn a_second_signature_after_the_window_is_refused_and_one_inside_it_is_merged() {
-    let (_d, mut g) = pool(&[strong(A, "ann"), strong(B, "ben")], Policy::Secure);
-    let added = entry_after(strong(5, "eve"), 2, &g);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann"), phone_admin(B, "ben")], Policy::Secure);
+    let added = entry_after(phone_admin(5, "eve"), 2, &g);
     let act = make(&g, "admin_add", json!({"entry": added}), &[A]);
     assert_eq!(act.not_after - act.at_ms, LONG_WINDOW_MS, "an act that needs two people is good for a week");
     assert_eq!(take(&mut g, act.clone()), Ingest::Accepted);
@@ -101,7 +101,7 @@ fn a_second_signature_after_the_window_is_refused_and_one_inside_it_is_merged() 
 
 #[test]
 fn an_act_that_is_already_held_is_known_after_its_window_not_refused() {
-    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
     let act = old_admit(&g, 0);
     assert_eq!(take(&mut g, act.clone()), Ingest::Accepted);
     assert_eq!(g.ingest(act, wall_ms() + 30 * 24 * HOUR_U), Ingest::Known, "a repeat changes nothing, so it is no refusal");
@@ -109,7 +109,7 @@ fn an_act_that_is_already_held_is_known_after_its_window_not_refused() {
 
 #[test]
 fn what_a_member_relays_is_taken_after_its_window_so_a_removal_reaches_a_device_that_was_away() {
-    let c = charter(&[strong(A, "ann")], Policy::Secure, Unit::Person);
+    let c = charter(&[phone_admin(A, "ann")], Policy::Secure, Unit::Person);
     let ((_d, mut g), (_e, mut away)) = (pool_of(&c), pool_of(&c));
     let (laptop, phone) = (ident(10), ident(11));
     let admits: Vec<Act> = [&laptop, &phone].iter().map(|d| admit(&g, d, &[A])).collect();
@@ -125,7 +125,7 @@ fn what_a_member_relays_is_taken_after_its_window_so_a_removal_reaches_a_device_
 }
 
 fn drafted_at(dev: &Dev, at_ms: u64) -> serde_json::Value {
-    charter_of(&[strong(A, "ann")], Policy::Secure, Unit::Person, at_ms, first_of(&dev.net.me.der)).body()
+    charter_of(&[phone_admin(A, "ann")], Policy::Secure, Unit::Person, at_ms, first_of(&dev.net.me.der)).body()
 }
 
 #[test]
