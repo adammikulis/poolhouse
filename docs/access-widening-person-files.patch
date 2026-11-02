@@ -1,0 +1,87 @@
+--- a/src/poolhouse/workspace/person_targets.py
++++ b/src/poolhouse/workspace/person_targets.py
+@@ -7,7 +7,7 @@
+ from dataclasses import dataclass
+ from pathlib import Path
+ 
+-__all__ = ["Checkout", "git_ok", "inspect", "run_git"]
++__all__ = ["Checkout", "git_ok", "git_out", "inspect", "run_git"]
+ 
+ GIT_TIMEOUT_S = 2.0
+ HOOK_VARIABLES = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")
+@@ -24,18 +24,24 @@
+ def _run(cwd: str | Path, *args: str) -> subprocess.CompletedProcess[str] | None:
+     try:
+         env = {k: v for k, v in os.environ.items() if k not in HOOK_VARIABLES}
+-        return subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True, check=False,
++        return subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True, errors="replace", check=False,
+                               timeout=GIT_TIMEOUT_S, env=env)
+     except (OSError, subprocess.TimeoutExpired):
+         return None
+ 
+ 
+-def run_git(cwd: str | Path, *args: str) -> str:
+-    """The stdout of a bounded git call; empty when it fails."""
++def git_out(cwd: str | Path, *args: str) -> str | None:
++    """The raw stdout of a bounded git call; None when it fails or runs out of time, which is not the same as empty."""
+     done = _run(cwd, *args)
+-    return done.stdout.strip() if done is not None and done.returncode == 0 else ""
++    return done.stdout if done is not None and done.returncode == 0 else None
+ 
+ 
++def run_git(cwd: str | Path, *args: str) -> str:
++    """The stripped stdout of a bounded git call; empty when it fails."""
++    out = git_out(cwd, *args)
++    return out.strip() if out is not None else ""
++
++
+ def git_ok(cwd: str | Path, *args: str) -> bool:
+     """Whether a bounded git call exits 0."""
+     done = _run(cwd, *args)
+--- a/src/poolhouse/workspace/person_release.py
++++ b/src/poolhouse/workspace/person_release.py
+@@ -39,9 +39,12 @@
+ 
+ 
+ def _guards_changed(where: str, base: str, full: str) -> str:
+-    """The guards, hook settings, rules and landing code the release changes against ``base``, as one line."""
+-    names = person_targets.run_git(where, "diff", "--name-only", "--no-renames", base, full).splitlines()
+-    held = protectedwrites.touches_guards(names)
++    """The guards, hook settings, rules and landing code the release changes against ``base``, as one line; `unknown` when git
++    cannot say (a failure or too long a wait is not "none"). The names are read NUL-separated, so git quotes none of them."""
++    raw = person_targets.git_out(where, "diff", "-z", "--name-only", "--no-renames", base, full)
++    if raw is None:
++        return "unknown"
++    held = protectedwrites.touches_guards([name for name in raw.split("\0") if name])
+     return ", ".join(held[:GUARDS_SHOWN]) + (f" and {len(held) - GUARDS_SHOWN} more" if len(held) > GUARDS_SHOWN else "") if held else "none"
+ 
+ 
+--- a/tests/test_access_hooks.py
++++ b/tests/test_access_hooks.py
+@@ -122,6 +122,26 @@
+     assert "Commits ahead of origin/main: 3" in question
+ 
+ 
++def test_the_release_question_lists_a_guard_whose_name_git_would_quote_and_every_harness_file(tmp_path):
++    repo = repository(tmp_path / "repo")
++    state = tmp_path / "state"
++    named = [".claude/agents/é.md", ".codex/config.toml", ".agents/skills/x.md", ".vscode/tasks.json", ".mcp.json"]
++    for name in named:
++        (repo / name).parent.mkdir(parents=True, exist_ok=True)
++        commit(repo, name)
++    question = proposal(repo, state)[0]
++    guards = next(line for line in question.splitlines() if line.startswith("Guards changed: "))
++    for name in named:
++        assert name in guards, (name, guards)
++
++
++def test_a_release_question_that_cannot_ask_git_says_unknown_and_not_none(tmp_path):
++    from poolhouse.workspace import person_release
++    assert person_release._guards_changed(str(tmp_path / "not-a-repository"), "a" * 40, "b" * 40) == "unknown"
++    repo = repository(tmp_path / "repo")
++    assert person_release._guards_changed(str(repo), "a" * 40, "b" * 40) == "unknown"
++
++
+ TOOLS = HOOKS / "claude-tool-guard"
+ UNKNOWN = "A_Tool_Added_Next_Year"
+ 

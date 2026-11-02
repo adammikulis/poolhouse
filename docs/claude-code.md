@@ -26,11 +26,14 @@ and never limits (docs/claude-subagents.md, "Tool-call milestones").
   limits from the checkers.
 - A subagent's Bash and Monitor commands are stamped in the hook: its own board name and native id are set, and the names by
   which the harness names the session that started it (`CLAUDE_CODE_SESSION_ID`, `POOLHOUSE_SESSION_ID`,
-  `POOLHOUSE_SESSION_HARNESS`, `CODEX_THREAD_ID`) are removed, so a command that drops the subagent's own marker has no
-  identity and is refused, instead of running as the lead. A command of a subagent that sets one of those names, another
-  session's name or a token is refused. The stamp is the whole of it: a program a subagent writes and runs can still read the
-  lead's token file, because the guards read the names in a command and not what a program computes, until the agent sandbox
-  stands (`docs/agent-sandbox.md`).
+  `POOLHOUSE_SESSION_HARNESS`, `CODEX_THREAD_ID`) are removed, so a program that drops the subagent's own marker has no
+  identity instead of the lead's. A command of a subagent that sets one of those names to a value, another session's name or a
+  token is refused (an empty value, and the name inside an argument such as a `grep` pattern, are not an assignment).
+- The guards read the text of a command, so they stop the forms their tests list and no more: expansions, `eval`, base64, heredocs
+  and a program an agent writes and runs are past them, and the lead's session id can be read from the process environment and the
+  harness's files. The closure is the isolated launcher's sandbox (`docs/design-isolated-launcher.md`, L1 to L5; the agent
+  sandbox of `docs/agent-sandbox.md` for a harness launched without it). A command or an input too long or too nested to read in
+  bounded work is refused.
 - Claude Code sets `CLAUDECODE` for every command it runs. `--allow-increase` on the budgets and the `pre-push` hook's agent
   restrictions key on it; a terminal sets nothing.
 
