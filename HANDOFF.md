@@ -7,6 +7,13 @@
 4. **Re-record `tests/ci-durations.json` from a complete CI run** (`scripts/ci_shards.py record --junit`): it comes from local history that counts child CPU, so shard 4 is overloaded and some files are 3 to 10 times off. This only matters for the nightly and pull-request runs.
 Not worth doing: cutting parametrized cases (under 3 percent of the time), deleting tests (the cost sits in about 150 heavy tests, not in the count), and the landing path (a push waits for nothing).
 
+## One pool, the Rust node: what is left
+- **Founding needs no phone (in progress).** `poolhouse-pool found` still refuses without a phone key; `docs/design-phone-free-pools.md` slices 1 to 3 (plus the join and remove parts a second node needs, and a Windows/Linux founding path) are being built on `feat/phone-free-slice-1`. An independent security review follows before it lands. Then: found a pool on the Mac, join a second node, check `plan`/`pause` and the pool page, and only then test on the Windows device.
+- **Model sharing between devices has no node design.** Add-device with a model, join-with-code model sharing, accept, remove and `fetch` left with the old member book. They need a node-based redesign.
+- **Red tests from the pool move:** `test_layers::test_no_import_reaches_above_its_layer` (`fleet/pool_routes.py` and `fleet/service_pool.py` import `api`, `board`, `node_launch`; needs a restructure, `KNOWN` only shrinks), `test_studio_producer_two_daemon` ("no longer holds Studio execution authority"), the eight producer flow tests (`available: False`), `test_documented_env_vars` (`POOLHOUSE_PASSIVE_SERVICE_DATA_H` has no row in `docs/switches.md`), `test_glossary` ("peer" in `app/native-host/AuthorityChannel.c`), three `test_node_contract` tests, and the red-team coverage check (unmapped `fleet/shard_routes.py` routes, 53 against a ratchet of 51).
+- **Stubs to check:** some tests stub `node_health.call` (as `tests/test_fleet_tls.py` does); each needs the real node or a visible plumbing-only mark.
+- **`contracts/node/retained-features.json`** still holds about 480 stale paths for deleted code unrelated to pools.
+
 ## Test shards between pool members
 - **Not yet driven between two real devices.** Shards run only through a founded pool of the Rust node, with `remote-tests` on and consent given (`tests/test_testfarm_nodes.py`). Not covered: the Windows prompt that adds the inbound rules, WSL in NAT against mirrored mode, a WSL device without `~/.venvs/poolhouse-dev`. The check is `scripts/test all tests/test_x.py --on NAME` from the first device once the second has joined the pool.
 - `--on` takes `tests/NAME.py` files only, not node ids; turning `remote-tests` off stops the next shard and not one already running.
