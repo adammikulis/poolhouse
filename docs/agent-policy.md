@@ -124,7 +124,7 @@ dot in a handle, a missing surname), never its content.
 ### Attack first
 
 Every security-adjacent design and change (identity, membership, grants, approvals, serving, sharing, anything that moves
-trust or compute) gets an attack-first pass before it is built or landed: an agent other than the author is told to
+trust or compute) gets an attack pass, which is advice and never holds up a development push, a fix or a test: an agent other than the author is told to
 break it and answers in writing for each of a copied or cloned pool or device, replay, a forged or below-threshold
 signature, a compromised or malicious member, a stolen phone or key, a malicious agent, an agent that is compromised
 without knowing it (an injected instruction in a board message, tool result, page or file that it takes for an ordinary
@@ -142,16 +142,16 @@ capabilities, not only the feature.
 
 Review is advice. Any agent or reviewer may review a change and post `poolhouse-workspace land-review BRANCH SHA
 --verdict accept` or `--verdict reject`; a standing reject stops a push of that commit, and no accept is needed to push
-the development branch. Security-adjacent designs still get the attack-first pass above before they are built.
+the development branch. Security-adjacent changes get the attack pass above, which advises and does not gate.
 Person-only keystore, privileged OS settings, system approval, release gates and release authorization checks remain
 separate.
 
 - **Every review tries to break what it checks.** A read-through finds only what the author already saw. A reviewer
   names the attacker's goal, runs probe inputs, a mutation that should turn the tests red and the new tests against the
   parent commit, accepts only when nothing at medium or above survives, and reports what it ran.
-- **An independent agent review is for changes that touch security or access** (authority, grants, guards, hooks,
-  identity, keystore, sandbox, trust). Every other branch lands after its author's affected tests and the gate, with no
-  reviewer agent. A reviewer runs one effort step below its author (docs/claude-subagents.md, "Subagent effort").
+- **An independent agent review is advice for changes that touch security or access** (authority, grants, guards, hooks,
+  identity, keystore, sandbox, trust); it is required, and must have accepted, only before `main` or a release. Every other
+  branch lands after its author's affected tests and the gate, with no reviewer agent. A reviewer runs one effort step below its author (docs/claude-subagents.md, "Subagent effort").
 
 ### System settings and the authority registry
 
