@@ -8,6 +8,7 @@ use super::body::{self, Body};
 use super::charter::{floor_class, Charter, Class};
 use super::keys::{fingerprint_of, AdminKey, Role};
 use super::pool::GovPool;
+use crate::membership::Policy;
 
 /// ``name`` as one line a person reads: at most 40 characters, no control character, in quotes.
 pub fn quoted(name: &str) -> String {
@@ -77,18 +78,21 @@ fn threshold_line(t: &body::Thresholds) -> String {
     format!("Change how many sign: {}.", parts.join(", "))
 }
 
-/// The sentence a person is asked to accept a charter under: the pool and the computer it starts with.
+/// The sentence a person is asked to accept a charter under: the pool, how devices join it, the computer it starts with and whether that
+/// computer may admit devices without asking, and how its changes are approved.
 pub fn founding_line(c: &Charter) -> String {
     let fingerprint = c.first.device().map(|(_, f)| short(&f)).unwrap_or_default();
-    format!("Make the pool {} and put the computer {} (certificate {fingerprint}) in it. It is approved from {}.", quoted(&c.name), quoted(&c.first.name), c.floors.sensitive.shown())
+    let open = if c.policy == Policy::Open { " Anyone on this network can join it." } else { "" };
+    let delegate = if c.first.delegate { " This computer may admit devices without asking for 30 days." } else { "" };
+    format!("Make the pool {} ({}) and put the computer {} (certificate {fingerprint}) in it. Its changes are {}.{open}{delegate}", quoted(&c.name), c.policy.name(), quoted(&c.first.name), c.floors.sensitive.approval())
 }
 
-/// The `LEVEL:` line of ``act``: where this pool's keys approve it from, and what that does not stop. Every key that counts is a
-/// `Computer` key (no member can check a phone or a helper), so every governance act waits seven days.
-fn level_line(act: &Act, _g: &GovPool) -> String {
+/// The `LEVEL:` line of ``act``: how this pool approves a change of its class, and what that does not stop. Every key that counts is a
+/// `Computer` key or a typed yes (no member can check a phone or a helper), so every governance act waits seven days.
+fn level_line(act: &Act, g: &GovPool) -> String {
     let class = floor_class(&act.kind).unwrap_or(Class::Routine);
     let wait = if class == Class::Governance { " It waits 7 days, and a key can cancel it." } else { "" };
-    format!("LEVEL: This change is approved from this computer. A program running as you could approve it without asking.{wait}")
+    format!("LEVEL: This change is {}.{wait}", g.state().chain.latest().charter.floors.of(class).approval())
 }
 
 /// What a person is asked to sign ``act`` under, as this pool reads it now: a sentence of at most 300 characters, then the `LEVEL:` line,

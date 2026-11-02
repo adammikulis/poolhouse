@@ -35,7 +35,7 @@ fn live(rig: &Rig, name: &str, action: &str, resource: &str) -> bool {
 /// The action, status and start of every grant the node carries for the session of ``token``.
 fn statuses(rig: &Rig, token: &str) -> Vec<(String, String, u64)> {
     let listing = ok(rig.call("grants", "demo", token, json!({})));
-    listing["grants"].as_array().unwrap().iter().filter(|g| g["carried_by"] == "node").map(|g| (g["action"].as_str().unwrap().to_string(), g["status"].as_str().unwrap().to_string(), g["at_ms"].as_u64().unwrap())).collect()
+    listing["grants"].as_array().unwrap().iter().filter(|g| g["carried_by"] == "node").map(|g| (g["action"].as_str().unwrap().to_string(), g["status"].as_str().unwrap().to_string(), g["starts_ms"].as_u64().unwrap())).collect()
 }
 
 fn decide_with(rig: &Rig, key: &Person, seen: &Value, carrier: &str) -> Value {

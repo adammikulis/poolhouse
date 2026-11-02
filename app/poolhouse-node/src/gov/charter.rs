@@ -28,6 +28,18 @@ pub const VERSION: u32 = 4;
 pub const NO_COUNTING_KEY: &str = "A pool needs a key that is approved from a computer or a phone, and that charter lists none.";
 /// What a device that meets a charter of another version says.
 pub const OTHER_VERSION: &str = "this pool was made by another version of Poolhouse and cannot be used: make a new pool";
+/// What a device says of a charter that is approved by a typed yes and also lists a key approved from a computer or a phone.
+pub const TYPED_FLOORS_WITH_COUNTING_KEY: &str = "a pool that lists a key approved from a computer or a phone is approved from one, not by a typed yes";
+/// The longest pool name: the prompt of the operating system names the pool, and shows no more than it can show whole.
+pub const MOST_NAME: usize = 40;
+/// What a device says of a pool name the computer's prompt could not show whole.
+pub const UNSHOWABLE_NAME: &str = "a pool's name is at most 40 letters, digits, spaces, dots and dashes, because the computer's prompt must show it whole";
+
+/// Whether ``name`` is a pool name every prompt can show as it stands: at most `MOST_NAME` ASCII letters, digits, spaces, dots and dashes,
+/// starting with a letter or digit.
+pub fn shown_whole(name: &str) -> bool {
+    !name.is_empty() && name.chars().count() <= MOST_NAME && name.starts_with(|c: char| c.is_ascii_alphanumeric()) && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, ' ' | '.' | '-'))
+}
 
 /// Which threshold and which floor an act is held to: `Routine` (a cancel, ending a delegate), `Sensitive` (a removal, admitting a device,
 /// a grant of a sensitive action) and `Governance` (a change to who governs the pool, its thresholds, holds, floors or delegate).
@@ -58,7 +70,8 @@ pub fn data_act_wait_ms(action: &str) -> i64 {
     if IRREVERSIBLE_DATA_ACTS.contains(&action) { DATA_WINDOW_MS } else { 0 }
 }
 
-/// The lowest level at which an admin key counts for each class of act. A floor is never `Weak`.
+/// The lowest level at which an admin key counts for each class of act. A floor is `Weak` only in a pool founded where no key above a typed
+/// yes can exist, and is never lowered to `Weak` afterwards.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Floors {
@@ -76,10 +89,20 @@ impl Floors {
         }
     }
 
+    /// Every floor a typed yes: the floors of a pool founded on a computer that can raise no prompt of its own.
+    pub fn typed() -> Floors {
+        Floors { routine: Level::Weak, sensitive: Level::Weak, governance: Level::Weak }
+    }
+
+    /// Whether any floor is a typed yes.
+    pub fn any_typed(&self) -> bool {
+        [self.routine, self.sensitive, self.governance].contains(&Level::Weak)
+    }
 }
 
 impl Default for Floors {
-    /// Every floor is `Computer`, the one level a listed key can hold: a floor selects the counting keys and nothing more.
+    /// Every floor is `Computer`, the one level a listed key can hold where the computer raises a prompt of its own: a floor selects the
+    /// counting keys and nothing more.
     fn default() -> Floors {
         Floors { routine: Level::Computer, sensitive: Level::Computer, governance: Level::Computer }
     }
@@ -338,14 +361,15 @@ impl Charter {
         if self.epoch != 1 || self.mode != Mode::Admins || self.succession.is_some() || self.from.is_some() || self.at_ms == 0 {
             return bad("this build founds a pool of epoch 1 governed by admins, with no succession and no earlier pool");
         }
-        if self.name.is_empty() || self.name.chars().count() > 40 || !self.name.chars().all(|c| c.is_alphanumeric() || matches!(c, ' ' | '.' | '_' | '-')) {
-            return bad("a pool's name is at most 40 letters, digits, spaces and dots");
+        if !shown_whole(&self.name) {
+            return bad(UNSHOWABLE_NAME);
         }
         if !(self.project.is_empty() || (self.project.len() == 16 && self.project.bytes().all(|b| b.is_ascii_hexdigit()))) {
             return bad("a pool's project is a project key");
         }
         self.first.check()?;
         self.check_keys(1)?;
+        self.check_founding_floors()?;
         let anchor = self.anchor();
         if !self.admins.iter().all(|k| k.accepted(&anchor, "")) {
             return bad("every admin key accepts the charter it is listed in");
@@ -367,17 +391,27 @@ impl Charter {
         Ok(())
     }
 
-    /// The floors: none is `Weak`, and a listed admin key holds each, so the pool can act at every class.
+    /// The floors: a listed admin key holds each, so the pool can act at every class.
     pub fn check_floors(&self) -> Result<()> {
         let f = &self.floors;
-        if [f.routine, f.sensitive, f.governance].contains(&Level::Weak) {
-            return bad("a floor is never a typed yes: a pool needs a key that counts");
+        for class in [Class::Routine, Class::Sensitive, Class::Governance] {
+            if !self.holds_level(f.of(class)) {
+                return bad(if f.of(class) == Level::Computer { NO_COUNTING_KEY } else { "no listed key holds that level, so no change would count again" });
+            }
         }
-        if !self.admins.iter().any(|k| k.role == Role::Admin && k.level() > Level::Weak) {
-            return bad(NO_COUNTING_KEY);
-        }
-        if ![Class::Routine, Class::Sensitive, Class::Governance].into_iter().all(|c| self.holds_level(f.of(c))) {
-            return bad("no listed key holds that level, so no change would count again");
+        Ok(())
+    }
+
+    /// The floors of a pool at its founding: a floor is a typed yes only where no key above a typed yes can exist, so such a charter lists no
+    /// key above one, gives no device the power to admit without asking, and says so in its level.
+    fn check_founding_floors(&self) -> Result<()> {
+        if self.floors.any_typed() {
+            if self.holds_level(Level::Computer) {
+                return bad(TYPED_FLOORS_WITH_COUNTING_KEY);
+            }
+            if self.first.delegate {
+                return bad("a pool approved by a typed yes does not let any device admit others without asking");
+            }
         }
         Ok(())
     }

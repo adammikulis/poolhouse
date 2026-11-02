@@ -77,6 +77,7 @@ pub mod tasks;
 pub mod sys;
 pub mod tally;
 pub mod tls;
+pub mod window;
 pub mod wire;
 pub mod writes;
 

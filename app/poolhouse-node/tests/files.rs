@@ -109,7 +109,7 @@ fn deleting_a_file_shreds_its_bytes_keeps_its_messages_and_needs_the_grant() {
     let path = dir.path().join("boards/demo/files/blobs").join(format!("{blob}.bin"));
     assert!(path.exists());
     assert_eq!(code(&req(&mut n, "file_delete", "demo", &bt, json!({"handle": handle}))), "denied");
-    allow(&mut n, "demo", &bt, &bob, &["file_delete"]);
+    kit::grants::waited_out(&mut n, "demo", &bt, &bob, "file_delete");
     assert_eq!(code(&req(&mut n, "file_delete", "demo", &bt, json!({"handle": "0123456789ab"}))), "invalid", "no such file");
     assert_eq!(code(&req(&mut n, "file_delete", "demo", &bt, json!({"handle": "short"}))), "invalid");
     assert_eq!(ok(req(&mut n, "file_delete", "demo", &bt, json!({"handle": handle})))["shredded"], 1);

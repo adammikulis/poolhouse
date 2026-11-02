@@ -53,7 +53,10 @@ impl Governed {
     }
 
     fn issue(&mut self, id: &str, action: &str, resource: &str, append: bool) -> Value {
+        // A row written straight to the board is dated two days back, so what keeps it from deleting the file is who signed it and not the day an
+        // irreversible grant waits.
         let spec = Spec::session(&self.name, action).on(resource);
+        let spec = if append { spec.window(-2 * 24 * 3_600_000, 3_600_000) } else { spec };
         let mut params = self.outsider.issue_params("demo", id, &spec);
         if append {
             params["op"] = json!("issue");

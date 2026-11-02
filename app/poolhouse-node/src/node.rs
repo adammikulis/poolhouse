@@ -234,6 +234,7 @@ impl Node {
         let instance = try_lock(&dir.join(INSTANCE_LOCK))?
             .ok_or_else(|| Error::Denied("a node already runs on this state directory".into()))?;
         let (key, custody) = device::load(dir, supplied)?;
+        identity::ensure_person_secret(dir)?;
         let cert = cert::load_or_create(dir, &key)?;
         let members = Pool::load(dir)?;
         let facts = Facts::open(&dir.join("peers.json"))?;
@@ -243,7 +244,7 @@ impl Node {
             dir: dir.into(), pool: String::new(), cert, members, services: crate::services::Services::new()?, persons: Persons::open(&dir.join("persons.json"))?,
             approvals: crate::approvals::Approvals::open(&dir.join("approvals.json"))?, fatigue: crate::approvals::fatigue::Fatigue::open(&dir.join("fatigue.json"))?,
             evidence: Box::new(crate::approvals::context::Unrecorded), phones: crate::phone::Phones::open(&dir.join("phones.json"))?,
-            phone_cert: crate::phone::cert::load_or_create(dir)?, phone_port: 0, local_server: Weak::new(), firsts: crate::presence::Firsts::new(crate::presence::default_presence()), offer: None, pusher: Box::new(crate::phone::push::NoPusher), land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, custody, boards: BTreeMap::new(),
+            phone_cert: crate::phone::cert::load_or_create(dir)?, phone_port: 0, local_server: Weak::new(), firsts: crate::presence::Firsts::kept(crate::presence::default_presence(), dir), offer: None, pusher: Box::new(crate::phone::push::NoPusher), land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, custody, boards: BTreeMap::new(),
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
             projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir, activity.clone())?, rates: Rates::default(), board_grace_ms: writes.board_grace_s * 1000, writes, log_bounds: crate::logbounds::Bounds::default(), log_rotate_percent: crate::logbounds::ROTATE_PERCENT, asking: Asking::default(),
             stop: Arc::new(AtomicBool::new(false)), started: Instant::now(), folds: 0,
@@ -412,7 +413,13 @@ impl Node {
 
     /// Register the person's own session of the native id ``session`` on ``board``: a main session of the harness and model the person's
     /// UI uses, which the node marks as the person's. A token given must be this session's own; a session of any other is no parent for it.
-    pub fn register_person(&mut self, board: &str, own_token: Option<&str>, session: &str, peer: &Peer) -> Result<Value> {
+    /// The session is proven and not claimed: ``proof`` is the secret the node keeps for the person in the state directory's `person` folder,
+    /// which the agent sandbox may neither read nor write, so a session an agent started cannot be the person's. What the person's session may
+    /// then do without a grant is each an answer at the computer's own prompt for that very operation (`presence`).
+    pub fn register_person(&mut self, board: &str, own_token: Option<&str>, session: &str, proof: &str, peer: &Peer) -> Result<Value> {
+        if !identity::proves_person(&self.dir, proof) {
+            return Err(Error::Denied("The person's own session is registered with the secret this node keeps for the person (in its `person` folder); this process does not hold it, so it is an agent's session.".into()));
+        }
         let native = Native { model: identity::PERSON_MODEL, harness: identity::PERSON_HARNESS, session };
         self.enter(board, own_token, native, peer, true)
     }

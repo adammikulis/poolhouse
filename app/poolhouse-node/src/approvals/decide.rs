@@ -257,16 +257,10 @@ fn declined(node: &mut Node, a: &Approval, decision: &str, now: u64) -> Result<(
     Ok(())
 }
 
-/// Move the start of the grant ``body`` for an irreversible data act a day on, so that a person key can revoke it first; the milliseconds
-/// it moved.
-fn delay_irreversible(body: &mut Map<String, Value>) -> u64 {
-    let wait = body.get("action").and_then(Value::as_str).map_or(0, data_act_wait_ms) as u64;
-    for field in ["at_ms", "until_ms"] {
-        if let Some(at) = body.get(field).and_then(Value::as_u64) {
-            body.insert(field.into(), json!(at + wait));
-        }
-    }
-    wait
+/// How long the grant ``body`` for an irreversible data act waits before it counts, in milliseconds (`grants::book::span` applies it: the one
+/// place a grant is judged, so a grant signed any other way waits as well).
+fn irreversible_wait(body: &Map<String, Value>) -> u64 {
+    body.get("action").and_then(Value::as_str).map_or(0, data_act_wait_ms).max(0) as u64
 }
 
 /// Do what an approved request asked.
@@ -276,8 +270,8 @@ fn approved(node: &mut Node, a: &Approval, d: &Decision, now: u64) -> Result<()>
             // Every entry is checked before the first is written, so a refusal leaves no ask live while the agent is told none is.
             let mut entries = Vec::new();
             let mut waited = 0;
-            for mut body in challenge::grant_entries(a, &node.cert.fingerprint(), now, d.key, d.sig, d.decision) {
-                waited = waited.max(delay_irreversible(&mut body));
+            for body in challenge::grant_entries(a, &node.cert.fingerprint(), now, d.key, d.sig, d.decision) {
+                waited = waited.max(irreversible_wait(&body));
                 parse_issue(&body)?;
                 let gid = body.get("gid").and_then(Value::as_str).unwrap_or("").to_string();
                 let body = Value::Object(body);

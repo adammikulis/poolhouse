@@ -33,8 +33,9 @@ pub fn params(method: &str) -> Option<&'static [&'static str]> {
         "pool_draft" => &["kind", "body"],
         "pool_found" => &["act", "charter"],
         "pool_draft_found" => &["title", "policy", "project", "keys"],
-        "add_device" => &["passphrase", "ttl_s", "presigned"],
-        "join_pool" => &["host", "port", "passphrase", "fingerprint"],
+        "op_draft" => &["op", "args"],
+        "add_device" => &["passphrase", "ttl_s", "presigned", "ticket"],
+        "join_pool" => &["host", "port", "passphrase", "fingerprint", "ticket"],
         "shard_call" => &["device", "op", "args"],
         "shard_consent" => &["enabled", "python", "repo", "allow", "deny"],
         _ => return None,
@@ -45,10 +46,11 @@ pub fn handles(method: &str) -> bool {
     params(method).is_some()
 }
 
-/// Whether ``token`` is the person's own session: the one that opens a join window of a pool no phone governs and sees its code, and joins
-/// a pool with a code, with no grant to hold (the person at their own terminal is the tap).
-pub fn is_person(node: &mut Node, token: &str) -> bool {
-    node.tokens.resolve(token).cloned().is_some_and(|holder| crate::presence::person_session(node, &holder))
+/// `board/name` of the session behind ``token`` when it is the person's own, which was registered with the secret the node keeps for the
+/// person: the only session whose changes the node turns into cards for the computer's prompt.
+pub fn person_by(node: &mut Node, token: &str) -> Option<String> {
+    let holder = node.tokens.resolve(token).cloned()?;
+    crate::presence::person_session(node, &holder).then(|| format!("{}/{}", holder.board, holder.name))
 }
 
 /// The session behind ``token``, if it holds a grant for ``action`` on ``resource``; nothing is spent. For what can still fail
@@ -136,8 +138,18 @@ pub fn dispatch(node: &mut Node, method: &str, token: &str, p: &Map<String, Valu
             }
             node.pool_found(&act)
         }
-        "pool_draft_found" => node.pool_draft_found(text(p, "title")?, Policy::parse(text(p, "policy")?)?, text(p, "project")?, p.get("keys").unwrap_or(&Value::Null)),
-        "pool_draft" => node.pool_draft(text(p, "kind")?, p.get("body").cloned().unwrap_or(Value::Null)),
+        "pool_draft_found" => {
+            let by = person_by(node, token);
+            node.pool_draft_found(by.as_deref(), text(p, "title")?, Policy::parse(text(p, "policy")?)?, text(p, "project")?, p.get("keys").unwrap_or(&Value::Null))
+        }
+        "pool_draft" => {
+            let by = person_by(node, token);
+            node.pool_draft(by.as_deref(), text(p, "kind")?, p.get("body").cloned().unwrap_or(Value::Null))
+        }
+        "op_draft" => {
+            let by = person_by(node, token).ok_or_else(|| Error::Denied("Only the person's own session asks for a change to be answered at the computer's prompt; an agent asks the person to run the command.".into()))?;
+            node.op_draft(&by, text(p, "op")?, p.get("args").unwrap_or(&Value::Null))
+        }
         "pool_propose" => {
             let kind = text(p, "kind")?;
             authorize(node, token, "admin_manage", kind)?;

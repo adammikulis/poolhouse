@@ -10,7 +10,8 @@ fn listed(n: &mut Node, token: &str, name: &str) -> Value {
 }
 
 fn person(n: &mut Node, token: &str, id: &str) -> Value {
-    req(n, "register_person", "demo", token, json!({"session": id}))
+    let proof = proof(n);
+    req(n, "register_person", "demo", token, json!({"session": id, "proof": proof}))
 }
 
 #[test]

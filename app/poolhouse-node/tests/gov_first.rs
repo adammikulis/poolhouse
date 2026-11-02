@@ -227,6 +227,7 @@ fn a_charter_copied_to_another_device_makes_no_pool_and_no_member_there() {
 #[test]
 fn an_agents_own_software_key_founds_no_pool_whatever_the_charter_names() {
     let a = device();
+    kit::with_a_prompt_and_a_typed_key(&mut a.node.lock().unwrap(), 0x55);
     let agent = Counting::of(0x55);
     a.node.lock().unwrap().set_signer(agent.clone());
     let made = a.call("pool_create", "", &a.token, json!({"title": "home", "policy": "secure", "project": ""}));

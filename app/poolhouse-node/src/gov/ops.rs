@@ -19,11 +19,12 @@ use crate::node::Node;
 use crate::poolops::wall_ms;
 
 use super::act::{Act, ActSig, SigKind};
-use super::charter::{floor_class, Charter, Class, First, Unit, NO_COUNTING_KEY};
+use super::charter::{floor_class, shown_whole, Charter, Class, First, Floors, Unit, NO_COUNTING_KEY, UNSHOWABLE_NAME};
 use super::describe::{describe, founding_line, quoted};
 use super::keys::{Alg, AdminKey, Claim, Level, Role};
 use super::pool::{ActStatus, GovPool, Ingest};
 use super::signer::{Signer, SignerKey};
+use crate::presence::card::{Draft, Generated};
 
 const MOST_REPLIES: usize = 8;
 /// How long a person's no to a kind of act is respected before the same kind is asked again, and the window in which a person is
@@ -116,16 +117,24 @@ pub fn founding_name(act: &Value) -> Result<(String, String)> {
     Ok((charter.name.clone(), charter.anchor()))
 }
 
-/// What the operating system's prompt says to found the pool of ``c``, written from its name and its first key and nothing a session said.
-fn founding_prompt(c: &Charter) -> String {
+/// What the operating system's prompt says to found the pool of ``c``, written from its name, its policy, its first key and whether its first
+/// computer may admit devices, and nothing a session said: the yes adds a key, and what the key allows.
+pub fn founding_prompt(c: &Charter) -> String {
     let key = c.admins.iter().find(|k| k.role == Role::Admin).map(|k| crate::phone::words(&k.fingerprint())).unwrap_or_default();
-    format!("Poolhouse - make the pool {} and let this computer approve changes to it. Key {key}.", c.name)
+    let (open, anyone) = if c.policy == Policy::Open { ("OPEN ", " Anyone on this network can join it.") } else { ("", "") };
+    let allows = if c.first.delegate {
+        " Your yes adds a key for this computer that approves changes and admits devices for 30 days."
+    } else {
+        " Your yes adds a key held by a typed yes. A program running as you could use it."
+    };
+    format!("Poolhouse - make the {open}pool {}.{anyone}{allows} Key {key}.", c.name)
 }
 
-/// What the operating system's prompt says to sign ``act``, written from its kind, the device it names and the pool's name.
-fn act_prompt(act: &Act, g: &GovPool) -> String {
+/// What the operating system's prompt says to sign ``act``, written from its kind, the device it names by the words of its fingerprint (a
+/// device's own name is the device's to choose and cannot be shown whole) and the pool's name.
+pub(crate) fn act_prompt(act: &Act, g: &GovPool) -> String {
     let pool = &g.state().chain.latest().charter.name;
-    let device = |fingerprint: &str| g.devices().get(fingerprint).map_or_else(|| "a device".to_string(), |d| d.name.clone());
+    let device = |fingerprint: &str| crate::phone::words(fingerprint);
     match (act.kind.as_str(), act.body["fingerprint"].as_str()) {
         ("remove", Some(fp)) => format!("Poolhouse - remove the device {} from the pool {pool}. It stops working with every device at once.", device(fp)),
         ("admit", _) => format!("Poolhouse - add a new device to the pool {pool}."),
@@ -134,7 +143,10 @@ fn act_prompt(act: &Act, g: &GovPool) -> String {
     }
 }
 
+/// What a drafted change says of a card when the session that drafted it is not the person's own: only that session is asked at the prompt.
+const NO_CARD_FOR_AN_AGENT: &str = "Only the person's own session answers a change at the computer's prompt: an agent asks the person to run the command.";
 const OVERSTATED_KEY: &str = "That charter says a key is held in a way this device did not record for it, so I will not make that pool.";
+const TYPED_ON_A_COMPUTER_WITH_A_PROMPT: &str = "That charter is approved by a typed yes, and this computer can raise a prompt of its own, so a pool made here is approved there: draft it again here.";
 const OTHER_FIRST: &str = "That charter puts another computer in the pool first, and a pool is made on the computer it names: draft it again here.";
 
 fn reply(g: &GovPool, id: &str, kept: Ingest) -> Result<Value> {
@@ -185,7 +197,33 @@ impl Node {
 
     /// The first device a charter this device makes names: this device, called by its host name.
     fn first_device(&self) -> First {
-        First::of(&self.cert.der, &crate::poolops::host_name()).delegating()
+        First::of(&self.cert.der, &crate::poolops::host_name())
+    }
+
+    /// A charter of ``admins`` that this device drafts. Where a key above a typed yes is listed the floors are `Computer` and the first computer
+    /// may admit devices for thirty days without asking; where none is, and this computer can make none (it raises no prompt of its own, or the
+    /// key cannot be kept in its keystore: ``sealed`` false), the pool is approved by a typed yes at every floor and its first computer gets no
+    /// such power. A computer that can make a key above a typed yes never drafts the second.
+    fn drafted_charter(&self, name: &str, policy: Policy, project: &str, admins: Vec<AdminKey>, sealed: bool, at_ms: u64) -> Charter {
+        let counting = admins.iter().any(|k| k.role == Role::Admin && k.level() > Level::Weak);
+        let typed = !counting && (!sealed || !self.firsts.can_hold_counting_key());
+        let mut charter = Charter::new(name, policy, project, admins, self.first_device(), at_ms);
+        if typed {
+            charter.floors = Floors::typed();
+        } else {
+            charter.first = charter.first.delegating();
+        }
+        charter
+    }
+
+    /// The claim of a key this device makes for a pool: through the operating system's prompt and the keystore when this computer can, else a
+    /// typed yes (the keystore without the prompt) or a file.
+    fn made_claim(&self, sealed: bool) -> Claim {
+        match (self.firsts.can_hold_counting_key(), sealed) {
+            (true, true) => Claim::keystore_prompt(),
+            (false, true) => Claim::keystore_typed(),
+            (_, false) => Claim::file(),
+        }
     }
 
     /// The founding act in ``act`` and its charter, when every key it lists that counts says it is held the way this device recorded it
@@ -197,8 +235,11 @@ impl Node {
         if charter.admins.iter().any(overstated) {
             return Err(declined(OVERSTATED_KEY));
         }
-        if !charter.admins.iter().any(|k| k.role == Role::Admin && k.level() > Level::Weak) {
+        if charter.counting(Class::Sensitive).next().is_none() {
             return Err(declined(NO_COUNTING_KEY));
+        }
+        if charter.floors.any_typed() && self.firsts.can_hold_counting_key() {
+            return Err(declined(TYPED_ON_A_COMPUTER_WITH_A_PROMPT));
         }
         if charter.first.cert != hex(&self.cert.der) {
             return Err(declined(OTHER_FIRST));
@@ -312,10 +353,10 @@ impl Node {
         if admins.is_empty() {
             return Err(no_signer());
         }
-        if !admins.iter().any(|k| k.level() > Level::Weak) {
+        if !admins.iter().any(|k| k.level() > Level::Weak) && self.firsts.can_hold_counting_key() {
             return Err(declined(NO_COUNTING_KEY));
         }
-        let mut charter = Charter::new(name, policy, project, admins, self.first_device(), now);
+        let mut charter = self.drafted_charter(name, policy, project, admins, true, now);
         let (anchor, summary) = (charter.anchor(), founding_line(&charter));
         for key in charter.admins.iter_mut() {
             key.acceptance = signer.sign(&key.key, &key.acceptance_message(&anchor, ""), &summary)?;
@@ -490,13 +531,30 @@ impl Node {
     /// The charter of a pool of ``keys`` (each `{key, person, label}`, an admin, with the claim this device derives for it) with every
     /// acceptance blank, and the bytes each key signs to accept it: for keys that sign elsewhere, which hand the accepted charter back
     /// through `pool_found`.
-    pub fn pool_draft_found(&mut self, name: &str, policy: Policy, project: &str, keys: &Value) -> Result<Value> {
+    pub fn pool_draft_found(&mut self, by: Option<&str>, name: &str, policy: Policy, project: &str, keys: &Value) -> Result<Value> {
+        if !shown_whole(name) {
+            return Err(Error::Invalid(UNSHOWABLE_NAME.into()));
+        }
         let listed = keys.as_array().filter(|k| !k.is_empty() && k.len() <= super::MAX_ADMINS).ok_or_else(|| Error::Invalid("a pool names one to sixteen admin keys".into()))?;
         let text = |k: &Value, field: &str| k[field].as_str().unwrap_or("").to_string();
-        let mut admins = Vec::new();
+        let (mut admins, mut generated, mut sealed) = (Vec::new(), None::<Generated>, true);
         for k in listed {
-            if !k.as_object().is_some_and(|o| o.keys().all(|f| matches!(f.as_str(), "key" | "person" | "label"))) {
-                return Err(Error::Invalid("a key is named by its key, person and label; how it is held, this device says".into()));
+            if !k.as_object().is_some_and(|o| o.keys().all(|f| matches!(f.as_str(), "key" | "person" | "label" | "computer" | "sealed"))) {
+                return Err(Error::Invalid("a key is named by its key, person and label, or asked for with `computer`; how it is held, this device says".into()));
+            }
+            if k["computer"] == Value::Bool(true) {
+                // A key is enrolled only if this node made it for this very card: the caller never supplies the key a yes enrols.
+                if by.is_none() {
+                    return Err(Error::Denied("Only the person's own session has a key made for this computer; an agent asks the person to run the command.".into()));
+                }
+                if generated.is_some() || !text(k, "key").is_empty() {
+                    return Err(Error::Invalid("a card makes one key for this computer, and a key the node makes is not named".into()));
+                }
+                sealed = k["sealed"] != Value::Bool(false);
+                let made = self.make_pool_key()?;
+                admins.push(AdminKey { alg: Alg::Ed25519, claim: Some(self.made_claim(sealed)), key: made.public.clone(), role: Role::Admin, person: text(k, "person"), since: 1, acceptance: String::new(), label: text(k, "label") });
+                generated = Some(made);
+                continue;
             }
             let key = text(k, "key");
             admins.push(AdminKey { alg: Alg::of_public(&key).unwrap_or(Alg::Ed25519), claim: Some(self.key_claim(&key)), key, role: Role::Admin, person: text(k, "person"), since: 1, acceptance: String::new(), label: text(k, "label") });
@@ -504,29 +562,43 @@ impl Node {
         if let Some(bad) = admins.iter().find(|k| !super::keys::valid_public(&k.key)) {
             return Err(Error::Invalid(format!("{} is not a public key", bad.key.chars().take(16).collect::<String>())));
         }
-        let charter = Charter::new(name, policy, project, admins, self.first_device(), wall_ms());
+        let charter = self.drafted_charter(name, policy, project, admins, sealed, wall_ms());
         let anchor = charter.anchor();
         let accept: Vec<Value> = charter.admins.iter().map(|k| json!({"key": k.key, "alg": k.alg, "sign_bytes": hex(&k.acceptance_message(&anchor, ""))})).collect();
         let payloads: Vec<Vec<u8>> = charter.admins.iter().map(|k| k.acceptance_message(&anchor, "")).collect();
-        let held: Vec<String> = charter.admins.iter().map(|k| k.key.clone()).collect();
-        let card = self.firsts.cards.add(&founding_prompt(&charter), &payloads, held, Some(anchor.clone()), wall_ms());
+        let sentence = founding_prompt(&charter);
+        let card = match by {
+            Some(by) => self.firsts.cards.add(by, Draft { sentence: &sentence, payloads: &payloads, founding: Some(anchor.clone()), generated }, wall_ms()),
+            None => Err(NO_CARD_FOR_AN_AGENT),
+        };
         let (card_id, card_why) = match card {
             Ok(id) => (Value::String(id), Value::Null),
             Err(why) => (Value::Null, Value::String(why.into())),
         };
-        let counting = charter.admins.iter().any(|k| k.role == Role::Admin && k.level() > Level::Weak);
-        Ok(json!({"charter": charter.body(), "anchor": anchor, "accept": accept, "summary": founding_line(&charter), "counting": counting, "card": card_id, "card_why": card_why}))
+        let counting = charter.counting(Class::Sensitive).next().is_some();
+        Ok(json!({"charter": charter.body(), "anchor": anchor, "accept": accept, "summary": founding_line(&charter), "counting": counting, "typed": charter.floors.any_typed(),
+                  "approved": charter.floors.sensitive.approval(), "card": card_id, "card_why": card_why}))
+    }
+
+    /// A key for a pool, made here: its public half and the seed the person's session is given once, when the person says yes for the card it is in.
+    fn make_pool_key(&self) -> Result<Generated> {
+        let mut seed = [0u8; 32];
+        getrandom::fill(&mut seed).map_err(|e| Error::Denied(format!("this computer could not make a key: {e}")))?;
+        Ok(Generated { public: hex(SigningKey::from_bytes(&seed).verifying_key().as_bytes()), seed })
     }
 
     /// The act of ``kind`` this device's pool would take next, with the bytes a person's key signs and what the person is shown: for
     /// a key that signs elsewhere and hands the act back through `pool_submit`.
-    pub fn pool_draft(&mut self, kind: &str, body: Value) -> Result<Value> {
+    pub fn pool_draft(&mut self, by: Option<&str>, kind: &str, body: Value) -> Result<Value> {
         let body = self.with_cut(kind, body);
         let g = self.members.gov().ok_or_else(no_pool)?;
         let act = g.new_act(kind, body, wall_ms())?;
         super::body::parse(&act).map_err(|e| declined(&e.to_string()))?;
         let (summary, prompt) = (describe(&act, g), act_prompt(&act, g));
-        let card = self.firsts.cards.add(&prompt, &[act.sign_bytes()], Vec::new(), None, wall_ms());
+        let card = match by {
+            Some(by) => self.firsts.cards.add(by, Draft { sentence: &prompt, payloads: &[act.sign_bytes()], founding: None, generated: None }, wall_ms()),
+            None => Err(NO_CARD_FOR_AN_AGENT),
+        };
         let (card_id, card_why) = match card {
             Ok(id) => (Value::String(id), Value::Null),
             Err(why) => (Value::Null, Value::String(why.into())),
@@ -563,7 +635,7 @@ impl Node {
         let waiting: Vec<Value> = s.chain.short.iter().chain(s.roster.short.iter()).take(MOST_REPLIES).map(|(id, (have, need, why))| json!({"act": id, "have": have, "need": need, "why": why})).collect();
         let delegates: Vec<&String> = s.roster.delegates.keys().collect();
         json!({
-            "mode": "governed", "name": c.name, "epoch": latest.n, "charter_hash": latest.hash, "admins": admins, "floors": c.floors, "approved_from": c.floors.sensitive.shown(),
+            "mode": "governed", "name": c.name, "epoch": latest.n, "charter_hash": latest.hash, "admins": admins, "floors": c.floors, "approved_from": c.floors.sensitive.shown(), "approved": c.floors.sensitive.approval(),
             "thresholds": c.thresholds, "holds": c.holds, "pending": pending, "dispute": dispute, "waiting_for_signers": waiting, "delegates": delegates,
             "refused": g.refusals().iter().rev().take(MOST_REPLIES).collect::<Vec<_>>(),
         })

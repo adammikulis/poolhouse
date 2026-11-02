@@ -191,6 +191,7 @@ fn the_scan_catches_every_way_of_naming_the_phone_enrolment() {
 #[test]
 fn a_signer_whose_key_the_node_records_as_weak_founds_nothing_and_leaves_nothing_behind() {
     let a = device();
+    kit::with_a_prompt_and_a_typed_key(&mut a.node.lock().unwrap(), ANN);
     let before = a.pool();
     a.node.lock().unwrap().set_signer(person(ANN, "ann"));
     let denied = a.call("pool_create", "", &a.token, json!({"title": "home"}));

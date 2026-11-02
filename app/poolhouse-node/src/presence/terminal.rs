@@ -32,6 +32,12 @@ impl Terminal {
     pub fn new(state: &std::path::Path) -> Terminal {
         Terminal { real: super::on_real_home(state) }
     }
+
+    /// The terminal presence of a computer that has no prompt of its own (`os::can_prompt`): the account's own node directory is not refused,
+    /// because the person's terminal is the only way to ask there, and what it makes counts as a typed yes.
+    pub fn unprompted() -> Terminal {
+        Terminal { real: false }
+    }
 }
 
 /// A question that is on a terminal: what became of it, and a flag that ends the wait when the question is dropped.

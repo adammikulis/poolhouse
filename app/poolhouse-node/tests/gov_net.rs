@@ -492,6 +492,7 @@ fn a_person_is_asked_at_most_twelve_times_in_ten_minutes() {
 #[test]
 fn a_pool_is_not_founded_on_weak_keys_alone_and_nothing_is_left_half_made() {
     let a = device();
+    kit::with_a_prompt_and_a_typed_key(&mut a.node.lock().unwrap(), ANN);
     let before = a.pool();
     a.node.lock().unwrap().set_signer(std::sync::Arc::new(RigSigner::new().with_key(ANN, "ann")));
     let denied = a.call("pool_create", "", &a.token, json!({"title": "home"}));

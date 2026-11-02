@@ -87,12 +87,49 @@ impl poolhouse_node::presence::Presence for SaysYes {
     }
 }
 
+/// A person who says yes at once at the prompt of a computer that can raise one of its own (kind `os`): a pool made there is never approved by a
+/// typed yes.
+pub struct SaysYesAtAPrompt;
+
+impl poolhouse_node::presence::Presence for SaysYesAtAPrompt {
+    fn kind(&self) -> &'static str {
+        "os"
+    }
+
+    fn begin(&mut self, _what: &str, _terminal: &str) -> poolhouse_node::error::Result<Box<dyn poolhouse_node::presence::Asking>> {
+        Ok(Box::new(Yes))
+    }
+}
+
+/// Put ``node`` on a computer that can raise a prompt of its own, where the key made from ``seed`` is one a person typed a yes for: a key a
+/// process of the account can use, which counts for nothing there.
+pub fn with_a_prompt_and_a_typed_key(node: &mut Node, seed: u8) {
+    node.firsts = poolhouse_node::presence::Firsts::new(Box::new(SaysYesAtAPrompt));
+    node.persons.add(&poolhouse_node::gov::signer::RigSigner::public(seed), "typed", poolhouse_node::poolops::wall_ms()).unwrap();
+}
+
 /// A node on ``dir`` whose person says yes to the prompt of the first key or phone.
 pub fn node(dir: &Path) -> Node {
     let mut node = Node::open(dir).unwrap();
     node.firsts = poolhouse_node::presence::Firsts::new(Box::new(SaysYes));
     node.log_rotate_percent = 0;
     node
+}
+
+/// The secret the node keeps for the person's own session, read from its state directory the way the person's process reads it.
+pub fn proof_in(dir: &Path) -> String {
+    std::fs::read_to_string(poolhouse_node::identity::person_secret_path(dir)).unwrap().trim().to_string()
+}
+
+/// The proof the person's own session registers with on ``node``.
+pub fn proof(node: &Node) -> String {
+    proof_in(&node.dir)
+}
+
+/// Register the person's own session on ``board`` of ``node`` with the secret the node keeps for the person; its token.
+pub fn person_token(node: &mut Node, board: &str, session: &str) -> String {
+    let proof = proof(node);
+    ok(req(node, "register_person", board, "", json!({"session": session, "proof": proof})))["token"].as_str().unwrap().to_string()
 }
 
 /// The process of this test: the peer of every request `req` makes, so the node reads the lineage of the test binary.

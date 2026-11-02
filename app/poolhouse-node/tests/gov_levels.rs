@@ -125,13 +125,13 @@ fn a_key_added_below_the_floor_counts_nothing() {
 }
 
 #[test]
-fn a_floor_is_never_weak() {
+fn a_floor_is_a_typed_yes_only_where_no_key_above_one_is_listed_and_is_never_lowered_to_one() {
     let weak_floor = charter_floored(&[computer_admin(A, "ann")], Policy::Secure, Floors { routine: Level::Weak, sensitive: Level::Computer, governance: Level::Computer });
     let why = poolhouse_node::gov::pool::founding(&weak_floor.found_act()).unwrap_err().to_string();
-    assert!(why.contains("never a typed yes"), "{why}");
+    assert!(why.contains("is approved from one, not by a typed yes"), "a computer key beside a typed-yes floor: {why}");
     let (_d, mut g) = pool(&[computer_admin(A, "ann")], Policy::Secure);
     let act = make(&g, "set_floors", json!({"routine": "weak"}), &[A]);
-    assert!(refused(take(&mut g, act)).contains("never a typed yes"));
+    assert!(refused(take(&mut g, act)).contains("never lowered to a typed yes"));
     assert_eq!(floors(&g), computer_floors());
 }
 
@@ -247,7 +247,7 @@ fn only_the_recovery_key_or_a_key_at_the_floor_cancels_a_replace() {
 #[test]
 fn the_level_line_survives_the_300_character_cut() {
     use poolhouse_node::gov::describe::compose;
-    let level = "LEVEL: This change is approved from this computer. A program running as you could approve it without asking.";
+    let level = "LEVEL: This change is approved from this computer; a program running as you could approve it without asking.";
     let long = "x".repeat(450);
     let shown = compose(&long, level);
     let (said, line) = shown.split_once('\n').unwrap();
@@ -259,6 +259,6 @@ fn the_level_line_survives_the_300_character_cut() {
     let summary: Value = drafted["summary"].clone();
     let text = summary.as_str().unwrap();
     let (said, line) = text.split_once('\n').unwrap();
-    assert!(said.chars().count() <= 300 && line.starts_with("LEVEL: This change is approved from this computer."), "{text}");
+    assert!(said.chars().count() <= 300 && line.starts_with("LEVEL: This change is approved from this computer; a program running as you could approve it without asking."), "{text}");
     assert!(line.contains("waits 7 days"), "a governance act says it waits: {line}");
 }

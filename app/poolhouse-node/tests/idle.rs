@@ -149,7 +149,8 @@ fn a_token_of_a_session_the_node_retired_for_idleness_is_refused() {
 }
 
 fn person(n: &mut Node, from: &Peer, id: &str) -> Value {
-    req_from(n, from, "register_person", "demo", "", json!({"session": id}))
+    let proof = kit::proof(n);
+    req_from(n, from, "register_person", "demo", "", json!({"session": id, "proof": proof}))
 }
 
 #[test]

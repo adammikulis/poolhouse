@@ -243,10 +243,30 @@ fn a_device_in_no_pool_counts_any_enrolled_key() {
     let mut node = kit::node(dir.path());
     let (name, token) = session(&mut node, "demo", "lead");
     kit::grants::enrolled(dir.path(), &mut |m, b, t, p| req(&mut node, m, b, t, p), &token);
-    let issued = req(&mut node, "grant_issue", "demo", &token, person().issue_params("demo", "g-00000000000000c1", &Spec::session(&name, "file_delete")));
+    let issued = req(&mut node, "grant_issue", "demo", &token, person().issue_params("demo", "g-00000000000000c1", &Spec::session(&name, "sync_now")));
     assert_eq!(issued["ok"], true, "{issued}");
     let listing = ok(req(&mut node, "grants", "demo", &token, json!({})));
     assert_eq!((listing["governance"].clone(), listing["grants"][0]["status"].clone()), (json!("unfounded"), json!("live")), "{listing}");
+}
+
+#[test]
+fn a_grant_of_an_irreversible_act_waits_a_day_however_it_was_signed() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut node = kit::node(dir.path());
+    let (name, token) = session(&mut node, "demo", "lead");
+    kit::grants::enrolled(dir.path(), &mut |m, b, t, p| req(&mut node, m, b, t, p), &token);
+    let day = 24 * 3_600_000u64;
+    let signed_at = kit::grants::now_ms();
+    let issued = req(&mut node, "grant_issue", "demo", &token, person().issue_params("demo", "g-00000000000000c2", &Spec::session(&name, "file_delete")));
+    assert_eq!(issued["ok"], true, "the person's key signed it directly, with no card: {issued}");
+    let listing = ok(req(&mut node, "grants", "demo", &token, json!({})));
+    let grant = &listing["grants"][0];
+    assert_eq!(grant["status"], "not-yet", "{listing}");
+    let starts = grant["starts_ms"].as_u64().unwrap();
+    assert!(starts >= signed_at + day && starts <= signed_at + day + 60_000, "it starts a day after it was signed: {starts} from {signed_at}");
+    assert!(grant["ends_ms"].as_u64().unwrap() >= starts + 3_000_000, "and lasts as long as it was signed for, from then");
+    let revoked = req(&mut node, "grant_revoke", "demo", &token, person().revoke_params("demo", "g-00000000000000c2", "changed my mind"));
+    assert_eq!(revoked["ok"], true, "a key can still end it before it starts: {revoked}");
 }
 
 #[test]

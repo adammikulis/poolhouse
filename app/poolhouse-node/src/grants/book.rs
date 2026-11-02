@@ -148,12 +148,20 @@ fn refusal(authority: &Authority, persons: &Persons, own: &str, row: &Row, issue
     None
 }
 
+/// When ``issue`` begins and ends to count: the times it was signed for, moved a day later when the act cannot be undone, whoever approved it
+/// and however it was signed, so that a key can revoke it first.
+pub fn span(issue: &Issue) -> (u64, u64) {
+    let wait = crate::gov::charter::data_act_wait_ms(&issue.action).max(0) as u64;
+    (issue.at_ms.saturating_add(wait), issue.until_ms.saturating_add(wait))
+}
+
 fn status(issue: &Issue, used: u64, now_ms: u64) -> &'static str {
+    let (starts, ends) = span(issue);
     if issue.uses.is_some_and(|n| used >= n) {
         "exhausted"
-    } else if now_ms >= issue.until_ms {
+    } else if now_ms >= ends {
         "expired"
-    } else if now_ms < issue.at_ms {
+    } else if now_ms < starts {
         "not-yet"
     } else {
         "live"

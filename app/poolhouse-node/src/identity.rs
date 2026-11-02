@@ -84,6 +84,33 @@ pub fn is_person_harness(harness: &str) -> bool {
     harness.eq_ignore_ascii_case(PERSON_HARNESS)
 }
 
+/// The folder of the state directory that keeps the person's secrets, which the agent sandbox may neither read nor write, and the file in it
+/// that holds the secret of the person's own session: the node makes it once and reads it back at each `register_person`.
+pub const PERSON_DIR: &str = "person";
+const PERSON_SECRET: &str = "ui.secret";
+
+/// Where the secret of the person's own session is kept in the state directory ``dir``.
+pub fn person_secret_path(dir: &Path) -> PathBuf {
+    dir.join(PERSON_DIR).join(PERSON_SECRET)
+}
+
+/// Make the secret of the person's own session in ``dir`` when there is none: 32 random bytes only the account can read.
+pub fn ensure_person_secret(dir: &Path) -> Result<()> {
+    let path = person_secret_path(dir);
+    if path.exists() {
+        return Ok(());
+    }
+    crate::fsutil::private_dir(&dir.join(PERSON_DIR))?;
+    write_atomic(&path, random_hex(32)?.as_bytes())
+}
+
+/// Whether ``proof`` is the secret of the person's own session of the node of ``dir``: read from the file at each call, compared in constant time.
+pub fn proves_person(dir: &Path, proof: &str) -> bool {
+    let Ok(kept) = std::fs::read_to_string(person_secret_path(dir)) else { return false };
+    let kept = kept.trim();
+    kept.len() == 64 && kept.len() == proof.len() && kept.bytes().zip(proof.bytes()).fold(0u8, |d, (a, b)| d | (a ^ b)) == 0
+}
+
 /// The most characters of a model id or harness name that are kept.
 pub const MOST_WORD: usize = 48;
 

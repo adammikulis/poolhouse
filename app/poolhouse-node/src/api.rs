@@ -22,7 +22,7 @@ fn params_for(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
         "hello" | "status" | "shutdown" | "links" | "lineage" => &[],
         "register" => &["model", "harness", "session"],
-        "register_person" => &["session"],
+        "register_person" => &["session", "proof"],
         "post" => &["kind", "idem", "fields"],
         "read" => &["since", "kind", "channel", "by", "limit", "inbox", "with", "thread", "digest", "mentions", "head", "files"],
         "link" => &["to", "channels", "mode"],
@@ -214,7 +214,7 @@ fn dispatch(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
             let native = Native { model: str_of(p, "model")?, harness: str_of(p, "harness")?, session: str_of(p, "session")? };
             node.register(board, (!token.is_empty()).then_some(token), native, peer)
         }
-        "register_person" => node.register_person(board, (!token.is_empty()).then_some(token), str_of(p, "session")?, peer),
+        "register_person" => node.register_person(board, (!token.is_empty()).then_some(token), str_of(p, "session")?, str_of(p, "proof")?, peer),
         "status" => status(node, token, board),
         "post" => post(node, token, board, p),
         "read" => read(node, token, board, p),

@@ -436,7 +436,7 @@ impl Net {
                 return Err(Error::Invalid("without a passphrase the device is named by its fingerprint".into()));
             }
             self.join_open_admitted(addr, fingerprint, effect)?;
-            return Ok(json!({"pool": tracked_node(&self.node, Source::Network)?.members.id, "peer": fingerprint}));
+            return Ok(json!({"pool": tracked_node(&self.node, Source::Network)?.members.id, "peer": fingerprint, "approved": self.approved_words()?}));
         }
         let mut c = PeerClient::connect(&self.me, addr, None)?;
         let nonce = crate::fsutil::random_hex(16)?;
@@ -457,7 +457,13 @@ impl Net {
         if let Ok(hello) = c.call(&ask) {
             tracked_node(&self.node, Source::Network)?.observe_build(&c.fingerprint, &hello);
         }
-        Ok(json!({"pool": grant["pool"], "peer": c.fingerprint}))
+        Ok(json!({"pool": grant["pool"], "peer": c.fingerprint, "approved": self.approved_words()?}))
+    }
+
+    /// How the pool this device is in approves a change, in the words the joiner's screen shows (a pool approved by a typed yes says so plainly).
+    fn approved_words(&self) -> Result<Value> {
+        let node = tracked_node(&self.node, Source::Network)?;
+        Ok(node.members.gov().map_or(Value::Null, |g| json!(g.state().chain.latest().charter.floors.sensitive.approval())))
     }
 
     // -- sync -------------------------------------------------------------
@@ -730,11 +736,19 @@ impl Net {
             let resource=if c.method=="join_pool" { text("host") } else { "*" };
             let mut node=tracked_node(&self.node,Source::Network)?;
             node.gov_tick()?;
-            if !crate::poolapi::is_person(&mut node,&c.token) {
+            let ticket=text("ticket");
+            if ticket.is_empty() {
                 if c.method=="add_device" && node.members.gov().is_some_and(|g| !g.state().chain.latest().charter.has_phone()) {
                     return Err(Error::say("denied","Only you open a window for another device on this pool, at a terminal of your own: run `poolhouse-pool add-device` there. The code is for you alone.","approval","ask-owner"));
                 }
                 authorize_from(&mut node,&c.token,peer,&c.method,resource)?;
+            } else {
+                // The person's own session holds no grant: it opens a window or joins with the yes it was given at the computer's prompt for this
+                // very operation, which the node checks against the call it received.
+                let by=crate::poolapi::person_by(&mut node,&c.token).ok_or_else(|| Error::Denied("A yes at the computer's prompt is for the person's own session.".into()))?;
+                let mut args=c.params.clone();
+                args.remove("ticket");
+                node.spend_op(&by,ticket,&c.method,&args)?;
             }
         }
         if c.method=="add_device" {

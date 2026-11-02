@@ -237,7 +237,7 @@ pub fn parse(act: &Act) -> Result<Body> {
                 return bad("a floor change names a floor");
             }
             if [f.routine, f.sensitive, f.governance].contains(&Some(Level::Weak)) {
-                return bad("a floor is never a typed yes: a pool needs a key that counts");
+                return bad("a floor is never lowered to a typed yes after the pool is founded");
             }
             Body::SetFloors(f)
         }

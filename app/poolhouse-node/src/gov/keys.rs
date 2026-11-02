@@ -57,6 +57,17 @@ impl Level {
             Level::Phone => "your phone",
         }
     }
+
+    /// How a change is approved at this level, as a plain sentence for the card, the level line and a device about to join: what approves it
+    /// and what that does not stop.
+    pub fn approval(self) -> &'static str {
+        match self {
+            Level::Weak => "approved by a typed yes; a program running as you could approve it",
+            Level::Computer => "approved from this computer; a program running as you could approve it without asking",
+            Level::Native => "approved from this computer, protected",
+            Level::Phone => "approved from your phone",
+        }
+    }
 }
 
 /// How a key is held, in the closed vocabulary of the keys document (3.1).
