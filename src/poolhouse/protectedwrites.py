@@ -16,8 +16,10 @@ __all__ = ["TooComplex", "command_texts", "guarded", "holds_secret", "other_agen
            "tool_refusal", "touches_guards", "without_heredocs"]
 
 GUARD_PATHS = (
-    r"src/poolhouse/workspace/person_\w+\.py",
-    r"scripts/hooks/(claude-user-prompt|person-consume)",
+    r"src/poolhouse/workspace/(person_\w+|run_(approval|hook))\.py",
+    r"scripts/hooks/(claude-user-prompt|person-consume|run-approval)",
+    r"scripts/(release-key|github-protection-apply|github-protection|agent-identity)", r"src/poolhouse/credentials/.*",
+    r"\.git/(refs/remotes/.*|packed-refs)",
     r"\.git/(hooks(/.*)?|config(\.worktree)?|worktrees/[^/]+/config\.worktree)",
     r"\.gitconfig", r"\.config/git/(config|hooks(/.*)?)", r"\.poolhouse/(authority\.json|authority-audit\.jsonl)")
 REVIEWED = (*GUARD_PATHS, r"scripts/hooks/.*", r"\.claude/.*", r"\.codex/.*", r"\.agents/.*", r"\.vscode/tasks\.json",
@@ -32,7 +34,8 @@ GUARDS = re.compile(r"(^|/)(" + "|".join(GUARD_PATHS) + ")$", re.I)
 REVIEW = re.compile(r"(^|/)(" + "|".join(REVIEWED) + ")$", re.I)
 SECRETS = re.compile(r"(^|/)\.poolhouse/(person|node/client|node/person)(/|$)", re.I)
 HELD = tuple(tuple(path.split("/")) for path in (
-    "src/poolhouse/workspace/person_store.py", "scripts/hooks/person-consume", "scripts/hooks/claude-user-prompt",
+    "src/poolhouse/workspace/person_store.py", "src/poolhouse/workspace/run_hook.py", "scripts/hooks/person-consume",
+    "scripts/hooks/run-approval", "scripts/hooks/claude-user-prompt", "scripts/release-key", "src/poolhouse/credentials/__init__.py",
     ".git/hooks/pre-push", ".git/config", ".config/git/config", ".gitconfig"))
 MENTION = re.compile(
     r"claude-user-prompt|person-consume|\.git/(hooks|config)"

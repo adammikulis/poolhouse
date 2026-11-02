@@ -55,10 +55,11 @@ git config commit.gpgsign true
 ```
 
 The `release` environment must exist before `scripts/release-key create` runs
-(`scripts/github-protection-apply` creates it; [github-protection.md](github-protection.md)), since the secret is set on it.
+(`scripts/github-protection-apply --apply` creates it; [github-protection.md](github-protection.md)), since the secret is set on it.
 
 The key is made and kept by `scripts/release-key`, run by a person at a terminal (it refuses an agent and a process
-with no terminal). It needs `ssh-keygen` and an authenticated `gh` in this repository, and it runs again under the
+with no terminal), except `create --write`, which an agent runs once after the owner approves that exact command
+([person-delegation.md](person-delegation.md), "run-script"); the agent's `gh` is pinned to the origin's repository. It needs `ssh-keygen` and an authenticated `gh` in this repository, and it runs again under the
 selected runtime (`runtime.rerun`), the one copy of Poolhouse the OS keystore admits.
 
 - `scripts/release-key create [--write]` generates an Ed25519 key, sets the secret `RELEASE_SIGNING_KEY` of the
@@ -72,7 +73,8 @@ selected runtime (`runtime.rerun`), the one copy of Poolhouse the OS keystore ad
 
 If `gh` fails, nothing is stored and `signing.py` is unchanged.
 
-`RELEASE_KEY` must be set before a release is published: `scripts/release-key create --write` at the owner's terminal,
+`RELEASE_KEY` must be set before a release is published: `scripts/release-key create --write` (at the owner's terminal, or
+run by an agent on his approval),
 then commit `src/poolhouse/fleet/signing.py`. Without it the signed-update path fails closed. `updates.download_release`
 deletes every downloaded asset with "no release key is set" and installs nothing, and `poolhouse-traind --track`
 refuses every fetched commit with the same message, so no machine updates itself from a release or a tracked branch.

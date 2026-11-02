@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""Apply the GitHub protection target of docs/github-protection.md. The owner runs it at a terminal.
+"""Apply the GitHub protection target of docs/github-protection.md. The owner runs it at a terminal, or approves one run for an agent.
 
     scripts/github-protection-apply [--repo OWNER/NAME]                   print what would change
     scripts/github-protection-apply [--repo OWNER/NAME] --apply
     scripts/github-protection-apply --restore BACKUP [--apply]            put a backup's settings back
 
-A run without --apply changes nothing and prints a diff per step. --apply saves the current
-settings to a file under the state root, applies the steps in order, stops at the first error,
-prints the restore command, and ends with `scripts/github-protection --check`. It refuses until
-`scripts/agent-identity check` finds the agent identity stored for the repository. An agent marker
-or a missing terminal refuses.
+A run without --apply changes nothing and prints a diff per step; an agent may run it. --apply saves the current
+settings to a file under the state root, creates the release environment, and applies the steps in order, stops at the
+first error, prints the restore command, and ends with `scripts/github-protection --check`. It stops after the
+environment until `scripts/agent-identity check` finds the agent identity stored for the repository and the release
+environment holds its signing key. --apply refuses an agent marker and a missing terminal, except for one run the
+owner approved for an agent: `--apply --repo OWNER/NAME` with the origin's repository (poolhouse.workspace.run_approval).
 """
 from __future__ import annotations
 
@@ -26,6 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from poolhouse import home, person  # noqa: E402
+from poolhouse.workspace import run_approval  # noqa: E402
 
 ENV = "release"
 SIGNER = "RELEASE_SIGNING_KEY"
@@ -34,6 +36,8 @@ SECURITY = {"secret_scanning": {"status": "enabled"},
             "secret_scanning_push_protection": {"status": "enabled"},
             "dependabot_security_updates": {"status": "enabled"}}
 AGENT_IDENTITY = ROOT / "scripts" / "agent-identity"
+APPROVED: run_approval.Approval | None = None
+"""The owner's approval of this agent run, set by `main`; None for a person's run."""
 
 
 class Failed(RuntimeError):
@@ -48,10 +52,20 @@ class Step:
     body: dict | None = None
 
 
+def environment_of_run() -> dict[str, str] | None:
+    """The environment the children of an approved agent run get; None (inherit) for a person's run."""
+    return APPROVED.environment if APPROVED else None
+
+
+def python_of_run() -> list[str]:
+    """The interpreter and flags a Python child starts with: isolated and reading no bytecode from the checkout in an approved agent run, plain for a person."""
+    return [sys.executable, *(APPROVED.python_flags() if APPROVED else [])]
+
+
 def identity(repo: str) -> tuple[bool, str]:
     """Whether `scripts/agent-identity check` finds the agent identity stored for ``repo``, and its one line."""
-    done = subprocess.run([sys.executable, str(AGENT_IDENTITY), "check", "--repo", repo],
-                          capture_output=True, text=True, check=False)
+    done = subprocess.run([*python_of_run(), str(AGENT_IDENTITY), "check", "--repo", repo],
+                          capture_output=True, text=True, check=False, env=environment_of_run())
     line = done.stdout.strip() or done.stderr.strip() or "agent identity: the check printed nothing"
     return done.returncode == 0, line
 
@@ -61,7 +75,7 @@ def gh(method: str, path: str, body: dict | None = None):
     argv = ["gh", "api", path] if method == "GET" else ["gh", "api", "-X", method, path, "--input", "-"]
     data = json.dumps(body if body is not None else {}) if method != "GET" else None
     try:
-        done = subprocess.run(argv, input=data, capture_output=True, text=True, check=False)
+        done = subprocess.run(argv, input=data, capture_output=True, text=True, check=False, env=environment_of_run())
     except FileNotFoundError:
         raise Failed("gh is not installed") from None
     if done.returncode:
@@ -234,9 +248,9 @@ def restore_plan(saved: dict) -> list[Step]:
 # -- running ------------------------------------------------------------------------------
 
 def check(repo: str, args: argparse.Namespace) -> int:
-    argv = [sys.executable, str(ROOT / "scripts" / "github-protection"), "--check", "--repo", repo]
+    argv = [*python_of_run(), str(ROOT / "scripts" / "github-protection"), "--check", "--repo", repo]
     argv += ["--require-owner-review"] * args.owner_review + ["--strict-tags"] * args.strict_tags
-    done = subprocess.run(argv, capture_output=True, text=True, check=False)
+    done = subprocess.run(argv, capture_output=True, text=True, check=False, env=environment_of_run())
     print(done.stdout, end="")
     print(done.stderr, end="", file=sys.stderr)
     return done.returncode
@@ -263,16 +277,16 @@ def run(args: argparse.Namespace) -> int:
         if stop:
             print(f"\nNote: {stop}")
         return 0
-    if not named:
-        raise Failed(line)
+    held_back = ([] if named else [line]) + ([stop] if stop else [])
+    if APPROVED:
+        APPROVED.verify()  # last look before any request that changes the repository
     saved_to = backup(repo) if not args.restore else None
     if saved_to:
         print(f"saved the current settings to {saved_to}")
         print(f"restore: scripts/github-protection-apply --restore {saved_to} --apply")
-    if stop:
-        envs = [s for s in steps if "environments" in s.path]
-        execute(envs)
-        raise Failed(stop)
+    if held_back:
+        execute([s for s in steps if "environments" in s.path])
+        raise Failed("stopped after the release environment: " + "; ".join(held_back))
     execute(steps)
     return 0 if args.restore else check(repo, args)
 
@@ -280,14 +294,17 @@ def run(args: argparse.Namespace) -> int:
 def this_repo() -> str:
     """OWNER/NAME of the repository this checkout belongs to, from gh."""
     done = subprocess.run(["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
-                          capture_output=True, text=True, cwd=ROOT, check=False)
+                          capture_output=True, text=True, cwd=ROOT, check=False, env=environment_of_run())
     name = done.stdout.strip()
     if done.returncode or "/" not in name:
         raise Failed("could not read the repository from gh; name it with --repo OWNER/NAME")
     return name
 
 
-def main(argv: list[str] | None = None, terminal: tuple[bool, bool] | None = None) -> int:
+def main(argv: list[str] | None = None, terminal: tuple[bool, bool] | None = None, session: str | None = None) -> int:
+    global APPROVED
+    APPROVED = None
+    given = sys.argv[1:] if argv is None else argv
     parser = argparse.ArgumentParser(prog="github-protection-apply", description=__doc__.splitlines()[0])
     parser.add_argument("--repo", help="OWNER/NAME")
     parser.add_argument("--apply", action="store_true", help="make the changes; without it, print them")
@@ -295,15 +312,19 @@ def main(argv: list[str] | None = None, terminal: tuple[bool, bool] | None = Non
     parser.add_argument("--owner-review", action="store_true",
                         help="GitHub requires the owner's approval on pull requests to the default branch")
     parser.add_argument("--strict-tags", action="store_true", help="block creation of v* tags")
-    args = parser.parse_args(argv)
+    args = parser.parse_args(given)
     try:
-        person.require_person("scripts/github-protection-apply", terminal)
+        if args.apply:
+            APPROVED = run_approval.admit(ROOT / "scripts" / "github-protection-apply", given, terminal, session)
         if not (args.repo or args.restore):
             args.repo = this_repo()
         return run(args)
-    except (Failed, person.HumanRequired) as exc:
+    except (Failed, person.HumanRequired, run_approval.Refused) as exc:
         print(f"github-protection-apply: {exc}", file=sys.stderr)
         return 1
+    finally:
+        if APPROVED:
+            APPROVED.close()
 
 
 if __name__ == "__main__":

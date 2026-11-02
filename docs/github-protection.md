@@ -3,10 +3,13 @@
 The target configuration of the GitHub repository, why each setting is there, what it costs, and the command that
 sets it.
 
-- `scripts/github-protection-apply` applies the target. It is the owner's, run at his own terminal: it refuses an
-  agent marker and a missing terminal, prints a diff and changes nothing unless given `--apply`, and saves the current
-  settings before it changes any. `--apply` also refuses until `scripts/agent-identity check` finds the
-  [agent identity](#agent-identity) stored for the repository; the dry run prints that check's line first.
+- `scripts/github-protection-apply` applies the target. It is the owner's, run at his own terminal, or once for an
+  agent after he approves that exact run (`--apply --repo OWNER/NAME`; [person-delegation.md](person-delegation.md),
+  "run-script"). `--apply` refuses an agent marker and a missing terminal otherwise. Without `--apply` it prints a diff and
+  changes nothing, and an agent may run that; with it, it saves the current settings before it changes any and makes the
+  `release` environment first. It then stops until `scripts/agent-identity check` finds the
+  [agent identity](#agent-identity) stored for the repository and the environment holds its signing key; the dry run
+  prints that check's line first.
 - `scripts/github-protection --check` compares the repository with the target and prints one line per difference,
   each pointing at a section below. Every `gh api` request it makes is a GET, and `tests/test_github_protection.py`
   fails when its source gains a write. With no `--repo` it first runs `gh repo view`, a read-only GraphQL query that
@@ -47,10 +50,11 @@ prerequisites for ordinary development pushes, which use the repository's existi
 1. `scripts/agent-identity setup` ([Agent identity](#agent-identity)) gives agents their own identity; start the
    harness with the token `scripts/agent-identity token` prints.
 2. `scripts/github-protection-apply --repo $R` prints what would change, and the identity check's line.
-3. `scripts/github-protection-apply --repo $R --apply` creates the `release` environment, then stops because the
-   environment has no signing key yet.
+3. `scripts/github-protection-apply --repo $R --apply` creates the `release` environment (before the agent identity
+   exists too), then stops because the environment has no signing key yet.
 4. `scripts/release-key create --write` (or `rotate`) stores the key in the environment; commit
-   `src/poolhouse/fleet/signing.py` ([release.md](release.md)).
+   `src/poolhouse/fleet/signing.py` ([release.md](release.md)). An agent runs steps 3 and 4 on the owner's approval of
+   each exact command.
 5. Run the apply command from step 3 again. It removes repository secrets, replaces the rulesets, sets the Actions
    and security settings, and ends with `scripts/github-protection --check`, which must print `0 findings`.
 6. Register the PyPI publisher with the `release` environment ([PyPI](#pypi)).

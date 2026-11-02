@@ -77,14 +77,15 @@ def test_without_apply_nothing_is_changed_and_the_diff_is_printed(ap, tmp_path, 
     assert not (tmp_path / "home" / "github-protection").exists()
 
 
-def test_apply_without_a_stored_identity_changes_nothing_and_names_the_next_step(
+def test_apply_without_a_stored_identity_makes_the_release_environment_and_names_the_next_step(
         ap, tmp_path, monkeypatch, capsys):
     log = serve(tmp_path, monkeypatch, before_state())
     monkeypatch.setattr(ap, "identity", lambda _repo: MISSING)
     assert ap.main(["--repo", REPO, "--apply"], TERMINAL) == 1
-    assert writes(log) == []
+    base = f"repos/{REPO}/environments/release"
+    assert writes(log) == [("PUT", base), ("POST", f"{base}/deployment-branch-policies")]
     assert "scripts/agent-identity setup" in capsys.readouterr().err
-    assert not (tmp_path / "home" / "github-protection").exists()
+    assert len(list((tmp_path / "home" / "github-protection").glob("backup-*.json"))) == 1
 
 
 def test_a_dry_run_says_the_identity_is_missing_and_still_prints_the_diff(ap, tmp_path, monkeypatch, capsys):
@@ -223,9 +224,16 @@ def test_no_terminal_refuses_before_any_request(ap, tmp_path, monkeypatch, capsy
     assert "terminal" in capsys.readouterr().err
 
 
+NAMING_IT = tuple(ROOT / "src" / "poolhouse" / name for name in ("workspace/run_approval.py", "workspace/guard_patch.py", "protectedwrites.py"))
+"""The registry of the runs an agent may make on the owner's approval and the two lists of guarded paths name the script; they match the name and start nothing."""
+
+
 def test_no_library_code_reaches_the_apply_script():
     for path in (ROOT / "src").rglob("*.py"):
-        assert "github-protection-apply" not in path.read_text(encoding="utf-8"), path
+        if path not in NAMING_IT:
+            assert "github-protection-apply" not in path.read_text(encoding="utf-8"), path
+    for path in NAMING_IT:
+        assert not any(word in path.read_text(encoding="utf-8") for word in ("subprocess", "os.exec", "os.system", "Popen")), path
 
 
 def test_the_commands_in_the_document_are_the_bodies_the_script_applies(ap):

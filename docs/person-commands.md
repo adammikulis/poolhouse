@@ -22,6 +22,7 @@ Refusal shapes: `X is for a person; this process was started by an agent (CLAUDE
 | `poolhouse-workspace file delete`, `quarantine-release` | `workspace/filecli.py:292`, `mail_cli.py:123` | irreversible deletion; held messages | none through these |
 | chat tool names matching release, approv, grant, mint, sentinel, polic, guard, role, rule, request, answer | `chatpolicy.py:90-155` | the same actions as chat tools | none |
 | `git push` naming `main`; `--all`, `--tags`, `--mirror`, `--delete`, `--force` | `claude-bash-guard:102-113` | the owner's release; history | `main`: `person-consume propose`, a person selects the approval |
+| `scripts/release-key` (all but `create --write`), `scripts/github-protection-apply --apply`, `--restore` | `person.require_person` in each script | the release signing key; the repository's rulesets, environment and settings | `release-key create --write` and `github-protection-apply --apply --repo OWNER/NAME` once each: `scripts/hooks/run-approval propose`, the owner selects the approval, the Bash guard hands the main session's exact command a ticket (`workspace/run_approval.py`). The dry run of the apply script is open |
 | `--no-verify`, `commit -n`, `SKIP_BUDGETS=`, `SKIP_NAME_CHECK=1` | `claude-bash-guard:120-127` | the last checks before the repo | fix the finding |
 | budget raise (`--allow-increase`, editing `budgets.json`) | `scripts/hooks/budgets-only-fall:124` | the ratchet | report the overage |
 

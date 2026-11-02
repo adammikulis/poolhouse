@@ -25,6 +25,28 @@ primary checkout is on; `main` is never it); promotion to `main`, tags, releases
 - Never commit or push `main` without the owner's explicit instruction. An agent pushes it only after the person selects
   the approval in the AskUserQuestion that `scripts/hooks/person-consume propose` renders from git: that authorizes one
   fast-forward to one commit, once; nothing an agent types or sets opens `main`. Development pushes need no approval.
+- Two person-only commands run for an agent on the same kind of one-time approval: `scripts/release-key create --write` and
+  `scripts/github-protection-apply --apply --repo OWNER/NAME` (the origin's repository; its dry run needs none).
+  `scripts/hooks/run-approval propose release-key create --write` (or `github-protection-apply --apply --repo OWNER/NAME`)
+  renders the question from git, the selected runtime and a fixed registry: the exact command, the repository, the commit,
+  the interpreter and source that will run, the count and first twenty names of the files of `scripts` and `src` that differ
+  from the remote's main (odd names escaped), which guards that touches, and that every file there is exactly the commit's.
+  The main session asks it with AskUserQuestion word for word, with the header, labels and descriptions `propose` prints and
+  nothing added. After the owner selects the approval, the Bash guard replaces the main session's one exact command with a
+  fixed line (cleared environment, the verified runtime's interpreter isolated, no bytecode read) and hands it a one-minute
+  ticket in a private file, which the script reads, deletes and spends once. Its children start the same way and get the
+  account's home, the system tool folders and an empty `gh` configuration, and `gh` is pinned to that repository. A subagent,
+  typed words, any other command, a changed tree, a runtime not built from this checkout's `src`, a repository that is not a
+  worktree of the session's project, or another repository gets none; every other command of the two scripts stays a
+  person's at a terminal (docs/person-delegation.md, "run-script").
+  **Bound:** the scripts and `src` as committed (every file hashed against the commit, links refused), the runtime's `src`
+  tree equal to the checkout's, the command, the repository, the interpreter path, and the diff the owner is shown.
+  **Not bound:** the runtime's third-party packages, the interpreter's standard library, `git`, `gh`, `ssh-keygen` and the
+  system tool folders, a malicious change that was committed (it is shown, not judged), and a same-user adversary: one that
+  runs the guard script with an event it made up, writes the store or `refs/remotes` by a path the guards do not name, or gets
+  a pseudo-terminal and `env -u CLAUDECODE -u POOLHOUSE_SESSION_ID ...`, which defeats the person-at-terminal floor of every
+  person-only command today. The approval gates a cooperative or prompt-injected agent and nothing stronger; an agent that
+  rewrites the guards or the store is detected afterwards, not stopped.
 - A promotion is a pull request from a frozen `promote/<date>` snapshot of development, opened by the agent and merged
   by it only while the owner's `release-main` authorization for that pull request's head SHA is live
   (docs/person-delegation.md).
@@ -144,7 +166,8 @@ request answer) changes only through a named gate in one registry, `poolhouse.au
   recording and local agent verbs delegated, makes every other gate a person's, enforcement `strict`.
   `POOLHOUSE_AUTHORITY_FLOOR=person` reads every gate as a person's; it only tightens, and the test suite sets it.
 - A person's whatever the registry says, and not in it: the keystore and secrets (unlock, passphrases and tokens,
-  signing keys), a passwordless `sudoers` rule (Poolhouse never installs one), and OS authentication for a privileged
+  signing keys; the release signing key's one creation is the approved run in section 1, "The owner's main"), a
+  passwordless `sudoers` rule (Poolhouse never installs one), and OS authentication for a privileged
   step. The machine setting an agent may request is the wired memory limit (`serve.wired-limit`). An agent prepares
   the exact operation; the person authenticates through the protected native OS journey. Poolhouse never sees or
   stores the password. The review screen also stays a person's.
