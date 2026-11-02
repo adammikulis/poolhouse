@@ -37,7 +37,7 @@ def _free_port():
 
 def _daemon(tmp_path, port, *flags):
     return subprocess.Popen(
-        [sys.executable, "-m", "poolhouse.fleet.daemon", "--root", str(tmp_path / "traind"),
+        [sys.executable, "-m", "poolhouse.cli.daemon", "--root", str(tmp_path / "traind"),
          "--bench-home", str(tmp_path / "bench"), "--port", str(port),
          "--no-web", *flags],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

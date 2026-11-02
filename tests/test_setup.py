@@ -528,7 +528,7 @@ def test_ports_finding_says_held_by_the_given_daemon():
 
 @pytest.fixture
 def pool_answers(tmp_path, monkeypatch):
-    """What this device's node says about the pool's compute services (the one stand-in, at its wire)."""
+    """PLUMBING ONLY: a canned node reply about the pool's compute services (the one stand-in, at its wire); no node runs here."""
     from poolhouse.fleet import service_pool, tls
 
     identity = tls.identity(tmp_path / "tls", "here")
@@ -544,14 +544,11 @@ def pool_answers(tmp_path, monkeypatch):
     return rows
 
 
-def test_fleet_finding_says_the_node_does_not_answer_and_how_to_join(monkeypatch):
-    from poolhouse.fleet import service_pool
+def test_fleet_finding_says_the_node_does_not_answer_and_how_to_join(monkeypatch, tmp_path):
+    from poolhouse import node_health
     from poolhouse.setup import _fleet_findings
 
-    def dead(*_args):
-        raise OSError("node disconnected")
-
-    monkeypatch.setattr(service_pool.node_health, "call", dead)
+    monkeypatch.setattr(node_health, "default_state", lambda: tmp_path / "no-node")  # a state directory no node runs in: the real refusal
     found = {f.name: f for f in _fleet_findings(port=_free_tcp_port())}
     assert found.keys() == {"fleet: joined", "ports"}
     assert not found["fleet: joined"].good

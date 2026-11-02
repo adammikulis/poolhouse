@@ -39,6 +39,8 @@ def lan_address(*, real=False):
 
 @pytest.fixture
 def service_authority(tmp_path, monkeypatch):
+    """PLUMBING ONLY: the node's replies about the pool's compute services are canned at its wire (`service_pool.node_health.call`), so
+    a test can add and remove services at will; the TLS, the daemons and the request signing around them are real."""
     client = tls.identity(tmp_path / "client", "client")
     monkeypatch.setattr(tls, "local", lambda: client)
     rows = [{"device": "1" * 64, "name": "client", "endpoint": "https://127.0.0.1:9444",

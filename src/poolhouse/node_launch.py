@@ -24,6 +24,7 @@ from poolhouse import (
     jobs,
     lan,
     node_binary,
+    node_health as health,
     node_pool,
     node_supervise,
     real_machine,
@@ -35,7 +36,6 @@ from poolhouse import (
     win32,
 )
 from poolhouse.command import Group, flag
-from poolhouse.home import state as state_root
 from poolhouse.lock import Busy, held_by, only_one
 from poolhouse.log import say, warn
 from poolhouse.node_health import node_health, node_stop_event, socket_path
@@ -57,8 +57,8 @@ class NodeUnavailable(OSError, errors.NotRunning):
 
 
 def default_state() -> Path:
-    """The node's state directory on this machine."""
-    return state_root("node")
+    """The node's state directory on this machine (`node_health.default_state`, which the fleet reads too)."""
+    return health.default_state()
 
 
 def _until(deadline: float, ready) -> dict | None:

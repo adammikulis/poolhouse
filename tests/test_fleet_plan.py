@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import pool_cli
+from poolhouse import node_health, pool_cli
 from poolhouse.fleet import compute_cli, service_pool, tls
 from poolhouse.fleet.api import Daemon, make_handler
 from poolhouse.fleet.daemon import load_or_create_token
@@ -209,7 +209,7 @@ def _free_tcp() -> int:
 
 @pytest.fixture
 def pool_answers(tmp_path, monkeypatch):
-    """The node's answer about the pool: this device alone, its compute services none (the daemon it asks is on loopback)."""
+    """PLUMBING ONLY: a canned node reply (this device alone, its compute services none) for the plan table and the daemon it asks on loopback; no node runs here."""
     identity = tls.identity(tmp_path / "tls", "here")
     monkeypatch.setattr(tls, "local", lambda: identity)
     rows: list[dict] = []
@@ -281,10 +281,7 @@ class TestCommand:
         assert "3 of 3 user(s) placed at 16384 tokens each" in out
 
     def test_with_no_node_answering_it_says_how_to_join(self, tmp_path, monkeypatch, capsys):
-        def dead(*_args):
-            raise OSError("node disconnected")
-
-        monkeypatch.setattr(service_pool.node_health, "call", dead)
+        monkeypatch.setattr(node_health, "default_state", lambda: tmp_path / "no-node")  # a state directory no node runs in: the real refusal
         assert pool_cli.main(["plan", "--root", str(tmp_path), "--users", "1", "--context", "16384"]) == 1
         said = capsys.readouterr().err
         assert "the node must answer" in said and "poolhouse-pool join --host" in said

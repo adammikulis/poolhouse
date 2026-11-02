@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 from launch_support import arm, disarm
 
+from poolhouse.api import pool as pool_actions
 from poolhouse.fleet import tls
 from poolhouse.fleet.api import Daemon, make_handler
 from poolhouse.fleet.daemon import load_or_create_token
@@ -82,6 +83,7 @@ class Serving:
         self.runner = JobRunner(root, self.files)
         self.ui = UI(name=name, setup_token=setup_token, gated=False)
         self.ui.runner = self.runner
+        self.ui.pool_actions = pool_actions  # what `poolhouse-traind` hands the daemon
         self.ui.settings = self.initial_settings()
         self.ui.settings_path = tmp_path / "settings.json"
         self.ui.settings.save(self.ui.settings_path)

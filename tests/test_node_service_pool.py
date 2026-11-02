@@ -13,6 +13,8 @@ POOL = "a" * 32
 
 @pytest.fixture
 def services(tmp_path, monkeypatch):
+    """PLUMBING ONLY: canned node replies, because these tests hand `Pool` replies a real node never sends (a bad endpoint, another pool,
+    a conflicting certificate) to see it refuse them; a real node's replies are what tests/test_decision_authority.py and the Studio tests read."""
     identities = [tls.identity(tmp_path / name, name) for name in ("one", "two", "three")]
     rows = [{"device": str(number) * 64, "name": f"device-{number}", "endpoint": f"https://127.0.0.1:{9000 + number}",
              "cert": identity.der.hex(), "fingerprint": identity.fingerprint, "generation": str(number) * 32, "service": "compute"}
@@ -45,16 +47,15 @@ def test_pairwise_secret_agrees_and_binds_pool_device_service_and_generation(ser
                                        replace(second, pool="f" * 32)) != left
 
 
-def test_unknown_and_removed_service_and_dead_node_fail_closed(services, monkeypatch):
+def test_unknown_and_removed_service_and_dead_node_fail_closed(services, monkeypatch, tmp_path):
     pool, identities, rows = services
     with pytest.raises(PermissionError):
         pool.authorize("f" * 64)
     rows.pop(1)
     with pytest.raises(PermissionError):
         pool.secret(identities[1].fingerprint)
-    def dead(*_args):
-        raise OSError("node disconnected")
-    monkeypatch.setattr(service_pool.node_health, "call", dead)
+    monkeypatch.undo()  # the canned replies go; the state below holds no node, so the refusal is the real one
+    pool = service_pool.Pool(tmp_path / "no-node")
     for action in (pool.services, pool.stamp, pool.certs_pem, lambda: pool.is_active(identities[0].fingerprint)):
         with pytest.raises(PermissionError, match="node must answer"):
             action()
