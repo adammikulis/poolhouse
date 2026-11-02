@@ -5,6 +5,13 @@ Two daemons in one process (a test of two devices) each read their own node only
 
 import ast
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from poolhouse.fleet import studio_pool
+from poolhouse.fleet.service_pool import Pool
+from poolhouse.fleet.studio_service import scope
 
 FLEET = Path(__file__).resolve().parents[1] / "src" / "poolhouse" / "fleet"
 
@@ -51,3 +58,12 @@ def test_only_the_named_entry_points_ask_for_the_default_pool():
     asked = {where for where, _ in named("default") if where != "service_pool.py"}
     assert asked <= set(ASKS_FOR_THE_DEFAULT), f"ask for the default pool only from {sorted(ASKS_FOR_THE_DEFAULT)}: {sorted(asked - set(ASKS_FOR_THE_DEFAULT))}"
     assert set(ASKS_FOR_THE_DEFAULT) <= asked, f"no longer asks for the default pool: {sorted(set(ASKS_FOR_THE_DEFAULT) - asked)}"
+
+
+def test_a_scope_whose_pool_identity_is_in_hand_asks_no_node_and_one_without_it_asks_the_page_pool(tmp_path):
+    """Each node read costs a round trip and a connection makes thousands: the scope takes the pool identity a caller already read."""
+    ui = SimpleNamespace(root=tmp_path, pool=Pool(tmp_path / "no-node"))  # a state directory with no node in it
+    group = studio_pool.scope_of("a" * 32)
+    assert scope(ui, group) == scope(ui, group)
+    with pytest.raises(PermissionError):
+        scope(ui)

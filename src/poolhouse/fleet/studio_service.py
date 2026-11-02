@@ -22,8 +22,9 @@ from .studio_stream_service import create as create_streams
 _INITIALIZE = threading.RLock()
 
 
-def scope(ui) -> str:
-    return digest({"pool": studio_pool.current(ui.pool), "device": machine_id(), "board": str(Path(ui.root).resolve())})
+def scope(ui, group: str | None = None) -> str:
+    """The Studio scope of this daemon; ``group`` is its pool's Studio identity when the caller already has it from the node."""
+    return digest({"pool": group or studio_pool.current(ui.pool), "device": machine_id(), "board": str(Path(ui.root).resolve())})
 
 
 def initialize(ui):
