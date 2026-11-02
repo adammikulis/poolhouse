@@ -20,8 +20,7 @@ GUARD_PATHS = (
     r"scripts/hooks/(claude-user-prompt|person-consume)",
     r"\.git/(hooks(/.*)?|config(\.worktree)?|worktrees/[^/]+/config\.worktree)",
     r"\.gitconfig", r"\.config/git/(config|hooks(/.*)?)", r"\.poolhouse/(authority\.json|authority-audit\.jsonl)")
-REVIEWED = (*GUARD_PATHS, r"scripts/hooks/(pre-commit|commit-msg|pre-push|pushed|primary-only|no-real-names|no-data-files|budgets"
-            r"|budgets-only-fall|weakened-assertions|guard_index\.py)", r"AGENTS\.md", r"CLAUDE\.md", r"\.github/.*",
+REVIEWED = (*GUARD_PATHS, r"scripts/hooks/.*", r"\.claude/.*", r"AGENTS\.md", r"CLAUDE\.md", r"\.github/.*",
             r"docs/github-protection\.md", r"scripts/github-protection[\w-]*", r"scripts/sealed_git[\w.-]*",
             r"scripts/(primary_sync|ci_watch)\.py",
             r"src/poolhouse/(protectedwrites|worktreerules|authority|person|real_machine)\.py",
@@ -38,6 +37,10 @@ MENTION = re.compile(
     r"claude-user-prompt|person-consume|\.git/(hooks|config)"
     r"|workspace/person_\w+|core\.hooksPath|\.gitconfig"
     r"|\.poolhouse/(person|node/client|node/person|authority)", re.I)
+
+NATIVE_SESSION = frozenset({"POOLHOUSE_SESSION_ID", "POOLHOUSE_SESSION_HARNESS", "CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID"})
+"""The variables by which a harness names the main session a shell belongs to. The stamp takes them out of a subagent's shell, so
+a subagent that drops its own marker has no identity; a command that sets one would put the lead's back."""
 
 WRAPPERS = frozenset({"sudo", "doas", "command", "exec", "nohup", "time", "nice", "ionice", "env", "setsid", "caffeinate",
                       "stdbuf", "unbuffer", "builtin", "timeout", "xargs"})
@@ -81,6 +84,8 @@ GH_BLOCKED: dict[str, frozenset[str] | None] = {
 READERS = re.compile(r"read|get|list|search|view|find|stat|head|tail|cat|show|describe|query|fetch")
 DEPTH = 3
 SCRIPT_BYTES = 65536
+MOST_PATH = 4096
+PATH_KEY = re.compile(r"(^|_)(file_?path|path|paths|directory|dir|folder)$", re.I)
 PERSON = "git's hooks and config, the person record and the authority registry are changed by a person at a terminal"
 
 
@@ -617,6 +622,8 @@ def _names_another(word: str, after: list[str], own: str) -> str:
         return f"you are {own}: run as yourself, not as {value or after[0]}."
     if name == "POOLHOUSE_WORKSPACE_AGENT" and equals and value != own:
         return f"you are {own}: run as yourself, not as {value}."
+    if name in NATIVE_SESSION and equals:
+        return f"you are {own}: the session that started you is not yours to name, and the harness names you in every command."
     if name == "POOLHOUSE_SUBAGENT" and equals:
         return f"you are {own}: the harness names you in every command, and no command names another."
     if name in ("--token-file", "POOLHOUSE_WORKSPACE_TOKEN"):
@@ -649,15 +656,37 @@ def holds_secret(path: str, environ: Mapping[str, str] | None = None) -> bool:
     return any(own == folder or own.startswith(folder + "/") for own in [home, *roots] if own)
 
 
+def _places(text: str, here: Path, environ: Mapping[str, str]) -> list[str]:
+    """The place ``text`` names and, when a link is on the way, the place it leads to: a tool follows links, so both are the reach."""
+    place = _place(text, here, environ)
+    if len(text) > MOST_PATH or "\n" in text or "\0" in text:
+        return [place]
+    return [place, os.path.realpath(place)]
+
+
 def _reaches_secrets(text: str, here: Path, environ: Mapping[str, str]) -> bool:
-    place = _place(re.split(r"[*?\[{]", text)[0] or ".", here, environ)
-    return secret(place, environ) or holds_secret(place, environ)
+    return any(secret(place, environ) or holds_secret(place, environ)
+               for place in _places(re.split(r"[*?\[{]", text)[0] or ".", here, environ))
+
+
+def _named_paths(given: Mapping[str, object]) -> list[str]:
+    """The strings a tool input keeps under a key that names a path (`filePath`, `file_path`, `path`, `paths`, `directory`...)."""
+    out: list[str] = []
+    for key, value in given.items():
+        if PATH_KEY.search(str(key)):
+            out += _strings(value)
+        elif isinstance(value, Mapping):
+            out += _named_paths(value)
+        elif isinstance(value, (list, tuple)):
+            out += [text for one in value if isinstance(one, Mapping) for text in _named_paths(one)]
+    return out
 
 
 def tool_refusal(name: str, given: Mapping[str, object], *, cwd: str = "", environ: Mapping[str, str] | None = None,
                  subagent: bool = False) -> str:
     """Why the tool call ``name`` with input ``given`` is refused: it drives the owner's browser, runs code outside the shell
-    rules, stops a task from a subagent, or reaches the person record or a guard; an empty string when it may run."""
+    rules, stops a task from a subagent, or reaches the person record or a guard; an empty string when it may run. A tool
+    nobody has listed is read by the shape of its input: a string under a key that names a path is a path it reaches."""
     found, here = environ or os.environ, Path(cwd or Path.cwd())
     if name.startswith("mcp__claude-in-chrome__"):
         return "the owner's own browser is not driven by an agent: use a headless browser of your own."
@@ -666,14 +695,15 @@ def tool_refusal(name: str, given: Mapping[str, object], *, cwd: str = "", envir
     if name == "TaskStop":
         return "only the main session stops a task." if subagent else ""
     keys = {"Read": ("file_path", "notebook_path"), "Glob": ("pattern", "path"), "Grep": ("path", "glob")}.get(name)
-    if keys is None and not name.startswith("mcp__"):
-        return ""
-    texts = _strings(given) if keys is None else [str(given[k]) for k in keys if given.get(k)]
+    writes = name.startswith("mcp__") and not READERS.search(name.rsplit("__", 1)[-1])
+    if keys is not None:
+        texts = [str(given[k]) for k in keys if given.get(k)]
+    else:
+        texts = _strings(given) if name.startswith("mcp__") else _named_paths(given)
     for text in texts:
-        place = _place(text, here, found)
-        writes = name.startswith("mcp__") and not READERS.search(name.rsplit("__", 1)[-1])
-        if secret(place, found) or (writes and guarded(place, found)):
-            return f"{text} is the person record, a session token or a guard: " + PERSON + "."
+        for place in _places(text, here, found):
+            if secret(place, found) or (writes and guarded(place, found)):
+                return f"{text} is the person record, a session token or a guard: " + PERSON + "."
         if name in ("Glob", "Grep") and _reaches_secrets(text, here, found):
             return f"a search from {text} reaches the person record: search a folder of the project."
     return ""

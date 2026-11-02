@@ -5,7 +5,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|Monitor",
         "hooks": [
           {
             "type": "command",
@@ -23,7 +23,7 @@
         ]
       },
       {
-        "matcher": "Read|Glob|Grep|Agent|Task|TaskStop|mcp__.*",
+        "matcher": ".*",
         "hooks": [
           {
             "type": "command",

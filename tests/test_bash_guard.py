@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -183,10 +184,11 @@ def test_the_stash_refusal_names_the_stash_free_ways():
 
 
 def test_the_guard_is_wired_to_the_bash_tool():
-    """A refusal rule that nothing calls does not exist: settings.json runs this file before every Bash call."""
+    """A refusal rule that nothing calls does not exist: settings.json runs this file before every Bash and Monitor call."""
     settings = json.loads((GUARD.parents[2] / ".claude" / "settings.json").read_text())
-    bash = [h for entry in settings["hooks"]["PreToolUse"] if entry["matcher"] == "Bash" for h in entry["hooks"]]
-    assert any(h["command"].endswith("scripts/hooks/claude-bash-guard") for h in bash)
+    for tool in ("Bash", "Monitor"):
+        wired = [h for entry in settings["hooks"]["PreToolUse"] if re.fullmatch(entry["matcher"], tool) for h in entry["hooks"]]
+        assert any(h["command"].endswith("scripts/hooks/claude-bash-guard") for h in wired), tool
 
 
 @pytest.mark.parametrize("command", ["SKIP_BUDGETS=1 git commit -m x", "git stash", "git stash pop", "git commit --no-verify -m x", "git commit -n -m x"])

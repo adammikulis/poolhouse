@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""A PreToolUse hook on Bash that refuses shell commands that should be poolhouse commands.
+"""A PreToolUse hook on Bash and Monitor that refuses shell commands that should be poolhouse commands.
 
-Claude Code runs this before every Bash call. Exit 2 blocks the command and hands the
+Claude Code runs this before every Bash and Monitor call. Exit 2 blocks the command and hands the
 message back.
 Set POOLHOUSE_GUARD=off to disable the soft rules for a session; the hard rules (pushes of main, tags,
 force and deletions, minting identities, the person record) stay in force.
 
-Wire it in as a PreToolUse hook on Bash in a project's `.claude/settings.json`:
+Wire it in as a PreToolUse hook on Bash and Monitor in a project's `.claude/settings.json`:
 
-    {"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [
+    {"hooks": {"PreToolUse": [{"matcher": "Bash|Monitor", "hooks": [
         {"type": "command", "command": "$CLAUDE_PROJECT_DIR/scripts/hooks/claude-bash-guard"}]}]}}
 
 A project that wants its own wiring writes a thin `sh` wrapper that execs this file with
@@ -173,6 +173,14 @@ HARD = (PUSH_FLAGS, PUSH_MAIN, MINT, PERSON_STORE, SKIP_HOOKS, STASH)
 MESSAGE = re.compile(r"(-m|--message)(\s+|=)('[^']*'|\"[^\"]*\")")
 
 
+LEAD_SELECTORS = ("CLAUDE_CODE_SESSION_ID", "POOLHOUSE_SESSION_ID", "POOLHOUSE_SESSION_HARNESS", "CODEX_THREAD_ID")
+"""How the harness names the session that started a subagent. The shell inherits them; the stamp takes them out, so a command of
+the subagent that drops its own marker finds no identity to fall back on, and not the lead's."""
+
+SHELL_TOOLS = ("Bash", "Monitor")
+"""The tools that run a shell command in the environment of the session: both meet these rules and both are stamped."""
+
+
 def subagent_naming_another(event: dict, command: str, rules) -> str:
     """Why a subagent's command acts as another session (`--agent`, a token file, a token, the agent variable), else an empty string.
 
@@ -195,7 +203,7 @@ def subagent_stamped(event: dict, given: dict) -> dict | None:
     import subagent_records
     record = subagent_records.load(agent)
     lines = [f"export POOLHOUSE_SUBAGENT={shlex.quote(subagent_records.native_key(agent))}",
-             "unset POOLHOUSE_WORKSPACE_TOKEN"]
+             "unset POOLHOUSE_WORKSPACE_TOKEN", *(f"unset {name}" for name in LEAD_SELECTORS)]
     lines.append(f"export POOLHOUSE_WORKSPACE_AGENT={shlex.quote(record['name'])}" if record.get("name")
                  else "unset POOLHOUSE_WORKSPACE_AGENT")
     if record.get("board"):
@@ -213,26 +221,17 @@ def release_approved(cwd: str) -> bool:
     return done.returncode == 0
 
 
-def main() -> int:
-    switched = rules_loader.guard_off()
-    try:
-        event = json.load(sys.stdin)
-    except Exception:
-        return 0
-    if event.get("tool_name") != "Bash":
-        return 0
+def judge(event: dict, switched: bool, rules) -> str:
+    """The text that refuses the shell command of ``event``, or an empty string when it may run."""
     raw = (event.get("tool_input") or {}).get("command") or ""
-    command = without_heredocs(raw)
-    rules = rules_loader.load()
     why = ""
     if rules:
         check = rules.hard_bash_refusal if switched else rules.bash_refusal
         why = check(raw, event.get("cwd") or "") or subagent_naming_another(event, raw, rules)
     if why:
-        print(f"blocked: {why}\n\n(poolhouse scripts/hooks/claude-bash-guard. Set "
-              f"POOLHOUSE_GUARD=off for a person's own session.)", file=sys.stderr)
-        return 2
-    command = MESSAGE.sub(r"\1 ''", without_search_patterns(command))
+        return (f"blocked: {why}\n\n(poolhouse scripts/hooks/claude-bash-guard. Set "
+                f"POOLHOUSE_GUARD=off for a person's own session.)")
+    command = MESSAGE.sub(r"\1 ''", without_search_patterns(without_heredocs(raw)))
     for pattern, instead in REFUSE:
         if switched and pattern not in HARD:
             continue
@@ -242,9 +241,21 @@ def main() -> int:
             tail = ("No switch opens this rule." if pattern in HARD else
                     "If this is genuinely the right command, say so and a person can run it, "
                     "or set POOLHOUSE_GUARD=off.")
-            print(f"blocked: {instead}\n\n(poolhouse scripts/hooks/claude-bash-guard. {tail})",
-                  file=sys.stderr)
-            return 2
+            return f"blocked: {instead}\n\n(poolhouse scripts/hooks/claude-bash-guard. {tail})"
+    return ""
+
+
+def main() -> int:
+    switched = rules_loader.guard_off()
+    try:
+        event = json.load(sys.stdin)
+    except Exception:
+        return 0
+    if event.get("tool_name") not in SHELL_TOOLS:
+        return 0
+    if refused := judge(event, switched, rules_loader.load()):
+        print(refused, file=sys.stderr)
+        return 2
     stamped = subagent_stamped(event, event.get("tool_input") or {})
     if stamped:
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "updatedInput": stamped}}))

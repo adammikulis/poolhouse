@@ -311,6 +311,16 @@ def test_the_files_a_person_reviews_before_they_land_are_named_in_one_place():
     assert protectedwrites.touches_guards(["src/poolhouse/x.py", *named]) == named
 
 
+def test_the_release_question_names_every_hook_and_harness_setting_though_an_agent_may_edit_them():
+    """The guards let an agent change these files (an owner's order), so the person who releases `main` is told of each."""
+    wiring = [".claude/settings.json", ".claude/settings.local.json", ".claude/agents/branch-worker.md",
+              ".claude/commands/x.md", ".claude/skills/s/SKILL.md", ".claude/hooks/h.sh", "scripts/hooks/claude-bash-guard",
+              "scripts/hooks/claude-edit-guard", "scripts/hooks/claude-tool-guard", "scripts/hooks/rules_loader.py",
+              "scripts/hooks/subagent_records.py", "scripts/hooks/workspace_hook.py", "scripts/hooks/claude-subagent-start",
+              "scripts/hooks/a-hook-added-next-year"]
+    assert protectedwrites.touches_guards(["src/poolhouse/x.py", "docs/a.md", *wiring]) == wiring
+
+
 def test_a_path_that_differs_only_in_case_is_the_same_guard_and_the_same_reviewed_file():
     spelled = [".GIT/Hooks/pre-push", "scripts/Hooks/Person-Consume", "agents.md",
                "Src/Poolhouse/Authority.py", ".GITHUB/workflows/ci.yml"]

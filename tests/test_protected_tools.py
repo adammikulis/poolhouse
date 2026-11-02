@@ -49,6 +49,29 @@ def test_a_subagent_may_not_act_as_another_session(command):
     assert other(command) and OWN in other(command), command
 
 
+@pytest.mark.parametrize("command", [
+    "POOLHOUSE_SESSION_ID=lead-native poolhouse-workspace whoami",
+    "CLAUDE_CODE_SESSION_ID=lead-native poolhouse-workspace whoami",
+    "export CLAUDE_CODE_SESSION_ID=lead-native; poolhouse-workspace whoami",
+    "export POOLHOUSE_SESSION_HARNESS=claude-code POOLHOUSE_SESSION_ID=lead-native",
+    "env CODEX_THREAD_ID=lead-thread poolhouse-workspace whoami",
+    "bash -c 'POOLHOUSE_SESSION_ID=lead-native poolhouse-workspace whoami'",
+    "echo $(CLAUDE_CODE_SESSION_ID=lead-native poolhouse-workspace whoami)",
+])
+def test_a_subagent_may_not_name_the_native_session_of_the_one_that_started_it(command):
+    assert other(command) and OWN in other(command), command
+
+
+@pytest.mark.parametrize("command", [
+    "env | grep POOLHOUSE_SESSION_ID",
+    "echo $CLAUDE_CODE_SESSION_ID",
+    'grep -rn "CLAUDE_CODE_SESSION_ID" src scripts',
+    "unset POOLHOUSE_SESSION_ID",
+])
+def test_a_subagent_may_read_the_selectors_or_drop_them(command):
+    assert not other(command), command
+
+
 def tool(name: str, given: dict, **more) -> str:
     return protectedwrites.tool_refusal(name, given, **{"cwd": "/work", "environ": {"HOME": "/home/p"}, **more})
 
@@ -111,6 +134,28 @@ def test_a_search_rooted_above_the_person_record_is_refused(tmp_path):
     assert tool("Grep", {"pattern": "key", "path": str(tmp_path)}, environ={"HOME": str(tmp_path)})
     assert tool("Glob", {"pattern": "**/*", "path": str(tmp_path / ".poolhouse")}, environ={"HOME": str(tmp_path)})
     assert not tool("Grep", {"pattern": "key", "path": str(tmp_path / "elsewhere")}, environ={"HOME": str(tmp_path)})
+
+
+def test_a_link_to_the_person_record_or_a_session_token_is_refused_where_it_is_read(tmp_path):
+    record, tokens = tmp_path / ".poolhouse" / "person", tmp_path / ".poolhouse" / "node" / "client"
+    for folder in (record, tokens):
+        folder.mkdir(parents=True)
+        (folder / "secret").write_text("k")
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "key").symlink_to(record / "secret")
+    (work / "folder").symlink_to(record, target_is_directory=True)
+    (work / "tokens").symlink_to(tokens, target_is_directory=True)
+    (work / "plain.txt").write_text("ok")
+    environ = {"HOME": str(tmp_path / "elsewhere")}
+    assert tool("Read", {"file_path": str(work / "key")}, environ=environ)
+    assert tool("Read", {"file_path": str(work / "tokens" / "secret")}, environ=environ)
+    assert tool("Grep", {"pattern": "k", "path": str(work / "folder")}, environ=environ)
+    assert tool("Glob", {"pattern": "*", "path": str(work / "tokens")}, environ=environ)
+    assert tool("mcp__files__read_file", {"path": str(work / "key")}, environ=environ)
+    assert tool("LSP", {"filePath": str(work / "key")}, environ=environ)
+    assert not tool("Read", {"file_path": str(work / "plain.txt")}, environ=environ)
+    assert not tool("Grep", {"pattern": "k", "path": str(work)}, environ=environ)
 
 
 def test_the_worktree_rules_expose_the_hard_forms_whatever_the_guard_switch_says(monkeypatch, tmp_path):
