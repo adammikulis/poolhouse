@@ -56,7 +56,7 @@ fn a_pool_of_one_computer_key_founds_admits_and_removes() {
     assert_eq!(gov["floors"], json!({"routine": "computer", "sensitive": "computer", "governance": "computer"}));
     assert_eq!((gov["admins"][0]["claim"]["method"].clone(), gov["admins"][0]["counted"].clone()), (json!("keystore-prompt"), json!("computer")), "{gov}");
     let laptop = ident(30);
-    let admitted = a.node.lock().unwrap().gov_admit(&laptop.der, "laptop", "join-code").unwrap();
+    let admitted = a.node.lock().unwrap().gov_admit(&laptop.der, "laptop", "join-code", false).unwrap();
     assert_eq!(admitted.status, Status::Active, "a computer key admits a device");
     let removed = a.node.lock().unwrap().gov_remove(&laptop.fingerprint()).unwrap();
     assert_eq!(removed.status, Status::Revoked, "a computer key removes a member");

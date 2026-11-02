@@ -384,7 +384,7 @@ impl Net {
             return Err(Error::Denied(if left { "wrong code".into() } else { "wrong code; the join-code window is closed".into() }));
         }
         peer::record_json(node, "")?;
-        node.enrol_device(der, &name, "join-code")?;
+        node.enrol_device(der, &name, "join-code", w.by_yes)?;
         let mut grant = peer::record_json(node, &fp)?;
         grant["v"] = json!(1);
         let grant = grant.to_string().into_bytes();
@@ -398,9 +398,11 @@ impl Net {
     /// still admits nothing a person's key did not sign for.
     pub fn add_device(&self, passphrase: &str, ttl_s: u64, presigned: bool) -> Result<Value> {
         let effect=self.activity.admit_effect(Source::Network,EffectFlow::AddDevice).map_err(activity_error)?;
-        self.add_device_admitted(passphrase,ttl_s,presigned,&effect)
+        self.add_device_admitted(passphrase,ttl_s,presigned,false,&effect)
     }
-    fn add_device_admitted(&self, passphrase: &str, ttl_s: u64, presigned: bool, effect: &AdmittedEffect) -> Result<Value> {
+    /// ``by_yes``: the call carried the person's ticket and the window act their key signed under it, so this device may sign the admit of the one device
+    /// that proves the code.
+    fn add_device_admitted(&self, passphrase: &str, ttl_s: u64, presigned: bool, by_yes: bool, effect: &AdmittedEffect) -> Result<Value> {
         let _child=self.activity.continue_effect(effect,Source::Network,EffectFlow::AddDevice).map_err(activity_error)?;
         let code = if passphrase.is_empty() { new_code()? } else { passphrase.to_string() };
         if code.len() < 6 || code.len() > 200 {
@@ -409,9 +411,9 @@ impl Net {
         let until = wall_ms() + ttl_s.clamp(1, 600) * 1000;
         let mut node = tracked_node(&self.node, Source::Network)?;
         if !presigned {
-            node.can_admit()?;
+            node.can_admit(by_yes)?;
         }
-        *locked(&self.window)? = Some(Window::new(&code, until));
+        *locked(&self.window)? = Some(if by_yes { Window::new(&code, until).by_yes() } else { Window::new(&code, until) });
         node.facts.join_code_until_ms = until;
         Ok(json!({"code": code, "expires_in_s": ttl_s.clamp(1, 600), "port": self.port, "fingerprint": self.me.fingerprint()}))
     }
@@ -732,6 +734,7 @@ impl Net {
         };
         let _child=self.activity.continue_effect(effect,Source::Network,flow).map_err(activity_error)?;
         let text=|k: &str| c.params.get(k).and_then(Value::as_str).unwrap_or("");
+        let mut by_yes=false;
         {
             let resource=if c.method=="join_pool" { text("host") } else { "*" };
             let mut node=tracked_node(&self.node,Source::Network)?;
@@ -751,13 +754,14 @@ impl Net {
                 let window=args.remove("window");
                 node.spend_op(&by,ticket,&c.method,&args)?;
                 if let Some(act)=window.filter(|_| c.method=="add_device") {
-                    node.window_submit(&act)?;
+                    node.window_submit(&act,crate::window::lasts_s(&args))?;
+                    by_yes=true;
                 }
             }
         }
         if c.method=="add_device" {
             self.add_device_admitted(text("passphrase"),c.params.get("ttl_s").and_then(Value::as_u64).unwrap_or(120),
-                c.params.get("presigned")==Some(&Value::Bool(true)),effect)
+                c.params.get("presigned")==Some(&Value::Bool(true)),by_yes,effect)
         } else {
             self.join_pool_admitted(addr_of(text("host"),c.params.get("port").and_then(Value::as_u64).unwrap_or(0))?,
                 text("passphrase"),text("fingerprint"),effect)
@@ -888,12 +892,12 @@ mod activity_tests {
         let owned=running(); let net=&owned.net;
         let add=net.activity.admit_effect(Source::Network,EffectFlow::AddDevice).unwrap();
         let join=net.activity.admit_effect(Source::Network,EffectFlow::Join).unwrap();
-        let baseline=net.add_device_admitted("valid-code",60,false,&add).unwrap_err().code().to_string();
+        let baseline=net.add_device_admitted("valid-code",60,false,false,&add).unwrap_err().code().to_string();
         net.activity.drain_for_test();
         // Scheduling continuation preserves the normal missing-governance refusal; it grants no authority.
-        assert_eq!(net.add_device_admitted("valid-code",60,false,&add).unwrap_err().code(),baseline);
+        assert_eq!(net.add_device_admitted("valid-code",60,false,false,&add).unwrap_err().code(),baseline);
         assert!(net.window.lock().unwrap().is_none());
-        assert_eq!(net.add_device_admitted("valid-code",60,true,&join).unwrap_err().code(),"update_pending");
+        assert_eq!(net.add_device_admitted("valid-code",60,true,false,&join).unwrap_err().code(),"update_pending");
         assert!(net.window.lock().unwrap().is_none());
         assert!(net.add_device("valid-code",60,false).is_err());
         let addr=SocketAddr::from(([127,0,0,1],1));

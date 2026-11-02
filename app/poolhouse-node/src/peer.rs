@@ -108,7 +108,7 @@ fn join_open(node: &mut Node, der: &[u8], req: &Value, ip: IpAddr, standing: Sta
     let name = req.get("name").and_then(Value::as_str).unwrap_or("");
     open_join_allowed(node, ip)?;
     record_json(node, "")?;
-    node.enrol_device(der, name, "open")?;
+    node.enrol_device(der, name, "open", false)?;
     record_json(node, &cert_fingerprint(der))
 }
 

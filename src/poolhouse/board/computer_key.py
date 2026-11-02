@@ -2,7 +2,8 @@
 
 The key is an Ed25519 key the node makes for one pool's card and gives to the person's own session once, when the person says yes at the computer's
 own prompt (so a key an agent holds is never the one a yes enrols); it is sealed under the account's keystore (under a passphrase typed at the
-person's terminal where there is none) in ``<state>/person/pools/<handle>/``, a place the agent sandbox may neither read nor write. The node keeps no
+person's terminal where there is none) in ``<state>/person/pools/<handle>/``, a place the harness's deny lists keep from a process an agent started (the
+account's own files: see `credentials.person_secret` for what that does not cover). The node keeps no
 copy and nothing here is a switch that signs without the person: a key signs
 only the bytes a **ticket** names. The ticket is the node's answer to the person's yes at the computer's own prompt, for one change the node
 drafted and wrote the prompt's sentence for. ``sign_bytes`` shows the node the SHA-256 of what it is about to sign; the node answers only for a

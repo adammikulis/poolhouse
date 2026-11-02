@@ -131,3 +131,37 @@ fn an_agents_four_sessions_take_nothing_from_the_persons_one_prompt() {
     drop(n);
     end(shell);
 }
+
+/// The limit the design states and does not hide (the reviewer's repro). The secret of the person's own session is a file of the account, and what keeps it from an
+/// agent is the harness's read deny (Claude Code's sandbox, sandbox-runtime, the file tools' rules). A process outside that deny, such as an agent under the staged
+/// Codex fragment, which has no per-path read deny, reads it, registers as the person, owns a pseudo-terminal, makes it the controlling terminal of the process that
+/// asks and types the yes itself. On a computer with no prompt of the system's own that yes is approval by "a program running as you could approve it", which is what
+/// every card of such a pool says; with the system's own prompt (a password, a fingerprint) the same process gains only the right to ask. This test pins that
+/// statement: if the node ever protects the secret by more than the file, it goes red and the docs (`docs/design-phone-free-pools.md` R2, `docs/agent-sandbox.md`) change with it.
+#[test]
+fn a_process_that_can_read_the_person_secret_is_the_person_on_a_computer_with_no_prompt_of_its_own() {
+    let dir = tempdir().unwrap();
+    let mut n = fallback_node(dir.path());
+    let secret = std::fs::read_to_string(dir.path().join("person").join("ui.secret")).expect("a process of the same account reads it").trim().to_string();
+    let token = ok(req(&mut n, "register_person", "demo", "", json!({"session": "reads-the-secret", "proof": secret})))["token"].as_str().unwrap().to_string();
+    let mut mine = screen();
+    let asker = sleeper(Some(&mine));
+    let key = kit::grants::person();
+    let asked = ok(req_from(&mut n, &Peer { pid: Some(asker.id()) }, "presence_ask", "", &token, json!({"purpose": "key", "public": key.public(), "terminal": ""})));
+    assert_eq!(asked["state"], "asking");
+    mine.sees("Type yes");
+    mine.types("yes\n");
+    let end_by = Instant::now() + Duration::from_secs(20);
+    let mut said = ok(req(&mut n, "presence_status", "", &token, json!({})));
+    while said["state"] == "asking" && Instant::now() < end_by {
+        std::thread::sleep(Duration::from_millis(50));
+        said = ok(req(&mut n, "presence_status", "", &token, json!({})));
+    }
+    assert_eq!(said["state"], "confirmed", "{said}");
+    let mut params = key.enrolment("a key a program running as the person enrolled", None);
+    params["secret"] = said["secret"].clone();
+    ok(req(&mut n, "person_enroll", "", &token, params));
+    assert_eq!(held(&mut n).len(), 1, "a typed yes is approval by a program running as you");
+    mine.drain();
+    end(asker);
+}

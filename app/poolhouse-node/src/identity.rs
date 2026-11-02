@@ -84,7 +84,8 @@ pub fn is_person_harness(harness: &str) -> bool {
     harness.eq_ignore_ascii_case(PERSON_HARNESS)
 }
 
-/// The folder of the state directory that keeps the person's secrets, which the agent sandbox may neither read nor write, and the file in it
+/// The folder of the state directory that keeps the person's secrets, which the harness's deny lists keep from a process an agent started (it is the
+/// account's own, and any other process of the account reads it), and the file in it
 /// that holds the secret of the person's own session: the node makes it once and reads it back at each `register_person`.
 pub const PERSON_DIR: &str = "person";
 const PERSON_SECRET: &str = "ui.secret";

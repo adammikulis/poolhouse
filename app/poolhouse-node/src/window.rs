@@ -20,6 +20,12 @@ const DOMAIN: &str = "poolhouse/person-op/v1\n";
 /// How long a window lasts when the call names none, and the most it may last.
 const WINDOW_S: u64 = 120;
 const MOST_WINDOW_S: u64 = 600;
+/// How many seconds the window of ``args`` (the params of an `add_device` call) lasts: the length the call names, from a second to ten minutes. The prompt, the
+/// ticket, the window act and the code window the call opens all use this one number.
+pub fn lasts_s(args: &Map<String, Value>) -> u64 {
+    args.get("ttl_s").and_then(Value::as_u64).unwrap_or(WINDOW_S).clamp(1, MOST_WINDOW_S)
+}
+
 /// The most characters of a host the prompt names.
 const MOST_HOST: usize = 45;
 
@@ -50,12 +56,12 @@ pub fn describe(op: &str, pool: &str, name: &str, args: &Map<String, Value>) -> 
     let (body, sentence) = match op {
         "add_device" => {
             only(args, &["passphrase", "ttl_s", "presigned"])?;
-            let secs = args.get("ttl_s").and_then(Value::as_u64).unwrap_or(WINDOW_S).clamp(1, MOST_WINDOW_S);
+            let secs = lasts_s(args);
             if pool.is_empty() {
                 return Err(Error::Invalid("This device is in no pool, so there is nothing for another device to join: make a pool first.".into()));
             }
             let body = json!({"op": op, "pool": pool, "passphrase": digest(text(args, "passphrase")), "ttl_s": secs, "presigned": args.get("presigned") == Some(&Value::Bool(true))});
-            (body, format!("Poolhouse - let a new device join the pool {name} with a code, for {} minutes. Say yes only if you are adding a device now.", secs.div_ceil(60)))
+            (body, format!("Poolhouse - let a new device join the pool {name} with a code, for {}. Say yes only if you are adding a device now.", crate::gov::body::window_words(secs)))
         }
         "join_pool" => {
             only(args, &["host", "port", "passphrase", "fingerprint"])?;
@@ -90,7 +96,7 @@ impl Node {
         // A window is also the person's yes to this device admitting what proves its code: the act the person's key signs under the same ticket, so no
         // delegate, signer or wait is needed for the one device a window lets in.
         let window = match (op, self.members.gov()) {
-            ("add_device", Some(g)) => Some(g.new_act("window", json!({"fingerprint": self.cert.fingerprint()}), crate::poolops::wall_ms())?),
+            ("add_device", Some(g)) => Some(g.new_act("window", json!({"fingerprint": self.cert.fingerprint(), "secs": lasts_s(args)}), crate::poolops::wall_ms())?),
             _ => None,
         };
         let mut payloads = vec![done.bytes.clone()];
@@ -104,11 +110,15 @@ impl Node {
         Ok(json!({"card": card_id, "card_why": card_why, "sentence": done.sentence, "window": window}))
     }
 
-    /// Take in the act the person's key signed for opening a window on this device: it must be a window act that names this device.
-    pub fn window_submit(&mut self, act: &Value) -> Result<()> {
+    /// Take in the act the person's key signed for opening a window on this device: it must be a window act that names this device and lasts the
+    /// ``secs`` seconds the call opens its code window for, the length the person was shown.
+    pub fn window_submit(&mut self, act: &Value, secs: u64) -> Result<()> {
         let named = act["kind"] == "window" && act["body"]["fingerprint"].as_str() == Some(self.cert.fingerprint().as_str());
         if !named {
             return Err(Error::Denied("a window is opened by a window act that names this device".into()));
+        }
+        if act["body"]["secs"].as_u64() != Some(secs) {
+            return Err(Error::Denied("a window lasts the length the person was shown, and this act says another".into()));
         }
         self.pool_submit(act).map(drop)
     }

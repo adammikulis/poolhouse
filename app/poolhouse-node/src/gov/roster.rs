@@ -11,10 +11,10 @@ use crate::fsutil::hex;
 use crate::membership::{Device, Policy, Status};
 
 use super::act::Act;
-use super::body::{self, Admit, Body};
+use super::body::{self, Admit, Body, Open};
 use super::chain::{Chain, Seen};
 use super::charter::Class;
-use super::{COMPUTER_HOLD_MS, DAY_MS, DELEGATE_DAYS, DELEGATE_PER_DAY, DELEGATE_PER_HOUR, HOUR_MS, OPEN_PER_HOUR, OPEN_POOL_PER_HOUR, SETTLED, WINDOW_AWAKE_MS};
+use super::{COMPUTER_HOLD_MS, DAY_MS, DELEGATE_DAYS, DELEGATE_PER_DAY, DELEGATE_PER_HOUR, HOUR_MS, OPEN_PER_HOUR, OPEN_POOL_PER_HOUR, SETTLED};
 
 /// A device an admin act lets sign `admit`.
 #[derive(Clone, Debug)]
@@ -31,9 +31,9 @@ pub struct Roster {
     /// For each device, the spans of awake time (first sight of the act that made it a delegate until it ended or ran out) in which
     /// an admit it signed counts.
     windows: BTreeMap<String, Vec<(i64, i64)>>,
-    /// For each device, the spans of awake time in which a window act the person's yes made lets it admit; a window of a history taken in at a
-    /// join is a span that is over.
-    opened: BTreeMap<String, Vec<(i64, i64)>>,
+    /// For each device, the spans of awake time, each with the id of the window act the person's yes made, in which that act lets it admit one device;
+    /// a window of a history taken in at a join is a span that is over.
+    opened: BTreeMap<String, Vec<(i64, i64, String)>>,
     /// The devices whose window is open now.
     pub open_now: BTreeSet<String>,
     /// For each device, who signed its admit: `admin KEY`, `delegate FINGERPRINT` or `member FINGERPRINT`.
@@ -59,7 +59,7 @@ impl Roster {
 
     /// The first awake moment after ``now`` at which a window ends, so the pool is folded again then.
     pub fn next_window_end(&self, now: i64) -> Option<i64> {
-        self.opened.values().flatten().map(|(_, until)| *until).filter(|until| *until > now).min()
+        self.opened.values().flatten().map(|(_, until, _)| *until).filter(|until| *until > now).min()
     }
 
     /// The first awake moment after ``now`` at which a delegate's window begins: a delegate act is held, and the pool is folded again when
@@ -149,6 +149,13 @@ fn delegate_span(chain: &Chain, id: &str, act: &Act, at: i64, joined: i64) -> (i
     (from, from.saturating_add(DELEGATE_DAYS * DAY_MS))
 }
 
+/// The span of awake time in which the window act ``id``, first seen at ``at``, lets its device admit: the length the act says from that first sight (a
+/// window of a history taken in at a join is a span that is over). The pool takes a window act in only while it is no older than its length when it is
+/// first seen (`GovPool::take`), so this span is the window and not a fresh one.
+fn window_span(w: &Open, id: &str, at: i64) -> (i64, i64, String) {
+    if at == SETTLED { (SETTLED, SETTLED, id.to_string()) } else { (at, at.saturating_add(w.lasts_ms()), id.to_string()) }
+}
+
 /// The delegates: a delegate act waits its hold from the moment it was *complete* on this device (``ready``: its last needed signature arrived),
 /// as every other held act does, and not from the first sight of its first signature.
 fn delegates(chain: &Chain, acts: &BTreeMap<String, Act>, ready: &Seen, now: i64, joined: i64, out: &mut Roster) {
@@ -174,11 +181,10 @@ fn delegates(chain: &Chain, acts: &BTreeMap<String, Act>, ready: &Seen, now: i64
                 Verdict::Short(h, n, why) => drop(out.short.insert(id.clone(), (h, n, why))),
                 Verdict::Void(why) => drop(out.void.insert(id.clone(), why)),
             },
-            (Ok(Body::Window(d)), _) => match verdict(id, a, Some(Class::Sensitive), chain, false) {
+            (Ok(Body::Window(w)), _) => match verdict(id, a, Some(Class::Sensitive), chain, false) {
                 Verdict::Ok => {
                     complete(out);
-                    let span = if at == SETTLED { (SETTLED, SETTLED) } else { (at, at.saturating_add(WINDOW_AWAKE_MS)) };
-                    out.opened.entry(d.fingerprint).or_default().push(span);
+                    out.opened.entry(w.fingerprint.clone()).or_default().push(window_span(&w, id, at));
                 }
                 Verdict::Short(h, n, why) => drop(out.short.insert(id.clone(), (h, n, why))),
                 Verdict::Void(why) => drop(out.void.insert(id.clone(), why)),
@@ -199,7 +205,7 @@ fn delegates(chain: &Chain, acts: &BTreeMap<String, Act>, ready: &Seen, now: i64
             out.delegates.insert(device.clone(), Delegate { device: device.clone(), ends_ms: *ends });
         }
     }
-    let open: Vec<String> = out.opened.iter().filter(|(_, spans)| spans.iter().any(|(from, until)| *from <= now && now < *until)).map(|(device, _)| device.clone()).collect();
+    let open: Vec<String> = out.opened.iter().filter(|(_, spans)| spans.iter().any(|(from, until, _)| *from <= now && now < *until)).map(|(device, _)| device.clone()).collect();
     out.open_now.extend(open);
 }
 
@@ -258,7 +264,10 @@ struct Facts {
     /// member at a given point of that order.
     life: BTreeMap<String, Vec<(i64, u64, String, bool)>>,
     windows: BTreeMap<String, Vec<(i64, i64)>>,
-    opened: BTreeMap<String, Vec<(i64, i64)>>,
+    opened: BTreeMap<String, Vec<(i64, i64, String)>>,
+    /// For each admit a window lets in: the device that signed it and the window act it spends, so that a second yes inside the span of the first admits the
+    /// next device and not the one the first already admitted.
+    window_of: BTreeMap<String, (String, String)>,
     seen: BTreeMap<String, i64>,
     admin_ok: BTreeSet<String>,
     admin_of: BTreeMap<String, String>,
@@ -272,25 +281,50 @@ impl Facts {
         self.life.get(device).and_then(|events| events.iter().rev().find(|(s, t, id, _)| (*s, *t, id.clone()) <= key)).is_none_or(|(_, _, _, joined)| *joined)
     }
 
-    /// How the device ``signer``, taken in as ``active`` has it, may sign the admit ``c``: `member` in an open pool, `delegate`.
-    fn admits(&self, signer: &str, c: &Candidate, active: &BTreeSet<String>) -> Option<&'static str> {
+    /// How the device ``signer``, taken in as ``active`` has it, may sign the admit ``c``: `member` in an open pool, `delegate`, or `window ACT` by the
+    /// window act the person's yes made, which lets it admit one device.
+    fn admits(&self, signer: &str, c: &Candidate, active: &BTreeSet<String>) -> Option<String> {
         if !active.contains(signer) || !self.member_at(signer, c) {
             return None;
         }
         if self.open && c.admit.via == "segment" {
-            Some("member")
-        } else if c.admit.via.is_empty() && self.delegate_at(signer, &c.id) {
-            Some("delegate")
+            Some("member".into())
+        } else if c.admit.via.is_empty() {
+            self.delegate_at(signer, &c.id).or_else(|| self.window_at(signer, &c.id))
         } else {
             None
         }
     }
 
     /// Whether ``device`` was a delegate when this device first saw the admit ``id``.
-    fn delegate_at(&self, device: &str, id: &str) -> bool {
+    fn delegate_at(&self, device: &str, id: &str) -> Option<String> {
         let at = self.seen.get(id).copied().unwrap_or(0);
-        at == SETTLED
-            || [&self.windows, &self.opened].into_iter().any(|spans| spans.get(device).is_some_and(|w| w.iter().any(|(from, until)| *from <= at && at < *until)))
+        (at == SETTLED || self.windows.get(device).is_some_and(|w| w.iter().any(|(from, until)| *from <= at && at < *until))).then(|| "delegate".into())
+    }
+
+    /// The window act the admit ``id`` signed by ``device`` spends (`window_acts`).
+    fn window_at(&self, device: &str, id: &str) -> Option<String> {
+        self.window_of.get(id).filter(|(signer, _)| signer == device).map(|(_, act)| format!("window {act}"))
+    }
+
+    /// Which window act each admit a device signed spends: in the order this device first saw the admits, each takes the earliest window of its device that
+    /// held that moment and no admit has spent yet. An admit the device's delegate time covers, or an admin signed, spends none.
+    fn window_acts(&mut self, cands: &[Candidate]) {
+        let mut spent: BTreeSet<String> = BTreeSet::new();
+        let mut order: Vec<(i64, &Candidate)> = cands.iter().filter(|c| c.admit.via.is_empty() && !self.admin_ok.contains(&c.id)).map(|c| (self.seen.get(&c.id).copied().unwrap_or(0), c)).collect();
+        order.sort_by(|a, b| (a.0, &a.1.id).cmp(&(b.0, &b.1.id)));
+        for (at, c) in order {
+            for signer in &c.signers {
+                let covered = at == SETTLED || self.windows.get(signer).is_some_and(|w| w.iter().any(|(from, until)| *from <= at && at < *until));
+                let mut spans: Vec<&(i64, i64, String)> = self.opened.get(signer).into_iter().flatten().filter(|(from, until, act)| *from <= at && at < *until && !spent.contains(act)).collect();
+                spans.sort();
+                if let (false, Some((_, _, act))) = (covered, spans.first()) {
+                    spent.insert(act.clone());
+                    self.window_of.insert(c.id.clone(), (signer.clone(), act.clone()));
+                    break;
+                }
+            }
+        }
     }
 }
 
@@ -310,6 +344,8 @@ fn over_rate(ok: &[&Candidate], by: &BTreeMap<String, String>, seen: &Seen, now:
         list.sort();
         let (per_hour, per_day) = match who.as_str() {
             "members of the pool" => (OPEN_POOL_PER_HOUR, usize::MAX),
+            // the person's yes opened one window for one device that proves its code: the first admit that stands spends it
+            w if w.starts_with("window") => (1, 1),
             w if w.starts_with("delegate") => (DELEGATE_PER_HOUR, DELEGATE_PER_DAY),
             _ => (OPEN_PER_HOUR, usize::MAX),
         };
@@ -352,7 +388,7 @@ pub fn build(chain: &Chain, acts: &BTreeMap<String, Act>, (seen, ready): (&Seen,
         life.entry(fp).or_default().push((first(&id), at, id, false));
     }
     life.values_mut().for_each(|events| events.sort());
-    let mut facts = Facts { open: chain.latest().charter.policy == Policy::Open, life, windows: out.windows.clone(), opened: out.opened.clone(), seen: seen_of, admin_ok: BTreeSet::new(), admin_of: BTreeMap::new() };
+    let mut facts = Facts { open: chain.latest().charter.policy == Policy::Open, life, windows: out.windows.clone(), opened: out.opened.clone(), window_of: BTreeMap::new(), seen: seen_of, admin_ok: BTreeSet::new(), admin_of: BTreeMap::new() };
     if let Some(admin) = chain.epochs.first().and_then(|e| e.charter.admins.first()).filter(|_| !found_id.is_empty()) {
         facts.admin_ok.insert(found_id.clone());
         facts.admin_of.insert(found_id.clone(), admin.fingerprint());
@@ -369,6 +405,7 @@ pub fn build(chain: &Chain, acts: &BTreeMap<String, Act>, (seen, ready): (&Seen,
             }
         }
     }
+    facts.window_acts(&cands);
     let gone: BTreeSet<String> = removed.keys().cloned().collect();
     let mut limited = BTreeSet::new();
     let (mut ok, mut by) = standing(&cands, &facts, &gone, &limited);
@@ -382,7 +419,7 @@ pub fn build(chain: &Chain, acts: &BTreeMap<String, Act>, (seen, ready): (&Seen,
     }
     for c in cands.iter().filter(|c| c.id != found_id) {
         if limited.contains(&c.id) {
-            out.void.insert(c.id.clone(), "it is past the rate a delegate or a member may admit devices".into());
+            out.void.insert(c.id.clone(), "it is past the rate a delegate or a member may admit devices, or the one device a window lets in".into());
         } else if gone.contains(&c.fingerprint) {
             out.void.insert(c.id.clone(), "that certificate was removed and does not come back".into());
         } else if !ok.iter().any(|k| k.id == c.id) && !out.short.contains_key(&c.id) && !out.void.contains_key(&c.id) {

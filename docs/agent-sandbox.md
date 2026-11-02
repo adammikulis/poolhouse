@@ -156,7 +156,9 @@ protected only by what workspace-write leaves unreadable (reads are broad by def
 checkout rule that `.git` and `.codex` under a writable root are read-only. PREDICTED; the
 sibling-worktree `.git` pointer needs the primary `.git` as a writable root, which also makes
 `config` and `hooks` writable. That is a known weaker result than Claude Code's; use
-sandbox-runtime for Codex when it matters. The fragment's `[shell_environment_policy.set]` table carries the same
+sandbox-runtime for Codex when it matters. It also leaves the proof of the person's own session, `<state>/person/ui.secret`, readable: a Codex agent under this
+fragment can register as the person, and on a computer with no prompt of the system's own the typed yes it then asks for is approval by "a program running as you could
+approve it" (a computer with such a prompt asks for a password or a fingerprint, which the file does not give). The fragment's `[shell_environment_policy.set]` table carries the same
 `DEV_TEST_REUSE_DIR` and `DEV_TEST_CARGO_DIR`.
 
 ## Local-model harness: sandbox-runtime

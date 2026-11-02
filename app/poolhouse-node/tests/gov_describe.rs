@@ -39,7 +39,7 @@ fn an_admin_remove_names_the_key_and_its_person() {
 fn an_admin_remove_keeps_every_act_the_key_signed_whatever_the_caller_names_and_says_how_many() {
     let a = device();
     found(&a, person(ANN, "ann"), "secure");
-    a.node.lock().unwrap().gov_admit(&ident(30).der, "laptop", "join-code").unwrap();
+    a.node.lock().unwrap().gov_admit(&ident(30).der, "laptop", "join-code", false).unwrap();
     let held = a.node.lock().unwrap().members.gov().unwrap().acts().values().filter(|x| x.admin_keys().contains(&public(ANN).as_str())).count();
     assert!(held > 0, "the founder signed the admit of a device");
     let drafted = a.ok("pool_draft", "", &a.token, json!({"kind": "admin_remove", "body": {"key": public(ANN), "cut": []}}));

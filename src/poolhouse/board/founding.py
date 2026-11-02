@@ -280,8 +280,8 @@ def _pool_key(session: Session, ks: keystore.Keystore | None) -> computer_key.Co
 
 def pool_session(client: Client, *, person_session: bool = False) -> Session:
     """A session of the pool board of this device (the one that may change the pool), as the node knows the caller. The person's own
-    session (``person_session``) is registered with the secret the node keeps for the person, which a process an agent started cannot read, and it
-    is the only one the node lets raise the computer's prompt."""
+    session (``person_session``) is registered with the secret the node keeps for the person, which the harness's read deny keeps from a process an agent
+    started (a process outside that deny can read it: see `credentials.person_secret`), and it is the only one the node lets raise the computer's prompt."""
     native = f"python-api-{terminal_id()}"
     if person_session:
         try:

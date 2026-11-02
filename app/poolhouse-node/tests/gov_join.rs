@@ -87,7 +87,7 @@ fn a_member_whose_name_the_prompt_could_not_show_can_still_be_removed_at_it() {
     for name in &names {
         let b = device();
         let der = b.node.lock().unwrap().cert.der.clone();
-        a.node.lock().unwrap().gov_admit(&der, name, "join-code").unwrap();
+        a.node.lock().unwrap().gov_admit(&der, name, "join-code", false).unwrap();
         let drafted: Value = a.ok("pool_draft", "", &me, json!({"kind": "remove", "body": {"fingerprint": b.fp()}}));
         let card = drafted["card"].as_str().unwrap_or_else(|| panic!("{name:?} left a member nobody can remove at the prompt: {drafted}"));
         a.ok("presence_ask", "", &me, json!({"purpose": "card", "card": card, "terminal": ""}));

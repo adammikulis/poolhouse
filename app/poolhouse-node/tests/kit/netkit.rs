@@ -136,7 +136,7 @@ impl Dev {
         }
         self.found_if_unfounded();
         let name = other.node.lock().unwrap().members.get(&other.fp()).map(|d| d.name.clone()).unwrap_or_default();
-        self.node.lock().unwrap().enrol_device(&other.net.me.der, &name, "join-code").unwrap();
+        self.node.lock().unwrap().enrol_device(&other.net.me.der, &name, "join-code", false).unwrap();
     }
 
     /// Found a secure pool for the test person here when this device is in none; a device that joined a pool of the test person's and
@@ -144,7 +144,7 @@ impl Dev {
     pub fn found_if_unfounded(&self) {
         let (unfounded, cannot_admit) = {
             let n = self.node.lock().unwrap();
-            (n.members.is_unfounded(), n.can_admit().is_err())
+            (n.members.is_unfounded(), n.can_admit(false).is_err())
         };
         if unfounded {
             super::govnode::found(self, super::gov::person(super::govnode::ANN, "ann"), "secure");

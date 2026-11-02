@@ -414,7 +414,8 @@ impl Node {
     /// Register the person's own session of the native id ``session`` on ``board``: a main session of the harness and model the person's
     /// UI uses, which the node marks as the person's. A token given must be this session's own; a session of any other is no parent for it.
     /// The session is proven and not claimed: ``proof`` is the secret the node keeps for the person in the state directory's `person` folder,
-    /// which the agent sandbox may neither read nor write, so a session an agent started cannot be the person's. What the person's session may
+    /// which the harness's deny lists keep from a process an agent started (a file of the account: a process outside those lists reads it, and on a computer
+    /// with no prompt of the system's own the typed yes it can then ask for is approval by "a program running as you could approve it"). What the person's session may
     /// then do without a grant is each an answer at the computer's own prompt for that very operation (`presence`).
     pub fn register_person(&mut self, board: &str, own_token: Option<&str>, session: &str, proof: &str, peer: &Peer) -> Result<Value> {
         if !identity::proves_person(&self.dir, proof) {

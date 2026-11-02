@@ -304,7 +304,7 @@ impl Node {
         }).collect();
         for (d, by) in now.into_iter().filter(|(d, _)| before.get(&d.fingerprint) != Some(&d.status)) {
             let event = match d.status {
-                Status::Active if by.starts_with("delegate") => "delegate_admit",
+                Status::Active if by.starts_with("delegate") || by.starts_with("window") => "delegate_admit",
                 Status::Active => "member_added",
                 Status::Revoked => "member_removed",
                 Status::Left => "member_left",
@@ -331,11 +331,19 @@ impl Node {
         Ok(due)
     }
 
-    /// Whether this device can admit a device now: only in a pool, and then with a signer whose key is an admin, or as a live delegate.
-    pub fn can_admit(&self) -> Result<()> {
+    /// Whether this device may sign the admit of the one device that proves the code of a window the person's yes opened (``window``): the window is open, and
+    /// this device's key is one only this process can use (the keystore's) or the pool is one a typed yes approves, where a copy of the state directory
+    /// can approve anything already.
+    fn window_signs(&self, g: &GovPool, window: bool) -> bool {
+        window && g.state().roster.open_now.contains(&self.cert.fingerprint()) && (self.keystore_keyed() || g.state().chain.latest().charter.floors.sensitive == Level::Weak)
+    }
+
+    /// Whether this device can admit a device now: only in a pool, and then with a signer whose key is an admin, as a live delegate, or by the window the
+    /// person's yes opened (``window``).
+    pub fn can_admit(&self, window: bool) -> Result<()> {
         let g = self.members.gov().ok_or_else(no_pool)?;
         let me = self.cert.fingerprint();
-        if g.state().roster.open_now.contains(&me) || (self.keystore_keyed() && g.state().roster.delegates.contains_key(&me)) {
+        if self.window_signs(g, window) || (self.keystore_keyed() && g.state().roster.delegates.contains_key(&me)) {
             return Ok(());
         }
         match &self.signer {
@@ -374,7 +382,7 @@ impl Node {
 
     /// Admit the device with certificate ``der``: by an admin's signature, or by this device's own where it may (an open pool's
     /// member that checked the device is on its segment, `how` = `open`; a live delegate).
-    pub fn gov_admit(&mut self, der: &[u8], name: &str, how: &str) -> Result<Device> {
+    pub fn gov_admit(&mut self, der: &[u8], name: &str, how: &str, window: bool) -> Result<Device> {
         let fp = cert_fingerprint(der);
         match self.members.get(&fp) {
             Some(d) if d.status == Status::Active => return Ok(d.clone()),
@@ -382,13 +390,17 @@ impl Node {
             _ => {}
         }
         let (signer, keyed, key, me) = (self.signer.clone(), self.keystore_keyed(), self.key.clone(), self.cert.fingerprint());
+        let by_window = match self.members.gov() {
+            Some(g) => self.window_signs(g, window),
+            None => false,
+        };
         let name: String = name.chars().filter(|c| !c.is_control()).take(80).collect();
         let body = json!({"cert": hex(der), "name": name, "how": how, "via": if how == "open" { "segment" } else { "" }});
         let admit = move |n: &mut Node| n.with_gov(|g, wall| {
             let mut act = g.new_act("admit", body, wall)?;
             let (charter, roster) = (g.state().chain.latest().charter.clone(), &g.state().roster);
             let live = roster.devices.get(&me).is_some_and(|d| d.status == Status::Active);
-            let delegate = live && ((keyed && roster.delegates.contains_key(&me)) || roster.open_now.contains(&me));
+            let delegate = live && ((keyed && roster.delegates.contains_key(&me)) || by_window);
             if how == "open" {
                 if charter.policy != Policy::Open || !live {
                     return Err(declined("This pool takes a device only when a person approves it."));

@@ -143,7 +143,7 @@ fn three_nodes_converge_on_the_same_members_and_a_removal_reaches_the_third_thro
 fn a_removal_signed_on_one_node_is_the_acts_of_a_pool_and_survives_a_restart() {
     let (a, b, _) = pool_of_three();
     let victim = identity(9);
-    a.node.lock().unwrap().enrol_device(&victim.der, "ghost", "join-code").unwrap();
+    a.node.lock().unwrap().enrol_device(&victim.der, "ghost", "join-code", false).unwrap();
     a.ok("member_remove", "", &a.token, json!({"fingerprint": victim.fingerprint()}));
     sync(&b);
     let dir = stop_device(a);
@@ -157,7 +157,7 @@ fn two_admins_removing_different_devices_while_apart_end_with_both_removed_on_bo
     let (a, b, c) = pool_of_three();
     let extra = (identity(40), identity(41));
     for (d, n) in [(&extra.0, "x"), (&extra.1, "y")] {
-        a.node.lock().unwrap().enrol_device(&d.der, n, "join-code").unwrap();
+        a.node.lock().unwrap().enrol_device(&d.der, n, "join-code", false).unwrap();
     }
     sync(&b);
     sync(&c);
@@ -290,7 +290,7 @@ fn a_second_person_cosigns_on_another_device_and_the_act_takes_effect_everywhere
 fn an_act_a_person_signed_with_a_key_of_their_own_is_submitted_without_any_signer_on_the_node() {
     let (a, b, _) = pool_of_three();
     let victim = identity(50);
-    a.node.lock().unwrap().enrol_device(&victim.der, "ghost", "join-code").unwrap();
+    a.node.lock().unwrap().enrol_device(&victim.der, "ghost", "join-code", false).unwrap();
     let act = {
         let n = a.node.lock().unwrap();
         let mut act = n.members.gov().unwrap().new_act("remove", json!({"fingerprint": victim.fingerprint()}), wall_ms()).unwrap();
@@ -374,10 +374,10 @@ fn devices_that_join_an_open_pool_do_not_use_up_the_asks_the_owner_is_spared() {
     let a = device();
     found(&a, person(ANN, "ann"), "open");
     let victim = identity(60);
-    a.node.lock().unwrap().enrol_device(&victim.der, "ghost", "join-code").ok();
+    a.node.lock().unwrap().enrol_device(&victim.der, "ghost", "join-code", false).ok();
     for seed in 70..86 {
         let guest = identity(seed);
-        let _ = a.node.lock().unwrap().enrol_device(&guest.der, "guest", "open");
+        let _ = a.node.lock().unwrap().enrol_device(&guest.der, "guest", "open", false);
     }
     let removed = a.call("member_remove", "", &a.token, json!({"fingerprint": victim.fingerprint()}));
     assert_eq!(removed["ok"], true, "sixteen devices asked to join and the owner's removal was refused: {removed}");
@@ -427,7 +427,7 @@ fn a_cloned_state_directory_has_no_keystore_bound_key_and_signs_no_delegate_admi
     let copy = tempfile::tempdir().unwrap();
     copy_dir(b.dir.path(), copy.path());
     let clone = poolhouse_node::node::Node::open(copy.path()).unwrap();
-    assert!(clone.can_admit().is_err(), "the copy holds the files, not a keystore");
+    assert!(clone.can_admit(false).is_err(), "the copy holds the files, not a keystore");
 }
 
 fn copy_dir(from: &std::path::Path, to: &std::path::Path) {
@@ -514,4 +514,24 @@ fn a_member_that_leaves_by_its_own_signature_is_no_longer_a_member_anywhere() {
     }
     let refused = PeerClient::connect(&b.net.me, a.addr(), Some(&a.fp())).and_then(|mut l| l.call(&json!({"op": "boards"})));
     assert!(matches!(refused, Err(Error::Denied(_))), "a device that left asks for nothing");
+}
+
+// -- the window ---------------------------------------------------------------------------------------------------------------
+
+#[test]
+fn a_window_the_persons_yes_opened_lets_only_that_window_sign_with_the_device_key_and_only_where_the_key_is_the_keystores() {
+    let (a, b, c) = pool_of_three();
+    b.node.lock().unwrap().rig_bind_device_key();
+    for d in [&b, &c] {
+        a.ok("pool_propose", "", &a.token, json!({"kind": "window", "body": {"fingerprint": d.fp(), "secs": 600}}));
+        sync(d);
+    }
+    // a session that holds the grant for add_device opens a window of its own while the person's is open: its guests are admitted as the pool's rules say
+    // (an admin's signature, here a phone's), never on the device's signature alone
+    let by_grant = b.call("add_device", "", &b.token, json!({}));
+    assert_eq!(by_grant["ok"], false, "the person's window is not a grant's: {by_grant}");
+    assert!(b.node.lock().unwrap().can_admit(false).is_err());
+    assert!(b.node.lock().unwrap().can_admit(true).is_ok(), "the window the person's yes opened signs with the device's key, which is the keystore's");
+    // a device key held in a file is a key any copy of the state directory holds: in a pool a typed yes does not approve it signs no admit
+    assert!(c.node.lock().unwrap().can_admit(true).is_err(), "the key of a copy of the state directory admits nobody by a window");
 }

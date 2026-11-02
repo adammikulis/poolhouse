@@ -538,11 +538,19 @@ impl GovPool {
         if act.at_ms > wall_ms.saturating_add(SKEW_MS) {
             return self.refuse(&act, "that act is dated in the future");
         }
-        if let Err(e) = body::parse(&act) {
-            return self.refuse(&act, &e.to_string());
-        }
+        let parsed = match body::parse(&act) {
+            Ok(parsed) => parsed,
+            Err(e) => return self.refuse(&act, &e.to_string()),
+        };
         if self.acts.get(&id).is_some_and(|held| act.signatures.iter().all(|s| held.signatures.iter().any(|h| h.kind == s.kind && h.key == s.key))) {
             return Ingest::Known;
+        }
+        // A window is the person's yes for the minutes it lasts: an act first seen after that (and the clock skew) is a copy kept back and delivered later, and it
+        // opens nothing. What a device took in at a join is history and opens nothing either (`SETTLED`).
+        if let (false, Body::Window(window)) = (settled, &parsed) {
+            if wall_ms.saturating_sub(act.at_ms) > u64::try_from(window.lasts_ms()).unwrap_or(0).saturating_add(SKEW_MS) {
+                return self.refuse(&act, "that window was over before this device saw it");
+            }
         }
         if local && act.not_after.saturating_add(SKEW_MS) < wall_ms {
             return self.refuse(&act, "the signatures on that act ran out before it was handed in");

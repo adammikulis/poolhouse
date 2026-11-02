@@ -46,8 +46,8 @@ impl crate::node::Node {
 
     /// Let the device with this certificate in by an admit the pool's admins sign (or this device signs where the pool lets it); the
     /// pool board notes it.
-    pub fn enrol_device(&mut self, der: &[u8], name: &str, by: &str) -> Result<Device> {
-        self.gov_admit(der, name, by)
+    pub fn enrol_device(&mut self, der: &[u8], name: &str, by: &str, window: bool) -> Result<Device> {
+        self.gov_admit(der, name, by, window)
     }
 
     /// Put a device out for good by a removal the pool's admins sign; the pool board notes it.

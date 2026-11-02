@@ -98,8 +98,13 @@ def store(state: Path, board: str, name: str, token: str, parent: str = "") -> P
 
 
 def person_secret(state: Path) -> str:
-    """The secret the node keeps for the person's own session in ``<state>/person/ui.secret``, a folder the agent sandbox may neither read
-    nor write; `Denied` when this process cannot read it, which is what an agent's process is."""
+    """The secret the node keeps for the person's own session in ``<state>/person/ui.secret``; `Denied` when this process cannot read it.
+
+    What keeps it from an agent is the harness and nothing else: the file is the account's (mode 0600 in a 0700 folder keeps other accounts out, not a
+    process of the same user), Claude Code's sandbox and sandbox-runtime deny the folder to what an agent starts, and so do the file tools' rules. A
+    process outside those (an agent under the staged Codex fragment, which has no per-path read deny; a hook, an MCP server or an excluded command that
+    runs unsandboxed) reads it. Where the computer has a prompt of the system's own that is only the right to ask the person, who answers with a
+    password or a fingerprint; where it has none, the typed yes such a process can ask for is approval by "a program running as you could approve it"."""
     path = state / "person" / "ui.secret"
     try:
         return path.read_text(encoding="utf-8").strip()

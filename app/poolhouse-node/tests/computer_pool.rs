@@ -355,6 +355,58 @@ fn a_yes_for_this_devices_window_opens_no_window_for_another_member() {
 }
 
 #[test]
+fn a_window_lasts_the_length_the_person_was_shown_and_the_prompt_says_it_in_words() {
+    let (a, b) = (device(), device());
+    at_a_terminal(&a);
+    at_a_terminal(&b);
+    let me = person(&a, "the-person");
+    let seed = found(&a, &me, "home");
+    for (ttl, words, secs) in [(60, "for 1 minute.", 60), (30, "for 30 seconds.", 30), (90, "for 2 minutes.", 90), (5000, "for 10 minutes.", 600)] {
+        let drawn = a.ok("op_draft", "", &me, json!({"op": "add_device", "args": {"ttl_s": ttl}}));
+        assert!(drawn["sentence"].as_str().unwrap().contains(words), "ttl {ttl}: {drawn}");
+        assert_eq!(drawn["window"]["act"]["body"]["secs"], secs, "the act the key signs lasts what the prompt says");
+    }
+    // a key that signs a longer window than the call opens its code window for opens neither
+    let (p2, p3) = (person(&a, "p2"), person(&a, "p3"));
+    let (ticket, mut act, _) = window_card(&a, &p2);
+    act["body"]["secs"] = json!(600);
+    let bytes = serde_json::from_value::<poolhouse_node::gov::act::Act>(act.clone()).unwrap().sign_bytes();
+    signed_by(&seed, &mut act, &bytes);
+    let longer = a.call("add_device", "", &p2, json!({"ticket": ticket, "window": act}));
+    assert_eq!(longer["ok"], false, "{longer}");
+    assert!(longer["error"]["message"].as_str().unwrap().contains("the length the person was shown"), "{longer}");
+    assert!(a.status()["join_code_open"] != json!(true), "no window opened");
+    let (ticket, mut act, bytes) = window_card(&a, &p3);
+    signed_by(&seed, &mut act, &bytes);
+    assert!(a.ok("add_device", "", &p3, json!({"ticket": ticket, "window": act}))["code"].is_string(), "the window of the length shown opens");
+}
+
+#[test]
+fn a_window_admits_the_one_device_that_proves_its_code_and_the_next_with_the_same_code_is_refused() {
+    let (a, b, c) = (device(), device(), device());
+    at_a_terminal(&a);
+    at_a_terminal(&b);
+    at_a_terminal(&c);
+    let me = person(&a, "the-person");
+    let seed = found(&a, &me, "home");
+    let code = open_window(&a, &me, &seed, json!({}));
+    let wrong = person(&c, "the-wrong-guest");
+    let args = json!({"host": "127.0.0.1", "port": a.net.port, "passphrase": "not-the-code"});
+    let mut params = args.as_object().unwrap().clone();
+    params.insert("ticket".into(), json!(ticket_for(&c, &wrong, "join_pool", args)));
+    assert_eq!(c.call("join_pool", "", &wrong, Value::Object(params))["ok"], false, "a device that does not prove the code is not admitted");
+    assert!(!a.is_member(&c.fp()));
+    join(&b, &person(&b, "the-guest-person"), &a, &code);
+    assert!(a.is_member(&b.fp()));
+    let again = person(&c, "the-next-guest");
+    let args = json!({"host": "127.0.0.1", "port": a.net.port, "passphrase": code});
+    let mut params = args.as_object().unwrap().clone();
+    params.insert("ticket".into(), json!(ticket_for(&c, &again, "join_pool", args)));
+    assert_eq!(c.call("join_pool", "", &again, Value::Object(params))["ok"], false, "the window was spent by the first device");
+    assert!(!a.is_member(&c.fp()), "one yes, one device");
+}
+
+#[test]
 fn the_yes_for_one_window_or_join_covers_no_other_pool_host_port_code_or_device() {
     use poolhouse_node::window::describe;
     let same = |a: &Value, b: &Value| describe("join_pool", "", "", a.as_object().unwrap()).unwrap().bytes == describe("join_pool", "", "", b.as_object().unwrap()).unwrap().bytes;

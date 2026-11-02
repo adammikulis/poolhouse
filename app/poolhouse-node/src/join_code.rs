@@ -134,11 +134,20 @@ pub struct Window {
     pub tries: u8,
     /// The exchange in progress: the asking device's fingerprint, its chosen name, the session.
     pub session: Option<(String, String, Session)>,
+    /// Whether the person's yes opened this window (its ticket and its window act): only then may this device sign the admit of the one device that
+    /// proves the code. A window another session opened (one that holds the grant) is admitted as the pool's rules say, by an admin's signature.
+    pub by_yes: bool,
 }
 
 impl Window {
     pub fn new(code: &str, until_ms: u64) -> Window {
-        Window { code: code.into(), until_ms, tries: MOST_TRIES, session: None }
+        Window { code: code.into(), until_ms, tries: MOST_TRIES, session: None, by_yes: false }
+    }
+
+    /// The same window, opened by the person's yes.
+    pub fn by_yes(mut self) -> Window {
+        self.by_yes = true;
+        self
     }
 
     pub fn open(&self, now_ms: u64) -> bool {

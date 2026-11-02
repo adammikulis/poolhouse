@@ -196,7 +196,7 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `hello` | | | `{node, version, pid, fingerprint, device (the certificate fingerprint grants and approvals name), build, build_seq, wire}` |
 | `lineage` | | | `{lineage}`: the processes the node reads for the one asking, from it up to the shell of its terminal, each `{pid, start}`; the last is the `anchor` a person signs for |
 | `register` | board | `model, harness, session` (token = parent, or the session's own token) | `{name, token, created, parent, origin}`; a main session already registered is answered only to its lineage, and the token it gets is bound to the lineage it registers from |
-| `register_person` | board | `session`, `proof` (token = none, or the person's own session's token) | as `register`, for the person's own main session (harness `poolhouse-ui`, model `person`), which the node marks `person` when `proof` is the secret it keeps for the person in `<state>/person/ui.secret` (a folder the agent sandbox may neither read nor write); a request without it is refused; `register` and `whoami` refuse the harness `poolhouse-ui` |
+| `register_person` | board | `session`, `proof` (token = none, or the person's own session's token) | as `register`, for the person's own main session (harness `poolhouse-ui`, model `person`), which the node marks `person` when `proof` is the secret it keeps for the person in `<state>/person/ui.secret` (a file of the account: Claude Code's sandbox and sandbox-runtime deny the folder to a process an agent started, a process outside those denies reads it, and on a computer with no prompt of the system's own the typed yes it can then ask for is approval by "a program running as you could approve it"); a request without it is refused; `register` and `whoami` refuse the harness `poolhouse-ui` |
 | `rebind` | board | `harness, session, anchor`, and in no pool `at_ms, nonce, by, sig` (a person key's signature), in a pool `approval` (the id of the request) | `{name, moved, tokens_ended}`; in a pool the request with its `id` and `code`, then `{state, moved}` until the phone answers |
 | `whoami` | board, token | `model, harness` (claim what you run on) | `{name, board, target, identity}` |
 | `session_lookup` | board | `harness, session` | `{name}` (denied when none is registered) |
@@ -489,9 +489,13 @@ the key is entered as the charter's own (`keystore-prompt` through the operating
 keystore) only when `pool_found` makes the pool.
 Opening a join window (`add_device`) and joining a pool (`join_pool`) by the person's session are cards too (`op_draft`, which needs the node's network to be on): the call carries the ticket, and the node recomputes the bytes from the call it
 received and spends the ticket on them, so one yes opens one window or makes one join; a session with a grant needs none. The yes for a window is also what lets this computer's key sign a **`window` act**
-(`add_device` takes it as `window`; `op_draft` returns its bytes): a `Sensitive` act with no hold that lets this device admit what proves the code for ten awake minutes, signed under the same ticket, so a pool
-approved by a typed yes, or a Mac whose thirty days as a delegate have lapsed, still adds a device with the person's yes alone. A joiner receives the window acts with the pool; a window names this device or is
-refused. `ph.pool.renew()` makes a `delegate` act (held seven days) that gives this device thirty days of admitting without asking again. The computer's key (`src/poolhouse/board/computer_key.py`)
+(`add_device` takes it as `window`; `op_draft` returns its bytes): a `Sensitive` act with no hold that lets this device admit **one** new device that proves the code, for the length the person was shown
+(`ttl_s`, from a second to ten minutes, in the act as `secs` and in the prompt in words), signed under the same ticket, so a pool
+approved by a typed yes, or a Mac whose thirty days as a delegate have lapsed, still adds a device with the person's yes alone. The first admit a window lets in spends it (a second yes inside the first's
+length opens the next window); the device signs that admit with its own key only for the code window the ticket opened, never for a session that merely holds the grant, and only where the key is the
+keystore's or the pool is one a typed yes approves. A pool takes a window act in only while it is no older than its length plus the five minutes of clock skew when it first sees it, so a copy kept back and
+delivered later opens nothing (a member that was offline for longer than that does not honour the admit: the device is a member for the devices that saw the window, and the person admits it again for the others).
+A joiner receives the window acts with the pool; a window names this device or is refused. `ph.pool.renew()` makes a `delegate` act (held seven days) that gives this device thirty days of admitting without asking again. The computer's key (`src/poolhouse/board/computer_key.py`)
 unseals only after the node accepts the payload. There is no cargo feature, argument or environment variable that answers for the person, in any
 binary: the crate's own tests put a stand-in on a library field that no binary sets, and the rig's person types `yes` at a pseudo-terminal
 (`tests/pool_check/wire.py`, `answer_presence`). On Windows the prompt is Windows Hello (a PIN, a fingerprint or a face) through the user consent verifier, and the system's credential dialog checked against the account's
@@ -1170,7 +1174,7 @@ wrap it, and `poolhouse-workspace pool found` is the agent's command; docs/pools
 
 The UI daemon acts for the person through one session of its own per board, `poolhouse.board.person.session(root)`: a
 parentless session registered under the harness `poolhouse-ui` and the model `person` with the secret the node keeps for the person (`<state>/person/ui.secret`; the registration
-without it is refused, so a process an agent started is never the person's), which does nothing privileged because of what it is (each thing it does without a grant
+without it is refused, so a process that cannot read the file is never the person's: the harness's read deny keeps it from a process an agent started, and a process outside that deny can read it), which does nothing privileged because of what it is (each thing it does without a grant
 is one answer at the computer's prompt for exactly that thing), with one native id for each terminal or
 program that asks (`person.native_id()`), since a token spends a grant only from the lineage that registered it ("Identity"). It holds no grant of its own: when the
 node refuses a call of the page for want of one, the person's key (kept beside the node) is asked to sign a grant for that one use

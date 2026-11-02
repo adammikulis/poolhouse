@@ -10,6 +10,7 @@ use crate::row::{valid_name, valid_origin};
 
 use super::act::{valid_id, Act};
 use super::charter::{Charter, Mode, Unit};
+use super::WINDOW_AWAKE_MS;
 use super::keys::{valid_public, AdminKey, Level, Role};
 
 /// How a device came in: `found` (the first device of a pool), `join-code`, `open`, `tap`, `delegate`, `handoff`.
@@ -36,6 +37,35 @@ pub struct Admit {
 #[serde(deny_unknown_fields)]
 pub struct Device {
     pub fingerprint: String,
+}
+
+/// A window the person's yes opened: the device that may admit one new device that proves the window's code, and for how many seconds (the length
+/// the person was shown; the most there is, ten minutes, when the act does not say).
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct Open {
+    pub fingerprint: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secs: Option<u64>,
+}
+
+impl Open {
+    /// How long the window lasts, in milliseconds: the length the act says, never more than ten minutes.
+    pub fn lasts_ms(&self) -> i64 {
+        self.secs.map_or(WINDOW_AWAKE_MS, |s| i64::try_from(s.saturating_mul(1000)).unwrap_or(WINDOW_AWAKE_MS).min(WINDOW_AWAKE_MS))
+    }
+
+    /// The length in words a person reads on a prompt or a card: `30 seconds`, `1 minute`, `10 minutes`; a length that is not a whole minute is rounded up
+    /// to the next, so what is shown is never less than what is allowed.
+    pub fn words(&self) -> String {
+        window_words(u64::try_from(self.lasts_ms() / 1000).unwrap_or(600))
+    }
+}
+
+/// ``secs`` seconds in words for a person: whole seconds under a minute, else minutes rounded up.
+pub fn window_words(secs: u64) -> String {
+    let (n, unit) = if secs < 60 { (secs.max(1), "second") } else { (secs.div_ceil(60), "minute") };
+    format!("{n} {unit}{}", if n == 1 { "" } else { "s" })
 }
 
 /// How much of one log of a board stands: the board, the origin that names the log, its first ``seq`` entries and the hash of the last
@@ -131,8 +161,8 @@ pub enum Body {
     RecoveryReplace(Add),
     Delegate(Device),
     DelegateEnd(Device),
-    /// The person's yes for one join window: the device may admit what proves the window's code, for ten minutes.
-    Window(Device),
+    /// The person's yes for one join window: the device may admit one new device that proves the window's code, for the length the person was shown.
+    Window(Open),
 }
 
 fn bad<T>(why: &str) -> Result<T> {
@@ -194,15 +224,21 @@ pub fn parse(act: &Act) -> Result<Body> {
             check_removal(&r)?;
             Body::Remove(r)
         }
-        "leave" | "delegate" | "delegate_end" | "window" => {
+        "leave" | "delegate" | "delegate_end" => {
             let d: Device = read(act)?;
             check_device(&d)?;
             match act.kind.as_str() {
                 "leave" => Body::Leave(d),
                 "delegate" => Body::Delegate(d),
-                "window" => Body::Window(d),
                 _ => Body::DelegateEnd(d),
             }
+        }
+        "window" => {
+            let w: Open = read(act)?;
+            if !valid_fingerprint(&w.fingerprint) || w.secs.is_some_and(|s| s == 0 || i64::try_from(s.saturating_mul(1000)).map_or(true, |ms| ms > WINDOW_AWAKE_MS)) {
+                return bad("a window names a device by its fingerprint, 64 hex digits, and lasts from one second to ten minutes");
+            }
+            Body::Window(w)
         }
         "admin_add" => {
             let a: Add = read(act)?;
