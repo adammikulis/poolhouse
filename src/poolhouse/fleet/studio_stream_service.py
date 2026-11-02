@@ -14,7 +14,6 @@ from poolhouse.studio.stream_sources import WatchedSource
 from poolhouse.studio.streams import Streams
 
 from . import studio_epoch, studio_pool, tls
-from .service_pool import Pool
 from .studio_authority import StudioAuthority
 from .studio_delivery_service import create as create_delivery
 from .studio_watch_registry import create_native_picks
@@ -39,12 +38,10 @@ def create(ui, engine, saved, scope):
         if ssl.PEM_cert_to_DER_cert(identity.certfile.read_text()) != identity.der:
             raise PermissionError('The current device certificate changed.')
         tls.server_context(identity)  # Load and match the existing private key; never create an identity.
-        group = studio_pool.current()
         try:
-            Pool().own(identity)
-            active = True
+            group, active = studio_pool.scope_of(ui.pool.own(identity).pool), True
         except PermissionError:
-            active = False
+            group, active = studio_pool.current(ui.pool), False
         return {'pool': group, 'device': identity.fingerprint, 'scope': scope(ui), 'active': active}
 
     authority = StudioAuthority(authority_root(ui), current=current, owner=origin,

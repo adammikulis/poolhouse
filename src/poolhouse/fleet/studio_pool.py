@@ -20,11 +20,11 @@ def scope_of(pool: str) -> str:
     return hashlib.sha256(DOMAIN + pool.encode("ascii")).hexdigest()
 
 
-def current() -> str:
-    """The Studio identity of the pool this device's node is in now."""
-    return scope_of(Pool().pool_id())
+def current(pool: Pool) -> str:
+    """The Studio identity of the pool the node of ``pool`` is in now."""
+    return scope_of(pool.pool_id())
 
 
-def of_service(fingerprint: str) -> str:
-    """The Studio identity of the pool whose node authorizes the compute service with ``fingerprint``."""
-    return scope_of(Pool().authorize(fingerprint).pool)
+def of_service(pool: Pool, fingerprint: str) -> str:
+    """The Studio identity of the pool whose node, the one of ``pool``, authorizes the compute service with ``fingerprint``."""
+    return scope_of(pool.authorize(fingerprint).pool)

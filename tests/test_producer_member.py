@@ -10,6 +10,7 @@ from service_kit import node_binary, three_nodes  # noqa: F401  (fixtures the da
 from test_studio_device_http import devices  # noqa: F401  (a fixture)
 
 from poolhouse.fleet import producer_member, studio_pool, tls
+from poolhouse.fleet.service_pool import Pool
 from poolhouse.fleet.studio_transport import MAX_REPLY
 from poolhouse.graph.guard import MAX_BODY
 
@@ -29,7 +30,7 @@ def provider(opened_devices):
 def test_real_sealed_tls_uses_actual_current_caller_not_record_fields(request):
     client, _service, calls = provider(request.getfixturevalue('devices'))
     assert client.request('producer-offers', {}) == {'accepted': True, 'bytes': 0}
-    assert calls == [({'certificate': tls.local().beacon, 'pool': studio_pool.current()}, 'producer-offers', {})]
+    assert calls == [({'certificate': tls.local().beacon, 'pool': studio_pool.current(Pool())}, 'producer-offers', {})]
     with pytest.raises(ValueError):
         client.request('producer-offers', {'certificate': 'other-device', 'owner': True})
     assert len(calls) == 1

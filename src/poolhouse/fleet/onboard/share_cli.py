@@ -26,7 +26,7 @@ from poolhouse.log import say, warn
 from poolhouse.sentinel.human import HumanRequired, mint
 from poolhouse.units import parse_duration
 
-from ..service_pool import Pool
+from ..service_pool import Pool, default as default_pool
 from ..tls import TlsUnavailable, identity
 from . import modelstore
 from .manifest import SHARING_LEVELS, Entry, Signer, verify
@@ -131,7 +131,7 @@ def service_gate(pool: Pool):
 
 def cmd_share(args: argparse.Namespace) -> int:
     directory = Path(args.state) if args.state else home.state("onboard")
-    share_dir, pool = Path(args.dir) if args.dir else directory, Pool()
+    share_dir, pool = Path(args.dir) if args.dir else directory, default_pool()
     bad = [v for v in _joins(args.sharing).values() if v not in SHARING_LEVELS]
     if bad or not (args.models or (share_dir.is_dir() and args.dir)):
         _emit(args, {"error": "needs --dir (or --models) and sharing levels of "

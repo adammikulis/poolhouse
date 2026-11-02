@@ -142,6 +142,14 @@ class Pool:
         return request_secret(own, local, remote)
 
 
+def default() -> Pool:
+    """The pool of this machine's node: the one place that builds a `Pool` nobody handed in.
+
+    A daemon, a `UI` and a `Member` are given a `Pool` and hold it; a process with one node passes the default, and a test that
+    runs two daemons in one process gives each its own node's."""
+    return Pool()
+
+
 def request_secret(identity: tls.Identity, local: Binding, remote: Binding) -> str:
     """Derive a domain-bound P-256 service request secret."""
     from cryptography import x509

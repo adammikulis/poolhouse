@@ -15,6 +15,7 @@ import pytest
 from service_kit import node_binary, one_node  # noqa: F401  (fixtures)
 
 from poolhouse.fleet import studio_device_routes as routes
+from poolhouse.fleet.service_pool import Pool
 from poolhouse.fleet.studio_decision_issuer import DecisionIssuer
 from poolhouse.serve import decision_launch as launch
 from poolhouse.serve.decision_residents import DecisionModel, fingerprint
@@ -288,7 +289,7 @@ def test_fixed_member_route_uses_actual_accepted_socket_and_never_mints(current,
         def authorize(self, payload, remote, local):
             received.append((payload, remote, local))
             return {'authorized': False}
-    ui = SimpleNamespace(studio_decision_issuer=Issuer())
+    ui = SimpleNamespace(studio_decision_issuer=Issuer(), pool=Pool(one_node.a.state))
     handler = SimpleNamespace(_sealing=lambda: (b'key', SimpleNamespace(), True), _member=one_node.ida.fingerprint, command='POST',
                               client_address=('127.0.0.1', 12121), connection=SimpleNamespace(getsockname=lambda: ('127.0.0.1', 7443)),
                               _send=lambda status, value: received.append((status, value)))
@@ -367,7 +368,6 @@ def resident_listener(current, tmp_path, one_node, monkeypatch):  # noqa: F811
     from poolhouse.fleet.framing import LimitedServer
     from poolhouse.fleet.jobs import JobRunner
     from poolhouse.fleet.runtime_paths import default_root
-    from poolhouse.fleet.service_pool import Pool
 
     # The broker child finds the node, the device identity and the owner credential from this home, as a daemon's child does.
     monkeypatch.setenv('POOLHOUSE_HOME', str(Path(one_node.a.root).resolve()))
@@ -382,7 +382,7 @@ def resident_listener(current, tmp_path, one_node, monkeypatch):  # noqa: F811
     runner = JobRunner(tmp_path / 'runner')
     current.engine.runner = runner
     current.issuer.worker_proof = runner.verify_studio_worker
-    ui = SimpleNamespace(studio_decision_issuer=current.issuer)
+    ui = SimpleNamespace(studio_decision_issuer=current.issuer, pool=pool)
     daemon = Daemon(runner, runner.files_root, token, name='resident-test', members=pool, ui=ui,
                     service_identity=lambda: identity)
     replies = []
@@ -397,7 +397,7 @@ def resident_listener(current, tmp_path, one_node, monkeypatch):  # noqa: F811
     thread.start()
     one_node.bind(one_node.a, identity, f'https://127.0.0.1:{server.server_port}')
     current.owned.issuer.update(endpoint=f'https://127.0.0.1:{server.server_port}', certificate=identity.beacon,
-                                machine='resident-test', pool=studio_pool.current())
+                                machine='resident-test', pool=studio_pool.current(pool))
     try:
         yield runner, server, replies
     finally:

@@ -23,7 +23,7 @@ _INITIALIZE = threading.RLock()
 
 
 def scope(ui) -> str:
-    return digest({"pool": studio_pool.current(), "device": machine_id(), "board": str(Path(ui.root).resolve())})
+    return digest({"pool": studio_pool.current(ui.pool), "device": machine_id(), "board": str(Path(ui.root).resolve())})
 
 
 def initialize(ui):

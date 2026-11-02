@@ -55,7 +55,7 @@ from .models import Downloads, Models
 from .pausing import ADOPT_S, adopt_pause, member_pause
 from .projects import ProjectRegistry, lan_host, local_candidates
 from .runtime_paths import configure as configure_runtime_paths, default_root
-from .service_pool import Pool
+from .service_pool import default as default_pool
 from .serving import Hosting, Serving
 from .settings import Settings
 from .studio_service import initialize as initialize_studio
@@ -207,6 +207,8 @@ class DaemonRuntime:
         self.fetcher = Fetcher(self.files_root, slots=self.fetch_slots)
         self.interface = None
         self.setup_token = ""
+        self.members = default_pool()
+        """This daemon's node pool: held once and handed to the page, the request handler and the member TLS context."""
         if self.web:
             if self.setup_from_lan:
                 self.setup_token = secrets.token_urlsafe(9)
@@ -214,6 +216,7 @@ class DaemonRuntime:
                 name=self.name,
                 member_port=self.port,
                 setup_token=self.setup_token,
+                pool=self.members,
             )
             self.interface.launch = LaunchSecret(self.root, self.port)
         self.base_report = self.device_report or partial(default_report, environment=self.environment)
@@ -223,7 +226,6 @@ class DaemonRuntime:
 
     def initialize_listener(self) -> None:
         self.projects = ProjectRegistry(self.root, self.bench_host.machine, local_candidates())
-        self.members = Pool()
         self.daemon = Daemon(
                 self.runner,
                 self.files_root,

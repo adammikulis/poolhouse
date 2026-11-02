@@ -69,7 +69,7 @@ from .jobs import DaemonError, JobRunner
 from .measuring import BenchHost, Job as BenchJob, Refused
 from .models import Models
 from .service_guard import ServiceGuard
-from .service_pool import Pool
+from .service_pool import Pool, default as default_pool
 from .serving import Hosting, NoRoom, ServeSettings, Serving
 from .ui import routes as ui_routes
 from .weights import ModelError
@@ -140,7 +140,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
     bench, hosting, decide = daemon.bench, daemon.hosting, daemon.decide
     ui_from_lan = daemon.ui_from_lan
     command = daemon.command
-    roster = daemon.members or Pool()
+    roster = daemon.members or default_pool()
 
     def secrets_now() -> set[str]:
         """Every secret this machine answers to, read at request time."""

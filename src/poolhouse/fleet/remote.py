@@ -138,8 +138,9 @@ def _member_error(where: str, exc: ServerError) -> MemberError:
 
 
 class Member:
-    def __init__(self, base_url: str, token: str, *, timeout: float = 60.0,
-                 beacon: Beacon | None = None, identity: tls.Identity | None = None) -> None:
+    def __init__(self, base_url: str, token: str, *, timeout: float = 60.0,  # noqa: PLR0913 - the facts of one member
+                 beacon: Beacon | None = None, identity: tls.Identity | None = None,
+                 pool: service_pool.Pool | None = None) -> None:
         if not secure_scheme(base_url):
             raise ValueError(f"a member is reached over https, or http on this machine only: {base_url}")
         self.base_url = base_url.rstrip("/")
@@ -147,11 +148,13 @@ class Member:
         self.timeout = timeout
         self.beacon = beacon
         self._identity = identity
+        self._pool = pool or service_pool.default()
+        """The node pool this member's service is authorized by: the one of the daemon that made it, never a global."""
         self._binding: service_pool.Binding | None = None
         self._owner_service = False
         if urllib.parse.urlsplit(self.base_url).scheme == "https":
-            rows = service_pool.Pool().services()
-            own = service_pool.Pool().own(self._identity)
+            rows = self._pool.services()
+            own = self._pool.own(self._identity)
             address = urllib.parse.urlsplit(self.base_url)
             own_address = urllib.parse.urlsplit(own.endpoint)
             try:
@@ -167,7 +170,7 @@ class Member:
                 raise PermissionError("This endpoint is not a current node-authorized compute service.")
             self._binding = matching[0]
             if not self._owner_service:
-                self.token = service_pool.Pool().secret(self._binding.fingerprint, self._identity)
+                self.token = self._pool.secret(self._binding.fingerprint, self._identity)
 
     @property
     def name(self) -> str:
@@ -184,24 +187,27 @@ class Member:
         return self._binding.pool if self._binding is not None else ""
 
     @classmethod
-    def from_binding(cls, row: service_pool.Binding, *, timeout: float = 60.0) -> Member:
+    def from_binding(cls, row: service_pool.Binding, *, timeout: float = 60.0, pool: service_pool.Pool | None = None,
+                     identity: tls.Identity | None = None) -> Member:
         """The member for one node-authorized service, with no health report asked for."""
         address = urllib.parse.urlsplit(row.endpoint)
         beacon = Beacon(name=row.name, host=address.hostname or "", port=address.port or 443,
                         machine=row.device, cert=row.certificate, instance=row.generation)
-        return cls(row.endpoint, "", timeout=timeout, beacon=beacon)
+        return cls(row.endpoint, "", timeout=timeout, beacon=beacon, pool=pool, identity=identity)
 
     # -- discovery -------------------------------------------------------
     @classmethod
-    def discover(cls, *, timeout: float = 60.0) -> list[Member]:
-        """Every HTTPS compute service currently authorized by this device's node."""
-        rows = service_pool.Pool().services()
-        own = tls.local().fingerprint
+    def discover(cls, *, timeout: float = 60.0, pool: service_pool.Pool | None = None,
+                 identity: tls.Identity | None = None) -> list[Member]:
+        """Every HTTPS compute service other than ``identity``'s currently authorized by the node of ``pool`` (this device's by default)."""
+        pool = pool or service_pool.default()
+        rows = pool.services()
+        own = (identity or tls.local()).fingerprint
         out = []
         for row in rows:
             if row.fingerprint == own:
                 continue
-            member = cls.from_binding(row, timeout=timeout)
+            member = cls.from_binding(row, timeout=timeout, pool=pool, identity=identity)
             beacon = member.beacon
             report = member.health()
             beacon.device = report
@@ -242,14 +248,14 @@ class Member:
         """Refuse a replaced, removed or unavailable node service binding."""
         if self._binding is None:
             return
-        current = service_pool.Pool().authorize(self._binding.fingerprint)
+        current = self._pool.authorize(self._binding.fingerprint)
         if current != self._binding:
             raise PermissionError("The selected compute service binding changed.")
         if self._owner_service:
-            if current != service_pool.Pool().own(self._identity):
+            if current != self._pool.own(self._identity):
                 raise PermissionError("The local compute service binding changed.")
             return
-        secret = service_pool.Pool().secret(current.fingerprint, self._identity)
+        secret = self._pool.secret(current.fingerprint, self._identity)
         if not hmac.compare_digest(secret, self.token):
             raise PermissionError("The local compute service binding changed.")
 

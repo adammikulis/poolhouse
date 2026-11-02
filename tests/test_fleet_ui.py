@@ -73,7 +73,8 @@ def _free_port() -> int:
 class Serving:
     """A daemon with local and simulated-remote loopback listeners."""
 
-    def __init__(self, tmp_path, name="studio", setup_token="", schedule=None, secure=True):
+    def __init__(self, tmp_path, name="studio", setup_token="", schedule=None, secure=True,  # noqa: PLR0913 - one daemon's options
+                 pool=None, service_identity=None):
         self.schedule = schedule
         self.secure = secure
         root = tmp_path / "traind"
@@ -81,7 +82,7 @@ class Serving:
         self.files.mkdir(parents=True)
         token = load_or_create_token(root)
         self.runner = JobRunner(root, self.files)
-        self.ui = UI(name=name, setup_token=setup_token, gated=False)
+        self.ui = UI(name=name, setup_token=setup_token, gated=False, pool=pool)
         self.ui.runner = self.runner
         self.ui.pool_actions = pool_actions  # what `poolhouse-traind` hands the daemon
         self.ui.settings = self.initial_settings()
@@ -94,7 +95,7 @@ class Serving:
         context = tls.server_context(identity) if identity else None
         self.httpd = LimitedServer(
             ("127.0.0.1", self.port), tls=context,
-            handler=make_handler(Daemon(self.runner, self.files, token, name, ui=self.ui,
+            handler=make_handler(Daemon(self.runner, self.files, token, name, ui=self.ui, members=pool, service_identity=service_identity,
                          schedule=schedule, ui_from_lan=True,
                          schedule_path=(root / "availability.json") if schedule else None)))
         self.lan_httpd = None

@@ -128,7 +128,7 @@ def devices(three_nodes, tmp_path, monkeypatch, request):  # noqa: F811
             node, identity = three_nodes.devices[index], three_nodes.ids[index]
             pool = Pool(node.state)
             runner = JobRunner(root, slots=2)
-            ui = SimpleNamespace(root=root, runner=runner)
+            ui = SimpleNamespace(root=root, runner=runner, pool=pool)
             service = studio_device_routes.service(ui)
             service.adapters = NativeWork()
             daemon = Daemon(runner, runner.files_root, macauth.derive(name.encode()), name=name, members=pool, ui=ui,
