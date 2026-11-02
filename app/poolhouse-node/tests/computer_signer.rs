@@ -240,6 +240,28 @@ fn a_charter_nobody_answered_for_founds_nothing_even_when_it_is_signed_and_the_k
 }
 
 #[test]
+fn a_yes_for_one_charter_founds_no_other_charter_of_the_same_session_and_key() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut node = node(dir.path());
+    let prompt = at_the_prompt(&mut node, "os");
+    let person = person_session(&mut node);
+    let drafted = ok(draft(&mut node, &person, "home"));
+    let said = answered(&mut node, &prompt, &person, "pool_key", drafted["card"].as_str().unwrap(), true);
+    let seed = said["seed"].as_str().unwrap();
+    // The same key, enrolled by that very yes, signs the acceptance of a charter with another name: it is another pool, which nobody said yes to.
+    let mut other = poolhouse_node::gov::charter::Charter::read(&drafted["charter"]).unwrap();
+    other.name = "another".into();
+    let anchor = other.anchor();
+    let key = SigningKey::from_bytes(&unhex(seed).unwrap().try_into().unwrap());
+    other.admins[0].acceptance = hex(&key.sign(&other.admins[0].acceptance_message(&anchor, "")).to_bytes());
+    let refused = req(&mut node, "pool_found", "", &person, json!({"charter": other.body()}));
+    assert_eq!(code(&refused), "denied", "a yes is for the charter it was given for and no other: {refused}");
+    assert_eq!(ok(req(&mut node, "pool_status", "", &person, json!({})))["governance"]["mode"], "unfounded");
+    let mine = req(&mut node, "pool_found", "", &person, json!({"charter": accepted(&drafted, seed)}));
+    assert_eq!(mine["ok"], true, "and the charter it was given for is founded: {mine}");
+}
+
+#[test]
 fn a_refused_prompt_founds_nothing_and_is_quiet_for_ten_minutes() {
     let dir = tempfile::tempdir().unwrap();
     let mut node = node(dir.path());

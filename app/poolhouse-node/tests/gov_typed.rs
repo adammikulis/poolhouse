@@ -100,7 +100,7 @@ fn a_name_the_prompt_could_not_show_whole_is_no_pool_name() {
         c.name = name.into();
         assert!(c.check_founding().is_err(), "{name:?} founds no pool");
     }
-    for name in ["home", "My home pool", "lab-2.net", &"x".repeat(MOST_NAME)] {
+    for name in ["home", "My lab network", "lab-2.net", &"x".repeat(MOST_NAME)] {
         assert!(shown_whole(name), "{name:?}");
     }
 }
