@@ -233,7 +233,7 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `pool_cosign` | token with the grant `admin_manage` | `act` | adds this device's signer's signatures to an act the pool holds |
 | `pool_submit` | | `act` | takes an act a person's key signed elsewhere (the typed-yes path, a phone, another device); the signatures are the authority, so no grant |
 | `pool_draft` | | `kind`, `body` | `{act, sign_bytes, summary}`: the act this pool would take next, unsigned, the bytes a key signs and what a person is shown, for a key that signs outside the node |
-| `pool_draft_found` | | `title`, `policy`, `project`, `keys` (each `{key, person, label}`; `key` is an Ed25519 key of 64 hex digits or a phone's P-256 point of 130, and the charter says which as `alg`; a key that names its level is refused) | `{charter, anchor, accept, summary}`: the charter with this device as its `first` device and blank acceptances, each key at the `assurance` level this device recorded for it when the key was enrolled (`phone` when a phone enrolled it, `weak` for a typed yes) and the `floors` that follow from the levels present, and for each key its `alg` and the bytes it signs to accept it; the rig or person signs them (a P-256 key in strict DER with `s` in the lower half of the group) and hands the charter back to `pool_found` |
+| `pool_draft_found` | | `title`, `policy`, `project`, `keys` (each `{key, person, label}`; `key` is an Ed25519 key of 64 hex digits or a phone's P-256 point of 130, and the charter says which as `alg`; a key that names its level is refused) | `{charter, anchor, accept, summary, counting, card, card_why}`: the charter with this device as its `first` device (a delegate for thirty days) and blank acceptances, each key with the `claim` this device recorded for it when the key was enrolled (`phone-keystore` when a phone enrolled it, `keystore-prompt` through the computer's prompt, `keystore-typed` for a typed yes; for a key not enrolled yet, the claim the node's way of asking would record), `counting` (whether any key counts), and for each key its `alg` and the bytes it signs to accept it; `card` names the draft the person may answer at the computer's prompt (null, with `card_why`, when the one sentence it shows would be cut or changed); the rig or person signs them (a P-256 key in strict DER with `s` in the lower half of the group) and hands the charter back to `pool_found` |
 | `pool_found` | token with the grant `pool_create` | `act` (a founding act whose keys accepted it), or `charter` (the drafted one with the acceptances filled; the node makes the act) | `{pool, name, policy, epoch}`: founds the pool of an act signed elsewhere; the charter must name this device as its `first`, which is then the pool's first member with no admit |
 | `add_device` | token with the grant `add_device` | `passphrase` (else a six-digit code is made), `ttl_s`, `presigned` (true: open the window with no signer on this node, for a device an admin already signed an admit for and submitted here; the window admits no other) | `{code, expires_in_s, port, fingerprint}` |
 | `join_pool` | token with the grant `join_pool` | `host, port, passphrase`; without a passphrase `fingerprint` (join under `open`) | `{pool, peer}` |
@@ -463,17 +463,23 @@ to allow the session to add the first key, and the node asks the person itself: 
 on macOS and Linux, raised only by the installed software on the real home: the launcher passes `--presence os` only when
 `poolhouse.real_machine.allowed()`, and the node itself asks only for the account's own node directory (`~/.poolhouse/node`, that directory and
 no other under it, never as the administrator account). **On the real home the operating system's prompt is the only presence**: a computer
-with no such prompt (Windows, a Linux without `pkexec`) refuses and says so plainly. The prompt shows the words of the key being added, the yes
+with no such prompt (a Linux without `pkexec`) refuses and says so plainly. The prompt shows the words of the key being added, the yes
 is for that key only (`presence_ask` takes its `public`; another key presented with the secret is refused), and the prompt ends when two minutes
 are up whether or not anything polls. For a node on any other state directory (a server, a container, the pool check's rig, a test) started
 with `--presence terminal`, the node writes the question on the terminal device the asker names and reads the typed `yes` itself; it refuses that
 mode on the real home, because the program that asks could open a terminal of its own and answer. A node started with no `--presence`
 cannot ask and refuses the first key and the first phone. On a yes the node makes the random secret in its memory (never a file), hands it
 once to the session that asked (`presence_status`), accepts it once and for ten minutes, and spends it on any guess, so a wrong secret ends the
-attempt; a node that holds a key never asks. There is no cargo feature, argument or environment variable that answers for the person, in any
+attempt; a node that holds a key never asks. **A change the node drafted is answered at the same prompt** (`presence_ask` with `purpose: pool_key` for a key not yet enrolled, `card` for one that is, and the
+`card` that `pool_draft_found` or `pool_draft` returned; only the person's own session may ask, three prompts in ten minutes and twenty a day at most). The sentence the prompt
+shows is the node's, written from the pool's name, the device it names and the key's words; a sentence the prompt would cut or change (over 160 characters, or with a
+character outside letters, digits, spaces and `.,-/()`) gets no card. A yes makes a **ticket**: a secret handed once to the session that asked, kept by the node only as a hash,
+good for two minutes and for the SHA-256 of each payload the card names, each once (`ticket_spend`); a `pool_key` yes also enrols the key (`keystore-prompt` through the operating
+system's prompt, `keystore-typed` through a terminal's) and, for a founding card, is the grant `pool_found` needs. The computer's key (`src/poolhouse/board/computer_key.py`)
+unseals only after the node accepts the payload. There is no cargo feature, argument or environment variable that answers for the person, in any
 binary: the crate's own tests put a stand-in on a library field that no binary sets, and the rig's person types `yes` at a pseudo-terminal
-(`tests/pool_check/wire.py`, `answer_presence`). Windows has no operating-system prompt the node can raise, so **the first key and the first phone
-on the account's own node directory are refused there** until a presence step is built for it. Windows has the terminal presence for any other state
+(`tests/pool_check/wire.py`, `answer_presence`). On Windows the prompt is Windows Hello (a PIN, a fingerprint or a face) through the user consent verifier, and the system's credential dialog checked against the account's
+password where Hello is not set up (Windows PowerShell, `windows_dialog` in `presence/mod.rs`; built, not yet run on a Windows device). Windows has the terminal presence for any other state
 directory (a server, a test, the pool check's rig): the asker names the console by the id of a process that runs in it (`terminal` is a decimal
 process id, which `poolhouse.board.presence.terminal_name` gives for the command window it runs in), the node attaches to that console (a node
 started by its supervisor has none of its own), writes the question there, reads the typed `yes` itself with no echo or line editing but its own,
@@ -501,8 +507,8 @@ without a password (or `pkexec` set up to allow the action to anyone) lets the p
 the person who runs such a rule has already given that power to every program of the account.
 
 **Accepted residual: `persons.json` is a plain file.** The OS user can edit it with the node stopped (documented at `src/grants/person.rs`), so
-a program that can stop the node and write its state directory can plant a key, including one recorded at `assurance: phone`, which a pool's charter
-then lists at that level; the operating-system sandbox of agents (slice S0 of
+a program that can stop the node and write its state directory can plant a key, including one recorded with a computer's or a phone's claim, which a
+pool's charter then lists with that claim (it counts as a computer, and the pool holds every governance act seven days); the operating-system sandbox of agents (slice S0 of
 `docs/compromised-agents.md`) is what closes it, not the node.
 
 **A phone is a person key too.** An ECDSA P-256 key made in a phone's Keystore is enrolled in `persons.json` with `alg: p256` and `phone: true` (its fingerprint is the SHA-256 of its 65-byte
@@ -876,19 +882,21 @@ pool, through admin keys; a device never does, and the one thing a member device
 - **Admin keys** (`gov/keys.rs`): an Ed25519 public key (64 hex digits, signatures of 64 bytes) or a phone's ECDSA P-256 public
   point (130 hex digits, signatures in strict DER with no padding and `s` in the lower half of the group, the one form a pool
   takes), each listed with its `alg` and its own acceptance (its signature over the pool, the charter it follows, its algorithm,
-  role, assurance level and person), so a key is listed only by its holder and an acceptance holds for the one charter it names. An
+  role, claim and person), so a key is listed only by its holder and an acceptance holds for the one charter it names. An
   algorithm this build does not know, a key whose length does not match its `alg` and a signature of the wrong form for its key are
-  refused; the verifier picks the algorithm from the key. Each key has an **assurance level**, lowest first: `weak` (a typed yes), `computer`
-  (the computer's own prompt), `native` (a protected helper), `phone` (a phone's hardware key). The node derives a level from how
-  the key was enrolled on this device and a caller never names one; a charter lists a key at no level above what the founding device
-  recorded. The charter's **floors** name the lowest level that counts for each class of act (`routine`: cancel, end a delegate;
-  `sensitive`: admit a device, remove a member; `governance`: admins, thresholds, holds, floors, delegate, recovery key). By default
-  the routine floor is the lowest level among the founding admin keys above `weak` and the sensitive and governance floors the
-  highest. A key counts toward a class only at or above its floor; a key below it is listed and counts for nothing, and a `weak`
-  key may end a delegate and nothing else. In a pool the sensitive floor holds for approvals too: a key below it approves no request for an
-  action that is sensitive or cannot be undone, and an irreversible data act (`file_delete`, `shard_consent`) that a key at `computer` or below
-  approves starts a day later, so a person key can revoke it first. A floor is never `weak`, and a floor no listed key holds is refused. The `recovery` role
-  counts toward no immediate act.
+  refused; the verifier picks the algorithm from the key. Each admin key states a **claim** of how it is held (`phone-keystore`, `helper`,
+  `keystore-prompt`, `keystore-typed`, `file`, with the operating system and what each use asks; a prompt that does not fit its method is no claim) and
+  stores no level: every member computes the **level** it counts at from the claim, `weak` for a typed yes or a file and `computer` for the rest,
+  because no member can verify a phone's attestation or a helper's identity. The device that lists a key derives its claim from how the key was
+  enrolled on it (a phone's enrolment, the operating system's prompt, a typed yes) and a caller never names one; a charter lists a key with
+  no better claim than the founding device recorded. The charter's **floors** name the lowest level that counts for each class of act (`routine`:
+  cancel, end a delegate; `sensitive`: admit a device, remove a member; `governance`: admins, thresholds, holds, floors, delegate, recovery key) and
+  are all `computer`. A key counts toward a class only at or above its floor; a key below it is listed and counts for nothing, and a `weak`
+  key may end a delegate and nothing else. Every key that counts is a `computer` key, so every governance act waits seven days and a dispute
+  lasts from the end of that wait. A grant of an irreversible data act (`file_delete`) approved on a card starts a day later, so a person key can
+  revoke it first. A key that signs `grant_issue` directly meets the same floor in a pool for a sensitive grant of a device-local act. A floor is
+  never `weak`, and a floor above `computer` is void because no listed key can hold it. The `recovery` role states no claim and counts toward no
+  immediate act. The founding computer is a delegate for thirty days by the charter itself (`first.delegate`), with no hold.
   Thresholds count distinct people (`unit: person`) or keys: `routine` (cancel, end a delegate) 1 by default, `sensitive`
   (remove, admit, and for governance acts the admin changes, thresholds, holds, floors, a delegate) 1 while one person holds a key
   at the floor and 2 once two do.
@@ -965,8 +973,9 @@ pool, through admin keys; a device never does, and the one thing a member device
   under one sentence, "Make the pool 'home' and put the computer 'name' (certificate ...) in it. It is approved from this computer.", so founding is one signature per
   key and no second prompt. `pool_found` is
   granted by the name of the pool the act founds and refuses a charter with no admin key above `weak`, which nobody could admit a device
-  under, and, once the grant is held (a session without it is told only that the grant is missing), a charter that lists a key above the level this node recorded for it (the level is this node's to derive, from the `assurance`
-  of the key in `persons.json`, and is never read from a caller). `pool_status.governance` carries `levels` (the levels held, highest first), `floors` and `approved_from`.
+  under, and, once the grant is held (a session without it is told only that the grant is missing), a charter that claims a key counts in a way this node did not record for it (the claim is this node's to derive,
+  from the `claim` of the key in `persons.json`, and is never read from a caller). The person's yes at the computer's own prompt for the founding card is the grant. `pool_status.governance`
+  carries each admin's `claim` and `counted` level, `floors` and `approved_from`.
   `POOLHOUSE_STEP_LEDGER` names a file that every step asked of a person is written to, one JSON line each.
 - **The unfounded pool of one.** A fresh device (no `pools/<id>/`) is its own only member: `pool_status` says `governance.mode:
   unfounded` with an empty `pool`, nothing is written, it needs no signer to exist and it admits nobody (`add_device` answers "This

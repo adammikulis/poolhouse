@@ -1,6 +1,7 @@
 # Pools without a phone
 
-Design. Nothing here is built. Read at `29d9f78f7` (`0.3dev`): section 1 is code and document reading, no test was run and no screen was driven.
+Design, built in part. Slices 1 to 3, the join and remove parts of slice 5 and the Windows prompt of slice 7 are built on `feat/phone-free-pools` (section 8 says
+what differs from the text and what is left); slices 4, 6 and 8 and the live check of 2.9 are not. Section 1 is code and document reading at `29d9f78f7` (`0.3dev`): no test was run and no screen was driven.
 A non-author review (section 7) is applied: the verdict was accept with edits.
 `docs/design-pool-keys-and-custody.md` (the keys document) owns the keys: one admin key for each pool, the claim that says how a key is held, and the
 level a key counts at, computed by every member. Where this document differs, that one follows.
@@ -301,6 +302,11 @@ A hold shorter than these (24 hours for admin changes and weakenings, none other
 Two governance acts are held 7 days whoever signs them: an `admin_add` of a recovery key when none is listed, and `recovery_replace` (2.4). The
 current recovery key can cancel `recovery_replace`.
 
+**The clock a hold counts is awake time on each device, with no wall-clock minimum.** A hold exists so that an owner who is away for a week returns to see a pending
+act and can cancel it. A device that sleeps or is off while the owner is away does not run the hold (`gov/clock.rs`), so the act is still pending, and still cancellable,
+when the owner opens the computer; wall time would let the same hold run out unseen during the week. The cost is stated: a laptop that is awake 8 hours a day takes about 3
+weeks of wall time to run a 7-day hold. A card and the header say "ready after this computer has been on for 7 days" with the days left by the node's own count.
+
 A hold is never a refusal. During it the card says "Waiting" in plain words, the agent is told "waiting", every member device shows a banner and
 gets an operating-system notification, and any counting key cancels. Nothing here asks for a phone: every pool waits, whether or not it has one.
 
@@ -473,3 +479,28 @@ pool's sensitive floor approves nothing sensitive or irreversible, and a typed y
 class out of reach of its threshold; a recovery key could claim a level its listers did not hold; two acts that cannot both hold were ranked by
 signer count before level, so two computer keys beat the phone key's raise of the floor; a joiner had no delegate window and refused admits the
 others honored. The notification precondition, the clock of a hold and the thief-listed second person are in 2.5 and 2.6.
+
+## 8. What was built, and where it differs from the text above
+
+Built, each with tests written and run first (`app/poolhouse-node/tests/gov_levels.rs`, `gov_levels_edges.rs`, `approvals_window.rs`, `computer_signer.rs`,
+`computer_pool.rs`, `tests/test_computer_key.py`):
+
+- **Slice 1.** Charter 4 stores each admin key's `claim` (`method`, `os`, `prompt`; a prompt that does not fit its method is no claim) and no level; every member computes the
+  level (`Claim::counted`: `weak` for `keystore-typed` and `file`, `computer` for the rest, so a phone's claim counts as a computer's). Floors are all `computer`; a floor above it is
+  void because no listed key holds it. Every governance act, the first recovery key and a replacement of the recovery key wait seven days; a dispute lasts from the end of
+  that wait. A grant of `file_delete` approved on a card starts a day later. A key that signs `grant_issue` directly meets the floor for a sensitive grant of a device-local act
+  (an irreversible act is pool-wide and needs a card). The live delegate acts are handed to a joiner as already held, and a delegate's start folds the pool again.
+- **Slice 2.** `persons.json` rows carry a `claim` derived from the way the key was enrolled: a phone's enrolment `phone-keystore`, the operating system's prompt for a pool's key
+  `keystore-prompt`, a typed yes `keystore-typed`; a row without a claim is a file. The charter, not the row, decides who approves.
+- **Slice 3.** `Cards` and tickets in `presence/`, `ComputerKey` and `PoolKeys` in `src/poolhouse/board/computer_key.py`, `founding.default_admin`, `founding.govern`
+  (a removal), `NOT_COUNTED` and `FOR_THE_PERSON` in place of `NEEDS_PHONE`. Founding is one prompt: its yes enrols the key, is the ticket for the acceptance and is the grant
+  to found. Prompts are limited to three in ten minutes and twenty a day, a sentence that would be cut is refused, and only the person's own session raises one.
+- **Slice 5 (part).** The founding computer is a delegate for thirty days by the charter (`first.delegate`, no hold, in place of a `delegate` act in the bundle, because the
+  act's bytes depend on the acceptances); the person's own session opens a join window and joins with no grant; an agent cannot open a window on a pool no phone governs.
+  `key_binding` is deleted: a delegate's admit needs the device key's custody to be the keystore (`Node::custody`).
+- **Slice 7 (Windows).** Windows Hello through PowerShell, or the credential dialog checked against the account's password. Built, not run on a Windows device.
+
+Differences from the text: `shard_consent` is not an irreversible data act (the node's table calls it sensitive and a day's wait would delay every sharing consent); the notification
+of a pending governance act, which 2.6 names as the precondition of real `computer` keys, is not built (the hold is shown in `pool_status`), at the owner's order that a pool must
+be founded now; the join code is still six digits and windows are not limited to two an hour; the delegate caps of a computer-only pool are not built; a platform with no usable
+prompt founds nothing and says why, because a pool whose every key counts for nothing admits no one.

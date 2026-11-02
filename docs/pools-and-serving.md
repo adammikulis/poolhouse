@@ -85,7 +85,7 @@ slice closes it; nothing else in this document is safe to build on until it does
 
 An **admin** is a public key named in the pool's charter: Ed25519, or a phone's P-256 key (`alg`, 130 hex digits, signatures in strict
 DER with `s` in the lower half of the group). Every entry carries the key's **own acceptance**: a signature by
-that key over the pool, the charter it follows, its algorithm, its role and its assurance level. A key is therefore listed only by its holder: adding a key needs the
+that key over the pool, the charter it follows, its algorithm, its role and its claim of how it is held. A key is therefore listed only by its holder: adding a key needs the
 added key's signature as well as the admins' (1.5), so nobody can list someone else's public key to borrow its name or its
 standing grants. A person decides on a key by its **fingerprint as three check words** ("maple-river-ten"); the label an adder wrote
 ("the owner's phone") is untrusted text, quoted and styled apart wherever it appears, and is never what an approval rests on.

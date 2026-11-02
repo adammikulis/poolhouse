@@ -72,7 +72,7 @@ class ComputerKey:
     def approve(self, card: str, *, enrolled: bool, voice: presence.Voice = presence.SILENT) -> None:
         """Raise the computer's own prompt for the card the node drafted and wait for the person's yes; the yes is this key's ticket, and for
         a key not yet enrolled it enrols the key. Raises `Denied` with one plain sentence on a no or no answer."""
-        said = presence.ask(self._client, self._token, "card" if enrolled else "pool_key", self.public.hex(), voice, card=card)
+        said = presence.ask_card(self._client, self._token, "card" if enrolled else "pool_key", presence.Card(card, self.public.hex()), voice)
         self.ticket = str(said["secret"])
 
     def forget(self) -> None:
