@@ -95,10 +95,10 @@ fn public_of(draft: &Value) -> String {
 }
 
 #[test]
-fn an_agent_session_cannot_draft_a_key_or_a_card_or_get_a_prompt_raised() {
+fn an_agent_session_cannot_draft_a_key_or_a_card_or_get_a_prompt_raised_where_the_prompt_is_a_typed_yes() {
     let dir = tempfile::tempdir().unwrap();
     let mut node = node(dir.path());
-    let prompt = at_the_prompt(&mut node, "os");
+    let prompt = at_the_prompt(&mut node, "terminal");
     let (_name, agent) = session(&mut node, "pool", "an-agent");
     let refused = draft(&mut node, &agent, "home");
     assert_eq!(code(&refused), "denied", "an agent is given no key made for this computer: {refused}");

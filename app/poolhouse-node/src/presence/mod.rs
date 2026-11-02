@@ -7,8 +7,8 @@
 //! an agent: the prompt is the one step that cannot. What a yes makes lives in the node's memory, never in a file, so a program that can write
 //! the state directory cannot leave one.
 //!
-//! Who may ask is proven, not claimed: only the person's own session (`register_person` with the secret the node keeps for the person,
-//! `identity::person_secret`) drafts a change and raises its prompt, and every operation the person's session does without a grant is one
+//! Who may ask is proven, not claimed: the person's own session (`register_person` with the secret the node keeps for the person,
+//! `identity::person_secret`) drafts a change and raises its prompt, and a live main session does too when the prompt is the system's own dialog (`may_ask`), and every operation the person's session does without a grant is one
 //! prompt for exactly that operation (the card of a pool, a removal, a join window, a join). What the prompt does not do is make an
 //! unsandboxed program that runs as the person unable to sign: that is the weakness of a `computer` key, and why governance is held.
 //!
@@ -139,10 +139,15 @@ pub fn call(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) 
     }
     if method == "presence_ask" {
         let purpose = Purpose::named(text(p, "purpose")?)?;
-        // Whatever is asked, only the person's own session asks it: a first key and a first phone as much as a change, so no session an agent
-        // started can put a question to the person, and none can open a terminal of its own and answer it.
-        if !person_session(node, &holder) {
-            return Err(Error::Denied("Only the person's own session asks the person at the computer's prompt; an agent asks the person to run the command.".into()));
+        // The first key and the first phone are the person's own session's to ask. A change (a pool's card, a window, a join) is asked by the
+        // person's own session too, and also by a live main session when the prompt is the system's own dialog, which no process can answer; where
+        // the only prompt is a typed yes on a terminal, a session an agent started could open a terminal of its own and answer it, so it is refused.
+        let person = person_session(node, &holder);
+        if !person && !(matches!(purpose, Purpose::PoolKey | Purpose::Card) && may_ask(node, &holder)) {
+            return Err(Error::Denied("Only the person's own session asks the person at this computer's prompt for that. An agent asks for a pool's change only where the computer shows the system's own dialog for the person's password or fingerprint; here the person runs the command in a terminal of their own.".into()));
+        }
+        if !person {
+            node.firsts.mark_agent(&by);
         }
         // Where the system has no prompt of its own the question is put on the terminal of the process that asks, which the node finds itself.
         let terminal = if node.firsts.asks_on_own_terminal() {
@@ -172,6 +177,15 @@ pub fn call(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) 
         }
     }
     Ok(out)
+}
+
+/// Whether the node puts a change to the person for ``holder``: the person's own session, or a live main session (not a subagent, not retired)
+/// when the prompt is the operating system's own dialog. A typed yes can be given by whoever owns a terminal, so it is never an agent's to ask.
+pub(crate) fn may_ask(node: &mut Node, holder: &crate::identity::Holder) -> bool {
+    if person_session(node, holder) {
+        return true;
+    }
+    node.firsts.kind() == "os" && node.host(&holder.board).ok().and_then(|hosted| hosted.names.get(&holder.name).map(|i| i.parent.is_empty() && !i.retired)).unwrap_or(false)
 }
 
 /// Whether ``holder`` is the person's own session: registered with the secret the node keeps for the person (`Node::register_person`), which

@@ -346,8 +346,8 @@ impl Registry {
     }
 
     /// Whether the session ``name`` may be registered again by a process of ``lineage`` under ``parent``: a retired subagent or a main
-    /// session retired for cause never; a main session that ended (``done``) or was retired idle comes back to life, on the same terms as
-    /// one that never ended; a subagent only under its own parent, a main session only from the lineage it was registered from. A main
+    /// session retired for cause never; a main session that ended (``done``) or was retired idle comes back to life from any readable
+    /// lineage and is bound to it; a subagent only under its own parent, a live main session only from the lineage it was registered from. A main
     /// session with no lineage recorded (registered before lineages were kept, or by a process that could not be read) is taken
     /// by a process that presents a token of that name (``proven``), and by nobody else until a person moves it.
     fn admit(&mut self, name: &str, from: (&str, &[Anchor], bool), now_ms: u64) -> Result<()> {
@@ -355,6 +355,17 @@ impl Registry {
         let back = known.retired;
         if back && !(known.parent.is_empty() && matches!(known.retired_reason.as_str(), "" | "done" | "idle")) {
             return Err(Error::Denied(format!("{name} was retired; its session cannot register again")));
+        }
+        if back && from.0.is_empty() && (!ENFORCED || !from.1.is_empty()) {
+            // An ended main session holds nothing: its tokens ended, its leases were released and a grant is spent only by a token bound to the
+            // lineage that registers it, so it comes back from wherever its harness runs it now (a session resumed in another terminal) and is
+            // bound to that lineage from now on. A live session is not moved this way, and a lineage the node could not read does not count.
+            let known = self.names.get_mut(name).expect("found above");
+            (known.retired, known.retired_reason, known.seen_ms) = (false, String::new(), now_ms);
+            if ENFORCED {
+                known.lineage = from.1.to_vec();
+            }
+            return self.save();
         }
         self.admit_from(name, from)?;
         if back {

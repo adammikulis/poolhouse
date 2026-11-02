@@ -61,7 +61,7 @@ fn a_session_that_ends_loses_its_token_and_its_subagents_and_retires_nobody_else
 }
 
 #[test]
-fn a_session_that_ended_registers_again_from_its_own_lineage_and_a_subagent_that_ended_never_does() {
+fn a_session_that_ended_registers_again_from_wherever_it_runs_and_a_subagent_that_ended_never_does() {
     let dir = tempdir().unwrap();
     let mut n = open(dir.path());
     let (outside, me) = (process(true), me());
@@ -69,11 +69,12 @@ fn a_session_that_ended_registers_again_from_its_own_lineage_and_a_subagent_that
     let (name, old) = (first["name"].as_str().unwrap().to_string(), first["token"].as_str().unwrap().to_string());
     let kid = ok(req(&mut n, "register", "demo", &old, json!({"model": "claude-haiku-5-5", "harness": "claude-code", "session": "kid"})));
     ok(req(&mut n, "retire", "demo", &old, json!({})));
-    assert_eq!(code(&start(&mut n, &peer(&outside), "claude-code", "lead")), "denied", "from another terminal it is not the session that ended");
     assert_eq!(code(&req(&mut n, "whoami", "demo", &old, json!({}))), "denied");
-    let again = ok(start(&mut n, &me, "claude-code", "lead"));
-    assert_eq!((again["name"].as_str().unwrap(), again["created"].clone()), (name.as_str(), json!(false)), "it is the session it was");
+    assert_eq!(code(&start(&mut n, &Peer::none(), "claude-code", "lead")), "denied", "a process that cannot be read is no lineage to bind the session to");
+    let again = ok(start(&mut n, &peer(&outside), "claude-code", "lead"));
+    assert_eq!((again["name"].as_str().unwrap(), again["created"].clone()), (name.as_str(), json!(false)), "resumed in another terminal it is the session it was");
     let fresh = again["token"].as_str().unwrap();
+    assert_eq!(code(&start(&mut n, &me, "claude-code", "lead")), "denied", "and it is that terminal's from now on: a live session is not taken from it");
     assert_eq!(ok(req(&mut n, "whoami", "demo", fresh, json!({})))["name"], name.as_str());
     assert_eq!(code(&req(&mut n, "whoami", "demo", &old, json!({}))), "denied", "the token it ended with stays refused");
     let all = names(&mut n, fresh, true);

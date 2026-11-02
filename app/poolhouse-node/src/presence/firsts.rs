@@ -74,9 +74,14 @@ pub struct Firsts {
     askers: BTreeMap<String, Asker>,
     secret: Option<Secret>,
     ledger: Ledger,
+    /// The askers that are not the person's own session (`mark_agent`): what they raise and what is refused to them counts against `AGENTS` too.
+    agents: std::collections::BTreeSet<String>,
     /// The changes the node drafted that a person may answer.
     pub cards: card::Cards,
 }
+
+/// The ledger account that every agent asker shares, beside its own.
+const AGENTS: &str = "agents";
 
 impl Firsts {
     /// A prompt whose limits are lost with the node.
@@ -90,7 +95,7 @@ impl Firsts {
     }
 
     fn with(presence: Box<dyn Presence>, ledger: Ledger) -> Firsts {
-        Firsts { presence, askers: BTreeMap::new(), secret: None, ledger, cards: card::Cards::default() }
+        Firsts { presence, askers: BTreeMap::new(), secret: None, ledger, agents: Default::default(), cards: card::Cards::default() }
     }
 
     pub fn kind(&self) -> &'static str {
@@ -115,7 +120,24 @@ impl Firsts {
         if self.askers.get(by).is_some_and(|a| a.asking.is_some()) {
             return Err(crate::limits::floor("The person is being asked something already: answer that first."));
         }
+        if self.agents.contains(by) {
+            self.ledger.allows(AGENTS, now)?;
+        }
         self.ledger.allows(by, now)
+    }
+
+    /// Count ``by`` among the askers that are not the person's own session. Together they share one allowance, so registering more sessions
+    /// takes no more of the person's attention than one session does.
+    pub fn mark_agent(&mut self, by: &str) {
+        self.agents.insert(by.into());
+    }
+
+    /// Note that a prompt was raised for ``by``, and for all agents when it is one.
+    fn raised(&mut self, by: &str, now: u64) -> Result<()> {
+        if self.agents.contains(by) {
+            self.ledger.raised(AGENTS, now)?;
+        }
+        self.ledger.raised(by, now)
     }
 
     /// Whether the presence of this node asks only on the controlling terminal of the process that asks.
@@ -139,7 +161,7 @@ impl Firsts {
         };
         let what = format!("poolhouse: allow the session {by} to add {}{key} to this computer?", purpose.words());
         let prompt = self.presence.begin(&what, terminal)?;
-        self.ledger.raised(by, now)?;
+        self.raised(by, now)?;
         let asker = self.askers.entry(by.into()).or_default();
         asker.asking = Some(Pending { purpose, bound: if purpose == Purpose::Key { bound.into() } else { String::new() }, started_ms: now, prompt });
         asker.outcome = None;
@@ -162,7 +184,7 @@ impl Firsts {
             _ => return Err(Error::Invalid("Only a card is asked for by its id.".into())),
         }
         let prompt = self.presence.begin(&held.sentence, terminal)?;
-        self.ledger.raised(by, now)?;
+        self.raised(by, now)?;
         let asker = self.askers.entry(by.into()).or_default();
         asker.asking = Some(Pending { purpose, bound: held.id, started_ms: now, prompt });
         asker.outcome = None;
@@ -239,6 +261,12 @@ impl Firsts {
                 // A refusal is the person's word: the node records it where a restart does not forget it, and a full disk is said, not hidden.
                 if let Err(e) = self.ledger.refused(&by, now) {
                     eprintln!("node: {e}");
+                }
+                if self.agents.contains(&by) {
+                    // The person said no to an agent: no agent asks again for the quiet that follows a no.
+                    if let Err(e) = self.ledger.refused(AGENTS, now) {
+                        eprintln!("node: {e}");
+                    }
                 }
             }
         }

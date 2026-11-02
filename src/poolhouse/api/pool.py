@@ -188,9 +188,14 @@ def add_device(ttl_s: int = 300, *, say: Callable[[str], object] | None = None) 
     yes at this computer's prompt for exactly that window; an agent's session needs the grant ``add_device``.
     """
     params: dict[str, object] = {"ttl_s": ttl_s}
-    if (person := _node.person_session()) is not None:
-        params |= founding.yes_for(person, "add_device", {"ttl_s": ttl_s}, presence.Voice(say=say or (lambda _text: None)))
-    return dict(_node.call("add_device", params, token=(person or _node.session()).token))
+    person = _node.person_session()
+    session = person or _node.session()
+    try:
+        params |= founding.yes_for(session, "add_device", {"ttl_s": ttl_s}, presence.Voice(say=say or (lambda _text: None)))
+    except founding.Refusal as refused:
+        if person is not None or refused.needs != "none":
+            raise  # an agent the node does not ask (a typed yes is the only prompt) goes on with the grant it holds
+    return dict(_node.call("add_device", params, token=session.token))
 
 
 def join(host: str, code: str = "", *, port: int = DEFAULT_PORT, fingerprint: str = "", say: Callable[[str], object] | None = None) -> dict[str, object]:
@@ -205,8 +210,11 @@ def join(host: str, code: str = "", *, port: int = DEFAULT_PORT, fingerprint: st
     person = _node.person_session()
     session = person or _node.session()
     params = {"host": host, "port": port, **({"passphrase": code} if code else {"fingerprint": fingerprint})}
-    if person is not None:
-        params |= founding.yes_for(person, "join_pool", dict(params), presence.Voice(say=say or (lambda _text: None)))
+    try:
+        params |= founding.yes_for(session, "join_pool", dict(params), presence.Voice(say=say or (lambda _text: None)))
+    except founding.Refusal as refused:
+        if person is not None or refused.needs != "none":
+            raise
 
     def send() -> dict[str, object]:
         return dict(session.client.call("join_pool", "", session.token, **params))

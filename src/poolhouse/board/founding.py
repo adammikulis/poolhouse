@@ -22,7 +22,7 @@ from poolhouse.board.session import Session
 from poolhouse.board.terminal import terminal_id
 from poolhouse.fleet.onboard.signing import KeyStoreError
 
-__all__ = ["Admin", "Founded", "NoComputerKey", "Refusal", "Terms", "found", "found_here", "found_on_computer", "govern", "pool_session", "with_card", "yes_for"]
+__all__ = ["Admin", "Founded", "NoComputerKey", "Refusal", "Terms", "asking_session", "found", "found_here", "found_on_computer", "govern", "pool_session", "with_card", "yes_for"]
 
 POOL_GRANT_LASTS = "10m"
 CARD_WAIT_S = 120.0
@@ -293,6 +293,16 @@ def pool_session(client: Client, *, person_session: bool = False) -> Session:
     return Session(client, "pool", got["token"], got["name"])
 
 
+def asking_session(client: Client) -> Session:
+    """The session that asks the person at the computer's prompt: the person's own when this process can prove the person's secret, else the
+    agent's own session of the pool board. The node decides whether that one is asked for: it raises the system's own dialog for a live main
+    session, which no process can answer for the person, and refuses a session of an agent where the only prompt is a typed yes."""
+    try:
+        return pool_session(client, person_session=True)
+    except Refusal:
+        return pool_session(client)
+
+
 def device_name() -> str:
     """A name for a pool that nobody named: this computer's, in the letters a pool name may hold."""
     host = "".join(c if c.isascii() and (c.isalnum() or c in "-.") else " " for c in socket.gethostname().split(".")[0]).strip().lstrip("-. ")
@@ -306,7 +316,7 @@ def found_here(client: Client, name: str | None, policy: str, *, admin: Admin | 
     computer's prompt, which no process can give for them."""
     if admin is not None:
         return found(pool_session(client), admin, name or device_name(), policy, Terms(voice=voice))
-    return found_on_computer(pool_session(client, person_session=True), name or device_name(), policy, voice)
+    return found_on_computer(asking_session(client), name or device_name(), policy, voice)
 
 
 def govern(client: Client, kind: str, body: dict[str, Any], *, voice: presence.Voice = presence.SILENT, ks: keystore.Keystore | None = None) -> dict[str, Any]:
@@ -320,7 +330,7 @@ def govern(client: Client, kind: str, body: dict[str, Any], *, voice: presence.V
     key = computer_key.PoolKeys(client.state, client, "", ks=ks).find(listed)
     if key is None:
         raise NoComputerKey("No key of this computer governs this pool, so it cannot make that change here.", needs="device", where="the computer that founded the pool", then="stop")
-    session = pool_session(client, person_session=True)
+    session = asking_session(client)
     key.use(session.token)
     try:
         draft = session.client.call("pool_draft", "", session.token, kind=kind, body=body)

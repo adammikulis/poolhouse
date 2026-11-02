@@ -46,11 +46,12 @@ pub fn handles(method: &str) -> bool {
     params(method).is_some()
 }
 
-/// `board/name` of the session behind ``token`` when it is the person's own, which was registered with the secret the node keeps for the
-/// person: the only session whose changes the node turns into cards for the computer's prompt.
-pub fn person_by(node: &mut Node, token: &str) -> Option<String> {
+/// `board/name` of the session behind ``token`` when the node turns its changes into cards for the computer's prompt: the person's own
+/// session, which was registered with the secret the node keeps for the person, and a live main session where the prompt is the system's own
+/// dialog (`presence::may_ask`).
+pub fn asker_by(node: &mut Node, token: &str) -> Option<String> {
     let holder = node.tokens.resolve(token).cloned()?;
-    crate::presence::person_session(node, &holder).then(|| format!("{}/{}", holder.board, holder.name))
+    crate::presence::may_ask(node, &holder).then(|| format!("{}/{}", holder.board, holder.name))
 }
 
 /// The session behind ``token``, if it holds a grant for ``action`` on ``resource``; nothing is spent. For what can still fail
@@ -144,15 +145,15 @@ pub fn dispatch(node: &mut Node, method: &str, token: &str, p: &Map<String, Valu
             Ok(made)
         }
         "pool_draft_found" => {
-            let by = person_by(node, token);
+            let by = asker_by(node, token);
             node.pool_draft_found(by.as_deref(), text(p, "title")?, Policy::parse(text(p, "policy")?)?, text(p, "project")?, p.get("keys").unwrap_or(&Value::Null))
         }
         "pool_draft" => {
-            let by = person_by(node, token);
+            let by = asker_by(node, token);
             node.pool_draft(by.as_deref(), text(p, "kind")?, p.get("body").cloned().unwrap_or(Value::Null))
         }
         "op_draft" => {
-            let by = person_by(node, token).ok_or_else(|| Error::Denied("Only the person's own session asks for a change to be answered at the computer's prompt; an agent asks the person to run the command.".into()))?;
+            let by = asker_by(node, token).ok_or_else(|| Error::Denied("Only the person's own session asks for a change to be answered at this computer's prompt, unless the computer shows the system's own dialog for the person's password or fingerprint; here the person runs the command in a terminal of their own.".into()))?;
             node.op_draft(&by, text(p, "op")?, p.get("args").unwrap_or(&Value::Null))
         }
         "pool_propose" => {

@@ -433,3 +433,75 @@ fn the_yes_for_one_window_or_join_covers_no_other_pool_host_port_code_or_device(
 fn base_join() -> Value {
     json!({"host": "10.0.0.5", "port": 7447, "passphrase": "123456", "fingerprint": ""})
 }
+
+#[test]
+fn an_agents_session_founds_a_pool_and_opens_a_window_where_the_prompt_is_the_systems_own_and_only_the_persons_answer_signs() {
+    let a = device();
+    let (raised, shown) = at_the_prompt(&a);
+    let (_, agent) = a.session("demo", "an-agent");
+    // The node raises the dialog itself for the agent's card; the stand-in person answers it, and the pool is founded by that answer.
+    let seed = found(&a, &agent, "home");
+    assert_eq!(raised.load(Ordering::SeqCst), 1, "founding is one prompt, raised by the node for the agent's session");
+    assert!(shown.lock().unwrap()[0].contains("home"), "the sentence is the node's, from the charter: {:?}", shown.lock().unwrap());
+    assert_eq!(a.status()["governance"]["name"], "home");
+    let ticket = ticket_for(&a, &agent, "add_device", json!({"ttl_s": 120}));
+    let opened = a.ok("add_device", "", &agent, json!({"ttl_s": 120, "ticket": ticket}));
+    assert!(opened["code"].is_string(), "{opened}");
+    assert_eq!(raised.load(Ordering::SeqCst), 2, "and a window is one more answer");
+    assert_eq!(seed.len(), 64, "the seed went to the session the person's yes was for");
+    // The first key and the first phone stay the person's own session's.
+    for purpose in ["key", "phone"] {
+        let asked = a.call("presence_ask", "", &agent, json!({"purpose": purpose, "public": "00".repeat(32), "terminal": ""}));
+        assert_eq!(asked["ok"], false, "{purpose}: {asked}");
+    }
+    // A subagent is no main session.
+    let kid = a.ok("register", "demo", &agent, json!({"model": "claude-haiku-5-5", "harness": "claude-code", "session": "kid"}))["token"].as_str().unwrap().to_string();
+    let draft = a.call("op_draft", "", &kid, json!({"op": "add_device", "args": {}}));
+    assert_eq!(draft["ok"], false, "{draft}");
+    let before = raised.load(Ordering::SeqCst);
+    let asked = a.call("presence_ask", "", &kid, json!({"purpose": "card", "card": "a".repeat(64), "terminal": ""}));
+    assert_eq!(asked["ok"], false, "{asked}");
+    assert_eq!(raised.load(Ordering::SeqCst), before);
+}
+
+#[test]
+fn an_agents_session_is_refused_where_the_only_prompt_is_a_typed_yes_whatever_terminal_it_names() {
+    let a = device();
+    let (raised, _) = at_a_terminal(&a);
+    let (_, agent) = a.session("demo", "an-agent");
+    let key = json!([{"computer": true, "person": "owner", "label": "this computer"}]);
+    let draft = a.call("pool_draft_found", "", &agent, json!({"title": "home", "policy": "secure", "project": "", "keys": key}));
+    assert!(draft["ok"] == false || draft["result"]["card"].is_null(), "an agent's draft has no card to answer at a typed yes: {draft}");
+    for terminal in ["", "/dev/ttys001", "/dev/tty"] {
+        let asked = a.call("presence_ask", "", &agent, json!({"purpose": "pool_key", "card": "a".repeat(64), "terminal": terminal}));
+        assert_eq!(asked["ok"], false, "{asked}");
+        assert!(asked["error"]["message"].as_str().unwrap().contains("person's own session"), "{asked}");
+    }
+    assert_eq!(raised.load(Ordering::SeqCst), 0, "no prompt was raised for an agent");
+    // The person's own session is still asked there, on the terminal.
+    let me = person(&a, "the-person");
+    found(&a, &me, "home");
+    assert_eq!(raised.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn agents_share_one_allowance_of_prompts_so_more_sessions_ask_the_person_no_more_often() {
+    let a = device();
+    let (raised, _) = at_the_prompt(&a);
+    let me = person(&a, "the-person");
+    found(&a, &me, "home");
+    let before = raised.load(Ordering::SeqCst);
+    let mut refused = 0;
+    for n in 0..6 {
+        let (_, agent) = a.session("demo", &format!("agent-{n}"));
+        let drawn = a.call("op_draft", "", &agent, json!({"op": "add_device", "args": {"ttl_s": 60}}));
+        if drawn["ok"] != true {
+            refused += 1;
+            continue;
+        }
+        let asked = a.call("presence_ask", "", &agent, json!({"purpose": "card", "card": drawn["result"]["card"], "terminal": ""}));
+        refused += usize::from(asked["ok"] != true);
+    }
+    assert_eq!(raised.load(Ordering::SeqCst) - before, 3, "three prompts in ten minutes for all agents together, not three each");
+    assert_eq!(refused, 3, "and the rest wait");
+}

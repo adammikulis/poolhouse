@@ -280,3 +280,18 @@ def test_an_agent_runs_the_founding_command_and_the_pool_is_made_when_the_person
         made = founding.found_here(workspace_node.client, "home", "secure", voice=voice)
     assert (made.name, made.already) == ("home", False) and asked == ["yes"], "the question was put to the person, who answered it"
     assert workspace_node.client.call("pool_status")["governance"]["mode"] == "governed"
+
+
+def test_a_process_that_cannot_read_the_secret_asks_as_the_agent_and_a_node_with_only_a_typed_yes_refuses_it(workspace_node, monkeypatch):
+    monkeypatch.setenv("CLAUDECODE", "1")
+    secret = workspace_node.state / "person" / "ui.secret"
+    away = secret.with_suffix(".away")
+    secret.rename(away)
+    try:
+        with pytest.raises(Refusal) as refused:
+            founding.found_here(workspace_node.client, "home", "secure")
+    finally:
+        away.rename(secret)
+    assert "person's own session" in refused.value.say and refused.value.needs == "none", "the node's own sentence, not a request to run a command"
+    assert not (workspace_node.state / "person" / "pools").exists(), "no key was made"
+    assert workspace_node.client.call("pool_status")["governance"]["mode"] == "unfounded"

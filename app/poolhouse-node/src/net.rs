@@ -748,7 +748,7 @@ impl Net {
             } else {
                 // The person's own session holds no grant: it opens a window or joins with the yes it was given at the computer's prompt for this
                 // very operation, which the node checks against the call it received.
-                let by=crate::poolapi::person_by(&mut node,&c.token).ok_or_else(|| Error::Denied("A yes at the computer's prompt is for the person's own session.".into()))?;
+                let by=crate::poolapi::asker_by(&mut node,&c.token).ok_or_else(|| Error::Denied("A yes at the computer's prompt is for a session the node asks it of.".into()))?;
                 let mut args=c.params.clone();
                 args.remove("ticket");
                 let window=args.remove("window");
