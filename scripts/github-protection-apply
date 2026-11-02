@@ -57,9 +57,14 @@ def environment_of_run() -> dict[str, str] | None:
     return APPROVED.environment if APPROVED else None
 
 
+def python_of_run() -> list[str]:
+    """The interpreter and flags a Python child starts with: isolated and reading no bytecode from the checkout in an approved agent run, plain for a person."""
+    return [sys.executable, *(APPROVED.python_flags() if APPROVED else [])]
+
+
 def identity(repo: str) -> tuple[bool, str]:
     """Whether `scripts/agent-identity check` finds the agent identity stored for ``repo``, and its one line."""
-    done = subprocess.run([sys.executable, str(AGENT_IDENTITY), "check", "--repo", repo],
+    done = subprocess.run([*python_of_run(), str(AGENT_IDENTITY), "check", "--repo", repo],
                           capture_output=True, text=True, check=False, env=environment_of_run())
     line = done.stdout.strip() or done.stderr.strip() or "agent identity: the check printed nothing"
     return done.returncode == 0, line
@@ -243,7 +248,7 @@ def restore_plan(saved: dict) -> list[Step]:
 # -- running ------------------------------------------------------------------------------
 
 def check(repo: str, args: argparse.Namespace) -> int:
-    argv = [sys.executable, str(ROOT / "scripts" / "github-protection"), "--check", "--repo", repo]
+    argv = [*python_of_run(), str(ROOT / "scripts" / "github-protection"), "--check", "--repo", repo]
     argv += ["--require-owner-review"] * args.owner_review + ["--strict-tags"] * args.strict_tags
     done = subprocess.run(argv, capture_output=True, text=True, check=False, env=environment_of_run())
     print(done.stdout, end="")
@@ -273,6 +278,8 @@ def run(args: argparse.Namespace) -> int:
             print(f"\nNote: {stop}")
         return 0
     held_back = ([] if named else [line]) + ([stop] if stop else [])
+    if APPROVED:
+        APPROVED.verify()  # last look before any request that changes the repository
     saved_to = backup(repo) if not args.restore else None
     if saved_to:
         print(f"saved the current settings to {saved_to}")
@@ -312,7 +319,7 @@ def main(argv: list[str] | None = None, terminal: tuple[bool, bool] | None = Non
         if not (args.repo or args.restore):
             args.repo = this_repo()
         return run(args)
-    except (Failed, person.HumanRequired) as exc:
+    except (Failed, person.HumanRequired, run_approval.Refused) as exc:
         print(f"github-protection-apply: {exc}", file=sys.stderr)
         return 1
     finally:

@@ -28,18 +28,25 @@ primary checkout is on; `main` is never it); promotion to `main`, tags, releases
 - Two person-only commands run for an agent on the same kind of one-time approval: `scripts/release-key create --write` and
   `scripts/github-protection-apply --apply --repo OWNER/NAME` (the origin's repository; its dry run needs none).
   `scripts/hooks/run-approval propose release-key create --write` (or `github-protection-apply --apply --repo OWNER/NAME`)
-  renders the question from git and a fixed registry: the exact command, the repository, the commit, how `scripts` and `src`
-  differ from the remote's main and which guards that touches, and that every file there is exactly the commit's. The main
-  session asks it with AskUserQuestion word for word, with the header, labels and descriptions `propose` prints and nothing
-  added. After the owner selects the approval, the Bash guard replaces the main session's one exact command with a fixed
-  line (cleared environment, the selected runtime's isolated interpreter, no bytecode read from the checkout) and hands it a
-  one-minute ticket in a private file, which the script reads, deletes and spends once. Its children get the account's home,
-  the system tool folders and an empty `gh` configuration, and `gh` is pinned to that repository. A subagent, typed words,
-  any other command, a changed tree, a repository that is not a worktree of the session's project, or another repository
-  gets none; every other command of the two scripts stays a person's at a terminal (docs/person-delegation.md,
-  "run-script"). This gates a cooperative or prompt-injected agent. It is not stronger than same-user software can be: a
-  pseudo-terminal (`script`) with `env -u CLAUDECODE -u POOLHOUSE_SESSION_ID ...` defeats the person-at-terminal floor of
-  every person-only command today, and an agent that rewrites the guards or the store is detected afterwards, not stopped.
+  renders the question from git, the selected runtime and a fixed registry: the exact command, the repository, the commit,
+  the interpreter and source that will run, the count and first twenty names of the files of `scripts` and `src` that differ
+  from the remote's main (odd names escaped), which guards that touches, and that every file there is exactly the commit's.
+  The main session asks it with AskUserQuestion word for word, with the header, labels and descriptions `propose` prints and
+  nothing added. After the owner selects the approval, the Bash guard replaces the main session's one exact command with a
+  fixed line (cleared environment, the verified runtime's interpreter isolated, no bytecode read) and hands it a one-minute
+  ticket in a private file, which the script reads, deletes and spends once. Its children start the same way and get the
+  account's home, the system tool folders and an empty `gh` configuration, and `gh` is pinned to that repository. A subagent,
+  typed words, any other command, a changed tree, a runtime not built from this checkout's `src`, a repository that is not a
+  worktree of the session's project, or another repository gets none; every other command of the two scripts stays a
+  person's at a terminal (docs/person-delegation.md, "run-script").
+  **Bound:** the scripts and `src` as committed (every file hashed against the commit, links refused), the runtime's `src`
+  tree equal to the checkout's, the command, the repository, the interpreter path, and the diff the owner is shown.
+  **Not bound:** the runtime's third-party packages, the interpreter's standard library, `git`, `gh`, `ssh-keygen` and the
+  system tool folders, a malicious change that was committed (it is shown, not judged), and a same-user adversary: one that
+  runs the guard script with an event it made up, writes the store or `refs/remotes` by a path the guards do not name, or gets
+  a pseudo-terminal and `env -u CLAUDECODE -u POOLHOUSE_SESSION_ID ...`, which defeats the person-at-terminal floor of every
+  person-only command today. The approval gates a cooperative or prompt-injected agent and nothing stronger; an agent that
+  rewrites the guards or the store is detected afterwards, not stopped.
 - A promotion is a pull request from a frozen `promote/<date>` snapshot of development, opened by the agent and merged
   by it only while the owner's `release-main` authorization for that pull request's head SHA is live
   (docs/person-delegation.md).

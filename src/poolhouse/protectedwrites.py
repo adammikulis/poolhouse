@@ -18,7 +18,8 @@ __all__ = ["guarded", "holds_secret", "other_agent", "refusal", "secret", "tool_
 GUARD_PATHS = (
     r"src/poolhouse/workspace/(person_\w+|run_(approval|hook))\.py",
     r"scripts/hooks/(claude-user-prompt|person-consume|run-approval)",
-    r"scripts/(release-key|github-protection-apply)", r"src/poolhouse/credentials/.*",
+    r"scripts/(release-key|github-protection-apply|github-protection|agent-identity)", r"src/poolhouse/credentials/.*",
+    r"\.git/(refs/remotes/.*|packed-refs)",
     r"\.git/(hooks(/.*)?|config(\.worktree)?|worktrees/[^/]+/config\.worktree)",
     r"\.gitconfig", r"\.config/git/(config|hooks(/.*)?)", r"\.poolhouse/(authority\.json|authority-audit\.jsonl)")
 REVIEWED = (*GUARD_PATHS, r"scripts/hooks/(pre-commit|commit-msg|pre-push|pushed|primary-only|no-real-names|no-data-files|budgets"

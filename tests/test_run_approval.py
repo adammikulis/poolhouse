@@ -9,11 +9,15 @@ import importlib.util
 import json
 import os
 import pwd
+import re
 import secrets
 import shlex
+import shutil
 import subprocess
 import sys
 import time
+import types
+import venv
 from pathlib import Path
 from typing import NamedTuple
 
@@ -30,7 +34,7 @@ from person_support import (
     say,
 )
 
-from poolhouse import credentials, protectedwrites
+from poolhouse import credentials, protectedwrites, runtime
 from poolhouse.workspace import person_auth, person_store, run_approval, run_hook as writer
 from tests import memory_keys
 from tests.github_support import GOOD, REPO, ruleset, serve
@@ -45,16 +49,54 @@ NO_TERMINAL = (False, False)
 OTHER = "sess-someone-else"
 
 
+FLAGS = "#!/usr/bin/env python3\nimport sys\nprint(f'flags isolated={sys.flags.isolated} nobytecode={sys.flags.dont_write_bytecode} cache={sys.pycache_prefix}')\n"
+
+
+@pytest.fixture(scope="session")
+def runtime_template(tmp_path_factory):
+    """A real virtual environment holding a package called poolhouse that the runtime's own verification accepts; copied for each test."""
+    where = tmp_path_factory.mktemp("runtime-template") / "venv"
+    venv.create(where, with_pip=False, symlinks=True)
+    site = next((where / "lib").glob("python*/site-packages"))
+    (site / "poolhouse" / "fleet").mkdir(parents=True)
+    (site / "poolhouse" / "__init__.py").write_text("")
+    (site / "poolhouse-0.0.1.dist-info").mkdir()
+    (site / "poolhouse-0.0.1.dist-info" / "METADATA").write_text("Metadata-Version: 2.1\nName: poolhouse\nVersion: 0.0.1\n")
+    return where
+
+
+def select_runtime(template, repo):
+    """Install a runtime built from the commit at ``repo``'s HEAD under the active state root and select it, as `poolhouse runtime ensure` does; its prefix."""
+    commit = git(repo, "rev-parse", "HEAD")
+    root = runtime.directory()
+    prefix = root / commit / secrets.token_hex(16)
+    prefix.parent.mkdir(parents=True, exist_ok=True)
+    for here, folders, files in os.walk(template):
+        target = prefix / Path(here).relative_to(template)
+        target.mkdir(exist_ok=True)
+        for name in [*folders, *files]:
+            source = Path(here, name)
+            if source.is_symlink():
+                (target / name).symlink_to(source.readlink())  # as it is: a link to the interpreter, not a copy of its mode
+            elif source.is_file():
+                shutil.copyfile(source, target / name)
+    (next((prefix / "lib").glob("python*/site-packages")) / "poolhouse" / "fleet" / "built-from").write_text(commit)
+    for folder in (root, prefix.parent, prefix):
+        folder.chmod(0o700)
+    runtime.publish(runtime.Runtime(prefix, commit, "0.0.1", runtime.identity()))
+    return prefix
+
+
 @pytest.fixture
-def world(tmp_path, monkeypatch):
-    """A checkout with both scripts, a GitHub origin and an origin/main, a person state, and this session's project set; ``(tmp, state, repo)``."""
+def world(tmp_path, monkeypatch, runtime_template):
+    """A checkout with the scripts, a GitHub origin and an origin/main, a selected runtime built from it, a person state, and this session's project set; ``(tmp, state, repo)``."""
     repo = tmp_path / "repo"
     repo.mkdir()
     git(repo, "init", "-q", "-b", "main")
-    for name in ("release-key", "github-protection-apply"):
+    for name in ("release-key", "github-protection-apply", "agent-identity", "github-protection"):
         script = repo / "scripts" / name
         script.parent.mkdir(exist_ok=True)
-        script.write_text("#!/bin/sh\n")
+        script.write_text(FLAGS + ("raise SystemExit(1)\n" if name == "agent-identity" else "") if name in ("agent-identity", "github-protection") else "#!/bin/sh\n")
         script.chmod(0o755)
     (repo / "src").mkdir()
     (repo / "src" / "code.py").write_text("x = 1\n")
@@ -70,6 +112,7 @@ def world(tmp_path, monkeypatch):
     monkeypatch.delenv(run_approval.TICKET_ENV, raising=False)
     monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "state"))
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(repo))
+    select_runtime(runtime_template, repo)
     return tmp_path, tmp_path / "state", repo
 
 
@@ -200,17 +243,19 @@ def test_only_the_two_covered_commands_can_be_put_to_the_owner(world, words):
     assert done.returncode != 0 and "question" not in done.stdout and not (state / "person").exists()
 
 
-def test_the_question_shows_how_the_code_differs_from_the_remotes_main_and_what_guards_it_touches(world):
+def test_the_question_shows_how_the_code_differs_from_the_remotes_main_and_what_guards_it_touches(world, runtime_template):
+    template = runtime_template
     _, state, repo = world
     plain = asked(propose(repo, state, *KEY)).question
-    assert "Changed since origin/main in scripts and src: none" in plain
+    assert "Changed since origin/main (as last fetched) in scripts and src: none" in plain
     assert "This script since origin/main: unchanged" in plain and "Guards changed since origin/main: none" in plain
     (repo / "scripts" / "release-key").write_text("#!/bin/sh\ncat /dev/null\ncat /dev/null\n")
     (repo / "src" / "code.py").write_text("x = 2\n")
     git(repo, "add", "scripts", "src")
     git(repo, "commit", "-q", "-m", "a committed change to the release script")
+    select_runtime(template, repo)
     changed = asked(propose(repo, state, *KEY)).question
-    assert "Changed since origin/main in scripts and src: 2 files changed" in changed
+    assert "Changed since origin/main (as last fetched) in scripts and src: 2 files changed" in changed
     assert "This script since origin/main: 1 file changed, 2 insertions(+)" in changed
     assert "Guards changed since origin/main: scripts/release-key" in changed
 
@@ -278,38 +323,101 @@ def test_compiled_caches_do_not_stop_the_question_because_the_run_never_reads_th
     (repo / "src" / "__pycache__" / "code.cpython-313.pyc").unlink()
     (repo / "src" / "__pycache__").rmdir()
     (repo / "src" / "__pycache__").symlink_to(repo / "docs")
-    assert "src/__pycache__ is not a committed file" in propose(repo, state, *KEY).stderr
+    assert "src/__pycache__ is a symbolic link; scripts and src hold none" in propose(repo, state, *KEY).stderr
 
 
-def test_a_link_in_the_checked_folders_must_be_the_committed_one_and_stay_inside(world):
+def test_a_symbolic_link_in_the_checked_folders_is_refused_with_its_path_named_whatever_it_points_at(world):
     tmp, state, repo = world
     (repo / "scripts" / "linked").symlink_to("release-key")
-    assert "scripts/linked is not a committed file" in propose(repo, state, *KEY).stderr
-    git(repo, "add", "scripts/linked")
-    git(repo, "commit", "-q", "-m", "a link inside the folder")
-    git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
-    assert propose(repo, state, *KEY).returncode == 0
+    assert "scripts/linked is a symbolic link; scripts and src hold none" in propose(repo, state, *KEY).stderr
     (repo / "scripts" / "linked").unlink()
-    (repo / "scripts" / "linked").symlink_to("github-protection-apply")
-    assert "scripts/linked is a link that is not the committed one" in propose(repo, state, *KEY).stderr
-    (repo / "scripts" / "linked").unlink()
-    (repo / "scripts" / "linked").symlink_to("release-key")
     (repo / "src" / "code.py").unlink()
     (repo / "src" / "code.py").symlink_to(tmp / "elsewhere.py")
-    assert propose(repo, state, *KEY).returncode != 0
+    assert "src/code.py is a symbolic link; scripts and src hold none" in propose(repo, state, *KEY).stderr
     (repo / "src" / "code.py").unlink()
     git(repo, "checkout", "--", "src/code.py")
     (repo / "src" / "linked-folder").symlink_to(tmp)
-    assert "src/linked-folder is not a committed file" in propose(repo, state, *KEY).stderr
+    assert "src/linked-folder is a symbolic link; scripts and src hold none" in propose(repo, state, *KEY).stderr
 
 
-def test_a_committed_link_that_leaves_the_checkout_is_not_the_committed_code(world):
-    tmp, state, repo = world
-    (repo / "scripts" / "out").symlink_to(tmp / "elsewhere")
-    git(repo, "add", "scripts/out")
-    git(repo, "commit", "-q", "-m", "a link out of the folder")
+@pytest.mark.parametrize("target", ["release-key", "github-protection-apply", "/etc/hosts", "../../elsewhere"])
+def test_a_committed_symbolic_link_is_refused_even_when_nothing_has_changed_since(world, runtime_template, target):
+    _, state, repo = world
+    (repo / "scripts" / "linked").symlink_to(target)
+    git(repo, "add", "scripts/linked")
+    git(repo, "commit", "-q", "-m", "a link")
     git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
-    assert "scripts/out is a link that is not the committed one" in propose(repo, state, *KEY).stderr
+    select_runtime(runtime_template, repo)
+    assert "scripts/linked is committed as a symbolic link; scripts and src hold none" in propose(repo, state, *KEY).stderr
+
+
+def test_a_folder_that_cannot_be_listed_is_a_reason_and_not_a_gap(world):
+    """The execute-only folder of the review: Python imports from it, a walk cannot list it."""
+    if os.geteuid() == 0:
+        pytest.skip("root reads every folder")
+    _, state, repo = world
+    shadow = repo / "src" / "psutil"
+    shadow.mkdir()
+    (shadow / "__init__.py").write_text("print('SHADOW')\n")
+    shadow.chmod(0o111)
+    try:
+        done = propose(repo, state, *KEY)
+        assert done.returncode != 0 and "src/psutil" in done.stderr and "Traceback" not in done.stderr
+        shadow.chmod(0o311)
+        assert propose(repo, state, *KEY).returncode != 0  # searchable but not listable
+        shadow.chmod(0o755)
+        assert "src/psutil/__init__.py is not a committed file" in propose(repo, state, *KEY).stderr
+    finally:
+        shadow.chmod(0o755)
+
+
+def test_a_committed_folder_or_file_that_cannot_be_read_is_a_reason_and_not_a_crash(world):
+    if os.geteuid() == 0:
+        pytest.skip("root reads every file")
+    _, state, repo = world
+    for path, mode in ((repo / "src", 0o311), (repo / "src" / "code.py", 0o000), (repo / "scripts", 0o111)):
+        before = path.stat().st_mode & 0o777
+        path.chmod(mode)
+        try:
+            done = propose(repo, state, *KEY)
+            assert done.returncode != 0 and "Traceback" not in done.stderr and "src" in done.stderr + "scripts", path
+        finally:
+            path.chmod(before)
+    assert propose(repo, state, *KEY).returncode == 0
+
+
+@pytest.mark.parametrize("name", ["__pycache__x", "x__pycache__", "__pycache__.d", ".__pycache__", "__PYCACHE__", "pycache", "__pycache"])
+def test_only_a_folder_named_exactly_pycache_is_left_out_of_the_check(world, name):
+    _, state, repo = world
+    (repo / "src" / name).mkdir()
+    (repo / "src" / name / "shadow.py").write_text("print('SHADOW')\n")
+    assert f"src/{name}/shadow.py is not a committed file" in propose(repo, state, *KEY).stderr
+
+
+def test_a_pycache_that_is_a_file_or_holds_a_folder_of_code_is_not_left_out(world):
+    _, state, repo = world
+    (repo / "src" / "__pycache__").write_text("a file, not a folder\n")
+    assert "src/__pycache__ is not a committed file" in propose(repo, state, *KEY).stderr
+    (repo / "src" / "__pycache__").unlink()
+    (repo / "src" / "__pycache__").mkdir()
+    (repo / "src" / "__pycache__" / "shadow.py").write_text("print('SHADOW')\n")  # never read by the run: bytecode caches only
+    assert propose(repo, state, *KEY).returncode == 0
+
+
+def test_a_missing_folder_a_replaced_file_and_a_second_copy_are_changes(world):
+    _, state, repo = world
+    (repo / "src" / "code.py").unlink()
+    (repo / "src" / "code.py").mkdir()
+    (repo / "src" / "code.py" / "inner.py").write_text("x = 1\n")
+    assert "is not a committed file" in propose(repo, state, *KEY).stderr
+    shutil.rmtree(repo / "src" / "code.py")
+    git(repo, "checkout", "--", "src/code.py")
+    shutil.rmtree(repo / "scripts")
+    assert "is missing" in propose(repo, state, *KEY).stderr or "scripts is not a plain folder" in propose(repo, state, *KEY).stderr
+    git(repo, "checkout", "--", "scripts")
+    (repo / "src" / "deeper" / "deepest").mkdir(parents=True)
+    (repo / "src" / "deeper" / "deepest" / "x.py").write_text("x = 1\n")
+    assert "src/deeper/deepest/x.py is not a committed file" in propose(repo, state, *KEY).stderr
 
 
 @pytest.mark.parametrize("url", ["https://example.com/o/r.git", "https://github.com.evil.example/o/r.git",
@@ -338,6 +446,7 @@ def evil_repo(repo):
     git(evil, "commit", "-q", "-m", "evil")
     git(evil, "remote", "add", "origin", "https://github.com/attacker/stolen.git")
     git(evil, "update-ref", "refs/remotes/origin/main", "HEAD")
+    git(evil, "fetch", "-q", str(repo), "main")  # the commit the runtime was built from is there too
     return evil
 
 
@@ -386,7 +495,7 @@ def test_the_approving_answer_records_one_authorization_bound_to_the_exact_run(w
     assert done.returncode == 0 and "attested by hook" in done.stdout
     (auth,) = records(state, "run-script")
     tree = git(repo, "rev-parse", "HEAD^{tree}")
-    assert auth["target"] == f"{repo.resolve()}|release-key|create,--write|{SLUG}|{tree}"
+    assert re.fullmatch(re.escape(f"{repo.resolve()}|release-key|create,--write|{SLUG}|{tree}|") + "[0-9a-f]{12}", auth["target"])
     assert auth["uses"] == 1 and auth["session_id"] == SESSION and auth["how"] == "asked"
     assert 0 < auth["expires"] - auth["ts"] <= 15 * 60 + 1
 
@@ -500,14 +609,23 @@ def test_a_question_asked_with_more_than_the_printed_text_records_nothing(world)
         "another field": {**shown, "note": "x"},
         "no options": {key: value for key, value in shown.items() if key != "options"},
     }
+    said = {
+        "another description": "the options, their order or their descriptions differ", "a third option": "the options, their order or their descriptions differ",
+        "an option fewer": "the options, their order or their descriptions differ", "options in the other order": "the options, their order or their descriptions differ",
+        "a preview on an option": "an option has an unexpected field (preview)", "another header": "the header is not 'Run script'",
+        "multiple choice": "the question allows more than one choice", "another field": "the question has an unexpected field (note)",
+        "no options": "the options are missing"}
     for label, variant in variants.items():
-        hooked(answer_of(repo, ask, shown=variant), state, repo)
+        done = hooked(answer_of(repo, ask, shown=variant), state, repo)
         assert records(state, "run-script") == [], label
-    hooked({**answer_of(repo, ask), "tool_input": {"questions": [shown, other]}}, state, repo)
-    hooked({**answer_of(repo, ask), "tool_input": {"questions": [other, shown]}}, state, repo)
-    hooked({**answer_of(repo, ask), "tool_input": {}}, state, repo)
-    hooked({k: v for k, v in answer_of(repo, ask).items() if k != "tool_input"}, state, repo)
-    assert records(state, "run-script") == []
+        assert f"the approval was not recorded: {said[label]}" in done.stdout, (label, done.stdout)
+    for label, tool_input, why in (("two questions", {"questions": [shown, other]}, "more than one question"),
+                                   ("two questions, ours second", {"questions": [other, shown]}, "more than one question"),
+                                   ("an empty tool_input", {}, "carries no record of what was asked")):
+        done = hooked({**answer_of(repo, ask), "tool_input": tool_input}, state, repo)
+        assert why in done.stdout and records(state, "run-script") == [], label
+    done = hooked({k: v for k, v in answer_of(repo, ask).items() if k != "tool_input"}, state, repo)
+    assert "carries no record of what was asked" in done.stdout and records(state, "run-script") == []
     hooked(answer_of(repo, ask), state, repo)
     assert len(records(state, "run-script")) == 1
 
@@ -540,7 +658,7 @@ def test_the_main_sessions_exact_command_gets_one_ticket_and_spends_the_approval
     assert done.returncode == 0 and len(secret) == 32
     assert len(spent(state)) == 1
     (ticket,) = records(state, "run-ticket")
-    assert ticket["target"].endswith(f"|{SLUG}|{git(repo, 'rev-parse', 'HEAD^{tree}')}#{secret}")
+    assert re.search(re.escape(f"|{SLUG}|{git(repo, 'rev-parse', 'HEAD^{tree}')}|") + f"[0-9a-f]{{12}}#{secret}$", ticket["target"])
     assert 0 < ticket["expires"] - ticket["ts"] <= 61
     assert ticket_of(guard("scripts/release-key create --write", state, repo)) == ""
     assert len(spent(state)) == 1
@@ -559,7 +677,7 @@ def test_the_command_that_runs_is_a_fixed_line_with_a_cleared_environment_and_no
     assert named <= {"HOME", "PATH", "CLAUDECODE", run_approval.TICKET_ENV, "POOLHOUSE_HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "TERM"}
     assert {"HOME", "PATH", "CLAUDECODE", run_approval.TICKET_ENV} <= named
     start = next(i for i, w in enumerate(words) if w == "-I")
-    assert words[start - 1] == sys.executable and words[start:start + 3] == ["-I", "-B", "-X"]
+    assert words[start - 1] == str(runtime.available().python) and words[start:start + 3] == ["-I", "-B", "-X"]
     assert words[start + 3].startswith("pycache_prefix=") and not Path(words[start + 3].split("=", 1)[1]).exists()
     assert words[start + 4:] == [str(repo.resolve() / "scripts" / "release-key"), "create", "--write"]
 
@@ -726,6 +844,7 @@ def release(world, monkeypatch):
     module = load("release-key", monkeypatch, repo)
     where, log = recording_gh(tmp)
     monkeypatch.setattr(run_approval, "TRUSTED_DIRS", (str(where), "/usr/bin", "/bin"))
+    monkeypatch.setattr(run_approval, "_code_roots", lambda _found: (os.path.realpath(ROOT / "src"),))
     signing = repo / "signing.py"
     signing.write_text('RELEASE_KEY = ""\n')
     monkeypatch.setattr(module, "SIGNING", signing)
@@ -976,11 +1095,13 @@ def protect(world, monkeypatch):
     """The protection script on the world's checkout, a `gh` serving a repository, the agent marker set; ``(tmp, state, repo, module, log)``."""
     tmp, state, repo = world
     module = load("github-protection-apply", monkeypatch, repo)
+    module.real_identity, module.real_check = module.identity, module.check
     log = serve(tmp, monkeypatch, before_state())
     monkeypatch.setattr(module, "identity", lambda _repo: (True, "agent identity: ready"))
     module.checked_with = []
     monkeypatch.setattr(module, "check", lambda repo, args: module.checked_with.append(module.environment_of_run()) or 0)
     monkeypatch.setattr(run_approval, "TRUSTED_DIRS", (str(tmp / "bin"), "/usr/bin", "/bin"))
+    monkeypatch.setattr(run_approval, "_code_roots", lambda _found: (os.path.realpath(ROOT / "src"),))
     monkeypatch.setattr(run_approval, "KEPT", (*run_approval.KEPT, "GH_LOG", "GH_REPLIES", "GH_FAIL", "GH_NOAUTH"))
     monkeypatch.setenv("CLAUDECODE", "1")
     return tmp, state, repo, module, log
@@ -1073,8 +1194,9 @@ def test_the_hint_for_a_missing_environment_names_a_command_the_script_accepts(r
 
 def test_the_code_an_approved_run_executes_is_guarded_as_the_person_record_code_is():
     for path in ("src/poolhouse/workspace/run_approval.py", "src/poolhouse/workspace/run_hook.py", "scripts/hooks/run-approval",
-                 "scripts/release-key", "scripts/github-protection-apply", "src/poolhouse/credentials/__init__.py",
-                 "src/poolhouse/credentials/writing.py"):
+                 "scripts/release-key", "scripts/github-protection-apply", "scripts/github-protection", "scripts/agent-identity",
+                 "src/poolhouse/credentials/__init__.py", "src/poolhouse/credentials/writing.py",
+                 ".git/refs/remotes/origin/main", ".git/packed-refs"):
         assert protectedwrites.guarded(str(ROOT / path)), path
     assert not protectedwrites.guarded(str(ROOT / "scripts" / "test"))
     assert protectedwrites.guarded(str(ROOT / "src" / "poolhouse" / "credentials"))
@@ -1123,3 +1245,293 @@ def test_the_log_still_verifies_after_every_step_of_a_run(release, monkeypatch):
     assert person_store.open_log().verify().ok
     kinds = [(r["type"], r.get("kind") or r.get("state")) for r in rows(state) if r["type"] in ("authorization", "transition")]
     assert kinds == [("authorization", "run-script"), ("transition", "used"), ("authorization", "run-ticket"), ("transition", "used")]
+
+
+# -- the interpreter and the code that runs --------------------------------------------------------
+
+
+def test_the_question_names_the_interpreter_and_the_source_that_will_run(world):
+    _, state, repo = world
+    ask = asked(propose(repo, state, *KEY))
+    built = git(repo, "rev-parse", "HEAD")[:12]
+    assert f"Interpreter: {runtime.available().python}, isolated (-I), from the runtime built from {built}" in ask.question
+    assert "Code: the scripts of this checkout; the Poolhouse of that runtime or of this checkout's src, and nothing else" in ask.question
+
+
+def test_no_selected_runtime_means_no_question_and_no_other_interpreter(world):
+    _, state, repo = world
+    (runtime.directory() / "selected.json").unlink()
+    done = propose(repo, state, *KEY)
+    assert done.returncode != 0 and "no runtime is selected" in done.stderr and "does not pass" not in done.stderr
+
+
+def test_a_selected_runtime_that_fails_its_verification_is_named_and_never_replaced(world):
+    _, state, repo = world
+    site = next((runtime.available().prefix / "lib").glob("python*/site-packages"))
+    (site / "poolhouse" / "fleet" / "built-from").write_text("0" * 40)
+    done = propose(repo, state, *KEY)
+    assert done.returncode != 0 and "does not pass its verification" in done.stderr and "no runtime is selected" not in done.stderr
+
+
+def test_a_pth_file_that_puts_another_poolhouse_first_makes_the_runtime_fail_its_verification(world, tmp_path):
+    _, state, repo = world
+    site = next((runtime.available().prefix / "lib").glob("python*/site-packages"))
+    (tmp_path / "evil" / "poolhouse").mkdir(parents=True)
+    (tmp_path / "evil" / "poolhouse" / "__init__.py").write_text("")
+    (site / "zz-evil.pth").write_text(f"import sys; sys.path.insert(0, {str(tmp_path / 'evil')!r})\n")
+    assert runtime.available() is None
+    assert "does not pass its verification" in propose(repo, state, *KEY).stderr
+
+
+def test_a_runtime_built_from_another_src_is_refused_and_the_one_of_this_commit_is_accepted(world, runtime_template):
+    _, state, repo = world
+    (repo / "src" / "code.py").write_text("x = 2\n")
+    git(repo, "add", "src/code.py")
+    git(repo, "commit", "-q", "-m", "change the src")
+    git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+    done = propose(repo, state, *KEY)
+    assert done.returncode != 0 and "whose src is not this checkout's src" in done.stderr
+    select_runtime(runtime_template, repo)
+    assert propose(repo, state, *KEY).returncode == 0
+
+
+def test_a_commit_that_changes_only_other_folders_keeps_the_runtime_of_the_commit_before(world):
+    _, state, repo = world
+    (repo / "docs" / "note.md").write_text("another note\n")
+    git(repo, "add", "docs/note.md")
+    git(repo, "commit", "-q", "-m", "docs")
+    assert propose(repo, state, *KEY).returncode == 0
+
+
+def test_the_interpreter_is_part_of_what_was_approved(world, runtime_template):
+    tmp, state, repo = world
+    approve(tmp, state, repo, *KEY)
+    select_runtime(runtime_template, repo)  # another runtime of the same commit: another interpreter
+    assert ticket_of(guard("scripts/release-key create --write", state, repo)) == ""
+    assert spent(state) == []
+
+
+def test_an_approval_that_no_longer_holds_says_why_in_one_sentence(world):
+    tmp, state, repo = world
+    say(tmp, state, repo, "hello", prompt_id="bind")
+    ask = asked(propose(repo, state, *KEY))
+    (repo / "docs" / "note.md").write_text("a later note\n")
+    git(repo, "add", "docs/note.md")
+    git(repo, "commit", "-q", "-m", "a commit after the question")
+    done = hooked(answer_of(repo, ask), state, repo)
+    assert "the approval was not recorded: the checkout, the runtime or the repository is no longer what the question said" in done.stdout
+    assert records(state, "run-script") == []
+    declined = hooked(answer_of(repo, ask, ask.no), state, repo)
+    assert "not recorded" not in declined.stdout
+
+
+def test_the_question_lists_the_changed_files_bounded_and_with_every_odd_name_made_safe(world, runtime_template):
+    _, state, repo = world
+    odd = ["a b.py", "caf\N{LATIN SMALL LETTER E WITH ACUTE}.py", "new\nline.py", "q'uote.py", "back\\slash.py"]
+    for name in [*odd, *(f"zz{i:02d}.py" for i in range(20))]:
+        (repo / "src" / name).write_text("x = 1\n")
+    git(repo, "add", "src")
+    git(repo, "commit", "-q", "-m", "files with odd names")
+    select_runtime(runtime_template, repo)
+    question = asked(propose(repo, state, *KEY)).question
+    line = next(line for line in question.splitlines() if line.startswith("Changed files in scripts and src ("))
+    assert line.startswith("Changed files in scripts and src (25: ") and line.endswith(" and 5 more)")
+    assert "A 'src/a b.py'" in line and "src/caf\\xe9.py" in line and "src/new\\nline.py" in line and "src/zz14.py" in line
+    assert "src/zz15.py" not in line and "\N{LATIN SMALL LETTER E WITH ACUTE}" not in question
+    assert "Guards changed since origin/main: none" in question
+
+
+def module_at(name, file=None, path=None):
+    made = types.ModuleType(name)
+    if file:
+        made.__file__ = file
+    if path is not None:
+        made.__path__ = path
+    return made
+
+
+def test_every_loaded_poolhouse_module_must_lie_under_the_approved_code(world, tmp_path):
+    _, _state, repo = world
+    found = run_approval.facts(repo, repo / "scripts" / "release-key", ["create", "--write"], str(repo))
+    src, prefix = str((repo / "src").resolve()), str(runtime.available().prefix.resolve())
+    assert run_approval._code_roots(found) == (src, prefix)
+    fine = {"poolhouse": module_at("poolhouse", file=f"{src}/poolhouse/__init__.py"),
+            "poolhouse.x": module_at("poolhouse.x", file=f"{prefix}/lib/python/site-packages/poolhouse/x.py"),
+            "poolhouse.ns": module_at("poolhouse.ns", path=[f"{src}/poolhouse/ns"]),
+            "json": module_at("json", file="/elsewhere/json.py"), "poolhousefake": module_at("poolhousefake", file="/elsewhere/f.py")}
+    run_approval.verify_loaded(found, modules=fine)
+    (repo / "src" / "linkmod.py").symlink_to(tmp_path / "elsewhere.py")
+    for module in {
+            "elsewhere": module_at("poolhouse.shadow", file=str(tmp_path / "evil" / "shadow.py")),
+            "a sibling that shares the prefix of the string": module_at("poolhouse.sib", file=f"{src}evil/x.py"),
+            "a way out through ..": module_at("poolhouse.up", file=f"{src}/../evil/x.py"),
+            "a link out": module_at("poolhouse.link", file=f"{src}/linkmod.py"),
+            "a namespace outside": module_at("poolhouse.ns2", path=["/elsewhere/ns2"]),
+            "a namespace half outside": module_at("poolhouse.ns3", path=[f"{src}/ns3", "/elsewhere/ns3"]),
+            "nothing to check": module_at("poolhouse.void")}.values():
+        with pytest.raises(run_approval.Refused, match=re.escape(module.__name__)):
+            run_approval.verify_loaded(found, modules={**fine, module.__name__: module})
+
+
+def test_a_poolhouse_module_from_elsewhere_stops_the_run_before_anything_is_spent_or_made(release, monkeypatch, capsys):
+    tmp, state, repo, rk, log = release
+    secret = ticket_for(tmp, state, repo, *KEY)
+    monkeypatch.setitem(sys.modules, "poolhouse.shadow", module_at("poolhouse.shadow", file=str(tmp / "evil" / "shadow.py")))
+    monkeypatch.setenv(run_approval.TICKET_ENV, hand_over(state, secret))
+    assert rk.main(["create", "--write"], NO_TERMINAL, SESSION) == 1
+    assert "poolhouse.shadow was loaded from" in capsys.readouterr().err
+    assert list(log.iterdir()) == [] and credentials.get(rk.ITEM) is None and len(spent(state)) == 1
+    monkeypatch.delitem(sys.modules, "poolhouse.shadow")
+    monkeypatch.setenv(run_approval.TICKET_ENV, hand_over(state, secret))
+    assert rk.main(["create", "--write"], NO_TERMINAL, SESSION) == 0
+
+
+def test_a_poolhouse_module_that_arrives_after_the_admission_stops_the_run_before_the_key_is_made(release, monkeypatch, capsys):
+    tmp, state, repo, rk, log = release
+    secret = ticket_for(tmp, state, repo, *KEY)
+    real = run_approval.admit
+
+    def admit_then_poison(*given, **more):
+        approval = real(*given, **more)
+        monkeypatch.setitem(sys.modules, "poolhouse.late", module_at("poolhouse.late", file=str(tmp / "evil" / "late.py")))
+        return approval
+
+    monkeypatch.setattr(run_approval, "admit", admit_then_poison)
+    monkeypatch.setenv(run_approval.TICKET_ENV, hand_over(state, secret))
+    assert rk.main(["create", "--write"], NO_TERMINAL, SESSION) == 1
+    assert "poolhouse.late was loaded from" in capsys.readouterr().err
+    assert list(log.iterdir()) == [] and credentials.get(rk.ITEM) is None
+
+
+def test_a_poolhouse_module_that_arrives_after_the_admission_stops_the_protection_before_it_writes(protect, monkeypatch, capsys):
+    tmp, state, repo, ap, log = protect
+    secret = ticket_for(tmp, state, repo, *APPLY)
+    real = run_approval.admit
+
+    def admit_then_poison(*given, **more):
+        approval = real(*given, **more)
+        monkeypatch.setitem(sys.modules, "poolhouse.late", module_at("poolhouse.late", file=str(tmp / "evil" / "late.py")))
+        return approval
+
+    monkeypatch.setattr(run_approval, "admit", admit_then_poison)
+    monkeypatch.setenv(run_approval.TICKET_ENV, hand_over(state, secret))
+    assert ap.main(["--apply", "--repo", REPO], NO_TERMINAL, SESSION) == 1
+    assert "poolhouse.late was loaded from" in capsys.readouterr().err
+    assert writes(log) == [] and not (state / "github-protection").exists()
+
+
+def test_without_a_selected_runtime_the_script_says_why_and_a_person_needs_none(release, monkeypatch, capsys):
+    tmp, state, repo, rk, log = release
+    secret = ticket_for(tmp, state, repo, *KEY)
+    (runtime.directory() / "selected.json").unlink()
+    monkeypatch.setenv(run_approval.TICKET_ENV, hand_over(state, secret))
+    assert rk.main(["create", "--write"], NO_TERMINAL, SESSION) == 1
+    assert "no runtime is selected" in capsys.readouterr().err and list(log.iterdir()) == []
+    monkeypatch.delenv("CLAUDECODE")
+    assert rk.main(["create"], (True, True), None) == 0
+
+
+def test_children_of_an_approved_run_read_and_write_no_bytecode(release, monkeypatch):
+    tmp, state, repo, rk, log = release
+    secret = ticket_for(tmp, state, repo, *KEY)
+    monkeypatch.setenv(run_approval.TICKET_ENV, hand_over(state, secret))
+    assert rk.main(["create", "--write"], NO_TERMINAL, SESSION) == 0
+    seen = dict(line.split("=", 1) for line in (log / "env.0").read_text().splitlines() if "=" in line)
+    assert seen["PYTHONDONTWRITEBYTECODE"] == "1" and seen["PYTHONPYCACHEPREFIX"].endswith(".pyc")
+    assert not Path(seen["PYTHONPYCACHEPREFIX"]).exists()
+
+
+def test_the_python_children_of_the_protection_script_are_isolated_and_read_no_bytecode(protect, monkeypatch, capsys):
+    tmp, state, repo, ap, _log = protect
+    secret = ticket_for(tmp, state, repo, *APPLY)
+    monkeypatch.setattr(ap, "identity", ap.real_identity)
+    monkeypatch.setattr(ap, "AGENT_IDENTITY", repo / "scripts" / "agent-identity")
+    monkeypatch.setenv(run_approval.TICKET_ENV, hand_over(state, secret))
+    assert ap.main(["--apply", "--repo", REPO], NO_TERMINAL, SESSION) == 1  # the stand-in reports no identity and its flags
+    shown = re.search(r"flags isolated=1 nobytecode=1 cache=(\S+?\.pyc)", capsys.readouterr().err)
+    assert shown and not Path(shown[1]).exists()
+    secret = ticket_for(tmp, state, repo, *APPLY)
+    monkeypatch.setattr(ap, "identity", lambda _repo: (True, "agent identity: ready"))
+    monkeypatch.setattr(ap, "check", ap.real_check)
+    monkeypatch.setenv(run_approval.TICKET_ENV, hand_over(state, secret))
+    assert ap.main(["--apply", "--repo", REPO], NO_TERMINAL, SESSION) == 0
+    shown = re.search(r"flags isolated=1 nobytecode=1 cache=(\S+?\.pyc)", capsys.readouterr().out)
+    assert shown and not Path(shown[1]).exists()
+
+
+def test_a_persons_python_children_start_as_they_always_did(protect, monkeypatch, capsys):
+    _tmp, _state, repo, ap, _log = protect
+    monkeypatch.delenv("CLAUDECODE")
+    monkeypatch.setattr(ap, "identity", ap.real_identity)
+    monkeypatch.setattr(ap, "AGENT_IDENTITY", repo / "scripts" / "agent-identity")
+    ap.main(["--repo", REPO, "--apply"], (True, True))
+    assert "flags isolated=0" in capsys.readouterr().err
+
+
+# -- the guard: the diff base and the ticket ---------------------------------------------------------
+
+
+def load_guard(monkeypatch):
+    loader = importlib.machinery.SourceFileLoader("claude_bash_guard", str(HOOKS / "claude-bash-guard"))
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+    monkeypatch.setitem(sys.modules, loader.name, module)
+    loader.exec_module(module)
+    return module
+
+
+def test_the_guards_own_agent_check_keeps_a_subagent_from_asking_for_a_ticket(monkeypatch):
+    guard_module = load_guard(monkeypatch)
+    asked_for = []
+    monkeypatch.setattr(writer, "issue", lambda text, cwd, **more: asked_for.append((text, cwd)) or "A FIXED LINE")
+    given = {"command": "scripts/release-key create --write"}
+    assert guard_module.run_stamped({"agent_id": "helper-1", "cwd": "/somewhere"}, given) is None
+    assert asked_for == []
+    assert guard_module.run_stamped({"cwd": "/somewhere"}, given) == {"command": "A FIXED LINE"}
+    assert asked_for == [(given["command"], "/somewhere")]
+    for other in ("scripts/release-key create --write; id", "cat scripts/release-key", "ls"):
+        assert guard_module.run_stamped({"cwd": "/somewhere"}, {"command": other}) is None
+    assert len(asked_for) == 1
+
+
+def test_the_guard_gives_nothing_when_the_exchange_is_refused_for_any_reason(monkeypatch):
+    guard_module = load_guard(monkeypatch)
+    for error in (run_approval.Refused("x"), run_approval.NotARun("x"), person_auth.NotAuthorized("x"), OSError("x")):
+        def refuse(*_given, error=error, **_more):
+            raise error
+
+        monkeypatch.setattr(writer, "issue", refuse)
+        assert guard_module.run_stamped({"cwd": "/somewhere"}, {"command": "scripts/release-key create --write"}) is None
+
+
+MOVES = ["git update-ref refs/remotes/origin/main HEAD", "git update-ref -d refs/remotes/origin/main", "git update-ref --stdin",
+         "git update-ref remotes/origin/main HEAD", "git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main",
+         "git fetch /tmp/evil main:refs/remotes/origin/main", "git fetch origin +refs/heads/*:refs/remotes/origin/*",
+         "git -C /somewhere update-ref refs/remotes/origin/main abc", "git pull /tmp/evil main:remotes/origin/main",
+         "git push . HEAD:refs/remotes/origin/main", "sh -c 'git update-ref refs/remotes/origin/main HEAD'",
+         "env GIT_DIR=x git update-ref refs/remotes/origin/main HEAD", "cd /x && git fetch /tmp/e main:refs/remotes/origin/main"]
+
+
+@pytest.mark.parametrize("command", MOVES)
+def test_an_agent_cannot_move_the_ref_the_diff_of_the_question_is_taken_against(world, command):
+    _, state, repo = world
+    for env in ({}, {"POOLHOUSE_GUARD": "off"}, {"POOLHOUSE_GUARD": "off", **AGENT}):
+        done = guard(command, state, repo, env=env)
+        assert done.returncode == 2 and "remote-tracking refs" in done.stderr, (command, env)
+
+
+@pytest.mark.parametrize("command", ["git fetch origin", "git fetch", "git fetch origin 0.3dev", "git update-ref refs/heads/side HEAD",
+                                     "git symbolic-ref HEAD refs/heads/side", "git log refs/remotes/origin/main", "git pull --ff-only origin 0.3dev",
+                                     "git push origin HEAD:refs/heads/side", "git diff refs/remotes/origin/main HEAD"])
+def test_reading_the_remote_tracking_refs_and_moving_the_agents_own_refs_pass(world, command):
+    _, state, repo = world
+    assert guard(command, state, repo).returncode == 0, command
+
+
+@pytest.mark.parametrize("command", ["echo abc > .git/refs/remotes/origin/main", "cp /tmp/x .git/packed-refs", "printf x >> .git/packed-refs",
+                                     "mv /tmp/x .git/refs/remotes/origin/main", "tee .git/refs/remotes/origin/main", "rm .git/refs/remotes/origin/main",
+                                     "sed -i s/a/b/ .git/packed-refs"])
+def test_the_files_that_hold_the_remote_tracking_refs_are_not_an_agents_to_write(world, command):
+    _, state, repo = world
+    for env in ({}, {"POOLHOUSE_GUARD": "off", **AGENT}):
+        done = guard(command, state, repo, env=env)
+        assert done.returncode == 2, (command, env, done.stderr)

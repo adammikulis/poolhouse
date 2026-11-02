@@ -84,6 +84,8 @@ def _wipe(work: Path) -> None:
 
 
 def _generate() -> bytes:
+    if APPROVED:
+        APPROVED.verify()  # last look before any key exists: every Poolhouse module of this run is the approved code
     work = Path(tempfile.mkdtemp(prefix="release-key-"))
     try:
         work.chmod(0o700)
@@ -98,6 +100,8 @@ def _generate() -> bytes:
 
 
 def _set_secret(private: bytes) -> None:
+    if APPROVED:
+        APPROVED.verify()
     try:
         pinned = ["--repo", APPROVED.slug] if APPROVED else []
         _run(["gh", "secret", "set", REPO_NAME, "--env", "release", *pinned], data=private, cwd=ROOT)
@@ -121,6 +125,8 @@ def _record(public: str, write: bool) -> None:
 
 
 def _store(private: bytes) -> None:
+    if APPROVED:
+        APPROVED.verify()
     try:
         credentials.set(ITEM, base64.b64encode(private).decode(), keychain=True)
     except credentials.CredentialError as exc:
@@ -188,7 +194,7 @@ def main(argv: list[str] | None = None, terminal: tuple[bool, bool] | None = Non
     try:
         APPROVED = run_approval.admit(ROOT / "scripts" / "release-key", given, terminal, session)
         return args.run(args)
-    except (Failed, person.HumanRequired, credentials.CredentialError) as exc:
+    except (Failed, person.HumanRequired, credentials.CredentialError, run_approval.Refused) as exc:
         print(f"release-key: {exc}", file=sys.stderr)
         return 1
     finally:

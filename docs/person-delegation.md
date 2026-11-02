@@ -345,23 +345,33 @@ commands (the first makes the release signing key and keeps it in the keystore; 
 rulesets, environment and Actions settings). An agent runs each once on the owner's approval, built from the same parts
 as `release-main`:
 
-- **Question.** `scripts/hooks/run-approval propose NAME ARGS...` renders it from git and the registry in
-  `poolhouse.workspace.run_approval`: the command, the repository (the origin's `OWNER/NAME`), the checkout, the commit,
-  `git diff --shortstat` of `scripts` and `src` and of the script itself against `<remote>/main`, a "Guards changed" line
-  as in the `release-main` question, what the run does, and a final line tagged under the store's key. It prints the
-  header, the two labels and their descriptions that the question must be asked with. It renders nothing for any other
-  command, an origin that is not a GitHub repository, a `github-protection-apply` that does not name that repository, a
-  repository without `<remote>/main`, a checkout that is not a worktree of the session's project (`CLAUDE_PROJECT_DIR`, so a
-  `git init` made under `.claude/worktrees` is no worktree), or a checkout in which a file of `scripts` or `src` is not
-  exactly the commit's. That is checked by hashing every file against `git ls-tree -r HEAD`, never from the index, so
-  `assume-unchanged`, `skip-worktree`, ignored files, extra files, links and a changed executable bit all count; only
-  `__pycache__` folders are left out, because the run reads no bytecode from the checkout.
+- **Question.** `scripts/hooks/run-approval propose NAME ARGS...` renders it from git, the selected runtime and the
+  registry in `poolhouse.workspace.run_approval`: the command, the repository (the origin's `OWNER/NAME`), the checkout,
+  the commit, the interpreter and the source that will run, `git diff --shortstat` of `scripts` and `src` and of the script
+  against `<remote>/main` (as last fetched), the first twenty changed files of `scripts` and `src` with their count (read
+  from `git diff -z`, every name that is not plain ASCII or holds a space, quote or newline shown escaped), a "Guards
+  changed" line as in the `release-main` question, what the run does, and a final line tagged under the store's key. It
+  prints the header, the two labels and their descriptions that the question must be asked with. It says why in one
+  sentence when it renders nothing: any other command, an origin that is not a GitHub repository, a `github-protection-apply`
+  that does not name that repository, a repository without `<remote>/main`, a checkout that is not a worktree of the
+  session's project (`CLAUDE_PROJECT_DIR`, so a `git init` made under `.claude/worktrees` is no worktree), no verified
+  runtime or one built from another `src`, or a file of `scripts` or `src` that is not exactly the commit's. That is checked
+  by hashing every file against `git ls-tree -r HEAD`, never from the index: `assume-unchanged`, `skip-worktree`, ignored
+  files, extra files, a changed executable bit, a missing file, any symbolic link (committed or not) and any folder that
+  cannot be listed and entered all count, and an error while reading is a reason, not a gap. Only a folder named exactly
+  `__pycache__` is left out, because nothing started for the run reads bytecode from the checkout.
+- **Runtime.** The keystore admits only the installed copy of Poolhouse (`poolhouse.real_machine`), so `release-key` runs in
+  the selected runtime, not in the checkout. The approval therefore needs `runtime.available()` to verify and its source
+  commit's `src` tree to equal the checkout's `HEAD:src`; the interpreter path and that commit are part of the target, so a
+  runtime swapped after the question gets no ticket. There is no fallback to another interpreter. The scripts check, when
+  they are admitted and again before the secret, the key or the first write is made, that every loaded `poolhouse` module
+  lies under the checkout's `src` or the runtime's prefix.
 - **Answer.** The `AskUserQuestion` hook (`run_hook.on_event`) records a `run-script` authorization (15 minutes, one use,
-  this session) only for the approving label of a question that git and the registry still bear out, whose tag the store
-  made, for a checkout that is a worktree of the session's project, and whose `tool_input` is exactly the one question
-  with exactly the printed header, labels and descriptions (no other question, option, preview or field). Typed words, a
-  subagent's answer and a non-attended session record nothing; stopping or a session boundary ends it like any
-  authorization.
+  this session) only for the approving label of a question that the code still bears out, whose tag the store made, for a
+  checkout that is a worktree of the session's project, and whose `tool_input` is exactly the one question with exactly
+  the printed header, labels and descriptions (no other question, option, preview or field). When a genuine approval
+  cannot be recorded it says why in one sentence. Typed words, a subagent's answer and a non-attended session record
+  nothing; stopping or a session boundary ends it like any authorization.
 - **Ticket.** The Bash guard is the one process that sees whether a command came from the main session (`agent_id`
   absent) and what it says. For the main session's single plain command (spaces and tabs only between ASCII words) that
   names one of the two scripts exactly as approved, it spends the authorization, records a `run-ticket` (one minute, one
@@ -374,21 +384,30 @@ as `release-main`:
 - **Spend.** The script runs `run_approval.admit`: a person at a terminal passes as before; otherwise it takes the ticket
   from the file `POOLHOUSE_RUN_TICKET_FILE` names (only a private file of ours in the ticket folder; the file is removed
   whatever it holds), refuses when any `DYLD_*`, `LD_*` or `PYTHON*` variable is set, and spends the ticket in the person
-  record for this session, command, repository and tree, once. Its children get the account's home, the system and
-  Homebrew tool folders as `PATH`, the agent markers and `POOLHOUSE_*` variables, and an empty `GH_CONFIG_DIR` of its own
-  (no `http_unix_socket`), nothing else; `gh secret set` is pinned to the approved repository with `--repo`. The key is
+  record for this session, command, repository, tree and interpreter, once. Its children (`gh`, `ssh-keygen`,
+  `scripts/agent-identity`, `scripts/github-protection`) get the account's home, the system and Homebrew tool folders as
+  `PATH`, the agent markers and `POOLHOUSE_*` variables, an empty `GH_CONFIG_DIR` of its own (no `http_unix_socket`), and
+  no bytecode written or read (`PYTHONDONTWRITEBYTECODE`, `PYTHONPYCACHEPREFIX`); the two Python children start with
+  `-I -B -X pycache_prefix=<nowhere>`. `gh secret set` is pinned to the approved repository with `--repo`. The key is
   generated in a fresh `0700` folder that is wiped. No other variable opens a script to an agent.
+- **The diff base.** `refs/remotes/**` and `.git/packed-refs` are a person's for an agent's shell: `git update-ref`,
+  `git symbolic-ref` and a fetch, pull or push whose refspec ends in `refs/remotes` are refused by the Bash guard, and a
+  write to the files that hold those refs is refused like a write to a guard. `git fetch` and `git push` themselves move
+  them.
 - **Not covered.** `release-key rotate`, `show-public`, `agent`, `create` without `--write`, `github-protection-apply
   --restore` and every other argument list stay a person's at a terminal; the dry run of `github-protection-apply` is
   open to everyone.
 
-What this is not. A cooperative or prompt-injected agent cannot run the two commands without the owner's selection of
-the exact question. A same-user adversary is not stopped: a pseudo-terminal plus `env -u CLAUDECODE ...` already defeats
-every person-at-terminal check, an agent can run the guard script with an event it made up, write the store or its key,
-move `refs/remotes/<remote>/main` with `git update-ref` (so the diff lines show what it chooses), or replace `gh` in a
-folder it can write. The guards, the hook, the registry, the two scripts and `src/poolhouse/credentials/` are guarded code
-(an agent's edit is refused), and an approval binds a commit, not a review of it: a committed change shows in the diff
-lines, and the independent review of guard-adjacent changes is what judges it.
+What this binds and what it does not. Bound: the scripts and `src` as committed, the runtime's `src` tree equal to the
+checkout's, the command, the repository, the interpreter and the diff the owner is shown. Not bound: the runtime's
+third-party packages, the interpreter's standard library, `git`, `gh`, `ssh-keygen` and the system tool folders, a
+malicious change that was committed (the file list and the guards line show it, the independent review of guard-adjacent
+changes judges it), and a same-user adversary. A cooperative or prompt-injected agent cannot run the two commands
+without the owner's selection of the exact question. A same-user adversary is not stopped: a pseudo-terminal plus
+`env -u CLAUDECODE ...` already defeats every person-at-terminal check, an agent can run the guard script with an event
+it made up, write the store or its key, change `remote.<name>.url` or `url.<base>.insteadOf` and fetch (the question names
+the repository, not where it was fetched from), or replace `gh` in a folder it can write. The guards, the hook, the
+registry, the four scripts of the run and `src/poolhouse/credentials/` are guarded code (an agent's edit is refused).
 
 ## 8. Removing `delegate`, and checking `mint` and `invite`
 

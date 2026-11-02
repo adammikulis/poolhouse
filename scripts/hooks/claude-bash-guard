@@ -34,6 +34,9 @@ PUSHER = (r"(^|[;&|(]\s*|\bthen\s+|\bdo\s+|\bexec\s+|[\"'`]\s*|\bsudo\s+|\bcomma
           r"|\benv\s+(-\S+\s+(\w+\s+)?|\w+=\S*\s+)*)(\w+=\S*\s+)*")
 GIT_PUSH = r"git\s+(-[Cc]\s+\S+\s+|--\S+\s+)*push\b"
 
+# The remote-tracking refs are what an approved run's question compares the code with: only fetch and push move them.
+MOVE_REMOTE_REFS = (PUSHER + r"git\s+(-[Cc]\s+\S+\s+|--\S+\s+)*(update-ref|symbolic-ref)\b[^;&|\n]*((refs/)?remotes/|--stdin)"
+                    r"|" + PUSHER + r"git\s+(-[Cc]\s+\S+\s+|--\S+\s+)*(fetch|pull|push)\b[^;&|\n]*:\+?(refs/)?remotes/")
 PUSH_MAIN = PUSHER + GIT_PUSH + r"[^;&|\n]*\bmain\b"
 PUSH_FLAGS = (PUSHER + GIT_PUSH + r"[^;&|\n]*(--all\b|--mirror\b|--tags\b|--delete\b"
               r"|--force|\s-f\b|\s-d\b)")
@@ -112,6 +115,10 @@ REFUSE = [
      "An agent pushes one branch by name: `git push origin <branch>`. Every branch at "
      "once, a tag, a deletion and a forced push stay the owner's, and no opener opens "
      "them."),
+    (MOVE_REMOTE_REFS,
+     "The remote-tracking refs (refs/remotes) are what the question for an approved run compares the code with, so "
+     "only `git fetch` and `git push` move them: `git update-ref`, `git symbolic-ref` and a fetch or push whose "
+     "refspec ends in refs/remotes are a person's."),
     (PUSH_MAIN,
      "An agent pushes the development branch by name: `git push origin <development branch>` "
      "after a merge lands on it. A push to `main` publishes: release-please reads the subjects "
@@ -169,7 +176,7 @@ def without_search_patterns(command: str) -> str:
     return re.sub(rf"\b({SEARCHERS})\b[^|;&\n]*", strip, command)
 
 
-HARD = (PUSH_FLAGS, PUSH_MAIN, MINT, PERSON_STORE, SKIP_HOOKS, STASH)
+HARD = (PUSH_FLAGS, MOVE_REMOTE_REFS, PUSH_MAIN, MINT, PERSON_STORE, SKIP_HOOKS, STASH)
 """Patterns that stay in force when POOLHOUSE_GUARD=off is set: this guard only ever runs on an agent's call."""
 
 MESSAGE = re.compile(r"(-m|--message)(\s+|=)('[^']*'|\"[^\"]*\")")
