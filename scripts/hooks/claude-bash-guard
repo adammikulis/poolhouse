@@ -249,11 +249,18 @@ def main() -> int:
     switched = rules_loader.guard_off()
     try:
         event = json.load(sys.stdin)
+    except RecursionError:
+        print(rules_loader.NESTED, file=sys.stderr)
+        return 2
     except Exception:
         return 0
     if event.get("tool_name") not in SHELL_TOOLS:
         return 0
-    if refused := judge(event, switched, rules_loader.load()):
+    rules = rules_loader.load()
+    if rules and rules.protected().too_deep(event):
+        print(rules_loader.NESTED, file=sys.stderr)
+        return 2
+    if refused := judge(event, switched, rules):
         print(refused, file=sys.stderr)
         return 2
     stamped = subagent_stamped(event, event.get("tool_input") or {})

@@ -12,15 +12,16 @@ import shlex
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
-__all__ = ["guarded", "holds_secret", "other_agent", "refusal", "secret", "tool_refusal", "touches_guards",
-           "without_heredocs"]
+__all__ = ["TooComplex", "command_texts", "guarded", "holds_secret", "other_agent", "refusal", "secret", "too_deep",
+           "tool_refusal", "touches_guards", "without_heredocs"]
 
 GUARD_PATHS = (
     r"src/poolhouse/workspace/person_\w+\.py",
     r"scripts/hooks/(claude-user-prompt|person-consume)",
     r"\.git/(hooks(/.*)?|config(\.worktree)?|worktrees/[^/]+/config\.worktree)",
     r"\.gitconfig", r"\.config/git/(config|hooks(/.*)?)", r"\.poolhouse/(authority\.json|authority-audit\.jsonl)")
-REVIEWED = (*GUARD_PATHS, r"scripts/hooks/.*", r"\.claude/.*", r"AGENTS\.md", r"CLAUDE\.md", r"\.github/.*",
+REVIEWED = (*GUARD_PATHS, r"scripts/hooks/.*", r"\.claude/.*", r"\.codex/.*", r"\.agents/.*", r"\.vscode/tasks\.json",
+            r"\.mcp\.json", r"AGENTS\.md", r"CLAUDE\.md", r"\.github/.*",
             r"docs/github-protection\.md", r"scripts/github-protection[\w-]*", r"scripts/sealed_git[\w.-]*",
             r"scripts/(primary_sync|ci_watch)\.py",
             r"src/poolhouse/(protectedwrites|worktreerules|authority|person|real_machine)\.py",
@@ -55,11 +56,14 @@ DEEP_WITH_R = frozenset({"rm", "chmod", "chown", "chattr", "setfacl", "xattr", "
 MODE = re.compile(r"[0-7]{3,4}|[ugoa]*[-+=][rwxXstugo]*(,[ugoa]*[-+=][rwxXstugo]*)*")
 FIND_EXEC = frozenset({"-exec", "-execdir", "-ok", "-okdir"})
 FIND_FILES = frozenset({"-fprint", "-fprint0", "-fprintf", "-fls"})
-LISTERS = frozenset({"cd", "ls", "du", "stat", "df", "test", "[", "echo", "printf", "basename", "dirname", "realpath", "readlink"})
-"""Commands that name or measure what a folder holds without reading it."""
-WALKERS = frozenset({"rg", "ag", "ack", "tar", "zip", "7z", "7za", "ditto", "cpio", "rsync", "tree"})
+WALKERS = frozenset({"rg", "ag", "ack", "tar", "zip", "7z", "7za", "ditto", "cpio", "rsync"})
 """Commands that read every file under the folders they are given."""
-GREPS = frozenset({"grep", "egrep", "fgrep"})
+GREPS = frozenset({"grep", "egrep", "fgrep", "rg", "ag", "ack"})
+"""Searches that look in the working folder when they are given no folder."""
+SEARCH_VALUES = frozenset({"-A", "-B", "-C", "-m", "-d", "-D", "-g", "-t", "-T", "-j", "--include", "--exclude", "--exclude-dir",
+                           "--max-count", "--glob", "--type", "--type-not", "--threads", "--context", "--after-context",
+                           "--before-context"})
+"""Options of a search that take a value, which is not a folder."""
 FIND_LOGIC = frozenset({"-o", "-or", "!", "-not"})
 READ_ONLY = frozenset({"wc", "grep", "egrep", "fgrep", "cat", "head", "tail", "ls", "stat", "du", "diff", "cmp", "sha1sum",
                        "sha256sum", "shasum", "md5", "md5sum", "od", "strings", "echo", "printf", "true", "basename", "dirname",
@@ -91,7 +95,16 @@ READERS = re.compile(r"read|get|list|search|view|find|stat|head|tail|cat|show|de
 DEPTH = 3
 SCRIPT_BYTES = 65536
 MOST_PATH = 4096
-PATH_KEY = re.compile(r"(^|_)(file_?path|path|paths|directory|dir|folder)$", re.I)
+MOST_COMMAND = 200_000
+MOST_EXPANSIONS = 256
+MOST_DEPTH = 32
+"""What the rules read in bounded work: a command (outside its heredoc bodies) of at most this many characters, a word that
+expands to at most this many names, and a tool input nested at most this deep. More is refused, never read in part."""
+PATH_KEY = re.compile(r"(path|paths|file|files|dir|dirs|directory|directories|folder|folders|cwd|root|source|destination|target"
+                      r"|src|dst|location|locations)$")
+COMMAND_KEY = re.compile(r"(command|commands|cmd|cmds|script|scripts|argv|commandline|cmdline)$|^(run|exec|execute|shell|bash|zsh|sh)$")
+"""Keys of a tool input, with every character but a letter taken out and lower case, that hold a path or a command."""
+TOO_COMPLEX = "is too long or too nested for the rules to read in bounded work: split it into smaller steps"
 PERSON = "git's hooks and config, the person record and the authority registry are changed by a person at a terminal"
 
 
@@ -244,11 +257,21 @@ def _split_redirects(words: list[str]) -> tuple[list[str], list[str], list[str]]
     return kept, written, read
 
 
+class TooComplex(ValueError):
+    """The input is past what the rules read in bounded work (`MOST_COMMAND`, `MOST_EXPANSIONS`, `MOST_DEPTH`)."""
+
+
 def _braces(word: str) -> list[str]:
-    found = re.search(r"\{([^{}]*,[^{}]*)\}", word)
-    if not found:
-        return [word]
-    return [x for part in found.group(1).split(",") for x in _braces(word[:found.start()] + part + word[found.end():])]
+    """The names a word with `{a,b}` groups stands for; `TooComplex` past `MOST_EXPANSIONS` of them."""
+    names = [word]
+    while True:
+        found = next(((i, m) for i, name in enumerate(names) if (m := re.search(r"\{([^{}]*,[^{}]*)\}", name))), None)
+        if found is None:
+            return names
+        i, group = found
+        names[i:i + 1] = [names[i][:group.start()] + part + names[i][group.end():] for part in group.group(1).split(",")]
+        if len(names) > MOST_EXPANSIONS:
+            raise TooComplex(f"a word with more than {MOST_EXPANSIONS} brace expansions")
 
 
 def _script_text(path: Path) -> str:
@@ -265,9 +288,11 @@ class Shell:
         self.here, self.environ, self.released = here, environ, released
         self.variables: dict[str, str] = {}
 
-    def move(self, folder: str) -> None:
-        """Change the working folder as `cd` does."""
-        self.here = Path(os.path.normpath(self.here / self.home(folder)))
+    def move(self, folder: str, physical: bool = False) -> None:
+        """Change the working folder as `cd` does: a step up (`..`) is taken in the name by default and, with ``physical``
+        (`cd -P`), in the folder a link leads to."""
+        target = self.here / self.home(folder)
+        self.here = Path(os.path.realpath(target) if physical else os.path.normpath(target))
 
     def home(self, word: str) -> str:
         """``word`` with a leading `~` and the variables set so far expanded."""
@@ -280,8 +305,9 @@ class Shell:
         folder that exists."""
         out: list[str] = []
         for one in _braces(self.home(word)):
+            # the kernel follows a link before it takes a `..`, so the place is found from the name as written, not the collapsed one
             joined = os.path.normpath(self.here / one)
-            real = os.path.realpath(joined)
+            real = os.path.realpath(self.here / one)
             out += [joined, real]
             if re.search(r"[*?\[]", one):
                 out += [*self.matches(joined), *self.matches(real)]
@@ -341,16 +367,42 @@ def _move_hit(args: list[str], shell: Shell) -> str:
     return shell.guarded(sources, deep=True) or _copy_hit("mv", args, shell)
 
 
-def _walks(verb: str, args: list[str]) -> bool:
+def _walks(verb: str, args: list[str], fed: bool = False) -> bool:
     """Whether the command reads what is under the folders it is given: a search or an archive of a tree, a recursive copy, or a
-    find that runs a command on what it finds."""
+    find that runs a command on what it finds (``fed``: whose names go to another command, through `xargs` or a substitution)."""
     if verb in WALKERS:
         return True
     if verb in GREPS:
         return _recursive(args)
     if verb in ("cp", "scp"):
         return _recursive(args) or any(re.fullmatch(r"-[a-zA-Z]*a[a-zA-Z]*", a) for a in args)
-    return verb == "find" and bool(FIND_EXEC.intersection(args))
+    return verb == "find" and (fed or bool(FIND_EXEC.intersection(args)))
+
+
+def _folders(verb: str, args: list[str], shell: Shell) -> list[str]:
+    """The folders a walking command reads under: its folder operands, and the working folder when a search is given none. A
+    `-C` (`--directory`) moves the working folder for what follows, as it does for `tar`."""
+    if verb == "find":
+        return _find_starts(args)
+    operands: list[str] = []
+    searching = verb in GREPS
+    asked = not any(a in ("-e", "-f", "--regexp", "--file") or a.startswith(("--regexp=", "--file=")) for a in args)
+    i = 0
+    while i < len(args):
+        word = args[i]
+        if word in ("-C", "--directory") and not searching and i + 1 < len(args):
+            shell.move(args[i + 1])
+            i += 2
+        elif word.startswith("--directory=") and not searching:
+            shell.move(word.split("=", 1)[1])
+            i += 1
+        elif word in SEARCH_VALUES and searching:
+            i += 2
+        else:
+            if not word.startswith("-"):
+                operands.append(word)
+            i += 1
+    return [*operands, "."] if searching and len(operands) <= int(asked) else operands
 
 
 def _recursive(args: list[str]) -> bool:
@@ -552,22 +604,46 @@ def _fetch(words: list[str], shell: Shell) -> str:
     return _writes(words[0].rsplit("/", 1)[-1], words[1:], shell)
 
 
+def _cd_folder(args: list[str]) -> tuple[str, bool]:
+    """The folder a `cd` goes to and whether it follows links before a `..` (`-P`); the flags (`-P`, `-L`, `-e`, `-@`) and
+    `--` are not the folder, and `cd -` (back to the earlier folder) names none."""
+    physical, i = False, 0
+    while i < len(args) and args[i].startswith("-") and args[i] != "-":
+        if args[i] == "--":
+            i += 1
+            break
+        for flag in args[i][1:]:
+            physical = flag == "P" if flag in "PL" else physical
+        i += 1
+    return (args[i] if i < len(args) and args[i] != "-" else ""), physical
+
+
 class Reader:
     """Reads one command line; `command` is the first reason a command in it is refused."""
 
     def __init__(self, shell: Shell) -> None:
         self.shell = shell
+        self.fed = False
 
-    def command(self, text: str, depth: int = 0) -> str:
-        """Why ``text``, a command line, may not run; an empty string when it may."""
+    def command(self, text: str, depth: int = 0, fed: bool = False) -> str:
+        """Why ``text``, a command line, may not run; an empty string when it may. ``fed``: the names it prints go to another
+        command (it is the body of a substitution)."""
         text, bodies = _heredocs(text)
+        if len(text) > MOST_COMMAND:
+            raise TooComplex(f"a command of {len(text)} characters")
         flat, subs = _substitutions(_flatten(text))
         for inner in subs:
-            if depth < DEPTH and (why := self.command(inner, depth + 1)):
+            if depth < DEPTH and (why := self.command(inner, depth + 1, fed=True)):
                 return why
-        for words in _commands(_words(flat)):
-            if why := self.simple(words, bodies, depth):
-                return why
+        commands = _commands(_words(flat))
+        before = self.fed
+        self.fed = fed or any(word.rsplit("/", 1)[-1] == "xargs" for one in commands for word in one)
+        try:
+            for words in commands:
+                if why := self.simple(words, bodies, depth):
+                    return why
+        finally:
+            self.fed = before
         return ""
 
     def simple(self, words: list[str], bodies: list[str], depth: int) -> str:
@@ -593,15 +669,19 @@ class Reader:
         return self.verb(rest[0].rsplit("/", 1)[-1], rest, bodies, depth)
 
     def _reaches(self, verb: str, args: list[str]) -> str:
-        """The word of a command that names the state folder (or the home folder, or one above it) when the command reads what is
-        under it; a command that only names or measures the state folder, such as `ls` and `du`, is let through."""
-        shell, walks = self.shell, _walks(verb, args)
-        listing = verb in LISTERS and not _recursive(args)
-        inside = shell.hits(args, lambda p: holds_state(p, shell.environ)) or (
-            str(shell.here) if walks and holds_state(str(shell.here), shell.environ) else "")
-        if inside and not listing:
-            return inside
-        return shell.hits(args, lambda p: above_state(p, shell.environ)) if walks else ""
+        """The folder a command reads under when that folder holds the person record and the session tokens: the state folder, the
+        home folder or one above it. Only a command that reads what is under a folder is asked (see `_walks`); naming, measuring,
+        making, removing or handing a state folder to a program reads none of it. The working folder counts when a search is
+        given no folder."""
+        shell = self.shell
+        if not _walks(verb, args, self.fed):
+            return ""
+        here = shell.here
+        try:
+            return shell.hits(_folders(verb, args, shell),
+                              lambda p: holds_state(p, shell.environ) or above_state(p, shell.environ))
+        finally:
+            shell.here = here
 
     @staticmethod
     def _message(rest: list[str], word: str) -> bool:
@@ -611,7 +691,9 @@ class Reader:
         """Why the command ``rest`` (its first word is ``verb``'s path) may not run."""
         shell, args = self.shell, rest[1:]
         if verb == "cd" and args:
-            shell.move(args[0])
+            folder, physical = _cd_folder(args)
+            if folder:
+                shell.move(folder, physical)
             return ""
         if verb in SHELLS and (inner := _shell_code(args)) and depth < DEPTH:
             return self.command(inner, depth + 1) or _code(verb, args, bodies, shell)
@@ -629,8 +711,12 @@ class Reader:
 
 
 def refusal(command: str, cwd: str, released: Callable[[str], bool], environ: Mapping[str, str] | None = None) -> str:
-    """Why the shell ``command``, run from ``cwd``, may not run; an empty string when it may."""
-    return Reader(Shell(Path(cwd or Path.cwd()), environ or os.environ, released)).command(command)
+    """Why the shell ``command``, run from ``cwd``, may not run; an empty string when it may. A command past the bounds of
+    `MOST_COMMAND`, `MOST_EXPANSIONS` and `DEPTH` is refused, not read in part."""
+    try:
+        return Reader(Shell(Path(cwd or Path.cwd()), environ or os.environ, released)).command(command)
+    except (TooComplex, RecursionError) as error:
+        return f"the command {TOO_COMPLEX} ({error})."
 
 
 def without_heredocs(command: str) -> str:
@@ -646,11 +732,26 @@ def other_agent(command: str, own: str) -> str:
         if why := other_agent(inner, own):
             return why
     for words in _commands(_words(flat)):
+        if why := _sets_a_session(words, own):
+            return why
         for i, word in enumerate(words):
             if why := _names_another(word, words[i + 1:i + 2], own):
                 return why
         if (inner := _shell_code(words[1:])) and (why := other_agent(inner, own)):
             return why
+    return ""
+
+
+def _sets_a_session(words: list[str], own: str) -> str:
+    """Why a command sets the variable that names the session which started the subagent ``own`` to a value: as an assignment
+    in front of a command, after `env` or `export`, or on its own. An empty value only clears it, and a word of an argument that
+    looks like an assignment is text."""
+    rest, assigned = _first_words(words)
+    if rest and rest[0].rsplit("/", 1)[-1] in ("export", "declare", "typeset", "readonly", "local"):
+        assigned = {**assigned, **dict(w.split("=", 1) for w in rest[1:] if re.match(r"[A-Za-z_]\w*=", w))}
+    named = next((name for name, value in assigned.items() if name in NATIVE_SESSION and value), "")
+    if named:
+        return f"you are {own}: {named} names the session that started you, and the harness names you in every command."
     return ""
 
 
@@ -660,8 +761,6 @@ def _names_another(word: str, after: list[str], own: str) -> str:
         return f"you are {own}: run as yourself, not as {value or after[0]}."
     if name == "POOLHOUSE_WORKSPACE_AGENT" and equals and value != own:
         return f"you are {own}: run as yourself, not as {value}."
-    if name in NATIVE_SESSION and equals:
-        return f"you are {own}: the session that started you is not yours to name, and the harness names you in every command."
     if name == "POOLHOUSE_SUBAGENT" and equals:
         return f"you are {own}: the harness names you in every command, and no command names another."
     if name in ("--token-file", "POOLHOUSE_WORKSPACE_TOKEN"):
@@ -669,19 +768,51 @@ def _names_another(word: str, after: list[str], own: str) -> str:
     return ""
 
 
-def _strings(value: object) -> list[str]:
+def too_deep(value: object, limit: int = MOST_DEPTH) -> bool:
+    """Whether ``value`` (a decoded tool input) holds more than ``limit`` levels of mappings and lists; no recursion is used."""
+    level = [value]
+    for _ in range(limit + 1):
+        level = [inner for one in level for inner in (one.values() if isinstance(one, Mapping)
+                                                       else one if isinstance(one, (list, tuple)) else ())]
+        if not level:
+            return False
+    return True
+
+
+def _keyed(value: object, matches: re.Pattern[str], join: bool = False, named: bool = False, depth: int = 0) -> list[str]:
+    """The strings under a key that ``matches`` (letters only, lower case), at any depth. With ``join``, a list of strings under
+    such a key also stands for the command it spells as arguments."""
+    if depth > MOST_DEPTH:
+        raise TooComplex(f"a tool input nested more than {MOST_DEPTH} deep")
     if isinstance(value, str):
-        return [value]
+        return [value] if named else []
     if isinstance(value, Mapping):
-        return [s for v in value.values() for s in _strings(v)]
+        return [text for key, one in value.items()
+                for text in _keyed(one, matches, join, named or bool(matches.search(re.sub("[^a-z]", "", str(key).lower()))), depth + 1)]
     if isinstance(value, (list, tuple)):
-        return [s for v in value for s in _strings(v)]
+        words = [one for one in value if isinstance(one, str)]
+        spelled = [shlex.join(words)] if join and named and words and len(words) == len(value) else []
+        return [*spelled, *(text for one in value for text in _keyed(one, matches, join, named, depth + 1))]
     return []
 
 
-def _place(text: str, here: Path, environ: Mapping[str, str]) -> str:
+def command_texts(given: Mapping[str, object]) -> list[str]:
+    """The shell commands a tool input holds, however it spells them: under `command`, `cmd`, `script`, `argv`, `commands`,
+    `run`... at any depth, as a string, as a list of commands or as the arguments of one."""
+    return _keyed(given, COMMAND_KEY, join=True)
+
+
+def _strings(value: object) -> list[str]:
+    return _keyed(value, re.compile(""), named=True)
+
+
+def _raw(text: str, here: Path, environ: Mapping[str, str]) -> Path:
     home = environ.get("HOME", "~")
-    return os.path.normpath(here / (home + text[1:] if text == "~" or text.startswith("~/") else text))
+    return here / (home + text[1:] if text == "~" or text.startswith("~/") else text)
+
+
+def _place(text: str, here: Path, environ: Mapping[str, str]) -> str:
+    return os.path.normpath(_raw(text, here, environ))
 
 
 def _state_places(found: Mapping[str, str]) -> tuple[str, list[str]]:
@@ -711,10 +842,10 @@ def holds_secret(path: str, environ: Mapping[str, str] | None = None) -> bool:
 
 def _places(text: str, here: Path, environ: Mapping[str, str]) -> list[str]:
     """The place ``text`` names and, when a link is on the way, the place it leads to: a tool follows links, so both are the reach."""
-    place = _place(text, here, environ)
+    raw = _raw(text, here, environ)
     if len(text) > MOST_PATH or "\n" in text or "\0" in text:
-        return [place]
-    return [place, os.path.realpath(place)]
+        return [os.path.normpath(raw)]
+    return [os.path.normpath(raw), os.path.realpath(raw)]
 
 
 def _reaches_secrets(text: str, here: Path, environ: Mapping[str, str]) -> bool:
@@ -722,25 +853,21 @@ def _reaches_secrets(text: str, here: Path, environ: Mapping[str, str]) -> bool:
                for place in _places(re.split(r"[*?\[{]", text)[0] or ".", here, environ))
 
 
-def _named_paths(given: Mapping[str, object]) -> list[str]:
-    """The strings a tool input keeps under a key that names a path (`filePath`, `file_path`, `path`, `paths`, `directory`...)."""
-    out: list[str] = []
-    for key, value in given.items():
-        if PATH_KEY.search(str(key)):
-            out += _strings(value)
-        elif isinstance(value, Mapping):
-            out += _named_paths(value)
-        elif isinstance(value, (list, tuple)):
-            out += [text for one in value if isinstance(one, Mapping) for text in _named_paths(one)]
-    return out
-
-
 def tool_refusal(name: str, given: Mapping[str, object], *, cwd: str = "", environ: Mapping[str, str] | None = None,
                  subagent: bool = False) -> str:
     """Why the tool call ``name`` with input ``given`` is refused: it drives the owner's browser, runs code outside the shell
     rules, stops a task from a subagent, or reaches the person record or a guard; an empty string when it may run. A tool
-    nobody has listed is read by the shape of its input: a string under a key that names a path is a path it reaches."""
-    found, here = environ or os.environ, Path(cwd or Path.cwd())
+    nobody has listed is read by the shape of its input: a string under a key that names a path is a path it reaches. An
+    input nested past `MOST_DEPTH` is refused, not read in part."""
+    try:
+        return _tool_refusal(name, given, Path(cwd or Path.cwd()), environ or os.environ, subagent)
+    except (TooComplex, RecursionError) as error:
+        return f"the input of {name} {TOO_COMPLEX} ({error})."
+
+
+def _tool_refusal(name: str, given: Mapping[str, object], here: Path, found: Mapping[str, str], subagent: bool) -> str:
+    if too_deep(given):
+        raise TooComplex(f"a tool input nested more than {MOST_DEPTH} deep")
     if name.startswith("mcp__claude-in-chrome__"):
         return "the owner's own browser is not driven by an agent: use a headless browser of your own."
     if name == "mcp__ide__executeCode":
@@ -752,7 +879,7 @@ def tool_refusal(name: str, given: Mapping[str, object], *, cwd: str = "", envir
     if keys is not None:
         texts = [str(given[k]) for k in keys if given.get(k)]
     else:
-        texts = _strings(given) if name.startswith("mcp__") else _named_paths(given)
+        texts = _strings(given) if name.startswith("mcp__") else _keyed(given, PATH_KEY)
     for text in texts:
         for place in _places(text, here, found):
             if secret(place, found) or (writes and guarded(place, found)):

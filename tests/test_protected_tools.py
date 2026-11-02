@@ -67,6 +67,11 @@ def test_a_subagent_may_not_name_the_native_session_of_the_one_that_started_it(c
     "echo $CLAUDE_CODE_SESSION_ID",
     'grep -rn "CLAUDE_CODE_SESSION_ID" src scripts',
     "unset POOLHOUSE_SESSION_ID",
+    "CODEX_THREAD_ID= python3 -m pytest",
+    "env POOLHOUSE_SESSION_ID= scripts/test fast",
+    "export CLAUDE_CODE_SESSION_ID=",
+    "grep -n 'POOLHOUSE_SESSION_ID=x' README.md",
+    "echo POOLHOUSE_SESSION_ID=x > notes.txt",
 ])
 def test_a_subagent_may_read_the_selectors_or_drop_them(command):
     assert not other(command), command
@@ -156,6 +161,22 @@ def test_a_link_to_the_person_record_or_a_session_token_is_refused_where_it_is_r
     assert tool("LSP", {"filePath": str(work / "key")}, environ=environ)
     assert not tool("Read", {"file_path": str(work / "plain.txt")}, environ=environ)
     assert not tool("Grep", {"pattern": "k", "path": str(work)}, environ=environ)
+
+
+def test_a_link_is_followed_before_a_parent_step_collapses(tmp_path):
+    """`link/../key` is the file beside the folder the link leads to, not the one beside the link."""
+    record = tmp_path / ".poolhouse" / "person"
+    (record / "inside").mkdir(parents=True)
+    (record / "key").write_text("k")
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "key").write_text("not a secret")
+    (work / "link").symlink_to(record / "inside", target_is_directory=True)
+    environ = {"HOME": str(tmp_path / "elsewhere")}
+    assert tool("Read", {"file_path": str(work / "link" / ".." / "key")}, environ=environ)
+    assert tool("Grep", {"pattern": "k", "path": str(work / "link" / "..")}, environ=environ)
+    assert tool("LSP", {"filePath": str(work / "link" / ".." / "key")}, environ=environ)
+    assert not tool("Read", {"file_path": str(work / "key")}, environ=environ)
 
 
 def test_the_worktree_rules_expose_the_hard_forms_whatever_the_guard_switch_says(monkeypatch, tmp_path):

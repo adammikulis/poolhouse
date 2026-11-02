@@ -222,7 +222,6 @@ def without_marker(*argv: str) -> str:
     return " ".join(shlex.quote(word) for word in (sys.executable, "-c", code, *argv))
 
 
-@pytest.mark.redteam
 def test_a_subagent_that_drops_its_own_marker_has_no_identity_instead_of_the_leads(scene):
     scene.start("rev1")
     whoami = scene.run("rev1", without_marker("poolhouse-workspace", "whoami", "--json"))
@@ -232,7 +231,6 @@ def test_a_subagent_that_drops_its_own_marker_has_no_identity_instead_of_the_lea
     assert passed.returncode != 0 and "delegated" not in passed.stdout, (passed.stdout, passed.stderr)
 
 
-@pytest.mark.redteam
 def test_a_subagent_that_runs_a_command_through_the_monitor_tool_acts_as_the_subagent(scene):
     scene.start("rev1")
     child = scene.name("rev1")

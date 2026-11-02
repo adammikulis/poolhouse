@@ -40,18 +40,28 @@ def shell_guard():
 
 
 def command_refusal(event: dict, given: dict, rules) -> str:
-    """Why a `command` in the input of a tool nobody listed may not run: it is a shell command, and the rules that read one apply."""
-    if not isinstance(given.get("command"), str):
-        return ""
-    if event.get("agent_id"):
+    """Why a shell command in the input of a tool nobody listed may not run, however the input spells it (`command`, `cmd`,
+    `script`, `argv`, a list of commands, one nested in another object): the rules that read a shell command apply to each."""
+    texts = rules.protected().command_texts(given)
+    if texts and event.get("agent_id"):
         return ("blocked: a subagent's command is stamped as the subagent only when Bash or Monitor runs it; "
                 "run it with one of them.")
-    return shell_guard().judge({**event, "tool_name": "Bash"}, rules_loader.guard_off(), rules)
+    for text in texts:
+        if refused := shell_guard().judge({**event, "tool_name": "Bash", "tool_input": {"command": text}},
+                                          rules_loader.guard_off(), rules):
+            return refused
+    return ""
 
 
 def main() -> int:
     try:
         event = json.load(sys.stdin)
+    except RecursionError:
+        print(rules_loader.NESTED, file=sys.stderr)
+        return 2
+    except Exception:
+        return 0
+    try:
         given = event.get("tool_input") if isinstance(event, dict) else None
         name = str(event.get("tool_name") or "") if isinstance(given, dict) else ""
         rules = rules_loader.load() if name and name not in HELD_ELSEWHERE else None

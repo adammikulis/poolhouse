@@ -333,6 +333,19 @@ READS_THE_RECORD = [
     "cd ~/.poolhouse && rg token",
     "cd ~/.poolhouse; grep -r token .",
     "bash -c 'grep -r token ~/.poolhouse'",
+    "grep -r KEY ~",
+    "cp -r ~ /tmp/x",
+    "cd ~ && grep -r KEY",
+    "cd ~ && rg --hidden KEY",
+    "cd -P ~ && grep -r KEY",
+    "cd -- ~ && grep -r KEY",
+    "find ~ -name key | xargs cat",
+    "cat $(find ~ -name key)",
+    "cd -P ~/.poolhouse && cat person/key",
+    "cd -L ~/.poolhouse && cat person/key",
+    "cd -- ~/.poolhouse && cat person/key",
+    "cd -P ~/.poolhouse && rg KEY",
+    "tar czf x.tgz -C ~ .poolhouse",
 ]
 
 
@@ -344,6 +357,16 @@ def test_a_command_that_reads_the_person_record_or_the_tokens_through_a_redirect
 
 @pytest.mark.parametrize("command", [
     "ls ~/.poolhouse",
+    "ls -ltr ~/.poolhouse",
+    "ls -R src",
+    "tree",
+    "find ~/.poolhouse/node -name '*.log'",
+    "rm -rf ~/.poolhouse/node",
+    "mkdir -p ~/.poolhouse/node",
+    "poolhouse-node --state ~/.poolhouse/node",
+    "tar -C ~ -czf x.tgz Documents",
+    "cd ~ && grep -r KEY src",
+    "cd -P src && grep -r VALUE .",
     "cd ~/.poolhouse && ls",
     "du -sh ~/.poolhouse",
     "cat ~/.poolhouse/sentinel/events.log",
@@ -360,13 +383,31 @@ def test_reading_what_is_not_the_person_record_stays_allowed(tree, command):
     assert not why(command, tree), command
 
 
+@pytest.mark.parametrize("command", [
+    "cat link/../key",
+    "cat ./link/../key",
+    "head -c 9 link/../key",
+    "cd -P link/.. && cat key",
+    "grep -r k link/..",
+])
+def test_a_link_is_followed_before_a_parent_step_collapses_in_a_shell_path(tree, command):
+    record = home_of(tree) / ".poolhouse" / "person"
+    (record / "inside").mkdir(parents=True, exist_ok=True)
+    (record / "key").write_text("k")
+    (tree / "key").write_text("not a secret")
+    (tree / "link").symlink_to(record / "inside", target_is_directory=True)
+    assert why(command, tree), command
+    assert not why("cat key", tree)
+
+
 def test_the_release_question_names_every_hook_and_harness_setting_though_an_agent_may_edit_them():
     """The guards let an agent change these files (an owner's order), so the person who releases `main` is told of each."""
     wiring = [".claude/settings.json", ".claude/settings.local.json", ".claude/agents/branch-worker.md",
               ".claude/commands/x.md", ".claude/skills/s/SKILL.md", ".claude/hooks/h.sh", "scripts/hooks/claude-bash-guard",
               "scripts/hooks/claude-edit-guard", "scripts/hooks/claude-tool-guard", "scripts/hooks/rules_loader.py",
               "scripts/hooks/subagent_records.py", "scripts/hooks/workspace_hook.py", "scripts/hooks/claude-subagent-start",
-              "scripts/hooks/a-hook-added-next-year"]
+              "scripts/hooks/a-hook-added-next-year", ".codex/config.toml", ".codex/hooks/x.sh", ".agents/skills/x/SKILL.md",
+              ".vscode/tasks.json", ".mcp.json"]
     assert protectedwrites.touches_guards(["src/poolhouse/x.py", "docs/a.md", *wiring]) == wiring
 
 

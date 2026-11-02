@@ -154,6 +154,63 @@ def test_a_path_in_a_tool_no_guard_knows_is_checked_like_the_read_tool():
     assert hook(TOOLS, ordinary).returncode == 0
 
 
+SED = "sed -i s/a/b/ .git/hooks/pre-push"
+SHAPES = {
+    "cmd": {"cmd": SED},
+    "script": {"script": f"set -e\n{SED}\n"},
+    "argv": {"argv": ["sed", "-i", "s/a/b/", ".git/hooks/pre-push"]},
+    "nested command": {"exec": {"command": SED}},
+    "commands": {"commands": ["git status", SED]},
+    "a list for command": {"command": ["sed", "-i", "s/a/b/", ".git/hooks/pre-push"]},
+    "a list of commands in a list": {"steps": [{"run": SED}]},
+}
+
+
+def test_a_command_in_any_shape_of_input_meets_the_shell_rules():
+    for label, given in SHAPES.items():
+        assert hook(TOOLS, {"tool_name": UNKNOWN, "cwd": str(ROOT), "tool_input": given}).returncode == 2, label
+    assert hook(TOOLS, {"tool_name": UNKNOWN, "cwd": str(ROOT), "tool_input": {"argv": ["git", "status"]}}).returncode == 0
+
+
+PERSON_RECORD = "~/.poolhouse/person/statements.log"
+PATH_SHAPES = {
+    "file-path": {"file-path": PERSON_RECORD},
+    "targetPath": {"targetPath": PERSON_RECORD},
+    "file_paths": {"file_paths": [PERSON_RECORD]},
+    "a list of lists": {"locations": {"paths": [["a.py"], [PERSON_RECORD]]}},
+    "source": {"source": PERSON_RECORD},
+    "cwd": {"cwd": PERSON_RECORD},
+}
+
+
+def test_a_path_in_any_shape_of_input_is_checked_like_the_read_tool():
+    for label, given in PATH_SHAPES.items():
+        assert hook(TOOLS, {"tool_name": UNKNOWN, "cwd": str(ROOT), "tool_input": given}).returncode == 2, label
+    assert hook(TOOLS, {"tool_name": UNKNOWN, "cwd": str(ROOT), "tool_input": {"file-path": "src/poolhouse/x.py"}}).returncode == 0
+
+
+def deep(depth: int) -> str:
+    return '{"a":' * depth + "1" + "}" * depth
+
+
+def test_an_input_too_nested_to_read_is_refused_and_not_passed():
+    for script, name in ((TOOLS, UNKNOWN), (BASH, "Bash")):
+        for depth in (100, 1500):
+            text = f'{{"tool_name": "{name}", "cwd": "/", "tool_input": {{"command": "git status", "more": {deep(depth)}}}}}'
+            done = subprocess.run([sys.executable, str(script)], input=text, text=True, capture_output=True, env=CLEAN, check=False)
+            assert done.returncode == 2 and "nested" in done.stderr, (script.name, depth, done.stderr[-200:])
+
+
+def test_a_command_the_rules_cannot_read_in_bounded_work_is_refused_and_not_expanded():
+    import time
+    bomb = 'echo "' + "{a,b}" * 40 + '"'
+    began = time.monotonic()
+    done = bash(bomb)
+    assert done.returncode == 2 and "too" in done.stderr, done.stderr[-300:]
+    assert time.monotonic() - began < 10
+    assert bash("echo " + "x" * 300_000).returncode == 2
+
+
 def test_a_subagent_command_in_the_monitor_tool_is_stamped_as_the_subagent(monkeypatch, capsys):
     guard = load_bash_guard()
     import subagent_records
