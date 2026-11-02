@@ -13,12 +13,18 @@ from collections.abc import Callable
 from pathlib import Path
 
 from poolhouse import win32
+from poolhouse.home import state as state_root
 from poolhouse.platform import is_windows
 
 SOCKET = "node.sock"
 API_VERSION = 1
 TIMEOUT_S = 2.0
 MAX_FRAME = 1 << 20
+
+
+def default_state() -> Path:
+    """The node's state directory on this machine: where every caller that is not handed a state asks the node."""
+    return state_root("node")
 
 
 class Refused(ValueError):

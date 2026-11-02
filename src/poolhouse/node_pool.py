@@ -13,7 +13,6 @@ from pathlib import Path
 
 from poolhouse import node_health
 from poolhouse.checks import Finding
-from poolhouse.home import state as state_root
 
 LAN = "--lan"
 
@@ -30,7 +29,7 @@ def network_args(*, project: str = "", project_dir: str = "") -> list[str]:
 def ask(state: Path | None = None) -> tuple[dict | None, str]:
     """The pool the node of ``state`` belongs to and, when no node answers, why not (the error the connection or the node gave)."""
     try:
-        return node_health.call(state or state_root("node"), "pool_status"), ""
+        return node_health.call(state or node_health.default_state(), "pool_status"), ""
     except (OSError, ValueError) as exc:
         return None, f"{type(exc).__name__}: {exc}"
 
