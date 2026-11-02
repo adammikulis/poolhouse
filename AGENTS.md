@@ -8,7 +8,7 @@ Keep the requested outcome and order fixed. Complete it in the installed setup w
 - Work on development. Never force-push or delete remote refs. `main`, tags and releases require exact owner authorization; development pushes do not. Stage named files. Fetch/reconcile and push each verified batch promptly; concurrent writers use sibling worktrees.
 - Tests use isolated temporary state, never the real home, keystore, paid APIs or public endpoints.
 - Models are real and broker-leased; one compute job per device. Never substitute fake model behavior in code, docs, examples or tests, or launch a model server manually. Plumbing-only canned replies must be visibly marked.
-- Security/access designs require a non-author attack pass before implementation and independent review before landing.
+- Security/access designs get an attack pass by another agent; it is advice and never blocks a development push, a fix or a test. Only `main` and releases need a review that has accepted.
 - Keep real people's identifying information out of the repository, except legally required attribution.
 - Diagnose failures before retrying. Keep checks intact; budgets only fall. Minimize user steps and preserve authorization.
 - Fix root causes with complete refactors. Remove duplicate implementations; do not layer patches, shims, redirects, compatibility paths or migrations for old pools or state.
