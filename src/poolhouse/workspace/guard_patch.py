@@ -10,8 +10,8 @@ from dataclasses import dataclass
 __all__ = ["MAX_LINES", "PROTECTED", "FilePatch", "Patch", "Refused", "diff", "expected", "parse", "render"]
 
 PROTECTED = re.compile(
-    r"(^|/)(src/poolhouse/workspace/(person|guard)_\w+\.py"
-    r"|scripts/hooks/(claude-user-prompt|person-consume|claude-bash-guard|claude-edit-guard|pre-push|rules_loader\.py)"
+    r"(^|/)(src/poolhouse/workspace/((person|guard)_\w+|run_(approval|hook))\.py"
+    r"|scripts/hooks/(claude-user-prompt|person-consume|run-approval|claude-bash-guard|claude-edit-guard|pre-push|rules_loader\.py)"
     r"|\.claude/settings(\.local)?\.json)$")
 """The code and settings that make the person record and its guards: a person approves any change to them."""
 

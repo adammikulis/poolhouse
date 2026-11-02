@@ -70,7 +70,7 @@ defence below is invisible in the normal journey, and section 13 lists the one t
 | Test shards | `shards.json` (consent and the `allowed` fingerprints) is a plain file; the host starts `python -E` on the sender's tree as the device's user, in a process group, no sandbox policy | Any allowed device | `shard/consent.rs`, `shard/host.rs`, `fleet/shard_run.py` |
 | Landing trust | `land_trust.json`, per device, a file | Same user | `landtrust.rs` |
 | The running build | `selected.json` and `~/.poolhouse/runtimes`; the node binary's sha256 is recorded at build and checked at start (tamper after build, not provenance); built by `cargo build --release --locked`; the wheel by `pip wheel --no-deps` of the source | The updater, the `post-merge` and session-start hooks, an agent under the delegated `runtime.deploy` gate, the person, any process of the user that writes the directory | `node_binary.py`, `fleet/runtime_wheel.py`, `runtime_deploy.py`, `scripts/hooks/workspace_hook.py` |
-| The release key | `signing.RELEASE_KEY = ""`; `scripts/release-key` stores one in the OS keystore at the owner's terminal and loads it into ssh-agent to sign commits (a weak key by `docs/pools-and-serving.md` 1.3) | Nothing verifies against an empty key | `fleet/signing.py`; `docs/release.md` |
+| The release key | `signing.RELEASE_KEY = ""`; `scripts/release-key` stores one in the OS keystore at the owner's terminal, or in the one agent run he approves, and loads it into ssh-agent to sign commits (a weak key by `docs/pools-and-serving.md` 1.3) | Nothing verifies against an empty key | `fleet/signing.py`; `docs/release.md` |
 | The agent's GitHub identity | A GitHub App installation token (an hour) or a fine-grained token (up to a year), Contents and Workflows write; the development ruleset blocks deletion and non-fast-forward only; required signatures are optional and off. This is the document's target; whether the repository matches it was not checked here (`scripts/github-protection --check` needs the owner's `gh`) | Any process that holds the token: the landing runner, the harness environment | `docs/github-protection.md` |
 
 **The findings the table supports**, in order of reach:
@@ -917,7 +917,7 @@ coverage map gains the new tiers in C1 and no slice raises a ceiling.
 5. **Account actions that are outward-facing and the owner's alone:** a passkey or hardware key on the GitHub account, required
    signed commits on the development branch if wanted (14, C13), creating the GitHub App (`docs/github-protection.md`), moving
    the owner's own `gh` login and ssh keys off devices that run agents, switching on disk encryption where an agent reports it
-   is off, and setting `RELEASE_KEY` for outside releases (`scripts/release-key`, a terminal).
+   is off, and setting `RELEASE_KEY` for outside releases (`scripts/release-key create --write`, run once by an agent on his approval).
 6. **Real-phone checks** (attestation on the actual phone, the tripwire notice, the panic on the real device) in the order the
    rig leaves them.
 
@@ -946,7 +946,7 @@ on the operating system's own checks. What this design adds is small and honest:
   act**; the person compares the same three words on two screens, as now, so one comparison covers the join and the build and
   adds no step. A device that fetched the wrong program shows different words.
 * **What stays outside:** the downloaded first installer, the operating system's own signature check, and the owner scanning the
-  right code on the right screen. `RELEASE_KEY` for outside users stays a terminal step of the owner's (`scripts/release-key`)
+  right code on the right screen. `RELEASE_KEY` for outside users stays the owner's approval of one `scripts/release-key create --write`
   and is not on this path.
 
 ## 16. Decisions taken here, and what is not protected

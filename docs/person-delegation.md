@@ -1,8 +1,8 @@
 # Person-spoken authorization
 
 Design note. Slice 1a (section 12) is implemented; the rest is not. Owner decision of 2026-10-08: development
-pushes need no authorization, and the only authorizable kind is `release-main`, created only by the structured
-approval question (sections 7 and 12). Sections 5.1 to 5.3 describe the earlier prose design: typed words now
+pushes need no authorization, and the authorizable kinds are `release-main` and `run-script`, created only by the
+structured approval question (sections 7 and 12). Sections 5.1 to 5.3 describe the earlier prose design: typed words now
 only revoke, refuse, or ask for the approval question.
 Slice 1b-i (`delegate` removed from the CLI, `mint` person-only) is implemented; section 8 lists what remains.
 
@@ -313,6 +313,7 @@ Can (closed registry; targets derived by the guard):
 | kind | derived target | consumer |
 |---|---|---|
 | `release-main` | repository, remote, full commit and tree of one fast-forward of `refs/heads/main`, shown in the approval question | `pre-push`, Bash guard |
+| `run-script` | checkout, script, arguments, origin's repository and tree of one run of `release-key create --write` or `github-protection-apply --apply --repo OWNER/NAME`, shown in the approval question | the Bash guard, which exchanges it for a one-minute `run-ticket` that the script spends |
 | `daemon-restart` | owned process id and birth time from the claim table | runtime claims |
 | `restore-launcher` | installed launcher paths | repair tooling |
 | `runtime-deploy` | immutable wheel hash and target runtime | runtime tooling |
@@ -336,6 +337,41 @@ request or a rebuilt snapshot is not covered. GitHub enforces nothing about the 
 requires the pull request and its checks only; the gate is our guard and the agent credential's lack of rights over
 the ruleset. The guard side for `gh pr merge` and the merge API calls (the consumer of `person-consume` for the
 pull request head) is not written yet, and until it is the owner's word in chat is the only check.
+
+### run-script
+
+`scripts/release-key create --write` and `scripts/github-protection-apply --apply --repo OWNER/NAME` are person-only
+commands (the first makes the release signing key and keeps it in the keystore; the second changes the repository's
+rulesets, environment and Actions settings). An agent runs each once on the owner's approval, built from the same parts
+as `release-main`:
+
+- **Question.** `scripts/hooks/run-approval propose NAME ARGS...` renders it from git and the registry in
+  `poolhouse.workspace.run_approval`: the command, the repository (the origin's `OWNER/NAME`), the checkout, the commit,
+  what the run does, and a final line tagged under the store's key. It renders nothing for any other command, an origin
+  that is not a GitHub repository, a `github-protection-apply` that does not name that repository, or a checkout in which
+  `scripts` or `src` holds a change or an extra file (those folders are the code that runs).
+- **Answer.** The `AskUserQuestion` hook (`run_hook.on_event`) records a `run-script` authorization (15 minutes, one use,
+  this session) only for the approving label of a question that git and the registry still bear out and whose tag the
+  store made. Typed words, a subagent's answer and a non-attended session record nothing; stopping or a session
+  boundary ends it like any authorization.
+- **Ticket.** The Bash guard is the one process that sees whether a command came from the main session
+  (`agent_id` absent) and what it says. For the main session's single plain command that names one of the two scripts
+  exactly as approved, it spends the authorization and records a `run-ticket` (one minute, one use, target ending in a
+  random secret), and puts the secret in that command's shell as `POOLHOUSE_RUN_TICKET`. A subagent, an inexact
+  command (extra word, `sh -c`, `;`, `$(...)`, an env prefix, a copy or link of the script, another checkout), a run with
+  no live approval, another session's approval and a changed tree get none and spend nothing.
+- **Spend.** The script runs `run_approval.admit`: a person at a terminal passes as before; otherwise it needs the
+  ticket in the person record for this session, command, repository and tree, and spends it. Its children get the
+  account's home, the system and Homebrew tool folders as `PATH`, the agent markers and `POOLHOUSE_*` variables and
+  nothing else (no `GH_*`, proxy, certificate or config variable), and `gh secret set` is pinned to the approved
+  repository with `--repo`. No other variable opens a script to an agent.
+- **Not covered.** `release-key rotate`, `show-public`, `agent`, `create` without `--write`, `github-protection-apply
+  --restore` and every other argument list stay a person's at a terminal; the dry run of `github-protection-apply` is
+  open to everyone.
+
+Forgeable by the same user, as in section 12: the guard, the hook and the registry are guarded code (an agent's edit is
+refused), but a same-user process that writes the store, runs the guard script with an event it made up, or replaces `gh`
+in a folder it can write gets what the record would have given.
 
 ## 8. Removing `delegate`, and checking `mint` and `invite`
 

@@ -25,6 +25,15 @@ primary checkout is on; `main` is never it); promotion to `main`, tags, releases
 - Never commit or push `main` without the owner's explicit instruction. An agent pushes it only after the person selects
   the approval in the AskUserQuestion that `scripts/hooks/person-consume propose` renders from git: that authorizes one
   fast-forward to one commit, once; nothing an agent types or sets opens `main`. Development pushes need no approval.
+- Two person-only commands run for an agent on the same kind of one-time approval: `scripts/release-key create --write` and
+  `scripts/github-protection-apply --apply --repo OWNER/NAME` (the origin's repository; its dry run needs none).
+  `scripts/hooks/run-approval propose release-key create --write` (or `github-protection-apply --apply --repo OWNER/NAME`)
+  renders the question from git and a fixed registry (the exact command, the repository, the commit, `scripts` and `src`
+  unchanged); the main session asks it with AskUserQuestion word for word; after the owner selects the approval, the Bash
+  guard gives the main session's one exact command a one-minute ticket, which the script spends once, with its children
+  limited to the account's home and the system tool folders and `gh` pinned to that repository. A subagent, typed words,
+  any other command, a changed tree or another repository gets none; every other command of the two scripts stays a
+  person's at a terminal (docs/person-delegation.md, "run-script").
 - A promotion is a pull request from a frozen `promote/<date>` snapshot of development, opened by the agent and merged
   by it only while the owner's `release-main` authorization for that pull request's head SHA is live
   (docs/person-delegation.md).
@@ -144,7 +153,8 @@ request answer) changes only through a named gate in one registry, `poolhouse.au
   recording and local agent verbs delegated, makes every other gate a person's, enforcement `strict`.
   `POOLHOUSE_AUTHORITY_FLOOR=person` reads every gate as a person's; it only tightens, and the test suite sets it.
 - A person's whatever the registry says, and not in it: the keystore and secrets (unlock, passphrases and tokens,
-  signing keys), a passwordless `sudoers` rule (Poolhouse never installs one), and OS authentication for a privileged
+  signing keys; the release signing key's one creation is the approved run in section 1, "The owner's main"), a
+  passwordless `sudoers` rule (Poolhouse never installs one), and OS authentication for a privileged
   step. The machine setting an agent may request is the wired memory limit (`serve.wired-limit`). An agent prepares
   the exact operation; the person authenticates through the protected native OS journey. Poolhouse never sees or
   stores the password. The review screen also stays a person's.

@@ -282,20 +282,21 @@ def importers(module):
 
 
 def test_only_the_hook_logic_and_the_consumer_import_the_writers():
-    assert importers("person_record") == ["workspace/person_auth.py", "workspace/person_hook.py"]
+    assert importers("person_record") == ["workspace/person_auth.py", "workspace/person_hook.py", "workspace/run_hook.py"]
 
 
 def test_no_agent_reachable_module_imports_the_hook_logic_or_the_consumers():
-    assert importers("person_hook") == []
+    assert importers("person_hook") == ["workspace/run_hook.py"]
     assert importers("person_release") == ["workspace/person_hook.py"]
-    assert importers("person_auth") == ["workspace/person_release.py"]
+    assert importers("person_auth") == ["workspace/person_release.py", "workspace/run_approval.py", "workspace/run_hook.py"]
     assert importers("person_transcript") == ["workspace/person_hook.py"]
+    assert importers("run_hook") == []
 
 
 def test_the_scripts_that_reach_the_person_record_are_the_hooks_only():
     reaching = sorted(p.name for p in HOOKS.iterdir()
-                      if p.is_file() and re.search(r"person_(hook|auth|record|release)", p.read_text(errors="replace")))
-    assert reaching == ["person-consume", "workspace_hook.py"]
+                      if p.is_file() and re.search(r"person_(hook|auth|record|release)|run_(hook|approval)", p.read_text(errors="replace")))
+    assert reaching == ["claude-bash-guard", "person-consume", "run-approval", "workspace_hook.py"]
 
 
 def test_no_console_script_names_the_record_writers():

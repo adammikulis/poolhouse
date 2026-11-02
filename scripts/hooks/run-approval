@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+"""The agent's side of the owner's approval of one script run, from the Bash guard's wording.
+
+    run-approval propose NAME [ARGS...]   print the approval question for running scripts/NAME ARGS (release-key create --write, github-protection-apply --apply --repo OWNER/NAME)
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+from poolhouse.workspace import person_store, run_approval
+
+
+def main(argv: list[str]) -> int:
+    """Return the command's exit code; its output goes to stdout when it succeeds and stderr otherwise."""
+    if argv[1:2] != ["propose"] or len(argv) < 3:
+        sys.stderr.write("usage: run-approval propose NAME [ARGS...]\n")
+        return 2
+    try:
+        code, text = run_approval.propose(argv[2:], os.getcwd())
+    except (OSError, ValueError, person_store.Unreadable) as error:
+        code, text = 1, str(error)
+    (sys.stdout if code == 0 else sys.stderr).write(text + "\n")
+    return code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))
