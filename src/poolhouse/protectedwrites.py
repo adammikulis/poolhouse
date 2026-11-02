@@ -18,6 +18,7 @@ __all__ = ["guarded", "holds_secret", "other_agent", "refusal", "secret", "tool_
 GUARD_PATHS = (
     r"src/poolhouse/workspace/(person_\w+|run_(approval|hook))\.py",
     r"scripts/hooks/(claude-user-prompt|person-consume|run-approval)",
+    r"scripts/(release-key|github-protection-apply)", r"src/poolhouse/credentials/.*",
     r"\.git/(hooks(/.*)?|config(\.worktree)?|worktrees/[^/]+/config\.worktree)",
     r"\.gitconfig", r"\.config/git/(config|hooks(/.*)?)", r"\.poolhouse/(authority\.json|authority-audit\.jsonl)")
 REVIEWED = (*GUARD_PATHS, r"scripts/hooks/(pre-commit|commit-msg|pre-push|pushed|primary-only|no-real-names|no-data-files|budgets"
@@ -33,7 +34,7 @@ REVIEW = re.compile(r"(^|/)(" + "|".join(REVIEWED) + ")$", re.I)
 SECRETS = re.compile(r"(^|/)\.poolhouse/(person|node/client|node/person)(/|$)", re.I)
 HELD = tuple(tuple(path.split("/")) for path in (
     "src/poolhouse/workspace/person_store.py", "src/poolhouse/workspace/run_hook.py", "scripts/hooks/person-consume",
-    "scripts/hooks/run-approval", "scripts/hooks/claude-user-prompt",
+    "scripts/hooks/run-approval", "scripts/hooks/claude-user-prompt", "scripts/release-key", "src/poolhouse/credentials/__init__.py",
     ".git/hooks/pre-push", ".git/config", ".config/git/config", ".gitconfig"))
 MENTION = re.compile(
     r"claude-user-prompt|person-consume|\.git/(hooks|config)"

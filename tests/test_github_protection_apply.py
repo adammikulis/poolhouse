@@ -224,15 +224,16 @@ def test_no_terminal_refuses_before_any_request(ap, tmp_path, monkeypatch, capsy
     assert "terminal" in capsys.readouterr().err
 
 
-REGISTRY = ROOT / "src" / "poolhouse" / "workspace" / "run_approval.py"
-"""Names the script among those an agent may run on the owner's approval; it matches the name and starts nothing."""
+NAMING_IT = tuple(ROOT / "src" / "poolhouse" / name for name in ("workspace/run_approval.py", "workspace/guard_patch.py", "protectedwrites.py"))
+"""The registry of the runs an agent may make on the owner's approval and the two lists of guarded paths name the script; they match the name and start nothing."""
 
 
 def test_no_library_code_reaches_the_apply_script():
     for path in (ROOT / "src").rglob("*.py"):
-        if path != REGISTRY:
+        if path not in NAMING_IT:
             assert "github-protection-apply" not in path.read_text(encoding="utf-8"), path
-    assert not any(word in REGISTRY.read_text(encoding="utf-8") for word in ("subprocess", "os.exec", "os.system", "Popen"))
+    for path in NAMING_IT:
+        assert not any(word in path.read_text(encoding="utf-8") for word in ("subprocess", "os.exec", "os.system", "Popen")), path
 
 
 def test_the_commands_in_the_document_are_the_bodies_the_script_applies(ap):

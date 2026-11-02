@@ -12,6 +12,7 @@ __all__ = ["MAX_LINES", "PROTECTED", "FilePatch", "Patch", "Refused", "diff", "e
 PROTECTED = re.compile(
     r"(^|/)(src/poolhouse/workspace/((person|guard)_\w+|run_(approval|hook))\.py"
     r"|scripts/hooks/(claude-user-prompt|person-consume|run-approval|claude-bash-guard|claude-edit-guard|pre-push|rules_loader\.py)"
+    r"|scripts/(release-key|github-protection-apply)|src/poolhouse/credentials/.*"
     r"|\.claude/settings(\.local)?\.json)$")
 """The code and settings that make the person record and its guards: a person approves any change to them."""
 

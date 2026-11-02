@@ -87,6 +87,9 @@ def _generate() -> bytes:
     work = Path(tempfile.mkdtemp(prefix="release-key-"))
     try:
         work.chmod(0o700)
+        held = work.stat()
+        if held.st_uid != os.getuid() or held.st_mode & 0o077 or work.is_symlink():
+            raise Failed(f"{work} is not a private folder of ours, so the key is not written there")
         key = work / "key"
         _run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "poolhouse-release", "-f", str(key)])
         return key.read_bytes()
@@ -188,6 +191,9 @@ def main(argv: list[str] | None = None, terminal: tuple[bool, bool] | None = Non
     except (Failed, person.HumanRequired, credentials.CredentialError) as exc:
         print(f"release-key: {exc}", file=sys.stderr)
         return 1
+    finally:
+        if APPROVED:
+            APPROVED.close()
 
 
 if __name__ == "__main__":

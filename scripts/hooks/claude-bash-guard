@@ -206,20 +206,20 @@ def subagent_stamped(event: dict, given: dict) -> dict | None:
 
 
 def run_stamped(event: dict, given: dict) -> dict | None:
-    """The tool input of the main session's exact run of a script the owner approved, with the one-minute ticket in its shell, or None.
+    """The tool input of the main session's exact run of a script the owner approved, with the command replaced by the line that starts it with its one-minute ticket, or None.
 
     The ticket exists only here: a subagent's command, an inexact command and a run with no live approval get none, and the
     script refuses without it. Spending the approval is what the ticket records, so a second run finds none."""
     command = given.get("command")
-    if event.get("agent_id") or not isinstance(command, str) or not RUN_SCRIPT.fullmatch(command.strip()):
+    if event.get("agent_id") or not isinstance(command, str) or not RUN_SCRIPT.fullmatch(command.strip(" \t")):
         return None
     sys.path.insert(0, str(HERE.parent.parent / "src"))
     try:
-        from poolhouse.workspace import run_approval, run_hook
-        secret = run_hook.issue(command, str(event.get("cwd") or ""))
+        from poolhouse.workspace import run_hook
+        launch = run_hook.issue(command, str(event.get("cwd") or ""))
     except (ImportError, OSError, ValueError, RuntimeError):
         return None
-    return {**given, "command": f"export {run_approval.TICKET_ENV}={secret}\n{command}"}
+    return {**given, "command": launch}
 
 
 def release_approved(cwd: str) -> bool:

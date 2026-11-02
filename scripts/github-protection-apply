@@ -315,6 +315,9 @@ def main(argv: list[str] | None = None, terminal: tuple[bool, bool] | None = Non
     except (Failed, person.HumanRequired) as exc:
         print(f"github-protection-apply: {exc}", file=sys.stderr)
         return 1
+    finally:
+        if APPROVED:
+            APPROVED.close()
 
 
 if __name__ == "__main__":
