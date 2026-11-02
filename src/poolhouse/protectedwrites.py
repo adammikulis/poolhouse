@@ -55,6 +55,11 @@ DEEP_WITH_R = frozenset({"rm", "chmod", "chown", "chattr", "setfacl", "xattr", "
 MODE = re.compile(r"[0-7]{3,4}|[ugoa]*[-+=][rwxXstugo]*(,[ugoa]*[-+=][rwxXstugo]*)*")
 FIND_EXEC = frozenset({"-exec", "-execdir", "-ok", "-okdir"})
 FIND_FILES = frozenset({"-fprint", "-fprint0", "-fprintf", "-fls"})
+LISTERS = frozenset({"ls", "du", "stat", "df", "test", "[", "echo", "printf", "basename", "dirname", "realpath", "readlink"})
+"""Commands that name or measure what a folder holds without reading it."""
+WALKERS = frozenset({"rg", "ag", "ack", "tar", "zip", "7z", "7za", "ditto", "cpio", "rsync", "tree"})
+"""Commands that read every file under the folders they are given."""
+GREPS = frozenset({"grep", "egrep", "fgrep"})
 FIND_LOGIC = frozenset({"-o", "-or", "!", "-not"})
 READ_ONLY = frozenset({"wc", "grep", "egrep", "fgrep", "cat", "head", "tail", "ls", "stat", "du", "diff", "cmp", "sha1sum",
                        "sha256sum", "shasum", "md5", "md5sum", "od", "strings", "echo", "printf", "true", "basename", "dirname",
@@ -65,6 +70,7 @@ GIT_ENV = re.compile(r"^GIT_CONFIG_(COUNT|KEY_\d+|VALUE_\d+|GLOBAL|SYSTEM|PARAME
 GIT_PATHS = frozenset({"checkout", "restore", "rm", "mv", "update-index", "clean"})
 GIT_TAKES = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--namespace"})
 WRITES_TO_A_FILE = re.compile(r"^(&?>>?|>\||&>>?)$")
+READS_A_FILE = re.compile(r"^(\d*<>?)$")
 REDIRECTS = re.compile(r"[<>]&?|<<-?|<<<|>&")
 SPLIT = frozenset({";", "&&", "||", "|", "&", "|&", ";;", "(", ")"})
 MUTATING = frozenset({"PUT", "POST", "PATCH", "DELETE"})
@@ -216,22 +222,26 @@ def _commands(words: list[str]) -> list[list[str]]:
     return [one for one in out if one]
 
 
-def _split_redirects(words: list[str]) -> tuple[list[str], list[str]]:
-    """``words`` without redirections, and the files written by `>`, `>>`, `>|` and `&>`."""
+def _split_redirects(words: list[str]) -> tuple[list[str], list[str], list[str]]:
+    """``words`` without redirections, the files written by `>`, `>>`, `>|` and `&>`, and the files read by `<`."""
     kept: list[str] = []
     written: list[str] = []
+    read: list[str] = []
     i = 0
     while i < len(words):
         follows = i + 1 < len(words)
         if follows and WRITES_TO_A_FILE.match(words[i]):
             written.append(words[i + 1])
             i += 2
+        elif follows and READS_A_FILE.match(words[i]):
+            read.append(words[i + 1])
+            i += 2
         elif follows and REDIRECTS.fullmatch(words[i]):
             i += 2
         else:
             kept.append(words[i])
             i += 1
-    return kept, written
+    return kept, written, read
 
 
 def _braces(word: str) -> list[str]:
@@ -329,6 +339,18 @@ def _move_hit(args: list[str], shell: Shell) -> str:
     """The first guard (or folder holding one) that a `mv` takes away, or the first guard file it writes."""
     sources, _ = _transfer(args)
     return shell.guarded(sources, deep=True) or _copy_hit("mv", args, shell)
+
+
+def _walks(verb: str, args: list[str]) -> bool:
+    """Whether the command reads what is under the folders it is given: a search or an archive of a tree, a recursive copy, or a
+    find that runs a command on what it finds."""
+    if verb in WALKERS:
+        return True
+    if verb in GREPS:
+        return _recursive(args)
+    if verb in ("cp", "scp"):
+        return _recursive(args) or any(re.fullmatch(r"-[a-zA-Z]*a[a-zA-Z]*", a) for a in args)
+    return verb == "find" and bool(FIND_EXEC.intersection(args))
 
 
 def _recursive(args: list[str]) -> bool:
@@ -551,9 +573,11 @@ class Reader:
     def simple(self, words: list[str], bodies: list[str], depth: int) -> str:
         """Why one command may not run: a redirection into a guard, a secret named, or a verb that writes one."""
         shell = self.shell
-        words, written = _split_redirects(words)
+        words, written, read = _split_redirects(words)
         if blocked := shell.hits(written, lambda p: guarded(p, shell.environ) or secret(p, shell.environ)):
             return f"a redirection would write {blocked}: {PERSON}."
+        if blocked := shell.hits(read, lambda p: secret(p, shell.environ)):
+            return f"a redirection would read {blocked}, the person record or a session token: an agent does not read or list it."
         rest, assigned = _first_words(words)
         if not rest:
             shell.variables.update(assigned)
@@ -563,7 +587,21 @@ class Reader:
         mentioned = shell.hits([a for a in rest if "=" not in a or "/" in a], lambda p: secret(p, shell.environ))
         if mentioned and not self._message(rest, mentioned):
             return f"{mentioned} is the person record or a session token: an agent does not read or list it."
+        if reached := self._reaches(rest[0].rsplit("/", 1)[-1], rest[1:]):
+            return (f"{reached} holds the person record and the session tokens, and `{rest[0].rsplit('/', 1)[-1]}` would read what is "
+                    "under it: an agent does not read or list them; name a file of the project.")
         return self.verb(rest[0].rsplit("/", 1)[-1], rest, bodies, depth)
+
+    def _reaches(self, verb: str, args: list[str]) -> str:
+        """The word of a command that names the state folder (or the home folder, or one above it) when the command reads what is
+        under it; a command that only names or measures the state folder, such as `ls` and `du`, is let through."""
+        shell, walks = self.shell, _walks(verb, args)
+        listing = verb in LISTERS and not _recursive(args)
+        inside = shell.hits(args, lambda p: holds_state(p, shell.environ)) or (
+            str(shell.here) if walks and holds_state(str(shell.here), shell.environ) else "")
+        if inside and not listing:
+            return inside
+        return shell.hits(args, lambda p: above_state(p, shell.environ)) if walks else ""
 
     @staticmethod
     def _message(rest: list[str], word: str) -> bool:
@@ -646,14 +684,29 @@ def _place(text: str, here: Path, environ: Mapping[str, str]) -> str:
     return os.path.normpath(here / (home + text[1:] if text == "~" or text.startswith("~/") else text))
 
 
+def _state_places(found: Mapping[str, str]) -> tuple[str, list[str]]:
+    """The case-folded home folder and the state folders (the active root, and the one under the home folder)."""
+    home = os.path.normpath(found["HOME"]).casefold() if found.get("HOME") else ""
+    return home, [*_roots(found), *([f"{home}/.poolhouse"] if home else [])]
+
+
+def holds_state(path: str, environ: Mapping[str, str] | None = None) -> bool:
+    """Whether ``path`` is the state folder that holds the person record, or the folder of the session tokens' node."""
+    folder = path.rstrip("/").casefold()
+    _, roots = _state_places(environ or os.environ)
+    return any(root == folder or f"{root}/node" == folder for root in roots)
+
+
+def above_state(path: str, environ: Mapping[str, str] | None = None) -> bool:
+    """Whether ``path`` is the home folder, a folder above it, or a state folder: a tree the person record sits in."""
+    folder = path.rstrip("/").casefold()
+    home, roots = _state_places(environ or os.environ)
+    return any(own == folder or own.startswith(folder + "/") for own in [home, *roots] if own)
+
+
 def holds_secret(path: str, environ: Mapping[str, str] | None = None) -> bool:
     """Whether ``path`` is the person record's folder, a folder it sits in directly, or an ancestor of the home folder."""
-    folder, found = path.rstrip("/").casefold(), environ or os.environ
-    home = os.path.normpath(found["HOME"]).casefold() if found.get("HOME") else ""
-    roots = [*_roots(found), *([f"{home}/.poolhouse"] if home else [])]
-    if any(root == folder or f"{root}/node" == folder for root in roots):
-        return True
-    return any(own == folder or own.startswith(folder + "/") for own in [home, *roots] if own)
+    return holds_state(path, environ) or above_state(path, environ)
 
 
 def _places(text: str, here: Path, environ: Mapping[str, str]) -> list[str]:
