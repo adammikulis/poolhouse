@@ -165,17 +165,17 @@ fn dialog(what: &str) -> Option<Command> {
         return Some(command);
     }
     if cfg!(target_os = "windows") {
-        return Some(windows_dialog(what));
+        return Some(windows_dialog());
     }
     None
 }
 
 /// What Windows PowerShell runs to ask the person: Windows Hello (a PIN, a fingerprint or a face) through the system's user consent
 /// verifier, and where Hello is not set up the system's credential dialog checked against the account's password. It exits 0 only when
-/// the person was verified. The sentence is read from the environment, never put into the script.
+/// the person was verified. The sentence is read from its standard input, never put into the script or its arguments.
 const WINDOWS_PROMPT: &str = r#"
 $ErrorActionPreference = 'Stop'
-$say = $env:POOLHOUSE_PROMPT
+$say = [Console]::In.ReadToEnd().Trim()
 try {
   Add-Type -AssemblyName System.Runtime.WindowsRuntime
   $null = [Windows.Security.Credentials.UI.UserConsentVerifier, Windows.Security.Credentials.UI, ContentType=WindowsRuntime]
@@ -207,11 +207,11 @@ fn base64(bytes: &[u8]) -> String {
     out
 }
 
-/// The command that raises the person's prompt on Windows.
-pub(crate) fn windows_dialog(what: &str) -> Command {
+/// The command that raises the person's prompt on Windows; the sentence is written to its standard input.
+pub(crate) fn windows_dialog() -> Command {
     let utf16: Vec<u8> = WINDOWS_PROMPT.encode_utf16().flat_map(u16::to_le_bytes).collect();
     let mut command = Command::new("powershell.exe");
-    command.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", &base64(&utf16)]).env("POOLHOUSE_PROMPT", plain(what));
+    command.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", &base64(&utf16)]);
     command
 }
 
@@ -288,7 +288,11 @@ impl Presence for Os {
             return Err(Error::Denied("The operating system's prompt is raised only for the node of this account's own state directory, never for a test, a checkout or a copy.".into()));
         }
         let mut command = dialog(what).ok_or_else(|| Error::Denied("This computer has no operating system prompt the node can ask the person with (Linux needs polkit's pkexec and a desktop session), so nothing can be confirmed here; use the installed Poolhouse on a computer that has one, or your phone.".into()))?;
-        let child = command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|e| Error::Denied(format!("The operating system prompt did not open: {e}")))?;
+        let mut child = command.stdin(if cfg!(target_os = "windows") { Stdio::piped() } else { Stdio::null() }).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|e| Error::Denied(format!("The operating system prompt did not open: {e}")))?;
+        if let Some(mut stdin) = child.stdin.take() {
+            // The sentence for Windows' prompt travels on standard input; dropping the pipe ends it.
+            let _ = std::io::Write::write_all(&mut stdin, plain(what).as_bytes());
+        }
         Ok(Box::new(OsPrompt::start(child, std::time::Duration::from_millis(ASK_FOR_MS))))
     }
 }
@@ -676,13 +680,12 @@ mod tests {
     }
 
     #[test]
-    fn the_windows_prompt_is_a_base64_of_a_utf16_script_and_the_sentence_travels_in_the_environment() {
+    fn the_windows_prompt_is_a_base64_of_a_utf16_script_and_the_sentence_is_not_in_its_arguments() {
         assert_eq!((super::base64(b"M"), super::base64(b"Ma"), super::base64(b"Man"), super::base64(b"")), ("TQ==".into(), "TWE=".into(), "TWFu".into(), String::new()));
-        let command = super::windows_dialog("Poolhouse - make the pool home. Key ab12 cd34.");
+        let command = super::windows_dialog();
         let args: Vec<String> = command.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
         assert_eq!(&args[..4], ["-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand"]);
-        assert!(!args[4].contains("make the pool"), "the sentence is not in the script");
-        assert!(command.get_envs().any(|(k, v)| k == "POOLHOUSE_PROMPT" && v.is_some_and(|v| v.to_string_lossy().contains("make the pool home"))));
+        assert!(command.get_envs().next().is_none(), "no environment carries the sentence");
     }
 
     #[test]

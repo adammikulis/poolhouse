@@ -220,7 +220,9 @@ def found(name: str | None = None, policy: str = "secure", *, admin: founding.Ad
     sentence an agent passes on, with ``needs``, ``where`` and ``then`` for what to do next.
     ``say`` is told, while the call waits, where the person answers (a sentence for the agent to pass on).
     """
-    made = founding.found_here(Client(node_launch.default_state()), name, policy, admin=admin, voice=presence.Voice(say=say or (lambda _text: None)))
+    state = node_launch.default_state()
+    node_launch.ensure_node(state)
+    made = founding.found_here(Client(state), name, policy, admin=admin, voice=presence.Voice(say=say or (lambda _text: None)))
     return Founding(status(), made.already, made.say())
 
 
