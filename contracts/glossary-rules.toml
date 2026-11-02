@@ -222,14 +222,6 @@ old = 'mesh-board'
 new = 'board-replication'
 
 [[literal]]
-old = 'poolhouse-peers members'
-new = 'poolhouse-members roster'
-
-[[literal]]
-old = 'poolhouse peers members'
-new = 'poolhouse members roster'
-
-[[literal]]
 old = 'poolhouse-pool peers'
 new = 'poolhouse-pool model-sources'
 

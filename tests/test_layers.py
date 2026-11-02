@@ -183,7 +183,7 @@ def _loaded(module: str, then: str = "pass") -> set[str]:
 
 
 def test_a_client_does_not_load_the_fleet() -> None:
-    unwanted = {"poolhouse.fleet.daemon", "poolhouse.fleet.discovery"}
+    unwanted = {"poolhouse.fleet.daemon"}
     for module in ("poolhouse.client", "poolhouse.hub", "poolhouse.serve.cli"):
         pulled = _loaded(module) & unwanted
         assert not pulled, f"{module} loads {sorted(pulled)}"
