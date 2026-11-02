@@ -347,31 +347,48 @@ as `release-main`:
 
 - **Question.** `scripts/hooks/run-approval propose NAME ARGS...` renders it from git and the registry in
   `poolhouse.workspace.run_approval`: the command, the repository (the origin's `OWNER/NAME`), the checkout, the commit,
-  what the run does, and a final line tagged under the store's key. It renders nothing for any other command, an origin
-  that is not a GitHub repository, a `github-protection-apply` that does not name that repository, or a checkout in which
-  `scripts` or `src` holds a change or an extra file (those folders are the code that runs).
+  `git diff --shortstat` of `scripts` and `src` and of the script itself against `<remote>/main`, a "Guards changed" line
+  as in the `release-main` question, what the run does, and a final line tagged under the store's key. It prints the
+  header, the two labels and their descriptions that the question must be asked with. It renders nothing for any other
+  command, an origin that is not a GitHub repository, a `github-protection-apply` that does not name that repository, a
+  repository without `<remote>/main`, a checkout that is not a worktree of the session's project (`CLAUDE_PROJECT_DIR`, so a
+  `git init` made under `.claude/worktrees` is no worktree), or a checkout in which a file of `scripts` or `src` is not
+  exactly the commit's. That is checked by hashing every file against `git ls-tree -r HEAD`, never from the index, so
+  `assume-unchanged`, `skip-worktree`, ignored files, extra files, links and a changed executable bit all count; only
+  `__pycache__` folders are left out, because the run reads no bytecode from the checkout.
 - **Answer.** The `AskUserQuestion` hook (`run_hook.on_event`) records a `run-script` authorization (15 minutes, one use,
-  this session) only for the approving label of a question that git and the registry still bear out and whose tag the
-  store made. Typed words, a subagent's answer and a non-attended session record nothing; stopping or a session
-  boundary ends it like any authorization.
-- **Ticket.** The Bash guard is the one process that sees whether a command came from the main session
-  (`agent_id` absent) and what it says. For the main session's single plain command that names one of the two scripts
-  exactly as approved, it spends the authorization and records a `run-ticket` (one minute, one use, target ending in a
-  random secret), and puts the secret in that command's shell as `POOLHOUSE_RUN_TICKET`. A subagent, an inexact
-  command (extra word, `sh -c`, `;`, `$(...)`, an env prefix, a copy or link of the script, another checkout), a run with
-  no live approval, another session's approval and a changed tree get none and spend nothing.
-- **Spend.** The script runs `run_approval.admit`: a person at a terminal passes as before; otherwise it needs the
-  ticket in the person record for this session, command, repository and tree, and spends it. Its children get the
-  account's home, the system and Homebrew tool folders as `PATH`, the agent markers and `POOLHOUSE_*` variables and
-  nothing else (no `GH_*`, proxy, certificate or config variable), and `gh secret set` is pinned to the approved
-  repository with `--repo`. No other variable opens a script to an agent.
+  this session) only for the approving label of a question that git and the registry still bear out, whose tag the store
+  made, for a checkout that is a worktree of the session's project, and whose `tool_input` is exactly the one question
+  with exactly the printed header, labels and descriptions (no other question, option, preview or field). Typed words, a
+  subagent's answer and a non-attended session record nothing; stopping or a session boundary ends it like any
+  authorization.
+- **Ticket.** The Bash guard is the one process that sees whether a command came from the main session (`agent_id`
+  absent) and what it says. For the main session's single plain command (spaces and tabs only between ASCII words) that
+  names one of the two scripts exactly as approved, it spends the authorization, records a `run-ticket` (one minute, one
+  use, target ending in a random secret), writes the secret to a new `0600` file in the `0700` ticket folder of the person
+  store and replaces the command with one fixed line: `/usr/bin/env -i HOME=... PATH=... CLAUDECODE=1
+  POOLHOUSE_RUN_TICKET_FILE=<file> <runtime python> -I -B -X pycache_prefix=<nowhere> <script> <args>`. The secret is in
+  no argument and no exported variable. A subagent, an inexact command (extra word, `sh -c`, `;`, `$(...)`, an env prefix,
+  other whitespace, a copy or link of the script, another checkout), a run with no live approval, another session's
+  approval and a changed tree get none and spend nothing.
+- **Spend.** The script runs `run_approval.admit`: a person at a terminal passes as before; otherwise it takes the ticket
+  from the file `POOLHOUSE_RUN_TICKET_FILE` names (only a private file of ours in the ticket folder; the file is removed
+  whatever it holds), refuses when any `DYLD_*`, `LD_*` or `PYTHON*` variable is set, and spends the ticket in the person
+  record for this session, command, repository and tree, once. Its children get the account's home, the system and
+  Homebrew tool folders as `PATH`, the agent markers and `POOLHOUSE_*` variables, and an empty `GH_CONFIG_DIR` of its own
+  (no `http_unix_socket`), nothing else; `gh secret set` is pinned to the approved repository with `--repo`. The key is
+  generated in a fresh `0700` folder that is wiped. No other variable opens a script to an agent.
 - **Not covered.** `release-key rotate`, `show-public`, `agent`, `create` without `--write`, `github-protection-apply
   --restore` and every other argument list stay a person's at a terminal; the dry run of `github-protection-apply` is
   open to everyone.
 
-Forgeable by the same user, as in section 12: the guard, the hook and the registry are guarded code (an agent's edit is
-refused), but a same-user process that writes the store, runs the guard script with an event it made up, or replaces `gh`
-in a folder it can write gets what the record would have given.
+What this is not. A cooperative or prompt-injected agent cannot run the two commands without the owner's selection of
+the exact question. A same-user adversary is not stopped: a pseudo-terminal plus `env -u CLAUDECODE ...` already defeats
+every person-at-terminal check, an agent can run the guard script with an event it made up, write the store or its key,
+move `refs/remotes/<remote>/main` with `git update-ref` (so the diff lines show what it chooses), or replace `gh` in a
+folder it can write. The guards, the hook, the registry, the two scripts and `src/poolhouse/credentials/` are guarded code
+(an agent's edit is refused), and an approval binds a commit, not a review of it: a committed change shows in the diff
+lines, and the independent review of guard-adjacent changes is what judges it.
 
 ## 8. Removing `delegate`, and checking `mint` and `invite`
 
