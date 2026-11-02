@@ -1,4 +1,4 @@
-"""Two real TLS daemons on one Mac, not physical cross-device or holder proof."""
+"""Two real TLS daemons on one Mac, each on its own real node of one pool, not physical cross-device or holder proof."""
 import socket
 import sys
 import tempfile
@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 import pytest
-from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
+from service_kit import build, node_binary  # noqa: F401  (fixtures)
 from test_fleet_ui import Serving
 from test_studio_producer_flow import (
     SOURCE,
@@ -25,17 +25,29 @@ from poolhouse.fleet.remote import Member
 from poolhouse.fleet.service_pool import Pool
 
 runtime_app = _runtime_app
+REAL_DISCOVER = Member.discover  # the one-daemon fixture it shares replaces it with an empty list
+
+
+@pytest.fixture(scope='module')
+def studio_node(node_binary, tmp_path_factory):  # noqa: F811
+    """Two nodes joined into one pool for a module of tests: a node allows one compute service per device, so each daemon has its own."""
+    patches = pytest.MonkeyPatch()
+    try:
+        yield from build(node_binary, tmp_path_factory.mktemp('services'), patches, 2)
+    finally:
+        patches.undo()
 
 
 def configure(receiver, root, nodes):
     receiver.ui.root = root / 'traind'
     receiver.ui.settings.setup_done = True
-    identity = tls.identity(root / 'tls', 'Receiving daemon')
+    identity = nodes.idb
     receiver.ui.studio_identity = lambda: identity
     receiver.ui.studio_endpoint = lambda: f'https://127.0.0.1:{receiver.port}'
     receiver.ui.studio_token = lambda: load_or_create_token(receiver.ui.root)
-    nodes.bind(nodes.a, identity, f'https://127.0.0.1:{receiver.port}')    # a second service of the same pool
-    receiver.httpd.tls = tls.member_context(identity, Pool())
+    nodes.bind(nodes.b, identity, f'https://127.0.0.1:{receiver.port}')    # the second node's service, in the same pool
+    nodes.settle()
+    receiver.httpd.tls = tls.member_context(identity, receiver.ui.pool)
     secret = receiver.ui.root / 'app-identity'
     secret.write_text('cd' * 32)
     secret.chmod(0o600)
@@ -58,21 +70,21 @@ def launch_sdk(producer, outgoing):
 
 
 @pytest.fixture
-def connected(runtime_app, monkeypatch, studio_node):  # noqa: F811
+def connected(runtime_app, monkeypatch, studio_node):
     producer, _producer_cookie, outgoing = runtime_app
     with tempfile.TemporaryDirectory(prefix='recv-', dir='/tmp') as temporary:
         root = Path(temporary).resolve()
-        receiver = Serving(root, name='Receiving daemon')
+        receiver = Serving(root, name='Receiving daemon', pool=Pool(studio_node.b.state),
+                             service_identity=lambda: studio_node.idb)
         incoming, driver = None, None
         try:
             cookie, incoming = configure(receiver, root, studio_node)
-            members = [item.devices._self(item.devices._current()) for item in (outgoing, incoming)]
-            # Only observational discovery is supplied; all requests cross actual TLS listeners.
-            monkeypatch.setattr(Member, 'discover', lambda **kwargs: members)
+            # Each daemon lists the other through its own node, and every request crosses actual TLS listeners.
+            monkeypatch.setattr(Member, 'discover', REAL_DISCOVER)
             monkeypatch.setattr(producer_process, '_command', lambda fd: [sys.executable, '-I', '-B', '-c',
                 f'import sys;sys.path.insert(0,{SOURCE!r});from poolhouse.fleet.producer_process import child;child({fd})'])
             driver = launch_sdk(producer, outgoing)
-            receiver_id = incoming.devices._receiver(members[1])['id']
+            receiver_id = incoming.devices._receiver(incoming.devices._self())['id']
             assert receiver_id in {item['id'] for item in driver.call('receivers')}
             offer = driver.call('offer', receiver_id, 'Separate software publisher')
             inventory = api(receiver, cookie, '/sources')

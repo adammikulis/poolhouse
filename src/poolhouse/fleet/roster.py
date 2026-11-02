@@ -88,7 +88,7 @@ def members(*, timeout_s: float = 2.0, port: int = DEFAULT_HTTP_PORT) -> list[di
     """Every compute device of this node's pool that answers now, this machine first.
 
     Raises `PermissionError` when the node does not answer: there is no pool to list without it."""
-    services = service_pool.Pool().services()
+    services = service_pool.default().services()
     own = tls.local().fingerprint
     found: list[dict[str, Any]] = []
     local = already_running(port)

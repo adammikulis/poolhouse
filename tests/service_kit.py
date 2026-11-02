@@ -75,6 +75,10 @@ class Nodes:
         """Bind each node's service at its port on ``host`` and wait until every node lists them all."""
         for device, identity, port in zip(self.devices, self.ids, ports, strict=True):
             self.bind(device, identity, f"https://{host}:{port}")
+        self.settle()
+
+    def settle(self) -> None:
+        """Wait until every node lists the services its pool mates have bound."""
         for number, device in enumerate(self.devices):
             until("the services on " + device.name, 30, lambda device=device, number=number: self._synced(device, number))
 

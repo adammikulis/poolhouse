@@ -79,11 +79,20 @@ def _exchange_socket(state: Path, frame: bytes, timeout: float) -> bytes:
     family = getattr(socket, "AF_UNIX", None)
     if family is None:  # a Python without Unix sockets: no node can answer here
         raise OSError("this Python has no Unix sockets")
+    until = time.monotonic() + timeout
     with socket.socket(family, socket.SOCK_STREAM) as stream:
         stream.settimeout(timeout)
         stream.connect(str(socket_path(state)))
         stream.sendall(frame)
-        return _reply(stream.recv)
+
+        def within(count: int) -> bytes:
+            """One read that cannot outlast what is left of the exchange's ``timeout``: a node that dribbles bytes is as late as a silent one."""
+            left = until - time.monotonic()
+            if left <= 0:
+                raise TimeoutError("the node did not answer in time")
+            stream.settimeout(left)
+            return stream.recv(count)
+        return _reply(within)
 
 
 def _reply(recv: Callable[[int], bytes]) -> bytes:

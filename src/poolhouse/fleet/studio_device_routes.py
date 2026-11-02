@@ -11,7 +11,6 @@ from poolhouse.studio.store import Conflict
 
 from . import producer_member, studio_pool
 from .remote import Member
-from .service_pool import Pool
 from .studio_execution import DeviceExecutions
 from .studio_transport import MemberExecution
 
@@ -24,7 +23,7 @@ def _admitted(ui, source: str, dispatch: str) -> bool:
     if target != machine_id():
         return False
     try:
-        return studio_pool.current() == pool and studio_pool.of_service(certificate) == pool
+        return studio_pool.current(ui.pool) == pool and studio_pool.of_service(ui.pool, certificate) == pool
     except PermissionError:
         return False
 
@@ -36,7 +35,8 @@ def _origin(ui, source: str, dispatch: str, spec_digest: str) -> bool:
     origins = ui.__dict__.setdefault("_studio_origins", {})
     try:
         if source not in origins:
-            origins[source] = Member.from_binding(Pool().authorize(certificate), timeout=5)
+            origins[source] = Member.from_binding(ui.pool.authorize(certificate), timeout=5, pool=ui.pool,
+                                                identity=getattr(ui, "studio_identity", lambda: None)())
         reply = MemberExecution(origins[source], lambda: _admitted(ui, source, dispatch)).request(
             "authorize", {"dispatch_id": dispatch, "spec_digest": spec_digest})
         return reply.get("authorized") is True
@@ -59,7 +59,7 @@ def answer(handler, ui, path: str, body=None) -> bool:
         return False
     opening = handler._sealing() if ui else None
     try:
-        pool = studio_pool.of_service(handler._member) if opening is not None and opening[2] and handler._member else ""
+        pool = studio_pool.of_service(ui.pool, handler._member) if opening is not None and opening[2] and handler._member else ""
     except PermissionError:
         pool = ""
     if not pool:
