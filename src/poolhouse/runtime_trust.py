@@ -7,9 +7,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-from poolhouse import authority, home, person, runtime_git, runtime_store
+from poolhouse import authority, home, node_launch, person, runtime_git, runtime_store
 from poolhouse.activity import writer
-from poolhouse.board.session import AGENT_ENV
+from poolhouse.board import session as board_session
+from poolhouse.board.client import Client, NodeError
 from poolhouse.runtime_deploy import DeployError, floor_of
 
 KIND = "runtime.deploy"
@@ -117,6 +118,16 @@ def ignore_redirects() -> list[str]:
     return warnings
 
 
+def _own_session(cwd: Path | None) -> None:
+    """A lead agent whose token is gone, or that the node no longer knows, is registered again from the native session id its harness set
+    (`board.session.revive`) before its authority is read, so a deploy never asks a person for a session the harness still runs. A session
+    that cannot be (a subagent, one retired for cause) is left to `authority.require`, which says so."""
+    try:
+        board_session.connect(cwd=cwd, client=Client(node_launch.default_state(), autostart=False)).whoami()
+    except (NodeError, OSError, ValueError):
+        return
+
+
 def authorize(command: str, *, cwd: Path | None = None) -> str:
     """Who may run a deploy command here: "person" for a process no agent started, "delegated" for a lead agent
     while the owner has delegated the `runtime.deploy` gate; HumanRequired for an agent while it is the person's.
@@ -126,12 +137,13 @@ def authorize(command: str, *, cwd: Path | None = None) -> str:
     """
     if not (person.marked() or os.environ.get(authority.SUBAGENT_ENV)):
         return authority.PERSON
+    _own_session(recorded_primary() or cwd)
     return authority.require(GATE, f"runtime {command}", scope=authority.Scope(cwd=recorded_primary() or cwd))
 
 
 def audit(command: str, commit: str, result: str, *, agent: str = "", detail: str = "", **passed: str) -> bool:
     """Append a sealed activity record for one deploy command; True when it was written."""
-    context = bool(person.marked() or agent or os.environ.get(AGENT_ENV) or os.environ.get("POOLHOUSE_WORKSPACE_TOKEN") or
+    context = bool(person.marked() or agent or os.environ.get(board_session.AGENT_ENV) or os.environ.get("POOLHOUSE_WORKSPACE_TOKEN") or
                    os.environ.get(authority.SUBAGENT_ENV))
     who = ""
     if context:

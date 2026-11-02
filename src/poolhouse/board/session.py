@@ -15,8 +15,8 @@ from poolhouse.board import credentials, place
 from poolhouse.board.client import Client, Conflict, Denied
 from poolhouse.log import warn
 
-__all__ = ["AGENT_ENV", "SUBAGENT_ENV", "TOKEN_ENV", "Agent", "Claim", "Entry", "Native", "Note", "Page", "Registration",
-           "Sent", "Session", "connect", "find", "register"]
+__all__ = ["AGENT_ENV", "SUBAGENT_ENV", "TOKEN_ENV", "UNKNOWN_TOKEN", "Agent", "Claim", "Entry", "Native", "Note", "Page", "Registration",
+           "Sent", "Session", "connect", "find", "register", "revive"]
 
 AGENT_ENV = "POOLHOUSE_WORKSPACE_AGENT"
 SUBAGENT_ENV = "POOLHOUSE_SUBAGENT"
@@ -25,6 +25,7 @@ SUBAGENT_HARNESS = "claude-code"
 PAGE = 1000
 CHUNK = 256 * 1024
 TOKEN_ENV = "POOLHOUSE_WORKSPACE_TOKEN"  # noqa: S105 - the name of a variable, not a credential
+UNKNOWN_TOKEN = "the token is not known"  # noqa: S105 - the start of the node's sentence for a token it does not hold (`UNKNOWN_TOKEN` in node.rs)
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,10 +170,19 @@ class Session:
     token: str
     named: str = ""
     clock: Callable[[], float] = time.time
+    renew: Callable[[], str] | None = None
+    """Registers the harness's native session again and returns its new token: set for the session a harness runs as, so a token the node
+    no longer knows (the session was retired idle or at an earlier end) is replaced by the next command and never sent a person to a terminal."""
 
     def call(self, method: str, **params: Any) -> Any:
-        """One node method as this session."""
-        return self.client.call(method, self.board, self.token, **params)
+        """One node method as this session; a token the node does not know is replaced once by `renew` and the call sent again."""
+        try:
+            return self.client.call(method, self.board, self.token, **params)
+        except Denied as err:
+            if self.renew is None or UNKNOWN_TOKEN not in str(err):
+                raise
+            self.token = self.renew()
+            return self.client.call(method, self.board, self.token, **params)
 
     @property
     def name(self) -> str:
@@ -452,16 +462,19 @@ def _subagent(node: Client, where: str, native: str, agent: str) -> Session:
     return Session(node, where, credentials.load(node.state, where, name), name)
 
 
-def _named(node: Client, where: str, agent: str) -> tuple[str, str]:
-    """``(token, name)`` of the session ``agent`` names; when it has no token and the environment names this session, that one."""
+def _named(node: Client, where: str, agent: str) -> Session:
+    """The session ``agent`` names; when it has no token and the environment names this session, that one. A main session the harness runs
+    that has no token here is registered again from its native session id."""
     own = os.environ.get(AGENT_ENV, "")
     try:
-        return credentials.load(node.state, where, agent or own), agent or own
+        return Session(node, where, credentials.load(node.state, where, agent or own), agent or own, renew=_renewer(node, where))
     except Denied:
+        if (revived := revive(node, where)) is not None and revived.name == (agent or own):
+            return revived
         if not (agent and own and agent != own):
             raise
     warn(f"--agent {agent} is not a live session here: running as {own}")
-    return credentials.load(node.state, where, own), own
+    return Session(node, where, credentials.load(node.state, where, own), own, renew=_renewer(node, where))
 
 
 NATIVE_SESSIONS = (("POOLHOUSE_SESSION_HARNESS", "POOLHOUSE_SESSION_ID"), ("", "CLAUDE_CODE_SESSION_ID"))
@@ -477,9 +490,39 @@ def _native(node: Client, where: str) -> Session | None:
         try:
             name = str(node.call("session_lookup", where, harness=os.environ.get(harness_env, "") or SUBAGENT_HARNESS,
                                  session=native)["name"])
-            return Session(node, where, credentials.load(node.state, where, name), name)
+            return Session(node, where, credentials.load(node.state, where, name), name, renew=_renewer(node, where))
         except Denied:
             continue
+    return revive(node, where)
+
+
+def _renewer(node: Client, where: str) -> Callable[[], str]:
+    """What a session's `renew` calls: the token of the native session registered again, or the refusal that says why it cannot be."""
+    def renew() -> str:
+        if (revived := revive(node, where)) is None:
+            raise Denied("denied", "this process runs as no native main session of a harness, so its session cannot be registered again")
+        return revived.token
+    return renew
+
+
+def revive(node: Client, where: str) -> Session | None:
+    """The main session this process runs in, registered on ``where`` again from the native session id its harness set, or None when it runs in
+    none (a subagent, a Codex thread and a process of no harness have no native main session to register).
+
+    A live session keeps its name and gets a token, and one that ended or was retired idle comes back under its name. The node alone decides
+    who may be registered: a session retired for cause never is, and a session live in another process tree is not taken (`Denied`, None here).
+    """
+    if os.environ.get(SUBAGENT_ENV, "").strip() or os.environ.get("CODEX_THREAD_ID", "").strip():
+        return None
+    for harness_env, id_env in NATIVE_SESSIONS:
+        native = os.environ.get(id_env, "").strip()
+        if not native:
+            continue
+        try:
+            made = register(node, where, Native("", os.environ.get(harness_env, "") or SUBAGENT_HARNESS, native))
+        except Denied:
+            continue
+        return Session(node, where, made.token, made.name, renew=_renewer(node, where))
     return None
 
 
@@ -529,8 +572,7 @@ def connect(*, token_file: str = "", agent: str = "", board: str = "", cwd: Path
     if token_file:
         return Session(node, where, home.expand(token_file).read_text(encoding="utf-8").strip(), agent or os.environ.get(AGENT_ENV, ""))
     if agent or os.environ.get(AGENT_ENV, ""):
-        token, named = _named(node, where, agent)
-        return Session(node, where, token, named)
+        return _named(node, where, agent)
     if os.environ.get(TOKEN_ENV, "").strip():
         return Session(node, where, os.environ[TOKEN_ENV].strip(), "")
     if found := _native(node, where):
