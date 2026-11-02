@@ -344,6 +344,7 @@ def test_a_command_that_reads_the_person_record_or_the_tokens_through_a_redirect
 
 @pytest.mark.parametrize("command", [
     "ls ~/.poolhouse",
+    "cd ~/.poolhouse && ls",
     "du -sh ~/.poolhouse",
     "cat ~/.poolhouse/sentinel/events.log",
     "grep -r foo ~/projects",

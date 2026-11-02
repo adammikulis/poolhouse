@@ -55,7 +55,7 @@ DEEP_WITH_R = frozenset({"rm", "chmod", "chown", "chattr", "setfacl", "xattr", "
 MODE = re.compile(r"[0-7]{3,4}|[ugoa]*[-+=][rwxXstugo]*(,[ugoa]*[-+=][rwxXstugo]*)*")
 FIND_EXEC = frozenset({"-exec", "-execdir", "-ok", "-okdir"})
 FIND_FILES = frozenset({"-fprint", "-fprint0", "-fprintf", "-fls"})
-LISTERS = frozenset({"ls", "du", "stat", "df", "test", "[", "echo", "printf", "basename", "dirname", "realpath", "readlink"})
+LISTERS = frozenset({"cd", "ls", "du", "stat", "df", "test", "[", "echo", "printf", "basename", "dirname", "realpath", "readlink"})
 """Commands that name or measure what a folder holds without reading it."""
 WALKERS = frozenset({"rg", "ag", "ack", "tar", "zip", "7z", "7za", "ditto", "cpio", "rsync", "tree"})
 """Commands that read every file under the folders they are given."""
