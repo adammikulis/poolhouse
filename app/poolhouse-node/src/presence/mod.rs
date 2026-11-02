@@ -164,7 +164,55 @@ fn dialog(what: &str) -> Option<Command> {
         command.args(["/usr/bin/env", "--", "/usr/bin/true"]).arg(plain(what).replace(' ', "_"));
         return Some(command);
     }
+    if cfg!(target_os = "windows") {
+        return Some(windows_dialog(what));
+    }
     None
+}
+
+/// What Windows PowerShell runs to ask the person: Windows Hello (a PIN, a fingerprint or a face) through the system's user consent
+/// verifier, and where Hello is not set up the system's credential dialog checked against the account's password. It exits 0 only when
+/// the person was verified. The sentence is read from the environment, never put into the script.
+const WINDOWS_PROMPT: &str = r#"
+$ErrorActionPreference = 'Stop'
+$say = $env:POOLHOUSE_PROMPT
+try {
+  Add-Type -AssemblyName System.Runtime.WindowsRuntime
+  $null = [Windows.Security.Credentials.UI.UserConsentVerifier, Windows.Security.Credentials.UI, ContentType=WindowsRuntime]
+  $asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
+  $op = [Windows.Security.Credentials.UI.UserConsentVerifier]::RequestVerificationAsync($say)
+  $task = $asTask.MakeGenericMethod([Windows.Security.Credentials.UI.UserConsentVerificationResult]).Invoke($null, @($op))
+  $task.Wait() | Out-Null
+  if ($task.Result -eq 'Verified') { exit 0 }
+  if ($task.Result -notin 'DeviceNotPresent', 'NotConfiguredForUser', 'DisabledByPolicy') { exit 1 }
+} catch { }
+Add-Type -AssemblyName System.DirectoryServices.AccountManagement
+$cred = $Host.UI.PromptForCredential('Poolhouse', $say, $env:USERNAME, '')
+if ($null -eq $cred) { exit 1 }
+$machine = New-Object System.DirectoryServices.AccountManagement.PrincipalContext('Machine')
+if ($machine.ValidateCredentials($cred.UserName, $cred.GetNetworkCredential().Password)) { exit 0 }
+exit 1
+"#;
+
+/// Standard base64 of ``bytes``, which PowerShell's `-EncodedCommand` takes over UTF-16 text.
+fn base64(bytes: &[u8]) -> String {
+    const SET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for chunk in bytes.chunks(3) {
+        let n = chunk.iter().enumerate().fold(0u32, |acc, (i, b)| acc | (u32::from(*b) << (16 - 8 * i)));
+        for i in 0..4 {
+            out.push(if i <= chunk.len() { SET[((n >> (18 - 6 * i)) & 63) as usize] as char } else { '=' });
+        }
+    }
+    out
+}
+
+/// The command that raises the person's prompt on Windows.
+pub(crate) fn windows_dialog(what: &str) -> Command {
+    let utf16: Vec<u8> = WINDOWS_PROMPT.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    let mut command = Command::new("powershell.exe");
+    command.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", &base64(&utf16)]).env("POOLHOUSE_PROMPT", plain(what));
+    command
 }
 
 /// Whether ``state`` is the device's own node directory of the account this process runs as (`~/.poolhouse/node`, the account's home from
@@ -239,7 +287,7 @@ impl Presence for Os {
         if !on_real_home(&self.state) {
             return Err(Error::Denied("The operating system's prompt is raised only for the node of this account's own state directory, never for a test, a checkout or a copy.".into()));
         }
-        let mut command = dialog(what).ok_or_else(|| Error::Denied(if cfg!(windows) { "The first key and phone cannot be added on Windows yet: it has no prompt the node can ask with." } else { "This computer has no operating system prompt the node can ask the person with, so the first key or phone cannot be added here yet; on your own account there is no other way to ask." }.into()))?;
+        let mut command = dialog(what).ok_or_else(|| Error::Denied("This computer has no operating system prompt the node can ask the person with (Linux needs polkit's pkexec and a desktop session), so nothing can be confirmed here; use the installed Poolhouse on a computer that has one, or your phone.".into()))?;
         let child = command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|e| Error::Denied(format!("The operating system prompt did not open: {e}")))?;
         Ok(Box::new(OsPrompt::start(child, std::time::Duration::from_millis(ASK_FOR_MS))))
     }
@@ -625,6 +673,16 @@ mod tests {
     fn person() -> (Firsts, std::sync::Arc<std::sync::Mutex<Option<bool>>>) {
         let answer = std::sync::Arc::new(std::sync::Mutex::new(None));
         (Firsts::new(Box::new(Scripted(answer.clone()))), answer)
+    }
+
+    #[test]
+    fn the_windows_prompt_is_a_base64_of_a_utf16_script_and_the_sentence_travels_in_the_environment() {
+        assert_eq!((super::base64(b"M"), super::base64(b"Ma"), super::base64(b"Man"), super::base64(b"")), ("TQ==".into(), "TWE=".into(), "TWFu".into(), String::new()));
+        let command = super::windows_dialog("Poolhouse - make the pool home. Key ab12 cd34.");
+        let args: Vec<String> = command.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        assert_eq!(&args[..4], ["-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand"]);
+        assert!(!args[4].contains("make the pool"), "the sentence is not in the script");
+        assert!(command.get_envs().any(|(k, v)| k == "POOLHOUSE_PROMPT" && v.is_some_and(|v| v.to_string_lossy().contains("make the pool home"))));
     }
 
     #[test]
