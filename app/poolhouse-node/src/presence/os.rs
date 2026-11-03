@@ -32,6 +32,7 @@ impl OsPrompt {
             while !quit.load(Ordering::SeqCst) {
                 if let Ok(mut c) = watched.lock() {
                     if let Ok(Some(status)) = c.try_wait() {
+                        report_end(&mut c, status);
                         note(&noted, status.success());
                         return;
                     }
@@ -47,6 +48,19 @@ impl OsPrompt {
         });
         OsPrompt { child, stop, answer }
     }
+}
+
+/// Say in the node's log why a dialog that did not end in a yes ended, so a dialog that could not be shown is told apart from a no the person gave
+/// (`osascript` says "User canceled" for the person's no and anything else for a dialog that never opened).
+fn report_end(child: &mut Child, status: std::process::ExitStatus) {
+    if status.success() {
+        return;
+    }
+    let mut said = String::new();
+    if let Some(mut err) = child.stderr.take() {
+        let _ = std::io::Read::read_to_string(&mut err, &mut said);
+    }
+    eprintln!("presence: the system prompt ended with {status}: {}", said.trim().chars().take(300).collect::<String>());
 }
 
 /// Note the first word the dialog gave.
@@ -281,7 +295,7 @@ impl Presence for Os {
             return Err(Error::Denied("The operating system's prompt is raised only for the node of this account's own state directory, never for a test, a checkout or a copy.".into()));
         }
         let mut command = dialog(what).ok_or_else(|| Error::Denied("This computer has no operating system prompt the node can ask the person with (Linux needs polkit's pkexec and a desktop session): the node asks on your terminal instead.".into()))?;
-        let mut child = command.stdin(if cfg!(target_os = "windows") { Stdio::piped() } else { Stdio::null() }).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|e| Error::Denied(format!("The operating system prompt did not open: {e}")))?;
+        let mut child = command.stdin(if cfg!(target_os = "windows") { Stdio::piped() } else { Stdio::null() }).stdout(Stdio::null()).stderr(Stdio::piped()).spawn().map_err(|e| Error::Denied(format!("The operating system prompt did not open: {e}")))?;
         if let Some(mut stdin) = child.stdin.take() {
             // The sentence for Windows' prompt travels on standard input; dropping the pipe ends it.
             let _ = std::io::Write::write_all(&mut stdin, plain(what).as_bytes());
