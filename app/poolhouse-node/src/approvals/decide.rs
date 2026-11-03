@@ -2,8 +2,7 @@
 
 use serde_json::{json, Map, Value};
 
-use crate::approvals::fatigue::{kind_of, requester, Cause, Outcome, Requester};
-use crate::approvals::{challenge, summary, Approval, APPROVED, CANCELLED, DENIED, EXPIRED, FAILED, GRANTS, HELD, HOLD, PENDING, PHONE_ADD, PHONE_REMOVE, REBIND};
+use crate::approvals::{challenge, Approval, APPROVED, CANCELLED, DENIED, EXPIRED, FAILED, GRANTS, PENDING, PHONE_ADD, PHONE_REMOVE, REBIND};
 use crate::error::{Error, Result};
 use crate::fsutil::sha256_hex;
 use crate::gov::charter::data_act_wait_ms;
@@ -33,13 +32,13 @@ fn denied<T>(why: &str) -> Result<T> {
 pub fn view(node: &Node, a: &Approval) -> Value {
     json!({"id": a.id, "kind": a.kind, "state": a.state, "title": a.title, "risk": a.risk, "board": a.board, "session": a.session, "text": a.text,
            "created_ms": a.created_ms, "expires_ms": a.expires_ms, "decided_ms": a.decided_ms, "decided_by": a.decided_by, "reason": a.reason,
-           "grants": a.grants, "urgency": a.urgency, "retries": a.retries, "challenge": challenge::object(a, &node.cert.fingerprint())})
+           "grants": a.grants, "retries": a.retries, "challenge": challenge::object(a, &node.cert.fingerprint())})
 }
 
 /// The request as the session that made it reads it: the number it is to show the person is in it while the request waits.
 pub fn agent_view(node: &Node, a: &Approval) -> Value {
     let mut out = view(node, a);
-    if a.live() && !a.pick_code.is_empty() {
+    if a.pending() && !a.pick_code.is_empty() {
         out["code"] = json!(a.pick_code);
     }
     out
@@ -51,69 +50,25 @@ pub fn audit(node: &mut Node, event: &str, a: &Approval, detail: &str) {
     let _ = node.record_event(event, &a.id, &format!("{who}; {detail}"));
 }
 
-/// Who made the request ``a``, as the brakes count them.
-pub fn requester_of(node: &mut Node, a: &Approval) -> Requester {
-    let root = node.host(&a.board).map_or_else(|_| a.session.clone(), |h| h.names.root(&a.session));
-    requester(&a.board, &a.session, &root)
-}
-
-/// What a hold or a suspension that just began is told to the person and to the pool: an audit entry, an event the pool's other
-/// devices read, and the penalty the trust ledger will read.
-fn report(node: &mut Node, a: &Approval, out: &Outcome) -> Result<()> {
-    if let Some((key, ms)) = &out.held {
-        audit(node, "approval.held", a, &format!("held at {key} for {} ms after repeated declines or timeouts", ms));
-        let _ = node.record_event("approval.bombing", key, &format!("{} was held after asking again and again; penalty {}", summary::label_of(key), node.fatigue.penalty(key)));
-    }
-    if let Some(key) = &out.suspended {
-        audit(node, "approval.suspended", a, &format!("suspended at {key}"));
-        let _ = node.record_event("approval.suspended", key, &format!("{} was suspended for prompt bombing; its grants stop; penalty {}", summary::label_of(key), node.fatigue.penalty(key)));
-        summary::let_go(node, key, "It was suspended; ask again if it is still needed.")?;
-        summary::cancel_pending(node, key, "It was suspended; ask again if it is still needed.")?;
-        summary::raise(node, key, "suspended", 0)?;
-    }
-    Ok(())
-}
-
-/// A request of grants went wrong in the way ``cause`` says (the person declined it, blocked it or chose the wrong number, it ran out
-/// unanswered, or its requester withdrew it): count it against its requester. Only a person's own answer makes the scopes it asked for
-/// count as declined, and only a person's answer counts against the agent and the pool.
-pub fn count_against(node: &mut Node, a: &Approval, cause: Cause) -> Result<()> {
+/// A person answered the request of grants ``a`` with no (or chose the wrong number): the scopes it asked for are remembered as declined,
+/// so the next request for them says so and how often. Nothing is held back for it.
+fn note_declined(node: &mut Node, a: &Approval) -> Result<()> {
     let now = node.now_ms();
-    let who = requester_of(node, a);
     let asks = a.asks();
     let scopes: Vec<(&str, &str)> = asks.iter().map(|k| (k["action"].as_str().unwrap_or(""), k["resource"].as_str().unwrap_or(""))).collect();
-    if cause == Cause::Person {
-        node.fatigue.note_declined(&a.board, &scopes, now)?;
-    }
-    let actions: Vec<&str> = scopes.iter().map(|p| p.0).collect();
-    let out = node.fatigue.decline(&who, &kind_of(&actions), cause, now)?;
-    report(node, a, &out)
-}
-
-/// A phone's addition was denied or ran out: it counts against the session whose code the phone used, which may ask for no more codes
-/// for a day.
-pub fn count_against_offer(node: &mut Node, a: &Approval, cause: Cause) -> Result<()> {
-    let Some((board, name)) = a.by.split_once('/') else { return Ok(()) };
-    let now = node.now_ms();
-    let root = node.host(board).map_or_else(|_| name.to_string(), |h| h.names.root(name));
-    let out = node.fatigue.decline(&requester(board, name, &root), "phone_add", cause, now)?;
-    node.fatigue.block(&format!("offer:{}", a.by), now, crate::approvals::fatigue::DAY_MS)?;
-    report(node, a, &out)
+    node.answered.note_declined(&a.board, &scopes, now)
 }
 
 /// Mark the requests that ran out, and write an entry for each. A request nobody answered is not consent and not a no: it counts against
-/// nobody, because a person who did not see a request (away, asleep, a notification missed) has said nothing, and holding back what the
-/// agent asks next would hide the request they have yet to answer. What a hold kept back is let go when the hold ends.
+/// nobody, because a person who did not see a request (away, asleep, a notification missed) has said nothing, and the next request is
+/// made and shown like the first.
 pub fn sweep(node: &mut Node) -> Result<()> {
     let now = node.now_ms();
-    for (a, held) in node.approvals.sweep(now)? {
-        audit(node, "approval.expired", &a, if held { "held, and never shown" } else { "nobody decided it" });
+    for a in node.approvals.sweep(now)? {
+        audit(node, "approval.expired", &a, "nobody decided it");
         if a.kind == PHONE_ADD {
             crate::phone::drop_pending(node, &a);
         }
-    }
-    for key in node.fatigue.ended(now)? {
-        summary::let_go(node, &key, "It was held, and the hold ended; ask again if it is still needed.")?;
     }
     Ok(())
 }
@@ -124,7 +79,6 @@ fn ended(state: &str) -> String {
         DENIED => "That request was already denied, so it cannot be decided again.".into(),
         EXPIRED => "That request ended before it was decided; ask again if it is still needed.".into(),
         CANCELLED => "That request was withdrawn by the session that made it.".into(),
-        HELD => "That request is being held back: nobody was shown it, and a person lets it through or it ends.".into(),
         _ => "That request already ended, so it cannot be decided again.".into(),
     }
 }
@@ -140,7 +94,7 @@ fn refuse_key(node: &Node, key: &str) -> Error {
 }
 
 /// Whether ``a`` can be answered with ``decision``: the plain approval is not enough for a scope that was declined before, only a
-/// request that offers a block can be answered with one, and a notice that settles nothing takes no block.
+/// request that offers a block can be answered with one.
 fn allowed(a: &Approval, decision: &str) -> Result<()> {
     let blockable = a.context.block_ms > 0;
     match decision {
@@ -212,7 +166,7 @@ pub fn decide(node: &mut Node, d: &Decision) -> Result<Value> {
         _ => "approval.denied",
     }, &a, &format!("key {}{}", &d.key[..12], if matched { "" } else { "; the number chosen did not match" }));
     if !matched {
-        count_against(node, &a, Cause::Person)?;
+        note_declined(node, &a)?;
         return denied(mismatch);
     }
     let result = if state == APPROVED { approved(node, &a, d, now) } else { declined(node, &a, d.decision, now) };
@@ -234,19 +188,11 @@ pub fn decide(node: &mut Node, d: &Decision) -> Result<Value> {
 /// What a person's deny or block does besides ending the request.
 fn declined(node: &mut Node, a: &Approval, decision: &str, now: u64) -> Result<()> {
     match a.kind.as_str() {
-        PHONE_ADD => {
-            crate::phone::drop_pending(node, a);
-            count_against_offer(node, a, Cause::Person)?;
-        }
-        HOLD => summary::apply(node, a, decision)?,
+        PHONE_ADD => crate::phone::drop_pending(node, a),
         GRANTS => {
-            count_against(node, a, Cause::Person)?;
+            note_declined(node, a)?;
             if decision == "block" {
-                let key = requester_of(node, a).keys[0].clone();
-                let ms = node.fatigue.rules.block_ms;
-                node.fatigue.block(&key, now, ms)?;
-                summary::let_go(node, &key, "A person blocked it.")?;
-                summary::cancel_pending(node, &key, "A person blocked it.")?;
+                node.answered.block(&a.asker(), now)?;
             }
         }
         _ => {}
@@ -284,10 +230,6 @@ fn approved(node: &mut Node, a: &Approval, d: &Decision, now: u64) -> Result<()>
                 }
                 written.push(gid);
             }
-            let who = requester_of(node, a);
-            let asks = a.asks();
-            let actions: Vec<&str> = asks.iter().map(|k| k["action"].as_str().unwrap_or("")).collect();
-            node.fatigue.approved(&who, &kind_of(&actions))?;
             if waited > 0 {
                 audit(node, "approval.waiting", a, &format!("an act that cannot be undone was approved; it starts in {} hours unless a key revokes it", waited / 3_600_000));
             }
@@ -298,7 +240,6 @@ fn approved(node: &mut Node, a: &Approval, d: &Decision, now: u64) -> Result<()>
                 }
             })
         }
-        HOLD => summary::apply(node, a, "approve"),
         PHONE_ADD => {
             crate::phone::admit::submit(node, a, d.key, d.act_sig)?;
             crate::phone::activate(node, a)

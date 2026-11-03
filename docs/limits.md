@@ -6,6 +6,15 @@ to do and never the budget (`limits::floor`); `app/poolhouse-node/tests/quota_re
 a setting that does not exist and for one this table leaves out. A limit is kept for memory, disk or a hang; a rate that bounded only
 abuse by one session is not kept (the owner never asked for one). The security floors are the owner's alone: an agent never loosens one.
 
+**Nothing that needs the person's answer is limited by a timer, a count per hour or a quiet.** A request for the person (an approval
+of grants, a phone's addition or removal, a move of a session, a prompt of the system) is shown and pushed when it is made and is open
+until they answer or it runs out. What stands in place of a rate is visibility: a session has one request open at a time (the same
+request again returns that one; another is refused with what waits and that the person is to answer it), `pool_status.waiting` lists
+every open request, a decline or a withdrawal or a request nobody answered holds nothing back (the next one is made and pushed at once,
+and a declined scope says so, with how often, on the next card), and the one refusal left is a block the person chose on a card, which
+names its end to the agent. The owner's orders: "I should never silently have things like this hidden from me due to a 'quiet period'";
+"anything that requires the user's response should not be suppressed, or we have an unfulfillable request".
+
 ## At a bound
 
 - **A log** (`MAX_LOG_ROWS`, `MAX_LOG_BYTES`, `AUTHOR_SHARE_PERCENT`, `LINEAGE_SHARE_PERCENT`, `RESERVED_ROWS`, `RESERVED_BYTES`, `LAST_ROWS`,
@@ -171,19 +180,10 @@ abuse by one session is not kept (the owner never asked for one). The security f
 | `WRONG_WINDOW` | 600 s | `app/poolhouse-node/src/phone/enrol.rs:35` | the window of the wrong code limit | the owner, in source; a security floor no agent loosens |
 | `OFFER_TTL_MS` | 10 * 60 * 1000 | `app/poolhouse-node/src/phone/enrol.rs:31` | how long a phone code lives | the owner, in source; a security floor no agent loosens |
 | `MOST_PHONES` | 8 | `app/poolhouse-node/src/phone/mod.rs:38` | phones a device holds | the owner, in source; a security floor no agent loosens |
-| `MOST_OFFERS_PER_HOUR` | 3 | `app/poolhouse-node/src/phone/calls.rs:14` | phone codes one session asks for in an hour | the owner, in source; a security floor no agent loosens |
-| `MOST_REMOVALS_PER_HOUR` | 6 | `app/poolhouse-node/src/phone/calls.rs:15` | requests one session makes to remove phones in an hour | the owner, in source; a security floor no agent loosens |
-| `MOST_CODES_PER_PHONE` | 3 | `app/poolhouse-node/src/phone/http.rs:29` | phone codes one phone asks for in an hour | the owner, in source; a security floor no agent loosens |
 | `MOST_TRIES_PER_ADDRESS` | 60 | `app/poolhouse-node/src/phone/http.rs:30` | phone enrolment and decision tries from one address in a minute | the owner, in source; a security floor no agent loosens |
 | `MOST_PER_ADDRESS` | 6 | `app/poolhouse-node/src/phone/http.rs:28` | connections one address holds on the phone endpoint | the owner, in source; a security floor no agent loosens |
-| `MOST_PENDING` | 64 | `app/poolhouse-node/src/approvals/mod.rs:52` | approval requests waiting on a node | the owner, in source; a security floor no agent loosens |
-| `MOST_PENDING_PER_SESSION` | 8 | `app/poolhouse-node/src/approvals/mod.rs:53` | approval requests waiting from one session | the owner, in source; a security floor no agent loosens |
-| `MOST_REQUESTS` | 6 | `app/poolhouse-node/src/approvals/mod.rs:54` | approval requests one session makes in `REQUEST_WINDOW_MS`: asking until the person gives in | the owner, in source; a security floor no agent loosens |
-| `REQUEST_WINDOW_MS` | 10 * 60 * 1000 | `app/poolhouse-node/src/approvals/mod.rs:55` | the window of the request limit | the owner, in source; a security floor no agent loosens |
-| `MAX_TTL_MS` | 24 * 3600 * 1000 | `app/poolhouse-node/src/approvals/mod.rs:57` | the longest a request lives | the owner, in source; a security floor no agent loosens |
-| `backoff_ms` | 30 000 | `app/poolhouse-node/src/approvals/fatigue.rs:35` | how long after a decline the same kind of request is refused | the owner, in source; a security floor no agent loosens |
-| `most_held` | 8 | `app/poolhouse-node/src/approvals/fatigue.rs:56` | requests held back for one requester | the owner, in source; a security floor no agent loosens |
-| `reask_ms` | 600 000 | `app/poolhouse-node/src/approvals/fatigue.rs:54` | how long a cancelled or expired request counts as asked again | the owner, in source; a security floor no agent loosens |
+| `MOST_PENDING` | 64 | `app/poolhouse-node/src/approvals/mod.rs:54` | approval requests waiting on a node: memory. Every one is on the person's phone and in `pool_status.waiting`; a request past it is told to have the person answer some | the owner, in source; a security floor no agent loosens |
+| `MAX_TTL_MS` | 24 * 3600 * 1000 | `app/poolhouse-node/src/approvals/mod.rs:56` | the longest a request lives | the owner, in source; a security floor no agent loosens |
 | `ASK_FOR_MS` | 120_000 | `app/poolhouse-node/src/presence/os.rs:15` | how long a question to the person stays open; running out counts against nothing and the question is raised again by asking again | the owner, in source; a security floor no agent loosens |
 | `OPEN_PER_HOUR` | 5 | `app/poolhouse-node/src/gov/mod.rs:62` | open joins one member signs in an hour | the owner, in source; a security floor no agent loosens |
 | `OPEN_POOL_PER_HOUR` | 10 | `app/poolhouse-node/src/gov/mod.rs:65` | open joins a pool takes in an hour | the owner, in source; a security floor no agent loosens |

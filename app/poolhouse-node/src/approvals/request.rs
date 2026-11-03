@@ -1,19 +1,19 @@
-//! Making a request: what is checked, what the node adds that the agent did not write, and how loudly the person is told.
+//! Making a request: what is checked, and what the node adds that the agent did not write.
 //!
-//! The same request made again is the same item. A requester that is blocked, suspended or too soon after a decline is refused; one that
-//! is held has what it asks kept back, unseen. Everything else is a request the person is told about, as loudly as the caps allow.
-
-use std::time::Duration;
+//! Every request is shown to the person when it is made. The same request made again is the same item and returns the open one; a
+//! session with a request open that asks for something else is told what waits and that the person is to answer it, so the person is
+//! never handed two at once from one asker and the agent never waits on a timer. A session a person blocked is refused with the end of
+//! the block named. Nothing else holds a request back: not a decline, not how often it was asked, not how many were pushed.
 
 use serde_json::{json, Map, Value};
 
+use crate::approvals::answered::{same, BLOCK_MS};
 use crate::approvals::calls::{asks_of, plain_error, plain_line, text, ttl_of, Ask};
-use crate::approvals::content::{grants_text, risk_of, riskiest, Draft, Line, Who, ROUTINE};
+use crate::approvals::content::{grants_text, risk_of, riskiest, utc, Draft, Line, Who, ROUTINE};
 use crate::approvals::context::{pick_options, AskFacts, Context};
 use crate::approvals::decide::{agent_view, audit, sweep};
-use crate::approvals::fatigue::{self, kind_of, same, Delivery, Standing, SILENT, URGENT};
 use crate::approvals::flags::{for_grants, Asked};
-use crate::approvals::{summary, Approval, CANCELLED, EXPIRED, GRANTS, HELD, MOST_PENDING, MOST_PENDING_PER_SESSION, MOST_REQUESTS, PENDING, REQUEST_WINDOW_MS};
+use crate::approvals::{Approval, GRANTS, MOST_PENDING};
 use crate::error::{Error, Result};
 use crate::fsutil::random_hex;
 use crate::grants::authority::Authority;
@@ -22,42 +22,23 @@ use crate::node::Node;
 
 const MOST_NOTE: usize = 160;
 
-/// How loudly a request of the requester ``asker`` (`board/name`, empty when no session asked) is delivered, and whether it is only quiet
-/// because a cap was reached. A phone's addition or removal goes through the same caps as an agent's request.
-pub fn classify(node: &mut Node, asker: &str, friend: bool, prompted: &str, now: u64) -> (&'static str, bool) {
-    let live: Vec<&Approval> = node.approvals.all().iter().filter(|a| a.pending() && a.urgency == URGENT).collect();
-    let mine = if asker.is_empty() { 0 } else { live.iter().filter(|a| a.asker() == asker).count() };
-    let (all_urgent, by) = (live.len(), if asker.is_empty() { String::new() } else { format!("session:{asker}") });
-    let delivery = Delivery { trusted: friend, prompted, requester_urgent: mine, all_urgent, pushes: node.fatigue.pushes_this_hour(now),
-                              requester_pushes: if by.is_empty() { 0 } else { node.fatigue.pushes_by(&by, now) } };
-    fatigue::urgency(&node.fatigue.rules, &delivery)
-}
-
-/// Whether ``source`` is this device or a member of the pool: a request from anywhere else never interrupts the person.
+/// Whether ``source`` is this device or a member of the pool: a request from anywhere else says so on its card.
 fn trusted(node: &Node, source: &str) -> bool {
     source == node.cert.fingerprint() || node.members.get(source).is_some()
-}
-
-fn wait_words(until_ms: u64, now: u64) -> String {
-    let secs = until_ms.saturating_sub(now).div_ceil(1000);
-    if secs >= 3600 { format!("{} hours", secs.div_ceil(3600)) } else if secs >= 60 { format!("{} minutes", secs.div_ceil(60)) } else { format!("{secs} seconds") }
 }
 
 /// The request that is already waiting and is the same as the one just made: it is asked again, not made again.
 fn again(node: &mut Node, found: &Approval) -> Result<Value> {
     node.approvals.update(&found.id, |x| x.retries += 1)?;
-    if found.state == HELD {
-        summary::raise(node, &found.held_by, "held", asked_of(node, &found.held_by))?;
-    }
     let fresh = node.approvals.get(&found.id).cloned().unwrap_or_else(|| found.clone());
     let mut out = agent_view(node, &fresh);
     out["deduplicated"] = json!(true);
     Ok(out)
 }
 
-/// How many times the requests kept back at ``key`` were asked, counting each time again.
-fn asked_of(node: &Node, key: &str) -> u64 {
-    node.approvals.all().iter().filter(|a| a.state == HELD && a.held_by == key).map(|a| 1 + a.retries).sum()
+/// What a session that asks for something while one of its requests waits is told: what waits, where, and what the person does now.
+pub fn waiting_words(open: &Approval) -> String {
+    format!("You already have a request waiting for the person: \"{}\" ({}). It is on their phone now. Tell them to open the Poolhouse app and answer it, and ask for the next thing after they have; another request from this session is not opened while this one waits.", open.title, open.id)
 }
 
 /// The lines that say what looks off, beyond what the session's history says (`flags`): a scope declined before, a request nobody asked
@@ -76,7 +57,7 @@ fn flags_of(base: Vec<String>, ctx: &Context, trusted: bool) -> Vec<String> {
     out
 }
 
-/// Everything a request needs before it is made, checked: the asks, the words, the limits and the standing of the requester.
+/// Everything a request needs before it is made, checked: the asks, the words and the pool it is made for.
 struct Checked {
     asks: Vec<Ask>,
     note: String,
@@ -99,7 +80,7 @@ fn check(node: &mut Node, p: &Map<String, Value>) -> Result<Checked> {
 }
 
 /// Make the request of a session that reached this node from the device ``source``: the asks, the text the node wrote for them and the
-/// challenge a key signs, and either a request the person is told about, one that is kept back, or a refusal.
+/// challenge a key signs, and a request the person is told about, or the plain reason there is none.
 pub fn request_from(node: &mut Node, source: &str, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let access = node.access(token, board, true)?;
     access.of_board(board, "asks for approvals")?;
@@ -112,39 +93,23 @@ pub fn request_from(node: &mut Node, source: &str, board: &str, token: &str, p: 
     }
     let scopes: Vec<(&str, &str)> = asks.iter().map(|a| (a.action.as_str(), a.resource.as_str())).collect();
     let same = same(board, &name, &scopes);
-    if let Some(found) = node.approvals.all().iter().find(|a| a.live() && a.same == same).cloned() {
+    if let Some(found) = node.approvals.all().iter().find(|a| a.pending() && a.same == same).cloned() {
         return again(node, &found);
     }
+    if let Some(open) = node.approvals.open_of(GRANTS, board, &name) {
+        return Err(Error::Denied(waiting_words(open)));
+    }
     let now = node.now_ms();
+    if let Some(until) = node.answered.blocked_until(&format!("{board}/{name}"), now) {
+        return Err(Error::Denied(format!("A person blocked this session until {} when they answered an earlier request of it, so nothing it asks is shown to them before then. Tell the person in your own words what you need.", utc(until))));
+    }
     let (model, harness, parent, verified) = node.host(board)?.names.get(&name)
         .map(|i| (i.model.clone(), i.harness.clone(), i.parent.clone(), i.model_state == ModelState::Verified)).unwrap_or_default();
-    let who = fatigue::requester(board, &name, &node.host(board)?.names.root(&name));
     let actions: Vec<&str> = asks.iter().map(|a| a.action.as_str()).collect();
-    let held_key = match node.fatigue.standing(&who, &kind_of(&actions), now) {
-        Standing::Refused { until_ms, cause } => {
-            return Err(Error::Denied(if cause == "blocked" { format!("A person blocked this agent, so it cannot ask for {} more.", wait_words(until_ms, now)) }
-                                     else { format!("This agent is suspended for {} more after asking again and again; a person can lift that from their phone.", wait_words(until_ms, now)) }));
-        }
-        Standing::Backoff { .. } => {
-            return Err(crate::limits::floor("That kind of request was declined a moment ago; wait a little before asking for it again."));
-        }
-        Standing::Held { key, .. } => Some(key),
-        Standing::Free => None,
-    };
-    let reask = node.fatigue.rules.reask_ms;
-    let repeated = node.approvals.all().iter().any(|a| a.same == same && matches!(a.state.as_str(), CANCELLED | EXPIRED) && now.saturating_sub(a.decided_ms) < reask);
-    let rate = format!("approval {board}/{name}");
-    if !node.rates.permits(&rate, MOST_REQUESTS, Duration::from_millis(REQUEST_WINDOW_MS)) {
-        return Err(crate::limits::floor("One session has made as many requests as it may; try again later."));
+    if node.approvals.pending_count() >= MOST_PENDING {
+        return Err(crate::limits::floor("As many requests as this device keeps already wait for the person. Tell them to open the Poolhouse app and answer some, then ask again."));
     }
-    let kept = held_key.as_ref().map_or(0, |k| node.approvals.all().iter().filter(|a| a.state == HELD && a.held_by == *k).count());
-    if kept >= node.fatigue.rules.most_held {
-        return Err(crate::limits::floor("Your requests are being held back and as many as will be kept are waiting; ask again when a person has answered."));
-    }
-    if node.approvals.pending_of(&name) >= MOST_PENDING_PER_SESSION || node.approvals.pending_count() >= MOST_PENDING {
-        return Err(crate::limits::floor("Too many of your requests are waiting; wait for an answer or cancel one."));
-    }
-    let repeat = node.fatigue.declined_before(board, &scopes, now);
+    let repeat = node.answered.declined_before(board, &scopes, now);
     if repeat > 0 && asks.len() > 1 {
         return Err(Error::Invalid("A scope that was declined before is asked for on its own: make one request for it.".into()));
     }
@@ -155,7 +120,7 @@ pub fn request_from(node: &mut Node, source: &str, board: &str, token: &str, p: 
     let risk = riskiest(asks.iter().map(|a| risk_of(&a.action).0));
     let (pick_code, options) = if risk == ROUTINE { (String::new(), Vec::new()) } else { pick_options()? };
     let facts = node.evidence.facts(board, &name, &asks.iter().map(|a| AskFacts { action: &a.action, resource: &a.resource }).collect::<Vec<_>>());
-    let ctx = Context::from_facts(&facts, repeat, options, node.fatigue.rules.block_ms);
+    let ctx = Context::from_facts(&facts, repeat, options, BLOCK_MS);
     let friend = trusted(node, source);
     let flags = flags_of(found.flags, &ctx, friend);
     let device_fp = node.cert.fingerprint();
@@ -171,36 +136,14 @@ pub fn request_from(node: &mut Node, source: &str, board: &str, token: &str, p: 
         return Err(Error::Invalid("That request is too long to show a person; ask for fewer things or shorter names.".into()));
     }
     let grants: Vec<Value> = asks.iter().map(|a| grant_of(a, &device_fp)).collect::<Result<_>>()?;
-    let (urgency, overflow) = match &held_key {
-        Some(_) => (SILENT, false),
-        None => match classify(node, &format!("{board}/{name}"), friend, &ctx.prompted, now) {
-            // The same request again soon after it was withdrawn or ran out is listed, not pushed again.
-            (URGENT, _) if repeated => (SILENT, false),
-            other => other,
-        },
-    };
     let approval = Approval {
         id: format!("ap-{}", random_hex(8)?), kind: GRANTS.into(), board: board.into(), session: name.clone(), action: json!({"kind": GRANTS, "grants": grants}),
-        text, title, risk: risk.into(), nonce: random_hex(16)?, created_ms: now, expires_ms, state: if held_key.is_some() { HELD } else { PENDING }.into(),
-        context: ctx, pick_code, urgency: urgency.into(), same, source: source.into(), held_by: held_key.clone().unwrap_or_default(), ..Approval::empty()
+        text, title, risk: risk.into(), nonce: random_hex(16)?, created_ms: now, expires_ms,
+        context: ctx, pick_code, same, source: source.into(), ..Approval::empty()
     };
-    node.rates.record(&rate, Duration::from_millis(REQUEST_WINDOW_MS));
     node.approvals.add(approval.clone())?;
-    let kinds = actions.join(",");
-    match &held_key {
-        Some(key) => {
-            audit(node, "approval.kept_back", &approval, &format!("{kinds}; held at {key}"));
-            summary::raise(node, key, "held", asked_of(node, key))?;
-        }
-        None => {
-            audit(node, "approval.request", &approval, &kinds);
-            crate::phone::announce(node, &approval);
-            if overflow {
-                let waiting = node.approvals.all().iter().filter(|a| a.pending() && a.urgency == SILENT).count() as u64;
-                summary::raise(node, summary::FLOOD, "flood", waiting)?;
-            }
-        }
-    }
+    audit(node, "approval.request", &approval, &actions.join(","));
+    crate::phone::announce(node, &approval);
     let done = node.approvals.get(&approval.id).cloned().unwrap_or(approval);
     Ok(agent_view(node, &done))
 }

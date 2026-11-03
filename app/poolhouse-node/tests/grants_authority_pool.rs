@@ -40,7 +40,6 @@ impl Pool {
         }
         ok(rig.call("grant_issue", "demo", &token, typed.issue_params("demo", FOUNDING, &Spec::session(&name, "pool_create").on("home"))));
         ok(rig.call("pool_found", "", &token, json!({"charter": charter})));
-        rig.node.lock().unwrap().fatigue.rules.backoff_ms = 0;
         Pool { rig, phone, name, token }
     }
 
@@ -287,7 +286,7 @@ fn a_decision_by_a_key_that_is_no_admin_changes_nothing() {
     let mut node = pool.rig.node.lock().unwrap();
     assert_eq!(node.approvals.get(&id).unwrap().state, "pending", "the request is still waiting for an admin");
     let now = node.now_ms();
-    assert_eq!(node.fatigue.declined_before("demo", &[("sync_now", "*")], now), 0, "and nothing was counted as a decline");
+    assert_eq!(node.answered.declined_before("demo", &[("sync_now", "*")], now), 0, "and nothing was counted as a decline");
 }
 
 #[test]

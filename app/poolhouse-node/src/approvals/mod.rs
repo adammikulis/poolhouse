@@ -9,20 +9,22 @@
 //! | `content` | the plain-words text of a request, the risk of each action, the pool line |
 //! | `context` | what else a person weighs, signed with the request: what they said, the verdict, the taint, the undo window, the steps |
 //! | `flags` | what looks off about a request, from what the node knows of the session |
-//! | `fatigue` | what keeps a request that is made again and again from wearing a person down: one item, holds, caps, who is told |
+//! | `answered` | what the node remembers of a person's answers: the scopes declined and the sessions blocked. It holds no request back |
 //! | `challenge` | the bytes a key signs, and the grant entries an approval writes |
 //! | `decide` | the signature check, the one-time state change and what an approval does |
 //! | `calls` | the methods of the local API |
+//!
+//! Every request is shown to the person when it is made, and stays open until they answer or it runs out. A session has one open at a
+//! time: asking the same thing again returns it, and asking for something else is told what waits and that the person is to answer it.
 
+pub mod answered;
 pub mod calls;
 pub mod challenge;
 pub mod content;
 pub mod context;
 pub mod decide;
-pub mod fatigue;
 pub mod flags;
 pub mod request;
-pub mod summary;
 
 use std::path::{Path, PathBuf};
 
@@ -39,23 +41,17 @@ pub const DENIED: &str = "denied";
 pub const EXPIRED: &str = "expired";
 pub const CANCELLED: &str = "cancelled";
 pub const FAILED: &str = "failed";
-/// A request a held or over-busy requester made: kept, not shown to anyone until a person lets it through.
-pub const HELD: &str = "held";
 
-/// The kinds of approval: grants an agent asks for, a phone's own addition, a phone's removal, and the summary of requests kept back.
+/// The kinds of approval: grants an agent asks for, a phone's own addition and a phone's removal.
 pub const GRANTS: &str = "grants";
-pub const HOLD: &str = "hold";
 pub const PHONE_ADD: &str = "phone_add";
 pub const PHONE_REMOVE: &str = "phone_remove";
 /// The move of a main session to the terminal that asked, and the state of one that was carried out.
 pub const REBIND: &str = "rebind";
 pub const USED: &str = "used";
 
-/// How many requests wait on a node, how many one session has waiting, and how many a session makes in ten minutes.
+/// How many requests wait on a node: memory. The person sees every one of them, and a request past it is told so.
 pub const MOST_PENDING: usize = 64;
-pub const MOST_PENDING_PER_SESSION: usize = 8;
-pub const MOST_REQUESTS: usize = 6;
-pub const REQUEST_WINDOW_MS: u64 = 10 * 60 * 1000;
 /// The longest a request lives, and how long it lives when the agent says nothing.
 pub const MAX_TTL_MS: u64 = 24 * 3600 * 1000;
 pub const DEFAULT_TTL_MS: u64 = 30 * 60 * 1000;
@@ -99,31 +95,18 @@ pub struct Approval {
     /// The number the agent is to show the person; never sent to a phone. Empty when no number has to be matched.
     #[serde(default)]
     pub pick_code: String,
-    /// How the request is delivered: `urgent` (a push that interrupts), `quiet` (a push that does not) or `silent` (the list only).
-    #[serde(default = "urgent")]
-    pub urgency: String,
     /// How many times the same request was made again while this one waited.
     #[serde(default)]
     pub retries: u64,
-    /// What makes another request the same as this one (`fatigue::same`).
+    /// What makes another request the same as this one (`answered::same`).
     #[serde(default)]
     pub same: String,
     /// The device the request came from: this one for a local session.
     #[serde(default)]
     pub source: String,
-    /// While the request is held, the level of the ledger that holds its requester (`fatigue::requester`).
-    #[serde(default)]
-    pub held_by: String,
-    /// Whether a push told the person about it: withdrawing a request the person was told of is not free.
-    #[serde(default)]
-    pub notified: bool,
     /// For a phone's addition: the session whose code the phone used (`board/name`), empty for a code a person or a phone made.
     #[serde(default)]
     pub by: String,
-}
-
-fn urgent() -> String {
-    "urgent".into()
 }
 
 impl Approval {
@@ -132,8 +115,8 @@ impl Approval {
         Approval {
             id: String::new(), kind: String::new(), board: String::new(), session: String::new(), action: Value::Null, text: String::new(), title: String::new(),
             risk: String::new(), nonce: String::new(), created_ms: 0, expires_ms: 0, state: PENDING.into(), decided_ms: 0, decided_by: String::new(),
-            reason: String::new(), grants: Vec::new(), seq: 0, context: Context::default(), pick_code: String::new(), urgency: urgent(), retries: 0,
-            same: String::new(), source: String::new(), held_by: String::new(), notified: false, by: String::new(),
+            reason: String::new(), grants: Vec::new(), seq: 0, context: Context::default(), pick_code: String::new(), retries: 0,
+            same: String::new(), source: String::new(), by: String::new(),
         }
     }
 
@@ -145,11 +128,6 @@ impl Approval {
     /// when no session did.
     pub fn asker(&self) -> String {
         if self.session.is_empty() { self.by.clone() } else { format!("{}/{}", self.board, self.session) }
-    }
-
-    /// Pending, or kept back and not yet let through: not over.
-    pub fn live(&self) -> bool {
-        self.state == PENDING || self.state == HELD
     }
 
     /// The grants a request of kind `grants` asks for, as the challenge names them.
@@ -199,8 +177,9 @@ impl Approvals {
         self.items.iter().filter(|a| a.pending()).count()
     }
 
-    pub fn pending_of(&self, session: &str) -> usize {
-        self.items.iter().filter(|a| a.pending() && a.session == session).count()
+    /// The request of kind ``kind`` that ``session`` of ``board`` has open, if it has one.
+    pub fn open_of(&self, kind: &str, board: &str, session: &str) -> Option<&Approval> {
+        self.items.iter().find(|a| a.pending() && a.kind == kind && a.board == board && a.session == session)
     }
 
     /// Keep ``a`` as the newest request.
@@ -218,14 +197,13 @@ impl Approvals {
         self.save()
     }
 
-    /// The requests that were pending or held and are now over, marked expired at ``now_ms``, each with whether it was kept back.
-    pub fn sweep(&mut self, now_ms: u64) -> Result<Vec<(Approval, bool)>> {
+    /// The requests that were pending and are now over, marked expired at ``now_ms``.
+    pub fn sweep(&mut self, now_ms: u64) -> Result<Vec<Approval>> {
         let mut ended = Vec::new();
-        for a in self.items.iter_mut().filter(|a| a.live() && a.expires_ms <= now_ms) {
-            let held = a.state == HELD;
+        for a in self.items.iter_mut().filter(|a| a.pending() && a.expires_ms <= now_ms) {
             a.state = EXPIRED.into();
             a.decided_ms = now_ms;
-            ended.push((a.clone(), held));
+            ended.push(a.clone());
         }
         if !ended.is_empty() {
             self.save()?;
@@ -236,10 +214,10 @@ impl Approvals {
     fn save(&mut self) -> Result<()> {
         self.version += 1;
         let now = crate::poolops::wall_ms();
-        let mut decided: Vec<u64> = self.items.iter().filter(|a| !a.live()).map(|a| a.seq).collect();
+        let mut decided: Vec<u64> = self.items.iter().filter(|a| !a.pending()).map(|a| a.seq).collect();
         decided.sort_unstable();
         let floor = decided.len().checked_sub(KEEP_DECIDED).map_or(0, |i| decided[i]);
-        self.items.retain(|a| a.live() || (a.seq >= floor && now.saturating_sub(a.decided_ms.max(a.created_ms)) <= KEEP_DECIDED_MS));
+        self.items.retain(|a| a.pending() ||(a.seq >= floor && now.saturating_sub(a.decided_ms.max(a.created_ms)) <= KEEP_DECIDED_MS));
         write_atomic(&self.path, &serde_json::to_vec(&File { seq: self.seq, items: self.items.clone() })?)
     }
 }

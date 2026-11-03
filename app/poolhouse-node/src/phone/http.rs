@@ -18,7 +18,7 @@ use crate::approvals::decide::{decide, sweep, view, Decision};
 use crate::error::{Error, Result};
 use crate::grants::authority::Authority;
 use crate::node::Node;
-use crate::phone::enrol::{ask_to_remove, enrol, make_offer_from_phone, offer_is_live};
+use crate::phone::enrol::{ask_to_remove, enrol, make_offer_from_phone, offer_open_for_another};
 use crate::phone::gate::{Gate, Permit};
 use crate::phone::{shown, ACTIVE, PENDING};
 
@@ -27,7 +27,6 @@ const MOST_BODY: usize = 64 * 1024;
 const MOST_CONNECTIONS: usize = 48;
 /// The most connections one address holds, and the last connections kept for addresses a phone answered from (`gate`).
 const MOST_PER_ADDRESS: usize = 6;
-const MOST_CODES_PER_PHONE: usize = 3;
 const MOST_TRIES_PER_ADDRESS: usize = 60;
 const RESERVED: usize = 8;
 /// How long the handshake and the request may take together, and the answer to be written.
@@ -72,7 +71,7 @@ fn reads(node: &Node, id: &str) -> bool {
 fn list(node: &mut Node, me: &str) -> Value {
     let now = node.now_ms();
     let mut shown_now = if reads(node, me) { pending(node) } else { Vec::new() };
-    let mut done: Vec<&crate::approvals::Approval> = if reads(node, me) { node.approvals.all().iter().filter(|a| !a.live()).collect() } else { Vec::new() };
+    let mut done: Vec<&crate::approvals::Approval> = if reads(node, me) { node.approvals.all().iter().filter(|a| !a.pending()).collect() } else { Vec::new() };
     done.sort_by_key(|a| std::cmp::Reverse(a.seq));
     shown_now.extend(done.into_iter().take(RECENT).map(|a| view(node, a)));
     json!({"approvals": shown_now, "phones": node.phones.all().filter(|p| p.state != crate::phone::REMOVED).map(|p| shown(p, me)).collect::<Vec<_>>(),
@@ -107,18 +106,11 @@ fn wait(node: &Mutex<Node>, me: &str, p: &Map<String, Value>) -> Result<Value> {
 
 /// A code for a further phone, asked for by the phone ``id``; the request to approve the phone it adds says which phone made the code.
 fn offer(node: &mut Node, id: &str) -> Result<Value> {
-    if offer_is_live(node, node.now_ms()) {
-        return Err(Error::Denied("A code for a phone is already waiting to be scanned; use it or wait for it to run out.".into()));
-    }
+    offer_open_for_another(node, "", node.now_ms())?;
     let Some(maker) = node.phones.get(id).map(|f| (f.fingerprint.clone(), f.name.clone())) else { return Err(Error::Denied("This phone is not added to this device, or it was removed.".into())) };
     if !Authority::of(node).decides(&maker.0) {
         return Err(Error::Denied("Only an admin's phone makes a code for another phone.".into()));
     }
-    let key = format!("phone offer {id}");
-    if !node.rates.permits(&key, MOST_CODES_PER_PHONE, Duration::from_secs(3600)) {
-        return Err(crate::limits::floor("This phone has asked for as many codes as it may; try again later."));
-    }
-    node.rates.record(&key, Duration::from_secs(3600));
     let by = format!("the phone {}", maker.1);
     let now = node.now_ms();
     let secret = make_offer_from_phone(node, now, &by, &maker.0)?;
@@ -140,7 +132,7 @@ fn phone_op(node: &Mutex<Node>, id: &str, op: &str, p: &Map<String, Value>) -> R
     match op {
         "status" => Ok(json!({"state": ACTIVE})),
         "list" => Ok(list(&mut n, id)),
-        "get" => n.approvals.get(text(p, "id")).filter(|a| a.state != crate::approvals::HELD && reads(&n, id)).cloned().map(|a| view(&n, &a)).ok_or_else(|| Error::Invalid("There is no request with that id.".into())),
+        "get" => n.approvals.get(text(p, "id")).filter(|a| reads(&n, id)).cloned().map(|a| view(&n, &a)).ok_or_else(|| Error::Invalid("There is no request with that id.".into())),
         "phones" => Ok(json!({"phones": n.phones.all().filter(|f| f.state != crate::phone::REMOVED).map(|f| shown(f, id)).collect::<Vec<_>>()})),
         "push" => {
             let endpoint = text(p, "endpoint");

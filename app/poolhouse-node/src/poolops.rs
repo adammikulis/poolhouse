@@ -55,6 +55,16 @@ impl crate::node::Node {
         self.gov_remove(fingerprint)
     }
 
+    /// Everything that waits for the person: the questions of the system's own prompt, then every open request they are to answer on their
+    /// phone (an agent's, a phone's addition or removal, a move of a session), each with the sentence to tell them.
+    fn waiting(&self, now: u64) -> Vec<Value> {
+        let mut out = self.firsts.waiting(now);
+        out.extend(self.approvals.all().iter().filter(|a| a.pending()).map(|a| {
+            json!({"by": a.asker(), "say": format!("waiting for you: {}", a.title), "sentence": a.title, "via": "phone", "id": a.id, "left_ms": a.expires_ms.saturating_sub(now)})
+        }));
+        out
+    }
+
     /// The pool as a local client sees it: members with what is known of each, the policy,
     /// whether a join code is open, and this node's listening address.
     pub fn pool_status(&self) -> Value {
@@ -77,7 +87,7 @@ impl crate::node::Node {
         json!({
             "pool": self.members.id, "project": self.members.project, "policy": self.members.policy.name(), "fingerprint": me, "device_key": self.custody.status(), "listen": self.facts.listen,
             "governance": self.gov_view(),
-            "waiting": self.firsts.waiting(now),
+            "waiting": self.waiting(now),
             "beacon": self.facts.beacon, "join_code_open": self.facts.join_code_until_ms > now,
             "join_code_expires_in_s": self.facts.join_code_until_ms.saturating_sub(now) / 1000, "members": members, "build": self.build_status(),
             "leases": {"held": self.leases.table.leases.iter().filter(|l| l.state == crate::lease::types::State::Held).count(), "queued": self.leases.table.leases.iter().filter(|l| l.state == crate::lease::types::State::Queued).count()},

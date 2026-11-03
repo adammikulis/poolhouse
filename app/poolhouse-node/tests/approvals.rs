@@ -316,10 +316,10 @@ fn limits_bound_what_an_agent_may_ask() {
     assert_eq!(code(&rig.ask("demo", &token, json!([ask("add_device", "*")]), json!({"note": "caf\u{e9}"}))), "invalid", "text that is not plain");
     assert_eq!(code(&rig.ask("demo", &token, json!([ask("add_device", "*")]), json!({"ttl_s": 5}))), "invalid", "a request that lives under a minute");
     assert_eq!(code(&rig.ask("demo", &token, json!([ask("add_device", "*")]), json!({"note": "x".repeat(161)}))), "invalid", "a note over 160 characters");
-    for i in 0..6 {
-        ok(rig.ask("demo", &token, json!([ask("link_read", &format!("a>b{i}"))]), json!({})));
-    }
-    assert_eq!(code(&rig.ask("demo", &token, json!([ask("link_read", "a>z")]), json!({}))), "quota", "six requests in ten minutes");
+    let made = ok(rig.ask("demo", &token, json!([ask("link_read", "a>b")]), json!({})));
+    let other = rig.ask("demo", &token, json!([ask("link_read", "a>z")]), json!({}));
+    assert_eq!(code(&other), "denied", "a second request while one waits is told what waits, never a count or a wait: {other}");
+    assert!(message(&other).contains(made["id"].as_str().unwrap()), "{other}");
 }
 
 #[test]
@@ -442,16 +442,15 @@ fn an_agent_can_ask_for_a_code_for_a_phone_only_once_a_key_exists() {
     rig.node.lock().unwrap().phone_port = 7449;
     let offer = ok(rig.call("phone_offer", "", &token, json!({})));
     assert!(offer["link"].as_str().unwrap().starts_with("poolhouse://add-phone?data="));
-    assert!(message(&rig.call("phone_offer", "", &token, json!({}))).contains("already waiting to be scanned"), "a code that is waiting is not replaced");
+    let (_, other) = rig.session("demo", "agent-2");
+    assert!(message(&rig.call("phone_offer", "", &other, json!({}))).contains("has not been scanned yet"), "another asker does not replace a code that waits");
     let scanned = || rig.node.lock().unwrap().offer = None;
-    for _ in 0..2 {
+    for _ in 0..6 {
         scanned();
         ok(rig.call("phone_offer", "", &token, json!({})));
     }
-    scanned();
-    assert_eq!(code(&rig.call("phone_offer", "", &token, json!({}))), "quota", "three codes an hour from one session");
-    let (_, other) = rig.session("demo", "agent-2");
-    ok(rig.call("phone_offer", "", &other, json!({})));
+    let own = ok(rig.call("phone_offer", "", &token, json!({})));
+    assert_ne!(own["link"], offer["link"], "and no count of codes an hour stops a session: its own open code is replaced");
 }
 
 #[test]
@@ -462,7 +461,7 @@ fn a_code_a_person_is_showing_is_not_replaced_by_one_an_agent_asks_for() {
     rig.node.lock().unwrap().phone_port = 7449;
     let (_, token) = rig.session("demo", "agent-1");
     let secret = rig.offer();
-    assert!(message(&rig.call("phone_offer", "", &token, json!({}))).contains("already waiting to be scanned"));
+    assert!(message(&rig.call("phone_offer", "", &token, json!({}))).contains("has not been scanned yet"));
     let second = FakePhone::new("Tablet");
     assert_eq!(rig.phone("POST", "add", "", second.add_body(&rig.device(), &secret)).1["ok"], true, "the person's code still works");
 }

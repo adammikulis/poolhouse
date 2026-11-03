@@ -1,12 +1,12 @@
-//! A key that is no admin key of the pool decides nothing: for each kind of request (a grant, a hold, a phone to add, a phone to remove) and each
-//! way of answering it that the request offers, the answer is refused and the request, the phones and the fatigue ledger are as they were.
+//! A key that is no admin key of the pool decides nothing: for each kind of request (a grant, a phone to add, a phone to remove) and each
+//! way of answering it that the request offers, the answer is refused and the request, the phones and the ledger of answers are as they were.
 mod kit;
 
 use ed25519_dalek::Signer;
 use kit::grants::{agent, now_ms};
 use kit::phone::FakePhone;
 use kit::pool::{found, Founded};
-use poolhouse_node::approvals::{challenge, decide::view, summary};
+use poolhouse_node::approvals::{challenge, decide::view};
 use poolhouse_node::fsutil::hex;
 use poolhouse_node::phone::{Phone, Push, ACTIVE};
 use serde_json::json;
@@ -20,15 +20,11 @@ fn a_key_that_is_no_admin_key_decides_no_kind_of_request_in_any_way_it_offers() 
     let pool = found();
     let outsider = agent();
     pool.rig.node.lock().unwrap().persons.add(&outsider.public(), "a laptop", now_ms()).unwrap();
-    let grant = pool.request("sync_now", "*");
     let declined = pool.request("note_verify", "*");
     assert_eq!(kit::ok(pool.answer(&pool.phone, &declined, "deny"))["state"], "denied");
     let again = pool.request("note_verify", "*");
-    let hold = {
-        let mut node = pool.rig.node.lock().unwrap();
-        summary::raise(&mut node, "session:demo/noisy", "suspended", 2).unwrap();
-        node.approvals.all().iter().find(|a| a.kind == "hold" && a.pending()).expect("a hold waits for a person").id.clone()
-    };
+    let (_, other) = pool.rig.session("demo", "other");
+    let grant = kit::ok(pool.rig.ask("demo", &other, json!([kit::phone::ask("sync_now", "*")]), json!({})))["id"].as_str().unwrap().to_string();
     let new_phone = FakePhone::new("new phone");
     let add = {
         let secret = pool.rig.offer();
@@ -43,10 +39,9 @@ fn a_key_that_is_no_admin_key_decides_no_kind_of_request_in_any_way_it_offers() 
                                 state: ACTIVE.into(), push, added_ms: now, seen_ms: now }).unwrap();
         poolhouse_node::phone::enrol::ask_to_remove(&mut node, "A test", "", "ph-old").unwrap()
     };
-    let ledger = || std::fs::read(pool.rig.dir.path().join("fatigue.json")).ok();
+    let ledger = || std::fs::read(pool.rig.dir.path().join("answered.json")).ok();
     let before = ledger();
     let table = [("a grant", &grant, vec!["approve", "deny", "block"]), ("a grant asked again after a decline", &again, vec!["approve_repeat", "deny", "block"]),
-                 ("a hold", &hold, vec!["approve", "deny", "block"]),
                  ("a phone to add", &add, vec!["approve", "deny"]), ("a phone to remove", &remove, vec!["approve", "deny"])];
     for (what, id, decisions) in table {
         let seen = {

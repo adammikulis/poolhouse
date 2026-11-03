@@ -40,7 +40,6 @@ pub fn found() -> Founded {
     }
     ok(rig.call("grant_issue", "demo", &token, typed.issue_params("demo", FOUNDING, &Spec::session(&name, "pool_create").on("home"))));
     ok(rig.call("pool_found", "", &token, json!({"charter": charter})));
-    rig.node.lock().unwrap().fatigue.rules.backoff_ms = 0;
     Founded { rig, phone, typed, name, token }
 }
 
@@ -66,7 +65,6 @@ impl Founded {
         edit(dir.path());
         let mut reopened = super::node(dir.path());
         reopened.pusher = Box::new(pushed.clone());
-        reopened.fatigue.rules.backoff_ms = 0;
         let rig = Rig { node: Mutex::new(reopened), dir, pushed };
         let (name, token) = rig.session("demo", "lead");
         Founded { rig, phone, typed, name, token }

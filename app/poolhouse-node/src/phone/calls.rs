@@ -1,18 +1,13 @@
 //! The phone methods of the local API: where a phone finds this node, a code for a further phone, and the phones held.
 
-use std::time::Duration;
-
 use serde_json::{json, Map, Value};
 
 use crate::error::{Error, Result};
 use crate::node::Node;
-use crate::approvals::fatigue::{requester, Standing};
-use crate::phone::enrol::{ask_to_remove, b64url, make_offer_for, offer_is_live, OFFER_TTL_MS};
+use crate::phone::enrol::{ask_to_remove, b64url, make_offer_for, offer_open_for_another, refuse_blocked, OFFER_TTL_MS};
 use crate::phone::shown;
 
 pub const METHODS: [&str; 4] = ["phone_info", "phone_offer", "phones", "phone_remove"];
-const MOST_OFFERS_PER_HOUR: usize = 3;
-const MOST_REMOVALS_PER_HOUR: usize = 6;
 const MOST_ENDPOINTS: usize = 4;
 
 pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
@@ -75,36 +70,18 @@ pub fn call(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) 
                 return Err(Error::Denied("The first phone is added with `poolhouse-workspace phone add`, after a yes at the prompt of this computer; this works once one phone or key is added.".into()));
             }
             let (asker, now) = (format!("{}/{}", holder.board, holder.name), node.now_ms());
-            if let Some(until) = node.fatigue.refused_key(&format!("offer:{asker}"), now) {
-                return Err(Error::Denied(format!("A code this session made was not approved, so it is blocked from asking for more codes until {}.", crate::approvals::content::utc(until))));
-            }
-            let root = node.host(&holder.board)?.names.root(&holder.name);
-            if matches!(node.fatigue.standing(&requester(&holder.board, &holder.name, &root), "phone_add", now), Standing::Held { .. } | Standing::Refused { .. }) {
-                return Err(Error::Denied("A session that is held or blocked asks for no codes for phones either.".into()));
-            }
+            refuse_blocked(node, &asker, now)?;
             if node.phone_port == 0 {
                 return Err(Error::Invalid("This device is not listening for phones; `poolhouse-workspace phone add` turns that on.".into()));
             }
-            if offer_is_live(node, node.now_ms()) {
-                return Err(Error::Denied("A code for a phone is already waiting to be scanned; use it or wait for it to run out.".into()));
-            }
-            let key = format!("phone offer {}/{}", holder.board, holder.name);
-            if !node.rates.permits(&key, MOST_OFFERS_PER_HOUR, Duration::from_secs(3600)) {
-                return Err(crate::limits::floor("One session has asked for as many codes as it may; try again later."));
-            }
-            node.rates.record(&key, Duration::from_secs(3600));
+            offer_open_for_another(node, &asker, now)?;
             let secret = make_offer_for(node, now, &format!("the session {} on board {}", holder.name, holder.board), &asker)?;
             Ok(info(node, &secret))
         }
         "phone_remove" => {
             let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("A registered session asks to remove a phone.".into()))?;
-            let key = format!("phone remove {}/{}", holder.board, holder.name);
-            if !node.rates.permits(&key, MOST_REMOVALS_PER_HOUR, Duration::from_secs(3600)) {
-                return Err(crate::limits::floor("One session has asked to remove as many phones as it may; try again later."));
-            }
             let by = format!("The session {} on board {}", holder.name, holder.board);
             let id = ask_to_remove(node, &by, &format!("{}/{}", holder.board, holder.name), text(p, "phone")?)?;
-            node.rates.record(&key, Duration::from_secs(3600));
             node.approvals.get(&id).cloned().map(|a| crate::approvals::decide::view(node, &a)).ok_or_else(|| Error::Invalid("There is no request with that id.".into()))
         }
         _ => {

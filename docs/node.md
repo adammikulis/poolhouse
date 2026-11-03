@@ -548,7 +548,7 @@ public point) and signs only approvals (docs/phone-approval.md): an agent asks (
 signs a challenge that binds the text, the node and the request, and an approved request writes ordinary `grant` entries whose body carries that approval instead
 of a signature over the grant, so they count wherever a grant a person typed `yes` for counts. The phone endpoint (`--phone ADDR`, or the address in
 `phone.json` in the state directory) is HTTPS on one P-256 certificate (`phone.cert`, pinned by the code a person scans); `phones.json` holds each phone, its token's hash
-and its push address; `approvals.json` the requests; `fatigue.json` the declines, timeouts, holds and pushes that keep a request made again and again from wearing the person down (docs/phone-approval.md, "Approval fatigue"); `phone_offer.json` the hash of the one-time code a person's command (or the node, once a key exists) left for the next
+and its push address; `approvals.json` the requests; `answered.json` the scopes a person declined and the sessions they blocked, which hold no request back (docs/phone-approval.md, "A request is never held back"); `phone_offer.json` the hash of the one-time code a person's command (or the node, once a key exists) left for the next
 phone. The first phone is enrolled by that code alone; every later phone waits for a key the node holds to approve it. On a device in a pool a phone the charter
 lists as a strong admin key is enrolled by the code alone; any other phone sends, with its `add`, its `acceptance` of being listed as an admin key of the person
 the code is for (the terms are in the link's `admit`: pool, charter hash, epoch and person, which the node reads from its own state again), and the request an

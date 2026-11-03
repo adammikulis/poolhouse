@@ -361,7 +361,7 @@ fn limits_document() -> String {
 fn a_floor_refusal_states_no_budget() {
     let files = source_files();
     let floors = calls(&files, "limits::floor(");
-    assert!(floors.len() >= 14, "{} floor refusals were found; the scan reads every call of limits::floor", floors.len());
+    assert!(floors.len() >= 7, "{} floor refusals were found; the scan reads every call of limits::floor", floors.len());
     let wrong = floor_findings(&files);
     assert!(wrong.is_empty(), "{}", wrong.join("\n"));
 }

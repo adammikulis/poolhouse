@@ -84,15 +84,15 @@ phone used was made by the session `<name>` on board `<board>`, not by you at th
 yourself just now." A code that is waiting to be scanned is never replaced by one a session or a phone asks for, so an agent
 cannot take over the code the person is showing.
 
-**A phone's addition goes through the same brakes as an agent's request** ("Approval fatigue"). A request to add a phone carries
+**A phone's addition is shown like any other request** ("A request is never held back"). A request to add a phone carries
 a number to match, like any request above routine: the new phone shows a number on its own screen and the phone that approves
 asks, after the fingerprint, which of three numbers it is, so an approval made by reflex on a phone the person did not scan adds
-nothing. At most one phone waits to be added at a time, and a phone that was denied or was withdrawn (one that ran out counts for nothing) keeps the next one away
-for an hour. A phone that is not approved counts against the session that made the code it used: the same decline and timeout
-counts as any request of that session, and that session may ask for no more codes (`phone_offer`) for a day. A session that is held
-or blocked asks for no codes and no removals either. The request goes to the phone as urgent, quiet or only listed by the same
-caps as any other (a flood is one quiet notice, not a buzz for each). A removal an agent asked for carries a `FLAG:` naming the
-session that asked, because a removal ends a phone the person may have relied on.
+nothing. At most one phone waits to be added at a time; a second is told to have the first answered, and a phone that was denied,
+withdrawn or ran out keeps nothing away: the next one is asked about at once. A session that asks for a code again gets a new one in
+place of its own open one; another asker is told a code is open and the person is to scan it. A session a person blocked asks for no
+codes and no removals. The request goes to the phone as every request does. A removal an agent asked for carries a `FLAG:` naming
+the session that asked, because a removal ends a phone the person may have relied on; asking for the same removal again returns the
+open one, and a second removal from a session whose first waits is told what waits.
 
 **Handing the code over.** An agent can make the code and hand the person an image or a link (`poolhouse-workspace phone
 offer --image FILE`, `Board.offer_phone()`, and `phone add --image FILE` once one phone is added); a link opens the app. What an
@@ -122,7 +122,7 @@ as one list, one tap and one fingerprint, and each becomes its own grant entry o
 requesting session: an ask names no other. A request lives for `--ttl` (default 30 minutes, at most 24 hours) and is
 refused past the node's limits: eight asks, sixty-four requests pending on the node, six requests a session in ten minutes.
 Asking the same thing again (the same session, the same actions on the same resources, whatever the note, the time or the count) is
-the same request: the reply says `deduplicated` and no new notification is made ("Approval fatigue"). A request that is not routine
+the same request: the reply says `deduplicated` and no new notification is made ("A request is never held back"). A request that is not routine
 comes back with a `code`, a two-digit number the agent shows its person in its own chat or screen; the phone offers three numbers
 and the person chooses that one after the fingerprint.
 
@@ -136,7 +136,6 @@ the pool's join policy is; if it disagrees with the node, the request is refused
 | State | Meaning | What the agent says to its person |
 |---|---|---|
 | `pending` | on the phone, undecided | "Waiting for you to approve on your phone." The agent keeps working on anything else |
-| `held` | kept back unseen: earlier requests were declined by the person (requests that ran out unanswered never hold anything) | "Your requests are being held; a person was told once and nothing was shown to them." The agent does not ask again |
 | `approved` | the grants exist, with their ids | continues |
 | `denied` | the person said no | "You said no; nothing changed." |
 | `expired` | nobody decided before it ended | "The request ended before you answered; ask me again if it is still needed." |
@@ -247,7 +246,7 @@ bytes would not match a signature made over it. `said` is the instruction of the
 came to know it (the harness attested the prompt, or the app sent it); `verdict` is how the node judged the request against it;
 `taint` says whether the session read content from outside; `held` is when the act would happen once approved and whether a
 notification lets the person cancel it first; `prompted` says whether the person recently told the session to do this; `repeat`
-is how often the scope was declined before; `pick` is the three numbers of "Approval fatigue"; `block_ms` is what a deny that blocks
+is how often the scope was declined before; `pick` is the three numbers of "A request is never held back"; `block_ms` is what a deny that blocks
 lasts. The text carries a line for each of them, so what is shown is what is signed; the app also reads `repeat`, `pick` and `block_ms`
 to decide which buttons and steps to offer. The `action` is the structured form of what it wants, signed the same way, and a grant an
 approval writes is built from it, never from the prose. `decision` is `approve`, `approve_repeat` (the deliberate approval of a
@@ -271,33 +270,25 @@ second decision, a replay of the same bytes, or a decision after the end is refu
 **A deny is signed too.** An unsigned deny would let anything that reaches the node end the person's pending requests. The
 agent that asked is told "denied" the same way.
 
-## Approval fatigue
+## A request is never held back
 
-An agent, or someone behind it, can ask again and again until a person accepts to be left alone. Every defence below is the node's,
-none costs a routine approval anything, and the person's own answer is never what is rationed: what is limited is how much an agent
-can ask and how loudly.
+Owner's order, 2026-11-03: "I should never silently have things like this hidden from me due to a 'quiet period'"; "anything that
+requires the user's response should not be suppressed, or we have an unfulfillable request". Nothing the node does makes a request
+for the person wait, go unseen or be pushed quietly. What stands where the old defences stood is visibility.
 
-| Defence | What happens |
+| Rule | What happens |
 |---|---|
-| **One item.** The same request made again | The same session asking for the same actions on the same resources is the same request, whatever its note, time or count: the reply is the item already waiting (`deduplicated`, and `retries` goes up). No new notification, no new row. Two hundred asks are one item and one push. The same request asked again within ten minutes of one that was withdrawn or ran out is made, but listed and never pushed again, so withdrawing and asking again cannot make a new notification. |
-| **Backoff** | After one decline or timeout the same kind of request (the same set of actions) waits 30 seconds; the agent is told how long. Other kinds are not held back. |
-| **Hold** | After two declines of the same kind by a session, the session is held. A request nobody answered is not a decline and counts against nobody (owner's order, 2026-11-03: a person who did not see a request has said nothing, and holding the next one back would hide it). After five declines by the person, of any kind, across an agent (its main session and the sessions that started under it, which the node knows from who registered whom, never from the model or harness a session says it is), or twenty on a board, the sessions of that agent or board that were themselves declined are held; a session nobody declined is not. A withdrawal counts at the session only, so what one session leaves unanswered never holds another. A held requester's requests are kept, shown to nobody, pushed to nobody. The first one makes one quiet notice for the person; nothing more is pushed for the hold, however it asks. Holds last one hour, then four, then a day. A third hold in a day that the person's own declines started suspends that session; an agent that runs while the person sleeps is never held for it: its requests queue as pending, expire, and it keeps its grants. |
-| **The quiet notice** | One notice per hold, on a channel with no sound, no heads-up and no badge: "the session X asked N times and is held". Its answers are **Allow once** (one held request becomes a normal request, pushed as one), **Keep holding** (the hold goes on and the notice is not repeated) and **Block** (nothing from it for a day). The count is made again, silently, only when it has doubled. |
-| **Deny and block** | On the request itself, and on the notification: a deny that also stops that session asking for a day. The text says so before the person chooses. It also ends what the session still had waiting. |
-| **Declined before** | A scope the person declined shows `declined N time(s) before` as a flag, is asked on its own (never in a batch), and takes one more deliberate step: the node accepts only `approve_repeat` for it, which the app asks for in a confirmation before the fingerprint and the terminal asks for as a typed word. |
-| **Unprompted** | When the node knows nobody told the session to do this (the evidence source says so), the request is labelled, kept in a low-urgency list and never pushed with urgency. Where the node cannot tell, which is every node until a harness attests instructions, a request is not called unprompted and behaves as it always did. |
-| **A number to match** | A request that is not routine comes back to the agent with a number; the agent shows it to its person where the person reads it. After the fingerprint the phone offers three numbers and the person chooses that one. A choice that is not the agent's number ends the request as a decline and counts against the requester; a choice that is not one of the three is no answer and changes nothing. Routine requests have none. |
-| **Withdrawing** | A request the person was pushed that its own session then withdraws counts as a decline at that session (only: a withdrawal never counts against the agent or the pool), so asking and withdrawing again and again holds the session as two declines do. Withdrawing one nobody was told about costs nothing. |
-| **A push budget** | Each requester may use three of the hour's ten pushes. What it asks past that is listed, with the one quiet notice that things wait in the list, so one session cannot spend the hour's pushes and silence an honest one. |
-| **No consent by silence** | A request nobody answers expires, is never approved, and counts as a timeout, the same as a decline, against the requester. |
-| **A trust event** | Starting a hold writes `approval.held` and `approval.bombing` (the pool's other devices read it) and a penalty for the trust ledger to read; a third hold in a day that the person's declines started writes `approval.suspended`, refuses that session for a day, ends what it still had waiting, and takes its grants away for as long (a suspended session holds none). No other session of the same model, agent or board loses anything. |
-| **Caps on the person** | At most three requests of one requester, eight of anyone's, and ten pushes in an hour interrupt the person. Past that, requests wait in the list and one quiet notice, at most once an hour, says how many. |
-| **A stranger** | A request from a device that is not a member of the pool the person governs is flagged, listed and never pushed. |
+| **Every request is pushed and listed when it is made** | There is no urgency level, no hourly cap on pushes, no quiet notice and no hold. A request nobody told the agent to make, and one from a device outside the pool, are labelled with a `FLAG:` and pushed like any other. |
+| **One item** | The same session asking for the same actions on the same resources is the same request, whatever its note, time or count: the reply is the item already waiting (`deduplicated`, and `retries` goes up). No new notification, no new row. |
+| **One open request per session** | A session that asks for something else while one of its requests waits is refused with what waits (its title and id), that it is on the person's phone, and that the person is to open the app and answer it. There is no time to wait and no count: the next request is made the moment the person has answered. A phone's addition (one waits at a time), a removal (one per asking session) and a move of a session (one per session) follow the same rule. |
+| **A decline holds nothing back** | After a decline, a withdrawal or a request nobody answered, the next request is made and pushed at once. A scope the person declined shows `declined N time(s) before` as a flag, is asked on its own (never in a batch), and takes one more deliberate step: the node accepts only `approve_repeat` for it, which the app asks for in a confirmation before the fingerprint and the terminal asks for as a typed word. |
+| **Waiting is on the status** | `pool_status.waiting` lists every open request ("waiting for you: <title>", who asked, the id, how long it has left) after the system prompts. |
+| **Deny and block** | The one refusal left. On the request itself, and on the notification, the person can deny and also stop that session asking for a day; the text says so before they choose, and the agent that asks again is told a person blocked it and when the block ends. A block belongs to the person who chose it; nothing else blocks. |
+| **A number to match** | A request that is not routine comes back to the agent with a number; the agent shows it to its person where the person reads it. After the fingerprint the phone offers three numbers and the person chooses that one. A choice that is not the agent's number ends the request as a decline; a choice that is not one of the three is no answer and changes nothing. Routine requests have none. |
+| **No consent by silence** | A request nobody answers expires and is never approved. It counts against nobody. |
 
-The cost to the normal case is none for a routine approval and one pick for a sensitive or irreversible one ("The friction budget").
-A request made once, answered once, never meets a hold, a backoff, a cap or a repeat. Where a number is shown: the agent prints it
-(`SHOW YOUR PERSON THIS NUMBER`), the phone's three-way choice follows the fingerprint, and a person at a terminal is asked after
-the typed yes. The ledger of declines, timeouts, holds and pushes is `fatigue.json` in the node's directory and survives a restart.
+The ledger of declined scopes and blocks is `answered.json` in the node's directory and survives a restart. Its code is
+`approvals/answered.rs`; `approvals/request.rs` makes the request and `approvals/decide.rs` carries out the answer.
 
 ### Defences
 
@@ -316,7 +307,6 @@ Each refusal is one sentence the agent can pass to its person.
 | An ask for a floor (`grant_issue`, `push_main`...) | "`grant_issue` is a floor: no grant, from anyone, covers it." |
 | An agent's `expect_policy` that is not the node's | "The pool is secure, not open as you wrote; ask again with what is true." |
 | Text with other than printable ASCII | "That text must be plain English letters, digits and punctuation." |
-| A request beyond the limits | "One session has made as many requests as it may; try again later (the limit is 6 in ten minutes, set by MOST_REQUESTS in approvals/mod.rs)." |
 | A code a session made, used to add the first phone | "A code made through the node cannot add the first phone: a person at the computer adds it with `poolhouse-workspace phone add`." |
 | The first key or phone asked of a node that has no way to ask the person (started with no `--presence`) | "This node was started with no way to ask the person, so the first key or phone cannot be added through it." |
 | The first key or phone on Windows | "The first key and phone cannot be added on Windows yet: it has no prompt the node can ask with." |
@@ -469,7 +459,7 @@ The tap on the notification on the approving phone is the routine approval below
 | 4 | Pick the number the agent showed, out of three | one tap | a tap made by reflex, or on a request the person never looked into, cannot approve it: the number is on the agent's own screen |
 
 A routine request the node flagged as looking off takes the first three rows and no pick; a scope that was declined before takes one more
-deliberate step in the screen (the confirmation before the prompt), described under "Approval fatigue". What the node writes as a
+deliberate step in the screen (the confirmation before the prompt), described under "A request is never held back". What the node writes as a
 `NOTE:` is not a flag: the first request of a new session, and the first request of a kind on this device, are facts for the person to
 read, not reasons to open the screen first, so a routine request with only notes is still approved from the notification.
 
@@ -494,11 +484,10 @@ own before the prompt of the approval. Those counts are the real ones when the p
 | 4 | Fingerprint | one biometric prompt | |
 | 5 | Pick the number the agent showed, out of three | one tap | the number is on the agent's own screen |
 
-**What the defences against being worn down cost the normal case** ("Approval fatigue"): a request made once and answered once.
+**What the defences against being worn down cost the normal case** ("A request is never held back"): a request made once and answered once.
 
 | Defence | A routine approval | A sensitive or irreversible approval |
 |---|---|---|
-| One item, backoff, hold, caps, the quiet list | nothing: they act only on a requester that was declined or that asks again and again | nothing |
 | The number to match | none: a routine request has no number | one pick (row 4 above) |
 | Deny and block | one more button, not a step: a deny is still a tap and the prompt | the same |
 | A scope declined before | one confirmation before the prompt, only when it was declined | the same |
@@ -512,14 +501,14 @@ On the local socket, with a session's token (docs/node.md, "Local API"):
 
 | method | params | result |
 |---|---|---|
-| `approval_request` | `asks` (one to eight of `{action, resource, lasts_ms, uses, review}`), `note`, `task`, `ttl_s`, `expect_policy` | `{id, state: "pending" or "held", text, expires_ms, urgency, deduplicated, code (when not routine)}` |
+| `approval_request` | `asks` (one to eight of `{action, resource, lasts_ms, uses, review}`), `note`, `task`, `ttl_s`, `expect_policy` | `{id, state: "pending", text, expires_ms, deduplicated, code (when not routine)}` |
 | `approval_status` | `id` | `{id, state, text, decided_ms, by, grants}` for the requesting session only |
 | `approval_cancel` | `id` | `{id, state}` |
 | `approvals` | `state` | the requesting session's own requests |
 | `approval_pending` | `key`, `sig`, `at_ms` (a person's reading, below) | a session reads only its own waiting requests (their words, note, task, session and the number to show, never another session's); with `key`, `sig` and `at_ms` the signature of an enrolled person key made in the last thirty seconds over `poolhouse/approval-list/v1` and the node's fingerprint, it reads every waiting request, still without the numbers |
 | `approval_decide` | `id`, `decision` (`approve`, `approve_repeat`, `deny`, `block`), `key`, `sig`, `text_sha256`, `pick` | `{id, state}`: needs a signature of an enrolled person key; a session only carries it. `pick` is the number the person chose and is not signed |
 | `phone_info` | | `{pin, port, endpoints, device, policy}` |
-| `phone_offer` | | a code for a further phone (needs a person key to exist; three an hour for each session; not while another code waits to be scanned; not for a session that is held or blocked or whose last code was not approved, for a day; the request to approve the phone says which session made the code and carries a number to match); the first is a person's command |
+| `phone_offer` | | a code for a further phone (needs a person key to exist; a session that asks again gets a new code in place of its own open one, another asker is told the open one is to be scanned; not for a session a person blocked; the request to approve the phone says which session made the code and carries a number to match); the first is a person's command |
 | `phones` | | the phones: name, key, state, when added and last seen, whether a push address is set |
 | `phone_remove` | `phone` | the request "Remove the phone", for a key the node holds to approve |
 
@@ -548,7 +537,7 @@ that the pool's other devices read), naming the id, the session and the key, nev
 | A grant for more than was shown | The grant is built from the signed asks; an entry that differs, or lacks its context, counts for nothing |
 | A replay | One state change under the node's lock, written before anything is done with it |
 | A notification that leaks | Ciphertext only to the push service; the lock screen shows the agent's name and nothing else |
-| **Approval fatigue, prompt bombing** | One item per request, a hold after two declines, a quiet notice instead of a buzz, deny and block, a scope declined before is flagged and takes a deliberate step, unprompted requests are listed not pushed, a number to match for what is not routine, timeouts count for nothing, a trust event and suspension, caps on what reaches the phone, strangers never push ("Approval fatigue") |
+| **Approval fatigue, prompt bombing** | Nothing is held back (owner's order, 2026-11-03): one item per request, one open request per session, every request pushed and listed, deny and block as the one refusal a person chooses, a scope declined before is flagged and takes a deliberate step, a number to match for what is not routine, timeouts and withdrawals count for nothing ("A request is never held back") |
 | A person who approves everything by reflex | The number to match ties a sensitive approval to the agent's own screen; the flags and `RISK:` are the rest of the help; a tap on a request the person never looked into cannot approve it |
 | An agent that does not know it is compromised (injected text) | The request carries what the person said, how the node judged it against that, and whether the session read content from outside, as lines the person reads and bytes the key signs; how the node finds them is a placeholder the node fills (`SAID`, `VERDICT`, `TAINT`) |
 
@@ -591,6 +580,6 @@ The tests prove the protocol and the app's logic without a device (`PhoneApprova
    notification arrives with the app closed, and a capture of the push server's side shows only ciphertext.
 10. Change the node's address (another network, then Tailscale): the app finds it from the code's other endpoint and says nothing.
 10b. Make a request that is not routine: the notification opens the screen, the fingerprint prompt comes, then "Which number did your agent show you?" with three numbers; choose the one the agent printed and see it approved; choose another on the next request and see it denied, with the request counted as a decline.
-10c. Decline the same request twice: the second says "declined 1 time(s) before" and asks "Approve anyway?" before the fingerprint; after two declines a third request makes no sound at all and one quiet notice (no sound, no badge) says the agent is held, with Allow once, Keep holding and Block it.
+10c. Decline the same request twice: the second says "declined 1 time(s) before" and asks "Approve anyway?" before the fingerprint; a third request is made and pushed at once like the first, and says it was declined before.
 10d. Tap Deny and block on a notification: the agent is refused for a day and its waiting requests end.
 11. Confirm the camera is not opened after the scan, no image is stored, and `FLAG_SECURE` hides the text in the recents screen.

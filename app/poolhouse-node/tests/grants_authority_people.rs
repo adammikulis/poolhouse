@@ -43,7 +43,6 @@ fn found_three() -> (Founded, FakePhone) {
     }
     ok(rig.call("grant_issue", "demo", &token, typed.issue_params("demo", FOUNDING, &Spec::session(&name, "pool_create").on("home"))));
     ok(rig.call("pool_found", "", &token, json!({"charter": charter})));
-    rig.node.lock().unwrap().fatigue.rules.backoff_ms = 0;
     (Founded { rig, phone: ann, typed, name, token }, ben)
 }
 

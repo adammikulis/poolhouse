@@ -15,9 +15,7 @@ use serde_json::{json, Map, Value};
 use crate::approvals::content::phone_text;
 use crate::approvals::context::{pick_options, Context};
 use crate::approvals::decide::audit;
-use crate::approvals::fatigue::{requester, Standing, HOUR_MS, SILENT};
-use crate::approvals::request::classify;
-use crate::approvals::{summary, Approval, CANCELLED, DENIED, EXPIRED, FAILED, PENDING as APPROVAL_PENDING, PHONE_ADD};
+use crate::approvals::{Approval, PENDING as APPROVAL_PENDING, PHONE_ADD, PHONE_REMOVE};
 use crate::error::{Error, Result};
 use crate::fsutil::{random_hex, sha256_hex};
 use crate::gov::act::Act;
@@ -113,6 +111,24 @@ pub fn offer_is_live(node: &Node, now_ms: u64) -> bool {
     node.offer.as_ref().is_some_and(|o| now_ms >= o.at_ms && now_ms - o.at_ms <= OFFER_TTL_MS)
 }
 
+/// A code is open and nobody has scanned it: only the session that made it (``asker``, as `board/name`) gets a new one in its place, so
+/// a code a person is about to scan is never swapped under them, and whoever asks is told what to do now. A phone or a person passes no asker.
+pub fn offer_open_for_another(node: &Node, asker: &str, now_ms: u64) -> Result<()> {
+    match node.offer.as_ref().filter(|_| offer_is_live(node, now_ms)) {
+        Some(open) if asker.is_empty() || open.by != asker => Err(Error::Denied("A code for a phone is open and has not been scanned yet. Tell the person to scan that one with the phone now; a new code is made once it is used.".into())),
+        _ => Ok(()),
+    }
+}
+
+/// The refusal for a session a person blocked, with when the block ends: a block is the person's own answer, so it is the one thing that
+/// keeps a session from asking, and it says so.
+pub fn refuse_blocked(node: &mut Node, asker: &str, now_ms: u64) -> Result<()> {
+    match node.answered.blocked_until(asker, now_ms) {
+        Some(until) => Err(Error::Denied(format!("A person blocked this session until {} when they answered an earlier request of it, so nothing it asks about phones is shown to them before then.", crate::approvals::content::utc(until)))),
+        None => Ok(()),
+    }
+}
+
 /// Spend the code ``secret`` that ``ip`` sent: it is good once, for ten minutes. A wrong code is counted against the address that sent
 /// it and never ends the offer. Whoever made the code is returned, empty for a person. The first phone is added with the secret the
 /// operating system's prompt made (`presence`), and with no other.
@@ -146,21 +162,14 @@ fn spend_offer(node: &mut Node, ip: IpAddr, secret: &str, now_ms: u64) -> Result
     Ok((offer.made_by, offer.by, offer.person))
 }
 
-/// What keeps a phone's addition from being asked for again and again: the session that made the code must not be held or blocked, at
-/// most one phone waits for approval, and a phone that was not approved keeps the next away for an hour.
-fn brakes(node: &mut Node, by: &str, now: u64) -> Result<()> {
-    if let Some((board, name)) = by.split_once('/') {
-        let root = node.host(board).map_or_else(|_| name.to_string(), |h| h.names.root(name));
-        if matches!(node.fatigue.standing(&requester(board, name, &root), "phone_add", now), Standing::Held { .. } | Standing::Refused { .. }) {
-            return Err(Error::Denied("The session that made this code is held or blocked, so it adds no phone.".into()));
-        }
+/// At most one phone waits for approval, so the person is shown one at a time; a second is told to have the first answered. Nothing
+/// keeps a phone away for what became of an earlier one: a phone that was not approved is asked about again like any other.
+fn one_waiting(node: &mut Node, by: &str, now: u64) -> Result<()> {
+    if let Some(until) = node.answered.blocked_until(by, now) {
+        return Err(Error::Denied(format!("The session that made this code was blocked by a person until {}, so it adds no phone.", crate::approvals::content::utc(until))));
     }
-    let adds: Vec<&Approval> = node.approvals.all().iter().filter(|a| a.kind == PHONE_ADD).collect();
-    if adds.iter().any(|a| a.live()) {
-        return Err(crate::limits::floor("Another phone is already waiting for one of your phones to approve it: answer that first."));
-    }
-    if adds.iter().any(|a| now.saturating_sub(a.created_ms) < HOUR_MS && matches!(a.state.as_str(), DENIED | EXPIRED | CANCELLED | FAILED)) {
-        return Err(crate::limits::floor("A phone asked to be added less than an hour ago and was not approved; wait before another is added."));
+    if node.approvals.all().iter().any(|a| a.kind == PHONE_ADD && a.pending()) {
+        return Err(crate::limits::floor("Another phone is already waiting for one of your phones to approve it: answer that on your phone first, then scan again."));
     }
     Ok(())
 }
@@ -217,7 +226,7 @@ pub fn enrol(node: &mut Node, ip: IpAddr, p: &Map<String, Value>) -> Result<Valu
     let direct = first || listed;
     let admit = if direct || node.members.gov().is_none() || listed_key { None } else { Some(admit::draft(node, &person, name, &key, p.get("acceptance").and_then(Value::as_str).unwrap_or(""))?) };
     if !direct {
-        brakes(node, &by, now)?;
+        one_waiting(node, &by, now)?;
     }
     let phone = Phone {
         id: id.clone(), name: name.into(), fingerprint: fingerprint.clone(), key: key.clone(), token_sha256: sha256_hex(token.as_bytes()),
@@ -256,20 +265,15 @@ fn ask_to_add(node: &mut Node, id: &str, phone: (&str, &str, &str), made: (&str,
         text = admit::card(node, &text, act);
         action["act"] = serde_json::to_value(act)?;
     }
-    let (urgency, overflow) = classify(node, by, true, "unknown", now);
     let approval = Approval {
         id: format!("ap-{}", random_hex(8)?), kind: PHONE_ADD.into(), board: POOL_BOARD.into(), session: String::new(),
         action,
         text, title, risk: risk.into(), nonce: random_hex(16)?, created_ms: now, expires_ms: expires, state: APPROVAL_PENDING.into(),
-        source: node.cert.fingerprint(), context: ctx, pick_code: code.clone(), urgency: urgency.into(), by: by.into(), ..Approval::empty()
+        source: node.cert.fingerprint(), context: ctx, pick_code: code.clone(), by: by.into(), ..Approval::empty()
     };
     node.approvals.add(approval.clone())?;
     audit(node, "approval.request", &approval, &format!("add the phone {name}"));
     crate::phone::announce(node, &approval);
-    if overflow {
-        let waiting = node.approvals.all().iter().filter(|a| a.pending() && a.urgency == SILENT).count() as u64;
-        summary::raise(node, summary::FLOOD, "flood", waiting)?;
-    }
     Ok((approval.id, code))
 }
 
@@ -280,34 +284,36 @@ pub fn ask_to_remove(node: &mut Node, by: &str, by_key: &str, target: &str) -> R
     if Authority::of(node).lists(&phone.fingerprint) {
         return Err(Error::Denied(LISTED.into()));
     }
-    if node.approvals.all().iter().any(|a| a.pending() && a.action.get("phone").and_then(Value::as_str) == Some(target) && a.kind == crate::approvals::PHONE_REMOVE) {
-        return Err(Error::Invalid("Removing that phone is already waiting for a fingerprint.".into()));
-    }
     let now = node.now_ms();
+    if !by_key.is_empty() {
+        refuse_blocked(node, by_key, now)?;
+    }
+    // The same removal again, from the same asker, is the one that waits; another removal from an asker whose first still waits is told
+    // what waits; a removal that another asker already put to the person is not put twice.
+    let open = node.approvals.all().iter().find(|a| a.pending() && a.kind == PHONE_REMOVE && (a.action.get("phone").and_then(Value::as_str) == Some(target) || (!by_key.is_empty() && a.by == by_key))).cloned();
+    if let Some(open) = open {
+        let same_target = open.action.get("phone").and_then(Value::as_str) == Some(target);
+        return match (same_target, open.by == by_key) {
+            (true, true) => Ok(open.id),
+            (true, false) => Err(Error::Invalid("Removing that phone is already waiting for a fingerprint on the person's phone.".into())),
+            (false, _) => Err(Error::Denied(crate::approvals::request::waiting_words(&open))),
+        };
+    }
     let mut flags = Vec::new();
     if let Some((board, name)) = by_key.split_once('/') {
-        let root = node.host(board).map_or_else(|_| name.to_string(), |h| h.names.root(name));
-        if matches!(node.fatigue.standing(&requester(board, name, &root), "phone_remove", now), Standing::Held { .. } | Standing::Refused { .. }) {
-            return Err(Error::Denied("A session that is held or blocked asks for nothing about phones either.".into()));
-        }
         flags.push(format!("The session {name} on board {board} asked for this, not a phone of yours."));
     }
     let expires = now + crate::approvals::DEFAULT_TTL_MS;
     let (title, text, risk) = phone_text(false, &phone.name, &words(&phone.fingerprint), by, node.members.policy.name(), &flags, &Context::default(), expires);
-    let (urgency, overflow) = classify(node, by_key, true, "unknown", now);
     let approval = Approval {
-        id: format!("ap-{}", random_hex(8)?), kind: crate::approvals::PHONE_REMOVE.into(), board: POOL_BOARD.into(), session: String::new(),
-        action: json!({"kind": crate::approvals::PHONE_REMOVE, "phone": target, "name": phone.name, "fingerprint": phone.fingerprint}),
+        id: format!("ap-{}", random_hex(8)?), kind: PHONE_REMOVE.into(), board: POOL_BOARD.into(), session: String::new(),
+        action: json!({"kind": PHONE_REMOVE, "phone": target, "name": phone.name, "fingerprint": phone.fingerprint}),
         text, title, risk: risk.into(), nonce: random_hex(16)?, created_ms: now, expires_ms: expires, state: APPROVAL_PENDING.into(),
-        source: node.cert.fingerprint(), urgency: urgency.into(), by: by_key.into(), ..Approval::empty()
+        source: node.cert.fingerprint(), by: by_key.into(), ..Approval::empty()
     };
     node.approvals.add(approval.clone())?;
     audit(node, "approval.request", &approval, &format!("remove the phone {}", phone.name));
     crate::phone::announce(node, &approval);
-    if overflow {
-        let waiting = node.approvals.all().iter().filter(|a| a.pending() && a.urgency == SILENT).count() as u64;
-        summary::raise(node, summary::FLOOD, "flood", waiting)?;
-    }
     Ok(approval.id)
 }
 
