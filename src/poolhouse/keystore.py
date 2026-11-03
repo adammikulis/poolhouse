@@ -6,9 +6,10 @@ owner and context in ``info``; `wrap` and `unwrap` bind purpose and owner as AAD
 
 The machine's own keystore is used only by the installed software on the real home (`poolhouse.real_machine`), whatever the
 environment says. Nothing touches it at import, construction or `status`. The master is read once per process. Every backend
-call passes a gate: denial latch, hourly ceiling, cross-process lock. Reads of an existing item and the operations that make or
-remove one have separate hourly ceilings. A background process never creates the master and reads it only after
-``poolhouse-security unlock``. Each backend call is a sentinel event (purpose, outcome), never a value.
+call passes a gate: hourly ceiling, cross-process lock. Reads of an existing item and the changes have separate hourly
+ceilings (a change the keystore refused is not counted; the unlock command is never turned away). A refusal is told in the
+system's words and remembered by nothing, so the next request asks again. A background process never creates the master and
+reads it only after ``poolhouse-security unlock``. Each backend call is a sentinel event (purpose, outcome), never a value.
 """
 
 from __future__ import annotations
@@ -42,7 +43,7 @@ from poolhouse.log import warn
 from poolhouse.sentinel import human
 from poolhouse.sentinel.events import Event, Severity
 
-__all__ = ["COOLDOWN_S", "ENV_NONINTERACTIVE", "NOTICE", "RATE_WINDOW_S", "READ_CEILING",
+__all__ = ["ENV_NONINTERACTIVE", "NOTICE", "RATE_WINDOW_S", "READ_CEILING",
            "UNLOCK_COMMAND", "WRITE_CEILING", "Keystore", "KeystoreBusy", "KeystoreDenied", "KeystoreError",
            "KeystoreLocked", "KeystoreMissing", "KeystoreUnavailable", "Wires", "aead", "default", "hkdf",
            "interactive", "is_real", "os_user", "scrypt_key"]
@@ -57,7 +58,6 @@ READ_CEILING = 600
 WRITE_CEILING = 5
 NEAR_CEILING = 0.8
 RATE_WINDOW_S = 3600.0
-COOLDOWN_S = 600.0
 FLIGHT_WAIT_S = 180.0
 STATE_WAIT_S = 10.0
 SCRYPT_N = 1 << 15
@@ -189,7 +189,6 @@ class Keystore:
         self._fixed, self._ceiling, self._write_ceiling = directory, ceiling, write_ceiling
         self._clock, self._say, self._bus, self._interactive, self._sleep = wires or Wires()
         self._key: bytearray | None = None
-        self._denied = ""
         self._noticed = False
         self.created = False
         self._told: set[tuple[str, str]] = set()
@@ -231,21 +230,18 @@ class Keystore:
             with only_one(self._path(name), timeout=wait_s, announce=lambda _m: None):
                 yield
         except Busy as exc:
-            raise KeystoreBusy("another poolhouse process is talking to the keystore; try again "
-                               "in a moment") from exc
+            raise KeystoreBusy("another poolhouse process has a keystore prompt open; answer that one and this "
+                               "request asks again when it is done") from exc
 
     def _is_interactive(self) -> bool:
         return (self._interactive or interactive)()
 
     # -- what is known without touching the keystore --
     def status(self) -> dict[str, Any]:
-        """Provisioning, denial and rate state from the state files; never a backend call."""
-        now = self._clock()
-        reads, writes = self._window(now)
-        until = float(self._doc("denied.json").get("until", 0))
+        """Provisioning and rate state from the state files; never a backend call."""
+        reads, writes = self._window(self._clock())
         return {"account": self.account, "provisioned": bool(self._doc("provisioned.json").get("at")),
-                "cached": self._key is not None, "denied_for_s": max(0, round(until - now)) if until > now else 0,
-                "denied_in_process": bool(self._denied), "reads_this_hour": len(reads),
+                "cached": self._key is not None, "reads_this_hour": len(reads),
                 "writes_this_hour": len(writes), "read_ceiling": self._ceiling,
                 "write_ceiling": self._write_ceiling, "interactive": self._is_interactive()}
 
@@ -312,25 +308,7 @@ class Keystore:
         except (OSError, ValueError, RuntimeError) as exc:
             logger.debug("keystore event not recorded: %s", type(exc).__name__)
 
-    def _denial(self) -> KeystoreDenied | None:
-        if self._denied:
-            return KeystoreDenied(self._denied)
-        until = float(self._doc("denied.json").get("until", 0))
-        if until > self._clock():
-            return KeystoreDenied(_refused(round(until - self._clock())))
-        return None
-
-    def _latch(self, purpose: str, cause: BaseException) -> KeystoreDenied:
-        self._denied = _refused(None)
-        self._put_doc("denied.json", {"until": self._clock() + COOLDOWN_S, "cause": type(cause).__name__})
-        self._event("denied", purpose, type(cause).__name__, Severity.WARNING)
-        return KeystoreDenied(self._denied)
-
     def _gate(self, purpose: str, *, person: bool = False) -> None:
-        denied = self._denial()
-        if denied is not None:
-            self._event("refused", purpose, "denied", Severity.WARNING)
-            raise denied
         if person or self._is_interactive():
             return
         if self._doc("provisioned.json").get("at"):
@@ -339,24 +317,32 @@ class Keystore:
         raise KeystoreLocked("Poolhouse has no encryption key for this background process. A person "
                              f"runs `{UNLOCK_COMMAND}` once in a terminal to create it.")
 
-    def _spend(self, kind: str, purpose: str) -> None:
-        """Count one backend call and record its process ownership."""
-        write = kind != "read" or self._path("denied.json").exists()
+    def _spend(self, kind: str, purpose: str, *, person: bool = False) -> None:
+        """Count one read, or check the count of changes (`_wrote` counts a change once the keystore made it), and record the
+        process that asked. A person's own read (the unlock command) is counted and never turned away."""
+        write = kind != "read"
         with self._held("state.lock", STATE_WAIT_S):
             now = self._clock()
             reads, writes = self._window(now)
             used, ceiling = (writes, self._write_ceiling) if write else (reads, self._ceiling)
-            if len(used) >= ceiling:
+            if len(used) >= ceiling and (write or not person):
                 self._event("refused", purpose, "busy", Severity.WARNING)
-                what = "changed or retried" if write else "read"
-                raise KeystoreBusy(f"Poolhouse has already {what} the keystore {ceiling} times in "
-                                   "the last hour and will not ask again until that passes")
-            used.append(now)
-            self._put_doc("rate.json", {"reads": reads, "writes": writes,
-                                        "writer_pid": os.getpid(), "writer_at": now})
+                raise KeystoreBusy(_over(ceiling, write))
+            if not write:
+                used.append(now)
+                self._put_doc("rate.json", {"reads": reads, "writes": writes,
+                                            "writer_pid": os.getpid(), "writer_at": now})
             near = len(used) / ceiling >= NEAR_CEILING and not write
         if near:
             self._sleep(_JITTER.uniform(0.05, 0.25))
+
+    def _wrote(self) -> None:
+        """Count one change the keystore made or found already made; a change it refused changed nothing and is not counted."""
+        with self._held("state.lock", STATE_WAIT_S):
+            now = self._clock()
+            reads, writes = self._window(now)
+            writes.append(now)
+            self._put_doc("rate.json", {"reads": reads, "writes": writes, "writer_pid": os.getpid(), "writer_at": now})
 
     def _tell(self) -> None:
         if self._noticed:
@@ -366,10 +352,10 @@ class Keystore:
             self._say(NOTICE)
             self._put_doc("noticed.json", {"at": self._clock()})
 
-    def _call(self, kind: str, purpose: str, work: Callable[[Any], Any]) -> Any:
-        """One backend call, gated, counted, audited. A refusal latches and raises."""
+    def _call(self, kind: str, purpose: str, work: Callable[[Any], Any], *, person: bool = False) -> Any:
+        """One backend call, gated, counted, audited. A refusal raises with the system's words and is remembered by nothing."""
         ring = self._ring()
-        self._spend(kind, purpose)
+        self._spend(kind, purpose, person=person)
         self._tell()
         person_here = self._is_interactive()
         if not person_here:
@@ -379,12 +365,14 @@ class Keystore:
                                          else keystore_guard.BACKGROUND_WAIT_S)
         except ring.errors.PasswordDeleteError:
             self._event(kind, purpose, "absent")
+            self._wrote()
             return None
         except (ring.errors.KeyringError, OSError, TimeoutError) as exc:
-            raise self._latch(purpose, exc) from exc
+            self._event("denied", purpose, type(exc).__name__, Severity.WARNING)
+            raise KeystoreDenied(_refused(exc)) from exc
         self._event(kind, purpose, "absent" if kind == "read" and out is None else "ok")
-        if kind == "read":
-            self._path("denied.json").unlink(missing_ok=True)
+        if kind != "read":
+            self._wrote()
         return out
 
     @contextmanager
@@ -404,7 +392,7 @@ class Keystore:
         with self._flight(purpose, person=person):
             if self._key is not None:
                 return bytes(self._key)
-            found = self._call("read", purpose, lambda r: r.get_password(SERVICE, self.account))
+            found = self._call("read", purpose, lambda r: r.get_password(SERVICE, self.account), person=person)
             key = _parse(found)
             if key is None:
                 if not create:
@@ -431,8 +419,7 @@ class Keystore:
         """Make the master key if there is none (for the unlock command, a person present);
         whether it was made now."""
         with self._mutex:
-            self._denied, self.created = "", False
-        self._path("denied.json").unlink(missing_ok=True)
+            self.created = False
         self._master("unlock", create=True, person=True)
         return self.created
 
@@ -484,10 +471,10 @@ class Keystore:
         """Delete the master item and the state files. Everything wrapped under it is lost."""
         self.lock()
         with self._flight("reset", person=True):
-            self._call("delete", "reset", lambda r: r.delete_password(SERVICE, self.account))
-        for name in ("provisioned.json", "denied.json", "noticed.json"):
+            self._call("delete", "reset", lambda r: r.delete_password(SERVICE, self.account), person=True)
+        for name in ("provisioned.json", "noticed.json"):
             self._path(name).unlink(missing_ok=True)
-        self._denied, self._noticed = "", False
+        self._noticed = False
 
 
 
@@ -496,10 +483,26 @@ class Keystore:
 
 
 
-def _refused(wait_s: int | None) -> str:
-    when = "for a few minutes" if wait_s is None else f"for another {max(1, wait_s // 60)} minutes"
-    return ("Your computer's keystore declined poolhouse's request, so encrypted data stays locked. "
-            f"Poolhouse will not ask again {when}; to try again run `{UNLOCK_COMMAND}` in a terminal.")
+def _refused(cause: BaseException) -> str:
+    """What the keystore did, in its own words: a prompt nobody answered is not a no, and a failure is not a refusal."""
+    said = str(cause).strip() or type(cause).__name__
+    if isinstance(cause, TimeoutError):
+        what = "the keystore's prompt was not answered: it did not answer in time"
+    elif isinstance(cause, OSError):
+        what = f"the keystore could not be used ({said})"
+    else:
+        what = f"the keystore said: {said}"
+    return (f"Poolhouse could not get its key, because {what}, so encrypted data stays locked. Nothing is remembered: "
+            f"the next request asks the keystore again and your computer shows its prompt again. To set the key up now, "
+            f"run `{UNLOCK_COMMAND}` in a terminal.")
+
+
+def _over(ceiling: int, write: bool) -> str:
+    """The count that stopped a call, what it means and what to do; never only a wait."""
+    what = "changed" if write else "read"
+    return (f"Poolhouse has already {what} the keystore {ceiling} times in the last hour, which only something repeating in a "
+            f"loop does, so this call was not made and nothing is waiting for the person. Stop what is repeating; the count "
+            f"falls as the hour passes, and `{UNLOCK_COMMAND}` in a terminal is never turned away by it.")
 
 
 def _parse(held: Any) -> bytes | None:

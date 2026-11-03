@@ -20,7 +20,6 @@ import psutil
 
 from poolhouse import (
     build_update,
-    keystore,
     node_app,
     node_binary,
     node_key,
@@ -51,9 +50,6 @@ MAX_DELAY_S = 30.0
 STABLE_S = 60.0
 GIVE_UP_AFTER = 5
 REMIND_S = 60.0
-DENIED_WAIT_S = keystore.COOLDOWN_S + 5.0
-DENIED_GIVE_UP = 3
-"""A keystore the person or the system refused is asked again only when its own cooldown is over, and three times at most."""
 POLL_S = 0.1
 CLOCK_SLACK_S = 2.0
 RECORD_WITHIN_S = 60.0
@@ -66,7 +62,6 @@ class _Cutover:
     identity: tuple[bytes, ...]
     seen: tuple[bytes, bytes] = (b"", b"")
     next_release: float = 0.0
-    denials: int = 0
 
 
 @dataclass(frozen=True)
@@ -290,7 +285,7 @@ def _stop_requests(state: Path) -> tuple[Callable[[], bool], Callable[[], None]]
 
 
 def _loop(state: Path, extra: list[str], stopping: Callable[[], bool]) -> int:
-    delay, refused, denials, told = MIN_DELAY_S, 0, 0, ("", 0.0)
+    delay, refused, told = MIN_DELAY_S, 0, ("", 0.0)
     while not stopping():
         seen = signature(state)
         try:
@@ -301,11 +296,7 @@ def _loop(state: Path, extra: list[str], stopping: Callable[[], bool]) -> int:
             if told[0] != str(exc) or time.monotonic() - told[1] > REMIND_S:
                 _note(state, f"cannot start the node: {exc}")
                 told = (str(exc), time.monotonic())
-            denials += exc.denied
-            if denials >= DENIED_GIVE_UP:
-                _note(state, "the keystore was refused again and again, so it is not asked again until a person starts the node again")
-                return 1
-            _pause(state, DENIED_WAIT_S if exc.denied else delay, seen, stopping)
+            _pause(state, delay, seen, stopping)
             delay = min(delay * 2, MAX_DELAY_S)
             continue
         except OSError as exc:
@@ -327,7 +318,7 @@ def _loop(state: Path, extra: list[str], stopping: Callable[[], bool]) -> int:
             _pause(state, delay, seen, stopping)
             delay = min(delay * 2, MAX_DELAY_S)
             continue
-        refused, denials, told = 0, 0, ("", 0.0)
+        refused, told = 0, ("", 0.0)
         binding = _Cutover(identity, seen)
         try:
             child, code = _watch(child, state, extra, binding, stopping)
@@ -476,9 +467,9 @@ def _cutover(child: subprocess.Popen, state: Path, extra: list[str], binding: _C
         return None
     if plan.current:
         return child, plan.seen
-    if time.monotonic() < binding.next_release or binding.denials >= DENIED_GIVE_UP:
+    if time.monotonic() < binding.next_release:
         return None
-    binding.next_release = time.monotonic() + keystore.COOLDOWN_S
+    binding.next_release = time.monotonic() + MAX_DELAY_S
     key = None
     try:
         key = node_key.release(state)
@@ -491,10 +482,9 @@ def _cutover(child: subprocess.Popen, state: Path, extra: list[str], binding: _C
                 return None
             result = _replace(child, plan, key, stopping)
             if running(state).get("sha256") == plan.sha:
-                binding.next_release, binding.denials = 0.0, 0
+                binding.next_release = 0.0
             return result
     except node_key.KeyUnavailable as exc:
-        binding.denials += int(exc.denied)
         _note(state, f"node replacement waits for its key: {exc}")
         return None
     except Busy:

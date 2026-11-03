@@ -461,7 +461,7 @@ def test_observer_recovery_uses_current_restored_node_instead_of_failed_previous
 
 
 @pytest.mark.parametrize("changed", ["busy", "identity", "signature", "denied"])
-def test_release_race_or_refusal_preserves_child_and_obeys_cooldown(source, tmp_path, monkeypatch, changed):
+def test_release_race_or_refusal_preserves_child_and_obeys_the_retry_gap(source, tmp_path, monkeypatch, changed):
     repo, _ = source
     state = tmp_path / "node"
     state.mkdir()
@@ -482,7 +482,7 @@ def test_release_race_or_refusal_preserves_child_and_obeys_cooldown(source, tmp_
         elif changed == "signature":
             node_supervise.point(state, tmp_path / "other", "other")
         else:
-            raise node_supervise.node_key.KeyUnavailable("refused", denied=True)
+            raise node_supervise.node_key.KeyUnavailable("refused")
         return None
 
     monkeypatch.setattr(node_supervise.node_key, "release", release)
@@ -490,7 +490,6 @@ def test_release_race_or_refusal_preserves_child_and_obeys_cooldown(source, tmp_
         for _ in range(2):
             assert node_supervise._cutover(WaitingChild(), state, [], binding, lambda: False) is None
         assert calls == ["release"]
-        assert binding.denials == int(changed == "denied")
     finally:
         if changed == "busy":
             runner.release()
@@ -528,7 +527,7 @@ def test_person_node_exception_is_exact_and_keeps_authentication(source, tmp_pat
             node_supervise._admitted(binary, "sha", repo, allow_unmerged_commit=allowed)
 
 
-def test_three_denied_releases_stop_future_authorization_requests(source, tmp_path, monkeypatch):
+def test_a_refused_release_is_asked_again_at_every_retry_gap_never_given_up_on(source, tmp_path, monkeypatch):
     repo, _ = source
     state = tmp_path / "node"
     state.mkdir()
@@ -543,10 +542,10 @@ def test_three_denied_releases_stop_future_authorization_requests(source, tmp_pa
 
     def release(_):
         calls.append(clock[0])
-        raise node_supervise.node_key.KeyUnavailable("refused", denied=True)
+        raise node_supervise.node_key.KeyUnavailable("refused")
 
     monkeypatch.setattr(node_supervise.node_key, "release", release)
-    for _ in range(5):
+    for _ in range(6):
         assert node_supervise._cutover(WaitingChild(), state, [], binding, lambda: False) is None
-        clock[0] += node_supervise.keystore.COOLDOWN_S + 1
-    assert len(calls) == binding.denials == node_supervise.DENIED_GIVE_UP == 3
+        clock[0] += node_supervise.MAX_DELAY_S + 1
+    assert len(calls) == 6, "the keystore is asked at the supervisor's own longest retry gap, for as long as the person has not opened it"

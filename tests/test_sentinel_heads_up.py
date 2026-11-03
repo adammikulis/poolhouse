@@ -1,5 +1,5 @@
-"""The one dialog: three buttons, one at a time machine-wide, a cooldown, and a release that
-is only the click. No test raises a real dialog; the desktop is a recording function, or a
+"""The one dialog: three buttons, one at a time machine-wide, no quiet after it, and a release
+that is only the click. No test raises a real dialog; the desktop is a recording function, or a
 recording shim on PATH, and the suite's shims catch anything that reaches for the real one."""
 
 from __future__ import annotations
@@ -99,21 +99,21 @@ def test_everything_held_at_that_moment_is_one_dialog_naming_it():
     assert all(f"member 10.0.2.{n}" in body for n in range(3))
 
 
-def test_more_than_the_dialog_lists_stay_held_and_are_named_as_not_listed():
+def test_more_than_the_dialog_lists_stay_held_are_named_as_not_listed_and_are_the_next_dialog():
     desk = Desk(RELEASE)
     node = wired(desk)
     node.heads_up.spawn = lambda work: None
     made = [held(node, f"10.0.3.{n}") for n in range(heads_up.SHOWN_MOST + 2)]
     node.heads_up.prompt()
+    assert len(desk.shown) == 2, "what the first dialog could not list is shown at once, not at some later poll"
     body = desk.shown[0][1]
     assert "2 more are not listed and stay held" in body
-    states = [node.store.get(r.id).state for r in made]
-    assert states.count(State.RELEASED) == heads_up.SHOWN_MOST
-    assert states.count(State.QUARANTINED) == 2
-    freed = [r for r in made if node.store.get(r.id).state == State.RELEASED]
-    assert all(f"member {r.key}" in body for r in freed)
+    first = [r for r in made if f"member {r.key}" in body]
+    rest = [r for r in made if f"member {r.key}" in desk.shown[1][1]]
+    assert len(first) == heads_up.SHOWN_MOST and len(rest) == 2 and not {r.id for r in first} & {r.id for r in rest}
+    assert all(node.store.get(r.id).state == State.RELEASED for r in made)
     logged = [e for e in node.bus.log.read() if e.kind == "sentinel.released_by_dialog"]
-    assert len(logged) == 1 and sorted(logged[0].evidence["ids"]) == sorted(r.id for r in freed)
+    assert [sorted(e.evidence["ids"]) for e in logged] == [sorted(r.id for r in first), sorted(r.id for r in rest)], "each click released exactly what its dialog listed"
 
 
 @pytest.mark.parametrize("press", [KEEP, LATER, "timeout", "unavailable", "something else"])
@@ -158,20 +158,24 @@ def test_release_releases_exactly_the_listed_ids_and_logs_them():
     assert len(done) == 1 and sorted(done[0].evidence["ids"]) == sorted([first.id, second.id])
 
 
-def test_a_record_that_arrives_while_the_dialog_is_open_is_not_released_by_the_click():
+def test_a_record_that_arrives_while_the_dialog_is_open_is_not_released_by_the_click_and_is_asked_next():
     node = wired(Desk())
     node.heads_up.spawn = lambda work: None
     first = held(node, "10.0.7.1")
-    late = []
+    late, titles = [], []
 
     def choose(title, body, buttons):
-        late.append(held(node, "10.0.7.2"))
-        return RELEASE
+        titles.append(title)
+        if len(titles) == 1:
+            late.append(held(node, "10.0.7.2"))
+            return RELEASE
+        return LATER
 
     node.heads_up.choose = choose
     node.heads_up.prompt()
     assert node.store.get(first.id).state == State.RELEASED
     assert node.store.get(late[0].id).state == State.QUARANTINED
+    assert len(titles) == 2 and "10.0.7.2" in titles[1], "what arrived while the dialog was open is the next dialog, not dropped"
 
 
 @pytest.mark.parametrize("marker", human.AGENT_MARKERS)
@@ -254,23 +258,33 @@ def test_a_lock_held_by_a_live_other_process_stops_this_one():
     assert node.heads_up.prompt() == LATER
 
 
-def test_the_cooldown_holds_back_the_next_dialog_and_ends():
+def test_a_new_quarantine_right_after_a_dialog_raises_a_dialog_at_once_and_later_puts_off_only_what_it_showed():
     now = [1_000_000.0]
     desk = Desk()
     node = wired(desk)
     node.heads_up.clock = lambda: now[0]
     held(node, "10.1.3.1")
     held(node, "10.1.3.2")
-    assert len(desk.shown) == 1
-    now[0] += heads_up.COOLDOWN_S / 2
-    node.heads_up.poll()
-    assert len(desk.shown) == 1
-    now[0] += heads_up.LATER_S
+    assert len(desk.shown) == 2, "nothing quiets the node after a dialog: a forged member is shown the moment it is held"
+    assert "10.1.3.2" in desk.shown[1][0] and "10.1.3.1" not in desk.shown[1][0], "Later put off only what the person saw"
     node.heads_up.poll()
     assert len(desk.shown) == 2
+    now[0] += heads_up.LATER_S
+    node.heads_up.poll()
+    assert len(desk.shown) == 3 and "2 things" in desk.shown[2][0]
 
 
-def test_review_shows_everything_held_now_even_inside_the_cooldown():
+@pytest.mark.parametrize("press", ["timeout", "unavailable", "something else"])
+def test_a_dialog_nobody_answered_is_asked_again_at_the_next_poll_not_put_off(press):
+    desk = Desk(press)
+    node = wired(desk)
+    held(node, "10.1.9.1")
+    assert len(desk.shown) == 1
+    node.heads_up.poll()
+    assert len(desk.shown) == 2, "running out of time is not a Later: the person is asked again at the next scan"
+
+
+def test_review_shows_everything_held_now_even_what_was_put_off():
     desk = Desk()
     node = wired(desk)
     held(node, "10.1.4.1")
@@ -353,18 +367,11 @@ def test_the_environment_decides_whether_a_dialog_can_be_shown():
 
 
 @pytest.mark.parametrize("press", [KEEP, "unavailable", "timeout"])
-def test_the_cooldown_follows_every_dialog_whatever_the_answer(press):
-    now = [1_000_000.0]
+def test_no_quiet_follows_a_dialog_whatever_the_answer_the_next_quarantine_is_asked_at_once(press):
     desk = Desk(press)
     node = wired(desk)
-    node.heads_up.clock = lambda: now[0]
     node.heads_up.spawn = lambda work: None
     held(node, "10.1.5.1")
     node.heads_up.prompt()
     held(node, "10.1.5.2")
-    now[0] += heads_up.COOLDOWN_S / 2
-    assert node.heads_up.prompt() == "" and len(desk.shown) == 1
-    now[0] += heads_up.COOLDOWN_S
-    if press == "timeout":
-        now[0] += heads_up.LATER_S
     assert node.heads_up.prompt() == press and len(desk.shown) == 2

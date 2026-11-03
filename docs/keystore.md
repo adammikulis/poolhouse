@@ -38,8 +38,9 @@ authorised, so they are counted in two classes (`rate.json`, a list of times per
 | Limit | Value |
 |---|---|
 | Reads of the existing master per user per hour | 600 (`READ_CEILING`); the next one raises `KeystoreBusy` and logs an event. From 80% of the ceiling each read first sleeps a random 50 to 250 ms, inside the lock, so a stampede slows down before it stops |
-| Creates and deletes per user per hour, plus every read made after an earlier refusal (a retry) | 5 (`WRITE_CEILING`); the next one raises `KeystoreBusy` |
-| After the OS refuses or the person declines | the process stops asking for good; other processes wait 10 minutes (`denied.json`); `KeystoreDenied` with one plain message. A read that succeeds again removes the mark |
+| Creates and deletes per user per hour | 5 (`WRITE_CEILING`), counted when the keystore made the change: a change it refused changed nothing and is not counted. The next one raises `KeystoreBusy` |
+| A read the person asked for (`poolhouse-security unlock`) | counted, never turned away by the read count |
+| After the OS refuses, the person declines, a prompt is not answered in time or the keystore fails | nothing is remembered. `KeystoreDenied` carries what happened in the system's words (a prompt nobody answered is not called a refusal), and the very next request asks the keystore again, so the system shows its own prompt again at once. No cooldown, no state file, no limit on asking after a no: the person's answer to each prompt is theirs |
 | Processes starting together | one lock (`flight.lock`): each process reads the OS keystore itself, one at a time, polling the lock every 20 ms and backing off to 0.5 s. The master is never written to a file or shared between processes, so a swarm costs one backend read per process, not one per use |
 | Background process (no terminal and no desktop session, a Windows session 0, or any agent marker: `POOLHOUSE_NONINTERACTIVE`, `POOLHOUSE_AGENT`, `CLAUDECODE`) | never creates the master; reads it only after `poolhouse-security unlock`; otherwise `KeystoreLocked` naming that command |
 
@@ -47,15 +48,15 @@ Why two classes: a swarm of subagents starts dozens of processes in an hour and 
 master once. One shared ceiling of 20 refused the twenty-first process (measured: 40 agents
 starting together gave 22 `KeystoreBusy`). Reads of an item that exists never prompt, so they get
 a ceiling a swarm cannot reach by accident (600) but a loop still hits. Anything that can make
-the OS show a prompt or change the store (create, delete, retry after a refusal) keeps a ceiling
-of a few per hour. `keystore-reset` keeps the counts, so reset and create in a loop is stopped by
+the OS show a prompt or change the store (create, delete) keeps a ceiling of a few per hour, counted
+only for changes made. A refusal at a ceiling says what repeats and what to do, never only a wait. `keystore-reset` keeps the counts, so reset and create in a loop is stopped by
 the same 5.
 
 Every backend call is a sentinel event `keystore.read`, `keystore.create` or `keystore.delete`
 (subject `purpose:<label>`, evidence `{"outcome": ...}`), and a refusal is `keystore.denied` or
 `keystore.refused`. No value is ever in an event, a log line or a state file.
 
-| A backend call that does not return | bounded: 300 s for a person, 20 s for a background process (which on macOS also tells the Security framework to fail rather than show a dialog); the timeout latches the same ten-minute refusal |
+| A backend call that does not return | bounded: 300 s for a person, 20 s for a background process (which on macOS also tells the Security framework to fail rather than show a dialog); the timeout is told as a prompt nobody answered in time and remembered by nothing, so the next request asks again |
 | A master that vanished after it was made | not replaced by the next process; `KeystoreMissing`. Only `poolhouse-security unlock` starts over |
 | A plaintext or null keyring backend (`keyrings.alt`) | refused: `KeystoreUnavailable` |
 
@@ -170,5 +171,5 @@ checked on a Mac).
 
 Code running as you can call the keystore like any program of yours can; the master protects
 against a copied file or backup, not against execution as the user. The hourly ceiling and the
-refusal latch limit how often such code can make the OS prompt, not whether it can read a key
+one-prompt-at-a-time lock limit how often such code can make the OS prompt, not whether it can read a key
 that is already cached in a process.

@@ -209,7 +209,7 @@ def notifier(tmp_path, ledger, clock, desk, **env):
                     wires=Wires(desk.choose, lambda work: work(), env))
 
 
-def test_one_dialog_with_a_real_button_and_no_stacking(tmp_path, ledger, clock):
+def test_each_divergence_gets_its_dialog_with_a_real_button_and_none_is_held_back_or_stacked(tmp_path, ledger, clock):
     desk = Desk(WATCHING)
     note = notifier(tmp_path, ledger, clock, desk)
     ledger.on_notice = note.on_divergence
@@ -217,10 +217,11 @@ def test_one_dialog_with_a_real_button_and_no_stacking(tmp_path, ledger, clock):
     make_established(ledger, clock, key="other.example")
     ledger.observe("host", "good.example", "hash_change")
     ledger.observe("host", "other.example", "cert_or_key_change")
-    assert len(desk.shown) == 1
+    assert len(desk.shown) == 2, "the second source is not kept waiting behind the first one's dialog"
     _, body, buttons = desk.shown[0]
-    assert buttons == BUTTONS and BLOCK in buttons and "good.example" in body
-    assert note.prompt() == "" and len(desk.shown) == 1
+    assert buttons == BUTTONS and BLOCK in buttons and "good.example" in body and "other.example" not in body
+    assert "other.example" in desk.shown[1][1]
+    assert note.prompt() == "" and len(desk.shown) == 2
     assert ledger.standing("host", "good.example").notice == "done"
 
 
@@ -236,6 +237,27 @@ def test_the_block_button_tightens_and_later_asks_again(tmp_path, ledger, clock)
     desk.press = BLOCK
     assert note.prompt() == BLOCK
     assert ledger.standing("host", "good.example").state == "bad"
+
+
+def test_a_second_source_that_diverges_right_after_a_dialog_is_asked_at_once(tmp_path, ledger, clock):
+    desk = Desk(LATER)
+    note = notifier(tmp_path, ledger, clock, desk)
+    make_established(ledger, clock)
+    make_established(ledger, clock, key="other.example")
+    ledger.observe("host", "good.example", "hash_change")
+    assert note.prompt() == LATER
+    ledger.observe("host", "other.example", "cert_or_key_change")
+    assert note.prompt() == LATER and len(desk.shown) == 2
+    assert "other.example" in desk.shown[1][1] and "good.example" not in desk.shown[1][1], "Later put off only the source it showed"
+
+
+def test_a_notice_nobody_answered_is_asked_again_at_the_next_poll(tmp_path, ledger, clock):
+    desk = Desk("timeout")
+    note = notifier(tmp_path, ledger, clock, desk)
+    make_established(ledger, clock)
+    ledger.observe("host", "good.example", "hash_change")
+    assert note.prompt() == "timeout"
+    assert note.prompt() == "timeout" and len(desk.shown) == 2
 
 
 def test_two_processes_raise_one_dialog(tmp_path, clock):

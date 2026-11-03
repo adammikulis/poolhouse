@@ -119,12 +119,16 @@ def test_a_loop_of_resets_and_creates_is_stopped_at_the_write_ceiling(counting):
     assert counting.count("set") + counting.count("delete") == keystore.WRITE_CEILING
 
 
-def test_a_loop_against_a_refusing_keystore_asks_once(counting):
+def test_a_loop_against_a_refusing_keystore_asks_every_time_and_stops_only_at_the_read_ceiling(counting):
     counting.refuse = KeyringError
     for _ in range(200):
         with pytest.raises(keystore.KeystoreDenied):
-            person_ks().subkey("memory", "a")
-    assert counting.calls == ["get"]
+            person_ks(sleep=lambda _s: None).subkey("memory", "a")
+    assert counting.calls == ["get"] * 200, "a refusal is not remembered, so nothing the person is asked is held back unseen"
+    for _ in range(500):
+        with contextlib.suppress(keystore.KeystoreDenied, keystore.KeystoreBusy):
+            person_ks(sleep=lambda _s: None).subkey("memory", "a")
+    assert counting.count("get") == keystore.READ_CEILING
 
 
 def test_a_background_process_cannot_turn_itself_into_a_person(counting, monkeypatch):

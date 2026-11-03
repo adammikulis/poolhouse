@@ -141,20 +141,21 @@ def stuck():
 
 
 @pytest.mark.parametrize("person_here", [True, False])
-def test_a_backend_that_never_answers_is_refused_for_good_not_waited_on(tmp_path, stuck, monkeypatch, person_here):
+def test_a_backend_that_never_answers_is_told_as_unanswered_and_asked_again_by_the_next_request(tmp_path, stuck, monkeypatch, person_here):
     monkeypatch.setattr(keystore_guard, "PERSON_WAIT_S", 0.3)
     monkeypatch.setattr(keystore_guard, "BACKGROUND_WAIT_S", 0.3)
     ks = make(tmp_path, person=person_here)
     if not person_here:
         ks._put_doc("provisioned.json", {"at": 1.0})
     began = time.monotonic()
-    with pytest.raises(keystore.KeystoreDenied):
+    with pytest.raises(keystore.KeystoreDenied, match="did not answer in time") as said:
         ks.subkey("memory", "a")
     assert time.monotonic() - began < 5
+    assert "declined" not in str(said.value), "a prompt nobody answered is not a no"
     with pytest.raises(keystore.KeystoreDenied):
         ks.subkey("memory", "a")
-    assert stuck.reads == 1, "a refusal is remembered; the stuck call is not repeated"
-    assert (tmp_path / "ks" / "denied.json").exists()
+    assert stuck.reads == 2, "nothing is remembered: the next request asks the keystore again"
+    assert not (tmp_path / "ks" / "denied.json").exists()
 
 
 def test_bounded_returns_the_value_and_carries_the_exception():
