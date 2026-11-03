@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
-"""A SessionEnd hook: retires the main session's own identity when the session ends for good, never when it goes on under /clear or /resume."""
+"""A SessionEnd hook: retires the main session's own identity when its harness process exits, and in no other case.
+
+Claude Code names why a session ended in `reason`: `prompt_input_exit` (the person left the prompt), `logout` and `other` (the end of a
+headless run, a closed terminal) end the process; `clear` and `resume` go on under another id, and context compaction is no
+SessionEnd at all (it is a SessionStart with source `compact`). A reason that is not one of the three exits, a missing one and any
+value a later Claude Code adds keep the registration: a registration kept in error costs a place until the node sees the terminal gone
+(`idle.rs`), and one ended in error would cost a live session its token.
+"""
 
 from __future__ import annotations
 
 import workspace_hook
 
-CONTINUES = ("clear", "resume")
+EXITS = ("prompt_input_exit", "logout", "other")
 
 
 def main() -> int:
     event = workspace_hook.event("SessionEnd")
-    if event is None or event.get("agent_id") or event.get("reason") in CONTINUES:
+    if event is None or event.get("agent_id") or event.get("reason") not in EXITS:
         return 0
     environment = workspace_hook.session_environment(event, "SessionEnd")
     if environment is None or not environment.get("POOLHOUSE_WORKSPACE_AGENT"):

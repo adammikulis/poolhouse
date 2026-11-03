@@ -63,6 +63,18 @@ def _launchers(named: str) -> Path:
     return expand(named).absolute() if named else runtime_launchers.directory()
 
 
+def _lead(primary: Path) -> str:
+    """The name of the authenticated lead agent running this command, or "" when the node has no session for it: a published commit needs
+    no identity (the delegated gate of a foreground deploy and an unmerged commit's approval each ask for the session themselves). An
+    authenticated helper starts no deploy."""
+    if authority_caller.is_live_child(cwd=primary):
+        raise runtime_deploy.DeployError("a subagent starts no runtime deploy")
+    try:
+        return runtime_unmerged.current_actor(primary).name
+    except runtime_deploy.DeployError:
+        return ""
+
+
 def plan_from(args: argparse.Namespace, *, deploying: bool = True) -> runtime_deploy.Plan:
     """The deploy plan an ensure, status or rollback command names, built from the recorded primary checkout."""
     primary = runtime_trust.primary_for(_checkout(args.checkout), deploying=deploying,
@@ -70,8 +82,7 @@ def plan_from(args: argparse.Namespace, *, deploying: bool = True) -> runtime_de
     exception = getattr(args, "allow_unmerged", False)
     commit = runtime_deploy.resolve_commit(primary, getattr(args, "ref", "HEAD"))
     if deploying and person.marked():
-        requested, args.agent = args.agent, ""
-        args.agent = runtime_unmerged.current_actor(primary).name
+        requested, args.agent = args.agent, _lead(primary)
         previous = getattr(args, "_reviewed_approval", None)
         if isinstance(previous, runtime_unmerged.Approval) and previous.actor != args.agent:
             raise runtime_deploy.DeployError("the runtime approval belongs to another agent")
@@ -98,7 +109,11 @@ def _start_background(argv: list[str]) -> None:
     log = root / "ensure.log"
     runtime_coalesce.rotate(log)
     os.close(os.open(log, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600))
-    jobs.detach("poolhouse.runtime_cli", argv, log=log)
+    kept = {name: os.environ.pop(name) for name in runtime_trust.IDENTITY if name in os.environ}
+    try:
+        jobs.detach("poolhouse.runtime_cli", argv, log=log)
+    finally:
+        os.environ.update(kept)
 
 
 def _building() -> str:
@@ -113,10 +128,10 @@ SETTLE = "settle.lock"
 
 
 def _again(args: argparse.Namespace) -> list[str]:
-    """The ensure command line that repeats this one without --background."""
+    """The ensure command line that repeats this one without --background, for a process that carries no agent identity (`_start_background`)."""
     words = ["ensure", "--ref", args.ref, "--timeout", str(args.timeout), "--wait", str(args.wait),
              "--automatic-from", json.dumps(runtime_deploy.automatic_selection())]
-    for name in ("checkout", "launchers", "agent"):
+    for name in ("checkout", "launchers"):
         if getattr(args, name):
             words += [f"--{name}", getattr(args, name)]
     return words + [f"--{name.replace('_', '-')}" for name in ("force", "force_build") if getattr(args, name)] \
@@ -135,7 +150,9 @@ def _ensure(args: argparse.Namespace) -> int:
         return 0
     if args.settle and not args.now and not getattr(args, "automatic_from", ""):
         args.automatic_from = json.dumps(runtime_deploy.automatic_selection())
-    if not args.background:
+    if args.background:
+        runtime_trust.refresh()
+    else:
         args.via = runtime_trust.authorize("ensure", cwd=_checkout(args.checkout))
     if args.allow_unmerged:
         if args.background:

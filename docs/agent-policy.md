@@ -490,8 +490,13 @@ human").
   `--agent NAME` to select its own credential file, under the name the node mapped to its actual native session; it is not
   a sender override in the node request. `session_lookup` can corroborate that mapping, never grant rights. A main
   session re-registers its own native session id (a command of it does, with no person), including one that ended or was retired
-  idle and is resumed from another terminal; it gets a new token and no grant. A session retired for cause, and a subagent that
-  ended, never come back, and no agent reopens another's session, changes its parent or role through a label, or reviews its own work.
+  idle and is resumed from another terminal; it gets a new token and no grant. A registration ends only when its harness process exits
+  (a SessionEnd reason `prompt_input_exit`, `logout` or `other`; `clear`, `resume`, an unknown or missing reason and compaction end
+  nothing) or when the node sees its terminal gone and quiet for a day; a main session whose terminal still runs is never retired idle.
+  A session retired for cause, and a subagent that ended, never come back, and no agent reopens another's session, changes its parent
+  or role through a label, or reviews its own work. A background `runtime ensure` of a commit the development branch has published needs
+  no session and no delegation (it runs as `system:runtime`, forward from the selected runtime only, and a subagent starts none), so an
+  ended registration never blocks installing the build that repairs it.
 - **Credentials and sessions.** A session reads and writes only its own board until a person signs a grant
   (`grants-setup`, `grant`); registering again or a person's move to another terminal (`rebind`) gains no grant or
   person's right. Other devices of the pool hold the same board, so there is no invitation to one. Private person

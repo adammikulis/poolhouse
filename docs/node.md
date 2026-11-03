@@ -317,14 +317,19 @@ that parent's token, or under another parent, is `denied`, and so is registering
 identity retired and writes one identity entry that says who ended it (`retired_by`) and what that released (`detail`). A session retires itself, and a main session takes its subagents with it;
 a parent (any ancestor) retires a descendant; a session retires no other main session. The end has a reason, recorded on the identity and in its
 ending entry: `done` (an ordinary end, such as a worker whose work is finished) or, given only by a parent and never
-by a session about itself, `revoked` or `forged` (an end for cause, after which the reviews the session wrote no longer count). The node itself ends a session as `idle` (see below). A main session that ended `done` or
-
-`idle` registers again as the same session, from the lineage it was registered from and on the same terms as before it ended
-(a retired subagent never does); its old tokens stay refused and it is given a new one.
+by a session about itself, `revoked` or `forged` (an end for cause, after which the reviews the session wrote no longer count). The node itself ends a session as `idle` (see below). A main session that ended `done` or `idle` registers again as the same session
+from any terminal whose process the node can read, and is bound to that terminal from then on (a live session is not taken from the
+terminal it runs in; a retired subagent or a session retired for cause never registers again); its old tokens stay refused and it is
+given a new one. A registration is the harness's own to renew: a command of a Claude Code session whose token is gone or unknown
+registers its native session id again (`board.session.revive`), so no ending of a registration leaves a live session without a way to
+authenticate.
 
 **Idle sessions.** A session is *idle* when it is not retired and has neither made a request within 30 minutes
 (`child_beat_s`) nor holds a lease whose process still runs; `agents` marks it `idle`. A board holds at most `live_main_sessions` main sessions that have not ended (docs/limits.md). The node retires a session that has been idle for 24 hours (`idle_retire_s`;
-its tokens end, its leases are released and the board gets its ending identity entry) whenever it lists sessions or registers one. The person's own session of a terminal (`register_person`) is also retired,
+its tokens end, its leases are released and the board gets its ending identity entry) whenever it lists sessions or registers one, **except a
+main session some process of whose lineage still runs**: its harness is there and quiet is not gone, so its name and its tokens stay however long it is
+idle (a lease or claim that nobody renews ends with its own process or time, as always; idleness never takes a live lead's ability to authenticate). A main session registered
+with no readable lineage, and a subagent, are retired after the day as before. The person's own session of a terminal (`register_person`) is also retired,
 as `done`, once every process it was registered from has ended, so a terminal that was opened and closed holds no place.
 
 **Claims** are leases of one `claim` resource taken without waiting. `reserve` takes a set of them in one call of the

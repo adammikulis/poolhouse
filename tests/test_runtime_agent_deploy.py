@@ -7,13 +7,14 @@ git checkout and a temporary runtimes root; only the wheel build is replaced by 
 
 from __future__ import annotations
 
+import os
 from types import SimpleNamespace
 
 import authority_kit
 import pytest
 from test_runtime_deploy import agent, builder, commit, world  # noqa: F401
 
-from poolhouse import authority, runtime_cli, runtime_deploy, runtime_store, runtime_trust
+from poolhouse import authority, jobs, runtime_cli, runtime_deploy, runtime_store, runtime_trust
 from poolhouse.activity import writer
 from poolhouse.board.session import AGENT_ENV
 
@@ -116,6 +117,49 @@ def test_a_process_no_agent_started_is_not_gated(lead, monkeypatch):
     monkeypatch.delenv(AGENT_ENV)
     authority.set_state(["ALL"], authority.PERSON, by="lead")
     assert runtime_cli.main(["ensure"]) == 0 and selected() == head
+
+
+def the_background_start(monkeypatch):
+    """What `ensure --background` asks `jobs.detach` to start, and the environment it would start it in; nothing is started."""
+    asked = {}
+
+    def detach(module, argv, **_named):
+        asked.update(module=module, argv=list(argv), env=dict(os.environ))
+        return SimpleNamespace(pid=0)
+
+    monkeypatch.setattr(jobs, "detach", detach)
+    return asked
+
+
+def test_a_lead_with_no_session_refreshes_to_a_published_commit_in_the_background_as_the_system(lead, agent, monkeypatch, capsys):  # noqa: F811
+    repo, _, _ = lead
+    first = commit(repo, "a")
+    assert runtime_cli.main(["ensure"]) == 0 and selected() == first
+    head = commit(repo, "b")
+    for name in (AGENT_ENV, "POOLHOUSE_BOARD"):
+        monkeypatch.delenv(name)
+    asked = the_background_start(monkeypatch)
+    assert runtime_cli.main(["ensure", "--background", "--now"]) == 0, capsys.readouterr().err
+    assert asked["module"] == "poolhouse.runtime_cli" and not set(runtime_trust.IDENTITY) & asked["env"].keys(), "the build carries no agent"
+    assert os.environ["CLAUDECODE"] == "1", "and the command that started it keeps its own environment"
+    assert "--agent" not in asked["argv"] and selected() == first
+    for name in runtime_trust.IDENTITY:
+        monkeypatch.delenv(name, raising=False)
+    RECORDS.clear()
+    assert runtime_cli.main(asked["argv"]) == 0 and selected() == head
+    [entry] = deploys()
+    assert (entry.actor, entry.outcome, entry.meta["agent"]) == ("system:runtime", "switched", "")
+
+
+def test_a_background_refresh_needs_no_delegation_and_a_subagent_starts_none(lead, agent, monkeypatch, capsys):  # noqa: F811
+    repo, _, _ = lead
+    commit(repo, "a")
+    asked = the_background_start(monkeypatch)
+    authority.set_state(["runtime.deploy"], authority.PERSON, by="lead")
+    monkeypatch.setenv(authority.SUBAGENT_ENV, "helper")
+    assert runtime_cli.main(["ensure", "--background", "--now"]) == 1 and "subagent" in capsys.readouterr().err and not asked
+    monkeypatch.delenv(authority.SUBAGENT_ENV)
+    assert runtime_cli.main(["ensure", "--background", "--now"]) == 0 and asked["argv"][0] == "ensure", "the gate is the person's and the refresh goes on"
 
 
 def test_dev_delegates_the_deploy_gate_and_prod_keeps_it_with_the_person(tmp_path, monkeypatch):

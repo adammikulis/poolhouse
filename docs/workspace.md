@@ -86,13 +86,14 @@ carries one.
 ### How long an identity lives
 
 A main session is one identity from its `SessionStart` to its end. The `SessionEnd` hook (`claude-session-end`) runs
-`retire` as the session when it ends for good (a closed prompt, a logout, the end of a headless `claude -p` run): its tokens
-end, its claims are released and so are its subagents, and `agents` no longer lists it. It does nothing when the session
-goes on under another id (`reason` `clear` or `resume`) and for any event of a subagent, which has its own stop hook. A
-session resumed later from the same terminal registers again and is the same name.
+`retire` as the session only when the harness process exits (`reason` `prompt_input_exit`, `logout` or `other`, the end of a closed
+prompt, a logout or a headless `claude -p` run): its tokens end, its claims are released and so are its subagents, and `agents` no
+longer lists it. It does nothing for `clear`, `resume`, a reason it does not know, no reason (context compaction is no SessionEnd) and
+any event of a subagent, which has its own stop hook. A session resumed later, from any terminal, registers again and is the same name.
 
 `agents` marks a session `idle` when it has made no request for 30 minutes and holds no lease whose process still runs. The
-node retires a session that has been idle for 24 hours, so a terminal left overnight keeps its session. A device holds any number of live sessions. The numbers are in
+node retires a session that has been idle for 24 hours unless it is a main session some process of whose terminal still runs, which keeps
+its name and its token however long it is quiet. A device holds any number of live sessions. The numbers are in
 [docs/node.md](node.md), "Limits" and "Idle sessions".
 
 ### Reading one agent's records: `--for-agent NAME`

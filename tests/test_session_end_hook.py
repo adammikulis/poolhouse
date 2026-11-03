@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse.board import client as board_client, session as board_session
+from poolhouse.board import client as board_client, place, session as board_session
 from poolhouse.net import git
 
 pytest_plugins = ["node_kit"]
@@ -34,6 +34,8 @@ def project(tmp_path, monkeypatch, workspace_node):
     git.run(["-c", "user.name=Hook fixture", "-c", "user.email=fixture@example.invalid", "commit", "--allow-empty", "-m", "fixture"],
             cwd=repository)
     monkeypatch.chdir(repository)
+    monkeypatch.delenv("POOLHOUSE_BOARD", raising=False)
+    workspace_node.board = place.resolve(workspace_node.client, repository)
     return repository
 
 
@@ -54,22 +56,32 @@ def listed(node, watcher) -> dict:
     return {a.name: a for a in node.session(watcher).agents(retired=True)}
 
 
-def test_a_session_that_ends_retires_itself_and_one_that_goes_on_under_clear_or_resume_does_not(workspace_node, project):
+CONTINUING = {"clears": "clear", "resumes": "resume", "compacts": "compact", "future": "a-reason-claude-code-adds-later",
+              "bypass": "bypass_permissions_disabled"}
+"""Sessions that go on (or whose end is not told): their SessionEnd leaves the registration and the token alone."""
+
+
+def test_a_session_that_exits_retires_itself_and_one_that_goes_on_or_whose_reason_is_not_an_exit_does_not(workspace_node, project):
     watcher = workspace_node.member("watcher")
     names = {}
-    for session in ("ends", "clears", "resumes", "subagent-ends"):
-        assert start(session).returncode == 0
+    for session in ("ends", "logs-out", "quits", "silent", "subagent-ends", *CONTINUING):
+        started = start(session)
+        assert started.returncode == 0
         names[session] = board_session.find("claude-code", session, client=workspace_node.client)
-        assert names[session]
-    assert end("clears", "clear").returncode == 0 and end("resumes", "resume").returncode == 0
+        assert names[session], (started.stdout, started.stderr)
+    for session, reason in CONTINUING.items():
+        assert end(session, reason).returncode == 0
+    assert hook("claude-session-end", hook_event_name="SessionEnd", session_id="silent").returncode == 0, "no reason is told: no end"
     assert end("subagent-ends", agent_id="child").returncode == 0, "an event of a subagent retires nothing"
-    gone = end("ends", "prompt_input_exit")
-    assert gone.returncode == 0 and not gone.stderr
+    for session, reason in (("ends", "prompt_input_exit"), ("logs-out", "logout"), ("quits", "other")):
+        gone = end(session, reason)
+        assert gone.returncode == 0 and not gone.stderr
     rows = listed(workspace_node, watcher)
-    assert rows[names["ends"]].retired and rows[names["ends"]].retired_reason == "done"
-    for session in ("clears", "resumes", "subagent-ends"):
+    for session in ("ends", "logs-out", "quits"):
+        assert rows[names[session]].retired and rows[names[session]].retired_reason == "done", session
+    for session in ("silent", "subagent-ends", *CONTINUING):
         assert not rows[names[session]].retired, session
-    assert workspace_node.cli("whoami", who=workspace_node.adopt(names["clears"])).returncode == 0
+        assert workspace_node.cli("whoami", who=workspace_node.adopt(names[session])).returncode == 0, f"{session} still authenticates"
 
 
 def test_a_retired_session_has_no_token_and_resuming_it_from_its_terminal_brings_it_back(workspace_node, project):

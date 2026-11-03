@@ -155,7 +155,7 @@ def test_ensure_carries_its_boundary_wait_into_the_plan_and_the_node_swap(source
     monkeypatch.setattr(runtime_cli.runtime_board, "announce", lambda *a, **k: None)
     monkeypatch.setattr(node_launch, "swap", lambda **kw: swaps.append(kw) or {"action": "idle", "detail": ""})
     monkeypatch.setattr(runtime_cli, "_launchers", lambda named: None)
-    monkeypatch.setattr(runtime_cli.runtime_trust, "authorize", lambda command: "person")
+    monkeypatch.setattr(runtime_cli.runtime_trust, "authorize", lambda command, **_named: "person")
     for words in ([], ["--boundary-wait", "7"]):
         assert runtime_cli.main(["ensure", "--now", "--no-update", "--checkout", str(repo), *words]) == 0
         plans.append(swaps[-1]["boundary_wait_s"])

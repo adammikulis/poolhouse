@@ -218,5 +218,5 @@ def test_explicit_child_refresh_still_refuses_deployment(native, monkeypatch):
     args = cli_args(original)
     args.background = True
     args.allow_unmerged = False
-    with pytest.raises(runtime_source.DeployError, match="admission is unavailable"):
+    with pytest.raises(runtime_source.DeployError, match="a subagent starts no runtime deploy"):
         runtime_cli._ensure(args)

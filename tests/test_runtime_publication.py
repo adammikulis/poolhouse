@@ -141,7 +141,7 @@ def test_authority_is_checked_again_after_the_wait_and_before_anything_is_built(
     world, tip, _ = unpublished
     seen = []
 
-    def authorize(command):
+    def authorize(command, **_named):
         seen.append(git(world.repo, "rev-parse", "refs/remotes/origin/dev"))
         if len(seen) > 1:
             raise HumanRequired("runtime ensure is a person's again")

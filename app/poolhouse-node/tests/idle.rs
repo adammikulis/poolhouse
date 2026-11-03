@@ -113,10 +113,12 @@ fn idle_sessions_are_marked_and_are_retired_after_a_day() {
     let (stale, quiet, busy, busy_token);
     {
         let mut n = open(dir.path());
-        let a = session(&mut n, "demo", "stale");
+        let gone = process(true);
+        stale = ok(start(&mut n, &peer(&gone), "claude-code", "stale"))["name"].as_str().unwrap().to_string();
+        done(vec![gone]);
         let b = session(&mut n, "demo", "quiet");
         let c = session(&mut n, "demo", "busy");
-        (stale, quiet, busy, busy_token) = (a.0, b.0, c.0, c.1);
+        (quiet, busy, busy_token) = (b.0, c.0, c.1);
     }
     age(dir.path(), &stale, DAY_MS + 60_000);
     age(dir.path(), &quiet, 2 * 3600 * 1000);
@@ -125,11 +127,42 @@ fn idle_sessions_are_marked_and_are_retired_after_a_day() {
     let find = |who: &str| listed.iter().find(|a| a["name"] == who).unwrap().clone();
     assert_eq!(find(&busy)["idle"], false);
     assert_eq!((find(&quiet)["idle"].clone(), find(&quiet)["retired"].clone()), (json!(true), json!(false)), "quiet for two hours: marked idle, kept");
-    assert_eq!((find(&stale)["retired"].clone(), find(&stale)["retired_reason"].clone()), (json!(true), json!("idle")), "idle for a day: retired by the node");
+    assert_eq!((find(&stale)["retired"].clone(), find(&stale)["retired_reason"].clone()), (json!(true), json!("idle")), "idle for a day with its terminal gone: retired by the node");
     let me = me();
     ok(start(&mut n, &me, "claude-code", "newcomer"));
     let identities = ok(req(&mut n, "read", "demo", &busy_token, json!({"kind": "identity"})));
     assert!(identities["entries"].as_array().unwrap().iter().any(|e| e["fields"]["retired"] == true && e["fields"]["name"] == stale.as_str() && e["fields"]["retired_reason"] == "idle"), "the node says it retired it");
+}
+
+#[test]
+fn a_main_session_whose_harness_runs_keeps_its_name_and_its_token_however_long_it_is_quiet() {
+    let dir = tempdir().unwrap();
+    let (running, ended) = (process(true), process(true));
+    let (lead, lead_token, kid, ghost, unread, watcher);
+    {
+        let mut n = open(dir.path());
+        let a = ok(start(&mut n, &peer(&running), "claude-code", "lead"));
+        let k = ok(req_from(&mut n, &peer(&running), "register", "demo", a["token"].as_str().unwrap(),
+                            json!({"model": "claude-haiku-5-5", "harness": "claude-code", "session": "kid"})));
+        let g = ok(start(&mut n, &peer(&ended), "claude-code", "ghost"));
+        let u = ok(start(&mut n, &Peer::none(), "claude-code", "unread"));
+        let w = session(&mut n, "demo", "watcher");
+        (lead, lead_token, kid) = (a["name"].as_str().unwrap().to_string(), a["token"].as_str().unwrap().to_string(), k["name"].as_str().unwrap().to_string());
+        (ghost, unread, watcher) = (g["name"].as_str().unwrap().to_string(), u["name"].as_str().unwrap().to_string(), w.1);
+    }
+    done(vec![ended]);
+    for who in [&lead, &kid, &ghost, &unread] {
+        age(dir.path(), who, 3 * DAY_MS);
+    }
+    let mut n = open(dir.path());
+    let listed = names(&mut n, &watcher, true);
+    let state = |who: &str| listed.iter().find(|a| a["name"] == who).map(|a| (a["retired"].clone(), a["retired_reason"].clone())).unwrap();
+    assert_eq!(state(&lead), (json!(false), json!("")), "three days quiet, its terminal runs: still the session it was");
+    assert_eq!(ok(req(&mut n, "whoami", "demo", &lead_token, json!({})))["name"], lead.as_str(), "and its token still works");
+    assert_eq!(state(&ghost), (json!(true), json!("idle")), "a terminal that ended leaves nothing to keep");
+    assert_eq!(state(&unread), (json!(true), json!("idle")), "a session whose terminal could not be read is told by time alone");
+    assert_eq!(state(&kid), (json!(true), json!("idle")), "a subagent is retired after the day whatever its parent does");
+    done(vec![running]);
 }
 
 #[test]
@@ -138,9 +171,11 @@ fn a_token_of_a_session_the_node_retired_for_idleness_is_refused() {
     let (name, token, watcher);
     {
         let mut n = open(dir.path());
-        let a = session(&mut n, "demo", "forgotten");
+        let gone = process(true);
+        let a = ok(start(&mut n, &peer(&gone), "claude-code", "forgotten"));
+        done(vec![gone]);
         let b = session(&mut n, "demo", "watcher");
-        (name, token, watcher) = (a.0, a.1, b.1);
+        (name, token, watcher) = (a["name"].as_str().unwrap().to_string(), a["token"].as_str().unwrap().to_string(), b.1);
     }
     age(dir.path(), &name, 2 * DAY_MS);
     let mut n = open(dir.path());

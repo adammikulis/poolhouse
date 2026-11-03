@@ -141,6 +141,21 @@ def authorize(command: str, *, cwd: Path | None = None) -> str:
     return authority.require(GATE, f"runtime {command}", scope=authority.Scope(cwd=recorded_primary() or cwd))
 
 
+IDENTITY =(*person.AGENT_MARKERS, board_session.AGENT_ENV, board_session.TOKEN_ENV, board_session.SUBAGENT_ENV, "POOLHOUSE_BOARD",
+            "POOLHOUSE_SESSION_HARNESS", "CLAUDE_ENV_FILE")
+"""The variables that name an agent to a process: a build started as the system carries none of them."""
+
+
+def refresh() -> None:
+    """Admit a background refresh. It needs no identity and no delegation, whether or not the node has a session for the caller (a lead
+    whose registration ended on a node that will not reopen it has none): it builds a commit the recorded checkout's development branch has
+    published (`runtime_source.admit`) and only moves the selection forward from the one it saw (`runtime_deploy` automatic snapshot), in
+    a process that carries no agent (`IDENTITY`), so it is audited as `system:runtime`. A subagent starts none, and
+    `runtime_cli.plan_from` refuses an authenticated helper."""
+    if os.environ.get(authority.SUBAGENT_ENV):
+        raise DeployError("a subagent starts no runtime build")
+
+
 def audit(command: str, commit: str, result: str, *, agent: str = "", detail: str = "", **passed: str) -> bool:
     """Append a sealed activity record for one deploy command; True when it was written."""
     context = bool(person.marked() or agent or os.environ.get(board_session.AGENT_ENV) or os.environ.get("POOLHOUSE_WORKSPACE_TOKEN") or

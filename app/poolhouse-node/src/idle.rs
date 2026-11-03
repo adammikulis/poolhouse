@@ -1,6 +1,7 @@
 //! What becomes of idle sessions. A session is idle when it is not retired and has neither been heard from within `child_beat_s` nor holds
-//! a live lease; the node retires one that has been idle for `idle_retire_s`, whenever it lists the sessions or registers one. The person's
-//! own session of a terminal is retired as soon as every process it was registered from has ended.
+//! a live lease; the node retires one that has been idle for `idle_retire_s`, whenever it lists the sessions or registers one, except a
+//! main session some process of whose lineage still runs: its harness is there, so its name and its tokens stay (quiet is not gone). The
+//! person's own session of a terminal is retired as soon as every process it was registered from has ended.
 
 use crate::error::Result;
 use crate::identity::Ident;
@@ -8,15 +9,22 @@ use crate::lease::live::is_alive;
 use crate::node::Node;
 use crate::writes::holds_lease;
 
-/// Why ``session`` is retired now, when it is: `idle` after `idle_retire_s` unheard from, or `done` when it is the person's session of a
-/// terminal whose processes have all ended (a lineage the node could not read is never ended).
+/// Whether a process of the lineage ``session`` was registered from still runs. A lineage the node could not read tells nothing, so a
+/// session registered with none is not kept by it.
+fn running(session: &Ident) -> bool {
+    session.lineage.iter().any(|a| is_alive(a.pid, Some(a.start)))
+}
+
+/// Why ``session`` is retired now, when it is: `idle` after `idle_retire_s` unheard from (never a main session whose harness still runs:
+/// it is quiet, not ended), or `done` when it is the person's session of a terminal whose processes have all ended (a lineage the node
+/// could not read is never ended).
 fn ending(session: &Ident, now: u64, after: u64) -> Option<&'static str> {
     if session.retired {
         None
     } else if now.saturating_sub(session.seen_ms) > after {
-        Some("idle")
+        (!(session.parent.is_empty() && running(session))).then_some("idle")
     } else {
-        let gone = !session.lineage.is_empty() && !session.lineage.iter().any(|a| is_alive(a.pid, Some(a.start)));
+        let gone = !session.lineage.is_empty() && !running(session);
         (session.person && gone).then_some("done")
     }
 }
