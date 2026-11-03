@@ -199,20 +199,6 @@ def test_six_processes_starting_together_create_one_master(tmp_path):
     assert list(json.loads((tmp_path / "ring.json").read_text())) == [f"poolhouse/master/{keystore.os_user()}"]
 
 
-def test_processes_behind_a_refusal_do_not_ask_again(tmp_path):
-    env = child_env(tmp_path)
-    state = tmp_path / "home" / "keystore"
-    state.mkdir(parents=True)
-    (state / "denied.json").write_text(json.dumps({"until": 4e12, "cause": "KeyringError"}))
-    kids = [subprocess.Popen([sys.executable, "-c", CHILD], env=env, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, text=True) for _ in range(3)]
-    (tmp_path / "go").write_text("go")
-    for kid in kids:
-        _, err = kid.communicate(timeout=120)
-        assert kid.returncode != 0 and "declined" in err
-    assert not Path(f"{tmp_path / 'ring.json'}.calls").exists()
-
-
 def test_forty_processes_starting_together_never_see_busy_and_stay_under_the_read_ceiling(tmp_path):
     env = {**child_env(tmp_path), "POOLHOUSE_TEST_KEYRING_DELAY": "0"}
     seed = subprocess.run([sys.executable, "-c", CHILD_NOWAIT], env=env, capture_output=True, text=True, timeout=120)
@@ -232,41 +218,29 @@ def test_forty_processes_starting_together_never_see_busy_and_stay_under_the_rea
 
 
 @pytest.mark.parametrize("error", [KeyringError, OSError])
-def test_a_refusal_is_remembered_and_never_retried_in_a_loop(tmp_path, counting, error):
+def test_a_refusal_holds_back_nothing_the_next_request_asks_the_keystore_again(tmp_path, counting, error):
     clock, bus = Clock(), Bus()
     counting.refuse = error
-    first = make(tmp_path, clock, bus=bus)
-    with pytest.raises(keystore.KeystoreDenied, match="poolhouse-security unlock"):
-        first.subkey("memory", "a")
-    assert counting.calls == ["get"]
-    second = make(tmp_path, clock)
-    for _ in range(50):
-        with pytest.raises(keystore.KeystoreDenied):
-            first.subkey("memory", "a")
-        with pytest.raises(keystore.KeystoreDenied):
-            second.subkey("memory", "a")
-    assert counting.calls == ["get"]
-    clock.advance(keystore.COOLDOWN_S + 1)
-    with pytest.raises(keystore.KeystoreDenied):
-        first.subkey("memory", "a")
-    assert counting.calls == ["get"]
-    with pytest.raises(keystore.KeystoreDenied):
-        second.subkey("memory", "a")
-    assert counting.calls == ["get", "get"]
+    first, second = make(tmp_path, clock, bus=bus), make(tmp_path, clock)
+    for turn in range(6):
+        with pytest.raises(keystore.KeystoreDenied, match="declined") as said:
+            (first if turn % 2 else second).subkey("memory", "a")
+    assert counting.calls == ["get"] * 6, "every request reached the keystore, so the system's own prompt came again at once"
+    assert "minutes" not in str(said.value) and "not ask again" not in str(said.value)
+    assert "poolhouse-security unlock" in str(said.value)
     denied = [e for e in bus.recent(kind="keystore") if e.kind == "keystore.denied"]
-    assert len(denied) == 1 and denied[0].severity.name == "WARNING"
+    assert len(denied) == 3 and {e.severity.name for e in denied} == {"WARNING"}, "each refusal is told to the sentinel, none is swallowed"
+    counting.refuse = None
+    assert first.subkey("memory", "a") and "denied.json" not in {p.name for p in (tmp_path / "ks").iterdir()}
 
 
-def test_unlock_by_a_person_clears_the_refusal(tmp_path, counting):
+def test_a_person_who_answered_the_prompt_later_is_served_with_no_unlock(tmp_path, counting):
     counting.refuse = KeyringError
     ks = make(tmp_path)
     with pytest.raises(keystore.KeystoreDenied):
         ks.subkey("memory", "a")
     counting.refuse = None
-    with pytest.raises(keystore.KeystoreDenied):
-        ks.subkey("memory", "a")
-    assert ks.provision() is True
-    assert ks.subkey("memory", "a") and ks.status()["denied_for_s"] == 0
+    assert ks.subkey("memory", "a") and ks.created is True
 
 
 # -- rate limit -----------------------------------------------------------------------------------
@@ -324,36 +298,51 @@ def test_500_create_and_delete_attempts_stop_at_the_write_ceiling(tmp_path, coun
     assert ks.status()["writes_this_hour"] == 5
 
 
-def test_a_read_after_a_refusal_counts_as_a_retry_against_the_write_ceiling(tmp_path, counting):
-    clock = Clock()
-    wires = Wires(clock=clock, say=Said(), bus=Bus(), interactive=lambda: True, sleep=lambda _s: None)
+def test_a_read_the_keystore_refused_is_not_a_write_and_is_asked_again_every_time(tmp_path, counting):
+    wires = Wires(clock=Clock(), say=Said(), bus=Bus(), interactive=lambda: True, sleep=lambda _s: None)
     Keystore(directory=tmp_path / "ks", wires=wires).subkey("memory", "a")
-    counting.refuse = KeyringError
+    counting.refuse, counting.refuse_ops = KeyringError, {"get"}
     counting.calls.clear()
     outcomes = []
     for _ in range(5):
-        clock.advance(keystore.COOLDOWN_S + 1)
         try:
             Keystore(directory=tmp_path / "ks", write_ceiling=3, wires=wires).subkey("memory", "a")
         except keystore.KeystoreError as err:
             outcomes.append(type(err).__name__)
-    assert counting.count("get") == 3
-    assert outcomes == ["KeystoreDenied"] * 3 + ["KeystoreBusy"] * 2
+    assert counting.count("get") == 5
+    assert outcomes == ["KeystoreDenied"] * 5
+    assert Keystore(directory=tmp_path / "ks", wires=wires).status()["writes_this_hour"] == 1, "only the one creation counted"
 
 
-def test_a_successful_read_clears_the_retry_mark(tmp_path, counting):
-    clock = Clock()
-    make(tmp_path, clock).subkey("memory", "a")
-    counting.refuse = KeyringError
-    with pytest.raises(keystore.KeystoreDenied):
-        make(tmp_path, clock).subkey("memory", "a")
+def test_a_write_the_keystore_refused_changed_nothing_and_does_not_count(tmp_path, counting):
+    ks = make(tmp_path)
+    counting.refuse, counting.refuse_ops = KeyringError, {"set"}
+    for _ in range(keystore.WRITE_CEILING + 3):
+        with pytest.raises(keystore.KeystoreDenied):
+            ks.provision()
+    assert counting.count("set") == keystore.WRITE_CEILING + 3, "each unlock asked the keystore, none was turned away by a count"
+    assert ks.status()["writes_this_hour"] == 0
     counting.refuse = None
-    clock.advance(keystore.COOLDOWN_S + 1)
-    assert make(tmp_path, clock).subkey("memory", "a")
-    assert not (tmp_path / "ks" / "denied.json").exists()
-    before = make(tmp_path, clock).status()["writes_this_hour"]
-    assert make(tmp_path, clock).subkey("memory", "a")
-    assert make(tmp_path, clock).status()["writes_this_hour"] == before
+    assert ks.provision() is True
+
+
+def test_a_person_running_unlock_is_never_turned_away_by_the_read_count(tmp_path, counting):
+    wires = Wires(clock=Clock(), say=Said(), bus=Bus(), interactive=lambda: True, sleep=lambda _s: None)
+    ks = Keystore(directory=tmp_path / "ks", ceiling=1, wires=wires)
+    ks.subkey("memory", "a")
+    ks.lock()
+    with pytest.raises(keystore.KeystoreBusy):
+        ks.subkey("memory", "a")
+    assert ks.provision() is False and counting.count("get") == 2
+
+
+def test_a_refusal_at_a_ceiling_says_what_is_repeating_and_what_to_do_never_only_a_wait(tmp_path, counting):
+    wires = Wires(clock=Clock(), say=Said(), bus=Bus(), interactive=lambda: True, sleep=lambda _s: None)
+    Keystore(directory=tmp_path / "ks", ceiling=1, wires=wires).subkey("memory", "a")
+    with pytest.raises(keystore.KeystoreBusy) as said:
+        Keystore(directory=tmp_path / "ks", ceiling=1, wires=wires).subkey("memory", "a")
+    text = str(said.value)
+    assert "poolhouse-security unlock" in text and "loop" in text and "not ask again" not in text
 
 
 def test_one_instance_locking_and_reading_in_a_loop_is_capped_too(tmp_path, counting):

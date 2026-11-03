@@ -97,15 +97,16 @@ Tags: **[V path]** read in that code on `0.3dev` at `34e5e3aef`; **[proposal]** 
   keystore and has no generation floor. [V]
 - The keystore holds one master item per OS user (`docs/keystore.md`); a subkey is cut from it by `salted_subkey`.
   There is no API for another item. A call that reaches the backend goes through `_flight`, which runs `_gate` (the
-  denial latch from `denied.json`, and the rule that a process with no terminal or desktop session reads only once
+  the rule that a process with no terminal or desktop session reads only once
   `provisioned.json` says a person unlocked), and then through `_call` (`_spend` counts it in `rate.json`, a bounded
-  wait, an audit event); `_call` alone does not run `_gate` (`keystore.py:371-400`). A background call is made with
-  prompts forbidden. Reads of an existing item are limited to 600 an hour, creates and deletes (and a read after a
-  refusal) to 5 (`READ_CEILING`, `WRITE_CEILING`). `denied.json`, `rate.json` and `provisioned.json` are plain JSON in
-  the state root: `_window` keeps a time later than now for ever and raises on an entry that is not a number, and
-  `_denial` does the same for `until`. A locked, denied, busy or absent backend raises `KeystoreLocked`,
+  wait, an audit event); `_call` alone does not run `_gate`. A background call is made with
+  prompts forbidden. Reads of an existing item are limited to 600 an hour, creates and deletes (counted when the
+  keystore made them) to 5 (`READ_CEILING`, `WRITE_CEILING`); a refusal is remembered by nothing, so the next request asks
+  the keystore again. `rate.json` and `provisioned.json` are plain JSON in
+  the state root: `_window` keeps a time later than now for ever and raises on an entry that is not a number. A locked,
+  denied, busy or absent backend raises `KeystoreLocked`,
   `KeystoreDenied`, `KeystoreBusy` or `KeystoreUnavailable`; a vanished master raises `KeystoreMissing`.
-  `Keystore.reset` deletes the master item and `provisioned.json`, `denied.json`, `noticed.json`; it
+  `Keystore.reset` deletes the master item and `provisioned.json`, `noticed.json`; it
   leaves `rate.json`. [V]
 - The keystore is open to Poolhouse code only when `real_machine.refusal()` is empty: not a test run, the state root is
   the account's own `~/.poolhouse`, and this module file lies under `~/.poolhouse/runtimes`. That is a check on where
@@ -185,7 +186,7 @@ replaced atomically (`files.writing`) under `lock.only_one(directory / "trust.lo
 
 The floor is one small item in the OS keystore beside the master item: two new methods, `Keystore.item(purpose)` and
 `Keystore.set_item(purpose, text)` (account `publisher-trust/<user>`). Each goes through `_flight`, so `_gate` runs (the
-denial latch and the background-process rule), and then through `_call`, so the ceilings, the bounded wait and the
+the background-process rule), and then through `_call`, so the ceilings, the bounded wait and the
 audit event apply; `_call` alone would skip `_gate`. Its value is `{"generation": 7, "masked": ["Qwen"]}`: the
 generation the file must carry, and the built-in owners distrusted (at most eight names). The item is created by the
 first write, never on a normal journey. `docs/keystore.md`'s "one item" becomes "the master item, and one small item once
@@ -341,10 +342,9 @@ id. A static test lists the callers of all of them.
 
 ### 4.8 A forged keystore state file [proposal]
 
-`denied.json`, `rate.json` and `provisioned.json` are not sealed; a process of the same user can write them.
+`rate.json` and `provisioned.json` are not sealed; a process of the same user can write them. (A refusal is no longer a
+state file: nothing remembers one, so there is no forged refusal to stand.)
 
-- `denied.json` with a later `until`: every keystore call of every process raises `KeystoreDenied` until a person runs
-  `poolhouse-security unlock`, which removes the file.
 - `rate.json` with entries at the ceiling, dated in the future (`_window` never ages one out, and each `_spend` writes
   it back) or not numbers (`float` raises out of `_spend`, a `ValueError` and not a `KeystoreError`): reads or writes
   raise `KeystoreBusy`, or that `ValueError`. `unlock` does not remove `rate.json`, and its own read passes through
@@ -355,9 +355,9 @@ id. A static test lists the callers of all of them.
 What the app and agent surfaces do then: the pull is refused with the sentence of its cause (denied, busy, locked), in
 one line, with no request, no queue and no wait; the next pull asks the keystore again; other items proceed. A library
 caller is unaffected, because it never reads the keystore. A forgery of these files stops every keystore user (memory,
-signing, the request inbox), so it is first the keystore's finding, and the build closes it there: `_window` and
-`_denial` ignore an entry that is not a finite number or lies in the future and cap `until` at `COOLDOWN_S` from now, so
-a forgery ages out within the hour instead of standing and a malformed file raises no `ValueError`. A same-user process
+signing, the request inbox), so it is first the keystore's finding, and the build closes it there: `_window` ignores an
+entry that is not a finite number or lies in the future, so a forgery ages out within the hour instead of standing and
+a malformed file raises no `ValueError`. A same-user process
 can renew it (R8); it never trusts anyone, because every effect here is a refusal. A person's `distrust` is never
 blocked by it (section 5.2, item 4).
 
@@ -409,7 +409,7 @@ An owner already trusted prints that and exits 0. A built-in owner that was dist
    and the master is already in hand, it writes the file at `n+1` anyway: the state then reads `degraded`, so every
    publisher asks until a person resets, and the owner is among them. If the keystore refuses the read as well, there is
    nothing sealed to write and nothing is. A refusal never stops (b): the person's `distrust` is not blockable by a forged
-   `denied.json` or `rate.json`. The command prints which of these happened, in the cause's sentence.
+   `rate.json`. The command prints which of these happened, in the cause's sentence.
    (b) The holding. Read the pins; for each pin with `publisher == OWNER`: `Store.hold_for_person(("model", path),
    "publisher distrusted: OWNER", {"publisher": OWNER, "pin": <the pin>}, Holding(path=path))`, whose hook stops the
    servers, and only when that returned a record, `manifest.unpin(path)`. A hold the store refuses (`quarantine` returns
@@ -744,7 +744,7 @@ pulled while sentinel was off are R6.
 corrupts the list file, or forges the keystore's state files (section 4.8), and the person is then asked about every
 model, is refused, or is pushed to `--reset`. Defence: deleting the file or `publishers/` with the item in place reads
 `degraded` (D16), not `fresh`; deleting `provisioned.json` changes nothing, because `fresh` is decided by the master item;
-a forged `denied.json` or `rate.json` is `unreadable` with its own sentence, once per pull, with no request and no
+a forged `rate.json` is `unreadable` with its own sentence, once per pull, with no request and no
 queue, and the keystore build ages it out (section 4.8); `degraded` carries the one plain sentence, makes no trust
 offer, and asks with ordinary per-commit approvals under the ten-wait cap; the reset keeps built-in owners distrusted
 and loses only what a person added. A locked keystore is `unreadable`, never `degraded`, so a lock never looks like
@@ -779,7 +779,7 @@ Status: defended in the design for files. A same-user process that deletes the m
 `fresh` and the built-in list (R1); it also destroys every secret sealed under that master, which is why it is a
 residue and not a defence. R13 is now a narrow cost.
 
-**A23. A forged keystore state file.** `denied.json`, `rate.json` and `provisioned.json` are unsealed (section 4.8).
+**A23. A forged keystore state file.** `rate.json` and `provisioned.json` are unsealed (section 4.8).
 Defence: every effect is a refusal on the app and agent surfaces, with the cause's sentence, no request and no queue; a
 library pull is unaffected; a person's `distrust` still holds the files, stops the servers and says what the keystore
 refused; the keystore ignores a non-numeric or future-dated entry and caps `until`. Tests:
@@ -833,7 +833,7 @@ code:
   Holds (`Keystore.status` reads `provisioned.json` without a backend call, `keystore.py:243-253`, and `_gate` reads it
   too, 331-342). The lead then replaced the file-independent probe with the master-item rule (D16): `fresh` is the
   master item absent, found without a secret read.
-- A forged `rate.json` or `denied.json` could block a person's `distrust` and stop pulls. Holds, and is worse than
+- A forged `rate.json` could block a person's `distrust` and stop pulls. Holds, and is worse than
   stated: a future-dated entry is never aged out and a non-numeric one raises `ValueError` out of `_spend`, which
   `unlock` passes through (section 4.8). The keystore build ignores such entries; `distrust` holds files and reports
   when the keystore refuses. One part of the request does not hold as worded: with the reads refused there is no
@@ -869,7 +869,7 @@ Accepted risks, named for the owner:
 | R5 | A blob two publishers supplied belongs to the one that pinned it last. | `distrust` of the other leaves it; rare, and the sentinel pin check still applies. |
 | R6 | Files never pinned (pulled with sentinel off, or from a path nothing pinned), a manifest that cannot be read, and a replaced file pulled before anyone knew. | `distrust` says when it could not tell; the pull's own recheck holds its target paths; existing "Not armed" items in `docs/sentinel.md`; an independent digest source is HANDOFF work. |
 | R7 | A build older than this feature ignores the list. | Every agent runs the latest build automatically (AGENTS.md section 4); a stale build is a defect. |
-| R8 | A same-user process can force `degraded` by deleting or corrupting the file, and `unreadable` by forging `denied.json` or `rate.json`. | It buys the attacker only friction; a person resets with one command and loses only what was added; the keystore build ages a forgery out (section 4.8). |
+| R8 | A same-user process can force `degraded` by deleting or corrupting the file, and `unreadable` by forging `rate.json`. | It buys the attacker only friction; a person resets with one command and loses only what was added; the keystore build ages a forgery out (section 4.8). |
 | R9 | A crash between the floor raise and the file write leaves the file one generation behind the item, so the list reads `degraded` and every publisher asks until a person resets. | It returns no trust; the window is one crash wide and the cost is R8's. |
 | R10 | An agent can raise one `stop-trusting` proposal per owner per day (at most one waits per owner, a no blocks it for 24 hours, at most ten requests of a kind wait). Each is destructive if a person accepts it: the owner's files are held and its servers stopped. | A proposal changes nothing until a person answers; a no is remembered; the cost of a wrong yes is files held, which only a person releases, and a trust restored at once with `trust`. Accepted by the lead. |
 | R11 | A library caller pulls under the library default (allow, record the pin), so a distrusted publisher's model is not refused at that pull, and a library `ph.serve.up` serves it under the pin check until `reconcile` holds it. | The pin carries the publisher; `reconcile` holds it at the next `settle()`, scan or app-surface serve start; a library caller can pass `app_policy()`. Owner's standing rule: library users get no new prompts or refusals. |
@@ -966,7 +966,7 @@ Slice 1 is MOD-4. The feature is not done for a person bad with tech until slice
 and the review screen for a distrust hold; a `person_only` record is neither purged nor settled as missing),
 `docs/model-discovery.md` ("Publisher trust"), `docs/requests.md` (the choices, the dialog-only choice and the
 `publisher_trust` kind), `docs/keystore.md` (the second item and the new purpose; the Reset section saying
-`keystore-reset` leaves the small publisher item; the Limits section saying `rate.json` and `denied.json` entries that
+`keystore-reset` leaves the small publisher item; the Limits section saying `rate.json` entries that
 are not numbers or lie in the future are ignored and `until` is capped; a pull on an app or agent surface reads the
 small item), `docs/person-commands.md` (Hard: `poolhouse-models trust`, `distrust`, `publishers --reset`),
 `docs/commands.md` (the `poolhouse-models` row), `docs/release-readiness.md` (MOD-4 verified-by and state),

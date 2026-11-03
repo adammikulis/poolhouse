@@ -7,7 +7,6 @@ the supervisor, which is a process of its own; no test reads or writes the machi
 
 from __future__ import annotations
 
-import itertools
 import json
 import os
 import shutil
@@ -384,41 +383,40 @@ def test_a_keystore_that_will_not_answer_for_a_while_does_not_end_the_supervisor
     assert (state / "node.log").read_text().count("the keystore is locked") == 1, "the same refusal is said once"
 
 
-def test_a_keystore_that_the_person_would_not_open_is_asked_a_few_times_and_then_left_alone(tmp_path, state, ks, monkeypatch):
+def test_a_keystore_the_person_declined_is_asked_again_until_a_person_opens_it(tmp_path, state, ks, monkeypatch):
     node = RecordingNode(tmp_path)
+    node_key.release(state, ks=ks)
     asked: list[float] = []
+    real_unwrap, real_release = ks.unwrap, node_key.release
 
-    def denied(*_args, **_kw):
+    def unwrap(*args):
         asked.append(time.monotonic())
-        raise KeyUnavailable("the person declined the keystore", denied=True)
+        if len(asked) <= node_supervise.GIVE_UP_AFTER + 2:
+            raise keystore.KeystoreDenied("declined")
+        return real_unwrap(*args)
 
-    monkeypatch.setattr(node_key, "release", denied)
+    monkeypatch.setattr(ks, "unwrap", unwrap)
+    monkeypatch.setattr(node_key, "release", lambda path, **_kw: real_release(path, ks=ks))
     monkeypatch.setattr(node_supervise, "resolve", lambda _state: (node.path, "0" * 64))
-    monkeypatch.setattr(node_supervise, "DENIED_WAIT_S", 0.3)
     monkeypatch.setattr(node_supervise, "MIN_DELAY_S", 0.01)
-    until = time.monotonic() + 10
-    assert node_supervise._loop(state, [], lambda: time.monotonic() > until) == 1, "a person who said no is not asked for ever"
-    assert len(asked) == node_supervise.DENIED_GIVE_UP
-    assert all(later - earlier >= 0.25 for earlier, later in itertools.pairwise(asked)), "the keystore's own cooldown is waited out between asks"
-    assert "not asked again" in (state / "node.log").read_text()
-    assert not node.record.exists()
+    monkeypatch.setattr(node_supervise, "MAX_DELAY_S", 0.05)
+    until = time.monotonic() + 8
+    assert node_supervise._loop(state, [], lambda: node.record.exists() or time.monotonic() > until) == 0
+    assert node.record.exists(), "the supervisor did not give up on a refusal: the node started once the person opened the keystore"
+    assert len(asked) == node_supervise.GIVE_UP_AFTER + 3
+    assert "declined" in (state / "node.log").read_text()
 
 
-def test_a_denied_keystore_is_what_the_key_says_it_was(state, ks, monkeypatch):
+def test_a_denied_keystore_is_told_in_the_systems_words_like_any_other_refusal(state, ks, monkeypatch):
     node_key.release(state, ks=ks)
 
     def declined(*_args):
         raise keystore.KeystoreDenied("declined")
 
     monkeypatch.setattr(ks, "unwrap", declined)
-    with pytest.raises(KeyUnavailable) as caught:
+    with pytest.raises(KeyUnavailable, match="declined") as caught:
         node_key.release(state, ks=ks)
-    assert caught.value.denied is True
-    (state / "device.key.wrapped").write_bytes(b"x")
-    monkeypatch.setattr(ks, "unwrap", lambda *_args: (_ for _ in ()).throw(keystore.KeystoreError("not this one")))
-    with pytest.raises(KeyUnavailable) as other:
-        node_key.release(state, ks=ks)
-    assert other.value.denied is False
+    assert not hasattr(caught.value, "denied"), "a refusal is not a different kind of failure that is asked for less"
 
 
 @pytest.mark.skipif(os.name != "posix", reason="core-file limits are a POSIX setting")

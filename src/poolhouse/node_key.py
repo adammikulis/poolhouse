@@ -42,12 +42,8 @@ NOTE = "kept elsewhere: see device.custody.json; this file is not a key\n"
 
 
 class KeyUnavailable(OSError):
-    """The key of the device cannot be had now, and the node is not started without it; the message says why in plain words.
-    ``denied`` is True when the person or the system said no to the keystore, which is not asked again and again."""
-
-    def __init__(self, message: str, *, denied: bool = False) -> None:
-        super().__init__(message)
-        self.denied = denied
+    """The key of the device cannot be had now, and the node is not started without it; the message says why in plain words. A
+    refusal is no different from any other reason: the supervisor asks again, so the key is had the moment a person allows it."""
 
 
 @dataclass(frozen=True)
@@ -142,8 +138,7 @@ def _unwrapped(state: Path, ks: keystore.Keystore) -> bytes:
                              "state directory aside, and the device then joins the pool again as a new one") from None
     except keystore.KeystoreError as why:
         raise KeyUnavailable(f"the key of this device would not open: this computer's keystore did not give it ({why}); a copy of a state "
-                             "directory, or one that was moved, is not the device it was made for",
-                             denied=isinstance(why, keystore.KeystoreDenied)) from why
+                             "directory, or one that was moved, is not the device it was made for") from why
 
 
 def _opened(state: Path) -> bytes:
