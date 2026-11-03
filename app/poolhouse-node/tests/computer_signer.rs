@@ -263,7 +263,7 @@ fn a_yes_for_one_charter_founds_no_other_charter_of_the_same_session_and_key() {
 }
 
 #[test]
-fn a_refused_prompt_founds_nothing_and_is_quiet_for_ten_minutes() {
+fn a_refused_prompt_founds_nothing_and_the_person_is_asked_again_at_once() {
     let dir = tempfile::tempdir().unwrap();
     let mut node = node(dir.path());
     let prompt = at_the_prompt(&mut node, "os");
@@ -273,11 +273,19 @@ fn a_refused_prompt_founds_nothing_and_is_quiet_for_ten_minutes() {
     let said = answered(&mut node, &prompt, &token, "pool_key", &card, false);
     assert_eq!(said["state"], "refused", "{said}");
     assert!(node.persons.claim_of(&public_of(&drafted)).is_none(), "a no enrolled no key");
-    let again = req(&mut node, "presence_ask", "", &token, json!({"purpose": "pool_key", "card": card, "terminal": ""}));
-    assert_eq!(again["ok"], false, "the node does not ask again for a while: {again}");
-    assert_eq!(prompt.raised.load(Ordering::SeqCst), 1);
     let founded = req(&mut node, "pool_found", "", &token, json!({"charter": accepted(&drafted, &"07".repeat(32))}));
     assert_eq!(founded["ok"], false, "a charter nobody said yes to founds nothing: {founded}");
+    let again = req(&mut node, "presence_ask", "", &token, json!({"purpose": "pool_key", "card": card, "terminal": ""}));
+    assert_eq!(again["ok"], true, "there is no quiet after a no: the same request is raised again at once: {again}");
+    assert_eq!(prompt.raised.load(Ordering::SeqCst), 2);
+    let status = ok(req(&mut node, "pool_status", "", &token, json!({})));
+    let waiting = status["waiting"].as_array().unwrap();
+    assert_eq!(waiting.len(), 1, "{status}");
+    assert!(waiting[0]["say"].as_str().unwrap().starts_with("waiting for you: Poolhouse - make the pool home"), "the pool's status says what waits for the person: {status}");
+    *prompt.answer.lock().unwrap() = Some(true);
+    let said = ok(req(&mut node, "presence_status", "", &token, json!({})));
+    assert_eq!(said["state"], "confirmed", "{said}");
+    assert!(ok(req(&mut node, "pool_status", "", &token, json!({})))["waiting"].as_array().unwrap().is_empty(), "answered, so nothing waits");
 }
 
 #[test]
@@ -330,7 +338,7 @@ fn the_agents_words_never_enter_the_prompt() {
 }
 
 #[test]
-fn the_fourth_prompt_in_ten_minutes_waits() {
+fn the_fourth_prompt_in_ten_minutes_is_raised_like_the_first() {
     let dir = tempfile::tempdir().unwrap();
     let mut node = node(dir.path());
     let prompt = at_the_prompt(&mut node, "os");
@@ -345,10 +353,9 @@ fn the_fourth_prompt_in_ten_minutes_waits() {
         let said = answered(&mut node, &prompt, &token, "card", card, true);
         assert_eq!(said["state"], "confirmed", "{said}");
     }
-    let fourth = req(&mut node, "presence_ask", "", &token, json!({"purpose": "card", "card": cards[3], "terminal": ""}));
-    assert_eq!(fourth["ok"], false, "{fourth}");
-    assert_eq!(code(&fourth), "quota", "{fourth}");
-    assert_eq!(prompt.raised.load(Ordering::SeqCst), 3, "the fourth waits as a card: no fourth prompt was raised");
+    let said = answered(&mut node, &prompt, &token, "card", &cards[3], true);
+    assert_eq!(said["state"], "confirmed", "the fourth is asked and answered like the first: {said}");
+    assert_eq!(prompt.raised.load(Ordering::SeqCst), 4, "no count of earlier prompts held the fourth back");
 }
 
 #[test]

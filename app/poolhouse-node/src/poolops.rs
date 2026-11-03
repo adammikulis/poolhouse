@@ -77,6 +77,7 @@ impl crate::node::Node {
         json!({
             "pool": self.members.id, "project": self.members.project, "policy": self.members.policy.name(), "fingerprint": me, "device_key": self.custody.status(), "listen": self.facts.listen,
             "governance": self.gov_view(),
+            "waiting": self.firsts.waiting(now),
             "beacon": self.facts.beacon, "join_code_open": self.facts.join_code_until_ms > now,
             "join_code_expires_in_s": self.facts.join_code_until_ms.saturating_sub(now) / 1000, "members": members, "build": self.build_status(),
             "leases": {"held": self.leases.table.leases.iter().filter(|l| l.state == crate::lease::types::State::Held).count(), "queued": self.leases.table.leases.iter().filter(|l| l.state == crate::lease::types::State::Queued).count()},

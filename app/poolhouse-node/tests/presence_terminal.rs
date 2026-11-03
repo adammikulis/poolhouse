@@ -50,7 +50,7 @@ fn only_a_line_typed_yes_on_the_terminal_makes_the_secret_and_the_node_asked_the
 }
 
 #[test]
-fn enter_y_and_a_late_yes_are_refusals_and_a_no_keeps_the_node_from_asking_again_soon() {
+fn enter_y_and_a_late_yes_are_refusals_and_a_no_is_asked_again_at_once() {
     for line in ["\n", "y\n", "no\n", "yes please\n", "yess\n"] {
         let dir = tempdir().unwrap();
         let mut n = terminal_node(dir.path());
@@ -60,7 +60,9 @@ fn enter_y_and_a_late_yes_are_refusals_and_a_no_keeps_the_node_from_asking_again
         me.sees("Type yes");
         me.types(line);
         assert_eq!(answered(&mut n, &token)["state"], "refused", "{line:?}");
-        assert_eq!(code(&ask(&mut n, &token, &me.name)), "quota", "a refusal is not asked again at once");
+        let again = ask(&mut n, &token, &me.name);
+        assert_eq!(again["ok"], true, "there is no quiet after a no: the question is put again at once ({line:?}): {again}");
+        me.sees("Type yes");
     }
 }
 

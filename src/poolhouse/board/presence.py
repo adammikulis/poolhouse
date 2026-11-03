@@ -47,12 +47,27 @@ def _has_console() -> bool:
     return bool(ctypes.windll.kernel32.GetConsoleProcessList(slot, 1))  # type: ignore[attr-defined]
 
 
-def _where(kind: str) -> str:
-    return (
+def _where(kind: str, sentence: str = "") -> str:
+    """What to tell the person, word for word what the prompt says and where to answer it: the dialog can open behind their windows."""
+    way = (
         "Say yes at the prompt this computer shows (it asks for your password or fingerprint)."
         if kind == "os"
         else "Type yes at the question the node wrote in this terminal."
     )
+    return f"Waiting for you: {sentence} {way}" if sentence else way
+
+
+def _why(said: dict[str, Any]) -> str:
+    """Why nothing was added, as one sentence for whoever asked: a no, a question nobody answered and a prompt that could not be shown are three
+    different things, and only the first is the person's word."""
+    state = str(said["state"])
+    if state == "refused":
+        return "You said no, so nothing was added."
+    if state in ("expired", "asking"):
+        return "Nobody said yes in time, so nothing was added. That is not a no: tell the person the prompt is waiting, and ask again."
+    if state == "failed":
+        return f"The prompt could not be shown or ended with an error, so nothing was added. That is not a no: tell the person, and ask again. {said.get('error', '')}".strip()
+    return "The node did not take a yes."
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,7 +96,8 @@ def ask(
     phone (`phone`), and wait for the answer: the node's reply with the one-time `secret` (and, for a phone, its `link`).
 
     ``public`` is the public key (hex) of the first key: the person's yes is for that key and no other, and the question shows its words;
-    a phone has none. Raises `Denied` when the person said no or did not answer, or when the node has no way to ask.
+    a phone has none. Raises `Denied` when the person said no, did not answer or the dialog could not be shown (each worded as what it was: only the
+    first is a no, and asking again raises the prompt again at once), or when the node has no way to ask.
     """
     return _asked(client, token, voice, purpose=purpose, public=public, card="")
 
@@ -100,17 +116,10 @@ def _asked(client: Client, token: str, voice: Voice, **params: str) -> dict[str,
     end = time.monotonic() + WAIT_S
     while said["state"] == "asking" and time.monotonic() < end:
         if not told:
-            voice.say(_where(str(said.get("presence", ""))))
+            voice.say(_where(str(said.get("presence", "")), str(said.get("sentence", ""))))
             told = True
         time.sleep(POLL_S)
         said = client.call("presence_status", "", token)
     if said["state"] != "confirmed" or not isinstance(said.get("secret"), str):
-        raise Denied(
-            "denied",
-            {
-                "refused": "You said no, so nothing was added.",
-                "expired": "Nobody said yes in time, so nothing was added.",
-                "asking": "Nobody said yes in time, so nothing was added.",
-            }.get(str(said["state"]), "The node did not take a yes."),
-        )
+        raise Denied("denied", _why(said))
     return dict(said)

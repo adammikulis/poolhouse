@@ -154,7 +154,6 @@ NO_PROMPT = {
     "serve/wired_cli.py": "names the way (sudo or osascript); wired_apply runs it",
     "fleet/room_routes.py": "names the way (osascript); wired_apply runs it",
     "desktop.py": "osascript display dialog (shimmed in tests)",
-    "fleet/onboard/notify.py": "osascript display dialog (shimmed in tests)",
     "fleet/shard_split.py": "a pattern that keeps macOS-only code off other devices",
     "guard/shellcmds.py": "a list of commands the guard refuses",
     "keystore_guard.py": "tells macOS to fail an access that needs a dialog (SecKeychainSetUserInteractionAllowed)",
@@ -283,17 +282,20 @@ def test_the_node_never_touches_the_operating_systems_keystore():
     assert "--key-stdin" in (app / "src" / "main.rs").read_text(encoding="utf-8")
 
 
-NODE_ASKS_FIRST = {"presence/mod.rs": "osascript ... with administrator privileges (the first key and the first phone): the node asks only for a state directory under the account's own "
-                                        "~/.poolhouse (`on_real_home`), and the launcher passes `--presence os` only when `real_machine.allowed()` (`node_launch._presence`)"}
+NODE_ASKS_FIRST = {"presence/os.rs": "osascript ... with administrator privileges (the first key, the first phone and every card): the node asks only for a state directory under the account's own "
+                                     "~/.poolhouse (`on_real_home`), and the launcher passes `--presence os` only when `real_machine.allowed()` (`node_launch._presence`)",
+                   "presence/announce.rs": "osascript display notification, raised only beside the dialog or for its failure (`Os::begin`, after `on_real_home`), with the sentence as an argument"}
 NODE_CALL = re.compile(r"osascript|pkexec|administrator privileges|authtrampoline|SecKeychain|SecItem|Authorization(?:Execute|Create)")
 
 
 def test_the_node_raises_an_operating_system_prompt_only_from_the_reviewed_file_and_only_for_the_real_home():
     app = Path(__file__).resolve().parents[1] / "app" / "poolhouse-node" / "src"
-    found = {path.relative_to(app).as_posix() for path in app.rglob("*.rs") if NODE_CALL.search(path.read_text(encoding="utf-8"))}
+    found = {path.relative_to(app).as_posix() for path in app.rglob("*.rs") if not path.name.startswith("tests") and NODE_CALL.search(path.read_text(encoding="utf-8"))}
     assert found == NODE_ASKS_FIRST.keys(), "a new place in the node that can raise a system prompt: review it, make it ask on_real_home first and list it here"
-    prompt = (app / "presence" / "mod.rs").read_text(encoding="utf-8")
-    assert "if !on_real_home(&self.state)" in prompt and prompt.index("if !on_real_home") < prompt.index("dialog(what)"), "the refusal comes before the dialog is built"
+    prompt = (app / "presence" / "os.rs").read_text(encoding="utf-8")
+    assert "if !on_real_home(&self.state)" in prompt and prompt.index("if !on_real_home") < prompt.index("= dialog(what)"), "the refusal comes before the dialog is built"
+    assert prompt.index("= dialog(what)") < prompt.index("(self.tell)(\"Poolhouse is waiting for you\""), "and before anything is announced"
+    assert all(path.read_text(encoding="utf-8").count("announce::notify") == 0 for path in app.rglob("*.rs") if path.name not in {"os.rs", "announce.rs"}), "only the dialog's own file announces"
     launcher = (SRC / "node_launch.py").read_text(encoding="utf-8")
     assert "real_machine.allowed()" in launcher, "the launcher asks real_machine before it passes --presence os"
 

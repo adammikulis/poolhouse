@@ -129,8 +129,6 @@ pub struct Node {
     pub network: String,
     /// Who signs for a person when an act of the pool needs it (`gov::signer`); None until one is connected.
     pub signer: Option<Arc<dyn Signer>>,
-    /// When a person last said no to a kind of act: the same kind is not asked again for ten minutes.
-    pub declined: BTreeMap<String, Instant>,
     pub(crate) activity: update_activity::Registry,
     pending_jobs: Option<managed_jobs::Book>,
     /// Last field: exclusive storage custody outlives every writable field and shared Node owner.
@@ -244,11 +242,11 @@ impl Node {
             dir: dir.into(), pool: String::new(), cert, members, services: crate::services::Services::new()?, persons: Persons::open(&dir.join("persons.json"))?,
             approvals: crate::approvals::Approvals::open(&dir.join("approvals.json"))?, fatigue: crate::approvals::fatigue::Fatigue::open(&dir.join("fatigue.json"))?,
             evidence: Box::new(crate::approvals::context::Unrecorded), phones: crate::phone::Phones::open(&dir.join("phones.json"))?,
-            phone_cert: crate::phone::cert::load_or_create(dir)?, phone_port: 0, local_server: Weak::new(), firsts: crate::presence::Firsts::kept(crate::presence::default_presence(), dir), offer: None, pusher: Box::new(crate::phone::push::NoPusher), land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, custody, boards: BTreeMap::new(),
+            phone_cert: crate::phone::cert::load_or_create(dir)?, phone_port: 0, local_server: Weak::new(), firsts: crate::presence::Firsts::new(crate::presence::default_presence()), offer: None, pusher: Box::new(crate::phone::push::NoPusher), land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, custody, boards: BTreeMap::new(),
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
             projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir, activity.clone())?, rates: Rates::default(), board_grace_ms: writes.board_grace_s * 1000, writes, log_bounds: crate::logbounds::Bounds::default(), log_rotate_percent: crate::logbounds::ROTATE_PERCENT, asking: Asking::default(),
             stop: Arc::new(AtomicBool::new(false)), started: Instant::now(), folds: 0,
-            build: crate::build::Build::from_env(), network: crate::netif::network().into(), signer: None, declined: BTreeMap::new(), activity, pending_jobs:None, _instance: instance,
+            build: crate::build::Build::from_env(), network: crate::netif::network().into(), signer: None, activity, pending_jobs:None, _instance: instance,
         };
         if node.recover_local_allocations().is_err() {
             // Keep other node services available, but never reset or grant compute

@@ -184,10 +184,7 @@ abuse by one session is not kept (the owner never asked for one). The security f
 | `backoff_ms` | 30 000 | `app/poolhouse-node/src/approvals/fatigue.rs:35` | how long after a decline the same kind of request is refused | the owner, in source; a security floor no agent loosens |
 | `most_held` | 8 | `app/poolhouse-node/src/approvals/fatigue.rs:56` | requests held back for one requester | the owner, in source; a security floor no agent loosens |
 | `reask_ms` | 600 000 | `app/poolhouse-node/src/approvals/fatigue.rs:54` | how long a cancelled or expired request counts as asked again | the owner, in source; a security floor no agent loosens |
-| `QUIET_MS` | 10 * 60_000 | `app/poolhouse-node/src/presence/mod.rs:31` | the ask cooldown: no new question to the person this long after one was not answered yes | the owner, in source; a security floor no agent loosens |
-| `ASK_FOR_MS` | 120_000 | `app/poolhouse-node/src/presence/mod.rs:28` | how long a question to the person stays open | the owner, in source; a security floor no agent loosens |
-| `COOLDOWN` | std::time::Duration::from_secs(10 * 60) | `app/poolhouse-node/src/gov/ops.rs:30` | the ask cooldown: after a no the same kind of ask waits this long, and the window of `MOST_ASKS` | the owner, in source; a security floor no agent loosens |
-| `MOST_ASKS` | 12 | `app/poolhouse-node/src/gov/ops.rs:31` | times a pool asks the person in `COOLDOWN`: asking until the person accepts from exhaustion | the owner, in source; a security floor no agent loosens |
+| `ASK_FOR_MS` | 120_000 | `app/poolhouse-node/src/presence/os.rs:15` | how long a question to the person stays open; running out counts against nothing and the question is raised again by asking again | the owner, in source; a security floor no agent loosens |
 | `OPEN_PER_HOUR` | 5 | `app/poolhouse-node/src/gov/mod.rs:62` | open joins one member signs in an hour | the owner, in source; a security floor no agent loosens |
 | `OPEN_POOL_PER_HOUR` | 10 | `app/poolhouse-node/src/gov/mod.rs:65` | open joins a pool takes in an hour | the owner, in source; a security floor no agent loosens |
 | `DELEGATE_PER_HOUR` | 3 | `app/poolhouse-node/src/gov/mod.rs:60` | devices a delegate admits in an hour | the owner, in source; a security floor no agent loosens |

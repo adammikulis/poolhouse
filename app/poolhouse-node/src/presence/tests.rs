@@ -1,5 +1,4 @@
 use super::firsts::SECRET_FOR_MS;
-use super::ledger::QUIET_MS;
 use super::os::{self, ASK_FOR_MS};
 use super::*;
 
@@ -35,6 +34,31 @@ impl Presence for Scripted {
 
     fn begin(&mut self, _: &str, _: &str) -> Result<Box<dyn Asking>> {
         Ok(Box::new(Waiting(self.0.clone(), self.1.clone())))
+    }
+}
+
+/// A system dialog that could not be shown: it gives no answer and says why in the system's words.
+struct Broken(&'static str);
+
+impl Asking for Broken {
+    fn poll(&mut self) -> Option<bool> {
+        None
+    }
+
+    fn failed(&self) -> Option<String> {
+        Some(self.0.into())
+    }
+}
+
+struct Dud(&'static str);
+
+impl Presence for Dud {
+    fn kind(&self) -> &'static str {
+        "scripted"
+    }
+
+    fn begin(&mut self, _: &str, _: &str) -> Result<Box<dyn Asking>> {
+        Ok(Box::new(Broken(self.0)))
     }
 }
 
@@ -205,15 +229,53 @@ fn a_secret_adds_once_for_its_own_purpose_within_ten_minutes() {
 }
 
 #[test]
-fn a_no_or_no_answer_makes_nothing_and_keeps_the_node_from_asking_again_for_a_while() {
+fn a_no_makes_nothing_and_the_person_is_asked_again_at_once() {
     let (mut firsts, answer) = person();
     firsts.ask(Purpose::Key, "demo/a", KEY, "", 0).unwrap();
     *answer.lock().unwrap() = Some(false);
     assert_eq!(firsts.status("demo/a", 10)["state"], "refused");
-    assert!(matches!(firsts.ask(Purpose::Key, "demo/a", KEY, "", 20), Err(Error::Quota(_))), "a session cannot pester the person with prompts");
     *answer.lock().unwrap() = None;
-    firsts.ask(Purpose::Key, "demo/a", KEY, "", QUIET_MS + 100).unwrap();
-    assert_eq!(firsts.status("demo/a", QUIET_MS + ASK_FOR_MS + 200)["state"], "expired", "no answer in two minutes is a no");
+    firsts.ask(Purpose::Key, "demo/a", KEY, "", 20).expect("there is no quiet after a no: a request the person has not seen is never held back");
+    assert_eq!(firsts.status("demo/a", 30)["state"], "asking");
+}
+
+#[test]
+fn nobody_answering_is_not_a_no_and_counts_for_nothing() {
+    let (mut firsts, _) = person();
+    firsts.ask(Purpose::Key, "demo/a", KEY, "", 0).unwrap();
+    assert_eq!(firsts.status("demo/a", ASK_FOR_MS + 200)["state"], "expired", "no answer in two minutes makes nothing");
+    firsts.ask(Purpose::Key, "demo/a", KEY, "", ASK_FOR_MS + 300).expect("a dialog nobody saw is raised again at once");
+    assert_eq!(firsts.status("demo/a", ASK_FOR_MS + 400)["state"], "asking");
+}
+
+#[test]
+fn a_dialog_that_failed_is_reported_as_the_failure_it_was_and_is_raised_again_at_once() {
+    let mut firsts = Firsts::new(Box::new(Dud("The system's password prompt did not open or ended with an error (exit status 1): execution error (-1750)")));
+    for n in 0..30u64 {
+        firsts.ask(Purpose::Key, "demo/a", KEY, "", n * 10).unwrap_or_else(|e| panic!("request {n} was held back after a dialog that did not open: {e}"));
+        let said = firsts.status("demo/a", n * 10 + 1);
+        assert_eq!(said["state"], "failed", "a dialog that did not open is not a no: {said}");
+        assert!(said["error"].as_str().unwrap().contains("-1750"), "the asker is told the system's words: {said}");
+    }
+    assert!(firsts.waiting(1000).is_empty(), "a request whose dialog failed is not waiting for an answer that cannot be given");
+}
+
+#[test]
+fn how_often_the_person_answered_never_refuses_a_request() {
+    let (mut firsts, answer) = person();
+    for n in 0..30u64 {
+        *answer.lock().unwrap() = Some(n % 2 == 0);
+        firsts.ask(Purpose::Phone, "demo/a", "", "", n).unwrap_or_else(|e| panic!("request {n} was held back: {e}"));
+        firsts.status("demo/a", n);
+    }
+}
+
+#[test]
+fn a_second_request_while_one_is_open_is_told_what_is_open_and_what_to_do() {
+    let (mut firsts, _) = person();
+    firsts.ask(Purpose::Key, "demo/a", KEY, "", 0).unwrap();
+    let Err(Error::Quota(said)) = firsts.ask(Purpose::Phone, "demo/a", "", "", 6) else { panic!("a second question of the same asker is refused while one is open") };
+    assert!(said.contains("your first person key") && !said.contains("minutes"), "it says what is waiting for the person, not for how long to wait: {said}");
 }
 
 #[test]

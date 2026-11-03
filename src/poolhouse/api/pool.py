@@ -67,6 +67,9 @@ class Pool:
     """The founded pool's name; empty while unfounded."""
     missing: str = ""
     """One sentence for the person on what this pool still needs from them (a pool, a strong key, a signature); empty when nothing."""
+    waiting: tuple[str, ...] = ()
+    """One ``waiting for you: <the sentence>`` for every request the node has put to the person that they have not answered yet, word for word as the
+    prompt shows it. A prompt that is hidden behind windows is still listed here; answering it is the only way it ends."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,7 +157,7 @@ def status() -> Pool:
     return Pool(str(raw["pool"]), str(raw.get("project") or ""), str(raw["policy"]), str(raw["fingerprint"]),
                 str(raw.get("listen") or ""), bool(raw.get("join_code_open")),
                 tuple(_member(m) for m in raw.get("members", [])), "governed" if gov.get("mode") == "governed" else "unfounded",
-                str(gov.get("name") or ""), _missing(gov))
+                str(gov.get("name") or ""), _missing(gov), tuple(str(w["say"]) for w in raw.get("waiting", [])))
 
 
 def members(*, include_removed: bool = False) -> list[Member]:

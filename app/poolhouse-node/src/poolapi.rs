@@ -102,6 +102,8 @@ pub fn dispatch(node: &mut Node, method: &str, token: &str, p: &Map<String, Valu
         "service_draft" | "service_bind" => crate::services::call(node, method, token, p),
         "pool_status" => {
             node.gov_tick()?;
+            let now = node.now_ms();
+            node.firsts.settle(now);
             Ok(node.pool_status())
         }
         "member_remove" => {

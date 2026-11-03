@@ -19,9 +19,9 @@
 //! that the node itself reads (`terminal::Terminal`). Tests of this crate put their own `Presence` on `Node::firsts` (a library field no binary
 //! sets), and the pool check answers the terminal the way a person does.
 
+mod announce;
 pub mod card;
 mod firsts;
-mod ledger;
 mod os;
 pub mod terminal;
 pub mod tty;
@@ -32,7 +32,6 @@ use crate::error::{Error, Result};
 use crate::node::Node;
 
 pub use firsts::Firsts;
-pub use ledger::Ledger;
 pub use os::{can_prompt, default_presence, Closed, Mode, Os};
 pub(crate) use os::{on_real_home, plain};
 
@@ -96,8 +95,15 @@ impl Purpose {
 
 /// A prompt that is open.
 pub trait Asking: Send {
-    /// None while the person has not answered, then whether the answer was yes.
+    /// None while the person has not answered, then whether the answer was yes. A dialog that could not be shown or that failed has given no
+    /// answer: it says why in `failed`, and is never a no.
     fn poll(&mut self) -> Option<bool>;
+
+    /// Why the prompt ended with no answer from the person, in the system's own words, when it did: the dialog could not be shown, or it failed.
+    /// The person declining is `Some(false)` from `poll`, and time running out is neither.
+    fn failed(&self) -> Option<String> {
+        None
+    }
 
     /// How many milliseconds ago the person answered, once they have: what a yes makes lives from the yes and not from the poll that found
     /// it. A prompt that cannot say (a stand-in answering as it is asked) says 0.
@@ -145,9 +151,6 @@ pub fn call(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) 
         let person = person_session(node, &holder);
         if !person && !(matches!(purpose, Purpose::PoolKey | Purpose::Card) && may_ask(node, &holder)) {
             return Err(Error::Denied("Only the person's own session asks the person at this computer's prompt for that. An agent asks for a pool's change only where the computer shows the system's own dialog for the person's password or fingerprint; here the person runs the command in a terminal of their own.".into()));
-        }
-        if !person {
-            node.firsts.mark_agent(&by);
         }
         // Where the system has no prompt of its own the question is put on the terminal of the process that asks, which the node finds itself.
         let terminal = if node.firsts.asks_on_own_terminal() {

@@ -1,15 +1,18 @@
 //! The prompt, what became of it, and what it made, for each asker.
 //!
-//! Every session that asks has a state of its own: the prompt it has open, its answer, its ticket, its founding yes and its limits
-//! (`ledger`). One session's questions, refusals and cards never take the place of another's, so a program that registers a session and asks
-//! over and over spends only its own allowance.
+//! Every session that asks has a state of its own: the prompt it has open, its answer, its ticket and its founding yes. One session's
+//! questions, refusals and cards never take the place of another's.
+//!
+//! Nothing here ever holds a request back for how often, or how recently, the person was asked or answered. The only refusal is that an asker
+//! has one prompt open and asks for another: it is told what is open. A request the person has not seen (a dialog hidden behind windows, one
+//! that never opened, one that ran out) is a request that must be possible to raise again at once, so a no, a failure and a timeout leave
+//! nothing behind but their own outcome, and nothing is kept in a file: a node that starts again has forgotten none of it because there is none.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{json, Value};
 
 use super::card::{self, Generated};
-use super::ledger::Ledger;
 use super::os::ASK_FOR_MS;
 use super::{same, Asking, Presence, Purpose};
 use crate::error::{Error, Result};
@@ -19,11 +22,18 @@ use crate::gov::keys::Claim;
 /// How long what a yes makes (the one-time secret, a founding yes) is good for.
 pub(crate) const SECRET_FOR_MS: u64 = 10 * 60_000;
 
+/// What the asker is told when the person's yes found nothing to answer for, or the computer could not make the secret a yes makes: failures of the
+/// node, which are not the person's no.
+const CARD_GONE: &str = "The person said yes, but the change it was for is no longer waiting (a change waits ten minutes): draft it again and ask again.";
+const NO_RANDOM: &str = "The person said yes, but this computer could not make the secret a yes needs: ask again.";
+
 /// A prompt that is open.
 struct Pending {
     purpose: Purpose,
     /// The public key (hex) the first key will be, or the id of the card asked.
     bound: String,
+    /// The sentence the person is shown, which every report of the open request says as it is.
+    sentence: String,
     started_ms: u64,
     prompt: Box<dyn Asking>,
 }
@@ -48,8 +58,12 @@ struct Founded {
 enum Outcome {
     /// Confirmed: the secret, until the session that asked has read it.
     Yes(Option<String>, u64, Purpose),
+    /// The person declined at the dialog.
     No,
+    /// Nobody answered in time. It is not a no.
     Late,
+    /// The dialog could not be shown or failed, in the system's words. It is not a no, and the request is raised again by asking again.
+    Failed(String),
 }
 
 struct Secret {
@@ -73,29 +87,13 @@ pub struct Firsts {
     presence: Box<dyn Presence>,
     askers: BTreeMap<String, Asker>,
     secret: Option<Secret>,
-    ledger: Ledger,
-    /// The askers that are not the person's own session (`mark_agent`): what they raise and what is refused to them counts against `AGENTS` too.
-    agents: std::collections::BTreeSet<String>,
     /// The changes the node drafted that a person may answer.
     pub cards: card::Cards,
 }
 
-/// The ledger account that every agent asker shares, beside its own.
-const AGENTS: &str = "agents";
-
 impl Firsts {
-    /// A prompt whose limits are lost with the node.
     pub fn new(presence: Box<dyn Presence>) -> Firsts {
-        Firsts::with(presence, Ledger::memory())
-    }
-
-    /// A prompt whose limits are kept in ``dir``, so a restart of the node forgets none of them.
-    pub fn kept(presence: Box<dyn Presence>, dir: &std::path::Path) -> Firsts {
-        Firsts::with(presence, Ledger::kept(dir))
-    }
-
-    fn with(presence: Box<dyn Presence>, ledger: Ledger) -> Firsts {
-        Firsts { presence, askers: BTreeMap::new(), secret: None, ledger, agents: Default::default(), cards: card::Cards::default() }
+        Firsts { presence, askers: BTreeMap::new(), secret: None, cards: card::Cards::default() }
     }
 
     pub fn kind(&self) -> &'static str {
@@ -114,30 +112,29 @@ impl Firsts {
         if self.can_hold_counting_key() { Claim::keystore_prompt() } else { Claim::keystore_typed() }
     }
 
-    /// Whether a prompt can be raised for ``by`` now: it has none open, and it is neither in the quiet after a no nor over its allowance. Every
-    /// count is ``by``'s own, so no number of other sessions can take the person's place.
+    /// Whether a prompt can be raised for ``by``: it has none open. An asker with one open is told what it is, in the person's words, so it can
+    /// tell the person; it is never told to wait for a time to pass, because nothing is waiting for a time to pass.
     fn admit(&self, by: &str, now: u64) -> Result<()> {
-        if self.askers.get(by).is_some_and(|a| a.asking.is_some()) {
-            return Err(crate::limits::floor("The person is being asked something already: answer that first."));
+        match self.askers.get(by).and_then(|a| a.asking.as_ref()) {
+            Some(open) => Err(crate::limits::floor(&format!(
+                "The person is already being asked: {} Answer that one, or let it end ({} seconds left), before asking for another.",
+                open.sentence, ASK_FOR_MS.saturating_sub(now.saturating_sub(open.started_ms)) / 1000
+            ))),
+            None => Ok(()),
         }
-        if self.agents.contains(by) {
-            self.ledger.allows(AGENTS, now)?;
-        }
-        self.ledger.allows(by, now)
     }
 
-    /// Count ``by`` among the askers that are not the person's own session. Together they share one allowance, so registering more sessions
-    /// takes no more of the person's attention than one session does.
-    pub fn mark_agent(&mut self, by: &str) {
-        self.agents.insert(by.into());
+    /// Take in what the dialogs that ended said, so that a report of what waits (`waiting`) is of what still does.
+    pub fn settle(&mut self, now: u64) {
+        self.poll(now);
     }
 
-    /// Note that a prompt was raised for ``by``, and for all agents when it is one.
-    fn raised(&mut self, by: &str, now: u64) -> Result<()> {
-        if self.agents.contains(by) {
-            self.ledger.raised(AGENTS, now)?;
-        }
-        self.ledger.raised(by, now)
+    /// The requests that wait for the person right now, each as the sentence they are shown: what `pool_status` reports, so a dialog that is
+    /// hidden, or a notification that was missed, is not the only place the person can learn there is something to answer.
+    pub fn waiting(&self, now: u64) -> Vec<Value> {
+        self.askers.iter().filter_map(|(by, asker)| asker.asking.as_ref().map(|p| (by, p))).filter(|(_, p)| now.saturating_sub(p.started_ms) <= ASK_FOR_MS).map(|(by, p)| {
+            json!({"by": by, "say": format!("waiting for you: {}", p.sentence), "sentence": p.sentence, "via": self.presence.kind(), "left_ms": ASK_FOR_MS.saturating_sub(now.saturating_sub(p.started_ms))})
+        }).collect()
     }
 
     /// Whether the presence of this node asks only on the controlling terminal of the process that asks.
@@ -161,9 +158,8 @@ impl Firsts {
         };
         let what = format!("poolhouse: allow the session {by} to add {}{key} to this computer?", purpose.words());
         let prompt = self.presence.begin(&what, terminal)?;
-        self.raised(by, now)?;
         let asker = self.askers.entry(by.into()).or_default();
-        asker.asking = Some(Pending { purpose, bound: if purpose == Purpose::Key { bound.into() } else { String::new() }, started_ms: now, prompt });
+        asker.asking = Some(Pending { purpose, bound: if purpose == Purpose::Key { bound.into() } else { String::new() }, sentence: super::plain(&what), started_ms: now, prompt });
         asker.outcome = None;
         Ok(())
     }
@@ -184,9 +180,8 @@ impl Firsts {
             _ => return Err(Error::Invalid("Only a card is asked for by its id.".into())),
         }
         let prompt = self.presence.begin(&held.sentence, terminal)?;
-        self.raised(by, now)?;
         let asker = self.askers.entry(by.into()).or_default();
-        asker.asking = Some(Pending { purpose, bound: held.id, started_ms: now, prompt });
+        asker.asking = Some(Pending { purpose, bound: held.id, sentence: held.sentence, started_ms: now, prompt });
         asker.outcome = None;
         Ok(())
     }
@@ -239,36 +234,26 @@ impl Firsts {
             let Some(asker) = self.askers.get_mut(&by) else { continue };
             let Some(p) = asker.asking.as_mut() else { continue };
             let said = p.prompt.poll();
+            // A dialog that could not be shown has no answer; it says why instead. It is never read as the person's no.
+            let failed = if said.is_none() { p.prompt.failed() } else { None };
             // What a yes makes lives from the yes, which the prompt noted, and not from the poll that found it.
             let yes_at = now.saturating_sub(p.prompt.age_ms());
             let late = match said {
                 Some(_) => yes_at.saturating_sub(p.started_ms) > ASK_FOR_MS,
                 None => now.saturating_sub(p.started_ms) > ASK_FOR_MS,
             };
-            if said.is_none() && !late {
+            if said.is_none() && failed.is_none() && !late {
                 continue;
             }
             let Some(done) = asker.asking.take() else { continue };
-            let outcome = match said {
-                Some(true) if !late && matches!(done.purpose, Purpose::PoolKey | Purpose::Card) => self.make_ticket(&by, &done, yes_at),
-                Some(true) if !late => self.make(done.purpose, &done.bound, yes_at),
-                Some(false) => Outcome::No,
+            let outcome = match (said, failed) {
+                (Some(true), _) if !late && matches!(done.purpose, Purpose::PoolKey | Purpose::Card) => self.make_ticket(&by, &done, yes_at),
+                (Some(true), _) if !late => self.make(done.purpose, &done.bound, yes_at),
+                (Some(false), _) => Outcome::No,
+                (None, Some(why)) => Outcome::Failed(why),
                 _ => Outcome::Late,
             };
-            let granted = matches!(outcome, Outcome::Yes(..));
             self.askers.entry(by.clone()).or_default().outcome = Some(outcome);
-            if !granted {
-                // A refusal is the person's word: the node records it where a restart does not forget it, and a full disk is said, not hidden.
-                if let Err(e) = self.ledger.refused(&by, now) {
-                    eprintln!("node: {e}");
-                }
-                if self.agents.contains(&by) {
-                    // The person said no to an agent: no agent asks again for the quiet that follows a no.
-                    if let Err(e) = self.ledger.refused(AGENTS, now) {
-                        eprintln!("node: {e}");
-                    }
-                }
-            }
         }
     }
 
@@ -284,23 +269,24 @@ impl Firsts {
         self.poll(now);
         let Some(asker) = self.askers.get_mut(by) else { return json!({"state": "none"}) };
         if let Some(p) = asker.asking.as_ref() {
-            return json!({"state": "asking", "purpose": p.purpose.words(), "left_ms": ASK_FOR_MS.saturating_sub(now.saturating_sub(p.started_ms))});
+            return json!({"state": "asking", "purpose": p.purpose.words(), "sentence": p.sentence, "left_ms": ASK_FOR_MS.saturating_sub(now.saturating_sub(p.started_ms))});
         }
         match &mut asker.outcome {
             Some(Outcome::Yes(_, expires, _)) if now > *expires => json!({"state": "expired"}),
             Some(Outcome::Yes(secret, expires, purpose)) => json!({"state": "confirmed", "purpose": purpose.name(), "secret": secret.take(), "expires_ms": *expires}),
             Some(Outcome::No) => json!({"state": "refused"}),
             Some(Outcome::Late) => json!({"state": "expired"}),
+            Some(Outcome::Failed(why)) => json!({"state": "failed", "error": why}),
             None => json!({"state": "none"}),
         }
     }
 
     /// The ticket for the card ``done`` was asked for, made at the yes ``yes_at``: the secret is handed once, to the asker; the node keeps only its hash.
     fn make_ticket(&mut self, by: &str, done: &Pending, yes_at: u64) -> Outcome {
-        let Some(held) = self.cards.get(by, &done.bound, yes_at).cloned() else { return Outcome::No };
+        let Some(held) = self.cards.get(by, &done.bound, yes_at).cloned() else { return Outcome::Failed(CARD_GONE.into()) };
         let mut raw = [0u8; 32];
         if getrandom::fill(&mut raw).is_err() {
-            return Outcome::No;
+            return Outcome::Failed(NO_RANDOM.into());
         }
         let secret = crate::phone::enrol::b64url(&raw);
         let seed = if done.purpose == Purpose::PoolKey { self.cards.take_generated(by, &done.bound) } else { None };
@@ -316,7 +302,7 @@ impl Firsts {
     fn make(&mut self, purpose: Purpose, bound: &str, yes_at: u64) -> Outcome {
         let mut raw = [0u8; 32];
         if getrandom::fill(&mut raw).is_err() {
-            return Outcome::No;
+            return Outcome::Failed(NO_RANDOM.into());
         }
         let secret = crate::phone::enrol::b64url(&raw);
         self.secret = Some(Secret { purpose, bound: bound.into(), sha256: sha256_hex(secret.as_bytes()), at_ms: yes_at });

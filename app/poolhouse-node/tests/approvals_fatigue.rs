@@ -196,7 +196,7 @@ fn five_declines_by_the_person_across_one_agents_sessions_hold_those_sessions_th
 }
 
 #[test]
-fn what_one_session_leaves_unanswered_never_holds_another_of_the_same_agent_or_the_same_model() {
+fn what_one_session_leaves_unanswered_holds_nobody_not_that_session_nor_another_of_the_same_agent_or_the_same_model() {
     let (rig, _phone) = setup();
     let (_, lead) = rig.session("demo", "lead");
     for i in 0..7 {
@@ -211,10 +211,15 @@ fn what_one_session_leaves_unanswered_never_holds_another_of_the_same_agent_or_t
     assert_eq!(ok(rig.ask("demo", &other, json!([ask("sync_now", "*")]), json!({})))["state"], "pending", "nor another agent that says it is the same model");
     let (_, again) = child(&rig, &lead, "sleeper-0");
     assert_eq!(ok(rig.ask("demo", &again, json!([ask("link_read", "a>b")]), json!({})))["state"], "pending", "and a session with one timeout is not held");
+    for i in 0..3 {
+        let made = ok(rig.ask("demo", &again, json!([ask("sync_now", &format!("again-{i}"))]), json!({})));
+        assert_eq!(made["state"], "pending", "round {i}: a request nobody answered is not a no, so the next one is shown to the person: {made}");
+        rig.node.lock().unwrap().approvals.update(made["id"].as_str().unwrap(), |a| a.expires_ms = 1).unwrap();
+    }
 }
 
 #[test]
-fn an_agent_that_runs_while_the_person_sleeps_is_held_by_its_timeouts_never_suspended() {
+fn an_agent_that_runs_while_the_person_sleeps_is_never_held_or_suspended_for_it() {
     let (rig, phone) = setup();
     rig.node.lock().unwrap().fatigue.rules.hold_steps_ms.fill(1);
     let (name, token) = rig.session("demo", "night-agent");
@@ -532,7 +537,7 @@ fn a_phone_that_scans_the_code_of_a_busy_session_is_listed_and_not_pushed() {
 }
 
 #[test]
-fn a_phone_add_nobody_answers_counts_against_the_session_that_made_the_code_too() {
+fn a_phone_add_nobody_answers_counts_against_nobody_so_the_session_can_make_another_code_at_once() {
     let (rig, _first, _name, token) = with_offering_session();
     let offer = ok(rig.call("phone_offer", "", &token, json!({})));
     let added = rig.phone("POST", "add", "", FakePhone::new("Pixel").add_body(&rig.device(), &secret_of_link(&offer))).1["result"].clone();
@@ -540,7 +545,7 @@ fn a_phone_add_nobody_answers_counts_against_the_session_that_made_the_code_too(
     let (_, other) = rig.session("demo", "someone-else");
     ok(rig.ask("demo", &other, json!([ask("sync_now", "*")]), json!({})));
     let again = rig.call("phone_offer", "", &token, json!({}));
-    assert_eq!(code(&again), "denied", "an add that ran out blocks the session that made its code: {again}");
+    assert_eq!(again["ok"], true, "an add nobody answered is not a no: the session that made its code makes another at once: {again}");
 }
 
 #[test]
@@ -601,17 +606,17 @@ fn quiet_notices_are_capped_too_so_many_holds_cannot_buzz_the_phone_either() {
 }
 
 #[test]
-fn a_request_nobody_answered_counts_as_a_timeout_and_never_as_consent() {
+fn a_request_nobody_answered_is_never_consent_and_never_a_no() {
     let (rig, _phone) = setup();
     let (name, token) = rig.session("demo", "agent-1");
-    for _ in 0..2 {
+    for _ in 0..4 {
         let made = ok(rig.ask("demo", &token, json!([ask("add_device", "*")]), json!({})));
         rig.node.lock().unwrap().approvals.update(made["id"].as_str().unwrap(), |a| a.expires_ms = 1).unwrap();
     }
-    let held = ok(rig.ask("demo", &token, json!([ask("add_device", "*")]), json!({})));
-    assert_eq!(held["state"], "held", "two requests that ran out hold the requester like two declines");
+    let next = ok(rig.ask("demo", &token, json!([ask("add_device", "*")]), json!({})));
+    assert_eq!(next["state"], "pending", "requests that ran out are not declines, so the next is shown to the person and not held back unseen: {next}");
     assert!(!poolhouse_node::grants::holds(&mut rig.node.lock().unwrap(), &poolhouse_node::identity::Holder { board: "demo".into(), name }, "add_device", &poolhouse_node::grants::Scope::on("*")).unwrap(), "a timeout grants nothing");
-    assert_eq!(of_kind(&rig, "grants", "expired").len(), 2);
+    assert_eq!(of_kind(&rig, "grants", "expired").len(), 4);
 }
 
 #[test]

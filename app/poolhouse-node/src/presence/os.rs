@@ -2,29 +2,79 @@
 //!
 //! The prompt is a child process the node polls (`osascript` on macOS, `pkexec` on Linux, PowerShell on Windows). The moment the child ends
 //! is noted by a watcher thread, not by whoever polls next, because what a yes makes lives from the yes (`Asking::age_ms`).
+//!
+//! A dialog ends three ways, and only one of them is the person's word. It exits 0 (a yes), it says the person declined (`Kind::declined`: the
+//! system's own cancel), or it ends some other way (it could not be shown, it crashed, the session has no screen): that is a failure, kept with the
+//! system's words (`Asking::failed`), announced to the person outside the dialog, and never counted as a no. Time running out gives no answer at all.
 
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use super::{terminal, Asking, Presence};
+use super::{announce, terminal, Asking, Presence};
 use crate::error::{Error, Result};
 
 /// How long a prompt waits for the person.
 pub(crate) const ASK_FOR_MS: u64 = 120_000;
+
+/// How the person is told, apart from the dialog, that the node waits for them or that its dialog failed: a title and a sentence.
+pub(super) type Tell = Arc<dyn Fn(&str, &str) + Send + Sync>;
+
+/// Which system's dialog a child is, because each says in its own words that the person declined it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Kind {
+    /// `osascript`: the person's cancel is an error of code -128, "User canceled".
+    Mac,
+    /// polkit's `pkexec`: exit 126 is a dismissed dialog or a person who is not authorized; 127 is no authorization at all (no agent, no session).
+    Pkexec,
+    /// The PowerShell script (`WINDOWS_PROMPT`): exit 3 is a person who did not verify; any other failure of the script is exit 1.
+    Windows,
+}
+
+/// The exit status the Windows script gives when the person did not verify.
+const WINDOWS_DECLINED: i32 = 3;
+
+/// How a dialog ended.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum End {
+    Yes,
+    /// The person declined at the dialog.
+    No,
+    /// The dialog could not be shown or failed: the system's words.
+    Failed(String),
+}
+
+/// What a dialog that exited with ``code`` and said ``said`` on its standard error meant.
+pub(super) fn verdict(kind: Kind, code: Option<i32>, said: &str) -> End {
+    if code == Some(0) {
+        return End::Yes;
+    }
+    let declined = match kind {
+        Kind::Mac => said.contains("User canceled") || said.contains("(-128)"),
+        Kind::Pkexec => code == Some(126),
+        Kind::Windows => code == Some(WINDOWS_DECLINED),
+    };
+    if declined {
+        return End::No;
+    }
+    let how = code.map_or("it was stopped by a signal".to_string(), |c| format!("exit status {c}"));
+    let said = said.trim().chars().take(300).collect::<String>();
+    let hint = if kind == Kind::Pkexec && code == Some(127) { " (polkit found no authentication agent in this session)" } else { "" };
+    End::Failed(format!("The system's password prompt did not open or ended with an error ({how}){hint}: {}", if said.is_empty() { "it said nothing" } else { &said }))
+}
 
 /// The operating system's own prompt, run as a child process the node polls. It ends when it is dropped and, whether or not anything polls,
 /// when the time to answer has run out: a dialog nobody answered cannot be answered hours later.
 pub(super) struct OsPrompt {
     child: Arc<Mutex<Child>>,
     stop: Arc<AtomicBool>,
-    /// What the dialog said and when, noted by the watcher as soon as the child ended.
-    answer: Arc<Mutex<Option<(bool, Instant)>>>,
+    /// What the dialog said and when, noted by the watcher as soon as the child ended on its own.
+    answer: Arc<Mutex<Option<(End, Instant)>>>,
 }
 
 impl OsPrompt {
-    pub(super) fn start(child: Child, wait: Duration) -> OsPrompt {
+    pub(super) fn start(child: Child, wait: Duration, kind: Kind, tell: Tell) -> OsPrompt {
         let (child, stop, answer) = (Arc::new(Mutex::new(child)), Arc::new(AtomicBool::new(false)), Arc::new(Mutex::new(None)));
         let (watched, quit, noted) = (child.clone(), stop.clone(), answer.clone());
         std::thread::spawn(move || {
@@ -32,14 +82,23 @@ impl OsPrompt {
             while !quit.load(Ordering::SeqCst) {
                 if let Ok(mut c) = watched.lock() {
                     if let Ok(Some(status)) = c.try_wait() {
-                        report_end(&mut c, status);
-                        note(&noted, status.success());
+                        let mut said = String::new();
+                        if let Some(mut err) = c.stderr.take() {
+                            let _ = std::io::Read::read_to_string(&mut err, &mut said);
+                        }
+                        let how = verdict(kind, status.code(), &said);
+                        if let End::Failed(why) = &how {
+                            // the node's log, and the person: a dialog that cannot be shown is exactly the one they cannot answer
+                            eprintln!("presence: {why}");
+                            tell("Poolhouse could not ask you", why);
+                        }
+                        note(&noted, how);
                         return;
                     }
                     if Instant::now() >= end {
+                        // nobody answered: the dialog is taken away and nothing is noted, so time running out is neither a yes nor a no
                         let _ = c.kill();
-                        let status = c.wait().map(|s| s.success()).unwrap_or(false);
-                        note(&noted, status);
+                        let _ = c.wait();
                         return;
                     }
                 }
@@ -50,36 +109,31 @@ impl OsPrompt {
     }
 }
 
-/// Say in the node's log why a dialog that did not end in a yes ended, so a dialog that could not be shown is told apart from a no the person gave
-/// (`osascript` says "User canceled" for the person's no and anything else for a dialog that never opened).
-fn report_end(child: &mut Child, status: std::process::ExitStatus) {
-    if status.success() {
-        return;
-    }
-    let mut said = String::new();
-    if let Some(mut err) = child.stderr.take() {
-        let _ = std::io::Read::read_to_string(&mut err, &mut said);
-    }
-    eprintln!("presence: the system prompt ended with {status}: {}", said.trim().chars().take(300).collect::<String>());
-}
-
 /// Note the first word the dialog gave.
-fn note(slot: &Mutex<Option<(bool, Instant)>>, yes: bool) {
+fn note(slot: &Mutex<Option<(End, Instant)>>, how: End) {
     if let Ok(mut held) = slot.lock() {
-        held.get_or_insert((yes, Instant::now()));
+        held.get_or_insert((how, Instant::now()));
     }
 }
 
 impl Asking for OsPrompt {
     fn poll(&mut self) -> Option<bool> {
-        if let Some(status) = self.child.lock().ok().and_then(|mut c| c.try_wait().ok().flatten()) {
-            note(&self.answer, status.success());
+        match self.answer.lock().ok()?.as_ref()?.0 {
+            End::Yes => Some(true),
+            End::No => Some(false),
+            End::Failed(_) => None,
         }
-        self.answer.lock().ok()?.map(|(yes, _)| yes)
+    }
+
+    fn failed(&self) -> Option<String> {
+        match &self.answer.lock().ok()?.as_ref()?.0 {
+            End::Failed(why) => Some(why.clone()),
+            _ => None,
+        }
     }
 
     fn age_ms(&self) -> u64 {
-        self.answer.lock().ok().and_then(|held| held.map(|(_, at)| at.elapsed().as_millis() as u64)).unwrap_or(0)
+        self.answer.lock().ok().and_then(|held| held.as_ref().map(|(_, at)| at.elapsed().as_millis() as u64)).unwrap_or(0)
     }
 }
 
@@ -137,26 +191,40 @@ fn in_admin_group() -> bool {
 }
 
 /// The command that asks the person: the system's own dialog for a password or fingerprint, which exits 0 only when it was given.
-fn dialog(what: &str) -> Option<Command> {
+fn dialog(what: &str) -> Option<(Command, Kind)> {
     if cfg!(target_os = "macos") {
-        let mut command = Command::new("/usr/bin/osascript");
-        command.args(["-e", "on run argv", "-e", "do shell script \"/usr/bin/true\" with administrator privileges with prompt (item 1 of argv)", "-e", "end run", "--"]).arg(plain(what));
-        return Some(command);
+        return Some((mac_dialog(what), Kind::Mac));
     }
     if cfg!(target_os = "linux") && std::path::Path::new("/usr/bin/pkexec").is_file() {
         let mut command = Command::new("/usr/bin/pkexec");
         command.args(["/usr/bin/env", "--", "/usr/bin/true"]).arg(plain(what).replace(' ', "_"));
-        return Some(command);
+        return Some((command, Kind::Pkexec));
     }
     if cfg!(target_os = "windows") {
-        return Some(windows_dialog());
+        return Some((windows_dialog(), Kind::Windows));
     }
     None
 }
 
+/// The macOS dialog. The node is a background program with no window of its own, so the script makes the process the frontmost application first
+/// (`activate`): the system's password window belongs to the process that asks, and one that is never brought forward can open behind the person's
+/// windows. The sentence is the last argument and is never part of the script.
+pub(crate) fn mac_dialog(what: &str) -> Command {
+    let mut command = Command::new("/usr/bin/osascript");
+    command.args([
+        "-e", "on run argv",
+        "-e", "tell current application to activate",
+        "-e", "do shell script \"/usr/bin/true\" with administrator privileges with prompt (item 1 of argv)",
+        "-e", "end run", "--",
+    ]).arg(plain(what));
+    command
+}
+
 /// What Windows PowerShell runs to ask the person: Windows Hello (a PIN, a fingerprint or a face) through the system's user consent
 /// verifier, and where Hello is not set up the system's credential dialog checked against the account's password. It exits 0 only when
-/// the person was verified. The sentence is read from its standard input, never put into the script or its arguments.
+/// the person was verified, and 3 only when the person did not verify (cancelled, or a wrong password): any other end, such as an error because the
+/// session has no desktop to show the dialog on (a node started as a service), exits 1 and is a failure, never a no. The sentence is read from its
+/// standard input, never put into the script or its arguments.
 const WINDOWS_PROMPT: &str = r#"
 $ErrorActionPreference = 'Stop'
 $say = [Console]::In.ReadToEnd().Trim()
@@ -168,14 +236,14 @@ try {
   $task = $asTask.MakeGenericMethod([Windows.Security.Credentials.UI.UserConsentVerificationResult]).Invoke($null, @($op))
   $task.Wait() | Out-Null
   if ($task.Result -eq 'Verified') { exit 0 }
-  if ($task.Result -notin 'DeviceNotPresent', 'NotConfiguredForUser', 'DisabledByPolicy') { exit 1 }
+  if ($task.Result -notin 'DeviceNotPresent', 'NotConfiguredForUser', 'DisabledByPolicy') { exit 3 }
 } catch { }
 Add-Type -AssemblyName System.DirectoryServices.AccountManagement
 $cred = $Host.UI.PromptForCredential('Poolhouse', $say, $env:USERNAME, '')
-if ($null -eq $cred) { exit 1 }
+if ($null -eq $cred) { exit 3 }
 $machine = New-Object System.DirectoryServices.AccountManagement.PrincipalContext('Machine')
 if ($machine.ValidateCredentials($cred.UserName, $cred.GetNetworkCredential().Password)) { exit 0 }
-exit 1
+exit 3
 "#;
 
 /// Standard base64 of ``bytes``, which PowerShell's `-EncodedCommand` takes over UTF-16 text.
@@ -198,7 +266,7 @@ pub(crate) fn powershell_under(system: &std::path::Path) -> std::path::PathBuf {
 
 /// The system directory as Windows reports it (`GetSystemDirectoryW`), never read from an environment variable a process can set.
 #[cfg(windows)]
-fn system_directory() -> std::path::PathBuf {
+pub(super) fn system_directory() -> std::path::PathBuf {
     use std::os::windows::ffi::OsStringExt;
     let mut buf = [0u16; 260];
     // SAFETY: the buffer is valid for the length passed, and the call writes at most that many UTF-16 units.
@@ -210,7 +278,7 @@ fn system_directory() -> std::path::PathBuf {
 }
 
 #[cfg(not(windows))]
-fn system_directory() -> std::path::PathBuf {
+pub(super) fn system_directory() -> std::path::PathBuf {
     std::path::PathBuf::from(r"C:\Windows\System32")
 }
 
@@ -259,11 +327,12 @@ pub(crate) fn on_real_home(_state: &std::path::Path) -> bool {
 /// Ask through the operating system, for the node of this state directory only.
 pub struct Os {
     state: std::path::PathBuf,
+    tell: Tell,
 }
 
 impl Os {
     pub fn new(state: &std::path::Path) -> Os {
-        Os { state: state.into() }
+        Os { state: state.into(), tell: Arc::new(announce::notify) }
     }
 }
 
@@ -294,13 +363,19 @@ impl Presence for Os {
         if !on_real_home(&self.state) {
             return Err(Error::Denied("The operating system's prompt is raised only for the node of this account's own state directory, never for a test, a checkout or a copy.".into()));
         }
-        let mut command = dialog(what).ok_or_else(|| Error::Denied("This computer has no operating system prompt the node can ask the person with (Linux needs polkit's pkexec and a desktop session): the node asks on your terminal instead.".into()))?;
-        let mut child = command.stdin(if cfg!(target_os = "windows") { Stdio::piped() } else { Stdio::null() }).stdout(Stdio::null()).stderr(Stdio::piped()).spawn().map_err(|e| Error::Denied(format!("The operating system prompt did not open: {e}")))?;
+        let (mut command, kind) = dialog(what).ok_or_else(|| Error::Denied("This computer has no operating system prompt the node can ask the person with (Linux needs polkit's pkexec and a desktop session): the node asks on your terminal instead.".into()))?;
+        let mut child = command.stdin(if cfg!(target_os = "windows") { Stdio::piped() } else { Stdio::null() }).stdout(Stdio::null()).stderr(Stdio::piped()).spawn().map_err(|e| {
+            let why = format!("The operating system prompt did not open: {e}");
+            (self.tell)("Poolhouse could not ask you", &why);
+            Error::Denied(why)
+        })?;
         if let Some(mut stdin) = child.stdin.take() {
             // The sentence for Windows' prompt travels on standard input; dropping the pipe ends it.
             let _ = std::io::Write::write_all(&mut stdin, plain(what).as_bytes());
         }
-        Ok(Box::new(OsPrompt::start(child, Duration::from_millis(ASK_FOR_MS))))
+        // The dialog can open behind the person's windows, or on a screen they are not looking at: it is announced as well.
+        (self.tell)("Poolhouse is waiting for you", &plain(what));
+        Ok(Box::new(OsPrompt::start(child, Duration::from_millis(ASK_FOR_MS), kind, self.tell.clone())))
     }
 }
 

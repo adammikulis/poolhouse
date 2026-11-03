@@ -101,18 +101,15 @@ pub fn count_against_offer(node: &mut Node, a: &Approval, cause: Cause) -> Resul
     report(node, a, &out)
 }
 
-/// Mark the requests that ran out, and write an entry for each; a request nobody answered counts against its requester as a timeout,
-/// never as consent. What a hold kept back is let go when the hold ends.
+/// Mark the requests that ran out, and write an entry for each. A request nobody answered is not consent and not a no: it counts against
+/// nobody, because a person who did not see a request (away, asleep, a notification missed) has said nothing, and holding back what the
+/// agent asks next would hide the request they have yet to answer. What a hold kept back is let go when the hold ends.
 pub fn sweep(node: &mut Node) -> Result<()> {
     let now = node.now_ms();
     for (a, held) in node.approvals.sweep(now)? {
         audit(node, "approval.expired", &a, if held { "held, and never shown" } else { "nobody decided it" });
         if a.kind == PHONE_ADD {
             crate::phone::drop_pending(node, &a);
-            count_against_offer(node, &a, Cause::Timeout)?;
-        }
-        if a.kind == GRANTS && !held {
-            count_against(node, &a, Cause::Timeout)?;
         }
     }
     for key in node.fatigue.ended(now)? {

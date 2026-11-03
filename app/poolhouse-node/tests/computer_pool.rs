@@ -485,23 +485,125 @@ fn an_agents_session_is_refused_where_the_only_prompt_is_a_typed_yes_whatever_te
 }
 
 #[test]
-fn agents_share_one_allowance_of_prompts_so_more_sessions_ask_the_person_no_more_often() {
+fn every_agent_session_that_asks_raises_its_own_prompt_and_none_is_held_back() {
     let a = device();
     let (raised, _) = at_the_prompt(&a);
     let me = person(&a, "the-person");
     found(&a, &me, "home");
     let before = raised.load(Ordering::SeqCst);
-    let mut refused = 0;
     for n in 0..6 {
         let (_, agent) = a.session("demo", &format!("agent-{n}"));
-        let drawn = a.call("op_draft", "", &agent, json!({"op": "add_device", "args": {"ttl_s": 60}}));
-        if drawn["ok"] != true {
-            refused += 1;
-            continue;
-        }
-        let asked = a.call("presence_ask", "", &agent, json!({"purpose": "card", "card": drawn["result"]["card"], "terminal": ""}));
-        refused += usize::from(asked["ok"] != true);
+        let drawn = a.ok("op_draft", "", &agent, json!({"op": "add_device", "args": {"ttl_s": 60}}));
+        let asked = a.call("presence_ask", "", &agent, json!({"purpose": "card", "card": drawn["card"], "terminal": ""}));
+        assert_eq!(asked["ok"], true, "agent {n} is asked about like the first: {asked}");
     }
-    assert_eq!(raised.load(Ordering::SeqCst) - before, 3, "three prompts in ten minutes for all agents together, not three each");
-    assert_eq!(refused, 3, "and the rest wait");
+    assert_eq!(raised.load(Ordering::SeqCst) - before, 6, "a request that needs the person's answer is never suppressed; a flood of sessions is six dialogs the person sees, not six they never learn of");
+}
+
+/// What the stand-in dialog does the next time the node raises it.
+enum Step {
+    /// The system's dialog could not be shown, and says so in its own words.
+    Fails(&'static str),
+    /// The person declines.
+    No,
+    /// The dialog stays open until the test answers it.
+    Waits,
+}
+
+/// A dialog the test plays: it fails, is declined, waits, or (once the steps are used) says yes.
+struct Dialog {
+    fail: Option<String>,
+    said: Option<bool>,
+    open: Option<Arc<Mutex<Option<bool>>>>,
+}
+
+impl Asking for Dialog {
+    fn poll(&mut self) -> Option<bool> {
+        self.open.as_ref().map_or(self.said, |cell| *cell.lock().unwrap())
+    }
+
+    fn failed(&self) -> Option<String> {
+        self.fail.clone()
+    }
+}
+
+struct Steps {
+    steps: Vec<Step>,
+    open: Arc<Mutex<Option<bool>>>,
+    raised: Arc<AtomicUsize>,
+}
+
+impl Presence for Steps {
+    fn kind(&self) -> &'static str {
+        "os"
+    }
+
+    fn begin(&mut self, _what: &str, _terminal: &str) -> NodeResult<Box<dyn Asking>> {
+        self.raised.fetch_add(1, Ordering::SeqCst);
+        Ok(Box::new(match (!self.steps.is_empty()).then(|| self.steps.remove(0)) {
+            Some(Step::Fails(why)) => Dialog { fail: Some(why.into()), said: None, open: None },
+            Some(Step::No) => Dialog { fail: None, said: Some(false), open: None },
+            Some(Step::Waits) => Dialog { fail: None, said: None, open: Some(self.open.clone()) },
+            None => Dialog { fail: None, said: Some(true), open: None },
+        }))
+    }
+}
+
+#[test]
+fn a_founding_whose_dialog_failed_was_refused_and_waited_is_each_reported_as_what_it_was_and_the_pool_still_forms_and_is_joined() {
+    let (a, b) = (device(), device());
+    let (raised, open) = (Arc::new(AtomicUsize::new(0)), Arc::new(Mutex::new(None)));
+    let steps = vec![Step::Fails("The system's password prompt did not open or ended with an error (exit status 1): execution error: Can't open default scripting component. (-1750)"), Step::No, Step::Waits];
+    {
+        let mut node = a.node.lock().unwrap();
+        node.firsts = Firsts::new(Box::new(Steps { steps, open: open.clone(), raised: raised.clone() }));
+        node.rig_bind_device_key();
+    }
+    let (joiner_raised, _) = at_the_prompt(&b);
+    let me = person(&a, "the-person");
+    let draft = a.ok("pool_draft_found", "", &me, json!({"title": "home", "policy": "secure", "project": "", "keys": [{"computer": true, "person": "owner", "label": "this computer"}]}));
+    let card = draft["card"].as_str().unwrap().to_string();
+    let ask = || a.ok("presence_ask", "", &me, json!({"purpose": "pool_key", "card": card, "terminal": ""}));
+
+    // 1. The dialog could not be shown: that is a failure with the system's words, nothing waits for the person, and it is not a no.
+    let failed = ask();
+    assert_eq!(failed["state"], "failed", "a dialog that did not open is not a no: {failed}");
+    assert!(failed["error"].as_str().unwrap().contains("-1750"), "{failed}");
+    assert!(a.status()["waiting"].as_array().unwrap().is_empty(), "nothing waits for an answer that cannot be given");
+
+    // 2. Asked again at once, the person declines: that is a no, and it is said to be one.
+    let refused = ask();
+    assert_eq!(refused["state"], "refused", "{refused}");
+
+    // 3. Asked again at once, the dialog is open and nobody has answered: the pool's status says what waits for the person, word for word.
+    let asking = ask();
+    assert_eq!(asking["state"], "asking", "{asking}");
+    let waiting = a.status()["waiting"].clone();
+    assert_eq!(waiting.as_array().unwrap().len(), 1, "{waiting}");
+    assert!(waiting[0]["say"].as_str().unwrap().starts_with("waiting for you: Poolhouse - make the pool home"), "{waiting}");
+    assert_eq!(ask()["state"], "asking", "asking the same again is the same open prompt, not a second one");
+    assert_eq!(raised.load(Ordering::SeqCst), 3, "one dialog for each time it was raised, none for the repeat");
+
+    // 4. The person answers: the pool is founded, a window is opened, and the second computer joins with its own person's yes.
+    *open.lock().unwrap() = Some(true);
+    let said = a.ok("presence_status", "", &me, json!({}));
+    assert_eq!(said["state"], "confirmed", "{said}");
+    assert!(a.status()["waiting"].as_array().unwrap().is_empty(), "answered, so nothing waits");
+    let seed = said["seed"].as_str().unwrap().to_string();
+    let bytes = unhex(draft["accept"][0]["sign_bytes"].as_str().unwrap()).unwrap();
+    a.ok("ticket_spend", "", &me, json!({"ticket": said["secret"], "payload": sha256_hex(&bytes)}));
+    let mut charter = draft["charter"].clone();
+    charter["admins"][0]["acceptance"] = json!(sign(&seed, &bytes));
+    assert_eq!(a.ok("pool_found", "", &me, json!({"charter": charter}))["epoch"], 1);
+    let code = open_window(&a, &me, &seed, json!({"ttl_s": 120}));
+    let guest = person(&b, "the-guest-person");
+    let joined = join(&b, &guest, &a, &code);
+    assert!(joined["joined"].as_bool().unwrap_or(true), "{joined}");
+    assert!(a.is_member(&b.fp()) && b.is_member(&a.fp()), "both devices list each other");
+    for device in [&a, &b] {
+        let active = device.status()["members"].as_array().unwrap().iter().filter(|m| m["status"] == "active").count();
+        assert_eq!(active, 2, "both members are listed on each device: {}", device.status());
+        assert!(device.status()["waiting"].as_array().unwrap().is_empty());
+    }
+    assert_eq!(joiner_raised.load(Ordering::SeqCst), 1);
 }

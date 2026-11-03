@@ -240,15 +240,23 @@ def test_a_no_opens_no_window_and_a_process_an_agent_started_asks_the_person_not
     with typing(monkeypatch, "no", asked=asked), pytest.raises(ph.pool.Refusal) as refused:
         ph.pool.add_device()
     assert (asked, refused.value.needs, refused.value.then) == (["no"], "approval", "stop")
+    # A process an agent started that cannot read the secret the node keeps for the person asks as the agent's session, which a typed-yes node refuses.
+    # (This used to hold only because the quiet after the no above refused every later ask; with no quiet, the secret is what decides.)
+    secret = mine.state / "person" / "ui.secret"
+    away = secret.with_suffix(".away")
     monkeypatch.setenv("CLAUDECODE", "1")
     terminal = at_terminal()
+    secret.rename(away)
     try:
         monkeypatch.setattr(presence, "terminal_name", lambda: terminal.name)
         with pytest.raises(ph.Error):
             ph.pool.add_device()
         assert not terminal.shows("Type yes", 1.0), "an agent's call put no question to the person"
     finally:
+        away.rename(secret)
         terminal.close()
+    with typing(monkeypatch, asked=asked):
+        assert ph.pool.add_device()["code"], "and the person is asked again at once after their no: there is no quiet"
 
 
 def test_joining_is_the_persons_yes_for_that_host_and_code_and_a_no_joins_nothing(mine, monkeypatch):

@@ -1,11 +1,11 @@
 //! What keeps a request that is made again and again from wearing a person down until they accept to be left alone.
 //!
-//! The same request made again is the same item (`same`). A requester whose requests the person declined, or let run out, twice is
-//! held: what it asks next is kept, shown to nobody and pushed to nobody, and the person is told once, quietly, with a choice. Each
+//! The same request made again is the same item (`same`). A requester whose requests the person declined twice (a request nobody answered
+//! counts for nothing) is held: what it asks next is kept, shown to nobody and pushed to nobody, and the person is told once, quietly, with a choice. Each
 //! hold lasts longer than the last, a third in a day suspends the requester and its grants, a person can deny and block, and a scope
 //! that was declined shows how often before and takes one more deliberate step to approve. A request from a source that is not in a
 //! pool the person governs, one nobody told the agent to make, and everything past a cap on what reaches the phone in an hour reaches
-//! it as a list to open, never as a push that interrupts. Declines, timeouts and holds are kept on disk, so a restart forgets none.
+//! it as a list to open, never as a push that interrupts. Declines and holds are kept on disk, so a restart forgets none; a request nobody answered is kept nowhere.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -28,17 +28,17 @@ const MOST_ENTRIES: usize = 400;
 /// The numbers the brakes run on. A node starts with `Rules::default()`; the fields are public so a check can shorten a wait.
 #[derive(Clone, Debug)]
 pub struct Rules {
-    /// How long a decline or a timeout counts, and how long a scope that was declined is remembered.
+    /// How long a decline or a withdrawal counts, and how long a scope that was declined is remembered.
     pub window_ms: u64,
     pub declined_ms: u64,
     /// After this long a requester may ask for the same kind again after its first decline.
     pub backoff_ms: u64,
-    /// What holds a requester: the same-kind declines or timeouts of its session; the person's declines of any kind of its agent (the
-    /// session and the subagents under it); the person's declines of any kind on its pool. A timeout or a withdrawal counts at the session
-    /// only, so what one session leaves unanswered never holds another.
+    /// What holds a requester: the same-kind declines or withdrawals of its session; the person's declines of any kind of its agent (the
+    /// session and the subagents under it); the person's declines of any kind on its pool. A withdrawal counts at the session
+    /// only, so what one session withdraws never holds another. A request nobody answered counts for nothing.
     pub hold_after: [usize; 3],
     /// How long the first, the second and the third hold of the last day last. A third hold that the person's own declines started
-    /// suspends the session instead; one that timeouts started does not, so an agent that runs while the person sleeps is held, never suspended.
+    /// suspends the session instead; one that withdrawals started does not.
     pub hold_steps_ms: [u64; 3],
     pub suspend_ms: u64,
     /// What a deny and block lasts.
@@ -79,12 +79,11 @@ pub fn requester(board: &str, name: &str, root: &str) -> Requester {
     Requester { keys: [format!("session:{board}/{name}"), format!("agent:{board}/{root}"), format!("pool:{board}")], session: name.into(), board: board.into() }
 }
 
-/// How a request of a requester went wrong: the person said no (or chose the wrong number), it ran out unanswered, or the requester
-/// withdrew it after the person was told.
+/// How a request of a requester went wrong: the person said no (or chose the wrong number), or the requester withdrew it after the person
+/// was told. A request nobody answered is not here: it counts against nobody (`decide::sweep`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Cause {
     Person,
-    Timeout,
     Cancel,
 }
 
@@ -224,7 +223,7 @@ impl Fatigue {
     }
 
     /// A request of ``kind`` by ``who`` went wrong in the way ``cause`` says. A decline by the person is counted at the session, the agent
-    /// and the pool; a timeout or a withdrawal at the session only. A level that reaches its threshold starts a hold, and a third hold in a
+    /// and the pool; a withdrawal at the session only. A level that reaches its threshold starts a hold, and a third hold in a
     /// day that the person's own declines started suspends the session, never the agent or the pool.
     pub fn decline(&mut self, who: &Requester, kind: &str, cause: Cause, now: u64) -> Result<Outcome> {
         self.prune(now);
@@ -497,31 +496,31 @@ mod tests {
     }
 
     #[test]
-    fn timeouts_and_withdrawals_count_at_the_session_only_and_never_suspend() {
+    fn withdrawals_count_at_the_session_only_and_never_suspend() {
         let mut f = ledger();
         let (me, now) = (who(), 20_000_000);
         for (i, name) in ["claude-a", "claude-b", "claude-c", "claude-d", "claude-g", "claude-h"].into_iter().enumerate() {
-            f.decline(&requester("demo", name, "lead-a"), "add_device", Cause::Timeout, now + i as u64).unwrap();
+            f.decline(&requester("demo", name, "lead-a"), "add_device", Cause::Cancel, now + i as u64).unwrap();
         }
-        assert_eq!(f.standing(&requester("demo", "claude-e", "lead-a"), "sync_now", now + 10), Standing::Free, "six timeouts of other sessions hold nobody else");
+        assert_eq!(f.standing(&requester("demo", "claude-e", "lead-a"), "sync_now", now + 10), Standing::Free, "six withdrawals of other sessions hold nobody else");
         let mut t = now + 100;
         let mut suspended = false;
         for _ in 0..8 {
             t += DAY_MS / 20;
             f.ended(t).unwrap();
-            suspended |= f.decline(&me, "add_device", Cause::Timeout, t).unwrap().suspended.is_some();
+            suspended |= f.decline(&me, "add_device", Cause::Cancel, t).unwrap().suspended.is_some();
             f.decline(&me, "add_device", Cause::Cancel, t + 1).unwrap();
         }
-        assert!(!suspended && !f.suspended(&me, t), "a requester that only times out is held, never suspended");
+        assert!(!suspended && !f.suspended(&me, t), "a requester that only withdraws is held, never suspended");
         let (mut steps, mut at, mut held) = (Vec::new(), t + 5 * DAY_MS, Fatigue::open(&tempfile::tempdir().unwrap().keep().join("fatigue.json")).unwrap());
         for _ in 0..4 {
             held.ended(at).unwrap();
             for offset in 0..2 {
-                steps.extend(held.decline(&me, "add_device", Cause::Timeout, at + offset).unwrap().held.map(|h| h.1));
+                steps.extend(held.decline(&me, "add_device", Cause::Cancel, at + offset).unwrap().held.map(|h| h.1));
             }
             at += steps.last().copied().unwrap_or(0) + 10;
         }
-        assert_eq!(steps[..3], [HOUR_MS, 4 * HOUR_MS, DAY_MS], "each hold of timeouts is longer, and none is a suspension");
+        assert_eq!(steps[..3], [HOUR_MS, 4 * HOUR_MS, DAY_MS], "each hold of withdrawals is longer, and none is a suspension");
         assert_eq!(f.penalty("agent:demo/lead-a"), 0, "and the agent has no penalty for it");
     }
 

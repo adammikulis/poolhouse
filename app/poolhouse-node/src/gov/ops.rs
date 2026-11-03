@@ -27,10 +27,6 @@ use super::signer::{Signer, SignerKey};
 use crate::presence::card::{Draft, Generated};
 
 const MOST_REPLIES: usize = 8;
-/// How long a person's no to a kind of act is respected before the same kind is asked again, and the window in which a person is
-/// asked at most `MOST_ASKS` times: requests do not go on until the person accepts from exhaustion.
-const COOLDOWN: std::time::Duration = std::time::Duration::from_secs(10 * 60);
-const MOST_ASKS: usize = 12;
 
 fn no_pool() -> Error {
     Error::say("denied", "This device is not in a pool yet; make one, or join one.", "approval", "ask-owner")
@@ -267,23 +263,6 @@ impl Node {
         self.custody == Custody::Keystore
     }
 
-    /// Run ``f``, which asks a person to sign an act of ``kind``, unless that person said no to this kind a moment ago; a no starts
-    /// the wait.
-    fn asking<T>(&mut self, kind: &str, f: impl FnOnce(&mut Node) -> Result<T>) -> Result<T> {
-        if self.declined.get(kind).is_some_and(|at| at.elapsed() < COOLDOWN) {
-            return Err(Error::say("denied", "You said no a moment ago, so I will not ask again for ten minutes.", "time", "wait"));
-        }
-        if !self.rates.permits("pool-ask", MOST_ASKS, COOLDOWN) {
-            return Err(Error::say("denied", "I have asked you a lot in the last few minutes, so I will wait before asking again.", "time", "wait"));
-        }
-        self.rates.record("pool-ask", COOLDOWN);
-        let out = f(self);
-        if let Err(Error::Say { needs: "approval", then: "stop", .. }) = &out {
-            self.declined.insert(kind.to_string(), std::time::Instant::now());
-        }
-        out
-    }
-
     /// Run ``f`` on the governed pool, then bring this device's record of the members up to date, write what changed and note each
     /// member added, removed or left on the pool board.
     pub fn with_gov<T>(&mut self, f: impl FnOnce(&mut GovPool, u64) -> Result<T>) -> Result<T> {
@@ -421,8 +400,7 @@ impl Node {
             let kept = g.ingest(act, wall);
             reply(g, &id, kept).map(|_| ())
         });
-        // a device signing by its own key asks no person, so it takes nothing from the asks a person is spared; the peer limits how many it takes in
-        if how == "open" { admit(self)? } else { self.asking("admit", admit)? }
+        admit(self)?;
         match self.members.get(&fp) {
             Some(d) if d.status == Status::Active => Ok(d.clone()),
             _ => Err(declined("That device was not admitted: the pool's rules did not allow it.")),
@@ -438,7 +416,7 @@ impl Node {
             return Ok(done.clone());
         }
         let (signer, body) = (self.signer.clone(), self.with_cut("remove", json!({"fingerprint": fingerprint})));
-        self.asking("remove", |n| n.with_gov(|g, wall| propose(g, signer.as_ref(), "remove", body, wall).map(|_| ())))?;
+        self.with_gov(|g, wall| propose(g, signer.as_ref(), "remove", body, wall).map(|_| ()))?;
         match self.members.get(fingerprint) {
             Some(d) if d.status == Status::Revoked => Ok(d.clone()),
             _ => Err(declined("That removal needs more signatures before it takes effect.")),
@@ -461,13 +439,13 @@ impl Node {
     pub fn pool_propose(&mut self, kind: &str, body: Value) -> Result<Value> {
         let signer = self.signer.clone();
         let body = self.with_cut(kind, body);
-        self.asking(kind, |n| n.with_gov(|g, wall| propose(g, signer.as_ref(), kind, body, wall)))
+        self.with_gov(|g, wall| propose(g, signer.as_ref(), kind, body, wall))
     }
 
     /// Add this device's signer's signatures to the act ``id`` the pool holds.
     pub fn pool_cosign(&mut self, id: &str) -> Result<Value> {
         let signer = self.signer.clone().ok_or_else(no_signer)?;
-        self.asking("cosign", |n| n.with_gov(|g, wall| {
+        self.with_gov(|g, wall| {
             let mut act = g.acts().get(id).cloned().ok_or_else(|| Error::Invalid("this device holds no such act".into()))?;
             let charter = g.state().chain.state_for(&act).ok_or_else(unknown_epoch)?.charter.clone();
             let class = class_of(&act.kind)?;
@@ -480,7 +458,7 @@ impl Node {
             sign_with(&mut act, signer.as_ref(), &keys, &summary)?;
             let kept = g.ingest(act, wall);
             reply(g, id, kept)
-        }))
+        })
     }
 
     /// Hand the pool an act a person's key signed elsewhere (the typed-yes path, a phone, another device's signer).
