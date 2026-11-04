@@ -453,7 +453,7 @@ must be true first.
 | OW-7 | Authorizes the merge of the release pull request (release-please) into `main` under `release-main` (`docs/person-delegation.md`), and approves the `release` environment for the `pypi` and `publish` jobs | OW-3 to OW-6 done; the CHANGELOG draft edited by the owner |
 | OW-8 | Chooses the version number, the tag and the release | the release pull request names the version release-please computed from the `feat:` and `fix:` subjects |
 | OW-9 | Signs the release APK (`ANDROID_SIGNING_STORE`, `ANDROID_SIGNING_PASSWORD`) and sideloads it; accepts the Android SDK licence | `python app/android/build.py GRADLE PLUGIN API debug` passes its protocol checks |
-| OW-10 | Moves each existing device's key into the keystore with `poolhouse node key --migrate` at a terminal; answers the first Keychain prompt | the update notes for each device |
+| OW-10 | Answers the first Keychain prompt when a device's key file moves into the keystore at the node's next start | the update notes for each device |
 | OW-11 | Raises the wired memory limit through the administrator's dialog where a model needs it | `poolhouse-serve memory --for MODEL --ctx N --kv q8_0` printed the need |
 | OW-12 | Answers section 8 | each question's facts, written in the question |
 
@@ -486,7 +486,7 @@ Known limits shipped (each is in the document it names; none is accepted until t
 - On Linux a polkit rule that authenticates without a password makes the system prompt answer itself; a program with a pseudo-terminal
   can answer a node that asks on a terminal; `persons.json` is a plain file the operating-system user can edit with the node stopped.
 - The app trusts the first UnifiedPush distributor that answers; a choice screen is not built.
-- A device key stays in a file (`device.key`, weak in `pool_status`) until a person runs `poolhouse node key --migrate`; a process of
+- A device key stays in a file (`device.key`, weak in `pool_status`) until the node next starts on a computer whose keystore is ready, which lifts it; a process of
   the same user that can ask the keystore signs as the device.
 - A lead's grant is spent by its process lineage; the token is a file any process of the user reads, so the lead's subagents and tools
   hold the lead's bundle for 30 days (`docs/node.md`, "What the lead's lineage can do with the bundle").

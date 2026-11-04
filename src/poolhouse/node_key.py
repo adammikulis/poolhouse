@@ -8,7 +8,7 @@ passphrase in ``POOLHOUSE_DEVICE_KEY_PASSPHRASE``, or, when there is neither, in
 ``device.key`` holds a note that is not a key, so a node that does not know of the keystore stops on it instead of making another identity.
 
 The supervisor asks `release` for the key and gives it to the node on its standard input; the node never writes it. A key that
-is in a file moves into the keystore only when a person runs `poolhouse node key --migrate`. A device never gets another key by
+is in a file moves into the keystore when the node is next started on a computer whose keystore is ready (`release`), or by `poolhouse node key --migrate`. A device never gets another key by
 losing its record: a state directory that holds the files of a device and no record of its key is refused.
 """
 
@@ -171,6 +171,21 @@ def _born(state: Path, ks: keystore.Keystore) -> Released | None:
     return None
 
 
+def _lifted(state: Path, ks: keystore.Keystore) -> Released | None:
+    """The key of a device that was made as a file, kept in the keystore from now on when this computer's is ready (its master key exists, or a
+    person at a screen would be asked the one question): the device keeps its identity and the file becomes a note, so a pool never waits for
+    a person to run a command to have a key that counts. None when the keystore is not ready or would not take it: the node reads the file."""
+    ready = ks.status()
+    if not (ks.available() and (ready["provisioned"] or ready["interactive"])):
+        return None
+    try:
+        migrate(state, ks=ks)
+        return Released(_unwrapped(state, ks), KEYSTORE)
+    except (KeyUnavailable, keystore.KeystoreError) as why:
+        logger.warning("the device key stays in its file: %s", why)
+        return None
+
+
 def release(state: Path, *, ks: keystore.Keystore | None = None) -> Released | None:
     """The key the node of ``state`` is to be started with, or None when it keeps its own key file. `KeyUnavailable` when the key is
     kept in the keystore or under a passphrase and cannot be had now, and when the directory is a device's and says nothing of its key."""
@@ -183,7 +198,7 @@ def release(state: Path, *, ks: keystore.Keystore | None = None) -> Released | N
             return Released(_opened(state), PASSPHRASE)
         kind = _file(state)
         if kind == "key":
-            return None
+            return _lifted(state, ks)
         if kind == "note" or (kind == "none" and any((state / name).exists() for name in IDENTITY)):
             raise KeyUnavailable("this state directory is a device's and holds no record of where its key is kept, so no key is made for it; a person "
                                  "starts over by moving it aside, and the device then joins the pool again as a new one")

@@ -194,6 +194,14 @@ def test_moving_a_key_file_into_the_keystore_keeps_the_identity_and_removes_the_
     assert node_key.migrate(state, ks=ks)["moved"] is False, "nothing is left to move"
 
 
+def test_a_key_file_is_lifted_into_a_ready_keystore_when_the_node_starts_with_no_command_from_a_person(state, ks):
+    (state / "device.key").write_text(SEED.hex())
+    released = node_key.release(state, ks=ks)
+    assert released is not None and released.seed == SEED and released.custody == "keystore"
+    assert is_a_note(state / "device.key") and held_anywhere(state, SEED) == []
+    assert node_key.status(state)["custody"] == "keystore" and node_key.status(state)["weak"] is False
+
+
 def test_a_wrapped_key_that_is_not_this_devices_is_not_overwritten_by_moving_a_key_file(state, ks):
     (state / "device.key.wrapped").write_bytes(b"MKW1" + b"\0" * 40)
     (state / "device.key").write_text(SEED.hex())
