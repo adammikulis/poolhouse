@@ -39,7 +39,7 @@ OPTIONS = [
     flag("--wait", type=float, default=0.0, metavar="SECONDS", help="request: wait this long for the answer"),
     flag("--timeout", type=float, default=30.0, metavar="SECONDS", help="wait: how long to wait for the answer"),
 ]
-OK = ("pending", "approved", "held")
+OK = ("pending", "approved")
 
 
 def _asks(args: argparse.Namespace) -> list[Ask]:
@@ -50,7 +50,7 @@ def _asks(args: argparse.Namespace) -> list[Ask]:
 
 def _shown(a: Approval) -> dict[str, Any]:
     shown: dict[str, Any] = {"id": a.id, "state": a.state, "message": a.message(), "risk": a.risk, "expires_ms": a.expires_ms, "grants": list(a.grants), "text": a.text,
-                             "urgency": a.urgency, "deduplicated": a.deduplicated}
+                             "deduplicated": a.deduplicated}
     if a.code:
         shown["code"] = a.code
     return shown
@@ -63,7 +63,7 @@ def _print(args: argparse.Namespace, a: Approval) -> int:
         say(f"{a.id}  {a.state}: {a.message()}")
         if a.deduplicated:
             say("this was already waiting: asking again is the same request, and nothing new reaches your person")
-        if a.state in (approval.PENDING, approval.HELD):
+        if a.state == approval.PENDING:
             say(f"it ends {grants.when(a.expires_ms)}; to wait for the answer: poolhouse-workspace approval wait {a.id}")
         if a.code:
             say(f"\nSHOW YOUR PERSON THIS NUMBER: {a.code}\nthey choose it among three on their phone after their fingerprint; tell it to them where they read you, and nowhere else")

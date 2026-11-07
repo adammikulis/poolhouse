@@ -110,7 +110,7 @@ def _card(session: Session, ask: approval.Ask, note: str, wait_s: float, voice: 
     if made.code:
         voice.say(f"Your phone will ask which number I show you: {made.code}.")
     if made.wait(wait_s) != "approved":
-        waiting = made.state in (approval.PENDING, approval.HELD)
+        waiting = made.state == approval.PENDING
         raise Refusal(made.message(), needs="approval" if waiting else "none", where="your phone", then="wait" if waiting else "stop")
 
 

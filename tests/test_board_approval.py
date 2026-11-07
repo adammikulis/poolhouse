@@ -138,10 +138,6 @@ def test_a_person_at_a_terminal_chooses_the_number_after_the_yes_and_types_again
     assert "APPROVE AGAIN" in out, "the person is told what is being signed"
 
 
-def test_every_held_request_says_it_is_held_and_waiting_does_not_pretend_otherwise():
-    assert approval.SAYS["held"].startswith("Your requests are being held") and approval.HELD == "held"
-    held = Approval(None, {"state": "held", "reason": ""})  # type: ignore[arg-type]
-    assert held.message() == approval.SAYS["held"] and not held.deduplicated and held.urgency == "urgent" and held.code == ""
 
 
 def test_an_agent_or_a_process_with_no_terminal_cannot_answer_or_add_a_phone(phone_node):
