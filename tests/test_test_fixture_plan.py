@@ -19,6 +19,15 @@ def plan(root: Path, selector: str, files):
     return FixturePlan([sys.executable, '-m', 'pytest', selector], root, files)
 
 
+def test_confined_plugin_options_are_exact(tmp_path):
+    test = source(tmp_path, 'tests/test_example.py', 'def test_one(): pass\n')
+    command = [sys.executable, '-m', 'pytest', 'tests/test_example.py', '-p', 'no:langsmith_plugin']
+    assert FixturePlan(command, tmp_path, [test]).selected
+    command[-1] += '_extra'
+    with pytest.raises(RuntimeError, match='unsupported pytest execution option'):
+        FixturePlan(command, tmp_path, [test])
+
+
 def test_literal_transitive_imported_fixture_aliases_plan_without_executing_test_code(tmp_path):
     helper = source(tmp_path, 'tests/helper.py', '''
 import pytest

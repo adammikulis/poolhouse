@@ -23,6 +23,7 @@ from test_kernel_holder import (
     private_directory,
 )
 from test_kernel_selectors import admitted_node
+from testcommand import CONFINED_PLUGINS
 
 from poolhouse.activity.source_snapshot import actual_git, git_environment
 from poolhouse.sandbox.path_language import exact_language
@@ -50,6 +51,7 @@ def check_selectors(command: list[str]) -> FixturePlan | None:
     if len(command) < 4 or Path(command[0]).resolve() != Path(sys.executable).resolve() or command[1:3] != ["-m", "pytest"]:
         raise RuntimeError("test confinement: expected the maintained pytest interpreter invocation")
     selected = []
+    source_plan = False
     index = 3
     while index < len(command):
         part = command[index]
@@ -57,7 +59,7 @@ def check_selectors(command: list[str]) -> FixturePlan | None:
             index += 1
             continue
         if part in ("-n", "-p"):
-            if index + 1 >= len(command) or (part == "-p" and command[index + 1] != "testslots_pytest"):
+            if index + 1 >= len(command) or (part == "-p" and command[index + 1] not in CONFINED_PLUGINS):
                 raise RuntimeError("test confinement: unadmitted pytest plugin or worker option")
             if part == "-n" and not command[index + 1].isdigit():
                 raise RuntimeError("test confinement: invalid worker count")
@@ -68,11 +70,13 @@ def check_selectors(command: list[str]) -> FixturePlan | None:
             continue
         target = part.split("::", 1)[0]
         if (Path(target).parent != Path("tests") or Path(target).name not in GATE or ".." in Path(target).parts) and not admitted_node(part):
-            return test_browser_admission.source_plan(command, dict(os.environ))
+            source_plan = True
         selected.append(target)
         index += 1
     if not selected:
         raise RuntimeError("test confinement: explicit reviewed gate selectors are required")
+    if source_plan:
+        return test_browser_admission.source_plan(command, dict(os.environ))
 
 
 def worktree_pointer(repo: Path) -> Path:

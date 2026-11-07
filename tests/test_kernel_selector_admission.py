@@ -4,9 +4,20 @@ from __future__ import annotations
 import sys
 
 import pytest
+import test_kernel_isolation
 from confinement import needs_confinement
 from test_kernel_isolation import check_selectors
 from test_kernel_selectors import TEMP_ONLY, admitted_node
+
+
+def test_confined_options_validate_the_entire_invocation(monkeypatch):
+    expected = object()
+    monkeypatch.setattr(test_kernel_isolation.test_browser_admission, "source_plan", lambda *args: expected)
+    node = "tests/test_sandbox_seatbelt.py"
+    assert check_selectors([sys.executable, "-m", "pytest", node, "-p", "no:langsmith_plugin"]) is expected
+    for arguments in (["-p", "no:langsmith_plugin_extra", node], [node, "-p", "foreign_plugin"]):
+        with pytest.raises(RuntimeError, match="unadmitted"):
+            check_selectors([sys.executable, "-m", "pytest", *arguments])
 
 
 @needs_confinement

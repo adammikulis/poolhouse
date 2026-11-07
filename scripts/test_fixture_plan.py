@@ -10,6 +10,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from testcommand import CONFINED_PLUGINS
+
 KINDS = frozenset({'browser', 'browser-endpoints', 'javascript', 'lan-negative'})
 BUILTINS = frozenset({'tmp_path', 'tmp_path_factory', 'monkeypatch', 'request', 'capsys',
                      'capfd', 'caplog', 'recwarn', 'pytestconfig', 'cache', 'record_property',
@@ -57,7 +59,7 @@ def invocation_selectors(command: list[str]) -> list[str]:
             raise RuntimeError('fixture plan: filtered invocation requires maintained selection metadata')
         if item in {'-n', '-p'}:
             index += 1
-            if index >= len(command) or (item == '-n' and not command[index].isdecimal()) or (item == '-p' and command[index] != 'testslots_pytest'):
+            if index >= len(command) or (item == '-n' and not command[index].isdecimal()) or (item == '-p' and command[index] not in CONFINED_PLUGINS):
                 raise RuntimeError('fixture plan: unsupported pytest execution option')
         elif item in {'-q', '-rfE', '--redteam', '--color=no', '--slow'} or item.startswith('--junitxml='):
             pass
