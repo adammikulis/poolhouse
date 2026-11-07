@@ -74,6 +74,52 @@ def test_the_person_key_custody_is_closed_to_reads_and_writes_and_to_every_file_
         assert f"{tool}(/{custody}/**)" in settings["permissions"]["deny"], tool
 
 
+def test_denied_paths_include_their_physical_locations_when_state_and_nested_directories_are_symlinks(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    actual_state = tmp_path / "actual-state"
+    (actual_state / "node" / "person").mkdir(parents=True)
+    (home / ".poolhouse").symlink_to(actual_state, target_is_directory=True)
+    actual_ssh = tmp_path / "actual-ssh"
+    actual_ssh.mkdir()
+    (home / ".ssh").symlink_to(actual_ssh, target_is_directory=True)
+    layout = profile.Layout(home=home, state=home / ".poolhouse", primary=tmp_path / "checkout")
+    read, write = profile.deny_read(layout), profile.deny_write(layout)
+    assert str(actual_state / "node" / "person") in read and str(actual_state / "node" / "person") in write
+    assert str(actual_ssh) in read and str(actual_ssh) in write
+
+
+def test_a_writable_state_directory_cannot_be_a_symlink_outside_the_state_root(tmp_path):
+    home, state, outside = (tmp_path / name for name in ("home", "state", "outside"))
+    for directory in (home, state, outside):
+        directory.mkdir()
+    (state / "workspace").symlink_to(outside, target_is_directory=True)
+    layout = profile.Layout(home=home, state=state, primary=tmp_path / "checkout")
+    with pytest.raises(ValueError, match="outside"):
+        profile.write_roots(layout)
+
+
+def test_a_primary_git_directory_cannot_redirect_the_sandbox_write_root(tmp_path):
+    checkout, outside = tmp_path / "checkout", tmp_path / "outside"
+    checkout.mkdir()
+    outside.mkdir()
+    (checkout / ".git").symlink_to(outside, target_is_directory=True)
+    layout = profile.Layout(home=tmp_path / "home", state=tmp_path / "state", primary=checkout)
+    with pytest.raises(ValueError, match="outside"):
+        profile.write_roots(layout)
+
+
+def test_existing_symlink_targets_under_the_shared_worktree_pattern_are_denied(tmp_path):
+    checkout = tmp_path / "checkout"
+    worktree = checkout / ".git" / "worktrees" / "feature"
+    worktree.mkdir(parents=True)
+    target = tmp_path / "worktree-config"
+    target.write_text("private")
+    (worktree / "config.worktree").symlink_to(target)
+    layout = profile.Layout(home=tmp_path / "home", state=tmp_path / "state", primary=checkout)
+    assert str(target) in profile.deny_write(layout)
+
+
 def test_the_file_tools_are_refused_every_path_the_sandbox_denies_to_reads(layout):
     settings = profile.claude_settings(layout)
     for path in profile.deny_read(layout):

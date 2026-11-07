@@ -81,29 +81,52 @@ class Layout:
         return tuple(dict.fromkeys((self.primary, *self.worktrees)))
 
 
+def _spellings(path: Path) -> list[str]:
+    """Match both the configured path and its physical location, including existing nested symlinks."""
+    return list(dict.fromkeys((str(path), str(path.resolve()))))
+
+
 def _under(root: Path, names: tuple[str, ...]) -> list[str]:
-    return [str(root / name) for name in names]
+    paths: list[str] = []
+    for name in names:
+        paths.extend(_spellings(root / name))
+        if "*" in name:
+            for match in root.glob(name):
+                paths.extend(_spellings(match))
+    return list(dict.fromkeys(paths))
+
+
+def _allowed_under(root: Path, names: tuple[str, ...]) -> list[str]:
+    """Resolve writable children without granting a symlink target outside its chosen root."""
+    base = root.resolve()
+    paths = []
+    for name in names:
+        path = (root / name).resolve()
+        if not path.is_relative_to(base):
+            raise ValueError(f"writable path {root / name} resolves outside {base}")
+        paths.append(str(path))
+    return paths
 
 
 def write_roots(layout: Layout) -> list[str]:
     """Trees the agent's commands may write."""
-    roots = [str(path) for path in layout.checkouts()] + [str(path) for path in layout.scratch]
-    roots += _under(layout.state, STATE_ALLOW_WRITE)
-    roots += _under(layout.home, CACHE_ALLOW_WRITE)
-    roots.append(str(layout.primary / ".git"))
+    roots = [str(path.resolve()) for path in layout.checkouts()] + [str(path.resolve()) for path in layout.scratch]
+    roots += _allowed_under(layout.state, STATE_ALLOW_WRITE)
+    roots += _allowed_under(layout.home, CACHE_ALLOW_WRITE)
+    roots += _allowed_under(layout.primary, (".git",))
     return list(dict.fromkeys(roots))
 
 
 def store_environment(layout: Layout) -> dict[str, str]:
     """The variables that point `scripts/test` at the sandbox's own store and Rust build folder."""
-    return {name: str(layout.home / folder) for name, folder in TEST_FOLDERS.items()}
+    return {name: str((layout.home / folder).resolve()) for name, folder in TEST_FOLDERS.items()}
 
 
 def deny_write(layout: Layout) -> list[str]:
     """Trees no sandboxed command may write, whatever the allow list says."""
     out = _under(layout.home, HOME_DENY_WRITE) + _under(layout.state, STATE_DENY_WRITE)
     out += _under(layout.home, DARWIN_DENY_WRITE if layout.platform == "darwin" else LINUX_DENY_WRITE)
-    out += [str(layout.primary / ".git" / name) for name in SHARED_GIT_DENY]
+    out += _under(layout.primary / ".git", SHARED_GIT_DENY)
     for checkout in layout.checkouts():
         out += _under(checkout, CHECKOUT_DENY)
     return list(dict.fromkeys(out))
