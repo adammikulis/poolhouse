@@ -748,8 +748,9 @@ deny-default profile with `(deny process-info-pidinfo)`. The allow-default profi
 via `sandbox_check`, and a separate physical-path file denial control worked. An independent agent reproduced the
 allow-default case and verified that the read fails after the synthetic target exits. Denying `process-info*` or
 `sysctl-read` alone still allowed that read, but denying both refused it in that agent's synthetic profile. Other channels
-and the shipped wrapper were not tested. These profiles differ from M-proc below;
-reconcile the results on the exact installed wrapper before using D1 as a credential secrecy guarantee.
+and the harness wrappers were not tested. A subsequent test of the generated `poolhouse.sandbox` profile found the
+marker readable as shipped and refused the same read when D1 was appended, consistent with M-proc below. The result
+depends on the baseline profile; test the exact installed wrapper before using D1 as a credential secrecy guarantee.
 
 All run on 2026-10-22 through `poolhouse.sandbox` as it is at `bf17c71cd` (macOS) or through the tools named (Linux), from probe
 scripts kept in the session's scratch directory; slice L1 turns each row into a test. The Bash guard refused a script that merely
