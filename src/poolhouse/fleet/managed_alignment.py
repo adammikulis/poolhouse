@@ -20,7 +20,7 @@ from poolhouse.redact.secrets import env_secrets, redact
 from poolhouse.serve import broker_wire, process as processes
 from poolhouse.serve.process import pid_exists, started_at
 
-from . import compute_artifact
+from . import compute_artifact, compute_install
 from .environment import CATALOG
 from .managed_compute import process_environment
 from .runtime_wheel import cache_wheel, wheel_commit
@@ -165,7 +165,7 @@ def _replace(environment, base, expected):
                           '--force-reinstall', str(base)], timeout=3600, env=process_environment())
     if result.returncode:
         raise OSError('The app-owned managed runtime could not be synchronized')
-    result = compute_artifact.install(environment.python, base.parent, environment=process_environment())
+    result = compute_install.install(environment.python, base.parent, environment=process_environment())
     if result.returncode:
         raise OSError('The app-owned compute artifact could not be synchronized')
     cache_wheel(base, expected['source'], prefix=environment.path)

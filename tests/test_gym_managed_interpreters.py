@@ -54,7 +54,7 @@ def test_drone_install_is_scoped_and_does_not_change_default_packages(monkeypatc
 
     monkeypatch.setattr(Environment, 'pip', pip)
     monkeypatch.setattr(Environment, 'wheels', wheels)
-    monkeypatch.setattr('poolhouse.fleet.environment.compute_artifact.install', install_companion)
+    monkeypatch.setattr('poolhouse.fleet.environment.compute_install.install', install_companion)
     assert environment.install(['gym-drone']) == {'gym-drone': {'ok': True}}
     assert companions == [(target.python, artifacts)]
     assert made == [(tmp_path / 'simulators/gym-drone/env', '3.12')]

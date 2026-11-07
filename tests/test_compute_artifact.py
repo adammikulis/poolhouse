@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse.fleet import compute_artifact as artifact
+from poolhouse.fleet import compute_artifact as artifact, compute_install
 from poolhouse.fleet.wheel_provenance import write_wheel
 
 REVISION = 'a' * 40
@@ -227,11 +227,11 @@ def test_install_clears_only_verified_source_bytecode_before_strict_probe(bundle
     package = Path(old.stdout.strip()).parent
     assert list(package.rglob('*.pyc'))
     with environment._mutation(['core']):
-        assert artifact.install(environment.python, base.parent, environment=dict(os.environ)).returncode == 0
+        assert compute_install.install(environment.python, base.parent, environment=dict(os.environ)).returncode == 0
     assert not list(package.rglob('*.pyc'))
     assert artifact.probe(environment.python, environment=dict(os.environ)) == manifest['sha256']
     with environment._mutation(['core']):
-        assert artifact.install(environment.python, base.parent, environment=dict(os.environ)).returncode == 0
+        assert compute_install.install(environment.python, base.parent, environment=dict(os.environ)).returncode == 0
     assert artifact.probe(environment.python, environment=dict(os.environ)) == manifest['sha256']
 
 
@@ -274,7 +274,7 @@ def test_installer_does_not_clean_untrusted_bytecode_or_changed_source(bundle, t
         cache.write_bytes(b'previous cache')
         source.write_text('VALUE = 99')
     with environment._mutation(['core']), pytest.raises(OSError, match='verified compute'):
-        artifact.install(environment.python, base.parent, environment=dict(os.environ))
+        compute_install.install(environment.python, base.parent, environment=dict(os.environ))
     assert cache.exists()
     assert outside.read_bytes() == b'outside bytes'
 

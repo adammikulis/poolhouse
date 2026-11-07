@@ -251,7 +251,7 @@ def test_managed_driving_install_supplies_source_outside_package_metadata(tmp_pa
 
     monkeypatch.setattr(env, 'pip', pip)
     monkeypatch.setattr(env, 'wheels', lambda: tmp_path)
-    monkeypatch.setattr('poolhouse.fleet.environment.compute_artifact.install',
+    monkeypatch.setattr('poolhouse.fleet.environment.compute_install.install',
                         lambda *args, **kwargs: subprocess.CompletedProcess([], 0))
     result = env.install([name])
     assert result[name]['ok']

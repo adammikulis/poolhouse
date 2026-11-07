@@ -27,7 +27,7 @@ from poolhouse.httpguard import Refused
 from poolhouse.lock import only_one
 from poolhouse.net import packages
 
-from . import compute_artifact, dependency_proof
+from . import compute_artifact, compute_install, dependency_proof
 from .managed_compute import process_environment
 from .runtime_wheel import cache_wheel, current_wheel, wheel_commit
 
@@ -495,7 +495,7 @@ class Environment:
                     directory = target.wheels()
                     if directory is None:
                         raise OSError("The app compute artifact is unavailable")
-                    out = compute_artifact.install(target.python, directory, environment=process_environment())
+                    out = compute_install.install(target.python, directory, environment=process_environment())
             except (OSError, ValueError) as exc:
                 done[name] = {"ok": False, "error": str(exc)}
                 continue

@@ -6,6 +6,7 @@ import json
 import re
 import shutil
 import stat
+import subprocess
 import zipfile
 from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
@@ -16,7 +17,6 @@ from poolhouse.files import writing
 from poolhouse.fleet.compute_bytecode import CLEANUP
 from poolhouse.fleet.compute_members import EXTRA_FILES, OWNED_ROOTS, PREFIXES
 from poolhouse.fleet.wheel_provenance import write_wheel
-from poolhouse.net import packages
 
 MANIFEST = 'poolhouse/fleet/compute-artifact.json'
 DISTRIBUTION = 'poolhouse-studio-compute'
@@ -187,8 +187,6 @@ PROBE = _VERIFY + _INVENTORY
 
 
 def _checked(python: Path, environment: dict, script: str) -> str:
-    import subprocess
-
     manifest = expected()
     result = subprocess.run([str(python), '-B', '-I', '-c', script], input=json.dumps(manifest),
                             capture_output=True, text=True, timeout=20, env=environment)
@@ -202,13 +200,7 @@ def probe(python: Path, *, environment: dict) -> str:
     return _checked(python, environment, PROBE)
 
 
-def install(python: Path, directory: Path, *, environment: dict):
-    """Install only the companion declared by the current app manifest."""
-    manifest = expected()
-    wheel = directory / manifest['filename']
-    verify(wheel, manifest, manifest['source'])
-    result = packages.run(python, ['install', '--no-index', '--no-deps', '--no-compile',
-                                  '--force-reinstall', str(wheel)], timeout=3600, env=environment)
-    if result.returncode == 0:
-        _checked(python, environment, _VERIFY + CLEANUP + _INVENTORY)
-    return result
+
+def verify_install(python: Path, *, environment: dict) -> str:
+    """Verify an installation after clearing cached bytecode for its owned sources."""
+    return _checked(python, environment, _VERIFY + CLEANUP + _INVENTORY)

@@ -1,6 +1,7 @@
 """Owned telemetry wheels build in a snapshot and install from the existing wheelhouse."""
 
 import importlib.util
+import os
 import subprocess
 import sys
 import zipfile
@@ -175,3 +176,23 @@ def test_fresh_daemon_requirement_installs_owned_module_offline(builder, source,
                             'import sys;sys.path.insert(0,sys.argv[1]);import metal_smi;assert metal_smi.__version__=="1.1.0"',
                             str(target)], capture_output=True, text=True)
     assert probe.returncode == 0, probe.stderr
+
+
+def test_compute_wheel_builder_does_not_import_the_runtime_network_stack(tmp_path):
+    source = Path(__file__).resolve().parents[1] / 'src'
+    code = '''import importlib.abc, sys
+class RefuseRuntime(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "poolhouse.net" or fullname.startswith("poolhouse.net."):
+            raise ModuleNotFoundError("runtime network stack is unavailable to the wheel builder")
+sys.meta_path.insert(0, RefuseRuntime())
+sys.path.insert(0, sys.argv[1])
+from poolhouse.fleet import compute_artifact
+assert callable(compute_artifact.build)
+'''
+    environment = {'HOME': str(tmp_path), 'USERPROFILE': str(tmp_path), 'TMP': str(tmp_path), 'TEMP': str(tmp_path)}
+    if sys.platform == 'win32':
+        environment['SYSTEMROOT'] = os.environ['SYSTEMROOT']
+    result = subprocess.run([sys.executable, '-I', '-c', code, str(source)], env=environment,
+                            text=True, capture_output=True, timeout=20, check=False)
+    assert result.returncode == 0, result.stderr
