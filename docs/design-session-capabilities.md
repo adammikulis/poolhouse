@@ -489,6 +489,16 @@ reads as the worse case):
 - **P2** Whether the S0 profile can deny reading another process's environment (`ps eww`, `/proc/<id>/environ`, `KERN_PROCARGS2`)
   on macOS and Linux. If it cannot, `hook` custody's tickets are as readable as a token file for a determined process of the
   user, and the sandbox doc says so. Run before S4 starts; the default until then is that it cannot.
+  On macOS 26.6 arm64, a 2026-11-06 synthetic control found a native reader could still obtain a marker from another
+  same-user Python process through `KERN_PROCARGS2` under an allow-default Seatbelt profile with `(deny
+  process-info-pidinfo)`, and also under a minimal deny-default profile with that denial. The unconfined control read
+  the marker; `sandbox_check` reported the operation denied in the allow-default profile. A separate physical-path
+  file denial control worked. An independent agent reproduced the allow-default case and verified that the read fails
+  after the synthetic target exits. Its additional controls found that denying `process-info*` or `sysctl-read` alone
+  still allowed the read, while denying both refused that call; other channels and the shipped wrapper were not tested.
+  This contradicts a broader reading of the earlier M-proc result in
+  `docs/design-isolated-launcher.md`; the profiles differ and neither result establishes the installed harness's
+  behavior. Reproduce against the actual wrapper and investigate the difference before relying on D1 or starting S4.
 - **P3** Which hooks a project outside this repository gets from `install-hooks`, and whether a SessionStart hook exists there.
 - **P4** Whether `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` removes `POOLHOUSE_WORKSPACE_TOKEN` from a command; the ticket's variable
   must survive it (S7's fourth test).
