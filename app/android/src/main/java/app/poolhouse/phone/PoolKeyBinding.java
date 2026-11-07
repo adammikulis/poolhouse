@@ -32,7 +32,7 @@ final class PoolKeyBinding {
         for (int i = 0; i < admins.length(); i++) {
             JSONObject selected = admins.getJSONObject(i);
             if (publicKey.equals(selected.getString("key")) && (!selected.getString("alg").equals("p256")
-                    || !selected.getString("role").equals("admin") || !selected.getString("strength").equals("strong"))) throw bad();
+                    || !selected.getString("role").equals("admin") || !Canonical.of(selected.getJSONObject("claim")).equals(Canonical.of(AddRequest.phoneClaim())))) throw bad();
         }
         requireAnchor(pinnedAnchor, charter.anchor);
         return new Request(charter, publicKey, deviceFingerprint);

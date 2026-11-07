@@ -24,18 +24,26 @@ final class GovernanceAct {
         if (!FoundingCharter.text(act, "nonce").matches("[0-9a-f]{32}") || nowMs <= 0) throw bad();
         long at = FoundingCharter.number(act, "at_ms", 1, nowMs);
         long until = FoundingCharter.number(act, "not_after", 1, Long.MAX_VALUE);
-        Set<String> people = new HashSet<>();
         boolean eligible = false;
         String algorithm = "";
         JSONArray admins = terms.getJSONArray("admins");
         for (int i = 0; i < admins.length(); i++) {
             JSONObject key = admins.getJSONObject(i);
-            if ("admin".equals(key.getString("role")) && "strong".equals(key.getString("strength"))) {
-                people.add(key.getString("person"));
+            if ("admin".equals(key.getString("role")) && FoundingCharter.level(key) >= FoundingCharter.floor(terms.getJSONObject("floors"), "sensitive")) {
                 if (selectedKey.equals(key.getString("key"))) { eligible = true; algorithm = key.getString("alg"); }
             }
         }
-        long window = people.size() <= 1 ? 3600000 : 604800000;
+        JSONObject thresholds = terms.getJSONObject("thresholds");
+        long governance = thresholds.getLong("sensitive");
+        if (governance == 0) {
+            Set<String> people = new HashSet<>();
+            for (int i = 0; i < admins.length(); i++) {
+                JSONObject key = admins.getJSONObject(i);
+                if ("admin".equals(key.getString("role")) && FoundingCharter.level(key) >= FoundingCharter.floor(terms.getJSONObject("floors"), "governance")) people.add(key.getString("person"));
+            }
+            governance = Math.max(1, Math.min(2, people.size()));
+        }
+        long window = !act.getString("kind").equals("admit") && (thresholds.getLong("routine") > 1 || governance > 1) ? 604800000 : 3600000;
         if (!eligible || until <= nowMs || until <= at || until - at > window || until - nowMs > window) throw bad();
         if (act.getJSONArray("signatures").length() != 0 || Canonical.of(act).getBytes(StandardCharsets.UTF_8).length > 16384) throw bad();
         JSONObject body = act.getJSONObject("body");
@@ -47,7 +55,7 @@ final class GovernanceAct {
         id = Hex.sha256(canonical);
         card = "Proposed " + act.getString("kind") + " for pool: " + founding.poolId
                 + "\nPolicy: " + terms.getString("policy") + "\nAdmin key: " + Hex.words(Hex.sha256(Hex.parse(selectedKey)))
-                + "\nSigner: strong admin, " + algorithm + "\nFounding terms only; current governance is not verified.\nEpoch: 1\nWritten at: " + at + "\nExpires at: " + until + "\n" + details
+                + "\nSigner: qualifying admin, " + algorithm + "\nFounding terms only; current governance is not verified.\nEpoch: 1\nWritten at: " + at + "\nExpires at: " + until + "\n" + details
                 + "\nSigned body: " + Canonical.of(body);
     }
 

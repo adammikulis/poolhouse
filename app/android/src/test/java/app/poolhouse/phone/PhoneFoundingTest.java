@@ -27,7 +27,7 @@ final class PhoneFoundingTest {
             equal(a.getString("bytes"), Hex.of(each.bytes()));
         }
         String card = parsed.card;
-        for (String shown : new String[]{"secure", "first device", "p256", "ed25519", "strong", "weak", "recovery", "48 hours", "72 hours", "30 minutes", "9 days", "14 days", "Count by: person"}) {
+        for (String shown : new String[]{"secure", "first device", "p256", "ed25519", "computer", "weak", "recovery", "48 hours", "72 hours", "30 minutes", "9 days", "14 days", "Count by: person", "Routine approval:", "Sensitive approval:", "Governance approval:", "First device may admit without asking: no", "pool cannot verify the claim"}) {
             if (!card.contains(shown)) throw new AssertionError("Missing card field: " + shown);
         }
         for (String context : new String[]{"Pool ID: " + parsed.poolId, "Founding anchor: " + parsed.anchor,
@@ -68,8 +68,8 @@ final class PhoneFoundingTest {
         changed(c -> c.getJSONObject("thresholds").put("unit", "key"));
         for (String key : new String[]{"admin_add_h", "admin_remove_h", "handoff_min", "dispute_d"}) changed(c -> c.getJSONObject("holds").put(key, 1));
         changed(c -> c.put("recover_delay_days", 1));
-        for (String key : new String[]{"person", "label", "strength", "role", "alg", "key", "since"}) changed(c -> c.getJSONArray("admins").getJSONObject(0).put(key, "other"));
-        for (Object version : new Object[]{2,4,"3",3.0,JSONObject.NULL}) changed(c -> c.put("v", version));
+        for (String key : new String[]{"person", "label", "claim", "role", "alg", "key", "since"}) changed(c -> c.getJSONArray("admins").getJSONObject(0).put(key, "other"));
+        for (Object version : new Object[]{2,3,"4",4.0,JSONObject.NULL}) changed(c -> c.put("v", version));
         for (String key : new String[]{"epoch", "at_ms", "recover_delay_days"}) changed(c -> c.put(key, "1"));
         changed(c -> c.put("epoch", 2));
         changed(c -> c.put("summary", "Make an open pool"));
@@ -106,7 +106,35 @@ final class PhoneFoundingTest {
         invalid(c -> c.getJSONObject("holds").put("dispute_d", 31));
         invalid(c -> c.getJSONArray("admins").getJSONObject(0).put("since", 2));
         invalid(c -> c.getJSONArray("admins").getJSONObject(0).put("role", "unknown"));
-        invalid(c -> c.getJSONArray("admins").getJSONObject(0).put("strength", "unknown"));
+        invalid(c -> c.getJSONArray("admins").getJSONObject(0).getJSONObject("claim").put("method", "unknown"));
+        invalid(c -> c.getJSONArray("admins").getJSONObject(0).getJSONObject("claim").put("prompt", "none"));
+        invalid(c -> c.getJSONArray("admins").getJSONObject(0).getJSONObject("claim").put("os", "unknown"));
+        invalid(c -> c.getJSONArray("admins").getJSONObject(2).put("claim", new JSONObject().put("method", "file").put("os", "other").put("prompt", "none")));
+        for (String kind : new String[]{"routine", "sensitive", "governance"}) {
+            invalid(c -> c.getJSONObject("floors").put(kind, "weak"));
+            invalid(c -> c.getJSONObject("floors").put(kind, "native"));
+            invalid(c -> c.getJSONObject("floors").put(kind, "phone"));
+            invalid(c -> c.getJSONObject("floors").put(kind, "unknown"));
+        }
+        JSONObject typed = charter();
+        for (int i = 0; i < typed.getJSONArray("admins").length(); i++) {
+            JSONObject k = typed.getJSONArray("admins").getJSONObject(i);
+            if (k.getString("role").equals("admin")) k.put("claim", new JSONObject().put("method", "keystore-typed").put("os", "macos").put("prompt", "typed-yes"));
+        }
+        typed.put("floors", new JSONObject().put("routine", "weak").put("sensitive", "weak").put("governance", "weak"));
+        FoundingCharter typedCard = recomputed(typed, selected());
+        if (!typedCard.card.contains("Routine approval: a typed yes; a program running as you could approve it") || !typedCard.card.contains("First device may admit without asking: no")) throw new AssertionError(typedCard.card);
+        checks++;
+        JSONObject delegated = charter(); delegated.getJSONObject("first").put("delegate", true);
+        if (!recomputed(delegated, selected()).card.contains("First device may admit without asking: yes, for 30 days")) throw new AssertionError("delegate duration missing");
+        checks++;
+        typed.getJSONObject("first").put("delegate", true);
+        refused(() -> recomputed(typed, selected()));
+        JSONObject unreachable = charter();
+        unreachable.getJSONArray("admins").getJSONObject(1).put("claim", new JSONObject().put("method", "keystore-prompt").put("os", "macos").put("prompt", "os-dialog"));
+        unreachable.getJSONArray("admins").getJSONObject(1).put("person", unreachable.getJSONArray("admins").getJSONObject(0).getString("person"));
+        unreachable.getJSONObject("thresholds").put("sensitive", 2);
+        refused(() -> recomputed(unreachable, selected()));
         invalid(c -> c.getJSONArray("admins").getJSONObject(0).put("key", "04" + "00".repeat(64)));
         for (String unit : new String[]{"person", "key"}) {
             for (boolean samePerson : new boolean[]{true, false}) {
@@ -117,7 +145,7 @@ final class PhoneFoundingTest {
                 for (int i = 0; i < admins.length(); i++) {
                     JSONObject k = admins.getJSONObject(i);
                     if (k.getString("role").equals("admin")) {
-                        k.put("strength", "strong");
+                        k.put("claim", new JSONObject().put("method", "keystore-prompt").put("os", "macos").put("prompt", "os-dialog"));
                         if (samePerson) k.put("person", person);
                     }
                 }
@@ -130,7 +158,7 @@ final class PhoneFoundingTest {
         for (int i = 0; i < keys.length(); i++) {
             JSONObject candidate = keys.getJSONObject(i), c = charter();
             JSONObject admin = new JSONObject(c.getJSONArray("admins").getJSONObject(0).toString());
-            admin.put("key", candidate.getString("key")).put("alg", "ed25519").put("role", "admin").put("strength", "weak");
+            admin.put("key", candidate.getString("key")).put("alg", "ed25519").put("role", "admin");
             c.put("admins", new JSONArray().put(admin));
             if (candidate.getBoolean("valid")) { recomputed(c, candidate.getString("key")); checks++; }
             else refused(() -> recomputed(c, candidate.getString("key")));
@@ -165,9 +193,9 @@ final class PhoneFoundingTest {
         }
         if (selected == null) selected = admins.getJSONObject(0);
         String anchor = Hex.sha256(Canonical.of(bare));
-        JSONObject body = new JSONObject().put("v", 2).put("anchor", anchor).put("prev", "");
-        for (String field : new String[]{"key", "alg", "role", "strength", "person", "since"}) body.put(field, selected.get(field));
-        byte[] bytes = ("poolhouse/pool-accept/v2\n" + Canonical.of(body)).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        JSONObject body = new JSONObject().put("v", 3).put("anchor", anchor).put("prev", "");
+        for (String field : new String[]{"key", "alg", "role", "claim", "person", "since"}) body.put(field, selected.get(field));
+        byte[] bytes = ("poolhouse/pool-accept/v3\n" + Canonical.of(body)).getBytes(java.nio.charset.StandardCharsets.UTF_8);
         return new FoundingCharter(c, key, anchor, anchor.substring(0, 32), bytes);
     }
     private static JSONObject charter() { return new JSONObject(vector.getJSONObject("charter").toString()); }

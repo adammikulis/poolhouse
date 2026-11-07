@@ -38,11 +38,11 @@ final class PoolKeyTest {
         refused(() -> PoolKeyBinding.requireAnchor("", "not an anchor"));
         refused(() -> PoolKeyBinding.requireAnchor(null, anchor));
         JSONObject weak = new JSONObject(source.toString());
-        weak.getJSONArray("admins").getJSONObject(0).put("strength", "weak");
+        weak.getJSONArray("admins").getJSONObject(0).put("claim", new JSONObject().put("method", "keystore-prompt").put("os", "macos").put("prompt", "os-dialog"));
         refused(() -> recomputed(weak, point, device));
         JSONObject recovery = new JSONObject(source.toString());
-        recovery.getJSONArray("admins").getJSONObject(0).put("role", "recovery");
-        recovery.getJSONArray("admins").getJSONObject(2).put("role", "admin");
+        recovery.getJSONArray("admins").getJSONObject(0).put("role", "recovery").put("claim", JSONObject.NULL);
+        recovery.getJSONArray("admins").getJSONObject(2).put("role", "admin").put("claim", new JSONObject().put("method", "keystore-prompt").put("os", "macos").put("prompt", "os-dialog"));
         refused(() -> recomputed(recovery, point, device));
         byte[] returned = request.bytes(); returned[0] ^= 1;
         equal(Hex.of(bytes), Hex.of(request.bytes()));
@@ -70,10 +70,10 @@ final class PoolKeyTest {
         for (int i = 0; i < bare.getJSONArray("admins").length(); i++) bare.getJSONArray("admins").getJSONObject(i).put("acceptance", "");
         String anchor = Hex.sha256(Canonical.of(bare));
         JSONObject selected = source.getJSONArray("admins").getJSONObject(0);
-        JSONObject acceptance = new JSONObject().put("v", 2).put("anchor", anchor).put("prev", "");
-        for (String key : new String[]{"key", "alg", "role", "strength", "person", "since"}) acceptance.put(key, selected.get(key));
-        byte[] bytes = ("poolhouse/pool-accept/v2\n" + Canonical.of(acceptance)).getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        // Ensure the base protocol accepts these otherwise-valid terms; this leaf must refuse the selected role/strength.
+        JSONObject acceptance = new JSONObject().put("v", 3).put("anchor", anchor).put("prev", "");
+        for (String key : new String[]{"key", "alg", "role", "claim", "person", "since"}) acceptance.put(key, selected.get(key));
+        byte[] bytes = ("poolhouse/pool-accept/v3\n" + Canonical.of(acceptance)).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        // Ensure the base protocol accepts these terms; this leaf must refuse the selected role or claim.
         new FoundingCharter(source, Hex.of(point), anchor, anchor.substring(0,32), bytes);
         return PoolKeyBinding.verify(source, point, device, anchor, anchor.substring(0,32), bytes, "");
     }

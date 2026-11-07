@@ -1,12 +1,10 @@
-"""The Android protocol classes against the vectors the node wrote: a ratchet on the port to charter version 4.
+"""The Android protocol classes against the vectors the node wrote: a ratchet on charter version 4.
 
 The node regenerates `tests/fixtures/phone-founding-vectors.json`, `phone-act-vectors.json` and `phone-admit-vectors.json` for charter version 4
-(`claim` and `floors` in the charter, `first.delegate`, the accept domain `poolhouse/pool-accept/v3`). The Java protocol classes under
-`app/android/src/main/java/app/poolhouse/phone/` and the Gradle tests beside them still read charter version 3, `strength` and
-`poolhouse/pool-accept/v2`. No lane runs Gradle, so nothing else says so. This test reads both sides as text, states what each reads or
-emits as a named fact, and compares them:
+(`claim` and `floors` in the charter, `first.delegate`, the accept domain `poolhouse/pool-accept/v3`). This test reads both sides as text,
+states what each reads or emits as a named fact, and compares them:
 
-* `PENDING_PORT` names every fact on which they disagree today, with the value each side holds. That is the Android port, written down.
+* `PENDING_PORT` names any facts on which they disagree, with the value each side holds.
 * `AGREED` names every fact they agree on, so a disagreement that appears where there was none is caught the same way.
 * The test fails, naming the side that changed, when a fact is not what the table says: when the port lands in part (a Java class moves to
   version 4: the fact now agrees, take it out of `PENDING_PORT`), and when the vectors change again (they say something the Java does not read).
@@ -35,21 +33,20 @@ ACCEPT_FIELDS_V4 = ["alg", "anchor", "claim", "key", "person", "prev", "role", "
 
 # Where the Java and the vectors disagree today: the work of the Android port. Each side's value is what that side reads or says now.
 # When a class is ported its facts agree and leave this table; when the vectors change again their side of an entry changes.
-PENDING_PORT = {
-    "charter.version": {"java": 3, "vectors": 4},
-    "charter.fields": {"java": CHARTER_FIELDS_V3, "vectors": sorted([*CHARTER_FIELDS_V3, "floors"])},
-    "charter.first.fields": {"java": ["cert", "name"], "vectors": ["cert", "delegate", "name"]},
-    "charter.admin.fields": {"java": ADMIN_FIELDS_V3, "vectors": ADMIN_FIELDS_V4},
-    "accept.domain.FoundingCharter": {"java": 2, "vectors": 3},
-    "accept.message.v.FoundingCharter": {"java": 2, "vectors": 3},
-    "accept.message.fields.FoundingCharter": {"java": ACCEPT_FIELDS_V3, "vectors": ACCEPT_FIELDS_V4},
-    "key.held_how_field.main": {"java": ["claim", "strength"], "vectors": ["claim"]},
-    "key.held_how_field.gradle": {"java": ["claim", "strength"], "vectors": ["claim"]},
-    "accept.domain.gradle": {"java": 2, "vectors": 3},
-}
+PENDING_PORT = {}
 
 # What the Java and the vectors agree on, so that a disagreement where there was none is named the same way.
 AGREED = {
+    "charter.version": 4,
+    "charter.fields": sorted([*CHARTER_FIELDS_V3, "floors"]),
+    "charter.first.fields": ["cert", "delegate", "name"],
+    "charter.admin.fields": ADMIN_FIELDS_V4,
+    "accept.domain.FoundingCharter": 3,
+    "accept.message.v.FoundingCharter": 3,
+    "accept.message.fields.FoundingCharter": ACCEPT_FIELDS_V4,
+    "key.held_how_field.main": ["claim"],
+    "key.held_how_field.gradle": ["claim"],
+    "accept.domain.gradle": 3,
     "admin_add.entry.fields": ADMIN_FIELDS_V4,
     "accept.domain.AddRequest": 3,
     "accept.message.v.AddRequest": 3,

@@ -20,7 +20,7 @@ the computer's Fleet page.
   address a UnifiedPush distributor gave the app. The lock screen says only `Approval waiting from <agent>`; once unlocked the
   notification shows the whole text with Approve and Deny, and Approve opens the fingerprint prompt (for a routine request) or the
   whole request first (for any other, and for any the node flagged). Without a distributor the app still works: requests show while it is open.
-- **Phones**: list the phones, remove one (another phone's fingerprint confirms), add another phone (a code to scan on it).
+- **Phones**: list the phones, remove one (another phone's fingerprint confirms), add another phone (a code to scan on it). Approval of a new admin-key listing is currently refused until the phone independently verifies the current pool and charter.
 - **Chat** with the computer: the status and streamed chat of Fleet, behind the fingerprint, over pinned TLS.
 
 ## Keys

@@ -41,14 +41,14 @@ final class FoundingCharter {
         anchor = Hex.sha256(Canonical.of(bare));
         poolId = anchor.substring(0, 32);
         if (!anchor.equals(suppliedAnchor) || !poolId.equals(suppliedPool)) throw bad();
-        JSONObject acceptance = new JSONObject().put("v", 2).put("anchor", anchor).put("prev", "");
-        for (String key : new String[]{"key", "alg", "role", "strength", "person", "since"}) acceptance.put(key, selected.get(key));
-        signing = ("poolhouse/pool-accept/v2\n" + Canonical.of(acceptance)).getBytes(StandardCharsets.UTF_8);
+        JSONObject acceptance = new JSONObject().put("v", 3).put("anchor", anchor).put("prev", "");
+        for (String key : new String[]{"key", "alg", "role", "claim", "person", "since"}) acceptance.put(key, selected.get(key));
+        signing = ("poolhouse/pool-accept/v3\n" + Canonical.of(acceptance)).getBytes(StandardCharsets.UTF_8);
         if (!Arrays.equals(signing, suppliedBytes)) throw bad();
         certificateWords = Hex.words(Hex.sha256(Hex.parse(text(charter.getJSONObject("first"), "cert"))));
         signerFingerprint = Hex.sha256(Hex.parse(text(selected, "key")));
         signerAlgorithm = text(selected, "alg");
-        signerRole = text(selected, "role") + "; " + text(selected, "strength");
+        signerRole = text(selected, "role") + "; " + claimDescription(selected);
         card = FoundingCard.of(this);
     }
 
@@ -57,54 +57,69 @@ final class FoundingCharter {
     JSONObject terms() throws Exception { return new JSONObject(charter.toString()); }
 
     private static void validate(JSONObject c) throws Exception {
-        fields(c, "v", "epoch", "name", "policy", "mode", "project", "first", "admins", "thresholds", "holds", "recover_delay_days", "succession", "from", "at_ms");
-        number(c, "v", 3, 3);
+        fields(c, "v", "epoch", "name", "policy", "mode", "project", "first", "admins", "thresholds", "holds", "floors", "recover_delay_days", "succession", "from", "at_ms");
+        number(c, "v", 4, 4);
         number(c, "epoch", 1, 1);
         choice(c, "mode", "admins");
         choice(c, "policy", "secure", "open");
         if (c.get("succession") != JSONObject.NULL || c.get("from") != JSONObject.NULL) throw bad();
         number(c, "at_ms", 1, Long.MAX_VALUE);
         String name = plain(c, "name", 40, false);
-        if (!name.matches("[A-Za-z0-9 ._-]+")) throw bad();
+        if (!name.matches("[A-Za-z0-9][A-Za-z0-9 .-]*")) throw bad();
         if (!text(c, "project").matches("|[0-9a-fA-F]{16}")) throw bad();
         JSONObject first = c.getJSONObject("first");
-        fields(first, "name", "cert");
+        fields(first, "name", "cert", "delegate");
+        if (!(first.get("delegate") instanceof Boolean)) throw bad();
         plain(first, "name", 40, false);
         certificateWords(text(first, "cert"));
         JSONArray admins = c.getJSONArray("admins");
         if (admins.length() < 1 || admins.length() > 16) throw bad();
         String previous = "";
-        int recovery = 0, adminCount = 0, strongKeys = 0;
-        Set<String> people = new HashSet<>();
+        int recovery = 0, adminCount = 0;
         for (int i = 0; i < admins.length(); i++) {
             JSONObject k = admins.getJSONObject(i);
-            fields(k, "key", "alg", "role", "strength", "person", "since", "acceptance", "label");
+            fields(k, "key", "alg", "role", "claim", "person", "since", "acceptance", "label");
             String key = text(k, "key");
             if (previous.compareTo(key) >= 0) throw bad();
             previous = key;
             choice(k, "alg", "ed25519", "p256");
             publicKey(key, text(k, "alg"));
             choice(k, "role", "admin", "recovery");
-            choice(k, "strength", "strong", "weak");
+            level(k);
             String person = plain(k, "person", 64, false);
             if (!person.matches("[A-Za-z0-9_:.-]+")) throw bad();
             plain(k, "label", 40, true);
             number(k, "since", 1, 1);
             if (!text(k, "acceptance").matches("(?:[0-9a-f]{2})*")) throw bad();
             if (text(k, "role").equals("recovery")) recovery++;
-            else {
-                adminCount++;
-                if (text(k, "strength").equals("strong")) { strongKeys++; people.add(person); }
-            }
+            else adminCount++;
         }
         if (recovery > 1 || adminCount == 0) throw bad();
         JSONObject t = c.getJSONObject("thresholds");
         fields(t, "routine", "sensitive", "unit");
         long routine = number(t, "routine", 1, 16), sensitive = number(t, "sensitive", 0, 16);
         choice(t, "unit", "person", "key");
-        int units = text(t, "unit").equals("person") ? people.size() : strongKeys;
-        long needed = sensitive == 0 ? Math.max(1, Math.min(2, people.size())) : sensitive;
-        if (strongKeys > 0 && (routine > units || needed > units)) throw bad();
+        JSONObject floors = c.getJSONObject("floors");
+        fields(floors, "routine", "sensitive", "governance");
+        boolean hasComputer = false, typed = false;
+        for (int i = 0; i < admins.length(); i++) {
+            JSONObject k = admins.getJSONObject(i);
+            if (text(k, "role").equals("admin") && level(k) >= 1) hasComputer = true;
+        }
+        for (String kind : new String[]{"routine", "sensitive", "governance"}) {
+            int floor = floor(floors, kind);
+            typed |= floor == 0;
+            Set<String> people = new HashSet<>();
+            int keys = 0;
+            for (int i = 0; i < admins.length(); i++) {
+                JSONObject k = admins.getJSONObject(i);
+                if (text(k, "role").equals("admin") && level(k) >= floor) { keys++; people.add(text(k, "person")); }
+            }
+            int units = text(t, "unit").equals("person") ? people.size() : keys;
+            long needed = kind.equals("routine") ? routine : sensitive == 0 ? Math.max(1, Math.min(2, people.size())) : sensitive;
+            if (units < needed) throw bad();
+        }
+        if (typed && (hasComputer || first.getBoolean("delegate"))) throw bad();
         JSONObject h = c.getJSONObject("holds");
         fields(h, "admin_add_h", "admin_remove_h", "handoff_min", "dispute_d");
         number(h, "admin_add_h", 1, 720);
@@ -112,6 +127,42 @@ final class FoundingCharter {
         number(h, "handoff_min", 1, 1440);
         number(h, "dispute_d", 1, 30);
         number(c, "recover_delay_days", 1, 30);
+    }
+
+    static int floor(JSONObject floors, String kind) throws Exception {
+        String value = text(floors, kind);
+        int index = Arrays.asList("weak", "computer", "native", "phone").indexOf(value);
+        if (index < 0) throw bad();
+        return index;
+    }
+
+    /** Count only what the pool can verify: no claim exceeds computer assurance. */
+    static int level(JSONObject key) throws Exception {
+        String role = text(key, "role");
+        Object value = key.get("claim");
+        if (role.equals("recovery")) {
+            if (value != JSONObject.NULL) throw bad();
+            return 0;
+        }
+        if (!(value instanceof JSONObject)) throw bad();
+        JSONObject claim = (JSONObject) value;
+        fields(claim, "method", "os", "prompt");
+        choice(claim, "os", "android", "macos", "linux", "windows", "other");
+        String method = text(claim, "method"), prompt = text(claim, "prompt");
+        switch (method) {
+            case "phone-keystore": if (!prompt.equals("biometric")) throw bad(); return 1;
+            case "helper": case "keystore-prompt": if (!prompt.equals("os-dialog") && !prompt.equals("biometric")) throw bad(); return 1;
+            case "keystore-typed": if (!prompt.equals("typed-yes")) throw bad(); return 0;
+            case "file": if (!prompt.equals("typed-yes") && !prompt.equals("none")) throw bad(); return 0;
+            default: throw bad();
+        }
+    }
+
+    static String claimDescription(JSONObject key) throws Exception {
+        if (key.get("claim") == JSONObject.NULL) return "recovery key; counts for no threshold";
+        JSONObject claim = key.getJSONObject("claim");
+        return "claimed " + text(claim, "method") + " on " + text(claim, "os") + " with " + text(claim, "prompt")
+                + "; counted as " + (level(key) == 0 ? "weak" : "computer") + "; the pool cannot verify the claim";
     }
 
     static String certificateWords(String cert) throws Exception {
