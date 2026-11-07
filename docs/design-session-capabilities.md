@@ -508,6 +508,10 @@ reads as the worse case):
   synthetic target. This is not a test of the installed Claude or Codex wrappers, or of every alias.
   Resolve the process-environment and alias channels and verify the actual wrapper before relying on S0 or starting S4.
 - **P3** Which hooks a project outside this repository gets from `install-hooks`, and whether a SessionStart hook exists there.
+  On 2026-11-06, running `agent_hooks.install_claude` against a fresh temporary project settings file wrote only
+  `PostToolUse`, `Stop` and `UserPromptSubmit`; it wrote no `SessionStart`, `SubagentStart` or `PreToolUse`. This
+  probes the installer function, not a running external Claude session. S4 must install its required events and verify
+  them in an actual external project.
 - **P4** Whether `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` removes `POOLHOUSE_WORKSPACE_TOKEN` from a command; the ticket's variable
   must survive it (S7's fourth test).
 - **P5** Whether Claude Code runs the PreToolUse hook for every Bash call of a subagent and of `run_in_background` commands.
