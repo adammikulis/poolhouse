@@ -367,19 +367,6 @@ pub struct ApprovalCosignIntent {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "kind", content = "value", deny_unknown_fields)]
-pub enum ApprovalDelivery {
-    #[serde(rename = "urgent")]
-    Urgent(Empty),
-    #[serde(rename = "quiet")]
-    Quiet(Empty),
-    #[serde(rename = "silent")]
-    Silent(Empty),
-    #[serde(rename = "held")]
-    Held(Empty),
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(try_from = "Vec<AuthorityDescriptorId>", into = "Vec<AuthorityDescriptorId>")]
 pub struct ApprovalDescriptorIds(Vec<AuthorityDescriptorId>);
 impl ApprovalDescriptorIds { pub fn as_slice(&self) -> &[AuthorityDescriptorId] { &self.0 } }
@@ -568,8 +555,6 @@ pub struct ApprovalSignerTarget {
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", content = "value", deny_unknown_fields)]
 pub enum ApprovalState {
-    #[serde(rename = "held")]
-    Held(Empty),
     #[serde(rename = "pending")]
     Pending(Empty),
     #[serde(rename = "awaiting_signers")]
@@ -685,12 +670,8 @@ pub enum ApprovalError {
     AlreadyConsumed(ApprovalErrorDetail),
     #[serde(rename = "threshold_not_met")]
     ThresholdNotMet(ApprovalErrorDetail),
-    #[serde(rename = "held")]
-    Held(ApprovalErrorDetail),
     #[serde(rename = "disputed")]
     Disputed(ApprovalErrorDetail),
-    #[serde(rename = "backoff")]
-    Backoff(ApprovalErrorDetail),
     #[serde(rename = "storage_failure")]
     StorageFailure(ApprovalErrorDetail),
     #[serde(rename = "recovery_required")]
@@ -972,7 +953,6 @@ pub struct ApprovalView {
     pub operation: ApprovalImmutableOperation,
     pub revision: U64,
     pub state: ApprovalState,
-    pub delivery: ApprovalDelivery,
     pub progress: ApprovalProgress,
     pub reason: SafeMessage,
     #[serde(deserialize_with = "required_optional")]

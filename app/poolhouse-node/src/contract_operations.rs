@@ -1,4 +1,4 @@
-// Generated proposal. No dispatch or authority is implemented. Schema 1030e94519985d096129fa9707122f96c339e2a6df85b76ce3a681c0517e52eb
+// Generated proposal. No dispatch or authority is implemented. Schema 26c35ab9ca0928c4fa235f6c602ff6ee33aa403c3f5168299cbe0a5b753bb2cb
 use super::contract::*;
 
 pub trait Operation { type Request; type Response; type Error; const NAME: &'static str; }

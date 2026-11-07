@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "status": "private state metadata proposal and semantic requirements only; no runtime, storage-engine, OS or K acceptance",
+  "status": "private state metadata proposal; source inventory is historical at source_commit; request fatigue has been removed; no runtime, storage-engine, OS or K acceptance",
   "source_commit": "d26d47287c4e6393e2c085e2a5d9432c5116375f",
   "sources": [
     {
@@ -261,13 +261,13 @@
       "path": "app/poolhouse-node/src/approvals/mod.rs",
       "line": 236,
       "match": "fn save",
-      "meaning": "approval state atomic per file, separate from fatigue and grants"
+      "meaning": "approval state atomic per file, separate from grants"
     },
     {
       "path": "app/poolhouse-node/src/approvals/fatigue.rs",
       "line": 188,
       "match": "fn save",
-      "meaning": "durable fatigue history must survive request restarts and lineage changes"
+      "meaning": "historical fatigue ledger, removed by the no-suppression order"
     },
     {
       "path": "app/poolhouse-node/src/approvals/decide.rs",
@@ -405,7 +405,7 @@
     {
       "record_class": "approval_control",
       "owner": "protected_helper for authority and node_service for own domain receipts",
-      "material": "fatigue/notification/cancel history, immutable pending intent, consumed nonce/result identity, durable cancel-versus-commit and effect receipts",
+      "material": "declined-scope history and person-chosen session blocks, notification/cancel history, immutable pending intent, consumed nonce/result identity, durable cancel-versus-commit and effect receipts",
       "retention": "retain while any lineage/replay/effect depends on record; no reset by cache restore/new requester IDs",
       "source_sites": [
         19,
@@ -474,13 +474,14 @@
     "Resolve every transaction/effect/checkpoint reference under exact store ID, installation/device, generation, scope and immutable intent. Copied UUID/digest/receipt cannot join another store or cause execution. Owning domain keeps actual principal/RequestId/resource/payload dedup; conflicting reuse remains conflict. New metadata IDs never replace original signed row/act IDs or clocks.",
     "Preserve exact signed transcript bytes, canonical hash/domain rules, original operation IDs and HLC/millisecond values, signature sets, nonces/expiry and original low-S/generic DER purpose distinctions. Never normalize historical signed envelopes or migrate legacy trust. Unsigned storage/transport whitespace is distinct; original canonical signed message must remain identical.",
     "Board rotation requires complete validated signed base/carry restatement preserving original logical operation identity/hash/HLC, required archives and every security tombstone/proof. Never replace signed history with visible unsigned fold. Corrupt relay content cannot fabricate origin damage or discard trusted prior observations.",
-    "Derived views rebuild from verified immutable records plus durable nonderivable observations. Pins, head/conflict/damage/provenance, HLC highwater, cuts/distrust, first-complete timing, nonce/consumption and fatigue are not UI caches. Display labels can rebuild; acknowledgment rewind permits conservative authenticated resync only and never erases security observations.",
+    "Derived views rebuild from verified immutable records plus durable nonderivable observations. Pins, head/conflict/damage/provenance, HLC highwater, cuts/distrust, first-complete timing, nonce/consumption are not UI caches. Display labels can rebuild; acknowledgment rewind permits conservative authenticated resync only and never erases security observations.",
     "Established missing/damaged critical store/root/checkpoint refuses, never defaults empty or silently becomes genesis. Genuine genesis requires independently admitted authority and explicit creation; reinstall preserves root and monotonic state. Restoration never resurrects removed incarnations, stopped work or old capabilities. Useful archived jobs/assets retain attribution without auto-execution.",
     "One logical mutation serializes concurrent writers, validates current principal/resource/authority/store generations and applicable CAS revision, persists immutable intent and deterministic effect identities, and atomically commits authoritative group+consumption+receipt or an explicitly recoverable group protocol before acknowledgment. Single-file fsync/rename is not multi-file atomicity; rename/fsync/truncation uncertainty is recovery_required, never safe retry.",
     "Cancellation and domain commit have one durable winner; accepted signed logs are not rolled back. External effects use separate durable prepare/consume/effect/reconcile receipts. committed/performed/reconciled are observed results, never authority to dispatch/replay. outcome_unknown reconciles the same deterministic effect before retry, including effect-before-receipt crashes. Performed requires verified durable effect evidence.",
     "Crash recovery validates full commit group and applicable independent witness before serving/signing/dispatch/publication. Unknown process/lease/outcome holds safe custody until verified reconciliation; domain-authorized queued retry/resume is preserved under original policy/current authority, not blanket discard. PID or restored lease file alone is no live ownership proof.",
     "First-seen/first-complete/awake observations are verifier-local monotonic facts. Never import remote/backup/cache timestamps as newly earned local elapsed. Process checkpoint earns no downtime; boot transition earns zero where retained clock requires. Backwards counters/clocks and numeric conversion/addition/revision overflow refuse. SETTLED is only separately admitted join history, never arbitrary negative local time or accepted helper-settled input.",
-    "Monotonic security state retains observed heads/epochs, every accepted signature set, cuts/revocations/distrust/disputes, key/root/installation continuity, first-complete clock basis, fatigue/notification/cancel and consumption/effect identity. Hashes/checkpoints stored in same rollback domain cannot detect whole-state rollback; StateProtectionDomainId is not proof of independent protection.",
+    "Monotonic security state retains observed heads/epochs, every accepted signature set, cuts/revocations/distrust/disputes, key/root/installation continuity, first-complete clock basis, notification/cancel and consumption/effect identity. Hashes/checkpoints stored in same rollback domain cannot detect whole-state rollback; StateProtectionDomainId is not proof of independent protection.",
+    "The node's declined-scope history and person-chosen session blocks survive restart for their existing bounded lifetimes; a person's explicit lift removes the chosen block. These records never suppress a request after an ordinary decline or withdrawal.",
     "Witness proof must originate outside protected states rollback domain under the applicable threat boundary. Node/helper/witness clone cannot be claimed detected without a real backend proving it; do not build circular witnesses. Missing/inconsistent witness refuses. Privileged whole-device rollback resistance and actual per-OS monotonic mechanism remain explicitly unproved; same-account ownership/hash checks alone do not satisfy them.",
     "No retention/GC of tombstones, commit/effect/consumption receipts, revocation cuts, consumed nonces or first-complete observations while any retained lineage/replay/effect may depend on them. Unknown dependency retains or refuses, never silently truncates. Existing retention floors/quotas and replay windows require explicit domain reconciliation; no bounds or budgets raised or grandfathered.",
     "Settings/jobs/resource state remain local under their existing scoped ownership/generation/CAS authority. Replicated signed pool/board records do not overwrite local settings or grant leases. Content assets require digest plus current authorization/admission and cache hints never recreate settings/job/membership. Helper state, secrets and worker spools remain separate custody domains.",

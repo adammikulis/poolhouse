@@ -452,14 +452,7 @@ name = "ApprovalState"
 kind = "union"
 visibility = "public"
 tag = "kind"
-variants = [{tag = "held", type = "Empty"}, {tag = "pending", type = "Empty"}, {tag = "awaiting_signers", type = "Empty"}, {tag = "hold_running", type = "Empty"}, {tag = "disputed", type = "Empty"}, {tag = "denied", type = "Empty"}, {tag = "cancelled", type = "Empty"}, {tag = "expired", type = "Empty"}, {tag = "committed", type = "Empty"}, {tag = "effect_pending", type = "Empty"}, {tag = "performed", type = "Empty"}, {tag = "failed", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
-
-[[type]]
-name = "ApprovalDelivery"
-kind = "union"
-visibility = "public"
-tag = "kind"
-variants = [{tag = "urgent", type = "Empty"}, {tag = "quiet", type = "Empty"}, {tag = "silent", type = "Empty"}, {tag = "held", type = "Empty"}]
+variants = [{tag = "pending", type = "Empty"}, {tag = "awaiting_signers", type = "Empty"}, {tag = "hold_running", type = "Empty"}, {tag = "disputed", type = "Empty"}, {tag = "denied", type = "Empty"}, {tag = "cancelled", type = "Empty"}, {tag = "expired", type = "Empty"}, {tag = "committed", type = "Empty"}, {tag = "effect_pending", type = "Empty"}, {tag = "performed", type = "Empty"}, {tag = "failed", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
 
 [[type]]
 name = "ApprovalSignerAssurance"
@@ -497,7 +490,7 @@ fields = [{name = "have", type = "OptionalApprovalCount"}, {name = "need", type 
 name = "ApprovalView"
 kind = "record"
 visibility = "public"
-fields = [{name = "operation", type = "ApprovalImmutableOperation"}, {name = "revision", type = "U64"}, {name = "state", type = "ApprovalState"}, {name = "delivery", type = "ApprovalDelivery"}, {name = "progress", type = "ApprovalProgress"}, {name = "reason", type = "SafeMessage"}, {name = "effect_receipt", type = "OptionalApprovalEffectReceiptId"}]
+fields = [{name = "operation", type = "ApprovalImmutableOperation"}, {name = "revision", type = "U64"}, {name = "state", type = "ApprovalState"}, {name = "progress", type = "ApprovalProgress"}, {name = "reason", type = "SafeMessage"}, {name = "effect_receipt", type = "OptionalApprovalEffectReceiptId"}]
 
 [[type]]
 name = "ApprovalRequestResult"
@@ -619,7 +612,7 @@ name = "ApprovalError"
 kind = "union"
 visibility = "public"
 tag = "kind"
-variants = [{tag = "invalid_request", type = "ApprovalErrorDetail"}, {tag = "unauthenticated", type = "ApprovalErrorDetail"}, {tag = "forbidden", type = "ApprovalErrorDetail"}, {tag = "not_found", type = "ApprovalErrorDetail"}, {tag = "stale_generation", type = "ApprovalErrorDetail"}, {tag = "revision_conflict", type = "ApprovalErrorDetail"}, {tag = "authority_unavailable", type = "ApprovalErrorDetail"}, {tag = "root_mismatch", type = "ApprovalErrorDetail"}, {tag = "evidence_incomplete", type = "ApprovalErrorDetail"}, {tag = "rollback_detected", type = "ApprovalErrorDetail"}, {tag = "expired", type = "ApprovalErrorDetail"}, {tag = "cancelled", type = "ApprovalErrorDetail"}, {tag = "already_consumed", type = "ApprovalErrorDetail"}, {tag = "threshold_not_met", type = "ApprovalErrorDetail"}, {tag = "held", type = "ApprovalErrorDetail"}, {tag = "disputed", type = "ApprovalErrorDetail"}, {tag = "backoff", type = "ApprovalErrorDetail"}, {tag = "storage_failure", type = "ApprovalErrorDetail"}, {tag = "recovery_required", type = "ApprovalErrorDetail"}, {tag = "cursor_expired", type = "ApprovalErrorDetail"}, {tag = "unsupported", type = "ApprovalErrorDetail"}]
+variants = [{tag = "invalid_request", type = "ApprovalErrorDetail"}, {tag = "unauthenticated", type = "ApprovalErrorDetail"}, {tag = "forbidden", type = "ApprovalErrorDetail"}, {tag = "not_found", type = "ApprovalErrorDetail"}, {tag = "stale_generation", type = "ApprovalErrorDetail"}, {tag = "revision_conflict", type = "ApprovalErrorDetail"}, {tag = "authority_unavailable", type = "ApprovalErrorDetail"}, {tag = "root_mismatch", type = "ApprovalErrorDetail"}, {tag = "evidence_incomplete", type = "ApprovalErrorDetail"}, {tag = "rollback_detected", type = "ApprovalErrorDetail"}, {tag = "expired", type = "ApprovalErrorDetail"}, {tag = "cancelled", type = "ApprovalErrorDetail"}, {tag = "already_consumed", type = "ApprovalErrorDetail"}, {tag = "threshold_not_met", type = "ApprovalErrorDetail"}, {tag = "disputed", type = "ApprovalErrorDetail"}, {tag = "storage_failure", type = "ApprovalErrorDetail"}, {tag = "recovery_required", type = "ApprovalErrorDetail"}, {tag = "cursor_expired", type = "ApprovalErrorDetail"}, {tag = "unsupported", type = "ApprovalErrorDetail"}]
 
 [[operation]]
 name = "approvals.request"
@@ -649,7 +642,7 @@ symbol = "ApprovalsCancel"
 request = "ApprovalCancelRequest"
 response = "ApprovalCancelResult"
 error = "ApprovalError"
-authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "requester-only", "authority-generation-and-revision-cas", "durable-fatigue-on-notified-withdrawal", "persist-cancel-winner-before-helper-invalidation", "privileged-effect-reconciliation-required"]
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "requester-only", "authority-generation-and-revision-cas", "persist-cancel-winner-before-helper-invalidation", "privileged-effect-reconciliation-required"]
 retry = "durable-principal-resource-generation-payload-bound"
 cancellation = "atomic-cancel-versus-domain-commit"
 subscription = "none"

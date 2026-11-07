@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "status": "proposal; source evidence only; no runtime or K acceptance",
+  "status": "proposal; source evidence is historical at source_commit, including deleted fatigue.rs; withdrawal fatigue is removed; no runtime or K acceptance",
   "source_commit": "57c991dbf448ab728e7e6d52b6b313cc03dfd95b",
   "sources": [
     {
@@ -117,7 +117,7 @@
         "cancel",
         "call"
       ],
-      "preserve": "requester ownership, bounded grants, withdrawal fatigue; legacy decision relay is not retained as public authority"
+      "preserve": "requester ownership and bounded grants; withdrawal never creates fatigue; legacy decision relay is not retained as public authority"
     },
     {
       "path": "app/poolhouse-node/src/gov/ops.rs",
@@ -255,7 +255,7 @@
       "fresh protected presentation and owner authentication for each exact operation; no presence reuse or desktop-as-phone",
       "bind canonical versioned bytes to action pool anchor target signer context nonce expiry authority generation and result IDs",
       "revalidate current authority operation and runtime handles immediately before signature and consumption",
-      "persist roots observed heads complete-first-sight awake times distrust fatigue and consumption outside node rollback domain; missing checkpoint refuses; no auto-repin",
+      "persist roots observed heads complete-first-sight awake times distrust and consumption outside node rollback domain; missing checkpoint refuses; no auto-repin",
       "reinstall preserves authority root and monotonic checkpoint; archived authority never migrates",
       "node commits signed logs and request consumption atomically; keep original signatures cuts disputes thresholds holds and cancellation semantics",
       "privileged effects use durable prepare consume effect reconcile receipts; unknown outcome is recovery_required; committed or signed never implies performed",
@@ -604,11 +604,11 @@
       "The two P256 material tags denote encoding/verification policy, not independent algorithms or assurance. Exact purpose plus admitted descriptor selects policy before parsing material; no caller tag fallback or alternate verifier on malformed, mismatched or unsupported input.",
       "Generic legacy approval DER and strict low-S governance have distinct retained verifier boundaries. High-S observations are permitted only where the retained purpose verifier permits them; their bytes are not rewritten, relabeled as low-S or upgraded to governance authority. This is source-format fidelity, never legacy trust migration.",
       "Normalize only newly generated trusted-provider ECDSA output after validating provider result and before record publication. Never normalize historical signed envelopes, IDs or stored observations. Mathematical low-S validity alone never supplies required admission, governance threshold or fresh presence.",
-      "Dedup both P256 tags and all valid randomized signatures by stable admitted signer/person plus exact purpose operation nonce and authority generation. Signature bytes or policy tags never create another vote/effect, reset holds/fatigue or alter immutable operation IDs. Preserve one-time consume and durable result/effect receipts.",
+      "Dedup both P256 tags and all valid randomized signatures by stable admitted signer/person plus exact purpose operation nonce and authority generation. Signature bytes or policy tags never create another vote/effect, reset holds or alter immutable operation IDs. Preserve one-time consume and durable result/effect receipts.",
       "All existing purpose transcripts and original integer millisecond fields remain exact. General shared unsigned decimal-string/UnixMicros wire representation is not historical signing input. Preserve domain prefixes and newline/NUL, original canonicalization, key/decision binding and issuer/subject role distinctions.",
       "Native certificate currently verifies P256 subject descriptor through a separately admitted Ed25519 issuer. Issuer algorithm/root identity is independent from subject hardware/custody/presence assurance. Descriptor signature is not proof the platform can issue its subject algorithm or that root admission exists.",
       "Protected helper derives exact message internally, selects admitted algorithm for purpose without caller negotiation, and never signs caller arbitrary digests. Hash-taking ECDSA API receives SHA256(M) exactly once inside protected boundary; avoid double hashing. Raw/DER/provider conversions are trusted adapter duties, never public authority.",
-      "No public operation accepts ApprovalSignatureMaterial or exposes arbitrary sign/decide. The added family describes matching key/signature transcript-format evidence only. All prior roots thresholds holds cancellation distrust first-complete observations fatigue distinct-people and generation constraints remain in force."
+      "No public operation accepts ApprovalSignatureMaterial or exposes arbitrary sign/decide. The added family describes matching key/signature transcript-format evidence only. All prior roots thresholds holds cancellation distrust first-complete observations distinct-people and generation constraints remain in force."
     ],
     "transcripts": [
       {

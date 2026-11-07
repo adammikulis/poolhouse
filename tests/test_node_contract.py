@@ -575,6 +575,22 @@ def test_every_contract_domain_has_pinned_operation_evidence():
                     assert row[field] == operation[field], (name, operation["name"], field)
 
 
+def test_approval_contract_keeps_effect_holds_without_suppressing_requests():
+    import tomllib
+
+    domain = tomllib.loads((ROOT / "contracts/node/domains/approvals.toml").read_text())
+    types = {item["name"]: item for item in domain["type"]}
+    states = {item["tag"] for item in types["ApprovalState"]["variants"]}
+    errors = {item["tag"] for item in types["ApprovalError"]["variants"]}
+    assert "hold_running" in states and "held" not in states
+    assert not {"held", "backoff"} & errors
+    assert "ApprovalDelivery" not in types
+    assert "delivery" not in {field["name"] for field in types["ApprovalView"]["fields"]}
+    cancel = next(op for op in domain["operation"] if op["name"].endswith("cancel"))
+    assert not any("fatigue" in rule for rule in cancel["authorization"])
+    assert all("fatigue" not in path.read_text().lower() for path in (ROOT / "contracts/node/domains").glob("*.toml"))
+
+
 def test_domain_observations_preserve_fractional_margin_and_unknown_startup():
     for margin in ({"kind": "surplus", "value": {"numerator": "17", "denominator": "2"}},
                    {"kind": "shortfall", "value": {"numerator": "1", "denominator": "2"}}):

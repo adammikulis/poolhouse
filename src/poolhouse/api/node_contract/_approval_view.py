@@ -194,13 +194,6 @@ class ApprovalCancelRequest(_Record):
 _register(ApprovalCancelRequest)
 
 
-class ApprovalDelivery(_Union):
-    _variants: ClassVar[dict[str, str]] = {'urgent': 'Empty', 'quiet': 'Empty', 'silent': 'Empty', 'held': 'Empty'}
-
-
-_register(ApprovalDelivery)
-
-
 @dataclass(frozen=True)
 class ApprovalDeviceTarget(_Record):
     device_id: DeviceId
@@ -301,8 +294,7 @@ _register(ApprovalResultIds)
 
 
 class ApprovalState(_Union):
-    _variants: ClassVar[dict[str, str]] = {'held': 'Empty',
- 'pending': 'Empty',
+    _variants: ClassVar[dict[str, str]] = {'pending': 'Empty',
  'awaiting_signers': 'Empty',
  'hold_running': 'Empty',
  'disputed': 'Empty',
@@ -358,9 +350,7 @@ class ApprovalError(_Union):
  'cancelled': 'ApprovalErrorDetail',
  'already_consumed': 'ApprovalErrorDetail',
  'threshold_not_met': 'ApprovalErrorDetail',
- 'held': 'ApprovalErrorDetail',
  'disputed': 'ApprovalErrorDetail',
- 'backoff': 'ApprovalErrorDetail',
  'storage_failure': 'ApprovalErrorDetail',
  'recovery_required': 'ApprovalErrorDetail',
  'cursor_expired': 'ApprovalErrorDetail',
@@ -542,14 +532,12 @@ class ApprovalView(_Record):
     operation: ApprovalImmutableOperation
     revision: U64
     state: ApprovalState
-    delivery: ApprovalDelivery
     progress: ApprovalProgress
     reason: SafeMessage
     effect_receipt: OptionalApprovalEffectReceiptId
     _fields: ClassVar[dict[str, str]] = {'operation': 'ApprovalImmutableOperation',
  'revision': 'U64',
  'state': 'ApprovalState',
- 'delivery': 'ApprovalDelivery',
  'progress': 'ApprovalProgress',
  'reason': 'SafeMessage',
  'effect_receipt': 'OptionalApprovalEffectReceiptId'}
