@@ -10,7 +10,7 @@ use crate::grants::authority::Authority;
 use crate::grants::spec::{check_resource, grantable};
 use crate::node::Node;
 
-pub const METHODS: [&str; 6] = ["approval_request", "approval_status", "approval_cancel", "approvals", "approval_pending", "approval_decide"];
+pub const METHODS: [&str; 9] = ["approval_request", "approval_status", "approval_cancel", "approvals", "approval_pending", "approval_decide", "approval_blocks", "approval_lift_draft", "approval_lift_commit"];
 const MOST_USES: u64 = 1000;
 const MAX_LASTS_MS: u64 = 30 * 24 * 3600 * 1000;
 const MIN_LASTS_MS: u64 = 60 * 1000;
@@ -25,13 +25,60 @@ pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
         "approvals" => &["state"],
         "approval_pending" => &["key", "sig", "at_ms"],
         "approval_decide" => &["id", "decision", "key", "sig", "text_sha256", "pick", "act_sig"],
+        "approval_blocks" => &[],
+        "approval_lift_draft" => &["who"],
+        "approval_lift_commit" => &["nonce", "ticket"],
         _ => return None,
     })
 }
 
 /// The methods that name no board: they carry a signature or read what is pending.
 pub fn boardless(method: &str) -> bool {
-    matches!(method, "approval_pending" | "approval_decide")
+    matches!(method, "approval_pending" | "approval_decide" | "approval_blocks" | "approval_lift_draft" | "approval_lift_commit")
+}
+
+fn computer_asker(node: &mut Node, token: &str) -> Result<String> {
+    crate::poolapi::asker_by(node, token).ok_or_else(|| Error::Denied("Only a person at this computer can answer this block lift.".into()))
+}
+
+fn computer_lift(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
+    node.gov_tick()?;
+    let by = computer_asker(node, token)?;
+    let now = node.now_ms();
+    if node.answered.uncertain() { return Err(Error::Damaged("The block list must be reopened after a write.".into())); }
+    let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("A registered session is needed.".into()))?;
+    let person = crate::presence::person_session(node, &holder);
+    if method == "approval_blocks" {
+        let mut blocks = node.answered.blocks(now);
+        if !person { blocks.retain(|who, _| who == &by); }
+        return Ok(json!({"blocks": blocks}));
+    }
+    let authority = challenge::lift_authority(node);
+    let key = format!("computer:{by}");
+    if method == "approval_lift_draft" {
+        let who = text(p, "who")?;
+        if !person && who != by { return Err(Error::Denied("An agent can request a lift only for its own session.".into())); }
+        let (board, name) = who.split_once('/').ok_or_else(|| Error::Invalid("A blocked session has a board and name.".into()))?;
+        if !crate::row::valid_name(board) || !crate::row::valid_name(name) { return Err(Error::Invalid("That blocked session cannot be shown on this computer.".into())); }
+        let warning = if node.firsts.asks_on_own_terminal() { " A program running as you could answer this typed yes." } else { "" };
+        let sentence = format!("Poolhouse - unblock {who}. This session may ask again.{warning}");
+        if !crate::presence::card::shows_whole(&sentence) { return Err(Error::Invalid(crate::presence::card::UNSHOWABLE.into())); }
+        let ttl = crate::presence::card::CARD_FOR_MS + crate::presence::card::TICKET_FOR_MS;
+        let (nonce, lift) = node.answered.offer_lift(who, &key, &authority, now, ttl)?;
+        let bytes = challenge::lift_bytes(&node.cert.fingerprint(), &nonce, &lift);
+        let card = node.firsts.cards.add(&by, crate::presence::card::Draft { sentence: &sentence, payloads: &[bytes], founding: None, generated: None }, now)
+            .map_err(|why| Error::Invalid(why.into()))?;
+        return Ok(json!({"card": card, "nonce": nonce, "who": lift.who, "until_ms": lift.until_ms}));
+    }
+    let nonce = text(p, "nonce")?;
+    let lift = node.answered.lift_challenge(nonce, now).ok_or_else(|| Error::Denied("That block lift has expired or was already used.".into()))?;
+    if lift.key != key || lift.authority != authority { return Err(Error::Denied("That block lift belongs to another session or earlier authority.".into())); }
+    let bytes = challenge::lift_bytes(&node.cert.fingerprint(), nonce, &lift);
+    node.firsts.spend_payload(&by, text(p, "ticket")?, &crate::fsutil::sha256_hex(&bytes), now).map_err(|why| Error::Denied(why.into()))?;
+    if !node.answered.lift(nonce, now)? { return Err(Error::Denied("That block lift has expired or was already used.".into())); }
+    node.approvals.notify_change();
+    let _ = node.record_event("approval.block_lifted", &lift.who, "a person lifted the block at this computer");
+    Ok(json!({"lifted": true}))
 }
 
 pub(crate) fn text<'a>(p: &'a Map<String, Value>, key: &str) -> Result<&'a str> {
@@ -139,6 +186,7 @@ fn cancel(node: &mut Node, board: &str, token: &str, id: &str) -> Result<Value> 
 
 pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     match method {
+        "approval_blocks" | "approval_lift_draft" | "approval_lift_commit" => computer_lift(node, method, token, p),
         "approval_request" => {
             let source = node.cert.fingerprint();
             request::request_from(node, &source, board, token, p)

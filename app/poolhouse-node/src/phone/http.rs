@@ -68,13 +68,6 @@ fn reads(node: &Node, id: &str) -> bool {
     node.phones.get(id).is_some_and(|f| Authority::of(node).decides(&f.fingerprint))
 }
 
-/// Bind a lift to the current charter and distrust set, so a restored key cannot reuse an old approval.
-fn lift_authority(node: &Node) -> String {
-    let charter = node.members.gov().map(|g| g.state().chain.latest().hash.clone()).unwrap_or_default();
-    let distrust = crate::grants::distrust::set(node);
-    crate::fsutil::sha256_hex(crate::row::canonical(&json!({"charter": charter, "distrust": distrust})).as_bytes())
-}
-
 fn list(node: &mut Node, me: &str) -> Value {
     let now = node.now_ms();
     let mut shown_now = if reads(node, me) { pending(node) } else { Vec::new() };
@@ -144,8 +137,8 @@ fn phone_op(node: &Mutex<Node>, id: &str, op: &str, p: &Map<String, Value>) -> R
         "block_lift_offer" => {
             if !reads(&n, id) { return Err(Error::Denied("Only an admin phone can lift a block.".into())); }
             let key = n.phones.get(id).unwrap().fingerprint.clone();
-            let authority = lift_authority(&n);
-            let (nonce, lift) = n.answered.offer_lift(text(p, "who"), &key, &authority, now)?;
+            let authority = crate::approvals::challenge::lift_authority(&n);
+            let (nonce, lift) = n.answered.offer_lift(text(p, "who"), &key, &authority, now, crate::approvals::answered::LIFT_TTL_MS)?;
             Ok(json!({"v": 1, "op": "block_lift", "node": n.cert.fingerprint(), "nonce": nonce, "who": lift.who,
                 "until_ms": lift.until_ms, "expires_ms": lift.expires_ms, "key": lift.key, "authority": lift.authority}))
         }
@@ -154,7 +147,7 @@ fn phone_op(node: &Mutex<Node>, id: &str, op: &str, p: &Map<String, Value>) -> R
             let key = n.phones.get(id).unwrap().fingerprint.clone();
             let nonce = text(p, "nonce");
             let lift = n.answered.lift_challenge(nonce, now).ok_or_else(|| Error::Denied("That block lift has expired or was already used.".into()))?;
-            if lift.key != key || lift.authority != lift_authority(&n) || !n.persons.signed(&key, &crate::approvals::challenge::lift_bytes(&n.cert.fingerprint(), nonce, &lift), text(p, "sig")) {
+            if lift.key != key || lift.authority != crate::approvals::challenge::lift_authority(&n) || !n.persons.signed(&key, &crate::approvals::challenge::lift_bytes(&n.cert.fingerprint(), nonce, &lift), text(p, "sig")) {
                 return Err(Error::Denied("That signature does not approve this block lift.".into()));
             }
             if !n.answered.lift(nonce, now)? { return Err(Error::Denied("That block lift has expired or was already used.".into())); }

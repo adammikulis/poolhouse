@@ -100,6 +100,23 @@ def test_a_deny_from_the_phone_is_a_failed_exit_the_agent_can_relay(phone_node):
     assert done.returncode == 3 and json.loads(done.stdout)["message"] == "You said no; nothing changed."
 
 
+def test_a_person_without_an_agent_session_can_list_and_lift_another_sessions_block(phone_node):
+    team = phone_node
+    lead = team.member("lead")
+    phone = add_phone(team)
+    made = json.loads(team.cli("approval", "request", "sync_now", "--json", who=lead).stdout)
+    endpoint = endpoint_of(team)
+    seen = endpoint.ok("get", {"id": made["id"]}, token=phone.token)
+    endpoint.ok("decide", phone.decision(seen, "block"))
+    who = f"{team.board}/{lead.name}"
+    code, out, err = team.terminal("approval", "blocks", "--json")
+    assert code == 0 and who in json.loads(next(line for line in out.splitlines() if line.startswith("{"))), (out, err)
+    code, out, err = team.terminal("approval", "lift", who, typed={"Type yes": "yes"})
+    assert code == 0 and "The block was lifted" in out, (out, err)
+    retry = team.cli("approval", "request", "sync_now", "--json", who=lead)
+    assert retry.returncode == 0 and json.loads(retry.stdout)["state"] == "pending", retry
+
+
 def test_a_person_at_a_terminal_answers_with_the_key_the_node_holds_once_they_type_yes(phone_node):
     team = phone_node
     lead = team.member("lead")

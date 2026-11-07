@@ -259,6 +259,14 @@ class Board:
         """A request this session made, by its handle."""
         return Approval(self._session, dict(self._session.call("approval_status", id=handle)))
 
+    def blocked_sessions(self) -> dict[str, int]:
+        """Blocks visible to this session, with their end times in milliseconds."""
+        return approvals.blocks(self._session)
+
+    def lift_block(self, who: str) -> None:
+        """Ask the person at this computer to lift the block on ``board/session``."""
+        approvals.lift_at_computer(self._session, who)
+
     def approvals(self, state: str = "") -> list[Approval]:
         """The newest requests this session made (only those in ``state`` when given)."""
         return [Approval(self._session, dict(raw)) for raw in self._session.call("approvals", **({"state": state} if state else {}))["approvals"]]

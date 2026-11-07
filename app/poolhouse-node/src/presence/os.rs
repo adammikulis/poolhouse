@@ -149,7 +149,7 @@ impl Drop for OsPrompt {
 
 /// The text of a prompt as the system shows it: plain, short, with nothing in it a script could be written through.
 pub(crate) fn plain(what: &str) -> String {
-    what.chars().filter(|c| c.is_ascii_alphanumeric() || " .,-/()".contains(*c)).take(super::card::MOST_SENTENCE).collect()
+    what.chars().filter(|c| c.is_ascii_alphanumeric() || " .,_-/()".contains(*c)).take(super::card::MOST_SENTENCE).collect()
 }
 
 /// Whether this computer can raise a prompt of its own that the person can answer: macOS for an administrator's account (the dialog asks for

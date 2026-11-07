@@ -38,6 +38,8 @@ impl Presence for Person {
         self.kind
     }
 
+    fn own_terminal(&self) -> bool { self.kind == "own-terminal" }
+
     fn begin(&mut self, what: &str, _terminal: &str) -> NodeResult<Box<dyn Asking>> {
         self.raised.fetch_add(1, Ordering::SeqCst);
         self.shown.lock().unwrap().push(what.into());
@@ -92,6 +94,73 @@ fn payload(draft: &Value) -> String {
 
 fn public_of(draft: &Value) -> String {
     draft["charter"]["admins"][0]["key"].as_str().unwrap().to_string()
+}
+
+#[test]
+fn a_computer_lifts_only_the_block_named_in_its_own_confirmed_card() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut node = node(dir.path());
+    let prompt = at_the_prompt(&mut node, "os");
+    let person = person_session(&mut node);
+    let (agent_name, agent) = session(&mut node, "pool", "an-agent");
+    let (_, other) = session(&mut node, "pool", "other-agent");
+    let now = node.now_ms();
+    node.answered.block("demo/agent_one", now).unwrap();
+    node.answered.block("demo/agent-two", now).unwrap();
+    node.answered.block(&format!("pool/{agent_name}"), now).unwrap();
+    let all = ok(req(&mut node, "approval_blocks", "", &person, json!({})));
+    assert_eq!(all["blocks"].as_object().unwrap().len(), 3);
+    let limited = ok(req(&mut node, "approval_blocks", "", &agent, json!({})));
+    assert_eq!(limited["blocks"].as_object().unwrap().len(), 1, "an agent sees its own block but not other sessions' blocks");
+    assert!(limited["blocks"][format!("pool/{agent_name}")].is_u64());
+    let mut denial = None;
+    for target in ["demo/agent_one", "demo/not-blocked"] {
+        let denied = req(&mut node, "approval_lift_draft", "", &agent, json!({"who": target}));
+        assert_eq!(code(&denied), "denied");
+        if let Some(previous) = denial { assert_eq!(denied["error"]["message"], previous); }
+        denial = Some(denied["error"]["message"].clone());
+    }
+    let draft = ok(req(&mut node, "approval_lift_draft", "", &person, json!({"who": "demo/agent_one"})));
+    let card = draft["card"].as_str().unwrap();
+    let nonce = draft["nonce"].as_str().unwrap();
+    let no = answered(&mut node, &prompt, &person, "card", card, false);
+    assert_eq!(no["state"], "refused");
+    assert!(node.answered.blocked_until("demo/agent_one", now).is_some());
+    let yes = answered(&mut node, &prompt, &person, "card", card, true);
+    assert!(prompt.shown.lock().unwrap().last().unwrap().contains("demo/agent_one"));
+    let ticket = yes["secret"].as_str().unwrap();
+    assert_ne!(req(&mut node, "approval_lift_commit", "", &other, json!({"nonce": nonce, "ticket": ticket}))["ok"], true);
+    assert_ne!(req(&mut node, "approval_lift_commit", "", &person, json!({"nonce": nonce, "ticket": "wrong"}))["ok"], true);
+    ok(req(&mut node, "approval_lift_commit", "", &person, json!({"nonce": nonce, "ticket": ticket})));
+    assert!(node.answered.blocked_until("demo/agent_one", now).is_none());
+    assert!(node.answered.blocked_until("demo/agent-two", now).is_some());
+    assert_ne!(req(&mut node, "approval_lift_commit", "", &person, json!({"nonce": nonce, "ticket": ticket}))["ok"], true);
+    let newer = ok(req(&mut node, "approval_lift_draft", "", &person, json!({"who": "demo/agent-two"})));
+    let yes = answered(&mut node, &prompt, &person, "card", newer["card"].as_str().unwrap(), true);
+    node.answered.block("demo/agent-two", now).unwrap();
+    assert_ne!(req(&mut node, "approval_lift_commit", "", &person, json!({"nonce": newer["nonce"], "ticket": yes["secret"]}))["ok"], true, "reblocking invalidates the earlier card");
+    assert!(node.answered.blocked_until("demo/agent-two", now).is_some());
+}
+
+#[test]
+fn a_typed_yes_lift_card_names_the_same_user_program_limit() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut node = node(dir.path());
+    let _prompt = at_the_prompt(&mut node, "own-terminal");
+    let person = person_session(&mut node);
+    let holder = node.tokens.resolve(&person).unwrap().clone();
+    let by = format!("{}/{}", holder.board, holder.name);
+    let now = node.now_ms();
+    node.answered.block("demo/agent_one", now).unwrap();
+    let draft = ok(req(&mut node, "approval_lift_draft", "", &person, json!({"who": "demo/agent_one"})));
+    let card = node.firsts.cards.get(&by, draft["card"].as_str().unwrap(), node.now_ms()).unwrap();
+    assert!(card.sentence.contains("A program running as you could answer this typed yes"));
+    let longest = format!("{}/{}", "a".repeat(48), "b".repeat(48));
+    node.answered.block(&longest, now).unwrap();
+    let long = ok(req(&mut node, "approval_lift_draft", "", &person, json!({"who": longest})));
+    assert!(node.firsts.cards.get(&by, long["card"].as_str().unwrap(), node.now_ms()).unwrap().sentence.contains(&longest));
+    let (_, agent) = session(&mut node, "pool", "agent");
+    assert_ne!(req(&mut node, "approval_lift_draft", "", &agent, json!({"who": "demo/agent_one"}))["ok"], true);
 }
 
 #[test]

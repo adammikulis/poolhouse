@@ -11,6 +11,7 @@ use crate::approvals::context::Context;
 use crate::approvals::{Approval, GRANTS};
 use crate::cert::valid_fingerprint;
 use crate::error::{Error, Result};
+use crate::fsutil::sha256_hex;
 use crate::grants::spec::Issue;
 use crate::row::canonical;
 
@@ -18,6 +19,12 @@ pub const DOMAIN: &str = "poolhouse/approval/v1\n";
 /// What a person's key signs to read every request that waits, once: a session reads only its own.
 pub const LIST_DOMAIN: &str = "poolhouse/approval-list/v1\n";
 pub const LIFT_DOMAIN: &str = "poolhouse/approval-block-lift/v1\n";
+/// Current governed authority for a local lift; a changed charter or distrust invalidates old cards.
+pub fn lift_authority(node: &crate::node::Node) -> String {
+    let (pool, charter) = node.members.gov().map(|g| (g.id.clone(), g.state().chain.latest().hash.clone())).unwrap_or_default();
+    let distrust = crate::grants::distrust::set(node);
+    sha256_hex(canonical(&json!({"pool": pool, "charter": charter, "distrust": distrust})).as_bytes())
+}
 /// The most bytes of text a request carries, and the most asks.
 pub const MAX_TEXT: usize = 6000;
 pub const MOST_ASKS: usize = 8;

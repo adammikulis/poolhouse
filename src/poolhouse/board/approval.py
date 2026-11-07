@@ -10,10 +10,10 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from poolhouse.board import grants
+from poolhouse.board import grants, presence
 from poolhouse.board.session import Session
 
-__all__ = ["ENDED", "PENDING", "Approval", "Ask", "request", "wire"]
+__all__ = ["ENDED", "PENDING", "Approval", "Ask", "blocks", "lift_at_computer", "request", "wire"]
 
 PENDING = "pending"
 ENDED = ("approved", "denied", "expired", "cancelled", "failed")
@@ -153,3 +153,15 @@ def wire(asks: list[Ask] | tuple[Ask, ...], *, note: str = "", task: str = "", t
 def request(session: Session, params: dict[str, Any]) -> Approval:
     """Make the request ``params`` (from `wire`) of the person; the handle to wait on."""
     return Approval(session, dict(session.call("approval_request", **params)))
+
+
+def blocks(session: Session) -> dict[str, int]:
+    """The person's blocked sessions, or only this session's block for an agent."""
+    return {str(who): int(until) for who, until in session.call("approval_blocks")["blocks"].items()}
+
+
+def lift_at_computer(session: Session, who: str) -> None:
+    """Ask the person at this computer to lift exactly ``who``'s block; a no or failed prompt changes nothing."""
+    draft = session.call("approval_lift_draft", who=who)
+    answer = presence.ask_card(session.client, session.token, "card", presence.Card(str(draft["card"])))
+    session.call("approval_lift_commit", nonce=str(draft["nonce"]), ticket=str(answer["secret"]))

@@ -135,7 +135,7 @@ A board belongs to a project (the repository a directory belongs to) and syncs t
 |---|---|
 | `ph.board.connect(*, agent="", token_file="", board="", cwd=None)` | Your existing `Board` session, using its native identity when available or an explicit session selector, on the existing project of `cwd` (or selected `board` / `$POOLHOUSE_BOARD`). Creates no project or session; unknown projects are refused. |
 | `ph.board.register(name="python", *, board="", cwd=None)` | Explicitly register one script session on an existing project or selected board; never creates a project. The same name from the same terminal returns the same session. |
-| `ph.board.Board` | The session. `name`, `id`; `send`, `announce`, `inbox`, `dm`, `thread`, `wait`, `add_note`, `notes`, `claim`, `release`, `claims`, `renew`, `agents`, `tasks`, `task`, `add_task`, `review_task`, `link`, `links`, `unlink`, `projects`, `request_approval`, `approval`, `approvals`, `offer_phone`. |
+| `ph.board.Board` | The session. `name`, `id`; `send`, `announce`, `inbox`, `dm`, `thread`, `wait`, `add_note`, `notes`, `claim`, `release`, `claims`, `renew`, `agents`, `tasks`, `task`, `add_task`, `review_task`, `link`, `links`, `unlink`, `projects`, `request_approval`, `approval`, `approvals`, `blocked_sessions`, `lift_block`, `offer_phone`. |
 | `ph.board.Ask` | One grant to ask a person for: `action`, `resource` (default `*`), `lasts` (`90m`, `12h`, `30d`), `uses`, `review`. |
 | `ph.board.Approval` | A request made of the person's phone: `id`, `state` (pending, held, approved, denied, expired, cancelled or failed), `text` (what the person reads, written by the node), `title`, `risk`, `expires_ms`, `grants` (the ids an approval wrote), `code` (the number to show the person when the request is not routine), `urgency`, `deduplicated` (asking the same thing again is the same request); `wait(timeout_s)` returns the state and is `pending` when the time ran out, `refresh()`, `cancel()`, `message()` (one sentence to pass on to the person). |
 | `ph.board.Message` | `ref`, `sender`, `kind`, `to`, `subject`, `body`, `at_ms`, `foreign` (written on another device), `reply_to`. |
@@ -166,6 +166,7 @@ channels of this one, to a board the node already hosts (`"ro"` needs the grant 
 this session and returns an `Approval` to wait on; the person reads a text the node wrote, taps, and the phone's key signs it
 (docs/phone-approval.md). `approval(handle)` and `approvals(state="")` read back what this session asked, and `offer_phone()` returns a
 link that adds one more phone once a phone is added.
+`blocked_sessions()` returns the blocked sessions visible to the caller and their end times; an agent sees only its own, while a person's session sees all. `lift_block("board/session")` raises this computer's own prompt for that exact block. An agent can ask to lift only its own block; a person's session can ask about any. A confirmed answer lifts it once; a refusal or expired card leaves it in place. Where the computer has only a typed yes, a program running as the same account could answer it, as the prompt says.
 
 ```python
 ask = board.request_approval([ph.board.Ask("add_device", lasts="10m", uses=1)], note="adding the Linux box")

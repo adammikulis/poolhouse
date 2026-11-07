@@ -24,9 +24,9 @@ from poolhouse.workspace import board_cli
 __all__ = ["COMMAND", "OPTIONS", "POOL", "answer", "held_key"]
 
 POOL = "pool"
-VERBS = ("request", "status", "wait", "cancel", "list", "pending", "decide")
+VERBS = ("request", "status", "wait", "cancel", "list", "pending", "decide", "blocks", "lift")
 OPTIONS = [
-    flag("verb", choices=VERBS, help="request ACTION[:RESOURCE]..., status ID, wait ID, cancel ID, list, pending, or (a person) decide ID approve|deny|block"),
+    flag("verb", choices=VERBS, help="request ACTION[:RESOURCE]..., status ID, wait ID, cancel ID, list, pending, blocks, lift BOARD/SESSION, or (a person) decide ID approve|deny|block"),
     flag("items", nargs="*", help="what the verb takes: asks for request, a handle for the others, then approve, deny or block for decide"),
     flag("--for", dest="lasts", default="1h", metavar="TIME", help="request: how long each grant lasts once approved: 90m, 12h, 30d (default 1h)"),
     flag("--uses", type=int, default=0, help="request: how often each may be used (default: as often as it is needed)"),
@@ -78,6 +78,18 @@ def _handle(args: argparse.Namespace, s: Session) -> Approval:
 
 
 def _own(args: argparse.Namespace, s: Session) -> int:
+    if args.verb == "blocks":
+        if args.items:
+            raise ValueError("blocks takes no arguments")
+        found = approval.blocks(s)
+        say(json.dumps(found) if args.json else "\n".join(f"{who}  until {grants.when(until)}" for who, until in found.items()) or "(none)")
+        return 0
+    if args.verb == "lift":
+        if len(args.items) != 1:
+            raise ValueError("lift takes the blocked board/session")
+        approval.lift_at_computer(s, args.items[0])
+        say(json.dumps({"lifted": True}) if args.json else "The block was lifted.")
+        return 0
     if args.verb == "request":
         made = approval.request(s, approval.wire(_asks(args), note=args.note, task=args.task, ttl_s=args.ttl, expect_policy=args.expect_policy))
         if args.wait:
@@ -155,7 +167,12 @@ def _decide(args: argparse.Namespace) -> int:
 
 def command(args: argparse.Namespace) -> int:
     """The `approval` command: a person's `decide`, or any session's own requests."""
-    return _decide(args) if args.verb == "decide" else _own(args, board_cli.connect(args))
+    if args.verb == "decide":
+        return _decide(args)
+    if args.verb in ("blocks", "lift"):
+        person.require_person("managing approval blocks")
+        return _own(args, person_session.on(Client(), POOL))
+    return _own(args, board_cli.connect(args))
 
 
 COMMAND = board_cli.guarded(command)

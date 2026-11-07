@@ -353,4 +353,5 @@ fn one_prompt_is_open_for_each_asker_and_one_asker_cannot_block_another() {
 #[test]
 fn the_words_of_a_prompt_are_plain() {
     assert_eq!(plain("a \"quoted\"\nline; rm -rf /"), "a quotedline rm -rf /");
+    assert_eq!(plain("demo_board/agent_one"), "demo_board/agent_one");
 }
