@@ -72,6 +72,14 @@ impl Stream {
         (found != 0 && pid > 0).then_some(pid)
     }
 
+    /// The process serving a connected client pipe.
+    pub fn server_pid(&self) -> Option<u32> {
+        let mut pid = 0u32;
+        // SAFETY: the handle is a connected client pipe and `pid` is valid for the write.
+        let found = unsafe { GetNamedPipeServerProcessId(self.handle.0, &mut pid) };
+        (found != 0 && pid > 0).then_some(pid)
+    }
+
     /// Reads wait at most ``timeout`` (None: for ever) and then fail with `TimedOut`.
     pub fn set_read_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()> {
         self.read_timeout.set(timeout);

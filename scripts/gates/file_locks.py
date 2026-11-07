@@ -28,7 +28,7 @@ def _handle_transfer_only(tree: ast.Module, binding: str) -> bool:
     return bool(references) and all(
         isinstance(parents.get(node), ast.Attribute)
         and parents[node].value is node
-        and parents[node].attr == "open_osfhandle"
+        and parents[node].attr in ("open_osfhandle", "get_osfhandle")
         and isinstance(parents[node].ctx, ast.Load)
         for node in references)
 
@@ -116,7 +116,7 @@ def scan(path: Path, where: str) -> list[Finding]:
         elif (isinstance(node, ast.ImportFrom) and node.module
               and node.module.split(".")[0] in MODULES
               and (node.module != "msvcrt" or any(
-                  alias.name != "open_osfhandle" for alias in node.names))):
+                  alias.name not in ("open_osfhandle", "get_osfhandle") for alias in node.names))):
             out.append(Finding(where, node.lineno, f"from {node.module}"))
     for node, name in calls(tree):
         if name.endswith("flock") or dotted(node.func).endswith("flock"):

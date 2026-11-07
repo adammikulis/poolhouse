@@ -86,6 +86,7 @@ names its end to the agent. The owner's orders: "I should never silently have th
 | `live_main_sessions` | 16 | `app/poolhouse-node/src/writes.rs:34` | main sessions a board holds that have not ended: four process trees write a log, each with four terminals | the owner, `<state>/write-limits.json` |
 | `board_grace_s` | 3600 | `app/poolhouse-node/src/writes.rs:32` | seconds a board that holds nothing but the starts and ends of its sessions is left alone before a new board may remove it | the owner, `<state>/write-limits.json` |
 | `MAX_IDENTITIES` | 10_000 | `app/poolhouse-node/src/identity.rs:16` | sessions a board holds: memory | the owner, in source |
+| `CHALLENGE_TTL` | 30 s | `app/poolhouse-node/src/root_auth.rs` | lifetime of one connection's root registration challenge; a response is used once | the owner, in source |
 | `SHORT` | 6 | `app/poolhouse-node/src/identity.rs:15` | characters of the shortest name a session is given: when every length is taken no name is left | the owner, in source |
 | `MAX_TOKENS_PER_NAME` | 8 | `app/poolhouse-node/src/identity.rs:17` | tokens one session holds: the ninth ends the oldest | the owner, in source |
 | `MOST_TOKENS` | 2048 | `app/poolhouse-node/src/identity.rs:19` | tokens a node holds: memory; when full the tokens of sessions idle for `IDLE_MS` end | the owner, in source |

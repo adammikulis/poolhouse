@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::json;
 
@@ -14,10 +14,15 @@ use crate::lineage::Peer;
 use crate::net::Net;
 use crate::node::Node;
 use crate::node::update_activity::{Connection, Registry};
+use crate::node::update_activity::Source;
 use crate::sys::{peer, Listener, Principal, Stream};
 use crate::wire::{read_frame, write_frame};
 
 pub use crate::node::INSTANCE_LOCK;
+
+// Count invalid responses per connection for an audit notice; valid registrations are never held back.
+const BAD_WINDOW: Duration = Duration::from_secs(60);
+const BAD_NOTICE: usize = 3;
 
 /// The socket path (on Windows the pipe name) of the node whose state is ``state``.
 pub fn socket_path(state: &Path) -> PathBuf {
@@ -94,7 +99,45 @@ fn connection(mut stream: Stream, node: &Mutex<Node>, allowed: &Principal, net: 
         return write_frame(&mut stream, &refusal);
     }
     let who = Peer::of(&stream);
+    let mut challenge: Option<(String, Instant)> = None;
+    let mut failure_count = 0usize;
+    let mut failure_window = Instant::now();
     while let Some(request) = read_frame(&mut stream)? {
+        if request["method"] == "root_challenge" {
+            let nonce = crate::fsutil::random_hex(32)?;
+            challenge = Some((nonce.clone(), Instant::now()));
+            write_frame(&mut stream, &crate::api::respond(&request, Ok(json!({"nonce": nonce}))))?;
+            continue;
+        }
+        if request["method"] == "register" {
+            let offered = challenge.take();
+            let (reply, bad) = if net.is_some() {
+                match crate::net::tracked_node(node, Source::Network) {
+                    Ok(mut n) => register(&mut n, &request, &who, offered),
+                    Err(error) => (crate::api::respond(&request, Err(error)), false),
+                }
+            } else {
+                match node.lock() {
+                    Ok(mut n) => register(&mut n, &request, &who, offered),
+                    Err(_) => (crate::api::respond(&request, Err(Error::Damaged("node poisoned".into()))), false),
+                }
+            };
+            if bad {
+                let now = Instant::now();
+                if now.duration_since(failure_window) >= BAD_WINDOW { failure_count = 0; failure_window = now; }
+                failure_count = failure_count.saturating_add(1);
+                if failure_count == BAD_NOTICE {
+                    if let Ok(mut n) = node.lock() {
+                        if n.rates.permits("root-auth-notice", 1, BAD_WINDOW) {
+                            n.rates.record("root-auth-notice", BAD_WINDOW);
+                            let _ = n.record_event("root_auth.rejected", "registration", "repeated invalid root credential responses");
+                        }
+                    }
+                }
+            }
+            write_frame(&mut stream, &reply)?;
+            continue;
+        }
         let reply = crate::lease::rpc::serve(&|r| match net {
             Some(net) => Ok(net.call(r, &who)),
             None => match node.lock() {
@@ -105,4 +148,19 @@ fn connection(mut stream: Stream, node: &Mutex<Node>, allowed: &Principal, net: 
         write_frame(&mut stream, &reply)?;
     }
     Ok(())
+}
+
+/// Check and dispatch under one node lock, so a token cannot change from a child to a root between the two.
+fn register(node: &mut Node, request: &serde_json::Value, peer: &Peer, challenge: Option<(String, Instant)>) -> (serde_json::Value, bool) {
+    let mut clean = request.clone();
+    let proof = clean.get_mut("params").and_then(|p| p.as_object_mut()).and_then(|p| p.remove("root_proof"))
+        .and_then(|p| p.as_str().map(str::to_string)).unwrap_or_default();
+    if crate::root_auth::needs_proof(node, &clean) {
+        let verified = challenge.filter(|(_, at)| at.elapsed() <= crate::root_auth::CHALLENGE_TTL)
+            .is_some_and(|(nonce, _)| crate::root_auth::verifies(&node.dir, &nonce, &clean, &proof).unwrap_or(false));
+        if !verified {
+            return (crate::api::respond(request, Err(Error::Denied("a main session needs a fresh root credential response".into()))), true);
+        }
+    }
+    (handle(node, &clean, peer), false)
 }

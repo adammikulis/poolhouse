@@ -233,6 +233,7 @@ impl Node {
             .ok_or_else(|| Error::Denied("a node already runs on this state directory".into()))?;
         let (key, custody) = device::load(dir, supplied)?;
         identity::ensure_person_secret(dir)?;
+        crate::root_auth::ensure(dir)?;
         let cert = cert::load_or_create(dir, &key)?;
         let members = Pool::load(dir)?;
         let facts = Facts::open(&dir.join("peers.json"))?;

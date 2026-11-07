@@ -27,7 +27,7 @@ SCRUBBED_ENV = (
 )
 
 STATE_DENY_READ = (
-    "node/client", "node/person", "workspace/local-agents", "keystore", "server-keys.json", "pool.key.old", "pool.json",
+    "node/client", "node/person", "node/hook-credentials", "hooks", "workspace/local-agents", "keystore", "server-keys.json", "pool.key.old", "pool.json",
     "credentials.endpoint", "credentials.toml.bak", "onboard",
 )
 """`node/client` holds a token file and a `.parent` file for each session and its read cursors; `node/person` is the person key's custody."""
@@ -37,7 +37,7 @@ STATE_ALLOW_WRITE = (
     "broker.lock", "broker-leases.json", "servers.json", "servers.lock", "servers.admission.lock",
 )
 STATE_DENY_WRITE = (
-    "node/client", "node/person", "workspace/local-agents", "keystore", "runtimes", "hooks", "gate", "guard", "machine-id",
+    "node/client", "node/person", "node/hook-credentials", "workspace/local-agents", "keystore", "runtimes", "hooks", "gate", "guard", "machine-id",
     "wired-limit.json",
 )
 HOME_DENY_READ = (".ssh", ".aws", ".gnupg", ".config/gh", ".netrc", ".git-credentials", ".docker/config.json",

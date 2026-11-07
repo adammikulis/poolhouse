@@ -16,7 +16,10 @@ def _find(tmp_path: Path, source: str):
 @pytest.mark.parametrize("source", [
     "import msvcrt\nmsvcrt.open_osfhandle(handle, flags)\n",
     "import msvcrt as crt\ncrt.open_osfhandle(handle, flags)\n",
+    "import msvcrt\nmsvcrt.get_osfhandle(fd)\n",
+    "import msvcrt as crt\ncrt.get_osfhandle(fd)\n",
     "from msvcrt import open_osfhandle as transfer\ntransfer(handle, flags)\n",
+    "from msvcrt import get_osfhandle as transfer\ntransfer(fd)\n",
 ])
 def test_windows_handle_transfers_are_allowed(tmp_path, source):
     assert not _find(tmp_path, source)
@@ -29,6 +32,7 @@ def test_windows_handle_transfers_are_allowed(tmp_path, source):
     "from msvcrt import open_osfhandle, locking\n",
     "from msvcrt import *\nlocking(fd, mode, count)\n",
     "import msvcrt\nmsvcrt.open_osfhandle(handle, flags)\nmsvcrt.locking(fd, mode, count)\n",
+    "import msvcrt\nmsvcrt.get_osfhandle(fd)\nmsvcrt.locking(fd, mode, count)\n",
     "import msvcrt as crt\ngetattr(crt, operation)(fd, mode, count)\n",
     "import msvcrt\nother = msvcrt\nother.locking(fd, mode, count)\n",
     "import msvcrt\nconsume(msvcrt)\n",

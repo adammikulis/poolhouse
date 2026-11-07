@@ -38,6 +38,7 @@ def _k32() -> Any:
     k.WaitForSingleObject.restype, k.WaitForSingleObject.argtypes = wintypes.DWORD, [wintypes.HANDLE, wintypes.DWORD]
     k.CreateFileW.restype = wintypes.HANDLE
     k.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    k.GetNamedPipeServerProcessId.restype, k.GetNamedPipeServerProcessId.argtypes = wintypes.BOOL, [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
     return k
 
 
@@ -106,3 +107,15 @@ def open_pipe(name: str) -> Any:
         code = _last_error()
         raise OSError(0, f"cannot open {name}", None, code)
     return os.fdopen(msvcrt.open_osfhandle(handle, os.O_RDWR | os.O_BINARY), "r+b", buffering=0)  # type: ignore[attr-defined]
+
+
+def pipe_server_pid(pipe: Any) -> int:
+    """The process serving this connected named pipe, as reported by Windows."""
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    pid = wintypes.DWORD()
+    if not _k32().GetNamedPipeServerProcessId(msvcrt.get_osfhandle(pipe.fileno()), ctypes.byref(pid)) or not pid.value:
+        raise OSError(_last_error(), "cannot identify the named-pipe server")
+    return int(pid.value)

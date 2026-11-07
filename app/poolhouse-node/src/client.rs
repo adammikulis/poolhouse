@@ -1,6 +1,6 @@
 //! The client side: talk to the node, and start it when the socket (the pipe) is dead.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -16,6 +16,7 @@ const START_WAIT: Duration = Duration::from_secs(10);
 
 pub struct Client {
     stream: Stream,
+    state: PathBuf,
 }
 
 /// Whether `ensure_running` found a node or started one.
@@ -27,9 +28,13 @@ pub enum Started {
 
 impl Client {
     pub fn connect(state: &Path) -> Result<Client> {
-        let stream = connect(state)?;
+        #[cfg(unix)]
+        let state = state.canonicalize()?;
+        #[cfg(not(unix))]
+        let state = state.to_path_buf();
+        let stream = connect(&state)?;
         stream.set_read_timeout(Some(Duration::from_secs(30)))?;
-        Ok(Client { stream })
+        Ok(Client { stream, state })
     }
 
     /// Send one request and return its result; a refusal comes back as the matching error.
@@ -41,13 +46,37 @@ impl Client {
         if !token.is_empty() {
             request["token"] = json!(token);
         }
+        if method == "register" {
+            let challenge = self.send(&json!({"v": API_VERSION, "id": 1, "method": "root_challenge", "params": {}}))?;
+            let nonce = challenge["nonce"].as_str().ok_or_else(|| Error::Invalid("root challenge has no nonce".into()))?;
+            #[cfg(unix)]
+            let server = crate::sys::peer_pid(&self.stream);
+            #[cfg(windows)]
+            let server = self.stream.server_pid();
+            let proof = server.ok_or_else(|| Error::Denied("the node's process could not be read".into()))
+                .and_then(|pid| crate::root_auth::sign(&self.state, nonce, pid, &request));
+            match proof {
+                Ok(proof) => request["params"]["root_proof"] = json!(proof),
+                Err(error) if token.is_empty() => return Err(error),
+                Err(_) => {} // A child with its parent's token does not need the root credential.
+            }
+        }
         self.send(&request)
     }
 
     /// Send a request exactly as given (tests send ones the helper would not).
     pub fn send(&mut self, request: &Value) -> Result<Value> {
-        write_frame(&mut self.stream, request)?;
-        let reply = read_frame(&mut self.stream)?.ok_or_else(|| Error::Io(std::io::ErrorKind::UnexpectedEof.into()))?;
+        let reply = match write_frame(&mut self.stream, request) {
+            Ok(()) => read_frame(&mut self.stream)?.ok_or_else(|| Error::Io(std::io::ErrorKind::UnexpectedEof.into()))?,
+            Err(Error::Io(error)) if matches!(error.kind(), std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::NotConnected) => {
+                match read_frame(&mut self.stream) {
+                    Ok(Some(reply)) if reply["v"] == API_VERSION && reply["id"].is_null() && reply["ok"] == false
+                        && reply["error"]["code"] == "denied" && reply["error"]["message"] == "denied: another user" => reply,
+                    _ => return Err(Error::Io(error)),
+                }
+            }
+            Err(error) => return Err(error),
+        };
         if reply["ok"] == true {
             return Ok(reply["result"].clone());
         }

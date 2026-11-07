@@ -118,6 +118,21 @@ a refused registration issues none and ends none. 10,000 sessions per board and 
 file mode keeps it from other operating-system users and from nothing else: any process of the same user can read the file, and
 whoever reads it can present the token. The lineage below does not hide it; it limits what a token spends.
 
+**Root registration proof.** On the local socket a main-session `register` first asks `root_challenge` on that same connection and
+sends `root_proof`: HMAC-SHA256 with the node's `hook-credentials/root.key` over `poolhouse/root-register/v1\n` followed by canonical
+JSON of `[nonce, server_pid, board, token, model, harness, session]` (absent text is an empty string). The client gets `server_pid` from
+the connected socket or pipe, and the node checks its own process id. The challenge ends after 30 seconds and is
+consumed by the next registration attempt on that connection. The Python and Rust clients do this for callers. A child registered
+with its parent's token needs no root proof. Three invalid main responses on one connection produce an audit event, coalesced across
+the device; they never prevent a valid response on another connection.
+
+This proves access to a shared local credential, not that the caller owns the named native session. A process of the same user that
+can read the key can register another native id; current Codex confinement has no read-deny proof, and a fully copied device copies the
+key. The process id binds a response to the connected process, not to an executable or state; inherited sockets and different process-id
+namespaces still need proof. Reporter-key isolation, Windows handle-based custody,
+session-specific grant authority and an installed sandbox proof remain unfinished. This proof therefore does not close the known grant
+inheritance on a resumed session.
+
 **Lineage.** The node reads the process id of the client of the socket (`SO_PEERCRED` on Linux, `LOCAL_PEERPID` on macOS) and the
 processes above it, with their start times, up to and including the shell of its terminal (the leader of a session that has a
 controlling terminal), or to the top when it has none, and records them with a main session when the session is first registered,
@@ -193,8 +208,9 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | method | needs | params | result |
 |---|---|---|---|
 | `hello` | | | `{node, version, pid, fingerprint, device (the certificate fingerprint grants and approvals name), build, build_seq, wire}` |
+| `root_challenge` | local connection | | `{nonce}` for one main-session registration on this connection |
 | `lineage` | | | `{lineage}`: the processes the node reads for the one asking, from it up to the shell of its terminal, each `{pid, start}`; the last is the `anchor` a person signs for |
-| `register` | board | `model, harness, session` (token = parent, or the session's own token) | `{name, token, created, parent, origin}`; a main session already registered is answered only to its lineage, and the token it gets is bound to the lineage it registers from |
+| `register` | board | `model, harness, session`, and `root_proof` for a main session (token = parent, or the session's own token) | `{name, token, created, parent, origin}`; the token is bound to the registering lineage |
 | `register_person` | board | `session`, `proof` (token = none, or the person's own session's token) | as `register`, for the person's own main session (harness `poolhouse-ui`, model `person`), which the node marks `person` when `proof` is the secret it keeps for the person in `<state>/person/ui.secret` (a file of the account: Claude Code's sandbox and sandbox-runtime deny the folder to a process an agent started, a process outside those denies reads it, and on a computer with no prompt of the system's own the typed yes it can then ask for is approval by "a program running as you could approve it"); a request without it is refused; `register` and `whoami` refuse the harness `poolhouse-ui` |
 | `rebind` | board | `harness, session, anchor`, and in no pool `incarnation, at_ms, nonce, by, sig` (a person key's signature), in a pool `approval` (the id of the request) | `{name, moved, tokens_ended}`; in a pool the request with its `id` and `code`, then `{state, moved}` until the phone answers |
 | `whoami` | board, token | `model, harness` (claim what you run on) | `{name, board, target, identity}` |
