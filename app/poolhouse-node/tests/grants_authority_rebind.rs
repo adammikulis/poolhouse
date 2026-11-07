@@ -49,6 +49,7 @@ fn an_approved_session_move_works_once_from_the_terminal_it_names_and_ends_the_t
     let view = pool.rig.get(&pool.phone, &id);
     let text = view["text"].as_str().unwrap();
     assert!(text.contains("Move the session") && text.contains("PICK:"), "{text}");
+    assert!(text.contains("WHY: A process in a terminal requested this move.") && !text.contains("A person ran"), "the request does not establish who ran it: {text}");
     assert_eq!(view["challenge"]["action"]["anchor"], anchor, "the terminal is inside what the phone signs");
     assert_eq!(ok(pool.answer(&pool.phone, &id, "approve"))["state"], "approved");
     assert!(lead_works(&pool), "the tap moved nothing: the terminal completes the move");

@@ -282,7 +282,7 @@ pub fn rebind_text(session: &str, board: &str, policy: &str, ctx: &Context, expi
         format!("SCOPE: From then on only that terminal registers as {session}; the tokens it holds now stop working and the grants approved for it go with it."),
         if ctx.pick.is_empty() { "NOTE: No number is matched.".into() } else { "PICK: After your fingerprint you choose the number that terminal shows, out of three. A wrong choice counts as a decline.".into() },
         "CANNOT: Nothing else changes. No grant is added or widened.".into(),
-        "WHY: A person ran `poolhouse-workspace rebind` in a terminal.".into(),
+        "WHY: A process in a terminal requested this move.".into(),
         "DENY: If you deny, nothing changes and the session stays where it is.".into(),
         format!("EXPIRES: This request ends at {}.", utc(expires_ms)),
     ];
