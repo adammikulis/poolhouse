@@ -223,7 +223,7 @@ Do these at your own terminal, in order. Steps 1 to 3 run no sandbox.
 5. Start `claude` in the primary checkout, run `/sandbox`. Expect the sandbox on and shown as
    admin-required (settings from managed policy).
 6. In that session ask for `scripts/agent-sandbox probe` (a Bash call). Expect every line `PASS`
-   and `this session is sandboxed` only when every required check ran and passed. A `FAIL`, `SKIP`,
+   and `the checks passed` only when every required check ran and passed. A `FAIL`, `SKIP`,
    missing check or inconclusive check cannot establish confinement; use an unsandboxed control to distinguish a
    sandbox denial from ordinary filesystem permissions.
 7. Ask for `touch ~/.agent-test`. Expect `Operation not permitted`, with no retry offer.
