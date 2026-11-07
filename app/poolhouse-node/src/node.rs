@@ -463,7 +463,8 @@ impl Node {
             hosted.names.mark_person(&name)?;
         }
         if created || revived {
-            if let Err(refused) = self.write_identity(board, &name) {
+            let written = if person { self.write_person_identity(board, &name) } else { self.write_identity(board, &name) };
+            if let Err(refused) = written {
                 self.host(board)?.names.restore(&name, before.map(|(_, i)| i))?;
                 return Err(refused);
             }
@@ -551,6 +552,14 @@ impl Node {
         let hosted = self.hosted(board)?;
         let ident = hosted.names.get(name).cloned().ok_or_else(|| Error::Denied("no such session".into()))?;
         hosted.board.append(Kind::Identity, name, identity_body(name, &ident)?, "")?;
+        Ok(())
+    }
+
+    /// Registration proven by the person's secret uses the node reserve, leaving the last stretch for their decisions.
+    fn write_person_identity(&mut self, board: &str, name: &str) -> Result<()> {
+        let hosted = self.hosted(board)?;
+        let ident = hosted.names.get(name).cloned().ok_or_else(|| Error::Denied("no such session".into()))?;
+        hosted.board.append_node(Kind::Identity, name, identity_body(name, &ident)?, "")?;
         Ok(())
     }
 

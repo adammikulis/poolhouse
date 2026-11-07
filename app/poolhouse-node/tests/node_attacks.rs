@@ -133,6 +133,74 @@ fn a_persons_grant_and_its_revocation_are_written_when_sessions_have_filled_the_
 }
 
 #[test]
+fn the_person_can_register_when_sessions_have_filled_their_share_of_the_log() {
+    let dir = tempdir().unwrap();
+    let mut n = small(dir.path(), |b| (b.author_percent, b.lineage_percent) = (100, 100));
+    let (_, token) = session(&mut n, "demo", "agent");
+    fill(&mut n, "demo", &token);
+    let before = rows_of(&mut n, "demo").len();
+    let forged = req(&mut n, "register_person", "demo", "", json!({"session": "person", "proof": "wrong"}));
+    assert_eq!(code(&forged), "denied");
+    let agent = req(&mut n, "register", "demo", "", json!({"session": "another", "harness": "claude-code", "model": ""}));
+    assert_eq!(code(&agent), "quota");
+    assert_eq!(rows_of(&mut n, "demo").len(), before, "neither a forged person nor an agent spends the reserve");
+    let proof = kit::proof(&n);
+    let made = req(&mut n, "register_person", "demo", "", json!({"session": "person", "proof": proof}));
+    assert_eq!(made["ok"], true, "the person's session must be able to reach the reserved decisions: {made}");
+}
+
+#[test]
+fn the_person_can_register_when_sessions_have_filled_their_byte_share() {
+    let dir = tempdir().unwrap();
+    let mut n = small(dir.path(), |b| {
+        b.rows = 10_000;
+        b.bytes = 16_384;
+        b.reserved_bytes = 4_096;
+        b.last_bytes = 1_024;
+        b.author_percent = 100;
+        b.lineage_percent = 100;
+    });
+    let (_, token) = session(&mut n, "demo", "agent");
+    let mut refused = false;
+    for _ in 0..500 {
+        let result = post(&mut n, "demo", &token, &"x".repeat(256));
+        if result["ok"] == false {
+            assert!(said(&result).contains("MAX_LOG_BYTES"), "{result}");
+            refused = true;
+            break;
+        }
+    }
+    assert!(refused, "the author byte region filled");
+    let proof = kit::proof(&n);
+    let made = req(&mut n, "register_person", "demo", "", json!({"session": "person", "proof": proof}));
+    assert_eq!(made["ok"], true, "the node reserve permits a person to register: {made}");
+}
+
+#[test]
+fn exhausting_the_node_reserve_refuses_a_new_person_session_without_using_the_last_stretch() {
+    let dir = tempdir().unwrap();
+    let mut n = small(dir.path(), |b| (b.author_percent, b.lineage_percent) = (100, 100));
+    let (_, token) = session(&mut n, "demo", "agent");
+    fill(&mut n, "demo", &token);
+    let proof = kit::proof(&n);
+    let mut refused = false;
+    for i in 0..20 {
+        let reply = req(&mut n, "register_person", "demo", "", json!({"session": format!("person-{i}"), "proof": proof}));
+        if reply["ok"] == false {
+            assert_eq!(code(&reply), "quota", "{reply}");
+            assert!(n.host("demo").unwrap().names.find(poolhouse_node::identity::PERSON_HARNESS, &format!("person-{i}")).is_none(), "a refused registration leaves no identity behind");
+            refused = true;
+            break;
+        }
+    }
+    assert!(refused, "the node reserve is bounded");
+    let count = rows_of(&mut n, "demo").len();
+    assert!(count <= n.log_bounds.rows - n.log_bounds.last_rows);
+    n.host("demo").unwrap().board.append_person(Kind::Audit, "node", json!({"event": "person_test"})).unwrap();
+    assert_eq!(rows_of(&mut n, "demo").len(), count + 1, "the last stretch remains for a person's decision");
+}
+
+#[test]
 fn a_persons_approval_on_the_phone_writes_its_grants_when_the_log_is_full_for_sessions() {
     let rig = Rig::new();
     rig.node.lock().unwrap().log_bounds = Bounds { rows: 80, bytes: 1 << 24, reserved_rows: 8, reserved_bytes: 1 << 10, last_rows: 2, last_bytes: 1 << 9, author_percent: 100, lineage_percent: 100 };
