@@ -99,6 +99,20 @@ def test_a_writable_state_directory_cannot_be_a_symlink_outside_the_state_root(t
         profile.write_roots(layout)
 
 
+def test_a_writable_child_cannot_redirect_to_the_state_or_home_itself(tmp_path):
+    home, state = tmp_path / "home", tmp_path / "state"
+    (state / "node").mkdir(parents=True)
+    (home / ".cache").mkdir(parents=True)
+    (state / "workspace").symlink_to(state / "node", target_is_directory=True)
+    layout = profile.Layout(home=home, state=state, primary=tmp_path / "checkout")
+    with pytest.raises(ValueError, match="redirect"):
+        profile.write_roots(layout)
+    (state / "workspace").unlink()
+    (home / ".cache" / "poolhouse").symlink_to(home, target_is_directory=True)
+    with pytest.raises(ValueError, match="redirect"):
+        profile.write_roots(layout)
+
+
 def test_a_primary_git_directory_cannot_redirect_the_sandbox_write_root(tmp_path):
     checkout, outside = tmp_path / "checkout", tmp_path / "outside"
     checkout.mkdir()

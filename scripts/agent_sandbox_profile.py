@@ -104,6 +104,8 @@ def _allowed_under(root: Path, names: tuple[str, ...]) -> list[str]:
         path = (root / name).resolve()
         if not path.is_relative_to(base):
             raise ValueError(f"writable path {root / name} resolves outside {base}")
+        if path != base / name:
+            raise ValueError(f"writable path {root / name} redirects to {path}")
         paths.append(str(path))
     return paths
 
