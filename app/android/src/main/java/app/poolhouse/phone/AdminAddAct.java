@@ -8,7 +8,7 @@ import java.util.Arrays;
 /**
  * The act that lists a new phone as an admin key, as the request to add that phone carries it, checked before the person's
  * fingerprint is asked for the second signature that lists it. The act is the one shape the device writes for it: the phone being added
- * is the key it lists, as a strong admin key of one person, joining at the next epoch, written lately and valid for at most a week, with the
+ * is the key it lists, as a phone admin key of one person, joining at the next epoch, written lately and valid for at most a week, with the
  * key's own acceptance of exactly these terms. Anything else is refused, and nothing is signed.
  */
 final class AdminAddAct {
@@ -60,10 +60,10 @@ final class AdminAddAct {
         JSONObject body = act.getJSONObject("body");
         FoundingCharter.fields(body, "entry");
         JSONObject entry = body.getJSONObject("entry");
-        FoundingCharter.fields(entry, "key", "alg", "role", "strength", "person", "since", "acceptance", "label");
+        FoundingCharter.fields(entry, "key", "alg", "role", "claim", "person", "since", "acceptance", "label");
         FoundingCharter.choice(entry, "alg", "p256");
         FoundingCharter.choice(entry, "role", "admin");
-        FoundingCharter.choice(entry, "strength", "strong");
+        if (!Canonical.of(entry.getJSONObject("claim")).equals(Canonical.of(AddRequest.phoneClaim()))) throw new IllegalArgumentException();
         person = FoundingCharter.text(entry, "person");
         long since = FoundingCharter.number(entry, "since", 2, MOST);
         String acceptance = FoundingCharter.text(entry, "acceptance"), label = FoundingCharter.plain(entry, "label", 40, false);
@@ -75,7 +75,7 @@ final class AdminAddAct {
         signing = (DOMAIN + canonical).getBytes(StandardCharsets.UTF_8);
         JSONObject typed = new JSONObject().put("v", 2).put("pool", pool).put("epoch", epoch).put("kind", "admin_add").put("at_ms", at).put("not_after", until)
                 .put("nonce", nonce).put("prev", prev).put("body", new JSONObject().put("entry", new JSONObject().put("key", key).put("alg", "p256").put("role", "admin")
-                        .put("strength", "strong").put("person", person).put("since", since).put("acceptance", acceptance).put("label", label)));
+                        .put("claim", AddRequest.phoneClaim()).put("person", person).put("since", since).put("acceptance", acceptance).put("label", label)));
         if (!Arrays.equals(signing, (DOMAIN + Canonical.of(typed)).getBytes(StandardCharsets.UTF_8))) throw new IllegalArgumentException();
         id = Hex.sha256(canonical);
         card = "Lists " + JSONObject.quote(name) + " as an admin key of " + person + ".\nIts key: " + Hex.words(Hex.sha256(Hex.parse(key))) + ", joining at epoch " + since + ".";

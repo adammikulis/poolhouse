@@ -9,7 +9,7 @@ import java.nio.charset.StandardCharsets;
  */
 final class AddRequest {
     static final String DOMAIN = "poolhouse/phone-add/v1\n";
-    static final String ACCEPT_DOMAIN = "poolhouse/pool-accept/v2\n";
+    static final String ACCEPT_DOMAIN = "poolhouse/pool-accept/v3\n";
     private AddRequest() { }
 
     /** The request without its proof: the code's secret, the phone's name and keys, and the time by the phone's clock. */
@@ -30,13 +30,17 @@ final class AddRequest {
     }
 
     /**
-     * The bytes a key signs to accept being listed as a strong admin key of {@code person} from epoch {@code since}, in the pool
+     * The bytes a key signs to accept being listed as a phone admin key of {@code person} from epoch {@code since}, in the pool
      * {@code anchor} whose latest charter is {@code prev}. The device and the approving phone rebuild the same bytes to check the acceptance.
      */
     static byte[] acceptanceBytes(String key, String person, long since, String anchor, String prev) throws Exception {
-        JSONObject terms = new JSONObject().put("v", 2).put("key", key).put("alg", "p256").put("role", "admin").put("strength", "strong")
+        JSONObject terms = new JSONObject().put("v", 3).put("key", key).put("alg", "p256").put("role", "admin").put("claim", phoneClaim())
                 .put("person", person).put("since", since).put("anchor", anchor).put("prev", prev);
         return (ACCEPT_DOMAIN + Canonical.of(terms)).getBytes(StandardCharsets.UTF_8);
+    }
+
+    static JSONObject phoneClaim() throws Exception {
+        return new JSONObject().put("method", "phone-keystore").put("os", "android").put("prompt", "biometric");
     }
 
     /** The acceptance of the terms a code carries, by the approval key whose point is {@code approvalPoint}. */

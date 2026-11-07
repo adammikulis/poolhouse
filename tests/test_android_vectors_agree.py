@@ -40,20 +40,20 @@ PENDING_PORT = {
     "charter.fields": {"java": CHARTER_FIELDS_V3, "vectors": sorted([*CHARTER_FIELDS_V3, "floors"])},
     "charter.first.fields": {"java": ["cert", "name"], "vectors": ["cert", "delegate", "name"]},
     "charter.admin.fields": {"java": ADMIN_FIELDS_V3, "vectors": ADMIN_FIELDS_V4},
-    "admin_add.entry.fields": {"java": ADMIN_FIELDS_V3, "vectors": ADMIN_FIELDS_V4},
     "accept.domain.FoundingCharter": {"java": 2, "vectors": 3},
-    "accept.domain.AddRequest": {"java": 2, "vectors": 3},
     "accept.message.v.FoundingCharter": {"java": 2, "vectors": 3},
-    "accept.message.v.AddRequest": {"java": 2, "vectors": 3},
     "accept.message.fields.FoundingCharter": {"java": ACCEPT_FIELDS_V3, "vectors": ACCEPT_FIELDS_V4},
-    "accept.message.fields.AddRequest": {"java": ACCEPT_FIELDS_V3, "vectors": ACCEPT_FIELDS_V4},
-    "key.held_how_field.main": {"java": ["strength"], "vectors": ["claim"]},
-    "key.held_how_field.gradle": {"java": ["strength"], "vectors": ["claim"]},
+    "key.held_how_field.main": {"java": ["claim", "strength"], "vectors": ["claim"]},
+    "key.held_how_field.gradle": {"java": ["claim", "strength"], "vectors": ["claim"]},
     "accept.domain.gradle": {"java": 2, "vectors": 3},
 }
 
 # What the Java and the vectors agree on, so that a disagreement where there was none is named the same way.
 AGREED = {
+    "admin_add.entry.fields": ADMIN_FIELDS_V4,
+    "accept.domain.AddRequest": 3,
+    "accept.message.v.AddRequest": 3,
+    "accept.message.fields.AddRequest": ACCEPT_FIELDS_V4,
     "act.domain.AdminAddAct": 2,
     "act.domain.GovernanceAct": 2,
     "act.v.AdminAddAct": 2,

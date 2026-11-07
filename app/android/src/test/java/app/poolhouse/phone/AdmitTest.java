@@ -193,10 +193,10 @@ final class AdmitTest {
         changed(a -> act(a).put("body", new JSONObject()));
         changed(a -> act(a).getJSONObject("body").put("entry", JSONObject.NULL));
         changed(a -> entry(a).put("note", "untrusted"));
-        for (String field : new String[] {"key", "alg", "role", "strength", "person", "since", "acceptance", "label"}) changed(a -> entry(a).remove(field));
+        for (String field : new String[] {"key", "alg", "role", "claim", "person", "since", "acceptance", "label"}) changed(a -> entry(a).remove(field));
         for (String alg : new String[] {"ed25519", "P256", ""}) changed(a -> entry(a).put("alg", alg));
         for (String role : new String[] {"recovery", "Admin", ""}) changed(a -> entry(a).put("role", role));
-        for (String strength : new String[] {"weak", "strong ", ""}) changed(a -> entry(a).put("strength", strength));
+        for (Object claim : new Object[] {JSONObject.NULL, "phone", new JSONObject(), new JSONObject().put("method", "file").put("os", "android").put("prompt", "biometric"), new JSONObject().put("method", "phone-keystore").put("os", "android").put("prompt", "biometric").put("extra", true)}) changed(a -> entry(a).put("claim", claim));
         for (String person : new String[] {"bob", "", "x".repeat(65), "ann smith", "café", "ann\n"}) changed(a -> entry(a).put("person", person));
         for (Object since : new Object[] {1, 3, "2", 2.0, JSONObject.NULL}) changed(a -> entry(a).put("since", since));
         for (String label : new String[] {"", "other", "x".repeat(41), "café"}) changed(a -> entry(a).put("label", label));
