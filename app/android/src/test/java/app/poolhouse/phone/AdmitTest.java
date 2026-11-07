@@ -339,26 +339,24 @@ final class AdmitTest {
     }
 
     private static void theDecision() throws Exception {
-        byte[] listing = Hex.parse(vectors.getString("act_bytes"));
-        for (boolean highS : new boolean[] {false, true}) {
+        for (String decision : new String[] {"approve", "approve_repeat"}) {
             Script key = new Script(new ArrayList<>());
-            key.highS = highS;
-            JSONObject challenge = challenge(action(), text(), 0, 0);
-            Outcome sent = decide(key, challenge, "approve", now(), "47");
-            equal("approved", sent.answered);
-            equal(List.of("sign:Approve", "sign:" + Decider.LISTING_TITLE, "pick"), key.events);
-            equal(List.of(true, true), key.strongs);
-            JSONObject body = sent.body();
-            check(key.inner.verifies(new Challenge(challenge).bytes("approve", Hex.sha256(key.publicPoint())), Hex.parse(body.getString("sig"))), "the approval verifies");
-            check(key.inner.verifies(listing, Hex.parse(body.getString("act_sig"))), "the second signature verifies over the bytes of the act");
-            check(Arrays.equals(P256Signature.normalize(Hex.parse(body.getString("act_sig"))), Hex.parse(body.getString("act_sig"))), "and is in the one low-s form");
-            equal("47", body.getString("pick"));
-            equal("approve", body.getString("decision"));
-            equal(Hex.sha256(text()), body.getString("text_sha256"));
+            Outcome refused = decide(key, challenge(action(), text(), decision.equals("approve_repeat") ? 1 : 0, 0), decision, now(), "47");
+            check(refused.answered == null && refused.failed.contains("cannot yet verify the pool") && key.titles.isEmpty() && refused.node.sent.isEmpty(),
+                    "an unpinned listing asks for no signature and sends nothing");
         }
-        Script again = new Script(new ArrayList<>());
-        Outcome repeat = decide(again, challenge(action(), text(), 1, 0), "approve_repeat", now(), "12");
-        check(repeat.answered != null && again.titles.size() == 2 && repeat.body().has("act_sig"), "a deliberate approval of a scope declined before lists the phone too");
+        SoftwareAuthorizer foreignKey = new SoftwareAuthorizer();
+        JSONObject foreign = fresh(foreignKey, "ann", 1, 2);
+        act(foreign).put("pool", "ef".repeat(16)).put("prev", "ab".repeat(32));
+        byte[] foreignTerms = AddRequest.acceptanceBytes(entry(foreign).getString("key"), "ann", 2, act(foreign).getString("pool"), act(foreign).getString("prev"));
+        foreignKey.sign(foreignTerms, "accept", true, new Authorizer.Result() {
+            @Override public void signed(byte[] der) { try { entry(foreign).put("acceptance", Hex.of(P256Signature.normalize(der))); } catch (Exception e) { throw new AssertionError(e); } }
+            @Override public void failed(String sentence) { throw new AssertionError(sentence); }
+        });
+        check(AdminAddAct.of(challenge(foreign), now()) != null, "the foreign listing has a valid acceptance");
+        Script foreignSigner = new Script(new ArrayList<>());
+        Outcome foreignRefused = decide(foreignSigner, challenge(foreign, text(), 0, 0), "approve", now(), "47");
+        check(foreignRefused.answered == null && foreignSigner.titles.isEmpty() && foreignRefused.node.sent.isEmpty(), "a valid foreign-pool listing cannot elicit a signature");
         for (String decision : new String[] {"deny", "block"}) {
             Script key = new Script(new ArrayList<>());
             JSONObject broken = action();
@@ -370,18 +368,6 @@ final class AdmitTest {
                 equal(decision, refused.body().getString("decision"));
             }
         }
-        Script second = new Script(new ArrayList<>());
-        second.refuseAt = 2;
-        Outcome cancelled = decide(second, challenge(action(), text(), 0, 0), "approve", now(), "47");
-        check(cancelled.answered == null && cancelled.failed.contains("not recognised") && cancelled.node.sent.isEmpty() && second.titles.size() == 2 && !second.events.contains("pick"),
-                "leaving the second prompt sends nothing and asks for no number");
-        Script first = new Script(new ArrayList<>());
-        first.refuseAt = 1;
-        Outcome none = decide(first, challenge(action(), text(), 0, 0), "approve", now(), "47");
-        check(none.answered == null && none.node.sent.isEmpty() && first.titles.size() == 1, "leaving the first prompt asks for no second");
-        Script chooser = new Script(new ArrayList<>());
-        Outcome wrong = decide(chooser, challenge(action(), text(), 0, 0), "approve", now(), null);
-        check(wrong.answered == null && wrong.node.sent.isEmpty() && wrong.failed.contains("no number was chosen") && chooser.titles.size() == 2, "leaving the question sends neither signature");
         JSONObject moved = action();
         act(moved).put("epoch", 2);
         Script refusing = new Script(new ArrayList<>());
@@ -398,13 +384,13 @@ final class AdmitTest {
         Script weak = new Script(new ArrayList<>());
         weak.inner.strongSetUp = false;
         Outcome pin = decide(weak, challenge(action(), text(), 0, 0), "approve", now(), "47");
-        check(pin.answered == null && weak.titles.isEmpty() && pin.failed.contains("strong face unlock"), "a phone with only a PIN is not asked to list a phone");
+        check(pin.answered == null && weak.titles.isEmpty() && pin.failed.contains("cannot yet verify the pool"), "a phone with only a PIN is not asked to list a phone");
         Outcome deny = decide(weak, challenge(action(), text(), 0, 0), "deny", now(), null);
         check(deny.answered != null && !weak.strongs.get(0), "but may still deny");
         Script routine = new Script(new ArrayList<>());
         String claimed = text().replace("RISK: SENSITIVE.", "RISK: ROUTINE.");
         Outcome downgraded = decide(routine, challenge(action(), claimed, 0, 0), "approve", now(), "47");
-        check(downgraded.answered != null && routine.strongs.equals(List.of(true, true)), "a text that calls the request routine does not lower either prompt");
+        check(downgraded.answered == null && routine.titles.isEmpty() && downgraded.failed.contains("cannot yet verify the pool"), "a routine label does not enable an unpinned listing");
     }
 
     // -- the phone being added ---------------------------------------------------------------------------------------------
