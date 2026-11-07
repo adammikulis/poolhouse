@@ -165,6 +165,11 @@ impl Approvals {
         self.version
     }
 
+    /// Wake phone readers when related person-visible state changes.
+    pub fn notify_change(&mut self) {
+        self.version = self.version.wrapping_add(1);
+    }
+
     pub fn get(&self, id: &str) -> Option<&Approval> {
         self.items.iter().find(|a| a.id == id)
     }

@@ -69,7 +69,7 @@ configurations { protocol }
 dependencies { protocol 'org.json:json:20240303' }
 
 def phone = 'src/main/java/app/poolhouse/phone/'
-def checked = ['Hex', 'Canonical', 'Challenge', 'ApprovalText', 'ApprovalView', 'WebPushCipher', 'AddLink', 'Authorizer', 'Transport', 'NodeError',
+def checked = ['Hex', 'Canonical', 'Challenge', 'ApprovalText', 'ApprovalView', 'BlockLift', 'WebPushCipher', 'AddLink', 'Authorizer', 'Transport', 'NodeError',
                'NodeApi', 'AddRequest', 'Decider', 'Wants', 'ApprovalFlow', 'PushPayload', 'NotificationModel', 'PushChannel', 'PushHandler',
                'PinnedHttps', 'ChatLink', 'ChatSetup', 'FoundingCharter', 'FoundingCard', 'P256Signature', 'PoolKeyBinding', 'GovernanceAct', 'AdminAddAct', 'AddSigning'].collect { phone + it + '.java' }
 def checks = ['SoftwareAuthorizer', 'PhoneApprovalTest', 'PhoneProtocolTest', 'PhoneFoundingTest', 'PoolKeyTest', 'GovernanceActTest', 'AdmitTest'].collect { 'src/test/java/app/poolhouse/phone/' + it + '.java' }

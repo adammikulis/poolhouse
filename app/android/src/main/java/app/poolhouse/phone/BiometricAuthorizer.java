@@ -10,7 +10,9 @@ import java.security.Signature;
 /** The approval key behind the person's fingerprint, face or device credential: one prompt, and the prompt is what unlocks the signature. */
 final class BiometricAuthorizer implements Authorizer {
     private final Activity activity;
-    private final java.util.concurrent.Executor executor = java.util.concurrent.Executors.newSingleThreadExecutor();
+    private static final java.util.concurrent.Executor EXECUTOR = java.util.concurrent.Executors.newSingleThreadExecutor();
+    private volatile boolean cancelled;
+    private volatile CancellationSignal cancellation;
 
     BiometricAuthorizer(Activity activity) {
         this.activity = activity;
@@ -27,7 +29,13 @@ final class BiometricAuthorizer implements Authorizer {
 
     /** Asks on the screen's own thread: a second prompt for one answer is asked from the first prompt's callback. */
     @Override public void sign(byte[] message, String title, boolean strong, Result result) {
-        activity.runOnUiThread(() -> prompt(message, title, strong, result));
+        activity.runOnUiThread(() -> { if (!cancelled) prompt(message, title, strong, result); });
+    }
+
+    void cancel() {
+        cancelled = true;
+        CancellationSignal current = cancellation;
+        if (current != null) current.cancel();
     }
 
     private void prompt(byte[] message, String title, boolean strong, Result result) {
@@ -43,12 +51,17 @@ final class BiometricAuthorizer implements Authorizer {
         }
         BiometricPrompt prompt = new BiometricPrompt.Builder(activity).setTitle(title).setSubtitle(strong ? "Use your fingerprint or strong face unlock" : "Use your fingerprint, strong face unlock or your device PIN")
                 .setAllowedAuthenticators(strong ? BiometricManager.Authenticators.BIOMETRIC_STRONG : ApprovalKey.AUTHENTICATORS).setConfirmationRequired(false).build();
-        prompt.authenticate(new BiometricPrompt.CryptoObject(signature), new CancellationSignal(), executor, new BiometricPrompt.AuthenticationCallback() {
+        CancellationSignal signal = new CancellationSignal();
+        cancellation = signal;
+        if (cancelled) { signal.cancel(); return; }
+        prompt.authenticate(new BiometricPrompt.CryptoObject(signature), signal, EXECUTOR, new BiometricPrompt.AuthenticationCallback() {
             @Override public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult unlocked) {
                 try {
+                    if (cancelled) return;
                     Signature ready = unlocked.getCryptoObject().getSignature();
                     ready.update(message);
-                    result.signed(ready.sign());
+                    byte[] signed = ready.sign();
+                    if (!cancelled) result.signed(signed);
                 } catch (Exception failure) {
                     result.failed("The approval could not be signed, so nothing was changed.");
                 }

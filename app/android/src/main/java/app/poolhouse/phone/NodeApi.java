@@ -77,6 +77,14 @@ final class NodeApi {
         return send("POST", "decide", "", body);
     }
 
+    JSONObject blockLiftOffer(String token, String who) throws Exception {
+        return send("POST", "block_lift_offer", token, new JSONObject().put("who", who));
+    }
+
+    JSONObject liftBlock(String token, String nonce, byte[] signature) throws Exception {
+        return send("POST", "block_lift", token, new JSONObject().put("nonce", nonce).put("sig", Hex.of(signature)));
+    }
+
     JSONObject setPushAddress(String token, String endpoint) throws Exception {
         return send("POST", "push", token, new JSONObject().put("endpoint", endpoint));
     }

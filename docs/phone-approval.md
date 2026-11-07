@@ -77,9 +77,7 @@ allowed once a person key exists, three an hour for each session), or by the app
 notifications", "Add another phone"). The new phone scans it and the node puts "Add the phone `<name>`, key `7f3a 91c2 d04e
 5b18 a6c3 7e20`" in front of every phone already added (24 characters of the key, 96 bits, so no key can be ground to look like
 another). One tap and one fingerprint on one of them adds it. The text says what it means: the new phone approves everything
-this one can. In a pool that lists its admins the same tap also lists the new phone as an admin key of the person whose phone made the code (the one person whose admin phones the device holds, when a session or the computer made it): the request carries
-the unsigned `admin_add` act (`action.act`), the approving phone checks it before any prompt (the one shape the device writes: that key, strong, the next epoch, written lately and
-valid for at most a week, with the new key's own acceptance) and signs it with the same key in a second fingerprint (`act_sig`, beside `sig`). A deny and a block sign nothing more. A code asked for through the node records who asked, and the request then carries a `FLAG:` line: "The code this
+this one can. In a pool that lists its admins, the request also carries an unsigned `admin_add` act (`action.act`). The approving phone currently refuses that listing before signing: it cannot yet independently verify the current pool and charter. A deny and a block remain available. A code asked for through the node records who asked, and the request then carries a `FLAG:` line: "The code this
 phone used was made by the session `<name>` on board `<board>`, not by you at the computer. Approve only if you scanned it
 yourself just now." A code that is waiting to be scanned is never replaced by one a session or a phone asks for, so an agent
 cannot take over the code the person is showing.
@@ -289,6 +287,8 @@ for the person wait, go unseen or be pushed quietly. What stands where the old d
 
 The ledger of declined scopes and blocks is `answered.json` in the node's directory and survives a restart. Its code is
 `approvals/answered.rs`; `approvals/request.rs` makes the request and `approvals/decide.rs` carries out the answer.
+
+An active admin phone lists blocks with `POST /phone/v1/list`. To lift one, it requests `block_lift_offer` with the session's `who`, shows that session to the person, and signs the returned canonical object under `poolhouse/approval-block-lift/v1` with a strong biometric. `block_lift` carries its nonce and signature with the phone token. The node checks the active phone, current authority, exact block and one-use offer under its lock before persisting the lift. Offers expire within two minutes, disappear on restart or reblock, and are bound to the node, signer and authority state. A lost response or storage error leaves the outcome unconfirmed; the phone refreshes the list before retrying. A trusted-computer lift remains unfinished.
 
 ### Defences
 

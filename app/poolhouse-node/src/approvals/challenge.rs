@@ -17,6 +17,7 @@ use crate::row::canonical;
 pub const DOMAIN: &str = "poolhouse/approval/v1\n";
 /// What a person's key signs to read every request that waits, once: a session reads only its own.
 pub const LIST_DOMAIN: &str = "poolhouse/approval-list/v1\n";
+pub const LIFT_DOMAIN: &str = "poolhouse/approval-block-lift/v1\n";
 /// The most bytes of text a request carries, and the most asks.
 pub const MAX_TEXT: usize = 6000;
 pub const MOST_ASKS: usize = 8;
@@ -40,6 +41,12 @@ pub fn bytes(challenge: &Value, decision: &str, key: &str) -> Vec<u8> {
 /// The bytes a person's key signs to read what waits on the node whose certificate fingerprint is ``node``, at ``at_ms``.
 pub fn list_bytes(node: &str, at_ms: u64) -> Vec<u8> {
     format!("{LIST_DOMAIN}{}", canonical(&json!({"op": "approval_list", "node": node, "at_ms": at_ms}))).into_bytes()
+}
+
+/// The exact node, block, challenge, expiry and person key a lift signature authorizes.
+pub fn lift_bytes(node: &str, nonce: &str, lift: &crate::approvals::answered::Lift) -> Vec<u8> {
+    format!("{LIFT_DOMAIN}{}", canonical(&json!({"v": 1, "op": "block_lift", "node": node, "nonce": nonce,
+        "who": lift.who, "until_ms": lift.until_ms, "expires_ms": lift.expires_ms, "key": lift.key, "authority": lift.authority}))).into_bytes()
 }
 
 /// Whether ``text`` is what a request may carry: printable ASCII and line breaks, within `MAX_TEXT`.

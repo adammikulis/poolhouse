@@ -55,8 +55,28 @@ public final class PhoneApprovalTest {
         theNoticesAndTheContext(vectors);
         thePushHandler(vectors);
         theNodeApi();
+        blockLift();
         theFrictionBudget(contract);
         System.out.println("Phone approval checks passed.");
+    }
+
+    static void blockLift() throws Exception {
+        String node = "ab".repeat(32), key = "cd".repeat(32), who = "demo/agent-1";
+        JSONObject offer = new JSONObject().put("v", 1).put("op", "block_lift").put("node", node).put("key", key)
+                .put("who", who).put("nonce", "ef".repeat(16)).put("until_ms", 200000L).put("expires_ms", 120000L).put("authority", "12".repeat(32));
+        BlockLift lift = new BlockLift(offer, node, key, who, 200000L, 1000L);
+        String expected = "poolhouse/approval-block-lift/v1\n" + Canonical.of(offer);
+        equal(expected, new String(lift.bytes(), StandardCharsets.UTF_8), "lift signs the exact card fields");
+        for (String field : new String[] {"v", "op", "node", "key", "who", "nonce", "until_ms", "expires_ms", "authority"}) {
+            JSONObject missing = new JSONObject(offer.toString()); missing.remove(field);
+            refuses(() -> new BlockLift(missing, node, key, who, 200000L, 1000L), "missing " + field);
+        }
+        refuses(() -> new BlockLift(offer, "00".repeat(32), key, who, 200000L, 1000L), "another node");
+        refuses(() -> new BlockLift(offer, node, "00".repeat(32), who, 200000L, 1000L), "another key");
+        refuses(() -> new BlockLift(offer, node, key, "demo/other", 200000L, 1000L), "another session");
+        refuses(() -> new BlockLift(offer, node, key, who, 200001L, 1000L), "another block");
+        refuses(() -> new BlockLift(offer, node, key, who, 200000L, 120000L), "expired offer");
+        refuses(() -> new BlockLift(new JSONObject(offer.toString()).put("extra", true), node, key, who, 200000L, 1000L), "unshown field");
     }
 
     static void canonical() throws Exception {

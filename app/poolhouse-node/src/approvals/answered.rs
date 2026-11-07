@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
-use crate::fsutil::{sha256_hex, write_atomic};
+use crate::fsutil::{random_hex, sha256_hex, write_atomic};
 use crate::row::canonical;
 
 pub const DAY_MS: u64 = 24 * 3_600_000;
@@ -21,6 +21,8 @@ pub const DECLINED_MS: u64 = 30 * DAY_MS;
 /// What a block lasts. The card a person blocks on says so.
 pub const BLOCK_MS: u64 = DAY_MS;
 const MOST_DECLINED: usize = 400;
+/// A lift challenge lives for two minutes, long enough to read and answer the card.
+const LIFT_TTL_MS: u64 = 120_000;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct Declined {
@@ -30,7 +32,7 @@ struct Declined {
     at_ms: u64,
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 struct File {
     declined: Vec<Declined>,
     /// The sessions (`board/name`) a person blocked, and when each block ends.
@@ -41,6 +43,21 @@ struct File {
 pub struct Answered {
     path: PathBuf,
     file: File,
+    lifts: BTreeMap<String, Lift>,
+    uncertain: bool,
+    #[cfg(test)]
+    fail_after_replace: bool,
+    #[cfg(test)]
+    fail_reconcile_sync: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct Lift {
+    pub who: String,
+    pub until_ms: u64,
+    pub expires_ms: u64,
+    pub key: String,
+    pub authority: String,
 }
 
 /// What makes two requests the same: the board, the session and the sorted actions and resources, and nothing else. The note, the
@@ -53,33 +70,61 @@ pub fn same(board: &str, session: &str, asks: &[(&str, &str)]) -> String {
 }
 
 impl Answered {
+    pub fn uncertain(&self) -> bool { self.uncertain }
+
     pub fn open(path: &Path) -> Result<Answered> {
         let file = match std::fs::read(path) {
             Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| Error::Damaged(format!("answered unreadable: {e}")))?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => File::default(),
             Err(e) => return Err(e.into()),
         };
-        Ok(Answered { path: path.into(), file })
+        Ok(Answered { path: path.into(), file, lifts: BTreeMap::new(), uncertain: false, #[cfg(test)] fail_after_replace: false, #[cfg(test)] fail_reconcile_sync: false })
     }
 
-    fn save(&mut self) -> Result<()> {
-        write_atomic(&self.path, &serde_json::to_vec(&self.file)?)
+    fn write_file(&self, next: &File) -> Result<()> {
+        write_atomic(&self.path, &serde_json::to_vec(next)?)?;
+        #[cfg(test)]
+        if self.fail_after_replace { return Err(Error::Damaged("injected error after replacement".into())); }
+        Ok(())
+    }
+
+    /// A failed atomic write may have replaced the file before directory sync failed. Never keep stale state or challenges.
+    fn reconcile_after_error(&mut self) {
+        self.lifts.clear();
+        #[cfg(test)]
+        if self.fail_reconcile_sync { self.uncertain = true; return; }
+        if self.path.parent().is_none_or(|parent| crate::fsutil::sync_dir(parent).is_err()) {
+            self.uncertain = true;
+            return;
+        }
+        match std::fs::read(&self.path).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok()) {
+            Some(file) => self.file = file,
+            None => self.uncertain = true,
+        }
     }
 
     /// Forget what is old enough to have stopped counting.
     fn prune(&mut self, now: u64) {
         self.file.declined.retain(|d| now.saturating_sub(d.at_ms) < DECLINED_MS);
         self.file.blocked.retain(|_, until| *until > now);
+        self.lifts.retain(|_, lift| lift.expires_ms > now && self.file.blocked.get(&lift.who) == Some(&lift.until_ms));
     }
 
     /// Remember that a person declined these scopes of ``board``.
     pub fn note_declined(&mut self, board: &str, asks: &[(&str, &str)], now: u64) -> Result<()> {
+        if self.uncertain { return Err(Error::Damaged("answered state must be reopened".into())); }
+        let mut next = self.file.clone();
         for (action, resource) in asks {
-            self.file.declined.push(Declined { board: board.into(), action: (*action).into(), resource: (*resource).into(), at_ms: now });
+            next.declined.push(Declined { board: board.into(), action: (*action).into(), resource: (*resource).into(), at_ms: now });
         }
-        let extra = self.file.declined.len().saturating_sub(MOST_DECLINED);
-        self.file.declined.drain(..extra);
-        self.save()
+        let extra = next.declined.len().saturating_sub(MOST_DECLINED);
+        next.declined.drain(..extra);
+        if let Err(error) = self.write_file(&next) {
+            self.reconcile_after_error();
+            return Err(error);
+        }
+        self.file = next;
+        Ok(())
     }
 
     /// How often the most declined of these scopes was declined before on ``board``.
@@ -90,14 +135,64 @@ impl Answered {
 
     /// A person blocked the session ``who`` (`board/name`): nothing it asks is taken for `BLOCK_MS`.
     pub fn block(&mut self, who: &str, now: u64) -> Result<()> {
-        self.file.blocked.insert(who.to_string(), now + BLOCK_MS);
-        self.save()
+        if self.uncertain { return Err(Error::Damaged("answered state must be reopened".into())); }
+        self.lifts.retain(|_, lift| lift.who != who);
+        let mut next = self.file.clone();
+        next.blocked.insert(who.to_string(), now.saturating_add(BLOCK_MS));
+        if let Err(error) = self.write_file(&next) {
+            self.reconcile_after_error();
+            return Err(error);
+        }
+        self.file = next;
+        Ok(())
     }
 
     /// When the block of the session ``who`` ends, if it is blocked now.
     pub fn blocked_until(&mut self, who: &str, now: u64) -> Option<u64> {
+        if self.uncertain { return Some(u64::MAX); }
         self.prune(now);
         self.file.blocked.get(who).copied()
+    }
+
+    /// The active blocks for a person authorized to read them.
+    pub fn blocks(&mut self, now: u64) -> BTreeMap<String, u64> {
+        self.prune(now);
+        self.file.blocked.clone()
+    }
+
+    /// Create an ephemeral one-use challenge for the block currently shown. It is lost on restart or reblock.
+    pub fn offer_lift(&mut self, who: &str, key: &str, authority: &str, now: u64) -> Result<(String, Lift)> {
+        if self.uncertain { return Err(Error::Damaged("answered state must be reopened".into())); }
+        self.prune(now);
+        let until_ms = self.file.blocked.get(who).copied().ok_or_else(|| Error::Invalid("That session is not blocked.".into()))?;
+        self.lifts.retain(|_, lift| lift.who != who || lift.key != key || lift.authority == authority);
+        if let Some((nonce, lift)) = self.lifts.iter().find(|(_, lift)| lift.who == who && lift.key == key) {
+            return Ok((nonce.clone(), lift.clone()));
+        }
+        let nonce = random_hex(16)?;
+        let lift = Lift { who: who.into(), until_ms, expires_ms: now.saturating_add(LIFT_TTL_MS).min(until_ms), key: key.into(), authority: authority.into() };
+        if self.lifts.contains_key(&nonce) { return Err(Error::Damaged("block lift nonce collision".into())); }
+        self.lifts.insert(nonce.clone(), lift.clone());
+        Ok((nonce, lift))
+    }
+
+    pub fn lift_challenge(&mut self, nonce: &str, now: u64) -> Option<Lift> {
+        self.prune(now);
+        self.lifts.get(nonce).cloned()
+    }
+
+    /// Persist first, then consume all challenges for that block. On an uncertain write, reload and invalidate every challenge.
+    pub fn lift(&mut self, nonce: &str, now: u64) -> Result<bool> {
+        let Some(challenge) = self.lift_challenge(nonce, now) else { return Ok(false) };
+        let mut next = self.file.clone();
+        next.blocked.remove(&challenge.who);
+        if let Err(error) = self.write_file(&next) {
+            self.reconcile_after_error();
+            return Err(error);
+        }
+        self.file = next;
+        self.lifts.retain(|_, lift| lift.who != challenge.who);
+        Ok(true)
     }
 }
 
@@ -143,5 +238,91 @@ mod tests {
         let mut again = Answered::open(&path).unwrap();
         assert_eq!(again.blocked_until("demo/claude-a", now + 20), Some(now + BLOCK_MS), "a restart forgets nothing");
         assert_eq!(again.blocked_until("demo/claude-a", now + BLOCK_MS), None, "and the block ends");
+    }
+
+    #[test]
+    fn a_lift_is_one_use_and_cannot_remove_a_later_block_or_survive_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("answered.json");
+        let mut f = Answered::open(&path).unwrap();
+        let now = 5_000_000;
+        f.block("demo/a", now).unwrap();
+        f.block("demo/b", now).unwrap();
+        let (old, _) = f.offer_lift("demo/a", "key", "revision", now).unwrap();
+        f.block("demo/a", now).unwrap(); // The clock may repeat.
+        assert!(!f.lift(&old, now).unwrap());
+        let (nonce, _) = f.offer_lift("demo/a", "key", "revision", now).unwrap();
+        for _ in 0..300 { assert_eq!(f.offer_lift("demo/a", "key", "revision", now).unwrap().0, nonce); }
+        let (changed_authority, _) = f.offer_lift("demo/a", "key", "new revision", now).unwrap();
+        assert!(!f.lift(&nonce, now).unwrap(), "an authority change invalidates the old offer");
+        let nonce = changed_authority;
+        let (other, _) = f.offer_lift("demo/a", "other-key", "revision", now).unwrap();
+        assert!(f.lift(&nonce, now).unwrap());
+        assert!(!f.lift(&nonce, now).unwrap());
+        assert!(!f.lift(&other, now).unwrap());
+        assert_eq!(f.blocked_until("demo/b", now), Some(now + BLOCK_MS));
+        let (restart, _) = f.offer_lift("demo/b", "key", "revision", now).unwrap();
+        let mut reopened = Answered::open(&path).unwrap();
+        assert!(!reopened.lift(&restart, now).unwrap());
+        assert_eq!(reopened.blocked_until("demo/b", now), Some(now + BLOCK_MS));
+        let (expired, _) = reopened.offer_lift("demo/b", "key", "revision", now).unwrap();
+        assert!(!reopened.lift(&expired, now + LIFT_TTL_MS).unwrap());
+    }
+
+    #[test]
+    fn failed_lift_write_invalidates_the_challenge_and_retains_the_block() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("answered.json");
+        let mut f = Answered::open(&path).unwrap();
+        f.block("demo/a", 1).unwrap();
+        let (nonce, _) = f.offer_lift("demo/a", "key", "revision", 1).unwrap();
+        f.path = dir.path().join("missing").join("answered.json");
+        assert!(f.lift(&nonce, 2).is_err());
+        assert_eq!(f.blocked_until("demo/a", 2), Some(u64::MAX), "unknown ledger state fails closed");
+        assert!(f.lift_challenge(&nonce, 2).is_none());
+        assert!(f.offer_lift("demo/a", "key", "revision", 2).is_err());
+        let mut reopened = Answered::open(&path).unwrap();
+        let (fresh, _) = reopened.offer_lift("demo/a", "key", "revision", 2).unwrap();
+        assert!(reopened.lift(&fresh, 2).unwrap());
+    }
+
+    #[test]
+    fn an_error_after_replacement_reloads_state_and_invalidates_old_lifts() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("answered.json");
+        let mut f = Answered::open(&path).unwrap();
+        f.block("demo/a", 10).unwrap();
+        let (old, _) = f.offer_lift("demo/a", "key", "revision", 10).unwrap();
+        f.fail_after_replace = true;
+        assert!(f.block("demo/a", 20).is_err());
+        assert_eq!(f.blocked_until("demo/a", 20), Some(20 + BLOCK_MS));
+        assert!(!f.lift(&old, 20).unwrap());
+        f.fail_after_replace = false;
+        f.note_declined("demo", &[("sync_now", "*")], 20).unwrap();
+        assert_eq!(Answered::open(&path).unwrap().blocked_until("demo/a", 20), Some(20 + BLOCK_MS));
+        let (fresh, _) = f.offer_lift("demo/a", "key", "revision", 20).unwrap();
+        f.fail_after_replace = true;
+        assert!(f.lift(&fresh, 20).is_err());
+        assert_eq!(f.blocked_until("demo/a", 20), None);
+        assert!(f.lift_challenge(&fresh, 20).is_none());
+    }
+
+    #[test]
+    fn an_unconfirmed_directory_sync_blocks_further_mutations_until_reopened() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("answered.json");
+        let mut f = Answered::open(&path).unwrap();
+        f.block("demo/a", 10).unwrap();
+        let (old, _) = f.offer_lift("demo/a", "key", "revision", 10).unwrap();
+        f.fail_after_replace = true;
+        f.fail_reconcile_sync = true;
+        assert!(f.block("demo/a", 20).is_err());
+        assert!(f.uncertain());
+        assert_eq!(f.blocked_until("demo/a", 20), Some(u64::MAX));
+        assert!(f.offer_lift("demo/a", "key", "revision", 20).is_err());
+        assert!(f.note_declined("demo", &[("sync_now", "*")], 20).is_err());
+        assert!(!f.lift(&old, 20).unwrap());
+        let mut reopened = Answered::open(&path).unwrap();
+        assert_eq!(reopened.blocked_until("demo/a", 20), Some(20 + BLOCK_MS));
     }
 }

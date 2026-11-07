@@ -100,6 +100,7 @@ pub fn request_from(node: &mut Node, source: &str, board: &str, token: &str, p: 
         return Err(Error::Denied(waiting_words(open)));
     }
     let now = node.now_ms();
+    if node.answered.uncertain() { return Err(Error::Damaged("The block list could not be read after a write; reopen this node before asking.".into())); }
     if let Some(until) = node.answered.blocked_until(&format!("{board}/{name}"), now) {
         return Err(Error::Denied(format!("A person blocked this session until {} when they answered an earlier request of it, so nothing it asks is shown to them before then. Tell the person in your own words what you need.", utc(until))));
     }

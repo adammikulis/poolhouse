@@ -68,14 +68,22 @@ fn reads(node: &Node, id: &str) -> bool {
     node.phones.get(id).is_some_and(|f| Authority::of(node).decides(&f.fingerprint))
 }
 
+/// Bind a lift to the current charter and distrust set, so a restored key cannot reuse an old approval.
+fn lift_authority(node: &Node) -> String {
+    let charter = node.members.gov().map(|g| g.state().chain.latest().hash.clone()).unwrap_or_default();
+    let distrust = crate::grants::distrust::set(node);
+    crate::fsutil::sha256_hex(crate::row::canonical(&json!({"charter": charter, "distrust": distrust})).as_bytes())
+}
+
 fn list(node: &mut Node, me: &str) -> Value {
     let now = node.now_ms();
     let mut shown_now = if reads(node, me) { pending(node) } else { Vec::new() };
     let mut done: Vec<&crate::approvals::Approval> = if reads(node, me) { node.approvals.all().iter().filter(|a| !a.pending()).collect() } else { Vec::new() };
     done.sort_by_key(|a| std::cmp::Reverse(a.seq));
     shown_now.extend(done.into_iter().take(RECENT).map(|a| view(node, a)));
-    json!({"approvals": shown_now, "phones": node.phones.all().filter(|p| p.state != crate::phone::REMOVED).map(|p| shown(p, me)).collect::<Vec<_>>(),
-           "version": node.approvals.version(), "now_ms": now, "device": node.cert.fingerprint(), "policy": node.members.policy.name()})
+    let blocks = if reads(node, me) && !node.answered.uncertain() { node.answered.blocks(now) } else { Default::default() };
+    json!({"approvals": shown_now, "blocks": blocks, "phones": node.phones.all().filter(|p| p.state != crate::phone::REMOVED).map(|p| shown(p, me)).collect::<Vec<_>>(),
+           "blocks_unavailable": reads(node, me) && node.answered.uncertain(), "version": node.approvals.version(), "now_ms": now, "device": node.cert.fingerprint(), "policy": node.members.policy.name()})
 }
 
 /// The phone ``id`` is added and not removed: a phone removed while its request was between two locks does nothing more.
@@ -133,6 +141,27 @@ fn phone_op(node: &Mutex<Node>, id: &str, op: &str, p: &Map<String, Value>) -> R
         "status" => Ok(json!({"state": ACTIVE})),
         "list" => Ok(list(&mut n, id)),
         "get" => n.approvals.get(text(p, "id")).filter(|a| reads(&n, id)).cloned().map(|a| view(&n, &a)).ok_or_else(|| Error::Invalid("There is no request with that id.".into())),
+        "block_lift_offer" => {
+            if !reads(&n, id) { return Err(Error::Denied("Only an admin phone can lift a block.".into())); }
+            let key = n.phones.get(id).unwrap().fingerprint.clone();
+            let authority = lift_authority(&n);
+            let (nonce, lift) = n.answered.offer_lift(text(p, "who"), &key, &authority, now)?;
+            Ok(json!({"v": 1, "op": "block_lift", "node": n.cert.fingerprint(), "nonce": nonce, "who": lift.who,
+                "until_ms": lift.until_ms, "expires_ms": lift.expires_ms, "key": lift.key, "authority": lift.authority}))
+        }
+        "block_lift" => {
+            if !reads(&n, id) { return Err(Error::Denied("Only an admin phone can lift a block.".into())); }
+            let key = n.phones.get(id).unwrap().fingerprint.clone();
+            let nonce = text(p, "nonce");
+            let lift = n.answered.lift_challenge(nonce, now).ok_or_else(|| Error::Denied("That block lift has expired or was already used.".into()))?;
+            if lift.key != key || lift.authority != lift_authority(&n) || !n.persons.signed(&key, &crate::approvals::challenge::lift_bytes(&n.cert.fingerprint(), nonce, &lift), text(p, "sig")) {
+                return Err(Error::Denied("That signature does not approve this block lift.".into()));
+            }
+            if !n.answered.lift(nonce, now)? { return Err(Error::Denied("That block lift has expired or was already used.".into())); }
+            n.approvals.notify_change();
+            let _ = n.record_event("approval.block_lifted", &lift.who, "a person lifted the block");
+            Ok(json!({"lifted": true}))
+        }
         "phones" => Ok(json!({"phones": n.phones.all().filter(|f| f.state != crate::phone::REMOVED).map(|f| shown(f, id)).collect::<Vec<_>>()})),
         "push" => {
             let endpoint = text(p, "endpoint");

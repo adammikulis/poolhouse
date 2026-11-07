@@ -26,12 +26,16 @@ public final class MainActivity extends Activity {
     private static final int SCAN = 11;
     private static final int NOTIFY = 12;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
+    private final ExecutorService liftWorker = Executors.newSingleThreadExecutor();
     private PhoneStore store;
     private Ui ui;
     private LinearLayout list;
     private volatile boolean visible;
     private volatile long generation;
     private String received;
+    private android.app.AlertDialog liftDialog;
+    private BiometricAuthorizer liftSigner;
+    private boolean liftActive;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -70,12 +74,16 @@ public final class MainActivity extends Activity {
     @Override public void onStop() {
         visible = false;
         generation++;
+        if (liftDialog != null) { liftDialog.dismiss(); liftDialog = null; }
+        if (liftSigner != null) { liftSigner.cancel(); liftSigner = null; }
+        liftActive = false;
         received = null;
         super.onStop();
     }
 
     @Override public void onDestroy() {
         worker.shutdownNow();
+        liftWorker.shutdownNow();
         super.onDestroy();
     }
 
@@ -193,7 +201,9 @@ public final class MainActivity extends Activity {
                 version = got.getLong("version");
                 store.learnClock(got.getLong("now_ms"));
                 List<ApprovalView> views = ApprovalView.all(got.getJSONArray("approvals"));
-                runOnUiThread(() -> { if (visible && epoch == generation) show(views); });
+                JSONObject blocks = got.getJSONObject("blocks");
+                boolean blocksUnavailable = got.optBoolean("blocks_unavailable", false);
+                runOnUiThread(() -> { if (visible && epoch == generation) show(views, blocks, blocksUnavailable, epoch); });
             } catch (SecurityException removed) {
                 runOnUiThread(() -> { if (visible && epoch == generation) ui.say("This phone was removed from your computer. Add it again to approve from it."); });
                 return;
@@ -217,7 +227,7 @@ public final class MainActivity extends Activity {
     }
 
     /** Show every pending request together. */
-    private void show(List<ApprovalView> views) {
+    private void show(List<ApprovalView> views, JSONObject blocks, boolean blocksUnavailable, long epoch) {
         list.removeAllViews();
         int waiting = 0;
         for (ApprovalView view : views) {
@@ -226,7 +236,65 @@ public final class MainActivity extends Activity {
             waiting++;
             list.addView(card(view), new LinearLayout.LayoutParams(-1, -2));
         }
-        ui.say(waiting == 0 ? "Nothing is waiting for you." : waiting + (waiting == 1 ? " request is" : " requests are") + " waiting for you.");
+        java.util.Iterator<String> names = blocks.keys();
+        while (names.hasNext()) {
+            String who = names.next();
+            long until = blocks.optLong(who, 0);
+            if (until <= 0) continue;
+            android.widget.Button button = new android.widget.Button(this);
+            button.setAllCaps(false);
+            button.setText("Blocked: " + who + "\nTap to lift this block");
+            button.setOnClickListener(v -> prepareLift(who, until, epoch));
+            list.addView(button, new LinearLayout.LayoutParams(-1, -2));
+        }
+        String summary = waiting == 0 ? "No requests are waiting." : waiting + (waiting == 1 ? " request is" : " requests are") + " waiting for you.";
+        ui.say(blocksUnavailable ? summary + " The block list is unavailable. Restart Poolhouse on your computer." : blocks.length() == 0 ? summary : summary + " " + blocks.length() + (blocks.length() == 1 ? " session is" : " sessions are") + " blocked.");
+    }
+
+    private void prepareLift(String who, long until, long epoch) {
+        if (liftActive) return;
+        liftActive = true;
+        ui.say("Checking that block...");
+        liftWorker.execute(() -> {
+            try {
+                NodeApi api = store.api();
+                BiometricAuthorizer signer = new BiometricAuthorizer(this);
+                if (!signer.strongAvailable()) throw new SecurityException("Set up a fingerprint or strong face unlock to lift this block.");
+                BlockLift lift = new BlockLift(api.blockLiftOffer(store.token(), who), store.device(), Hex.sha256(signer.publicPoint()), who, until, store.nodeNowMs());
+                runOnUiThread(() -> {
+                    if (!visible || epoch != generation) return;
+                    liftSigner = signer;
+                    liftDialog = new android.app.AlertDialog.Builder(this).setTitle("Lift this block?")
+                            .setMessage("Allow requests from " + JSONObject.quote(lift.who) + " again. You will still decide each request.")
+                            .setNegativeButton("Cancel", (dialog, which) -> { liftActive = false; ui.say("The block remains."); })
+                            .setOnCancelListener(dialog -> { liftActive = false; ui.say("The block remains."); })
+                            .setPositiveButton("Lift block", (dialog, which) -> {
+                                if (!visible || epoch != generation) return;
+                                signer.sign(lift.bytes(), "Lift this block", true, new Authorizer.Result() {
+                                @Override public void signed(byte[] signature) {
+                                    if (!visible || epoch != generation) return;
+                                    liftWorker.execute(() -> {
+                                        if (!visible || epoch != generation) return;
+                                        try {
+                                            api.liftBlock(store.token(), lift.nonce, signature);
+                                            runOnUiThread(() -> { if (visible && epoch == generation) { liftActive = false; ui.say("The block was lifted."); } });
+                                        } catch (Exception failure) {
+                                            runOnUiThread(() -> { if (visible && epoch == generation) { liftActive = false; ui.say("The result could not be confirmed. Check the block list before trying again."); } });
+                                        }
+                                    });
+                                }
+                                @Override public void failed(String sentence) {
+                                    runOnUiThread(() -> { if (visible && epoch == generation) { liftActive = false; ui.say(sentence); } });
+                                }
+                            }); }).create();
+                    liftDialog.show();
+                });
+            } catch (SecurityException refused) {
+                runOnUiThread(() -> { if (visible && epoch == generation) { liftActive = false; ui.say(refused.getMessage()); } });
+            } catch (Exception failure) {
+                runOnUiThread(() -> { if (visible && epoch == generation) { liftActive = false; ui.say("The block could not be checked. Refresh and try again."); } });
+            }
+        });
     }
 
     @Override public void onRequestPermissionsResult(int code, String[] permissions, int[] results) {

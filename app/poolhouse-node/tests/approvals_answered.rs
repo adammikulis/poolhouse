@@ -586,6 +586,43 @@ fn a_block_tells_the_agent_when_it_ends_and_survives_a_restart() {
 }
 
 #[test]
+fn a_phone_lifts_only_the_signed_current_block_once() {
+    let (rig, phone) = setup();
+    let (name, token) = rig.session("demo", "agent-1");
+    let who = format!("demo/{name}");
+    let made = ok(rig.ask("demo", &token, json!([ask("add_device", "*")]), json!({})));
+    ok(answer(&rig, &phone, made["id"].as_str().unwrap(), "block"));
+    let list = rig.phone("POST", "list", &phone.token, json!({})).1;
+    assert!(list["result"]["blocks"][&who].is_u64());
+    let offer = rig.phone("POST", "block_lift_offer", &phone.token, json!({"who": who})).1["result"].clone();
+    for _ in 0..300 {
+        let repeated = rig.phone("POST", "block_lift_offer", &phone.token, json!({"who": who})).1;
+        assert_eq!(repeated["result"]["nonce"], offer["nonce"], "a bearer cannot exhaust the offers");
+    }
+    let bytes = format!("poolhouse/approval-block-lift/v1\n{}", poolhouse_node::row::canonical(&offer));
+    let nonce = offer["nonce"].as_str().unwrap();
+    let wrong = FakePhone::new("other");
+    let forged = rig.phone("POST", "block_lift", &phone.token, json!({"nonce": nonce, "sig": wrong.sign(bytes.as_bytes())})).1;
+    assert_eq!(forged["ok"], false);
+    let sig = phone.sign(bytes.as_bytes());
+    assert_eq!(rig.phone("POST", "block_lift", "", json!({"nonce": nonce, "sig": sig})).0, 401);
+    let version = rig.node.lock().unwrap().approvals.version();
+    assert_eq!(rig.phone("POST", "block_lift", &phone.token, json!({"nonce": nonce, "sig": sig})).1["ok"], true);
+    assert_ne!(rig.node.lock().unwrap().approvals.version(), version);
+    assert_eq!(rig.phone("POST", "block_lift", &phone.token, json!({"nonce": nonce, "sig": sig})).1["ok"], false);
+    let now = rig.node.lock().unwrap().now_ms();
+    assert_eq!(rig.node.lock().unwrap().answered.blocked_until(&who, now), None);
+    rig.node.lock().unwrap().answered.block(&who, now).unwrap();
+    assert_eq!(rig.phone("POST", "block_lift", &phone.token, json!({"nonce": nonce, "sig": sig})).1["ok"], false);
+    assert!(rig.node.lock().unwrap().answered.blocked_until(&who, now).is_some());
+    let next = rig.phone("POST", "block_lift_offer", &phone.token, json!({"who": who})).1["result"].clone();
+    let signed = phone.sign(format!("poolhouse/approval-block-lift/v1\n{}", poolhouse_node::row::canonical(&next)).as_bytes());
+    rig.node.lock().unwrap().phones.set_state(&phone.id, poolhouse_node::phone::REMOVED).unwrap();
+    assert_ne!(rig.phone("POST", "block_lift", &phone.token, json!({"nonce": next["nonce"], "sig": signed})).1["ok"], true);
+    assert!(rig.node.lock().unwrap().answered.blocked_until(&who, now).is_some(), "a removed phone cannot use an earlier offer");
+}
+
+#[test]
 fn a_denied_phone_addition_blocks_nothing_and_the_session_makes_another_code_and_another_phone_at_once() {
     let (rig, first, _name, token) = with_offering_session();
     let offer = ok(rig.call("phone_offer", "", &token, json!({})));
