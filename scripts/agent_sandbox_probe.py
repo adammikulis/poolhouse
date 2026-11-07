@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import http.client
 import os
 import socket
@@ -15,6 +16,12 @@ import agent_sandbox_profile as profile
 
 PASS, FAIL, SKIP = "PASS", "FAIL", "SKIP"
 DENIED_HOST = "example.com"
+PLATFORM_CHECKS = {"darwin": "write a launch agent", "linux": "write a systemd user unit"}
+REQUIRED = frozenset({"write outside the allow list (home directory)", "write a hook script", "write a Claude Code transcript path",
+                      "write a git hook", "write the runtime tree", "read the session tokens of the node", "read the keystore state",
+                      "read ssh keys", "read cloud credentials", "read the gh config", "write the temp directory", "write inside the checkout",
+                      "reach 127.0.0.1:8770", "reach a host off the list", "git push to a local bare repository", "scripts/test on the sandbox tests",
+                      *(f"env {name} absent" for name in profile.SCRUBBED_ENV)})
 
 
 @dataclass(frozen=True)
@@ -37,19 +44,6 @@ def can_write(path: Path) -> bool:
     return True
 
 
-def can_read(path: Path) -> bool:
-    """Whether ``path`` can be listed or opened."""
-    try:
-        if path.is_dir():
-            next(iter(os.scandir(path)), None)
-        else:
-            with path.open("rb") as handle:
-                handle.read(1)
-    except OSError:
-        return False
-    return True
-
-
 def connect_state(host: str, port: int) -> str:
     """``open``, ``refused`` (reachable, nothing listening) or ``blocked``."""
     try:
@@ -57,20 +51,22 @@ def connect_state(host: str, port: int) -> str:
             return "open"
     except ConnectionRefusedError:
         return "refused"
-    except OSError:
-        return "blocked"
+    except OSError as error:
+        return "blocked" if error.errno in (errno.EACCES, errno.EPERM) else "unknown"
 
 
 def fetch_state(host: str) -> str:
-    """``reached`` when ``https://host/`` answers with a success status, otherwise ``blocked``."""
+    """Distinguish an HTTP response, a permission denial and an inconclusive network error."""
     try:
         link = http.client.HTTPSConnection(host, timeout=8)
         link.request("GET", "/")
-        status = link.getresponse().status
+        link.getresponse()
         link.close()
-    except (http.client.HTTPException, OSError):
-        return "blocked"
-    return "reached" if status < 400 else "blocked"
+    except OSError as error:
+        return "blocked" if error.errno in (errno.EACCES, errno.EPERM) else "unknown"
+    except http.client.HTTPException:
+        return "unknown"
+    return "reached"
 
 
 def run(argv: list[str], cwd: Path) -> tuple[int, str]:
@@ -83,13 +79,28 @@ def run(argv: list[str], cwd: Path) -> tuple[int, str]:
 def _denied_write(name: str, path: Path) -> Result:
     if not path.parent.is_dir():
         return Result(name, SKIP, f"{path.parent} does not exist")
-    return Result(name, PASS if not can_write(path) else FAIL, str(path))
+    try:
+        with path.open("x"):
+            pass
+    except OSError as error:
+        return Result(name, PASS if error.errno in (errno.EACCES, errno.EPERM) else SKIP, str(error))
+    path.unlink(missing_ok=True)
+    return Result(name, FAIL, str(path))
 
 
 def _denied_read(name: str, path: Path) -> Result:
     if not path.exists():
         return Result(name, SKIP, f"{path} does not exist")
-    return Result(name, PASS if not can_read(path) else FAIL, str(path))
+    try:
+        if path.is_dir():
+            with os.scandir(path) as entries:
+                next(entries, None)
+        else:
+            with path.open("rb") as handle:
+                handle.read(1)
+    except OSError as error:
+        return Result(name, PASS if error.errno in (errno.EACCES, errno.EPERM) else SKIP, str(error))
+    return Result(name, FAIL, str(path))
 
 
 def filesystem_probes(layout: profile.Layout, checkout: Path) -> list[Result]:
@@ -101,14 +112,14 @@ def filesystem_probes(layout: profile.Layout, checkout: Path) -> list[Result]:
         _denied_write("write a Claude Code transcript path", layout.home / ".claude" / "projects" / tag),
         _denied_write("write a git hook", checkout / ".git" / "hooks" / tag),
         _denied_write("write the runtime tree", layout.state / "runtimes" / tag),
-        _denied_write("write a launch agent", layout.home / "Library" / "LaunchAgents" / tag),
-        _denied_write("write a systemd user unit", layout.home / ".config" / "systemd" / "user" / tag),
         _denied_read("read the session tokens of the node", layout.state / "node" / "client"),
         _denied_read("read the keystore state", layout.state / "keystore"),
         _denied_read("read ssh keys", layout.home / ".ssh"),
         _denied_read("read cloud credentials", layout.home / ".aws"),
         _denied_read("read the gh config", layout.home / ".config" / "gh"),
     ]
+    out.append(_denied_write(PLATFORM_CHECKS["darwin"], layout.home / "Library" / "LaunchAgents" / tag) if layout.platform == "darwin"
+               else _denied_write(PLATFORM_CHECKS["linux"], layout.home / ".config" / "systemd" / "user" / tag))
     with tempfile.TemporaryDirectory() as scratch:
         allowed = can_write(Path(scratch) / tag)
     out.append(Result("write the temp directory", PASS if allowed else FAIL))
@@ -127,8 +138,8 @@ def network_probes() -> list[Result]:
     board = connect_state("127.0.0.1", int(profile.BOARD.rsplit(":", 1)[1]))
     host = fetch_state(DENIED_HOST)
     return [
-        Result("reach 127.0.0.1:8770", FAIL if board == "blocked" else PASS, board),
-        Result("reach a host off the list", PASS if host == "blocked" else FAIL, host),
+        Result("reach 127.0.0.1:8770", SKIP if board == "unknown" else FAIL if board == "blocked" else PASS, board),
+        Result("reach a host off the list", SKIP if host == "unknown" else PASS if host == "blocked" else FAIL, host),
     ]
 
 
@@ -174,6 +185,9 @@ def render(results: list[Result]) -> str:
                      for item in results)
 
 
-def inside(results: list[Result]) -> bool:
-    """Whether the probes show a working sandbox: nothing failed and something was refused."""
-    return not any(item.status == FAIL for item in results) and any(item.status == PASS for item in results)
+def inside(results: list[Result], platform: str) -> bool:
+    """Whether all probes passed and the required checks were actually present."""
+    names = [item.name for item in results]
+    expected = PLATFORM_CHECKS.get(platform)
+    return (expected is not None and all(item.status == PASS for item in results) and len(names) == len(set(names))
+            and set(names) >= REQUIRED and set(names) & set(PLATFORM_CHECKS.values()) == {expected})

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import shlex
@@ -275,6 +276,37 @@ def test_a_read_probe_fails_when_the_file_reads(tmp_path):
     assert probe._denied_read("token", tmp_path / "none").status == probe.SKIP
 
 
+def test_a_probe_does_not_treat_a_disk_error_as_a_sandbox_denial(tmp_path, monkeypatch):
+    def full(*_args, **_kwargs):
+        raise OSError(errno.ENOSPC, "no space")
+    monkeypatch.setattr(Path, "open", full)
+    assert probe._denied_write("write", tmp_path / "new").status == probe.SKIP
+
+
+def test_a_probe_does_not_treat_a_read_error_as_a_sandbox_denial(tmp_path, monkeypatch):
+    target = tmp_path / "file"
+    target.write_text("canary")
+    def io_error(*_args, **_kwargs):
+        raise OSError(errno.EIO, "read failed")
+    monkeypatch.setattr(Path, "open", io_error)
+    assert probe._denied_read("read", target).status == probe.SKIP
+
+
+def test_a_network_failure_or_http_refusal_is_not_a_proven_sandbox_block(monkeypatch):
+    class Broken:
+        def __init__(self, *_args, **_kwargs):
+            raise OSError(errno.ENETUNREACH, "network unavailable")
+    monkeypatch.setattr(probe.http.client, "HTTPSConnection", Broken)
+    assert probe.fetch_state("example.invalid") == "unknown"
+    class Refused:
+        def __init__(self, *_args, **_kwargs): pass
+        def request(self, *_args): pass
+        def getresponse(self): return type("Reply", (), {"status": 403})()
+        def close(self): pass
+    monkeypatch.setattr(probe.http.client, "HTTPSConnection", Refused)
+    assert probe.fetch_state("example.invalid") == "reached"
+
+
 def test_connect_state_tells_refused_from_open():
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
@@ -295,11 +327,15 @@ def test_git_probe_pushes_to_a_local_bare_repository():
 
 
 def test_inside_needs_a_refusal_and_no_open_line():
-    passed, failed = probe.Result("a", probe.PASS), probe.Result("b", probe.FAIL)
-    assert probe.inside([passed])
-    assert not probe.inside([passed, failed])
-    assert not probe.inside([probe.Result("c", probe.SKIP)])
-    assert probe.render([passed]).startswith("PASS  a")
+    passed = [probe.Result(name, probe.PASS) for name in probe.REQUIRED] + [probe.Result(probe.PLATFORM_CHECKS["darwin"], probe.PASS)]
+    assert probe.inside(passed, "darwin")
+    assert not probe.inside(passed[1:], "darwin"), "missing evidence cannot prove confinement"
+    assert not probe.inside([*passed, probe.Result("b", probe.FAIL)], "darwin")
+    assert not probe.inside([*passed, probe.Result("sensitive check", probe.SKIP)], "darwin"), "skipping a check cannot prove confinement"
+    assert not probe.inside([item for item in passed if not item.name.startswith("env ")], "darwin"), "scrub checks cannot be omitted"
+    assert not probe.inside([item for item in passed if item.name != probe.PLATFORM_CHECKS["darwin"]], "darwin"), "the platform check is required"
+    assert not probe.inside(passed, "linux"), "another platform's check proves nothing here"
+    assert probe.render(passed).startswith("PASS  ")
 
 
 def test_the_install_command_installs_the_staged_files_when_run_without_sudo(layout, tmp_path, monkeypatch):

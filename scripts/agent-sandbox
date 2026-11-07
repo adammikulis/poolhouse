@@ -76,9 +76,11 @@ def run_probes(args: argparse.Namespace) -> int:
     results = probe.all_probes(layout, Path.cwd(), extra=[lambda: probe.test_probe(Path.cwd())])
     print(probe.render(results))
     failed = [item for item in results if item.status == probe.FAIL]
-    print(f"\n{len(results) - len(failed)} of {len(results)} lines passed or were skipped; "
-          + ("this session is sandboxed" if probe.inside(results) else "this session is NOT sandboxed"))
-    return 1 if failed else 0
+    skipped = sum(item.status == probe.SKIP for item in results)
+    passed = sum(item.status == probe.PASS for item in results)
+    print(f"\n{passed} of {len(results)} checks passed; {skipped} skipped; "
+          + ("the checks passed" if probe.inside(results, layout.platform) else "the checks do not establish that this session is sandboxed"))
+    return 0 if probe.inside(results, layout.platform) else 1
 
 
 def status(args: argparse.Namespace) -> int:
