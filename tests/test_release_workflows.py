@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import re
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -521,3 +522,14 @@ def test_a_development_push_does_not_run_the_full_suite():
         condition = CI["jobs"][job]["if"]
         assert "github.event_name != 'push'" in condition and "refs/heads/main" in condition, (job, condition)
     assert "if" not in CI["jobs"]["gates"] or "push" not in CI["jobs"]["gates"]["if"]
+
+
+def test_ci_installs_browser_dependencies_before_the_slow_suites():
+    project = tomllib.loads((WORKFLOWS.parents[1] / "pyproject.toml").read_text(encoding="utf-8"))
+    assert any("scrape" in dependency for dependency in project["project"]["optional-dependencies"]["test"])
+    for name in ("shards", "macos"):
+        steps = CI["jobs"][name]["steps"]
+        browser = next(i for i, step in enumerate(steps) if "playwright install" in str(step.get("run", "")))
+        tests = next(i for i, step in enumerate(steps) if step.get("name") == "tests")
+        assert browser < tests
+        assert "chromium" in steps[browser]["run"]

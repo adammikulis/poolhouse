@@ -82,6 +82,7 @@ jobs:
           # and a title read without trafilatura is a different title
           python -m pip install -e ".[test,store,hub,web,plot,privacy,guardrails,mcp,memory,fleet-onboard,pdf,fleet-update]"
           python -m spacy download en_core_web_sm
+          python -m playwright install --with-deps chromium
           # CPU torch: 28 tests across backend, graph and recipes need a framework,
           # and without one they fail rather than skip.
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
@@ -157,6 +158,7 @@ jobs:
           python -m pip install pytest pytest-timeout pytest-xdist pyyaml numpy psutil pillow networkx gguf safetensors
           python -m pip install -e ".[test,store,hub,web,plot,privacy,guardrails,mcp,memory,fleet-onboard,pdf,fleet-update]"
           python -m spacy download en_core_web_sm
+          python -m playwright install chromium
           # The CPU index carries no macOS arm64 wheel; the default one is CPU-only here.
           python -m pip install torch
 
