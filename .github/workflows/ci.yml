@@ -219,7 +219,7 @@ jobs:
           sudo apt-get install -y bubblewrap rustc cargo
           python -m pip install --upgrade pip build
           python -m pip install pytest pytest-timeout pytest-xdist pyyaml numpy psutil pillow networkx gguf safetensors huggingface_hub
-          python -m pip install -e ".[test,store,hub,web,plot,privacy,guardrails,mcp,memory,fleet-onboard,pdf,fleet-update]"
+          python -m pip install -e ".[test,store,hub,web,plot,privacy,guardrails,mcp,memory,fleet-onboard,pdf,fleet-update,redteam]"
 
       - name: build the node the tests start
         run: |
