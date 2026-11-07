@@ -21,7 +21,6 @@ import java.nio.file.Files;
  */
 final class Notifier {
     static final String CHANNEL = "approvals";
-    static final String QUIET = "approvals_quiet";
     private Notifier() { }
 
     static int idOf(String approval) {
@@ -71,19 +70,12 @@ final class Notifier {
         return builder.build();
     }
 
-    /** Make the two channels: requests that interrupt, and notices that must not (no sound, no heads-up, no badge). */
+    /** Make the channel for requests waiting for a person. */
     private static void channels(NotificationManager manager) {
         NotificationChannel loud = new NotificationChannel(CHANNEL, "Approvals waiting", NotificationManager.IMPORTANCE_HIGH);
         loud.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
         loud.setDescription("Requests from your agents that wait for your approval");
         manager.createNotificationChannel(loud);
-        NotificationChannel quiet = new NotificationChannel(QUIET, "Quiet notices", NotificationManager.IMPORTANCE_LOW);
-        quiet.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
-        quiet.setDescription("Notices about requests that were kept back or are waiting in the list; they never make a sound");
-        quiet.setShowBadge(false);
-        quiet.setSound(null, null);
-        quiet.enableVibration(false);
-        manager.createNotificationChannel(quiet);
     }
 
     /** Show {@code model} for {@code payload}. */
@@ -91,7 +83,7 @@ final class Notifier {
         if (payload.view != null) keep(context, payload.view);
         NotificationManager manager = context.getSystemService(NotificationManager.class);
         channels(manager);
-        String channel = model.quiet ? QUIET : CHANNEL;
+        String channel = CHANNEL;
         Notification hidden = new Notification.Builder(context, channel).setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle(model.publicTitle)
                 .setContentText(model.publicText).setVisibility(Notification.VISIBILITY_PUBLIC).setLocalOnly(true).build();
         PendingIntent read = open(context, payload, "");

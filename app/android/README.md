@@ -15,13 +15,11 @@ the computer's Fleet page.
   key signs. Approve and Deny each ask for the fingerprint, strong face unlock or device credential once (to approve a request above routine it asks for a strong
   fingerprint or face and no PIN, and a phone without one approves nothing that is not routine); a request that is not routine
   then asks which of three numbers the agent showed, a scope declined before asks "Approve anyway?" first, and a request an agent made also
-  offers Deny and block. What an agent asked on its own, notices about requests kept back and what came too fast to be pushed are in a
-  quiet list under the requests.
+  offers Deny and block. All pending requests appear together.
 - **Notifications**: the node seals each request to the phone's push key (Web Push payload encryption, RFC 8291) and posts it to the
   address a UnifiedPush distributor gave the app. The lock screen says only `Approval waiting from <agent>`; once unlocked the
   notification shows the whole text with Approve and Deny, and Approve opens the fingerprint prompt (for a routine request) or the
-  whole request first (for any other, and for any the node flagged). A notice about requests kept back is on a channel with no sound,
-  no heads-up and no badge. Without a distributor the app still works: requests show while it is open.
+  whole request first (for any other, and for any the node flagged). Without a distributor the app still works: requests show while it is open.
 - **Phones**: list the phones, remove one (another phone's fingerprint confirms), add another phone (a code to scan on it).
 - **Chat** with the computer: the status and streamed chat of Fleet, behind the fingerprint, over pinned TLS.
 

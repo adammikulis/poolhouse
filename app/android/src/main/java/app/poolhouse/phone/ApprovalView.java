@@ -16,8 +16,6 @@ final class ApprovalView {
     final String risk;
     final String session;
     final String text;
-    /** How loudly the node told the person: urgent, quiet or silent (the list only). */
-    final String urgency;
     final long expiresMs;
     final Challenge challenge;
 
@@ -28,7 +26,6 @@ final class ApprovalView {
         title = raw.optString("title", "");
         session = raw.optString("session", "");
         text = raw.getString("text");
-        urgency = raw.optString("urgency", "urgent");
         String level = ApprovalText.parse(text).level();
         risk = level.isEmpty() ? "sensitive" : level;
         expiresMs = raw.getLong("expires_ms");
@@ -42,11 +39,6 @@ final class ApprovalView {
 
     ApprovalText parts() {
         return ApprovalText.parse(text);
-    }
-
-    /** Whether the person has to look at the request before anything else: it came to the list, not to the screen, or it is a notice. */
-    boolean interrupts() {
-        return "urgent".equals(urgency);
     }
 
     /** Whether Approve opens the whole request before anything is signed: not routine, or flagged by the node. */

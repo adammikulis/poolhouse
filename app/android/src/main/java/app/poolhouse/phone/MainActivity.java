@@ -216,30 +216,15 @@ public final class MainActivity extends Activity {
         return card;
     }
 
-    /**
-     * The requests that wait, and apart from them a quiet list: what an agent asked on its own, notices about requests kept back and
-     * what came too fast to be pushed. Nothing in the quiet list ever made a sound; it is read when the person opens the app.
-     */
+    /** Show every pending request together. */
     private void show(List<ApprovalView> views) {
         list.removeAllViews();
         int waiting = 0;
-        List<ApprovalView> quiet = new java.util.ArrayList<>();
         for (ApprovalView view : views) {
             if (!view.pending()) { Notifier.forget(this, view.id); continue; }
             Notifier.keep(this, view);
-            if (view.interrupts()) {
-                waiting++;
-                list.addView(card(view), new LinearLayout.LayoutParams(-1, -2));
-            } else {
-                quiet.add(view);
-            }
-        }
-        if (!quiet.isEmpty()) {
-            TextView heading = new TextView(this);
-            heading.setText("Quiet list: asked on their own, kept back, or too many at once to push (" + quiet.size() + ")");
-            heading.setPadding(0, 24, 0, 8);
-            list.addView(heading);
-            for (ApprovalView view : quiet) list.addView(card(view), new LinearLayout.LayoutParams(-1, -2));
+            waiting++;
+            list.addView(card(view), new LinearLayout.LayoutParams(-1, -2));
         }
         ui.say(waiting == 0 ? "Nothing is waiting for you." : waiting + (waiting == 1 ? " request is" : " requests are") + " waiting for you.");
     }

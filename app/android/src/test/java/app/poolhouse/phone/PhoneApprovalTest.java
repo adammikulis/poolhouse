@@ -230,7 +230,7 @@ public final class PhoneApprovalTest {
             if (flagged) check(model.collapsed.startsWith("Check this one: "), "what looks off is first even when collapsed");
             equal((Boolean) one[2], model.approveOpensScreen, "only a routine request with nothing flagged is approved from the notification itself: " + level + " flagged " + flagged);
             equal(1800000L, model.timeoutMs, "the notification goes when the request ends");
-            check(!model.quiet && model.labels[0].equals("Approve") && model.labels[1].equals("Deny") && model.labels[2].equals("Deny and block"), "a request an agent made offers approve, deny and deny and block");
+            check(model.labels[0].equals("Approve") && model.labels[1].equals("Deny") && model.labels[2].equals("Deny and block"), "a request an agent made offers approve, deny and deny and block");
         }
         JSONObject big = new JSONObject().put("v", 1).put("id", vector.getString("id")).put("title", "claude-1a2b3c asks for 8 things").put("agent", "claude-1a2b3c")
                 .put("risk", "routine").put("expires_ms", vector.getLong("expires_ms")).put("more", true);
@@ -507,7 +507,7 @@ public final class PhoneApprovalTest {
                 "what it wants is read from the structured asks the key signs");
         equal("add_device on lab, once, for 10 minutes", Wants.of(new Challenge(action)).get(0), "and follows them when they change");
         check(Wants.of(new Challenge(new JSONObject(vector.toString()).put("action", new JSONObject().put("kind", "hold").put("cause", "flood")))).isEmpty(), "a notice asks for no grant");
-        // A notice about requests kept back: its buttons ask something else, and a quiet one does not interrupt.
+        // An obsolete quiet field cannot suppress a notification.
         for (String[] one : new String[][] {{"held", "Allow once", "Keep holding", "Block it"}, {"suspended", "Lift the suspension", "Keep it suspended", "Block it"}, {"flood", "Dismiss", "", ""}}) {
             JSONObject notice = new JSONObject(vector.toString());
             notice.put("action", new JSONObject().put("kind", "hold").put("cause", one[0]).put("key", "session:demo/claude-1a2b3c").put("queued", 3));
@@ -516,7 +516,7 @@ public final class PhoneApprovalTest {
             JSONObject raw = new JSONObject().put("v", 1).put("id", notice.getString("id")).put("title", "a notice").put("agent", "").put("urgency", "quiet")
                     .put("expires_ms", notice.getLong("expires_ms")).put("challenge", notice);
             NotificationModel model = NotificationModel.of(PushPayload.parse(raw.toString().getBytes(StandardCharsets.UTF_8)), now);
-            check(model.quiet && model.publicTitle.equals("A quiet notice is waiting") && model.approveOpensScreen, "a notice is quiet, says nothing at the lock screen and opens on the screen first");
+            check(model.publicTitle.equals("Approval waiting from a request") && model.approveOpensScreen, "a quiet field cannot suppress a notification");
         }
         ApprovalView flood = viewOf(new JSONObject(vector.toString()).put("action", new JSONObject().put("kind", "hold").put("cause", "flood")));
         SoftwareAuthorizer person = new SoftwareAuthorizer();
@@ -529,10 +529,10 @@ public final class PhoneApprovalTest {
         check(person.asked == 0 && recording.sent.isEmpty() && told[0].contains("does not offer"), "a notice that offers one answer is not signed with another");
         JSONObject loud = new JSONObject().put("v", 1).put("id", vector.getString("id")).put("title", "asks").put("agent", "claude-1a2b3c").put("urgency", "urgent")
                 .put("expires_ms", vector.getLong("expires_ms")).put("challenge", vector);
-        check(!NotificationModel.of(PushPayload.parse(loud.toString().getBytes(StandardCharsets.UTF_8)), now).quiet, "a request that interrupts is not quiet");
+        check(NotificationModel.of(PushPayload.parse(loud.toString().getBytes(StandardCharsets.UTF_8)), now).publicTitle.equals("Approval waiting from claude-1a2b3c"), "the notification identifies the requester");
         JSONObject odd = new JSONObject(loud.toString()).put("urgency", "deafening");
         PushPayload strange = PushPayload.parse(odd.toString().getBytes(StandardCharsets.UTF_8));
-        check(!NotificationModel.of(strange, now).quiet && strange.view.interrupts() && strange.urgency.equals("urgent"), "an urgency the node never writes is read as the usual one");
+        check(NotificationModel.of(strange, now).publicTitle.equals("Approval waiting from claude-1a2b3c"), "an obsolete urgency field does not change the notification");
         JSONObject lacking = new JSONObject(vector.toString());
         StringBuilder kept = new StringBuilder();
         for (String line : vector.getString("text").split("\n")) if (!line.startsWith("SAID:")) kept.append(kept.length() == 0 ? "" : "\n").append(line);
