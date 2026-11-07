@@ -500,7 +500,13 @@ reads as the worse case):
   same read with D1 appended. The differing baseline explains why neither synthetic result transfers to another wrapper.
   This contradicts a broader reading of the earlier M-proc result in
   `docs/design-isolated-launcher.md`; the profiles differ and neither result establishes the installed harness's
-  behavior. Reproduce against the actual wrapper and investigate the difference before relying on D1 or starting S4.
+  behavior. On the same Mac, the generated `srt_settings` and an isolated copy of sandbox-runtime 0.0.78 from
+  the local npm cache allowed a native `KERN_PROCARGS2` reader to obtain a synthetic marker from an outside
+  same-user process; the unconfined control also read it. The direct path to a synthetic denied credential was
+  refused, but a hard-link alias created before confinement remained readable. A rename of the protected ancestor
+  was refused in that setup. An independent agent reproduced the direct-path, alias and environment results with a live
+  synthetic target. This is not a test of the installed Claude or Codex wrappers, or of every alias.
+  Resolve the process-environment and alias channels and verify the actual wrapper before relying on S0 or starting S4.
 - **P3** Which hooks a project outside this repository gets from `install-hooks`, and whether a SessionStart hook exists there.
 - **P4** Whether `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` removes `POOLHOUSE_WORKSPACE_TOKEN` from a command; the ticket's variable
   must survive it (S7's fourth test).
