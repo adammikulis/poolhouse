@@ -1,5 +1,6 @@
 """The local client's root credential never follows a redirected key path."""
 
+import base64
 import json
 import os
 import socket
@@ -114,6 +115,47 @@ def test_python_client_proof_registers_unicode_fields_against_the_node(workspace
         stream.sendall(signed)
         reply = json.loads(node_health._reply(stream.recv))
     assert reply["ok"] is True, "the node must accept the Python client's Unicode proof"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Unix socket transport")
+def test_root_credentials_do_not_cross_the_socket_or_appear_in_status(workspace_node):
+    folder = workspace_node.state / "hook-credentials"
+    credentials = [(folder / name).read_bytes() for name in ("root.key", "reporter.key")]
+    assert all(len(key) == 64 for key in credentials)
+    body = node_health.request_body("register", {"model": "", "harness": "test", "session": "no-key-on-wire"}, board="demo")
+    frame = struct.pack(">I", len(body)) + body
+    traffic = []
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stream:
+        stream.settimeout(5)
+        stream.connect(str(node_health.socket_path(workspace_node.state)))
+
+        def send(data):
+            traffic.append(data)
+            stream.sendall(data)
+
+        def receive(count):
+            data = stream.recv(count)
+            traffic.append(data)
+            return data
+
+        signed = node_health._root_frame(workspace_node.state, frame, send, receive, lambda: node_health._socket_server_pid(stream))
+        send(signed)
+        registration = json.loads(node_health._reply(receive))
+        if registration.get("ok") is not True:
+            pytest.fail("registration was refused", pytrace=False)
+        token = registration["result"]["token"]
+        for status in (node_health.request_body("status"),
+                       node_health.request_body("status", board="demo", token=token)):
+            send(struct.pack(">I", len(status)) + status)
+            if json.loads(node_health._reply(receive)).get("ok") is not True:
+                pytest.fail("status was refused", pytrace=False)
+    wire = b"".join(traffic)
+    for key in credentials:
+        raw = bytes.fromhex(key.decode("ascii"))
+        variants = (key, key.upper(), raw, base64.b64encode(raw), base64.urlsafe_b64encode(raw))
+        if any(value in wire for value in variants):
+            pytest.fail("a credential appeared in the captured connection", pytrace=False)
+
 
 
 @pytest.mark.skipif(os.name == "nt", reason="Unix socket transport")
