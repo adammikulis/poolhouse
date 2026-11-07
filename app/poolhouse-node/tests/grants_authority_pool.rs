@@ -367,7 +367,11 @@ fn a_typed_key_grants_exactly_the_device_local_actions_in_a_pool_and_every_other
     assert!(pool_wide("an_action_added_later"));
     for (n, action) in ACTIONS.iter().enumerate() {
         let gid = format!("g-{:016x}", 0xc000 + n);
-        let reply = pool.rig.call("grant_issue", "demo", &pool.token, typed.issue_params("demo", &gid, &Spec::session(&pool.name, action)));
+        let mut spec = Spec::session(&pool.name, action);
+        if *action == "service_bind" {
+            spec = spec.device(&pool.device()).on(&format!("service:{}", "ab".repeat(32))).uses(1);
+        }
+        let reply = pool.rig.call("grant_issue", "demo", &pool.token, typed.issue_params("demo", &gid, &spec));
         let sensitive = poolhouse_node::approvals::content::risk_of(action).0 != poolhouse_node::approvals::content::ROUTINE;
         if DEVICE_LOCAL.contains(action) && sensitive {
             assert!(Pool::denial(&reply).contains("This pool needs a key approved from"), "{action}: a typed yes counts for nothing toward a sensitive grant: {reply}");
