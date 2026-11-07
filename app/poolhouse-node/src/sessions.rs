@@ -100,9 +100,13 @@ fn rebind(node: &mut Node, board: &str, p: &Map<String, Value>, peer: &Peer) -> 
 
 /// Register the main session ``name`` from ``lineage`` from now on, end the tokens it held and say so on the board; ``by`` is who moved it.
 pub fn carry_out(node: &mut Node, board: &str, name: &str, lineage: &[Anchor], by: &str) -> Result<Value> {
+    let eligible = node.host(board)?.names.get(name).is_some_and(|i| !i.retired && i.parent.is_empty());
+    if !eligible {
+        return Err(Error::Denied("only a main session that has not retired is moved".into()));
+    }
+    let ended = node.tokens.revoke_name(board, name)?;
     node.host(board)?.names.rebind(name, lineage)?;
     node.regroup(board)?;
-    let ended = node.tokens.revoke_name(board, name)?;
     let detail = format!("moved by {by}: {ended} tokens ended");
     node.host(board)?.board.append_person(Kind::Audit, "node", json!({"event": "rebind", "subject": name, "detail": detail}))?;
     Ok(json!({"name": name, "moved": true, "tokens_ended": ended}))

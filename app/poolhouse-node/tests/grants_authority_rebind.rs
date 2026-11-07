@@ -64,6 +64,54 @@ fn an_approved_session_move_works_once_from_the_terminal_it_names_and_ends_the_t
 }
 
 #[test]
+fn an_approval_for_a_session_before_it_ended_cannot_move_its_later_incarnation() {
+    let pool = found();
+    let there = process(true);
+    let anchor = anchor_of(there.id());
+    let id = ok(rebind(&pool, &peer(&there), move_to(&anchor)))["id"].as_str().unwrap().to_string();
+    assert_eq!(ok(pool.answer(&pool.phone, &id, "approve"))["state"], "approved");
+    ok(req(&mut pool.rig.node.lock().unwrap(), "retire", "demo", &pool.token, json!({})));
+    assert!(registers_from(&pool, &me()), "the session returns in the original terminal");
+    let result = rebind(&pool, &peer(&there), finishing(&anchor, &id));
+    done(vec![there]);
+    assert_eq!(result["ok"], false, "an old approval cannot move a later incarnation: {result}");
+    assert!(registers_from(&pool, &me()), "the old approval did not move the returned session");
+}
+
+#[test]
+fn a_pending_move_for_an_ended_session_is_replaced_by_a_fresh_request() {
+    let pool = found();
+    let there = process(true);
+    let anchor = anchor_of(there.id());
+    let old = ok(rebind(&pool, &peer(&there), move_to(&anchor)))["id"].as_str().unwrap().to_string();
+    ok(req(&mut pool.rig.node.lock().unwrap(), "retire", "demo", &pool.token, json!({})));
+    assert!(registers_from(&pool, &me()));
+    let new = ok(rebind(&pool, &peer(&there), move_to(&anchor)))["id"].as_str().unwrap().to_string();
+    let old_state = pool.rig.get(&pool.phone, &old)["state"].clone();
+    done(vec![there]);
+    assert_ne!(old, new, "a changed session needs a new request");
+    assert_eq!(old_state, "cancelled");
+}
+
+#[test]
+fn moving_away_and_back_does_not_restore_an_old_approval() {
+    let pool = found();
+    let there = process(true);
+    let anchor = anchor_of(there.id());
+    let id = ok(rebind(&pool, &peer(&there), move_to(&anchor)))["id"].as_str().unwrap().to_string();
+    assert_eq!(ok(pool.answer(&pool.phone, &id, "approve"))["state"], "approved");
+    {
+        let mut node = pool.rig.node.lock().unwrap();
+        poolhouse_node::sessions::carry_out(&mut node, "demo", &pool.name, &peer(&there).lineage(), "test person").unwrap();
+        poolhouse_node::sessions::carry_out(&mut node, "demo", &pool.name, &me().lineage(), "test person").unwrap();
+    }
+    let result = rebind(&pool, &peer(&there), finishing(&anchor, &id));
+    done(vec![there]);
+    assert_eq!(result["ok"], false, "returning to the same lineage cannot revive an old approval: {result}");
+    assert!(registers_from(&pool, &me()));
+}
+
+#[test]
 fn a_move_is_refused_for_another_session_a_wrong_number_and_a_key_that_is_no_admin_key() {
     let pool = found();
     let there = process(true);

@@ -70,6 +70,9 @@ pub struct Ident {
     /// The processes the session was registered from (`lineage`); empty when they were not known.
     #[serde(default)]
     pub lineage: Vec<Anchor>,
+    /// Changes whenever this session ends, returns or moves, invalidating approvals for its earlier state.
+    #[serde(default)]
+    pub incarnation: String,
     /// How far the session has read its inbox: the furthest cursor it presented when it read it, by origin.
     #[serde(default)]
     pub inbox_read: BTreeMap<String, u64>,
@@ -259,10 +262,12 @@ impl Registry {
 
     /// Mark ``name`` retired for ``reason`` (``done``, ``revoked`` or ``forged``); true when it was not already.
     pub fn retire(&mut self, name: &str, reason: &str) -> Result<bool> {
+        let incarnation = random_hex(16)?;
         let ident = self.names.get_mut(name).ok_or_else(|| Error::Denied("no such session".into()))?;
         let fresh = !ident.retired;
         ident.retired = true;
         ident.retired_reason = reason.into();
+        ident.incarnation = incarnation;
         self.save()?;
         Ok(fresh)
     }
@@ -339,7 +344,7 @@ impl Registry {
         let state = if model.is_empty() { ModelState::Unknown } else { state };
         self.names.insert(name.clone(), Ident {
             digest: full, family: word.into(), parent: parent.into(), model, model_state: state, harness: clean(harness)?,
-            retired: false, retired_reason: String::new(), person: false, seen_ms: now_ms, lineage: lineage.to_vec(), inbox_read: BTreeMap::new(),
+            retired: false, retired_reason: String::new(), person: false, seen_ms: now_ms, lineage: lineage.to_vec(), incarnation: random_hex(16)?, inbox_read: BTreeMap::new(),
         });
         self.save()?;
         Ok((name, true))
@@ -360,8 +365,10 @@ impl Registry {
             // An ended main session holds nothing: its tokens ended, its leases were released and a grant is spent only by a token bound to the
             // lineage that registers it, so it comes back from wherever its harness runs it now (a session resumed in another terminal) and is
             // bound to that lineage from now on. A live session is not moved this way, and a lineage the node could not read does not count.
+            let incarnation = random_hex(16)?;
             let known = self.names.get_mut(name).expect("found above");
             (known.retired, known.retired_reason, known.seen_ms) = (false, String::new(), now_ms);
+            known.incarnation = incarnation;
             if ENFORCED {
                 known.lineage = from.1.to_vec();
             }
@@ -369,8 +376,10 @@ impl Registry {
         }
         self.admit_from(name, from)?;
         if back {
+            let incarnation = random_hex(16)?;
             let known = self.names.get_mut(name).expect("found above");
             (known.retired, known.retired_reason, known.seen_ms) = (false, String::new(), now_ms);
+            known.incarnation = incarnation;
             self.save()?;
         }
         Ok(())
@@ -402,11 +411,13 @@ impl Registry {
 
     /// Move the main session ``name`` to ``lineage``: it is registered from there from now on.
     pub fn rebind(&mut self, name: &str, lineage: &[Anchor]) -> Result<()> {
+        let incarnation = random_hex(16)?;
         let ident = self.names.get_mut(name).ok_or_else(|| Error::Denied("no such session".into()))?;
         if ident.retired || !ident.parent.is_empty() {
             return Err(Error::Denied("only a main session that has not retired is moved".into()));
         }
         ident.lineage = lineage.to_vec();
+        ident.incarnation = incarnation;
         self.save()
     }
 }
