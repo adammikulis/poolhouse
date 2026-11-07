@@ -182,7 +182,7 @@ def test_an_approval_names_the_whole_node_the_key_and_when_it_ends(person_key_at
     assert f"let the key {other.public.hex()} (a second device) act as a person key on the node {'cd' * 32}" in asked[-1]
     assert f"approved by the key {grants.fingerprint(keys.public)}" in asked[-1] and f"until {grants.when(T0 + 300_000)}" in asked[-1]
     assert "in the terminal whose shell is process 4242" in asked[-1], asked[-1]
-    grants.sign_rebind(keys, "demo", "claude-abc123", grants.Where("ab" * 32, WHERE.anchor), now_ms=T0)
+    grants.sign_rebind(keys, "demo", grants.MoveSession("claude-abc123", "01" * 16), grants.Where("ab" * 32, WHERE.anchor), now_ms=T0)
     assert "(the shell is process 4242)" in asked[-1] and f"on the node {'ab' * 32}" in asked[-1] and "end the tokens it holds" in asked[-1], asked[-1]
 
 

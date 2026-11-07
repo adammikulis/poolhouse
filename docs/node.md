@@ -136,17 +136,16 @@ or the app at the top. Two things are answered only to a process of the lineage 
   (`note_verify`) are spent from the lead's terminal. A token with no lineage recorded spends no grant either.
 
 A person at the terminal where a session now runs moves it there with `poolhouse-workspace rebind HARNESS SESSION`: an enrolled person
-key signs the board, the session's name, this node's device fingerprint, a nonce used once (remembered across restarts), the time (five
+key signs the board, the session's name and current incarnation, this node's device fingerprint, a nonce used once (remembered across restarts), the time (five
 minutes) and the terminal it was signed in (`anchor`: the shell of that terminal, which the request must come from), with a typed
-`yes`; the node makes the caller's lineage the session's and ends the tokens it held; the harness started in that terminal registers as
+`yes`; the node refuses the signature if the session has ended, returned or moved since it was signed, then ends the tokens it held and makes the caller's lineage the session's; the harness started in that terminal registers as
 the session. Tokens of its subagents stay bound to where they were registered.
 
 On a device in a pool a typed `yes` moves no session. `rebind` with the terminal's `anchor` and no `approval` makes a request that the admin
 phones are shown (kind `rebind`, the session, the board and the terminal inside what the phone signs) and answers its id and a number; the
 person picks that number among three on the phone, which ties the tap to the terminal in front of them. The same call with the request's id
 as `approval` answers `{state: pending, moved: false}` until the tap, then makes the caller's lineage the session's once, from the terminal
-the request names, within ten minutes of the tap; the request is then `used`. A session has one request waiting at a time and at most three
-an hour, and the call spends no nonce. A device with no admin phone of the pool added refuses the request.
+the request names, within ten minutes of the tap; the request is consumed before the move. A change to the session incarnation or pool authority invalidates the request. A session has one request waiting at a time, and the call spends no nonce. A device with no admin phone of the pool added refuses the request.
 
 A main session with no lineage recorded (registered before lineages were kept, by a process the node could not read, from another
 process id namespace, or under `hidepid`) is taken again only by a process that presents a token of that name, which binds it to where
@@ -197,9 +196,9 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `lineage` | | | `{lineage}`: the processes the node reads for the one asking, from it up to the shell of its terminal, each `{pid, start}`; the last is the `anchor` a person signs for |
 | `register` | board | `model, harness, session` (token = parent, or the session's own token) | `{name, token, created, parent, origin}`; a main session already registered is answered only to its lineage, and the token it gets is bound to the lineage it registers from |
 | `register_person` | board | `session`, `proof` (token = none, or the person's own session's token) | as `register`, for the person's own main session (harness `poolhouse-ui`, model `person`), which the node marks `person` when `proof` is the secret it keeps for the person in `<state>/person/ui.secret` (a file of the account: Claude Code's sandbox and sandbox-runtime deny the folder to a process an agent started, a process outside those denies reads it, and on a computer with no prompt of the system's own the typed yes it can then ask for is approval by "a program running as you could approve it"); a request without it is refused; `register` and `whoami` refuse the harness `poolhouse-ui` |
-| `rebind` | board | `harness, session, anchor`, and in no pool `at_ms, nonce, by, sig` (a person key's signature), in a pool `approval` (the id of the request) | `{name, moved, tokens_ended}`; in a pool the request with its `id` and `code`, then `{state, moved}` until the phone answers |
+| `rebind` | board | `harness, session, anchor`, and in no pool `incarnation, at_ms, nonce, by, sig` (a person key's signature), in a pool `approval` (the id of the request) | `{name, moved, tokens_ended}`; in a pool the request with its `id` and `code`, then `{state, moved}` until the phone answers |
 | `whoami` | board, token | `model, harness` (claim what you run on) | `{name, board, target, identity}` |
-| `session_lookup` | board | `harness, session` | `{name}` (denied when none is registered) |
+| `session_lookup` | board | `harness, session` | `{name, incarnation}` (denied when none is registered) |
 | `agents` | board, token | `retired` | `{agents: [{name, parent, family, model, model_state, harness, retired, retired_reason, person, seen_ms, idle}]}`; retires the sessions idle for a day first |
 | `retire` | board, token | `target` (empty = yourself), `reason` (`done`, the default, `revoked` or `forged`) | `{name, retired, reason, by, tokens_revoked, leases_released, subagents_retired}` |
 | `post` | board, token | `kind` (message or note), `idem`, `fields` | `{id, seq, sender, status}` |

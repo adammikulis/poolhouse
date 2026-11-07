@@ -142,11 +142,11 @@ impl Person {
 
     /// The `rebind` params moving the session ``name`` of ``board`` (named by ``harness`` and ``session``), signed by this key for
     /// the node whose certificate fingerprint is ``node`` and for the terminal named by ``anchor``.
-    pub fn rebind_params(&self, harness: &str, session: &str, board: &str, name: &str, node: &str, anchor: &Value) -> Value {
+    pub fn rebind_params(&self, harness: &str, session: &str, board: &str, name: &str, node: &str, anchor: &Value, incarnation: &str) -> Value {
         let (at, nonce) = (now_ms(), fresh_nonce());
-        let body = json!({"op": "rebind", "board": board, "name": name, "node": node, "nonce": nonce, "at_ms": at, "anchor": anchor});
+        let body = json!({"op": "rebind", "board": board, "name": name, "incarnation": incarnation, "node": node, "nonce": nonce, "at_ms": at, "anchor": anchor});
         let bytes = format!("poolhouse/session-rebind/v1\n{}", canonical(&body));
-        json!({"harness": harness, "session": session, "at_ms": at, "nonce": nonce, "anchor": anchor, "by": self.fingerprint(), "sig": hex(&self.key.sign(bytes.as_bytes()).to_bytes())})
+        json!({"harness": harness, "session": session, "at_ms": at, "nonce": nonce, "anchor": anchor, "incarnation": incarnation, "by": self.fingerprint(), "sig": hex(&self.key.sign(bytes.as_bytes()).to_bytes())})
     }
 
     /// Enrol this key on the node ``call`` reaches, carried by the session ``token``, with the one-time secret the person's yes makes.

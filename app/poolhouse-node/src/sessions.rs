@@ -19,7 +19,7 @@ pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
         "session_lookup" => &["harness", "session"],
         "agents" => &["retired"],
         "retire" => &["target", "reason"],
-        "rebind" => &["harness", "session", "at_ms", "nonce", "anchor", "by", "sig", "approval"],
+        "rebind" => &["harness", "session", "at_ms", "nonce", "anchor", "by", "sig", "approval", "incarnation"],
         _ => return None,
     })
 }
@@ -56,15 +56,15 @@ pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
 fn lookup(node: &mut Node, board: &str, p: &Map<String, Value>) -> Result<Value> {
     let hosted = node.boards.get(board).ok_or_else(|| Error::Denied("this node does not host that board".into()))?;
     match hosted.names.find(text(p, "harness")?, text(p, "session")?) {
-        Some(name) => Ok(json!({"name": name})),
+        Some(name) => Ok(json!({"name": name, "incarnation": hosted.names.get(name).expect("found above").incarnation})),
         None => Err(Error::Denied("no session of that harness and id is registered on this board".into())),
     }
 }
 
 /// What an enrolled person key signs to move the main session ``name`` of ``board`` to the terminal ``anchor`` names (the
 /// command runs in it), on the node ``device``, once.
-fn moving(board: &str, name: &str, device: &str, nonce: &str, at_ms: u64, anchor: &Anchor) -> Vec<u8> {
-    let body = json!({"op": "rebind", "board": board, "name": name, "node": device, "nonce": nonce, "at_ms": at_ms, "anchor": anchor.body()});
+fn moving(board: &str, name: &str, incarnation: &str, device: &str, nonce: &str, at_ms: u64, anchor: &Anchor) -> Vec<u8> {
+    let body = json!({"op": "rebind", "board": board, "name": name, "incarnation": incarnation, "node": device, "nonce": nonce, "at_ms": at_ms, "anchor": anchor.body()});
     format!("{REBIND_DOMAIN}{}", crate::row::canonical(&body)).into_bytes()
 }
 
@@ -86,11 +86,15 @@ fn rebind(node: &mut Node, board: &str, p: &Map<String, Value>, peer: &Peer) -> 
     if nonce.len() < 16 || nonce.len() > 64 || !nonce.bytes().all(|b| b.is_ascii_alphanumeric()) {
         return Err(Error::Invalid("a move carries a nonce of 16 to 64 letters and digits".into()));
     }
-    if !node.persons.signed(by, &moving(board, &name, &node.cert.fingerprint(), nonce, at, &anchor), text(p, "sig")?) {
+    let incarnation = p.get("incarnation").and_then(Value::as_str).ok_or_else(|| Error::Invalid("a move names the session incarnation".into()))?;
+    if !node.persons.signed(by, &moving(board, &name, incarnation, &node.cert.fingerprint(), nonce, at, &anchor), text(p, "sig")?) {
         return Err(Error::Denied("an enrolled person key signs the move of a session, for this node and the terminal it is made in".into()));
     }
     if !lineage.contains(&anchor) {
         return Err(Error::Denied("the move was signed in another terminal than the one asking".into()));
+    }
+    if incarnation != hosted.names.get(&name).expect("found above").incarnation {
+        return Err(Error::Denied("the session changed since this move was signed; ask again".into()));
     }
     if !node.persons.once(nonce, node.now_ms())? {
         return Err(Error::Denied("that approval was used already".into()));

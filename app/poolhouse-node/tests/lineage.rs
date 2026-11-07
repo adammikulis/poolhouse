@@ -17,6 +17,10 @@ fn register(n: &mut Node, from: &Peer, session: &str, parent: &str) -> Value {
     req_from(n, from, "register", "demo", parent, json!({"model": "claude-sonnet-5-5", "harness": "claude-code", "session": session}))
 }
 
+fn incarnation(n: &Node, name: &str) -> String {
+    n.boards["demo"].names.get(name).unwrap().incarnation.clone()
+}
+
 fn who(n: &mut Node, token: &str) -> Value {
     req(n, "whoami", "demo", token, json!({}))
 }
@@ -89,22 +93,30 @@ fn a_person_moves_a_session_to_the_terminal_they_are_at_and_the_move_is_used_onc
     let (name, token) = (first["name"].as_str().unwrap().to_string(), first["token"].as_str().unwrap().to_string());
     enrolled(dir.path(), &mut |m, b, t, p| req(&mut n, m, b, t, p), &token);
     let device = n.cert.fingerprint();
-    let params = person().rebind_params("claude-code", "lead", "demo", &name, &device, &anchor_of(there.id()));
+    let params = person().rebind_params("claude-code", "lead", "demo", &name, &device, &anchor_of(there.id()), &incarnation(&n, &name));
 
     let stranger = kit::grants::Person { key: ed25519_dalek::SigningKey::from_bytes(&[0x44; 32]) };
-    let forged = stranger.rebind_params("claude-code", "lead", "demo", &name, &device, &anchor_of(there.id()));
+    let forged = stranger.rebind_params("claude-code", "lead", "demo", &name, &device, &anchor_of(there.id()), &incarnation(&n, &name));
     assert_eq!(code(&req_from(&mut n, &peer(&there), "rebind", "demo", "", forged)), "denied", "a key nobody enrolled moves nothing");
-    let elsewhere = person().rebind_params("claude-code", "lead", "demo", &name, &"ab".repeat(32), &anchor_of(there.id()));
+    let elsewhere = person().rebind_params("claude-code", "lead", "demo", &name, &"ab".repeat(32), &anchor_of(there.id()), &incarnation(&n, &name));
     assert_eq!(code(&req_from(&mut n, &peer(&there), "rebind", "demo", "", elsewhere)), "denied", "an approval for another node moves nothing here");
     ok(register(&mut n, &here, "someone-else", ""));
-    let other_session = person().rebind_params("claude-code", "someone-else", "demo", &name, &device, &anchor_of(there.id()));
+    let other_session = person().rebind_params("claude-code", "someone-else", "demo", &name, &device, &anchor_of(there.id()), &incarnation(&n, &name));
     assert_eq!(code(&req_from(&mut n, &peer(&there), "rebind", "demo", "", other_session)), "denied", "an approval for one session moves no other");
     assert_eq!(code(&req_from(&mut n, &Peer::none(), "rebind", "demo", "", params.clone())), "denied", "no process behind the request, nowhere to move the session");
-    let signed_here = person().rebind_params("claude-code", "lead", "demo", &name, &device, &kit::grants::my_anchor());
+    let signed_here = person().rebind_params("claude-code", "lead", "demo", &name, &device, &kit::grants::my_anchor(), &incarnation(&n, &name));
     assert_eq!(code(&req_from(&mut n, &peer(&there), "rebind", "demo", "", signed_here)), "denied", "an approval signed in one terminal moves the session to no other");
     let mut unnamed = params.clone();
     unnamed.as_object_mut().unwrap().remove("anchor");
     assert_eq!(req_from(&mut n, &peer(&there), "rebind", "demo", "", unnamed)["ok"], false, "an approval names its terminal");
+    for incarnation in [Value::Null, json!(7), json!("other")] {
+        let mut changed = params.clone();
+        changed["incarnation"] = incarnation;
+        assert_eq!(req_from(&mut n, &peer(&there), "rebind", "demo", "", changed)["ok"], false, "the signed incarnation cannot be replaced");
+    }
+    let mut missing = params.clone();
+    missing.as_object_mut().unwrap().remove("incarnation");
+    assert_eq!(req_from(&mut n, &peer(&there), "rebind", "demo", "", missing)["ok"], false, "the signed incarnation is required");
     assert_eq!(ok(who(&mut n, &token))["name"], name.as_str(), "none of that ended the lead's token");
 
     let moved = ok(req_from(&mut n, &peer(&there), "rebind", "demo", "", params.clone()));
@@ -120,6 +132,24 @@ fn a_person_moves_a_session_to_the_terminal_they_are_at_and_the_move_is_used_onc
     let audit = ok(req(&mut n, "read", "demo", fresh["token"].as_str().unwrap(), json!({"kind": "audit"})));
     assert!(audit["entries"].as_array().unwrap().iter().any(|e| e["fields"]["event"] == "rebind" && e["fields"]["subject"] == name.as_str()), "{audit}");
     done(vec![there]);
+}
+
+#[test]
+fn a_signed_move_before_a_session_ends_cannot_move_its_later_incarnation() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let there = process(true);
+    let first = ok(register(&mut n, &me(), "lead", ""));
+    let name = first["name"].as_str().unwrap().to_string();
+    let token = first["token"].as_str().unwrap().to_string();
+    enrolled(dir.path(), &mut |m, b, t, p| req(&mut n, m, b, t, p), &token);
+    let params = person().rebind_params("claude-code", "lead", "demo", &name, &n.cert.fingerprint(), &anchor_of(there.id()), &incarnation(&n, &name));
+    ok(req(&mut n, "retire", "demo", &token, json!({})));
+    ok(register(&mut n, &me(), "lead", ""));
+    let result = req_from(&mut n, &peer(&there), "rebind", "demo", "", params);
+    done(vec![there]);
+    assert_eq!(result["ok"], false, "a signature for an earlier incarnation moves nothing: {result}");
+    assert_eq!(register(&mut n, &me(), "lead", "")["ok"], true);
 }
 
 #[test]
@@ -145,14 +175,14 @@ fn a_move_is_used_once_even_after_the_node_restarts() {
         let first = ok(register(&mut n, &me(), "lead", ""));
         let (name, token) = (first["name"].as_str().unwrap().to_string(), first["token"].as_str().unwrap().to_string());
         enrolled(dir.path(), &mut |m, b, t, p| req(&mut n, m, b, t, p), &token);
-        let params = person().rebind_params("claude-code", "lead", "demo", &name, &n.cert.fingerprint(), &anchor_of(there.id()));
+        let params = person().rebind_params("claude-code", "lead", "demo", &name, &n.cert.fingerprint(), &anchor_of(there.id()), &incarnation(&n, &name));
         ok(req_from(&mut n, &peer(&there), "rebind", "demo", "", params.clone()));
         (name, params)
     };
     let mut n = node(dir.path());
     let replay = req_from(&mut n, &peer(&there), "rebind", "demo", "", params);
     assert_eq!(code(&replay), "denied", "a captured move is not good again because the node restarted: {replay}");
-    assert!(replay["error"]["message"].as_str().unwrap().contains("used already"), "{replay}");
+    assert!(replay["error"]["message"].as_str().unwrap().contains("session changed"), "{replay}");
     let fresh = ok(register(&mut n, &peer(&there), "lead", ""));
     assert_eq!(fresh["name"], name.as_str());
     done(vec![there]);
@@ -198,7 +228,7 @@ fn hostile_params_to_a_move_change_nothing() {
     let (name, token) = (first["name"].as_str().unwrap().to_string(), first["token"].as_str().unwrap().to_string());
     enrolled(dir.path(), &mut |m, b, t, p| req(&mut n, m, b, t, p), &token);
     let device = n.cert.fingerprint();
-    let good = person().rebind_params("claude-code", "lead", "demo", &name, &device, &anchor_of(there.id()));
+    let good = person().rebind_params("claude-code", "lead", "demo", &name, &device, &anchor_of(there.id()), &incarnation(&n, &name));
     let big = "x".repeat(200_000);
     let hostile = [("harness", json!(5)), ("harness", json!(big)), ("harness", json!("claude-code\nx")), ("session", json!(["lead"])), ("session", json!("../lead")),
                    ("at_ms", json!(-1)), ("at_ms", json!("now")), ("at_ms", json!(1.5)), ("at_ms", Value::Null), ("nonce", json!("short")),

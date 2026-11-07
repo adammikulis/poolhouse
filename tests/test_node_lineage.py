@@ -160,7 +160,8 @@ def test_a_move_signed_in_another_terminal_moves_nothing(lead):
         "print(json.dumps(grants.here(Client(Path(sys.argv[1]))).anchor))\n"
     )
     elsewhere = json.loads(child_output(code, str(node.state), node=node, own_terminal=True))
-    signed = board_grants.sign_rebind(key, node.board, node.lead.name, board_grants.Where(node.client.call("hello")["device"], elsewhere))
+    incarnation = node.client.call("session_lookup", node.board, harness="claude-code", session="lead")["incarnation"]
+    signed = board_grants.sign_rebind(key, node.board, board_grants.MoveSession(node.lead.name, incarnation), board_grants.Where(node.client.call("hello")["device"], elsewhere))
     with pytest.raises(Denied, match="another terminal"):
         node.client.call("rebind", node.board, "", harness="claude-code", session="lead", **signed)
     assert node.session(node.lead).whoami().name == node.lead.name, "nothing was moved"
@@ -181,15 +182,17 @@ def test_a_captured_move_is_not_used_twice_and_is_for_one_node_and_one_session(l
     node = lead
     key = node.keep_person_key(node.lead)
     here = board_grants.here(node.client)
-    signed = board_grants.sign_rebind(key, node.board, node.lead.name, here)
+    incarnation = node.client.call("session_lookup", node.board, harness="claude-code", session="lead")["incarnation"]
+    signed = board_grants.sign_rebind(key, node.board, board_grants.MoveSession(node.lead.name, incarnation), here)
     sent = {"harness": "claude-code", "session": "lead", **signed}
     assert node.client.call("rebind", node.board, "", **sent)["moved"] is True
-    with pytest.raises(Denied, match="used already"):
+    with pytest.raises(Denied, match="session changed"):
         node.client.call("rebind", node.board, "", **sent)
-    elsewhere = {"harness": "claude-code", "session": "lead", **board_grants.sign_rebind(key, node.board, node.lead.name, board_grants.Where("ab" * 32, here.anchor))}
+    incarnation = node.client.call("session_lookup", node.board, harness="claude-code", session="lead")["incarnation"]
+    elsewhere = {"harness": "claude-code", "session": "lead", **board_grants.sign_rebind(key, node.board, board_grants.MoveSession(node.lead.name, incarnation), board_grants.Where("ab" * 32, here.anchor))}
     with pytest.raises(Denied, match="for this node"):
         node.client.call("rebind", node.board, "", **elsewhere)
-    stale = {"harness": "claude-code", "session": "lead", **board_grants.sign_rebind(key, node.board, node.lead.name, here, now_ms=1)}
+    stale = {"harness": "claude-code", "session": "lead", **board_grants.sign_rebind(key, node.board, board_grants.MoveSession(node.lead.name, incarnation), here, now_ms=1)}
     with pytest.raises(Exception, match="five minutes"):
         node.client.call("rebind", node.board, "", **stale)
 

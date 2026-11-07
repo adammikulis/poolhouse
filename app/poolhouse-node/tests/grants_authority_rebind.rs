@@ -140,12 +140,13 @@ fn a_typed_yes_signature_moves_no_session_in_a_pool_and_spends_no_nonce() {
     let there = process(true);
     let anchor = anchor_of(there.id());
     let device = pool.rig.device();
-    let params = pool.typed.rebind_params("claude-code", "lead", "demo", &pool.name, &device, &anchor);
+    let incarnation = pool.rig.node.lock().unwrap().boards["demo"].names.get(&pool.name).unwrap().incarnation.clone();
+    let params = pool.typed.rebind_params("claude-code", "lead", "demo", &pool.name, &device, &anchor, &incarnation);
     let nonce = params["nonce"].as_str().unwrap().to_string();
     let first = ok(rebind(&pool, &peer(&there), params.clone()));
     assert!(first["moved"].is_null() && first["id"].is_string(), "a signature asks for a tap; it moves nothing: {first}");
     for _ in 0..20 {
-        let again = ok(rebind(&pool, &peer(&there), pool.typed.rebind_params("claude-code", "lead", "demo", &pool.name, &device, &anchor)));
+        let again = ok(rebind(&pool, &peer(&there), pool.typed.rebind_params("claude-code", "lead", "demo", &pool.name, &device, &anchor, &incarnation)));
         assert_eq!(again["id"], first["id"], "repeated requests wait on the one request");
     }
     assert!(lead_works(&pool) && registers_from(&pool, &me()) && !registers_from(&pool, &peer(&there)), "the session stayed where it was");

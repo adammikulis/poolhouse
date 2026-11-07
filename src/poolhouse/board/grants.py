@@ -21,7 +21,7 @@ from poolhouse.board import presence
 from poolhouse.board.client import Client
 from poolhouse.board.session import Session
 
-__all__ = ["DEFAULT_ACTIONS", "POOL_GRANTS", "Grant", "Listing", "Signs", "Want", "Where", "approval_bytes", "approve", "canonical", "default_bundle", "describe", "duration_ms",
+__all__ = ["DEFAULT_ACTIONS", "POOL_GRANTS", "Grant", "Listing", "MoveSession", "Signs", "Want", "Where", "approval_bytes", "approve", "canonical", "default_bundle", "describe", "duration_ms",
            "enrol", "enrol_first", "enrol_line", "enrolment", "fingerprint", "here", "issue", "list_bytes", "listing", "log", "rebind",
            "rebind_ask", "rebind_finish", "revoke", "sign_approval", "sign_issue", "sign_list", "sign_rebind", "sign_revoke", "sign_unenroll", "unenrol", "want_line", "when"]
 
@@ -171,6 +171,14 @@ class Where:
     anchor: dict[str, int]
 
 
+@dataclass(frozen=True, slots=True)
+class MoveSession:
+    """The exact session state a signed move names."""
+
+    name: str
+    incarnation: str
+
+
 def terminal(client: Client) -> dict[str, int]:
     """The terminal this process runs in, as the node reads it: the process at the top of its lineage."""
     lineage = client.call("lineage")["lineage"]
@@ -220,20 +228,21 @@ def sign_unenroll(key: Signs, fingerprint_: str, where: Where, *, now_ms: int | 
     return sent | {"sig": key.sign_bytes(UNENROLL_DOMAIN + canonical(body).encode()).hex()}
 
 
-def sign_rebind(key: Signs, board: str, name: str, where: Where, *, now_ms: int | None = None) -> dict[str, Any]:
-    """The `rebind` params moving the main session ``name`` of ``board`` to the process that sends them, on the node and from the
+def sign_rebind(key: Signs, board: str, session: MoveSession, where: Where, *, now_ms: int | None = None) -> dict[str, Any]:
+    """The `rebind` params moving the main ``session`` of ``board`` to the process that sends them, on the node and from the
     terminal ``where`` names, signed by ``key``."""
-    body = {"op": "rebind", "board": board, "name": name, "node": where.node, "nonce": secrets.token_hex(16), "at_ms": _now_ms() if now_ms is None else now_ms,
+    body = {"op": "rebind", "board": board, "name": session.name, "incarnation": session.incarnation, "node": where.node, "nonce": secrets.token_hex(16), "at_ms": _now_ms() if now_ms is None else now_ms,
             "anchor": where.anchor}
     _plain(body)
-    return {"at_ms": body["at_ms"], "nonce": body["nonce"], "anchor": where.anchor, "by": fingerprint(key.public),
+    return {"at_ms": body["at_ms"], "nonce": body["nonce"], "anchor": where.anchor, "incarnation": session.incarnation, "by": fingerprint(key.public),
             "sig": key.sign_bytes(REBIND_DOMAIN + canonical(body).encode()).hex()}
 
 
 def rebind(client: Client, board: str, harness: str, session: str, key: Signs) -> dict[str, Any]:
     """Move the main session ``session`` of ``harness`` on ``board`` to this process's terminal, signed by ``key``; the tokens it held end."""
-    name = str(client.call("session_lookup", board, harness=harness, session=session)["name"])
-    return dict(client.call("rebind", board, "", harness=harness, session=session, **sign_rebind(key, board, name, here(client))))
+    found = client.call("session_lookup", board, harness=harness, session=session)
+    return dict(client.call("rebind", board, "", harness=harness, session=session,
+                            **sign_rebind(key, board, MoveSession(str(found["name"]), str(found["incarnation"])), here(client))))
 
 
 def rebind_ask(client: Client, board: str, harness: str, session: str) -> dict[str, Any]:
