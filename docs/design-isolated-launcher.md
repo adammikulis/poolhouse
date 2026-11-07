@@ -749,7 +749,7 @@ via `sandbox_check`, and a separate physical-path file denial control worked. An
 allow-default case and verified that the read fails after the synthetic target exits. Denying `process-info*` or
 `sysctl-read` alone still allowed that read, but denying both refused it in that agent's synthetic profile. Other channels
 and the harness wrappers were not tested. A subsequent test of the generated `poolhouse.sandbox` profile found the
-marker readable as shipped and refused the same read when D1 was appended, consistent with M-proc below. The result
+marker readable at `76a1f1f` and refused the same read when D1 was appended, consistent with M-proc below. The result
 depends on the baseline profile; test the exact installed wrapper before using D1 as a credential secrecy guarantee.
 
 All run on 2026-10-22 through `poolhouse.sandbox` as it is at `bf17c71cd` (macOS) or through the tools named (Linux), from probe

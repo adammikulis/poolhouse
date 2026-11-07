@@ -21,6 +21,7 @@ test_sandbox_integration.py
 test_sandbox_kit_lock.py
 test_sandbox_policy.py
 test_sandbox_process_tree.py
+test_sandbox_process_environment.py
 test_sandbox_redteam.py
 test_sandbox_seatbelt.py
 test_sentinel_sandbox_owner.py

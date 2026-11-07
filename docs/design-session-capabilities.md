@@ -496,7 +496,7 @@ reads as the worse case):
   file denial control worked. An independent agent reproduced the allow-default case and verified that the read fails
   after the synthetic target exits. Its additional controls found that denying `process-info*` or `sysctl-read` alone
   still allowed the read, while denying both refused that call; other channels and the shipped wrapper were not tested.
-  A subsequent control using the generated `poolhouse.sandbox` profile read the marker before D1 and refused the
+  A subsequent control using the generated `poolhouse.sandbox` profile at `76a1f1f` read the marker before D1 and refused the
   same read with D1 appended. The differing baseline explains why neither synthetic result transfers to another wrapper.
   This contradicts a broader reading of the earlier M-proc result in
   `docs/design-isolated-launcher.md`; the profiles differ and neither result establishes the installed harness's

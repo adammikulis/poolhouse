@@ -85,7 +85,9 @@ macOS (Seatbelt), checked by `tests/test_sandbox_seatbelt.py` against the real `
 - a child process inherits the sandbox;
 - a program outside the exec list is not started;
 - the network is refused unless the policy allows loopback or the named ports;
-- the environment is exactly the policy's;
+- the environment is exactly the policy's; a native `KERN_PROCARGS2` read of a synthetic same-user process
+  was refused on macOS 26.6 (`tests/test_sandbox_process_environment.py`); this does not establish isolation of other
+  process-information channels or of the separate agent harness sandboxes;
 - the wall-clock limit kills the command's process group and no other process; CPU, file-size
   and output limits stop the command;
 - a refusal is read from the system log (each run's profile carries a unique tag), becomes an

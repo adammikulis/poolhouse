@@ -133,6 +133,7 @@ def profile(policy: Policy, program: str, tag: str) -> str:
         "(allow signal (target self))",
         "(allow process-info* (target self))",
         "(allow process-info-pidinfo (target self))",
+        "(deny process-info-pidinfo)",
         *([] if policy.strict else ["(allow user-preference-read)"]),
         f"(allow process-exec {_filter('subpath', execs)})",
         f"(allow file-read* {_filter('subpath', reads)})",
