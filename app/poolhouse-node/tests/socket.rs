@@ -241,6 +241,47 @@ fn a_peer_refusal_is_read_even_if_the_server_closes_before_the_request_is_writte
 
 #[cfg(unix)]
 #[test]
+fn rust_client_never_sends_its_root_or_reporter_credential() {
+    use std::os::unix::net::UnixListener;
+    let dir = short_dir();
+    poolhouse_node::root_auth::ensure(dir.path()).unwrap();
+    let folder = dir.path().join("hook-credentials");
+    let credentials = [std::fs::read(folder.join("root.key")).unwrap(), std::fs::read(folder.join("reporter.key")).unwrap()];
+    let listener = UnixListener::bind(socket_path(dir.path())).unwrap();
+    let observer = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut frames = Vec::new();
+        for response in [json!({"v":1,"id":1,"ok":true,"result":{"nonce":"synthetic-challenge"}}),
+                         json!({"v":1,"id":1,"ok":true,"result":{}})] {
+            let mut size = [0u8; 4];
+            stream.read_exact(&mut size).unwrap();
+            let size = u32::from_be_bytes(size) as usize;
+            assert!(size <= poolhouse_node::wire::MAX_FRAME, "client frame exceeds the node limit");
+            let mut body = vec![0; size];
+            stream.read_exact(&mut body).unwrap();
+            frames.push(body);
+            poolhouse_node::wire::write_frame(&mut stream, &response).unwrap();
+        }
+        frames
+    });
+    let mut client = Client::connect(dir.path()).unwrap();
+    assert!(client.call("register", "demo", "", json!({"model":"", "harness":"test", "session":"wire"})).is_ok());
+    let frames = observer.join().unwrap();
+    assert_eq!(frames.len(), 2);
+    let registration: serde_json::Value = serde_json::from_slice(&frames[1]).unwrap();
+    assert_eq!(registration["params"]["root_proof"].as_str().map(str::len), Some(64));
+    let traffic = frames.concat();
+    for key in credentials {
+        let upper = key.to_ascii_uppercase();
+        let raw = poolhouse_node::fsutil::unhex(std::str::from_utf8(&key).unwrap()).unwrap();
+        for variant in [&key, &upper, &raw] {
+            assert!(!traffic.windows(variant.len()).any(|part| part == variant), "a credential crossed the socket");
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
 fn a_failed_write_does_not_accept_an_unsolicited_success_or_unrelated_error() {
     use std::os::unix::net::UnixListener;
     for response in [json!({"v":1,"id":null,"ok":true,"result":{}}),
