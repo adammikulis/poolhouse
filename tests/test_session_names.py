@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse.board import session as board_session
+from poolhouse.board import place, session as board_session
 from poolhouse.board.client import Denied
 from poolhouse.net import git
 from poolhouse.workspace import agent_display, board_cli
@@ -61,6 +61,11 @@ def test_two_real_hook_sessions_show_different_names_in_agents_announcements_and
     git.run(['init', '-b', 'development', str(repository)])
     git.run(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
              'commit', '--allow-empty', '-m', 'fixture project'], cwd=repository)
+    # Notifications only resolve an existing project; the fixture creates it as the user-facing setup does.
+    monkeypatch.delenv('POOLHOUSE_BOARD', raising=False)
+    environment.pop('POOLHOUSE_BOARD', None)
+    workspace_node.board = place.resolve(workspace_node.client, repository)
+    monkeypatch.chdir(repository)
     for session in ('terminal-one', 'terminal-two'):
         done = run_hook('claude-session-start', {'model': 'claude-sonnet-5-5', 'session_id': session, 'cwd': str(repository)},
                         environment)
