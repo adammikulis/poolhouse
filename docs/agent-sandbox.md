@@ -1,12 +1,17 @@
 # Agent sandbox
 
-Status: prepared 2026-10-08, nothing installed. The owner decided agents run under an operating
+Status: prepared 2026-10-08; installed enforcement is unverified. The owner decided agents run under an operating
 system sandbox. This document is the target profile for each harness, what each option closes,
 how our workflows behave under it, and the order in which the owner checks it. Machine settings are
 a person's (AGENTS.md section 1): an agent runs `scripts/agent-sandbox prepare`, and the person
 installs what it staged.
 
-Every claim about sandbox behaviour is **PREDICTED** unless marked **VERIFIED**. An agent cannot
+Every claim about sandbox behaviour is **PREDICTED** unless marked **VERIFIED**. The generated Codex configuration
+has no read-deny rules; the installed Claude Code and sandbox-runtime wrappers have not been verified. Path-based
+denials alone do not protect against a same-user process outside the sandbox, a hard link made before confinement, or
+renaming a writable ancestor around a denied child. Do not treat these profiles as protecting session or hook
+credentials until the installed paths and wrappers have been tested against reads, writes, unlink, rename and aliases,
+with an unsandboxed control. An agent cannot
 turn the sandbox on for its own session, so the first real run is the owner's (acceptance steps
 below). Source for the Claude Code facts: https://code.claude.com/docs/en/sandboxing and the
 settings reference, read 2026-10-08, Claude Code 2.1.294. macOS 26 behaviour of Claude Code's
@@ -53,12 +58,12 @@ harness, which Claude Code's setting does not reach. Revisit a separate account 
 
 - **The node's files.** The node writes the boards, the lease table and the token hashes under `~/.poolhouse/node`, and
   `poolhouse-workspace` asks it over its socket; that folder is not on the write list, so a sandboxed command cannot
-  edit them. Only `node/client` and `node/person` (the person key's custody) are on the read-deny list: the node's
-  device key and its enrolment secret stay readable to a sandboxed command.
+  edit them. The profile lists `node/client`, `node/person`, `node/hook-credentials` and `hooks` for read denial;
+  the node's device key and its enrolment secret are not on that list.
 - **The session tokens.** `~/.poolhouse/node/client/<board>/` holds a `<name>.token` file and a `<name>.parent`
-  file for every session of the node, and the read cursors of each. The folder is closed to reads and writes for
-  Bash commands (`denyRead`, `denyWrite`) and to the file tools by permission rules, and no path inside it is
-  allowed, so a command run in the sandbox cannot read the token of another session or its own file. A command
+  file for every session of the node, and the read cursors of each. The folder is listed for read and write denial
+  for Bash commands and in file-tool permission rules. Whether the installed wrapper enforces those rules and protects
+  aliases is unverified; Codex has no generated read-deny rule. A command
   that must act as a session is given its token in `$POOLHOUSE_WORKSPACE_TOKEN` or with `--token-file` from a
   path outside the folder.
 - **ttys.** No option except a separate account isolates terminals.
@@ -85,8 +90,8 @@ The values come from `scripts/agent_sandbox_profile.py`; the file the person ins
 | `sandbox.excludedCommands` | `poolhouse runtime ensure`, `poolhouse runtime rollback`, `poolhouse runtime restart-host`: the three deploy commands, guarded by the `runtime.deploy` authority gate (see the matrix) |
 | `sandbox.allowUnsandboxedCommands`, `autoAllowBashIfSandboxed` | `false` |
 | `sandbox.filesystem.allowWrite` | every checkout from `git worktree list` (explicit paths: Linux does not expand wildcards), the primary `.git`, the scratch and temp directories, `~/.poolhouse/{workspace,logs,activity,requests,holds,hook-diagnostics}` and the broker, server and lock files, `~/.cache/{dev-test-slots,test-reuse-sandbox,test-cargo-sandbox,poolhouse,huggingface,pip,ms-playwright}` (`test-reuse-sandbox` holds the stored passes of the sandbox's test runs and `test-cargo-sandbox` its Rust build folder and node binary; the owner's `~/.cache/test-reuse` and `~/.cache/test-cargo` are not listed, so a sandboxed command cannot write what the owner's runs and the task evidence read and run) |
-| `sandbox.filesystem.denyWrite` | per checkout `scripts/hooks`, `.claude`, `.mcp.json`, `.githooks`, `.git/config`, `.git/hooks`; in the primary `.git`: `config`, `hooks`, `info`, `worktrees/*/config.worktree`, `worktrees/*/hooks`; `~/.claude`, `~/.codex`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh`, `~/.gitconfig`, shell rc files, `~/.pyenv/{versions,shims}`, `~/.local/bin`, `~/Library/LaunchAgents` (macOS) or the systemd user and autostart directories (Linux); under `~/.poolhouse`: `runtimes`, `keystore`, `hooks`, `gate`, `guard`, `machine-id`, `wired-limit.json`, `node/client`, `node/person`, and in `workspace` the local-agents |
-| `sandbox.filesystem.denyRead` | `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh`, `~/.netrc`, `~/.git-credentials`, `~/.npmrc`, `~/.pypirc`, browser profiles (Chrome, Firefox, Safari, Keychains, Cookies), and under `~/.poolhouse`: `node/client`, `node/person`, `workspace/local-agents`, `keystore`, `server-keys.json`, `pool.key.old`, `pool.json`, `credentials.*`, `onboard` |
+| `sandbox.filesystem.denyWrite` | per checkout `scripts/hooks`, `.claude`, `.mcp.json`, `.githooks`, `.git/config`, `.git/hooks`; in the primary `.git`: `config`, `hooks`, `info`, `worktrees/*/config.worktree`, `worktrees/*/hooks`; `~/.claude`, `~/.codex`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh`, `~/.gitconfig`, shell rc files, `~/.pyenv/{versions,shims}`, `~/.local/bin`, `~/Library/LaunchAgents` (macOS) or the systemd user and autostart directories (Linux); under `~/.poolhouse`: `runtimes`, `keystore`, `hooks`, `gate`, `guard`, `machine-id`, `wired-limit.json`, `node/client`, `node/person`, `node/hook-credentials`, and in `workspace` the local-agents |
+| `sandbox.filesystem.denyRead` | `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh`, `~/.netrc`, `~/.git-credentials`, `~/.npmrc`, `~/.pypirc`, browser profiles (Chrome, Firefox, Safari, Keychains, Cookies), and under `~/.poolhouse`: `node/client`, `node/person`, `node/hook-credentials`, `hooks`, `workspace/local-agents`, `keystore`, `server-keys.json`, `pool.key.old`, `pool.json`, `credentials.*`, `onboard` |
 | `sandbox.filesystem.allowRead` | none |
 | `sandbox.network.allowedDomains` | `huggingface.co`, `*.huggingface.co`, `hf.co`, `*.hf.co` (hub, CDN, LFS and xet hosts), `github.com`, `api.github.com`, `codeload.github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com`, `raw.githubusercontent.com`, `pypi.org`, `files.pythonhosted.org`, `127.0.0.1:8770` |
 | `sandbox.network.allowLocalBinding` | `true` on macOS only |
@@ -218,8 +223,9 @@ Do these at your own terminal, in order. Steps 1 to 3 run no sandbox.
 5. Start `claude` in the primary checkout, run `/sandbox`. Expect the sandbox on and shown as
    admin-required (settings from managed policy).
 6. In that session ask for `scripts/agent-sandbox probe` (a Bash call). Expect every line `PASS`
-   or `SKIP`, then `this session is sandboxed`. A `FAIL` names the path or variable that stayed
-   open.
+   and `this session is sandboxed` only when every required check ran and passed. A `FAIL`, `SKIP`,
+   missing check or inconclusive check cannot establish confinement; use an unsandboxed control to distinguish a
+   sandbox denial from ordinary filesystem permissions.
 7. Ask for `touch ~/.agent-test`. Expect `Operation not permitted`, with no retry offer.
 8. Ask for `git commit --allow-empty -m "chore: test"` in a sibling worktree, then
    `echo x >> .git/hooks/x`. Expect the commit to work and the hook write to fail. This tests
