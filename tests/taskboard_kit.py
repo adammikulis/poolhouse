@@ -42,6 +42,9 @@ def board(workspace_node, monkeypatch, tmp_path):
     kit = build(workspace_node, monkeypatch)
     copy_checkout('taskboard', _baseline, tmp_path, 'repository', 'source')
     kit.source = tmp_path / 'source'
+    owner = kit.node.member('task-project-owner')
+    kit.node.allow(owner, 'source_add')
+    kit.node.client.call('project_add', '', owner.token, id=kit.node.board, kind='git', path=str(tmp_path / 'repository'))
     kit.parent = kit.session(kit.lead)
     kit.member, kit.runner = worker_on(kit, kit.source)
     kit.child = kit.session(kit.member)
