@@ -26,6 +26,7 @@ def repository(root, name='main'):
 
 def reserved(kit, project, title='Task'):
     """A worker on ``project`` under the lead, a person's task assigned to it with its checkout reserved; ``(task, scope, worker)``."""
+    kit.node.client.call('project_add', '', kit.lead.token, id=kit.node.board, kind='git', path=str(project))
     member, _ = worker_on(kit, project)
     task = Tasks(kit.person).create({'title': title, 'description': 'Current code', 'acceptance': ['Checks pass'],
                                      'source_key': 'person-' + title})['id']
@@ -37,6 +38,7 @@ def test_clean_task_baseline_claims_and_parent_authority(team, tmp_path):  # noq
     primary, source = repository(tmp_path), tmp_path / 'source'
     git.run(['worktree', 'add', '-b', 'source', str(source)], cwd=primary)
     (source / 'code.py').write_text('CONTAMINATED = True\n')
+    team.node.client.call('project_add', '', team.lead.token, id=team.node.board, kind='git', path=str(primary))
     member, _ = worker_on(team, source)
     parent = team.session(team.lead)
     task = Tasks(team.person).create({'title': 'Person task', 'description': 'Fix current code',
