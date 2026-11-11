@@ -74,6 +74,7 @@ def project(board, tmp_path, monkeypatch, request):
     repo.git(primary, 'push', '-u', 'origin', '0.2dev')
     template = project_root / 'source-template'
     repo.git(primary, 'worktree', 'add', '-b', 'source-template', str(template))
+    board.node.client.call('source_add', '', board.project_owner.token, id=board.node.board, kind='git', path=str(primary))
     localagent.save(board.base, replace(localagent.load(board.base, 'native-worker'), project=str(template)))
     creator = board.person if param == 'human_creator' else board.parent
     board.task = Tasks(creator).create({**board.spec, 'source_key': 'native-integration'})
