@@ -135,6 +135,10 @@ def _made(absolute: str) -> None:
 def _foreign(absolute: str) -> bool:
     """Whether ``absolute`` is under the shared ``/tmp`` and neither made by this process nor inside a place it made."""
     target = _shared(absolute)
+    # Checkout inputs are fingerprinted separately, including when the checkout
+    # lives in /tmp. Do not exempt /tmp itself if it was selected as the root.
+    if target is not None and ROOT not in SHARED_TMP and _under(target, ROOT):
+        return False
     return target is not None and not any(_under(target, made) for made in MADE)
 
 

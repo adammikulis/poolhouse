@@ -74,6 +74,19 @@ def test_a_read_or_a_listing_in_the_shared_tmp_of_what_the_run_did_not_make_is_a
     assert shared_violations(("os.listdir", ("/tmp",))) == {"listed /tmp, in the shared /tmp and not made by this run"}
 
 
+def test_checkout_inside_shared_tmp_is_tracked_but_its_siblings_are_foreign(tmp_path, monkeypatch):
+    root = tmp_path / "checkout"
+    root.mkdir()
+    monkeypatch.setattr(plugin, "ROOT", root.resolve())
+    monkeypatch.setattr(plugin, "SHARED_TMP", (tmp_path.resolve(),))
+    assert shared_violations(("open", (str(root / "source.py"), "r", 0)),
+                             ("os.listdir", (str(root),))) == set()
+    sibling = str(tmp_path / "foreign")
+    assert shared_violations(("open", (sibling, "r", 0))) == {f"read {sibling}, in the shared /tmp and not made by this run"}
+    monkeypatch.setattr(plugin, "ROOT", tmp_path.resolve())
+    assert shared_violations(("open", (sibling, "r", 0))) != set()
+
+
 def test_what_the_run_made_in_the_shared_tmp_is_its_own_to_read_and_list():
     root = f"/tmp/mlown-{os.getpid()}"
     assert shared_violations(("os.mkdir", (root, 0o700, -1)), ("open", (f"{root}/a.txt", "w", 0)), ("open", (f"{root}/a.txt", "r", 0)),
