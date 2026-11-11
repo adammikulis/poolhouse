@@ -254,11 +254,11 @@ mod replacement_tests {
         let result = log.install(vec![replacement.clone(), row(3, &replacement.hash, Kind::Head)], |path, bytes| {
             let temporary = path.with_extension("replacement");
             std::fs::write(&temporary, bytes)?;
-            File::open(&temporary)?.sync_all()?;
+            std::fs::OpenOptions::new().write(true).open(&temporary)?.sync_all()?;
             crate::sys::replace_file(&temporary, path)?;
             Err(std::io::Error::other("injected post-rename directory fsync error").into())
         });
-        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("injected post-rename directory fsync error"));
         assert!(log.append(row(2, &first.hash, Kind::Message)).is_err());
         assert!(log.replace(0, Vec::new(), &root.path().join("archive")).is_err());
         drop(log);
