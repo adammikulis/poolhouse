@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
 
-from poolhouse import jsonl, node_pool
+from poolhouse import errors, jsonl, node_pool
 from poolhouse.home import machine_id
 from poolhouse.http import Options, Server, ServerError, open_stream
 from poolhouse.optional import module
@@ -140,29 +140,27 @@ class UI:
                 "password to check, so the first person to reach this page would own "
                 "the box. Start it with --setup-from-lan to allow this deliberately.")
 
-    def pool(self, *, force: bool = False) -> dict[str, Any] | None:
+    def pool_status(self, *, force: bool = False) -> dict[str, Any] | None:
         """The pool status this device's node reports, briefly reused; None when no node answers."""
         age, held = self._pool
         if force or time.time() - age >= POOL_CACHE_S:
-            held = node_pool.status()
+            held = node_pool.status(self.pool.state)
             self._pool = (time.time(), held)
         return held
 
-    def governance(self) -> dict[str, Any]:
-        """What governs this device's pool: ``mode`` ``governed`` once a person founded it, with its ``name``."""
-        held = self.pool()
-        raw = held.get("governance") if isinstance(held, dict) else None
-        return raw if isinstance(raw, dict) else {}
+    def governance(self, *, force: bool = False) -> dict[str, Any]:
+        """Validated governance from this UI's node, or empty when it cannot be established."""
+        held = self.pool_status(force=force)
+        try:
+            return node_pool.governance(held.get("governance") if isinstance(held, dict) else None)
+        except errors.Error:
+            return {}
 
     def founded(self) -> bool:
-        """Whether a person founded this device's pool, which is when the page asks for a signed-in session.
-
-        A node that does not answer is not told apart from a founded pool: the page stays closed rather than open.
-        """
+        """Require a fresh, valid unfounded status before opening the sign-in gate."""
         if not self.gated:
             return False
-        held = self.pool()
-        return held is None or self.governance().get("mode") != "unfounded"
+        return self.governance(force=True).get("mode") != "unfounded"
 
     def group(self) -> str | None:
         """The name of the founded pool this device is in; None while the pool is unfounded."""

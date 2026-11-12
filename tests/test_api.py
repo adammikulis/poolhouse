@@ -22,6 +22,7 @@ REPO = Path(__file__).resolve().parents[1]
 SRC = REPO / "src" / "poolhouse"
 DOC = (REPO / "docs" / "api.md").read_text(encoding="utf-8")
 SNAPSHOT = Path(__file__).parent / "api-signatures.json"
+COMPOSITION_ROOTS = {"pool_cli.py", "cli/daemon.py"}  # the commands that hand `api.pool` to the layers below (commit 9eb69e099)
 HEAVY = ("poolhouse.node_launch", "poolhouse.serve", "poolhouse.hub", "poolhouse.board", "poolhouse.client",
          "poolhouse.fleet", "poolhouse.testfarm", "poolhouse.workspace")
 
@@ -147,16 +148,26 @@ def test_no_code_inside_poolhouse_imports_through_the_facade() -> None:
                 offenders += [f"{path}: import {a.name} as {a.asname}" for a in node.names if a.name == "poolhouse" and a.asname]
             elif isinstance(node, ast.ImportFrom) and node.module == "poolhouse" and not node.level:
                 offenders += [f"{path}: from poolhouse import {a.name}" for a in node.names if a.name in {"Error", *api.ERRORS, "__version__"}]
-            elif isinstance(node, ast.ImportFrom) and node.module == "poolhouse.api" and path.parts[-2] != "api":
+            elif (isinstance(node, ast.ImportFrom) and node.module == "poolhouse.api" and path.parts[-2] != "api"
+                  and path.relative_to(SRC).as_posix() not in COMPOSITION_ROOTS):
                 offenders.append(f"{path}: from poolhouse.api import ...")
     assert not offenders, offenders
     assert spaces  # the facade is the one place that names them
 
 
-def test_only_the_facade_and_the_api_package_know_the_api_package() -> None:
-    users = {p.relative_to(SRC).as_posix() for p in SRC.rglob("*.py") if "poolhouse.api" in p.read_text(encoding="utf-8")}
-    assert users <= {"__init__.py", "api/__init__.py", "api/pool.py", "api/leases.py", "api/remote_tests.py", "api/models.py",
-                     "api/_node.py"}, users
+def _imports_the_api_package(path: Path) -> bool:
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[:2] == ["poolhouse", "api"]:
+            return True
+        if isinstance(node, ast.Import) and any(a.name.split(".")[:2] == ["poolhouse", "api"] for a in node.names):
+            return True
+    return False
+
+
+def test_only_the_facade_the_api_package_and_the_composition_roots_import_the_api_package() -> None:
+    users = {p.relative_to(SRC).as_posix() for p in SRC.rglob("*.py") if _imports_the_api_package(p)}
+    outside = {u for u in users if not u.startswith("api/")} - {"__init__.py"}
+    assert outside <= COMPOSITION_ROOTS, outside
 
 
 def test_the_internal_errors_are_public_errors() -> None:

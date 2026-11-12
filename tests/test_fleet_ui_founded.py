@@ -11,6 +11,8 @@ from test_fleet_ui import Serving
 from testfarm_kit import devices, found, skip_unless_possible
 
 from poolhouse import home
+from poolhouse.fleet import service_pool
+from poolhouse.fleet.ui import UI
 
 pytest_plugins = ("testfarm_kit",)  # the `node_binary` fixture
 pytestmark = pytest.mark.slow
@@ -108,3 +110,18 @@ def test_the_pool_actions_refuse_what_names_nothing(alone, ui):
                        ("/ui/pool/remove-device", {})):
         status, answer, _ = ui.call(path, method="POST", body=body, cookie=cookie)
         assert status == 400 and answer["error"], (path, body, answer)
+
+
+def test_governance_follows_the_ui_bound_node_not_the_default(node_binary, monkeypatch):
+    skip_unless_possible()
+    with devices(node_binary, "a", "b") as (a, b):
+        found(a)
+        monkeypatch.setenv("POOLHOUSE_HOME", str(a.root))
+        first = UI(pool=service_pool.Pool(a.state))
+        second = UI(pool=service_pool.Pool(b.state))
+        assert first.founded() is True
+        assert second.founded() is False
+        assert first.governance()["mode"] == "governed"
+        assert second.governance()["mode"] == "unfounded"
+        found(b)
+        assert second.founded() is True, "the sign-in gate must see an external founding immediately"

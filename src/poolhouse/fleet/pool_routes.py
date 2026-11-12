@@ -82,7 +82,7 @@ class PoolRoutes:
 
     def _status(self) -> dict[str, Any]:
         """The pool as the node reports it; asks nothing of a node that is not running, and starts none."""
-        if self.ui.pool(force=True) is None:
+        if self.ui.pool_status(force=True) is None:
             return {"pool": None, "error": "No node answers on this device, so it has no pool to show."}
         return {"pool": asdict(self.ui.pool_actions.status())}
 

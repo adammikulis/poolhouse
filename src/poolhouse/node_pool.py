@@ -11,7 +11,7 @@ import json
 import sys
 from pathlib import Path
 
-from poolhouse import node_health
+from poolhouse import errors, node_health
 from poolhouse.checks import Finding
 
 LAN = "--lan"
@@ -37,6 +37,37 @@ def ask(state: Path | None = None) -> tuple[dict | None, str]:
 def status(state: Path | None = None) -> dict | None:
     """The pool the node of ``state`` belongs to (id, project, policy, members), or None when no node answers."""
     return ask(state)[0]
+
+
+def governance(raw: object) -> dict:
+    """Reject an incomplete node response rather than treating it as no pool."""
+    if not isinstance(raw, dict):
+        raise errors.Error("The pool node returned an invalid governance state.")
+    mode = raw.get("mode")
+    governed_fields = {"name", "epoch", "charter_hash", "admins", "floors", "approved_from", "thresholds", "holds",
+                       "pending", "dispute", "waiting_for_signers", "delegates", "refused"}
+    if mode == "unfounded":
+        valid = ({"mode", "say"} <= raw.keys() and not governed_fields.intersection(raw)
+                 and isinstance(raw.get("say"), str) and bool(raw["say"].strip()))
+    elif mode == "governed":
+        expected = {"mode", *governed_fields}
+        epoch = raw.get("epoch")
+        digest = raw.get("charter_hash")
+        dispute = raw.get("dispute")
+        valid = (expected <= raw.keys()
+                 and isinstance(raw.get("name"), str) and bool(raw["name"].strip())
+                 and type(epoch) is int and epoch >= 0 and isinstance(digest, str) and len(digest) == 64
+                 and all(c in "0123456789abcdef" for c in digest)
+                 and isinstance(raw.get("admins"), list) and isinstance(raw.get("floors"), dict) and isinstance(raw.get("approved_from"), str)
+                 and isinstance(raw.get("thresholds"), dict) and isinstance(raw.get("holds"), dict)
+                 and (raw.get("pending") is None or isinstance(raw["pending"], dict))
+                 and (dispute is None or (isinstance(dispute, dict) and isinstance(dispute.get("say"), str) and bool(dispute["say"].strip())))
+                 and all(isinstance(raw.get(key), list) for key in ("waiting_for_signers", "delegates", "refused")))
+    else:
+        valid = False
+    if not valid:
+        raise errors.Error("The pool node returned an invalid governance state.")
+    return raw
 
 
 def rows(pool: dict) -> list[dict]:
