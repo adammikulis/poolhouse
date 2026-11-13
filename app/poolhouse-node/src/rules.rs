@@ -66,7 +66,7 @@ fn shape(row: &Row, board: &str, origin: &str) -> Result<()> {
     }
     if row.kind == Kind::Carry {
         let original = row.operation()?;
-        if !matches!(original.kind, Kind::Note | Kind::Room | Kind::Task | Kind::Grant)
+        if !(matches!(original.kind, Kind::Note | Kind::Room | Kind::Task | Kind::Grant) || crate::services::capability_marker(&original))
             || original.seq == 0 || original.seq >= row.seq || original.hlc > row.hlc
             || original.hash != original.digest() || row.actor != original.actor || row.idem != original.idem {
             return Err(Error::Damaged("a carry changes its original durable operation identity".into()));

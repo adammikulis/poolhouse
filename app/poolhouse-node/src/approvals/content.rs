@@ -24,6 +24,7 @@ pub fn risk_of(action: &str) -> (&'static str, &'static str) {
         "join_pool" => (SENSITIVE, "It joins this device to another pool and shares its boards with it."),
         "shard_call" => (SENSITIVE, "It sends tests and their files to run on another device."),
         "shard_consent" => (SENSITIVE, "It lets other devices run code here."),
+        "service_bind" => (SENSITIVE, "It lets the pool recognize this computer's compute service."),
         "land_trust" => (SENSITIVE, "It makes this device count the tasks, grants and reviews another device wrote."),
         "task_authority" => (SENSITIVE, "It acts for you on tasks, including accepting them and marking them done."),
         "quarantine_release" => (SENSITIVE, "It releases a held message that may carry instructions meant to mislead an agent."),
@@ -54,7 +55,7 @@ pub fn riskiest<'a>(levels: impl Iterator<Item = &'a str>) -> &'static str {
 
 /// Whether a request for ``action`` connects something, so the text states the pool's join policy.
 pub fn connects(action: &str) -> bool {
-    matches!(action, "add_device" | "join_pool" | "link_read" | "link_write" | "shard_call" | "shard_consent" | "sync_now" | "phone_add")
+    matches!(action, "add_device" | "join_pool" | "link_read" | "link_write" | "shard_call" | "shard_consent" | "sync_now" | "phone_add" | "service_bind")
 }
 
 /// A short phrase for what ``action`` does, for a title.
@@ -68,6 +69,7 @@ pub fn label_of(action: &str) -> &'static str {
         "link_remove" => "end a sharing link",
         "shard_call" => "run tests on another device",
         "shard_consent" => "accept tests from other devices",
+        "service_bind" => "connect this computer's compute service",
         "land_trust" => "trust another device's entries",
         "task_authority" => "act on tasks",
         "note_verify" => "verify a note",
@@ -127,6 +129,7 @@ pub fn sentence(action: &str, resource: &str) -> String {
         "sync_now" => "Swap board entries with the pool's devices now.".into(),
         "shard_call" => format!("Send test runs to the device {named}."),
         "shard_consent" => format!("Let other devices send test runs here ({named})."),
+        "service_bind" => "Let the pool recognize this computer's compute service for this session.".into(),
         "land_trust" => format!("Count the board entries of the device {named} as if they were made here."),
         "task_authority" => format!("Act for you on tasks ({named}): assign, review, mark done."),
         "note_verify" => format!("Record that a note's command was run ({named})."),

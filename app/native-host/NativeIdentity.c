@@ -127,9 +127,6 @@ bool ph_native_requirement_decode(CFDataRef bytes, const uint8_t expected_digest
     if (!bytes || CFGetTypeID(bytes) != CFDataGetTypeID() || !expected_digest || !output || *output) return false;
     CFIndex length = CFDataGetLength(bytes);
     if (length <= 0 || (uint64_t)length > MAX_IDENTITY_BYTES) return false;
-    uint8_t nonzero = 0;
-    for (size_t index = 0; index < 32; index++) nonzero |= expected_digest[index];
-    if (!nonzero) return false;
     static const char domain[] = "poolhouse/native-code/requirement/v1";
     uint8_t observed[32];
     if (!digest(bytes, true, domain, sizeof(domain), observed) || memcmp(observed, expected_digest, sizeof(observed))) return false;
