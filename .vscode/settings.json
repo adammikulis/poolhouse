@@ -3,5 +3,6 @@
     "git.autofetchPeriod": 120,
     "git.confirmSync": false,
     "git.pruneOnFetch": true,
-    "git.pullTags": false
+    "git.pullTags": false,
+    "java.configuration.updateBuildConfiguration": "automatic"
 }
