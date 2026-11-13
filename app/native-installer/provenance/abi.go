@@ -69,7 +69,7 @@ func setVersion(dst *C.ph_version, v trustVersion) {
 
 // PhProvenanceVerify prepares a candidate, not an authorization or a committed
 // witness. Only an authenticated service may call it with immutable private
-// buffers and an FD whose ownership is serialized. The service must create and journal the protected stage before this call, retain and
+// buffers and an FD whose ownership is serialized. The service must create and log the protected stage before this call, retain and
 // revalidate that FD and atomically consume the nonce/advance the exact prior
 // checkpoint before treating the candidate as an effect.
 //

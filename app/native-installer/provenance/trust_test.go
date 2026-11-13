@@ -252,6 +252,6 @@ func TestTrustJSONRejectsMalformedUnicode(t *testing.T) {
 		}
 	}
 	if !uniqueJSON([]byte(`{"x":"\ud83d\ude00"}`)) {
-		t.Fatal("valid surrogate pair rejected")
+		t.Fatal("valid surrogate escape rejected")
 	}
 }
