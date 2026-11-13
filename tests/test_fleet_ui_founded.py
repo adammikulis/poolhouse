@@ -24,23 +24,35 @@ def gated(serving):
     return serving
 
 
-@pytest.fixture
-def alone(node_binary, monkeypatch):
-    """A node in a pool of one that no person founded; this process's home is its root."""
+@pytest.fixture(scope="module")
+def unfounded_node(node_binary):
+    """One real node in a pool of one that no person founded, started once for the tests that only read it or are refused by it."""
     skip_unless_possible()
     with devices(node_binary, "a") as (a,):
-        monkeypatch.setenv("POOLHOUSE_HOME", str(a.root))
         yield a
 
 
-@pytest.fixture
-def governed(node_binary, monkeypatch):
-    """A node in a pool a person founded; this process's home is its root."""
+@pytest.fixture(scope="module")
+def founded_node(node_binary):
+    """One real node in a pool a person founded, started once for the tests that only read it."""
     skip_unless_possible()
     with devices(node_binary, "a") as (a,):
         found(a)
-        monkeypatch.setenv("POOLHOUSE_HOME", str(a.root))
         yield a
+
+
+@pytest.fixture
+def alone(unfounded_node, monkeypatch):
+    """A node in a pool of one that no person founded; this process's home is its root."""
+    monkeypatch.setenv("POOLHOUSE_HOME", str(unfounded_node.root))
+    return unfounded_node
+
+
+@pytest.fixture
+def governed(founded_node, monkeypatch):
+    """A node in a pool a person founded; this process's home is its root."""
+    monkeypatch.setenv("POOLHOUSE_HOME", str(founded_node.root))
+    return founded_node
 
 
 @pytest.fixture
