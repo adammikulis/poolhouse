@@ -103,10 +103,10 @@ def needed(root: Path, files: list[str], facts=None) -> bool:
     return any(marker in keys.text_of(root / name) for name in names if name.startswith("tests/") for marker in markers)
 
 
-def sources(app: Path, *, existing_only: bool = True) -> list[str]:
-    """Sorted nonignored Cargo workspace paths, optionally retaining missing and symlink entries."""
+def sources(app: Path, *, existing_only: bool = True, members: tuple[str, ...] = MEMBERS) -> list[str]:
+    """Sorted tracked and nonignored paths in ``members``, optionally retaining missing and symlink entries."""
     try:
-        done = subprocess.run(["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *MEMBERS], cwd=app,
+        done = subprocess.run(["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *members], cwd=app,
                               capture_output=True, text=True, check=False, env=worktreerules._git_environment())
     except OSError as error:
         raise BuildError(f"git did not run: {error}") from error

@@ -30,6 +30,16 @@ def test_dirty_rust_changes_fallback_without_changing_head(project):
     assert keys.tree_digest(project) != before
 
 
+def test_native_approval_inputs_invalidate_fallback(project):
+    source = project / "app/native-approval/ManifestTests.swift"
+    source.parent.mkdir(parents=True)
+    source.write_text("let result = 1\n")
+    subprocess.run(["git", "-C", str(project), "add", "app/native-approval/ManifestTests.swift"], check=True)
+    before = keys.tree_digest(project)
+    source.write_text("let result = 2\n")
+    assert keys.tree_digest(project) != before
+
+
 def test_untracked_rust_addition_and_deletion_change_fallback(project):
     before = keys.tree_digest(project)
     added = project / "app/poolhouse-node/src/new.rs"

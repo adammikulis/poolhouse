@@ -5,6 +5,7 @@ pub mod certificate;
 pub mod channel_wire;
 pub mod receipt;
 pub mod phone_candidate;
+pub mod source_manifest;
 
 pub use poolhouse_manifest::manifest;
 

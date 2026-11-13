@@ -102,6 +102,23 @@ def test_an_unchanged_passing_file_is_reused_and_reported_as_reused(project, tmp
     assert second.lines()[-1].startswith("test: 0 file(s) ran, 1 reused")
 
 
+def test_native_app_source_change_invalidates_subprocess_test_receipt(project, tmp_path):
+    subprocess.run(["git", "init", "-q", str(project)], check=True)
+    source = project / "app/native-approval/ManifestTests.swift"
+    source.parent.mkdir(parents=True)
+    source.write_text("let value = 1\n")
+    subprocess.run(["git", "-C", str(project), "add", "app/native-approval/ManifestTests.swift"], check=True)
+    (project / FILE).write_text("import subprocess\n" + TEST_A)
+    store = storage.Store(tmp_path / "store")
+    first, _ = attempt(project, store)
+    assert first.status == 0 and hows(first) == ["ran"]
+    unchanged, launches = attempt(project, store)
+    assert hows(unchanged) == ["reused"] and not launches
+    source.write_text("let value = 2\n")
+    changed, launches = attempt(project, store)
+    assert hows(changed) == ["ran"] and len(launches) == 1
+
+
 def test_a_changed_module_in_the_import_closure_invalidates_the_hit(project, tmp_path):
     store = storage.Store(tmp_path / "store")
     attempt(project, store)
