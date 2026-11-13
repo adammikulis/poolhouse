@@ -280,7 +280,7 @@ Every original ref and full object SHA follows. `B/U` uses the same original bas
 | R188 | `refs/remotes/origin/promote/2026-10-09e` | `0c96cb4f2bf61e6ef16dc9dae92f3e21009b0a52` | 2641/56 |
 | R189 | `refs/remotes/origin/promote/2026-10-09f` | `b95b1c9c8c05d5f44c0402f1fdf9144ef4689253` | 2641/60 |
 | R190 | `refs/remotes/origin/promote/2026-10-09g` | `ff3a46c00326066cf70d1482b72fdcf779122f9d` | 2641/62 |
-| R191 | `refs/remotes/origin/release-please--branches--main--components--ml-stack` | `08590c056e0d85891bab73f03c36d229743a1a50` | 5755/1 |
+| R191 | `refs/remotes/origin/release-please--branches--main--components--<former package>` | `08590c056e0d85891bab73f03c36d229743a1a50` | 5755/1 |
 
 ## Existing external bundle manifest
 

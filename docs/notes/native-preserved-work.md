@@ -50,8 +50,8 @@ it is not proof that the native implementation retains a behavior. For unchanged
 | Handle | Relative path | Original full HEAD | Current change / ancestry |
 | --- | --- | --- | --- |
 | W1 | `.` | `90c120c389cfdeaac3423bf11f7a7f23e85217a7` | initial head is an ancestor; current `2400838cf4f4bcd447aee479c6138ab29913765e` is also an ancestor |
-| W2 | `../ml-stack-agent-connect` | `cc8f8eaf2bee315b70ac985b18e2bbb5c0e60ce2` | same; not an ancestor |
-| W3 | `../ml-stack-fleet-bench-process-group` | `b9510a5c45cae1be804405d9cbeee14d187958ce` | same; not an ancestor |
+| W2 | `../agent-connect` (the former package's checkout) | `cc8f8eaf2bee315b70ac985b18e2bbb5c0e60ce2` | same; not an ancestor |
+| W3 | `../fleet-bench-process-group` (the former package's checkout) | `b9510a5c45cae1be804405d9cbeee14d187958ce` | same; not an ancestor |
 | W4 | `../poolhouse-native-device-plan` | `90c120c389cfdeaac3423bf11f7a7f23e85217a7` | same; in development |
 | W5 | `../poolhouse-native-hooks` | `90c120c389cfdeaac3423bf11f7a7f23e85217a7` | initial head is an ancestor; current `718d935d2223a8111943744287fa8982b73941ed` is not an ancestor; unpublished, preserved in A0 hook bundle |
 | W6 | `../poolhouse-one-pool` | `3cb435349a01bc6298e8106f66afb517f39dabad` | same; in development |
@@ -80,8 +80,8 @@ as history and are not silently counted as patch-equivalent behavior.
 | --- | --- | --- |
 | One pool | W6 `refactor/one-pool` | Head is already in development; current tree clean, no ignored entries. Branch name is not evidence of one native pool. Preserve shared pool/ownership behavior while replacing duplicate Python execution paths. |
 | Windows launch ticket | `05859e65c54891a57c32c450c7d76d9d1bdcb871` | The five-modified/two-untracked inventory predates this commit; all seven paths and the additional `wsl_command.py` are committed and their final blobs match the preserved mirror. The previous owner inventory requirement is superseded by the reconciliation below. Replace the WSL ticket/window route with authenticated native node IPC; retain hostile-endpoint regressions. No intermediate-byte, ignored-asset or later unreported-change preservation claim is made. |
-| Saved workers | W2 | Retain saved-worker identity and rejection of unknown execution limits in public jobs/agents. Historical paths `src/ml_stack/workspace/localagent.py`, `localcli.py`, `localresume.py` and `tests/test_agent_resume.py` are evidence sources, not a replacement architecture. Native behavior mapping/tests remain pending. |
-| Benchmark process groups | W3 | Retain fixture child process isolation, cleanup and installed identity/native fixture validation. Compare `tests/test_fleet_bench.py` and historical `src/ml_stack/bench/{ops,run}.py` before replacing Python benchmark orchestration. |
+| Saved workers | W2 | Retain saved-worker identity and rejection of unknown execution limits in public jobs/agents. Historical files `workspace/localagent.py`, `localcli.py` and `localresume.py` of the former package, and `tests/test_agent_resume.py`, are evidence sources, not a replacement architecture. Native behavior mapping/tests remain pending. |
+| Benchmark process groups | W3 | Retain fixture child process isolation, cleanup and installed identity/native fixture validation. Compare `tests/test_fleet_bench.py` and the former package's historical `bench/{ops,run}.py` before replacing Python benchmark orchestration. |
 | Test farm | W7 | Retain public selector ownership, roles, weighted split and planning; replace Python discovery dependencies. Source includes `scripts/test_on.py`, `testfarm/{devices,plan,report}.py`, fleet roles/split and `api/remote_tests.py`; native route mapping remains pending. |
 | Bootstrap-independent deployment | W8 | Retain reviewed installer/runtime/bootstrap independence. Supersede daemon switching and session-dependent deployment. Do not wholesale merge removal of claims, trust, backoff or admission. Archived attack notes and unattended/cutover tests require review against the native design. |
 | Edit ledger | W10 | Separately preserved staged `docs/notes/no-terminal-lockout-break-it.md` and staged/working `src/poolhouse/editledger.py`. Neither is accepted as finished or related to native consolidation merely by proximity. |
@@ -178,7 +178,7 @@ entry counts, not recursive asset counts. Cache directories (`__pycache__`, `.py
 | W1 `.claude/scheduled_tasks.lock` | 124 bytes; runtime coordination state, metadata only, never replay as authority. |
 | W1 `.claude/worktrees/` | Six directories, all accounted for as W7–W12; no additional child directory observed. |
 | W1 `.full-tier-last.json` | 73-byte nonsecret measurement copied into A1; SHA-256 `66073ecf4557f56883dc75754a1e906d1fc992e20589c43b870d3c19f781c10e`. |
-| W1 `dist/` | `ml_stack-0.2.2-py3-none-any.whl`, 3803964 bytes; metadata only, original retained. |
+| W1 `dist/` | the former package's 0.2.2 wheel, 3803964 bytes; metadata only, original retained. |
 | W5 `dist/` | `compute-artifact.json` 25819 bytes; `poolhouse-0.3.0.dev1-py3-none-any.whl` 3740452; `poolhouse_studio_compute-0.3.0.dev1-py3-none-any.whl` 715852. Metadata only, originals retained. |
 | W8 `dist/` | `.built-from` 65 bytes; `compute-artifact.json` 25819; `poolhouse-0.3.0.dev1-py3-none-any.whl` 3691304; `poolhouse_studio_compute-0.3.0.dev1-py3-none-any.whl` 716007. Metadata only, originals retained. |
 
