@@ -1069,9 +1069,15 @@ class TestUpdatingItself:
         target = tmp_path / "poolhouse"
         target.write_text("#!/bin/sh\n")
         started = []
+        real_popen = updates.subprocess.Popen
+
+        def launch(argv, **options):
+            """Record the launch and start a real child that exits at once, so the caller has a process to reap."""
+            started.append(argv)
+            return real_popen([sys.executable, "-c", "pass"], **options)
+
         monkeypatch.setattr(updates, "running_path", lambda: target)
-        monkeypatch.setattr(updates.subprocess, "Popen",
-                            lambda argv, **k: started.append(argv))
+        monkeypatch.setattr(updates.subprocess, "Popen", launch)
 
         assert updates.relaunch(delay_s=0.0, stop=False) is True
         for _ in range(40):
@@ -1080,6 +1086,10 @@ class TestUpdatingItself:
             time.sleep(0.05)
         assert started, "it never started the new copy"
         assert str(target) in " ".join(str(x) for x in started[0])
+        reaper = next((t for t in threading.enumerate() if t.name.startswith("reap-")), None)
+        if reaper is not None:
+            reaper.join(timeout=10)
+            assert not reaper.is_alive(), "the launched copy was never reaped"
 
 
 class TestTheBenchOnThePage:
