@@ -28,7 +28,7 @@ def test_dead_node_never_reports_completed(argv, monkeypatch, capsys):
     def unavailable(*_args, **_kwargs):
         raise errors.NotRunning("node unavailable")
     monkeypatch.setattr(pool_cli.pool, "join", unavailable)
-    monkeypatch.setattr(pool_cli._node, "session", unavailable)
+    monkeypatch.setattr(pool_cli.pool, "leave", unavailable)
     assert pool_cli.main([*argv, "--json"]) == 1
     assert json.loads(capsys.readouterr().out) == {"error": "node unavailable"}
 
