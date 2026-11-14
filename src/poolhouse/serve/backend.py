@@ -491,15 +491,15 @@ def launch(  # noqa: PLR0913 - the independent facts of one spawn; a bundle type
     ``ServerFailed`` with the log's tail when it exits or never answers.
     """
     grant.require(lease, Lease)
-    port = lease.port
     started_at = time.monotonic()
+    policy = policy or default_policy()
+    policy.before_launch(argv)
     with log_path.open("wb") as log_handle:
-        process = subprocess.Popen(argv, stdout=log_handle, stderr=subprocess.STDOUT,
-                                   env=(policy or default_policy()).scrub_env(clean_env(env)),
+        process = subprocess.Popen(argv, stdout=log_handle, stderr=subprocess.STDOUT, env=policy.scrub_env(clean_env(env)),
                                    cwd=cwd, **process_group_kwargs())
     if lease.stop_on_exit:
         exit_guard.protect(process.pid)
-    base_url = f"http://{DEFAULT_HOST}:{port}"
+    base_url = f"http://{DEFAULT_HOST}:{lease.port}"
     healthy = False
     try:
         healthy = wait_for_health(base_url, timeout=timeout, is_alive=lambda: process.poll() is None)

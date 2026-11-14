@@ -113,7 +113,7 @@ def test_a_backend_is_only_started_by_the_manager():
     found = {name for name, tree in parsed().items()
              for c in calls(tree)
              if called_name(c) == "start" and any(k.arg == "lease" for k in c.keywords)}
-    assert found == {"serve/manager.py", CORE}, where(found)
+    assert found == {"serve/manager.py", CORE, "serve/strict.py"}, where(found)   # strict.py passes the core's lease down to its parent class
 
 
 def test_the_proof_a_backend_needs_is_only_made_by_the_manager():

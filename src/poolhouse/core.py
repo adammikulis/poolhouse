@@ -22,13 +22,15 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+import psutil
+
 from poolhouse import errors, lazy, serverkeys
 from poolhouse.client.health import reported_models
 from poolhouse.files import read_json, write_json
 from poolhouse.hub import local, room
 from poolhouse.lock import only_one
 from poolhouse.serve import admission, exit_guard, grant
-from poolhouse.serve.backend import Lease, LlamaServerBackend, ServerFailed, ServerInfo, ServerSpec
+from poolhouse.serve.backend import Lease, ServerFailed, ServerInfo, ServerSpec
 from poolhouse.serve.binary import require_binary
 from poolhouse.serve.children import Children
 from poolhouse.serve.leases import lease_file, merge_state, recorded_servers
@@ -36,6 +38,7 @@ from poolhouse.serve.policy import LocalPolicy, Policy
 from poolhouse.serve.ports import DEFAULT_HOST, free_port, port_is_free
 from poolhouse.serve.preflight import Preflight, Report
 from poolhouse.serve.process import cmdline_digest, started_at
+from poolhouse.serve.strict import StrictBackend
 from poolhouse.serve.weights import scaled_timeout, weight_of
 
 __all__ = ["AdmissionRefused", "Handle", "ModelNotFound", "fit", "resolve", "serve", "stop_all"]
@@ -66,6 +69,8 @@ def resolve(model: str | Path) -> Path:
     if found is None:
         raise ModelNotFound(f"no installed GGUF stands for {str(model)!r}; `poolhouse-models list` shows what is "
                             f"installed, `poolhouse-models pull` fetches one")
+    if found.suffix.lower() != ".gguf":
+        raise ModelNotFound(f"{found} is not a .gguf file; the core serves GGUF files and nothing else")
     return found
 
 
@@ -78,7 +83,7 @@ def fit(model: str | Path, context: int = 0, *, policy: Policy | None = None, **
     Starts nothing. ``spec`` is any other `ServerSpec` field (``parallel``, ``cache_type_k``, ...)."""
     policy = policy or LocalPolicy()
     made = _fitted(_spec(model, context, 0, spec))
-    binary = require_binary(policy=policy)
+    binary = require_binary(policy=policy, strict=True)
     return Preflight(made, binary=binary, limit_bytes=room())
 
 
@@ -116,6 +121,7 @@ class Handle:
             exit_guard.release(self.pid)
             _MINE.pop(str(self.port), None)
             _save()
+            serverkeys.key_file(self.port).unlink(missing_ok=True)
 
     def __enter__(self) -> Handle:
         return self
@@ -142,16 +148,26 @@ def serve(  # noqa: PLR0913 - what to serve, where, under which trust, and how t
     admitted = _reserved(made, wanted)
     info = None
     try:
-        info = _start(LlamaServerBackend(policy=policy), admitted, preflight=preflight,
+        info = _start(StrictBackend(policy=policy), admitted, preflight=preflight,
                       timeout=timeout if timeout is not None else scaled_timeout(weight_of(admitted.model)))
     finally:
         if info is None:
             _forget(admitted.port)
-    handle = Handle(info.base_url, _model_id(info.base_url, made), info.port, info.pid, info)
+    handle = Handle(info.base_url, "", info.port, info.pid, info)
     with _LOCK:
         _HANDLES[info.port] = handle
         _CHILDREN.hold(info.port, info.process)
         _record(made, info, -(-wanted // admission.MIB))
+    ready = False
+    try:
+        if not _owns_listener(info.pid, info.port):   # before the key is sent to whatever answers on the port
+            raise ServerFailed(f"port {info.port} is answered by a process that is not the server started for it "
+                               f"(pid {info.pid}); it was stopped and no key was sent to it")
+        handle.model_id = _model_id(info.base_url, made)
+        ready = True
+    finally:
+        if not ready:
+            handle.close()
     return handle
 
 
@@ -164,7 +180,7 @@ def stop_all() -> list[int]:
     return pids
 
 
-def _start(backend: LlamaServerBackend, spec: ServerSpec, *, preflight: bool, timeout: float) -> ServerInfo:
+def _start(backend: StrictBackend, spec: ServerSpec, *, preflight: bool, timeout: float) -> ServerInfo:
     """The one place this module opens the grant: after admission has written the record the start is on.
 
     No warm-up request is sent: it would queue on the pool's node, which a core caller has not got, and what it
@@ -172,6 +188,19 @@ def _start(backend: LlamaServerBackend, spec: ServerSpec, *, preflight: bool, ti
     with grant.broker_grant():
         lease = Lease(port=spec.port, owner_pid=os.getpid(), state_file=str(lease_file()), stop_on_exit=True)
         return backend.start(spec, lease=lease, timeout=timeout, preflight=preflight, warmup_request=False)
+
+
+def _owns_listener(pid: int | None, port: int) -> bool:
+    """Whether the process started (or one of its children, for a sandbox wrapper) is alive and listens on ``port``."""
+    if not pid:
+        return False
+    try:
+        parent = psutil.Process(pid)
+        found = [parent, *parent.children(recursive=True)]
+        return any(c.status == psutil.CONN_LISTEN and c.laddr and c.laddr.port == port
+                   for one in found for c in one.net_connections(kind="inet"))
+    except (psutil.Error, TypeError):
+        return False
 
 
 def _model_id(base_url: str, spec: ServerSpec) -> str:

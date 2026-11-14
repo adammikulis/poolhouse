@@ -18,7 +18,7 @@ from poolhouse import home, lazy
 from poolhouse.files import sha256_file, write_json
 from poolhouse.lock import only_one
 
-__all__ = ["LocalPolicy", "Policy", "default"]
+__all__ = ["BinaryRefused", "LocalPolicy", "PinFileUnreadable", "Policy", "default"]
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,9 @@ class Policy(Protocol):
     def unpin(self, binary: Path) -> None:
         """Forget what was recorded for ``binary``, and release it if it was held."""
 
+    def before_launch(self, argv: list[str]) -> None:
+        """Called with the argv of a server the instant before it is spawned; raises to stop the launch."""
+
     def scrub_env(self, env: Mapping[str, str]) -> dict[str, str]:
         """``env`` as the child of a launch may have it."""
 
@@ -55,7 +58,15 @@ def _recorded(binary: Path) -> str:
         info = json.loads((binary.parent / "BUILD.json").read_text())
     except (OSError, ValueError):
         return ""
-    return str(info.get("sha256") or "") if isinstance(info, dict) else ""
+    return str(info.get("sha256") or "").lower() if isinstance(info, dict) else ""
+
+
+class BinaryRefused(RuntimeError):
+    """The binary about to be executed is not the one that was judged."""
+
+
+class PinFileUnreadable(OSError):
+    """The pin file is there and cannot be read, so it is not rewritten."""
 
 
 class LocalPolicy:
@@ -91,9 +102,12 @@ class LocalPolicy:
         pins = parsed.get("pins") if isinstance(parsed, dict) else None
         if not isinstance(pins, dict):
             return None
-        return {str(path): {"sha256": str(one["sha256"]), "source": str(one.get("source") or ""),
-                            "held": bool(one.get("held"))}
-                for path, one in pins.items() if isinstance(one, dict) and isinstance(one.get("sha256"), str)}
+        # An entry that is held stays held whatever else is wrong with it; one that is not and has no digest is no pin.
+        return {str(path): {"sha256": str(one["sha256"]).lower() if isinstance(one.get("sha256"), str) else "",
+                            "source": str(one.get("source") or ""), "held": bool(one.get("held")),
+                            "previous": str(one.get("previous") or "")}
+                for path, one in pins.items()
+                if isinstance(one, dict) and (isinstance(one.get("sha256"), str) or one.get("held"))}
 
     def _write(self, pins: dict[str, dict[str, Any]]) -> None:
         self.file.parent.mkdir(parents=True, exist_ok=True)
@@ -102,7 +116,10 @@ class LocalPolicy:
 
     def _update(self, change) -> None:
         with only_one(self.file.with_suffix(".lock"), wait=True, timeout=30.0, announce=logger.debug):
-            pins = self._read() or {}
+            pins = self._read()
+            if pins is None:
+                raise PinFileUnreadable(f"{self.file} cannot be read; it is left as it is so no hold in it is lost. "
+                                        f"Move it aside once you know why.")
             change(pins)
             self._write(pins)
 
@@ -111,13 +128,18 @@ class LocalPolicy:
 
     def pin(self, binary: Path, sha256: str, *, source: str = "build") -> None:
         self._update(lambda pins: pins.__setitem__(str(binary), {"sha256": sha256.lower(), "source": source,
-                                                                 "held": False}))
+                                                                 "held": False, "previous": ""}))
 
     def unpin(self, binary: Path) -> None:
         self._update(lambda pins: pins.pop(str(binary), None))
 
     def scrub_env(self, env: Mapping[str, str]) -> dict[str, str]:
         return dict(env)
+
+    def before_launch(self, argv: list[str]) -> None:
+        """Hash the binary being executed once more, the instant before it is: what passed `problem` is what runs."""
+        if why := self.problem(Path(argv[0])):
+            raise BinaryRefused(why)
 
     def problem(self, binary: Path) -> str:
         if not binary.is_file():
@@ -138,12 +160,16 @@ class LocalPolicy:
         if pin is None:
             self.pin(binary, digest, source="build" if recorded else "first-use")
             if not recorded:
-                logger.warning("%s had no pin and no BUILD.json: pinned on first use", binary)
+                logger.warning("TRUST ON FIRST USE: %s has no pin and no BUILD.json; %s is now what it must always be",
+                               binary, digest)
             return ""
         if pin["sha256"] == digest:
             return ""
         if recorded == digest:   # a rebuilt `current`: the build vouches for its own new bytes
-            self.pin(binary, digest, source="build")
+            logger.warning("RE-PINNED: %s changed from %s to %s and BUILD.json vouches for it; if you did not rebuild it, "
+                           "someone replaced both", binary, pin["sha256"], digest)
+            self._update(lambda held: held.__setitem__(key, {"sha256": digest, "source": "build", "held": False,
+                                                             "previous": pin["sha256"]}))
             return ""
         self._update(lambda held: held.__setitem__(key, {**pin, "held": True}))
         return f"{binary} does not match its pin and is held; `poolhouse-serve llama-cpp rollback` switches to the previous build"

@@ -10,8 +10,9 @@ from pathlib import Path
 
 from poolhouse import home
 from poolhouse.files import read_json, write_json
+from poolhouse.lock import only_one
 
-__all__ = ["bind", "for_url", "issue"]
+__all__ = ["bind", "for_url", "issue", "key_file", "write_key_file"]
 
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 STARTING_S = 600
@@ -53,21 +54,46 @@ def _save(entries: dict[str, dict]) -> None:
     path.chmod(0o600)
 
 
+def _locked():
+    """The file's own lock, so two processes issuing or binding keys never overwrite each other's."""
+    return only_one(_file().with_suffix(".lock"), wait=True, timeout=30.0, announce=lambda _line: None)
+
+
+def key_file(port: int) -> Path:
+    """Where the key of the server on ``port`` is handed to it, for `--api-key-file`: a command line is public to every
+    process of the machine, a file of mode 0600 in a directory of mode 0700 is not."""
+    return home.state("server-keys.d", f"{int(port)}.key")
+
+
+def write_key_file(port: int, key: str) -> Path:
+    """`key_file` of ``port`` holding ``key``, created private."""
+    path = key_file(port)
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path.parent.chmod(0o700)
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        handle.write(key + "\n")
+    path.chmod(0o600)
+    return path
+
+
 def issue(port: int) -> str:
     """A new key for the server about to start on ``port``, recorded for `for_url`."""
     key = secrets.token_hex(32)
-    entries = {p: e for p, e in _entries().items() if _live(e)}
-    entries[str(int(port))] = {"key": key, "pid": 0, "at": time.time()}
-    _save(entries)
+    with _locked():
+        entries = {p: e for p, e in _entries().items() if _live(e)}
+        entries[str(int(port))] = {"key": key, "pid": 0, "at": time.time()}
+        _save(entries)
     return key
 
 
 def bind(port: int, pid: int) -> None:
     """Tie the key issued for ``port`` to the server process ``pid``."""
-    entries = _entries()
-    if str(int(port)) in entries:
-        entries[str(int(port))]["pid"] = int(pid)
-        _save(entries)
+    with _locked():
+        entries = _entries()
+        if str(int(port)) in entries:
+            entries[str(int(port))]["pid"] = int(pid)
+            _save(entries)
 
 
 def for_url(url: str) -> str:

@@ -14,7 +14,7 @@ import sys
 
 import pytest
 
-from poolhouse import core
+from poolhouse import core, serverkeys
 from poolhouse.client.health import is_healthy
 from poolhouse.files import sha256_file
 from poolhouse.serve import admission, binary as binary_module
@@ -161,3 +161,54 @@ def test_the_backend_still_refuses_to_start_a_server_outside_the_grant(current_b
     spec = ServerSpec(model=str(model), port=1)
     with pytest.raises(NoGrant):
         LlamaServerBackend().start(spec, lease=object())
+
+
+def test_the_key_reaches_the_server_in_a_private_file_and_never_on_the_command_line(current_build, model):
+    with core.serve(model, 2048, preflight=False) as server:
+        argv = json.loads((current_build.parent / "argv.json").read_text())
+        assert "--api-key" not in argv and server.api_key not in " ".join(argv)
+        keyfile = serverkeys.key_file(server.port)
+        assert argv[argv.index("--api-key-file") + 1] == str(keyfile)
+        assert keyfile.read_text().strip() == server.api_key
+        assert keyfile.stat().st_mode & 0o777 == 0o600 and keyfile.parent.stat().st_mode & 0o777 == 0o700
+    assert not keyfile.exists()
+
+
+def test_the_binary_is_found_once_per_start(current_build, model, monkeypatch):
+    from poolhouse.serve import strict
+
+    calls = []
+    real = strict.require_binary
+    monkeypatch.setattr(strict, "require_binary", lambda *a, **k: calls.append(1) or real(*a, **k))
+    with core.serve(model, 2048, preflight=False):
+        pass
+    assert len(calls) == 1
+
+
+def test_only_the_process_that_was_started_counts_as_the_one_listening(current_build, model):
+    with core.serve(model, 2048, preflight=False) as server:
+        assert core._owns_listener(server.pid, server.port)
+        assert not core._owns_listener(server.pid, server.port + 1)
+        stranger = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        try:
+            assert not core._owns_listener(stranger.pid, server.port)
+        finally:
+            stranger.kill()
+            stranger.wait(timeout=10)
+        assert not core._owns_listener(None, server.port)
+
+
+def test_a_stranger_answering_on_the_port_is_never_sent_the_key_and_the_server_is_stopped(current_build, model, monkeypatch):
+    monkeypatch.setattr(core, "_owns_listener", lambda pid, port: False)
+    seen = []
+    monkeypatch.setattr(core, "_model_id", lambda *a: seen.append(a) or "x")
+    with pytest.raises(core.ServerFailed, match="no key was sent"):
+        core.serve(model, 2048, preflight=False)
+    assert not seen and recorded_servers() == {}
+
+
+def test_only_a_gguf_file_resolves(tmp_path):
+    other = tmp_path / "notes.txt"
+    other.write_text("x")
+    with pytest.raises(core.ModelNotFound, match=r"not a \.gguf"):
+        core.resolve(other)

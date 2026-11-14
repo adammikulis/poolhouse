@@ -95,5 +95,8 @@ class PoolPolicy:
     def unpin(self, binary: Path) -> None:
         unpin(binary)
 
+    def before_launch(self, argv: list[str]) -> None:
+        """The sentinel judged the binary when it was found; nothing more is asked at the launch."""
+
     def scrub_env(self, env: Mapping[str, str]) -> dict[str, str]:
         return sentinel.default().scrub_env(env)

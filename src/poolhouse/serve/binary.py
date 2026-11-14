@@ -7,6 +7,7 @@ import os
 import platform
 import shutil
 from pathlib import Path
+from typing import Any
 
 from poolhouse import credentials, errors, home
 from poolhouse.credentials import child_environment
@@ -58,7 +59,20 @@ def is_windows() -> bool:
     return platform.system() == "Windows"
 
 
-def find_binary(
+def find_binary(name: str = "llama-server", *, policy: trust.Policy | None = None, strict: bool = False,
+                **how: Any) -> Path | None:
+    """`locate_binary`; with ``strict``, whichever route found the file is judged by ``policy`` (an explicit path,
+    ``$LLAMA_CPP_SERVER``, ``$LLAMA_CPP_DIR``, a named build, a vendor directory, the cache and PATH are as
+    trusted as ``current``) and the route is logged. Without it the policy judges ``current`` alone, as it always has."""
+    found = locate_binary(name, policy=policy, **how)
+    if strict and found is not None:
+        logger.info("llama.cpp binary %s", found)
+        if why := (policy or trust.default()).problem(found):
+            raise BinaryTampered(why)
+    return found
+
+
+def locate_binary(
     name: str = "llama-server",
     *,
     explicit: str | Path | None = None,
