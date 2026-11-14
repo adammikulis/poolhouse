@@ -45,6 +45,22 @@ def test_a_bound_key_is_sent_while_its_process_lives():
     assert serverkeys.for_url("http://127.0.0.1:8123") == key
 
 
+def test_forgetting_a_port_drops_the_key_of_an_ended_server_and_never_that_of_a_live_one():
+    key = serverkeys.issue(8123)
+    serverkeys.write_key_file(8123, key)
+    serverkeys.bind(8123, os.getpid())
+    serverkeys.forget(8123)   # a start that failed beside a live server on the port
+    assert serverkeys.for_url("http://127.0.0.1:8123") == key and serverkeys.key_file(8123).exists()
+    gone = subprocess.Popen(["true"])
+    gone.wait()
+    serverkeys.bind(8123, gone.pid)
+    serverkeys.forget(8123)
+    assert serverkeys.for_url("http://127.0.0.1:8123") == "" and not serverkeys.key_file(8123).exists()
+    serverkeys.issue(8124)   # one that never came up
+    serverkeys.forget(8124)
+    assert serverkeys.for_url("http://127.0.0.1:8124") == ""
+
+
 def test_the_keys_file_is_private():
     serverkeys.issue(8123)
     assert serverkeys._file().stat().st_mode & 0o077 == 0

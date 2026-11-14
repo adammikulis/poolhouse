@@ -91,12 +91,16 @@ def issue(port: int) -> str:
 
 
 def forget(port: int) -> None:
-    """Drop the key of the server on ``port`` and the file it was handed over in: the server has ended."""
+    """Drop the key of the server on ``port`` and the file it was handed over in, once that server has ended or never came up.
+    The key of a live process bound to the port stays: a start that failed because another server holds the port is not the end of it."""
     with _locked():
         entries = _entries()
+        entry = entries.get(str(int(port)))
+        if isinstance(entry, dict) and entry.get("pid") and _alive(entry["pid"]):
+            return
         if entries.pop(str(int(port)), None) is not None:
             _save(entries)
-    key_file(port).unlink(missing_ok=True)
+        key_file(port).unlink(missing_ok=True)
 
 
 def bind(port: int, pid: int) -> None:
