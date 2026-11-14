@@ -8,6 +8,7 @@ under test is admission, the grant, the policy and the handle's lifecycle, not w
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -212,3 +213,17 @@ def test_only_a_gguf_file_resolves(tmp_path):
     other.write_text("x")
     with pytest.raises(core.ModelNotFound, match=r"not a \.gguf"):
         core.resolve(other)
+
+
+def test_a_binary_swapped_after_it_was_found_is_refused_by_the_launch_itself(current_build, tmp_path):
+    from poolhouse.serve import backend
+    from poolhouse.serve.grant import broker_grant
+    from poolhouse.serve.policy import BinaryRefused, LocalPolicy
+
+    local = LocalPolicy()
+    assert local.problem(current_build) == ""
+    current_build.write_bytes(current_build.read_bytes() + b"# swapped after the check")
+    with broker_grant(), pytest.raises(BinaryRefused):
+        backend.launch([str(current_build)], Lease(port=1, owner_pid=os.getpid(), state_file="x"),
+                       log_path=tmp_path / "log", timeout=5.0, env={}, policy=local)
+    assert not (tmp_path / "log").exists()
