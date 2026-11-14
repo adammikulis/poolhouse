@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import os
 import subprocess
+from pathlib import Path
 
 import pytest
 
 from poolhouse import serverkeys
 from poolhouse.http import build_request
 from poolhouse.serve import backend as be
+from poolhouse.serve.grant import broker_grant
+from poolhouse.serve.policy import LocalPolicy
 
 
 def test_a_key_is_found_by_the_url_of_its_port():
@@ -70,7 +73,8 @@ def test_the_command_passes_the_key_to_llama_server(tmp_path):
     binary.chmod(0o755)
     argv = be.LlamaServerBackend(binary=binary).command(
         be.ServerSpec(model="m.gguf", port=8123, api_key="sekrit"))
-    assert argv[argv.index("--api-key") + 1] == "sekrit"
+    assert "--api-key" not in argv and "sekrit" not in " ".join(argv)   # the key goes in a file, not on a command line
+    assert serverkeys.key_file(8123).read_text().strip() == "sekrit"
 
 
 def test_start_issues_a_key_and_hands_it_to_the_server(monkeypatch, tmp_path):
@@ -87,13 +91,14 @@ def test_start_issues_a_key_and_hands_it_to_the_server(monkeypatch, tmp_path):
         raise be.ServerFailed("stop here")
 
     monkeypatch.setattr(be, "launch", launch)
-    with pytest.raises(be.ServerFailed):
-        be.LlamaServerBackend(binary=binary, sandboxed=False).start(
-            be.ServerSpec(model=weights, port=8123), lease=None,
+    with broker_grant(), pytest.raises(be.ServerFailed):
+        be.LlamaServerBackend(binary=binary, sandboxed=False, policy=LocalPolicy()).start(
+            be.ServerSpec(model=weights, port=8123), lease=be.Lease(port=8123, owner_pid=os.getpid(), state_file="x"),
             check_flags=False, preflight=False)
     argv = seen[0]
-    key = argv[argv.index("--api-key") + 1]
-    assert key and serverkeys.for_url("http://127.0.0.1:8123") == key
+    keyfile = Path(argv[argv.index("--api-key-file") + 1])
+    key = keyfile.read_text().strip()
+    assert key and "--api-key" not in argv and serverkeys.for_url("http://127.0.0.1:8123") == key
 
 
 def test_claude_and_codex_run_with_the_servers_key(tmp_path):

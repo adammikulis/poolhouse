@@ -39,7 +39,6 @@ from poolhouse.serve.backend import (
     ServerFailed,
     ServerInfo,
     ServerSpec,
-    default_slot_save_path,
 )
 from poolhouse.serve.binary import BinaryNotFound
 from poolhouse.serve.fitted import fitted
@@ -49,6 +48,7 @@ from poolhouse.serve.mlx_tree import report_for
 from poolhouse.serve.mlxref import is_mlx
 from poolhouse.serve.ports import DEFAULT_HOST, server_pids_on_port
 from poolhouse.serve.process import every_server, machine_memory, pid_exists
+from poolhouse.serve.slotdump import default_slot_save_path
 from poolhouse.units import human_bytes, parse_duration
 
 __all__ = ["FIT_HEAD", "PLIST", "PROBE_TIMEOUT", "Drafting", "Limits",

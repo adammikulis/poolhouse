@@ -12,7 +12,7 @@ from poolhouse import home
 from poolhouse.files import read_json, write_json
 from poolhouse.lock import only_one
 
-__all__ = ["bind", "for_url", "issue", "key_file", "write_key_file"]
+__all__ = ["bind", "for_url", "forget", "issue", "key_file", "write_key_file"]
 
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 STARTING_S = 600
@@ -81,10 +81,22 @@ def issue(port: int) -> str:
     """A new key for the server about to start on ``port``, recorded for `for_url`."""
     key = secrets.token_hex(32)
     with _locked():
-        entries = {p: e for p, e in _entries().items() if _live(e)}
+        found = _entries()
+        entries = {p: e for p, e in found.items() if _live(e)}
+        for gone in (p for p in set(found) - set(entries) if p.isdigit()):   # servers that ended without being stopped by us
+            key_file(int(gone)).unlink(missing_ok=True)
         entries[str(int(port))] = {"key": key, "pid": 0, "at": time.time()}
         _save(entries)
     return key
+
+
+def forget(port: int) -> None:
+    """Drop the key of the server on ``port`` and the file it was handed over in: the server has ended."""
+    with _locked():
+        entries = _entries()
+        if entries.pop(str(int(port)), None) is not None:
+            _save(entries)
+    key_file(port).unlink(missing_ok=True)
 
 
 def bind(port: int, pid: int) -> None:

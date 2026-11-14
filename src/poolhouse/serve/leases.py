@@ -18,13 +18,14 @@ def lease_file() -> Path:
     return home.moved("servers.json")
 
 
-def merge_state(on_disk: dict, mine: dict, owner_pid: int) -> dict:
-    """This process's servers, merged over every other record whose owner or server is alive."""
+def merge_state(on_disk: dict, mine: dict, owner_pid: int, *, holder: str = "") -> dict:
+    """The servers of one holder in this process (the manager's, or the core's), merged over every other record whose owner
+    or server is alive. Two holders in one process keep each other's records."""
     merged = {
         key: entry
         for key, entry in on_disk.items()
         if isinstance(entry, dict)
-        and entry.get("owner_pid") != owner_pid
+        and (entry.get("owner_pid") != owner_pid or str(entry.get("holder") or "") != holder)
         and (pid_exists(entry.get("owner_pid")) or pid_exists(entry.get("pid")))
     }
     merged.update(mine)

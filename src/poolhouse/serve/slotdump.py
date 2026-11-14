@@ -15,11 +15,16 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from poolhouse import home
 from poolhouse.http import Options, ServerError, request_json
-from poolhouse.serve.backend import default_slot_save_path
 
 __all__ = ["GUARD_FIELDS", "SlotDump", "SlotGuardRefused", "current_guard", "dump_name",
            "guard_path", "restore_all", "restore_slot", "save_all", "save_slot"]
+
+def default_slot_save_path() -> Path:
+    """Where a slot's KV cache is saved when a lease escalates slots without naming one."""
+    return home.cache("slots")
+
 
 GUARD_FIELDS = ("model", "model_bytes", "ctx_size", "parallel", "llama_server_version")
 

@@ -12,6 +12,7 @@ import re
 import subprocess
 import time
 from abc import ABC, abstractmethod
+from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -24,9 +25,10 @@ from poolhouse.serve.binary import child_env, require_binary
 from poolhouse.serve.downloads import LLAMA_FLAGS, clean_env, unlisted_flag
 from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
 from poolhouse.serve.leases import recorded_servers
-from poolhouse.serve.logs import prune
+from poolhouse.serve.logs import prune, tail
 from poolhouse.serve.policy import Policy, default as default_policy
 from poolhouse.serve.ports import DEFAULT_HOST, port_is_free, reclaim_port
+from poolhouse.serve.process import listens_on
 
 logger = logging.getLogger(__name__)
 
@@ -55,11 +57,6 @@ def server_log(name: str, port: int) -> Path:
         old.unlink(missing_ok=True)
     prune(logs, [Path(str(one["log"])) for one in recorded_servers().values() if one.get("log")])
     return logs / f"{name}-{port}-{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}.log"
-
-
-def default_slot_save_path() -> Path:
-    """Where a slot's KV cache is saved when a lease escalates slots without naming one."""
-    return home.cache("slots")
 
 
 class ServerFailed(RuntimeError, errors.Error):
@@ -500,18 +497,26 @@ def launch(  # noqa: PLR0913 - the independent facts of one spawn; a bundle type
     if lease.stop_on_exit:
         exit_guard.protect(process.pid)
     base_url = f"http://{DEFAULT_HOST}:{lease.port}"
-    healthy = False
+    healthy = foreign = False
     try:
         healthy = wait_for_health(base_url, timeout=timeout, is_alive=lambda: process.poll() is None)
+        foreign = healthy and not listens_on(process.pid, lease.port)   # before any key goes to whatever answers
+        healthy = healthy and not foreign
     finally:    # a timer, an interrupt or an error while it loads hands the server to no one, so it ends here too
         code = process.poll()
         if not healthy:
             end_child(process, grace_s=5.0)
             exit_guard.release(process.pid)
+    if foreign:
+        raise ServerFailed(f"port {lease.port} is answered by a process that is not the server started for it; it was "
+                           f"stopped and no key was sent to it")
     if not healthy:
         how = f" (exited {code})" if code is not None else f" within {timeout:.0f}s"
         raise ServerFailed(f"{Path(argv[0]).name} did not become healthy on {base_url}{how}\n--- {log_path} ---\n{tail(log_path)}")
     return process, base_url, time.monotonic() - started_at
+
+
+_PINNED: ContextVar[tuple[Any, Path] | None] = ContextVar("poolhouse_pinned_binary", default=None)
 
 
 class LlamaServerBackend(ServerBackend):
@@ -544,8 +549,12 @@ class LlamaServerBackend(ServerBackend):
 
     @property
     def binary(self) -> Path:
-        return require_binary("llama-server", explicit=self._explicit,
-                              vendor_dir=self._vendor_dir, build=self._build, policy=self.policy)
+        """The binary of this start (found once, so the flag check, preflight, environment and argv name one file), judged by the policy."""
+        held = _PINNED.get()
+        if held and held[0] is self:
+            return held[1]
+        return require_binary("llama-server", explicit=self._explicit, vendor_dir=self._vendor_dir, build=self._build,
+                              policy=self.policy, strict=True)
 
     def environment(self, extra=None) -> dict[str, str]:
         return child_env(self.binary, extra)
@@ -568,8 +577,8 @@ class LlamaServerBackend(ServerBackend):
     def command(self, spec: ServerSpec) -> list[str]:
         """Build the argv."""
         argv = [str(self.binary), "--host", DEFAULT_HOST, "--port", str(spec.port)]
-        if spec.api_key:
-            argv += ["--api-key", spec.api_key]
+        if spec.api_key:   # a file of mode 0600, never the command line every process of the machine can read
+            argv += ["--api-key-file", str(serverkeys.write_key_file(spec.port, spec.api_key))]
         argv += self._model_source_argv(spec)
         argv += self._companion_argv(spec)
         argv += self._speculative_argv(spec)
@@ -761,8 +770,12 @@ class LlamaServerBackend(ServerBackend):
     def start(self, spec: ServerSpec, *, lease: Lease, timeout: float = 300.0,
               **starting: bool) -> ServerInfo:
         grant.require(lease, Lease)
-        with self.preparing(spec, lease):
-            return self._start_native(spec, lease=lease, timeout=timeout, **starting)
+        token = _PINNED.set((self, self.binary))   # per start and per thread
+        try:
+            with self.preparing(spec, lease):
+                return self._start_native(spec, lease=lease, timeout=timeout, **starting)
+        finally:
+            _PINNED.reset(token)
 
     def _start_native(self, spec: ServerSpec, *, lease: Lease, timeout: float = 300.0,
               **starting: bool) -> ServerInfo:
@@ -802,8 +815,7 @@ class LlamaServerBackend(ServerBackend):
             # directory" is its whole complaint.
             Path(spec.slot_save_path).mkdir(parents=True, exist_ok=True)
         log_path = server_log("llama-server", spec.port)
-        logger.info("starting: %s", " ".join("***" if prev == "--api-key" else a
-                                             for prev, a in zip(["", *argv], argv, strict=False)))
+        logger.info("starting: %s", " ".join(argv))
 
         extra_env = {}
         if spec.slot_save_path:
@@ -849,11 +861,8 @@ class LlamaServerBackend(ServerBackend):
         )
 
     def _warm_up(self, base_url: str, *, timeout: float) -> float | None:
-        """One short completion through the real client, not curl -- shader compilation
-        and the first KV allocation happen on some request; better this one than the first
-        measured question. A warm-up that fails is logged and otherwise ignored: a server
-        that answered health is a server, and what it does with a real prompt is somebody
-        else's check to make."""
+        """One short completion through the real client, so shader compilation and the first KV allocation do not fall on the
+        first real question. One that fails is logged and ignored: a server that answered health is a server."""
         from poolhouse.client import Client, Request, Transport
 
         started = time.monotonic()
@@ -889,12 +898,3 @@ def fetched(ref: str | Path, what: str) -> str | Path:
         return str(fetch(str(ref), trust=PERSON) if parts[1] else pull(str(ref), trust=PERSON))
     except (ValueError, OSError, RuntimeError) as exc:
         raise ServerFailed(f"could not fetch the {what} {ref}: {exc}") from exc
-
-
-def tail(path: Path, lines: int = 40) -> str:
-    """The last ``lines`` of a log file, for an error message."""
-    try:
-        content = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        return f"(no log at {path})"
-    return "\n".join(content[-lines:])

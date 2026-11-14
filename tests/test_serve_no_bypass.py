@@ -113,7 +113,7 @@ def test_a_backend_is_only_started_by_the_manager():
     found = {name for name, tree in parsed().items()
              for c in calls(tree)
              if called_name(c) == "start" and any(k.arg == "lease" for k in c.keywords)}
-    assert found == {"serve/manager.py", CORE, "serve/strict.py"}, where(found)   # strict.py passes the core's lease down to its parent class
+    assert found == {"serve/manager.py", CORE}, where(found)
 
 
 def test_the_proof_a_backend_needs_is_only_made_by_the_manager():
@@ -231,10 +231,26 @@ def test_every_public_entry_of_the_manager_reaches_the_broker(tmp_path):
 def test_a_manager_that_keeps_the_machines_records_uses_the_machines_broker(tmp_path, monkeypatch):
     monkeypatch.delenv(broker_wire.LOCAL_ENV)
     assert isinstance(ServerManager().broker, broker_wire.RemoteBroker)
-    assert isinstance(ServerManager(LlamaServerBackend(binary="llama-server")).broker,
-                      broker_wire.RemoteBroker)
+    assert isinstance(ServerManager(LlamaServerBackend(build="mine")).broker, broker_wire.RemoteBroker)
+    # a file to execute is never named to the machine's broker: a backend that names one is run in this process
+    assert isinstance(ServerManager(LlamaServerBackend(binary="llama-server")).broker, Broker)
+    assert isinstance(ServerManager(LlamaServerBackend(vendor_dir=tmp_path)).broker, Broker)
     own = ServerManager(FakeBackend(), state_file=tmp_path / "servers.json")
     assert isinstance(own.broker, Broker)
+
+
+@pytest.mark.parametrize("backend", [{"binary": "/opt/anything"}, {"vendor_dir": "/opt"}, {"policy": "none"},
+                                     {"sandboxed": False}, {"build": "../../opt/x"}, {"build": 3}])
+def test_a_caller_of_the_machines_broker_cannot_name_a_file_to_execute_or_switch_the_sandbox_off(backend):
+    with pytest.raises(ValueError):
+        broker_wire.named_backend(backend)
+    with pytest.raises(ValueError):
+        broker_wire.wire_options({"backend": backend})
+
+
+def test_a_named_build_and_a_sandbox_asked_for_pass_the_wire():
+    assert broker_wire.named_backend({"build": "fork-1.2", "quiet": True, "sandboxed": True}) == {
+        "build": "fork-1.2", "quiet": True, "sandboxed": True}
 
 
 def test_no_flag_to_lease_skips_the_broker(tmp_path):

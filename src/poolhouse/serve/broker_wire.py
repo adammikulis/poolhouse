@@ -13,6 +13,7 @@ import dataclasses
 import json
 import math
 import os
+import re
 import secrets
 import select
 import socket
@@ -135,8 +136,7 @@ class _Server(socketserver.ThreadingTCPServer):
         if body.get("token") != self.token:
             return {"ok": False, "error": "wrong broker token"}
         op, pid = body.get("op"), int(body.get("pid") or 0)
-        if isinstance(body.get("options"), dict):
-            body["options"].pop("iq", None)
+        wire_options(body.get("options"))
         if op == "ping":
             return {"ok": True, "pid": os.getpid(), "runtime": self.runtime}
         if op == "idle-retire":
@@ -249,6 +249,35 @@ def spec_from(body: dict[str, Any]) -> ServerSpec:
     return ServerSpec(**{k: tuple(v) if isinstance(v, list) else v for k, v in body.items()})
 
 
+WIRE_BACKEND = {"build", "quiet", "sandboxed"}
+"""What a caller of the machine's broker may say of the backend that starts its server: which named build (judged like
+every other route to a binary), and whether it is quiet or sandboxed. Never which file to execute."""
+
+
+def named_backend(wanted: dict[str, Any]) -> dict[str, Any]:
+    """``wanted`` as the broker will build a backend from it; a path to a binary or a vendor directory, an option this
+    broker has not got, or a sandbox switched off, is refused, so that the wire is no way round the policy that judges the
+    binary."""
+    unknown = sorted(set(wanted) - WIRE_BACKEND)
+    if unknown:
+        raise ValueError(f"the broker starts servers with its own binary: {', '.join(unknown)} may not be named over its socket")
+    if wanted.get("sandboxed") is False:
+        raise ValueError("a caller of the broker may not switch the sandbox of its server off")
+    build = wanted.get("build")
+    if build is not None and not (isinstance(build, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", build)):
+        raise ValueError("a build is named by a plain name, never a path")
+    return dict(wanted)
+
+
+def wire_options(options: Any) -> None:
+    """``options`` as a caller of the machine's broker may give them: the quantisation mode is the broker's own, and the
+    backend is named, never a path (`named_backend`)."""
+    if isinstance(options, dict):
+        options.pop("iq", None)
+        if isinstance(options.get("backend"), dict):
+            options["backend"] = named_backend(options["backend"])
+
+
 class RemoteBroker:
     """The machine's broker, reached over its socket, for a `ServerManager` to start
     servers through."""
@@ -307,10 +336,12 @@ class RemoteBroker:
 def broker_for(manager: Any) -> Any:
     """The broker ``manager`` starts servers through: the machine's, over its socket, when
     the manager keeps the machine's records and starts llama.cpp the ordinary way; else one
-    that runs in this process over the manager's own records."""
+    that runs in this process over the manager's own records (also when the backend names a binary or a vendor
+    directory, which the machine's broker is never told)."""
     backend = manager.backend
     if (os.environ.get(LOCAL_ENV) != "1" and type(backend) is LlamaServerBackend
-            and Path(manager.state_file) == lease_file()):
+            and Path(manager.state_file) == lease_file() and set(backend.options()) <= WIRE_BACKEND
+            and backend.options().get("sandboxed") is not False):
         return RemoteBroker(backend)
     return Broker(manager)
 

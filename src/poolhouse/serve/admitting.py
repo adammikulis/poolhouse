@@ -22,9 +22,8 @@ from typing import TYPE_CHECKING
 from poolhouse import leasetable
 from poolhouse.client import is_healthy, reported_models
 from poolhouse.client.health import serving_params
-from poolhouse.lock import only_one
 from poolhouse.node_health import Refused
-from poolhouse.serve import admission, node_memory, unmanaged
+from poolhouse.serve import admission, ledger, node_memory, unmanaged
 from poolhouse.serve.backend import Lease, ServerBackend, ServerInfo, ServerSpec
 from poolhouse.serve.events import Event, emit
 from poolhouse.serve.leases import merge_state, orphaned, recorded_servers
@@ -32,11 +31,10 @@ from poolhouse.serve.matching import model_matches, serving_mismatch
 from poolhouse.serve.ports import DEFAULT_HOST
 from poolhouse.serve.process import kill_process_tree
 
-__all__ = ["STATE_LOCK_TIMEOUT_S", "Admitting"]
+__all__ = ["Admitting"]
 
 logger = logging.getLogger(__name__)
 
-STATE_LOCK_TIMEOUT_S = 30.0
 POLL_S = 0.25
 
 
@@ -59,40 +57,51 @@ class Admitting:
 
     def _admitted(self, spec: ServerSpec, *, on_event: Event | None = None,
                   reuse: bool = False, load_s: float = 0.0) -> Lease | ServerInfo:
-        """The record for a server about to start, written once the node has given it the memory and the slot; or, with ``reuse``,
-        the running server that already serves ``spec``.
+        """The record for a server about to start, written once the machine's ledger and the node have given it the memory and the
+        slot; or, with ``reuse``, the running server that already serves ``spec``.
 
-        Waits while a server that would serve ``spec`` is still loading (up to ``load_s``) and while the node holds the memory
-        for the servers up; raises `AdmissionRefused` when it could never fit or no room comes free in `admission.wait_s()`.
+        The ledger (`poolhouse.serve.ledger`, the records every process writes: the core's servers among them) is asked first and
+        its reservation written in the same step as the look, so a core server starting at the same moment sees this one. The
+        node is asked next, for its queue and the memory it leases to work that is not a server. Waits while a server that would
+        serve ``spec`` is still loading (up to ``load_s``) and while either holds the memory for the servers up; raises
+        `AdmissionRefused` when it could never fit or no room comes free in `admission.wait_s()`.
         """
         told = self.say or logger.info
         began = time.monotonic()
         memory_until = began + admission.wait_s()
         wanted = admission.estimate_bytes(spec)
+        need = -(-wanted // admission.MIB)
+        ledger.never_fits(spec.model, need)
         asked: dict | None = None
-        handed = False
+        reserved = handed = False
         waiting = last = ""
         try:
             while True:
-                with only_one(self.state_file.with_name("servers.start.lock"), wait=True,
-                              timeout=STATE_LOCK_TIMEOUT_S, announce=logger.debug):
+                with ledger.reserving(self.state_file):
                     records = recorded_servers(self.state_file)
                     found, loading = (self._compatible(spec, records, on_event) if reuse
                                       else (None, False))
                     if found is not None:
                         return found
                     if not loading or time.monotonic() - began >= load_s:
-                        asked = asked or node_memory.ask(self.table, spec, wanted, pid=os.getpid(),
-                                                       ttl_s=int(load_s) + admission.KEEP_S)
-                        if asked["state"] == "held":
-                            handed = True
-                            return self._pending(spec, lease=asked["id"], est_mb=-(-wanted // admission.MIB))
+                        room, said = ledger.fits(records, need, besides=spec.port)
+                        if not reserved and room:
+                            self._pending(spec, lease="", est_mb=need)
+                            reserved = True
+                        if reserved:
+                            asked = asked or node_memory.ask(self.table, spec, wanted, pid=os.getpid(),
+                                                           ttl_s=int(load_s) + admission.KEEP_S)
+                            if asked["state"] == "held":
+                                handed = True
+                                return self._pending(spec, lease=asked["id"], est_mb=need)
+                            waiting = f"waiting for memory -- {node_memory.said(self.table, wanted)}"
+                        else:
+                            waiting = f"waiting for memory -- {said}"
                         self._stop_leaked(records, told)
-                        waiting = f"waiting for memory -- {node_memory.said(self.table, wanted)}"
                         if time.monotonic() >= memory_until:
                             raise admission.AdmissionRefused(
-                                f"port {spec.port}: {node_memory.said(self.table, wanted)}; no memory came free in "
-                                f"{admission.wait_s():.0f}s ({admission.ENV_WAIT} sets the wait)")
+                                f"port {spec.port}: {node_memory.said(self.table, wanted) if reserved else said}; no memory came "
+                                f"free in {admission.wait_s():.0f}s ({admission.ENV_WAIT} sets the wait)")
                     else:
                         waiting = "waiting for a server that serves it to finish loading"
                 if waiting != last:
@@ -100,9 +109,13 @@ class Admitting:
                     last = waiting
                 asked = self._polled(asked)
         finally:
-            if asked is not None and not handed:
-                with contextlib.suppress(OSError, Refused):
-                    self.table.release(asked["id"])
+            if not handed:
+                if asked is not None:
+                    with contextlib.suppress(OSError, Refused):
+                        self.table.release(asked["id"])
+                if reserved:
+                    self._mine.pop(str(spec.port), None)
+                    self._save()
 
     def _polled(self, asked: dict | None) -> dict | None:
         """The request for memory after a short wait on it, or after a short sleep when there is none; None when the node dropped it."""

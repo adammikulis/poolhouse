@@ -49,3 +49,12 @@ def prune(directory: Path, keep: Collection[Path] = ()) -> list[Path]:
         total -= size
         gone.append(old)
     return gone
+
+
+def tail(path: Path, lines: int = 40) -> str:
+    """The last ``lines`` of a log file, for an error message."""
+    try:
+        content = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return f"(no log at {path})"
+    return "\n".join(content[-lines:])

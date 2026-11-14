@@ -6,10 +6,9 @@
         server.base_url, server.model_id, server.api_key
 
 No session, token, board, workspace, approval or app is imported or asked for (`tests/test_core.py` reads
-``sys.modules`` after importing this module). What keeps a shared machine safe stays: the binary must hash to its
-``BUILD.json`` and its pin (`LocalPolicy`); a server starts only inside the grant, opened in `_start` alone; memory is
-admitted under a file lock against the servers every process records in the machine's server file; the server keeps
-its API key, listens on loopback and ends with this process. The broker, node and sentinel are the pool's.
+``sys.modules`` after importing this module). The binary must hash to its ``BUILD.json`` and its pin (`LocalPolicy`); a server
+starts only inside the grant, opened in `_start` alone; memory is admitted against the machine's ledger
+(`poolhouse.serve.ledger`); the pool's broker starts and stops its servers through the same backend and `stop_server`.
 """
 
 from __future__ import annotations
@@ -22,34 +21,29 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-import psutil
-
 from poolhouse import errors, lazy, serverkeys
 from poolhouse.client.health import reported_models
-from poolhouse.files import read_json, write_json
 from poolhouse.hub import local, room
-from poolhouse.lock import only_one
-from poolhouse.serve import admission, exit_guard, grant
-from poolhouse.serve.backend import Lease, ServerFailed, ServerInfo, ServerSpec
+from poolhouse.serve import admission, exit_guard, grant, ledger
+from poolhouse.serve.backend import Lease, LlamaServerBackend, ServerFailed, ServerInfo, ServerSpec
 from poolhouse.serve.binary import require_binary
-from poolhouse.serve.children import Children
-from poolhouse.serve.leases import lease_file, merge_state, recorded_servers
+from poolhouse.serve.children import Children, Exit
+from poolhouse.serve.leases import lease_file
 from poolhouse.serve.policy import LocalPolicy, Policy
 from poolhouse.serve.ports import DEFAULT_HOST, free_port, port_is_free
 from poolhouse.serve.preflight import Preflight, Report
-from poolhouse.serve.process import cmdline_digest, started_at
-from poolhouse.serve.strict import StrictBackend
 from poolhouse.serve.weights import scaled_timeout, weight_of
 
-__all__ = ["AdmissionRefused", "Handle", "ModelNotFound", "fit", "resolve", "serve", "stop_all"]
+__all__ = ["AdmissionRefused", "Handle", "ModelNotFound", "fit", "resolve", "serve", "stop_all", "stop_server"]
 
 logger = logging.getLogger(__name__)
 
 AdmissionRefused = admission.AdmissionRefused
 """The servers up, and this one, would not fit in the memory this machine allows."""
 
-STATE_LOCK_S = 30.0
 POLL_S = 0.5
+HOLDER = "core"
+"""What the core's records say of themselves, so a pool broker in the same process leaves them alone."""
 
 _LOCK = threading.RLock()
 _MINE: dict[str, dict[str, Any]] = {}
@@ -117,11 +111,9 @@ class Handle:
                 return
             self.closed = True
             _HANDLES.pop(self.port, None)
-            _CHILDREN.end(self.port, self.pid, proc=self.info.process)
-            exit_guard.release(self.pid)
+            stop_server(_CHILDREN, self.port, self.pid, proc=self.info.process)
             _MINE.pop(str(self.port), None)
             _save()
-            serverkeys.key_file(self.port).unlink(missing_ok=True)
 
     def __enter__(self) -> Handle:
         return self
@@ -148,7 +140,7 @@ def serve(  # noqa: PLR0913 - what to serve, where, under which trust, and how t
     admitted = _reserved(made, wanted)
     info = None
     try:
-        info = _start(StrictBackend(policy=policy), admitted, preflight=preflight,
+        info = _start(LlamaServerBackend(policy=policy), admitted, preflight=preflight,
                       timeout=timeout if timeout is not None else scaled_timeout(weight_of(admitted.model)))
     finally:
         if info is None:
@@ -160,9 +152,6 @@ def serve(  # noqa: PLR0913 - what to serve, where, under which trust, and how t
         _record(made, info, -(-wanted // admission.MIB))
     ready = False
     try:
-        if not _owns_listener(info.pid, info.port):   # before the key is sent to whatever answers on the port
-            raise ServerFailed(f"port {info.port} is answered by a process that is not the server started for it "
-                               f"(pid {info.pid}); it was stopped and no key was sent to it")
         handle.model_id = _model_id(info.base_url, made)
         ready = True
     finally:
@@ -180,7 +169,17 @@ def stop_all() -> list[int]:
     return pids
 
 
-def _start(backend: StrictBackend, spec: ServerSpec, *, preflight: bool, timeout: float) -> ServerInfo:
+def stop_server(children: Children, port: int, pid: int | None, *, proc: Any = None, grace_s: float = 5.0) -> list[Exit]:
+    """End the server on ``port`` and everything of it that is left: its process tree (waited on when ``proc`` is ours), its
+    exit guard and its API key with the file it was handed in. The one way a server of this machine is stopped, the pool's
+    broker's included."""
+    ended = children.end(port, pid, proc=proc, grace_s=grace_s)
+    exit_guard.release(pid)
+    serverkeys.forget(port)
+    return ended
+
+
+def _start(backend: LlamaServerBackend, spec: ServerSpec, *, preflight: bool, timeout: float) -> ServerInfo:
     """The one place this module opens the grant: after admission has written the record the start is on.
 
     No warm-up request is sent: it would queue on the pool's node, which a core caller has not got, and what it
@@ -188,19 +187,6 @@ def _start(backend: StrictBackend, spec: ServerSpec, *, preflight: bool, timeout
     with grant.broker_grant():
         lease = Lease(port=spec.port, owner_pid=os.getpid(), state_file=str(lease_file()), stop_on_exit=True)
         return backend.start(spec, lease=lease, timeout=timeout, preflight=preflight, warmup_request=False)
-
-
-def _owns_listener(pid: int | None, port: int) -> bool:
-    """Whether the process started (or one of its children, for a sandbox wrapper) is alive and listens on ``port``."""
-    if not pid:
-        return False
-    try:
-        parent = psutil.Process(pid)
-        found = [parent, *parent.children(recursive=True)]
-        return any(c.status == psutil.CONN_LISTEN and c.laddr and c.laddr.port == port
-                   for one in found for c in one.net_connections(kind="inet"))
-    except (psutil.Error, TypeError):
-        return False
 
 
 def _model_id(base_url: str, spec: ServerSpec) -> str:
@@ -214,23 +200,19 @@ def _model_id(base_url: str, spec: ServerSpec) -> str:
 def _reserved(spec: ServerSpec, wanted: int) -> ServerSpec:
     """The spec with its port, once its memory is admitted and a pending record names it.
 
-    The look at the machine's server file and the write of the pending record are one step under the lock
-    `ServerManager` takes for the same two, so a pool broker and any number of cores see each other's records.
-    A start that must wait for memory waits outside the lock, and is refused at once when it could never fit.
+    The look at the machine's ledger and the write of the pending record are one step under the lock the pool's
+    broker takes for the same two, so a pool broker and any number of cores see each other's records. A start that
+    must wait for memory waits outside the lock, and is refused at once when it could never fit.
     """
     state = lease_file()
-    lock = state.with_name("servers.start.lock")
-    budget = admission.budget_mb()
     need = -(-wanted // admission.MIB)
-    if budget and need > budget:
-        raise AdmissionRefused(f"{Path(str(spec.model)).name} needs {need / 1024:.1f} GiB, more than the "
-                               f"{budget / 1024:.1f} GiB this machine allows a model")
+    ledger.never_fits(spec.model, need)
     until = time.monotonic() + admission.wait_s()
     while True:
-        with only_one(lock, wait=True, timeout=STATE_LOCK_S, announce=logger.debug):
-            records = {p: e for p, e in recorded_servers(state).items() if admission.live(e)}
-            taken = sum(admission.entry_mb(e) for e in records.values())
-            if not budget or taken + need <= budget:
+        with ledger.reserving(state):
+            records = ledger.recorded(state)
+            room_left, said = ledger.fits(records, need)
+            if room_left:
                 port = spec.port or _free(records)
                 if port in records:
                     raise ServerFailed(f"port {port} is recorded as another server's")
@@ -238,9 +220,8 @@ def _reserved(spec: ServerSpec, wanted: int) -> ServerSpec:
                     raise ServerFailed(f"port {port} is held by a process that is not one of ours; refusing to use it")
                 _pend(replace(spec, port=port), need)
                 break
-            said = f"{taken / 1024:.1f} GiB already taken of {budget / 1024:.1f} GiB"
             if time.monotonic() >= until:
-                raise AdmissionRefused(f"{Path(str(spec.model)).name} needs {need / 1024:.1f} GiB beside {said}; no "
+                raise AdmissionRefused(f"{Path(str(spec.model)).name}: {said}; no "
                                        f"memory came free in {admission.wait_s():.0f}s ({admission.ENV_WAIT} sets the wait)")
         time.sleep(POLL_S)
     return replace(spec, port=port)
@@ -256,35 +237,25 @@ def _free(records: dict[int, dict]) -> int:
 
 def _pend(spec: ServerSpec, need_mb: int) -> None:
     with _LOCK:
-        _MINE[str(spec.port)] = {
-            "port": spec.port, "pid": None, "backend": "llama.cpp", "model": str(spec.model),
-            "owner_pid": os.getpid(), "pending": True, "device": admission.device_of(spec), "lease": "",
-            "est_mb": need_mb, "embedding": bool(spec.embedding), "mmproj": bool(spec.mmproj),
-            "context": int(spec.context), "parallel": int(spec.parallel or 1),
-        }
+        _MINE[str(spec.port)] = ledger.entry(spec, backend=LlamaServerBackend.name, lease="", est_mb=need_mb, holder=HOLDER)
     _save()
 
 
 def _record(spec: ServerSpec, info: ServerInfo, need_mb: int) -> None:
     pending = _MINE.get(str(info.port)) or {}
-    _MINE[str(info.port)] = {
-        **pending, "pid": info.pid, "pending": False, "owner_pid": os.getpid(), "base_url": info.base_url,
-        "model": str(spec.model), "est_mb": pending.get("est_mb") or need_mb, "load_s": info.load_s,
-        "started": started_at(info.pid), "cmdline": cmdline_digest(info.pid),
-        **({"log": str(info.log_path)} if info.log_path else {}),
-    }
+    _MINE[str(info.port)] = ledger.entry(spec, backend=LlamaServerBackend.name, lease="",
+                                         est_mb=pending.get("est_mb") or need_mb, info=info, holder=HOLDER)
     _save()
 
 
 def _forget(port: int) -> None:
     with _LOCK:
         _MINE.pop(str(port), None)
+    serverkeys.forget(port)
     _save()
 
 
 def _save() -> None:
-    """Write this process's records over the live records of every other owner, under the file's own lock."""
-    state = lease_file()
-    with _LOCK, only_one(state.with_suffix(".lock"), wait=True, timeout=STATE_LOCK_S, announce=logger.debug):
-        on_disk = read_json(state, {})
-        write_json(state, merge_state(on_disk if isinstance(on_disk, dict) else {}, _MINE, os.getpid()))
+    """Write this process's core records over the live records of every other owner, under the file's own lock."""
+    with _LOCK:
+        ledger.save(lease_file(), _MINE, holder=HOLDER)

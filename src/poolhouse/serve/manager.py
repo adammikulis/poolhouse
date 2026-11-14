@@ -16,7 +16,7 @@ from typing import Any
 
 import psutil
 
-from poolhouse import leasetable
+from poolhouse import core, leasetable, serverkeys
 from poolhouse.client import is_healthy, reported_models
 from poolhouse.client.chat import forget_server
 from poolhouse.client.health import serving_params
@@ -29,13 +29,14 @@ from poolhouse.serve import (
     exit_guard,
     guarded,
     kvcache,
+    ledger,
     llamacpp_provider,
     mtp,
     provenance,
     quant_guard,
     unmanaged,
 )
-from poolhouse.serve.admitting import STATE_LOCK_TIMEOUT_S, Admitting
+from poolhouse.serve.admitting import Admitting
 from poolhouse.serve.backend import (
     Lease,
     LlamaServerBackend,
@@ -44,7 +45,6 @@ from poolhouse.serve.backend import (
     ServerInfo,
     ServerSpec,
     UnknownFlag,
-    default_slot_save_path,
 )
 from poolhouse.serve.binary import BinaryNotFound
 from poolhouse.serve.children import Children, Exit
@@ -70,14 +70,13 @@ from poolhouse.serve.mlx_tree import MlxTreeBackend
 from poolhouse.serve.mlxref import is_mlx
 from poolhouse.serve.ports import DEFAULT_HOST, free_port, port_is_free, reclaim_port
 from poolhouse.serve.process import (
-    cmdline_digest,
     kill_process_tree,
     measuring,
     pid_exists,
     self_or_ancestor,
-    started_at,
 )
 from poolhouse.serve.python_engines import ENGINES
+from poolhouse.serve.slotdump import default_slot_save_path
 from poolhouse.serve.weights import scaled_timeout, weight_of
 
 logger = logging.getLogger(__name__)
@@ -594,8 +593,7 @@ class ServerManager(Admitting):
 
         pid = self._recorded_pid(spec.port)
         emit(on_event, "stopping", port=spec.port, pid=pid)
-        self.children.end(spec.port, pid)
-        exit_guard.release(pid)
+        core.stop_server(self.children, spec.port, pid)
         self._forget(spec.port)
 
         # kv_unified keeps the cache's stream count at 1 across the relaunch; any other
@@ -632,8 +630,7 @@ class ServerManager(Admitting):
         if info.adopted:
             logger.debug("not stopping %s: we adopted it", info.base_url)
             return
-        self.children.end(info.port, info.pid, proc=info.process, grace_s=grace_s)
-        exit_guard.release(info.pid)
+        core.stop_server(self.children, info.port, info.pid, proc=info.process, grace_s=grace_s)
         self._forget(info.port)
 
     def detach(self, info: ServerInfo) -> None:
@@ -663,9 +660,8 @@ class ServerManager(Admitting):
         for entry in list(self._mine.values()):
             pid = entry.get("pid")
             if isinstance(pid, int) and pid_exists(pid):
-                stopped += [one.pid for one in self.children.end(int(entry.get("port") or 0), pid,
+                stopped += [one.pid for one in core.stop_server(self.children, int(entry.get("port") or 0), pid,
                                                                  grace_s=grace_s)]
-            exit_guard.release(pid)
             self._given_back(entry)
         self.children.stop_all(grace_s=grace_s)
         self._mine.clear()
@@ -692,13 +688,7 @@ class ServerManager(Admitting):
         and gives the lease back if it never does. Between the two, a port that looks unrecorded is one this
         manager is starting on -- never one it may kill.
         """
-        self._mine[str(spec.port)] = {
-            "port": spec.port, "pid": None, "backend": self.backend_for(spec).name,
-            "model": str(spec.model), "owner_pid": os.getpid(), "pending": True,
-            "device": admission.device_of(spec), "lease": lease, "est_mb": est_mb,
-            "embedding": bool(spec.embedding), "mmproj": bool(spec.mmproj),
-            "context": int(spec.context), "parallel": int(spec.parallel or 1),
-        }
+        self._mine[str(spec.port)] = ledger.entry(spec, backend=self.backend_for(spec).name, lease=lease, est_mb=est_mb)
         self._save()
         return Lease(port=spec.port, owner_pid=os.getpid(), state_file=str(self.state_file),
                      stop_on_exit=self.stop_on_exit)
@@ -707,36 +697,12 @@ class ServerManager(Admitting):
                 iq: quant_guard.IqQuant | None = None) -> None:
         kept = kvcache.effective(spec)
         pending = self._mine.get(str(spec.port)) or {}
-        self._mine[str(spec.port)] = {
-            "port": info.port,
-            "pid": info.pid,
-            "backend": info.backend,
-            "model": str(spec.model),
-            "owner_pid": os.getpid(),
-            "device": admission.device_of(spec),
-            "lease": pending.get("lease", ""),
-            "est_mb": pending.get("est_mb", 0),
-            "embedding": bool(spec.embedding),
-            "mmproj": bool(spec.mmproj),
-            "mtp": info.mtp,
-            "cache_type_k": kept.k,
-            "cache_type_v": kept.v,
-            "kv_cache": kept.said,
-            "kv_notes": list(kept.notes),
-            "draft": str(spec.draft or ""),
-            "spec_type": spec.spec_type,
-            "chat_template_file": str(spec.chat_template_file or ""),
-            "mtp_note": info.mtp_note,
-            "context": int(spec.context),
-            "parallel": int(spec.parallel or 1),
-            "base_url": info.base_url,
-            "load_s": info.load_s,
-            "warmup_s": info.warmup_s,
-            "started": started_at(info.pid),
-            "cmdline": cmdline_digest(info.pid),
-            **({"log": str(info.log_path)} if info.log_path else {}),
-            **({"iq_warning": iq.name} if iq is not None else {}),
-        }
+        self._mine[str(spec.port)] = ledger.entry(
+            spec, backend=info.backend, lease=pending.get("lease", ""), est_mb=pending.get("est_mb", 0), info=info,
+            extra={"mtp": info.mtp, "cache_type_k": kept.k, "cache_type_v": kept.v, "kv_cache": kept.said,
+                   "kv_notes": list(kept.notes), "draft": str(spec.draft or ""), "spec_type": spec.spec_type,
+                   "chat_template_file": str(spec.chat_template_file or ""), "mtp_note": info.mtp_note,
+                   **({"iq_warning": iq.name} if iq is not None else {})})
         forget_server(info.base_url)
         if info.process is not None:
             self.children.hold(info.port, info.process)
@@ -745,6 +711,7 @@ class ServerManager(Admitting):
 
     def _forget(self, port: int, *, grace_s: float = 5.0) -> None:
         self.children.stop(port, grace_s=grace_s)
+        serverkeys.forget(port)
         self._given_back(self._mine.pop(str(port), None))
         self._save()
 
@@ -762,7 +729,7 @@ class ServerManager(Admitting):
     def _exclusive(self) -> Iterator[None]:
         """Hold the state file against every other thread and process for the block."""
         with self._lock, only_one(self.state_file.with_suffix(".lock"), wait=True,
-                                  timeout=STATE_LOCK_TIMEOUT_S, announce=logger.debug):
+                                  timeout=ledger.STATE_LOCK_S, announce=logger.debug):
             yield
 
     def settle_exited(self) -> list[Exit]:
@@ -778,8 +745,7 @@ class ServerManager(Admitting):
 
     def _save(self) -> None:
         self.children.sweep()
-        with self._exclusive():
-            self._write(merge_state(self._load(), self._mine, os.getpid()))
+        ledger.save(self.state_file, self._mine)
 
     def _recorded_pid(self, port: int) -> int | None:
         entry = self._load().get(str(port))
