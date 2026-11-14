@@ -21,13 +21,24 @@ request is sent: it would queue on the pool's node.
 
 ## What it reuses, and what it leaves
 
-It reuses `ServerSpec`, `LlamaServerBackend` (as `StrictBackend`), `startup`, the health check, the port checks, the preflight and
-the memory estimate. Memory is admitted against the machine's server file (`servers.json`) under the lock `ServerManager` takes
-for the same file. A core caller therefore sees every server any process recorded there, a pool broker's included, and a pool
-broker's own servers are counted. The reverse is not true: the pool admits against the node's lease table, which does not hold the
-core's servers, so a pool start can still be admitted beside a core server it does not see, and memory leased in the node for work
-that is not a server is invisible to the core. Two core callers cannot overcommit together; a core and a pool can.
-The grant (`serve.grant`) is satisfied, not bypassed: `core._start` is the one place besides the broker that opens it.
+The core and the pool's broker start a server the same way: both go through `LlamaServerBackend` (the binary found once per
+start and judged by the policy whichever route found it, the key handed over in a 0600 file, the listener checked to be the
+process just started before any key is sent) and both stop one through `core.stop_server`. What the broker keeps for itself is
+the queue, the leases and the node's table.
+
+## One memory ledger
+
+`servers.json` is the ledger (`poolhouse.serve.ledger`). A start looks at its live records and writes its own `pending`
+record in one step under `servers.start.lock`: the core does that and nothing else; the broker does it before it asks the node,
+so a pool start waiting in the node's queue is already a record the core counts. Both therefore see each other's servers
+whichever asked first, and a core and a pool asking at the same moment cannot both take the memory
+(`tests/test_serve_shared_ledger.py`).
+
+What stays outside the ledger: memory the node leases to work that is not a server (training, a measurement) is counted by the
+pool's admission and not by the core's, because the core talks to no node. The node's budget and the ledger's both come from
+`admission.budget_mb()`, so the two never disagree about the total. A server that was not started by either (an adopted
+`unmanaged` one) is in the ledger only when the broker adopted it. Records of the core and of a `ServerManager` in one process
+are tagged by holder and no longer overwrite each other.
 
 ## Trust: `serve.policy`
 
@@ -58,7 +69,7 @@ Weakened against the pool:
 - A `Policy` check and an exec cannot be one step. The binary is found once per start, and hashed again in `launch` the
   instant before `Popen` (`Policy.before_launch`); a replacement between that hash and the exec of the same path is still possible
   for an attacker who can write the binary's directory.
-- The listener check (`_owns_listener`) confirms the server is a live process of ours and holds the port before the key is sent
+- The listener check (`process.listens_on`, in `launch`) confirms the server is a live process of ours and holds the port before the key is sent
   to it; a process that wins the port in the instant after the check is outside what it can see.
 
 Still protecting:

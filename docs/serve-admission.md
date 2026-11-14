@@ -39,10 +39,11 @@ caller -> ServerManager.lease(spec) -> broker.start(spec)
           Broker.start -> ServerManager._start_server(spec)       private to both
             adopt(spec)              only a server on the lease registry, matching the spec
             _reusable / _compatible  a running server on another port that serves the spec
-            _admitted                under servers.admission.lock:
+            _admitted                under servers.start.lock:
                                        reuse, wait for a compatible server still loading,
-                                       rate memory, stop servers a dead process left, write the
-                                       pending record
+                                       reserve the memory in the ledger (serve/ledger.py, which
+                                       poolhouse.core admits against too), then ask the node's
+                                       lease table, stop servers a dead process left
             backend.start(spec, lease=...)
           Broker records the holder (pid, label) and returns ServerInfo(lease=...)
 
