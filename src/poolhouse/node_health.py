@@ -40,6 +40,20 @@ class Refused(ValueError):
         self.code = code
 
 
+class SessionRetired(Refused):
+    """The node does not know the token a session holds: the session was retired or never registered. Asking again with the same
+    token is refused the same way, so this is never retried; only a person can move the session on (`poolhouse-workspace rebind`)."""
+
+
+NOT_KNOWN_WORDS = "the token is not known"
+"""How the node's refusal of a token it does not hold begins (`UNKNOWN_TOKEN` in `poolhouse-node`'s node.rs)."""
+
+
+def token_unknown(why: Refused) -> bool:
+    """Whether ``why`` is the node's denial of a token it does not hold, and nothing else: its code and the start of its words."""
+    return why.code == "denied" and str(why).removeprefix("denied: ").startswith(NOT_KNOWN_WORDS)
+
+
 def key_of(text: str) -> str:
     """The 32 hex characters that name a state directory's pipe and stop event: the SHA-256 of its absolute path with
     backslashes, lower case, no `\\\\?\\` prefix and no trailing separator. `poolhouse-node`'s `sys::key_of` computes the same."""

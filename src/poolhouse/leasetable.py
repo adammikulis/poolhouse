@@ -86,12 +86,16 @@ class Table:
         if time.monotonic() < self._down[0]:
             raise TableDown(self._down[1])
         for attempt in range(2):
+            sent = ""
             try:
-                return self._send(method, params, self._session(), wait)
+                sent = self._session()
+                return self._send(method, params, sent, wait)
             except node_health.Refused as why:
-                if attempt or why.code != "denied" or "token" not in str(why):
+                if not node_health.token_unknown(why):
                     raise
                 self._token = ""
+                if attempt or self._kept() == sent:
+                    raise self._retired() from why
             except OSError:
                 if attempt:
                     raise
@@ -101,6 +105,14 @@ class Table:
                     self._down = (time.monotonic() + DOWN_S, str(why))
                     raise
         raise TableDown(f"the node of {self.state} did not answer")
+
+    def _retired(self) -> node_health.SessionRetired:
+        """The one refusal for a session the node retired: the token kept for it is the one it does not know, so asking again, or
+        registering another session in its place, is not for this process to do. It names the step that is a person's."""
+        return node_health.SessionRetired(
+            f"the lease table's session ({NATIVE['harness']} {NATIVE['session']}) was retired: the node no longer knows its token, "
+            f"so no lease can be taken. A person must run `poolhouse-workspace rebind {NATIVE['harness']} {NATIVE['session']}` "
+            "at a terminal (it asks for approval on their phone), then try again.", code="denied")
 
     def _send(self, method: str, params: dict[str, Any], token: str = "", wait_s: float = 0.0) -> dict[str, Any]:
         body = node_health.request_body(method, params, board=BOARD, token=token)
