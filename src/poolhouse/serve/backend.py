@@ -248,7 +248,7 @@ class ServerSpec:
     mmproj: str | Path | None = None
     flash_attn: bool = True
     jinja: bool = True
-    api_key: str = ""
+    api_key: str = field(default="", repr=False)
     # A small model of the same family, guessing ahead so the large one only has to agree.
     # Same two forms as `model`: a path, or hf:owner/repo[/file.gguf].
     draft: str | Path | None = None

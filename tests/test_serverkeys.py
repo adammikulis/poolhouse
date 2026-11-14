@@ -17,6 +17,7 @@ from poolhouse.serve.policy import LocalPolicy
 
 def test_a_key_is_found_by_the_url_of_its_port():
     key = serverkeys.issue(8123)
+    serverkeys.bind(8123, os.getpid())
     assert serverkeys.for_url("http://127.0.0.1:8123/v1/models") == key
     assert serverkeys.for_url("http://localhost:8123") == key
     assert serverkeys.for_url("http://127.0.0.1:8124") == ""
@@ -25,6 +26,11 @@ def test_a_key_is_found_by_the_url_of_its_port():
 def test_a_key_is_not_sent_to_another_host():
     serverkeys.issue(8123)
     assert serverkeys.for_url("http://192.168.1.5:8123") == ""
+
+
+def test_a_key_is_not_sent_before_it_is_bound_to_its_server():
+    serverkeys.issue(8123)   # the health probes of a start that has not yet checked who listens carry none
+    assert serverkeys.for_url("http://127.0.0.1:8123") == ""
 
 
 def test_each_issue_is_a_new_key():
@@ -68,6 +74,7 @@ def test_the_keys_file_is_private():
 
 def test_a_request_to_a_leased_server_carries_its_key():
     key = serverkeys.issue(8123)
+    serverkeys.bind(8123, os.getpid())
     request = build_request("http://127.0.0.1:8123/props")
     assert request.get_header("Authorization") == f"Bearer {key}"
 
@@ -114,6 +121,7 @@ def test_start_issues_a_key_and_hands_it_to_the_server(monkeypatch, tmp_path):
     argv = seen[0]
     keyfile = Path(argv[argv.index("--api-key-file") + 1])
     key = keyfile.read_text().strip()
+    serverkeys.bind(8123, os.getpid())
     assert key and "--api-key" not in argv and serverkeys.for_url("http://127.0.0.1:8123") == key
 
 
@@ -121,6 +129,7 @@ def test_claude_and_codex_run_with_the_servers_key(tmp_path):
     from poolhouse import claude, codex
 
     key = serverkeys.issue(8123)
+    serverkeys.bind(8123, os.getpid())
     assert claude.environment("http://127.0.0.1:8123", "m", base={})["ANTHROPIC_AUTH_TOKEN"] == key
     assert claude.environment("http://127.0.0.1:9", "m", base={})["ANTHROPIC_AUTH_TOKEN"] == "local"
     assert codex.environment(tmp_path, {}, key=key)[codex.KEY_ENV] == key

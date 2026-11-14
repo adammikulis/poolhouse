@@ -84,3 +84,23 @@ Still protecting:
   with `serverkeys` under a lock, and removed when the handle closes. The server listens on loopback and ends with this process.
 - `resolve` accepts an existing path or a file name found in the model places, only for `.gguf` files; `hf:` references are refused.
 - The sandbox the backend wraps a launch in (`serve.confined`) is untouched.
+
+## Attack pass on the broker-on-core change: fixed, accepted, open
+
+Fixed: a client of the machine's broker can no longer name a binary, a vendor directory or a disabled sandbox (`named_backend`);
+a key is sent only once it is bound to the server's process, so no health probe of a start carries it before the listener is
+checked; a key file is written by unlinking first and opening with `O_EXCL | O_NOFOLLOW`; `forget` keeps the key of a live server;
+`ServerSpec.api_key` is out of its repr.
+
+Accepted (same-user attacker, no boundary crossed): the broker's token and `servers.json` are the account's; a record there with a
+hostile `est_mb` or pid can make the ledger refuse or over-admit. `listens_on` proves our process listens on the port, not that
+nobody shares it (`SO_REUSEPORT` by a same-user stranger). The pool route's `PoolPolicy.before_launch` does not re-hash (the
+sentinel judged the binary when found); the core's `LocalPolicy` does. `BUILD.json` beside a binary vouches for it, and whoever can
+write the binary's directory can write both.
+
+Open, for follow-up (not done here): sandbox read set includes the whole `server-keys.d` directory (one directory per port);
+the wire still takes `slot_save_path`, `chat_template_file`, `lookup_*` and `Starting` flags (`anyway`, `preflight`) from a client;
+a sandbox choice the client made by environment is not sent to the broker; the broker daemon inherits `LLAMA_CPP_*`/`PATH` from the
+client that spawned it; the pool picks its port outside the ledger lock, so a core and a pool can pick one port (the loser fails at
+`claim_port`, nothing is double-admitted); `Admitting._save` copies `_mine` without the manager's lock; `entry_mb` and the GGUF
+estimate do not clamp hostile numbers; `issue` runs before `claim_port` and so replaces the key entry of a live server on a busy port.

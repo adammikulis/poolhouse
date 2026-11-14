@@ -70,7 +70,8 @@ def write_key_file(port: int, key: str) -> Path:
     path = key_file(port)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     path.parent.chmod(0o700)
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    path.unlink(missing_ok=True)   # never write through a link or into a file somebody else made
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
         handle.write(key + "\n")
     path.chmod(0o600)
@@ -122,4 +123,5 @@ def for_url(url: str) -> str:
     except ValueError:
         return ""
     entry = _entries().get(str(port))
-    return entry["key"] if isinstance(entry, dict) and _live(entry) else ""
+    # Only a key bound to its server's process is sent: no health probe made before the listener is checked carries one.
+    return entry["key"] if isinstance(entry, dict) and entry.get("pid") and _live(entry) else ""
