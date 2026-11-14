@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import secrets
 
-from poolhouse import keystore
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+from poolhouse import kdf
 
 __all__ = ["HEADER", "SealError", "box_key", "open_", "request_data", "response_data", "seal"]
 
@@ -25,7 +27,7 @@ class SealError(ValueError):
 
 def box_key(secret: str) -> bytes:
     """The encryption key two ends derive from the same request secret; never the MAC key."""
-    return keystore.hkdf(secret.encode(), INFO)
+    return kdf.hkdf(secret.encode(), INFO)
 
 
 def request_data(method: str, target: str, host: str, at: str, nonce: str) -> bytes:
@@ -41,7 +43,7 @@ def response_data(nonce: str, status: int) -> bytes:
 def seal(key: bytes, plaintext: bytes, data: bytes) -> bytes:
     """``plaintext`` encrypted and authenticated together with ``data``."""
     nonce = secrets.token_bytes(NONCE_BYTES)
-    return nonce + keystore.aead(key).encrypt(nonce, plaintext, data)
+    return nonce + AESGCM(key).encrypt(nonce, plaintext, data)
 
 
 def open_(key: bytes, blob: bytes, data: bytes) -> bytes:
@@ -51,6 +53,6 @@ def open_(key: bytes, blob: bytes, data: bytes) -> bytes:
     from cryptography.exceptions import InvalidTag
 
     try:
-        return keystore.aead(key).decrypt(blob[:NONCE_BYTES], blob[NONCE_BYTES:], data)
+        return AESGCM(key).decrypt(blob[:NONCE_BYTES], blob[NONCE_BYTES:], data)
     except InvalidTag as exc:
         raise SealError("the message did not authenticate") from exc

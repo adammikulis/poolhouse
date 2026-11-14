@@ -20,7 +20,7 @@ from poolhouse.safenames import Unsafe, unpack
 from poolhouse.serve.binary import is_windows
 from poolhouse.serve.build_paths import BuildFailed, builds_dir, named_dest, slug
 from poolhouse.serve.build_platform import (
-    arches_at,
+    arches_in,
     now_iso,
     server_name,
     version_of,
@@ -32,6 +32,16 @@ __all__ = ["build_from_release", "build_from_release_named"]
 # `llama-server-...-win-cuda-12.4-x64.zip` -- the CUDA version a companion `cudart-llama-*`
 # asset is keyed off.
 _CUDA_VER = re.compile(r"win-cuda-([\d.]+)-x64")
+
+
+def arches_at(ref: str, *, repo: str = "ggml-org/llama.cpp") -> set[str]:
+    """Every architecture name ``repo``'s source reads at ``ref``; empty when it cannot be read."""
+    url = f"https://raw.githubusercontent.com/{repo}/{ref}/src/llama-arch.cpp"
+    try:
+        reply = net.default().get(url, net.Ask(purpose="llama.cpp source", max_bytes=8 << 20))
+    except (ServerError, OSError, ValueError):
+        return set()
+    return arches_in(reply.body.decode("utf-8", errors="replace")) if reply.status < 400 else set()
 
 
 def _releases_for(repo: str, per_page: int = 5, timeout: float = 30.0) -> list[dict]:

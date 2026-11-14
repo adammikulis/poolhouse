@@ -34,6 +34,7 @@ from poolhouse.serve import (
     grant,
     guarded,
     lease_history,
+    node_memory,
     provenance,
     startup,
     unmanaged,
@@ -267,7 +268,7 @@ class Broker(BrokerHolds):
         self._ended: list[tuple[str, str, dict[str, Any]]] = []
         self.idle_s = idle_s
         #: the bytes of the memory budget no lease holds, or None when there is no budget
-        self.room = room or (lambda: admission.free_bytes(self.table))
+        self.room = room or (lambda: node_memory.free_bytes(self.table))
         self.alive = alive
         self.servers: dict[int, Held] = {}
         self.managers: dict[str, ServerManager] = {}
@@ -734,7 +735,7 @@ class Broker(BrokerHolds):
             pid, owner = entry.get("pid"), entry.get("owner_pid")
             if not (isinstance(pid, int) and self.alive(pid)):
                 continue
-            admission.keep(self.table, port, entry)
+            node_memory.keep(self.table, port, entry)
             was = kept.get(port, {})
             holders = {lease: (int(who[0]), str(who[1])) for lease, who in (was.get("holders") or {}).items()
                        if self.alive(int(who[0]))}

@@ -14,9 +14,9 @@ OWNER = "poolhouse.serve.broker"
 INCREMENTAL = True
 HARD = True
 ROOTS = ("src/poolhouse",)
-GRANTORS = ("src/poolhouse/serve/grant.py", "src/poolhouse/serve/broker.py")
-"""Where `broker_grant` is defined and where it is opened."""
-LEASERS = ("src/poolhouse/serve/backend.py", "src/poolhouse/serve/manager.py")
+GRANTORS = ("src/poolhouse/serve/grant.py", "src/poolhouse/serve/broker.py", "src/poolhouse/core.py")
+"""Where `broker_grant` is defined and where it is opened: the broker, and the core's one `_start`."""
+LEASERS = ("src/poolhouse/serve/backend.py", "src/poolhouse/serve/manager.py", "src/poolhouse/core.py")
 """Where the `Lease` a backend launches on is defined and made."""
 SPAWNERS = (
     "src/poolhouse/serve/backend.py",

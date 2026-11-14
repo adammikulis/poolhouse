@@ -15,8 +15,6 @@ reads it only after ``poolhouse-security unlock``. Each backend call is a sentin
 from __future__ import annotations
 
 import base64
-import hashlib
-import hmac
 import logging
 import os
 import random
@@ -38,6 +36,7 @@ from poolhouse import (
     sentinel,
 )
 from poolhouse.files import read_json, write_json
+from poolhouse.kdf import hkdf
 from poolhouse.lock import Busy, only_one
 from poolhouse.log import warn
 from poolhouse.sentinel import human
@@ -63,7 +62,6 @@ STATE_WAIT_S = 10.0
 SCRYPT_N = 1 << 15
 NOTICE = ("Poolhouse will ask your computer to store one encryption key so your memory and fleet "
           "identity stay private. You will see one Keychain prompt.")
-_SALT = b"poolhouse/keystore/v1"
 _MAGIC = b"MKW1"
 _VERSION = 1
 
@@ -115,16 +113,6 @@ def os_user() -> str:
     except ImportError:
         import getpass
         return "0:" + getpass.getuser()
-
-
-def hkdf(key: bytes, info: bytes, *, salt: bytes = _SALT, length: int = 32) -> bytes:
-    """HKDF-SHA256 (RFC 5869) of ``key``."""
-    prk = hmac.new(salt or b"\0" * 32, key, hashlib.sha256).digest()
-    out, block = b"", b""
-    for counter in range(1, -(-length // 32) + 1):
-        block = hmac.new(prk, block + info + bytes([counter]), hashlib.sha256).digest()
-        out += block
-    return out[:length]
 
 
 def scrypt_key(passphrase: str, salt: bytes, n: int = SCRYPT_N) -> bytes:

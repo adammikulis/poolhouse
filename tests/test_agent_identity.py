@@ -19,7 +19,7 @@ from pathlib import Path
 import jwt
 import pytest
 
-from poolhouse import credentials, httpguard
+from poolhouse import credentials, httpguard, keystore
 from poolhouse.fleet import updates
 from poolhouse.testing.fakegithub import (
     ASKED,
@@ -754,7 +754,7 @@ def test_delegated_setup_refuses_expired_preparation_and_locked_app(ai, installe
 def test_wrapped_app_authentication_failure_is_not_an_unlock_or_initial_setup_request(ai, installed_setup, ring, capsys):
     credentials.set(ai.ITEM, "existing-app-record", keychain=True)
     original = credentials.wrapped_path().read_bytes()
-    store = credentials.keystore.default()
+    store = keystore.default()
     store.lock()
     ring.held.clear()
     store.provision()

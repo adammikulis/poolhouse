@@ -21,7 +21,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
-from poolhouse import errors, gate, http_cancel, macauth, sealing, serverkeys
+from poolhouse import errors, http_cancel, lazy, macauth, sealing, serverkeys
 from poolhouse.httpguard import Limits, Refused, resolve, split
 
 USER_AGENT = "poolhouse"
@@ -314,6 +314,7 @@ def open_stream(url: str, *, data: bytes | None = None, method: str | None = Non
 @contextmanager
 def _queued(url: str) -> Iterator[None]:
     """Wait for this request's turn when it runs a model on a server in the lease registry."""
+    gate = lazy.load("poolhouse.gate")   # the node's request queue: a caller that only asks for health never loads it
     if not gate.is_generation(url):
         yield
         return

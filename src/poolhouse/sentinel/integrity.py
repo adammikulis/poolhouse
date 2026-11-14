@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, replace
 from pathlib import Path
 from typing import Any
 
@@ -68,7 +68,11 @@ class Manifest:
         self.clock = clock
 
     def pins(self) -> dict[str, Pin]:
-        return {p: Pin(**v) for p, v in self._file.load().payload.get("pins", {}).items()}
+        """Every pin on disk. A store written by a newer build may hold fields this one does not
+        know: they are dropped, so the pin still reads and still checks the digest."""
+        known = {f.name for f in fields(Pin)}
+        return {p: Pin(**{k: x for k, x in v.items() if k in known})
+                for p, v in self._file.load().payload.get("pins", {}).items()}
 
     def pin_of(self, path: Path | str) -> Pin | None:
         """The pin of the file at ``path``. A link is looked up as itself and then as the file it

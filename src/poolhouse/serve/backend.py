@@ -16,7 +16,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from poolhouse import errors, home, sentinel, serverkeys
+from poolhouse import errors, home, serverkeys
 from poolhouse.client import families, wait_for_health
 from poolhouse.platform import end_child, process_group_kwargs
 from poolhouse.serve import confined as confinement, exit_guard, grant, kvcache, startup
@@ -25,6 +25,7 @@ from poolhouse.serve.downloads import LLAMA_FLAGS, clean_env, unlisted_flag
 from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
 from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.logs import prune
+from poolhouse.serve.policy import Policy, default as default_policy
 from poolhouse.serve.ports import DEFAULT_HOST, port_is_free, reclaim_port
 
 logger = logging.getLogger(__name__)
@@ -483,7 +484,7 @@ def claim_port(spec: ServerSpec, lease: Lease) -> None:
 
 def launch(  # noqa: PLR0913 - the independent facts of one spawn; a bundle type would only rename them
         argv: list[str], lease: Lease, *, log_path: Path, timeout: float,
-        env: dict[str, str], cwd: str | None = None) -> tuple[Any, str, float]:
+        env: dict[str, str], cwd: str | None = None, policy: Policy | None = None) -> tuple[Any, str, float]:
     """``(process, base_url, load seconds)`` for ``argv`` started and answering its health check.
 
     The server stops with this process when the lease says ``stop_on_exit``. Raises
@@ -494,7 +495,7 @@ def launch(  # noqa: PLR0913 - the independent facts of one spawn; a bundle type
     started_at = time.monotonic()
     with log_path.open("wb") as log_handle:
         process = subprocess.Popen(argv, stdout=log_handle, stderr=subprocess.STDOUT,
-                                   env=sentinel.default().scrub_env(clean_env(env)),
+                                   env=(policy or default_policy()).scrub_env(clean_env(env)),
                                    cwd=cwd, **process_group_kwargs())
     if lease.stop_on_exit:
         exit_guard.protect(process.pid)
@@ -518,7 +519,7 @@ class LlamaServerBackend(ServerBackend):
 
     name = "llama.cpp"
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - the independent ways a build is named, and the policy that trusts it
         self,
         *,
         binary: str | Path | None = None,
@@ -526,8 +527,10 @@ class LlamaServerBackend(ServerBackend):
         build: str | None = None,
         quiet: bool = True,
         sandboxed: bool | None = None,
+        policy: Policy | None = None,
     ) -> None:
         self.sandboxed = sandboxed
+        self.policy = policy or default_policy()
         self._explicit = binary
         self._vendor_dir = vendor_dir
         self._build = build
@@ -542,7 +545,7 @@ class LlamaServerBackend(ServerBackend):
     @property
     def binary(self) -> Path:
         return require_binary("llama-server", explicit=self._explicit,
-                              vendor_dir=self._vendor_dir, build=self._build)
+                              vendor_dir=self._vendor_dir, build=self._build, policy=self.policy)
 
     def environment(self, extra=None) -> dict[str, str]:
         return child_env(self.binary, extra)
@@ -820,7 +823,7 @@ class LlamaServerBackend(ServerBackend):
         try:
             evidence = startup.current(evidence)
             process, base_url, load_s = launch(argv, lease, log_path=log_path, timeout=timeout,
-                                               env=env, cwd=confined.cwd if confined else None)
+                                               env=env, cwd=confined.cwd if confined else None, policy=self.policy)
         except ServerFailed as failure:
             refused = confined.refusals() if confined else ""
             raise ServerFailed(f"{failure}\n{refused}" if refused else str(failure)) from failure

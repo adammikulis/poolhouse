@@ -18,7 +18,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, keystore, lock
+from poolhouse import home, lazy, lock
 from poolhouse.credentials.environment import child_environment
 from poolhouse.credentials.reading import (
     INSECURE_ENV,
@@ -170,8 +170,13 @@ def _rewriting() -> Iterator[None]:
         raise CredentialError(str(exc)) from exc
 
 
+def _ks() -> Any:
+    """The OS keystore module, loaded when a stored value is kept or opened: it brings the sentinel with it."""
+    return lazy.load("poolhouse.keystore")
+
+
 def _keep(name: str, value: str) -> None:
-    ks = keystore.default()
+    ks = _ks().default()
     blob = base64.b64encode(ks.wrap(PURPOSE, name, value.encode())).decode()
     with _rewriting():
         write_json(wrapped_path(), {"schema_version": 1, "values": {**_wrapped(), name: blob}})
@@ -180,6 +185,7 @@ def _keep(name: str, value: str) -> None:
 
 def _open(name: str, *, strict: bool = False) -> str | None:
     """Open the encrypted item; an admitted holder uses ``strict`` to distinguish absence from failure."""
+    keystore = _ks()
     wrapped = _wrapped(strict=True) if strict else _wrapped()
     if name not in wrapped:
         return None
@@ -268,6 +274,7 @@ def set(name: str, value: str, *, keychain: bool = False) -> str:
     valid_name(name)
     value = clean(value, "the value")
     if keychain:
+        keystore = _ks()
         try:
             _keep(name, value)
         except keystore.KeystoreError as exc:

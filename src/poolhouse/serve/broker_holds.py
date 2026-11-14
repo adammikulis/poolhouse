@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from poolhouse import leasetable
 from poolhouse.node_health import Refused
-from poolhouse.serve import admission
+from poolhouse.serve import admission, node_memory
 from poolhouse.serve.broker_lifecycle import admitted
 from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.process import started_at
@@ -166,7 +166,7 @@ class BrokerHolds:
         node holds none) and of every claim."""
         for port, entry in recorded_servers(self.manager.state_file).items():
             if self.alive(entry.get("pid")):
-                admission.keep(self.table, port, entry)
+                node_memory.keep(self.table, port, entry)
         with self._cond:
             leases = [held["lease"] for held in self.claims.values() if held.get("lease")]
         for lease in leases:

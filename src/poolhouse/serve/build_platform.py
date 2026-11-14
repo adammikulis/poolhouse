@@ -12,11 +12,9 @@ import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
-from poolhouse import net
-from poolhouse.http import ServerError
 from poolhouse.serve.binary import child_env, is_windows
 
-__all__ = ["arches_at", "arches_from_source", "can_build_from_source", "cmake_flags", "copy_flat",
+__all__ = ["arches_from_source", "arches_in", "can_build_from_source", "cmake_flags", "copy_flat",
            "now_iso", "server_name", "verify_libraries", "version_of", "vulkan_available"]
 
 # `LLM_ARCH_QWEN4EXP, "qwen4exp"` -- every architecture name llama.cpp's own source reads,
@@ -100,20 +98,12 @@ def arches_from_source(source: Path) -> set[str]:
     arch_file = source / "src" / "llama-arch.cpp"
     if not arch_file.is_file():
         return set()
-    text = arch_file.read_text(encoding="utf-8", errors="replace")
-    return set(_ARCH_NAME.findall(text))
+    return arches_in(arch_file.read_text(encoding="utf-8", errors="replace"))
 
 
-def arches_at(ref: str, *, repo: str = "ggml-org/llama.cpp") -> set[str]:
-    """Every architecture name ``repo``'s source reads at ``ref``; empty when it cannot be read."""
-    url = f"https://raw.githubusercontent.com/{repo}/{ref}/src/llama-arch.cpp"
-    try:
-        reply = net.default().get(url, net.Ask(purpose="llama.cpp source", max_bytes=8 << 20))
-    except (ServerError, OSError, ValueError):
-        return set()
-    if reply.status >= 400:
-        return set()
-    return set(_ARCH_NAME.findall(reply.body.decode("utf-8", errors="replace")))
+def arches_in(source: str) -> set[str]:
+    """Every architecture name the text of ``llama-arch.cpp`` reads."""
+    return set(_ARCH_NAME.findall(source))
 
 
 def verify_libraries(root: Path, names, environment: dict[str, str]) -> None:

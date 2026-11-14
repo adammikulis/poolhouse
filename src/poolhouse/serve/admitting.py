@@ -24,7 +24,7 @@ from poolhouse.client import is_healthy, reported_models
 from poolhouse.client.health import serving_params
 from poolhouse.lock import only_one
 from poolhouse.node_health import Refused
-from poolhouse.serve import admission, unmanaged
+from poolhouse.serve import admission, node_memory, unmanaged
 from poolhouse.serve.backend import Lease, ServerBackend, ServerInfo, ServerSpec
 from poolhouse.serve.events import Event, emit
 from poolhouse.serve.leases import merge_state, orphaned, recorded_servers
@@ -82,16 +82,16 @@ class Admitting:
                     if found is not None:
                         return found
                     if not loading or time.monotonic() - began >= load_s:
-                        asked = asked or admission.ask(self.table, spec, wanted, pid=os.getpid(),
+                        asked = asked or node_memory.ask(self.table, spec, wanted, pid=os.getpid(),
                                                        ttl_s=int(load_s) + admission.KEEP_S)
                         if asked["state"] == "held":
                             handed = True
                             return self._pending(spec, lease=asked["id"], est_mb=-(-wanted // admission.MIB))
                         self._stop_leaked(records, told)
-                        waiting = f"waiting for memory -- {admission.said(self.table, wanted)}"
+                        waiting = f"waiting for memory -- {node_memory.said(self.table, wanted)}"
                         if time.monotonic() >= memory_until:
                             raise admission.AdmissionRefused(
-                                f"port {spec.port}: {admission.said(self.table, wanted)}; no memory came free in "
+                                f"port {spec.port}: {node_memory.said(self.table, wanted)}; no memory came free in "
                                 f"{admission.wait_s():.0f}s ({admission.ENV_WAIT} sets the wait)")
                     else:
                         waiting = "waiting for a server that serves it to finish loading"

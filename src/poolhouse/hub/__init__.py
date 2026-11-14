@@ -13,9 +13,12 @@ modules to something a test patches -- `files`, `located`, `room`,
 
 from __future__ import annotations
 
-from poolhouse.hub.admission import LIBRARY, PERSON, Trust
-from poolhouse.hub.cards import advice, card, in_gguf
-from poolhouse.hub.cli import main
+from typing import TYPE_CHECKING
+
+from poolhouse import lazy
+
+# `discover` is both a module and the function in it, and the import system binds a submodule over its name in the
+# package the first time it is imported, so this one module is imported here and the function bound over it.
 from poolhouse.hub.discover import (
     FORMATS,
     ModelInfo,
@@ -23,75 +26,158 @@ from poolhouse.hub.discover import (
     find as installed_find,
     installed_for,
 )
-from poolhouse.hub.drafts import (
-    _DRAFT_NOTES,  # noqa: F401 - the per-process cache a test clears
-    DRAFT_DEPTH,
-    NO_HEAD,
-    Chosen,
-    Head,
-    choose_head,
-    draft_for,
-    draft_note,
-    drafting,
-    drafts_for,
-    forks,
-    head_choice,
-    heads_for,
-)
-from poolhouse.hub.kinds import KINDS as KINDS
-from poolhouse.hub.listing import (
-    PREFER,
-    Found,
-    beside,
-    build_files,
-    builds,
-    fetch,
-    files,
-    find,
-    mmproj_for,
-    ref,
-)
-from poolhouse.hub.local import (
-    default_roots,
-    hub_cache,
-    located,
-    on_disk,
-    repo_of,
-    shards_beside,
-    standard,
-    weight_paths,
-)
-from poolhouse.hub.memory import free_memory, machine_room, room, total_memory
-from poolhouse.hub.naming import (
-    DRAFT_KINDS,
-    DRAFT_MARK,
-    QUANT,
-    SHARD,
-    WEIGHT_SUFFIXES,
-    _precision,  # noqa: F401 - `serve.ops` ranks its own candidates by the same rule
-    aside,
-    base_words,
-    borrowed_head,
-    iq_on_metal,
-    is_head,
-    pretty_name,
-    spec_for,
-)
-from poolhouse.hub.probe import Gpu, MachineMemory, machine_memory
-from poolhouse.hub.remote import Filters, Repo, search
-from poolhouse.hub.transfer import (
-    Cancelled,
-    CancelToken,
-    ChecksumMismatch,
-    GatedRepo,
-    NotEnoughSpace,
-    NotFound,
-    Progress,
-    base_folder,
-    held_snapshot,
-    pull,
-    snapshot,
-)
+
+# The rest resolve on first use: `poolhouse.hub.modelfile` (a GGUF header reader) is imported by the
+# serving code, and must not load the Hub client, the download pipeline and the sentinel with it.
+if TYPE_CHECKING:  # what the names below resolve to, for readers and type checkers; `_HOME` is what runs
+    from poolhouse.hub.admission import LIBRARY, PERSON, Trust
+    from poolhouse.hub.cards import advice, card, in_gguf
+    from poolhouse.hub.cli import main
+    from poolhouse.hub.drafts import (
+        _DRAFT_NOTES as _DRAFT_NOTES,
+        DRAFT_DEPTH,
+        NO_HEAD,
+        Chosen,
+        Head,
+        choose_head,
+        draft_for,
+        draft_note,
+        drafting,
+        drafts_for,
+        forks,
+        head_choice,
+        heads_for,
+    )
+    from poolhouse.hub.kinds import KINDS as KINDS
+    from poolhouse.hub.listing import (
+        PREFER,
+        Found,
+        beside,
+        build_files,
+        builds,
+        fetch,
+        files,
+        find,
+        mmproj_for,
+        ref,
+    )
+    from poolhouse.hub.local import (
+        default_roots,
+        hub_cache,
+        located,
+        on_disk,
+        repo_of,
+        shards_beside,
+        standard,
+        weight_paths,
+    )
+    from poolhouse.hub.memory import free_memory, machine_room, room, total_memory
+    from poolhouse.hub.naming import (
+        DRAFT_KINDS,
+        DRAFT_MARK,
+        QUANT,
+        SHARD,
+        WEIGHT_SUFFIXES,
+        _precision as _precision,
+        aside,
+        base_words,
+        borrowed_head,
+        iq_on_metal,
+        is_head,
+        pretty_name,
+        spec_for,
+    )
+    from poolhouse.hub.probe import Gpu, MachineMemory, machine_memory
+    from poolhouse.hub.remote import Filters, Repo, search
+    from poolhouse.hub.transfer import (
+        Cancelled,
+        CancelToken,
+        ChecksumMismatch,
+        GatedRepo,
+        NotEnoughSpace,
+        NotFound,
+        Progress,
+        base_folder,
+        held_snapshot,
+        pull,
+        snapshot,
+    )
+
+_HOME = {
+    "CancelToken": ("poolhouse.hub.transfer", "CancelToken"),
+    "Cancelled": ("poolhouse.hub.transfer", "Cancelled"),
+    "ChecksumMismatch": ("poolhouse.hub.transfer", "ChecksumMismatch"),
+    "Chosen": ("poolhouse.hub.drafts", "Chosen"),
+    "DRAFT_DEPTH": ("poolhouse.hub.drafts", "DRAFT_DEPTH"),
+    "DRAFT_KINDS": ("poolhouse.hub.naming", "DRAFT_KINDS"),
+    "DRAFT_MARK": ("poolhouse.hub.naming", "DRAFT_MARK"),
+    "Filters": ("poolhouse.hub.remote", "Filters"),
+    "Found": ("poolhouse.hub.listing", "Found"),
+    "GatedRepo": ("poolhouse.hub.transfer", "GatedRepo"),
+    "Gpu": ("poolhouse.hub.probe", "Gpu"),
+    "Head": ("poolhouse.hub.drafts", "Head"),
+    "KINDS": ("poolhouse.hub.kinds", "KINDS"),
+    "LIBRARY": ("poolhouse.hub.admission", "LIBRARY"),
+    "MachineMemory": ("poolhouse.hub.probe", "MachineMemory"),
+    "NO_HEAD": ("poolhouse.hub.drafts", "NO_HEAD"),
+    "NotEnoughSpace": ("poolhouse.hub.transfer", "NotEnoughSpace"),
+    "NotFound": ("poolhouse.hub.transfer", "NotFound"),
+    "PERSON": ("poolhouse.hub.admission", "PERSON"),
+    "PREFER": ("poolhouse.hub.listing", "PREFER"),
+    "Progress": ("poolhouse.hub.transfer", "Progress"),
+    "QUANT": ("poolhouse.hub.naming", "QUANT"),
+    "Repo": ("poolhouse.hub.remote", "Repo"),
+    "SHARD": ("poolhouse.hub.naming", "SHARD"),
+    "Trust": ("poolhouse.hub.admission", "Trust"),
+    "WEIGHT_SUFFIXES": ("poolhouse.hub.naming", "WEIGHT_SUFFIXES"),
+    "_DRAFT_NOTES": ("poolhouse.hub.drafts", "_DRAFT_NOTES"),
+    "_precision": ("poolhouse.hub.naming", "_precision"),
+    "advice": ("poolhouse.hub.cards", "advice"),
+    "aside": ("poolhouse.hub.naming", "aside"),
+    "base_folder": ("poolhouse.hub.transfer", "base_folder"),
+    "base_words": ("poolhouse.hub.naming", "base_words"),
+    "beside": ("poolhouse.hub.listing", "beside"),
+    "borrowed_head": ("poolhouse.hub.naming", "borrowed_head"),
+    "build_files": ("poolhouse.hub.listing", "build_files"),
+    "builds": ("poolhouse.hub.listing", "builds"),
+    "card": ("poolhouse.hub.cards", "card"),
+    "choose_head": ("poolhouse.hub.drafts", "choose_head"),
+    "default_roots": ("poolhouse.hub.local", "default_roots"),
+    "draft_for": ("poolhouse.hub.drafts", "draft_for"),
+    "draft_note": ("poolhouse.hub.drafts", "draft_note"),
+    "drafting": ("poolhouse.hub.drafts", "drafting"),
+    "drafts_for": ("poolhouse.hub.drafts", "drafts_for"),
+    "fetch": ("poolhouse.hub.listing", "fetch"),
+    "files": ("poolhouse.hub.listing", "files"),
+    "find": ("poolhouse.hub.listing", "find"),
+    "forks": ("poolhouse.hub.drafts", "forks"),
+    "free_memory": ("poolhouse.hub.memory", "free_memory"),
+    "head_choice": ("poolhouse.hub.drafts", "head_choice"),
+    "heads_for": ("poolhouse.hub.drafts", "heads_for"),
+    "held_snapshot": ("poolhouse.hub.transfer", "held_snapshot"),
+    "hub_cache": ("poolhouse.hub.local", "hub_cache"),
+    "in_gguf": ("poolhouse.hub.cards", "in_gguf"),
+    "iq_on_metal": ("poolhouse.hub.naming", "iq_on_metal"),
+    "is_head": ("poolhouse.hub.naming", "is_head"),
+    "located": ("poolhouse.hub.local", "located"),
+    "machine_memory": ("poolhouse.hub.probe", "machine_memory"),
+    "machine_room": ("poolhouse.hub.memory", "machine_room"),
+    "main": ("poolhouse.hub.cli", "main"),
+    "mmproj_for": ("poolhouse.hub.listing", "mmproj_for"),
+    "on_disk": ("poolhouse.hub.local", "on_disk"),
+    "pretty_name": ("poolhouse.hub.naming", "pretty_name"),
+    "pull": ("poolhouse.hub.transfer", "pull"),
+    "ref": ("poolhouse.hub.listing", "ref"),
+    "repo_of": ("poolhouse.hub.local", "repo_of"),
+    "room": ("poolhouse.hub.memory", "room"),
+    "search": ("poolhouse.hub.remote", "search"),
+    "shards_beside": ("poolhouse.hub.local", "shards_beside"),
+    "snapshot": ("poolhouse.hub.transfer", "snapshot"),
+    "spec_for": ("poolhouse.hub.naming", "spec_for"),
+    "standard": ("poolhouse.hub.local", "standard"),
+    "total_memory": ("poolhouse.hub.memory", "total_memory"),
+    "weight_paths": ("poolhouse.hub.local", "weight_paths"),
+}
 
 __all__ = [
     "DRAFT_DEPTH",
@@ -170,3 +256,5 @@ __all__ = [
     "total_memory",
     "weight_paths",
 ]
+
+__getattr__, __dir__ = lazy.exports(__name__, globals(), _HOME)

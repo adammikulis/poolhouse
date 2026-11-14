@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Mapping
 from pathlib import Path
 
 from poolhouse import sentinel
@@ -13,7 +14,7 @@ from poolhouse.sentinel.findings import HIGH, finding
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["held", "pin", "problem", "unpin"]
+__all__ = ["PoolPolicy", "held", "pin", "problem", "unpin"]
 
 
 def _recorded(binary: Path) -> dict:
@@ -77,3 +78,22 @@ def problem(binary: Path) -> str:
         return ""
     return (f"{binary} is not the binary that was built (BUILD.json records another digest) and "
             f"is quarantined by sentinel; the file was moved aside")
+
+
+class PoolPolicy:
+    """The pool's `poolhouse.serve.policy.Policy`: what the sentinel pins, holds and scrubs."""
+
+    def held(self, binary: Path) -> bool:
+        return held(binary)
+
+    def problem(self, binary: Path) -> str:
+        return problem(binary)
+
+    def pin(self, binary: Path, sha256: str, *, source: str = "build") -> None:
+        pin(binary, sha256, source=source)
+
+    def unpin(self, binary: Path) -> None:
+        unpin(binary)
+
+    def scrub_env(self, env: Mapping[str, str]) -> dict[str, str]:
+        return sentinel.default().scrub_env(env)

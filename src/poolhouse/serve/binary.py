@@ -10,7 +10,7 @@ from pathlib import Path
 
 from poolhouse import credentials, errors, home
 from poolhouse.credentials import child_environment
-from poolhouse.serve import llamacpp_trust
+from poolhouse.serve import policy as trust
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +64,7 @@ def find_binary(
     explicit: str | Path | None = None,
     vendor_dir: Path | None = None,
     build: str | None = None,
+    policy: trust.Policy | None = None,
 ) -> Path | None:
     """Locate a llama.cpp binary. ``None`` if it is nowhere to be found; raises
     `BinaryNotFound` when the build it names is not installed.
@@ -73,6 +74,9 @@ def find_binary(
     whose fixes have not reached master. It outranks ``current`` but never an explicit path
     or ``$LLAMA_CPP_SERVER``, so a caller that names a build gets it even while ``current``
     stays mainline, and never another binary in its place.
+
+    ``policy`` decides whether the managed build may be used (`poolhouse.serve.policy`); the
+    pool's, which asks the sentinel, when none is given.
     """
     candidates = _name_variants(name)
 
@@ -107,11 +111,12 @@ def find_binary(
         # A verified `poolhouse-serve build` outranks a login shell's PATH and the stale
         # bottle a release lags behind -- but never an explicit path or $LLAMA_CPP_SERVER,
         # both handled above.
+        policy = policy or trust.default()
         for candidate in candidates:
             path = managed_current() / candidate
             real = Path(os.path.realpath(path))
-            if path.is_file() or llamacpp_trust.held(real):
-                if why := llamacpp_trust.problem(real):
+            if path.is_file() or policy.held(real):
+                if why := policy.problem(real):
                     raise BinaryTampered(why)
                 return real
 

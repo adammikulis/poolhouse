@@ -34,6 +34,11 @@ NAMES_A_SERVER_BINARY = {
 }
 """Every module that starts a process and also names the llama-server binary, and why."""
 
+CORE = "core.py"
+"""The second owner of a server start: `poolhouse.core` serves one model for a program with no pool. It admits memory
+under the machine's file lock, makes the `Lease`, opens the grant in one function (`_start`) and starts the backend
+there, and no other module of it does."""
+
 PRIVATE = ("_start_server", "_escalate", "_detach", "_stop_server")
 """`ServerManager` methods only the manager and the broker may call."""
 
@@ -108,14 +113,14 @@ def test_a_backend_is_only_started_by_the_manager():
     found = {name for name, tree in parsed().items()
              for c in calls(tree)
              if called_name(c) == "start" and any(k.arg == "lease" for k in c.keywords)}
-    assert found == {"serve/manager.py"}, where(found)
+    assert found == {"serve/manager.py", CORE}, where(found)
 
 
 def test_the_proof_a_backend_needs_is_only_made_by_the_manager():
     found = {name for name, tree in parsed().items()
              if name != "serve/backend.py"
              for c in calls(tree) if called_name(c) == "Lease"}
-    assert found == {"serve/manager.py"}, where(found)
+    assert found == {"serve/manager.py", CORE}, where(found)
 
 
 def test_the_private_starts_are_only_reached_by_the_manager_and_the_broker():
@@ -135,8 +140,19 @@ def test_the_grant_is_only_opened_by_the_broker():
     found = {name for name, tree in parsed().items() for n in ast.walk(tree)
              if (isinstance(n, ast.Name) and n.id == "broker_grant")
              or (isinstance(n, ast.Attribute) and n.attr == "broker_grant")}
-    assert found <= {"serve/grant.py", "serve/broker.py"}, where(found)
+    assert found <= {"serve/grant.py", "serve/broker.py", CORE}, where(found)
     assert "serve/broker.py" in found
+
+
+def test_the_core_opens_the_grant_once_and_only_to_start_a_backend():
+    """The core's one `broker_grant` wraps the one `Lease` and the one `start` of `_start`: nothing else of the
+    module may be inside a grant."""
+    tree = parsed()[CORE]
+    opened = [fn.name for fn in functions(tree)
+              if any(isinstance(n, ast.Attribute) and n.attr == "broker_grant" for n in ast.walk(fn))]
+    assert opened == ["_start"], where(set(opened))
+    inside = [called_name(c) for fn in functions(tree) if fn.name == "_start" for c in calls(ast.Module(body=fn.body, type_ignores=[]))]
+    assert inside.count("Lease") == 1 and inside.count("start") == 1
 
 
 def test_the_up_command_reaches_a_server_only_through_a_lease():
