@@ -47,6 +47,24 @@ get (`scrub_env`). The pool's answer is `llamacpp_trust.PoolPolicy` (the sentine
 default of every pool entry point and unchanged. The core's is `LocalPolicy`: the digest in the build's own `BUILD.json`, and a
 plain JSON pin file (`<state>/core/pins.json`) that pins a binary on first use and refuses one that no longer matches.
 
+## Records from a newer build
+
+Every reader of a pin (the sentinel's `Manifest`, `LocalPolicy`'s pin file), a `BUILD.json`, a hold or `limits.json` goes through
+`poolhouse.tolerant.known_only`: a field this build does not know is dropped and named once per process in a warning (the name
+cut to 64 characters, at most 256 names kept). Unknown fields are never interpreted: they grant nothing, take no part in a pin
+comparison or a trust decision (those use the digest and the other known fields), and are not written back, so a rewrite by this
+build removes them. What is still refused: a required field that is missing, a known field of the wrong type (a `TypeError`), a
+pin or build manifest that is not an object. Duplicate JSON keys are last-wins; an unknown key never shadows a known one because
+only known names are copied.
+
+If a newer writer adds a field that changes what a pin *means* (a revocation, a stricter digest rule), this build cannot know it
+and ignores it. That is why such a field must never be the only carrier of a restriction. What this build still enforces without
+it: the file must hash to its pinned digest, a pin with `held` stays held (also when the entry is otherwise unreadable), and an
+unreadable pin file refuses the start. A newer restriction is safe against an older reader only when it is also expressed as
+`held` or as a digest that no longer matches. A schema bump is not used to fail closed: `LocalPolicy` reads a newer
+`schema_version` on purpose (`tests/test_serve_policy.py`), because refusing it would stop `poolhouse-serve up` on every older
+snapshot, which is the failure this section exists to prevent.
+
 ## Threat note: what `LocalPolicy` weakens, and what still protects
 
 For the attack pass by another agent (AGENTS.md: a security design gets one).

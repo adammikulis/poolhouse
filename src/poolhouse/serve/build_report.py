@@ -105,9 +105,10 @@ def manifest_of(build_dir: Path) -> dict:
     if not manifest.is_file():
         return {}
     try:
-        return json.loads(manifest.read_text())
+        info = json.loads(manifest.read_text())
     except (OSError, ValueError):
         return {}
+    return info if isinstance(info, dict) else {}
 
 
 def cmd_list() -> int:

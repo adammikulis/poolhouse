@@ -203,9 +203,10 @@ def manifest_of(binary: str | Path | None) -> dict:
         if not manifest.is_file():
             continue
         try:
-            return json.loads(manifest.read_text())
+            info = json.loads(manifest.read_text())
         except (OSError, ValueError):
             return {}
+        return info if isinstance(info, dict) else {}
     return {}
 
 

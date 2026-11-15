@@ -9,6 +9,7 @@ from typing import Any
 
 from poolhouse import home
 from poolhouse.files import read_json, write_json
+from poolhouse.tolerant import known_only
 
 __all__ = ["DENYLIST_ENV", "Limits", "denylist_path", "load", "root"]
 
@@ -65,7 +66,7 @@ def load(base: Path) -> Limits:
     """The limits in force: defaults, then ``limits.json`` for the keys it names."""
     data = read_json(base / "limits.json", {})
     wanted = {f.name for f in fields(Limits)}
-    return Limits(**{k: v for k, v in data.items() if k in wanted}) if isinstance(data, dict) \
+    return Limits(**known_only(data, wanted, what="limits.json")) if isinstance(data, dict) \
         else Limits()
 
 

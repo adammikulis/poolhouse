@@ -17,12 +17,14 @@ from typing import Any, Protocol
 from poolhouse import home, lazy
 from poolhouse.files import sha256_file, write_json
 from poolhouse.lock import only_one
+from poolhouse.tolerant import known_only
 
 __all__ = ["BinaryRefused", "LocalPolicy", "PinFileUnreadable", "Policy", "default"]
 
 logger = logging.getLogger(__name__)
 
 PIN_SCHEMA = 1
+_PIN_KEYS = frozenset({"sha256", "source", "held", "previous"})
 
 
 class Policy(Protocol):
@@ -102,12 +104,14 @@ class LocalPolicy:
         pins = parsed.get("pins") if isinstance(parsed, dict) else None
         if not isinstance(pins, dict):
             return None
+        pins = {str(path): known_only(one, _PIN_KEYS, what="a pin-file entry")
+                for path, one in pins.items() if isinstance(one, dict)}
         # An entry that is held stays held whatever else is wrong with it; one that is not and has no digest is no pin.
         return {str(path): {"sha256": str(one["sha256"]).lower() if isinstance(one.get("sha256"), str) else "",
                             "source": str(one.get("source") or ""), "held": bool(one.get("held")),
                             "previous": str(one.get("previous") or "")}
                 for path, one in pins.items()
-                if isinstance(one, dict) and (isinstance(one.get("sha256"), str) or one.get("held"))}
+                if (isinstance(one.get("sha256"), str) or one.get("held"))}
 
     def _write(self, pins: dict[str, dict[str, Any]]) -> None:
         self.file.parent.mkdir(parents=True, exist_ok=True)

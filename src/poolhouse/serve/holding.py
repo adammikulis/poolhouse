@@ -37,6 +37,7 @@ from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.matching import model_matches
 from poolhouse.serve.process import pid_exists, started_at
 from poolhouse.serve.reclaim import busy_now
+from poolhouse.tolerant import known_only
 from poolhouse.units import human_bytes
 
 __all__ = ["Hold", "Refusal", "Terms", "check_fits", "down", "find", "holds", "joined", "run_holder",
@@ -88,7 +89,7 @@ class Hold:
         held = read_json(path, {})
         names = {f.name for f in dataclasses.fields(cls)}
         try:
-            return cls(**{k: v for k, v in held.items() if k in names}) if held else None
+            return cls(**known_only(held, names, what="a hold")) if held and isinstance(held, dict) else None
         except TypeError:
             return None
 

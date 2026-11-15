@@ -14,10 +14,13 @@ from poolhouse.lock import only_one
 from poolhouse.sentinel.events import Severity
 from poolhouse.sentinel.findings import HIGH, Finding, finding
 from poolhouse.sentinel.sealed import SealedFile
+from poolhouse.tolerant import known_only
 
 __all__ = ["FILE_KINDS", "Manifest", "Pin", "check_file"]
 
 FILE_KINDS = ("model", "binary", "artifact", "config")
+_NUMBER = (int, float)
+_INT_FIELDS = frozenset({"bytes", "mtime_ns", "inode"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +53,20 @@ class Pin:
     host: str = ""
     """The host and port of the Hub a pulled file came from; empty for any other pin."""
 
+    @classmethod
+    def from_record(cls, record: Any) -> Pin:
+        """A pin as stored. A field this build does not know is ignored (and named once); a record that is not a mapping,
+        lacks a required field or holds a known one of the wrong type is a ``TypeError``, never a guess."""
+        if not isinstance(record, dict):
+            raise TypeError(f"a pin is an object, not {type(record).__name__}")
+        made = cls(**known_only(record, {f.name for f in fields(cls)}, what="a pin"))
+        for f in fields(cls):
+            value = getattr(made, f.name)
+            want = _NUMBER if f.name == "pinned_at" else int if f.name in _INT_FIELDS else str
+            if isinstance(value, bool) or not isinstance(value, want):
+                raise TypeError(f"pin field {f.name!r} is {type(value).__name__}, not a {want}")
+        return made
+
     def to_json(self) -> dict[str, Any]:
         return {f: getattr(self, f) for f in self.__slots__}
 
@@ -69,10 +86,8 @@ class Manifest:
 
     def pins(self) -> dict[str, Pin]:
         """Every pin on disk. A store written by a newer build may hold fields this one does not
-        know: they are dropped, so the pin still reads and still checks the digest."""
-        known = {f.name for f in fields(Pin)}
-        return {p: Pin(**{k: x for k, x in v.items() if k in known})
-                for p, v in self._file.load().payload.get("pins", {}).items()}
+        know: they are dropped (`Pin.from_record`), so the pin still reads and still checks the digest."""
+        return {p: Pin.from_record(v) for p, v in self._file.load().payload.get("pins", {}).items()}
 
     def pin_of(self, path: Path | str) -> Pin | None:
         """The pin of the file at ``path``. A link is looked up as itself and then as the file it
