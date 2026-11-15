@@ -71,7 +71,7 @@ def test_importing_the_core_loads_no_session_token_board_workspace_approval_or_a
     banned = ("board", "authority", "authority_caller", "person", "requests", "workspace", "node_app", "node_health",
               "leasetable", "sentinel", "keystore", "fleet", "desktop", "lan", "graph", "decide", "activity",
               "net", "serve.broker", "serve.manager", "serve.guarded", "hub.admission", "hub.remote", "mcp",
-              "chat", "agent", "gate")
+              "chat", "agent", "gate", "node_pool", "pool_cli")
     found = [m for m in out if any(m == f"poolhouse.{b}" or m.startswith(f"poolhouse.{b}.") for b in banned)]
     assert not found, found
 
