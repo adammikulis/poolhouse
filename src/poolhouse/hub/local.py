@@ -130,7 +130,8 @@ def located(name: str | Path, *, roots: Sequence[Path] | None = None, loose: boo
     # a Hub match is the snapshot symlink, never the blob: llama.cpp reads a sharded
     # model's other shards off that name and refuses a blob hash
     shard = re.compile(rf"^{re.escape(base)}-00001-of-\d+\.gguf$", re.IGNORECASE)
-    for match in (lambda p: p.name == wanted, lambda p: bool(shard.match(p.name))):
+    for match in (lambda p: p.name == wanted, lambda p: p.name.lower() == f"{base}.gguf".lower(),
+                  lambda p: bool(shard.match(p.name))):
         found = next((p for p in every if match(p)), None)
         if found is not None:
             return found
