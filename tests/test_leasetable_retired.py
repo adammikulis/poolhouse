@@ -1,13 +1,10 @@
-"""A lease table whose session the node retired stops at once with one error that names the person's step; it never retries the same token."""
+"""A lease table whose session the node retired heals itself: it registers the session again and the lease goes through, with nobody asked."""
 
 from __future__ import annotations
 
-import time
 from pathlib import Path
 
-import pytest
-
-from poolhouse import gate, leasetable, node_health
+from poolhouse import leasetable, node_health
 from poolhouse.node_health import Refused
 
 pytest_plugins = ["node_kit"]
@@ -15,15 +12,15 @@ pytest_plugins = ["node_kit"]
 
 def stale(workspace_node) -> Path:
     """The token file of the lease table's session holding a token the node does not know, as one left by a retired session is."""
-    leasetable.Table(workspace_node.state).acquire([leasetable.gpu()], leasetable.Terms(tag="first"))
+    table = leasetable.Table(workspace_node.state)
+    table.release(table.acquire([leasetable.gpu()], leasetable.Terms(tag="first"))["id"])
     (path,) = (workspace_node.state / "client" / leasetable.BOARD).glob("*.token")
     path.write_text("0" * 64 + "\n", encoding="utf-8")
     return path
 
 
-def test_a_retired_session_is_one_error_that_names_the_person_step_and_is_asked_once(workspace_node):
+def test_a_retired_session_registers_again_and_the_lease_is_taken(workspace_node):
     path = stale(workspace_node)
-    before = sorted(p.name for p in path.parent.iterdir())
     fresh = leasetable.Table(workspace_node.state)
     sent: list[str] = []
     real = fresh._send
@@ -33,21 +30,21 @@ def test_a_retired_session_is_one_error_that_names_the_person_step_and_is_asked_
         return real(method, params, token, wait_s)
 
     fresh._send = counting
-    with pytest.raises(node_health.SessionRetired) as gone:
-        fresh.acquire([leasetable.gpu()], leasetable.Terms(tag="again"))
-    assert "retired" in str(gone.value) and "poolhouse-workspace rebind" in str(gone.value) and "approval" in str(gone.value)
-    assert "0" * 16 not in str(gone.value), "the error never carries a token"
-    assert sent.count("lease_acquire") == 1, "the same token is not asked with twice"
-    assert path.read_text(encoding="utf-8").strip() == "0" * 64, "no token was replaced, minted or borrowed"
-    assert sorted(p.name for p in path.parent.iterdir()) == before, "no other session was registered in its place"
+    held = fresh.acquire([leasetable.gpu()], leasetable.Terms(tag="again", wait=False))
+    assert held["state"] == "held"
+    assert sent.count("register") == 1, "registered once, not in a loop"
+    assert sent.count("lease_acquire") == 2, "the stale token was tried once, then the fresh one"
+    kept = path.parent.glob("*.token")
+    assert all(p.read_text(encoding="utf-8").strip() != "0" * 64 for p in kept), "the stale token was dropped"
+    assert any(p.read_text(encoding="utf-8").strip() for p in path.parent.glob("*.token")), "the new token is kept for other processes"
+    assert fresh.release(held["id"])
 
 
-def test_the_gate_stops_at_a_retired_session_instead_of_waiting_out_its_allowance(workspace_node):
+def test_the_gate_takes_its_lease_after_the_session_was_retired(workspace_node):
     stale(workspace_node)
-    began = time.monotonic()
-    with pytest.raises(node_health.SessionRetired):
-        gate._await(leasetable.Table(workspace_node.state), "gpu", "turn.test", 30.0, None)
-    assert time.monotonic() - began < 10
+    table = leasetable.Table(workspace_node.state)
+    held = table.acquire([leasetable.gpu()], leasetable.Terms(tag="turn.test", wait=False))
+    assert held["state"] == "held" and table.release(held["id"])
 
 
 def test_only_the_nodes_own_unknown_token_denial_is_a_retired_session():
@@ -57,3 +54,19 @@ def test_only_the_nodes_own_unknown_token_denial_is_a_retired_session():
     assert not node_health.token_unknown(Refused(unknown, code="invalid"))
     assert not node_health.token_unknown(Refused("this token may not do that", code="denied"))
     assert not node_health.token_unknown(Refused("denied: a grant is missing for the token", code="denied"))
+
+
+def test_a_process_of_another_tree_gets_its_own_session_instead_of_a_refusal(workspace_node):
+    table = leasetable.Table(workspace_node.state)
+    real = table._send
+
+    def bound_elsewhere(method, params, token="", wait_s=0.0):
+        if method == "register" and params.get("session") == leasetable.NATIVE["session"]:
+            raise Refused("this session is registered from another process lineage (another terminal or program)", code="denied")
+        return real(method, params, token, wait_s)
+
+    table._send = bound_elsewhere
+    held = table.acquire([leasetable.gpu()], leasetable.Terms(tag="elsewhere", wait=False))
+    assert held["state"] == "held", "the node accepted the per-process session's token"
+    assert table.release(held["id"])
+    assert not list((workspace_node.state / "client" / leasetable.BOARD).glob("*.token")), "a per-process token is not kept on disk"

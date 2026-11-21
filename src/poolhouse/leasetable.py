@@ -8,6 +8,8 @@ The session's token is kept in ``<state>/client/pool/<name>.token`` as every ses
 from __future__ import annotations
 
 import json
+import logging
+import os
 import subprocess
 import sys
 import threading
@@ -23,6 +25,8 @@ from poolhouse.lock import only_one
 from poolhouse.platform import private_file
 
 __all__ = ["BOARD", "NATIVE", "Table", "TableDown", "Terms", "default", "gpu", "line", "memory", "slot"]
+
+logger = logging.getLogger(__name__)
 
 BOARD = "pool"
 NATIVE = {"model": "poolhouse-serve", "harness": "poolhouse-serve", "session": "leases"}
@@ -93,9 +97,9 @@ class Table:
             except node_health.Refused as why:
                 if not node_health.token_unknown(why):
                     raise
-                self._token = ""
-                if attempt or self._kept() == sent:
+                if attempt:
                     raise self._retired() from why
+                self._renew_session(sent)
             except OSError:
                 if attempt:
                     raise
@@ -106,13 +110,27 @@ class Table:
                     raise
         raise TableDown(f"the node of {self.state} did not answer")
 
+    def _renew_session(self, stale: str) -> None:
+        """The node retired the session (idle for a day, or every process that used it ended): forget the token it no longer
+        knows, so the next call registers the session again and keeps the new token. Nobody is asked; the node decides whether
+        the session may come back."""
+        with self._lock:
+            self._token = ""
+            name = self._name()
+            path = self.state / "client" / BOARD / f"{name}.token" if name else None
+            for kept in ([path] if path else []) + sorted((self.state / "client" / BOARD).glob("*.token")):
+                try:
+                    if kept.is_file() and kept.read_text(encoding="utf-8").strip() == stale:
+                        kept.unlink()
+                except OSError:
+                    pass
+
     def _retired(self) -> node_health.SessionRetired:
         """The one refusal for a session the node retired: the token kept for it is the one it does not know, so asking again, or
         registering another session in its place, is not for this process to do. It names the step that is a person's."""
         return node_health.SessionRetired(
             f"the lease table's session ({NATIVE['harness']} {NATIVE['session']}) was retired: the node no longer knows its token, "
-            f"so no lease can be taken. A person must run `poolhouse-workspace rebind {NATIVE['harness']} {NATIVE['session']}` "
-            "at a terminal (it asks for approval on their phone), then try again.", code="denied")
+            "and registering it again was refused too, so no lease can be taken. `poolhouse doctor` shows the node's state.", code="denied")
 
     def _send(self, method: str, params: dict[str, Any], token: str = "", wait_s: float = 0.0) -> dict[str, Any]:
         body = node_health.request_body(method, params, board=BOARD, token=token)
@@ -143,7 +161,17 @@ class Table:
         with only_one(self.state / "client" / BOARD / ".register.lock", timeout=CALL_S, announce=lambda _line: None):
             if token := self._kept():
                 return token
-            made = self._send("register", dict(NATIVE))
+            try:
+                made = self._send("register", dict(NATIVE))
+            except node_health.Refused as why:
+                if why.code != "denied":
+                    raise
+                # The shared session is bound to another process tree (a terminal, an app, a service): this process gets a
+                # session of its own instead of a refusal. The node still orders every lease of the device across sessions,
+                # and retires this one when the process has ended. Its token is this process's alone and is not kept on disk.
+                own = {**NATIVE, "session": f"{NATIVE['session']}.{os.getpid()}"}
+                logger.info("lease table: shared session is bound elsewhere (%s); registering %s", why, own["session"])
+                return str(self._send("register", own)["token"])
             self._keep(str(made["name"]), str(made["token"]))
             return str(made["token"])
 
