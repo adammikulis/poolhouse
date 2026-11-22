@@ -2,7 +2,7 @@
 
 use serde_json::{json, Map, Value};
 
-use crate::approvals::{challenge, Approval, APPROVED, CANCELLED, DENIED, EXPIRED, FAILED, GRANTS, PENDING, PHONE_ADD, PHONE_REMOVE, REBIND};
+use crate::approvals::{challenge, Approval, APPROVED, CANCELLED, DENIED, EXPIRED, FAILED, GRANTS, PENDING, PHONE_ADD, PHONE_REMOVE};
 use crate::error::{Error, Result};
 use crate::fsutil::sha256_hex;
 use crate::gov::charter::data_act_wait_ms;
@@ -245,7 +245,6 @@ fn approved(node: &mut Node, a: &Approval, d: &Decision, now: u64) -> Result<()>
             crate::phone::activate(node, a)
         }
         PHONE_REMOVE => crate::phone::remove(node, a),
-        REBIND => Ok(()),
         _ => Err(Error::Invalid("That kind of request is not known.".into())),
     }
 }

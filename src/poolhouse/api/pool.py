@@ -143,11 +143,11 @@ def listen(*, agreed: bool = False) -> Pool:
     """Turn this device's network on so other devices can join: the node listens on TCP 7447 and
     sends a signed beacon on UDP 7448 on the local network. How devices join is the policy of the pool a person founded.
 
-    This changes what the machine exposes, so it is a person's decision: ``agreed=True`` says one made it
-    (the `poolhouse` first run asks; a script passes it on the person's order). Without it, `Error`.
+    This changes what the machine exposes, so it is explicit: pass ``agreed=True`` to say so. Nothing is asked.
+    Without it, `Error`.
     """
     if not agreed:
-        raise errors.Error("turning the network on is a person's decision: pass agreed=True once they said yes")
+        raise errors.Error("turning the network on changes what this machine exposes: pass agreed=True to do it")
     node_join.join(node_launch.default_state())
     return status()
 

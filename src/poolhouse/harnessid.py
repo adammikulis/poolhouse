@@ -66,8 +66,9 @@ def invite(name: str, project_dir: Path, parent: str, say: Callable[[str], None]
         client = Client(node_launch.default_state())
         board = place.at_path(client, Path(project_dir))
         launcher = _launcher(client, board, parent)
-        made = launcher.register(sessions.Native("", claim[1] or "harness", f"{name}-{uuid.uuid4().hex[:8]}"))
+        native = sessions.Native("", claim[1] or "harness", f"{name}-{uuid.uuid4().hex[:8]}")
+        made = launcher.register(native)
     except (NodeError, OSError, ValueError) as why:
         say(f"workspace connection refused: {why}")
         raise ValueError(f"a workspace session could not be made for {name}: {why}") from why
-    return HarnessSession(made.name, board=board, minted=True, base=limits.root(), parent=launcher, state=client.state)
+    return HarnessSession(made.name, board=board, minted=True, base=limits.root(), parent=launcher, state=client.state, native=native)

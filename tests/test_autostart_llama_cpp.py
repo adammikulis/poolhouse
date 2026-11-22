@@ -1,4 +1,4 @@
-"""The optional daily `llama-cpp-ensure` unit: `prepare` stages it, a person installs it, an agent never does."""
+"""The optional daily `llama-cpp-ensure` unit: `prepare` stages it, a process no agent started installs it, an agent is refused at once while the gate is held back."""
 
 from __future__ import annotations
 
@@ -67,18 +67,18 @@ def test_a_manifest_whose_ensure_arguments_were_changed_does_not_parse_into_a_va
     assert any("takes only its own options" in line for line in found)
 
 
-def test_an_agent_is_refused_the_install(tmp_path, user):
+def test_an_agent_is_refused_the_install_at_once(tmp_path, user):
     done = staged(tmp_path, roles=("llama-cpp-ensure",), platform="linux")
     recorder = Recorder()
     with pytest.raises(AgentRefused):
-        install(done.path, seams=seams(recorder, typed=lambda _p: done.manifest.id, env={"CLAUDECODE": "1"}))
+        install(done.path, seams=seams(recorder, env={"CLAUDECODE": "1"}))
     assert recorder.ran == [] and not (user / ".config" / "systemd").exists()
 
 
-def test_a_person_installs_it_and_the_timer_is_enabled(tmp_path, user):
+def test_a_process_no_agent_started_installs_it_and_the_timer_is_enabled(tmp_path, user):
     done = staged(tmp_path, roles=("llama-cpp-ensure",), platform="linux")
     recorder = Recorder()
-    outcome = install(done.path, seams=seams(recorder, typed=lambda _p: done.manifest.id))
+    outcome = install(done.path, seams=seams(recorder))
     assert outcome.ok, outcome.lines
     assert ["systemctl", "--user", "enable", "--now", "poolhouse-llama-cpp-ensure.timer"] in recorder.ran
 

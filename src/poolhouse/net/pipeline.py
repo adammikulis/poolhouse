@@ -20,7 +20,6 @@ from typing import Any
 from poolhouse import http, httpguard
 from poolhouse.httpguard import Fetched, Limits, Refused
 from poolhouse.net import observed, policy as hosts
-from poolhouse.net.hold import Hold, SentinelHold
 from poolhouse.net.policy import mirror_netloc
 from poolhouse.net.scan import Scanner, ScanPolicy
 from poolhouse.net.scanners import default_scanners
@@ -106,13 +105,12 @@ class Reply:
 
 @dataclass
 class Pipeline:
-    """Policy, limits, scanners and the hold that every fetch and download goes through."""
+    """Policy, limits and scanners that every fetch and download goes through."""
 
     policy: hosts.Policy = field(default_factory=hosts.default)
     limits: Limits = PAGE
     scanners: list[Scanner] = field(default_factory=default_scanners)
     scan_policy: ScanPolicy = field(default_factory=ScanPolicy.load)
-    hold: Hold = field(default_factory=SentinelHold)
     sleep: Callable[[float], None] = time.sleep
 
     def limited(self, purpose: str, *, admit: bool = True, **changes: object) -> Limits:
@@ -218,7 +216,7 @@ def default() -> Pipeline:
 
 def library() -> Pipeline:
     """The pipeline a program names to reach any host: the one `use` installed, else a standard one that
-    admits every host. Addresses, redirects, size limits, scanning and the hold apply as in `default`."""
+    admits every host. Addresses, redirects, size limits and scanning apply as in `default`."""
     if _CURRENT is not None:
         return _CURRENT
     if "library" not in _STANDARD:

@@ -1,166 +1,64 @@
-//! Moving a main session in a pool: a typed-yes signature moves nothing there, an admin phone's approval does, once, from the terminal
-//! the request names, and a refused or repeated request spends no nonce.
+//! Moving a main session in a pool: it asks nobody. The terminal that runs `rebind` takes the session over at once, in a pool whose admin
+//! phone is added and in one whose phone is not, with no signature, no approval and no tap, and nothing is left waiting for a person.
 #![cfg(unix)]
 
 mod kit;
 
-use kit::grants::{anchor_of, fresh_nonce, now_ms};
 use kit::pool::{found, Founded};
 use kit::procs::*;
 use kit::*;
 use poolhouse_node::lineage::Peer;
 use serde_json::{json, Value};
 
-fn rebind(pool: &Founded, from: &Peer, params: Value) -> Value {
-    req_from(&mut pool.rig.node.lock().unwrap(), from, "rebind", "demo", "", params)
-}
-
-fn move_to(anchor: &Value) -> Value {
-    json!({"harness": "claude-code", "session": "lead", "anchor": anchor})
-}
-
-fn finishing(anchor: &Value, id: &str) -> Value {
-    json!({"harness": "claude-code", "session": "lead", "anchor": anchor, "approval": id})
+fn rebind(pool: &Founded, from: &Peer) -> Value {
+    req_from(&mut pool.rig.node.lock().unwrap(), from, "rebind", "demo", "", json!({"harness": "claude-code", "session": "lead"}))
 }
 
 fn lead_works(pool: &Founded) -> bool {
     req(&mut pool.rig.node.lock().unwrap(), "whoami", "demo", &pool.token, json!({}))["ok"] == true
 }
 
-fn registers_from(pool: &Founded, from: &Peer) -> bool {
-    req_from(&mut pool.rig.node.lock().unwrap(), from, "register", "demo", "", json!({"model": "claude-sonnet-5-5", "harness": "claude-code", "session": "lead"}))["ok"] == true
+fn registers_from(pool: &Founded, from: &Peer) -> Value {
+    req_from(&mut pool.rig.node.lock().unwrap(), from, "register", "demo", "", json!({"model": "claude-sonnet-5-5", "harness": "claude-code", "session": "lead"}))
 }
 
-fn denial(reply: &Value) -> String {
-    Founded::denial(reply)
+fn lineage_of_lead(pool: &Founded) -> Vec<u32> {
+    pool.rig.node.lock().unwrap().boards["demo"].names.get(&pool.name).unwrap().lineage.iter().map(|a| a.pid).collect()
 }
 
 #[test]
-fn an_approved_session_move_works_once_from_the_terminal_it_names_and_ends_the_tokens_the_session_held() {
+fn in_a_pool_with_an_admin_phone_a_session_move_is_made_at_once_and_waits_for_nobody() {
     let pool = found();
-    let (there, elsewhere) = (process(true), process(true));
-    let anchor = anchor_of(there.id());
-    let ask = ok(rebind(&pool, &peer(&there), move_to(&anchor)));
-    let (id, code) = (ask["id"].as_str().unwrap().to_string(), ask["code"].as_str().unwrap().to_string());
-    assert_eq!(code, pool.rig.shown(&id), "the terminal is told the number the person picks among three");
-    assert_eq!(ok(rebind(&pool, &peer(&there), move_to(&anchor)))["id"], id.as_str(), "asking again attaches to the first request");
-    let waiting = ok(rebind(&pool, &peer(&there), finishing(&anchor, &id)));
-    assert_eq!((waiting["state"].clone(), waiting["moved"].clone()), (json!("pending"), json!(false)));
-    let view = pool.rig.get(&pool.phone, &id);
-    let text = view["text"].as_str().unwrap();
-    assert!(text.contains("Move the session") && text.contains("PICK:"), "{text}");
-    assert!(text.contains("WHY: A process in a terminal requested this move.") && !text.contains("A person ran"), "the request does not establish who ran it: {text}");
-    assert_eq!(view["challenge"]["action"]["anchor"], anchor, "the terminal is inside what the phone signs");
-    assert_eq!(ok(pool.answer(&pool.phone, &id, "approve"))["state"], "approved");
-    assert!(lead_works(&pool), "the tap moved nothing: the terminal completes the move");
-    assert!(denial(&rebind(&pool, &peer(&elsewhere), finishing(&anchor, &id))).contains("another terminal than the one asking"));
-    let moved = ok(rebind(&pool, &peer(&there), finishing(&anchor, &id)));
-    assert_eq!((moved["name"].clone(), moved["moved"].clone()), (json!(pool.name), json!(true)));
+    let there = process(true);
+    assert!(lead_works(&pool));
+    let moved = ok(rebind(&pool, &peer(&there)));
+    assert_eq!((moved["name"].clone(), moved["moved"].clone()), (json!(pool.name), json!(true)), "{moved}");
     assert!(moved["tokens_ended"].as_u64().unwrap() >= 1);
     assert!(!lead_works(&pool), "the tokens it held ended");
-    assert!(denial(&rebind(&pool, &peer(&there), finishing(&anchor, &id))).contains("already carried out"), "an approved move is used once");
-    assert!(!registers_from(&pool, &me()) && registers_from(&pool, &peer(&there)), "the session registers from the new terminal only");
-    done(vec![there, elsewhere]);
-}
-
-#[test]
-fn an_approval_for_a_session_before_it_ended_cannot_move_its_later_incarnation() {
-    let pool = found();
-    let there = process(true);
-    let anchor = anchor_of(there.id());
-    let id = ok(rebind(&pool, &peer(&there), move_to(&anchor)))["id"].as_str().unwrap().to_string();
-    assert_eq!(ok(pool.answer(&pool.phone, &id, "approve"))["state"], "approved");
-    ok(req(&mut pool.rig.node.lock().unwrap(), "retire", "demo", &pool.token, json!({})));
-    assert!(registers_from(&pool, &me()), "the session returns in the original terminal");
-    let result = rebind(&pool, &peer(&there), finishing(&anchor, &id));
-    done(vec![there]);
-    assert_eq!(result["ok"], false, "an old approval cannot move a later incarnation: {result}");
-    assert!(registers_from(&pool, &me()), "the old approval did not move the returned session");
-}
-
-#[test]
-fn a_pending_move_for_an_ended_session_is_replaced_by_a_fresh_request() {
-    let pool = found();
-    let there = process(true);
-    let anchor = anchor_of(there.id());
-    let old = ok(rebind(&pool, &peer(&there), move_to(&anchor)))["id"].as_str().unwrap().to_string();
-    ok(req(&mut pool.rig.node.lock().unwrap(), "retire", "demo", &pool.token, json!({})));
-    assert!(registers_from(&pool, &me()));
-    let new = ok(rebind(&pool, &peer(&there), move_to(&anchor)))["id"].as_str().unwrap().to_string();
-    let old_state = pool.rig.get(&pool.phone, &old)["state"].clone();
-    done(vec![there]);
-    assert_ne!(old, new, "a changed session needs a new request");
-    assert_eq!(old_state, "cancelled");
-}
-
-#[test]
-fn moving_away_and_back_does_not_restore_an_old_approval() {
-    let pool = found();
-    let there = process(true);
-    let anchor = anchor_of(there.id());
-    let id = ok(rebind(&pool, &peer(&there), move_to(&anchor)))["id"].as_str().unwrap().to_string();
-    assert_eq!(ok(pool.answer(&pool.phone, &id, "approve"))["state"], "approved");
-    {
-        let mut node = pool.rig.node.lock().unwrap();
-        poolhouse_node::sessions::carry_out(&mut node, "demo", &pool.name, &peer(&there).lineage(), "test person").unwrap();
-        poolhouse_node::sessions::carry_out(&mut node, "demo", &pool.name, &me().lineage(), "test person").unwrap();
-    }
-    let result = rebind(&pool, &peer(&there), finishing(&anchor, &id));
-    done(vec![there]);
-    assert_eq!(result["ok"], false, "returning to the same lineage cannot revive an old approval: {result}");
-    assert!(registers_from(&pool, &me()));
-}
-
-#[test]
-fn a_move_is_refused_for_another_session_a_wrong_number_and_a_key_that_is_no_admin_key() {
-    let pool = found();
-    let there = process(true);
-    let anchor = anchor_of(there.id());
-    let (_, carrier) = pool.rig.session("demo", "other");
-    let id = ok(rebind(&pool, &peer(&there), move_to(&anchor)))["id"].as_str().unwrap().to_string();
-    let other = json!({"harness": "claude-code", "session": "other", "anchor": anchor, "approval": id});
-    assert!(denial(&rebind(&pool, &peer(&there), other)).contains("no move of that session"), "an approval for one session moves no other");
-    let view = pool.rig.get(&pool.phone, &id);
-    let typed = pool.rig.call("approval_decide", "demo", &carrier, json!({"id": id, "decision": "approve", "key": pool.typed.fingerprint(), "sig": "00"}));
-    assert!(denial(&typed).contains("not an admin key of this pool"), "{typed}");
-    let still = pool.rig.node.lock().unwrap().approvals.get(&id).unwrap().state.clone();
-    assert_eq!(still, "pending", "a refused decision moves nothing");
-    let mut wrong = pool.phone.decision(&view, "approve");
-    let other_number = pool.rig.node.lock().unwrap().approvals.get(&id).map(|a| a.context.pick.iter().find(|n| **n != a.pick_code).cloned().unwrap()).unwrap();
-    wrong["pick"] = json!(other_number);
-    assert_eq!(pool.rig.phone("POST", "decide", "", wrong).1["ok"], false);
-    assert!(denial(&rebind(&pool, &peer(&there), finishing(&anchor, &id))).contains("ended without a tap"), "a wrong number is a decline");
-    assert!(lead_works(&pool));
+    assert_eq!(lineage_of_lead(&pool), vec![there.id()], "the session is registered from the terminal that ran the command");
+    assert!(pool.rig.node.lock().unwrap().approvals.all().is_empty() && pool.rig.pushed.sent().is_empty(), "no request waits on a phone");
+    assert_eq!(registers_from(&pool, &me())["ok"], true, "the old terminal registers the session again, as a live sibling");
+    assert_eq!(lineage_of_lead(&pool), vec![there.id()], "and the session stays with the terminal that took it");
     done(vec![there]);
 }
 
 #[test]
-fn a_typed_yes_signature_moves_no_session_in_a_pool_and_spends_no_nonce() {
-    let pool = found();
-    let there = process(true);
-    let anchor = anchor_of(there.id());
-    let device = pool.rig.device();
-    let incarnation = pool.rig.node.lock().unwrap().boards["demo"].names.get(&pool.name).unwrap().incarnation.clone();
-    let params = pool.typed.rebind_params("claude-code", "lead", "demo", &pool.name, &device, &anchor, &incarnation);
-    let nonce = params["nonce"].as_str().unwrap().to_string();
-    let first = ok(rebind(&pool, &peer(&there), params.clone()));
-    assert!(first["moved"].is_null() && first["id"].is_string(), "a signature asks for a tap; it moves nothing: {first}");
-    for _ in 0..20 {
-        let again = ok(rebind(&pool, &peer(&there), pool.typed.rebind_params("claude-code", "lead", "demo", &pool.name, &device, &anchor, &incarnation)));
-        assert_eq!(again["id"], first["id"], "repeated requests wait on the one request");
-    }
-    assert!(lead_works(&pool) && registers_from(&pool, &me()) && !registers_from(&pool, &peer(&there)), "the session stayed where it was");
-    assert!(pool.rig.node.lock().unwrap().persons.once(&nonce, now_ms()).unwrap(), "the request spent no nonce");
-    assert!(pool.rig.node.lock().unwrap().persons.once(&fresh_nonce(), now_ms()).unwrap(), "the table has room for the lead's own request");
-    done(vec![there]);
-}
-
-#[test]
-fn a_device_with_no_admin_phone_asks_for_no_tap_that_nobody_could_give() {
+fn a_device_with_no_admin_phone_moves_a_session_the_same_way() {
     let pool = found().joined();
     let there = process(true);
-    let refused = rebind(&pool, &peer(&there), move_to(&anchor_of(there.id())));
-    assert!(denial(&refused).contains("No admin phone of this pool is added to this device"), "{refused}");
+    let moved = ok(rebind(&pool, &peer(&there)));
+    assert_eq!(moved["moved"], true, "{moved}");
     assert!(pool.rig.node.lock().unwrap().approvals.all().is_empty() && pool.rig.pushed.sent().is_empty());
+    done(vec![there]);
+}
+
+#[test]
+fn a_move_from_a_process_that_cannot_be_read_or_for_a_session_nobody_registered_moves_nothing() {
+    let pool = found();
+    let there = process(true);
+    assert_eq!(code(&rebind(&pool, &Peer::none())), "denied");
+    let other = req_from(&mut pool.rig.node.lock().unwrap(), &peer(&there), "rebind", "demo", "", json!({"harness": "claude-code", "session": "nobody"}));
+    assert_eq!(code(&other), "denied");
+    assert!(lead_works(&pool), "neither ended the lead's token");
     done(vec![there]);
 }

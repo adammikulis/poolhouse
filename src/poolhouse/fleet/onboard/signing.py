@@ -82,13 +82,8 @@ def _ask_passphrase(prompt: str) -> str:
     told = os.environ.get(UNLOCK_ENV, "")
     if told:
         return told
-    import getpass
-    import sys
-    if sys.stdin.isatty():
-        return getpass.getpass(prompt)
     raise KeyStoreError("this machine has no OS keystore, so the signing key is kept in an "
-                        f"encrypted file and needs a passphrase: set {UNLOCK_ENV} or run "
-                        "in a terminal")
+                        f"encrypted file and needs a passphrase: set {UNLOCK_ENV} ({prompt.strip(': ')})")
 
 
 class SigningKeys:
@@ -217,7 +212,7 @@ class SigningKeys:
         """An entry for a file; hashing needs no secret, so this never touches the key."""
         return Signer.entry_for(path, **terms)
 
-    # -- kept from agents by policy: the caller mints a permit first --
+    # -- refused to an agent by policy: the caller mints a permit first --
     def export(self, grant: Permit, path: Path, passphrase: str) -> Path:
         """The key written to ``path`` encrypted under ``passphrase``."""
         doc = self.meta()

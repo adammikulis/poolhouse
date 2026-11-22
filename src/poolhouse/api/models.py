@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 
 from poolhouse import errors, hub
-from poolhouse.hub.admission import PERSON, Trust
+from poolhouse.hub.admission import Trust
 
 __all__ = ["Trust", "cache_dir", "path", "pull"]
 
@@ -23,13 +23,15 @@ def cache_dir() -> Path:
     return hub.hub_cache()
 
 
-def pull(repo: str, file: str, *, trust: Trust = PERSON) -> Path:
+def pull(repo: str, file: str, *, trust: Trust | None = None) -> Path:
     """Download ``file`` of the Hub repository ``repo`` (``owner/name``) into the cache; the path of the file there.
 
-    ``trust`` says what is fetched without an answer: by default only the publishers Poolhouse ships with, and a
-    person answers for the rest; ``Trust()`` fetches from any publisher and ``Trust(publishers=frozenset({"owner"}))``
-    from those named. Raises `Error` for a repository or file that does not exist, one ``trust`` does not allow, or
-    a download that fails; a file already in the cache is not downloaded again.
+    Nobody is asked. ``trust`` says who asked: ``Trust.PERSON`` fetches from any publisher and notes what is unusual in
+    the pin; ``Trust.AGENT`` is refused for a publisher Poolhouse does not know or a name that says the model was
+    altered, unless the model is already in the cache or its owner is a line of ``admission.allow_file()``. The default
+    is the process's: an agent marker in its environment makes it an agent's. Raises `Error` for a repository or file
+    that does not exist, one an agent may not pull, bytes other than the commit had, or a download that fails; a file
+    already in the cache is not downloaded again.
     """
     if not REPO.fullmatch(repo) or not file:
         raise errors.Error("name a repository as owner/name and a file in it")

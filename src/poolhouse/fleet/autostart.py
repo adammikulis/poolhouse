@@ -542,7 +542,7 @@ def restart(*, run: Callable[[list[str]], int] | None = None,
 
 
 def _left_behind() -> str:
-    """What a person must run by hand to remove what is still installed."""
+    """What to run by hand to remove what is still installed."""
     paths = [Path(p) for p in status()["paths"]]  # type: ignore[union-attr]
     if sys.platform == "win32":
         return _windows_task() if _windows_task_exists() else ""

@@ -183,19 +183,23 @@ def test_a_value_repeating_the_page_into_a_hard_sink_is_denied_without_asking():
     assert s.asked == []
 
 
-def test_an_unproven_value_into_a_hard_sink_goes_to_the_person():
+def test_an_unproven_value_into_a_hard_sink_is_refused_at_once_with_the_reason():
     s = Session("find a quince model")
     s.read("models_find", PAGE)
-    assert not s.call("fleet_join", {"passphrase": "totally-new-words"}).allowed
+    gate = s.call("fleet_join", {"passphrase": "totally-new-words"})
+    assert not gate.allowed and gate.text.startswith("Denied: fleet_join (credential) would use passphrase")
+    assert isinstance(gate.verdict, Deny) and gate.verdict.by == "taint" and "tool:models_find#1" in gate.verdict.reason
     assert len(s.asked) == 1 and s.asked[0].details["capability"] == "credential"
     assert s.asked[0].details["arguments"][0]["status"] == "unproven"
 
 
-def test_the_person_can_agree_and_the_call_then_runs():
-    s = Session("find a quince model", answer=lambda ask: True)
+def test_nothing_waits_for_a_yes_and_the_same_call_is_refused_the_next_time_too():
+    s = Session("find a quince model")
     s.read("models_find", PAGE)
-    gate = s.call("speech_say", {"text": "hello", "out": "hello.wav"})
-    assert gate.allowed and gate.confirmed is True and len(s.asked) == 1
+    first = s.call("speech_say", {"text": "hello", "out": "hello.wav"})
+    again = s.call("speech_say", {"text": "hello", "out": "hello.wav"})
+    assert not first.allowed and not again.allowed and first.text == again.text
+    assert len(s.asked) == 2
 
 
 def test_values_the_person_typed_pass():
@@ -232,7 +236,7 @@ def test_a_hard_sink_needs_a_value_the_person_typed_even_when_every_value_is_har
     assert "no argument the person typed" in s.asked[0].question
 
 
-def test_a_plan_the_person_agreed_to_vouches_for_the_values_it_names():
+def test_an_approved_plan_vouches_for_the_values_it_names():
     s = Session("find a quince model")
     s.read("models_find", PAGE)
     s.run.approve("1. fetch hf:owner/repo/planned.gguf 2. serve it")
@@ -386,18 +390,17 @@ def test_the_agent_loop_blocks_an_injected_page_by_default(served):
     assert json.loads(last_tool["content"])["denied"]
 
 
-def test_the_agent_loop_runs_it_when_the_person_confirms_and_asks_what_it_needs(served):
+def test_the_agent_loop_refuses_an_unproven_state_change_at_once_and_tells_the_model_why(served):
     fake = served(calls(("fetch_page", {"url": "http://x"})),
                   calls(("write_file", {"path": "notes.txt", "content": "hello"})),
                   Turn(text=("done",)))
-    asked = []
-
-    def person(ask, call):
-        asked.append((call.name, ask.details["capability"]))
-        return True
-
-    drive(agent_for(fake), "read the page", confirm=person)
-    assert asked == [("write_file", "state")] and RAN[0][0] == "write_file"
+    events = drive(agent_for(fake), "read the page")
+    assert RAN == []
+    denied = [e for e in events if isinstance(e, Denied) and e.name == "write_file"]
+    assert len(denied) == 1
+    assert "would use" in denied[0].reason and "untrusted text from tool:fetch_page#1" in denied[0].reason
+    told = json.loads(fake.bodies[2]["messages"][-1]["content"])
+    assert told["denied"] and "would use" in json.dumps(told)
 
 
 def test_the_agent_loop_lets_what_the_person_typed_through(served):
@@ -441,10 +444,14 @@ def test_a_tool_result_from_a_sub_agent_is_untrusted_in_the_parent(served):
     assert RAN == []
 
 
-def test_the_model_loop_in_do_run_is_protected_and_plans_vouch_for_their_steps():
+def test_the_model_loop_in_do_run_is_protected_and_every_refusal_is_answered_at_once_with_its_reason():
     from poolhouse.testing import canary
 
     attack = next(a for a in canary.ATTACKS if a.name == "injected-download")
-    assert not attack.hit(canary.play(attack, None))
-    ok = next(b for b in canary.BENIGN if b.name == "lookup-then-serve")
-    assert ok.hit(canary.play(ok, None))
+    run = canary.play(attack, None)
+    assert not attack.hit(run) and run.blocked >= 1
+    for name in ("lookup-then-serve", "plain-calls"):
+        # whichever rail refuses a call that acts, it answers the model in the same turn with its name and reason, and nothing waits for a yes
+        flow = next(b for b in canary.BENIGN if b.name == name)
+        ran = canary.play(flow, None)
+        assert ran.done and ran.blocked >= 1 and "blocked by the " in ran.seen, name

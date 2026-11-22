@@ -17,7 +17,7 @@ import pytest
 from test_room_routes import room  # noqa: F401
 from test_wired import SRC, Recorder, hooks
 
-from poolhouse.sentinel.permit import AgentRefused
+from poolhouse.caller import AgentRefused
 from poolhouse.serve import wired_apply as apply
 
 SAFE_SCRIPT = re.compile(r"[A-Za-z0-9 /:.=_;'%\\\-<>?\",!()&|\s]*")
@@ -94,14 +94,14 @@ def test_a_hostile_number_never_reaches_the_runner(bad, tmp_path):
     assert ran.calls == []
 
 
-def test_an_agent_marker_stops_every_entry_point(tmp_path):
+def test_an_agent_marker_stops_every_entry_point_at_once(tmp_path):
     ran = Recorder()
-    h = hooks(ran, tmp_path / "d.plist", env={"POOLHOUSE_AGENT": "1"}, terminal=(True, True))
+    h = hooks(ran, tmp_path / "d.plist", env={"POOLHOUSE_AGENT": "1"})
     for call in (lambda: apply.set_limit(65536, via="osascript", hooks=h),
                  lambda: apply.set_limit(65536, keep=True, via="sudo", hooks=h),
                  lambda: apply.set_limit(None, keep=False, via="osascript", hooks=h),
                  lambda: apply.reset(via="osascript", hooks=h)):
-        with pytest.raises(AgentRefused):
+        with pytest.raises(AgentRefused, match="refused to an agent"):
             call()
     assert ran.calls == []
 

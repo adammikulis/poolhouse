@@ -12,7 +12,7 @@ from poolhouse.fleet.autostart_backends import backend_for
 from poolhouse.fleet.autostart_manifest import LAUNCHER_HEAD, ROLE_INFO
 from poolhouse.fleet.autostart_prepare import Spec, prepare
 
-PERSON = {"terminal": (True, True), "env": {}}
+PERSON = {"env": {}}
 
 
 @dataclass
@@ -58,7 +58,7 @@ def launchers(directory: Path, platform: str = "linux") -> Path:
 
 
 def seams(recorder: Recorder, platform: str = "linux", scope: str = "user", **more) -> Seams:
-    """Seams for a person at a terminal answering the confirmation with the manifest id."""
+    """Seams for a process no agent started: nothing is asked of anyone, so there is no terminal and no confirmation to supply."""
     given = {"backend": backend_for(platform, scope, recorder), "probe": lambda health: True,
              "platform": platform, "show": lambda line: None, **PERSON, **more}
     return Seams(**given)

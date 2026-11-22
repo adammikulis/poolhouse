@@ -212,10 +212,9 @@ item numbers are used below.
 
 | ID | The release must | Verified by | State | Depends on |
 | --- | --- | --- | --- | --- |
-| MOD-1 | A pull resolves to the 40-character commit and pins digests; an unknown publisher, a marked name, or a digest that differs from the one pinned under another commit asks a person through a human-only `model_publisher` request | `tests/test_publisher_trust.py`; `tests/test_publisher_trust_review.py` | built on branch `feat/publisher-trust`, in the landing queue (land-3133, land-2367); not on the development branch | independent accept for land-2367 |
-| MOD-2 | A model file Poolhouse did not fetch is not pinned on first use; a signed list, an equal pinned digest or a person's approval pins it | same tests | same branch | same |
+| MOD-1 | A pull resolves to the 40-character commit and pins digests; nobody is asked: a person's pull of an unknown publisher or a marked name is noted in the pin, an agent's is refused at once unless the model is installed or on the allow list, and other bytes for a commit already pulled are refused with the file kept | `tests/test_publisher_trust.py`; `tests/test_pull_policy.py`; `tests/test_publisher_trust_review.py` | built on this branch | none |
+| MOD-2 | A model file Poolhouse did not fetch is pinned as it is on first use (a signed list or an equal pinned digest first); nobody is asked, and a later change is refused | same tests; `tests/test_supply_chain_pins.py` | built on this branch | none |
 | MOD-3 | Pins at pull time and signed manifests at load; a held or changed model is refused | `tests/test_supply_chain_pins.py`; `tests/test_sentinel_wiring_serve.py` | built untested | none |
-| MOD-4 | `poolhouse-models distrust OWNER` is person-only, only removes trust, and unpins and quarantines what that publisher supplied; `trust OWNER` and a tap on the request add one | none yet; tests named in `docs/publisher-trust-commands.md` section 9 | designed, not built | building slice 1 (two attack-first rounds are done and their findings are fixed in that document; Q1 to Q5 are decided there) |
 | MOD-5 | Nothing scans model weights for a backdoor | `docs/sentinel.md`, "Considered and left out" | known limit | section 4.2 |
 
 ### 3.7 Harness policy and the exec chain

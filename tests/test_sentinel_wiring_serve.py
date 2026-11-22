@@ -15,23 +15,22 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import home, sentinel
+from poolhouse import caller, home, sentinel
 from poolhouse.fleet.api import Daemon, make_handler
 from poolhouse.fleet.daemon import load_or_create_token
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.remote import Member, MemberError
 from poolhouse.http import Server
-from poolhouse.sentinel import State, human, watch
+from poolhouse.sentinel import State, permit, watch
 from poolhouse.sentinel.cli import status as security_status
 from poolhouse.sentinel.store import Holding
 from poolhouse.serve import LlamaServerBackend, ServerManager, ServerSpec
 from poolhouse.serve.broker import Ask, Broker, BrokerError
-from poolhouse.serve.guarded import SentinelRefused, _first_use as FIRST_USE
+from poolhouse.serve.guarded import SentinelRefused
 from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.ports import free_port
 from poolhouse.serve.process import kill_process_tree, pid_exists
 from poolhouse.testing.canned import canned_binary
-from tests.model_approval import approve
 
 pytest_plugins = ["serve_node"]
 pytestmark = pytest.mark.usefixtures("serve_leases")
@@ -71,21 +70,15 @@ def ask(path: Path) -> Ask:
                spec={"context": 512})
 
 
-def person(record):
-    return human.mint("release", record.id, typed=lambda _p: record.id, terminal=(True, True),
-                      env={})
+def release_permit(record):
+    return permit.mint("release", record.id, env={})
 
 
-def test_a_hand_placed_model_waits_for_a_person_and_is_then_pinned_and_served(
-        broker, model, monkeypatch):
-    monkeypatch.setattr("poolhouse.serve.guarded._first_use", FIRST_USE)
-    with pytest.raises(BrokerError, match="was not downloaded by Poolhouse"):
-        broker.lease(ask(model), timeout=30)
-    assert str(model) not in sentinel.default().manifest.pins() and broker.servers == {}
-    assert approve("model_file") == 1
+def test_a_hand_placed_model_is_pinned_as_it_is_and_served_without_anyone_asked(broker, model):
+    assert str(model) not in sentinel.default().manifest.pins()
     grant = broker.lease(ask(model), timeout=30)
     pin = sentinel.default().manifest.pins()[str(model)]
-    assert pin.source == "approved" and pin.kind == "model"
+    assert pin.source == "first-use" and pin.kind == "model"
     assert [e.kind for e in sentinel.default().bus.recent(kind="model.pinned")]
     assert grant.port in broker.servers
     broker.release(grant.lease)
@@ -115,19 +108,17 @@ def test_a_tampered_model_is_refused_through_the_manager_too(manager, model):
     assert recorded_servers(manager.state_file) == {}
 
 
-def test_a_quarantined_model_cannot_be_leased_until_a_person_releases_it(broker, model):
+def test_a_quarantined_model_cannot_be_leased_until_a_permitted_release_and_an_agent_cannot_mint_one(broker, model):
     node = sentinel.default()
     held = node.store.quarantine(("model", str(model)), "seen misbehaving", {}, Holding())
     with pytest.raises(BrokerError, match="quarantined"):
         broker.lease(ask(model), timeout=30)
-    with pytest.raises(human.AgentRefused):
-        human.mint("release", held.id, terminal=(False, False), env={})
-    with pytest.raises(human.AgentRefused):
-        human.mint("release", held.id, typed=lambda _p: held.id, terminal=(True, True),
-                   env={"POOLHOUSE_AGENT": "1"})
+    with pytest.raises(caller.AgentRefused, match="refused to an agent"):
+        permit.mint("release", held.id, env={"POOLHOUSE_AGENT": "1"})
+    assert [r["action"] for r in caller.audit_rows() if r["event"] == "refused"] == [f"release {held.id}"]
     with pytest.raises(BrokerError, match="quarantined"):
         broker.lease(ask(model), timeout=30)
-    node.store.release(held.id, person(held))
+    node.store.release(held.id, release_permit(held))
     grant = broker.lease(ask(model), timeout=30)
     assert grant.port in broker.servers
     broker.release(grant.lease)

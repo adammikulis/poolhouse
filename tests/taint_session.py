@@ -53,22 +53,21 @@ MODELS = ["quince-2b.gguf", "/models/quince-2b.gguf"]
 
 
 class Session:
-    """The real default rails and a message list, driven one step at a time."""
+    """The real default rails and a message list, driven one step at a time. A `Confirm` is refused at once, with its question as
+    the reason, and nothing waits for an answer; `asked` lists the questions the rails put."""
 
-    def __init__(self, task: str, answer=None, *, items=None, **kw) -> None:
-        self.asked: list[Confirm] = []
-        self.answer = answer if answer is not None else (lambda ask: False)
+    def __init__(self, task: str, *, items=None, **kw) -> None:
         self.messages: list[dict] = [{"role": "system", "content": "be helpful"},
                                      {"role": "user", "content": task}]
         items = items if items is not None else g.default(
             registries={"models": lambda: MODELS}, **kw)
-        self.run = g.start(items, offered=SCHEMAS, task=task,
-                           confirm=lambda ask, call: self.decide(ask))
+        self.run = g.start(items, offered=SCHEMAS, task=task)
         self.run.context.messages = self.messages
 
-    def decide(self, ask: Confirm) -> bool:
-        self.asked.append(ask)
-        return self.answer(ask)
+    @property
+    def asked(self) -> list[Confirm]:
+        """Every `Confirm` an intervention gave, each refused where it was given."""
+        return [verdict for _hook, _name, verdict in self.run.events if isinstance(verdict, Confirm)]
 
     def read(self, tool: str, text: str, args: dict | None = None) -> str:
         call = Call(tool, args or {})
@@ -118,9 +117,7 @@ def agent_for(fake, **kw) -> Agent:
     return Agent(Client(fake.base_url), tools, **kw)
 
 
-def drive(agent: Agent, task: str, confirm=None) -> list:
-    agent.confirm = confirm
-
+def drive(agent: Agent, task: str) -> list:
     async def go() -> list:
         return [e async for e in agent.run(task)]
 

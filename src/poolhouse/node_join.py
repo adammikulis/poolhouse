@@ -4,7 +4,7 @@
     python -m poolhouse.node_join status [--state DIR]
 
 A device in no pool joins an `open` pool whose signed beacon it hears on the same network; each enrolment is recorded (by `open`, with the certificate fingerprint) and can be revoked
-with `member_remove`. A `secure` pool takes no one without a join code; founding a pool is a person's approval. `pool-join-check` (scripts/) walks every step
+with `member_remove`. A `secure` pool takes no one without a join code; a pool is founded on this device by its own key, with nothing asked. `pool-join-check` (scripts/) walks every step
 of this on one device and says which fails and what to change.
 """
 
@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import time
 from pathlib import Path
 
@@ -47,18 +46,14 @@ This turns on the node's network so this device can find and join another one on
 """
 
 
-def consent(port: int, beacon_port: int, *, yes: bool, ask=input, interactive: bool | None = None) -> None:
-    """Show what turning the network on does and get a yes from the person; PoolError when there is none to give.
+def consent(port: int, beacon_port: int, *, yes: bool) -> None:
+    """Show what turning the network on does; PoolError unless the command said `--yes`. Nothing is asked and nothing waits.
 
-    Nothing that runs without a person (a test, an install, a first run) calls this or turns the network on.
+    Nothing that runs by itself (a test, an install, a first run) calls this or turns the network on.
     """
     say(EXPLANATION.format(port=port, beacon_port=beacon_port))
-    if yes:
-        return
-    if not (sys.stdin.isatty() if interactive is None else interactive):
-        raise PoolError("turning the network on needs a person to agree: run it in a terminal, or pass --yes after reading the above")
-    if ask("Turn the network on? [y/N] ").strip().lower() not in ("y", "yes"):
-        raise PoolError("the network stays off")
+    if not yes:
+        raise PoolError("the network stays off: pass --yes to turn it on after reading the above")
 
 
 def network_args() -> list[str]:

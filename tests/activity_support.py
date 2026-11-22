@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from poolhouse.activity import writer
-from poolhouse.sentinel.permit import AGENT_MARKERS
+from poolhouse.caller import AGENT_MARKERS
 from tests import memory_keys
 
 ring = memory_keys.ring

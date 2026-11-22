@@ -112,24 +112,15 @@ def review_without_a_terminal(env, **extra) -> subprocess.CompletedProcess:
                           check=False)
 
 
-def test_review_with_no_terminal_is_one_dialog_and_never_a_terminal_or_editor(desk):
+@pytest.mark.parametrize("extra", [{}, {"CLAUDECODE": "1"}])
+def test_review_with_no_terminal_prints_the_list_and_raises_no_dialog_terminal_or_editor(desk, extra):
     env, log = desk
     held = sentinel.default().store.quarantine(("member", "10.0.0.7"), "member.forged_traffic: x", {})
-    done = review_without_a_terminal(env)
-    assert done.returncode == 0
-    started = lines(log, "start")
-    text = log.read_text()
-    assert len(started) == 1 and "10.0.0.7" in text and "Keep held" in text
-    assert not any(word in text for word in ("Terminal", ".command", "TextEdit"))
-    assert sentinel.default().store.get(held.id).state == sentinel.State.QUARANTINED
-
-
-def test_review_with_no_terminal_started_by_an_agent_prints_the_list_and_shows_nothing(desk):
-    env, log = desk
-    sentinel.default().store.quarantine(("member", "10.0.0.7"), "member.forged_traffic: x", {})
-    done = review_without_a_terminal(env, CLAUDECODE="1")
+    done = review_without_a_terminal(env, **extra)
     assert done.returncode == 0 and "member 10.0.0.7" in done.stdout
     assert lines(log, "start") == []
+    assert not log.exists() or not any(word in log.read_text() for word in ("Terminal", ".command", "TextEdit"))
+    assert sentinel.default().store.get(held.id).state == sentinel.State.QUARANTINED
 
 
 def test_notify_off_stops_every_dialog_of_every_process(desk):

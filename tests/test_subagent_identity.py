@@ -11,7 +11,7 @@ import pytest
 from poolhouse import authority
 from poolhouse.board import session as board_session
 from poolhouse.board.client import Denied, NodeError
-from poolhouse.sentinel.permit import AgentRefused
+from poolhouse.caller import AgentRefused
 
 pytest_plugins = ["node_kit"]
 ROOT = Path(__file__).resolve().parents[1]
@@ -85,16 +85,28 @@ def test_a_session_asking_for_a_subagent_of_another_gets_no_token(family):
     assert board_session.register(node.client, node.board, again, node.lead.token).name == node.first.name
 
 
-def test_a_delegated_gate_refuses_a_spawned_subagent_but_not_its_lead(family, monkeypatch):
+def test_a_delegated_gate_names_the_lead_in_the_audit_and_never_a_spawned_subagent_or_a_borrowed_name(family, monkeypatch):
     node = family
     monkeypatch.delenv(authority.FLOOR_ENV, raising=False)
-    monkeypatch.setenv("POOLHOUSE_WORKSPACE_AGENT", node.lead.name)
+    monkeypatch.setenv("CLAUDECODE", "1")
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", node.lead.session)
-    lead = {"CLAUDECODE": "1", "POOLHOUSE_WORKSPACE_AGENT": node.lead.name}
-    assert authority.require("sentinel.policy", "mode", (False, False), lead) == authority.DELEGATED
-    for helper in (node.first.name, node.nested.name, "../x", "A" * 3):
-        with pytest.raises(AgentRefused):
-            authority.require("sentinel.policy", "mode", (False, False), {**lead, "POOLHOUSE_WORKSPACE_AGENT": helper})
+    named = {node.lead.name: node.lead.name, node.first.name: "", node.nested.name: "", "../x": "", "A" * 3: ""}
+    for who, audited in named.items():
+        monkeypatch.setenv("POOLHOUSE_WORKSPACE_AGENT", who)
+        assert authority.require("sentinel.policy", "mode") == authority.DELEGATED
+        assert [row for row in authority.audit_rows() if row["event"] == "authority.use"][-1]["agent"] == audited
+
+
+def test_a_gate_held_back_from_agents_refuses_the_lead_and_a_spawned_subagent_at_once(family, monkeypatch):
+    node = family
+    authority.set_state(["sentinel.policy"], authority.PERSON, by=node.lead.name)
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", node.lead.session)
+    for who in (node.lead.name, node.first.name, node.nested.name):
+        monkeypatch.setenv("POOLHOUSE_WORKSPACE_AGENT", who)
+        with pytest.raises(AgentRefused, match="held back from agents"):
+            authority.require("sentinel.policy", "mode")
+    assert not [row for row in authority.audit_rows() if row["event"] == "authority.use"]
 
 
 def test_the_hook_scripts_exist_without_a_label():

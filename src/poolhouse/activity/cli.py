@@ -15,7 +15,7 @@ from poolhouse import authority
 from poolhouse.activity import query, view, writer
 from poolhouse.activity.log import ActivityLog
 from poolhouse.activity.schema import Entry
-from poolhouse.caller import AGENT_MARKERS, AgentRefused
+from poolhouse.caller import AGENT_MARKERS, AgentRefused, who
 from poolhouse.command import Group, flag
 from poolhouse.files import write_text
 from poolhouse.keystore import KeystoreError
@@ -140,7 +140,7 @@ def _export(args: argparse.Namespace, log: ActivityLog) -> int:
              "meta": dict(e.meta)} for e in query.select(_entries(log), _filter(args))]
     write_text(target, json.dumps(rows, indent=1, sort_keys=True))
     target.chmod(0o600)
-    writer.record("activity.export", actor="person", outcome="ok", meta={"records": len(rows)})
+    writer.record("activity.export", actor=who(), outcome="ok", meta={"records": len(rows)})
     say(f"wrote {len(rows)} records to {target}")
     return 0
 

@@ -107,7 +107,7 @@ def test_a_confident_safe_and_grounded_call_proceeds_and_asks_both_questions():
     assert set(guard.last) == {"destructive", "grounded"}
 
 
-def test_a_destructive_answer_asks_a_person_and_an_injected_one_is_denied():
+def test_a_destructive_answer_is_a_confirm_and_an_injected_one_is_denied():
     verdict = ToolCallGuard(Scripted({**SAFE, "Is": ("destructive", 0.9)})).before_tool_call(
         CALL, CTX)
     assert isinstance(verdict, Confirm) and "destructive" in verdict.question
@@ -146,7 +146,7 @@ def test_trusted_tools_skip_the_learned_checks_but_not_the_scope_check():
     assert isinstance(guard.before_tool_call(Call("read_file", {"path": "/etc/x"}), CTX), Confirm)
 
 
-def test_a_decider_that_fails_asks_a_person_by_default_and_denies_when_told_to():
+def test_a_decider_that_fails_is_a_confirm_by_default_and_denies_when_told_to():
     class Down:
         def decide(self, *a, **k):
             raise DecideError("server down")
@@ -173,7 +173,7 @@ def test_the_destructive_state_has_the_request_and_the_call_only():
     assert text == 'User request: tidy up\nTool call: delete_file({"path": "a"})'
 
 
-def test_a_guard_runs_inside_the_reference_loop_step():
+def test_a_guard_runs_inside_the_reference_loop_step_and_a_confirm_is_refused_at_once():
     ran = []
 
     def execute(call):
@@ -181,9 +181,11 @@ def test_a_guard_runs_inside_the_reference_loop_step():
         return "ok"
 
     guard = ToolCallGuard(Scripted({**SAFE, "Is": ("destructive", 0.9)}))
-    no = asyncio.run(guard_tool_call(CALL, CTX, execute, [guard], confirm=lambda c: False))
-    yes = asyncio.run(guard_tool_call(CALL, CTX, execute, [guard], confirm=lambda c: True))
-    assert (no.ran, yes.ran, ran) == (False, True, ["delete_file"])
+    stopped = asyncio.run(guard_tool_call(CALL, CTX, execute, [guard]))
+    assert (stopped.ran, ran) == (False, [])
+    assert isinstance(stopped.verdict, Deny) and stopped.text.startswith("Denied: ") and stopped.verdict.reason in stopped.text
+    safe = asyncio.run(guard_tool_call(CALL, CTX, execute, [ToolCallGuard(Scripted(SAFE))]))
+    assert (safe.ran, ran) == (True, ["delete_file"])
 
 
 def test_rules_and_the_guard_combine_through_a_layered_decider():

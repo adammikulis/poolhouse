@@ -19,14 +19,14 @@ from poolhouse.agent.watched import Watch
 from poolhouse.client import Client
 from poolhouse.interventions import Call as GuardCall, Deny, Proceed, Run
 from poolhouse.sandbox import Limits
-from poolhouse.sentinel import State, human
+from poolhouse.sentinel import State, permit
 from poolhouse.sentinel.score import QUARANTINE_AT, WATCH_AT
 from poolhouse.serve import LlamaServerBackend, ServerManager
 from poolhouse.serve.broker import Ask, Broker, BrokerError
 from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.process import kill_process_tree
 from poolhouse.testing.canned import CannedServer, Turn, canned_binary
-from tests.model_approval import approved
+from tests.model_pins import pinned
 from tests.sandbox_kit import policy, seatbelt  # noqa: F401
 
 pytest_plugins = ["serve_node"]
@@ -67,9 +67,8 @@ def denied_run(session: str, denials: int, *, page: str = INJECTION) -> list:
         fake.close()
 
 
-def person(record):
-    return human.mint("release", record.id, typed=lambda _p: record.id, terminal=(True, True),
-                      env={})
+def release_permit(record):
+    return permit.mint("release", record.id, env={})
 
 
 def test_repeated_denials_in_one_session_escalate_to_watch_then_quarantine_and_only_that_session(
@@ -94,12 +93,12 @@ def test_repeated_denials_in_one_session_escalate_to_watch_then_quarantine_and_o
     assert again[-1].reason == "denied" and "frozen" in again[-1].text
 
 
-def test_a_person_releases_a_frozen_session_and_the_count_starts_again() -> None:
+def test_a_release_lifts_a_frozen_session_and_the_count_starts_again() -> None:
     node = sentinel.default()
     denied_run("s-rel", 12)
     record = node.store.find("session", "s-rel")
     assert record is not None and record.state == State.QUARANTINED
-    node.store.release(record.id, person(record))
+    node.store.release(record.id, release_permit(record))
     assert not node.session_frozen("s-rel")
     ok = denied_run("s-rel", 2, page="an ordinary page")
     assert ok[-1].reason != "denied"
@@ -125,7 +124,7 @@ def model(name: str):
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{name}.gguf"
     path.write_bytes(b"GGUF" + b"\x00" * 4096)
-    return approved(path)
+    return pinned(path)
 
 
 def ask(path, label: str) -> Ask:
@@ -147,7 +146,7 @@ def test_a_caller_that_keeps_asking_for_a_held_model_is_blocked_and_others_are_n
     assert node.store.state_of("caller", "polite") == State.CLEAR
     broker.release(grant.lease)
     record = node.store.find("caller", "pest")
-    node.store.release(record.id, person(record))
+    node.store.release(record.id, release_permit(record))
     again = broker.lease(ask(fine, "pest"), timeout=30)
     broker.release(again.lease)
 

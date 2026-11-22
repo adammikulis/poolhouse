@@ -15,7 +15,7 @@ from pathlib import Path
 from packaging.version import InvalidVersion, Version
 
 from poolhouse import authority, credentials, real_machine, runtime, runtime_git, worktreerules
-from poolhouse.authority_caller import Identity
+from poolhouse.authority_caller import Identity, Unauthenticated
 from poolhouse.net import github_release as remote
 from poolhouse.workspace import github_app
 
@@ -105,7 +105,7 @@ def authorize(action: str):
         raise remote.Failed("GitHub publication uses the selected installed credential holder") from None
     try:
         caller = authority.current_agent()
-    except authority.HumanRequired:
+    except Unauthenticated:
         raise remote.Failed("GitHub publication requires the authenticated live lead session") from None
     authority.require("github.release", action)
     return Caller(caller.identity, caller.session.board, caller.session.client.state.resolve())

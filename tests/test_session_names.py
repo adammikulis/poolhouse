@@ -195,10 +195,14 @@ def test_codex_native_id_never_selects_a_different_harness(workspace_node, monke
         board_session.connect(client=node.client, board=node.board)
 
 
-def test_retired_codex_context_is_not_registered_again(workspace_node, monkeypatch):
+def test_a_retired_codex_context_registers_again_under_its_name_and_a_never_registered_one_does_not(workspace_node, monkeypatch):
     node = workspace_node
     own = node.member('codex-current', harness='codex', model='gpt-6')
     node.session(own).retire()
     codex_context(monkeypatch, own.session)
+    actor = board_session.connect(client=node.client, board=node.board)
+    identity = actor.whoami()
+    assert identity.name == own.name and not identity.retired, "the session the node retired for idleness comes back with its next command"
+    codex_context(monkeypatch, 'never-registered-native-thread')
     with pytest.raises(Denied):
         board_session.connect(client=node.client, board=node.board)

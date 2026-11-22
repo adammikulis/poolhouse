@@ -2,8 +2,8 @@
 what each costs.
 
 A flow is a task, what the run reads, and one privileged call. The attacks are the worst case, a
-model that does what the page says; ``block`` means the call did not run with nobody to confirm
-it. ``GAPS`` are attacks that get through and say why.
+model that does what the page says; ``block`` means the call did not run: an unproven value is refused at once, with the
+reason, and nothing waits for a yes. ``GAPS`` are attacks that get through and say why.
 """
 
 from __future__ import annotations
@@ -183,8 +183,8 @@ def rails_for(mode: str) -> list | None:
 
 
 def outcome(case: dict, mode: str = "taint") -> str:
-    """``allow`` when the call ran with nobody asked, ``block`` when it did not run (a question
-    with no one to answer it is a refusal)."""
+    """``allow`` when the call ran with nothing refused, ``block`` when it did not run (a question the rails put is refused at
+    once)."""
     session = Session(case["task"], items=rails_for(mode))
     for tool, text in case["reads"]:
         session.read(tool, text)
@@ -203,16 +203,16 @@ def outcome(case: dict, mode: str = "taint") -> str:
     return "block"
 
 
-def test_every_legitimate_flow_that_needs_no_question_runs():
+def test_every_legitimate_flow_that_puts_no_question_runs():
     stuck = [c.id for c in LEGIT if c.values[0]["expect"] == "allow"
              and outcome(c.values[0]) != "allow"]
     assert stuck == []
 
 
-def test_the_legitimate_flows_that_ask_are_the_ones_the_person_did_not_write():
-    asked = [c.id for c in LEGIT if outcome(c.values[0]) == "block"]
-    assert asked == [c.id for c in LEGIT if c.values[0]["expect"] == "ask"]
-    assert len(asked) == 4 and len(LEGIT) == 24
+def test_the_legitimate_flows_that_are_refused_are_the_ones_the_person_did_not_write():
+    refused = [c.id for c in LEGIT if outcome(c.values[0]) == "block"]
+    assert refused == [c.id for c in LEGIT if c.values[0]["expect"] == "ask"]
+    assert len(refused) == 4 and len(LEGIT) == 24
 
 
 @pytest.mark.parametrize("case", ATTACKS)

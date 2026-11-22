@@ -138,15 +138,15 @@ def test_the_staging_directory_is_private(tmp_path):
     assert staging_dir().stat().st_mode & 0o777 == 0o700
 
 
-def test_a_pinned_hash_that_does_not_match_holds_the_file_and_promotes_nothing(tmp_path, site, pipe):
+def test_a_pinned_hash_that_does_not_match_deletes_the_file_and_promotes_nothing(tmp_path, site, pipe):
     body = gguf_bytes()
     site.add("/m.gguf", body)
-    with pytest.raises(net.ChecksumMismatch) as caught:
+    with pytest.raises(net.ChecksumMismatch):
         pull(pipe, site, "/m.gguf", tmp_path / "m.gguf", net.Want(sha256="0" * 64))
     assert not (tmp_path / "m.gguf").exists()
-    assert caught.value.held and Path(caught.value.held).read_bytes() == body
+    assert not [p for p in staging_dir().rglob("*") if p.is_file() and p.read_bytes() == body]
     row = provenance.recent(1)[0]
-    assert row["outcome"] == "held" and "sha256" in row["reason"]
+    assert row["outcome"] == "held" and "sha256" in row["reason"] and row["path"] == ""
 
 
 def test_a_download_that_must_be_pinned_is_refused_before_any_request(tmp_path, site, pipe):
@@ -242,13 +242,13 @@ def test_a_plain_archive_is_kept(tmp_path, site, pipe):
     assert pull(pipe, site, "/ok.zip", tmp_path / "ok.zip").kind == "zip"
 
 
-def test_eicar_is_held_by_a_scanner_that_matches_it(tmp_path, site, pipe):
+def test_eicar_is_refused_by_a_scanner_that_matches_it_and_deleted(tmp_path, site, pipe):
     site.add("/t.txt", EICAR.encode())
     pipe.scanners = [Eicar()]
-    with pytest.raises(net.Blocked, match="infected") as caught:
+    with pytest.raises(net.Blocked, match="infected"):
         pull(pipe, site, "/t.txt", tmp_path / "t.txt")
     assert not (tmp_path / "t.txt").exists()
-    assert Path(caught.value.held).read_bytes() == EICAR.encode()
+    assert not [p for p in staging_dir().rglob("*") if p.is_file() and p.read_bytes() == EICAR.encode()]
 
 
 def test_an_infected_file_is_never_kept_whatever_the_policy(tmp_path, site, pipe):
@@ -466,18 +466,17 @@ def test_a_name_that_escapes_is_refused(tmp_path, site, pipe):
         net.download(site.base + "/m.gguf", tmp_path / "nul", None, pipe)
 
 
-def test_failures_are_moved_into_sentinels_quarantine_with_an_event(tmp_path, site, pipe):
-    from poolhouse import sentinel
+def test_failures_are_deleted_and_recorded_with_an_event_and_nothing_waits_for_a_person(tmp_path, site, pipe):
+    from poolhouse import requests, sentinel
 
     body = gguf_bytes()
     site.add("/m.gguf", body)
     with pytest.raises(net.ChecksumMismatch):
         pull(pipe, site, "/m.gguf", tmp_path / "m.gguf", net.Want(sha256="1" * 64))
-    records = sentinel.default().store.records(kind="artifact")
-    assert records and records[0].state.value == "quarantined"
-    assert home.home().resolve() in Path(records[0].action["held"]).resolve().parents
+    assert sentinel.default().store.records(kind="artifact") == [] and requests.list_requests() == []
+    assert not (home.home() / ".poolhouse-quarantine").exists()
     log = sentinel.default().bus.log.path.read_text(encoding="utf-8")
-    assert "quarantine" in log
+    assert "net.download.held" in log
 
 
 def test_stale_partial_files_are_swept(tmp_path):

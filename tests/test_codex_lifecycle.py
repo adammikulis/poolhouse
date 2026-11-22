@@ -93,15 +93,30 @@ def test_child_turn_stop_keeps_authenticated_session_for_followup(node):
     child.post("#general", "note", "followup uses the same authenticated session")
 
 
-def test_explicit_retirement_still_refuses_ended_child_identity(node):
+def test_a_child_that_ended_registers_again_at_its_next_start_and_one_its_parent_ended_for_cause_does_not(node):
     lifecycle.handle(event("SessionStart"), node=node.client)
     lifecycle.handle(event("SubagentStart", agent_id="child", parent_agent_id="native-root"), node=node.client)
     child_name = session.find("codex", IDS["child"], client=node.client)
     node.session(node.adopt(child_name)).retire()
-    with pytest.raises(Exception, match=r"ended|retired|session"):
-        lifecycle.handle(event("SubagentStart", agent_id="child", parent_agent_id="native-root"), node=node.client)
+    lifecycle.handle(event("SubagentStart", agent_id="child", parent_agent_id="native-root"), node=node.client)
+    assert not node.session(node.adopt(child_name)).whoami().retired, "an ended child comes back under its parent with nobody asked"
     name = session.find("codex", IDS["native-root"], client=node.client)
     assert not node.session(node.adopt(name)).whoami().retired
+    node.session(node.adopt(name)).retire(child_name, "revoked")
+    with pytest.raises(Exception, match=r"ended for cause"):
+        lifecycle.handle(event("SubagentStart", agent_id="child", parent_agent_id="native-root"), node=node.client)
+
+
+def test_a_root_and_a_child_whose_tokens_the_node_does_not_know_register_again_and_the_event_goes_through(node):
+    lifecycle.handle(event("SessionStart"), node=node.client)
+    lifecycle.handle(event("SubagentStart", agent_id="child", parent_agent_id="native-root"), node=node.client)
+    names = {key: session.find("codex", IDS[key], client=node.client) for key in ("native-root", "child")}
+    node.session(node.adopt(names["child"])).retire()
+    assert lifecycle.handle(event("PostToolUse", agent_id="child"), node=node.client) == {}
+    assert not node.session(node.adopt(names["child"])).whoami().retired, "the child registered again under its parent"
+    node.session(node.adopt(names["native-root"])).retire()
+    assert lifecycle.handle(event("PostToolUse"), node=node.client) == {}
+    assert not node.session(node.adopt(names["native-root"])).whoami().retired, "the root registered again under its name"
 
 
 def test_root_session_end_retires_root_and_stopped_children(node):

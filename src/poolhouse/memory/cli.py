@@ -1,4 +1,4 @@
-"""``poolhouse-memory``: look at, add to and delete what the chat agent remembers. Person only."""
+"""``poolhouse-memory``: look at, add to and delete what the chat agent remembers; an agent is refused at once while the `memory.admin` gate is held back."""
 
 from __future__ import annotations
 
@@ -98,17 +98,15 @@ def _add(args: argparse.Namespace, mem: Memory) -> int:
 
 def _forget(args: argparse.Namespace, mem: Memory) -> int:
     if args.all:
-        scopes = [args.scope] if args.scope else (
-            [input(f"forget all facts in which scope? [{'/'.join(mem.stores)}/both] ").strip().lower()]
-            if not args.yes else [])
+        scopes = [args.scope] if args.scope else []
         if scopes == ["both"]:
             scopes = list(mem.stores)
         if not scopes or any(x not in mem.stores for x in scopes):
-            warn("name the scope: --scope user or --scope project")
+            warn(f"name the scope: --scope {'|'.join(mem.stores)}|both")
             return 2
         held = sum(len(mem.store(x).facts()) for x in scopes)
-        if not args.yes and input(f"forget all {held} facts in {' and '.join(scopes)}? [y/N] ").strip().lower() not in ("y", "yes"):
-            say("kept")
+        if not args.yes:
+            say(f"kept: pass --yes to forget all {held} facts in {' and '.join(scopes)}")
             return 1
         say(f"forgot {sum(mem.store(x).forget_all() for x in scopes)} facts")
         return 0

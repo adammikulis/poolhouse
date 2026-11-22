@@ -106,7 +106,7 @@ def test_a_third_party_cannot_make_a_good_source_look_bad(ledger, clock):
     assert (after.state, after.short, after.long, after.clean) == (before.state, before.short, before.long, before.clean)
 
 
-def test_a_watched_host_is_refused_until_a_person_approves_it(ledger, clock, tmp_path):
+def test_a_watched_host_is_refused_until_it_is_approved(ledger, clock, tmp_path):
     policy = net.Policy(allowed=["good.example"], path=tmp_path / "a.jsonl", clock=clock)
     assert policy.admit("https://good.example/x") == "good.example"
     make_established(ledger, clock, "host", "good.example")
@@ -186,7 +186,7 @@ def test_no_reputation_code_grants_approves_or_releases():
     from pathlib import Path
 
     root = Path(reputation.__file__).parent
-    banned = {"approve", "mint", "mint_clicked", "mint_pressed", "release", "set_role", "grant"}
+    banned = {"approve", "mint", "mint_gated", "release", "set_role", "grant"}
     for path in root.glob("*.py"):
         for node in ast.walk(ast.parse(path.read_text())):
             name = node.attr if isinstance(node, ast.Attribute) else getattr(node, "id", "")

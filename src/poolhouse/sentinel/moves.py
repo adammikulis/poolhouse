@@ -101,7 +101,7 @@ def restore(action: dict[str, Any]) -> Path:
 
 
 def purge(action: dict[str, Any]) -> None:
-    """Delete a held file. Only a person's confirmed purge reaches this."""
+    """Delete a held file. Only a purge the quarantine gate allowed reaches this."""
     held = Path(action["held"])
     held.unlink(missing_ok=True)
     try:

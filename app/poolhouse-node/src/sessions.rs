@@ -1,5 +1,5 @@
 //! What a session can ask about sessions: `whoami` (and say what model it runs), find the name
-//! of a native session, list the sessions of its board (marking the idle ones), and retire one.
+//! of a native session, list the sessions of its board (marking the idle ones), retire one, and take one over (`rebind`).
 
 use serde_json::{json, Map, Value};
 
@@ -11,7 +11,6 @@ use crate::node::Node;
 use crate::row::Kind;
 
 pub const METHODS: [&str; 5] = ["whoami", "session_lookup", "agents", "retire", "rebind"];
-const REBIND_DOMAIN: &str = "poolhouse/session-rebind/v1\n";
 
 pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
@@ -19,7 +18,7 @@ pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
         "session_lookup" => &["harness", "session"],
         "agents" => &["retired"],
         "retire" => &["target", "reason"],
-        "rebind" => &["harness", "session", "at_ms", "nonce", "anchor", "by", "sig", "approval", "incarnation"],
+        "rebind" => &["harness", "session"],
         _ => return None,
     })
 }
@@ -56,20 +55,19 @@ pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
 fn lookup(node: &mut Node, board: &str, p: &Map<String, Value>) -> Result<Value> {
     let hosted = node.boards.get(board).ok_or_else(|| Error::Denied("this node does not host that board".into()))?;
     match hosted.names.find(text(p, "harness")?, text(p, "session")?) {
-        Some(name) => Ok(json!({"name": name, "incarnation": hosted.names.get(name).expect("found above").incarnation})),
+        Some(name) => {
+            let ident = hosted.names.get(name).expect("found above");
+            Ok(json!({"name": name, "incarnation": ident.incarnation, "parent": ident.parent}))
+        }
         None => Err(Error::Denied("no session of that harness and id is registered on this board".into())),
     }
 }
 
-/// What an enrolled person key signs to move the main session ``name`` of ``board`` to the terminal ``anchor`` names (the
-/// command runs in it), on the node ``device``, once.
-fn moving(board: &str, name: &str, incarnation: &str, device: &str, nonce: &str, at_ms: u64, anchor: &Anchor) -> Vec<u8> {
-    let body = json!({"op": "rebind", "board": board, "name": name, "incarnation": incarnation, "node": device, "nonce": nonce, "at_ms": at_ms, "anchor": anchor.body()});
-    format!("{REBIND_DOMAIN}{}", crate::row::canonical(&body)).into_bytes()
-}
-
-/// Move a main session to the lineage of the process asking, on the signature of an enrolled person key over this
-/// request and the terminal it was signed in: the session registers from there from now on, and the tokens it held end.
+/// Take a main session over now: it is registered from the lineage of the process asking from now on and the tokens it held end, even
+/// when a process of the lineage it had still runs. Nothing requires this: a session registers from any process by itself (a lineage
+/// that ended moves it, a live sibling gets a token of its own, `Registry::admit`) and a client whose token ended registers again. It is for
+/// the one case where a live sibling is to give way at once: the terminal the person is at takes the session's grants from the one that runs it.
+/// The move is written to the board.
 fn rebind(node: &mut Node, board: &str, p: &Map<String, Value>, peer: &Peer) -> Result<Value> {
     let hosted = node.boards.get(board).ok_or_else(|| Error::Denied("this node does not host that board".into()))?;
     let name = hosted.names.find(text(p, "harness")?, text(p, "session")?).map(str::to_string)
@@ -78,35 +76,14 @@ fn rebind(node: &mut Node, board: &str, p: &Map<String, Value>, peer: &Peer) -> 
     if ENFORCED && lineage.is_empty() {
         return Err(Error::Denied("the process asking could not be read, so the session cannot be moved to it".into()));
     }
-    if crate::grants::authority::Authority::of(node).governed() {
-        return crate::rebind::by_phone(node, (board, &name), p, &lineage);
-    }
-    let at = crate::grants::calls::fresh(node, p, "at_ms")?;
-    let (by, nonce, anchor) = (text(p, "by")?, text(p, "nonce")?, Anchor::signed(p)?);
-    if nonce.len() < 16 || nonce.len() > 64 || !nonce.bytes().all(|b| b.is_ascii_alphanumeric()) {
-        return Err(Error::Invalid("a move carries a nonce of 16 to 64 letters and digits".into()));
-    }
-    let incarnation = p.get("incarnation").and_then(Value::as_str).ok_or_else(|| Error::Invalid("a move names the session incarnation".into()))?;
-    if !node.persons.signed(by, &moving(board, &name, incarnation, &node.cert.fingerprint(), nonce, at, &anchor), text(p, "sig")?) {
-        return Err(Error::Denied("an enrolled person key signs the move of a session, for this node and the terminal it is made in".into()));
-    }
-    if !lineage.contains(&anchor) {
-        return Err(Error::Denied("the move was signed in another terminal than the one asking".into()));
-    }
-    if incarnation != hosted.names.get(&name).expect("found above").incarnation {
-        return Err(Error::Denied("the session changed since this move was signed; ask again".into()));
-    }
-    if !node.persons.once(nonce, node.now_ms())? {
-        return Err(Error::Denied("that approval was used already".into()));
-    }
-    carry_out(node, board, &name, &lineage, &format!("the person key {}", by.chars().take(16).collect::<String>()))
+    carry_out(node, board, &name, &lineage, "a command run in the terminal it moves to")
 }
 
 /// Register the main session ``name`` from ``lineage`` from now on, end the tokens it held and say so on the board; ``by`` is who moved it.
 pub fn carry_out(node: &mut Node, board: &str, name: &str, lineage: &[Anchor], by: &str) -> Result<Value> {
     let eligible = node.host(board)?.names.get(name).is_some_and(|i| !i.retired && i.parent.is_empty());
     if !eligible {
-        return Err(Error::Denied("only a main session that has not retired is moved".into()));
+        return Err(Error::Denied("only a main session that has not retired is moved; a retired one comes back when its harness registers it".into()));
     }
     let ended = node.tokens.revoke_name(board, name)?;
     node.host(board)?.names.rebind(name, lineage)?;
@@ -200,8 +177,8 @@ pub fn end(node: &mut Node, board: &str, target: &str, by: &str, reason: &str) -
         Err(e) => return Err(e),
     }
     if reason == "idle" && !parent.is_empty() {
-        let said = format!("{target} was retired for idleness: it held no lease and the node heard nothing from it for {} hours. \
-                            Its token no longer works; if its work is not finished, start it again.", node.writes.idle_retire_s / 3600);
+        let said = format!("{target} was retired for idleness: it held no lease and the node heard nothing from it for {} hours, so its resources were freed. \
+                            Its token no longer works; it registers again under you at its next use, and nothing else is needed.", node.writes.idle_retire_s / 3600);
         crate::notice::tell(node, board, &parent, "subagent retired", &said)?;
     }
     Ok((revoked, freed))

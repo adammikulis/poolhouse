@@ -18,7 +18,7 @@ from poolhouse.board.client import Client, Denied
 from poolhouse.board.session import Session
 from poolhouse.fleet.onboard.signing import SigningKeys
 
-__all__ = ["POOL", "ensure_key", "refusal", "settle"]
+__all__ = ["POOL", "ensure_key", "refusal", "request"]
 
 POOL = "pool"
 
@@ -28,7 +28,7 @@ def refusal(asks: list[approval.Ask]) -> str:
     if not caller.marked():
         return ""
     why = [f"{a.action} ({person_key.agent_refusal(a.action)})" for a in asks if person_key.agent_refusal(a.action)]
-    return "an agent is refused: " + "; ".join(why) if why else ""
+    return f"refused to an agent ({caller.marked()} is set): " + "; ".join(why) + "; run it from a terminal outside the agent" if why else ""
 
 
 def ensure_key(client: Client, carrier: Session) -> SigningKeys:
@@ -49,15 +49,20 @@ def _waiting(carrier: Session, key: SigningKeys) -> dict[str, dict[str, Any]]:
     return {a["id"]: a for a in carrier.call("approval_pending", **signed)["approvals"]}
 
 
-def settle(session: Session, made: approval.Approval, asks: list[approval.Ask]) -> approval.Approval:
-    """Decide the pending ``made`` request at once: approved with this device's key when policy allows ``asks``, withdrawn with the reason otherwise."""
+def request(session: Session, asks: list[approval.Ask], **wire: Any) -> approval.Approval:
+    """Ask for ``asks`` and have the answer at once: refused with the reason before anything is raised when policy does not allow them, else
+    made and approved with this device's key. Nothing is left pending."""
+    if why := refusal(asks):
+        caller.record("approval.refused", asks=[a.action for a in asks], why=why)
+        raise Denied("denied", why)
+    made = approval.request(session, approval.wire(asks, **wire))
+    return _settle(session, made, asks)
+
+
+def _settle(session: Session, made: approval.Approval, asks: list[approval.Ask]) -> approval.Approval:
+    """Approve the pending ``made`` request with this device's key."""
     if made.state != approval.PENDING:
         return made
-    why = refusal(asks)
-    if why:
-        caller.record("approval.refused", id=made.id, asks=[a.action for a in asks], why=why)
-        made.cancel()
-        raise Denied("denied", why)
     client = session.client
     carrier = person_session.on(client, POOL)
     key = ensure_key(client, carrier)

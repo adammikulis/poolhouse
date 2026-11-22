@@ -202,7 +202,7 @@ def serve_status(port: int = 8080) -> list[dict[str, Any]]:
 
 
 _NOT_A_TOOL_ARGUMENT = ("--iq", "--port", "--escalate", "--binary", "--build", "--root")
-"""``up`` flags a model may not set through ``extra``: the IQ mode is a person's, the broker
+"""``up`` flags a model may not set through ``extra``: the IQ mode is a model-quality choice for the command line, the broker
 picks the port, and growing a server, the binary and the fleet root are not a tool's to choose."""
 
 
@@ -217,7 +217,7 @@ def serve_up(model: str, *, context: int = 0, draft: str = "",
     for one in extra or []:
         flag = str(one).split("=", 1)[0]
         if flag in _NOT_A_TOOL_ARGUMENT or flag.startswith(("--iq-", "--iq_")):
-            raise ValueError(f"{flag} is a person's to set, not a tool argument")
+            raise ValueError(f"{flag} is not a tool argument: set it on the command line")
     argv = ["up", _not_an_option(model, "model"), "--no-wait", "--parallel", "1"]
     if context:
         argv += ["--context", str(context)]

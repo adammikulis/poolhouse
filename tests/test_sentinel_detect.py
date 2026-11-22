@@ -9,18 +9,21 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse.sentinel import Mode, Sentinel, State, canary, human
+from poolhouse import caller
+from poolhouse.caller import AgentRefused
+from poolhouse.sentinel import Mode, Sentinel, State, canary, permit
 from poolhouse.sentinel.events import Severity
 from poolhouse.sentinel.findings import HIGH
 from poolhouse.sentinel.honey import DECOY_TOOLS, Honey
 from poolhouse.sentinel.integrity import check_file
+from poolhouse.sentinel.permit import Permit
 from poolhouse.sentinel.rails import RailWatch
 from poolhouse.sentinel.rates import Abuse, AbuseLimits, MemberLimits, MemberWatch, ToolMix, Windows
 from poolhouse.sentinel.servers import exe_mismatches, unmanaged_findings
 
 
 def grant(action, subject):
-    return human.mint(action, subject, typed=lambda _p: subject, terminal=(True, True), env={})
+    return permit.mint(action, subject, env={})
 
 
 @pytest.fixture
@@ -203,13 +206,19 @@ def test_off_without_a_reason_is_ignored_and_logged(tmp_path, models, monkeypatc
     assert node.verify_before_load(path) is False
 
 
-def test_only_a_person_changes_the_mode(node):
-    from poolhouse.sentinel.permit import AgentRefused, Permit
-
+def test_the_mode_changes_for_a_process_with_no_agent_marker_and_an_agent_is_refused_at_once(node):
+    before = node.mode
     with pytest.raises(AgentRefused):
         node.set_mode(Mode.OFF, Permit("mode", "sentinel", 9e18, object()))
+    for marker in caller.AGENT_MARKERS:
+        with pytest.raises(AgentRefused, match="refused to an agent"):
+            permit.mint("mode", "sentinel", env={marker: "1"})
+    assert Sentinel(node.root).mode == before
+    assert [r["action"] for r in caller.audit_rows() if r["event"] == "refused"] == ["mode sentinel"] * len(caller.AGENT_MARKERS)
     node.set_mode(Mode.ENFORCE, grant("mode", "sentinel"))
     assert Sentinel(node.root).mode == Mode.ENFORCE
+    ran = [r for r in caller.audit_rows() if r["event"] == "ran" and r["action"] == "mode sentinel"]
+    assert len(ran) == 1 and ran[0]["who"].startswith("user ")
 
 
 def test_never_act_kinds_stay_watch_only_in_enforce(tmp_path, models):
@@ -326,7 +335,7 @@ def test_a_well_behaved_member_never_alarms():
         assert watch.note("10.0.0.8", "ok") is None
 
 
-def test_a_blocked_member_is_refused_and_released_by_a_person(node):
+def test_a_blocked_member_is_refused_until_a_permitted_release(node):
     now = [0.0]
     node.members = _watch(now)
     for _ in range(3):

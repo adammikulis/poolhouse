@@ -1,12 +1,13 @@
 """Bringing a file in: streamed to staging, checked, scanned, then promoted in one step.
 
 Nothing reaches its final path until its size, SHA-256 (when one is pinned), format and scan
-have passed. A file that fails is handed to the hold (sentinel's quarantine) and never
-promoted. Nothing downloaded is executed or imported here.
+have passed. A file that fails is deleted, its refusal raised and recorded, and never
+promoted; nothing is quarantined for a person to release. Nothing downloaded is executed or imported here.
 """
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import logging
@@ -21,7 +22,7 @@ from typing import Any
 from poolhouse import activity, files, http, httpguard, sentinel
 from poolhouse.httpguard import Refused, TooLarge
 from poolhouse.net import observed, provenance, sniff
-from poolhouse.net.hold import staging_dir
+from poolhouse.net.hold import discard, staging_dir
 from poolhouse.net.pipeline import Pipeline, bearer, default
 from poolhouse.net.policy import host_of
 from poolhouse.net.scan import Outcome
@@ -40,11 +41,7 @@ RANGE = re.compile(r"bytes (\d+)-(\d+)/(\d+|\*)")
 
 
 class Blocked(Refused):
-    """A file that failed a check and was held, not kept. ``held`` is where it is."""
-
-    def __init__(self, message: str, held: str = "") -> None:
-        super().__init__(message)
-        self.held = held
+    """A file that failed a check and was deleted, not kept."""
 
 
 class ChecksumMismatch(Blocked):
@@ -68,8 +65,10 @@ class Want:
     """What a download must be: its ``kind`` (from the name when empty), the ``sha256`` it is
     pinned to, whether a digest is ``require_digest``, and how an unscanned file is treated.
     ``verify(path, headers)`` returns why a staged file is not acceptable, or ''. ``rename(final_url,
-    headers)`` picks the file name once the answer is known. ``pin_notes`` (``publisher``, ``commit``,
-    ``source_ref``, ``host``, ``unvetted``) are recorded in the pin of a model that is kept."""
+    headers)`` picks the file name once the answer is known. ``reputation`` is whether a failed check counts against the host in
+    the reputation ledger, whose only remedy is a person (a Hub download says no: its own retry and refusal protect the file).
+    ``pin_notes`` (``publisher``, ``commit``,
+    ``source_ref``, ``host``, ``note``) are recorded in the pin of a model that is kept."""
 
     kind: str = ""
     sha256: str = ""
@@ -86,6 +85,7 @@ class Want:
     admit: bool = True
     verify: Callable[[Path, dict[str, str]], str] | None = None
     rename: Callable[[str, dict[str, str]], str] | None = None
+    reputation: bool = True
     pin_notes: dict[str, str] = field(default_factory=dict)
 
 
@@ -217,18 +217,18 @@ def _promote(staged: Path, dest: Path) -> None:
         staged.unlink(missing_ok=True)
 
 
-def _reject(pipe: Pipeline, staged: Path, note: provenance.Provenance, reason: str,
-            error: type[Blocked] = Blocked) -> Blocked:
-    observed.rejected(note.url, note.sha256,
-                      {ChecksumMismatch: "hash_change", ScanHit: "scan_hit"}.get(error, "denial"))
-    held = pipe.hold.hold(staged, reason, {"url": note.url, "sha256": note.sha256,
-                                            "kind": note.kind, "reason": reason})
-    provenance.record(replace(note, outcome="held", reason=reason, path=held))
+def _reject(staged: Path, note: provenance.Provenance, reason: str,
+            error: type[Blocked] = Blocked, *, reputation: bool = True) -> Blocked:
+    if reputation:
+        observed.rejected(note.url, note.sha256,
+                          {ChecksumMismatch: "hash_change", ScanHit: "scan_hit"}.get(error, "denial"))
+    discard(staged)
+    provenance.record(replace(note, outcome="held", reason=reason, path=""))
     activity.record("net.download", subject=f"host:{host_of(note.url)}", outcome="held",
                     refs={"sha256": note.sha256}, meta={"size": note.size, "reason": reason})
     _event("net.download.held", "warning", f"artifact:{note.sha256 or note.url}",
-           {"url": note.url, "reason": reason, "held": held})
-    return error(f"{note.url}: {reason}", held)
+           {"url": note.url, "reason": reason})
+    return error(f"{note.url}: {reason}")
 
 
 def download(url: str, dest: Path | str, want: Want | None = None, pipeline: Pipeline | None = None,
@@ -237,7 +237,7 @@ def download(url: str, dest: Path | str, want: Want | None = None, pipeline: Pip
 
     `NoDigest` before any request when ``want.require_digest`` and no ``sha256`` was given;
     `Truncated` when the connection ended early (the partial file stays in staging and the
-    next call resumes it); `ChecksumMismatch` or `Blocked` when the file was held.
+    next call resumes it); `ChecksumMismatch` or `Blocked` when the file failed a check and was deleted.
     """
     want = want or Want()
     pipe = pipeline or default()
@@ -295,8 +295,9 @@ def _check_cancel(cancel: Cancel | None) -> None:
 def _finish(pipe: Pipeline, staged: Path, final: Path, want: Want,
             arrival: Arrival) -> provenance.Provenance:
     """The checks every file passes before it is kept: size, pinned SHA-256, format, scan; then
-    one promotion to ``final``. A file that fails goes to the hold."""
+    one promotion to ``final``. A file that fails is deleted."""
     name, headers, url = safe_filename(final.name), arrival.headers, arrival.url
+    refuse = functools.partial(_reject, staged, reputation=want.reputation)
     digest, size = files.sha256_file(staged), staged.stat().st_size
     served = headers.get("content-type", "")
     note = provenance.Provenance(
@@ -306,24 +307,24 @@ def _finish(pipe: Pipeline, staged: Path, final: Path, want: Want,
         headers=provenance.subset(headers), expected_sha256=want.sha256,
         host_source=arrival.host)
     if want.sha256 and digest != want.sha256.lower():
-        raise _reject(pipe, staged, note, "sha256 differs from the pinned one", ChecksumMismatch)
+        raise refuse(note, "sha256 differs from the pinned one", ChecksumMismatch)
     if want.size and size != want.size:
-        raise _reject(pipe, staged, note, f"{size} bytes, expected {want.size}")
+        raise refuse(note, f"{size} bytes, expected {want.size}")
     if want.verify is not None and (problem := want.verify(staged, headers)):
-        raise _reject(pipe, staged, note, problem)
+        raise refuse(note, problem)
     if want.library_links and not (want.require_digest and want.sha256):
-        raise _reject(pipe, staged, note, "library aliases require a pinned release digest")
+        raise refuse(note, "library aliases require a pinned release digest")
     verdict = sniff.sniff(staged, want.kind or sniff.expected_kind(name), content_type=served,
                           library_links=want.library_links)
     if not verdict.ok:
-        raise _reject(pipe, staged, note, "; ".join(verdict.problems))
+        raise refuse(note, "; ".join(verdict.problems))
     if arrival.phase:
         arrival.phase("scanning")
     summary = pipe.scan_policy.scan(staged, verdict.kind, pipe.scanners)
     keep, why = pipe.scan_policy.decide(verdict.kind, summary, allow_unscanned=want.allow_unscanned)
     if not keep:
         hit = any(r.outcome == Outcome.INFECTED for r in summary.results)
-        raise _reject(pipe, staged, note, why, ScanHit if hit else Blocked)
+        raise refuse(note, why, ScanHit if hit else Blocked)
     warnings = (*verdict.warnings, *(w for r in summary.results for w in r.warnings),
                 *(r.detail for r in summary.results if r.outcome == Outcome.NO_SCANNER))
     if arrival.phase:
@@ -376,7 +377,7 @@ def _pin_pulled(final: Path, kind: str, want: Want, digest: str, arrival: Arriva
 def accept(staged: Path, dest: Path | str, want: Want, source: str,
            pipeline: Pipeline | None = None) -> provenance.Provenance:
     """A file that arrived by another road (a member on this network, ``source``
-    names it) put through the checks a download passes, with the same hold for one that fails
+    names it) put through the checks a download passes, with the same deletion of one that fails
     and the same promotion. ``want.sha256`` is the pin and must come from a source other than
     the one that sent the bytes. The staged file is consumed."""
     pipe = pipeline or default()

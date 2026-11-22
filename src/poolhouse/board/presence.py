@@ -1,10 +1,10 @@
-"""The one step an agent cannot answer: the person says yes to the node's own question before the first person key or the first phone
-is added (docs/phone-approval.md, "The first phone"; docs/node.md, "Standing grants").
+"""The node's confirmation before the first person key, the first phone or a change to the pool is made (docs/phone-approval.md, "The first phone";
+docs/node.md, "Standing grants").
 
-The node asks, never the client: the operating system's prompt where the installed software runs on its real home, or the terminal
-device named here, which the node writes the question on and reads the typed `yes` from itself. The one-time secret the node makes when
-the person says yes is kept in its memory and handed once to the session that asked, so neither a file in the state directory nor a
-request can make one. `ask` waits for the answer; it has no way to give one.
+The node confirms, never the client. A node started as the installed software starts it (`--presence auto`) asks nobody: the one-time secret
+or ticket is made at once, kept in the node's memory and handed once to the session that asked, so neither a file in the state directory
+nor a request can make one. A node started with `--presence os` or `terminal` puts a question to the user first, and `ask` then waits for
+the answer; it has no way to give one.
 """
 
 from __future__ import annotations

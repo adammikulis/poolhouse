@@ -103,6 +103,7 @@ for _name, _help, _options, _handler in grants_cli.TABLE:
     COMMANDS.add(_name, grants_cli.reader(_handler), help=_help, options=[*NODE_COMMON, *_options])
 for _name, _help, _options, _handler in grants_cli.PERSON:
     COMMANDS.add(_name, grants_cli.person_runner(_handler), help=_help, options=[*NODE_COMMON, *_options])
+COMMANDS.add(grants_cli.REBIND[0], grants_cli.REBIND[3], help=grants_cli.REBIND[1], options=[*NODE_COMMON, *grants_cli.REBIND[2]])
 COMMANDS.add("approval", approval_cli.COMMAND, options=[*NODE_COMMON, *approval_cli.OPTIONS],
              help="ask for grants (request; decided at once by policy), read what became of it; a linked phone is only notified")
 COMMANDS.add("pool", pool_cli.COMMAND, options=[*NODE_COMMON, *pool_cli.OPTIONS],

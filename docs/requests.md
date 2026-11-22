@@ -16,7 +16,7 @@ answered, which way and when. The words come from fixed sentences and the destru
 labels; every text is escaped (control, bidi and invisible characters become visible escapes) and
 cut to a bound before it is stored.
 
-| kind | what waits | answered by a person only |
+| kind | what is raised | notes |
 | --- | --- | --- |
 | `tool_call` | a call that waits for a yes | |
 | `tool_call_destructive` | a call the classifier labelled destructive or unsure; never offers always allow | |
@@ -24,8 +24,6 @@ cut to a bound before it is stored.
 | `hold`, `rule_suggestion` | a held call, a suggested rule | |
 | `quarantine_release` | what sentinel holds | yes: the sentinel re-checks at the click |
 | `host_approval`, `join-code`, `grant`, `keystore_unlock` | declared kinds; their sources still own their prompts | yes |
-| `model_publisher` | a model from a publisher Poolhouse does not know, named as modified, or whose file differs from the one pulled before; approved for one repository at one commit (`docs/model-discovery.md`, "Publisher trust") | yes |
-| `model_file` | a model file Poolhouse did not fetch and holds no pin for; approved for that path and those bytes | yes |
 
 States: `pending`, `approved`, `denied`, `expired`, `cancelled`, `superseded`. Choices: allow this
 time, always allow, never allow, no, cancel, release, keep held, later, approve. A request that
@@ -41,7 +39,7 @@ wins: a later one is refused with `already resolved: <state> by <way>`.
 Only a person answers. A terminal answer needs a terminal on stdin and stdout; every way is
 refused when an agent marker (`CLAUDECODE`, `POOLHOUSE_AGENT`, `POOLHOUSE_NONINTERACTIVE`) is set in
 the process. No tool offered to a model, MCP tool, token or workspace message reaches `answer`: a
-tool named for a request or an answer is on the person-only floor, a call whose text names
+tool named for a request or an answer is on the protected floor, a call whose text names
 `poolhouse-requests` or the request store is refused, and `poolhouse-requests` refuses a process an
 agent started. An answer that approves something human-only (a release, a host, a grant) is not
 the permission: the action checks again, in the process that carries it out, that no agent

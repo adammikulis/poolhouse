@@ -115,7 +115,7 @@ fn the_cursor_a_read_returns_gives_each_unread_message_exactly_once() {
 }
 
 #[test]
-fn a_retired_subagent_loses_its_token_its_leases_and_its_name() {
+fn a_retired_subagent_loses_its_token_its_leases_and_its_claims_and_registers_again_under_its_parent() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let (lead, lt) = session(&mut n, "demo", "lead");
@@ -128,8 +128,6 @@ fn a_retired_subagent_loses_its_token_its_leases_and_its_name() {
     assert_eq!(code(&post(&mut n, "demo", &ct, "late")), "denied");
     assert_eq!(ok(req(&mut n, "claims", "demo", &lt, json!({})))["claims"].as_array().unwrap().len(), 0);
     assert_eq!(ok(req(&mut n, "claim", "demo", &lt, json!({"kind": "branch", "key": "work"})))["claim"]["owner"], lead, "the claim is free");
-    let again = req(&mut n, "register", "demo", &lt, json!({"model": "claude-haiku-5-5", "harness": "claude-code", "session": "child"}));
-    assert_eq!(code(&again), "denied", "the retired session cannot register itself back");
     let listed = |n: &mut poolhouse_node::node::Node, all: bool| ok(req(n, "agents", "demo", &lt, json!({"retired": all})))["agents"].as_array().unwrap().len();
     assert_eq!((listed(&mut n, false), listed(&mut n, true)), (1, 2));
     let identity = ok(req(&mut n, "read", "demo", &lt, json!({"kind": "identity"})));
@@ -138,6 +136,12 @@ fn a_retired_subagent_loses_its_token_its_leases_and_its_name() {
     assert!(ended["detail"].as_str().unwrap().contains("2 leases released"), "{ended}");
     let audit = ok(req(&mut n, "read", "demo", &lt, json!({"kind": "audit"})));
     assert!(audit["entries"].as_array().unwrap().iter().all(|e| e["fields"]["event"] != "retire"), "the ending is one identity entry, not a second audit entry");
+
+    let again = ok(req(&mut n, "register", "demo", &lt, json!({"model": "claude-haiku-5-5", "harness": "claude-code", "session": "child"})));
+    assert_eq!((again["name"].as_str().unwrap(), again["created"].clone(), again["parent"].clone()), (child.as_str(), json!(false), json!(lead)), "an ended subagent registers again under its parent: the ending freed what it held and blocked nothing");
+    assert_eq!(ok(req(&mut n, "whoami", "demo", again["token"].as_str().unwrap(), json!({})))["name"], child.as_str());
+    assert_eq!(code(&req(&mut n, "whoami", "demo", &ct, json!({}))), "denied", "the token it ended with stays unknown");
+    assert_eq!((listed(&mut n, false), listed(&mut n, true)), (2, 2));
 }
 
 #[test]

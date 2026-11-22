@@ -24,7 +24,6 @@ from poolhouse.sentinel import State
 from poolhouse.serve import guarded
 from poolhouse.serve.guarded import SentinelRefused
 from poolhouse.testing.fakehub import fake_hub
-from tests.model_approval import approve
 from tests.net_site import Site, gguf_bytes
 
 SHA = lambda data: hashlib.sha256(data).hexdigest()  # noqa: E731
@@ -116,10 +115,8 @@ def test_a_model_downloaded_through_a_pipeline_that_lists_every_host_is_not_pinn
     final = home.home() / "models" / "m.gguf"
     net.download(site.base + "/m.gguf", final, net.Want(), anywhere)
     assert final.read_bytes() == body and str(final) not in pins()
-    with pytest.raises(SentinelRefused, match="was not downloaded by Poolhouse"):
-        load(final)
-    (waiting,) = requests.list_requests(state="pending", kind="model_file")
-    assert str(final) in waiting.reason
+    assert load(final) == "" and pins()[str(final)].source == "first-use"
+    assert requests.list_requests() == []
 
 
 @pytest.mark.parametrize("allowed", [("*.*",), ("?*",)])
@@ -149,37 +146,31 @@ def test_a_copy_of_a_model_downloaded_through_a_pipeline_that_lists_every_host_i
     net.download(site.base + "/m.gguf", home.home() / "models" / "m.gguf", net.Want(), anywhere)
     copy = where("copy.gguf")
     copy.write_bytes(body)
-    with pytest.raises(SentinelRefused, match="was not downloaded by Poolhouse"):
-        load(copy)
+    assert load(copy) == "" and pins()[str(copy)].source == "first-use"
 
 
-def test_a_model_poolhouse_did_not_pull_waits_for_a_person_and_is_then_pinned_as_approved(tmp_path):
+def test_a_model_poolhouse_did_not_pull_is_pinned_as_it_is_without_anyone_asked(tmp_path):
     path = where("other.gguf")
     path.write_bytes(gguf_bytes(extra=512))
-    with pytest.raises(SentinelRefused, match="was not downloaded by Poolhouse"):
-        load(path)
-    assert str(path) not in pins() and path.exists()
-    assert approve("model_file") == 1
-    load(path)
+    assert str(path) not in pins()
+    assert load(path) == ""
     pin = pins()[str(path)]
-    assert pin.source == "approved" and pin.digest_from == "computed" and pin.origin == ""
+    assert pin.source == "first-use" and pin.digest_from == "computed" and pin.origin == ""
     assert sentinel.default().bus.recent(kind="model.pinned_first_use")
     assert not sentinel.default().bus.recent(kind="model.pinned_at_pull")
+    assert requests.list_requests() == []
 
 
-def test_an_approval_covers_the_path_and_bytes_it_was_given_for(tmp_path):
+def test_a_first_use_pin_covers_the_path_and_bytes_it_was_made_for(tmp_path):
     path = where("other.gguf")
     path.write_bytes(gguf_bytes(extra=512))
-    with pytest.raises(SentinelRefused):
-        load(path)
-    assert approve("model_file") == 1
-    path.write_bytes(gguf_bytes(extra=513))               # other bytes at the approved path
-    with pytest.raises(SentinelRefused, match="was not downloaded by Poolhouse"):
+    load(path)
+    path.write_bytes(gguf_bytes(extra=513))               # other bytes at the pinned path
+    with pytest.raises(SentinelRefused, match="does not match its pin"):
         load(path)
     copy = where("copy.gguf")
-    copy.write_bytes(path.read_bytes())                   # approved bytes at another path
-    with pytest.raises(SentinelRefused, match="was not downloaded by Poolhouse"):
-        load(copy)
+    copy.write_bytes(gguf_bytes(extra=512))               # the pinned bytes at another path: pinned as its own first use
+    assert load(copy) == "" and pins()[str(copy)].source == "first-use"
 
 
 def test_a_copy_of_a_pinned_file_is_pinned_without_asking(tmp_path, site, pipe):
@@ -187,26 +178,6 @@ def test_a_copy_of_a_pinned_file_is_pinned_without_asking(tmp_path, site, pipe):
     copy = where("copy.gguf")
     copy.write_bytes(body)
     assert load(copy) == "" and pins()[str(copy)].source == "pinned-digest"
-
-
-def test_an_agent_cannot_approve_a_model_file_even_where_answers_are_delegated(tmp_path, monkeypatch):
-    from poolhouse import authority, caller
-
-    monkeypatch.delenv(authority.FLOOR_ENV, raising=False)
-    assert authority.state_of("requests.answer") == authority.DELEGATED
-    path = where("other.gguf")
-    path.write_bytes(gguf_bytes(extra=512))
-    with pytest.raises(SentinelRefused):
-        load(path)
-    (asked,) = requests.list_requests(state="pending", kind="model_file")
-    assert asked.human_only
-    for env in ({"CLAUDECODE": "1"}, {"POOLHOUSE_AGENT": "claude-x"}):
-        with pytest.raises(caller.AgentRefused):
-            requests.answer(asked.id, "approve", asked.fingerprint, "terminal",
-                            requests.Context(terminal=(True, True), env=env))
-    with pytest.raises(SentinelRefused):
-        load(path)
-    assert str(path) not in pins()
 
 
 def test_a_download_that_fails_its_hash_records_no_pin(tmp_path, site, pipe):
@@ -345,9 +316,8 @@ def test_an_unsigned_or_foreign_manifest_is_ignored(tmp_path):
     with pytest.raises(ManifestError, match="not by the pinned key"):
         lists.ingest(forged, key)
     assert lists.lookup(path.name) == [] and lists.high_water(signer.key_id) == -1
-    with pytest.raises(SentinelRefused, match="was not downloaded by Poolhouse"):
-        load(path)                                       # no manifest applies: a person is asked
-    assert str(path) not in pins()
+    assert load(path) == ""                              # no manifest applies: pinned as it is
+    assert pins()[str(path)].source == "first-use"
 
 
 def test_a_stored_list_whose_key_is_no_longer_pinned_stops_counting(tmp_path):
@@ -358,8 +328,7 @@ def test_a_stored_list_whose_key_is_no_longer_pinned_stops_counting(tmp_path):
     path.write_bytes(body + b"!")
     TrustedLists().ingest(listing(signer, 2, entry_for(path, body)), key)
     (home.state("onboard") / "trust.json").unlink()      # the person un-joined
-    with pytest.raises(SentinelRefused, match="was not downloaded by Poolhouse"):
-        load(path)
+    assert load(path) == "" and pins()[str(path)].source == "first-use"     # no list counts: pinned as it is
 
 
 def test_a_list_signed_by_a_key_that_was_revoked_since_stops_counting(tmp_path):
@@ -372,9 +341,7 @@ def test_a_list_signed_by_a_key_that_was_revoked_since_stops_counting(tmp_path):
     trust = home.state("onboard") / "trust.json"
     doc = json.loads(trust.read_text(encoding="utf-8"))
     trust.write_text(json.dumps({**doc, "revoked": [signer.key_id]}), encoding="utf-8")
-    with pytest.raises(SentinelRefused, match="was not downloaded by Poolhouse"):
-        load(path)
-    assert str(path) not in pins()
+    assert load(path) == "" and pins()[str(path)].source == "first-use"     # no list counts: pinned as it is
 
 
 def test_a_signed_list_expires_for_fetching_but_still_checks_held_bytes(tmp_path):

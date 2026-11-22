@@ -64,7 +64,7 @@ class Licences:
         return [r for r in rows if isinstance(r, dict)]
 
     def record(self, grant: Permit, entry: Entry, *, who: str | None = None) -> dict[str, Any]:
-        """Write down that the owner accepted ``entry``'s licence, after a person confirmed."""
+        """Write down that the owner accepted ``entry``'s licence; ``grant`` is the permit policy minted for this licence (an agent gets none)."""
         grant.check("accept-licence", entry.licence)
         row = {"licence": entry.licence, "url": entry.licence_url, "model": entry.name,
                "by": who or getpass.getuser(), "at": self.clock()}

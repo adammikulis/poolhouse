@@ -30,7 +30,7 @@ agent "make a pool called home" and it calls:
 
 ```python
 try:
-    made = ph.pool.found("home", "secure", say=print)   # the person answers on their phone or at this computer's prompt
+    made = ph.pool.found("home", "secure", say=print)   # this computer's own key founds it at once; nothing is asked
     print(made.say)                                       # "This device is now in the pool home (secure)."
 except ph.pool.Refusal as refused:
     print(refused, "->", refused.where)                   # one sentence for the person, and where they tap
@@ -109,8 +109,8 @@ member can be removed.
 | `ph.pool.found(name=None, policy="secure", *, admin=None, say=None)` | Make this device's pool, governed by the person's key: the node drafts the charter, the person's key signs it, the node takes it back, and this device is the first member. Returns a `Founding` (`pool`, `already`, `say`); a device already in a founded pool answers "already in the pool X" and changes nothing. The person answers where only they can: the first key at the prompt this computer shows, the grant on the phone's card; the agent never signs. `say` is called with the sentence that tells the person where to answer while the call waits. A pool needs a strong key (one that asks the person at each signature, 1.3 of docs/pools-and-serving.md): where none exists the call raises `ph.pool.Refusal` before anyone is asked. |
 | `ph.pool.members(include_removed=False)` | The devices of the pool as `Member`s: name, fingerprint, `this_device`, `connected`, `address`, `last_seen_ms`, `last_sync_ms`, `last_error`, `reach` (`direct`, `channel`, `none`, `self` or `unknown`: how this device reaches it) and `reach_hint` (the exact fix when it is not `direct`). |
 | `ph.pool.policy()` | `"open"` or `"secure"`: how devices join. |
-| `ph.pool.listen(*, agreed=False)` | Turn this device's network on (TCP 7447, signed beacon on UDP 7448) so devices can join. `agreed=True` is required: it is a person's decision. |
-| `ph.pool.add_device(ttl_s=300, *, say=None)` | Make the short-lived code another device joins with (policy `secure`). A window to a pool is opened by the person: the computer's own prompt shows what it opens (the pool, for ten minutes) and the person's yes, for that one window, is enough, so a pool approved by a typed yes, or a Mac whose 30 days of admitting have lapsed, still adds a device. `say` is called with the sentence that tells the person where to answer. |
+| `ph.pool.listen(*, agreed=False)` | Turn this device's network on (TCP 7447, signed beacon on UDP 7448) so devices can join. `agreed=True` is required: it states that opening the network was meant. |
+| `ph.pool.add_device(ttl_s=300, *, say=None)` | Make the short-lived code another device joins with (policy `secure`). A window to a pool is opened at once by this computer's own key for exactly that window (the pool, for ten minutes); nothing is asked. `say` is called with a sentence about what was opened. |
 | `ph.pool.join(host, code="", *, port=7447, fingerprint="", say=None)` | Join the pool of the device at `host`: with the `code` its `add_device` made (`secure`), or, for an `open` pool on this device's own network, with the `fingerprint` of the device that answers (64 hex digits, from its beacon). A device already in a pool does not change pool. When a phone is linked, the grant to join is asked of it and the call goes on after the tap. |
 | `ph.pool.renew(*, say=None)` | Give this device another 30 days of admitting devices without asking (the delegate a pool starts with). It changes who governs the pool, so it is approved at this computer's prompt and takes effect after the pool's wait; until then a window is opened with the person's yes. Returns this device's `Member`. Raises `ph.pool.Refusal`. |
 | `ph.pool.remove(device)` | Remove a member by name or fingerprint; it stops syncing and taking work. Not this device. In a governed pool it is an act of the pool's admins, signed by a person's key; a device's word alone removes nobody. |
@@ -162,11 +162,10 @@ board.add_note("decision", "Parser", "Use the recursive-descent one.", tags=("pa
 channels of this one, to a board the node already hosts (`"ro"` needs the grant `link_read`, `"rw"` `link_write`; a board has at most 64 open); `unlink` ends it at once (the grant
 `link_remove`).
 
-`request_approval(asks, *, note="", task="", ttl_s=0, expect_policy="")` asks the person, on their phone, for one to eight grants for
-this session and returns an `Approval` to wait on; the person reads a text the node wrote, taps, and the phone's key signs it
-(docs/phone-approval.md). `approval(handle)` and `approvals(state="")` read back what this session asked, and `offer_phone()` returns a
+`request_approval(asks, *, note="", task="", ttl_s=0, expect_policy="")` asks for one to eight grants for
+this session and returns the `Approval`, decided at once by policy: this device's key signs what the caller may have, and an agent is refused with the reason the few grants that end another device's place in the pool, change who governs it or release what a scan failed (docs/phone-approval.md; a linked phone is only an optional channel). `approval(handle)` and `approvals(state="")` read back what this session asked, and `offer_phone()` returns a
 link that adds one more phone once a phone is added.
-`blocked_sessions()` returns the blocked sessions visible to the caller and their end times; an agent sees only its own, while a person's session sees all. `lift_block("board/session")` raises this computer's own prompt for that exact block. An agent can ask to lift only its own block; a person's session can ask about any. A confirmed answer lifts it once; a refusal or expired card leaves it in place. Where the computer has only a typed yes, a program running as the same account could answer it, as the prompt says.
+`blocked_sessions()` returns the blocked sessions visible to the caller and their end times; an agent sees only its own, while a person's session sees all. `lift_block("board/session")` lifts that exact block at once with this computer's own key; an agent is refused it with the reason.
 
 ```python
 ask = board.request_approval([ph.board.Ask("add_device", lasts="10m", uses=1)], note="adding the Linux box")
@@ -232,11 +231,11 @@ run between devices.
 
 | Name | Contract |
 |---|---|
-| `ph.models.pull(repo, file, *, trust=PERSON)` | Download one file of a Hub repository (every shard of a sharded build) into the Hugging Face hub cache; its path. `trust` says what is fetched without asking anyone: by default only the publishers Poolhouse ships with on the official Hub, and a person answers for the rest; a different `Trust` allows more or less. |
-| `ph.models.Trust` | The frozen dataclass a pull checks a repository against: `publishers` (the owners fetched from, `None` for any), `shipped`, `official_only`, `markers`, `moved` and `ask`. `Trust()` allows every publisher on every Hub without asking and `Trust(publishers=frozenset({"owner"}))` only the owners named; what a `Trust` does not allow is refused with a message that names `trust=`. The Hub listing other bytes for a commit already pulled is refused whatever the `Trust`. What a `Trust` lets through that the default would have asked a person about is kept in the pin of the file, and the first time the model is served (`poolhouse-serve`, `ph.serve.up`) or loaded by one of Poolhouse's own loaders that takes a path (a training base, the speculative decoder's weights, the MLX trainer's base, a decider's base) a person is asked the same question, once for a whole folder. A program that reads the pulled file or folder with code of its own calls `poolhouse.hub.admission.vetted(path)` first: nothing else asks, and the question is that program's to put. |
+| `ph.models.pull(repo, file, *, trust=None)` | Download one file of a Hub repository (every shard of a sharded build) into the Hugging Face hub cache; its path. Nobody is asked. `trust` says who asked: by default the process (an agent marker in its environment, such as `CLAUDECODE` or `POOLHOUSE_AGENT`, makes it an agent's), and the app names `Trust.PERSON` for a click of its own. |
+| `ph.models.Trust` | Who asked for a pull: `Trust.PERSON` (a person's command or a click in the app) fetches from any publisher and the pin of each file kept notes what was unusual (a publisher Poolhouse does not know, a Hub that is not the official one, a revision that is not the publisher's own branch, a name that says the model was altered); `Trust.AGENT` is refused at once, with the reason and nothing filed for a person, for what is unusual, unless the model is already in the cache or its owner or `owner/repo` is a line of `poolhouse.hub.admission.allow_file()` (`<state>/models/allowed-publishers.txt`, a text file a person edits). Whoever asked, the Hub listing other bytes for a file of a commit already pulled is refused with the file kept unchanged (remove it from the cache to take the Hub's bytes), and a download whose bytes are not the sha256 the Hub lists is deleted, fetched once more and then refused: nothing is held for anyone to release. |
 | `ph.models.path(repo, file)` | Where it is in the cache, or `None`. Downloads nothing. |
 | `ph.models.cache_dir()` | The cache folder (`$HF_HUB_CACHE`, `$HF_HOME/hub`, or `~/.cache/huggingface/hub`). |
-| `ph.serve.up(model, *, context=0, parallel=0, wait=True, reason="")` | Lease a server of `model` (path, cached file name, or `hf:owner/repo/file.gguf`). Waits until it is ready, or returns `queued` with `wait=False`. `ph.Error` when refused, with what would fit. An `hf:` reference from a publisher Poolhouse does not ship with waits for a person; pull it with `ph.models.pull(..., trust=...)` first and serve the path. |
+| `ph.serve.up(model, *, context=0, parallel=0, wait=True, reason="")` | Lease a server of `model` (path, cached file name, or `hf:owner/repo/file.gguf`). Waits until it is ready, or returns `queued` with `wait=False`. `ph.Error` when refused, with what would fit. An `hf:` reference is pulled first as the process asks (`ph.models.Trust`). |
 | `ph.serve.down(target)` | Release a lease by id, port or part of a model name; the ids released. |
 | `ph.serve.status()` | The `Served` leases of this device: `lease`, `model`, `state`, `base_url`, `port`, `context`, `parallel`, `adopted`. |
 | `ph.serve.Served` | The frozen dataclass. |
@@ -265,7 +264,7 @@ Two `up`s of one shape share one server; the server stops when its last lease go
 | `ph.client.ServerError`, `ph.client.ServerUnreachable` | The failures of a request; the second means nothing answered. |
 | `ph.hub.discover(...)` | Models on this machine (every folder poolhouse searches) as `ModelInfo`s. |
 | `ph.hub.ModelInfo` | One model: path, format, size, repository. |
-| `ph.hub.fetch(reference, *, trust=PERSON)` | Download an `hf:owner/repo/file` reference into the Hub cache; its path. `trust` is `ph.models.Trust`. |
+| `ph.hub.fetch(reference, *, trust=None)` | Download an `hf:owner/repo/file` reference into the Hub cache; its path. `trust` is `ph.models.Trust`, the process's when left out. |
 | `ph.hub.located(name)` | The local file a model name stands for, or `None`. |
 | `ph.hub.hub_cache()` | The Hub cache folder. |
 

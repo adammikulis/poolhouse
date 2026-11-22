@@ -15,7 +15,7 @@ from typing import Any
 
 from poolhouse import home
 from poolhouse.authority_caller import current as current_agent
-from poolhouse.caller import AgentRefused, audit_rows, marked, record, refuse_agent
+from poolhouse.caller import AgentRefused, audit_rows, marked, record, refuse_agent, who
 from poolhouse.files import read_json, write_json
 
 __all__ = [
@@ -173,7 +173,7 @@ def require(gate: str, action: str, env: Mapping[str, str] | None = None, *, sco
         refuse_agent(action, f"the gate {gate} is held back from agents (`poolhouse-workspace authority show`)", env)
         return PERSON
     if marked(env):
-        record("authority.use", gate=gate, action=action, agent=_agent_name(scope), project=scope.project)
+        record("authority.use", who=who(env), gate=gate, action=action, agent=_agent_name(scope), project=scope.project)
     else:
         record("authority.use", gate=gate, action=action, project=scope.project)
     return DELEGATED

@@ -304,17 +304,37 @@ def test_open_is_a_primary_command_and_help_never_requests_a_ticket(monkeypatch,
     assert "poolhouse open" in capsys.readouterr().out
 
 
-def test_primary_open_print_is_denied_before_ticket_or_browser_work(monkeypatch):
-    from poolhouse.caller import AgentRefused
+@pytest.mark.parametrize("marker", ["CLAUDECODE", "POOLHOUSE_AGENT"])
+def test_primary_open_is_refused_to_an_agent_at_once_before_ticket_or_browser_work(monkeypatch, capsys, marker):
+    from poolhouse import caller
     from poolhouse.fleet import launch_open
 
-    def denied(reason):
-        raise AgentRefused(reason)
-
     def forbidden(*args):
-        raise AssertionError("a denied caller reached ticket or browser work")
+        raise AssertionError("a refused caller reached ticket or browser work")
 
-    monkeypatch.setattr(launch_open, "refuse_agent", denied)
     monkeypatch.setattr(launch_open, "ticket_url", forbidden)
     monkeypatch.setattr(launch_open.webbrowser, "open", forbidden)
+    monkeypatch.setenv(marker, "1")
     assert cli.main(["open", "--print"]) == 2
+    err = capsys.readouterr().err
+    assert "refused to an agent" in err and marker in err and "owner of this device" in err
+    assert cli.main(["open"]) == 2
+    rows = [r for r in caller.audit_rows() if r["event"] == "refused"]
+    assert len(rows) == 2 and all(r["action"] == "open the poolhouse page" and r["who"].startswith(f"agent {marker}") for r in rows)
+
+
+def test_primary_open_runs_for_a_process_no_agent_started_with_no_terminal_and_the_audit_says_who(monkeypatch, capsys):
+    from poolhouse import caller
+    from poolhouse.fleet import launch_open
+
+    assert not caller.marked() and not caller.is_terminal(sys.stdin) and not caller.is_terminal(sys.stdout)
+    opened: list[str] = []
+    monkeypatch.setattr(launch_open, "ticket_url", lambda: "http://127.0.0.1:1/ui/?launch_ticket=abc")
+    monkeypatch.setattr(launch_open.webbrowser, "open", opened.append)
+    assert cli.main(["open", "--print"]) == 0
+    assert capsys.readouterr().out.strip() == "http://127.0.0.1:1/ui/?launch_ticket=abc" and opened == []
+    assert cli.main(["open"]) == 0
+    assert opened == ["http://127.0.0.1:1/ui/?launch_ticket=abc"]
+    assert "launch_ticket" not in capsys.readouterr().out
+    rows = [r for r in caller.audit_rows() if r["event"] == "ran"]
+    assert len(rows) == 2 and all(r["action"] == "open the poolhouse page" and r["who"].startswith("user ") for r in rows)

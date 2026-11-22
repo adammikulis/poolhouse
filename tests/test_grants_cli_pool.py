@@ -1,4 +1,4 @@
-"""In a pool a typed yes signs no grant that reaches beyond the device, and the command says so before any prompt."""
+"""In a pool the person's key signs no grant that reaches beyond the device, and the command says so before anything is signed."""
 from __future__ import annotations
 
 import argparse
@@ -34,12 +34,12 @@ class Carrier:
 
 
 class Key:
-    """A key whose use is a prompt: the test fails if it is used."""
+    """A key that must not be used: the test fails if anything is signed with it."""
 
     public = b"k" * 32
 
     def sign_bytes(self, data: bytes) -> bytes:
-        raise AssertionError("a typed yes was asked for")
+        raise AssertionError("the key was used to sign")
 
 
 def ctx(governance: str) -> Any:
@@ -51,12 +51,12 @@ def asked(action: str) -> argparse.Namespace:
 
 
 @pytest.mark.parametrize("action", ["file_delete", "shard_consent", "task_authority", "sync_now"])
-def test_a_grant_that_reaches_beyond_the_device_is_refused_in_a_pool_before_any_prompt(action):
+def test_a_grant_that_reaches_beyond_the_device_is_refused_in_a_pool_before_anything_is_signed(action):
     with pytest.raises(Denied, match="your phone gives standing grants"):
         grants_cli.grant(asked(action), ctx("governed"))
 
 
-def test_grants_setup_in_a_pool_is_refused_before_it_asks_which_session_or_for_a_yes(monkeypatch):
+def test_grants_setup_in_a_pool_is_refused_before_it_asks_which_session(monkeypatch):
     monkeypatch.setattr("builtins.input", lambda *_: pytest.fail("a question was asked"))
     with pytest.raises(Denied, match="your phone gives standing grants"):
         grants_cli.setup(argparse.Namespace(session=None, family="", days=30, open_registration=False), ctx("governed"))
@@ -83,7 +83,7 @@ def refused_for(governance: str, monkeypatch, tmp_path):
             return listed(governance)
 
     monkeypatch.setattr(person_key, "Client", Node)
-    monkeypatch.setattr(person_key, "held", lambda state, attended=False: Key())
+    monkeypatch.setattr(person_key, "keys", lambda state: Key())
     monkeypatch.setattr(person_key, "call", lambda *a, **k: pytest.fail("a signed grant reached the node"))
     return person_key.provider(tmp_path, acting=lambda board: ("lead-1", "carrier"))
 
@@ -93,15 +93,15 @@ def hint(action: str) -> dict[str, Any]:
 
 
 @pytest.mark.parametrize("action", ["file_delete", "shard_consent", "task_authority", "sync_now"])
-def test_the_persons_key_is_not_asked_for_a_one_use_grant_a_pool_would_refuse(action, monkeypatch, tmp_path):
+def test_the_persons_key_is_not_used_for_a_one_use_grant_a_pool_would_refuse(action, monkeypatch, tmp_path):
     allow = refused_for("governed", monkeypatch, tmp_path)
     assert allow("token", hint(action)) == ""
 
 
-def test_the_persons_key_is_asked_for_a_device_local_grant_in_a_pool_and_for_any_grant_in_none(monkeypatch, tmp_path):
+def test_the_persons_key_is_used_for_a_device_local_grant_in_a_pool_and_for_any_grant_in_none(monkeypatch, tmp_path):
     for governance, action in (("governed", "link_read"), ("unfounded", "file_delete")):
         allow = refused_for(governance, monkeypatch, tmp_path)
-        with pytest.raises(AssertionError, match="a typed yes was asked for"):
+        with pytest.raises(AssertionError, match="the key was used to sign"):
             allow("token", hint(action))
 
 

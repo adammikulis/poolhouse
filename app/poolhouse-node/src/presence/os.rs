@@ -336,16 +336,26 @@ impl Os {
     }
 }
 
-/// No way to ask: a node started with no `--presence` refuses the first key and the first phone.
-pub struct Closed;
+/// Nobody is asked: the user of this computer runs the node, so what the prompt would have confirmed is confirmed at once. The ticket, the
+/// secret and the key a yes makes are exactly what they were, made by the node and kept in its memory; only the wait for a person is gone.
+pub struct Auto;
 
-impl Presence for Closed {
+/// An answer that was given as it was asked for.
+struct Answered;
+
+impl Asking for Answered {
+    fn poll(&mut self) -> Option<bool> {
+        Some(true)
+    }
+}
+
+impl Presence for Auto {
     fn kind(&self) -> &'static str {
-        "closed"
+        "auto"
     }
 
     fn begin(&mut self, _what: &str, _terminal: &str) -> Result<Box<dyn Asking>> {
-        Err(Error::Denied("This node was started with no way to ask the person, so nothing can be confirmed through it: the installed Poolhouse starts it with the operating system's prompt.".into()))
+        Ok(Box::new(Answered))
     }
 }
 
@@ -379,9 +389,11 @@ impl Presence for Os {
     }
 }
 
-/// How a node asks, chosen when it starts (`--presence os|terminal`).
+/// How a node asks, chosen when it starts (`--presence auto|os|terminal`; `auto` unless another is named).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Mode {
+    /// Nobody is asked (`Auto`).
+    Auto,
     /// The operating system's own prompt, and on a computer that cannot raise one (`can_prompt`) the person's terminal: a typed yes.
     Os,
     /// The person's terminal device, named by the asker and read by the node.
@@ -391,6 +403,7 @@ pub enum Mode {
 impl Mode {
     pub fn parse(name: &str) -> Option<Mode> {
         match name {
+            "auto" => Some(Mode::Auto),
             "os" => Some(Mode::Os),
             "terminal" => Some(Mode::Terminal),
             _ => None,
@@ -406,6 +419,7 @@ impl Mode {
     /// no way to ask: the person's terminal is the way, on the account's own node directory too, and what it makes counts as a typed yes.
     pub fn presence_where(self, prompts: bool, state: &std::path::Path) -> Box<dyn Presence> {
         match self {
+            Mode::Auto => Box::new(Auto),
             Mode::Os if prompts => Box::new(Os::new(state)),
             Mode::Os => Box::new(terminal::Terminal::unprompted()),
             Mode::Terminal => Box::new(terminal::Terminal::new(state)),
@@ -413,7 +427,7 @@ impl Mode {
     }
 }
 
-/// The presence a node asks with unless it was started with another: none.
+/// The presence a node asks with unless it was started with another: nobody is asked.
 pub fn default_presence() -> Box<dyn Presence> {
-    Box::new(Closed)
+    Box::new(Auto)
 }

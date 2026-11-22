@@ -1,4 +1,4 @@
-"""``/ui/room``: the page's route for sizing the wiring limit and the person-only change.
+"""``/ui/room``: the page's route for sizing the wiring limit and the change that the `serve.wired-limit` gate decides.
 
 A real daemon on a real socket; the privileged call is a recording stand-in.
 """

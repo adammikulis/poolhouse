@@ -1,5 +1,5 @@
 """``poolhouse-reputation``: look at and delete what poolhouse has recorded about sources.
-Person only."""
+An agent is refused at once while the `reputation.admin` gate is held back."""
 
 from __future__ import annotations
 
@@ -82,8 +82,8 @@ def _show(args: argparse.Namespace, ledger: Ledger) -> int:
 
 def _forget(args: argparse.Namespace, ledger: Ledger) -> int:
     if args.all:
-        if not args.yes and input("forget every source? [y/N] ").strip().lower() not in ("y", "yes"):
-            say("kept")
+        if not args.yes:
+            say("kept: pass --yes to forget every source")
             return 1
         say(f"forgot {ledger.forget_all()} sources")
         return 0

@@ -32,9 +32,12 @@ A person runs nothing to connect a coding agent: nobody mints, copies or pastes 
 
 The token is a bearer secret kept in `<state>/client/<board>/<name>.token` (mode 0600 in a 0700 directory; the node
 state is `~/.poolhouse/node`, moved by `POOLHOUSE_HOME`). The node knows a process by the lineage that registered
-it: a main session registers again, and its token spends a grant, only from the terminal or program it was
-registered from. A person moves a session to another terminal with `poolhouse-workspace rebind HARNESS SESSION`.
-What the lineage stops, and what it does not, is in [docs/node.md](node.md), "Identity".
+it: a main session registers from any process (one whose terminal ended moves to the process that registers it,
+a live sibling gets a token of its own), and its token spends a grant only from the terminal or program it was
+registered from while that one runs. A client whose token the node does not know registers again by itself;
+`poolhouse-workspace rebind HARNESS SESSION` is an optional command that takes a session over at once. Nothing asks
+a person to type, tap or start a new session. What the lineage stops, and what it does not, is in
+[docs/node.md](node.md), "Identity".
 
 On WSL, keep the state on the Linux filesystem under the WSL home directory. The client refuses token files on
 Windows-mounted paths such as `/mnt/c`: `chmod` there does not establish the Windows account permissions the check
@@ -119,7 +122,7 @@ places of a project ([docs/node.md](node.md), "Standing grants", has the registr
 | `revoke-grant ID` | a person at a terminal: ends a grant at once |
 | `grants-setup [--session NAME]` | a person at a terminal, once: approves the grants the lead sessions of this board need (`task_authority`, `shard_call`, and `note_verify` for their subagents), 30 days each; enrols the person's key if the node holds none |
 | `person-proof`, `person-enroll --proof TEXT`, `person-unenroll --key FINGERPRINT` | a person at a terminal: carry a key to another device, put it on a node, take one off |
-| `rebind HARNESS SESSION` | a person at a terminal: moves a main session to the terminal the command runs in |
+| `rebind HARNESS SESSION` | optional, any terminal: takes a main session over now, to the terminal the command runs in (nothing is signed or tapped) |
 
 Each command a person runs shows what it will sign and signs only after a typed `yes` on the terminal device. A
 refusal for want of a grant names the action, the resource, the session and the device, so the person can sign
@@ -164,7 +167,7 @@ untrusted-input surface first and a convenience second.
    `private-terms` in the workspace folder, one term per line, never committed) refuses the write with a message
    naming the category and not the match. A message or a note over its size limit is refused the same way.
 6. Every sender is a session with its own token. The node keeps only the SHA-256 of the token and the lineage it
-   was registered from; a session's grants are held by its name and spent only from that lineage. A session is
+   was registered from; a session's grants are held by its name and spent only from the lineage that runs it. A session is
    ended by `retire` (its tokens stop working, its claims are released) or by the person's `revoke-grant` for what
    it was allowed.
 7. Text is screened before it reaches a model. Markers come in two tiers:
@@ -220,7 +223,7 @@ untrusted-input surface first and a convenience second.
 ### What this does not do
 
 * It is not a boundary against a hostile process of the same user. Such a process can read a token from its file
-  and use it from inside the lineage that registered it, or sign with the person's key if it can answer the key's
+  and use it from inside the lineage that registered it (or, once that lineage has ended, from its own), or sign with the person's key if it can answer the key's
   question (docs/node.md, "What the grants protect against, and what they do not").
 * It does not stop a model from obeying text it was shown. It labels, fences and screens it.
 * Pattern screens are heuristics and miss paraphrase; holding is for what they do catch.
@@ -366,7 +369,7 @@ durable sender-visible read receipt.
 [GATE ...] [--project KEY]` changes some, and `authority preset dev|prod` changes all of them and the board's task
 enforcement mode together (see AGENTS.md, "System settings and the authority registry"). A lead agent or a person
 tightens (a gate to `person`); a subagent is refused. Loosening (a gate from `person` to `delegated`, including
-`preset dev` over a stricter registry) is a person's alone: a person at a terminal types `yes` to a list that names, in
+`preset dev` over a stricter registry) is refused to an agent at once with the reason, and runs directly for a process with no agent marker, with the list of what it names, in
 plain words, what a lead agent may then do without asking, and any agent-marked process is refused. Each flip is audited in `authority-audit.jsonl` under the state root, which also records
 each use of a delegated gate by an agent. A delegated gate passes an agent only under a session name the node
 recorded as a main session (a token on a board and no parent): an unnamed process, a name the node does not know and
@@ -417,7 +420,7 @@ with `{to, body, subject?, reply_to?, type?}` and `ack` with `{board|to, through
 numbers the node does not have: a message's number is its time in milliseconds times 4096 plus its tick
 (`board_page.Log`), the same for every device.
 
-`chat --room #ops` or `chat --to NAME` is the same conversation in a terminal, for the person only (it refuses an
+`chat --room #ops` or `chat --to NAME` is the same conversation in a terminal, refused to an agent at once (it refuses an
 agent process or a pipe): it prints the recent messages as plain text, prints each new one as it arrives, and sends
 every line typed until `/quit`. Posts from the page and from `chat` are activity records of kind `board.post` (room,
 size; never the text).
@@ -472,7 +475,7 @@ counts what was held back), 10 search results.
   inside the current directory (no `..`, no symlink on the way, never overwriting, mode 0600). `attach` refuses links,
   folders and the workspace's own state.
 - No code path imports, executes or interprets a file; nothing in a file changes a role, rule or subscription.
-- Deleting is a person's, under the grant `file_delete`: the node overwrites and removes the bytes on this device; the
+- Deleting needs the grant `file_delete` (an agent asks for it with `approval request`; policy decides at once): the node overwrites and removes the bytes on this device; the
   messages stay and read as gone.
 
 ## Which model is it

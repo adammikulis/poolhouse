@@ -185,29 +185,24 @@ revision is a 40-character id computed from those, so any tool naming the reposi
 file; a repository holding no `config.json` is not listed as a model. The decider's pinned files are read from and
 downloaded into their own repository's snapshot of the pinned commit.
 
-**Publisher trust.** A pull takes a `trust` argument (`poolhouse.hub.Trust`; `ph.models.pull`, `ph.hub.fetch`, `hub.pull`) and the
-default is `poolhouse.hub.admission.PERSON`, which is the rule in this paragraph. `Trust(publishers=...)` names the owners a program
-fetches from and refuses the rest with a message that names the argument; `Trust()` (`LIBRARY`) fetches from any publisher on any
-Hub under any name without asking anyone; `markers`, `moved`, `official_only` and `ask` add the checks below. The digest check stays
-whatever the `Trust`: the Hub listing other bytes for a commit already pulled is refused and quarantined, and every file kept is
-pinned. What a `Trust` lets through that `PERSON` would have asked about (an unknown publisher, a Hub that is not the official one, a name that says the
-model was altered, a file unlike an earlier pull of another commit) is kept in the pin of each file, and the first time the model is served a person is
-asked that question; once they approve it the pin no longer waits, and a copy of the file is not vouched for by a pin that still waits. A folder
-(a safetensors or MLX repository) is asked about once for all of its files, when it is first served; the loaders that take a path
-(a training base, the speculative decoder's weights and drafter, the MLX trainer's base, a decider's base) ask the same question through
-`poolhouse.hub.admission.vetted(path)` before they read the files. A program that reads a file or folder it pulled under a `Trust` with code of its own
-calls `vetted(path)` first; nothing else asks for it. The commands and the agents (`poolhouse-models` including `snapshot`, serving an `hf:` reference, the pool's model download, training and
-bench bases) pass `PERSON` themselves, and nothing in a reference, an environment variable, a model recipe, a server spec or a
-tool schema can change it. Under `PERSON`, a pull is refused until a person approves it when the owner of the repository is not one of the
-known publishers (`Qwen`, `unsloth`, `ggml-org`, `google`, `bartowski`, `lmstudio-community`; matched exactly, so `qwen`,
-`Qwen.` and a lookalike are unknown), when the file is not from the publisher's own branch (a pull request's commit),
-when the Hub is not the official one (`HF_ENDPOINT` names a mirror), when the repository or a file name says the model was
-altered (abliterated, uncensored, no refusal and the like, read through leet and lookalike spellings), or when a file's digest
-differs from the one pulled before for that path. The question is one sentence naming the repository and commit (a
-`model_publisher` request in `poolhouse-requests` or the Requests page); the approval is for that publisher, host,
-repository and commit, and an agent cannot give it. A reference is resolved to its 40-character commit first and the
-listing, the downloads and the pin all name that commit, never `main`. Ranking in `poolhouse-models find` (`PREFER`) never
-approves anything.
+**Who asked, and what a pull notes.** Nobody is asked about a model. A pull takes a `trust` argument (`poolhouse.hub.Trust`;
+`ph.models.pull`, `ph.hub.fetch`, `hub.pull`) that says who asked: `PERSON` (a command typed in a terminal, the app's own
+click) or `AGENT`. Left out, the process says: an agent marker in its environment (`CLAUDECODE`, `POOLHOUSE_AGENT`,
+`CODEX_THREAD_ID`...) makes the pull an agent's, and nothing in a reference, an environment variable, a model recipe, a server
+spec or a tool schema can change that. A `PERSON` pull fetches from any publisher on any Hub under any name. What is unusual about
+it is logged and kept in the pin of each file (`Pin.note`): the owner of the repository is not one of the known publishers
+(`Qwen`, `unsloth`, `ggml-org`, `google`, `bartowski`, `lmstudio-community`, `mlx-community`, `litert-community`; matched exactly,
+so `qwen`, `Qwen.` and a lookalike are unknown), the file is not from the publisher's own branch (a pull request's commit), the Hub
+is not the official one (`HF_ENDPOINT` names a mirror), or the repository or a file name says the model was altered (abliterated,
+uncensored, no refusal and the like, read through leet and lookalike spellings). An `AGENT` pull of anything unusual is refused at
+once with that reason and the name of the allow list, and nothing is filed for a person; it goes through when every file is already
+in the cache, or when the owner or `owner/repo` is a line of `<state>/models/allowed-publishers.txt`, a text file a person edits
+(`#` starts a comment; read at every pull). The digest check stays whoever asked, and every file kept is pinned: the Hub listing
+other bytes for a file of a commit already pulled is not downloaded (the commit is listed once more first, in case the answer was
+stale) and fails the pull with `DigestChanged` while the file kept stays in use and nothing is quarantined; a new commit with new
+bytes is an ordinary update; bytes that are not the sha256 the Hub lists are deleted, fetched once more, then refused with
+`ChecksumMismatch`. A reference is resolved to its 40-character commit first and the listing, the downloads and the pin all name
+that commit, never `main`. Ranking in `poolhouse-models find` (`PREFER`) never admits anything.
 
 **Serving the model store.** `poolhouse pool share --models [--models-dir DIR ...]` serves the
 GGUF and safetensors files `poolhouse-models list` shows (or only those under the `--models-dir`

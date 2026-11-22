@@ -22,7 +22,7 @@ from contextlib import contextmanager
 from typing import Any
 
 from poolhouse import home, leasetable
-from poolhouse.node_health import Refused, SessionRetired
+from poolhouse.node_health import Refused
 
 __all__ = ["DEFAULT_WAIT_S", "ENV_PARALLEL", "ENV_WAIT", "QueueTimeout", "device_of", "is_generation",
            "parallel", "snapshot", "turn"]
@@ -133,8 +133,6 @@ def _front(table: leasetable.Table, device: str) -> str:
 def _asked(table: leasetable.Table, device: str, tag: str) -> dict[str, Any]:
     try:
         return table.acquire([_resource(device)], leasetable.Terms(tag=tag, pid=os.getpid(), ttl_s=LEASE_S, quiet=True))
-    except SessionRetired:
-        raise
     except Refused as why:
         raise QueueTimeout(f"the {device} device takes no request now: {why}") from why
     except OSError as why:
@@ -156,8 +154,6 @@ def _await(table: leasetable.Table, device: str, tag: str, wait_s: float | None,
                     f"{ENV_WAIT} sets how long to wait; {ENV_PARALLEL}=1 sends in parallel")
             try:
                 got = table.wait(got["id"], min(POLL_S, allowance - waited))
-            except SessionRetired:
-                raise
             except Refused:
                 got = _asked(table, device, tag)
         held = True
