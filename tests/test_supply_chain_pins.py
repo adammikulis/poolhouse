@@ -153,7 +153,7 @@ def test_a_copy_of_a_model_downloaded_through_a_pipeline_that_lists_every_host_i
         load(copy)
 
 
-def test_a_model_poolhouse_did_not_pull_waits_for_a_person_and_is_then_pinned_as_approved(tmp_path):
+def test_a_model_poolhouse_did_not_pull_is_refused_at_once_and_is_pinned_as_approved_once_the_request_is_answered(tmp_path):
     path = where("other.gguf")
     path.write_bytes(gguf_bytes(extra=512))
     with pytest.raises(SentinelRefused, match="was not downloaded by Poolhouse"):
@@ -189,24 +189,27 @@ def test_a_copy_of_a_pinned_file_is_pinned_without_asking(tmp_path, site, pipe):
     assert load(copy) == "" and pins()[str(copy)].source == "pinned-digest"
 
 
-def test_an_agent_cannot_approve_a_model_file_even_where_answers_are_delegated(tmp_path, monkeypatch):
+def test_an_agent_is_refused_at_once_an_answer_to_a_model_file_while_answers_are_held_back_from_agents(tmp_path, monkeypatch):
     from poolhouse import authority, caller
 
     monkeypatch.delenv(authority.FLOOR_ENV, raising=False)
-    assert authority.state_of("requests.answer") == authority.DELEGATED
+    authority.set_state(["requests.answer"], authority.PERSON, by="lead")
     path = where("other.gguf")
     path.write_bytes(gguf_bytes(extra=512))
     with pytest.raises(SentinelRefused):
         load(path)
     (asked,) = requests.list_requests(state="pending", kind="model_file")
-    assert asked.human_only
     for env in ({"CLAUDECODE": "1"}, {"POOLHOUSE_AGENT": "claude-x"}):
-        with pytest.raises(caller.AgentRefused):
-            requests.answer(asked.id, "approve", asked.fingerprint, "terminal",
-                            requests.Context(terminal=(True, True), env=env))
+        with pytest.raises(caller.AgentRefused, match="held back from agents"):
+            requests.answer(asked.id, "approve", asked.fingerprint, "terminal", requests.Context(env=env))
     with pytest.raises(SentinelRefused):
         load(path)
     assert str(path) not in pins()
+    assert len(requests.list_requests(state="pending", kind="model_file")) == 1
+    assert [row["action"] for row in caller.audit_rows() if row["event"] == "refused"] == ["answering a request"] * 2
+    assert approve("model_file") == 1
+    load(path)
+    assert pins()[str(path)].source == "approved"
 
 
 def test_a_download_that_fails_its_hash_records_no_pin(tmp_path, site, pipe):
@@ -346,7 +349,7 @@ def test_an_unsigned_or_foreign_manifest_is_ignored(tmp_path):
         lists.ingest(forged, key)
     assert lists.lookup(path.name) == [] and lists.high_water(signer.key_id) == -1
     with pytest.raises(SentinelRefused, match="was not downloaded by Poolhouse"):
-        load(path)                                       # no manifest applies: a person is asked
+        load(path)                                       # no manifest applies: the load is refused at once and a request is raised
     assert str(path) not in pins()
 
 
@@ -357,7 +360,7 @@ def test_a_stored_list_whose_key_is_no_longer_pinned_stops_counting(tmp_path):
     body = gguf_bytes(extra=300)
     path.write_bytes(body + b"!")
     TrustedLists().ingest(listing(signer, 2, entry_for(path, body)), key)
-    (home.state("onboard") / "trust.json").unlink()      # the person un-joined
+    (home.state("onboard") / "trust.json").unlink()      # this device left the pool
     with pytest.raises(SentinelRefused, match="was not downloaded by Poolhouse"):
         load(path)
 

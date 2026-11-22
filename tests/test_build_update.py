@@ -58,7 +58,6 @@ def _a_person_with_a_source_checkout(monkeypatch, tmp_path):
     monkeypatch.setattr(build_update, "checkout_of", lambda: tmp_path)
     monkeypatch.setattr(build_update.writer, "record", lambda *a, **k: AUDIT.append((a, k)) or True)
     AUDIT.clear()
-    monkeypatch.setattr(build_update.person, "marked", lambda *a: "")
 
 
 def test_a_member_on_a_newer_build_makes_this_device_stale_and_an_older_one_does_not():
@@ -147,7 +146,7 @@ def test_a_release_install_takes_the_signed_update_path(monkeypatch):
 
 
 def test_a_process_an_agent_started_asks_for_the_background_build_and_is_tried_again_after_a_wait(monkeypatch):
-    monkeypatch.setattr(build_update.person, "marked", lambda *a: "CLAUDECODE")
+    monkeypatch.setenv("CLAUDECODE", "1")
     calls = Calls(switches=False)
     started = build_update.update_once(pool=pool(), steps=calls.steps())
     assert started.action == "started" and runtime_store.read_state()["update"]["fails"] == 1

@@ -168,12 +168,25 @@ def test_the_install_command_follows_the_registry(machine, monkeypatch, workspac
     authority.set_state(["workspace.setup"], authority.PERSON, by="lead")
     monkeypatch.setenv("CLAUDECODE", "1")
     monkeypatch.setenv("POOLHOUSE_WORKSPACE_AGENT", lead.name)
-    with pytest.raises(AgentRefused):
+    with pytest.raises(AgentRefused, match="held back from agents"):
         hooks_cli.install(args)
     assert not (machine / "s.json").exists()
+    assert [r["action"] for r in authority.audit_rows() if r["event"] == "refused"] == ["workspace install-hooks"]
     authority_kit.delegate(["workspace.setup"])
     assert hooks_cli.install(args) == 0
     assert (machine / "s.json").is_file()
+    assert [r["agent"] for r in authority.audit_rows() if r["event"] == "authority.use"] == [lead.name]
+
+
+def test_the_install_command_runs_directly_for_a_process_with_no_agent_marker_even_when_the_gate_is_held_back(
+        machine, monkeypatch, workspace_node):  # noqa: F811
+    args = argparse.Namespace(settings=str(machine / "s.json"), codex_config="", only=[], agent="")
+    monkeypatch.setenv("POOLHOUSE_HOME", str(workspace_node.state.parent))
+    authority.set_state(["workspace.setup"], authority.PERSON, by="lead")
+    assert hooks_cli.install(args) == 0
+    assert (machine / "s.json").is_file()
+    (row,) = [r for r in authority.audit_rows() if r["event"] == "ran"]
+    assert row["who"].startswith("user ")
 
 
 def test_findings_say_missing_stale_and_current_per_agent(machine):
