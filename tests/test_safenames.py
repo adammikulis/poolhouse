@@ -8,6 +8,7 @@ import zipfile
 
 import pytest
 
+from poolhouse.net.sniff import audit_archive
 from poolhouse.safenames import Unsafe, safe_filename, safe_join, unpack
 
 
@@ -130,16 +131,103 @@ def test_a_tar_is_unpacked_with_its_modes_and_relative_symlinks(tmp_path):
         assert (out / "libllama.dylib").read_bytes() == b"lib"
 
 
-@pytest.mark.parametrize("linkname", ["/etc/passwd", "../../../etc/passwd", "C:\\Windows", "a/../.."])
-def test_a_tar_symlink_that_points_outside_is_refused(tmp_path, linkname):
-    def build(tf):
-        link = tarfile.TarInfo("sneaky")
-        link.type = tarfile.SYMTYPE
-        link.linkname = linkname
-        tf.addfile(link)
+def _entry(tf, name, kind, value=None, mode=0o644):
+    """One tar entry: a file (``value`` is its bytes), a directory, or a link (``value`` is its target)."""
+    info = tarfile.TarInfo(name)
+    info.type = kind
+    info.mode = mode
+    if kind == tarfile.REGTYPE:
+        info.size = len(value or b"")
+        tf.addfile(info, io.BytesIO(value or b""))
+    else:
+        info.linkname = value or ""
+        tf.addfile(info)
 
+
+def _rows(path, rows):
+    def build(tf):
+        for row in rows:
+            _entry(tf, *row)
+    return _tar(path, build)
+
+
+SYM, REG, DIR = tarfile.SYMTYPE, tarfile.REGTYPE, tarfile.DIRTYPE
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks need privileges on Windows")
+def test_a_macos_release_layout_unpacks_with_its_dylib_links_as_links(tmp_path):
+    rows = [
+        ("llama-b12633", DIR), ("llama-b12633/llama-server", REG, b"server", 0o755),
+        ("llama-b12633/libggml.dylib", SYM, "libggml.0.dylib"),
+        ("llama-b12633/libggml.0.dylib", SYM, "libggml.0.9.5.dylib"),
+        ("llama-b12633/libggml.0.9.5.dylib", REG, b"ggml"),
+        ("llama-b12633/libllama.dylib", SYM, "libllama.0.dylib"),
+        ("llama-b12633/libllama.0.dylib", REG, b"llama"),
+        ("llama-b12633/sub/libggml.dylib", SYM, "../libggml.0.dylib"),
+        ("llama-b12633/self", SYM, "."),
+    ]
+    archive = _rows(tmp_path / "llama-b12633-bin-macos-arm64.tar.gz", rows)
+    assert audit_archive(archive) == []
+    unpack(archive, tmp_path / "out")
+    top = tmp_path / "out" / "llama-b12633"
+    for name in ("libggml.dylib", "libggml.0.dylib", "libllama.dylib", "sub/libggml.dylib", "self"):
+        assert (top / name).is_symlink(), name
+    assert (top / "libggml.dylib").readlink().as_posix() == "libggml.0.dylib"
+    assert (top / "libggml.dylib").read_bytes() == b"ggml"
+    assert (top / "sub" / "libggml.dylib").read_bytes() == b"ggml"
+    assert (top / "libllama.dylib").read_bytes() == b"llama"
+    assert os.access(top / "llama-server", os.X_OK)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks need privileges on Windows")
+def test_a_link_listed_before_what_it_names_still_unpacks(tmp_path):
+    archive = _rows(tmp_path / "a.tar", [("lib.dylib", SYM, "lib.1.dylib"), ("lib.1.dylib", REG, b"x")])
+    unpack(archive, tmp_path / "out")
+    assert (tmp_path / "out" / "lib.dylib").read_bytes() == b"x"
+
+
+HOSTILE_LINKS = {
+    "absolute": [("d/link", SYM, "/etc/passwd")],
+    "absolute-that-names-an-entry": [("d/real", REG, b"x"), ("link", SYM, "/d/real")],
+    "backslash-that-names-an-entry": [("d/real", REG, b"x"), ("link", SYM, "d\\real")],
+    "backslash-absolute": [("d/link", SYM, "\\evil")],
+    "windows-drive": [("d/link", SYM, "C:\\Windows")],
+    "climbs-out": [("d/link", SYM, "../../outside")],
+    "climbs-out-through-a-dir": [("d/link", SYM, "a/../../..")],
+    "empty-target": [("d/link", SYM, "")],
+    "link-to-an-escaping-link": [("a", SYM, "b"), ("b", SYM, "../outside")],
+    "escape-found-only-by-following-a-link": [
+        ("x", REG, b"x"), ("d/", DIR), ("d/A", SYM, "../x"), ("B", SYM, "d/A/../../y")],
+    "same-escape-listed-the-other-way-round": [
+        ("B", SYM, "d/A/../../y"), ("x", REG, b"x"), ("d/", DIR), ("d/A", SYM, "../x")],
+    "dangling": [("d/link", SYM, "missing.dylib")],
+    "cycle": [("a", SYM, "b"), ("b", SYM, "a")],
+    "self-cycle": [("a", SYM, "a")],
+    "written-through-a-link": [("lib", SYM, "real"), ("real/", DIR), ("lib/payload", REG, b"x")],
+    "a-file-under-a-file": [("f", REG, b"x"), ("f/child", REG, b"y")],
+    "file-named-twice": [("lib", REG, b"first"), ("lib", REG, b"second")],
+    "link-named-after-a-file": [("lib", REG, b"first"), ("real", REG, b"x"), ("lib", SYM, "real")],
+    "link-named-twice": [("real", REG, b"x"), ("lib", SYM, "real"), ("lib", SYM, "real")],
+}
+
+
+@pytest.mark.parametrize("rows", HOSTILE_LINKS.values(), ids=HOSTILE_LINKS.keys())
+def test_a_tar_whose_links_could_leave_the_root_is_refused_at_audit_and_at_unpack(tmp_path, rows):
+    archive = _rows(tmp_path / "a.tar.gz", rows)
+    assert audit_archive(archive)
     with pytest.raises(Unsafe):
-        unpack(_tar(tmp_path / "a.tar.gz", build), tmp_path / "out")
+        unpack(archive, tmp_path / "out")
+    assert list((tmp_path / "out").iterdir()) == []
+    assert not (tmp_path / "outside").exists() and not (tmp_path / "y").exists()
+
+
+@pytest.mark.parametrize("kind", [tarfile.LNKTYPE, tarfile.CHRTYPE, tarfile.BLKTYPE, tarfile.FIFOTYPE])
+def test_a_tar_hard_link_device_or_fifo_is_refused_at_audit_and_at_unpack(tmp_path, kind):
+    archive = _rows(tmp_path / "a.tar", [("a", REG, b"x"), ("b", kind, "a" if kind == tarfile.LNKTYPE else "")])
+    assert audit_archive(archive)
+    with pytest.raises(Unsafe, match="hard link or a device"):
+        unpack(archive, tmp_path / "out")
+    assert list((tmp_path / "out").iterdir()) == []
 
 
 def test_a_tar_hard_link_or_device_is_refused(tmp_path):

@@ -22,7 +22,7 @@ a CPU build is not substituted when CUDA installation fails.
 The WSL download policy requires an available virus scanner. Install ClamAV and
 current definitions with `sudo apt-get install clamav && sudo freshclam` before
 downloading the server. Release archives retain their original SHA-256 checks;
-contained SONAME library aliases are validated and copied as regular files at install.
+a tar's symlinks (the library aliases) are made only when each is relative and stays inside the unpacked folder (`safenames.check_links`).
 
 The request: add a device to the pool without downloading Poolhouse by hand: fetch Poolhouse device to
 device, then join the pool with the pool's short join code (`poolhouse-pool add-device` on a member,
