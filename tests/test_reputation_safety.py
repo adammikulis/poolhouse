@@ -186,7 +186,7 @@ def test_member_outcomes_reach_the_ledger(ledger):
 
 
 def test_reputation_changes_no_role_grant_or_decision(ledger, clock):
-    tools = sorted(chatpolicy.READ | set(chatpolicy.CONFIRM) | set(roles.OWN))
+    tools = sorted(chatpolicy.READ | set(chatpolicy.ACTING) | set(roles.OWN))
 
     def decisions():
         out = {}
