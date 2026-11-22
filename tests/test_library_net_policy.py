@@ -138,7 +138,7 @@ def test_building_the_library_pipeline_does_not_widen_the_app_one(unsealed):
 
 def test_the_library_pipeline_keeps_the_guards_that_are_not_a_host_list(unsealed):
     lib = net.library()
-    assert lib.limits == net.default().limits and lib.hold is not None
+    assert lib.limits == net.default().limits and not hasattr(lib, "hold")      # a failed download is deleted, never held
     assert [type(s) for s in lib.scanners] == [type(s) for s in net.default().scanners]
     assert lib.policy.allowed == policy.ANYWHERE
 
