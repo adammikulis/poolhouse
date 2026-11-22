@@ -13,6 +13,7 @@ anything or reaches the network.
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import platform
@@ -924,3 +925,45 @@ class TestPatches:
         assert tag.endswith("-" + build.patch_stamp())
         assert dest.name == tag
         assert json.loads((dest / "BUILD.json").read_text())["patches"] == ["0001-x.patch"]
+
+
+class TestReleaseInstallOfAMacosArchive:
+    """The macOS llama.cpp release holds its dylib aliases as relative symlinks; installing
+    it keeps them as links inside the build and never lets one point out of it."""
+
+    @staticmethod
+    def _archive(path: Path, links: dict[str, str]) -> Path:
+        with tarfile.open(path, "w:gz") as tf:
+            def member(name, kind, data=b"", target="", mode=0o644):
+                info = tarfile.TarInfo(name)
+                info.type, info.mode, info.linkname = kind, mode, target
+                if kind == tarfile.REGTYPE:
+                    info.size = len(data)
+                    tf.addfile(info, io.BytesIO(data))
+                else:
+                    tf.addfile(info)
+            member("llama-b12633", tarfile.DIRTYPE, mode=0o755)
+            member("llama-b12633/llama-server", tarfile.REGTYPE, b"#!/bin/sh\nexit 0\n", mode=0o755)
+            member("llama-b12633/libggml.0.9.5.dylib", tarfile.REGTYPE, b"ggml")
+            for name, target in links.items():
+                member(f"llama-b12633/{name}", tarfile.SYMTYPE, target=target)
+        return path
+
+    @pytest.mark.skipif(os.name == "nt", reason="symlinks need privileges on Windows")
+    def test_the_dylib_links_survive_the_install_as_links_that_work(self, tmp_path):
+        archive = self._archive(tmp_path / "llama-b12633-bin-macos-arm64.tar.gz", {
+            "libggml.0.dylib": "libggml.0.9.5.dylib", "libggml.dylib": "libggml.0.dylib"})
+        dest = tmp_path / "builds" / "b12633"
+        server = build_release._release_install(dest, archive)
+        assert server == dest / "llama-server" and os.access(server, os.X_OK)
+        assert (dest / "libggml.dylib").is_symlink()
+        assert (dest / "libggml.dylib").readlink().as_posix() == "libggml.0.dylib"
+        assert (dest / "libggml.dylib").read_bytes() == b"ggml"
+
+    @pytest.mark.parametrize("target", ["/etc/hosts", "../../outside.dylib", "libggml.dylib"])
+    def test_a_link_out_of_the_build_or_round_in_a_circle_fails_the_install(self, tmp_path, target):
+        archive = self._archive(tmp_path / "llama-b1-bin-macos-arm64.tar.gz", {"libggml.dylib": target})
+        dest = tmp_path / "builds" / "b1"
+        with pytest.raises(build_release.BuildFailed, match="refusing the archive"):
+            build_release._release_install(dest, archive)
+        assert not dest.exists()

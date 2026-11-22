@@ -657,7 +657,6 @@
   "tests/test_taint_flows.py": 0.5,
   "tests/test_taint_rail.py": 0.2,
   "tests/test_taint_trace.py": 0.0,
-  "tests/test_tar_libraries.py": 0.1,
   "tests/test_task_agent_interfaces.py": 1.8,
   "tests/test_task_coding.py": 1.0,
   "tests/test_task_integration.py": 64.2,

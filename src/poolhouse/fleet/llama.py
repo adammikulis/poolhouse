@@ -17,7 +17,6 @@ from poolhouse.hub.probe import machine_memory
 from poolhouse.lock import only_one
 from poolhouse.safenames import Unsafe, unpack
 from poolhouse.serve.backend import devices_of
-from poolhouse.tar_libraries import unpack as unpack_libraries
 
 from .download_progress import Transfer
 from .settings import Settings
@@ -226,17 +225,13 @@ def _download(asset: dict[str, Any], into: str, report: Any) -> Path:
 
     if report:
         report(f"Downloading {asset['name']} ({int(asset.get('size') or 0) / (1 << 20):.1f} MB)")
-    return download(asset, into, library_links=True,
-                    on_progress=net.Hooks(progress=progress, phase=phase))
+    return download(asset, into, on_progress=net.Hooks(progress=progress, phase=phase))
 
 
 def _unpack(archive: Path, into: Path) -> None:
     """Extract a .zip or a .tar.gz, refusing one that writes outside ``into``."""
     try:
-        if archive.name.endswith(".tar.gz"):
-            unpack_libraries(archive, into)
-        else:
-            unpack(archive, into)
+        unpack(archive, into)
     except Unsafe as exc:
         raise LlamaError(f"refusing {archive.name}: {exc}") from None
 

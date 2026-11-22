@@ -75,7 +75,6 @@ class Want:
     size: int = 0
     require_digest: bool = False
     allow_unscanned: bool = False
-    library_links: bool = False
     max_bytes: int = MOST_BYTES
     deadline_s: float = 3600.0
     token: str = ""
@@ -312,10 +311,7 @@ def _finish(pipe: Pipeline, staged: Path, final: Path, want: Want,
         raise refuse(note, f"{size} bytes, expected {want.size}")
     if want.verify is not None and (problem := want.verify(staged, headers)):
         raise refuse(note, problem)
-    if want.library_links and not (want.require_digest and want.sha256):
-        raise refuse(note, "library aliases require a pinned release digest")
-    verdict = sniff.sniff(staged, want.kind or sniff.expected_kind(name), content_type=served,
-                          library_links=want.library_links)
+    verdict = sniff.sniff(staged, want.kind or sniff.expected_kind(name), content_type=served)
     if not verdict.ok:
         raise refuse(note, "; ".join(verdict.problems))
     if arrival.phase:
