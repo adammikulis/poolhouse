@@ -74,7 +74,7 @@ class RoomRoutes:
         return True
 
     def _person(self) -> str:
-        """Empty when this request is a person's browser session on this machine, else why not."""
+        """Empty when this request is from a browser session of this machine's own page, else why not."""
         ui = self.ui
         if self.client_ip != LOOPBACK or not ui.host_ok(self.host_header):
             return "the wiring limit is changed from the machine itself, in its own browser"

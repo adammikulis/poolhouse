@@ -163,7 +163,7 @@ COMMAND.add("show", _guard(_show), help="one record in full by its id or sequenc
 COMMAND.add("stats", _guard(_stats), help="counts, span, size, dropped records")
 COMMAND.add("verify", _guard(_verify), help="check the chain and say where it breaks",
             options=[flag("--anchor", default="", help="a file holding a head line kept elsewhere")])
-COMMAND.add("export", _guard(_export), help="write records as JSON to a new file you name (person only)",
+COMMAND.add("export", _guard(_export), help="write records as JSON to a new file you name (an agent is refused at once while the activity.export gate is held back)",
             options=[*FILTERS, flag("--json", action="store_true", required=True),
                      flag("path")])
 COMMAND.add("related", _guard(_related), help="everything an agent did that names a subject",

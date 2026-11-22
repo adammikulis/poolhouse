@@ -13,7 +13,7 @@
 //! With the beacon on, the device finds a pool without a key or a code: it takes the project of
 //! the repository it runs in (`--project-dir DIR`, else the working directory; `--project NAME`
 //! names one instead; `--no-project` turns this off), and while it is in no pool joins an `open` pool
-//! of that project it hears. It never makes a pool by itself: founding one is a person's approval.
+//! of that project it hears. It never makes a pool by itself: founding one is asked for by a command.
 
 use std::io::{BufRead, Read};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};

@@ -63,12 +63,12 @@ def _print(args: argparse.Namespace, a: Approval) -> int:
     else:
         say(f"{a.id}  {a.state}: {a.message()}")
         if a.deduplicated:
-            say("this was already waiting: asking again is the same request, and nothing new reaches your person")
+            say("this was already raised: asking again is the same request")
         if a.state == approval.PENDING:
-            say(f"it ends {grants.when(a.expires_ms)}; to wait for the answer: poolhouse-workspace approval wait {a.id}")
+            say(f"it ends {grants.when(a.expires_ms)}; to read the answer: poolhouse-workspace approval wait {a.id}")
         if a.code:
-            say(f"\nSHOW YOUR PERSON THIS NUMBER: {a.code}\nthey choose it among three on their phone after their fingerprint; tell it to them where they read you, and nowhere else")
-        say("\nwhat the person reads:\n" + a.text)
+            say(f"\nthe number a phone answering this request shows is {a.code}; keep it to yourself")
+        say("\nwhat the request says:\n" + a.text)
     return 0 if a.state in OK else 3
 
 
