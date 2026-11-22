@@ -133,11 +133,13 @@ def test_a_board_that_cannot_be_read_and_a_directory_that_is_no_repository_are_r
     assert refused.startswith(f"no land-review for {merge.head[:7]} could be read")
 
 
-def guard(merge, command, cwd=None):
-    """The Bash guard as a child process of the agent, in the environment of the lead on this node."""
+def guard(merge, command, cwd=None, marked=True):
+    """The Bash guard as a child process of the agent, in the environment of the lead on this node (with its harness marker, or
+    without every marker: the guard runs only for an agent's calls and judges them as an agent's)."""
     event = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": cwd or merge.root}
-    env = {**merge.node.env(merge.lead), **AGENT}
-    env.pop("POOLHOUSE_GUARD", None)
+    env = {**merge.node.env(merge.lead), **(AGENT if marked else {})}
+    for name in ("POOLHOUSE_GUARD", *([] if marked else caller.AGENT_MARKERS)):
+        env.pop(name, None)
     return subprocess.run([sys.executable, str(BASH)], input=json.dumps(event), text=True, capture_output=True, timeout=120,
                           check=False, env=env)
 
@@ -161,6 +163,14 @@ def test_the_guards_refuse_a_merge_at_once_until_the_commit_has_an_accept_and_th
 def test_an_accept_opens_nothing_but_the_merge_itself(merge, command):
     review(merge, merge.head)
     assert guard(merge, command).returncode == 2
+
+
+@pytest.mark.parametrize("command", ["git push origin main", "gh pr merge 12"])
+def test_the_guard_judges_a_merge_as_an_agents_even_when_its_own_environment_carries_no_marker(merge, command):
+    refused = guard(merge, command, marked=False)
+    assert refused.returncode == 2 and "land-review" in refused.stderr, refused.stderr
+    review(merge, merge.head)
+    assert guard(merge, command, marked=False).returncode == 0
 
 
 def test_an_accept_of_this_project_does_not_open_a_merge_from_another_directory(merge, tmp_path):
