@@ -52,7 +52,9 @@ Only the system's own observations move a score; no function that changes a scor
 
 - `net.Pipeline.get/open`: clean runs, redirect targets, content shape; refusals as `denial`.
 - `net.download`: a failed pin is `hash_change`, a scanner hit is `scan_hit` (host and artifact
-  hash), another rejection is `denial`; a kept file is a clean run.
+  hash), another rejection is `denial`; a kept file is a clean run. A Hub model download says
+  `Want(reputation=False)`: its failures (a sha256 other than the Hub listed is fetched once more, then refused) are not held
+  against the Hub's host, because the ledger's remedy is a person and the file is deleted either way.
 - `DeviceWatch.note`: authentication failures and replays are `denial`, good requests are clean runs.
 - `web.read`: a page that reads like an instruction is `injection_flagged` against the URL it was
   fetched from.

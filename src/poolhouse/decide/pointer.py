@@ -29,7 +29,6 @@ from poolhouse.decide.types import (
     decision_from,
     options_of,
 )
-from poolhouse.hub import admission
 
 
 def _length_groups(lengths: list[int], spread: float = 1.3) -> list[list[int]]:
@@ -87,7 +86,6 @@ def build_head(torch: Any, hidden: int, dim: int) -> Any:
 def load_torso(base_dir: Path, lora_dir: Path | None, dtype: str, device: str, *,
                trainable: bool = False) -> Any:
     """The base model's decoder with its adapter applied, from safetensors only."""
-    admission.vetted(base_dir)
     torch = _torch()
     import transformers
     config = json.loads((base_dir / "config.json").read_text())

@@ -28,7 +28,7 @@ from poolhouse.http import Options, Server
 from poolhouse.serve.fit import Fit
 from poolhouse.serve.profile import Profile
 from poolhouse.testing.canned import CANNED_MODEL_ID, canned_binary
-from tests.model_approval import approved
+from tests.model_pins import pinned
 
 pytest_plugins = ["node_kit"]
 
@@ -308,7 +308,7 @@ class ServingDaemon:
         (root / "models").mkdir()
         self.model = root / "models" / MID
         self.model.write_bytes(b"GGUF" + b"\x00" * (1 << 20))
-        approved(self.model)
+        pinned(self.model)
         self.token = load_or_create_token(root)
         self.runner = JobRunner(root)
         self.serving = Serving(root / "serving.json")

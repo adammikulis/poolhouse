@@ -7,7 +7,6 @@ import pytest
 from test_hub_discover import symlink
 
 from poolhouse.hub import admission, hf_cache
-from poolhouse.hub.admission import LIBRARY
 
 COMMIT = "a" * 40
 
@@ -160,31 +159,31 @@ def noting(monkeypatch):
 
 def test_a_model_repository_is_admitted_before_any_file_is_downloaded(snapshot):
     cache, _, calls = snapshot
-    with pytest.raises(admission.NotApproved, match="a Hub Poolhouse does not know"):
-        hf_cache.fetch("sample/model")
+    with pytest.raises(admission.NotAllowed, match="a Hub Poolhouse does not know"):
+        hf_cache.fetch("sample/model", trust=admission.AGENT)
     assert len(calls) == 1 and not cache.exists()
 
 
-def test_a_model_repository_fetched_under_library_pins_its_files_with_the_question_left_for_the_first_serve(snapshot, monkeypatch):
+def test_a_model_repository_fetched_for_a_person_pins_its_files_with_what_was_unusual(snapshot, monkeypatch):
     notes = noting(monkeypatch)
-    hf_cache.fetch("sample/model", trust=LIBRARY)
+    hf_cache.fetch("sample/model", trust=admission.PERSON)
     expected = {"publisher": "sample", "commit": COMMIT, "host": "hub.example", "source_ref": "sample/model/data/train.parquet"}
-    assert {k: v for k, v in notes["train.parquet"].items() if k != "unvetted"} == expected
-    assert "from sample on hub.example, a Hub Poolhouse does not know" in notes["train.parquet"]["unvetted"]
+    assert {k: v for k, v in notes["train.parquet"].items() if k != "note"} == expected
+    assert "from sample on hub.example, a Hub Poolhouse does not know" in notes["train.parquet"]["note"]
 
 
-def test_a_model_file_in_a_dataset_is_pinned_waiting_for_a_person(snapshot, monkeypatch):
+def test_a_model_file_in_a_dataset_is_pinned_with_a_note_that_it_is_not_from_a_model_repository(snapshot, monkeypatch):
     _, data, _ = snapshot
     data["siblings"].append(metadata("weights/model.gguf", b"data", lfs=True))
     notes = noting(monkeypatch)
     hf_cache.fetch("sample/dataset", repo_type="dataset")
-    assert notes["model.gguf"]["unvetted"].startswith("This file is from the dataset sample/dataset, which is not a model")
+    assert notes["model.gguf"]["note"].startswith("This file is from the dataset sample/dataset, which is not a model")
     assert notes["model.gguf"]["source_ref"] == "sample/dataset/weights/model.gguf" and notes["model.gguf"]["commit"] == COMMIT
 
 
-def test_the_trust_of_a_snapshot_is_a_trust_and_defaults_to_the_person_one(snapshot):
+def test_the_trust_of_a_snapshot_is_a_trust_and_defaults_to_the_process(snapshot):
     import inspect
 
-    assert inspect.signature(hf_cache.fetch).parameters["trust"].default is admission.PERSON
+    assert inspect.signature(hf_cache.fetch).parameters["trust"].default is None
     with pytest.raises(TypeError, match="Trust"):
         hf_cache.fetch("sample/model", trust="library")

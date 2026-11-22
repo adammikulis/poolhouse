@@ -30,7 +30,7 @@ from poolhouse.hub.discover import (
 # The rest resolve on first use: `poolhouse.hub.modelfile` (a GGUF header reader) is imported by the
 # serving code, and must not load the Hub client, the download pipeline and the sentinel with it.
 if TYPE_CHECKING:  # what the names below resolve to, for readers and type checkers; `_HOME` is what runs
-    from poolhouse.hub.admission import LIBRARY, PERSON, Trust
+    from poolhouse.hub.admission import AGENT, PERSON, Trust
     from poolhouse.hub.cards import advice, card, in_gguf
     from poolhouse.hub.cli import main
     from poolhouse.hub.drafts import (
@@ -104,6 +104,7 @@ if TYPE_CHECKING:  # what the names below resolve to, for readers and type check
     )
 
 _HOME = {
+    "AGENT": ("poolhouse.hub.admission", "AGENT"),
     "CancelToken": ("poolhouse.hub.transfer", "CancelToken"),
     "Cancelled": ("poolhouse.hub.transfer", "Cancelled"),
     "ChecksumMismatch": ("poolhouse.hub.transfer", "ChecksumMismatch"),
@@ -117,7 +118,6 @@ _HOME = {
     "Gpu": ("poolhouse.hub.probe", "Gpu"),
     "Head": ("poolhouse.hub.drafts", "Head"),
     "KINDS": ("poolhouse.hub.kinds", "KINDS"),
-    "LIBRARY": ("poolhouse.hub.admission", "LIBRARY"),
     "MachineMemory": ("poolhouse.hub.probe", "MachineMemory"),
     "NO_HEAD": ("poolhouse.hub.drafts", "NO_HEAD"),
     "NotEnoughSpace": ("poolhouse.hub.transfer", "NotEnoughSpace"),
@@ -180,11 +180,11 @@ _HOME = {
 }
 
 __all__ = [
+    "AGENT",
     "DRAFT_DEPTH",
     "DRAFT_KINDS",
     "DRAFT_MARK",
     "FORMATS",
-    "LIBRARY",
     "NO_HEAD",
     "PERSON",
     "PREFER",
