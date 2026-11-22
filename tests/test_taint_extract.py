@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from poolhouse.interventions import Call, Confirm, Context, Proceed
+from poolhouse.interventions import Call, Context, Deny, Proceed
 from poolhouse.taint import (
     Arg,
     Capability,
@@ -131,7 +131,7 @@ def test_a_quarantined_tool_hands_the_privileged_model_only_validated_values():
     assert isinstance(rail.before_tool_call(Call("deploy", {"model": "quince-2b.gguf"}), context),
                       Proceed)
     assert isinstance(rail.before_tool_call(
-        Call("deploy", {"model": "hf:attacker/payload/model.gguf"}), context), Confirm)
+        Call("deploy", {"model": "hf:attacker/payload/model.gguf"}), context), Deny)
 
 
 def test_a_model_that_returns_text_that_fits_the_pattern_but_was_not_validated_is_not_vouched():
@@ -140,4 +140,4 @@ def test_a_model_that_returns_text_that_fits_the_pattern_but_was_not_validated_i
     context = Context(task="deploy it", tools=[])
     rail.after_tool_call(Call("web_fetch"), PAGE, context)
     assert isinstance(rail.before_tool_call(Call("deploy", {"model": "quince-2b.gguf"}), context),
-                      Confirm)
+                      Deny)

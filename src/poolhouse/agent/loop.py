@@ -80,7 +80,7 @@ class Agent:
     rails of `poolhouse.guard` and, when a local model can be leased for it, the model tier. A
     list replaces them, so ``[*guard.default(), mine]`` keeps them; running without any says so
     with ``interventions=guard.off(because=...)``, which is logged, and any other empty list is
-    refused. A `Confirm` is a refusal.
+    refused.
     Sentinel screens calls and results; ``sentinel=unwatched(because=...)`` or ``guard.off`` opts out.
     """
 

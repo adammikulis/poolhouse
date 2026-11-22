@@ -114,8 +114,7 @@ class Runtime(Model):
             gate = await self.run.before_tool(Call(one.name, one.args, one.id))
             one.denied = '' if gate.allowed else getattr(gate.verdict, 'reason', '')
             if one.denied and owner.watch:
-                owner.watch.denied(one.name, one.args, getattr(gate.verdict, 'by', ''),
-                                   one.denied, logged=True)
+                owner.watch.denied(one.name, one.args, getattr(gate.verdict, 'by', ''), one.denied)
 
     async def get_response(self, *args: Any, **kwargs: Any) -> ModelResponse:
         input = args[1] if len(args) > 1 else kwargs['input']

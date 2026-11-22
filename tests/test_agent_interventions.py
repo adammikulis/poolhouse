@@ -1,5 +1,5 @@
-"""Interventions on an agent: a refusal reaches the model as a tool error, a question waits
-for the person, guidance rides on the next turn, and a hook that fails refuses.
+"""Interventions on an agent: a refusal reaches the model as a tool error at once, with its
+reason, nothing waits for an answer, guidance rides on the next turn, and a hook that fails refuses.
 
 These tests exercise the interventions and the loop, not a model: the canned server replies with the scripted turns,
 including a model that calls `wipe` on demand, every reply carrying the canned marker."""
@@ -14,8 +14,6 @@ import pytest
 from poolhouse import guard
 from poolhouse.agent import (
     Agent,
-    Confirm,
-    ConfirmRequest,
     Denied,
     Deny,
     Done,
@@ -142,32 +140,21 @@ def test_a_hook_that_answers_nonsense_refuses(served) -> None:
     assert ran == [] and any(isinstance(e, Denied) for e in events)
 
 
-def test_a_confirm_without_a_handler_is_a_refusal(served) -> None:
-    events = collect(agent_for(served(wiping(), Turn(text=("ok",))),
-                               Rule(tool=Confirm("Delete /tmp/x?", {"path": "/tmp/x"}))))
-    ask = next(e for e in events if isinstance(e, ConfirmRequest))
-    assert ask.as_dict() == {"type": "confirm", "id": "call_0", "name": "wipe",
-                             "question": "Delete /tmp/x?", "details": {"path": "/tmp/x"}}
+def test_a_refusal_is_decided_at_once_with_its_reason_and_nothing_waits_for_an_answer(served) -> None:
+    fake = served(wiping(), Turn(text=("ok",)))
+    agent = agent_for(fake, Rule(tool=Deny("Delete /tmp/x? A rule must allow it first.", "policy")))
+    events = asyncio.run(asyncio.wait_for(_events(agent), timeout=10))
     assert ran == []
-    assert next(e for e in events if isinstance(e, Denied)).reason.startswith(
-        "the person declined")
+    denied = next(e for e in events if isinstance(e, Denied))
+    assert denied.reason == "Delete /tmp/x? A rule must allow it first."
+    assert not [e for e in events if type(e).__name__ in ("ConfirmRequest", "Confirm")]
+    assert not hasattr(agent, "confirm")
+    told = json.loads(fake.bodies[1]["messages"][-1]["content"])
+    assert told["denied"] == denied.reason
 
 
-@pytest.mark.parametrize("approve", [True, False])
-def test_a_confirm_waits_for_the_person(served, approve) -> None:
-    agent = agent_for(served(wiping(), Turn(text=("ok",))), Rule(tool=Confirm("Delete?")))
-    asked: list = []
-
-    async def person(decision, call):
-        asked.append((decision.question, call.name))
-        await asyncio.sleep(0.05)
-        return approve
-
-    agent.confirm = person
-    events = collect(agent)
-    assert asked == [("Delete?", "wipe")]
-    assert ran == (["/tmp/x"] if approve else [])
-    assert sum(isinstance(e, ConfirmRequest) for e in events) == 1
+async def _events(agent: Agent) -> list:
+    return [e async for e in agent.run("clean up")]
 
 
 def test_guidance_rides_on_the_next_model_turn(served) -> None:
@@ -230,15 +217,16 @@ FETCH = {"name": "web_fetch", "description": "Read a page.", "inputSchema": {
 
 
 def test_an_agent_given_no_interventions_carries_the_taint_rail(served) -> None:
-    """Once a page has been read, a call that changes something does not run without a person
-    to ask: the default of an `Agent` includes the taint rail."""
+    """Once a page has been read, a call that changes something is refused at once, with the
+    reason: the default of an `Agent` includes the taint rail."""
     page = Turn(calls=(("web_fetch", json.dumps({"url": "http://docs.example/a"})),))
     fake = served(page, wiping("/tmp/x"), Turn(text=("done",)))
     tools = FunctionTools([FETCH, SPEC], {"web_fetch": lambda url: "an ordinary page",
                                           "wipe": wipe})
     events = collect(Agent(Client(fake.base_url), tools))
-    assert ran == [], "a mutating call ran after outside text was read, with nobody to ask"
-    assert any(isinstance(e, Denied) and e.name == "wipe" for e in events)
+    assert ran == [], "a mutating call ran after outside text was read"
+    refused = [e for e in events if isinstance(e, Denied) and e.name == "wipe"]
+    assert len(refused) == 1 and "after the run read untrusted text" in refused[0].reason
 
 
 def test_the_same_call_runs_before_anything_outside_was_read(served) -> None:

@@ -1,8 +1,8 @@
-"""`DestructiveRail`: asks the person before a call the classifier labels destructive or unsure.
+"""`DestructiveRail`: refuses at once a call the classifier labels destructive or unsure.
 
-It runs beside the role's own rail and can only add an approval: its answer is a Confirm or
-Proceed, and the most severe verdict of all the rails wins, so a role, a plan or a saved rule that
-lets a call run does not stop this rail from asking.
+It runs beside the role's own rail and can only add a refusal: its answer is a Deny or Proceed,
+and the most severe verdict of all the rails wins, so a role, a plan or a saved rule that lets a
+call run does not stop this rail from refusing it, with the classifier's reason.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from typing import Any
 from poolhouse import home
 from poolhouse.guard.destructive import Verdict, classify, combine, reason_text
 from poolhouse.guard.destructive_model import ModelLayer
-from poolhouse.interventions import Base, Call, Confirm, Context, Proceed
+from poolhouse.interventions import Base, Call, Context, Deny, Proceed
 
 __all__ = ["DestructiveRail", "annotations_of"]
 
@@ -36,10 +36,10 @@ def annotations_of(tools: Collection[Mapping[str, Any]]) -> dict[str, Mapping[st
 
 
 class DestructiveRail(Base):
-    """Classifies each call that is not in ``skip`` and asks when the label is ``destructive``
+    """Classifies each call that is not in ``skip`` and denies when the label is ``destructive``
     or ``unsure``. ``catalog`` maps tool names to a label, ``floors`` to the least severe label a tool may get, ``roots`` are where writes may go,
     ``model`` is an optional second opinion that can only raise the label, and ``on_verdict``
-    (set after construction) receives each verdict that asks. ``last`` holds the latest verdict."""
+    (set after construction) receives each verdict that refuses. ``last`` holds the latest verdict."""
 
     name = "destructive"
 
@@ -70,7 +70,7 @@ class DestructiveRail(Base):
                            confidence=0.0)
         return base
 
-    def before_tool_call(self, call: Call, context: Context) -> Confirm | Proceed:
+    def before_tool_call(self, call: Call, context: Context) -> Deny | Proceed:
         skip = self._skip() if callable(self._skip) else self._skip
         if call.name in skip:
             return Proceed()
@@ -79,11 +79,7 @@ class DestructiveRail(Base):
             return Proceed()
         if self.on_verdict is not None:
             self.on_verdict(call, verdict)
-        details: dict[str, Any] = {"classifier": verdict.public()}
-        if verdict.layer == "deterministic":
-            details |= {"always_ok": False,
-                        "always_blocked": f"the classifier labelled it {verdict.label}"}
-        return Confirm(f"Asked because: {verdict.label}: {reason_text(verdict)}.", details, self.name)
+        return Deny(f"Refused because it is {verdict.label}: {reason_text(verdict)}.", self.name)
 
 
 def default_roots() -> tuple[str, ...]:

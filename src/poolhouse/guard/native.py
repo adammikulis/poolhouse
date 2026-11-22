@@ -157,8 +157,8 @@ class _View(Many):
 class CallScreen(Base):
     """Asks `ToolCallGuard` about each call to a high-impact tool (``impactful``) before it runs.
 
-    A decider that cannot answer, or answers with low confidence, is a `Confirm`: the person is
-    asked rather than the call let through.
+    A decider that cannot answer, or answers with low confidence, is a `Deny` with the reason:
+    the call is refused at once rather than let through.
     """
 
     guard: ToolCallGuard

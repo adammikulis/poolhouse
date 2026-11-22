@@ -1,11 +1,13 @@
 """``poolhouse-chat`` -- the one agent command: a conversation or a task, under a role.
 
 With no task it is a conversation: the history is kept (and compacted when it fills the
-context), saved after every turn and resumable by id. With a task in words it shows its plan,
-asks go, acts and ends on ``done``. Either way the model has the tools of `poolhouse.do` held
-to a role (`poolhouse.roles`) and the rails of `poolhouse.chatpolicy`: reads run, an acting call
-asks unless the role's approved plan names it, and what only a person at a terminal may do is
-refused with the command to run.
+context), saved after every turn and resumable by id. With a task in words it states its plan,
+acts and ends on ``done``. Either way the model has the tools of `poolhouse.do` held to a role
+(`poolhouse.roles`) and the rails of `poolhouse.chatpolicy`, and every call is decided at once:
+reads run, an acting call runs under the role's rules (a saved always rule, or a step of the plan
+the role runs) and is otherwise refused with the reason, and a protected action is refused with the
+command the owner runs outside the agent. Nothing waits for an answer; the person's own messages
+(the task, a reply to ``ask_user``, ``/role``, ``/rules``) are how they steer.
 """
 
 from __future__ import annotations
@@ -32,7 +34,6 @@ from poolhouse import (
     home,
     mcp,
     memory,
-    requests,
     roles,
     rules as saved,
 )
@@ -67,15 +68,16 @@ SYSTEM = (
     "machine and on the Hub, downloads, benchmarks, jobs, and read-only views of the security "
     "review. You can run nothing except by calling a tool.\n\n"
     "Look before you act: check serve_status and bench_status before starting anything, because "
-    "one thing runs on the GPU at a time. A tool that starts, stops, downloads or measures may "
-    "ask the person yes or no itself when you call it (your role, below, says when); do not ask "
-    "them in words first, and never treat a refusal as something to route around. Say plainly "
-    "what failed and what the error said. Never claim a result a tool did not return.\n\n"
-    "Some things only the person can do, in their own terminal: releasing or purging what is "
-    "held in quarantine (`poolhouse-security review`), approving a host "
+    "one thing runs on the GPU at a time. A tool that starts, stops, downloads or measures runs "
+    "at once or is refused at once, by your role's rules (below); a refusal says why. Do not ask "
+    "for a yes first, and never treat a refusal as something to route around: say plainly what "
+    "was refused and why. Say plainly what failed and what the error said. Never claim a result "
+    "a tool did not return.\n\n"
+    "Some things are refused to an agent, and the owner does them outside the agent: releasing or "
+    "purging what is held in quarantine (`poolhouse-security review`), approving a host "
     "(`poolhouse-security approve-host HOST`), minting a grant, changing the security mode or "
     "policy (`poolhouse-security mode`, `poolhouse-security scan-policy`), and changing your own "
-    "role or the rules for what runs unasked (`/role`, `/rules`, typed by the person). You have "
+    "role or the rules for what runs (`/role`, `/rules`, typed at the chat prompt). You have "
     "no tool for these. When asked, say so and give that command; show what is held with "
     "review_view.\n\n"
     "Keep answers short. Ask one question when a choice is open.")
@@ -84,14 +86,13 @@ TASK = (
     "You were given a task in words. Ask before assuming. When the task leaves a choice open "
     "-- which model or which file, how many questions, a sample or the full set, with or "
     "without a draft head, where to write -- call ask_user rather than guessing, one question "
-    "per call, and wait for the answer before asking the next. Look things up first so the "
+    "per call, and read the answer before asking the next. Look things up first so the "
     "question names what was found: a task that names a model is answered with models_on_disk "
-    "and, when it names Ollama or two backends, ollama_models too, and the person is asked to "
-    "confirm the exact files before anything starts. Do not start a measurement the person has "
-    "not confirmed.\n\n"
+    "and, when it names Ollama or two backends, ollama_models too, and the exact files go in "
+    "the question before anything starts. Do not start a measurement on a guess.\n\n"
     "Then call plan with the steps in order, each naming the tool first and every argument it "
-    "will be called with; it asks the person \"go?\", and the go covers those values and no "
-    "others: a call the plan does not name asks the person again. Then act: call the tools in "
+    "will be called with; the plan covers those values and no others: a call the plan does not "
+    "name is refused at once. Then act: call the tools in "
     "the order planned. A long command detaches and returns a log and a pid; call jobs_wait to "
     "wait for it rather than calling status again and again.\n\n"
     "Last, call done with what was measured and where it is -- the labels, the numbers if "
@@ -102,8 +103,8 @@ NUDGE = ("You replied in words and called nothing. If the task is finished, call
          "a summary of what was measured and where it is; if you need something from the "
          "person, call ask_user; otherwise call the next tool.")
 
-NOTE = ("Note from poolhouse: the message above asks you to {what}. You cannot: only the person "
-        "can, in their own terminal. Tell them to run: {command}")
+NOTE = ("Note from poolhouse: the message above asks you to {what}. That is refused to an agent: "
+        "the owner runs `{command}` outside the agent. Tell them so.")
 
 
 def _id() -> str:
@@ -170,9 +171,9 @@ def _clean(rows: Any) -> list[dict[str, Any]]:
 def tools_for_chat(*, person: do.Person, registry: Sequence[mcp.Tool] | None = None,
                    files: Sequence[Path] | None = None,
                    fetch: Any = None) -> list[tuple[dict[str, Any], Callable[..., Any]]]:
-    """Every tool any role may use: the reads and the asking-first ones of `poolhouse.do`, the
+    """Every tool any role may use: the reads and the acting ones of `poolhouse.do`, the
     security views, and ``ask_user``, ``plan`` and ``done``. A role shows the model a subset."""
-    wanted = policy.READ | frozenset(policy.CONFIRM)
+    wanted = policy.READ | frozenset(policy.ACTING)
     tools = [(s, fn) for s, fn in do.command_tools(registry, files=files, fetch=fetch)
              if s["function"]["name"] in wanted - {"review_view"}]
     view = mcp.Tool("review_view", "Read-only views of the security review.", policy.review_view)
@@ -264,6 +265,7 @@ class Chat:
         self.extra = list(screen)
         self.role = roles.get(role)
         self.plan = roles.PlanLedger()
+        self.planning = False
         self.begin(self.session.messages)
 
     def names(self) -> set[str]:
@@ -286,15 +288,14 @@ class Chat:
         self.rules = saved.Rules()
         self.gate = roles.RoleRail(self.role, self.names, self.plan, extension=self.extension,
                                    rules=self.rules)
-        self.person.rules = self.rules
         floors = {**dict.fromkeys(self.extension.reads, "safe"),
-                  **dict.fromkeys(self.extension.asks, "reversible")}
+                  **dict.fromkeys(self.extension.acts, "reversible")}
         mine = list(self.guard) if self.guard is not None else [
-            policy.HumanOnlyRail(),
+            policy.ProtectedRail(),
             ToolPolicyRail(limits=Limits(calls=self.role.max_calls)), self.gate,
             DestructiveRail(roots=default_roots(), model=from_environment(os.environ),
                             catalog=policy.catalog(), floors=floors,
-                            skip={*roles.OWN, *self.extension.asks_itself}),
+                            skip={*roles.OWN, *self.extension.checks_itself}),
             UntrustedRail(external=policy.FENCED), SecretRail(),
             TaintRail(registries={"models": do.on_disk_ids}), *self.extra]
         self.limits = next((r for r in mine if isinstance(r, ToolPolicyRail)), ToolPolicyRail())
@@ -305,7 +306,7 @@ class Chat:
         self.watch.context.messages = self.messages
 
     def use_role(self, name: str) -> None:
-        """Run under another role from now on; only the person's typed ``/role`` calls this."""
+        """Run under another role from now on; only the owner's typed ``/role`` calls this."""
         activity.record("role.changed", actor="person", subject=name, refs={"session": self.session.id},
                         meta={"was": self.role.name})
         self.role = roles.get(name)
@@ -351,7 +352,9 @@ class Chat:
     def turn(self, text: str, *, only: set[str] | None = None, prefix: str = "") -> Outcome:
         """One message from the person (or the task): the model answers, calling tools until
         it has said its piece or, for a task, called ``done``. ``only`` limits the tools for
-        this message."""
+        this message and marks it a planning turn: the plan it states is shown, and runs only
+        once the person's next message has the model state it again."""
+        self.planning = only is not None
         names = (only or set(self.names())) & self.names() if self.guard is None \
             else (only or self.names())
         schemas, run_by = self._only(names)
@@ -409,7 +412,7 @@ class Chat:
                 result = {"error": f"{type(exc).__name__}: {exc}"}
             self.gate.spent(asked.name, time.monotonic() - began)
         out.calls.append((asked.name, args))
-        if asked.name == "plan" and gate.allowed and result.get("go"):
+        if asked.name == "plan" and gate.allowed and result.get("go") and not self.planning:
             steps = [str(step) for step in args.get("steps") or []]
             self.watch.approve(" ".join(steps))
             self.plan.approve(steps)
@@ -479,13 +482,13 @@ def _close(screen: Iterable[Any]) -> None:
 
 PLAN = ("Plan only. Do not start, stop, download or measure anything this turn. Look with the "
         "read tools if you need to, then call plan with the steps, each naming the tool and its "
-        "arguments, and wait for the person.\n\nRequest: ")
+        "arguments, and stop: the person reads the plan and says go in their next message.\n\nRequest: ")
 
 HELP = f"""/help          this list
 /new           forget this conversation and start another
-/tools         the tools in this role, and which ask you first
+/tools         the tools in this role, and what lets each one run
 /role [NAME]   the roles; with NAME, run under that role (only you can: the model has no way to)
-/plan TEXT     have the model plan TEXT and show the steps, doing nothing
+/plan TEXT     have the model plan TEXT and show the steps, doing nothing until you say go
 /model [REF]   the model in use; with REF, switch to it
 /memory [TEXT] what would be recalled for TEXT (default: your last message), with the scope
                of each fact (user: you, all projects; project: this one)
@@ -498,8 +501,9 @@ def _tools_text(chat: Chat) -> str:
     lines = [f"role: {chat.role.name} -- {chat.role.summary}"]
     shown = {s["function"]["name"] for s, _ in chat.offered} & chat.names()
     for name in sorted(shown):
-        mark = ("asks first" if chat.role.asks == "each" else "asks unless the plan names it") \
-            if name in policy.CONFIRM else "asks you itself, every time" if name in chat.extension.asks_itself \
+        mark = ("runs under an always rule" if chat.role.runs == roles.RULE
+                else "runs under an always rule or a step of the plan") \
+            if name in policy.ACTING else "checks its own limits" if name in chat.extension.checks_itself \
             else "reads"
         lines.append(f"  {name:<16} {mark}")
     return "tools:\n" + "\n".join(lines)
@@ -578,14 +582,15 @@ def repl(chat: Chat, stdin: TextIO, stdout: TextIO, *,
 
 OPTIONS = (
     flag("words", nargs="*", metavar="TASK",
-         help="a task in words: the agent plans, asks go, acts and ends on done (default: a "
+         help="a task in words: the agent states its plan, acts under its role and ends on done (default: a "
               "conversation); `rules ...` lists and edits the saved always/never rules"),
     flag("--task", default="", metavar="TEXT", help="the task, as an option instead of words"),
     flag("--for", dest="lease_for", default="", metavar="TEXT",
          help="why the model is leased, one line, shown by `poolhouse-serve status|leases|history`"),
     flag("--role", default="", choices=["", *roles.ROLES],
-         help="read-only (reads only), approve-first (acting calls ask; the conversation default) or "
-              "plan-and-go (the approved plan runs unasked; the task default)"),
+         help="read-only (reads only), approve-first (an acting call runs only under a saved always "
+              "rule; the conversation default) or plan-and-go (the plan the agent states, or a saved "
+              "rule, lets an acting call run; the task default); anything else is refused at once"),
     flag("--model", default="", help="a model to lease (default: the best downloaded "
          "mixture-of-experts model ranked for an agent)"),
     flag("--url", default="", help="a server already up, e.g. http://127.0.0.1:8080"),
@@ -612,10 +617,10 @@ def extensions(person: do.Person, mem: Memory | None = None) -> roles.Extension:
     """The tools, context and commands features add to every session.
 
     EXTENSION POINT: wire a feature here with its `roles.Extension` (``tools``, ``context``,
-    ``start``, ``commands``, ``reads``, ``asks``); its tools are offered, held to the roles and
+    ``start``, ``commands``, ``reads``, ``acts``); its tools are offered, held to the roles and
     shown to the model with its context in the system message, ``start`` text goes in front of
     the first message of a session, and ``commands`` are slash commands for the person. A tool
-    that asks the person itself is named in ``asks_itself`` so the role does not ask twice.
+    that checks its own limits is named in ``checks_itself`` so the role does not rule on it twice.
 
     Memory: the person's memory and the open project's (``mem``), searched together."""
     mem = mem or Memory.open()
@@ -630,7 +635,7 @@ def extensions(person: do.Person, mem: Memory | None = None) -> roles.Extension:
         tools=lambda: memory.tools(confirm=person.choose, store=mem.user, project=mem.project),
         context=lambda: memory.guidance(mem.project.project.name if mem.project and mem.project.project else ""),
         start=lambda task: memory.session_context(task, store=merged),
-        commands={"memory": shown}, reads=memory.READ, asks_itself=memory.ACTING)
+        commands={"memory": shown}, reads=memory.READ, checks_itself=memory.ACTING)
 
 
 def _task_of(args: argparse.Namespace) -> str:
@@ -640,7 +645,7 @@ def _task_of(args: argparse.Namespace) -> str:
 def serve(args: argparse.Namespace, stdin: TextIO, stdout: TextIO) -> int:
     """Run the session the parsed ``args`` describe over ``stdin`` and ``stdout``."""
     if args.words and args.words[0] == "rules" and (
-            len(args.words) == 1 or args.words[1] in ("list", "remove", "flip", "tainted", "clear")):
+            len(args.words) == 1 or args.words[1] in ("list", "always", "never", "remove", "flip", "tainted", "clear")):
         stdout.write(saved.run_command(saved.Rules(), args.words[1:]) + "\n")
         return 0
     if args.model and args.url:
@@ -676,7 +681,6 @@ def serve(args: argparse.Namespace, stdin: TextIO, stdout: TextIO) -> int:
     session.model = args.model or session.model
     activity.bind_session(session.id)
     activity.attach()
-    person.origin = requests.Origin("poolhouse-chat", Path.cwd().name, session.id)
 
     def connect(ref: str) -> Any:
         client = do.client_for(argparse.Namespace(**{**vars(args), "model": ref, "url": ""}))
@@ -703,10 +707,10 @@ COMMAND = Group(
     "poolhouse-chat",
     "An agent that operates poolhouse, in a conversation or on a task in words, under a role: "
     "what is serving, models, downloads, benchmarks, jobs, read-only security views. Anything "
-    "that starts, stops, downloads or measures asks you first (Allow this time / Always allow / "
-    "Never allow; `rules` edits those), except calls the plan you approved names in the "
-    "plan-and-go role; releasing quarantine, approving a host, changing the security policy, the "
-    "role and the rules are yours alone.",
+    "that starts, stops, downloads or measures runs or is refused at once by the role's rules "
+    "(`always` and `never` rules, and in the plan-and-go role the plan the agent states); "
+    "releasing quarantine, approving a host, changing the security policy, the role and the rules "
+    "are refused to an agent and are yours, outside it.",
     options=OPTIONS, run=lambda args: serve(args, sys.stdin, sys.stdout), allow_abbrev=False)
 main = COMMAND.run
 
