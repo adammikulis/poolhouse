@@ -189,6 +189,23 @@ def test_an_agent_marker_in_the_environment_refuses_the_release(marker):
     assert "sentinel.release_refused" in kinds and "sentinel.released_by_dialog" not in kinds
 
 
+@pytest.mark.parametrize("marker", caller.AGENT_MARKERS)
+def test_the_release_itself_refuses_an_agent_marker_and_any_answer_but_the_exact_label(marker):
+    node = wired(Desk(LATER), **{marker: "1"})
+    made = held(node, "10.0.8.2")
+    node.heads_up._release((made.id,), RELEASE)
+    assert node.store.get(made.id).state == State.QUARANTINED
+    node.heads_up.env = {}
+    node.heads_up._release((made.id,), "Release ")
+    assert node.store.get(made.id).state == State.QUARANTINED
+    refused = [e.evidence["why"] for e in node.bus.log.read() if e.kind == "sentinel.release_refused"]
+    assert len(refused) == 2 and f"refused to an agent ({marker} is set)" in refused[0] and "not confirmed" in refused[1]
+    node.heads_up._release((made.id,), RELEASE)
+    assert node.store.get(made.id).state == State.RELEASED
+    (ran,) = [r for r in caller.audit_rows() if r["event"] == "ran" and r["action"] == f"release {made.id}"]
+    assert ran["who"].startswith("user ")
+
+
 def test_notify_off_shows_nothing_and_is_read_on_every_call():
     desk = Desk()
     node = wired(desk)
