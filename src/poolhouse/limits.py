@@ -1,7 +1,7 @@
 """How much of this machine poolhouse may take, written down where every part reads it.
 
 A machine says what it *can* do -- `poolhouse.hub.machine_room` reads the wiring limit, the
-cores are countable, the ports are free or not. What it *may* do is a person's decision,
+cores are countable, the ports are free or not. What it *may* do is the owner's setting,
 and until now there was nowhere to put it: a laptop shared with somebody else's work, a
 workstation that must keep memory for a desktop, a machine that will serve two models and
 no more.

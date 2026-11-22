@@ -4,7 +4,7 @@
     python -m poolhouse.node_join status [--state DIR]
 
 A device in no pool joins an `open` pool whose signed beacon it hears on the same network; each enrolment is recorded (by `open`, with the certificate fingerprint) and can be revoked
-with `member_remove`. A `secure` pool takes no one without a join code; founding a pool is a person's approval. `pool-join-check` (scripts/) walks every step
+with `member_remove`. A `secure` pool takes no one without a join code; a pool is founded on this device by its own key, with nothing asked. `pool-join-check` (scripts/) walks every step
 of this on one device and says which fails and what to change.
 """
 
