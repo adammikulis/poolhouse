@@ -13,7 +13,7 @@ import pytest
 from model_pins import pinned
 from net_site import gguf_bytes
 
-from poolhouse import http, hub, person, requests, sentinel
+from poolhouse import caller, http, hub, requests, sentinel
 from poolhouse.hub import admission, listing, publishers, remote
 from poolhouse.serve import guarded
 from poolhouse.serve.backend import LlamaServerBackend, ServerFailed, ServerSpec
@@ -32,7 +32,7 @@ def repos(name: str = "unsloth/thing-GGUF", seed: int = 1, file: str = FILE):
 @pytest.fixture(autouse=True)
 def a_person_started_this(monkeypatch):
     """The process is a person's unless a test says otherwise, whoever runs the suite."""
-    for name in person.AGENT_MARKERS:
+    for name in caller.AGENT_MARKERS:
         monkeypatch.delenv(name, raising=False)
 
 

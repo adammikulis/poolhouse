@@ -15,7 +15,7 @@ import pytest
 from net_site import gguf_bytes
 
 import poolhouse as ph
-from poolhouse import http, hub, person, requests, sentinel
+from poolhouse import caller, http, hub, requests, sentinel
 from poolhouse.api import models as api_models
 from poolhouse.hub import admission, hf_cache, listing, publishers, transfer
 from poolhouse.hub.admission import Trust
@@ -39,7 +39,7 @@ def repos(name: str = "maker/thing-GGUF", seed: int = 1, file: str = FILE):
 
 @pytest.fixture(autouse=True)
 def a_person_started_this(monkeypatch):
-    for name in person.AGENT_MARKERS:
+    for name in caller.AGENT_MARKERS:
         monkeypatch.delenv(name, raising=False)
 
 
@@ -93,7 +93,7 @@ def test_every_pull_surface_takes_who_asked_as_a_keyword_that_defaults_to_the_pr
 
 def test_the_process_is_a_person_without_an_agent_marker_and_an_agent_with_one(monkeypatch):
     assert admission.checked(None) is Trust.PERSON
-    for marker in person.AGENT_MARKERS:
+    for marker in caller.AGENT_MARKERS:
         monkeypatch.setenv(marker, "1")
         assert admission.checked(None) is Trust.AGENT, marker
         assert admission.checked(Trust.PERSON) is Trust.PERSON
