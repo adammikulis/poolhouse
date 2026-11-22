@@ -200,9 +200,9 @@ def _open(name: str, *, strict: bool = False) -> str | None:
     except (keystore.KeystoreError, ValueError, CredentialError) as exc:
         if strict:
             reason = next((reason for kind, reason in (
-                (keystore.KeystoreLocked, "locked"), (keystore.KeystoreDenied, "denied"),
-                (keystore.KeystoreBusy, "busy"), (keystore.KeystoreMissing, "missing_master"),
-                (keystore.KeystoreUnavailable, "unavailable"), (keystore.KeystoreError, "cannot_open"),
+                (keystore.KeystoreDenied, "denied"), (keystore.KeystoreBusy, "busy"),
+                (keystore.KeystoreMissing, "missing_master"), (keystore.KeystoreUnavailable, "unavailable"),
+                (keystore.KeystoreError, "cannot_open"),
             ) if isinstance(exc, kind)), "invalid_wrapped")
             raise WrappedCredentialError(reason) from None
         if isinstance(exc, CredentialError):

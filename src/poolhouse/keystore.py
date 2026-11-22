@@ -44,7 +44,7 @@ from poolhouse.sentinel.events import Event, Severity
 
 __all__ = ["ENV_NONINTERACTIVE", "NOTICE", "RATE_WINDOW_S", "READ_CEILING",
            "UNLOCK_COMMAND", "WRITE_CEILING", "Keystore", "KeystoreBusy", "KeystoreDenied", "KeystoreError",
-           "KeystoreLocked", "KeystoreMissing", "KeystoreUnavailable", "Wires", "aead", "default", "hkdf",
+           "KeystoreMissing", "KeystoreUnavailable", "Wires", "aead", "default", "hkdf",
            "interactive", "is_real", "os_user", "scrypt_key"]
 
 SERVICE = "poolhouse"
@@ -87,10 +87,6 @@ class KeystoreDenied(KeystoreError):
 
 class KeystoreBusy(KeystoreError):
     """Too many keystore operations this hour, or another process holds the one prompt."""
-
-
-class KeystoreLocked(KeystoreError):
-    """The key could not be made or read by this process."""
 
 
 class KeystoreMissing(KeystoreError):
@@ -336,9 +332,10 @@ class Keystore:
         """One backend call, gated, counted, audited. A refusal raises with the system's words and is remembered by nothing."""
         ring = self._ring()
         self._spend(kind, purpose, person=person)
-        self._tell()
         person_here = self._is_interactive()
-        if not person_here:
+        if person_here:
+            self._tell()
+        else:
             keystore_guard.forbid_prompts()
         try:
             out = keystore_guard.bounded(lambda: work(ring), keystore_guard.PERSON_WAIT_S if person_here
@@ -468,7 +465,7 @@ def _refused(cause: BaseException) -> str:
         what = f"the keystore said: {said}"
     return (f"Poolhouse could not get its key, because {what}, so encrypted data stays locked. Nothing is remembered: "
             f"the next request asks the keystore again and your computer shows its prompt again. To set the key up now, "
-            f"run `{UNLOCK_COMMAND}` to set the key up now.")
+            f"run `{UNLOCK_COMMAND}`.")
 
 
 def _over(ceiling: int, write: bool) -> str:
