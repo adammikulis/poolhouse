@@ -11,10 +11,10 @@ import json
 import pytest
 from keyring.errors import KeyringError
 
-from poolhouse import home, keystore, mcp
+from poolhouse import caller, home, keystore, keystore_guard, mcp
 from poolhouse.keystore import Keystore, Wires
 from poolhouse.net import cli
-from poolhouse.sentinel import permit as human
+from poolhouse.sentinel import permit
 from tests import keystore_support
 from tests.test_chat import call, session
 
@@ -62,25 +62,37 @@ def test_a_model_that_obeys_everything_never_reaches_the_master_key(counting, ca
     assert master not in told and master[3:] not in told
     assert base64.b64decode(master[3:]).hex() not in told
     for name, args in script:
-        assert human.agent_may(name, args) or name not in {t.name for t in mcp.TOOLS}
+        assert permit.agent_may(name, args) or name not in {t.name for t in mcp.TOOLS}
 
 
 @pytest.mark.parametrize("argv", [["poolhouse-security", "unlock"], ["poolhouse", "security", "unlock"],
                                   ["poolhouse-security", "keystore-reset"]])
 def test_a_command_naming_the_security_tool_or_the_keystore_directory_is_refused(counting, argv):
     person_ks().subkey("memory", "a")
-    assert human.agent_may("run", {"argv": argv})
-    assert human.agent_may("read_file", {"path": str(home.state("keystore") / "credentials.json")})
+    assert permit.agent_may("run", {"argv": argv})
+    assert permit.agent_may("read_file", {"path": str(home.state("keystore") / "credentials.json")})
 
 
-@pytest.mark.parametrize("marker", human.AGENT_MARKERS)
-def test_an_agent_cannot_run_unlock_or_reset(counting, monkeypatch, marker):
+@pytest.mark.parametrize("marker", caller.AGENT_MARKERS)
+def test_an_agent_cannot_reset_the_keystore_and_is_refused_at_once_with_the_key_untouched(counting, monkeypatch, marker, capsys):
+    person_ks().subkey("memory", "a")
+    held, calls = dict(counting.held), list(counting.calls)
     monkeypatch.setenv(marker, "1")
-    real = human.refuse_agent
-    monkeypatch.setattr(human, "refuse_agent", lambda action, terminal=None, env=None: real(action, (True, True), env))
-    assert cli.command(["unlock"]) == 2
     assert cli.command(["keystore-reset"]) == 2
-    assert counting.calls == [] and counting.held == {}
+    assert "refused to an agent" in capsys.readouterr().err
+    assert counting.held == held and counting.calls == calls
+
+
+@pytest.mark.parametrize("marker", caller.AGENT_MARKERS)
+def test_an_agent_that_runs_unlock_only_makes_the_key_and_is_told_nothing_of_it(counting, monkeypatch, marker, capsys):
+    monkeypatch.setenv(marker, "1")
+    assert cli.command(["unlock", "--json"]) == 0
+    shown = capsys.readouterr()
+    (master,) = counting.held.values()
+    assert master not in shown.out + shown.err and master[3:] not in shown.out + shown.err
+    assert base64.b64decode(master[3:]).hex() not in shown.out + shown.err
+    (row,) = [r for r in caller.audit_rows() if r["event"] == "keystore.unlock"]
+    assert row["who"].startswith(f"agent {marker}")
 
 
 def test_one_purpose_cannot_read_anothers_key_or_data(counting):
@@ -131,13 +143,15 @@ def test_a_loop_against_a_refusing_keystore_asks_every_time_and_stops_only_at_th
     assert counting.count("get") == keystore.READ_CEILING
 
 
-def test_a_background_process_cannot_turn_itself_into_a_person(counting, monkeypatch):
+def test_a_background_process_cannot_turn_itself_into_a_person_and_no_prompt_is_allowed(counting, monkeypatch):
     monkeypatch.setenv(keystore.ENV_NONINTERACTIVE, "1")
     monkeypatch.setattr(keystore, "interactive", REAL_INTERACTIVE)
-    background = Keystore(wires=Wires(say=lambda _m: None))
-    with pytest.raises(keystore.KeystoreLocked, match="poolhouse-security unlock"):
-        background.subkey("memory", "a")
-    assert counting.calls == []
+    forbidden: list[str] = []
+    monkeypatch.setattr(keystore_guard, "forbid_prompts", lambda: forbidden.append("forbid") or True)
+    told: list[str] = []
+    background = Keystore(wires=Wires(say=told.append))
+    assert len(background.subkey("memory", "a")) == 32
+    assert forbidden and set(forbidden) == {"forbid"} and told == []
 
 
 def test_the_master_key_is_in_no_status_error_or_event_text(counting):

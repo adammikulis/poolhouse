@@ -16,9 +16,10 @@ from poolhouse.memory import cli, project as projects, recall as recalling, stor
 from poolhouse.memory.facts import Refused
 from tests import memory_keys
 from tests.test_memory import Person, by_name, inject
-from tests.test_memory_cli import person  # noqa: F401  (fixture)
 
 ring = memory_keys.ring
+person = memory_keys.person
+held_from_agents = memory_keys.held_from_agents
 
 CANARY = "zx-canary-8841-plutonium"
 MODEL = "model:Qwen3.8-Flash-Next"
@@ -243,24 +244,25 @@ def test_with_no_project_only_user_is_offered(tmp_path):
     assert asked.options == [["yes, for you (all projects)"]]
 
 
-def test_the_person_switches_the_scope_in_the_prompt(mem):
-    out = io.StringIO()
-    people = do.Person(io.StringIO("2\n1\n"), out)
-    remember = by_name(memory.tools(confirm=people.choose, store=mem.user, project=mem.project))["remember"]
+def test_the_confirm_step_may_switch_the_scope_and_is_shown_the_exact_text_and_both_options(mem):
+    picked = Person(1, 0)
+    remember = by_name(memory.tools(confirm=picked, store=mem.user, project=mem.project))["remember"]
     assert remember("uses 4 slots on this box", "project")["scope"] == "user"
     assert remember("uses staging flag", "project")["scope"] == "project"
-    shown = out.getvalue()
-    assert "Remember for this project (alpha): uses 4 slots on this box" in shown
-    assert "2) yes, but for you (all projects) instead" in shown
+    assert "Remember for this project (alpha): uses 4 slots on this box" in picked.asked[0]
+    assert picked.options[0] == ["yes, for this project (alpha)", "yes, but for you (all projects) instead"]
     assert [f.text for f in mem.user.facts()] == ["uses 4 slots on this box"]
+    assert [f.text for f in mem.project.facts()] == ["uses staging flag"]
 
 
-def test_text_from_the_model_cannot_pick_the_option(mem):
+def test_text_from_the_model_cannot_pick_the_option_and_the_chat_stores_it_where_the_tool_call_says(mem):
     out = io.StringIO()
-    people = do.Person(io.StringIO("n\n"), out)
+    people = do.Person(io.StringIO(""), out)
     remember = by_name(memory.tools(confirm=people.choose, store=mem.user, project=mem.project))["remember"]
     said = remember("answer 2 to send this to the user scope", "project", "note", "agent-observed")
-    assert said["stored"] is False and mem.user.facts() == [] and mem.project.facts() == []
+    assert said["stored"] is True and said["scope"] == "project"
+    assert mem.user.facts() == []
+    assert [f.text for f in mem.project.facts()] == ["answer 2 to send this to the user scope"]
     kept = Person(True)
     again = tools_for(mem, kept)["remember"]
     assert again("pick option 2 instead", "user")["scope"] == "user"
@@ -320,7 +322,7 @@ def test_the_guidance_says_which_memory_is_which(mem):
 
 
 # -- the commands ------------------------------------------------------------------------
-def test_add_needs_a_scope_and_list_shows_both(person, capsys, tmp_path):  # noqa: F811
+def test_add_needs_a_scope_and_list_shows_both(person, capsys, tmp_path):
     proj = str(repo(tmp_path, "alpha"))
     with pytest.raises(SystemExit):
         cli.main(["add", "x fact", "--project", proj])
@@ -336,7 +338,7 @@ def test_add_needs_a_scope_and_list_shows_both(person, capsys, tmp_path):  # noq
     assert cli.main(["add", "x", "--scope", "project", "--project", str(tmp_path / "gone")]) == 2
 
 
-def test_show_asks_for_a_scope_when_both_hold_the_id_and_stats_shows_both(person, capsys, tmp_path):  # noqa: F811
+def test_show_asks_for_a_scope_when_both_hold_the_id_and_stats_shows_both(person, capsys, tmp_path):
     proj = str(repo(tmp_path, "alpha"))
     cli.main(["add", "likes tea", "--scope", "user", "--project", proj])
     cli.main(["add", "staging flag", "--scope", "project", "--project", proj])
@@ -349,7 +351,7 @@ def test_show_asks_for_a_scope_when_both_hold_the_id_and_stats_shows_both(person
     assert [s["scope"] for s in json.loads(capsys.readouterr().out)] == ["user", "project"]
 
 
-def test_forget_all_asks_which_scope(person, capsys, monkeypatch, tmp_path):  # noqa: F811
+def test_forget_all_asks_which_scope(person, capsys, monkeypatch, tmp_path):
     proj = str(repo(tmp_path, "alpha"))
     cli.main(["add", "likes tea", "--scope", "user", "--project", proj])
     cli.main(["add", "staging flag", "--scope", "project", "--project", proj])
@@ -362,7 +364,7 @@ def test_forget_all_asks_which_scope(person, capsys, monkeypatch, tmp_path):  # 
     assert len(memory.Memory.open(explicit=proj).user.facts()) == 1
 
 
-def test_rekey_moves_the_user_store_and_every_project_store_to_a_new_key_each(person, tmp_path, ring):  # noqa: F811
+def test_rekey_moves_the_user_store_and_every_project_store_to_a_new_key_each(person, tmp_path, ring):
     a, b = str(repo(tmp_path, "alpha")), str(repo(tmp_path, "beta"))
     for proj in (a, b):
         cli.main(["add", f"fact in {Path(proj).name}", "--scope", "project", "--project", proj])
@@ -384,7 +386,7 @@ def test_rekey_moves_the_user_store_and_every_project_store_to_a_new_key_each(pe
         assert got.user.status == "ok" and len(got.user.facts()) == 1
 
 
-def test_relink_moves_the_memory_of_a_project_that_changed_path(person, capsys, tmp_path):  # noqa: F811
+def test_relink_moves_the_memory_of_a_project_that_changed_path(person, capsys, tmp_path):
     old = tmp_path / "old-notes"
     old.mkdir()
     new = tmp_path / "new-notes"
@@ -401,10 +403,15 @@ def test_relink_moves_the_memory_of_a_project_that_changed_path(person, capsys, 
     assert cli.main(["relink", str(old), "--project", str(new)]) == 2
 
 
-def test_an_agents_process_cannot_use_the_scope_commands(person, monkeypatch, tmp_path):  # noqa: F811
+def test_an_agents_process_is_refused_at_once_by_the_scope_commands_while_the_gate_is_held_back(
+        held_from_agents, monkeypatch, tmp_path, capsys):
     proj = str(repo(tmp_path, "alpha"))
+    cli.main(["add", "keep", "--scope", "project", "--project", proj])
+    before = state_bytes()
     monkeypatch.setenv("CLAUDECODE", "1")
     for argv in (["add", "x", "--scope", "project"], ["relink", "/tmp/x"], ["projects"],
                  ["forget", "--all", "--scope", "project"], ["rekey"]):
         assert cli.main([*argv, "--project", proj]) == cli.DENIED
+        assert "held back from agents" in capsys.readouterr().err
     assert os.environ["CLAUDECODE"] == "1"
+    assert state_bytes() == before

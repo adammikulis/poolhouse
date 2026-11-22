@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 from poolhouse import (
+    caller,
     keystore,
     node_binary as node_binary_module,
     node_health,
@@ -267,31 +268,28 @@ def test_moving_a_key_without_a_keystore_needs_the_passphrase_and_then_keeps_it_
     assert released is not None and released.seed == SEED
 
 
-def test_the_command_that_moves_the_key_is_a_persons(state, ks, monkeypatch):
+@pytest.mark.parametrize("marker", ["", "CLAUDECODE"])
+def test_the_command_moves_the_key_and_restarts_a_node_that_is_running_with_no_terminal_and_no_check(
+        state, ks, monkeypatch, capsys, marker):
+    """Nothing in `node key --migrate` is held back: the key goes into the keystore for whoever runs it, with no terminal."""
     (state / "device.key").write_text(SEED.hex())
-    monkeypatch.setenv("CLAUDECODE", "1")
-    args = type("Args", (), {"state": str(state), "migrate": True})()
-    assert node_permission._key_command(args) == 2
-    assert (state / "device.key").read_text() == SEED.hex(), "an agent moved nothing"
-
-
-def test_the_command_moves_the_key_and_restarts_a_node_that_is_running(state, ks, monkeypatch, capsys):
-    (state / "device.key").write_text(SEED.hex())
+    if marker:
+        monkeypatch.setenv(marker, "1")
     calls: list[str] = []
-    monkeypatch.setattr(node_permission.human, "refuse_agent", lambda _what: None)
     monkeypatch.setattr(node_key.keystore, "default", lambda: ks)
     monkeypatch.setattr(node_health, "node_health", lambda _state: {"pid": 1})
     monkeypatch.setattr(node_launch, "stop_node", lambda _state: calls.append("stop") or True)
     monkeypatch.setattr(node_launch, "ensure_node", lambda _state: calls.append("start") or {})
+    assert not caller.is_terminal(sys.stdin) and not caller.is_terminal(sys.stdout)
     assert node_permission._key_command(type("Args", (), {"state": str(state), "migrate": True})()) == 0
     assert calls == ["stop", "start"]
     said = capsys.readouterr().out
     assert "keystore" in said and "backup or copy" in said
+    assert is_a_note(state / "device.key") and node_key.release(state, ks=ks).seed == SEED
 
 
 def test_the_command_says_so_when_the_node_does_not_start_again(state, ks, monkeypatch):
     (state / "device.key").write_text(SEED.hex())
-    monkeypatch.setattr(node_permission.human, "refuse_agent", lambda _what: None)
     monkeypatch.setattr(node_key.keystore, "default", lambda: ks)
     monkeypatch.setattr(node_health, "node_health", lambda _state: {"pid": 1})
     monkeypatch.setattr(node_launch, "stop_node", lambda _state: True)

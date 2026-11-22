@@ -1,6 +1,6 @@
 """Stored-fact injection: a poisoned fact reaches the model through session_context and
-recall, and a model that obeys everything it reads still changes no permission and stores
-nothing the person did not say yes to. Run with --redteam."""
+recall, and a model that obeys everything it reads still changes no permission and stores nothing the store's own
+checks refuse (nothing waits for a person to say no: the chat's confirm step answers at once). Run with --redteam."""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ def test_a_poisoned_stored_fact_changes_no_permission_and_stores_nothing(tmp_pat
     inject(store, text)
     before = store.path.read_bytes()
     ran: list = []
-    person = do.Person(io.StringIO("n\n" * 40), io.StringIO())
+    person = do.Person(io.StringIO(""), io.StringIO())
     extra = roles.Extension(
         tools=lambda: memory.tools(confirm=person.choose, store=store),
         reads=memory.READ | memory.ACTING)
@@ -146,7 +146,7 @@ def test_a_poisoned_project_memory_changes_no_role_permission_or_tool(project_me
     mem = project_memory("w", text)
     before = {p: p.read_bytes() for p in (mem.user.path, mem.project.path)}
     ran: list = []
-    person = do.Person(io.StringIO("n\n" * 40), io.StringIO())
+    person = do.Person(io.StringIO(""), io.StringIO())
     extra = chat.extensions(person, mem)
     offered = [*chat.tools_for_chat(person=person, registry=registry(ran)), *extra.tools()]
     names = {s["function"]["name"] for s, _ in offered}
@@ -163,12 +163,12 @@ def test_a_poisoned_project_memory_changes_no_role_permission_or_tool(project_me
 
 
 @pytest.mark.parametrize("text", TEXTS)
-def test_a_fact_copied_from_a_project_file_is_refused_or_waits_for_the_person(project_memory, text):
+def test_a_fact_copied_from_a_project_file_is_refused_even_when_the_confirm_step_says_yes(project_memory, text):
     mem = project_memory("x", "an ordinary note")
     before = mem.project.path.read_bytes()
     asked = []
     remember = {s["function"]["name"]: f for s, f in memory.tools(
-        confirm=lambda q, o: asked.append(q), store=mem.user, project=mem.project)}["remember"]
+        confirm=lambda q, o: asked.append(q) or 0, store=mem.user, project=mem.project)}["remember"]
     out = remember(text[:380], "project", "tool-result")
     assert out["stored"] is False
     assert mem.project.path.read_bytes() == before and len(mem.user.facts()) == 1

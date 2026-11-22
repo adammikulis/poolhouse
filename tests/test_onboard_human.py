@@ -1,47 +1,55 @@
-"""The step only a person at a terminal may take."""
+"""A permit for a step that is kept from agents: minted at once for a process no agent started, refused at once, with the reason, to an agent."""
+
+import sys
 
 import pytest
 
-from poolhouse.sentinel.permit import AgentRefused, Permit, mint
+from poolhouse import authority, caller
+from poolhouse.caller import AgentRefused
+from poolhouse.sentinel.permit import Permit, mint, mint_gated
 
 
-def typed(text):
-    return lambda _prompt: text
+def test_a_process_no_agent_started_gets_a_permit_with_no_terminal_and_no_typed_line_and_the_audit_says_who():
+    assert not caller.marked() and not caller.is_terminal(sys.stdin) and not caller.is_terminal(sys.stdout)
+    permit = mint("rotate", "abc")
+    permit.check("rotate", "abc")
+    (row,) = [r for r in caller.audit_rows() if r["event"] == "ran"]
+    assert row["action"] == "rotate abc" and row["who"].startswith("user ")
 
 
-def test_a_person_at_a_terminal_who_types_the_subject_gets_a_grant():
-    grant = mint("rotate", "abc", typed=typed("abc"), terminal=(True, True), env={})
-    grant.check("rotate", "abc")
+@pytest.mark.parametrize("marker", caller.AGENT_MARKERS)
+def test_a_process_started_by_an_agent_gets_none_at_once_with_the_reason(marker):
+    with pytest.raises(AgentRefused, match="refused to an agent") as refused:
+        mint("rotate", "abc", env={marker: "1"}, why="it replaces the key")
+    assert marker in str(refused.value) and "it replaces the key" in str(refused.value)
+    (row,) = [r for r in caller.audit_rows() if r["event"] == "refused"]
+    assert row["action"] == "rotate abc" and row["why"] == "it replaces the key"
+    assert [r for r in caller.audit_rows() if r["event"] == "ran"] == []
 
 
-@pytest.mark.parametrize("terminal", [(False, True), (True, False), (False, False)])
-def test_no_terminal_no_grant(terminal):
-    with pytest.raises(AgentRefused, match="terminal"):
-        mint("rotate", "abc", typed=typed("abc"), terminal=terminal, env={})
+def test_a_gated_permit_follows_the_gate_an_agent_is_refused_while_it_is_held_back_and_passes_once_it_is_delegated(monkeypatch):
+    with pytest.raises(AgentRefused, match="refused to an agent"):
+        mint_gated("sentinel.policy", "approve-host", "mirror.example", env={"CLAUDECODE": "1"})
+    mint_gated("sentinel.policy", "approve-host", "mirror.example").check("approve-host", "mirror.example")
+    monkeypatch.delenv(authority.FLOOR_ENV)
+    authority.set_state(["sentinel.policy"], authority.DELEGATED, by="test")
+    monkeypatch.setenv("CLAUDECODE", "1")
+    mint_gated("sentinel.policy", "approve-host", "mirror.example").check("approve-host", "mirror.example")
+    used = [r for r in caller.audit_rows() if r["event"] == "authority.use"]
+    assert len(used) == 1 and used[0]["who"].startswith("agent CLAUDECODE")
 
 
-@pytest.mark.parametrize("marker", ["CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE"])
-def test_a_process_started_by_an_agent_gets_none_even_at_a_terminal(marker):
-    with pytest.raises(AgentRefused, match="agent"):
-        mint("rotate", "abc", typed=typed("abc"), terminal=(True, True), env={marker: "1"})
-
-
-def test_typing_something_else_is_not_confirmation():
-    with pytest.raises(AgentRefused, match="not confirmed"):
-        mint("rotate", "abc", typed=typed("yes"), terminal=(True, True), env={})
-
-
-def test_a_grant_covers_one_action_on_one_subject_and_runs_out():
-    grant = mint("rotate", "abc", typed=typed("abc"), terminal=(True, True), env={})
+def test_a_permit_covers_one_action_on_one_subject_and_runs_out():
+    permit = mint("rotate", "abc")
     with pytest.raises(AgentRefused):
-        grant.check("export", "abc")
+        permit.check("export", "abc")
     with pytest.raises(AgentRefused):
-        grant.check("rotate", "other")
+        permit.check("rotate", "other")
     with pytest.raises(AgentRefused, match="expired"):
-        grant.check("rotate", "abc", now=grant.expires + 1)
+        permit.check("rotate", "abc", now=permit.expires + 1)
 
 
-def test_a_grant_cannot_be_made_by_hand():
+def test_a_permit_cannot_be_made_by_hand():
     forged = Permit("rotate", "abc", 9e18, object())
-    with pytest.raises(AgentRefused, match="not a grant minted"):
+    with pytest.raises(AgentRefused, match="not a permit minted"):
         forged.check("rotate", "abc")

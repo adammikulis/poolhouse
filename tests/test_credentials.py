@@ -231,8 +231,7 @@ def test_strict_wrapped_read_distinguishes_an_absent_item_from_an_invalid_record
 
 
 @pytest.mark.parametrize("error,reason", [
-    (keystore.KeystoreLocked, "locked"), (keystore.KeystoreDenied, "denied"),
-    (keystore.KeystoreBusy, "busy"), (keystore.KeystoreMissing, "missing_master"),
+    (keystore.KeystoreDenied, "denied"), (keystore.KeystoreBusy, "busy"), (keystore.KeystoreMissing, "missing_master"),
     (keystore.KeystoreUnavailable, "unavailable"), (keystore.KeystoreError, "cannot_open"),
 ])
 def test_strict_wrapped_read_uses_fixed_diagnostics_without_backend_text(isolated, monkeypatch, error, reason, caplog):

@@ -4,11 +4,10 @@ decay with a floor, recovery, the encrypted store and the human-only command."""
 from __future__ import annotations
 
 import json
-import types
 
 import pytest
 
-from poolhouse import home
+from poolhouse import authority, caller, home
 from poolhouse.reputation import cli, model
 from poolhouse.reputation.notice import BLOCK, BUTTONS, LATER, WATCHING, Notifier
 from poolhouse.reputation.store import MAX_EVENTS, MAX_SOURCES, Ledger
@@ -281,42 +280,38 @@ def test_notify_off_shows_nothing_and_the_notice_waits_in_the_summary(tmp_path, 
     assert ledger.queued() and json.loads((ledger.path.parent / "summary.json").read_text())["notices"] == 1
 
 
-# -- the person's command ---------------------------------------------------------------------
+# -- the command ------------------------------------------------------------------------------------
 
-class Tty:
-    def __init__(self, tty):
-        self.tty = tty
-
-    def isatty(self):
-        return self.tty
-
-
-@pytest.fixture
-def person(monkeypatch):
-    for name in ("CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE"):
-        monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr(cli, "sys", types.SimpleNamespace(stdin=Tty(True), stdout=Tty(True)))
-
+person = memory_keys.person
+held_from_agents = memory_keys.held_from_agents
 
 COMMANDS = [["list"], ["show", "host:a.example"], ["forget", "host:a.example"],
             ["forget", "--all", "--yes"], ["export"], ["stats"]]
 
 
+def audit(event: str) -> list[dict]:
+    return [r for r in caller.audit_rows() if r["event"] == event]
+
+
 @pytest.mark.parametrize("marker", ["CLAUDECODE", "POOLHOUSE_AGENT"])
 @pytest.mark.parametrize("argv", COMMANDS)
-def test_an_agents_process_is_refused_and_nothing_changes(person, monkeypatch, capsys, marker, argv):
+def test_an_agents_process_is_refused_at_once_while_the_gate_is_held_back_and_nothing_changes(
+        held_from_agents, monkeypatch, capsys, marker, argv):
     held = Ledger()
     held.observe("host", "a.example", "scan_hit")
     held.close()
     monkeypatch.setenv(marker, "1")
     assert cli.main(argv) == cli.DENIED
-    assert "a.example" not in capsys.readouterr().out
+    shown = capsys.readouterr()
+    assert "a.example" not in shown.out and marker in shown.err and "reputation.admin" in shown.err
     check = Ledger()
     assert check.standing("host", "a.example") is not None
     check.close()
+    refused = audit("refused")
+    assert len(refused) == 1 and refused[0]["who"].startswith(f"agent {marker}")
 
 
-def test_a_person_lists_shows_exports_forgets_and_deletes_all(person, capsys):
+def test_a_process_no_agent_started_lists_shows_exports_forgets_and_deletes_all_with_no_terminal(held_from_agents, person, capsys):
     held = Ledger()
     held.observe("host", "a.example", "scan_hit")
     held.observe("member", "node-1", "denial")
@@ -336,12 +331,22 @@ def test_a_person_lists_shows_exports_forgets_and_deletes_all(person, capsys):
         assert not cleared.sealed.prev.exists()
     finally:
         cleared.close()
+    ran = audit("ran")
+    assert [r["action"] for r in ran] == ["poolhouse-reputation " + c for c in
+                                          ("list", "show", "export", "stats", "forget", "show", "forget")]
+    assert all(r["who"].startswith("user ") for r in ran)
 
 
-def test_a_terminal_is_needed(monkeypatch, capsys):
-    monkeypatch.delenv("CLAUDECODE", raising=False)
-    monkeypatch.setattr(cli, "sys", types.SimpleNamespace(stdin=Tty(False), stdout=Tty(False)))
-    assert cli.main(["list"]) == cli.DENIED
+def test_an_agent_passes_while_the_gate_is_delegated_and_the_audit_names_it(person, monkeypatch, capsys):
+    monkeypatch.delenv(authority.FLOOR_ENV)
+    authority.set_state(["reputation.admin"], authority.DELEGATED, by="test")
+    held = Ledger()
+    held.observe("host", "a.example", "scan_hit")
+    held.close()
+    monkeypatch.setenv("CLAUDECODE", "1")
+    assert cli.main(["list"]) == 0 and "host:a.example" in capsys.readouterr().out
+    used = audit("authority.use")
+    assert len(used) == 1 and used[0]["gate"] == "reputation.admin" and used[0]["who"].startswith("agent CLAUDECODE")
 
 
 def test_no_observer_means_no_effect():

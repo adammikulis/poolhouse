@@ -53,13 +53,17 @@ def test_every_agent_marker_makes_a_process_background_whatever_its_terminal_and
     assert REAL_INTERACTIVE() is False
 
 
-def test_an_agent_on_a_desktop_cannot_make_the_master(tmp_path, counting, at_a_desktop, monkeypatch):
+def test_an_agent_on_a_desktop_makes_the_master_itself_and_the_system_is_told_to_show_no_dialog(
+        tmp_path, counting, at_a_desktop, monkeypatch):
     monkeypatch.setenv("CLAUDECODE", "1")
     monkeypatch.setattr(keystore, "interactive", REAL_INTERACTIVE)
-    ks = Keystore(directory=tmp_path / "ks", wires=Wires(say=Said()))
-    with pytest.raises(keystore.KeystoreLocked, match="poolhouse-security unlock"):
-        ks.subkey("memory", "a")
-    assert counting.calls == [] and counting.held == {}
+    forbidden: list[str] = []
+    monkeypatch.setattr(keystore_guard, "forbid_prompts", lambda: forbidden.append("forbid") or True)
+    said = Said()
+    ks = Keystore(directory=tmp_path / "ks", wires=Wires(say=said))
+    assert len(ks.subkey("memory", "a")) == 32
+    assert ks.created and len(counting.held) == 1
+    assert forbidden and said.lines == []
 
 
 @pytest.mark.parametrize(("session", "expected"), [(0, False), (1, True), (None, True)])

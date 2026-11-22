@@ -3,9 +3,13 @@ the real key code runs against it."""
 
 from __future__ import annotations
 
+import sys
+
 import keyring
 import pytest
 from keyring.backend import KeyringBackend
+
+from poolhouse import authority, caller
 
 
 class MemoryRing(KeyringBackend):
@@ -34,3 +38,16 @@ def ring():
     keyring.set_keyring(fake)
     yield fake
     keyring.set_keyring(before)
+
+
+@pytest.fixture
+def person():
+    """A process no agent started (the suite clears the markers); pytest captures both streams, so neither is a terminal."""
+    assert not caller.marked()
+    assert not caller.is_terminal(sys.stdin) and not caller.is_terminal(sys.stdout)
+
+
+@pytest.fixture
+def held_from_agents(monkeypatch):
+    """Every gate, `memory.admin` among them, held back from agents (the suite's own default, set here so the test says so)."""
+    monkeypatch.setenv(authority.FLOOR_ENV, authority.PERSON)

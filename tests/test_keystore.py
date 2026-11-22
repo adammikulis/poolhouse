@@ -16,10 +16,9 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from keyring.errors import KeyringError
 
-from poolhouse import home, keystore, memory, sentinel
+from poolhouse import caller, home, keystore, keystore_guard, memory, sentinel
 from poolhouse.fleet.onboard.signing import SigningKeys
 from poolhouse.keystore import Keystore, Wires
-from poolhouse.sentinel import permit as human
 from poolhouse.sentinel.events import Bus, Event, Severity
 from tests import keystore_support
 from tests.onboard_support import Clock
@@ -360,21 +359,21 @@ def test_one_instance_locking_and_reading_in_a_loop_is_capped_too(tmp_path, coun
 # -- background processes ----------------------------------------------------------------------
 
 
-def test_a_background_process_never_prompts_or_creates(tmp_path, counting):
-    ks = make(tmp_path, person=False)
-    with pytest.raises(keystore.KeystoreLocked, match="poolhouse-security unlock"):
-        ks.subkey("memory", "a")
-    assert counting.calls == [] and counting.held == {}
-
-
-def test_after_unlock_a_background_process_reads_but_still_does_not_create(tmp_path, counting):
-    person = make(tmp_path)
-    key = person.subkey("memory", "a")
+def test_a_background_process_that_finds_no_key_makes_it_itself_with_prompts_forbidden(tmp_path, counting, monkeypatch):
+    asked: list[str] = []
+    monkeypatch.setattr(keystore_guard, "forbid_prompts", lambda: asked.append("forbid") or True)
     background = make(tmp_path, person=False)
-    assert background.subkey("memory", "a") == key
+    key = background.subkey("memory", "a")
+    assert len(key) == 32 and background.created and asked and len(counting.held) == 1
+    assert master_of(counting) and make(tmp_path, person=False).subkey("memory", "a") == key
+
+
+def test_a_key_that_went_missing_is_never_remade_by_a_background_process(tmp_path, counting):
+    person = make(tmp_path)
+    person.subkey("memory", "a")
     counting.held.clear()
-    background.lock()
-    with pytest.raises(keystore.KeystoreLocked):
+    background = make(tmp_path, person=False)
+    with pytest.raises(keystore.KeystoreMissing, match="no longer holds the key"):
         background.subkey("memory", "a")
     assert counting.held == {}
 
@@ -419,37 +418,31 @@ def test_the_person_is_told_once_before_the_first_prompt(tmp_path, counting):
     assert again.lines == []
 
 
-def test_a_refused_background_process_says_nothing_about_a_prompt(tmp_path, counting):
+def test_a_background_process_says_nothing_about_a_prompt_it_will_not_show(tmp_path, counting):
     said = Said()
-    with pytest.raises(keystore.KeystoreLocked):
-        make(tmp_path, person=False, say=said).subkey("memory", "a")
+    make(tmp_path, person=False, say=said).subkey("memory", "a")
     assert said.lines == []
+    assert make(tmp_path, say=said).pending_notice() == keystore.NOTICE
 
 
 # -- the unlock command -----------------------------------------------------------------------
 
 
-@pytest.fixture
-def at_a_terminal(monkeypatch):
-    """Stdin and stdout count as terminals; the agent-marker check stays real."""
-    for name in human.AGENT_MARKERS:
-        monkeypatch.delenv(name, raising=False)
-    real = human.refuse_agent
-    monkeypatch.setattr(human, "refuse_agent", lambda action, terminal=None, env=None: real(action, (True, True), env))
+def audit(event: str) -> list[dict]:
+    return [r for r in caller.audit_rows() if r["event"] == event]
 
 
-def test_unlock_is_for_a_person_at_a_terminal(counting, monkeypatch, capsys):
+def test_unlock_runs_for_a_process_with_no_terminal_and_no_prompt_and_the_audit_says_who(counting, capsys):
     from poolhouse.net import cli
 
-    for marker in human.AGENT_MARKERS:
-        monkeypatch.setenv(marker, "1")
-        assert cli.command(["unlock"]) == 2
-        monkeypatch.delenv(marker)
-    assert cli.command(["unlock"]) == 2
-    assert counting.calls == [] and counting.held == {}
+    assert not caller.is_terminal(sys.stdin) and not caller.is_terminal(sys.stdout) and not caller.marked()
+    assert cli.command(["unlock"]) == 0
+    rows = audit("keystore.unlock")
+    assert len(rows) == 1 and rows[0]["who"].startswith("user ")
+    assert len(counting.held) == 1
 
 
-def test_unlock_makes_the_key_once_and_lets_background_processes_read_it(counting, at_a_terminal, capsys):
+def test_unlock_makes_the_key_once_and_lets_background_processes_read_it(counting, capsys):
     from poolhouse.net import cli
 
     assert cli.command(["unlock", "--json"]) == 0
@@ -461,6 +454,16 @@ def test_unlock_makes_the_key_once_and_lets_background_processes_read_it(countin
     assert background.subkey("memory", "a")
 
 
+@pytest.mark.parametrize("marker", caller.AGENT_MARKERS)
+def test_unlock_by_an_agent_runs_too_and_the_audit_names_the_agent(counting, monkeypatch, marker):
+    from poolhouse.net import cli
+
+    monkeypatch.setenv(marker, "1")
+    assert cli.command(["unlock"]) == 0 and len(counting.held) == 1
+    rows = audit("keystore.unlock")
+    assert len(rows) == 1 and rows[0]["who"].startswith(f"agent {marker}")
+
+
 def test_the_status_command_makes_no_backend_call(counting, capsys):
     from poolhouse.net import cli
 
@@ -469,18 +472,33 @@ def test_the_status_command_makes_no_backend_call(counting, capsys):
     assert counting.calls == []
 
 
-def test_reset_deletes_the_key_after_the_person_types_the_account(counting, at_a_terminal, monkeypatch):
+def test_reset_deletes_the_key_for_a_process_no_agent_started_without_a_typed_account_name(counting, capsys):
     from poolhouse.net import cli
 
     ks = keystore.default()
     ks.subkey("memory", "a")
-    real = human.mint
-    typed = ["wrong"]
-    monkeypatch.setattr(human, "mint", lambda a, s, **kw: real(a, s, typed=lambda _p: typed[0], **kw))
-    assert cli.command(["keystore-reset"]) == 2 and counting.held
-    typed[0] = ks.user
+    assert counting.held and not caller.marked()
     assert cli.command(["keystore-reset"]) == 0 and counting.held == {}
     assert ks.status()["provisioned"] is False
+    rows = audit("ran")
+    assert [r["action"] for r in rows] == ["keystore-reset"] and rows[0]["who"].startswith("user ")
+
+
+@pytest.mark.parametrize("marker", caller.AGENT_MARKERS)
+def test_reset_is_refused_to_an_agent_at_once_and_the_key_stays(counting, monkeypatch, capsys, marker):
+    from poolhouse.net import cli
+
+    ks = keystore.default()
+    ks.subkey("memory", "a")
+    held, calls = dict(counting.held), list(counting.calls)
+    monkeypatch.setenv(marker, "1")
+    assert cli.command(["keystore-reset"]) == 2
+    err = capsys.readouterr().err
+    assert marker in err and "refused to an agent" in err and "deletes the key that wraps every secret" in err
+    assert counting.held == held and counting.calls == calls
+    rows = audit("refused")
+    assert len(rows) == 1 and rows[0]["action"] == "keystore-reset" and rows[0]["who"].startswith(f"agent {marker}")
+    assert audit("ran") == []
 
 
 # -- current memory store ------------------------------------------------------------------------------------
