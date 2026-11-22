@@ -6,7 +6,7 @@ import json
 from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
-from poolhouse.interventions import Base, Call, Confirm, Context, Deny, Proceed, Verdict
+from poolhouse.interventions import Base, Call, Context, Deny, Proceed, Verdict
 from poolhouse.taint.events import TaintEvent, emit
 from poolhouse.taint.judge import INTENT, Finding, Registries, addresses, judge, schema_for
 from poolhouse.taint.labels import Label, Level
@@ -21,11 +21,11 @@ class TaintRail(Base):
     runs only if each of its arguments is vouched for (see `poolhouse.taint.judge`).
 
     A value repeating untrusted text sent to an ``exec``, ``egress`` or ``credential`` tool is a
-    `Deny`; every other unvouched call is a `Confirm`. For those three capabilities a call with
-    no argument the person typed is a `Confirm` as well. ``validated_tools`` maps a tool to the
-    name of the validated extraction its result comes from: such a result does not contaminate
-    and its values are vouched under that name. ``emit_events`` sends a `TaintEvent` for each
-    refusal or question."""
+    `Deny` that names the text; every other unvouched call is a `Deny` too, naming what was not
+    vouched for. For those three capabilities a call with no argument the person typed is
+    refused as well. ``validated_tools`` maps a tool to the name of the validated extraction its
+    result comes from: such a result does not contaminate and its values are vouched under that
+    name. ``emit_events`` sends a `TaintEvent` for each refusal."""
 
     name = "taint"
 
@@ -99,21 +99,18 @@ class TaintRail(Base):
                 ledger: Ledger, *, deny: bool) -> Verdict:
         origins = list(dict.fromkeys(o for f in unsafe for o in f.origins)) or ledger.flagged[:3]
         names = ", ".join(dict.fromkeys(f.arg for f in unsafe)) or "no argument the person typed"
-        rows = [{"argument": f.arg, "status": f.status, "origins": list(f.origins),
-                 "preview": f.preview} for f in unsafe]
         if deny:
             verdict: Verdict = Deny(
                 f"{call.name} ({capability.value}) was given {names} repeating text from "
                 f"{', '.join(origins)}, which the person did not write", self.name)
         else:
-            verdict = Confirm(
+            verdict = Deny(
                 f"{call.name} ({capability.value}) would use {names} after the run read "
-                f"untrusted text from {', '.join(origins)}", {
-                    "tool": call.name, "capability": capability.value, "arguments": rows},
-                self.name)
+                f"untrusted text from {', '.join(origins)}, and nothing vouches for it as the "
+                f"person's own words", self.name)
         if self.emit_events:
             emit(TaintEvent(
-                "taint.denied" if deny else "taint.confirm", "warning" if deny else "notice",
+                "taint.denied" if deny else "taint.unvouched", "warning",
                 f"tool_call:{call.name}", {
                     "capability": capability.value, "origins": origins,
                     "arguments": [{"argument": f.arg, "status": f.status, "digest": f.digest}

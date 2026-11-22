@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import functools
 import logging
 import math
 import os
@@ -62,11 +61,10 @@ class Caps:
 
 @dataclass(frozen=True, slots=True)
 class Settings:
-    """How a loop runs: its task limits, the answer to what only a person may allow, a flag the
-    caller can set to stop it, whether to take over SIGTERM and SIGINT, and how to get the model."""
+    """How a loop runs: its task limits, a flag the caller can set to stop it, whether to take
+    over SIGTERM and SIGINT, and how to get the model."""
 
     caps: Caps | None = None
-    approval: Callable[[lt.Needs], bool] = lt.ask_a_person
     cancel: threading.Event | None = None
     signals: bool = False
     serve: Callable[[la.Agent], Held] | None = None
@@ -176,8 +174,6 @@ class Loop:
         self.stopped, self.status = wiring
         self.base = self.status.base
         self.caps = settings.caps or caps_of(agent)
-        self.approval = (functools.partial(lt.ask_a_person, stop=self.stopped)
-                         if settings.approval is lt.ask_a_person else settings.approval)
         self.execute = settings.execute
         self.steps = self.tasks = self.ignored = 0
         self.effort = agent.effort
@@ -258,7 +254,7 @@ class Loop:
             return self.execute(self.agent, row, why, self.stopped)
         state = lt.TaskState(ceiling=self.agent.max_effort)
         level = self.level(row)
-        person = lt.Unattended(self.agent.identity, state, self.approval)
+        person = lt.Unattended()
         guarded = lt.Guarded(self.held.client, effort=level,
                              limits=lt.Limits(self.caps.seconds, self.caps.steps, self.agent.ctx,
                                               self.agent.max_output_tokens), stop=self.stopped)
@@ -281,13 +277,10 @@ class Loop:
             if state.effort:
                 self.effort = state.effort
                 self.status.update(effort=self.effort)
-        if state.needs:
-            self.status.update(needs=[{"what": n.what, "why": n.reason} for n in state.needs])
         if out.done:
             return "answer", out.summary, out.rounds
         return "status", ("ended without finishing"
-                          + (f"; last said: {_last_words(out.messages)}" if out.messages else "")
-                          + (f"; waiting for a person: {state.needs[-1].what}" if state.needs else "")), out.rounds
+                          + (f"; last said: {_last_words(out.messages)}" if out.messages else "")), out.rounds
 
     def reply(self, row: dict[str, Any], kind: str, text: str) -> None:
         """Send the result on the thread it came on: to the board, or to the sender; sent once however often the

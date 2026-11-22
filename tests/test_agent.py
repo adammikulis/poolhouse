@@ -313,33 +313,23 @@ def test_an_http_server_that_wants_a_bearer_token(served) -> None:
             assert "401" in str(err.value) and "wrong-token-1" not in str(err.value)
 
 
-@pytest.mark.parametrize(("answer", "outcome"), [(True, "deleted /tmp/x"), (None, "kept")])
-def test_a_question_from_the_server_reaches_the_confirm_handler(served, answer, outcome) -> None:
+def test_a_question_from_the_server_is_declined_at_once_and_nothing_waits_for_an_answer(served) -> None:
     pytest.importorskip("mcp")
     import toy_mcp_http
 
-    from poolhouse.agent import ConfirmRequest
-
     fake = served(Turn(calls=(call("delete", path="/tmp/x"),)), Turn(text=("done",)))
-    asked: list = []
-
-    async def person(decision, info):
-        asked.append(decision.question)
-        return {"sure": True} if answer else None
 
     async def go(url: str) -> list:
         async with McpTools.http(url, bearer="tok-long-1") as tools:
             agent = Agent(Client(fake.base_url), tools)
-            if answer is not None:
-                agent.confirm = person
+            assert not hasattr(agent, "confirm")
             return [e async for e in agent.run("go")]
 
     with toy_mcp_http.running("tok-long-1") as (url, _):
-        events = asyncio.run(go(url))
-    request = next(e for e in events if isinstance(e, ConfirmRequest))
-    assert request.question == "Really delete /tmp/x?" and request.name == "elicitation"
-    assert next(e for e in events if isinstance(e, ToolResult)).text == outcome
-    assert asked == (["Really delete /tmp/x?"] if answer else [])
+        events = asyncio.run(asyncio.wait_for(go(url), timeout=60))
+    assert next(e for e in events if isinstance(e, ToolResult)).text == "kept"
+    assert not [e for e in events if type(e).__name__ == "ConfirmRequest"]
+    assert isinstance(events[-1], Done)
 
 
 def test_an_agent_turn_asks_for_no_thinking_unless_the_person_set_it(served, monkeypatch) -> None:

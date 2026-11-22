@@ -6,7 +6,6 @@ import os
 import shlex
 import subprocess
 import sys
-import threading
 import time
 import tomllib
 from pathlib import Path
@@ -58,24 +57,27 @@ class TestPolicy:
             assert decide(coding_policy.Policy(role), Call("Read", {"file_path": "/w/a.py"}), roots=("/w",)).action == "allow"
             assert decide(coding_policy.Policy(role), Call("Bash", {"command": "git status"}), roots=("/w",)).action == "allow"
 
-    def test_a_destructive_call_asks_where_the_role_acts_and_is_denied_where_it_does_not(self):
+    def test_a_destructive_call_is_denied_at_once_where_the_role_acts_and_where_it_does_not_and_yolo_runs_it(self):
         call = ("Bash", {"command": "rm -rf /tmp/somewhere"})
-        assert decide(coding_policy.Policy("guarded"), Call(*call), roots=("/w",)).action == "ask"
-        assert decide(coding_policy.Policy("guarded"), Call(*call), roots=("/w",)).kind == "tool_call_destructive"
-        assert decide(coding_policy.Policy("read-only"), Call(*call), roots=("/w",)).action == "deny"
+        guarded = decide(coding_policy.Policy("guarded"), Call(*call), roots=("/w",))
+        assert (guarded.action, guarded.label) == ("deny", "destructive")
+        assert "the guarded profile runs no destructive call" in guarded.reason
+        readonly = decide(coding_policy.Policy("read-only"), Call(*call), roots=("/w",))
+        assert readonly.action == "deny" and "runs no acting call" in readonly.reason
+        assert decide(coding_policy.Policy("yolo"), Call(*call), roots=("/w",)).action == "allow"
 
     def test_a_valid_edit_obeys_each_permission_profile(self, tmp_path):
         target = tmp_path / "a.py"
         target.write_text("a")
         edit = ("Edit", {"file_path": str(target), "old_string": "a", "new_string": "b"})
-        assert decide(coding_policy.Policy("guarded"), Call(*edit), roots=(str(tmp_path),)).action == "ask"
         assert decide(coding_policy.Policy("guarded"), Call(*edit), roots=(str(tmp_path),)).action == "allow"
+        assert decide(coding_policy.Policy("yolo"), Call(*edit), roots=(str(tmp_path),)).action == "allow"
         assert decide(coding_policy.Policy("read-only"), Call(*edit), roots=(str(tmp_path),)).action == "deny"
 
-    def test_a_tool_nobody_classified_asks_as_destructive(self):
+    def test_a_tool_nobody_classified_is_denied_at_once_as_unsure(self):
         got = decide(coding_policy.Policy("guarded"), Call("SomeNewTool", {"x": "y"}), roots=("/w",))
-        assert (got.action, got.kind) == ("ask", "tool_call_destructive")
-        assert decide(coding_policy.Policy("guarded"), Call("Bash", None), roots=("/w",)).action == "ask"
+        assert (got.action, got.label) == ("deny", "unsure") and "runs no unsure call" in got.reason
+        assert decide(coding_policy.Policy("guarded"), Call("Bash", None), roots=("/w",)).action == "deny"
 
     def test_text_naming_the_launchers_files_or_a_person_only_action_is_denied_in_every_role(self):
         for role in ("guarded", "guarded"):
@@ -91,50 +93,27 @@ class TestPolicy:
         call = {"command": "rm -rf /tmp/x", "permissions": "guarded", "executionMode": "execute", "poolhouse_role": "guarded",
                 "permission_mode": "bypassPermissions", "dangerouslyDisableSandbox": True}
         assert decide(coding_policy.Policy("read-only"), Call("Bash", call), roots=("/w",)).action == "deny"
-        assert decide(coding_policy.Policy("guarded"), Call("Bash", call), roots=("/w",)).action == "ask"
+        assert decide(coding_policy.Policy("guarded"), Call("Bash", call), roots=("/w",)).action == "deny"
 
 
 class TestHook:
     def _rail(self, **over):
-        return harnesshook.Rail(coding_policy.Policy("guarded"), "local-test", ("/w",), (), 5.0) if not over \
-            else harnesshook.Rail(**{"policy": coding_policy.Policy("guarded"), "agent": "local-test", "roots": ("/w",), **over})
+        return harnesshook.Rail(**{"policy": coding_policy.Policy("guarded"), "agent": "local-test", "roots": ("/w",), **over})
 
     def test_a_safe_call_is_allowed_and_nothing_is_raised(self):
-        inbox = requests.Inbox(memory=True)
-        out = harnesshook.pre({"tool_name": "Read", "tool_input": {"file_path": "/w/a"}}, self._rail(), inbox)
+        out = harnesshook.pre({"tool_name": "Read", "tool_input": {"file_path": "/w/a"}}, self._rail())
         assert out["hookSpecificOutput"]["permissionDecision"] == "allow"
-        assert inbox.list() == []
+        assert requests.list_requests() == []
 
-    def test_a_call_that_asks_waits_for_the_person_and_runs_only_on_their_yes(self, tmp_path, workspace_node):  # noqa: F811
-        agent = workspace_node.member("local-test")
-        for choice, want in (("allow-once", "allow"), ("deny", "deny")):
-            inbox = requests.Inbox(memory=True)
-            payload = {"tool_name": "Bash", "tool_input": {"command": f"rm -rf {tmp_path}/x"}, "cwd": str(tmp_path),
-                       "session_id": "s1"}
-
-            def person(inbox=inbox, choice=choice):
-                for _ in range(200):
-                    waiting = requests.list_requests(inbox=inbox, state="pending")
-                    if waiting:
-                        requests.answer(waiting[0].id, choice, waiting[0].fingerprint, "ui",
-                                        requests.Context(env={}, inbox=inbox))
-                        return
-                    time.sleep(0.02)
-
-            thread = threading.Thread(target=person)
-            thread.start()
-            out = harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy("guarded"), agent.name, (str(tmp_path),), (), 10.0), inbox)
-            thread.join()
-            assert out["hookSpecificOutput"]["permissionDecision"] == want
-            raised = requests.list_requests(inbox=inbox)[0]
-            assert raised.kind == "tool_call_destructive" and raised.raised_by.agent == agent.name
-        assert held(workspace_node.session(agent), agent.name) == [("area", str((tmp_path / "x").resolve()))]
-
-    def test_an_unanswered_request_is_a_denial(self):
-        inbox = requests.Inbox(memory=True)
-        payload = {"tool_name": "Bash", "tool_input": {"command": "rm -rf /tmp/x"}}
-        out = harnesshook.pre(payload, self._rail(wait_s=0.2), inbox)
-        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+    def test_a_destructive_call_is_denied_at_once_with_the_reason_and_no_request_is_raised(self, tmp_path):
+        payload = {"tool_name": "Bash", "tool_input": {"command": f"rm -rf {tmp_path}/x"}, "cwd": str(tmp_path),
+                   "session_id": "s1"}
+        began = time.time()
+        out = harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy("guarded"), "local-test", (str(tmp_path),), ()))
+        answer = out["hookSpecificOutput"]
+        assert answer["permissionDecision"] == "deny" and time.time() - began < 30
+        assert "the guarded profile runs no destructive call" in answer["permissionDecisionReason"]
+        assert requests.list_requests() == []
 
     def test_as_a_child_process_a_denied_call_is_denied_and_a_safe_one_allowed(self):
         deny = _verdict(_hook("pre", {"tool_name": "Bash", "tool_input": {"command": "rm -rf /tmp/x"}},
@@ -144,13 +123,15 @@ class TestHook:
                                "--permissions", "guarded", "--root", "/w"))
         assert allow["permissionDecision"] == "allow"
 
-    def test_a_call_that_asks_with_no_keystore_is_denied_at_once(self):
+    def test_a_destructive_call_is_denied_at_once_by_the_hook_with_no_keystore_and_no_terminal(self):
         began = time.time()
         done = _hook("pre", {"tool_name": "Bash", "tool_input": {"command": "rm -rf /tmp/x"}},
-                     "--permissions", "guarded", "--root", "/w", "--wait", "120",
+                     "--permissions", "guarded", "--root", "/w",
                      env={"POOLHOUSE_HOME": str(Path(os.environ["POOLHOUSE_HOME"]) / "hook")})
-        assert _verdict(done)["permissionDecision"] == "deny"
-        assert time.time() - began < 60, "the hook does not wait on a keystore it cannot open"
+        answer = _verdict(done)
+        assert answer["permissionDecision"] == "deny"
+        assert "the guarded profile runs no destructive call" in answer["permissionDecisionReason"]
+        assert time.time() - began < 60, "the hook waits for nothing"
 
     def test_no_environment_variable_or_argument_lifts_the_policy(self):
         done = _hook("pre", {"tool_name": "Bash", "tool_input": {"command": "rm -rf /tmp/x",
@@ -597,7 +578,7 @@ def test_automatic_context_comes_from_the_device_model_fit(monkeypatch):
 ])
 def test_workspace_hook_binds_own_identity_and_keeps_human_commands_blocked(line, expected, tmp_path):
     payload = {"tool_name": "Bash", "tool_input": {"command": line}, "cwd": str(tmp_path)}
-    rail = harnesshook.Rail(coding_policy.Policy("guarded"), "own", roots=(str(tmp_path),), wait_s=0)
+    rail = harnesshook.Rail(coding_policy.Policy("guarded"), "own", roots=(str(tmp_path),))
     answer = harnesshook.pre(payload, rail)
     assert answer["hookSpecificOutput"]["permissionDecision"] == expected
 
@@ -606,9 +587,8 @@ def test_workspace_hook_binds_own_identity_and_keeps_human_commands_blocked(line
     ("mcp__workspace__workspace_inbox", "read-only", "allow"),
     ("mcp__workspace__workspace_reputation", "read-only", "allow"),
     ("mcp__workspace__workspace_send", "guarded", "allow"),
-    ("mcp__workspace__workspace_send", "guarded", "ask"),
     ("mcp__workspace__workspace_send", "read-only", "deny"),
-    ("mcp__foreign__workspace_send", "guarded", "ask"),
+    ("mcp__foreign__workspace_send", "guarded", "deny"),
 ])
 def test_bound_workspace_mcp_obeys_role(name, role, action):
     assert decide(coding_policy.Policy(role), Call(name, {"to": "codex", "kind": "status", "text": "ready"})).action == action

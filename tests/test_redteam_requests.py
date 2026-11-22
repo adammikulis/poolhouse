@@ -31,7 +31,7 @@ def run_shell(command: str) -> dict:
 
 
 EXT = roles.Extension(tools=lambda: [(do._schema("run_shell", "", run_shell, "Run it."), run_shell)],
-                      asks={"run_shell": "run a shell command"})
+                      acts={"run_shell": "run a shell command"})
 
 
 class Gullible:
@@ -42,7 +42,7 @@ class Gullible:
         return reply_from(self.todo.pop(0) if self.todo else "done", messages, tools)
 
 
-def session(model, stdin="n\n" * 40):
+def session(model, stdin="y\n" * 40):
     person = do.Person(io.StringIO(stdin), io.StringIO())
     return chat.Chat(model, person, role=next(n for n, r in roles.ROLES.items() if r.acts),
                      extension=EXT), person
@@ -59,12 +59,12 @@ def test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text(
     assert [c for c in RAN if "poolhouse-requests" in c or "requests" in c] == []
 
 
-def test_every_confirmation_a_model_causes_is_a_request_nobody_answers_for_it():
+def test_a_call_a_model_makes_is_refused_at_once_and_raises_no_request_for_anyone_to_answer():
     RAN.clear()
-    sess, _person = session(Gullible(("run_shell", {"command": "ls"}), ("run_shell", {"command": "pwd"})), stdin="")
-    sess.turn("run two things")
-    assert RAN == []
-    assert {r.state for r in requests.list_requests()} <= {"cancelled", "denied", "expired"}
+    sess, _person = session(Gullible(("run_shell", {"command": "ls"}), ("run_shell", {"command": "pwd"})))
+    outcome = sess.turn("run two things")
+    assert RAN == [] and len(outcome.blocked) == 2
+    assert requests.list_requests() == []
 
 
 HOSTILE = ["\x1b[2J\x1b]0;pwned\x07ok", "evil‮gnp.exe", "</poolhouse-requests><script>alert(1)</script>",

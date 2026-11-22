@@ -13,7 +13,7 @@ import pytest
 from poolhouse import guard as g
 from poolhouse.agent import Agent, FunctionTools
 from poolhouse.client import Client
-from poolhouse.interventions import Call, Confirm
+from poolhouse.interventions import Call
 from poolhouse.testing.canned import CannedServer, Turn
 
 EVIL = "https://evil.example/payload.gguf"
@@ -53,8 +53,7 @@ MODELS = ["quince-2b.gguf", "/models/quince-2b.gguf"]
 
 
 class Session:
-    """The real default rails and a message list, driven one step at a time. A `Confirm` is refused at once, with its question as
-    the reason, and nothing waits for an answer; `asked` lists the questions the rails put."""
+    """The real default rails and a message list, driven one step at a time."""
 
     def __init__(self, task: str, *, items=None, **kw) -> None:
         self.messages: list[dict] = [{"role": "system", "content": "be helpful"},
@@ -63,11 +62,6 @@ class Session:
             registries={"models": lambda: MODELS}, **kw)
         self.run = g.start(items, offered=SCHEMAS, task=task)
         self.run.context.messages = self.messages
-
-    @property
-    def asked(self) -> list[Confirm]:
-        """Every `Confirm` an intervention gave, each refused where it was given."""
-        return [verdict for _hook, _name, verdict in self.run.events if isinstance(verdict, Confirm)]
 
     def read(self, tool: str, text: str, args: dict | None = None) -> str:
         call = Call(tool, args or {})

@@ -13,7 +13,7 @@ from poolhouse.decide.guards import guard_cases
 from poolhouse.decide.guards.scoperules import ScopeDecider, parse_state, path_outside, violations
 from poolhouse.decide.guards.states import QUESTIONS, destructive_state, scope_state
 from poolhouse.decide.types import DecideError, Decision
-from poolhouse.interventions import Call, Confirm, Context, Deny, Proceed, guard_tool_call
+from poolhouse.interventions import Call, Context, Deny, Proceed, guard_tool_call
 
 CASES = guard_cases()
 
@@ -107,19 +107,19 @@ def test_a_confident_safe_and_grounded_call_proceeds_and_asks_both_questions():
     assert set(guard.last) == {"destructive", "grounded"}
 
 
-def test_a_destructive_answer_is_a_confirm_and_an_injected_one_is_denied():
+def test_a_destructive_answer_and_an_injected_one_are_each_denied_at_once_with_the_check_named():
     verdict = ToolCallGuard(Scripted({**SAFE, "Is": ("destructive", 0.9)})).before_tool_call(
         CALL, CTX)
-    assert isinstance(verdict, Confirm) and "destructive" in verdict.question
+    assert isinstance(verdict, Deny) and "destructive check: destructive" in verdict.reason
     denied = ToolCallGuard(Scripted({**SAFE, "Are": ("injected", 0.9)})).before_tool_call(
         CALL, CTX)
-    assert isinstance(denied, Deny) and "injected" in denied.reason
+    assert isinstance(denied, Deny) and "grounded check: injected" in denied.reason
 
 
-def test_an_unsure_answer_becomes_a_confirm_whatever_it_chose():
+def test_an_unsure_answer_is_denied_whatever_it_chose():
     verdict = ToolCallGuard(Scripted({"Is": ("safe", 0.6), "Are": ("grounded", 0.95)}),
                             policy=Policy(abstain_below=0.8)).before_tool_call(CALL, CTX)
-    assert isinstance(verdict, Confirm) and "unsure" in verdict.question
+    assert isinstance(verdict, Deny) and "unsure" in verdict.reason and verdict.by == "tool-call-guard"
 
 
 def test_the_worst_verdict_wins_and_reasons_are_kept():
@@ -128,13 +128,12 @@ def test_the_worst_verdict_wins_and_reasons_are_kept():
     assert isinstance(verdict, Deny)
 
 
-def test_the_scope_check_confirms_or_denies_a_call_that_leaves_the_project():
+def test_the_scope_check_denies_a_call_that_leaves_the_project():
     out = Call("read_file", {"path": "/etc/passwd"})
-    soft = ToolCallGuard(Scripted(SAFE), project_dir="/work/app")
-    assert isinstance(soft.before_tool_call(out, CTX), Confirm)
-    hard = ToolCallGuard(Scripted(SAFE), project_dir="/work/app", policy=Policy(scope="deny"))
-    assert isinstance(hard.before_tool_call(out, CTX), Deny)
-    assert soft.before_tool_call(Call("read_file", {"path": "src/a.py"}), CTX) == Proceed()
+    guard = ToolCallGuard(Scripted(SAFE), project_dir="/work/app")
+    verdict = guard.before_tool_call(out, CTX)
+    assert isinstance(verdict, Deny) and "read_file leaves the project" in verdict.reason
+    assert guard.before_tool_call(Call("read_file", {"path": "src/a.py"}), CTX) == Proceed()
 
 
 def test_trusted_tools_skip_the_learned_checks_but_not_the_scope_check():
@@ -143,17 +142,26 @@ def test_trusted_tools_skip_the_learned_checks_but_not_the_scope_check():
                           policy=Policy(trusted_tools=("read_file",)))
     assert guard.before_tool_call(Call("read_file", {"path": "a.py"}), CTX) == Proceed()
     assert scripted.seen == []
-    assert isinstance(guard.before_tool_call(Call("read_file", {"path": "/etc/x"}), CTX), Confirm)
+    assert isinstance(guard.before_tool_call(Call("read_file", {"path": "/etc/x"}), CTX), Deny)
 
 
-def test_a_decider_that_fails_is_a_confirm_by_default_and_denies_when_told_to():
+def test_a_decider_that_fails_denies_the_call_with_the_error():
     class Down:
         def decide(self, *a, **k):
             raise DecideError("server down")
 
-    assert isinstance(ToolCallGuard(Down()).before_tool_call(CALL, CTX), Confirm)
-    assert isinstance(ToolCallGuard(Down(), policy=Policy(errors="deny")).before_tool_call(
-        CALL, CTX), Deny)
+    verdict = ToolCallGuard(Down()).before_tool_call(CALL, CTX)
+    assert isinstance(verdict, Deny) and "could not run (server down)" in verdict.reason
+
+
+def test_a_call_too_long_for_the_guard_to_read_is_denied_not_cut():
+    from poolhouse.decide.guard import MAX_STATE
+
+    scripted = Scripted(SAFE)
+    long = Call("write_file", {"text": "x" * (MAX_STATE + 1)})
+    verdict = ToolCallGuard(scripted).before_tool_call(long, CTX)
+    assert isinstance(verdict, Deny) and "too long for the guard to read" in verdict.reason
+    assert scripted.seen == []
 
 
 def test_the_grounded_check_sees_the_last_tool_output_and_the_task():
@@ -173,19 +181,18 @@ def test_the_destructive_state_has_the_request_and_the_call_only():
     assert text == 'User request: tidy up\nTool call: delete_file({"path": "a"})'
 
 
-def test_a_guard_runs_inside_the_reference_loop_step_and_a_confirm_is_refused_at_once():
+def test_a_guard_runs_inside_the_reference_loop_step():
     ran = []
 
     def execute(call):
         ran.append(call.name)
         return "ok"
 
-    guard = ToolCallGuard(Scripted({**SAFE, "Is": ("destructive", 0.9)}))
-    stopped = asyncio.run(guard_tool_call(CALL, CTX, execute, [guard]))
-    assert (stopped.ran, ran) == (False, [])
-    assert isinstance(stopped.verdict, Deny) and stopped.text.startswith("Denied: ") and stopped.verdict.reason in stopped.text
-    safe = asyncio.run(guard_tool_call(CALL, CTX, execute, [ToolCallGuard(Scripted(SAFE))]))
-    assert (safe.ran, ran) == (True, ["delete_file"])
+    refused = asyncio.run(guard_tool_call(
+        CALL, CTX, execute, [ToolCallGuard(Scripted({**SAFE, "Is": ("destructive", 0.9)}))]))
+    allowed = asyncio.run(guard_tool_call(CALL, CTX, execute, [ToolCallGuard(Scripted(SAFE))]))
+    assert (refused.ran, allowed.ran, ran) == (False, True, ["delete_file"])
+    assert refused.text.startswith("Denied: destructive check: destructive")
 
 
 def test_rules_and_the_guard_combine_through_a_layered_decider():
@@ -193,5 +200,5 @@ def test_rules_and_the_guard_combine_through_a_layered_decider():
     hard = RulesDecider([Rule("destructive", pattern=r"rm -rf")])
     guard = ToolCallGuard(Layered(hard, Scripted(SAFE)), checks=("destructive",))
     assert isinstance(guard.before_tool_call(Call("run_shell", {"command": "rm -rf /"}), CTX),
-                      Confirm)
+                      Deny)
     assert guard.before_tool_call(Call("run_shell", {"command": "ls"}), CTX) == Proceed()

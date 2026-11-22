@@ -7,7 +7,6 @@ import asyncio
 from poolhouse.interventions import (
     Base,
     Call,
-    Confirm,
     Context,
     Deny,
     Guide,
@@ -41,21 +40,28 @@ def run(coro):
     return asyncio.run(coro)
 
 
-def test_severity_orders_the_five_verdicts():
-    order = [Proceed(), Rewrite("t"), Guide("g"), Confirm("q"), Deny("d")]
-    assert [severity(v) for v in order] == [0, 1, 2, 3, 4]
+def test_severity_orders_the_four_verdicts():
+    order = [Proceed(), Rewrite("t"), Guide("g"), Deny("d")]
+    assert [severity(v) for v in order] == [0, 1, 2, 3]
+
+
+def test_there_is_no_verdict_that_waits_for_an_answer():
+    import poolhouse.interventions as interventions
+
+    assert not hasattr(interventions, "Confirm")
+    assert set(interventions.Verdict.__args__) == {Proceed, Deny, Guide, Rewrite}
 
 
 def test_first_deny_wins_stops_at_the_first_deny_and_skips_the_rest():
     late = Says(Deny("late"))
-    combo = first_deny_wins(Says(Confirm("sure?")), Says(Deny("no")), late)
+    combo = first_deny_wins(Says(Guide("careful")), Says(Deny("no")), late)
     assert combo.before_tool_call(CALL, Context()) == Deny("no")
     assert late.seen == []
 
 
-def test_first_deny_wins_prefers_a_confirm_to_a_guide_when_nothing_denies():
-    combo = first_deny_wins(Says(Guide("try less")), Says(Confirm("sure?")), Says(Proceed()))
-    assert combo.before_tool_call(CALL, Context()) == Confirm("sure?")
+def test_first_deny_wins_returns_the_most_severe_when_nothing_denies():
+    combo = first_deny_wins(Says(Rewrite("t")), Says(Guide("try less")), Says(Proceed()))
+    assert combo.before_tool_call(CALL, Context()) == Guide("try less")
 
 
 def test_require_all_runs_every_hook_and_joins_the_reasons():
@@ -99,22 +105,21 @@ def test_a_guide_lets_the_call_run_and_its_message_follows_the_result():
     assert (out.ran, out.text) == (True, "done\n\nuse trash")
 
 
-def test_a_confirm_runs_only_when_the_person_says_yes():
-    ask = Confirm("delete it?", {"path": "/tmp/x"})
-    asked = []
+def test_a_guarded_call_is_allowed_or_denied_at_once_and_a_deny_reaches_the_model_with_its_reason():
+    ran = []
 
-    def yes(c):
-        asked.append(c)
-        return True
+    def execute(c):
+        ran.append(c)
+        return "done"
 
-    ok = run(guard_tool_call(CALL, Context(), lambda c: "done", [Says(ask)], confirm=yes))
-    no = run(guard_tool_call(CALL, Context(), lambda c: "done", [Says(ask)],
-                             confirm=lambda c: False))
-    none = run(guard_tool_call(CALL, Context(), lambda c: "done", [Says(ask)]))
-    assert (ok.ran, ok.text, ok.confirmed) == (True, "done", True)
-    assert asked == [ask]
-    assert (no.ran, no.confirmed) == (False, False)
-    assert (none.ran, none.confirmed) == (False, False)
+    denied = asyncio.run(asyncio.wait_for(
+        guard_tool_call(CALL, Context(), execute, [Says(Deny("destructive: deletes files", "classifier"))]),
+        timeout=5))
+    allowed = asyncio.run(asyncio.wait_for(
+        guard_tool_call(CALL, Context(), execute, [Says(Proceed())]), timeout=5))
+    assert (denied.ran, denied.text) == (False, "Denied: destructive: deletes files")
+    assert denied.verdict == Deny("destructive: deletes files", "classifier")
+    assert (allowed.ran, allowed.text, ran) == (True, "done", [CALL])
 
 
 def test_a_guard_that_raises_does_not_let_the_call_through():

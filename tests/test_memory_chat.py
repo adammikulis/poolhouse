@@ -1,7 +1,7 @@
-"""Memory in the chat: the first message carries what is recalled from both scopes, remember asks
-with the scope shown, every role may recall and only the acting ones may remember, and a
-poisoned project memory changes nothing. The model is scripted; the loop, the rails, the
-person's prompt and the stores are real."""
+"""Memory in the chat: the first message carries what is recalled from both scopes, remember writes at
+once to the scope the model named (and the memory store's own checks refuse what it must), every role
+may recall and only the acting ones may remember, and a poisoned project memory changes nothing. The
+model is scripted; the loop, the rails and the stores are real."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import io
 
 import pytest
 
-from poolhouse import chat, do, memory
+from poolhouse import chat, do, memory, requests
 from tests import memory_keys
 from tests.test_chat import Model, registry
 from tests.test_memory import inject
@@ -74,33 +74,41 @@ def test_a_new_conversation_recalls_again(tmp_path):
     assert "<untrusted source='memory'>" in model.seen[1][1]["content"]
 
 
-def test_remember_asks_with_the_scope_and_writes_where_the_person_says(tmp_path):
+def test_remember_writes_at_once_to_the_scope_the_model_named_and_shows_what_it_stored(tmp_path):
     call = ("remember", {"fact": "CI needs the staging flag", "scope": "project", "kind": "note"})
-    session, _, mem, out, _ = make(tmp_path, [call], stdin="1\n")
+    session, _, mem, out, _ = make(tmp_path, [call], stdin="")
     session.turn("note that for later")
-    assert "Remember for this project (alpha): CI needs the staging flag" in out.getvalue()
-    assert "1) yes, for this project (alpha)  2) yes, but for you (all projects) instead" in out.getvalue()
+    assert "! remembered: Remember for this project (alpha): CI needs the staging flag" in out.getvalue()
     assert "CI needs the staging flag" in [f.text for f in mem.project.facts()]
+    assert "CI needs the staging flag" not in [f.text for f in mem.user.facts()]
+    assert requests.list_requests() == []
 
 
-def test_the_person_can_switch_the_scope_and_a_no_stores_nothing(tmp_path):
-    call = ("remember", {"fact": "likes dark terminals", "scope": "project", "kind": "preference"})
-    never = ("remember", {"fact": "likes loud bells", "scope": "project", "kind": "preference"})
-    session, _, mem, _, _ = make(tmp_path, [call], stdin="2\n")
+def test_a_secret_in_a_remembered_fact_is_refused_at_once_by_the_secrets_rail_and_not_stored(tmp_path):
+    secret = "the token is hf_" + "aB3dE5fG7hJ9kL1mN3pQ5rS7tU9vW1xY3z"
+    call = ("remember", {"fact": secret, "scope": "user", "kind": "note"})
+    session, model, mem, _, _ = make(tmp_path, [call], stdin="y\n")
     session.turn("remember it")
-    assert "likes dark terminals" in [f.text for f in mem.user.facts()]
-    assert "likes dark terminals" not in [f.text for f in mem.project.facts()]
-    session, _, mem, _, _ = make(tmp_path / "again", [never], stdin="\n")
-    session.turn("remember it")
-    assert "likes loud bells" not in [f.text for f in mem.user.facts() + mem.project.facts()]
+    assert not [f for f in mem.user.facts() + mem.project.facts() if "hf_" in f.text]
+    assert "blocked by the secrets rail" in model.told() and requests.list_requests() == []
 
 
-def test_remember_never_offers_always_allow_and_a_saved_rule_cannot_skip_the_prompt(tmp_path):
-    call = ("remember", {"fact": "uses port 9090", "scope": "project", "kind": "note"})
-    session, _, mem, out, _ = make(tmp_path, [call], stdin="3\n")
-    session.turn("remember it")
-    assert "always allow" not in out.getvalue().lower()
-    assert "uses port 9090" not in [f.text for f in mem.project.facts()]
+def test_no_rule_can_cover_remember_and_a_session_may_add_only_so_many_facts(tmp_path):
+    from poolhouse import rules as saved
+    from poolhouse.memory.tools import SESSION_WRITES
+
+    with pytest.raises(ValueError, match="classifier labelled it unsure"):
+        saved.Rules().add("remember", {"fact": "x", "scope": "user"}, "always", "")
+    _session, _model, mem, _out, _ = make(tmp_path, [])
+    person = do.Person(io.StringIO(""), io.StringIO())
+    remember = {s["function"]["name"]: fn for s, fn in
+                memory.tools(confirm=person.choose, store=mem.user, project=mem.project)}["remember"]
+    told = [remember(fact=f"the build number was {n} on day {n}", scope="user", kind="note")
+            for n in range(SESSION_WRITES + 1)]
+    assert [t["stored"] for t in told] == [True] * SESSION_WRITES + [False]
+    assert "facts were added this session; stop" in told[-1]["error"]
+    assert len([f for f in mem.user.facts() if "build number" in f.text]) == SESSION_WRITES
+    assert requests.list_requests() == []
 
 
 @pytest.mark.parametrize("role", ["read-only", "approve-first", "plan-and-go"])

@@ -41,7 +41,7 @@ def test_managed_worker_keeps_task_only_restrictions_and_parent_update_owner(mon
     files = SimpleNamespace(release=lambda: events.append('released'))
     args = SimpleNamespace(project=str(tmp_path), parent='codex', role='approve-first',
                            name='local-qwen', orders_from=[], session_factory=lambda *args: assigned,
-                           permissions=coding_policy.ASK_DANGEROUS, execution_mode=coding_policy.EXECUTE, protect=[])
+                           permissions=coding_policy.GUARDED, execution_mode=coding_policy.EXECUTE, protect=[])
     monkeypatch.setattr(harnessing, 'session_files', lambda cwd: files)
     monkeypatch.setattr(harnessing, 'protected_paths', lambda files, extra=(): [])
     monkeypatch.setattr(harnessing, 'hook_command', lambda *args, **kwargs: 'hook')

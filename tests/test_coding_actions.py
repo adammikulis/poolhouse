@@ -6,7 +6,7 @@ from dataclasses import replace
 
 import pytest
 
-from poolhouse import coding_actions, pi_tools, requests
+from poolhouse import coding_actions, pi_tools
 from poolhouse.fleet import conversation_graph
 from poolhouse.fleet.conversation_settings import checked
 from poolhouse.fleet.conversation_types import CodingState, Conversation, Message
@@ -46,13 +46,6 @@ def edited(store, execution, update):
         update(saved)
         graph.put_doc(key, saved)
     yield
-
-
-def approve(store, execution, call, inbox, choice="allow-once"):
-    ask, cancellation, create = store.action_request(execution, call, current=lambda: True)
-    handle = requests.raise_request(ask, inbox=inbox, cancellation_secret=cancellation, create=create)
-    inbox.answer(handle.id, choice, handle.fingerprint, "ui")
-    return handle
 
 
 def test_execution_initialization_attaches_only_to_its_original_user_message(owner):
@@ -148,30 +141,38 @@ def test_revocation_after_graph_save_rolls_back_result_and_parent_workspace(owne
     assert store.action_state(execution, call, current=lambda: True)["state"] == "running"
 
 
-def test_approval_is_exact_and_consumed_by_only_one_original_action(owner):
+def test_an_allowed_action_starts_once_and_takes_no_approval(owner):
+    import inspect
+
     store, execution, scope = owner
-    call = action(scope, decision=Decision("ask", "destructive", "confirm this exact write", "tool_call_destructive"))
+    call = action(scope)
     store.reserve_action(execution, call, current=lambda: True)
-    inbox = requests.Inbox(memory=True)
-    handle = approve(store, execution, call, inbox)
-    assert store.start_action(execution, call, approval=handle, current=lambda: True)
-    assert not store.start_action(execution, call, approval=handle, current=lambda: True)
+    assert "approval" not in inspect.signature(store.start_action).parameters
+    assert store.start_action(execution, call, current=lambda: True)
+    assert not store.start_action(execution, call, current=lambda: True), "the intent is consumed once"
     alias = replace(call, id="invented-next-id")
     assert store.reserve_action(execution, alias, current=lambda: True)["state"] == "attached"
-    assert not store.start_action(execution, alias, approval=handle, current=lambda: True)
-    with pytest.raises(ValueError, match="another approval"):
-        store.action_request(execution, alias, current=lambda: True)
+    assert not store.start_action(execution, alias, current=lambda: True)
 
 
-def test_denial_blocks_argument_variants_until_another_explicit_user_message(owner):
+def test_a_denied_action_never_starts_and_nothing_can_ask_for_it_to(owner):
     store, execution, scope = owner
-    call = action(scope, decision=Decision("ask", "unsure", "confirm this exact write", "tool_call_destructive"))
+    call = action(scope, decision=Decision("deny", "destructive", "the guarded profile runs no destructive call"))
+    assert store.reserve_action(execution, call, current=lambda: True)["state"] == "denied"
+    assert not store.start_action(execution, call, current=lambda: True)
+    assert store.action_state(execution, call, current=lambda: True)["state"] == "denied"
+    assert not hasattr(store, "action_request") and not hasattr(coding_actions, "approval_request")
+    with pytest.raises(ValueError, match="Invalid coding action decision"):
+        action(scope, decision=Decision("ask", "destructive", "confirm this exact write", "tool_call_destructive"))
+
+
+def test_a_denied_action_blocks_argument_variants_until_another_explicit_user_message(owner):
+    store, execution, scope = owner
+    call = action(scope, decision=Decision("deny", "unsure", "the guarded profile runs no unsure call"))
     store.reserve_action(execution, call, current=lambda: True)
-    handle = approve(store, execution, call, requests.Inbox(memory=True), "deny")
-    assert not store.start_action(execution, call, approval=handle, current=lambda: True)
     same = replace(call, id="invented-id")
     assert store.reserve_action(execution, same, current=lambda: True)["state"] == "attached"
-    changed = action(scope, "variant", decision=Decision("ask", "unsure", "changed reason", "tool_call_destructive"), content="changed")
+    changed = action(scope, "variant", content="changed")
     with pytest.raises(ValueError, match="new user message"):
         store.reserve_action(execution, changed, current=lambda: True)
     store.append(execution.policy.conversation, "user", "Use this newly approved approach")
@@ -179,23 +180,7 @@ def test_denial_blocks_argument_variants_until_another_explicit_user_message(own
     assert next_run.id != execution.id
     assert store.reserve_action(next_run, changed, current=lambda: True)["state"] == "intent"
     with pytest.raises(ValueError, match="execution changed"):
-        store.start_action(execution, call, approval=handle, current=lambda: True)
-
-
-def test_missing_request_history_never_renews_a_prompt(owner):
-    store, execution, scope = owner
-    call = action(scope, decision=Decision("ask", "unsure", "requires confirmation", "tool_call_destructive"))
-    store.reserve_action(execution, call, current=lambda: True)
-    ask, cancellation, create = store.action_request(execution, call, current=lambda: True)
-    assert create
-    # A crash before Inbox creation leaves the recorded request attempt interrupted.
-    ask, cancellation, create = store.action_request(execution, call, current=lambda: True)
-    assert not create
-    inbox = requests.Inbox(memory=True)
-    handle = requests.raise_request(ask, inbox=inbox, cancellation_secret=cancellation, create=create)
-    assert not handle.outcome().approved and not inbox.pending()
-    assert not store.start_action(execution, call, approval=handle, current=lambda: True)
-    assert store.action_state(execution, call, current=lambda: True)["state"] == "interrupted"
+        store.start_action(execution, call, current=lambda: True)
 
 
 @pytest.mark.parametrize("raw", [b'{"tool":"read","tool":"write"}', b'{"input":NaN}', b'{"input":1e309}', b'[]'])
@@ -204,33 +189,20 @@ def test_action_frames_reject_ambiguous_or_nonfinite_json(raw):
         coding_actions.parsed(raw)
 
 
-@pytest.mark.parametrize("changed", [{"subject": "A different operation"}, {"reason": "Different approval words"},
-    {"kind": "tool_call"}, {"raised_by": requests.Origin("different-actor", "project", "session")}])
-def test_approval_from_a_changed_request_cannot_start_an_effect(owner, changed):
-    store, execution, scope = owner
-    call = action(scope, decision=Decision("ask", "unsure", "confirm exact operation", "tool_call_destructive"))
-    store.reserve_action(execution, call, current=lambda: True)
-    handle = approve(store, execution, call, requests.Inbox(memory=True))
-    handle.request = replace(handle.request, **changed)
-    with pytest.raises(ValueError, match="approval does not belong"):
-        store.start_action(execution, call, approval=handle, current=lambda: True)
-    assert store.action_state(execution, call, current=lambda: True)["state"] == "intent"
-
-
 @pytest.mark.parametrize("change", ["policy", "current", "message"])
-def test_revocation_while_approval_waits_cannot_consume_the_answer(owner, change):
+def test_a_revoked_policy_message_or_current_check_stops_an_allowed_action_before_it_starts(owner, change):
     store, execution, scope = owner
-    call = action(scope, decision=Decision("ask", "unsure", "confirm exact operation", "tool_call_destructive"))
+    call = action(scope)
     store.reserve_action(execution, call, current=lambda: True)
-    handle = approve(store, execution, call, requests.Inbox(memory=True))
     if change == "policy":
         store.update(execution.policy.conversation, settings={"execution_mode": "plan"}, expected_revision=execution.policy.revision)
     elif change == "message":
         with conversation_graph.opened(store.root) as graph, graph.transaction():
             graph.query("MATCH (m:Node {id:$id}) SET m.label='changed intent'", {"id": f"message:{execution.policy.conversation}:0"})
     with pytest.raises(ValueError, match="changed"):
-        store.start_action(execution, call, approval=handle, current=lambda: change != "current")
-    assert handle.outcome().approved
+        store.start_action(execution, call, current=lambda: change != "current")
+    if change == "current":
+        assert store.action_state(execution, call, current=lambda: True)["state"] == "intent"
 
 
 def test_corrupt_completed_receipt_is_not_returned_as_a_replay(owner):

@@ -31,7 +31,7 @@ from poolhouse.agent.sources import FunctionTools, McpAuthError, McpTools, ToolO
 from poolhouse.agent.summarise import model_summarizer
 from poolhouse.agent.transcript import Transcript
 from poolhouse.agent.watched import unwatched
-from poolhouse.interventions import Confirm, Deny, Guide, Intervention, Proceed, Rewrite
+from poolhouse.interventions import Deny, Guide, Intervention, Proceed, Rewrite
 
 __all__ = [
     "Agent",
@@ -42,7 +42,6 @@ __all__ = [
     "Compacted",
     "Compacting",
     "Compaction",
-    "Confirm",
     "Context",
     "ContextUsage",
     "Counter",

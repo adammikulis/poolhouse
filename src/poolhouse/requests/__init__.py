@@ -1,12 +1,14 @@
-"""Every request that needs a person: raised by a component, shown anywhere, answered once.
+"""The requests inbox: a notice a component raises, shown anywhere and answered at most once.
 
-    handle = requests.raise_request(requests.Ask("tool_call", "run_shell(...)", "why",
+    handle = requests.raise_request(requests.Ask("host_approval", "example.org", "why",
                                                  ("allow-once", "deny")))
-    outcome = handle.wait(timeout=60)      # outcome.approved is true only for an approving answer
+    outcome = handle.outcome()      # the state now; outcome.approved is true only for an approving answer
 
 A terminal, the UI and the desktop dialog are three ways to answer the same request: the first
-answer wins and a later one is refused as already resolved. An answer is bound to the
-fingerprint of the words shown, and only a person answers (`inbox.answer`).
+answer wins and a later one is refused as already resolved. An answer is bound to the fingerprint
+of the words shown, and the `requests.answer` gate decides at once whether the caller may answer
+(`AgentRefused` for an agent while the gate is held back). Nothing in an agent's call path waits for
+a request: a call is allowed by a rule or refused with the reason before it runs.
 """
 
 from __future__ import annotations
