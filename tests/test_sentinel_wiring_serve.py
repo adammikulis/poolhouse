@@ -15,13 +15,13 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import home, sentinel
+from poolhouse import caller, home, sentinel
 from poolhouse.fleet.api import Daemon, make_handler
 from poolhouse.fleet.daemon import load_or_create_token
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.remote import Member, MemberError
 from poolhouse.http import Server
-from poolhouse.sentinel import State, human, watch
+from poolhouse.sentinel import State, permit, watch
 from poolhouse.sentinel.cli import status as security_status
 from poolhouse.sentinel.store import Holding
 from poolhouse.serve import LlamaServerBackend, ServerManager, ServerSpec
@@ -71,12 +71,11 @@ def ask(path: Path) -> Ask:
                spec={"context": 512})
 
 
-def person(record):
-    return human.mint("release", record.id, typed=lambda _p: record.id, terminal=(True, True),
-                      env={})
+def release_permit(record):
+    return permit.mint("release", record.id, env={})
 
 
-def test_a_hand_placed_model_waits_for_a_person_and_is_then_pinned_and_served(
+def test_a_hand_placed_model_waits_for_an_approval_and_is_then_pinned_and_served(
         broker, model, monkeypatch):
     monkeypatch.setattr("poolhouse.serve.guarded._first_use", FIRST_USE)
     with pytest.raises(BrokerError, match="was not downloaded by Poolhouse"):
@@ -115,19 +114,17 @@ def test_a_tampered_model_is_refused_through_the_manager_too(manager, model):
     assert recorded_servers(manager.state_file) == {}
 
 
-def test_a_quarantined_model_cannot_be_leased_until_a_person_releases_it(broker, model):
+def test_a_quarantined_model_cannot_be_leased_until_a_permitted_release_and_an_agent_cannot_mint_one(broker, model):
     node = sentinel.default()
     held = node.store.quarantine(("model", str(model)), "seen misbehaving", {}, Holding())
     with pytest.raises(BrokerError, match="quarantined"):
         broker.lease(ask(model), timeout=30)
-    with pytest.raises(human.AgentRefused):
-        human.mint("release", held.id, terminal=(False, False), env={})
-    with pytest.raises(human.AgentRefused):
-        human.mint("release", held.id, typed=lambda _p: held.id, terminal=(True, True),
-                   env={"POOLHOUSE_AGENT": "1"})
+    with pytest.raises(caller.AgentRefused, match="refused to an agent"):
+        permit.mint("release", held.id, env={"POOLHOUSE_AGENT": "1"})
+    assert [r["action"] for r in caller.audit_rows() if r["event"] == "refused"] == [f"release {held.id}"]
     with pytest.raises(BrokerError, match="quarantined"):
         broker.lease(ask(model), timeout=30)
-    node.store.release(held.id, person(held))
+    node.store.release(held.id, release_permit(held))
     grant = broker.lease(ask(model), timeout=30)
     assert grant.port in broker.servers
     broker.release(grant.lease)
