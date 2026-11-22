@@ -414,8 +414,12 @@ class Chat:
         out.calls.append((asked.name, args))
         if asked.name == "plan" and gate.allowed and result.get("go") and not self.planning:
             steps = [str(step) for step in args.get("steps") or []]
-            self.watch.approve(" ".join(steps))
-            self.plan.approve(steps)
+            if roles.RoleRail.read_outside_text(self.watch.context):
+                result = {**result, "go": False, "said": "The run has read text from outside, so a plan "
+                          "made now covers no call: calls that act are refused until a saved rule allows them."}
+            else:
+                self.watch.approve(" ".join(steps))
+                self.plan.approve(steps)
         text = json.dumps(mcp._plain(result), ensure_ascii=False, default=str)[:CUT]
         self._logged(asked.name, args, _outcome(gate, tool, result), len(text))
         answer = text

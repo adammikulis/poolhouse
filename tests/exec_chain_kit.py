@@ -10,7 +10,6 @@ from poolhouse import coding_policy, harnesshook, requests
 from poolhouse.harnesspolicy import after_downloads, decide
 from poolhouse.interventions import Call
 from poolhouse.net import git
-from poolhouse.requests import store
 
 ROLES = ("guarded", "guarded")
 BODY = "import json\n\n\ndef load(path):\n    return json.loads(path.read_text())\n"
@@ -38,43 +37,33 @@ def bash(world, role, command, fetched=()):
     return after_downloads(decide(coding_policy.Policy(role), Call("Bash", args), roots=world.roots), "Bash", args, world.roots, fetched)
 
 
-def asks(got):
-    return got.action == "ask" and got.kind == "tool_call_destructive"
+def refuses(got):
+    """A refusal at once, by the profile, of a call the classifier labels destructive or unsure."""
+    return (got.action == "deny" and got.label in ("destructive", "unsure")
+            and "an agent never opens one" not in got.reason)
 
 
 def stops(got):
-    return got.action in ("ask", "deny")
-
-
-class _Waiting:
-    def __init__(self, approved):
-        self.approved = approved
-
-    def wait(self, timeout):
-        return SimpleNamespace(approved=self.approved, why="", state="allowed" if self.approved else "expired")
+    return got.action == "deny"
 
 
 @pytest.fixture
-def raised(monkeypatch):
-    """Run the hook on a payload and return the request the person would be shown, with its text escaped and cut as the inbox does."""
+def raised():
+    """Run the hook on a payload and return the reason it gives for refusing it (the words the agent is told)."""
     def run(payload, role="guarded", roots=("/w",)):
-        seen = []
-        monkeypatch.setattr(requests, "raise_request", lambda ask, inbox=None: seen.append(ask) or _Waiting(False))
-        harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy(role), "local-test", roots, (), 0.2), requests.Inbox(memory=True))
-        return store.build(seen[0], 0.0)
+        out = harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy(role), "local-test", roots, ()))["hookSpecificOutput"]
+        assert out["permissionDecision"] == "deny", out
+        return out["permissionDecisionReason"]
 
     return run
 
 
 @pytest.fixture
-def session(monkeypatch):
-    """A hook session: each call returns the hook's answer and the requests raised so far; the person allows every request."""
-    seen = []
-    monkeypatch.setattr(requests, "raise_request", lambda ask, inbox=None: seen.append(ask) or _Waiting(True))
-
+def session():
+    """A hook session: each call returns the hook's answer and how many requests it raised (none, ever)."""
     def run(command, roots, agent="local-test", role="guarded", name="Bash"):
         payload = {"tool_name": name, "tool_input": {"command": command}}
-        out = harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy(role), agent, roots, (), 0.2), requests.Inbox(memory=True))
-        return out["hookSpecificOutput"]["permissionDecision"], len(seen)
+        out = harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy(role), agent, roots, ()))
+        return out["hookSpecificOutput"]["permissionDecision"], len(requests.list_requests())
 
     return run

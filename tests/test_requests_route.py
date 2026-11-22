@@ -220,13 +220,14 @@ def test_an_unknown_id_a_replayed_answer_and_a_changed_request_are_each_refused(
 def test_an_answer_given_at_a_terminal_first_makes_the_pages_answer_resolved(live):
     handle = raised(live)
     requests.answer(handle.id, "deny", handle.fingerprint, "terminal",
-                    requests.Context(terminal=(True, True), env={}, inbox=live.inbox))
+                    requests.Context(env={}, inbox=live.inbox))
     status, _, body = live.post(answer_of(handle))
     assert status == 409 and b"already resolved: denied by terminal" in body
 
 
-def test_a_server_an_agent_started_answers_nothing(live, monkeypatch):
+def test_a_server_an_agent_started_answers_nothing_while_the_gate_is_held_back(live, monkeypatch):
     handle = raised(live)
+    monkeypatch.setenv("POOLHOUSE_AUTHORITY_FLOOR", "person")
     monkeypatch.setenv("CLAUDECODE", "1")
     status, _, _body = live.post(answer_of(handle))
     assert status == 403 and live.inbox.get(handle.id).state == "pending"
@@ -252,7 +253,7 @@ def test_the_list_groups_by_agent_and_project_filters_and_puts_pending_first(liv
     assert live.get("/requests/api/list?state=bogus")[0] == 400
 
 
-def test_approve_all_covers_only_what_is_listed_and_never_a_destructive_or_human_only_kind(live):
+def test_approve_all_covers_only_what_is_listed_and_never_a_destructive_or_release_kind(live):
     mine = [raised(live, f"safe {n}") for n in range(3)]
     other = raised(live, "not in the list")
     hard = raised(live, "rm -rf", kind="tool_call_destructive")

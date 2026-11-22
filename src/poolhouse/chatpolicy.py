@@ -184,7 +184,7 @@ def review_view(what: str = "status", limit: int = 20) -> dict[str, Any]:
     """Read-only security views: ``what`` is ``status`` (mode, counts, what is held),
     ``held`` (everything in quarantine), ``events``, ``hosts``, ``downloads`` or
     ``scanners``. Acting on what is held is the owner's, from a terminal outside the agent."""
-    views = {"status": ["status", "--json"], "held": ["review", "--list", "--json"],
+    views = {"status": ["status", "--json"], "held": ["review", "--json"],
              "events": ["events", "--json"], "hosts": ["hosts", "--json"],
              "downloads": ["downloads", "--json", "--limit", str(max(1, min(int(limit), 100)))],
              "scanners": ["scanners", "--json"]}

@@ -73,12 +73,11 @@ def test_diagnostic_redacts_credentials(secret, monkeypatch):
     assert len(harnesshook._diagnostic(Denied('x' * 2000))) < 1100
 
 
-@pytest.mark.parametrize('role', ['read-only', 'guarded', 'guarded'])
+@pytest.mark.parametrize('role', ['read-only', 'guarded', 'yolo'])
 def test_launcher_keeps_normal_role_policy_without_admission(monkeypatch, tmp_path, role):
     def no_board_session(*args, **kwargs):
         pytest.fail('resource-free launcher requested mutation authority')
     monkeypatch.setattr(harness_claims, 'session_of', no_board_session)
-    monkeypatch.setattr(harnesshook, '_ask', lambda *args, **kwargs: (False, 'test declined'))
     args = {'command': 'poolhouse --no-browser'}
     rail = harnesshook.Rail(coding_policy.Policy(role), 'worker', [str(tmp_path)])
     expected = harnesshook.decide(coding_policy.Policy(role), Call('Bash', args), roots=rail.roots)
@@ -89,7 +88,6 @@ def test_launcher_keeps_normal_role_policy_without_admission(monkeypatch, tmp_pa
 
 def test_a_board_outage_never_waives_the_destructive_call_guard(monkeypatch, tmp_path):
     monkeypatch.setattr(harness_claims, 'session_of', unavailable)
-    monkeypatch.setattr(harnesshook, '_ask', lambda *args, **kwargs: (False, 'test declined'))
     args = {'command': f'poolhouse --no-browser; rm -rf {tmp_path / "owned"}'}
     result = harnesshook.pre({'tool_name': 'Bash', 'tool_input': args, 'cwd': str(tmp_path)},
                             harnesshook.Rail(coding_policy.Policy('guarded'), 'worker', [str(tmp_path)]))

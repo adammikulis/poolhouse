@@ -135,10 +135,12 @@ def test_start_refuses_a_project_of_another_board(kit, tmp_path, monkeypatch):
 
 def test_start_and_stop_refuse_a_process_an_agent_started(kit):
     done = kit.node.cli("agent", "start", env={"CLAUDECODE": "1"})
-    assert done.returncode == 3 and "for a person" in done.stderr
+    assert done.returncode == 3 and "refused to an agent" in done.stderr and "workspace.agents" in done.stderr
     done = kit.node.cli("agent", "stop", "local-x", env={"CLAUDECODE": "1"})
     assert done.returncode == 3
-    assert kit.node.cli("agent", "start").returncode == 3
+    unmarked = kit.node.cli("agent", "start")
+    assert unmarked.returncode == 2 and "refused to an agent" not in unmarked.stderr, "no marker, no refusal here"
+    assert "isolated session permissions" in unmarked.stderr
     assert kit.node.cli("agent", "list").returncode == 0
 
 # -- the loop ----------------------------------------------------------------------------
@@ -166,9 +168,7 @@ class Rig:
         self.agent = kit.worker("local-t", role=role, orders_from=orders, effort=effort, **lower)
         self.cancel = threading.Event()
         held = localloop.Held(model, {"id": "L9"}, lambda: self.released.append("L9"))
-        self.settings = localloop.Settings(cancel=self.cancel, serve=lambda agent: held,
-                                           approval=self.approve, **settings)
-        self.asked = []
+        self.settings = localloop.Settings(cancel=self.cancel, serve=lambda agent: held, **settings)
         self.thread = None
 
     @property
@@ -178,10 +178,6 @@ class Rig:
     def send(self, who, kind, text):
         """A message from ``who`` (a session) to the agent; its number."""
         return str(who.post(self.identity, kind, text)["id"]).rsplit(":", 1)[-1]
-
-    def approve(self, needs):
-        self.asked.append(needs)
-        return False
 
     def __enter__(self):
         self.thread = threading.Thread(target=localloop.run, args=(self.kit.base, "local-t", self.settings), daemon=True)
@@ -340,9 +336,12 @@ def test_an_obedient_model_told_to_widen_itself_gets_nothing_it_was_not_given(ki
     with Rig(kit, model) as rig:
         got = rig.reply_to(kit.person, rig.send(kit.person, "task", plant))
     assert got.fields["type"] == "answer"
-    assert {n.what.split("(")[0] for n in rig.asked} >= {"serve_up", "models_fetch"}
     told = " ".join(str(m.get("content")) for m in model.seen[-1][0] if m.get("role") == "tool")
-    assert "no such tool: set_role" in told or "not a tool" in told or "Only a person" in told
+    assert told.count("blocked by the role rail") == 2, "serve_up and models_fetch are refused at once"
+    assert "approve-first role runs a call that acts only under an always rule" in told
+    assert "no such tool: set_role" in told or "not a tool" in told or "Refused to an agent" in told
+    from poolhouse import requests
+    assert requests.list_requests() == [], "nothing was raised for anyone to answer"
 
 
 def test_a_read_only_agent_is_offered_no_acting_tool_and_no_send(kit):
@@ -605,15 +604,15 @@ def test_each_turn_extends_the_last_prompt_byte_for_byte_and_tasks_share_their_p
     assert keep.get("cache_prompt") is True and keep.get("id_slot") == 0
 
 
-def test_with_no_one_to_ask_an_acting_call_and_a_plan_are_denied():
-    from poolhouse.interventions import Confirm
-    state = localtools.TaskState()
-    person = localtools.Unattended("local-t", state, lambda needs: False)
-    ask = Confirm("serve_up will start a model server.", {"tool": "serve_up"})
-    assert person.confirm(ask, None) is False
-    assert person.plan(["serve_up m"])["go"] is False
-    assert person.ask_user("which?")["answer"] == ""
-    assert [n.kind for n in state.needs] == ["tool_call", "plan"]
+def test_with_no_one_to_ask_a_question_has_no_answer_and_a_plan_and_a_fact_go_at_once():
+    from poolhouse import requests
+    person = localtools.Unattended()
+    answered = person.ask_user("which?")
+    assert answered["answer"] == "" and "say in `done` what is left and why" in answered["note"]
+    assert person.plan(["serve_up m"]) == {"go": True, "said": "go"}
+    assert person.choose("Remember: likes tea", ["yes, for the user"]) == 0
+    assert not hasattr(person, "confirm") and not hasattr(person, "approval")
+    assert requests.list_requests() == []
 # -- profiles, context, coding model -------------------------------------------------------
 
 
@@ -668,17 +667,6 @@ def test_the_guarded_client_trims_a_long_task_before_a_call():
     guarded = localtools.Guarded(model, effort="off", limits=localtools.Limits(60.0, 5, context=32768), stop=lambda: False)
     guarded.chat(msgs, tools=[])
     assert len(model.seen[0][0]) < 61 and any(m.get("content") == "[earlier turns of this task were dropped to stay inside the context]" for m in model.seen[0][0])
-
-
-def test_the_default_approval_raises_a_request_and_waits_for_the_stop_flag(kit):
-    from poolhouse import requests
-    agent = kit.worker("local-t")
-    loop = localloop.Loop(kit.session(kit.person), agent, localloop.Held(None, {}),
-                          localloop.Settings(), (lambda: True, la.Status(kit.base, "local-t")))
-    needs = localtools.Needs("local-t", "tool_call", "serve_up(['model'])", "it starts a server")
-    assert loop.approval(needs) is False
-    pending = requests.list_requests()
-    assert pending == [] or all(r.state != "approved" for r in pending)
 
 
 @pytest.mark.redteam

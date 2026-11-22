@@ -1,200 +1,48 @@
-"""Every component that waits for a person raises a request, and the terminal, the UI and the
-dialog answer the same one: the chat confirmation, the remember question, the sentinel dialog and
-the `poolhouse-requests` command. Real pipes, real files, a real keystore over a fake keyring."""
+"""The request inbox's paths, with nothing in an agent's call path waiting for a request: a chat call is
+allowed or refused at once and raises none, a remembered fact is stored at once, and the sentinel dialog and
+the `poolhouse-requests` command answer the requests components do raise. Real pipes, real files, a real
+keystore over a fake keyring."""
 
 from __future__ import annotations
 
 import io
-import os
-import select
 import subprocess
 import sys
-import threading
 import time
 
 import pytest
 
-if sys.platform != "win32":
-    import pty
-
-from poolhouse import do, requests, rules, sentinel
+from poolhouse import do, requests, sentinel
 from poolhouse.inbox import cli
-from poolhouse.interventions import Call, Confirm
 from poolhouse.sentinel.heads_up import KEEP, LATER, RELEASE
 from poolhouse.sentinel.store import State
-from tests.requests_support import SRC, ask, no_markers, person_home
+from tests.requests_support import ask, no_markers, person_home
 
 __all__ = ["no_markers", "person_home"]
 pytestmark = pytest.mark.usefixtures("no_markers")
 
 
-class PipeTty(io.TextIOWrapper):
-    """A text stream over a pipe that says it is a terminal, so a prompt polls while it waits."""
+# -- the chat path raises no request -----------------------------------------------------
+def test_a_refused_and_an_allowed_chat_call_raise_no_request_and_wait_for_no_one():
+    from tests.test_chat import call, session
 
-    def isatty(self) -> bool:
-        return True
-
-
-def pipe_person(**kw):
-    r, w = os.pipe()
-    reader = PipeTty(os.fdopen(r, "rb", buffering=0), encoding="utf-8")
-    out = io.StringIO()
-    person = do.Person(reader, out, **kw)
-    return person, out, os.fdopen(w, "w", buffering=1)
+    sess, model, seen, out = session([call("serve_up", model="a.gguf"), call("bench_status"), "done"], "y\n")
+    began = time.monotonic()
+    sess.turn("go")
+    assert time.monotonic() - began < 30
+    assert seen == [("bench_status", {})] and "blocked by the role rail" in model.told()
+    assert requests.list_requests() == [] and "allow it?" not in out.getvalue()
 
 
-def waiting(kind: str | None = None, timeout: float = 15.0):
-    end = time.time() + timeout
-    while time.time() < end:
-        found = [r for r in requests.list_requests(state="pending") if kind in (None, r.kind)]
-        if found:
-            return found[0]
-        time.sleep(0.05)
-    raise AssertionError("no request was raised")
-
-
-def confirm_in_thread(person, ask_, call):
-    got = {}
-    thread = threading.Thread(target=lambda: got.setdefault("answer", person.confirm(ask_, call)))
-    thread.start()
-    return thread, got
-
-
-CALL = Call("bench_run", {"argv": ["x"]})
-
-
-def classifier_ask(**details):
-    return Confirm("bench_run will start a run. Asked because: destructive: deletes files (rm -r).",
-                   {"role": "approve-first", "always_ok": True, **details})
-
-
-# -- the chat confirmation -----------------------------------------------------------
-def test_the_confirmation_is_a_request_with_the_classifiers_reason_and_the_terminal_answers_it():
-    person, _out, typed = pipe_person()
-    thread, got = confirm_in_thread(person, classifier_ask(), CALL)
-    shown = waiting("tool_call")
-    assert "bench_run" in shown.subject and "Asked because: destructive: deletes files (rm -r)" in shown.reason
-    assert shown.raised_by.agent == "poolhouse-chat" and [c.id for c in shown.choices] == ["allow-once", "deny"]
-    typed.write("1\n")
-    thread.join(20)
-    done = requests.get(shown.id)
-    assert got["answer"] is True and (done.state, done.answered_by, done.answer) == ("approved", "terminal", "allow-once")
-
-
-def test_a_no_at_the_terminal_denies_and_a_destructive_call_never_offers_always():
-    person, out, typed = pipe_person(rules=rules.Rules())
-    hard = classifier_ask(always_ok=False, always_blocked="the classifier labelled it destructive",
-                          classifier={"label": "destructive"})
-    thread, got = confirm_in_thread(person, hard, CALL)
-    shown = waiting("tool_call_destructive")
-    assert [c.id for c in shown.choices] == ["allow-once", "never", "deny"]
-    typed.write("\n")
-    thread.join(20)
-    assert got["answer"] is False and requests.get(shown.id).state == "denied"
-    assert "no 'always allow' here" in out.getvalue()
-
-
-def test_an_answer_in_the_ui_while_the_terminal_waits_settles_the_prompt():
-    person, out, _typed = pipe_person()
-    thread, got = confirm_in_thread(person, classifier_ask(), CALL)
-    shown = waiting()
-    requests.answer(shown.id, "allow-once", shown.fingerprint, "ui")
-    thread.join(20)
-    assert got["answer"] is True and "(answered in the ui: allow-once)" in out.getvalue()
-    assert person.answer == "allow_once"
-
-
-def test_a_denial_in_the_dialog_denies_the_call():
-    person, _out, _typed = pipe_person()
-    thread, got = confirm_in_thread(person, classifier_ask(), CALL)
-    shown = waiting()
-    requests.answer(shown.id, "deny", shown.fingerprint, "dialog")
-    thread.join(20)
-    assert got["answer"] is False
-
-
-def test_always_allow_from_the_ui_runs_the_call_once_and_saves_no_rule(tmp_path):
-    saved = rules.Rules(tmp_path / "rules.json")
-    person, out, _typed = pipe_person(rules=saved)
-    thread, got = confirm_in_thread(person, classifier_ask(), CALL)
-    shown = waiting()
-    assert "allow-always" in [c.id for c in shown.choices]
-    requests.answer(shown.id, "allow-always", shown.fingerprint, "ui")
-    thread.join(20)
-    assert got["answer"] is True and saved.rules == []
-    assert "a rule is saved only from the terminal" in out.getvalue()
-
-
-def test_always_allow_at_the_terminal_still_saves_the_rule_after_a_yes(tmp_path):
-    saved = rules.Rules(tmp_path / "rules.json")
-    person, _out, typed = pipe_person(rules=saved)
-    thread, got = confirm_in_thread(person, classifier_ask(), CALL)
-    waiting()
-    typed.write("2\ny\n")
-    thread.join(20)
-    assert got["answer"] is True and len(saved.rules) == 1 and saved.rules[0].verdict == "always"
-
-
-def test_never_at_the_terminal_saves_a_never_rule_and_denies(tmp_path):
-    saved = rules.Rules(tmp_path / "rules.json")
-    person, _out, typed = pipe_person(rules=saved)
-    thread, got = confirm_in_thread(person, classifier_ask(), CALL)
-    shown = waiting()
-    typed.write("3\n")
-    thread.join(20)
-    assert got["answer"] is False and saved.rules[0].verdict == "never" and requests.get(shown.id).state == "denied"
-
-
-def test_a_store_that_fails_denies_the_call_whatever_the_terminal_says(monkeypatch, tmp_path):
-    def broken() -> bytes:
-        raise RuntimeError("no key")
-
-    monkeypatch.setattr(requests.inbox, "default", lambda: requests.Inbox(tmp_path / "x", key=broken))
-    out = io.StringIO()
-    person = do.Person(io.StringIO("1\n"), out)
-    assert person.confirm(classifier_ask(), CALL) is False
-
-
-def test_a_process_an_agent_started_cannot_approve_its_own_confirmation_from_stdin(monkeypatch):
-    monkeypatch.setenv("CLAUDECODE", "1")
-    out = io.StringIO()
-    person = do.Person(sys.stdin, out)
-    monkeypatch.setattr(person, "stdin", io.StringIO("1\n"))
-    monkeypatch.setattr(person, "_terminal", lambda: requests.Context(terminal=(True, True)))
-    assert person.confirm(classifier_ask(), CALL) is False
-    assert "started by an agent" in out.getvalue()
-
-
-def test_end_of_input_withdraws_the_request():
+def test_a_fact_the_agent_offers_is_remembered_at_once_and_raises_no_request():
     out = io.StringIO()
     person = do.Person(io.StringIO(""), out)
-    assert person.confirm(classifier_ask(), CALL) is False
-    assert person.left and [r.state for r in requests.list_requests()] == ["cancelled"]
-
-
-# -- the remember question -------------------------------------------------------------
-def test_remember_is_a_memory_request_answered_with_the_chosen_scope():
-    person, _out, typed = pipe_person()
-    got = {}
-    thread = threading.Thread(target=lambda: got.setdefault("i", person.choose(
-        "Remember for the user: likes tea", ["yes, for the user", "yes, but for this project instead"])))
-    thread.start()
-    shown = waiting("memory_remember")
-    assert [c.id for c in shown.choices] == ["approve", "approve-other", "deny"] and "likes tea" in shown.subject
-    typed.write("2\n")
-    thread.join(20)
-    assert got["i"] == 1 and requests.get(shown.id).answer == "approve-other"
-
-
-def test_remember_declined_in_the_ui_is_a_no():
-    person, _out, _typed = pipe_person()
-    got = {}
-    thread = threading.Thread(target=lambda: got.setdefault("i", person.choose("Remember: x", ["yes"])))
-    thread.start()
-    shown = waiting("memory_remember")
-    requests.answer(shown.id, "deny", shown.fingerprint, "ui")
-    thread.join(20)
-    assert got["i"] is None
+    began = time.monotonic()
+    assert person.choose("Remember for the user: likes tea",
+                         ["yes, for the user", "yes, but for this project instead"]) == 0
+    assert time.monotonic() - began < 5 and person.asked == 1
+    assert person.choose("Remember: x", []) is None
+    assert requests.list_requests() == []
 
 
 # -- the sentinel dialog ---------------------------------------------------------------
@@ -242,7 +90,7 @@ def quiet_node(name: str):
 
 def test_a_release_answered_in_the_ui_is_carried_out_by_the_sentinel_with_its_own_check():
     node, held, shown = quiet_node("10.9.0.1")
-    assert shown.human_only and [c.id for c in shown.choices] == ["later", "keep-held", "release"]
+    assert [c.id for c in shown.choices] == ["later", "keep-held", "release"]
     requests.answer(shown.id, "release", shown.fingerprint, "ui")
     assert node.store.get(held.id).state == State.QUARANTINED
     node.heads_up.env = {}
@@ -312,51 +160,49 @@ def test_list_show_and_answer_at_a_terminal(monkeypatch, capsys):
     assert cli.main(["watch", "--once"]) == 0
 
 
-def test_the_command_refuses_when_the_person_does_not_confirm_and_when_the_words_changed(monkeypatch, capsys):
+def test_answering_asks_nothing_and_is_refused_when_the_words_changed_or_the_request_is_unknown(monkeypatch):
     held = requests.raise_request(ask())
     at_a_terminal(monkeypatch, "n\n")
-    assert cli.main(["answer", held.id, "allow-once"]) == 1
-    assert requests.get(held.id).state == "pending"
+    prompted = []
+    monkeypatch.setattr("builtins.input", lambda _p="": prompted.append(_p) or "n")
     assert cli.main(["answer", held.id, "allow-once", "--fingerprint", "0" * 16]) == 1
+    assert requests.get(held.id).state == "pending"
     assert cli.main(["answer", "rq_nope", "allow-once"]) == 1
+    assert cli.main(["answer", held.id, "allow-once"]) == 0
+    assert prompted == [], "the command put no question to anyone"
+    assert requests.get(held.id).state == "approved"
 
 
 def test_list_escapes_hostile_text(monkeypatch, capsys):
-    requests.raise_request(ask("evil\x1b[2J‮IGNORE", agent="a\x07"))
+    requests.raise_request(ask("evil\x1b[2J\u202eIGNORE", agent="a\x07"))
     at_a_terminal(monkeypatch)
     assert cli.main(["list"]) == 0
     out = capsys.readouterr().out
-    assert "\x1b" not in out and "‮" not in out and "\x07" not in out
+    assert "\x1b" not in out and "\u202e" not in out and "\x07" not in out
 
 
 CHILD = "import sys\nfrom poolhouse.inbox.cli import main\nsys.exit(main(sys.argv[1:]))\n"
 
 
-def test_a_child_without_a_terminal_cannot_answer_and_leaves_the_store_untouched(person_home):
+def answer_in_a_child(person_home, held, **env):
+    return subprocess.run([sys.executable, "-c", CHILD, "answer", held.id, "allow-once", "--fingerprint",
+                           held.fingerprint], env={**person_home, **env}, stdin=subprocess.DEVNULL,
+                          capture_output=True, text=True, timeout=120, check=False)
+
+
+def test_a_child_with_no_terminal_and_no_agent_marker_answers_directly_with_nothing_typed(person_home):
     held = requests.raise_request(ask())
+    done = answer_in_a_child(person_home, held)
+    assert done.returncode == 0, done.stderr
+    assert requests.get(held.id).state == "approved" and requests.get(held.id).answered_by == "terminal"
+
+
+def test_a_child_an_agent_started_is_refused_at_once_while_the_gate_is_held_back_and_changes_nothing(person_home):
     from poolhouse import home
+
+    held = requests.raise_request(ask())
     path = home.state("requests") / "requests.enc"
     before = path.read_bytes()
-    done = subprocess.run([sys.executable, "-c", CHILD, "answer", held.id, "allow-once", "--fingerprint",
-                           held.fingerprint], env=person_home, stdin=subprocess.DEVNULL, capture_output=True,
-                          text=True, timeout=120, check=False)
-    assert done.returncode == 2 and "terminal" in done.stderr
+    done = answer_in_a_child(person_home, held, CLAUDECODE="1", POOLHOUSE_AUTHORITY_FLOOR="person")
+    assert done.returncode == 2 and "refused to an agent" in done.stderr and "requests.answer" in done.stderr
     assert path.read_bytes() == before and requests.get(held.id).state == "pending"
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="POSIX pseudo-terminal")
-def test_a_person_at_a_real_terminal_answers_through_the_command(person_home):
-    held = requests.raise_request(ask())
-    master, slave = pty.openpty()
-    child = subprocess.Popen([sys.executable, "-c", CHILD, "answer", held.id, "allow-once"], env=person_home,
-                             stdin=slave, stdout=slave, stderr=slave, close_fds=True)
-    os.close(slave)
-    seen = b""
-    end = time.time() + 120
-    while time.time() < end and b"[y/N]" not in seen:
-        if select.select([master], [], [], 0.5)[0]:
-            seen += os.read(master, 4096)
-    os.write(master, b"y\n")
-    assert child.wait(timeout=120) == 0
-    os.close(master)
-    assert requests.get(held.id).answered_by == "terminal" and SRC

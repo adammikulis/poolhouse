@@ -72,14 +72,14 @@ def test_chat_with_an_agent_shows_the_conversation_and_reports_a_refusal_without
     assert not done.is_alive()
 
 
-def test_chat_refuses_an_agent_session_and_the_command_refuses_an_agent_process(workspace_node):
+def test_chat_refuses_an_agent_session_and_the_command_refuses_an_agent_process_at_once(workspace_node):
     node = workspace_node
     agent = node.member("alice")
     with pytest.raises(Denied, match="for the person"):
         chat.run(node.session(agent), chat.Target(board="#general"), chat.Console(io.StringIO(""), print))
     marked = node.cli("chat", "--room", "#general", who=agent, env={"CLAUDECODE": "1"})
-    assert marked.returncode == 3 and "person" in marked.stderr + marked.stdout
-    assert node.cli("chat", "--room", "#general", who=agent).returncode == 3, "a pipe is not a terminal"
+    assert marked.returncode == 3 and "refused to an agent" in marked.stderr + marked.stdout
+    assert node.cli("chat", "--room", "#general", who=agent).returncode == 0, "a process with no agent marker needs no terminal"
 
 
 def test_chat_follows_exactly_one_room_or_one_agent(workspace_node):

@@ -241,7 +241,7 @@ def test_a_destructive_or_unrequested_call_to_a_changing_tool_is_refused_at_once
     gate = call_screen(server, scorer)
     call, context = asked("serve the model", "ok", model="x.gguf")
     verdict = gate.before_tool_call(call, context)
-    assert isinstance(verdict, Deny) and "destructive check: destructive" in verdict.reason
+    assert isinstance(verdict, Deny) and "requested check: unrequested" in verdict.reason
 
 
 def test_a_call_that_cannot_be_judged_is_not_let_through(server):

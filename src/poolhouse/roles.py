@@ -184,9 +184,9 @@ class RoleRail(Base):
     """Holds each call to the current ``role``, deciding at once: a tool outside it is denied; one
     that acts runs when a saved always rule covers it or (``plan-and-go``) a step of the stated
     plan names it, and is denied with the reason otherwise; a call that names a path outside
-    poolhouse's state, or a run that has read outside text, is denied whatever the plan says
-    unless a saved rule allows it. The role changes only through ``set``, which the model has no
-    tool to reach."""
+    poolhouse's state is denied whatever the plan says, and a plan stated after the run read
+    outside text covers nothing (the chat never records one), so only a plan stated before it
+    does. The role changes only through ``set``, which the model has no tool to reach."""
 
     name = "role"
 
@@ -225,7 +225,7 @@ class RoleRail(Base):
                         f"of GPU time", self.name)
         args = call.arguments or {}
         outside = _outside_state(args)
-        tainted = self._read_outside_text(context)
+        tainted = self.read_outside_text(context)
         rule = self.rules.covers(call.name, call.arguments, role.name, tainted) \
             if self.rules else None
         if rule is not None and (rule.verdict == "never" or not outside):
@@ -242,19 +242,25 @@ class RoleRail(Base):
             return Deny(f"{head}it names paths outside poolhouse's state: {', '.join(outside[:3])}",
                         self.name)
         if role.runs == PLAN:
-            if tainted:
-                return Deny(f"{head}the run has read text from outside, so even a call the plan "
-                            f"names needs an always rule that allows it after outside text",
-                            self.name)
             if self.plan.take(call):
                 return Proceed()
+            if tainted:
+                return Deny(f"{head}the run has read text from outside, and no plan stated before it "
+                            f"names this call (a plan made after outside text covers nothing)", self.name)
             return Deny(f"{head}it is not in the plan you stated (a step names the tool first and "
                         f"every value the call carries)", self.name)
-        why = (f" ({blocked_reason(call.name, args)}, so no rule can cover it)"
-               if call.name not in ext.acts and blocked_reason(call.name, args) else "")
+        if call.name in ext.acts:
+            why = " (an extension's tool: no rule can cover it, so only the plan-and-go role runs it)"
+        elif blocked_reason(call.name, args):
+            why = f" ({blocked_reason(call.name, args)}, so no rule can cover it)"
+        elif tainted:
+            why = (" (the run has read text from outside, which only a rule set to apply after "
+                   "outside text covers)")
+        else:
+            why = ""
         return Deny(f"{head}the {role.name} role runs a call that acts only under an always rule "
                     f"the owner saved with /rules{why}", self.name)
 
     @staticmethod
-    def _read_outside_text(context: Context) -> bool:
+    def read_outside_text(context: Context) -> bool:
         return context.tainted or ledger_of(context.notes).contaminated
