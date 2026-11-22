@@ -20,11 +20,12 @@ import psutil
 from poolhouse import files, home
 from poolhouse.lock import only_one
 
-__all__ = ["HARNESS_NAMES", "MOST", "VERSION", "ancestors", "bind", "bound", "harness_parent", "on_event", "path",
+__all__ = ["HARNESS_PREFIXES", "MOST", "VERSION", "ancestors", "bind", "bound", "harness_parent", "on_event", "path",
            "under_harness", "valid_session"]
 
 SHELLS = {"sh", "bash", "zsh", "dash", "fish", "ksh", "env", "sudo", "login"}
-HARNESS_NAMES = {"claude", "codex"}
+HARNESS_PREFIXES = ("claude", "codex")
+"""A process whose name starts with one of these is a harness (`claude`, `claude-code`, `codex`, `codex-cli`)."""
 DEPTH = 12
 VERSION = 1
 MOST = 64
@@ -66,8 +67,7 @@ def harness_parent() -> tuple[int, float] | None:
 
 def under_harness(known: set[tuple[int, float]] | frozenset[tuple[int, float]] = frozenset()) -> bool:
     """Whether an ancestor is a known harness process or one a hook recorded for a session (``known``)."""
-    return any(name in HARNESS_NAMES or name.startswith(("claude", "codex")) or (pid, created) in known
-               for pid, created, name in ancestors())
+    return any(name.startswith(HARNESS_PREFIXES) or (pid, created) in known for pid, created, name in ancestors())
 
 
 def _rows(where: Path) -> list[dict[str, Any]]:
