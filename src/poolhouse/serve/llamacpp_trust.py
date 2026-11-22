@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -14,7 +15,8 @@ __all__ = ["PoolPolicy", "pin", "unpin", "verified"]
 def pin(binary: Path, sha256: str, *, source: str = "build") -> None:
     """Record ``sha256`` as the digest of ``binary``, a binary this machine just built."""
     node = sentinel.default()
-    node.manifest.pin_verified(binary, "binary", sha256, source=source, digest_from="computed")
+    node.manifest.pin_verified(binary, "binary", sha256, source=source, digest_from="computed",
+                               real=os.path.realpath(binary))
 
 
 def unpin(binary: Path) -> None:
@@ -36,6 +38,10 @@ class PoolPolicy:
     def pinned(self, binary: Path) -> str:
         found = sentinel.default().manifest.pin_of(binary)
         return found.sha256 if found is not None else ""
+
+    def pinned_real(self, binary: Path) -> str:
+        found = sentinel.default().manifest.pin_of(binary)
+        return found.real if found is not None else ""
 
     def pin(self, binary: Path, sha256: str, *, source: str, previous: str = "") -> None:
         pin(binary, sha256, source=source)

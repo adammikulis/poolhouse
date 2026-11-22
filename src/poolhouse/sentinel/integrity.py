@@ -52,6 +52,8 @@ class Pin:
     question puts them); empty once nobody had to be asked or a person answered."""
     host: str = ""
     """The host and port of the Hub a pulled file came from; empty for any other pin."""
+    real: str = ""
+    """The real path a binary led to when it was pinned (a Homebrew keg is told from an in-place write by it); empty for any other pin."""
 
     @classmethod
     def from_record(cls, record: Any) -> Pin:
@@ -138,7 +140,7 @@ class Manifest:
                      **notes: str) -> Pin:
         """Record ``sha256`` for ``path`` without hashing it again: for a file whose digest a
         download already checked (or, with ``digest_from="computed"``, that the caller hashed
-        itself). ``notes`` are ``origin`` and ``digest_from``."""
+        itself). ``notes`` are ``origin``, ``digest_from`` and ``real``."""
         if kind not in FILE_KINDS:
             raise ValueError(f"cannot pin a {kind!r}")
         where = Path(path).expanduser()

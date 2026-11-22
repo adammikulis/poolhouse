@@ -63,7 +63,8 @@ def test_a_binary_is_pinned_on_first_use_and_the_pin_file_is_plain_json(tmp_path
     with caplog.at_level(logging.WARNING):
         assert vetted(server, local) == server
     assert json.loads(local.file.read_text())["schema_version"] == 1
-    assert pins(local)[str(server)] == {"sha256": sha256_file(server), "source": "first-use", "previous": ""}
+    assert pins(local)[str(server)] == {"sha256": sha256_file(server), "source": "first-use", "previous": "",
+                                        "real": str(server.resolve())}
     assert "TRUST ON FIRST USE" in caplog.text
 
 
@@ -137,7 +138,8 @@ def test_with_no_earlier_build_a_good_one_is_fetched_pinned_and_used(tmp_path, m
     with caplog.at_level(logging.WARNING):
         assert vetted(server, local) == fetched
     assert "RECOVERED" in caplog.text
-    assert pins(local)[str(fetched)] == {"sha256": sha256_file(fetched), "source": "recovered", "previous": ""}
+    assert pins(local)[str(fetched)] == {"sha256": sha256_file(fetched), "source": "recovered", "previous": "",
+                                         "real": str(fetched.resolve())}
     assert pins(local)[str(server)]["sha256"] == pinned_before   # the replaced binary was not pinned
 
 
@@ -163,60 +165,109 @@ def test_a_rebuilt_binary_whose_build_record_vouches_for_it_is_pinned_again(tmp_
     with caplog.at_level(logging.WARNING):
         assert vetted(server, local) == server
     assert "RE-PINNED" in caplog.text and before in caplog.text
-    assert pins(local)[str(server)] == {"sha256": sha256_file(server), "source": "build", "previous": before}
+    assert pins(local)[str(server)] == {"sha256": sha256_file(server), "source": "build", "previous": before,
+                                        "real": str(server.resolve())}
 
 
-def test_a_binary_a_package_manager_installed_is_pinned_again_when_it_changes(tmp_path, monkeypatch, caplog):
-    cellar = tmp_path / "Cellar"
-    monkeypatch.setattr(binary_trust, "PACKAGE_PREFIXES", (str(cellar),))
+def keg(root: Path, version: str, content: bytes, *, receipt: bool = True) -> Path:
+    """``llama-server`` in a Homebrew-shaped keg, `Cellar/llama.cpp/<version>/bin`, with the receipt `brew install` writes."""
+    bin_dir = root / "Cellar" / "llama.cpp" / version / "bin"
+    server = build(bin_dir, content, record=False)
+    server.chmod(0o555)
+    if receipt:
+        (bin_dir.parent / "INSTALL_RECEIPT.json").write_text("{}")
+    return server
+
+
+def installed(tmp_path, monkeypatch) -> tuple[LocalPolicy, Path, Path]:
+    """A pin file, a Cellar this test's `PACKAGE_PREFIXES` names, and `bin/llama-server`, the link `brew` keeps to the newest
+    keg (the pin's key), pinned to the keg of version 1."""
+    root = tmp_path / "brew"
+    monkeypatch.setattr(binary_trust, "PACKAGE_PREFIXES", (str(root / "Cellar"),))
+    first = keg(root, "1", b"llama.cpp one")
+    link = root / "bin" / "llama-server"
+    link.parent.mkdir()
+    link.symlink_to(first)
     local = LocalPolicy(tmp_path / "pins.json")
-    server = build(cellar / "llama.cpp" / "1" / "bin", record=False)
-    server.chmod(0o555)
-    assert vetted(server, local) == server
-    server.chmod(0o755)
-    server.write_bytes(b"brew upgrade, same path")
-    server.chmod(0o555)
+    assert vetted(link, local) == link
+    return local, link, root
+
+
+def relink(link: Path, to: Path) -> None:
+    link.unlink()
+    link.symlink_to(to)
+
+
+def test_a_new_keg_with_its_receipt_is_an_install_and_is_pinned_again(tmp_path, monkeypatch, caplog):
+    """`brew upgrade`: a new versioned keg with an INSTALL_RECEIPT.json, and the link moved to it."""
+    local, link, root = installed(tmp_path, monkeypatch)
+    before = pins(local)[str(link)]
+    second = keg(root, "2", b"llama.cpp two")
+    relink(link, second)
     with caplog.at_level(logging.WARNING):
-        assert vetted(server, local) == server
-    assert pins(local)[str(server)]["source"] == "package" and "RE-PINNED" in caplog.text
+        assert vetted(link, local) == link
+    after = pins(local)[str(link)]
+    assert after["source"] == "package" and after["previous"] == before["sha256"] and after["real"] == str(second.resolve())
+    assert "RE-PINNED" in caplog.text
 
 
-def test_a_package_prefix_that_is_itself_a_link_is_compared_by_where_it_leads(tmp_path, monkeypatch):
-    real = tmp_path / "real"
-    server = build(real / "Cellar" / "llama.cpp" / "1" / "bin", record=False)
-    (tmp_path / "prefix").symlink_to(real, target_is_directory=True)
-    monkeypatch.setattr(binary_trust, "PACKAGE_PREFIXES", (str(tmp_path / "prefix" / "Cellar"),))
-    local = LocalPolicy(tmp_path / "pins.json")
-    server.chmod(0o555)
-    assert vetted(server, local) == server
-    server.chmod(0o755)
-    server.write_bytes(b"brew upgrade")
-    server.chmod(0o555)
-    assert vetted(server, local) == server and pins(local)[str(server)]["source"] == "package"
+def test_bytes_changed_in_place_inside_one_keg_are_not_an_install_and_fall_back(tmp_path, monkeypatch, caplog):
+    """The keg is the user's own: anything running as the user can overwrite its binary. That is the swap the pin catches."""
+    local, link, _ = installed(tmp_path, monkeypatch)
+    older = kept("b100", b"older build", "2026-01-01")
+    in_place = link.resolve()
+    in_place.chmod(0o755)
+    in_place.write_bytes(b"swapped by something running as the user")
+    in_place.chmod(0o555)
+    with caplog.at_level(logging.WARNING):
+        assert vetted(link, local) == older
+    assert "NOT TRUSTED" in caplog.text and "FELL BACK" in caplog.text
+    assert pins(local)[str(link)]["sha256"] != sha256_file(in_place)   # and it was not pinned
+
+
+def test_a_new_keg_without_a_receipt_is_not_an_install(tmp_path, monkeypatch):
+    local, link, root = installed(tmp_path, monkeypatch)
+    relink(link, keg(root, "2", b"llama.cpp two", receipt=False))
+    no_fetch(monkeypatch)
+    with pytest.raises(BinaryTampered):
+        vetted(link, local)
+
+
+def test_a_pin_that_recorded_no_real_path_cannot_tell_a_new_keg_from_an_old_one(tmp_path, monkeypatch):
+    local, link, root = installed(tmp_path, monkeypatch)
+    entry = json.loads(local.file.read_text())
+    del entry["pins"][str(link)]["real"]
+    local.file.write_text(json.dumps(entry))
+    relink(link, keg(root, "2", b"llama.cpp two"))
+    no_fetch(monkeypatch)
+    with pytest.raises(BinaryTampered):
+        vetted(link, local)
 
 
 def test_a_binary_in_a_package_directory_that_others_can_write_is_not_the_package_managers(tmp_path, monkeypatch):
-    cellar = tmp_path / "Cellar"
-    monkeypatch.setattr(binary_trust, "PACKAGE_PREFIXES", (str(cellar),))
-    local = LocalPolicy(tmp_path / "pins.json")
-    server = build(cellar / "llama.cpp" / "1" / "bin", record=False)
-    assert vetted(server, local) == server
-    server.write_bytes(b"changed")
-    server.chmod(0o775)
+    local, link, root = installed(tmp_path, monkeypatch)
+    second = keg(root, "2", b"llama.cpp two")
+    second.chmod(0o775)
+    relink(link, second)
     no_fetch(monkeypatch)
     with pytest.raises(BinaryTampered):
-        vetted(server, local)
+        vetted(link, local)
 
 
-def test_a_binary_outside_every_package_directory_is_not_taken_for_one(tmp_path, monkeypatch):
-    monkeypatch.setattr(binary_trust, "PACKAGE_PREFIXES", (str(tmp_path / "Cellar"),))
-    local = LocalPolicy(tmp_path / "pins.json")
-    server = build(tmp_path / "elsewhere" / "Cellar" / "llama.cpp" / "bin", record=False)
-    assert vetted(server, local) == server
-    server.write_bytes(b"changed")
+def test_a_keg_outside_every_package_directory_is_not_taken_for_one(tmp_path, monkeypatch):
+    local, link, _ = installed(tmp_path, monkeypatch)
+    relink(link, keg(tmp_path / "elsewhere", "2", b"llama.cpp two"))
     no_fetch(monkeypatch)
     with pytest.raises(BinaryTampered):
-        vetted(server, local)
+        vetted(link, local)
+
+
+def test_a_package_prefix_that_is_itself_a_link_is_compared_by_where_it_leads(tmp_path, monkeypatch):
+    local, link, root = installed(tmp_path, monkeypatch)
+    (tmp_path / "prefix").symlink_to(root, target_is_directory=True)
+    monkeypatch.setattr(binary_trust, "PACKAGE_PREFIXES", (str(tmp_path / "prefix" / "Cellar"),))
+    relink(link, keg(root, "2", b"llama.cpp two"))
+    assert vetted(link, local) == link and pins(local)[str(link)]["source"] == "package"
 
 
 def apple_signed(where: Path) -> None:

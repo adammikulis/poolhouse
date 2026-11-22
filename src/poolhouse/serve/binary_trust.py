@@ -1,11 +1,12 @@
 """What becomes of a llama-server that is not the one that was pinned. Nothing here holds a binary or asks a person.
 
 A binary that changed since its pin is re-pinned and used when something vouches for the new bytes: the digest in a
-``BUILD.json`` Poolhouse's own build wrote beside it, a code signature that chains to Apple (macOS), or a package
-manager's own location (Homebrew's Cellar, owned by this user and writable by nobody else). A binary nobody vouches
-for is never run: the newest earlier good build replaces it, and with none kept, a good one is fetched
-(`poolhouse.serve.build_recover`) and pinned. Only when that also fails does `vet` raise `Untrusted`, naming what
-was tried. Every step is logged. The pin store and the places builds live are the caller's.
+``BUILD.json`` Poolhouse's own build wrote beside it, a code signature that chains to Apple (macOS), or a package manager's
+own install (a new Homebrew keg, `Cellar/<formula>/<version>/`, with its ``INSTALL_RECEIPT.json``, other than the keg the
+pin recorded; bytes changed in place inside one keg are not an install). A binary nobody vouches for is never run: the
+newest earlier good build replaces it, and with none kept, a good one is fetched (`poolhouse.serve.build_recover`) and
+pinned. Only when that also fails does `vet` raise `Untrusted`, naming what was tried. Every step is logged. The pin
+store and the places builds live are the caller's.
 """
 
 from __future__ import annotations
@@ -47,8 +48,11 @@ class Pins(Protocol):
     def pinned(self, binary: Path) -> str:
         """The digest recorded for ``binary``, or an empty string."""
 
+    def pinned_real(self, binary: Path) -> str:
+        """The real path ``binary`` led to when it was pinned, or an empty string."""
+
     def pin(self, binary: Path, sha256: str, *, source: str, previous: str = "") -> None:
-        """Record ``sha256`` as the digest of ``binary``."""
+        """Record ``sha256`` as the digest of ``binary``, and the real path it leads to now."""
 
 
 def recorded(binary: Path) -> str:
@@ -69,10 +73,24 @@ def signed(binary: Path) -> bool:
     return done.returncode == 0
 
 
-def packaged(binary: Path) -> bool:
-    """Whether ``binary`` is a package manager's own file: under a Cellar, owned by this user, writable by no one else."""
+def keg_of(real: Path) -> Path | None:
+    """The package manager's directory for the version ``real`` is installed in (`Cellar/<formula>/<version>`), or None."""
+    for prefix in PACKAGE_PREFIXES:
+        root = Path(os.path.realpath(prefix))
+        if real.is_relative_to(root) and len(real.parts) > len(root.parts) + 2:
+            return root.joinpath(*real.parts[len(root.parts):len(root.parts) + 2])
+    return None
+
+
+def packaged(binary: Path, *, pinned: bool = False, was: str = "") -> bool:
+    """Whether ``binary`` is what a package manager installed: in a keg that holds its ``INSTALL_RECEIPT.json``, a file
+    owned by this user and writable by no one else. With a pin, ``was`` (the real path it recorded) must lie in another
+    keg: a user-owned keg can be written in place by anything running as the user, and that is not an install."""
     real = Path(os.path.realpath(binary))
-    if not hasattr(os, "getuid") or not any(real.is_relative_to(os.path.realpath(prefix)) for prefix in PACKAGE_PREFIXES):
+    keg = keg_of(real)
+    if keg is None or not hasattr(os, "getuid") or not (keg / "INSTALL_RECEIPT.json").is_file():
+        return False
+    if pinned and (not was or keg_of(Path(was)) == keg):
         return False
     try:
         info = real.stat()
@@ -81,13 +99,13 @@ def packaged(binary: Path) -> bool:
     return info.st_uid == os.getuid() and not info.st_mode & 0o022
 
 
-def vouched(binary: Path, digest: str) -> str:
+def vouched(binary: Path, digest: str, *, pinned: bool = False, was: str = "") -> str:
     """How the bytes with ``digest`` at ``binary`` earned trust: ``build``, ``signed`` or ``package``; '' when nothing vouches."""
     if recorded(binary) == digest:
         return "build"
     if signed(binary):
         return "signed"
-    return "package" if packaged(binary) else ""
+    return "package" if packaged(binary, pinned=pinned, was=was) else ""
 
 
 def good_build(binary: Path, pinned: str = "") -> bool:
@@ -114,7 +132,7 @@ def vet(binary: Path, policy: Pins, *, previous: Callable[[], Iterable[Path]], r
         logger.warning("TRUST ON FIRST USE: %s has no pin and no BUILD.json; %s is now what it must be", binary, digest)
         policy.pin(binary, digest, source="first-use")
         return binary
-    if source := (vouched(binary, digest) if digest else ""):
+    if source := (vouched(binary, digest, pinned=bool(pinned), was=policy.pinned_real(binary)) if digest else ""):
         if pinned:
             logger.warning("RE-PINNED: %s changed from %s to %s (%s vouches for it)", binary, pinned, digest, source)
         policy.pin(binary, digest, source=source, previous=pinned)

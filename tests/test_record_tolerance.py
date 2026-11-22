@@ -122,7 +122,7 @@ def test_the_local_pin_file_ignores_unknown_entry_keys_and_they_grant_nothing(tm
     server.write_bytes(b"s")
     local.file.write_text(json.dumps({"schema_version": 1, "pins": {str(server): {
         "sha256": "0" * 64, "source": "build", "trusted": True, "allow_any_digest": True, **NEWER}}}))
-    assert local._read()[str(server)] == {"sha256": "0" * 64, "source": "build", "previous": ""}
+    assert local._read()[str(server)] == {"sha256": "0" * 64, "source": "build", "previous": "", "real": ""}
     # the digest is not the file's and nothing vouches for the new bytes: it is not run, whatever the unknown keys say
     def nothing_to_fetch():
         raise BuildFailed("offline")

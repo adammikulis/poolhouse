@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from collections.abc import Mapping
 from pathlib import Path
@@ -25,7 +26,7 @@ __all__ = ["LocalPolicy", "Policy", "default"]
 logger = logging.getLogger(__name__)
 
 PIN_SCHEMA = 1
-_PIN_KEYS = frozenset({"sha256", "source", "previous"})
+_PIN_KEYS = frozenset({"sha256", "source", "previous", "real"})
 
 
 class Policy(Protocol):
@@ -37,8 +38,11 @@ class Policy(Protocol):
     def pinned(self, binary: Path) -> str:
         """The digest recorded for ``binary``, or an empty string."""
 
+    def pinned_real(self, binary: Path) -> str:
+        """The real path ``binary`` led to when it was pinned, or an empty string."""
+
     def pin(self, binary: Path, sha256: str, *, source: str, previous: str = "") -> None:
-        """Record ``sha256`` as the digest of ``binary``."""
+        """Record ``sha256`` as the digest of ``binary``, and the real path it leads to now."""
 
     def scrub_env(self, env: Mapping[str, str]) -> dict[str, str]:
         """``env`` as the child of a launch may have it."""
@@ -84,7 +88,7 @@ class LocalPolicy:
         pins = {str(path): known_only(one, _PIN_KEYS, what="a pin-file entry")
                 for path, one in pins.items() if isinstance(one, dict)}
         return {path: {"sha256": str(one["sha256"]).lower(), "source": str(one.get("source") or ""),
-                       "previous": str(one.get("previous") or "")}
+                       "previous": str(one.get("previous") or ""), "real": str(one.get("real") or "")}
                 for path, one in pins.items() if isinstance(one.get("sha256"), str)}
 
     def _write(self, pins: dict[str, dict[str, Any]]) -> None:
@@ -110,17 +114,24 @@ class LocalPolicy:
     def watching(self) -> bool:
         return True
 
-    def pinned(self, binary: Path) -> str:
+    def _entry(self, binary: Path) -> dict[str, Any]:
         pins = self._read()
         if pins is None:
             with self._locked():
                 pins = self._readable()
-        return pins.get(str(binary), {}).get("sha256", "")
+        return pins.get(str(binary), {})
+
+    def pinned(self, binary: Path) -> str:
+        return self._entry(binary).get("sha256", "")
+
+    def pinned_real(self, binary: Path) -> str:
+        return self._entry(binary).get("real", "")
 
     def pin(self, binary: Path, sha256: str, *, source: str, previous: str = "") -> None:
         with self._locked():
             pins = self._readable()
-            pins[str(binary)] = {"sha256": sha256.lower(), "source": source, "previous": previous}
+            pins[str(binary)] = {"sha256": sha256.lower(), "source": source, "previous": previous,
+                                 "real": os.path.realpath(binary)}
             self._write(pins)
 
     def scrub_env(self, env: Mapping[str, str]) -> dict[str, str]:
