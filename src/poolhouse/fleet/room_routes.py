@@ -1,4 +1,4 @@
-"""``/ui/room``: sizing the wiring limit for a model, and the person-only change to it."""
+"""``/ui/room``: sizing the wiring limit for a model, and the change to it from the machine's own browser session."""
 
 from __future__ import annotations
 

@@ -28,7 +28,7 @@ def refusal(asks: list[approval.Ask]) -> str:
     if not caller.marked():
         return ""
     why = [f"{a.action} ({person_key.agent_refusal(a.action)})" for a in asks if person_key.agent_refusal(a.action)]
-    return "an agent is refused: " + "; ".join(why) if why else ""
+    return f"refused to an agent ({caller.marked()} is set): " + "; ".join(why) + "; run it from a terminal outside the agent" if why else ""
 
 
 def ensure_key(client: Client, carrier: Session) -> SigningKeys:
