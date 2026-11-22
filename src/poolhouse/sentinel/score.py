@@ -93,6 +93,6 @@ class Score:
         return []
 
     def reset(self, kind: str, key: str) -> None:
-        """Forget the subject's signals, after a person released it."""
+        """Forget the subject's signals, after it was released."""
         self._levels.pop((kind, key), None)
         self.windows.forget(f"{kind}:{key}", "score")

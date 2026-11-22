@@ -89,6 +89,8 @@ class Sentinel:
         self.last_scan = 0.0
         self._derived: dict[str, list[str]] = {}
         self.store.on_quarantine.setdefault("session", []).append(self._taint_derived)
+        for kind in ("session", "caller", "phase"):   # a release starts the subject's count again, at the release itself
+            self.store.on_release.setdefault(kind, []).append(self._count_again)
         self._gone: dict[str, int] = {}
         self._noted_binaries: set[str] = set()
         self._stop = threading.Event()
@@ -225,11 +227,9 @@ class Sentinel:
     def note(self, kind: str, key: str, signal: str, weight: float | None = None) -> list[str]:
         """Count one weak ``signal`` (a guard denial, a sandbox refusal, a refused lease)
         against the session or caller ``(kind, key)``. The score escalates it to watch and then
-        to quarantine; a release starts the count again. Returns what the policy did."""
+        to quarantine; a release starts the count again (`_count_again`). Returns what the policy did."""
         if self.mode == Mode.OFF:
             return []
-        if self.score.held(kind, key) and self.store.state_of(kind, key) == State.RELEASED:
-            self.score.reset(kind, key)
         return self.handle_all(self.score.add(kind, key, signal, weight))
 
     def screen_output(self, text: str, *, session: str = "", source: str = "model") -> Screened:
@@ -267,6 +267,9 @@ class Sentinel:
         """Note that the memory ``memory_key`` (a summary, note, KV slot) was built from
         ``session``, so freezing the session quarantines it too."""
         self._derived.setdefault(session, []).append(memory_key)
+
+    def _count_again(self, record: Record) -> None:
+        self.score.reset(record.kind, record.key)
 
     def _taint_derived(self, record: Record) -> None:
         for key in self._derived.pop(record.key, []):
