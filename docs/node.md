@@ -1176,10 +1176,11 @@ sessions is fenced as untrusted data on the way out and a credential in outgoing
 (`screen`, still Python). Tests use `tests/node_kit.py`: a real node on a short `/tmp` root.
 
 **Founding a pool from Python.** `board/founding.py` is the client of `pool_draft_found`, `pool_found`, `pool_draft` and `pool_submit`:
-`found_on_computer(session, name, policy)` drafts the charter with a key the node makes for this computer (which names this device as the pool's first member), the person's one yes at the
-computer's prompt enrols that key and gives the session its seed once, the key signs the acceptance under the ticket, and the node takes the pool; where the computer can raise no prompt of its own the pool is
-approved by a typed yes and says so. `found(session, admin, name, policy)` does the same for a key someone else holds (a phone's), after the grant `pool_create` came from the phone's card
-(`with_card` asks the card for any missing grant and sends the call again after the tap). Both answer "already in the pool X" for a device that is founded. `ph.pool.found`, `ph.pool.status` (`governance`, `name`, `missing`) and `ph.pool.join` (a code, or an open pool's fingerprint)
+`found_on_computer(session, name, policy)` drafts the charter with a key the node makes for this computer (which names this device as the pool's first member); the node asks nobody (`--presence auto`),
+so the ask for the card enrols that key and gives the session its seed once, at once, the key signs the acceptance under the ticket, and the node takes the pool. The key is kept under the account's keystore, or
+in a file under the passphrase of `POOLHOUSE_SIGNING_PASSPHRASE` where there is none (a computer that can do neither founds nothing, and the node makes no key); a key in a file is a `file` key, and the pool says it is
+approved by a typed yes. `found(session, admin, name, policy)` does the same for a key someone else holds (a phone's), after the grant `pool_create` came from policy
+(`with_card` gets any missing grant at once through `board/autoapprove.request`: this device's key signs what the caller may have, and an agent is refused `person_key.AGENT_REFUSED` with the reason). Both answer "already in the pool X" for a device that is founded. `ph.pool.found`, `ph.pool.status` (`governance`, `name`, `missing`) and `ph.pool.join` (a code, or an open pool's fingerprint)
 wrap it, and `poolhouse-workspace pool found` is the agent's command; docs/pools-and-serving.md, 1.17, says what is built and what remains.
 
 ## The person's session (the UI)
