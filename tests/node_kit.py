@@ -36,7 +36,7 @@ from poolhouse.board import (
     session as board_session,
 )
 from poolhouse.fleet.onboard.manifest import Signer
-from poolhouse.fleet.onboard.signing import ConfirmedKeys
+from poolhouse.fleet.onboard.signing import SigningKeys
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = str(ROOT / "src")
@@ -44,8 +44,8 @@ STRIPPED = ("CODEX_THREAD_ID", "CODEX_SESSION_ID", "CLAUDECODE", "POOLHOUSE_AGEN
             "POOLHOUSE_WORKSPACE_TOKEN", "POOLHOUSE_WORKSPACE_DENYLIST", "POOLHOUSE_WORKSPACE_AGENT", "POOLHOUSE_BOARD")
 BOARD = "demo"
 PASSPHRASE = "a passphrase for the person's test key"
-TYPED = {"new signing key: ": PASSPHRASE, "signing key passphrase: ": PASSPHRASE, "Type yes": "yes"}
-"""What a person types at the terminal: the passphrase of the key file when asked, and yes to each signature."""
+TYPED = {"new signing key: ": PASSPHRASE, "signing key passphrase: ": PASSPHRASE}
+"""What a person types at the terminal: the passphrase of the key file when the key is kept in a file."""
 
 
 def runner_binary() -> Path:
@@ -73,19 +73,12 @@ class NoKeystore:
         return False
 
 
-class SaysYes(ConfirmedKeys):
-    """The person's key with the question answered yes and no terminal: the kit's stand-in for a person typing `yes`."""
-
-    def _ask(self, prompt: str) -> bool:
-        return True
-
-
-def person_keys(directory: Path, cls: type[ConfirmedKeys] = ConfirmedKeys) -> ConfirmedKeys:
+def person_keys(directory: Path) -> SigningKeys:
     """The person's key in ``directory`` the way `person_key.keys` makes it, in a file under the kit's passphrase (never the keystore)."""
-    return cls(directory, describe=board_grants.describe, ks=NoKeystore(), passphrase=lambda _prompt: PASSPHRASE)
+    return SigningKeys(directory, ks=NoKeystore(), passphrase=lambda _prompt: PASSPHRASE)
 
 
-def enrol_first(client: board_client.Client, token: str, key: Signer | ConfirmedKeys) -> dict:
+def enrol_first(client: board_client.Client, token: str, key: Signer | SigningKeys) -> dict:
     """The first person key on the node, after the person types yes to the question the node writes on a terminal of its own
     (`wire.answer_presence`): the same steps as a person's, against the node as shipped."""
     said = wire.answer_presence(client.state, "key", key.public.hex())
@@ -161,11 +154,11 @@ class WorkspaceNode:
         """The session ``name`` a hook or command registered, with the token it kept in its private file."""
         return Member(name, credentials.load(self.state, self.board, name), parent)
 
-    def keep_person_key(self, who: Member) -> ConfirmedKeys:
+    def keep_person_key(self, who: Member) -> SigningKeys:
         """A person's key kept beside this node as `grants-setup` leaves it, and enrolled on it (``who`` only carries the
-        request): a command run at a terminal signs for what it needs with it once the person types yes, and a process an
-        agent marked is refused before the question. The key returned says yes to every question; the one a command reads asks on its terminal."""
-        keys = person_keys(self.state / person_key.KEY_DIR, SaysYes)
+        request): a command signs for what it needs with it at once when policy allows, and a process an agent marked is refused
+        the grants an agent may not have, with the reason."""
+        keys = person_keys(self.state / person_key.KEY_DIR)
         held = board_grants.listing(self.session(who)).persons
         if board_grants.fingerprint(keys.public) in held:
             return keys

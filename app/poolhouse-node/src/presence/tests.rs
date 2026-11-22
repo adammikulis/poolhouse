@@ -279,14 +279,16 @@ fn a_second_request_while_one_is_open_is_told_what_is_open_and_what_to_do() {
 }
 
 #[test]
-fn a_node_started_with_no_presence_refuses_and_no_name_turns_the_question_off() {
+fn a_node_started_with_no_presence_asks_nobody_and_makes_the_yes_at_once() {
     let mut firsts = Firsts::new(default_presence());
-    assert!(matches!(firsts.ask(Purpose::Key, "demo/a", KEY, "", 0), Err(Error::Denied(_))), "no way to ask is a no, never a yes");
-    assert_eq!(firsts.kind(), "closed");
-    for name in ["auto", "off", "none", "unattended", "yes", "test", ""] {
+    firsts.ask(Purpose::Key, "demo/a", KEY, "", 0).expect("nobody is asked: the question is answered as it is asked");
+    assert_eq!(firsts.kind(), "auto");
+    assert!(matches!(firsts.status("demo/a", 1)["state"].as_str(), Some("confirmed")), "the yes is there at the next look, with no person");
+    assert!(firsts.can_hold_counting_key(), "a key made here counts: the computer's own keystore holds it");
+    for name in ["off", "none", "unattended", "yes", "test", ""] {
         assert!(Mode::parse(name).is_none(), "{name:?} is not a way to ask");
     }
-    assert!(Mode::parse("os").is_some() && Mode::parse("terminal").is_some());
+    assert!(Mode::parse("auto").is_some() && Mode::parse("os").is_some() && Mode::parse("terminal").is_some());
 }
 
 #[test]
