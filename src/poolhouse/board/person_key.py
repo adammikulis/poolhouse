@@ -10,19 +10,20 @@ It is not a barrier against code of the same operating-system user that reads th
 
 from __future__ import annotations
 
+import socket
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from poolhouse import caller, errors
 from poolhouse.board import grants
-from poolhouse.board.client import Client
+from poolhouse.board.client import Client, Denied
 from poolhouse.board.session import Session
 from poolhouse.fleet.onboard.signing import UNLOCK_ENV, KeyStoreError, SigningKeys
 from poolhouse.log import warn
 from poolhouse.node_health import Refused, call
 
-__all__ = ["AGENT_REFUSED", "KEY_DIR", "agent_refusal", "kept", "keys", "no_prompt", "provider", "retrying"]
+__all__ = ["AGENT_REFUSED", "KEY_DIR", "agent_refusal", "enrolled", "kept", "keys", "no_prompt", "provider", "retrying"]
 
 KEY_DIR = "person"
 LASTS_MS = 120_000
@@ -59,6 +60,19 @@ def kept(state: Path) -> bool:
     return (Path(state) / KEY_DIR / "signing.json").exists()
 
 
+def enrolled(client: Client, carrier: Session) -> SigningKeys:
+    """This device's key, made on first use and enrolled on the node when the node holds none: ``carrier`` is the device's own session, the only one
+    the node lets make the first key. `Denied` when the node holds another key."""
+    key = keys(client.state)
+    held = grants.listing(carrier).persons
+    if not held:
+        about = "".join(c for c in socket.gethostname() if c.isascii() and c.isprintable())[:40] or "this device"
+        grants.enrol_first(client, carrier.token, key, about)
+    elif grants.fingerprint(key.public) not in held:
+        raise Denied("denied", "this node already holds another key: carry this device's key over with `person-proof` and `person-enroll`")
+    return key
+
+
 def provider(state: Path, *, acting: Callable[[str], tuple[str, str]] | None = None) -> Callable[[str, dict[str, Any]], str]:
     """What a client asks after a refusal that names a missing grant: sign it for one use when policy allows. The grant is for
     the session behind the token, or, with ``acting`` (a board to the name and token of the person's own session of this terminal on it),
@@ -71,11 +85,12 @@ def provider(state: Path, *, acting: Callable[[str], tuple[str, str]] | None = N
             warn(f"grant: {action} is refused to an agent: {why}")
             return ""
         try:
-            key = keys(state)
             name, carrier = acting(hint["board"]) if acting is not None else (hint["name"], token)
-            if grants.listing(Session(Client(state), hint["board"], carrier, name)).pool_wide(action):
+            held = Session(Client(state), hint["board"], carrier, name)
+            if grants.listing(held).pool_wide(action):
                 warn(f"grant: {grants.POOL_GRANTS}")
                 return ""
+            key = enrolled(held.client, held) if acting is not None else keys(state)
             want = grants.Want(action, {"kind": "session", "name": name}, hint["resource"], hint["device"], LASTS_MS, 1)
             call(state, "grant_issue", grants.sign_issue(key, hint["board"], want), board=hint["board"], token=carrier)
         except (OSError, ValueError, RuntimeError, errors.Error) as err:

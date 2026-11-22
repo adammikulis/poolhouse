@@ -3,7 +3,7 @@ does to issue or revoke one (docs/node.md, "Standing grants").
 
 The node counts a grant only when a person key enrolled on it signed the grant, so nothing here can make one for a
 caller that does not hold that key. On a device in a pool that holds for the actions that stay on the device; a grant that reaches
-beyond it counts only from an approval an admin key of the pool signed on a phone, so a typed ``yes`` signs none. The key is passed in as an object with ``public`` (32 bytes) and ``sign_bytes``.
+beyond it counts only from an approval an admin key of the pool signed on a phone, so this device's own key signs none. The key is passed in as an object with ``public`` (32 bytes) and ``sign_bytes``.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ FRESH_MS = 5 * 60 * 1000
 SPANS = {"s": 1000, "m": 60_000, "h": 3_600_000, "d": 86_400_000}
 MOST_DAYS = 366
 POOL_GRANTS = "In a pool your phone gives standing grants: ask for one and tap approve."
-"""What the node says to a grant of a pool signed by a typed yes."""
+"""What the node says to a grant of a pool that this device's own key signed."""
 
 
 class Signs(Protocol):
@@ -202,10 +202,10 @@ def enrol(client: Client, token: str, params: dict[str, Any]) -> dict[str, Any]:
     return dict(client.call("person_enroll", "", token, **params))
 
 
-def enrol_first(client: Client, token: str, key: Signs, about: str, voice: presence.Voice = presence.SILENT) -> dict[str, Any]:
-    """Put the first person key on the node after the person says yes to the node's own question (`presence.ask`): the secret is the node's, made
-    when the person answered, and nothing this process writes can make one."""
-    secret = str(presence.ask(client, token, "key", key.public.hex(), voice)["secret"])
+def enrol_first(client: Client, token: str, key: Signs, about: str) -> dict[str, Any]:
+    """Put the first person key on the node with the secret the node makes when the device's own session asks for it (`presence.ask`): the secret is
+    the node's, bound to this key, and nothing this process writes can make one."""
+    secret = str(presence.ask(client, token, "key", key.public.hex())["secret"])
     return enrol(client, token, {**enrolment(key, about), "secret": secret})
 
 

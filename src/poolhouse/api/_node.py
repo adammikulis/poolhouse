@@ -25,11 +25,10 @@ def call(method: str, params: dict[str, Any] | None = None, *, token: str = "") 
 
 
 def person_session() -> Any | None:
-    """The person's own session of the pool board, or None where this process is not the person's. A process that can read the secret the node
-    keeps for the person registers it (the harness's read deny keeps it from a process an agent started; it does not keep a process outside that deny,
-    and on a computer with no prompt of the system's own a typed yes is approval by "a program running as you could approve it": see
-    `credentials.person_secret`); it holds no grant, and opens a join window or joins a pool with the person's yes at the computer's prompt for exactly
-    that (`founding.yes_for`)."""
+    """The device's own session of the pool board, or None where this process cannot read the secret the node keeps for it. A process that can
+    registers it (the harness's read deny keeps it from a process an agent started; it does not keep a process outside that deny: see
+    `credentials.person_secret`); it holds no grant, and opens a join window or joins a pool with the ticket the node makes at once for exactly
+    that (`founding.ticket_for`)."""
     with contextlib.suppress(founding.Refusal):
         return founding.pool_session(client.Client(node_launch.default_state()), person_session=True)
     return None

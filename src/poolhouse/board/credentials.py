@@ -103,8 +103,8 @@ def person_secret(state: Path) -> str:
     What keeps it from an agent is the harness and nothing else: the file is the account's (mode 0600 in a 0700 folder keeps other accounts out, not a
     process of the same user), Claude Code's sandbox and sandbox-runtime deny the folder to what an agent starts, and so do the file tools' rules. A
     process outside those (an agent under the staged Codex fragment, which has no per-path read deny; a hook, an MCP server or an excluded command that
-    runs unsandboxed) reads it. Where the computer has a prompt of the system's own that is only the right to ask the person, who answers with a
-    password or a fingerprint; where it has none, the typed yes such a process can ask for is approval by "a program running as you could approve it"."""
+    runs unsandboxed) reads it. It is only the right to ask the node for the first key, a pool's card or a window: nobody is asked, so a process
+    that holds it is "a program running as you", and that is what the pool's `computer` level says."""
     path = state / "person" / "ui.secret"
     try:
         return path.read_text(encoding="utf-8").strip()

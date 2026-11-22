@@ -1,18 +1,19 @@
-"""The first person key and the first phone need the person's yes to a question the node itself asks, which no agent can answer: an agent
-that writes the old files, guesses a secret, asks and waits, or starts a node of its own that cannot ask, becomes no key and no phone.
+"""The first person key and the first phone are made by the node at once, with nobody asked: the node as shipped (`--presence auto`) hands the
+one-time secret to the device's own session as it is asked for. What stays is who may ask and what a secret is: only the device's own session
+(registered with the secret the node keeps for it) asks for the first key and the first phone; a secret is the node's own, kept in its memory,
+bound to the key it was made for and spent by one wrong guess; and an agent that writes the old files, guesses a secret or asks as its own
+session becomes no key and no phone.
 
-The nodes here are the node as shipped. They ask on a terminal they read themselves (`--presence terminal`), the way a person at a server
-would; the operating system's own prompt is raised only by the installed software on the real home (`poolhouse.real_machine`), so no
-test raises a dialog.
+Nothing here types, taps or waits: no test raises a dialog or puts a question on a terminal.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-import os
-import pty
 import shutil
+import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -30,12 +31,12 @@ pytest_plugins = ["node_kit"]
 
 
 def register(node) -> str:
-    """The person's own session of the demo board, registered with the secret the node keeps for the person: the only session that puts a question to the person."""
+    """The device's own session of the demo board, registered with the secret the node keeps for it: the only session that asks for a first key or phone."""
     return board_session.register(node.client, node.board, board_session.Native("person", "poolhouse-ui", "the-person"), "", person=True).token
 
 
 def agent(node) -> str:
-    """A session of the demo board that an agent started: its own token, no secret of the person's."""
+    """A session of the demo board that an agent started: its own token, no secret of the device's."""
     return board_session.register(node.client, node.board, board_session.Native("claude-sonnet-5-5", "claude-code", "agent"), "").token
 
 
@@ -43,21 +44,15 @@ def held(node) -> list[str]:
     return [k["fingerprint"] for k in node.client.call("person_keys")["keys"]]
 
 
-@pytest.fixture
-def nobody_answers(monkeypatch):
-    """A terminal of the test's own that nobody types at, and a short wait for the answer."""
-    monkeypatch.setattr(presence, "WAIT_S", 1.0)
-    leader, follower = pty.openpty()
-    yield os.ttyname(follower)
-    os.close(leader)
-    os.close(follower)
-
-
-def test_an_agent_that_asks_and_nobody_answers_becomes_no_person_key(workspace_node, nobody_answers):
-    token = register(workspace_node)
-    with pytest.raises(Denied, match="Nobody said yes"):
-        grants.enrol_first(workspace_node.client, token, Signer.generate(), "an agent", presence.Voice(terminal=nobody_answers))
-    assert held(workspace_node) == [], "a key was enrolled without a yes"
+def test_the_device_asks_for_the_first_key_and_has_it_at_once_with_no_terminal_and_no_waiting(workspace_node):
+    token, key = register(workspace_node), Signer.generate()
+    began = time.monotonic()
+    said = presence.ask(workspace_node.client, token, "key", key.public.hex())
+    assert time.monotonic() - began < 5, "the answer was there as the question was asked"
+    assert said["state"] == "confirmed" and said["presence"] == "auto" and isinstance(said["secret"], str) and said["secret"]
+    assert held(workspace_node) == [], "the secret is not the key: nothing is enrolled until the key is sent with it"
+    grants.enrol(workspace_node.client, token, {**grants.enrolment(key, "a test device"), "secret": said["secret"]})
+    assert held(workspace_node) == [grants.fingerprint(key.public)]
 
 
 def test_a_guessed_secret_and_the_files_an_agent_can_write_enrol_no_first_key(workspace_node):
@@ -74,33 +69,33 @@ def test_a_guessed_secret_and_the_files_an_agent_can_write_enrol_no_first_key(wo
 def test_a_secret_is_the_nodes_own_and_one_wrong_guess_spends_it(workspace_node):
     token, person = register(workspace_node), Signer.generate()
     said = wire.answer_presence(workspace_node.state, "key", person.public.hex())["result"]
-    assert said["state"] == "confirmed" and said["presence"] == "terminal"
+    assert said["state"] == "confirmed" and said["presence"] == "auto"
     with pytest.raises(Denied):
-        grants.enrol(workspace_node.client, token, {**grants.enrolment(person, "a test person"), "secret": "guess"})
+        grants.enrol(workspace_node.client, token, {**grants.enrolment(person, "a test device"), "secret": "guess"})
     with pytest.raises(Denied):
-        grants.enrol(workspace_node.client, token, {**grants.enrolment(person, "a test person"), "secret": said["secret"]})
+        grants.enrol(workspace_node.client, token, {**grants.enrolment(person, "a test device"), "secret": said["secret"]})
     assert held(workspace_node) == [], "the secret was spent by the wrong guess"
 
 
-def test_the_person_typing_yes_to_the_node_enrols_the_first_key_and_a_second_secret_is_not_made_for_a_second_first_key(workspace_node):
+def test_the_first_key_is_enrolled_by_that_ask_and_a_second_secret_is_not_made_for_a_second_first_key(workspace_node):
     token, person = register(workspace_node), Signer.generate()
     assert enrol_first(workspace_node.client, token, person)["fingerprint"] == grants.fingerprint(person.public)
     assert held(workspace_node) == [grants.fingerprint(person.public)]
     again = wire.answer_presence(workspace_node.state, "key", Signer.generate().public.hex())
-    assert not again["ok"] and again["code"] == "denied", "a key is enrolled already: a further one is approved by it, not by this question"
+    assert not again["ok"] and again["code"] == "denied", "a key is enrolled already: a further one is approved by it, not by this ask"
 
 
-def test_the_persons_yes_is_for_the_key_it_was_asked_about_and_no_other_key(workspace_node):
+def test_the_secret_is_for_the_key_it_was_asked_about_and_no_other_key(workspace_node):
     token, person, agent = register(workspace_node), Signer.generate(), Signer.generate()
     said = wire.answer_presence(workspace_node.state, "key", person.public.hex())["result"]
     with pytest.raises(Denied):
         grants.enrol(workspace_node.client, token, {**grants.enrolment(agent, "an agent"), "secret": said["secret"]})
-    assert held(workspace_node) == [], "a yes for one key enrolled another"
+    assert held(workspace_node) == [], "a secret made for one key enrolled another"
     asked = wire.answer_presence(workspace_node.state, "key", "")
     assert not asked["ok"] and asked["code"] == "invalid", "a first key is asked for with its key"
 
 
-def test_a_node_started_with_no_way_to_ask_refuses_the_first_key_and_the_first_phone(node_binary):
+def test_a_node_started_with_no_presence_flag_asks_nobody_either(node_binary):  # the first phone's code is made at once too: test_the_rigs_person_asks_as_the_devices_own_session_and_is_answered_at_once
     root = Path(tempfile.mkdtemp(prefix="ml", dir="/tmp"))
     state = root / "node"
     state.mkdir(mode=0o700)
@@ -109,35 +104,34 @@ def test_a_node_started_with_no_way_to_ask_refuses_the_first_key_and_the_first_p
         node_launch.ensure_node(state, extra=[])
         client = board_client.Client(state)
         token = board_session.register(client, "demo", board_session.Native("person", "poolhouse-ui", "x"), "", person=True).token
-        for purpose in ("key", "phone"):
-            with pytest.raises(Denied, match="no way to ask"):
-                presence.ask(client, token, purpose, Signer.generate().public.hex() if purpose == "key" else "")
+        key = Signer.generate()
+        assert grants.enrol_first(client, token, key, "a test device")["fingerprint"] == grants.fingerprint(key.public), "the default is to ask nobody, so the first key is made at once"
     finally:
         node_launch.stop_node(state)
         shutil.rmtree(root, ignore_errors=True)
 
 
-def test_the_launcher_asks_with_the_system_prompt_only_for_the_installed_software_on_the_real_home(monkeypatch):
-    monkeypatch.setattr(real_machine, "allowed", lambda: False)
-    assert node_launch._presence(["--lan", "--presence", "os"]) == ["--lan"], "a test, a checkout or a rig never asks the system"
-    assert node_launch._presence(["--presence", "terminal"]) == ["--presence", "terminal"]
-    assert node_launch._presence(None) == []
-    monkeypatch.setattr(real_machine, "allowed", lambda: True)
-    assert node_launch._presence(["--lan"]) == ["--lan", "--presence", "os"]
-    assert node_launch._presence(["--presence", "terminal", "--lan"]) == ["--lan", "--presence", "os"], "an agent's own terminal can answer its own question"
+def test_the_launcher_never_starts_a_node_that_waits_for_a_prompt(monkeypatch):
+    for real in (False, True):
+        monkeypatch.setattr(real_machine, "allowed", lambda real=real: real)
+        assert node_launch._presence(["--lan", "--presence", "os"]) == ["--lan"], "the system's prompt waits for a person: it is dropped on the real machine too"
+        assert node_launch._presence(["--presence", "os", "--lan"]) == ["--lan"]
+        assert node_launch._presence(["--lan"]) == ["--lan"], "no flag adds one: the node's own default asks nobody"
+        assert node_launch._presence(None) == []
+    assert node_launch._presence(["--presence", "auto"]) == ["--presence", "auto"]
 
 
-def test_no_switch_of_the_shipped_node_answers_for_the_person():
+def test_no_build_flag_of_the_shipped_node_changes_who_is_asked():
     app = Path(__file__).resolve().parents[1] / "app" / "poolhouse-node"
-    assert "[features]" not in (app / "Cargo.toml").read_text(encoding="utf-8"), "a cargo feature that answers the question would ship"
+    assert "[features]" not in (app / "Cargo.toml").read_text(encoding="utf-8"), "a cargo feature that changes the answer would ship in some builds only"
     for source in app.rglob("*.rs"):
         if "tests" in source.parts:
             continue
         text = source.read_text(encoding="utf-8")
-        assert "cfg(feature" not in text and "AlwaysYes" not in text, f"{source} compiles a way to answer for the person only in some builds"
+        assert "cfg(feature" not in text and "AlwaysYes" not in text, f"{source} compiles a way to answer only in some builds"
 
 
-def test_a_session_an_agent_started_asks_the_person_for_nothing_and_cannot_open_a_terminal_to_answer_for_them(workspace_node):
+def test_a_session_an_agent_started_cannot_make_the_first_key_or_the_first_phone_and_a_forged_proof_registers_nothing(workspace_node):
     token = agent(workspace_node)
     for purpose in ("key", "phone"):
         with pytest.raises(Denied, match="person's own session"):
@@ -145,3 +139,16 @@ def test_a_session_an_agent_started_asks_the_person_for_nothing_and_cannot_open_
     assert held(workspace_node) == []
     with pytest.raises(board_client.Denied):
         workspace_node.client.call("register_person", workspace_node.board, "", session="forged", proof="a" * 64)
+
+
+def test_the_rigs_person_asks_as_the_devices_own_session_and_is_answered_at_once(workspace_node):
+    said = wire.answer_presence(workspace_node.state, "phone")
+    assert said["ok"] and said["result"]["state"] == "confirmed" and said["result"]["presence"] == "auto" and "link" in said["result"], said
+    forged = wire.call(workspace_node.state, "register_person", "pool", "", {"session": "the-rig-person", "proof": "a" * 64})
+    assert not forged["ok"] and forged["code"] == "denied", "the rig's person is the node's own person: a wrong secret is nobody"
+
+
+def test_wire_runs_as_a_script_where_only_the_rigs_own_directory_is_on_the_path():
+    """The rig runs `wire.py` by its path on every device (a container has only the rig's directory), so it needs nothing beside it."""
+    done = subprocess.run([sys.executable, str(Path(wire.__file__)), "--help"], capture_output=True, text=True, timeout=60, check=False, cwd=Path(wire.__file__).parent)
+    assert done.returncode == 0 and "presence" in done.stdout, done.stderr

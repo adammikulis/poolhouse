@@ -1,10 +1,11 @@
 """The grant commands of `poolhouse-workspace`: what sessions may do beyond the default, who allowed it and how often it was
 used (docs/node.md, "Standing grants").
 
-`grants` and `grant-log` read; any session may run them. `grant`, `revoke-grant`, `grants-setup`, `person-proof`,
-`person-enroll` and `person-unenroll` are a person's: they refuse a process that carries an agent marker or has no terminal, and
-they sign with the person's key, which asks for a typed `yes` on the terminal device for each thing it signs. The markers and the
-question stop accidents and an agent that has no terminal of its own, not a process of the same user (docs/node.md, "Key custody").
+`grants` and `grant-log` read; any session may run them. `grant`, `revoke-grant`, `distrust`, `grants-setup`, `person-proof`,
+`person-enroll`, `person-unenroll` and `rebind` sign with this device's key, made and enrolled the first time it is needed, and ask
+nobody: a process with no agent marker runs them at once, and a process that carries one is refused at once with the reason
+(`caller.refuse_agent`; an agent asks with `approval request`, which policy decides). Every run is on the audit log with who ran it.
+The marker stops an agent that did not strip it, not a process of the same user that does (docs/node.md, "Key custody").
 """
 
 from __future__ import annotations
@@ -23,7 +24,6 @@ from poolhouse.board import (
     person as person_session,
     person_key,
     place,
-    presence,
 )
 from poolhouse.board.client import Client, Denied
 from poolhouse.board.session import Session
@@ -88,7 +88,7 @@ def show_log(args: argparse.Namespace, s: Session) -> Any:
 
 
 def reader(handler: Any) -> Any:
-    """A command any session runs; a person at a terminal who holds no session reads as the screen's own."""
+    """A command any session runs; a process with no agent marker and no session reads as the device's own screen."""
     def run(args: argparse.Namespace) -> int:
         try:
             s = board_cli.connect(args)
@@ -143,7 +143,7 @@ def _device(asked: str, this: str) -> str:
 
 
 def _pool_refuses(held: grants.Listing, *actions: str) -> None:
-    """Refuse, before any prompt is shown, a grant that a pool counts only from an admin key's approval on a phone."""
+    """Refuse, before anything is signed, a grant that a pool counts only from an admin key's approval on a phone."""
     if any(held.pool_wide(a) for a in actions):
         raise Denied("denied", grants.POOL_GRANTS)
 
@@ -214,7 +214,7 @@ def setup(args: argparse.Namespace, ctx: Ctx) -> Any:
     for action, text in dict.fromkeys((want.action, text) for want, text in bundle):
         say(f"  {action}: {text}")
     if enrolling:
-        grants.enrol_first(ctx.client, ctx.carrier.token, ctx.key, about, presence.Voice(say=say))
+        grants.enrol_first(ctx.client, ctx.carrier.token, ctx.key, about)
     done = [grants.issue(ctx.carrier, ctx.key, want, now_ms=at) for want, _ in bundle]
     return {"key_enrolled": enrolling, "to": [_who(to) for to in who], "granted": [{"gid": d["gid"], "action": d["action"]} for d in done],
             "revoke": "poolhouse-workspace revoke-grant ID", "see": "poolhouse-workspace grants"}

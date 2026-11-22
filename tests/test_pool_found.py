@@ -1,21 +1,22 @@
-"""An agent founds a pool for a person: the node as shipped, a key the test made that stands for the person, and the person's answers given the way a person gives them.
+"""An agent founds a pool for a person: the node as shipped, a key the test made that stands for the person, and nobody asked.
 
 The key is strong only where the node holds it as a phone's: the test writes it into the node's person keys file marked as a phone's own
-enrolment marks it (`enrol_as_phone_key`); the phone's tap is a decision signed by a key the test made. What the tests check is that
-nothing is founded without the person's key, that a key the node does not hold as a phone's is never strong, and that everything the
-person sees is a sentence an agent can pass on.
+enrolment marks it (`enrol_as_phone_key`); a phone's decision is signed by a key the test made. What the tests check is that nothing is
+founded without the key the charter names, that a key the node does not hold is never strong, that a key enrolled through the node's own secret
+is held at the level the node recorded whatever the agent says, that nothing waits for a phone or a person (a founding that cannot go on says
+so at once, in one sentence), and that a phone's own decision still founds the pool.
 """
 
 from __future__ import annotations
 
-import threading
+import json
 import time
 
 import pytest
 from node_kit import enrol_as_phone_key, enrol_first
 from phone_kit import add_phone, endpoint_of
 
-from poolhouse.board import founding, presence, session as board_session
+from poolhouse.board import approval, founding, session as board_session
 from poolhouse.board.client import Denied, Invalid
 from poolhouse.board.founding import Admin, Refusal
 from poolhouse.fleet.onboard.manifest import Signer
@@ -92,43 +93,49 @@ def test_the_draft_names_this_device_as_the_pools_first_member_and_the_card_says
     assert "put the computer" in draft["summary"] and "'home'" in draft["summary"], draft["summary"]
 
 
-def test_nobody_taps_the_phone_and_no_pool_and_no_key_exist(phone_node):
+def test_a_node_whose_only_key_is_a_phones_refuses_this_devices_key_at_once_and_founding_waits_for_nothing(phone_node):
     add_phone(phone_node)
     admin = person()
     enrol_as_phone_key(phone_node, admin.key)
     session = pool_session(phone_node)
     held = phone_node.client.call("person_keys")["keys"]
+    began = time.monotonic()
     with pytest.raises(Refusal) as refused:
-        founding.found(session, admin, "home", "secure", founding.Terms(wait_s=1.0))
-    assert refused.value.then == "wait" and refused.value.needs == "approval" and len(refused.value.say) <= 160
+        founding.found(session, admin, "home", "secure")
+    assert time.monotonic() - began < 20, "nobody was waited for"
+    assert refused.value.then == "stop" and "another key" in refused.value.say and len(refused.value.say) <= 260, refused.value.say
     assert governance(phone_node)["mode"] == "unfounded"
-    assert phone_node.client.call("person_keys")["keys"] == held, "a card nobody answered enrolled no key"
+    assert phone_node.client.call("person_keys")["keys"] == held, "nothing was enrolled on the way"
 
 
-def test_a_key_the_node_does_not_hold_is_asked_for_at_the_terminal_and_enrolled_nowhere_before_the_yes(workspace_node):
+def test_a_key_the_node_did_not_hold_counts_for_nothing_when_it_is_enrolled_by_founding_and_no_pool_is_made(workspace_node):
     session = pool_session(workspace_node)
+    admin = person()
     with pytest.raises(Refusal) as refused:
-        founding.found(session, person(), "home")
-    assert "terminal" in refused.value.say and refused.value.needs == "approval" and len(refused.value.say) <= 260
-    assert workspace_node.client.call("person_keys")["keys"] == [] and governance(workspace_node)["mode"] == "unfounded"
+        founding.found(session, admin, "home")
+    assert "counts for nothing" in refused.value.say and "this computer makes its own" in refused.value.say and refused.value.needs == "none" and len(refused.value.say) <= 260
+    assert governance(workspace_node)["mode"] == "unfounded"
+    key = [{"key": admin.key.public.hex(), "person": "owner", "label": "the owner's key"}]
+    drafted = workspace_node.client.call("pool_draft_found", "", session.token, title="home", policy="secure", project="", keys=key)
+    assert [k["claim"]["method"] for k in drafted["charter"]["admins"]] == ["keystore-typed"], "the node recorded the key as the typed yes it is"
 
 
-def test_a_key_the_person_typed_yes_for_is_never_more_than_a_typed_yes_whatever_the_agent_says(workspace_node):
+def test_a_key_enrolled_through_the_nodes_own_secret_is_a_typed_yes_whatever_the_agent_says_and_founds_no_pool(workspace_node):
     admin = person()
     enrol_first(workspace_node.client, workspace_node.member("agent").token, admin.key)
     session = pool_session(workspace_node)
-    made = founding.found(session, admin, "home")
-    gov = governance(workspace_node)
-    assert made.name == "home" and [a["claim"]["method"] for a in gov["admins"]] == ["keystore-typed"] and gov["admins"][0]["counted"] == "weak"
-    assert gov["floors"] == {"routine": "weak", "sensitive": "weak", "governance": "weak"} and gov["delegates"] == [], "a computer with no prompt of its own is approved by a typed yes"
-    assert "typed yes" in gov["approved"] and "program running as you" in gov["approved"]
+    with pytest.raises(Refusal) as refused:
+        founding.found(session, admin, "home")
+    assert "counts for nothing" in refused.value.say, "this computer can make a better key than a typed yes, so a typed one does not found a pool"
+    assert governance(workspace_node)["mode"] == "unfounded"
     key = [{"key": admin.key.public.hex(), "person": "owner", "claim": "phone-keystore", "label": "the owner's key"}]
     with pytest.raises(Invalid):
         workspace_node.client.call("pool_draft_found", "", session.token, title="home", policy="secure", project="", keys=key)
     plain = dict(key[0])
     del plain["claim"]
     drafted = workspace_node.client.call("pool_draft_found", "", session.token, title="home", policy="secure", project="", keys=[plain])
-    assert [k["claim"]["method"] for k in drafted["charter"]["admins"]] == ["keystore-typed"]
+    assert [k["claim"]["method"] for k in drafted["charter"]["admins"]] == ["keystore-typed"], "an agent cannot name the level of a key: the node says how it holds it"
+    assert drafted["counting"] is False
 
 
 def test_a_charter_the_agent_made_without_the_persons_key_founds_nothing(workspace_node):
@@ -142,74 +149,36 @@ def test_a_charter_the_agent_made_without_the_persons_key_founds_nothing(workspa
     assert governance(workspace_node)["mode"] == "unfounded", "a charter nobody's key accepted, asked for by a session nobody granted, is no pool"
 
 
-def test_the_phone_is_asked_for_the_grant_and_the_pool_is_founded_when_the_person_taps(phone_node):
+def test_a_phones_own_decision_still_founds_the_pool_and_founding_then_goes_on_with_the_grant_it_gave(phone_node):
     node = phone_node
     phone = add_phone(node)
     admin = person()
     enrol_as_phone_key(node, admin.key)
     session = pool_session(node)
-    told: list[str] = []
-    result: dict = {}
-
-    def agent() -> None:
-        try:
-            result["made"] = founding.found(session, admin, "home", "secure", founding.Terms(presence.Voice(say=told.append), 30))
-        except Refusal as err:  # reported below
-            result["error"] = err
-
-    thread = threading.Thread(target=agent)
-    thread.start()
-    endpoint, seen = endpoint_of(node), None
-    for _ in range(100):
-        waiting = endpoint.ok("list", {}, token=phone.token)
-        if waiting["approvals"]:
-            seen = endpoint.ok("get", {"id": waiting["approvals"][0]["id"]}, token=phone.token)
-            break
-        time.sleep(0.1)
-    assert seen is not None, "the agent asked the phone"
-    while not told:
-        time.sleep(0.05)
-    assert endpoint.ok("decide", phone.decision(seen, "approve", pick=told[0].rsplit(" ", 1)[1].rstrip(".")))["state"] == "approved"
-    thread.join(30)
-    assert "error" not in result, result
-    assert result["made"].name == "home" and governance(node)["mode"] == "governed"
+    asked = approval.request(session, approval.wire([approval.Ask("pool_create", "home", lasts="10m", uses=1)], note="founding the pool home"))
+    assert asked.state == approval.PENDING, "the request waits for a key: nothing answers it for the phone"
+    endpoint = endpoint_of(node)
+    seen = endpoint.ok("get", {"id": asked.id}, token=phone.token)
+    decision = phone.decision(seen, "approve", pick=asked.code) if asked.code else phone.decision(seen, "approve")
+    assert endpoint.ok("decide", decision)["state"] == "approved"
+    made = founding.found(session, admin, "home", "secure")
+    assert made.name == "home" and governance(node)["mode"] == "governed"
 
 
-def test_the_phone_says_no_and_the_agent_has_a_sentence_and_nothing_is_founded(phone_node):
-    node = phone_node
-    phone = add_phone(node)
-    admin = person()
-    enrol_as_phone_key(node, admin.key)
-    session = pool_session(node)
-    outcome: list = []
-    told: list[str] = []
-    thread = threading.Thread(target=lambda: outcome.append(_tried(session, told, admin)))
-    thread.start()
-    endpoint, seen = endpoint_of(node), None
-    for _ in range(100):
-        waiting = endpoint.ok("list", {}, token=phone.token)
-        if waiting["approvals"]:
-            seen = endpoint.ok("get", {"id": waiting["approvals"][0]["id"]}, token=phone.token)
-            break
-        time.sleep(0.1)
-    assert seen is not None
-    assert endpoint.ok("decide", phone.decision(seen, "deny"))["state"] == "denied"
-    thread.join(30)
-    assert isinstance(outcome[0], Refusal) and "You said no" in outcome[0].say and governance(node)["mode"] == "unfounded"
-
-
-def _tried(session, told, admin):
-    try:
-        return founding.found(session, admin, "home", "secure", founding.Terms(presence.Voice(say=told.append), 30))
-    except Refusal as refused:
-        return refused
-
-
-
-def test_the_command_for_agents_says_one_sentence_and_exits_3_when_the_person_has_something_to_do(workspace_node):
-    import json
-
-    done = workspace_node.cli("pool", "found", "home", "--json", who=workspace_node.member("agent"))
+def test_the_command_for_agents_founds_the_pool_at_once_says_one_sentence_and_says_it_is_there_the_second_time(workspace_node):
+    agent = workspace_node.member("agent")
+    done = workspace_node.cli("pool", "found", "home", "--json", who=agent, env={"CLAUDECODE": "1"})
     said = json.loads(done.stdout.strip().splitlines()[-1])
-    assert done.returncode == 3 and said["founded"] is False and "terminal" in said["say"] and "phone" not in said["say"].lower() and said["needs"] == "approval", done
-    assert governance(workspace_node)["mode"] == "unfounded"
+    assert done.returncode == 0 and said["founded"] is True and said["name"] == "home" and "now in the pool home" in said["say"], done
+    gov = governance(workspace_node)
+    assert gov["mode"] == "governed" and gov["name"] == "home"
+    again = json.loads(workspace_node.cli("pool", "found", "home", "--json", who=agent, env={"CLAUDECODE": "1"}).stdout.strip().splitlines()[-1])
+    assert again["founded"] is False and "already in the pool home" in again["say"]
+
+
+def test_the_command_for_agents_says_one_sentence_and_exits_3_when_this_computer_cannot_keep_the_key(workspace_node):
+    agent = workspace_node.member("agent")
+    done = workspace_node.cli("pool", "found", "home", "--json", who=agent, env={"CLAUDECODE": "1", "POOLHOUSE_SIGNING_PASSPHRASE": ""})
+    said = json.loads(done.stdout.strip().splitlines()[-1])
+    assert done.returncode == 3 and said["founded"] is False and said["needs"] == "device" and "POOLHOUSE_SIGNING_PASSPHRASE" in said["say"] and "phone" not in said["say"].lower(), done
+    assert governance(workspace_node)["mode"] == "unfounded" and workspace_node.client.call("person_keys")["keys"] == []

@@ -1,11 +1,16 @@
-"""What an asker and the person are told about a request that needs the person's answer: a no, a question nobody answered and a prompt that could
-not be shown are three different things, and a request that waits is listed in the pool's status for as long as it waits.
+"""What an asker is told when the node does not make the secret or the ticket at once, and what the pool's status lists of a node that asks its user.
 
-The node here is a stand-in for the node's replies to ``presence_ask`` and ``presence_status`` (the words below are the ones the Rust node's
-tests pin in ``app/poolhouse-node``); what is under test is the Python side that turns them into what the agent and the person read.
+The launcher starts a node that asks nobody (`--presence auto`), so every ask is confirmed as it is made and these words are never read in a run
+of the product. A node somebody started by hand to ask its user (`--presence os` or `terminal`) answers `asking`, `refused`, `expired` or `failed`:
+nothing here waits for a person, so the ask is refused at once with the reason and the way out (start the node as the launcher does).
+
+The node in these tests is a stand-in for the replies of the Rust node (the words are the ones its tests pin in ``app/poolhouse-node``): what is under
+test is the Python side that turns them into what the agent reads.
 """
 
 from __future__ import annotations
+
+import time
 
 import pytest
 
@@ -17,50 +22,37 @@ SENTENCE = "Poolhouse - make the pool home. Say yes only if you are founding it 
 
 
 class Node:
-    """The replies of a node to a question: ``asked`` to ``presence_ask``, then each of ``later`` to ``presence_status``."""
+    """A node that answers every ``presence_ask`` with ``reply`` and records what it was asked."""
 
-    def __init__(self, asked: dict, *later: dict) -> None:
-        self.replies = [asked, *later]
+    def __init__(self, reply: dict) -> None:
+        self.reply, self.asked = reply, []
 
-    def call(self, method: str, *_args, **_params) -> dict:
-        assert method in ("presence_ask", "presence_status")
-        return self.replies.pop(0) if len(self.replies) > 1 else self.replies[0]
-
-
-def asked(node: Node, voice: presence.Voice = presence.SILENT) -> dict:
-    return presence.ask_card(node, "token", "pool_key", presence.Card("c" * 64), voice)
+    def call(self, method: str, *_args, **params) -> dict:
+        assert method == "presence_ask", f"nothing is polled: {method}"
+        self.asked.append(params)
+        return self.reply
 
 
-def test_a_dialog_that_could_not_be_shown_is_told_as_a_failure_with_the_systems_words_and_not_as_a_no():
-    node = Node({"state": "failed", "error": "The system's password prompt did not open (exit status 1): execution error (-1750)", "presence": "os"})
-    with pytest.raises(Denied) as failure:
-        asked(node)
-    said = str(failure.value)
-    assert "-1750" in said and "not a no" in said and "You said no" not in said, said
-    assert "tell the person" in said, "the asker is told what to do next, not to wait a time"
+@pytest.mark.parametrize("state", ["asking", "refused", "expired", "failed"])
+def test_a_node_that_does_not_confirm_is_refused_at_once_with_the_way_out_and_nothing_is_waited_for(state):
+    node = Node({"state": state, "presence": "os", "sentence": SENTENCE})
+    began = time.monotonic()
+    with pytest.raises(Denied) as refused:
+        presence.ask_card(node, "token", "pool_key", presence.Card("c" * 64))
+    said = str(refused.value)
+    assert state in said and "start it as the launcher does, which asks nobody" in said and "--presence" in said, said
+    assert len(node.asked) == 1, "asked once and not again"
+    assert time.monotonic() - began < 1, "no wait for a person"
 
 
-def test_a_question_nobody_answered_is_not_a_no_and_may_be_asked_again_at_once():
-    node = Node({"state": "expired", "presence": "os"})
-    with pytest.raises(Denied, match="Nobody said yes") as expired:
-        asked(node)
-    assert "not a no" in str(expired.value) and "minutes" not in str(expired.value)
+def test_a_confirmed_reply_without_a_secret_is_no_secret():
+    with pytest.raises(Denied, match="confirmed"):
+        presence.ask(Node({"state": "confirmed", "presence": "auto"}), "token", "phone")
+    said = presence.ask(Node({"state": "confirmed", "presence": "auto", "secret": "ticket"}), "token", "phone")
+    assert said["secret"] == "ticket"
 
 
-def test_only_a_refusal_is_told_as_the_persons_no():
-    with pytest.raises(Denied, match="You said no"):
-        asked(Node({"state": "refused", "presence": "os"}))
-
-
-def test_the_person_is_told_the_sentence_they_are_asked_and_where_to_answer_it(monkeypatch):
-    monkeypatch.setattr(presence, "POLL_S", 0)
-    told: list[str] = []
-    node = Node({"state": "asking", "presence": "os", "sentence": SENTENCE}, {"state": "confirmed", "presence": "os", "secret": "ticket"})
-    assert asked(node, presence.Voice(terminal="", say=told.append))["secret"] == "ticket"
-    assert len(told) == 1 and told[0].startswith(f"Waiting for you: {SENTENCE}") and "password or fingerprint" in told[0], told
-
-
-def test_the_pools_status_lists_every_request_that_waits_for_the_person_word_for_word(monkeypatch):
+def test_the_pools_status_lists_every_request_that_waits_for_a_user_word_for_word(monkeypatch):
     raw = {"pool": "p", "policy": "secure", "fingerprint": "f" * 64, "members": [], "governance": {"mode": "unfounded", "say": "This device is in no pool yet."},
            "waiting": [{"by": "pool/claude-a", "say": f"waiting for you: {SENTENCE}", "sentence": SENTENCE, "via": "os", "left_ms": 90_000}]}
     monkeypatch.setattr(_node, "call", lambda *_a, **_k: raw)

@@ -1,7 +1,7 @@
 {
- "surfaces": 876,
+ "surfaces": 877,
  "by_status": {
-  "covered": 557,
+  "covered": 558,
   "partial": 184,
   "uncovered": 51,
   "n/a": 84,
@@ -93,7 +93,7 @@
    "unmapped": 0
   },
   "slash-command": {
-   "covered": 9,
+   "covered": 10,
    "partial": 0,
    "uncovered": 0,
    "n/a": 0,
@@ -3591,9 +3591,9 @@
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
   },
   {
-   "id": "human:chatpolicy.py:HumanOnlyRail.before_tool_call",
+   "id": "human:chatpolicy.py:ProtectedRail.before_tool_call",
    "kind": "human",
-   "source": "chatpolicy.py:HumanOnlyRail.before_tool_call",
+   "source": "chatpolicy.py:ProtectedRail.before_tool_call",
    "trust": "an agent process or a member",
    "attacker": "an agent or a forged grant takes an action only a person may take",
    "status": "covered",
@@ -10213,6 +10213,20 @@
    "id": "slash-command:chat.py:/tools",
    "kind": "slash-command",
    "source": "chat.py:/tools",
+   "trust": "a line typed at the prompt, or text echoed from outside",
+   "attacker": "text read from outside is taken for a person's command",
+   "status": "covered",
+   "tests": [
+    "tests/test_roles.py::test_an_answer_to_a_question_is_not_a_slash_command",
+    "tests/test_roles.py::test_text_from_the_model_or_a_tool_cannot_raise_the_role",
+    "tests/test_roles.py::test_a_rule_is_never_created_by_text_the_model_or_a_tool_produced"
+   ],
+   "note": ""
+  },
+  {
+   "id": "slash-command:chatpolicy.py:/rules",
+   "kind": "slash-command",
+   "source": "chatpolicy.py:/rules",
    "trust": "a line typed at the prompt, or text echoed from outside",
    "attacker": "text read from outside is taken for a person's command",
    "status": "covered",

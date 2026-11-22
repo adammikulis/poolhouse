@@ -41,4 +41,4 @@ def test_shared_native_governance_rejects_bad_checkpoints_and_retains_late_evide
         kernel = subprocess.run([testnode.tool("cargo"), "test", "--offline", "--locked", "-p", "poolhouse-node", "--lib", "sys::unix::tests"],
                               cwd=staged, env=environment, capture_output=True, text=True, timeout=600)
         assert kernel.returncode == 0, kernel.stdout + kernel.stderr
-        assert "1 passed" in kernel.stdout and "0 failed" in kernel.stdout
+        assert "2 passed" in kernel.stdout and "0 failed" in kernel.stdout

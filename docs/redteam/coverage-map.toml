@@ -883,11 +883,11 @@ note = "hostile pytest text remains literal argv; source mount is read-only, no 
 [[group]]
 match = ["human:workspace/approval_cli.py:*", "human:workspace/phone_cli.py:*"]
 status = "covered"
-tests = ["tests/test_board_approval.py::test_an_agent_or_a_process_with_no_terminal_cannot_answer_or_add_a_phone",
-         "tests/test_board_approval.py::test_a_person_at_a_terminal_answers_with_the_key_the_node_holds_once_they_type_yes",
-         "tests/test_board_approval.py::test_the_first_phone_is_added_from_a_code_drawn_in_the_terminal_and_never_an_image_file",
+tests = ["tests/test_board_approval.py::test_an_agent_cannot_answer_a_request_read_what_waits_or_add_or_remove_a_phone_and_the_refusal_says_why_at_once",
+         "tests/test_board_approval.py::test_the_device_answers_a_request_with_its_own_key_at_once_and_what_waits_is_read_with_that_key",
+         "tests/test_board_approval.py::test_the_first_phone_is_added_from_a_code_drawn_at_once_and_never_an_image_file",
          "tests/test_board_approval.py::test_a_further_phone_is_added_by_an_image_and_waits_for_a_phone_you_hold_to_approve_it",
-         "tests/test_board_approval.py::test_a_person_at_a_terminal_chooses_the_number_after_the_yes_and_types_again_for_a_scope_declined_before",
+         "tests/test_board_approval.py::test_a_request_that_is_not_routine_is_answered_with_the_number_the_asker_was_shown_and_a_wrong_number_is_a_decline",
          "tests/test_board_approval.py::test_a_code_that_was_made_for_nobody_else_adds_nothing_twice_and_a_wrong_one_adds_nothing",
          "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
          "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else"]
@@ -898,19 +898,19 @@ match = ["human:workspace/grants_cli.py:*"]
 status = "covered"
 count = 2
 tests = ["tests/test_board_grants.py::test_a_person_sets_up_the_lead_grants_once_and_every_item_is_revoked_by_its_own_id",
-         "tests/test_board_grants.py::test_the_grant_commands_refuse_an_agent_and_a_process_with_no_terminal",
+         "tests/test_board_grants.py::test_the_commands_that_sign_with_the_devices_key_are_refused_to_an_agent_at_once_with_the_reason_and_make_no_key",
          "tests/test_board_grants.py::test_a_signature_made_in_python_is_one_the_node_verifies_and_only_the_enrolled_key_counts",
          "tests/test_board_grants.py::test_a_second_key_is_enrolled_only_with_the_approval_of_the_first",
-         "tests/test_board_grants.py::test_no_key_is_held_by_a_process_an_agent_started_or_with_no_terminal",
+         "tests/test_board_person_key.py::test_an_agent_is_refused_at_once_before_a_key_is_made_and_the_refusal_is_audited_with_who_asked",
          "tests/test_board_grants.py::test_hostile_arguments_to_the_person_commands_are_refused_before_anything_is_written",
          "tests/test_board_grants.py::test_a_process_that_registers_as_the_leads_family_with_a_lying_model_inherits_nothing_from_the_setup",
          "tests/test_board_grants.py::test_a_class_grant_needs_the_person_to_say_registration_is_open_and_then_does_hold_for_any_process_that_claims_the_family",
          "tests/test_board_grants.py::test_a_key_is_taken_off_the_node_by_a_key_the_node_holds_and_the_last_key_stays",
-         "tests/test_board_person_key.py::test_a_process_with_a_terminal_and_the_passphrase_in_its_environment_signs_nothing_until_the_person_types_yes",
-         "tests/test_board_person_key.py::test_the_person_key_asks_every_time_whatever_its_record_says_and_the_share_signing_key_is_not_changed",
-         "tests/test_board_person_key.py::test_the_question_is_read_from_the_bytes_signed_and_only_a_grant_a_revocation_or_a_key_is_signed",
-         "tests/test_board_person_key.py::test_a_confirm_passed_by_the_caller_answers_nothing_and_the_question_is_still_put",
-         "tests/test_board_person_key.py::test_a_carried_key_whose_name_is_not_plain_text_is_refused_before_the_person_is_asked",
+         "tests/test_board_person_key.py::test_a_command_signs_with_no_terminal_for_a_process_with_no_marker_and_is_refused_to_an_agent_with_the_reason",
+         "tests/test_board_person_key.py::test_the_key_is_made_on_first_use_beside_the_node_and_signs_with_no_question",
+         "tests/test_board_person_key.py::test_what_is_signed_is_read_back_in_words_from_the_bytes_and_nothing_else_is_described",
+         "tests/test_board_person_key.py::test_the_passphrase_of_the_key_file_comes_from_the_environment_only_and_its_absence_is_one_sentence",
+         "tests/test_board_person_key.py::test_a_carried_key_whose_name_is_not_plain_text_is_refused_before_anything_is_signed",
          "tests/test_node_lineage.py::test_a_token_read_from_its_file_in_another_live_terminal_reads_and_spends_no_grant",
          "tests/test_node_lineage.py::test_a_session_registered_from_a_terminal_that_has_ended_moves_to_the_process_that_registers_it_next",
          "tests/test_node_lineage.py::test_a_session_its_parent_ended_for_cause_stays_ended_and_its_command_says_why",

@@ -296,8 +296,9 @@ def test_the_node_raises_an_operating_system_prompt_only_from_the_reviewed_file_
     assert "if !on_real_home(&self.state)" in prompt and prompt.index("if !on_real_home") < prompt.index("= dialog(what)"), "the refusal comes before the dialog is built"
     assert prompt.index("= dialog(what)") < prompt.index("(self.tell)(\"Poolhouse is waiting for you\""), "and before anything is announced"
     assert all(path.read_text(encoding="utf-8").count("announce::notify") == 0 for path in app.rglob("*.rs") if path.name not in {"os.rs", "announce.rs"}), "only the dialog's own file announces"
-    launcher = (SRC / "node_launch.py").read_text(encoding="utf-8")
-    assert "real_machine.allowed()" in launcher, "the launcher asks real_machine before it passes --presence os"
+    from poolhouse import node_launch
+
+    assert node_launch._presence(["--presence", "os"]) == [], "the launcher never passes --presence os: nothing it starts raises a system prompt, on the real home or off it"
 
 
 @pytest.fixture

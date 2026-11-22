@@ -25,11 +25,11 @@ def endpoint_of(team: Any) -> Endpoint:
 
 
 def code_secret(team: Any, by: PhoneKeys | None) -> str:
-    """The one-time secret of the next phone's code: a first phone's is made by the node when the person types yes to its question, and
-    a further phone's by a session's request once a key exists."""
+    """The one-time secret of the next phone's code: a first phone's is made by the node as the device's own session asks for it (nobody is asked),
+    and a further phone's by a session's request once a key exists."""
     if by is None:
         said = wire.answer_presence(team.state, "phone")
-        assert said["ok"] and said["result"]["state"] == "confirmed", f"the person's yes was not taken: {said}"
+        assert said["ok"] and said["result"]["state"] == "confirmed", f"the node made no secret for the first phone: {said}"
         return str(said["result"]["secret"])
     token = team.client.call("register", team.board, "", model="claude-sonnet-5-5", harness="claude-code", session="phone-offerer")["token"]
     return link_secret(str(team.client.call("phone_offer", "", token)["link"]))
