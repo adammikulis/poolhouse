@@ -173,7 +173,7 @@ prints which device has an address for which). The cost of a member nothing can 
 * **A person's own key.** The rig plays the person with an in-memory key that signs unasked; the typed `yes`, the terminal device and the
   keystore of a real key are checked by `tests/test_board_person_key.py` and by the owner, not here. The Windows named pipe takes the
   grants (`grants-gate` runs on it), but Windows reads no process lineage yet (docs/node.md, "Identity"), so a signature that names a
-  terminal (approving a second key, removing a key, `rebind`) cannot be made there and `grants-key-removed` is skipped on a Windows-only
+  terminal (approving a second key, removing a key) cannot be made there and `grants-key-removed` is skipped on a Windows-only
   pool; it runs on the WSL device of the Windows and WSL job.
 * **Windows.** Docker cannot run Windows. The Windows named pipe, ACLs, the Windows firewall and the supervisor on Windows are covered
   only by the `windows-latest` jobs of `.github/workflows/pool-check.yml` (a native pool, and the Windows device and a WSL

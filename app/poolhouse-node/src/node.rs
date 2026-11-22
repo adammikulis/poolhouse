@@ -54,7 +54,8 @@ pub const MOST_BOARDS_PER_LINEAGE: usize = 32;
 pub const NOT_KNOWN: &str = "the token is not known";
 /// What a request with a token the node does not hold is told: the session registers again by itself, so nobody is sent anywhere.
 const UNKNOWN_TOKEN: &str =
-    "the token is not known: its session was retired to free its resources (an idle session is) or it never registered; the next registration of its harness's session, which a client makes by itself, gives it a token";
+    "the token is not known: its session was retired to free its resources (an idle session is), moved on after the process the token was registered from ended, or never registered; \
+     registering the harness's session again, which a client does by itself, gives it a token";
 
 /// One board this node holds and the names registered on it.
 pub struct Hosted {
