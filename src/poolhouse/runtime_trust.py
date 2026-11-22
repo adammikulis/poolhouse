@@ -129,8 +129,8 @@ def _own_session(cwd: Path | None) -> None:
 
 
 def authorize(command: str, *, cwd: Path | None = None) -> str:
-    """Who may run a deploy command here: "person" for a process no agent started, "delegated" for a lead agent
-    while the owner has delegated the `runtime.deploy` gate; HumanRequired for an agent while it is the person's.
+    """Who may run a deploy command here: "person" for a process no agent started, "delegated" for an agent
+    while the `runtime.deploy` gate is delegated; `AgentRefused` for an agent while the gate is held back.
 
     A launcher or login unit carries no agent marker, so it is not gated; the `authority.use` row this writes for a
     delegated pass names the agent.

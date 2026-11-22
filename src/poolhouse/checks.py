@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import shlex
 import subprocess
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -64,10 +63,7 @@ def ask(findings: list[Finding], *, yes: bool = False) -> int:
             continue
         worst = 1
         say(f"      fix: {line(one.fix, one.cwd)}")
-        if not yes and not sys.stdin.isatty():
-            continue
-        answer = "y" if yes else input("      run it now? [y/N] ").strip().lower()
-        if answer != "y":
+        if not yes:
             continue
         # a sudo in the command prompts on this terminal; nothing here reads the password
         subprocess.run(one.fix, cwd=one.cwd or None, check=False)

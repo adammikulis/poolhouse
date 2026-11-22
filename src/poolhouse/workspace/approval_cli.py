@@ -97,7 +97,6 @@ def _own(args: argparse.Namespace, s: Session) -> int:
         made = autoapprove.settle(s, made, asks)
         return _print(args, made)
     if args.verb == "pending" and args.all:
-        refuse_agent("reading every request that waits", "it lists other sessions' requests, which the device's key signs to read")
         carrier, key = held_key(Client())
         listed = list(_waiting(carrier, key).values())
         say(json.dumps(listed) if args.json else "\n".join(f"{a['id']}  {a['state']:<9} {a['risk']:<12} {a['title']}" for a in listed) or "(none)")
@@ -167,6 +166,8 @@ def command(args: argparse.Namespace) -> int:
     """The `approval` command: `decide`, or any session's own requests."""
     if args.verb == "decide":
         return _decide(args)
+    if args.verb == "pending" and args.all:
+        refuse_agent("reading every request that waits", "it lists other sessions' requests, which the device's key signs to read")
     if args.verb in ("blocks", "lift"):
         refuse_agent("managing approval blocks", "a block ends a session's repeated requests, and an agent must not lift its own")
         return _own(args, person_session.on(Client(), POOL))

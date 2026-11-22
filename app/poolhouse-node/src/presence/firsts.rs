@@ -103,7 +103,7 @@ impl Firsts {
     /// Whether a key made here can be above a typed yes: the person is asked at the operating system's own prompt. Where this is false the
     /// platform can make no such key, and a pool founded here is approved by a typed yes and says so.
     pub fn can_hold_counting_key(&self) -> bool {
-        self.presence.kind() == "os"
+        matches!(self.presence.kind(), "os" | "auto")
     }
 
     /// The claim a key is recorded with when the person says yes for it at this node's prompt: `keystore-prompt` for the operating
