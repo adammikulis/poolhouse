@@ -51,7 +51,7 @@ ATTACKER = {
     "spawn": "attacker text becomes a command line, environment or working directory",
     "listener": "an unauthenticated or cross-origin client reaches the port",
     "egress": "a redirect or address sends the request somewhere the person did not choose",
-    "human": "an agent or a forged grant takes an action only a person may take",
+    "human": "an agent takes an action that is refused to agents, or a forged permit lets it",
     "desktop": "attacker text reaches a dialog, notification or shell command",
     "keystore": "a failure path leaks, downgrades or overwrites a secret",
     "context": "text from outside is read by a model as an instruction",
@@ -90,7 +90,7 @@ EGRESS = {
 }
 EGRESS_PREFIX = ("poolhouse.http.", "poolhouse.httpguard.")
 HTTP_DATA_CONSTRUCTORS = {"poolhouse.http.Options", "poolhouse.http.Retry"}
-HUMAN = {"require_person", "mint", "mint_gated", "mint_pressed", "mint_clicked", "protect", "agent_may"}
+HUMAN = {"refuse_agent", "mint", "mint_gated", "protect", "agent_may"}
 DESKTOP_WORDS = ("osascript", "notify-send", "powershell", "toast")
 KEYSTORE_WORDS = ("add-generic-password", "find-generic-password", "keyring", "secret-tool")
 READ_DIRS = ("ingest", "hub", "scrape", "sources", "datasheet", "gguf", "media", "net", "vision",
@@ -356,7 +356,7 @@ def find_words(found: dict[str, Surface], where: str, tree: ast.Module) -> None:
                     sym = symbol(table, node.lineno)
                     add(found, kind, f"{sub}:{sym}", f"{sub}:{sym}")
         if isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call) \
-                and dotted(node.exc.func).endswith("HumanRequired"):
+                and dotted(node.exc.func).endswith("AgentRefused"):
             sym = symbol(table, node.lineno)
             add(found, "human", f"{sub}:{sym}", f"{sub}:{sym}")
         if isinstance(node, ast.Compare) and any(

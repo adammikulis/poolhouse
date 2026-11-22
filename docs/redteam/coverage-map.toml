@@ -49,7 +49,6 @@ count = 4
 tests = ["tests/test_producer_admission.py::test_actual_inbox_receipt_wins_after_lost_ack_and_execution_revocation", "tests/test_producer_admission.py::test_capacity_marker_commits_before_429_and_remains_terminal_when_capacity_frees", "tests/test_producer_admission.py::test_raising_inside_outer_transaction_does_not_forge_durable_negative", "tests/test_producer_admission.py::test_explicit_retry_new_attempt_cannot_replay_old_hmac_nonce", "tests/test_producer_admission.py::test_changed_signed_tuple_or_record_never_enters_inbox", "tests/test_producer_admission.py::test_actual_source_is_reloaded_before_new_admission", "tests/test_producer_admission.py::test_stale_passed_subscription_cannot_hide_actual_capacity_or_revoked_grant", "tests/test_producer_admission.py::test_current_revocation_before_commit_rolls_back_inbox_or_negative", "tests/test_producer_admission.py::test_concurrent_admission_and_negative_settlement_cannot_lose_accepted_inbox", "tests/test_producer_admission.py::test_corrupted_referenced_event_cannot_become_positive_or_negative_proof", "tests/test_producer_admission.py::test_receipt_denial_happens_before_intent_or_inbox_reads", "tests/test_producer_admission.py::test_historical_revocation_during_accepted_lookup_never_returns_proof"]
 note = "Isolated actual store, stream and publication-log transactions verify exact admission identities, accepted-inbox precedence, terminal rejection markers, retry fencing, current source reload and independent historical authorization before and after lookup. Factory authorization callbacks and the real outer HTTP commit-before-rejection wrapper are not claimed by these module tests."
 
-
 [[group]]
 match = ["handler:fleet/producer_connections.py:Connections.register", "handler:fleet/producer_connections.py:Connections.check"]
 status = "covered"
@@ -215,7 +214,6 @@ status = "n/a"
 tests = ["tests/test_studio_resident_service.py::test_resident_mint_observes_persisted_intent_before_prepare", "tests/test_studio_resident_service.py::test_only_named_presubmit_busy_is_pending", "tests/test_studio_resident_service.py::test_guard_preflight_never_turns_resource_denial_into_review"]
 note = "Internal resident execution permit under the authorized principal and private worker proof; no person authority, signing permission or human grant is minted"
 
-
 [[group]]
 match = ["route:fleet/studio_webhooks.py:/studio/ingest/*", "route:fleet/api.py:/studio/ingest/*"]
 status = "covered"
@@ -328,7 +326,6 @@ count = 1
 tests = ["tests/test_studio_pool_library.py"]
 note = "Current enrolled pool discovery pins encrypted devices. Exact destination guards refuse redirects, bounded sealed responses reject malformed packages and nonmonotonic pages, and bounded error bodies prevent a malicious device exhausting memory. Immutable versions and safe offline warnings preserve local publication."
 
-
 [[group]]
 match = ["parser:client/systemone.py"]
 status = "covered"
@@ -355,7 +352,7 @@ status = "covered"
 count = 3
 tests = ["tests/test_agent_identity.py::test_delegated_setup_refuses_before_app_load_api_or_browser",
          "tests/test_agent_identity.py::test_delegated_setup_revalidates_after_browser_before_exchange",
-         "tests/test_agent_identity.py::test_an_agent_marker_refuses_every_use_of_the_key_before_any_request",
+         "tests/test_agent_identity.py::test_an_agent_marker_refuses_every_use_of_the_key_at_once_and_before_any_request",
          "tests/test_agent_identity.py::test_a_token_that_is_wider_or_longer_than_asked_is_not_given_out",
          "tests/test_agent_identity.py::test_an_installation_that_reaches_another_repository_is_refused"]
 note = "App setup requires the selected installed holder, eligible root session and delegated gate, rechecks actor/source, and never exports its key; raw token and online check are refused to an agent at once and installation/token scopes cannot widen"
@@ -380,7 +377,6 @@ status = "covered"
 count = 2
 tests = ["tests/test_net_loopback.py", "tests/test_local_coordination.py::test_host_tls_checks_owned_ca_anonymous_auth_and_restores_pin"]
 note = "The shared bounded transport refuses nonliteral or nonloopback destinations before networking, never follows redirects or ambient proxies, and verifies fresh CA/server-name TLS. Explicit anonymous metadata refusal and custom Host behavior are tested. The nested exact-URL guard is conservatively discovered through its refusal constructor; it opens no second connection."
-
 
 [[group]]
 match = ["spawn:coordination/docker.py:Docker.call"]
@@ -446,9 +442,7 @@ count = 2
 tests = ["tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
          "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
          "tests/test_redteam_automatic_floor.py::test_no_tool_an_agent_is_offered_is_a_human_only_action",
-         "tests/test_autostart_apply.py::test_an_agent_is_refused_install_and_rollback_before_anything_is_read",
-         "tests/test_autostart_apply.py::test_no_terminal_means_no_install",
-         "tests/test_autostart_apply.py::test_the_person_must_type_the_manifest_id",
+         "tests/test_autostart_apply.py::test_an_agent_is_refused_install_and_rollback_at_once_before_anything_is_read",
          "tests/test_autostart_apply.py::test_an_expired_manifest_is_refused_and_nothing_is_written",
          "tests/test_autostart_apply.py::test_a_manifest_prepared_on_another_device_is_refused",
          "tests/test_autostart_apply.py::test_replaying_an_installed_manifest_is_refused",
@@ -488,26 +482,6 @@ tests = ["tests/test_autostart_hostile.py::test_an_error_or_a_non_json_answer_is
 note = "the health probe reads one loopback URL from the verified manifest; an error status, non-JSON body, slow answer or closed port is an unhealthy unit, never an exception"
 
 [[group]]
-match = ["parser:workspace/person_transcript.py"]
-status = "covered"
-count = 1
-tests = ["tests/test_redteam_person_statement.py::test_no_typed_phrasing_becomes_an_authorization",
-         "tests/test_person_hooks.py::test_a_prompt_the_person_did_not_type_leaves_no_record",
-         "tests/test_person_hooks.py::test_a_missing_transcript_entry_fails_closed_after_a_bounded_wait",
-         "tests/test_person_hooks.py::test_an_unreadable_transcript_and_a_mismatched_text_fail_closed",
-         "tests/test_person_hooks.py::test_a_transcript_the_calling_agent_wrote_elsewhere_records_nothing",
-         "tests/test_person_hooks.py::test_a_hundred_megabyte_transcript_is_read_from_its_tail_within_the_hook_budget"]
-note = "a transcript entry that is not a typed human prompt on a pinned Claude Code version, is missing, unreadable or differs from the hook prompt records nothing; a forged line by a same-user process is the documented threat-model limit"
-
-[[group]]
-match = ["spawn:workspace/person_targets.py:_run"]
-status = "covered"
-count = 1
-tests = ["tests/test_person_hooks.py::test_another_commit_another_repository_or_another_remote_does_not_match",
-         "tests/test_person_guards.py::test_an_approval_covers_exactly_one_fast_forward_to_the_approved_commit"]
-note = "fixed git argument vectors with a timeout; the repository, remote, commit and tree an authorization binds are read from git, never from prompt or model text"
-
-[[group]]
 match = ["spawn:fleet/projects.py:local_root"]
 status = "covered"
 count = 1
@@ -541,7 +515,6 @@ tests = ["tests/test_workspace_backlog.py::test_repository_infers_github_origin_
          "tests/test_workspace_backlog.py::test_repository_rejects_traversal_owner_in_origin"]
 note = "Origin URLs are read with a fixed argv, timeout and checkout directory; hostile URL syntax does not become a repository"
 
-
 [[group]]
 match = ["route:fleet/api.py:/jobs/*"]
 status = "covered"
@@ -550,7 +523,6 @@ tests = ["tests/test_fleet_daemon.py::test_job_reads_refuse_unknown_or_traversin
          "tests/test_fleet_daemon.py::test_job_runs_and_reports_success",
          "tests/test_fleet_daemon.py::test_unknown_job_is_404"]
 note = "job reads require authentication and select existing job identifiers; unknown, traversing and malformed paths cannot return outside-file contents"
-
 
 [[group]]
 match = ["route:fleet/launch_routes.py:/ui/launch-ticket", "route:fleet/launch_routes.py:/ui/launch/ticket"]
@@ -714,7 +686,7 @@ status = "covered"
 tests = [
   "tests/test_harness_rails.py::TestWorkspaceCommands::test_a_hostile_label_is_one_argument_and_never_a_shell_line",
   "tests/test_harness_rails.py::TestHook::test_no_environment_variable_or_argument_lifts_the_policy",
-  "tests/test_harness_rails.py::TestHook::test_a_call_that_asks_with_no_keystore_is_denied_at_once",
+  "tests/test_harness_rails.py::TestHook::test_a_destructive_call_is_denied_at_once_by_the_hook_with_no_keystore_and_no_terminal",
   "tests/test_harness_rails.py::TestHook::test_a_hook_that_fails_blocks_the_call",
   "tests/test_harness_rails.py::TestSessionFiles::test_the_settings_are_outside_the_tree_read_only_and_hold_no_secret",
   "tests/test_harness_rails.py::TestPolicy::test_text_naming_the_launchers_files_or_a_person_only_action_is_denied_in_every_role",
@@ -943,7 +915,7 @@ tests = [
   "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
   "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
   "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-  "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+  "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
   "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
   "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"]
 note = "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -1209,9 +1181,9 @@ note = "the protocol edge, argument types, flag smuggling and honest hints are a
 match = ["chat-tool:*"]
 status = "covered"
 tests = [
-  "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+  "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
   "tests/test_redteam_chat.py",
-  "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint",
+  "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why",
 ]
 
 [[group]]
@@ -1264,7 +1236,7 @@ match = ["cli:poolhouse-log"]
 status = "covered"
 tests = ["tests/test_redteam_activity.py::test_text_recorded_in_the_log_reaches_an_agent_only_fenced_and_inert",
          "tests/test_redteam_activity.py::test_a_model_that_obeys_everything_cannot_read_edit_truncate_or_disable_the_log",
-         "tests/test_activity_viewer.py::test_an_agent_cannot_export"]
+         "tests/test_activity_viewer.py::test_an_agent_cannot_export_and_is_refused_at_once_with_the_reason"]
 note = "the viewer is read-only; an agent's process sees records only fenced and inert, and cannot export or switch the log off"
 
 [[group]]
@@ -1781,3 +1753,11 @@ match = ["route:fleet/setup_routes.py:/ui/setup/suggest", "route:fleet/setup_rou
 status = "partial"
 tests = ["tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header", "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine"]
 note = "The shared UI-header boundary and prejoin discovery boundary are attacked; individual preference, suggestion and member routes lack a complete hostile-request matrix."
+
+[[group]]
+match = ["spawn:workspace/release_check.py:_git"]
+status = "covered"
+count = 1
+tests = ["tests/test_release_check.py::test_a_checkout_with_uncommitted_changes_is_refused_even_with_an_accept",
+         "tests/test_release_check.py::test_the_commit_with_a_standing_independent_accept_may_be_merged"]
+note = "fixed git argument vectors with a timeout read the commit and the dirtiness a merge into a protected branch is judged on; a failure to read is a refusal"

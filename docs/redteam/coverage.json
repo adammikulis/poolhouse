@@ -1,10 +1,10 @@
 {
- "surfaces": 877,
+ "surfaces": 893,
  "by_status": {
-  "covered": 558,
+  "covered": 573,
   "partial": 184,
   "uncovered": 51,
-  "n/a": 84,
+  "n/a": 85,
   "unmapped": 0
  },
  "by_kind": {
@@ -51,7 +51,7 @@
    "unmapped": 0
   },
   "human": {
-   "covered": 44,
+   "covered": 61,
    "partial": 0,
    "uncovered": 0,
    "n/a": 1,
@@ -68,7 +68,7 @@
    "covered": 7,
    "partial": 3,
    "uncovered": 0,
-   "n/a": 24,
+   "n/a": 25,
    "unmapped": 0
   },
   "mcp-tool": {
@@ -79,7 +79,7 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 91,
+   "covered": 90,
    "partial": 0,
    "uncovered": 47,
    "n/a": 0,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 104,
+   "covered": 103,
    "partial": 65,
    "uncovered": 0,
    "n/a": 4,
@@ -116,9 +116,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -130,9 +130,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -144,9 +144,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -158,9 +158,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -172,9 +172,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -186,9 +186,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -200,9 +200,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -214,9 +214,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -228,9 +228,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -242,9 +242,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -256,9 +256,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -270,9 +270,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -284,9 +284,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -298,9 +298,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -312,9 +312,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -326,9 +326,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -340,9 +340,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -354,9 +354,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -368,9 +368,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -382,9 +382,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -396,9 +396,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -410,9 +410,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -424,9 +424,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -438,9 +438,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -452,9 +452,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -466,9 +466,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -480,9 +480,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -494,9 +494,9 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_the_person_only_floor",
+    "tests/test_roles.py::test_every_role_by_every_tool_never_includes_a_protected_action",
     "tests/test_redteam_chat.py",
-    "tests/test_roles.py::test_a_tainted_acting_call_asks_once_and_the_question_names_the_taint"
+    "tests/test_roles.py::test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the_rest_saying_why"
    ],
    "note": ""
   },
@@ -671,7 +671,7 @@
    "tests": [
     "tests/test_redteam_activity.py::test_text_recorded_in_the_log_reaches_an_agent_only_fenced_and_inert",
     "tests/test_redteam_activity.py::test_a_model_that_obeys_everything_cannot_read_edit_truncate_or_disable_the_log",
-    "tests/test_activity_viewer.py::test_an_agent_cannot_export"
+    "tests/test_activity_viewer.py::test_an_agent_cannot_export_and_is_refused_at_once_with_the_reason"
    ],
    "note": "the viewer is read-only; an agent's process sees records only fenced and inert, and cannot export or switch the log off"
   },
@@ -3544,13 +3544,13 @@
    "kind": "human",
    "source": "activity/cli.py:_export",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -3561,13 +3561,47 @@
    "kind": "human",
    "source": "activity/writer.py:log",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
+    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
+    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
+   ],
+   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:authority.py:require",
+   "kind": "human",
+   "source": "authority.py:require",
+   "trust": "an agent process or a member",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
+    "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
+    "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
+    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
+    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
+   ],
+   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:authority.py:set_state",
+   "kind": "human",
+   "source": "authority.py:set_state",
+   "trust": "an agent process or a member",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
+    "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
+    "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -3578,13 +3612,30 @@
    "kind": "human",
    "source": "board/credentials.py:prepare",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
+    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
+    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
+   ],
+   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:caller.py:refuse_agent",
+   "kind": "human",
+   "source": "caller.py:refuse_agent",
+   "trust": "an agent process or a member",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
+    "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
+    "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -3595,13 +3646,13 @@
    "kind": "human",
    "source": "chatpolicy.py:ProtectedRail.before_tool_call",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -3612,15 +3663,13 @@
    "kind": "human",
    "source": "fleet/autostart_apply.py:install",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_redteam_automatic_floor.py::test_no_tool_an_agent_is_offered_is_a_human_only_action",
-    "tests/test_autostart_apply.py::test_an_agent_is_refused_install_and_rollback_before_anything_is_read",
-    "tests/test_autostart_apply.py::test_no_terminal_means_no_install",
-    "tests/test_autostart_apply.py::test_the_person_must_type_the_manifest_id",
+    "tests/test_autostart_apply.py::test_an_agent_is_refused_install_and_rollback_at_once_before_anything_is_read",
     "tests/test_autostart_apply.py::test_an_expired_manifest_is_refused_and_nothing_is_written",
     "tests/test_autostart_apply.py::test_a_manifest_prepared_on_another_device_is_refused",
     "tests/test_autostart_apply.py::test_replaying_an_installed_manifest_is_refused",
@@ -3639,15 +3688,13 @@
    "kind": "human",
    "source": "fleet/autostart_apply.py:rollback",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_redteam_automatic_floor.py::test_no_tool_an_agent_is_offered_is_a_human_only_action",
-    "tests/test_autostart_apply.py::test_an_agent_is_refused_install_and_rollback_before_anything_is_read",
-    "tests/test_autostart_apply.py::test_no_terminal_means_no_install",
-    "tests/test_autostart_apply.py::test_the_person_must_type_the_manifest_id",
+    "tests/test_autostart_apply.py::test_an_agent_is_refused_install_and_rollback_at_once_before_anything_is_read",
     "tests/test_autostart_apply.py::test_an_expired_manifest_is_refused_and_nothing_is_written",
     "tests/test_autostart_apply.py::test_a_manifest_prepared_on_another_device_is_refused",
     "tests/test_autostart_apply.py::test_replaying_an_installed_manifest_is_refused",
@@ -3662,17 +3709,31 @@
    "note": "install and rollback refuse any agent marker or missing terminal before reading the manifest; an expired, replayed, other-device, tampered or redirected manifest writes nothing"
   },
   {
+   "id": "human:fleet/launch_open.py:_open",
+   "kind": "human",
+   "source": "fleet/launch_open.py:_open",
+   "trust": "an agent process or a member",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_person_session.py::test_the_open_command_hands_an_agent_or_a_pipe_nothing",
+    "tests/test_redteam_person_session.py::test_the_open_command_hands_a_person_at_a_terminal_a_one_use_address",
+    "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing"
+   ],
+   "note": "A process an agent started and a process with no terminal get no ticket from a live daemon; a person at a terminal gets an address that signs in once"
+  },
+  {
    "id": "human:fleet/launch_secret.py:_private_directory",
    "kind": "human",
    "source": "fleet/launch_secret.py:_private_directory",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -3683,13 +3744,13 @@
    "kind": "human",
    "source": "fleet/onboard/share_cli.py:_confirm_licences",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -3700,13 +3761,13 @@
    "kind": "human",
    "source": "fleet/onboard/signing_cli.py:_run",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -3717,13 +3778,13 @@
    "kind": "human",
    "source": "fleet/runtime_wheel.py:prepare",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -3734,13 +3795,13 @@
    "kind": "human",
    "source": "gym/decision_process.py:DecisionProcess.__init__",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -3751,13 +3812,13 @@
    "kind": "human",
    "source": "inbox/cli.py:answer",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -3768,13 +3829,13 @@
    "kind": "human",
    "source": "keystore.py:Keystore._ensure_dir",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -3785,13 +3846,13 @@
    "kind": "human",
    "source": "memory/cli.py:_guarded.run",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -3802,13 +3863,13 @@
    "kind": "human",
    "source": "memory/facts.py:check",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -3819,13 +3880,13 @@
    "kind": "human",
    "source": "memory/store.py:Store.__init__",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -3836,13 +3897,30 @@
    "kind": "human",
    "source": "net/cli.py:approve_host",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
+    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
+    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
+   ],
+   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:net/cli.py:keystore_reset",
+   "kind": "human",
+   "source": "net/cli.py:keystore_reset",
+   "trust": "an agent process or a member",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
+    "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
+    "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -3853,13 +3931,13 @@
    "kind": "human",
    "source": "net/cli.py:scan_policy",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -3870,13 +3948,13 @@
    "kind": "human",
    "source": "reputation/cli.py:_guarded.run",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -3887,13 +3965,13 @@
    "kind": "human",
    "source": "requests/inbox.py:answer",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -3904,13 +3982,13 @@
    "kind": "human",
    "source": "runtime.py:publish",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -3921,13 +3999,13 @@
    "kind": "human",
    "source": "runtime.py:write_launcher",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -3938,13 +4016,13 @@
    "kind": "human",
    "source": "runtime_deploy.py:prepare_root",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -3955,13 +4033,13 @@
    "kind": "human",
    "source": "runtime_launchers.py:_replace",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -3972,13 +4050,13 @@
    "kind": "human",
    "source": "runtime_launchers.py:install",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -3989,13 +4067,13 @@
    "kind": "human",
    "source": "runtime_trust.py:authorize",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -4006,7 +4084,7 @@
    "kind": "human",
    "source": "runtime_unmerged.py:validate",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_runtime_unmerged.py::test_person_floor_blocks_each_gate",
@@ -4022,13 +4100,13 @@
    "kind": "human",
    "source": "sentinel/adapters.py:agent_gate.gate",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -4039,13 +4117,13 @@
    "kind": "human",
    "source": "sentinel/cli.py:_purge",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -4056,13 +4134,13 @@
    "kind": "human",
    "source": "sentinel/cli.py:_release",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -4073,13 +4151,30 @@
    "kind": "human",
    "source": "sentinel/cli.py:_show",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
+    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
+    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
+   ],
+   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:sentinel/cli.py:baseline",
+   "kind": "human",
+   "source": "sentinel/cli.py:baseline",
+   "trust": "an agent process or a member",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
+    "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
+    "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -4090,13 +4185,13 @@
    "kind": "human",
    "source": "sentinel/cli.py:mode",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -4107,13 +4202,13 @@
    "kind": "human",
    "source": "sentinel/core.py:Sentinel.__init__",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -4124,13 +4219,47 @@
    "kind": "human",
    "source": "sentinel/heads_up.py:HeadsUp._release",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
+    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
+    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
+   ],
+   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:sentinel/permit.py:Permit.check",
+   "kind": "human",
+   "source": "sentinel/permit.py:Permit.check",
+   "trust": "an agent process or a member",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
+    "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
+    "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
+    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
+    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
+   ],
+   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:sentinel/permit.py:mint",
+   "kind": "human",
+   "source": "sentinel/permit.py:mint",
+   "trust": "an agent process or a member",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
+    "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
+    "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -4141,13 +4270,13 @@
    "kind": "human",
    "source": "sentinel/permit.py:mint_gated",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -4158,13 +4287,13 @@
    "kind": "human",
    "source": "serve/backend.py:launch",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -4175,13 +4304,13 @@
    "kind": "human",
    "source": "serve/wired_apply.py:_authorise",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -4192,7 +4321,7 @@
    "kind": "human",
    "source": "studio/engine.py:WorkflowEngine._dispatch",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "n/a",
    "tests": [
     "tests/test_studio_resident_service.py::test_resident_mint_observes_persisted_intent_before_prepare",
@@ -4202,16 +4331,87 @@
    "note": "Internal resident execution permit under the authorized principal and private worker proof; no person authority, signing permission or human grant is minted"
   },
   {
-   "id": "human:workspace/github_identity.py:only_this_repository",
+   "id": "human:workspace/approval_cli.py:_decide",
    "kind": "human",
-   "source": "workspace/github_identity.py:only_this_repository",
+   "source": "workspace/approval_cli.py:_decide",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
+   "status": "covered",
+   "tests": [
+    "tests/test_board_approval.py::test_an_agent_cannot_answer_a_request_read_what_waits_or_add_or_remove_a_phone_and_the_refusal_says_why_at_once",
+    "tests/test_board_approval.py::test_the_device_answers_a_request_with_its_own_key_at_once_and_what_waits_is_read_with_that_key",
+    "tests/test_board_approval.py::test_the_first_phone_is_added_from_a_code_drawn_at_once_and_never_an_image_file",
+    "tests/test_board_approval.py::test_a_further_phone_is_added_by_an_image_and_waits_for_a_phone_you_hold_to_approve_it",
+    "tests/test_board_approval.py::test_a_request_that_is_not_routine_is_answered_with_the_number_the_asker_was_shown_and_a_wrong_number_is_a_decline",
+    "tests/test_board_approval.py::test_a_code_that_was_made_for_nobody_else_adds_nothing_twice_and_a_wrong_one_adds_nothing",
+    "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
+    "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else"
+   ],
+   "note": "approval decide, phone add and phone remove refuse a process an agent started and one with no terminal; the node accepts a decision only from the signature of a key it holds over the text it wrote, once, and a session never decides (app/poolhouse-node/tests/approvals.rs, phone_endpoint.rs, push_out.rs)"
+  },
+  {
+   "id": "human:workspace/approval_cli.py:command",
+   "kind": "human",
+   "source": "workspace/approval_cli.py:command",
+   "trust": "an agent process or a member",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
+   "status": "covered",
+   "tests": [
+    "tests/test_board_approval.py::test_an_agent_cannot_answer_a_request_read_what_waits_or_add_or_remove_a_phone_and_the_refusal_says_why_at_once",
+    "tests/test_board_approval.py::test_the_device_answers_a_request_with_its_own_key_at_once_and_what_waits_is_read_with_that_key",
+    "tests/test_board_approval.py::test_the_first_phone_is_added_from_a_code_drawn_at_once_and_never_an_image_file",
+    "tests/test_board_approval.py::test_a_further_phone_is_added_by_an_image_and_waits_for_a_phone_you_hold_to_approve_it",
+    "tests/test_board_approval.py::test_a_request_that_is_not_routine_is_answered_with_the_number_the_asker_was_shown_and_a_wrong_number_is_a_decline",
+    "tests/test_board_approval.py::test_a_code_that_was_made_for_nobody_else_adds_nothing_twice_and_a_wrong_one_adds_nothing",
+    "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
+    "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else"
+   ],
+   "note": "approval decide, phone add and phone remove refuse a process an agent started and one with no terminal; the node accepts a decision only from the signature of a key it holds over the text it wrote, once, and a session never decides (app/poolhouse-node/tests/approvals.rs, phone_endpoint.rs, push_out.rs)"
+  },
+  {
+   "id": "human:workspace/cli.py:_chat",
+   "kind": "human",
+   "source": "workspace/cli.py:_chat",
+   "trust": "an agent process or a member",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
+    "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
+    "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
+    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
+    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
+   ],
+   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:workspace/github_identity.py:guard",
+   "kind": "human",
+   "source": "workspace/github_identity.py:guard",
+   "trust": "an agent process or a member",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_agent_identity.py::test_delegated_setup_refuses_before_app_load_api_or_browser",
     "tests/test_agent_identity.py::test_delegated_setup_revalidates_after_browser_before_exchange",
-    "tests/test_agent_identity.py::test_an_agent_marker_refuses_every_use_of_the_key_before_any_request",
+    "tests/test_agent_identity.py::test_an_agent_marker_refuses_every_use_of_the_key_at_once_and_before_any_request",
+    "tests/test_agent_identity.py::test_a_token_that_is_wider_or_longer_than_asked_is_not_given_out",
+    "tests/test_agent_identity.py::test_an_installation_that_reaches_another_repository_is_refused"
+   ],
+   "note": "App setup requires the selected installed holder, eligible root session and delegated gate, rechecks actor/source, and never exports its key; raw token and online check are refused to an agent at once and installation/token scopes cannot widen"
+  },
+  {
+   "id": "human:workspace/github_identity.py:only_this_repository",
+   "kind": "human",
+   "source": "workspace/github_identity.py:only_this_repository",
+   "trust": "an agent process or a member",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
+   "status": "covered",
+   "tests": [
+    "tests/test_agent_identity.py::test_delegated_setup_refuses_before_app_load_api_or_browser",
+    "tests/test_agent_identity.py::test_delegated_setup_revalidates_after_browser_before_exchange",
+    "tests/test_agent_identity.py::test_an_agent_marker_refuses_every_use_of_the_key_at_once_and_before_any_request",
     "tests/test_agent_identity.py::test_a_token_that_is_wider_or_longer_than_asked_is_not_given_out",
     "tests/test_agent_identity.py::test_an_installation_that_reaches_another_repository_is_refused"
    ],
@@ -4222,12 +4422,12 @@
    "kind": "human",
    "source": "workspace/github_identity.py:token",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_agent_identity.py::test_delegated_setup_refuses_before_app_load_api_or_browser",
     "tests/test_agent_identity.py::test_delegated_setup_revalidates_after_browser_before_exchange",
-    "tests/test_agent_identity.py::test_an_agent_marker_refuses_every_use_of_the_key_before_any_request",
+    "tests/test_agent_identity.py::test_an_agent_marker_refuses_every_use_of_the_key_at_once_and_before_any_request",
     "tests/test_agent_identity.py::test_a_token_that_is_wider_or_longer_than_asked_is_not_given_out",
     "tests/test_agent_identity.py::test_an_installation_that_reaches_another_repository_is_refused"
    ],
@@ -4238,13 +4438,13 @@
    "kind": "human",
    "source": "workspace/github_release.py:authorize",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -4255,13 +4455,13 @@
    "kind": "human",
    "source": "workspace/github_release.py:publish_release",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -4272,30 +4472,88 @@
    "kind": "human",
    "source": "workspace/github_release.py:push_development",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
   },
   {
+   "id": "human:workspace/grants_cli.py:person_runner.run",
+   "kind": "human",
+   "source": "workspace/grants_cli.py:person_runner.run",
+   "trust": "an agent process or a member",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
+   "status": "covered",
+   "tests": [
+    "tests/test_board_grants.py::test_a_person_sets_up_the_lead_grants_once_and_every_item_is_revoked_by_its_own_id",
+    "tests/test_board_grants.py::test_the_commands_that_sign_with_the_devices_key_are_refused_to_an_agent_at_once_with_the_reason_and_make_no_key",
+    "tests/test_board_grants.py::test_a_signature_made_in_python_is_one_the_node_verifies_and_only_the_enrolled_key_counts",
+    "tests/test_board_grants.py::test_a_second_key_is_enrolled_only_with_the_approval_of_the_first",
+    "tests/test_board_person_key.py::test_an_agent_is_refused_at_once_before_a_key_is_made_and_the_refusal_is_audited_with_who_asked",
+    "tests/test_board_grants.py::test_hostile_arguments_to_the_person_commands_are_refused_before_anything_is_written",
+    "tests/test_board_grants.py::test_a_process_that_registers_as_the_leads_family_with_a_lying_model_inherits_nothing_from_the_setup",
+    "tests/test_board_grants.py::test_a_class_grant_needs_the_person_to_say_registration_is_open_and_then_does_hold_for_any_process_that_claims_the_family",
+    "tests/test_board_grants.py::test_a_key_is_taken_off_the_node_by_a_key_the_node_holds_and_the_last_key_stays",
+    "tests/test_board_person_key.py::test_a_command_signs_with_no_terminal_for_a_process_with_no_marker_and_is_refused_to_an_agent_with_the_reason",
+    "tests/test_board_person_key.py::test_the_key_is_made_on_first_use_beside_the_node_and_signs_with_no_question",
+    "tests/test_board_person_key.py::test_what_is_signed_is_read_back_in_words_from_the_bytes_and_nothing_else_is_described",
+    "tests/test_board_person_key.py::test_the_passphrase_of_the_key_file_comes_from_the_environment_only_and_its_absence_is_one_sentence",
+    "tests/test_board_person_key.py::test_a_carried_key_whose_name_is_not_plain_text_is_refused_before_anything_is_signed",
+    "tests/test_node_lineage.py::test_a_token_read_from_its_file_in_another_live_terminal_reads_and_spends_no_grant",
+    "tests/test_node_lineage.py::test_a_session_registered_from_a_terminal_that_has_ended_moves_to_the_process_that_registers_it_next",
+    "tests/test_node_lineage.py::test_a_session_its_parent_ended_for_cause_stays_ended_and_its_command_says_why",
+    "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing"
+   ],
+   "note": "grant, revoke-grant, distrust, grants-setup, person-proof, person-enroll and person-unenroll sign with this device's key at once and refuse an agent at once with the reason; the node refuses what that key did not sign, a first key enrolled without the one-time secret, a key removal or an approval of a key that an enrolled key did not sign for this node and once, a removed key enrolled again, a token used from another live terminal than the one that runs the session (a live sibling that registers the same session gets a token that spends no grant while the first runs, and the refusal sends nobody anywhere), and a subagent its parent ended for cause registering again (app/poolhouse-node/tests/grants.rs, grants_enrol.rs, grants_keys.rs, grants_hostile.rs, grants_foreign.rs, lineage.rs, lineage_tokens.rs, limits.rs, registry.rs)"
+  },
+  {
+   "id": "human:workspace/grants_cli.py:reader.run",
+   "kind": "human",
+   "source": "workspace/grants_cli.py:reader.run",
+   "trust": "an agent process or a member",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
+   "status": "covered",
+   "tests": [
+    "tests/test_board_grants.py::test_a_person_sets_up_the_lead_grants_once_and_every_item_is_revoked_by_its_own_id",
+    "tests/test_board_grants.py::test_the_commands_that_sign_with_the_devices_key_are_refused_to_an_agent_at_once_with_the_reason_and_make_no_key",
+    "tests/test_board_grants.py::test_a_signature_made_in_python_is_one_the_node_verifies_and_only_the_enrolled_key_counts",
+    "tests/test_board_grants.py::test_a_second_key_is_enrolled_only_with_the_approval_of_the_first",
+    "tests/test_board_person_key.py::test_an_agent_is_refused_at_once_before_a_key_is_made_and_the_refusal_is_audited_with_who_asked",
+    "tests/test_board_grants.py::test_hostile_arguments_to_the_person_commands_are_refused_before_anything_is_written",
+    "tests/test_board_grants.py::test_a_process_that_registers_as_the_leads_family_with_a_lying_model_inherits_nothing_from_the_setup",
+    "tests/test_board_grants.py::test_a_class_grant_needs_the_person_to_say_registration_is_open_and_then_does_hold_for_any_process_that_claims_the_family",
+    "tests/test_board_grants.py::test_a_key_is_taken_off_the_node_by_a_key_the_node_holds_and_the_last_key_stays",
+    "tests/test_board_person_key.py::test_a_command_signs_with_no_terminal_for_a_process_with_no_marker_and_is_refused_to_an_agent_with_the_reason",
+    "tests/test_board_person_key.py::test_the_key_is_made_on_first_use_beside_the_node_and_signs_with_no_question",
+    "tests/test_board_person_key.py::test_what_is_signed_is_read_back_in_words_from_the_bytes_and_nothing_else_is_described",
+    "tests/test_board_person_key.py::test_the_passphrase_of_the_key_file_comes_from_the_environment_only_and_its_absence_is_one_sentence",
+    "tests/test_board_person_key.py::test_a_carried_key_whose_name_is_not_plain_text_is_refused_before_anything_is_signed",
+    "tests/test_node_lineage.py::test_a_token_read_from_its_file_in_another_live_terminal_reads_and_spends_no_grant",
+    "tests/test_node_lineage.py::test_a_session_registered_from_a_terminal_that_has_ended_moves_to_the_process_that_registers_it_next",
+    "tests/test_node_lineage.py::test_a_session_its_parent_ended_for_cause_stays_ended_and_its_command_says_why",
+    "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing"
+   ],
+   "note": "grant, revoke-grant, distrust, grants-setup, person-proof, person-enroll and person-unenroll sign with this device's key at once and refuse an agent at once with the reason; the node refuses what that key did not sign, a first key enrolled without the one-time secret, a key removal or an approval of a key that an enrolled key did not sign for this node and once, a removed key enrolled again, a token used from another live terminal than the one that runs the session (a live sibling that registers the same session gets a token that spends no grant while the first runs, and the refusal sends nobody anywhere), and a subagent its parent ended for cause registering again (app/poolhouse-node/tests/grants.rs, grants_enrol.rs, grants_keys.rs, grants_hostile.rs, grants_foreign.rs, lineage.rs, lineage_tokens.rs, limits.rs, registry.rs)"
+  },
+  {
    "id": "human:workspace/hooks_cli.py:install",
    "kind": "human",
    "source": "workspace/hooks_cli.py:install",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
@@ -4306,17 +4564,72 @@
    "kind": "human",
    "source": "workspace/localcli.py:run",
    "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:workspace/mail_cli.py:free",
+   "kind": "human",
+   "source": "workspace/mail_cli.py:free",
+   "trust": "an agent process or a member",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
+    "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
+    "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
+    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
+    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
+    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
+   ],
+   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:workspace/phone_cli.py:_add",
+   "kind": "human",
+   "source": "workspace/phone_cli.py:_add",
+   "trust": "an agent process or a member",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
+   "status": "covered",
+   "tests": [
+    "tests/test_board_approval.py::test_an_agent_cannot_answer_a_request_read_what_waits_or_add_or_remove_a_phone_and_the_refusal_says_why_at_once",
+    "tests/test_board_approval.py::test_the_device_answers_a_request_with_its_own_key_at_once_and_what_waits_is_read_with_that_key",
+    "tests/test_board_approval.py::test_the_first_phone_is_added_from_a_code_drawn_at_once_and_never_an_image_file",
+    "tests/test_board_approval.py::test_a_further_phone_is_added_by_an_image_and_waits_for_a_phone_you_hold_to_approve_it",
+    "tests/test_board_approval.py::test_a_request_that_is_not_routine_is_answered_with_the_number_the_asker_was_shown_and_a_wrong_number_is_a_decline",
+    "tests/test_board_approval.py::test_a_code_that_was_made_for_nobody_else_adds_nothing_twice_and_a_wrong_one_adds_nothing",
+    "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
+    "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else"
+   ],
+   "note": "approval decide, phone add and phone remove refuse a process an agent started and one with no terminal; the node accepts a decision only from the signature of a key it holds over the text it wrote, once, and a session never decides (app/poolhouse-node/tests/approvals.rs, phone_endpoint.rs, push_out.rs)"
+  },
+  {
+   "id": "human:workspace/phone_cli.py:_remove",
+   "kind": "human",
+   "source": "workspace/phone_cli.py:_remove",
+   "trust": "an agent process or a member",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
+   "status": "covered",
+   "tests": [
+    "tests/test_board_approval.py::test_an_agent_cannot_answer_a_request_read_what_waits_or_add_or_remove_a_phone_and_the_refusal_says_why_at_once",
+    "tests/test_board_approval.py::test_the_device_answers_a_request_with_its_own_key_at_once_and_what_waits_is_read_with_that_key",
+    "tests/test_board_approval.py::test_the_first_phone_is_added_from_a_code_drawn_at_once_and_never_an_image_file",
+    "tests/test_board_approval.py::test_a_further_phone_is_added_by_an_image_and_waits_for_a_phone_you_hold_to_approve_it",
+    "tests/test_board_approval.py::test_a_request_that_is_not_routine_is_answered_with_the_number_the_asker_was_shown_and_a_wrong_number_is_a_decline",
+    "tests/test_board_approval.py::test_a_code_that_was_made_for_nobody_else_adds_nothing_twice_and_a_wrong_one_adds_nothing",
+    "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
+    "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else"
+   ],
+   "note": "approval decide, phone add and phone remove refuse a process an agent started and one with no terminal; the node accepts a decision only from the signature of a key it holds over the text it wrote, once, and a session never decides (app/poolhouse-node/tests/approvals.rs, phone_endpoint.rs, push_out.rs)"
   },
   {
    "id": "keystore:installed.py:<module>",
@@ -4750,6 +5063,16 @@
    "status": "n/a",
    "tests": [],
    "note": "setup_context.bind ties a request to the signed-in browser session and identity it came with. It neither creates a socket nor listens for connections; the routes that call it are mapped as routes."
+  },
+  {
+   "id": "listener:workspace/harness_ancestry.py:on_event",
+   "kind": "listener",
+   "source": "workspace/harness_ancestry.py:on_event",
+   "trust": "anything that can connect to the address",
+   "attacker": "an unauthenticated or cross-origin client reaches the port",
+   "status": "n/a",
+   "tests": [],
+   "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
   },
   {
    "id": "mcp-tool:bench_history",
@@ -7321,23 +7644,6 @@
     "tests/test_workspace_rules.py"
    ],
    "note": ""
-  },
-  {
-   "id": "parser:workspace/person_transcript.py",
-   "kind": "parser",
-   "source": "workspace/person_transcript.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_person_statement.py::test_no_typed_phrasing_becomes_an_authorization",
-    "tests/test_person_hooks.py::test_a_prompt_the_person_did_not_type_leaves_no_record",
-    "tests/test_person_hooks.py::test_a_missing_transcript_entry_fails_closed_after_a_bounded_wait",
-    "tests/test_person_hooks.py::test_an_unreadable_transcript_and_a_mismatched_text_fail_closed",
-    "tests/test_person_hooks.py::test_a_transcript_the_calling_agent_wrote_elsewhere_records_nothing",
-    "tests/test_person_hooks.py::test_a_hundred_megabyte_transcript_is_read_from_its_tail_within_the_hook_budget"
-   ],
-   "note": "a transcript entry that is not a typed human prompt on a pinned Claude Code version, is missing, unreadable or differs from the hook prompt records nothing; a forged line by a same-user process is the documented threat-model limit"
   },
   {
    "id": "parser:workspace/screen.py",
@@ -10402,7 +10708,7 @@
    "tests": [
     "tests/test_harness_rails.py::TestWorkspaceCommands::test_a_hostile_label_is_one_argument_and_never_a_shell_line",
     "tests/test_harness_rails.py::TestHook::test_no_environment_variable_or_argument_lifts_the_policy",
-    "tests/test_harness_rails.py::TestHook::test_a_call_that_asks_with_no_keystore_is_denied_at_once",
+    "tests/test_harness_rails.py::TestHook::test_a_destructive_call_is_denied_at_once_by_the_hook_with_no_keystore_and_no_terminal",
     "tests/test_harness_rails.py::TestHook::test_a_hook_that_fails_blocks_the_call",
     "tests/test_harness_rails.py::TestSessionFiles::test_the_settings_are_outside_the_tree_read_only_and_hold_no_secret",
     "tests/test_harness_rails.py::TestPolicy::test_text_naming_the_launchers_files_or_a_person_only_action_is_denied_in_every_role"
@@ -10419,7 +10725,7 @@
    "tests": [
     "tests/test_harness_rails.py::TestWorkspaceCommands::test_a_hostile_label_is_one_argument_and_never_a_shell_line",
     "tests/test_harness_rails.py::TestHook::test_no_environment_variable_or_argument_lifts_the_policy",
-    "tests/test_harness_rails.py::TestHook::test_a_call_that_asks_with_no_keystore_is_denied_at_once",
+    "tests/test_harness_rails.py::TestHook::test_a_destructive_call_is_denied_at_once_by_the_hook_with_no_keystore_and_no_terminal",
     "tests/test_harness_rails.py::TestHook::test_a_hook_that_fails_blocks_the_call",
     "tests/test_harness_rails.py::TestSessionFiles::test_the_settings_are_outside_the_tree_read_only_and_hold_no_secret",
     "tests/test_harness_rails.py::TestPolicy::test_text_naming_the_launchers_files_or_a_person_only_action_is_denied_in_every_role"
@@ -12462,19 +12768,6 @@
     "tests/test_redteam_board_client.py::test_a_members_note_cannot_choose_the_command_a_verification_records"
    ],
    "note": "a note's command runs as an argument vector the owner allow-listed, with no shell; shell syntax and off-list commands do not run, and the recorded command is the note's own"
-  },
-  {
-   "id": "spawn:workspace/person_targets.py:_run",
-   "kind": "spawn",
-   "source": "workspace/person_targets.py:_run",
-   "trust": "arguments built from model output, member messages or file names",
-   "attacker": "attacker text becomes a command line, environment or working directory",
-   "status": "covered",
-   "tests": [
-    "tests/test_person_hooks.py::test_another_commit_another_repository_or_another_remote_does_not_match",
-    "tests/test_person_guards.py::test_an_approval_covers_exactly_one_fast_forward_to_the_approved_commit"
-   ],
-   "note": "fixed git argument vectors with a timeout; the repository, remote, commit and tree an authorization binds are read from git, never from prompt or model text"
   },
   {
    "id": "spawn:workspace/release_check.py:_git",
