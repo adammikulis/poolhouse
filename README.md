@@ -86,13 +86,13 @@ for the graph example above.
 
 ## Security
 
-Poolhouse separates a device's membership from an agent's permissions and a person's approval. Received messages,
+Poolhouse separates a device's membership from an agent's permissions. Nothing waits for a person: an action is allowed by a rule or refused at once with the reason, and either way the audit log says who ran it. Received messages,
 files, model replies and tool results are data, not authority. Network listeners, admission policies, signing and
-phone approval have different trust boundaries; their defaults and current limits are described in
+the optional phone have different trust boundaries; their defaults and current limits are described in
 [the security policy](SECURITY.md) and [the threat model](docs/security.md).
 
 Governance signs the terms and actions a pool follows. Scoped grants limit what an agent session can do, and
-sensitive requests go through approval checks. Model processes start through the compute broker. Where implemented,
+requests for grants are decided automatically by policy. Model processes start through the compute broker. Where implemented,
 operating-system keystore storage protects secrets at rest; it is separate from the permissions to use them.
 
 These protections have limits, including compromised accounts, file-backed keys and hardware behavior that has

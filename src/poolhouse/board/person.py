@@ -2,8 +2,9 @@
 
 The daemon registers one parentless session per board under the harness `poolhouse-ui`, one for each terminal or program
 that asks (the node spends a grant only for the lineage that registered a token); the node names it like any
-session, and it holds no grant of its own: when the node refuses it for want of one, the person's key (kept beside the
-node) is asked to sign a grant for that one use, which needs a typed yes on a terminal, so a daemon with none signs nothing.
+session, and it holds no grant of its own: when the node refuses it for want of one, this device's key (kept beside the
+node) signs a grant for that one use at once when policy allows it (`person_key.provider`); a process an agent started is refused the few
+grants an agent may not have.
 The token is kept in the daemon's private client folder and never reaches a page.
 """
 
@@ -35,7 +36,7 @@ def session(root: str | Path, client: Client | None = None, board: str = "") -> 
     `Denied` when ``root`` is not part of a project the node can place.
     """
     state = node_launch.default_state()
-    node = client or Client(state, person=person_key.provider(state, attended=True))
+    node = client or Client(state, person=person_key.provider(state))
     return on(node, place.existing(node, Path(root), board))
 
 

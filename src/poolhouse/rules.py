@@ -1,9 +1,10 @@
-"""The person's always and never rules for the calls an agent asks about, kept per user.
+"""The owner's always and never rules for the calls an agent makes that act, kept per user.
 
 A rule names a tool, a pattern for each of the call's arguments, a verdict and optionally a
-role. Only the person's answer at the prompt and the ``/rules`` commands change the file; no
-tool reaches it. A file that cannot be read whole, or whose mode is open to others, matches
-nothing, so every call asks.
+role. Only the ``/rules`` commands the owner types change the file; no tool reaches it. An always
+rule lets exactly that call run in a role that runs calls only under rules; a never rule refuses
+it in every role. A file that cannot be read whole, or whose mode is open to others, matches
+nothing, so no call is covered and each acting call is refused at once.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from typing import Any
 from poolhouse import activity, files, home, windows_private
 from poolhouse.chatpolicy import (
     _TOOL_NAME,
-    CONFIRM,
+    ACTING,
     READ,
     ROLE_NAMES,
     _outside_state,
@@ -78,9 +79,9 @@ def describe(rule: Rule) -> str:
 
 
 def blocked_reason(call_name: str, arguments: Mapping[str, Any]) -> str:
-    """Why an always rule cannot be offered for this call; empty when it can."""
+    """Why an always rule cannot cover this call; empty when it can."""
     if call_name == "models_fetch":
-        return "downloads always ask: their size is not known before they start"
+        return "no always rule covers a download: its size is not known before it starts"
     if _outside_state(dict(arguments)):
         return "it names a path outside poolhouse's state"
     seen = classify(Call(call_name, dict(arguments)), roots=default_roots(), catalog=catalog())
@@ -106,7 +107,7 @@ def _valid(row: Any) -> Rule:
                 str(row.get("created") or ""), int(row.get("fired") or 0), bool(row.get("tainted_ok", False)))
     if rule.verdict not in VERDICTS:
         raise ValueError(f"verdict {rule.verdict!r}")
-    if rule.tool not in CONFIRM or rule.tool in READ or _TOOL_NAME.search(rule.tool):
+    if rule.tool not in ACTING or rule.tool in READ or _TOOL_NAME.search(rule.tool):
         raise ValueError(f"{rule.tool!r} is not a tool a rule may cover")
     if rule.verdict == "always" and any(not v.replace("*", "").replace("?", "").strip()
                                         for _, v in rule.match):
@@ -146,7 +147,7 @@ class Rules:
                 raise ValueError("unknown schema_version")
             self.rules = [_valid(r) for r in data.get("rules") or []]
         except (OSError, ValueError, TypeError) as exc:
-            self.rules, self.broken = [], f"{path.name} is not used, every call asks: {exc}"
+            self.rules, self.broken = [], f"{path.name} is not used, no call is covered: {exc}"
 
     def _save(self) -> None:
         rows = [{"tool": r.tool, "match": dict(r.match), "verdict": r.verdict, "role": r.role,
@@ -250,14 +251,23 @@ class Rules:
         lines = [self.broken] if self.broken else []
         lines += [f"{n}. {describe(r)}  [{r.fired}x, since {r.created or '?'}]"
                   for n, r in enumerate(self.rules, 1)]
-        return "\n".join(lines) or "no rules: every call that acts asks"
+        return "\n".join(lines) or "no rules"
 
 
 RULES_HELP = ("/rules                 list the rules, numbered\n"
-              "/rules remove N        delete rule N (the call asks again)\n"
+              "/rules always TOOL ARG=VALUE ...  let exactly that call run, in any role that has the tool\n"
+              "/rules never TOOL ARG=VALUE ...   refuse exactly that call in every role\n"
+              "/rules remove N        delete rule N (the call is covered by the role's own rules again)\n"
               "/rules flip N          always <-> never\n"
               "/rules tainted N       let always rule N apply after outside text was read\n"
               "/rules clear           delete every rule")
+
+
+def _argument(word: str) -> tuple[str, str]:
+    key, equals, value = word.partition("=")
+    if not equals or not key:
+        raise ValueError(f"{word!r} is not ARGUMENT=VALUE")
+    return key, value
 
 
 def run_command(rules: Rules, words: Sequence[str]) -> str:
@@ -270,6 +280,10 @@ def run_command(rules: Rules, words: Sequence[str]) -> str:
         if verb == "clear":
             rules.clear()
             return "all rules deleted"
+        if verb in VERDICTS and rest:
+            arguments = dict(_argument(word) for word in rest[1:])
+            rules.add(rest[0], arguments, verb, "")
+            return f"{verb} rule saved\n" + rules.listing()
         if verb in ("remove", "flip", "tainted") and len(rest) == 1 and rest[0].isdigit():
             getattr(rules, verb)(int(rest[0]))
             return f"{verb} done\n" + rules.listing()

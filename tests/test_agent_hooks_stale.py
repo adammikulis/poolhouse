@@ -52,7 +52,7 @@ def machine(monkeypatch, tmp_path):
     monkeypatch.delenv("CODEX_HOME", raising=False)
     monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "state"))
     monkeypatch.setattr(agent_hooks.shutil, "which", lambda name: f"/bin/{name}")
-    monkeypatch.setattr(authority, "require_person", lambda *a, **k: None)
+    monkeypatch.setattr(authority, "refuse_agent", lambda *a, **k: None)
     return tmp_path
 
 

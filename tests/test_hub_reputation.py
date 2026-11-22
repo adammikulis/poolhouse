@@ -7,7 +7,7 @@ from __future__ import annotations
 import pytest
 from net_site import gguf_bytes
 
-from poolhouse import http, hub, net, person
+from poolhouse import caller, http, hub, net
 from poolhouse.hub import transfer
 from poolhouse.sentinel import observers
 from poolhouse.testing.fakehub import fake_hub
@@ -37,7 +37,7 @@ class Ledger:
 
 @pytest.fixture
 def stand(monkeypatch, tmp_path):
-    for name in person.AGENT_MARKERS:
+    for name in caller.AGENT_MARKERS:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
     monkeypatch.delenv("HF_TOKEN", raising=False)

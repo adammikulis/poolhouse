@@ -13,7 +13,7 @@
 //! With the beacon on, the device finds a pool without a key or a code: it takes the project of
 //! the repository it runs in (`--project-dir DIR`, else the working directory; `--project NAME`
 //! names one instead; `--no-project` turns this off), and while it is in no pool joins an `open` pool
-//! of that project it hears. It never makes a pool by itself: founding one is a person's approval.
+//! of that project it hears. It never makes a pool by itself: founding one is asked for by a command.
 
 use std::io::{BufRead, Read};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -181,7 +181,7 @@ fn run(state: &Path, args: &[String]) -> Result<(), String> {
     let shared = server.node();
     set_build(&mut *shared.lock().map_err(|e| e.to_string())?, args)?;
     if let Some(name) = flag(args, "--presence") {
-        let mode = poolhouse_node::presence::Mode::parse(name).ok_or("--presence is os (the operating system's prompt) or terminal (the person's terminal device)")?;
+        let mode = poolhouse_node::presence::Mode::parse(name).ok_or("--presence is auto (nobody is asked, the default), os (the operating system's prompt) or terminal (the person's terminal device)")?;
         shared.lock().map_err(|e| e.to_string())?.firsts = poolhouse_node::presence::Firsts::new(mode.presence(state));
     }
     if let Some(listen) = phone {

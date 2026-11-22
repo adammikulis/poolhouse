@@ -24,16 +24,15 @@ from poolhouse.agent import Agent, Done, FunctionTools
 from poolhouse.agent.watched import Watch
 from poolhouse.client import Client
 from poolhouse.http import Options, ServerError, request_json
-from poolhouse.sentinel import State, human, watch
+from poolhouse.sentinel import State, permit, watch
 from poolhouse.serve import decoy
 from poolhouse.testing.canned import CannedServer, Turn
 
 REPO = Path(__file__).resolve().parent.parent
 
 
-def person(record):
-    return human.mint("release", record.id, typed=lambda _p: record.id, terminal=(True, True),
-                      env={})
+def release_permit(record):
+    return permit.mint("release", record.id, env={})
 
 
 @pytest.fixture
@@ -113,7 +112,7 @@ def test_a_tool_that_follows_the_decoy_freezes_the_session_it_ran_for_and_no_oth
     assert node.store.state_of("caller", "unattributed-decoy-hit") == State.CLEAR
     assert run_agent("s-hit", "ordinary").reason == "denied"
     record = node.store.find("session", "s-hit")
-    node.store.release(record.id, person(record))
+    node.store.release(record.id, release_permit(record))
     assert run_agent("s-hit", "ordinary").reason == "answer", "a release did not thaw it"
 
 

@@ -82,7 +82,7 @@ def test_text_has_no_path_into_the_ledger_but_the_observation_points():
     import inspect
 
     from poolhouse.reputation import store
-    for name in ("observe", "trait", "clean", "block"):
+    for name in ("observe", "trait", "clean"):
         params = inspect.signature(getattr(store.Ledger, name)).parameters
         assert not any("text" in p or "content" in p or "body" in p for p in params)
 
@@ -106,7 +106,7 @@ def test_a_third_party_cannot_make_a_good_source_look_bad(ledger, clock):
     assert (after.state, after.short, after.long, after.clean) == (before.state, before.short, before.long, before.clean)
 
 
-def test_a_watched_host_is_refused_until_a_person_approves_it(ledger, clock, tmp_path):
+def test_a_watched_host_is_refused_until_it_is_approved(ledger, clock, tmp_path):
     policy = net.Policy(allowed=["good.example"], path=tmp_path / "a.jsonl", clock=clock)
     assert policy.admit("https://good.example/x") == "good.example"
     make_established(ledger, clock, "host", "good.example")
@@ -116,6 +116,32 @@ def test_a_watched_host_is_refused_until_a_person_approves_it(ledger, clock, tmp
     clock.advance(10)
     policy.approve("good.example", by="person")
     assert policy.admit("https://good.example/x") == "good.example"
+
+
+def test_a_watched_host_is_held_back_for_an_hour_and_then_fetched_from_again_with_nobody_asked(ledger, clock, tmp_path):
+    policy = net.Policy(allowed=["good.example"], path=tmp_path / "a.jsonl", clock=clock)
+    make_established(ledger, clock, "host", "good.example")
+    ledger.observe("host", "good.example", "hash_change")
+    with pytest.raises(Distrusted, match="ends by itself"):
+        policy.admit("https://good.example/x")
+    clock.advance(net.policy.HOLD_S["watch"] - 5)
+    with pytest.raises(Distrusted):
+        policy.admit("https://good.example/x")
+    clock.advance(10)
+    assert policy.admit("https://good.example/x") == "good.example", "the hold lapsed by itself"
+    assert policy.approvals() == [], "nobody approved anything"
+
+
+def test_a_bad_host_is_held_back_for_a_day_not_for_good(ledger, clock, tmp_path):
+    policy = net.Policy(allowed=["bad.example"], path=tmp_path / "a.jsonl", clock=clock)
+    ledger.observe("host", "bad.example", "scan_hit")
+    with pytest.raises(Distrusted):
+        policy.admit("https://bad.example/x")
+    clock.advance(net.policy.HOLD_S["watch"] + 1)
+    with pytest.raises(Distrusted):
+        policy.admit("https://bad.example/x")
+    clock.advance(net.policy.HOLD_S["bad"])
+    assert policy.admit("https://bad.example/x") == "bad.example"
 
 
 def test_reputation_never_admits_a_host_the_policy_refuses(ledger, clock, tmp_path):
@@ -160,7 +186,7 @@ def test_member_outcomes_reach_the_ledger(ledger):
 
 
 def test_reputation_changes_no_role_grant_or_decision(ledger, clock):
-    tools = sorted(chatpolicy.READ | set(chatpolicy.CONFIRM) | set(roles.OWN))
+    tools = sorted(chatpolicy.READ | set(chatpolicy.ACTING) | set(roles.OWN))
 
     def decisions():
         out = {}
@@ -186,7 +212,7 @@ def test_no_reputation_code_grants_approves_or_releases():
     from pathlib import Path
 
     root = Path(reputation.__file__).parent
-    banned = {"approve", "mint", "mint_clicked", "mint_pressed", "release", "set_role", "grant"}
+    banned = {"approve", "mint", "mint_gated", "release", "set_role", "grant"}
     for path in root.glob("*.py"):
         for node in ast.walk(ast.parse(path.read_text())):
             name = node.attr if isinstance(node, ast.Attribute) else getattr(node, "id", "")

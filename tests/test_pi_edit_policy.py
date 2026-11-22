@@ -18,7 +18,7 @@ from .test_pi_tool_sandbox import installed, invoke  # noqa: F401
 pytest_plugins = ["tests.sandbox_kit"]
 
 
-def decision(root, inputs, *, permissions="ask-dangerous", mode="execute"):
+def decision(root, inputs, *, permissions="guarded", mode="execute"):
     return decide(coding_policy.Policy(permissions, mode), Call("Edit", inputs), roots=(str(root),))
 
 
@@ -107,7 +107,7 @@ def test_pi_extension_forwards_only_the_current_nested_edit_contract(tmp_path, m
                     "print(json.dumps(dict(hookSpecificOutput=dict(permissionDecision='deny'))))\n")
     monkeypatch.setattr(pi.runtime, "module_argv", lambda *args: [sys.executable, str(hook), str(capture)])
     policy = tmp_path / "policy.mjs"
-    policy.write_text(pi.extension({"root": str(tmp_path), "permissions": "ask-dangerous", "executionMode": "execute",
+    policy.write_text(pi.extension({"root": str(tmp_path), "permissions": "guarded", "executionMode": "execute",
                                    "agent": "isolated-edit", "protected": []}))
     driver = tmp_path / "driver.mjs"
     driver.write_text('import extension from "./policy.mjs";\n'

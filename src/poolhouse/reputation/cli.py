@@ -1,20 +1,19 @@
 """``poolhouse-reputation``: look at and delete what poolhouse has recorded about sources.
-Person only."""
+An agent is refused at once while the `reputation.admin` gate is held back."""
 
 from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 from collections.abc import Callable
 from typing import Any
 
 from poolhouse import authority
+from poolhouse.caller import AgentRefused
 from poolhouse.command import Group, flag, option
 from poolhouse.log import say, warn
 from poolhouse.memory.vault import KeyUnavailable
-from poolhouse.person import HumanRequired
 from poolhouse.reputation import model
 from poolhouse.reputation.sealed import Tampered
 from poolhouse.reputation.store import Ledger, Standing
@@ -35,17 +34,15 @@ def _split(text: str) -> tuple[str, str]:
 def _line(s: Standing) -> str:
     day = time.strftime("%Y-%m-%d", time.gmtime(s.last))
     return (f"{s.kind}:{s.key}  {s.state:<11} short {s.short:.1f}  long {s.long:.1f}  "
-            f"clean {s.clean}  {day}{'  NOTICE' if s.notice == 'queued' else ''}")
+            f"clean {s.clean}  {day}")
 
 
 def _guarded(fn: Handler, *, writes: bool) -> Callable[[argparse.Namespace], int]:
-    """``fn`` run only for a person: an agent marker refuses it, and a command that writes
-    also needs a terminal on stdin and stdout."""
+    """``fn`` run when the `reputation.admin` gate lets this caller through: an agent is refused at once while the gate is held back."""
     def run(args: argparse.Namespace) -> int:
         try:
-            authority.require("reputation.admin", f"poolhouse-reputation {args.cmd}",
-                              (sys.stdin.isatty(), True if not writes else sys.stdout.isatty()))
-        except HumanRequired as exc:
+            authority.require("reputation.admin", f"poolhouse-reputation {args.cmd}")
+        except AgentRefused as exc:
             warn(str(exc))
             return DENIED
         ledger = Ledger()
@@ -85,8 +82,8 @@ def _show(args: argparse.Namespace, ledger: Ledger) -> int:
 
 def _forget(args: argparse.Namespace, ledger: Ledger) -> int:
     if args.all:
-        if not args.yes and input("forget every source? [y/N] ").strip().lower() not in ("y", "yes"):
-            say("kept")
+        if not args.yes:
+            say("kept: pass --yes to forget every source")
             return 1
         say(f"forgot {ledger.forget_all()} sources")
         return 0

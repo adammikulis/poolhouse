@@ -1,16 +1,16 @@
-"""``poolhouse-memory``: look at, add to and delete what the chat agent remembers. Person only."""
+"""``poolhouse-memory``: look at, add to and delete what the chat agent remembers; an agent is refused at once while the `memory.admin` gate is held back."""
 
 from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from poolhouse import authority
+from poolhouse.caller import AgentRefused
 from poolhouse.command import Group, flag, option
 from poolhouse.log import say, warn
 from poolhouse.memory.facts import KINDS, SOURCES, Fact, Refused
@@ -18,7 +18,6 @@ from poolhouse.memory.project import SCOPES, at
 from poolhouse.memory.store import FACT_LINKS, Setup, Store, Tampered
 from poolhouse.memory.union import Memory
 from poolhouse.memory.vault import KeyUnavailable
-from poolhouse.person import HumanRequired, is_terminal
 
 __all__ = ["COMMAND"]
 
@@ -35,13 +34,11 @@ def _line(store: Store, fact: Fact) -> str:
 
 
 def _guarded(fn: Handler, *, writes: bool) -> Callable[[argparse.Namespace], int]:
-    """``fn`` run only for a person: an agent marker in the environment refuses it, and a
-    command that writes also needs a terminal on stdin and stdout."""
+    """``fn`` run when the `memory.admin` gate lets this caller through: an agent is refused at once while the gate is held back."""
     def run(args: argparse.Namespace) -> int:
         try:
-            authority.require("memory.admin", f"poolhouse-memory {args.cmd}",
-                              (is_terminal(sys.stdin), True if not writes else is_terminal(sys.stdout)))
-        except HumanRequired as exc:
+            authority.require("memory.admin", f"poolhouse-memory {args.cmd}")
+        except AgentRefused as exc:
             warn(str(exc))
             return DENIED
         try:
@@ -101,17 +98,15 @@ def _add(args: argparse.Namespace, mem: Memory) -> int:
 
 def _forget(args: argparse.Namespace, mem: Memory) -> int:
     if args.all:
-        scopes = [args.scope] if args.scope else (
-            [input(f"forget all facts in which scope? [{'/'.join(mem.stores)}/both] ").strip().lower()]
-            if not args.yes else [])
+        scopes = [args.scope] if args.scope else []
         if scopes == ["both"]:
             scopes = list(mem.stores)
         if not scopes or any(x not in mem.stores for x in scopes):
-            warn("name the scope: --scope user or --scope project")
+            warn(f"name the scope: --scope {'|'.join(mem.stores)}|both")
             return 2
         held = sum(len(mem.store(x).facts()) for x in scopes)
-        if not args.yes and input(f"forget all {held} facts in {' and '.join(scopes)}? [y/N] ").strip().lower() not in ("y", "yes"):
-            say("kept")
+        if not args.yes:
+            say(f"kept: pass --yes to forget all {held} facts in {' and '.join(scopes)}")
             return 1
         say(f"forgot {sum(mem.store(x).forget_all() for x in scopes)} facts")
         return 0

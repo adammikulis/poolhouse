@@ -114,8 +114,8 @@ What runs today:
   over stdio, including the board tools `workspace_status`, `inbox`, `send`, `thread`, `announce`, `claim`,
   `release`, `heartbeat`, `tasks`, `task` and more (`mcp.py` line 492, `workspace/tools.py` [V]). Register with
   `claude mcp add poolhouse -- poolhouse-mcp` (`mcp.py` docstring [V]).
-- Each harness registers as itself; person-only operations check a terminal and no agent marker
-  (`person.py:require_person`, `AGENT_MARKERS` [V]). `docs/person-delegation.md` invariants 1 and 2: every
+- Each harness registers as itself; protected operations refuse an agent marker at once with the reason
+  (`caller.py:refuse_agent`, `AGENT_MARKERS` [V]). `docs/person-delegation.md` invariants 1 and 2: every
   agent acts as itself, none can pose as a person [D].
 
 ## 2. What is missing, ranked within each goal
@@ -253,10 +253,8 @@ address is stored only after the certificate matched there.
   authenticated by the pinned certificate and by a row signature from the origin device's key, so a relayed row is
   verified by the origin and not by the path or the tailnet.
 
-**(c) Install and `tailscale serve` are person-only system settings.** We prepare and check; the person
-installs. The pattern is `poolhouse.fleet.autostart`: `prepare` stages unit files and a manifest and installs
-nothing; `install`, `rollback` are for a person at a terminal (`fleet/autostart_cli.py` imports `HumanRequired`
-and says "a person at a terminal only" [V]); `status` and `verify` compare installed with prepared and change
+**(c) Install and `tailscale serve` are system settings.** We prepare and check; the `autostart.install` gate decides the install at once. The pattern is `poolhouse.fleet.autostart`: `prepare` stages unit files and a manifest and installs
+nothing; `install`, `rollback` are decided at once by the `autostart.install` gate (`fleet/autostart_cli.py` handles `AgentRefused` [V]); `status` and `verify` compare installed with prepared and change
 nothing [V]. A Tailscale slice follows it: `prepare` writes the exact `tailscale serve` command and a
 manifest; `verify` runs only the read-only `tailscale status --json` that `READ_ONLY` already limits
 the detector to [V]; the person runs the commands in a terminal. Funnel is never used (public exposure).

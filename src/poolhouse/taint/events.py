@@ -22,7 +22,7 @@ _subscribers: list[Callable[[TaintEvent], Any]] = []
 
 @dataclass(frozen=True, slots=True)
 class TaintEvent:
-    """What happened: ``kind`` (``taint.denied`` or ``taint.confirm``), ``severity``, the
+    """What happened: ``kind`` (``taint.denied`` for text proven repeated, ``taint.unvouched`` for an argument nothing vouches for; both refuse the call), ``severity``, the
     ``subject`` (``tool_call:<name>``) and ``evidence``, which holds ids, digests and counts and
     never argument text."""
 

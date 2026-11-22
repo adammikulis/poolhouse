@@ -16,7 +16,8 @@ from pathlib import Path
 import pytest
 from conftest import write_gguf
 
-from poolhouse.sentinel.human import HumanRequired
+from poolhouse import authority, caller
+from poolhouse.caller import AgentRefused
 from poolhouse.serve import wired, wired_apply as apply
 
 GIB = 1024**3
@@ -184,13 +185,13 @@ def test_apply_runs_one_command_built_from_the_integer_and_records_the_original(
 
 def test_sudo_runs_the_same_script_so_sudo_asks_for_the_password():
     ran = Recorder()
-    apply.set_limit(65536, via="sudo", hooks=hooks(ran, terminal=(True, True)))
+    apply.set_limit(65536, via="sudo", hooks=hooks(ran))
     assert ran.calls == [["sudo", "/bin/sh", "-c", "/usr/sbin/sysctl -w iogpu.wired_limit_mb=65536"]]
 
 
 def test_keeping_it_installs_a_valid_root_owned_daemon_in_the_same_prompt(daemon):
     ran = Recorder()
-    apply.set_limit(65536, keep=True, via="sudo", hooks=hooks(ran, daemon, terminal=(True, True)))
+    apply.set_limit(65536, keep=True, via="sudo", hooks=hooks(ran, daemon))
     assert len(ran.calls) == 1
     script = ran.calls[0][3]
     assert f"chown root:wheel {daemon}" in script and "launchctl bootstrap system" in script
@@ -203,7 +204,7 @@ def test_keeping_it_installs_a_valid_root_owned_daemon_in_the_same_prompt(daemon
 
 def test_unchecking_removes_the_daemon_without_touching_the_live_value(daemon):
     ran = Recorder(start=65536)
-    apply.set_limit(None, keep=False, via="sudo", hooks=hooks(ran, daemon, terminal=(True, True)))
+    apply.set_limit(None, keep=False, via="sudo", hooks=hooks(ran, daemon))
     script = ran.calls[0][3]
     assert "bootout system/stack.ml.wired-limit" in script and f"rm -f {daemon}" in script
     assert "sysctl" not in script and ran.limit == 65536
@@ -248,22 +249,39 @@ def test_the_highest_limit_leaves_8_gib():
 
 
 @pytest.mark.parametrize("marker", apply.AGENT_MARKERS)
-def test_a_process_an_agent_started_cannot_change_keep_or_reset_the_limit(marker, daemon):
+def test_a_process_an_agent_started_is_refused_at_once_for_keep_change_and_reset_and_runs_nothing(marker, daemon):
     ran = Recorder()
     env = {marker: "1"}
     for call in (lambda h: apply.set_limit(65536, keep=True, via="osascript", hooks=h),
                  lambda h: apply.set_limit(None, keep=False, via="osascript", hooks=h),
                  lambda h: apply.reset(via="sudo", hooks=h)):
-        with pytest.raises(HumanRequired):
-            call(hooks(ran, daemon, env=env, terminal=(True, True)))
+        with pytest.raises(AgentRefused, match=r"serve\.wired-limit"):
+            call(hooks(ran, daemon, env=env))
     assert ran.calls == [] and apply.original_mb() is None
+    refused = [r for r in caller.audit_rows() if r["event"] == "refused"]
+    assert len(refused) == 3 and all(r["who"].startswith(f"agent {marker}") for r in refused)
+    assert {r["action"] for r in refused} == {"change the wiring limit", "reset the wiring limit"}
 
 
-def test_sudo_without_a_terminal_is_refused():
+@pytest.mark.parametrize("via", ["sudo", "osascript"])
+def test_a_process_no_agent_started_changes_the_limit_with_no_terminal_and_the_audit_says_who(via):
     ran = Recorder()
-    with pytest.raises(HumanRequired):
-        apply.set_limit(65536, via="sudo", hooks=hooks(ran, terminal=(False, False)))
-    assert ran.calls == []
+    assert not caller.marked() and not caller.is_terminal(sys.stdin)
+    assert apply.set_limit(65536, via=via, hooks=hooks(ran)).ok
+    assert len(ran.calls) == 1 and ran.calls[0][0] == ("sudo" if via == "sudo" else "osascript")
+    rows = [r for r in caller.audit_rows() if r["event"] == "ran"]
+    assert [r["action"] for r in rows] == ["change the wiring limit"] and rows[0]["who"].startswith("user ")
+
+
+def test_an_agent_changes_the_limit_while_the_gate_is_delegated_and_the_audit_names_it(monkeypatch):
+    monkeypatch.delenv(authority.FLOOR_ENV)
+    authority.set_state(["serve.wired-limit"], authority.DELEGATED, by="test")
+    ran = Recorder()
+    monkeypatch.setenv("CLAUDECODE", "1")
+    assert apply.set_limit(65536, via="osascript", hooks=hooks(ran)).ok
+    assert len(ran.calls) == 1
+    used = [r for r in caller.audit_rows() if r["event"] == "authority.use" and r["gate"] == "serve.wired-limit"]
+    assert len(used) == 1 and used[0]["who"].startswith("agent CLAUDECODE")
 
 
 def test_a_second_prompt_is_refused_while_one_is_open():

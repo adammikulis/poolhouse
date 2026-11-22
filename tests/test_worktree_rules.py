@@ -276,14 +276,21 @@ def test_the_harness_policy_applies_the_same_rule_to_codex_and_local_sessions(re
 
 
 def test_the_harness_hook_uses_tool_policy_for_primary_development_writes(repo, monkeypatch):
+    """A write into the primary checkout on its development branch is decided at once by the tool policy of the profile (an
+    overwrite is destructive: denied with the reason under `guarded`, allowed under `yolo`; a new file is reversible), never by a
+    lookup of who owns the path and never by asking anyone."""
     primary, work, _ = repo
-    event = {"tool_name": "Write", "cwd": str(work),
-             "tool_input": {"file_path": str(primary / "a.py"), "content": "value = 2\n"}}
-    monkeypatch.setattr(harnesshook, "_ask", lambda *args, **kwargs: (True, "authorized test operation"))
     monkeypatch.setattr(harness_claims, "conflict", lambda *args: pytest.fail("generic ownership lookup"))
-    out = harnesshook.pre(event, harnesshook.Rail(coding_policy.Policy("ask-dangerous"), "t",
-                                               roots=[str(primary)]))["hookSpecificOutput"]
-    assert out["permissionDecision"] == "allow"
+
+    def decision(name: str, profile: str) -> dict:
+        event = {"tool_name": "Write", "cwd": str(work), "tool_input": {"file_path": str(primary / name), "content": "value = 2\n" * 40}}
+        return harnesshook.pre(event, harnesshook.Rail(coding_policy.Policy(profile), "t", roots=[str(primary)]))["hookSpecificOutput"]
+
+    overwritten = decision("a.py", "guarded")
+    assert overwritten["permissionDecision"] == "deny" and "the guarded profile runs no destructive call" in overwritten["permissionDecisionReason"]
+    assert decision("a.py", "yolo")["permissionDecision"] == "allow"
+    created = decision("brand-new.py", "guarded")
+    assert created["permissionDecision"] == "allow", created
 
 
 @pytest.mark.parametrize("name", ["a; touch pwned", "$(touch pwned)", "`touch pwned`", "-C", "a b\nc"])

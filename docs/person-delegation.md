@@ -1,5 +1,7 @@
 # Person-spoken authorization
 
+> **Superseded.** The release-main approval, the run approvals (`person-consume`, `run-approval`, tickets) and every wait for the owner described below were replaced by automatic checks: `poolhouse.workspace.release_check` for merging into a protected branch and `caller.refuse_agent` for the scripts that change the release key and the repository protection (docs/person-commands.md). Read the rest as history.
+
 Design note. Slice 1a (section 12) is implemented; the rest is not. Owner decision of 2026-10-08: development
 pushes need no authorization, and the authorizable kinds are `release-main` and `run-script`, created only by the
 structured approval question (sections 7 and 12). Sections 5.1 to 5.3 describe the earlier prose design: typed words now
@@ -377,12 +379,12 @@ as `release-main`:
   names one of the two scripts exactly as approved, it spends the authorization, records a `run-ticket` (one minute, one
   use, target ending in a random secret), writes the secret to a new `0600` file in the `0700` ticket folder of the person
   store and replaces the command with one fixed line: `/usr/bin/env -i HOME=... PATH=... CLAUDECODE=1
-  POOLHOUSE_RUN_TICKET_FILE=<file> <runtime python> -I -B -X pycache_prefix=<nowhere> <script> <args>`. The secret is in
+  <ticket-file variable (removed)>=<file> <runtime python> -I -B -X pycache_prefix=<nowhere> <script> <args>`. The secret is in
   no argument and no exported variable. A subagent, an inexact command (extra word, `sh -c`, `;`, `$(...)`, an env prefix,
   other whitespace, a copy or link of the script, another checkout), a run with no live approval, another session's
   approval and a changed tree get none and spend nothing.
 - **Spend.** The script runs `run_approval.admit`: a person at a terminal passes as before; otherwise it takes the ticket
-  from the file `POOLHOUSE_RUN_TICKET_FILE` names (only a private file of ours in the ticket folder; the file is removed
+  from the file the ticket-file variable (removed) names (only a private file of ours in the ticket folder; the file is removed
   whatever it holds), refuses when any `DYLD_*`, `LD_*` or `PYTHON*` variable is set, and spends the ticket in the person
   record for this session, command, repository, tree and interpreter, once. Its children (`gh`, `ssh-keygen`,
   `scripts/agent-identity`, `scripts/github-protection`) get the account's home, the system and Homebrew tool folders as

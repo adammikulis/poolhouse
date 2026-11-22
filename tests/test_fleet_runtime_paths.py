@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from poolhouse import home
@@ -79,45 +81,40 @@ def test_daemon_routes_roots_before_startup_services(tmp_path, monkeypatch):
         daemon.serve(daemon.DaemonOptions(root=root, web=False))
 
 
-@pytest.mark.parametrize("marker", ["", "CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE"])
-def test_background_startup_does_not_display_token(marker, monkeypatch, capsys):
-    from poolhouse import person
+@pytest.mark.parametrize("marker", ["CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE", "CODEX_THREAD_ID"])
+def test_a_process_an_agent_started_never_displays_the_token(marker, monkeypatch, capsys):
+    """The agent's model reads what the process prints, so the token is not printed to it; nothing is asked and nothing waits."""
+    from poolhouse import caller
     from poolhouse.fleet.runtime_paths import announce_token
 
-    for name in person.AGENT_MARKERS:
+    for name in caller.AGENT_MARKERS:
         monkeypatch.delenv(name, raising=False)
-    if marker:
-        monkeypatch.setenv(marker, "1")
-    monkeypatch.setattr(person, "is_terminal", lambda _stream: bool(marker))
+    monkeypatch.setenv(marker, "1")
     announce_token("fixture-token")
-    assert capsys.readouterr().out == ""
+    shown = capsys.readouterr()
+    assert shown.out == "" and "fixture-token" not in shown.err
 
 
-def test_person_startup_displays_token(monkeypatch, capsys):
-    from poolhouse import person
+def test_a_process_with_no_agent_marker_displays_the_token_with_or_without_a_terminal(monkeypatch, capsys):
+    from poolhouse import caller
     from poolhouse.fleet.runtime_paths import announce_token
 
-    for name in person.AGENT_MARKERS:
+    for name in caller.AGENT_MARKERS:
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr(person, "is_terminal", lambda _stream: True)
+    assert not sys.stdout.isatty()
     announce_token("fixture-token")
     assert capsys.readouterr().out == "  token fixture-token\n"
 
 
-@pytest.mark.parametrize('first', ['launch', 'join'])
-def test_launcher_and_pool_cli_import_in_a_fresh_process(first):
+def test_launcher_imports_in_a_fresh_process():
     import os
     import subprocess
-    import sys
     from pathlib import Path
 
     source = Path(__file__).resolve().parents[1] / 'src'
-    script = ("import importlib; "
-              f"importlib.import_module('poolhouse.fleet.{first}'); "
-              "from poolhouse.fleet import launch, join; "
+    script = ("from poolhouse.fleet import launch; "
               "from poolhouse.fleet.runtime_paths import default_root; "
-              "assert launch.default_root is default_root; "
-              "assert join.default_root is default_root")
+              "assert launch.default_root is default_root")
     done = subprocess.run([sys.executable, '-c', script], capture_output=True,
                           text=True, timeout=30, env={**os.environ, 'PYTHONPATH': str(source)})
     assert done.returncode == 0, done.stderr

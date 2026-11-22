@@ -3,12 +3,14 @@
 //! A client seals a file (the node never sees its plain bytes), sends it in chunks with `file_put`,
 //! which stores it once under the SHA-256 of what was stored, and posts a message of type `file`
 //! whose `file` field describes it. `file_get` gives the stored bytes back only to a session that may
-//! read a message carrying the blob. `file_delete` shreds the bytes of every blob a handle names and
-//! remembers the handle, so the messages stay on the board and the file is gone.
+//! read a message carrying the blob. `file_delete` takes effect at once: it moves the bytes of every blob a handle names into the trash and
+//! remembers the handle, so the messages stay on the board and the file is gone. `file_restore` brings a file back from the trash, and the
+//! trash overwrites and removes the bytes by itself `TRASH_MS` after the delete, so nothing waits for anyone and nothing is lost by a mistake.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use crate::error::{Error, Result};
@@ -18,9 +20,11 @@ use crate::fsutil::{hex, private_dir, sha256_hex, unhex, write_atomic};
 use crate::node::Node;
 use crate::row::{is_line, Kind};
 
-pub const METHODS: [&str; 3] = ["file_put", "file_get", "file_delete"];
-/// The grant a session needs to delete a file.
+pub const METHODS: [&str; 4] = ["file_put", "file_get", "file_delete", "file_restore"];
+/// The grant a session needs to delete a file or to bring one back.
 pub const DELETE: &str = "file_delete";
+/// How long a deleted file's bytes stay in the trash, in milliseconds, before they are overwritten and removed.
+pub const TRASH_MS: u64 = 7 * 24 * 3_600_000;
 /// The most bytes one stored blob may take.
 pub const MAX_BLOB: usize = 9 * 1024 * 1024;
 /// The most bytes one `file_put` or `file_get` moves.
@@ -31,7 +35,7 @@ pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
         "file_put" => &["upload", "offset", "total", "data"],
         "file_get" => &["blob", "offset", "limit"],
-        "file_delete" => &["handle"],
+        "file_delete" | "file_restore" => &["handle"],
         _ => return None,
     })
 }
@@ -90,9 +94,47 @@ fn deleted(node: &Node, board: &str) -> BTreeSet<String> {
     std::fs::read(dir(node, board).join("deleted.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
 }
 
-/// The handles of files that were deleted on this device.
+/// The handles of files that were deleted on this device. A file whose days in the trash are over is shredded first.
 pub fn gone(node: &Node, board: &str) -> BTreeSet<String> {
+    let _ = purge(node, board);
     deleted(node, board)
+}
+
+/// A deleted file waiting in the trash: when it went there and the blobs it holds.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct Trashed {
+    at_ms: u64,
+    blobs: Vec<String>,
+}
+
+fn trashed(node: &Node, board: &str) -> BTreeMap<String, Trashed> {
+    std::fs::read(dir(node, board).join("trash.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+fn save_trash(node: &Node, board: &str, held: &BTreeMap<String, Trashed>) -> Result<()> {
+    let base = dir(node, board);
+    private_dir(&base)?;
+    write_atomic(&base.join("trash.json"), &serde_json::to_vec(held)?)
+}
+
+/// Overwrite and remove the bytes of every file whose `TRASH_MS` are over; how many files that was.
+fn purge(node: &Node, board: &str) -> Result<usize> {
+    let mut held = trashed(node, board);
+    let now = node.now_ms();
+    let due: Vec<String> = held.iter().filter(|(_, t)| t.at_ms.saturating_add(TRASH_MS) <= now).map(|(h, _)| h.clone()).collect();
+    for handle in &due {
+        for blob in held.remove(handle).map(|t| t.blobs).unwrap_or_default() {
+            let path = dir(node, board).join("trash").join(format!("{blob}.bin"));
+            if let Ok(meta) = std::fs::metadata(&path) {
+                std::fs::write(&path, vec![0u8; meta.len() as usize])?;
+                std::fs::remove_file(&path)?;
+            }
+        }
+    }
+    if !due.is_empty() {
+        save_trash(node, board, &held)?;
+    }
+    Ok(due.len())
 }
 
 fn put(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
@@ -165,40 +207,82 @@ fn get(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Res
     Ok(json!({"data": hex(&bytes[offset.min(end)..end]), "size": bytes.len(), "offset": offset.min(end)}))
 }
 
-fn delete(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
+/// The session behind ``token`` checked for the grant to delete or restore the file ``handle``.
+fn permitted(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>, what: &str) -> Result<(crate::node::Access, String)> {
     let access = node.access(token, board, true)?;
-    access.of_board(board, "deletes a file")?;
-    let handle = text(p, "handle")?;
-    if !is_hex(handle, 12) {
+    access.of_board(board, what)?;
+    let handle = text(p, "handle")?.to_string();
+    if !is_hex(&handle, 12) {
         return Err(Error::Invalid("a file handle is 12 hex characters".into()));
     }
-    let message = "this session may not delete a file";
-    if !crate::grants::holds(node, &access.holder, DELETE, &Scope::on(handle))? {
-        return Err(crate::grants::refused_for(node, token, DELETE, handle, message));
+    let message = format!("this session may not {what}");
+    if !crate::grants::holds(node, &access.holder, DELETE, &Scope::on(&handle))? {
+        return Err(crate::grants::refused_for(node, token, DELETE, &handle, &message));
     }
-    let blobs: BTreeSet<String> = node.view(board)?.iter().filter_map(|e| e.fields.get("file")).filter(|f| f["id"] == handle).filter_map(|f| f["blob"].as_str().map(String::from)).collect();
+    Ok((access, handle))
+}
+
+fn delete(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
+    let (access, handle) = permitted(node, board, token, p, "delete a file")?;
+    let blobs: BTreeSet<String> = node.view(board)?.iter().filter_map(|e| e.fields.get("file")).filter(|f| f["id"] == handle.as_str()).filter_map(|f| f["blob"].as_str().map(String::from)).collect();
     if blobs.is_empty() {
         return Err(Error::Invalid("no such file".into()));
     }
-    if !crate::grants::check(node, &access.holder, DELETE, &Scope::on(handle))? {
-        return Err(crate::grants::refused_for(node, token, DELETE, handle, message));
+    if !crate::grants::check(node, &access.holder, DELETE, &Scope::on(&handle))? {
+        return Err(crate::grants::refused_for(node, token, DELETE, &handle, "this session may not delete a file"));
     }
     let base = dir(node, board);
-    let mut shredded = 0;
+    private_dir(&base)?;
+    private_dir(&base.join("trash"))?;
+    let mut moved = Vec::new();
     for blob in &blobs {
-        let path = base.join("blobs").join(format!("{blob}.bin"));
-        if let Ok(meta) = std::fs::metadata(&path) {
-            std::fs::write(&path, vec![0u8; meta.len() as usize])?;
-            std::fs::remove_file(&path)?;
-            shredded += 1;
+        let (from, to) = (base.join("blobs").join(format!("{blob}.bin")), base.join("trash").join(format!("{blob}.bin")));
+        if from.exists() {
+            std::fs::rename(&from, &to)?;
+            moved.push(blob.clone());
+        }
+    }
+    let now = node.now_ms();
+    // A second delete of the same file adds nothing and does not renew its days: the first delete's blobs and time stand.
+    let mut held = trashed(node, board);
+    let entry = held.entry(handle.clone()).or_insert(Trashed { at_ms: now, blobs: Vec::new() });
+    for blob in &moved {
+        if !entry.blobs.contains(blob) {
+            entry.blobs.push(blob.clone());
+        }
+    }
+    let (at_ms, count) = (entry.at_ms, entry.blobs.len());
+    save_trash(node, board, &held)?;
+    let mut all = deleted(node, board);
+    all.insert(handle.clone());
+    write_atomic(&base.join("deleted.json"), &serde_json::to_vec(&all)?)?;
+    node.writer(board, &access.actor)?.append(Kind::Audit, &access.actor, json!({"event": "file.delete", "subject": handle, "detail": format!("{} blobs moved to the trash for 7 days", moved.len())}), "")?;
+    Ok(json!({"deleted": handle, "trashed": count, "restorable_until_ms": at_ms + TRASH_MS}))
+}
+
+fn restore(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
+    let (access, handle) = permitted(node, board, token, p, "restore a file")?;
+    purge(node, board)?;
+    let mut held = trashed(node, board);
+    let Some(file) = held.remove(&handle) else {
+        return Err(Error::Invalid("that file is not in the trash: it was not deleted here, or its seven days are over".into()));
+    };
+    let base = dir(node, board);
+    private_dir(&base.join("blobs"))?;
+    for blob in &file.blobs {
+        let (from, to) = (base.join("trash").join(format!("{blob}.bin")), base.join("blobs").join(format!("{blob}.bin")));
+        if to.exists() {
+            let _ = std::fs::remove_file(&from);
+        } else if from.exists() {
+            std::fs::rename(&from, &to)?;
         }
     }
     let mut all = deleted(node, board);
-    all.insert(handle.to_string());
-    private_dir(&base)?;
+    all.remove(&handle);
     write_atomic(&base.join("deleted.json"), &serde_json::to_vec(&all)?)?;
-    node.writer(board, &access.actor)?.append(Kind::Audit, &access.actor, json!({"event": "file.delete", "subject": handle, "detail": format!("{shredded} blobs shredded")}), "")?;
-    Ok(json!({"deleted": handle, "shredded": shredded}))
+    save_trash(node, board, &held)?;
+    node.writer(board, &access.actor)?.append(Kind::Audit, &access.actor, json!({"event": "file.restore", "subject": handle, "detail": format!("{} blobs brought back from the trash", file.blobs.len())}), "")?;
+    Ok(json!({"restored": handle, "blobs": file.blobs.len()}))
 }
 
 /// Refuse a file message whose blob is not stored on this device.
@@ -213,9 +297,11 @@ pub fn check_post(node: &Node, board: &str, fields: &Map<String, Value>) -> Resu
 }
 
 pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
+    let _ = purge(node, board);
     match method {
         "file_put" => put(node, board, token, p),
         "file_get" => get(node, board, token, p),
+        "file_restore" => restore(node, board, token, p),
         _ => delete(node, board, token, p),
     }
 }

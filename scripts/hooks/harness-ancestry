@@ -1,0 +1,27 @@
+#!/usr/bin/env python3
+"""Whether an agent harness is above this process: the pre-push hook's check for an agent that dropped its marker variables.
+
+    harness-ancestry     exit 0 when an ancestor process is a harness (by name, or one a session hook recorded), else 1
+
+Nothing is asked and nothing waits: the answer is the exit code.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+from poolhouse.workspace import harness_ancestry
+
+
+def main(argv: list[str]) -> int:
+    """0 when this process runs under a harness, 1 when it does not, 2 when given an argument."""
+    if argv[1:]:
+        sys.stderr.write("usage: harness-ancestry\n")
+        return 2
+    return 0 if harness_ancestry.under_harness(harness_ancestry.bound()) else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

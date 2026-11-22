@@ -32,7 +32,7 @@ pub fn risk_of(action: &str) -> (&'static str, &'static str) {
         "source_add" => (SENSITIVE, "It makes a folder part of a project, so the project's agents can read it."),
         "phone_add" => (SENSITIVE, "The new phone can approve everything this phone can."),
         "member_remove" => (IRREVERSIBLE, "A removed device is never added back; it has to join as a new device."),
-        "file_delete" => (IRREVERSIBLE, "The file's bytes are overwritten and cannot be got back."),
+        "file_delete" => (SENSITIVE, "The file moves to a trash for seven days and is then overwritten; it can be brought back until then."),
         "phone_remove" => (IRREVERSIBLE, "A removed phone's key is never accepted again."),
         _ => (SENSITIVE, "It is not an action this node knows the cost of."),
     }

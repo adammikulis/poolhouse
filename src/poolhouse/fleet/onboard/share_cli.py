@@ -6,9 +6,9 @@ folders), never a path outside them.
 
 Each file has a sharing level (`sharing.py`). Programs are ``open``; a model is ``owner`` unless
 said otherwise, because a model whose licence status is not known is treated as restricted.
-For an ``owner`` file the first transfer asks the person at the terminal to confirm they
-accepted its licence (typing the licence id back), and writes down who, when, which licence and
-its URL. Without a terminal nothing is recorded and the file stays withheld.
+For an ``owner`` file the licence is recorded as accepted only when the command names it
+(``--accept-licence ID``, refused to an agent), with who, when, which licence and its URL.
+Without that nothing is recorded and the file stays withheld; nothing is asked.
 """
 
 from __future__ import annotations
@@ -22,8 +22,9 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import home, macauth, sentinel
+from poolhouse.caller import AgentRefused
 from poolhouse.log import say, warn
-from poolhouse.sentinel.human import HumanRequired, mint
+from poolhouse.sentinel.permit import mint
 from poolhouse.units import parse_duration
 
 from ..service_pool import Pool, default as default_pool
@@ -32,7 +33,6 @@ from . import modelstore
 from .manifest import SHARING_LEVELS, Entry, Signer, verify
 from .sharing import OPEN, OWNER, Access, Licences
 from .signing import KeyStoreError, SigningKeys
-from .signing_cli import confirm_signing
 from .transfer import Share, ShareServer
 
 __all__ = ["DEFAULT_SHARE_PORT", "add_share", "cmd_share", "quarantine_veto"]
@@ -68,6 +68,8 @@ def add_share(sub: Any, common: Any) -> None:
                    help="the licence a model comes under")
     p.add_argument("--source", action="append", default=[], metavar="NAME=URL",
                    help="where a model comes from, for a device that must fetch it itself")
+    p.add_argument("--accept-licence", action="append", default=[], metavar="ID",
+                   help="record that this licence id was accepted, so an owner-level file under it is shared")
 
 
 def _joins(items: list[str]) -> dict[str, str]:
@@ -88,15 +90,18 @@ def _entries(share_dir: Path, args: argparse.Namespace) -> list[Entry]:
     return out
 
 
-def _confirm_licences(entries: list[Entry], licences: Licences) -> None:
-    """Ask once, at a terminal, for each owner-level file whose licence is not on record."""
+def _confirm_licences(entries: list[Entry], licences: Licences, accepted: list[str]) -> None:
+    """Record the licence of each owner-level file whose licence is not on record and that the command named."""
     for entry in entries:
         if entry.sharing != OWNER or not entry.licence or licences.accepted(entry):
             continue
+        warn(f"{entry.name} is under {entry.licence} ({entry.licence_url or 'no URL'}).")
+        if entry.licence not in accepted:
+            warn(f"{entry.name} stays withheld: pass --accept-licence {entry.licence} once the licence is accepted.")
+            continue
         try:
-            warn(f"{entry.name} is under {entry.licence} ({entry.licence_url or 'no URL'}).")
             licences.record(mint("accept-licence", entry.licence), entry)
-        except HumanRequired as exc:
+        except AgentRefused as exc:
             warn(f"{entry.name} stays withheld: {exc}")
 
 
@@ -157,13 +162,12 @@ def cmd_share(args: argparse.Namespace) -> int:
             entries, paths, skipped = store.entries, store.paths, store.skipped
         else:
             entries = _entries(share_dir, args)
-        raw = keys.sign(entries, serial=modelstore.next_serial(directory / "share-serial.json"),
-                        confirm=confirm_signing)
+        raw = keys.sign(entries, serial=modelstore.next_serial(directory / "share-serial.json"))
     except (TlsUnavailable, KeyStoreError) as exc:
         _emit(args, {"error": str(exc)}, f"error: {exc}")
         return 2
     licences = Licences(directory / "licences.json")
-    _confirm_licences(entries, licences)
+    _confirm_licences(entries, licences, args.accept_licence)
     gate = service_gate(pool)
     span = parse_duration(args.span) or 600.0
     with ShareServer(Share(share_dir, raw, verify(raw, keys.public), licences, quarantine_veto,

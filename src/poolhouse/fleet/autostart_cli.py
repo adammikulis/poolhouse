@@ -7,8 +7,8 @@ import json
 import time
 from pathlib import Path
 
+from poolhouse.caller import AgentRefused
 from poolhouse.log import say, warn
-from poolhouse.person import HumanRequired
 
 from . import autostart_apply, autostart_check
 from .autostart_manifest import ROLES, ManifestError
@@ -29,10 +29,10 @@ def add_commands(sub: argparse._SubParsersAction) -> None:
     prep.add_argument("--label", action="append", default=[])
     prep.add_argument("--report", default="")
     prep.add_argument("--json", action="store_true")
-    inst = sub.add_parser("install", help="install a prepared manifest (a person at a terminal only)")
+    inst = sub.add_parser("install", help="install a prepared manifest (an agent is refused while the autostart.install gate is held back)")
     inst.add_argument("--manifest", required=True)
     inst.add_argument("--system", action="store_true")
-    undo = sub.add_parser("rollback", help="restore what the last install replaced (a person at a terminal only)")
+    undo = sub.add_parser("rollback", help="restore what the last install replaced (an agent is refused while the autostart.install gate is held back)")
     undo.add_argument("--system", action="store_true")
     for name in ("status", "verify"):
         read = sub.add_parser(name, help="compare what is installed with what was prepared; changes nothing")
@@ -52,7 +52,7 @@ def _prepare(a: argparse.Namespace) -> int:
         return 0
     expires = time.strftime("%Y-%m-%d %H:%M", time.localtime(done.manifest.expires))
     say(f"prepared {', '.join(r.role for r in done.manifest.roles)} in {done.path.parent} (valid until {expires})")
-    say("nothing is installed. To install, run this yourself at your own terminal:")
+    say("nothing is installed yet. To install, run:")
     say(done.command)
     return 0
 
@@ -87,6 +87,6 @@ def run(a: argparse.Namespace) -> int:
         if a.cmd == "install":
             return _outcome(autostart_apply.install(a.manifest, system=a.system))
         return _outcome(autostart_apply.rollback(system=a.system))
-    except HumanRequired as exc:
+    except AgentRefused as exc:
         warn(str(exc))
         return 2

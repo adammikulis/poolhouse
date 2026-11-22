@@ -96,16 +96,11 @@ class Watch:
         """Why the call must not run, or an empty string. A decoy it names freezes the session."""
         return self._gate(tool, arguments, session=self.session, caller=CALLER)
 
-    def denied(self, tool: str, arguments: Mapping[str, Any] | None, rail: str, reason: str,
-               *, logged: bool = True) -> None:
+    def denied(self, tool: str, arguments: Mapping[str, Any] | None, rail: str, reason: str) -> None:
         """Tell sentinel that a rail refused the call, so it is held and counted. A refusal the
-        guard logged as a Deny is counted by the log handler; any other (a Confirm nobody
-        answered) is counted here."""
+        guard logged as a Deny is counted by the log handler."""
         rails = self.node.rails
         self.node.handle_all(rails.parked_call(self.session, rail, reason, tool, arguments))
-        if not logged:
-            self.node.handle_all(rails.counted(self.session, rail))
-            self.node.note("session", self.session, "guard.denied")
 
     def shown(self, tool: str, original: str, screened: Screened) -> str:
         """What the model may read of a tool result: the rails' text, or a placeholder when

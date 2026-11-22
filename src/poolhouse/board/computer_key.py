@@ -1,15 +1,13 @@
-"""The person's admin key for one pool on this computer, and the ticket it signs under (docs/design-phone-free-pools.md, 2.3).
+"""This computer's admin key for one pool, and the ticket it signs under (docs/design-phone-free-pools.md, 2.3).
 
-The key is an Ed25519 key the node makes for one pool's card and gives to the person's own session once, when the person says yes at the computer's
-own prompt (so a key an agent holds is never the one a yes enrols); it is sealed under the account's keystore (under a passphrase typed at the
-person's terminal where there is none) in ``<state>/person/pools/<handle>/``, a place the harness's deny lists keep from a process an agent started (the
-account's own files: see `credentials.person_secret` for what that does not cover). The node keeps no
-copy and nothing here is a switch that signs without the person: a key signs
-only the bytes a **ticket** names. The ticket is the node's answer to the person's yes at the computer's own prompt, for one change the node
-drafted and wrote the prompt's sentence for. ``sign_bytes`` shows the node the SHA-256 of what it is about to sign; the node answers only for a
-payload the ticket names, once, within two minutes, to the session the ticket was given to. A process that holds this key's file can still
-unseal it without any prompt: that is what the pool's `computer` level says it is (the vouching computer's word), and it is why every
-governance act is held seven days.
+The key is an Ed25519 key the node makes for one pool's card and gives once to the session that asked (the node asks nobody: `--presence auto`
+answers as it is asked, so the key is enrolled and handed over at once); it is sealed under the account's keystore, or under the passphrase of
+``POOLHOUSE_SIGNING_PASSPHRASE`` where there is none, in ``<state>/person/pools/<handle>/``, a place the harness's deny lists keep from a process an
+agent started (the account's own files: see `credentials.person_secret` for what that does not cover). The node keeps no copy. A key signs only
+the bytes a **ticket** names. The ticket is the node's answer to the ask for one change the node drafted. ``sign_bytes`` shows the node the
+SHA-256 of what it is about to sign; the node answers only for a payload the ticket names, once, within two minutes, to the session the ticket was
+given to. A process that holds this key's file can still unseal it without any ticket: that is what the pool's `computer` level says it is (the
+vouching computer's word), and it is why every governance act is held seven days.
 """
 
 from __future__ import annotations
@@ -31,11 +29,7 @@ POOLS_DIR = Path("person") / "pools"
 
 
 class TicketRequired(errors.Error):
-    """The key was asked to sign without the person's yes for those bytes."""
-
-
-def _no_passphrase(_prompt: str) -> str:
-    raise KeyStoreError("a pool's key is kept in the keystore and never under a passphrase typed to an agent")
+    """The key was asked to sign without a ticket for those bytes."""
 
 
 class ComputerKey:
@@ -59,19 +53,19 @@ class ComputerKey:
         return self._keys.directory
 
     def sign_bytes(self, data: bytes) -> bytes:
-        """The signature over ``data``, once the node confirms the person's yes was for exactly these bytes."""
+        """The signature over ``data``, once the node confirms the ticket was made for exactly these bytes."""
         if not self.ticket:
-            raise TicketRequired("The computer's key signs only what the person said yes to at the computer's own prompt, and no yes was given.")
+            raise TicketRequired("The computer's key signs only the change the node drafted and made a ticket for, and it has none.")
         try:
             self._client.call("ticket_spend", "", self._token, ticket=self.ticket, payload=hashlib.sha256(data).hexdigest())
         except Denied as err:
             raise TicketRequired(str(err)) from None
         return self._keys.sign_bytes(data)
 
-    def approve(self, card: str, *, voice: presence.Voice = presence.SILENT) -> None:
-        """Raise the computer's own prompt for the card the node drafted and wait for the person's yes; the yes is this key's ticket. Raises
-        `Denied` with one plain sentence on a no or no answer."""
-        self.ticket = str(presence.ask_card(self._client, self._token, "card", presence.Card(card), voice)["secret"])
+    def approve(self, card: str) -> None:
+        """Ask the node for the card it drafted and keep the answer as this key's ticket. Raises `Denied` with one plain sentence when the node
+        does not make one."""
+        self.ticket = str(presence.ask_card(self._client, self._token, "card", presence.Card(card))["secret"])
 
     def forget(self) -> None:
         """Drop the sealed key of a pool that was not made, so an abandoned founding leaves nothing behind."""
@@ -89,22 +83,29 @@ class PoolKeys:
         self.client, self.token, self._ks = client, token, ks
 
     def _keys(self, directory: Path) -> SigningKeys:
-        return SigningKeys(directory, passphrase=_no_passphrase, ks=self._ks, say=lambda _text: None)
+        """The key kept in ``directory``: under the keystore, or in a file whose passphrase is the environment's, never a prompt."""
+        return SigningKeys(directory, passphrase=person_key.no_prompt, ks=self._ks, say=lambda _text: None)
 
     def _store(self) -> keystore.Keystore:
         return self._ks or keystore.default()
 
     def sealed(self) -> bool:
-        """Whether a key made here is kept under the account's keystore. Where it is not, the pool says it is approved by a typed yes and the key
-        is kept in a file under a passphrase typed at a terminal."""
+        """Whether a key made here is kept under the account's keystore. Where it is not, the key is kept in a file under the passphrase of
+        ``POOLHOUSE_SIGNING_PASSPHRASE``."""
         return self._store().available()
 
+    def check(self) -> None:
+        """Raise `KeyStoreError` when a key made now could not be kept: there is no keystore and the environment holds no passphrase. It is asked
+        before the node makes a key, since a key the node enrolled and nobody kept is lost."""
+        if not self.sealed():
+            person_key.no_prompt("passphrase for the pool's key")
+
     def adopt(self, seed: bytes) -> ComputerKey:
-        """Keep the key whose secret bytes the node gave this person's session once, when the person said yes for its card: sealed under the
-        keystore where there is one, else under a passphrase typed at the person's terminal."""
+        """Keep the key whose secret bytes the node gave this session once, for its card: sealed under the keystore where there is one, else
+        under the passphrase of the environment."""
         directory = self.directory / secrets.token_hex(16)
         directory.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        keys = SigningKeys(directory, passphrase=_no_passphrase if self.sealed() else person_key.tty_passphrase, ks=self._ks, say=lambda _text: None)
+        keys = self._keys(directory)
         keys.adopt(seed)
         return ComputerKey(keys, self.client, self.token)
 

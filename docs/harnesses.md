@@ -2,12 +2,12 @@
 
 `poolhouse-codex` and `poolhouse-claude` run the Codex and Claude Code command-line agents on a model
 this machine serves, with Poolhouse's rails around them: the served window, a pre-tool classifier
-hook under the coding permissions, the Requests inbox for approvals, and a workspace identity of their own. Codex is
+hook under the coding permissions, an immediate allow or deny with the reason for every call, and a workspace identity of their own. Codex is
 the default coding harness (a lighter system prompt and tool list); Claude Code is there for when
 its richer hook gate matters.
 
 ```
-poolhouse-codex                                  # Qwen3.8-27B-UD-Q4_K_XL, permissions ask-dangerous, this directory
+poolhouse-codex                                  # Qwen3.8-27B-UD-Q4_K_XL, permissions guarded, this directory
 poolhouse-codex Qwen3.5-2B --permissions yolo --project ~/work/repo -- exec "fix the failing test"
 poolhouse-claude --on http://127.0.0.1:8080 --permissions read-only -- -p "explain this repo"
 ```
@@ -45,9 +45,8 @@ harness="codex", **options)` (options: `name`, `orders_from`, `harness_args`, `s
 | `--permissions` | Codex's own mode | the hook |
 | --- | --- | --- |
 | `read-only` | sandbox `read-only`, approvals `never` | allows reads; denies every acting call |
-| `ask-changes` | sandbox `workspace-write`, approvals `on-request` | allows reads; asks for every acting call |
-| `ask-dangerous` (default) | sandbox `workspace-write`, approvals `on-request` | allows reads and reversible calls; asks for destructive and unsure ones |
-| `yolo` | sandbox `workspace-write`, approvals `on-request` | allows reads and reversible and destructive calls; asks for unsure ones |
+| `guarded` (default) | sandbox `workspace-write`, approvals `never` | allows reads and reversible calls; denies destructive and unsure ones at once, with the reason |
+| `yolo` | sandbox `workspace-write`, approvals `never` | allows reads and reversible and destructive calls; denies unsure ones at once |
 
 `--execution-mode plan` (the alternative to the default `execute`) treats every profile as `read-only`:
 the session inspects and applies nothing.
@@ -172,8 +171,7 @@ says the model is not recorded.
 - Codex runs hooks it has reviewed; the launcher passes `--dangerously-bypass-hook-trust` because it
   wrote the hook into a home that holds nothing else. Codex has no pre-tool hook for its web search
   tool or for model-side reasoning; those are outside the gate.
-- The Requests answer comes from the terminal or the UI, so an unattended session in `ask-changes`
-  stops at its first acting call (denied, with the reason shown to the model).
+- Every decision is made at once: a call the profile does not run is denied with the reason shown to the model, and nothing waits.
 - Only the deterministic classifier layer runs in the hook; the model-assisted layer does not.
 - What the rules above cannot decide: code the model writes in an ordinary file in a form no rule
   recognises (a name built piece by piece, an indirect call) and then runs through the project's own

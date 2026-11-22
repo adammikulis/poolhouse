@@ -171,14 +171,6 @@ fn computer_only_governance_is_held_seven_days() {
 }
 
 #[test]
-fn computer_only_file_delete_waits_a_cancel_window() {
-    use poolhouse_node::gov::charter::data_act_wait_ms;
-    assert_eq!(data_act_wait_ms("file_delete"), DAY, "an irreversible act waits a day for a key to cancel it");
-    assert_eq!(data_act_wait_ms("shard_consent"), 0, "consent to sharding is turned off again: it is sensitive, not irreversible");
-    assert_eq!(data_act_wait_ms("sync_now"), 0, "a reversible act never waits");
-}
-
-#[test]
 fn member_remove_needs_the_sensitive_floor() {
     let (_d, mut g) = pool(&[phone_admin(A, "ann"), weak(B, "bob")], Policy::Secure);
     let laptop = ident(10);

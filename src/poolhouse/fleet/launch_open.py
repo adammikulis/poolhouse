@@ -6,10 +6,10 @@ import argparse
 import webbrowser
 from pathlib import Path
 
+from poolhouse.caller import AgentRefused, refuse_agent
 from poolhouse.command import Group, flag
 from poolhouse.http import Options, ServerError, request_json
 from poolhouse.log import say, warn
-from poolhouse.person import HumanRequired, require_person
 
 from . import launch_secret
 from .launch_secret import HEADER, LaunchError
@@ -50,9 +50,9 @@ def page_url(port: int, root: Path | None = None) -> str:
 def _open(args: argparse.Namespace) -> int:
     """Open this machine's running Poolhouse page with a one-use sign-in ticket."""
     try:
-        require_person("open the poolhouse page")
+        refuse_agent("open the poolhouse page", "the page's sign-in ticket makes the holder the owner of this device's Poolhouse")
         url = ticket_url()
-    except (HumanRequired, LaunchError) as exc:
+    except (AgentRefused, LaunchError) as exc:
         warn(f"error: {exc}")
         return 2
     if args.print:

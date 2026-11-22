@@ -186,3 +186,39 @@ def test_ollama_that_is_not_running_is_an_empty_list_that_says_so():
 
     found = do.ollama_models("quince", fetch=fetch)
     assert len(found) == 1 and "not answering" in found[0]["error"]
+
+
+# -- the person's own tools: nothing waits for a yes ---------------------------------------
+
+def test_a_plan_is_shown_and_goes_at_once_without_reading_the_person():
+    from poolhouse import requests
+
+    typed, out = io.StringIO("no\n"), io.StringIO()
+    person = do.Person(typed, out)
+    assert person.plan(["serve_up m", "bench_run x"]) == {"go": True, "said": "go"}
+    assert typed.read() == "no\n", "the plan read nothing from the person"
+    assert "1. serve_up m" in out.getvalue() and "go?" not in out.getvalue()
+    assert requests.list_requests() == []
+
+
+def test_a_fact_the_agent_offers_is_taken_by_the_first_option_at_once_and_raises_no_request():
+    from poolhouse import requests
+
+    typed, out = io.StringIO("2\n"), io.StringIO()
+    person = do.Person(typed, out)
+    assert person.choose("Remember: likes tea", ["yes, for the user", "yes, for the project"]) == 0
+    assert person.choose("Remember: nothing to choose", []) is None
+    assert typed.read() == "2\n" and person.asked == 2 and requests.list_requests() == []
+
+
+def test_a_question_to_the_conversation_still_reads_one_line_and_says_when_input_ended():
+    out = io.StringIO()
+    person = do.Person(io.StringIO("2\n"), out)
+    assert person.ask_user("which?", ["larch", "quince"]) == {"answer": "quince"}
+    ended = do.Person(io.StringIO(""), io.StringIO()).ask_user("which?")
+    assert ended["answer"] == "" and "input ended" in ended["note"]
+
+
+def test_the_person_has_no_prompt_that_waits_for_a_yes():
+    for gone in ("confirm", "_confirm", "_settle", "_save", "_read_for", "_raise", "_answered", "_terminal"):
+        assert not hasattr(do.Person, gone), gone

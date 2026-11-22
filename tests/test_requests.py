@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import person, requests
+from poolhouse import caller, requests
 from poolhouse.requests import store as store_mod
 from poolhouse.requests.model import fingerprint
 from tests.requests_support import CANARY, SRC, ask, no_markers, person_home
@@ -84,7 +84,7 @@ def test_a_choice_the_request_did_not_offer_is_refused(tmp_path):
 def test_the_first_answer_wins_whichever_way_it_comes_and_later_ones_see_it_resolved(tmp_path):
     held = inbox(tmp_path)
     handle = requests.raise_request(ask(), inbox=held)
-    terminal = requests.Context(terminal=(True, True), env={}, inbox=held)
+    terminal = requests.Context(env={}, inbox=held)
     done = requests.answer(handle.id, "allow-once", handle.fingerprint, "dialog", terminal)
     assert (done.state, done.answered_by) == ("approved", "dialog")
     for via in ("terminal", "ui", "dialog"):
@@ -97,7 +97,7 @@ def test_the_first_answer_wins_whichever_way_it_comes_and_later_ones_see_it_reso
 def test_threads_racing_to_answer_one_request_produce_exactly_one_winner(tmp_path):
     held = inbox(tmp_path)
     handle = requests.raise_request(ask(), inbox=held)
-    ctx = requests.Context(terminal=(True, True), env={}, inbox=held)
+    ctx = requests.Context(env={}, inbox=held)
     wins, losses = [], []
 
     def go(via: str, choice: str) -> None:
@@ -119,7 +119,7 @@ CHILD_RACE = """
 import sys
 from poolhouse import requests
 held = requests.Inbox(sys.argv[1], key=lambda: bytes(range(32)))
-ctx = requests.Context(terminal=(True, True), env={}, inbox=held)
+ctx = requests.Context(env={}, inbox=held)
 for ident, fp in zip(sys.argv[3::2], sys.argv[4::2]):
     try:
         requests.answer(ident, sys.argv[2], fp, "terminal", ctx)
@@ -135,7 +135,8 @@ def test_processes_raising_and_answering_at_once_lose_no_request_and_resolve_eac
     args = [x for h in handles for x in (h.id, h.fingerprint)]
     kids = [subprocess.Popen([sys.executable, "-c", CHILD_RACE, str(tmp_path / "inbox"),
                               ("allow-once", "deny")[n % 2], *args], stdout=subprocess.PIPE, text=True,
-                             env={"PYTHONPATH": SRC, "PATH": ""}) for n in range(6)]
+                             env={"PYTHONPATH": SRC, "PATH": "", "POOLHOUSE_HOME": str(tmp_path / "home")})
+            for n in range(6)]
     won = [line.split()[1] for k in kids for line in k.communicate(timeout=120)[0].splitlines() if line.startswith("won ")]
     assert sorted(won) == sorted(h.id for h in handles)
     assert all(held.get(h.id).state in ("approved", "denied") for h in handles)
@@ -183,32 +184,46 @@ def test_a_wait_that_runs_out_withdraws_the_request_and_says_pending(tmp_path):
 def test_a_wait_returns_the_answer_given_while_it_waits(tmp_path):
     held = inbox(tmp_path)
     handle = requests.raise_request(ask(), inbox=held)
-    ctx = requests.Context(terminal=(True, True), env={}, inbox=held)
+    ctx = requests.Context(env={}, inbox=held)
     threading.Timer(0.3, lambda: requests.answer(handle.id, "allow-once", handle.fingerprint, "ui", ctx)).start()
     got = handle.wait(timeout=20)
     assert got.approved and (got.choice, got.via) == ("allow-once", "ui")
 
 
 # -- only a person answers --------------------------------------------------------------
-@pytest.mark.parametrize("marker", person.AGENT_MARKERS)
+@pytest.mark.parametrize("marker", caller.AGENT_MARKERS)
 @pytest.mark.parametrize("via", ["terminal", "ui", "dialog"])
-def test_a_process_an_agent_started_cannot_answer_by_any_way(tmp_path, marker, via):
+def test_a_process_an_agent_started_is_refused_at_once_by_any_way_while_the_gate_is_held_back(
+        tmp_path, marker, via, monkeypatch):
+    monkeypatch.setenv("POOLHOUSE_AUTHORITY_FLOOR", "person")
     held = inbox(tmp_path)
     handle = requests.raise_request(ask(), inbox=held)
-    ctx = requests.Context(terminal=(True, True), env={marker: "1"}, inbox=held)
-    with pytest.raises(person.HumanRequired):
+    ctx = requests.Context(env={marker: "1"}, inbox=held)
+    with pytest.raises(caller.AgentRefused, match=r"requests\.answer"):
         requests.answer(handle.id, "allow-once", handle.fingerprint, via, ctx)
     assert held.get(handle.id).state == "pending"
+    assert any(row["event"] == "refused" and "answering a request" in row.get("action", "")
+               for row in caller.audit_rows())
 
 
-def test_a_terminal_answer_needs_a_terminal(tmp_path):
+@pytest.mark.parametrize("via", ["terminal", "ui", "dialog"])
+def test_with_the_gate_delegated_an_agent_answers_at_once_and_the_answer_is_audited(tmp_path, via, monkeypatch):
+    monkeypatch.delenv("POOLHOUSE_AUTHORITY_FLOOR", raising=False)
     held = inbox(tmp_path)
     handle = requests.raise_request(ask(), inbox=held)
-    for tty in ((False, True), (True, False), (False, False)):
-        with pytest.raises(person.HumanRequired):
-            requests.answer(handle.id, "allow-once", handle.fingerprint, "terminal",
-                            requests.Context(terminal=tty, env={}, inbox=held))
-    assert held.get(handle.id).state == "pending"
+    done = requests.answer(handle.id, "allow-once", handle.fingerprint, via,
+                           requests.Context(env={"CLAUDECODE": "1"}, inbox=held))
+    assert (done.state, done.answered_by) == ("approved", via)
+    assert any(row["event"] == "authority.use" and row.get("gate") == "requests.answer"
+               for row in caller.audit_rows())
+
+
+def test_a_terminal_answer_needs_no_terminal_and_nothing_typed(tmp_path):
+    held = inbox(tmp_path)
+    handle = requests.raise_request(ask(), inbox=held)
+    done = requests.answer(handle.id, "allow-once", handle.fingerprint, "terminal",
+                           requests.Context(env={}, inbox=held))
+    assert (done.state, done.answered_by) == ("approved", "terminal")
 
 
 def test_a_way_that_is_not_one_of_the_three_is_refused(tmp_path):
@@ -217,7 +232,7 @@ def test_a_way_that_is_not_one_of_the_three_is_refused(tmp_path):
     for via in ("token", "mcp", "agent", ""):
         with pytest.raises(requests.Refused) as why:
             requests.answer(handle.id, "allow-once", handle.fingerprint, via,
-                            requests.Context(terminal=(True, True), env={}, inbox=held))
+                            requests.Context(env={}, inbox=held))
         assert why.value.why == "via"
 
 

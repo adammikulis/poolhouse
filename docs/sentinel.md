@@ -197,9 +197,8 @@ kind has none.
 The interactive screen needs a POSIX terminal. It refuses, before drawing anything, when
 stdin or stdout is not a terminal or when `CLAUDECODE`, `POOLHOUSE_AGENT` or
 `POOLHOUSE_NONINTERACTIVE` is set, and exits 2 with the reason. Elsewhere use `--list` and
-`quarantine release ID`. With no terminal, `poolhouse-security review` started by a person
-shows the dialog below instead (and prints the list when an agent started it or there is no
-desktop); it never opens Terminal or a text editor.
+`quarantine release ID`. With no terminal, `poolhouse-security review` prints the list;
+it never opens Terminal, a dialog or a text editor.
 
 ## What you will and will not see
 
@@ -215,27 +214,21 @@ Most things need nobody, and say nothing on the screen:
 * **The decider trainer** pins a trained decider only after it is registered, and unpins on
   any failure while pinning. A run killed before that leaves nothing pinned.
 
-A dialog appears only when something **changed or was forged** and was quarantined: a pinned
-file's contents changed or a link was retargeted, a tampered program, a model that does not
-match its manifest, a forged or replayed signature, a decoy secret or file touched, text that
-tries to give a session instructions (`heads_up.NEEDS_PERSON`).
+Nothing asks anyone, because every hold resolves by a fixed policy (`Sentinel.resolve_holds`, run at the end of every scan):
 
-It is **one dialog, never a stack**. A lock file beside the state (`heads-up.lock`, held
-while the dialog is open, released when its process dies) lets one process on the machine
-show it, ten minutes pass before the next, and everything quarantined at that moment is in it
-(up to four named, the rest counted). Its title and text are fixed sentences from `explain`
-plus names that are escaped and cut short; nothing held is quoted.
+* **A changed pinned file, link or model** (a model that does not match its manifest) is moved aside and refused to every load
+  (`verify_before_load` checks the file at its own path against its pin each time). The hold ends by itself at the next scan
+  once the file at its path verifies against its pin again (a pull fetched it again, a training run re-registered it): the moved-aside copy is
+  deleted and the record is released (`sentinel.hold_ended`). A hold nothing fixed lapses after seven days (`HOLD_S["file"]`); a lapse
+  lets nothing unverified run, because a load still checks the file against its pin.
+* **A tampered or changed program** is vetted before it runs (`integrity.check_file`): a changed managed binary is logged once and fetched
+  again by the download path, never held for a person.
+* **A forged or replayed signature, a decoy secret or file touched, text that tries to give a session instructions** cuts off the offending
+  session, token or member at once (logged) and the hold lapses after an hour (`HOLD_S["other"]`); it is held again if the subject misbehaves again.
+* `poolhouse-security quarantine release ID` and `review` remain as optional commands that end a hold sooner. An agent is refused them at once
+  with the reason (it cannot release what failed a scan), and nothing waits for them.
 
-| Button | What it does |
-|---|---|
-| `Release` | releases exactly the subjects the dialog lists, and logs `released_by_dialog` with their ids |
-| `Keep held` | leaves them held and does not ask about them again |
-| `Later` | leaves them held and asks again in four hours (also what Escape, closing it and a time-out mean) |
-
-`POOLHOUSE_NOTIFY=off` shows no dialog from any Poolhouse process; it is read on every
-scan, so a process started with it set stays silent. The status line carries the information
-either way. Where no dialog can be shown (no desktop, Windows) `status` still names what is
-held.
+No dialog opens and no request is raised: `status` and `chip` name what is held and when the hold ends.
 
 ## Policy: what acts on its own
 
@@ -393,7 +386,7 @@ Armed (tests: `tests/test_publisher_trust.py`, `tests/test_supply_chain_pins.py`
   tuning flags of `serve/downloads.py` (`LLAMA_FLAGS`), so `-m`, `--model`, `-md`, `--mmproj`, `--lora`, `--control-vector`,
   `--chat-template-file`, `--lookup-cache-static`, `-mv`, `-Hf` and any flag not on the list are refused; the child's `LLAMA_ARG_`
   repository, URL and token variables are removed. A start verifies the weights, the draft, the projector, the chat template and
-  the static lookup cache (`guarded.parts_of`). `sentinel baseline --pin FILE --kind model` is a person's, and a pin counts
+  the static lookup cache (`guarded.parts_of`). `sentinel baseline --pin FILE --kind model` is refused to an agent at once, and a pin counts
   as vouching for another file's bytes only when it came from a pull, a person, or a signed list.
 
 * **Pinned at pull.** Every model file (`gguf`, `safetensors`) that `net.download` or `net.accept` keeps

@@ -16,21 +16,18 @@ import inspect
 import json
 import os
 import re
-import select
-import sys
 import textwrap
 from collections.abc import Callable, Sequence
 from functools import partial
 from pathlib import Path
 from typing import Any, TextIO
 
-from poolhouse import activity, hub, mcp, optional, person, requests
+from poolhouse import hub, mcp, optional
 from poolhouse.client import ollama
 from poolhouse.command_capture import captured
 from poolhouse.home import state
-from poolhouse.interventions import Call, Confirm
 from poolhouse.log import say
-from poolhouse.rules import Rules, describe
+from poolhouse.rules import Rules
 
 __all__ = ["Person", "bench_cli", "client_for", "command_tools", "models_on_disk",
            "ollama_models", "own_tools"]
@@ -408,8 +405,6 @@ class Person:
         self.left = False
         self.finished = False
         self.summary = ""
-        self.settled: requests.Outcome | None = None
-        self.origin = requests.Origin("poolhouse-chat")
 
     def say(self, text: str = "") -> None:
         self.stdout.write(text + "\n")
@@ -439,164 +434,19 @@ class Person:
         return {"answer": got}
 
     def plan(self, steps: list[str]) -> dict[str, Any]:
-        """Print the steps in order and ask the person \"go?\" once; each step names a tool and
-        the arguments it will get, and the go covers those values."""
+        """Print the steps in order and go; each step names a tool and the arguments it will get, and the
+        role's rules still decide every call at once."""
         self.say("\nplan:")
         for n, step in enumerate(steps or [], start=1):
             self.say(f"  {n}. {step}")
-        got = self._read("go? [y/N] ")
-        if got is None:
-            return {"go": False, "said": "input ended: the person has left; stop here"}
-        if got.lower() in ("y", "yes", "go", "ok"):
-            return {"go": True, "said": "go"}
-        return {"go": False, "said": f"The person said: {got!r}. Change the plan or ask."}
-
-    def _terminal(self) -> requests.Context:
-        """Where this person's answers are made: the process's own terminal when the streams are
-        the process's, else the streams the caller handed in."""
-        if self.stdin is sys.stdin:
-            return requests.Context()
-        return requests.Context(terminal=(True, True), env={})
-
-    def _ready(self) -> bool:
-        try:
-            return bool(select.select([self.stdin], [], [], 0.3)[0]) if self.stdin.isatty() else True
-        except (OSError, ValueError, AttributeError):
-            return True
-
-    def _read_for(self, prompt: str, handle: requests.Handle) -> str | None:
-        """One line from the person, or None when input ended or the request was answered
-        somewhere else first (then ``self.settled`` says how it ended)."""
-        self.stdout.write(prompt)
-        self.stdout.flush()
-        self.settled = None
-        while not self._ready():
-            got = handle.outcome()
-            if got.state != "pending":
-                self.settled = got
-                self.say(f"\n(answered in the {got.via or 'another place'}: {got.choice or got.state})")
-                return None
-        line = self.stdin.readline()
-        if line == "":
-            self.left = True
-            self.say("\n(input ended; the person has left)")
-            return None
-        return line.strip()
-
-    def _answered(self, handle: requests.Handle, pick: str) -> requests.Outcome:
-        """Record the person's ``pick`` at this terminal; when another answer got there first, or
-        the person cannot answer here, how the request ended."""
-        try:
-            requests.answer(handle.id, pick, handle.fingerprint, "terminal", self._terminal())
-        except requests.Refused as exc:
-            self.say(f"  ({exc})")
-        except person.HumanRequired as exc:
-            self.say(f"  ({exc}; not allowed)")
-            handle.withdraw()
-        except requests.Unavailable as exc:
-            self.say(f"  ({exc}; not allowed)")
-        return handle.outcome()
-
-    def _raise(self, kind: str, subject: str, reason: str, choices: Sequence[str]) -> requests.Handle:
-        return requests.raise_request(requests.Ask(kind, subject, reason, tuple(choices), self.origin,
-                                                   ttl=HOUR_S))
+        return {"go": True, "said": "go"}
 
     def choose(self, question: str, options: Sequence[str]) -> int | None:
-        """Show ``question`` with numbered ``options`` and return the index of the one the person
-        typed (a number, or yes for the first), else None. A request carries the question; the
-        person answers it here, in the UI or in the dialog."""
+        """The index of the option a fact the agent offered is remembered under: the first, at once. A fact that
+        fails the memory store's own checks is refused there, and nothing waits for an answer."""
         self.asked += 1
-        picks = ("approve", "approve-other")[:len(options)]
-        handle = self._raise("memory_remember", question, "The agent offered a fact to remember.",
-                             (*picks, "deny"))
-        self.say(f"\n! {question}")
-        menu = "  ".join(f"{n}) {each}" for n, each in enumerate(options, start=1))
-        got = self._read_for(f"{menu}  [Enter = no] > ", handle)
-        if self.settled is not None:
-            out = self.settled
-        elif got is None:
-            handle.withdraw()
-            return None
-        else:
-            pick = picks[int(got) - 1] if got.isdigit() and 1 <= int(got) <= len(picks) \
-                else picks[0] if got.lower() in ("y", "yes") and picks else "deny"
-            out = self._answered(handle, pick)
-        return picks.index(out.choice) if out.approved and out.choice in picks else None
-
-    def confirm(self, ask: Confirm, call: Call | None = None) -> bool:
-        """Put an intervention's question to the person: allow this time, always allow, never
-        allow, or (anything else) no. A rule is saved only on the person's own answer."""
-        name, role = (call.name if call else ""), str(ask.details.get("role") or "")
-        activity.record("approval.asked", subject=name, refs={"role": role})
-        self.answer = "no"
-        allowed = self._confirm(ask, call)
-        activity.record("approval.answered", actor="person", subject=name, outcome=self.answer,
-                        refs={"role": role})
-        return allowed
-
-    def _confirm(self, ask: Confirm, call: Call | None) -> bool:
-        what = f"{call.name}({_compact(call.arguments or {})}): " if call is not None else ""
-        self.asked += 1
-        can = self.rules is not None and call is not None
-        label = str((ask.details.get("classifier") or {}).get("label", ""))
-        hard = bool(ask.details.get("always_blocked")) and label in ("destructive", "unsure")
-        always = can and bool(ask.details.get("always_ok")) and not hard
-        picks = ["allow-once", *(["allow-always"] if always else []),
-                 *(["never"] if can else []), "deny"]
-        handle = self._raise("tool_call_destructive" if hard else "tool_call", what.rstrip(": ") or "a call",
-                             ask.question, picks)
-        self.say(f"\n! {what}{ask.question}")
-        if can and not always and ask.details.get("always_blocked"):
-            self.say(f"  (no 'always allow' here: {ask.details['always_blocked']})")
-        menu = "1) allow this time" + ("  2) always allow" if always else "") \
-            + ("  3) never allow" if can else "") + "  [Enter = no]"
-        got = self._read_for(f"allow it? {menu} > ", handle)
-        if self.settled is not None:
-            out = self.settled
-        elif got is None:
-            handle.withdraw()
-            return False
-        else:
-            got = got.lower()
-            pick = ("allow-once" if got in ("y", "yes", "1") else
-                    "never" if can and got in ("3", "never") else
-                    "allow-always" if always and got in ("2", "a", "always") else
-                    "deny")
-            out = self._answered(handle, pick)
-        return self._settle(out, call, ask)
-
-    def _settle(self, out: requests.Outcome, call: Call | None, ask: Confirm) -> bool:
-        """Act on how the request ended: run once, save and apply a rule, or refuse."""
-        if out.choice == "never" and call is not None and self.rules is not None:
-            self.answer = "never"
-            return self._save(call, "never", ask)
-        if not out.approved:
-            return False
-        if out.choice == "allow-always" and call is not None and self.rules is not None:
-            if out.via == "terminal":
-                self.answer = "always"
-                return self._save(call, "always", ask)
-            self.say("  (a rule is saved only from the terminal; allowed this time)")
-        self.answer = "allow_once"
-        return True
-
-    def _save(self, call: Call, verdict: str, ask: Confirm) -> bool:
-        """Say in words what the rule for ``call`` covers and save it (an always rule only
-        after a yes); true to go ahead with this call."""
-        role = str(ask.details.get("role") or "")
-        try:
-            rule = self.rules.make(call.name, call.arguments or {}, verdict, role)
-            self.say(f"  this rule: {describe(rule)}")
-            if verdict == "always" and (self._read("  save it? [y/N] > ") or "").lower() \
-                    not in ("y", "yes"):
-                self.say("  not saved; allowed this time")
-                return True
-            self.rules.add(call.name, call.arguments or {}, verdict, role)
-        except (ValueError, OSError) as exc:
-            self.say(f"  no rule saved: {exc}")
-            return verdict == "always"
-        self.say("  saved. /rules lists and edits the rules.")
-        return verdict == "always"
+        self.say(f"\n! remembered: {question}")
+        return 0 if options else None
 
     def done(self, summary: str) -> dict[str, Any]:
         """End the task: ``summary`` is what was measured and where it is."""

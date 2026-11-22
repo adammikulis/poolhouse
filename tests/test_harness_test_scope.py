@@ -12,33 +12,41 @@ def test_queue_is_reversible_only_in_authorized_isolated_worktree(tmp_path):
     (root / ".git").write_text("gitdir: elsewhere")
     (root / "scripts/test").write_text("# maintained runner")
     call = {"command": "python scripts/test fast tests/test_example.py -n 1"}
-    assert decide(coding_policy.Policy(coding_policy.ASK_DANGEROUS), Call("Bash", call), roots=[str(root)]).action == "allow"
+    assert decide(coding_policy.Policy(coding_policy.GUARDED), Call("Bash", call), roots=[str(root)]).action == "allow"
     assert decide(coding_policy.Policy(coding_policy.READ_ONLY), Call("Bash", call), roots=[str(root)]).action == "deny"
-    assert decide(coding_policy.Policy(coding_policy.ASK_DANGEROUS), Call("Bash", {"command": "python /outside/scripts/test fast"}), roots=[str(root)]).action == "ask"
+    assert decide(coding_policy.Policy(coding_policy.GUARDED), Call("Bash", {"command": "python /outside/scripts/test fast"}), roots=[str(root)]).action == "deny"
     (root / "scripts/test").unlink()
     (root / "scripts/test").symlink_to(tmp_path / "outside")
     (tmp_path / "outside").write_text("other program")
-    assert decide(coding_policy.Policy(coding_policy.ASK_DANGEROUS), Call("Bash", call), roots=[str(root)]).action == "ask"
+    assert decide(coding_policy.Policy(coding_policy.GUARDED), Call("Bash", call), roots=[str(root)]).action == "deny"
 
 
 def test_inventory_and_policy_source_reads_do_not_request_mutation_authority():
     assert decide(coding_policy.Policy(coding_policy.READ_ONLY), Call("Bash", {"command": "pyenv versions 2>/dev/null"})).action == "allow"
-    assert decide(coding_policy.Policy(coding_policy.ASK_DANGEROUS), Call("Bash", {"command": "pyenv exec arbitrary-program"})).action == "ask"
+    assert decide(coding_policy.Policy(coding_policy.GUARDED), Call("Bash", {"command": "pyenv exec arbitrary-program"})).action == "deny"
     assert decide(coding_policy.Policy(coding_policy.READ_ONLY), Call("Bash", {"command": "git log -- src/poolhouse/sentinel/policy.py"})).action == "allow"
-    assert decide(coding_policy.Policy(coding_policy.ASK_DANGEROUS), Call("Bash", {"command": "poolhouse-security mode off"})).action != "allow"
+    assert decide(coding_policy.Policy(coding_policy.GUARDED), Call("Bash", {"command": "poolhouse-security mode off"})).action != "allow"
 
 
 @pytest.mark.redteam
 @pytest.mark.parametrize("command", [
     "pytest tests/test_one.py", "python -m pytest tests/test_one.py",
-    "python3.13 -m pytest", "uv run pytest", "uv run --project . pytest",
+    "uv run pytest", "uv run --project . pytest",
     "poetry run pytest", "python -m unittest", "tox", "nox", "pytest --collect-only",
 ])
 def test_consumer_test_commands_follow_execution_permissions_without_a_poolhouse_broker(command, tmp_path):
-    decision = decide(coding_policy.Policy(coding_policy.ASK_DANGEROUS),
+    decision = decide(coding_policy.Policy(coding_policy.GUARDED),
                       Call("Bash", {"command": command}), roots=[str(tmp_path)])
     assert decision.action != "deny", decision.reason
     assert "scripts/test" not in decision.reason
+
+
+@pytest.mark.redteam
+def test_a_versioned_interpreter_the_classifier_does_not_know_is_refused_at_once_with_the_reason(tmp_path):
+    decision = decide(coding_policy.Policy(coding_policy.GUARDED),
+                      Call("Bash", {"command": "python3.13 -m pytest"}), roots=[str(tmp_path)])
+    assert decision.action == "deny" and decision.label == "unsure"
+    assert "python3.13 is a program the classifier does not know" in decision.reason
 
 
 @pytest.mark.redteam

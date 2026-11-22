@@ -7,15 +7,14 @@ import platform
 import plistlib
 import shlex
 import subprocess
-import sys
 import threading
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from poolhouse import authority, home, real_machine
+from poolhouse.caller import AGENT_MARKERS
 from poolhouse.files import read_json, write_json
-from poolhouse.person import AGENT_MARKERS, HumanRequired, is_terminal
 from poolhouse.serve.wired import KEY, MIB, MIN_MB, SYSCTL, Hooks, max_mb
 
 __all__ = ["AGENT_MARKERS", "DAEMON", "LABEL", "Applied", "State", "argv_for", "checked", "original_mb",
@@ -111,7 +110,7 @@ def script_for(mb: int | None, keep: bool | None, daemon: Path = DAEMON) -> str:
 
 
 def argv_for(script: str, via: str) -> list[str]:
-    """The command that runs ``script``: sudo at a terminal, macOS's own dialog otherwise."""
+    """The command that runs ``script``: sudo, or macOS's own administrator dialog (the operating system asks for the password)."""
     if via == "sudo":
         return ["sudo", "/bin/sh", "-c", script]
     if via == "osascript":
@@ -120,18 +119,14 @@ def argv_for(script: str, via: str) -> list[str]:
     raise ValueError(f"unknown way to ask for administrator rights: {via!r}")
 
 
-def _authorise(action: str, via: str, hooks: Hooks) -> None:
+def _authorise(action: str, hooks: Hooks) -> None:
     """Pass the ``serve.wired-limit`` gate; the administrator prompt itself is macOS's dialog or sudo."""
-    sudo = via == "sudo"
-    authority.require("serve.wired-limit", action, hooks.terminal if sudo else (True, True), hooks.env)
-    terminal = hooks.terminal or (is_terminal(sys.stdin), is_terminal(sys.stdout))
-    if sudo and not all(terminal):
-        raise HumanRequired(f"{action} through sudo needs a terminal on stdin and stdout")
+    authority.require("serve.wired-limit", action, hooks.env)
 
 
-def require_person(via: str) -> None:
-    """Refuse, as `set_limit` does, a process an agent started; the command asks before it looks at the platform."""
-    _authorise("change the wiring limit", via, Hooks())
+def require_gate() -> None:
+    """Refuse, as `set_limit` does, an agent while the gate is held back; the command decides before it looks at the platform."""
+    _authorise("change the wiring limit", Hooks())
 
 
 def _run(argv: Sequence[str], capture: bool) -> tuple[int, str, str]:
@@ -169,11 +164,11 @@ def set_limit(mb: object, *, keep: bool | None = None, via: str,
     """Set the limit to ``mb`` MB (None leaves it) and install (``keep`` True), remove (False)
     or leave (None) the boot-time daemon, in one administrator prompt.
 
-    ``via`` is ``sudo`` (a terminal) or ``osascript`` (macOS's dialog). Raises `HumanRequired`
-    for a process an agent started or ``sudo`` with no terminal, `ValueError` for a bad ``mb``.
+    ``via`` is ``sudo`` (a terminal) or ``osascript`` (macOS's dialog). Raises `AgentRefused`
+    for an agent while the gate is held back, `ValueError` for a bad ``mb``.
     """
     hooks = hooks or Hooks()
-    _authorise("change the wiring limit", via, hooks)
+    _authorise("change the wiring limit", hooks)
     value = None if mb is None else checked(mb, hooks.total_bytes())
     if value is None and keep is not False:
         raise ValueError("nothing to change")
@@ -186,7 +181,7 @@ def reset(*, via: str, hooks: Hooks | None = None) -> Applied:
     """Put the limit back to what it was before the first change (0, the default share, when
     none was recorded) and remove the boot-time daemon."""
     hooks = hooks or Hooks()
-    _authorise("reset the wiring limit", via, hooks)
+    _authorise("reset the wiring limit", hooks)
     target = original_mb() or 0
     if target and target > hooks.total_bytes() // MIB:
         raise ValueError("the recorded original limit is larger than installed memory")

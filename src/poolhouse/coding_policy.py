@@ -4,10 +4,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 READ_ONLY = "read-only"
-ASK_CHANGES = "ask-changes"
-ASK_DANGEROUS = "ask-dangerous"
+GUARDED = "guarded"
+"""Reversible changes run; destructive and unclassifiable calls are denied at once with the reason."""
 YOLO = "yolo"
-PERMISSIONS = (READ_ONLY, ASK_CHANGES, ASK_DANGEROUS, YOLO)
+PERMISSIONS = (READ_ONLY, GUARDED, YOLO)
 PLAN = "plan"
 EXECUTE = "execute"
 EXECUTION_MODES = (PLAN, EXECUTE)
@@ -15,7 +15,7 @@ EXECUTION_MODES = (PLAN, EXECUTE)
 
 @dataclass(frozen=True, slots=True)
 class Policy:
-    permissions: str = ASK_DANGEROUS
+    permissions: str = GUARDED
     execution_mode: str = EXECUTE
 
     def __post_init__(self) -> None:

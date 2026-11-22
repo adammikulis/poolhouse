@@ -15,11 +15,11 @@ from poolhouse import authority
 from poolhouse.activity import query, view, writer
 from poolhouse.activity.log import ActivityLog
 from poolhouse.activity.schema import Entry
+from poolhouse.caller import AGENT_MARKERS, AgentRefused, who
 from poolhouse.command import Group, flag
 from poolhouse.files import write_text
 from poolhouse.keystore import KeystoreError
 from poolhouse.log import say, warn
-from poolhouse.sentinel.human import AGENT_MARKERS, HumanRequired
 
 __all__ = ["COMMAND", "main", "viewer"]
 
@@ -127,8 +127,8 @@ def _verify(args: argparse.Namespace, log: ActivityLog) -> int:
 
 def _export(args: argparse.Namespace, log: ActivityLog) -> int:
     try:
-        authority.require("activity.export", "poolhouse-log export", (sys.stdin.isatty(), sys.stdout.isatty()))
-    except HumanRequired as exc:
+        authority.require("activity.export", "poolhouse-log export")
+    except AgentRefused as exc:
         warn(str(exc))
         return DENIED
     target = Path(args.path).expanduser()
@@ -140,7 +140,7 @@ def _export(args: argparse.Namespace, log: ActivityLog) -> int:
              "meta": dict(e.meta)} for e in query.select(_entries(log), _filter(args))]
     write_text(target, json.dumps(rows, indent=1, sort_keys=True))
     target.chmod(0o600)
-    writer.record("activity.export", actor="person", outcome="ok", meta={"records": len(rows)})
+    writer.record("activity.export", actor=who(), outcome="ok", meta={"records": len(rows)})
     say(f"wrote {len(rows)} records to {target}")
     return 0
 
@@ -163,7 +163,7 @@ COMMAND.add("show", _guard(_show), help="one record in full by its id or sequenc
 COMMAND.add("stats", _guard(_stats), help="counts, span, size, dropped records")
 COMMAND.add("verify", _guard(_verify), help="check the chain and say where it breaks",
             options=[flag("--anchor", default="", help="a file holding a head line kept elsewhere")])
-COMMAND.add("export", _guard(_export), help="write records as JSON to a new file you name (person only)",
+COMMAND.add("export", _guard(_export), help="write records as JSON to a new file you name (an agent is refused at once while the activity.export gate is held back)",
             options=[*FILTERS, flag("--json", action="store_true", required=True),
                      flag("path")])
 COMMAND.add("related", _guard(_related), help="everything an agent did that names a subject",

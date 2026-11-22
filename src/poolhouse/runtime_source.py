@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 
-from poolhouse import person, runtime_git, runtime_unmerged
+from poolhouse import caller, runtime_git, runtime_unmerged
 from poolhouse.runtime_git import COMMIT as COMMIT, DeployError as DeployError, git as git
 
 FLOOR = "packaging/runtime-floor"
@@ -39,12 +38,10 @@ def admit(checkout: Path, commit: str, *, allow_unmerged: bool | runtime_unmerge
             or (expected and branch != expected)):
         raise DeployError("the primary checkout must be on its development branch")
     if allow_unmerged:
-        if person.marked():
+        if caller.marked():
             if not isinstance(allow_unmerged, runtime_unmerged.Approval):
                 raise DeployError("an agent needs an exact reviewed runtime approval")
             runtime_unmerged.validate(allow_unmerged, checkout, commit)
-        elif not person.is_terminal(sys.stdin) or not person.is_terminal(sys.stdout):
-            raise DeployError("unpublished source needs person authentication through a supported approval route")
         return
     for ref in (f"refs/heads/{branch}", f"refs/remotes/origin/{branch}"):
         published = resolve_commit(checkout, ref)

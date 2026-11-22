@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse.workspace.person_ancestry import under_harness
+from poolhouse.workspace.harness_ancestry import under_harness
 
 HOOK = Path(__file__).resolve().parent.parent / "scripts" / "hooks" / "pre-push"
 ZERO = "0" * 40
@@ -128,10 +128,10 @@ def test_main_is_refused_even_when_the_primary_checkout_is_on_it(tmp_path):
     assert push(tmp_path, "main", CLAUDECODE="1").returncode != 0
 
 
-@pytest.mark.skipif(under_harness(), reason="a run under an agent harness is not a person's terminal")
-def test_a_person_is_not_stopped(checkout):
-    """No terminal sets CLAUDECODE, and neither does a GUI client, so the owner's own
-    push meets nothing -- the one push this hook must never be in the way of."""
+@pytest.mark.skipif(under_harness(), reason="a run under an agent harness is not a terminal of your own")
+def test_a_push_from_a_terminal_of_your_own_is_not_stopped(checkout):
+    """No terminal sets CLAUDECODE, and neither does a GUI client, and no harness is above them, so a push of
+    your own meets nothing: this hook decides at once and asks nobody."""
     done = push(checkout, "main", "split-something", CLAUDECODE="")
     assert done.returncode == 0, done.stderr
     assert done.stderr == ""
@@ -257,15 +257,16 @@ def test_no_validation_or_build_helper_runs_during_ref_guard(checkout, tmp_path)
     copied.mkdir()
     hook = copied / "pre-push"
     hook.write_bytes(HOOK.read_bytes())
-    for name in ("pushed", "person-consume"):
+    for name in ("pushed", "harness-ancestry"):
         helper = copied / name
-        helper.write_text("#!/bin/sh\necho unexpected-helper >&2\nexit 99\n")
+        helper.write_text("import pathlib, sys\nsys.stderr.write('unexpected-helper\\n')\npathlib.Path(sys.argv[0] + '.ran').touch()\nsys.exit(99)\n")
         helper.chmod(0o700)
     sha = git(checkout, "rev-parse", "HEAD")
     result = subprocess.run(["sh", str(hook)], cwd=checkout, text=True, capture_output=True,
                             input=f"HEAD {sha} refs/heads/0.9dev {ZERO}\n",
                             env={**os.environ, "CLAUDECODE": "1"})
     assert result.returncode == 0 and result.stderr == ""
+    assert not list(copied.glob("*.ran")), "a helper ran although the marker already said an agent pushes"
 
 
 @pytest.mark.parametrize("record", ["HEAD\n", "HEAD {sha} refs/heads/0.9dev\n",

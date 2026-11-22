@@ -7,8 +7,8 @@ import time
 from typing import Any
 
 from poolhouse.board.session import Entry, Session
+from poolhouse.caller import refuse_agent
 from poolhouse.command import flag
-from poolhouse.person import require_person
 from poolhouse.workspace import inbound, limits, render
 from poolhouse.workspace.board_cli import TYPES, screened
 from poolhouse.workspace.cli_options import READ, WIDEN
@@ -119,8 +119,8 @@ def held(args: argparse.Namespace, s: Session) -> Any:
 
 
 def free(args: argparse.Namespace, s: Session) -> Any:
-    """Let a held message be shown, fenced; a person at a terminal only."""
-    require_person("quarantine-release")
+    """Let a held message be shown, fenced; an agent is refused at once."""
+    refuse_agent("quarantine-release", "a message was held because it looked like an injection, and an agent must not release what it was kept from")
     item = s.free(args.qid)
     if item["state"] != "released":
         raise Refused(f"{args.qid} was not released")

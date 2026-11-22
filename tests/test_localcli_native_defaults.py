@@ -6,7 +6,7 @@ import subprocess
 import pytest
 from harness_kit import checkouts
 
-from poolhouse import node_launch, person
+from poolhouse import caller, node_launch
 from poolhouse.board import client, place, session
 from poolhouse.workspace import cli, localcli
 
@@ -16,7 +16,7 @@ pytest_plugins = ['node_kit']
 @pytest.fixture
 def native(workspace_node, tmp_path, monkeypatch):
     node = workspace_node
-    for key in (*person.AGENT_MARKERS, session.AGENT_ENV, session.TOKEN_ENV, session.SUBAGENT_ENV,
+    for key in (*caller.AGENT_MARKERS, session.AGENT_ENV, session.TOKEN_ENV, session.SUBAGENT_ENV,
                 'POOLHOUSE_SESSION_ID', 'POOLHOUSE_SESSION_HARNESS', 'CLAUDE_CODE_SESSION_ID', 'POOLHOUSE_BOARD'):
         monkeypatch.delenv(key, raising=False)
     project = checkouts(tmp_path).primary

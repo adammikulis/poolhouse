@@ -1,59 +1,58 @@
-"""The person's grant key: kept beside the node, and used only for what a person confirms at their terminal (docs/node.md,
-"Standing grants", "Key custody").
+"""The person's grant key: kept beside the node, created on first use, and used to sign the grants a refusal names.
 
-Every signature it makes is read back from the bytes being signed and put to the person as a typed `yes` on the terminal device
-(`person.confirm`, `/dev/tty`), whatever stdin and stdout are. A command a person is running asks for what it needs; when a refusal
-says a grant is missing, it offers to sign one for exactly that, good for one use and two minutes. A process an agent marked is
-refused before the question is put. The typed `yes` stops accidents and an agent that does not open a terminal of its own; it is
-not a barrier against a process of the same operating-system user that allocates a terminal of its own, imports this code, or
-reads the key file and its passphrase or the keychain item. A per-use user-presence prompt (Touch ID, a hardware key) or a signing
-helper under another operating-system identity would be, and neither is built.
+Nothing asks anyone. A command that is refused for a missing grant gets one signed for exactly that, good for one use and two
+minutes, when policy allows it: a process with no agent marker may have any grant, and an agent may have every grant except
+those that end another device's place in the pool, change who governs it, or release what a scan failed (`AGENT_REFUSED`).
+Those are refused at once with the reason, and every use and refusal is audited with who asked (`poolhouse.caller`).
+The key is held in the OS keystore, else in a file encrypted under ``POOLHOUSE_SIGNING_PASSPHRASE`` (never asked for at a terminal).
+It is not a barrier against code of the same operating-system user that reads the key file or the keychain item.
 """
 
 from __future__ import annotations
 
-import getpass
-import sys
+import socket
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from poolhouse import errors, person
+from poolhouse import caller, errors
 from poolhouse.board import grants
-from poolhouse.board.client import Client
+from poolhouse.board.client import Client, Denied
 from poolhouse.board.session import Session
-from poolhouse.fleet.onboard.signing import ConfirmedKeys, KeyStoreError
+from poolhouse.fleet.onboard.signing import UNLOCK_ENV, KeyStoreError, SigningKeys
 from poolhouse.log import warn
 from poolhouse.node_health import Refused, call
 
-__all__ = ["KEY_DIR", "held", "kept", "keys", "provider", "retrying"]
+__all__ = ["AGENT_REFUSED", "KEY_DIR", "agent_refusal", "enrolled", "kept", "keys", "no_prompt", "provider", "retrying"]
 
 KEY_DIR = "person"
 LASTS_MS = 120_000
+AGENT_REFUSED = {
+    "member_remove": "it ends another device's place in the pool",
+    "admin_manage": "it changes who governs the pool",
+    "land_trust": "it widens what the pool trusts to land",
+    "quarantine_release": "what failed a scan is deleted and fetched again, never released",
+}
+"""The grants an agent is refused at once, with why: the automatic floor under every grant that policy issues."""
 
 
-def tty_passphrase(prompt: str) -> str:
-    """The passphrase of the key file, typed on the terminal device; the environment is never read for it."""
-    with person.controlling_terminal() as found:
-        if found is None:
-            raise KeyStoreError("the person's key is unlocked at a terminal, and this process has none")
-    return getpass.getpass(prompt)
+def agent_refusal(action: str) -> str:
+    """Why an agent is refused a grant for ``action``, or an empty string when policy allows it."""
+    return AGENT_REFUSED.get(action, "")
 
 
-def _remembered(ask: Callable[[str], str]) -> Callable[[str], str]:
-    """``ask``, answered once for the life of this process."""
-    typed: list[str] = []
-
-    def passphrase(prompt: str) -> str:
-        if not typed:
-            typed.append(ask(prompt))
-        return typed[0]
-    return passphrase
+def no_prompt(prompt: str) -> str:
+    """The passphrase of the key file, from the environment; never asked for at a terminal."""
+    import os
+    told = os.environ.get(UNLOCK_ENV, "")
+    if not told:
+        raise KeyStoreError(f"this machine has no OS keystore, so the key is kept in a file under a passphrase: set {UNLOCK_ENV} ({prompt.strip(': ')})")
+    return told
 
 
-def keys(state: Path) -> ConfirmedKeys:
+def keys(state: Path) -> SigningKeys:
     """The person's key of the node whose state directory is ``state``, made on first use of its public half."""
-    return ConfirmedKeys(Path(state) / KEY_DIR, describe=grants.describe, passphrase=_remembered(tty_passphrase))
+    return SigningKeys(Path(state) / KEY_DIR, passphrase=no_prompt)
 
 
 def kept(state: Path) -> bool:
@@ -61,44 +60,53 @@ def kept(state: Path) -> bool:
     return (Path(state) / KEY_DIR / "signing.json").exists()
 
 
-def held(state: Path, *, attended: bool = False) -> ConfirmedKeys | None:
-    """The person's key when one is kept here and this process is a person's: no agent marker, and a terminal on stdin and
-    stdout, or a screen the person is sitting at (``attended``); else None. Using it still asks on the terminal device."""
-    if person.marked() or not kept(state):
-        return None
-    if not attended and not (person.is_terminal(sys.stdin) and person.is_terminal(sys.stdout)):
-        return None
-    return keys(state)
+def enrolled(client: Client, carrier: Session) -> SigningKeys:
+    """This device's key, made on first use and enrolled on the node when the node holds no key of this computer (a phone's, enrolled first, does
+    not count: the node enrols this computer's own key by its own prompt, so nothing waits for a phone). ``carrier`` is the device's own session,
+    the only one the node lets make that key. `Denied` when the node holds another key made on this computer."""
+    key = keys(client.state)
+    if grants.fingerprint(key.public) not in grants.listing(carrier).persons:
+        about = "".join(c for c in socket.gethostname() if c.isascii() and c.isprintable())[:40] or "this device"
+        try:
+            grants.enrol_first(client, carrier.token, key, about)
+        except Denied as err:
+            raise Denied("denied", "this node already holds another key made on this computer: carry this device's key over with `person-proof` and `person-enroll`") from err
+    return key
 
 
-def provider(state: Path, *, attended: bool = False, acting: Callable[[str], tuple[str, str]] | None = None) -> Callable[[str, dict[str, Any]], str]:
-    """What a client asks after a refusal that names a missing grant: sign it for one use when the person says yes. The grant is for
+def provider(state: Path, *, acting: Callable[[str], tuple[str, str]] | None = None) -> Callable[[str, dict[str, Any]], str]:
+    """What a client asks after a refusal that names a missing grant: sign it for one use when policy allows. The grant is for
     the session behind the token, or, with ``acting`` (a board to the name and token of the person's own session of this terminal on it),
     for that session, since the token of another terminal's session spends no grant here. The token to send the request again with, or an
     empty string."""
     def allow(token: str, hint: dict[str, Any]) -> str:
-        key = held(state, attended=attended)
-        if key is None:
+        action = str(hint["action"])
+        if caller.marked() and (why := agent_refusal(action)):
+            caller.record("grant.refused", action=action, why=why)
+            warn(f"grant: {action} is refused to an agent: {why}")
             return ""
         try:
             name, carrier = acting(hint["board"]) if acting is not None else (hint["name"], token)
-            if grants.listing(Session(Client(state), hint["board"], carrier, name)).pool_wide(hint["action"]):
+            held = Session(Client(state), hint["board"], carrier, name)
+            if grants.listing(held).pool_wide(action):
                 warn(f"grant: {grants.POOL_GRANTS}")
                 return ""
-            want = grants.Want(hint["action"], {"kind": "session", "name": name}, hint["resource"], hint["device"], LASTS_MS, 1)
+            key = enrolled(held.client, held) if acting is not None else keys(state)
+            want = grants.Want(action, {"kind": "session", "name": name}, hint["resource"], hint["device"], LASTS_MS, 1)
             call(state, "grant_issue", grants.sign_issue(key, hint["board"], want), board=hint["board"], token=carrier)
         except (OSError, ValueError, RuntimeError, errors.Error) as err:
-            warn(f"grant: the person's key could not allow {hint['action']}: {err}")
+            warn(f"grant: the person's key could not allow {action}: {err}")
             return ""
+        caller.record("grant.issued", action=action, to=name, resource=str(hint["resource"]))
         return carrier
     return allow
 
 
-def retrying[T](state: Path, token: str, send: Callable[[], T], *, attended: bool = False) -> T:
-    """``send()``, once more after the person's key allowed what a refusal named."""
+def retrying[T](state: Path, token: str, send: Callable[[], T]) -> T:
+    """``send()``, once more after policy allowed what a refusal named."""
     try:
         return send()
     except Refused as err:
-        if not token or not err.grant or not provider(state, attended=attended)(token, err.grant):
+        if not token or not err.grant or not provider(state)(token, err.grant):
             raise
         return send()

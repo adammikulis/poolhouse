@@ -1,17 +1,20 @@
-"""The quarantine store: one state machine, reversible moves, human-only release, bounds,
-tamper evidence and crash safety."""
+"""The quarantine store: one state machine, reversible moves, release only with a permit that policy minted (an agent is
+refused at once), bounds, tamper evidence and crash safety."""
 
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 
 import pytest
 
-from poolhouse.sentinel import human
+from poolhouse import caller
+from poolhouse.caller import AgentRefused
+from poolhouse.sentinel import permit
 from poolhouse.sentinel.events import Bus
-from poolhouse.sentinel.human import HumanGrant, HumanRequired
+from poolhouse.sentinel.permit import Permit
 from poolhouse.sentinel.store import (
     TRANSITIONS,
     Holding,
@@ -24,8 +27,8 @@ from poolhouse.sentinel.store import (
 )
 
 
-def grant(action: str, subject: str) -> HumanGrant:
-    return human.mint(action, subject, typed=lambda _p: subject, terminal=(True, True), env={})
+def grant(action: str, subject: str) -> Permit:
+    return permit.mint(action, subject, env={})
 
 
 @pytest.fixture
@@ -112,37 +115,57 @@ def test_restore_never_overwrites(store, models):
 def test_release_needs_a_grant_for_that_record(store):
     record = store.quarantine(("member", "10.0.0.9"), "forged", None)
     other = store.quarantine(("member", "10.0.0.8"), "forged", None)
-    with pytest.raises(HumanRequired):
+    with pytest.raises(AgentRefused):
         store.release(record.id, grant("release", other.id))
-    with pytest.raises(HumanRequired):
+    with pytest.raises(AgentRefused):
         store.release(record.id, grant("purge", record.id))
     assert store.blocked("member", "10.0.0.9")
 
 
 def test_a_forged_grant_is_refused(store):
     record = store.quarantine(("member", "10.0.0.9"), "forged", None)
-    forged = HumanGrant("release", record.id, 9e18, object())
-    with pytest.raises(HumanRequired, match="not a grant"):
+    forged = Permit("release", record.id, 9e18, object())
+    with pytest.raises(AgentRefused, match="not a permit minted by policy"):
         store.release(record.id, forged)
 
 
 def test_an_expired_grant_is_refused(store):
     record = store.quarantine(("member", "p"), "x", None)
     old = grant("release", record.id)
-    with pytest.raises(HumanRequired, match="expired"):
+    with pytest.raises(AgentRefused, match="expired"):
         old.check("release", record.id, now=old.expires + 1)
 
 
-def test_minting_refuses_without_a_terminal_and_under_an_agent(monkeypatch):
-    with pytest.raises(HumanRequired, match="terminal"):
-        human.mint("release", "q-1", typed=lambda _p: "q-1", terminal=(False, True), env={})
-    with pytest.raises(HumanRequired, match="terminal"):
-        human.mint("release", "q-1", typed=lambda _p: "q-1", terminal=(True, False), env={})
-    with pytest.raises(HumanRequired, match="agent"):
-        human.mint("release", "q-1", typed=lambda _p: "q-1", terminal=(True, True),
-                   env={"CLAUDECODE": "1"})
-    with pytest.raises(HumanRequired, match="not confirmed"):
-        human.mint("release", "q-1", typed=lambda _p: "q-2", terminal=(True, True), env={})
+def test_minting_needs_no_terminal_and_no_typing_for_a_process_with_no_agent_marker(monkeypatch):
+    monkeypatch.setattr("sys.stdin", io.StringIO())
+    monkeypatch.setattr("sys.stdout", io.StringIO())
+    made = permit.mint("release", "q-1", env={})
+    made.check("release", "q-1")
+    with pytest.raises(AgentRefused, match="this permit is for release q-1"):
+        made.check("release", "q-2")
+    with pytest.raises(AgentRefused, match="this permit is for release q-1"):
+        made.check("purge", "q-1")
+    rows = [r for r in caller.audit_rows() if r["event"] == "ran"]
+    assert [r["action"] for r in rows] == ["release q-1"] and rows[0]["who"].startswith("user ")
+
+
+@pytest.mark.parametrize("marker", caller.AGENT_MARKERS)
+def test_an_agent_is_refused_at_once_with_the_reason_and_the_refusal_is_audited(store, marker):
+    record = store.quarantine(("member", "10.0.0.9"), "forged", None)
+    with pytest.raises(AgentRefused, match=rf"release {record.id} is refused to an agent \({marker} is set\)"):
+        permit.mint("release", record.id, env={marker: "1"})
+    with pytest.raises(AgentRefused, match="purge"):
+        permit.mint("purge", record.id, env={marker: "1"})
+    refused = [r for r in caller.audit_rows() if r["event"] == "refused"]
+    assert [r["action"] for r in refused] == [f"release {record.id}", f"purge {record.id}"]
+    assert all(marker in r["who"] and r["why"] for r in refused)
+    assert store.get(record.id).state == State.QUARANTINED and store.blocked("member", "10.0.0.9")
+
+
+def test_an_agent_marker_in_the_process_cannot_be_hidden_by_a_clean_env_argument(monkeypatch):
+    monkeypatch.setenv("CLAUDECODE", "1")
+    with pytest.raises(AgentRefused, match="refused to an agent"):
+        permit.mint("release", "q-1", env={})
 
 
 def test_released_is_not_quarantined_again_by_a_release(store):
@@ -177,8 +200,8 @@ def test_held_text_is_inert_redacted_capped_and_needs_a_grant(store):
     assert record.held["truncated"] and record.held["bytes"] <= Limits().max_payload_bytes
     raw = (store.root / "items" / record.held["file"]).read_text()
     assert token not in raw
-    with pytest.raises(HumanRequired):
-        store.read(record.id, HumanGrant("inspect", record.id, 9e18, object()))
+    with pytest.raises(AgentRefused):
+        store.read(record.id, Permit("inspect", record.id, 9e18, object()))
     assert (store.root / "items" / record.held["file"]).stat().st_mode & 0o777 == 0o600
     shown = store.read(record.id, grant("inspect", record.id))
     assert "evil.example" in shown and token not in shown
@@ -200,7 +223,7 @@ def test_purge_deletes_what_was_held_and_keeps_the_record(store, models):
     path = _model(models)
     record = store.quarantine(("model", str(path)), "x", None, Holding(path=path))
     held = models / ".poolhouse-quarantine" / record.id / "m.gguf"
-    with pytest.raises(HumanRequired):
+    with pytest.raises(AgentRefused):
         store.purge(record.id, grant("release", record.id))
     store.purge(record.id, grant("purge", record.id))
     assert not held.exists()

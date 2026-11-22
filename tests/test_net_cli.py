@@ -1,25 +1,32 @@
 """The security commands for what came in from the internet."""
 
 import json
+import sys
 
 import pytest
 
-from poolhouse import net
+from poolhouse import authority, caller, net
 from poolhouse.httpguard import Limits
 from poolhouse.net import cli, policy, provenance
 from poolhouse.net.scan import ScanPolicy
-from poolhouse.sentinel import human
 from tests.net_site import Site, gguf_bytes
 
 
 @pytest.fixture
-def person(capsys, monkeypatch):
-    """A terminal with a person who types back what they are asked."""
-    for grant in (human.mint, human.mint_gated):
-        monkeypatch.setitem(grant.__kwdefaults__, "terminal", (True, True))
-        monkeypatch.setitem(grant.__kwdefaults__, "typed", lambda prompt="": prompt.split()[1])
-    for name in human.AGENT_MARKERS:
-        monkeypatch.delenv(name, raising=False)
+def person():
+    """A process no agent started, with no terminal on either stream (pytest captures both)."""
+    assert not caller.marked() and not caller.is_terminal(sys.stdin) and not caller.is_terminal(sys.stdout)
+
+
+@pytest.fixture
+def delegated(monkeypatch):
+    """The `sentinel.policy` gate delegated (the suite holds every gate back from agents): an agent passes it and the pass is audited."""
+    monkeypatch.delenv(authority.FLOOR_ENV)
+    authority.set_state(["sentinel.policy"], authority.DELEGATED, by="test")
+
+
+def rows(event: str) -> list[dict]:
+    return [r for r in caller.audit_rows() if r["event"] == event]
 
 
 def run(capsys, *argv):
@@ -63,27 +70,34 @@ def test_held_downloads_are_listed_with_their_reason(tmp_path, capsys):
     assert rows[0]["outcome"] == "held" and "GGUF" in rows[0]["reason"]
 
 
-def test_an_approval_needs_a_person_and_is_recorded(person, capsys, monkeypatch):
+def test_an_approval_runs_with_no_terminal_and_no_prompt_and_is_recorded(person, capsys):
     code, out = run(capsys, "approve-host", "mirror.example", "--note", "my mirror")
     assert code == 0 and "mirror.example approved" in out.out, out.err
     row = policy.default().approvals()[0]
     assert (row.host, row.note) == ("mirror.example", "my mirror") and row.by
     assert policy.default().approved("mirror.example")
+    ran = [r for r in rows("ran") if r["action"] == "approve-host mirror.example"]
+    assert len(ran) == 1 and ran[0]["who"].startswith("user ")
 
 
-def test_an_agent_cannot_approve_a_host(person, capsys, monkeypatch):
-    monkeypatch.setenv("CLAUDECODE", "1")
+@pytest.mark.parametrize("marker", caller.AGENT_MARKERS)
+def test_an_agent_is_refused_at_once_when_it_approves_a_host_and_nothing_is_recorded(person, capsys, monkeypatch, marker):
+    monkeypatch.setenv(marker, "1")
     code, out = run(capsys, "approve-host", "evil.example")
-    assert code == 2 and "started by an agent" in out.err
-    assert not policy.default().approved("evil.example")
+    assert code == 2 and "refused to an agent" in out.err and marker in out.err and "sentinel.policy" in out.err
+    assert not policy.default().approved("evil.example") and policy.default().approvals() == []
+    refused = rows("refused")
+    assert len(refused) == 1 and refused[0]["action"] == "approve-host evil.example"
+    assert refused[0]["who"].startswith(f"agent {marker}")
 
 
-def test_a_process_without_a_terminal_cannot_approve_a_host(capsys, monkeypatch):
-    for name in human.AGENT_MARKERS:
-        monkeypatch.delenv(name, raising=False)
-    monkeypatch.setitem(human.mint_gated.__kwdefaults__, "terminal", (False, False))
-    code = run(capsys, "approve-host", "evil.example")[0]
-    assert code == 2 and not policy.default().approved("evil.example")
+def test_an_agent_passes_while_the_policy_gate_is_delegated_and_the_audit_names_it(delegated, capsys, monkeypatch):
+    monkeypatch.setenv("CLAUDECODE", "1")
+    code, out = run(capsys, "approve-host", "mirror.example")
+    assert code == 0, out.err
+    assert policy.default().approved("mirror.example")
+    used = [r for r in rows("authority.use") if r["gate"] == "sentinel.policy"]
+    assert len(used) == 1 and used[0]["who"].startswith("agent CLAUDECODE")
 
 
 def test_hosts_lists_the_allow_list_and_the_approvals(person, capsys):
@@ -92,7 +106,7 @@ def test_hosts_lists_the_allow_list_and_the_approvals(person, capsys):
     assert "huggingface.co" in data["allowed"] and data["approved"][0]["host"] == "mirror.example"
 
 
-def test_the_scan_policy_defaults_and_can_be_changed_by_a_person(person, capsys):
+def test_the_scan_policy_defaults_and_can_be_changed_with_no_terminal(person, capsys):
     data = json.loads(run(capsys, "scan-policy", "--json")[1].out)
     assert data == {"executable": "refuse", "archive": "refuse", "model": "warn", "data": "warn",
                     "scan_models": False}
@@ -100,12 +114,16 @@ def test_the_scan_policy_defaults_and_can_be_changed_by_a_person(person, capsys)
     assert ScanPolicy.load().archive == "warn"
     assert run(capsys, "scan-policy", "scan_models", "on")[0] == 0
     assert ScanPolicy.load().scan_models is True
+    assert [r["action"] for r in rows("ran")] == ["scan-policy archive", "scan-policy scan_models"]
 
 
-def test_the_scan_policy_is_not_changed_by_an_agent(person, capsys, monkeypatch):
-    monkeypatch.setenv("POOLHOUSE_AGENT", "1")
-    code = run(capsys, "scan-policy", "archive", "allow")[0]
-    assert code == 2 and ScanPolicy.load().archive == "refuse"
+@pytest.mark.parametrize("marker", ["CLAUDECODE", "POOLHOUSE_AGENT"])
+def test_the_scan_policy_is_refused_to_an_agent_at_once_and_stays_as_it_was(person, capsys, monkeypatch, marker):
+    monkeypatch.setenv(marker, "1")
+    code, out = run(capsys, "scan-policy", "archive", "allow")
+    assert code == 2 and "refused to an agent" in out.err
+    assert ScanPolicy.load().archive == "refuse"
+    assert run(capsys, "scan-policy", "--json")[0] == 0, "reading the policy needs no gate"
 
 
 def test_the_environment_overrides_the_saved_policy(person, capsys, monkeypatch):

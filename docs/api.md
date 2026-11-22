@@ -30,10 +30,10 @@ agent "make a pool called home" and it calls:
 
 ```python
 try:
-    made = ph.pool.found("home", "secure", say=print)   # the person answers on their phone or at this computer's prompt
+    made = ph.pool.found("home", "secure")                # nobody is asked: this computer makes its own key and founds the pool at once
     print(made.say)                                       # "This device is now in the pool home (secure)."
 except ph.pool.Refusal as refused:
-    print(refused, "->", refused.where)                   # one sentence for the person, and where they tap
+    print(refused, "->", refused.where)                   # one sentence to pass on, and what is missing
 ```
 
 Add a second device. Both devices run `poolhouse` once. On the first, turn the network on and make a code (the pool's policy is `secure`):
@@ -106,13 +106,13 @@ member can be removed.
 | Name | Contract |
 |---|---|
 | `ph.pool.status()` | The `Pool` of this device: id, project, policy, address it listens on, and every member, with `governance` (`unfounded`: a pool of one no person founded, which admits nobody, or `governed`), the pool's `name` and `missing`, one sentence on what the pool still needs from its person (a pool, a strong key, a signature; empty when nothing). |
-| `ph.pool.found(name=None, policy="secure", *, admin=None, say=None)` | Make this device's pool, governed by the person's key: the node drafts the charter, the person's key signs it, the node takes it back, and this device is the first member. Returns a `Founding` (`pool`, `already`, `say`); a device already in a founded pool answers "already in the pool X" and changes nothing. The person answers where only they can: the first key at the prompt this computer shows, the grant on the phone's card; the agent never signs. `say` is called with the sentence that tells the person where to answer while the call waits. A pool needs a strong key (one that asks the person at each signature, 1.3 of docs/pools-and-serving.md): where none exists the call raises `ph.pool.Refusal` before anyone is asked. |
+| `ph.pool.found(name=None, policy="secure", *, admin=None)` | Make this device's pool, governed by a key this computer makes (or by `admin`, a phone's key): the node drafts the charter, the key signs it, the node takes it back, and this device is the first member. Returns a `Founding` (`pool`, `already`, `say`); a device already in a founded pool answers "already in the pool X" and changes nothing. Nobody is asked and nothing waits: the key is kept under the computer's keystore, or in a file under the passphrase of `POOLHOUSE_SIGNING_PASSPHRASE` where there is none, and a computer that can do neither raises `ph.pool.Refusal` before the node makes a key. |
 | `ph.pool.members(include_removed=False)` | The devices of the pool as `Member`s: name, fingerprint, `this_device`, `connected`, `address`, `last_seen_ms`, `last_sync_ms`, `last_error`, `reach` (`direct`, `channel`, `none`, `self` or `unknown`: how this device reaches it) and `reach_hint` (the exact fix when it is not `direct`). |
 | `ph.pool.policy()` | `"open"` or `"secure"`: how devices join. |
 | `ph.pool.listen(*, agreed=False)` | Turn this device's network on (TCP 7447, signed beacon on UDP 7448) so devices can join. `agreed=True` is required: it is a person's decision. |
-| `ph.pool.add_device(ttl_s=300, *, say=None)` | Make the short-lived code another device joins with (policy `secure`). A window to a pool is opened by the person: the computer's own prompt shows what it opens (the pool, for ten minutes) and the person's yes, for that one window, is enough, so a pool approved by a typed yes, or a Mac whose 30 days of admitting have lapsed, still adds a device. `say` is called with the sentence that tells the person where to answer. |
-| `ph.pool.join(host, code="", *, port=7447, fingerprint="", say=None)` | Join the pool of the device at `host`: with the `code` its `add_device` made (`secure`), or, for an `open` pool on this device's own network, with the `fingerprint` of the device that answers (64 hex digits, from its beacon). A device already in a pool does not change pool. When a phone is linked, the grant to join is asked of it and the call goes on after the tap. |
-| `ph.pool.renew(*, say=None)` | Give this device another 30 days of admitting devices without asking (the delegate a pool starts with). It changes who governs the pool, so it is approved at this computer's prompt and takes effect after the pool's wait; until then a window is opened with the person's yes. Returns this device's `Member`. Raises `ph.pool.Refusal`. |
+| `ph.pool.add_device(ttl_s=300)` | Make the short-lived code another device joins with (policy `secure`). A window to a pool is opened with a ticket the node makes at once for exactly that window (the pool, for ten minutes), so a pool approved by a typed yes, or a Mac whose 30 days of admitting have lapsed, still adds a device. |
+| `ph.pool.join(host, code="", *, port=7447, fingerprint="")` | Join the pool of the device at `host`: with the `code` its `add_device` made (`secure`), or, for an `open` pool on this device's own network, with the `fingerprint` of the device that answers (64 hex digits, from its beacon). A device already in a pool does not change pool. When a phone is linked, the grant to join is asked of it and the call goes on after the tap. |
+| `ph.pool.renew()` | Give this device another 30 days of admitting devices without asking (the delegate a pool starts with). It changes who governs the pool, so this computer's key signs it at once and it takes effect after the pool's wait; until then a window is opened with a ticket. Returns this device's `Member`. Raises `ph.pool.Refusal`. |
 | `ph.pool.remove(device)` | Remove a member by name or fingerprint; it stops syncing and taking work. Not this device. In a governed pool it is an act of the pool's admins, signed by a person's key; a device's word alone removes nobody. |
 | `ph.pool.sync()` | Exchange board entries with every connected member now. |
 | `ph.pool.capacity()` | `Capacity` of this device: cores, CPU slots and how many are leased, memory and what is free, accelerators and their memory, leases held and queued. |
@@ -162,11 +162,10 @@ board.add_note("decision", "Parser", "Use the recursive-descent one.", tags=("pa
 channels of this one, to a board the node already hosts (`"ro"` needs the grant `link_read`, `"rw"` `link_write`; a board has at most 64 open); `unlink` ends it at once (the grant
 `link_remove`).
 
-`request_approval(asks, *, note="", task="", ttl_s=0, expect_policy="")` asks the person, on their phone, for one to eight grants for
-this session and returns an `Approval` to wait on; the person reads a text the node wrote, taps, and the phone's key signs it
-(docs/phone-approval.md). `approval(handle)` and `approvals(state="")` read back what this session asked, and `offer_phone()` returns a
+`request_approval(asks, *, note="", task="", ttl_s=0, expect_policy="")` asks for one to eight grants for
+this session and returns the `Approval`, decided at once by policy: this device's key signs what the caller may have, and an agent is refused with the reason the few grants that end another device's place in the pool, change who governs it or release what a scan failed (docs/phone-approval.md; a linked phone is only an optional channel). `approval(handle)` and `approvals(state="")` read back what this session asked, and `offer_phone()` returns a
 link that adds one more phone once a phone is added.
-`blocked_sessions()` returns the blocked sessions visible to the caller and their end times; an agent sees only its own, while a person's session sees all. `lift_block("board/session")` raises this computer's own prompt for that exact block. An agent can ask to lift only its own block; a person's session can ask about any. A confirmed answer lifts it once; a refusal or expired card leaves it in place. Where the computer has only a typed yes, a program running as the same account could answer it, as the prompt says.
+`blocked_sessions()` returns the blocked sessions visible to the caller and their end times; an agent sees only its own, while a person's session sees all. `lift_block("board/session")` lifts that exact block at once with this computer's own key; an agent is refused it with the reason.
 
 ```python
 ask = board.request_approval([ph.board.Ask("add_device", lasts="10m", uses=1)], note="adding the Linux box")

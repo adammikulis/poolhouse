@@ -14,7 +14,7 @@ import enum
 import logging
 from pathlib import Path
 
-from poolhouse import home, person, sentinel
+from poolhouse import caller, home, sentinel
 from poolhouse.hub import publishers, remote
 from poolhouse.hub.remote import Ref, RemoteError, RemoteFile
 from poolhouse.requests.model import shown
@@ -37,7 +37,7 @@ class DigestChanged(RemoteError):
 class Trust(enum.Enum):
     """Who asked for a pull, which decides what it may fetch: ``PERSON`` (a person's command or a click in the app) or
     ``AGENT`` (an agent). ``None`` where a pull takes one means the process says: an agent marker in its
-    environment (`poolhouse.person.marked`) makes it an agent's."""
+    environment (`poolhouse.caller.marked`) makes it an agent's."""
 
     PERSON = "person"
     AGENT = "agent"
@@ -75,7 +75,7 @@ def checked(trust: object) -> Trust:
     """``trust`` itself when it is a `Trust`; an agent's when it is None and the process carries an agent marker, else a
     person's; `TypeError` for anything else, such as a word."""
     if trust is None:
-        return AGENT if person.marked() else PERSON
+        return AGENT if caller.marked() else PERSON
     if not isinstance(trust, Trust):
         raise TypeError(f"trust is a poolhouse.hub.Trust (PERSON or AGENT) or None, not {trust!r}")
     return trust

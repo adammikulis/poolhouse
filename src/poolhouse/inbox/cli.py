@@ -1,15 +1,15 @@
-"""``poolhouse-requests``: list, show, watch and answer the requests that wait for a person.
-Every command is for a person: a process an agent started is refused."""
+"""``poolhouse-requests``: list, show, watch and answer the requests. Nothing waits on them; answering is decided at once by the
+`requests.answer` gate."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import time
-from collections.abc import Callable
 from typing import Any
 
-from poolhouse import activity, authority, person, requests
+from poolhouse import activity, authority, requests
+from poolhouse.caller import AgentRefused
 from poolhouse.command import Group, flag, option
 from poolhouse.log import say, warn
 from poolhouse.requests.model import PENDING, STATES, Request
@@ -17,21 +17,13 @@ from poolhouse.requests.model import PENDING, STATES, Request
 __all__ = ["COMMANDS", "line", "main", "render"]
 
 COMMANDS = Group("poolhouse-requests",
-                 "Every request that needs a person: a tool call, a remembered fact, something "
-                 "sentinel holds. Answering needs a person at a terminal; an agent's process is refused.")
+                 "The requests: a tool call, a remembered fact, something "
+                 "sentinel holds. An agent that answers is refused at once while the requests.answer gate is held back.")
 JSON = option("json")
 REFUSED, FAILED = 2, 1
 FILTERS = (flag("--agent", default="", help="only this agent's requests"),
            flag("--project", default="", help="only this project's requests"),
            flag("--kind", default="", choices=["", *requests.KINDS], help="only this kind"))
-
-
-def _person(action: str) -> bool:
-    found = person.marked()
-    if found:
-        warn(f"poolhouse-requests: {action} is for a person; this process was started by an agent "
-             f"({found} is set)")
-    return not found
 
 
 def line(request: Request, now: float) -> str:
@@ -47,8 +39,6 @@ def render(request: Request) -> list[str]:
             f"from:    {request.raised_by.who or '-'}  project {request.raised_by.project or '-'}",
             f"about:   {request.subject}", f"because: {request.reason}"]
     rows += [f"  {c.id:<14} {c.label}: {c.effect}" for c in request.choices]
-    if request.human_only:
-        rows.append("  (the action itself asks again before it runs)")
     if request.answer:
         rows.append(f"answered: {request.answer} via {request.answered_by}")
     rows.append(f"fingerprint: {request.fingerprint[:16]}")
@@ -64,8 +54,6 @@ def _dump(rows: list[Request]) -> list[dict[str, Any]]:
     flag("-n", "--limit", type=int, default=50)))
 def list_(args: argparse.Namespace) -> int:
     """Print the requests."""
-    if not _person("listing requests"):
-        return REFUSED
     rows = requests.list_requests(state=args.state, agent=args.agent, project=args.project,
                                   kind=args.kind, limit=args.limit)
     now = time.time()
@@ -77,8 +65,6 @@ def list_(args: argparse.Namespace) -> int:
 @COMMANDS.command("show", help="every word of one request", options=(JSON, flag("id")))
 def show(args: argparse.Namespace) -> int:
     """Print one request."""
-    if not _person("showing a request"):
-        return REFUSED
     found = requests.get(args.id)
     if found is None:
         warn(f"poolhouse-requests: no request {args.id}")
@@ -87,40 +73,30 @@ def show(args: argparse.Namespace) -> int:
     return 0
 
 
-def _confirmed(found: Request, choice: str, asked: Callable[[str], str]) -> bool:
-    say("\n".join(render(found)))
-    return asked(f"{choice}? [y/N] ").strip().lower() in ("y", "yes")
-
-
-@COMMANDS.command("answer", help="answer a request (a person at a terminal)", options=(
+@COMMANDS.command("answer", help="answer a request", options=(
     flag("id"), flag("choice"),
-    flag("--fingerprint", default="", help="the fingerprint `show` printed; without it the request is "
-         "shown and you are asked to confirm")))
-def answer(args: argparse.Namespace, asked: Callable[[str], str] | None = None) -> int:
+    flag("--fingerprint", default="", help="the fingerprint `show` printed; the answer is refused when the request changed since")))
+def answer(args: argparse.Namespace) -> int:
     """Answer one request; refused when it changed since it was shown or was already answered."""
     activity.mirror_requests()
     try:
         authority.require("requests.answer", "answering a request")
-    except person.HumanRequired as exc:
+    except AgentRefused as exc:
         warn(f"poolhouse-requests: {exc}")
         return REFUSED
     found = requests.get(args.id)
     if found is None:
         warn(f"poolhouse-requests: no request {args.id}")
         return FAILED
-    if args.fingerprint:
-        if len(args.fingerprint) < 8 or not found.fingerprint.startswith(args.fingerprint):
-            warn("poolhouse-requests: the request is not what that fingerprint was taken from; show it again")
-            return FAILED
-    elif not _confirmed(found, args.choice, asked or input):
-        say("not answered")
+    if args.fingerprint and (len(args.fingerprint) < 8 or not found.fingerprint.startswith(args.fingerprint)):
+        warn("poolhouse-requests: the request is not what that fingerprint was taken from; show it again")
         return FAILED
     try:
         done = requests.answer(found.id, args.choice, found.fingerprint, "terminal")
     except (requests.Refused, requests.Unavailable) as exc:
         warn(f"poolhouse-requests: {exc}")
         return FAILED
-    except person.HumanRequired as exc:
+    except AgentRefused as exc:
         warn(f"poolhouse-requests: {exc}")
         return REFUSED
     say(f"{done.id}: {done.state} ({done.answer})")
@@ -131,8 +107,6 @@ def answer(args: argparse.Namespace, asked: Callable[[str], str] | None = None) 
     flag("--interval", type=float, default=1.0), flag("--once", action="store_true")))
 def watch(args: argparse.Namespace) -> int:
     """Print the waiting requests, then only what changes, until interrupted."""
-    if not _person("watching requests"):
-        return REFUSED
     seen: dict[str, str] = {}
     try:
         while True:

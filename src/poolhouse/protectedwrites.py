@@ -1,6 +1,7 @@
-"""The paths an agent's shell may not write (the guards, the hook settings, git's hooks and config, the person record's
-code, the authority registry) or touch at all (the person record and the session tokens), and the shell forms that
-reach them. Standard library only: the hook scripts load it by file through `worktreerules`."""
+"""The paths an agent's shell may not write (the guards, the hook settings, git's hooks and config, the harness record's
+code, the authority registry) or touch at all (the person folder and the session tokens), and the shell forms that
+reach them. Every refusal is automatic and immediate: it says why and what to do instead, and nothing waits for anyone.
+Standard library only: the hook scripts load it by file through `worktreerules`."""
 
 from __future__ import annotations
 
@@ -13,33 +14,24 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 
 __all__ = ["TooComplex", "command_texts", "guarded", "holds_secret", "other_agent", "refusal", "secret", "too_deep",
-           "tool_refusal", "touches_guards", "without_heredocs"]
+           "tool_refusal", "without_heredocs"]
 
 GUARD_PATHS = (
-    r"src/poolhouse/workspace/(person_\w+|run_(approval|hook))\.py",
-    r"scripts/hooks/(claude-user-prompt|person-consume|run-approval)",
+    r"src/poolhouse/workspace/harness_ancestry\.py",
+    r"scripts/hooks/(claude-harness-bind|harness-ancestry)",
     r"scripts/(release-key|github-protection-apply|github-protection|agent-identity)", r"src/poolhouse/credentials/.*",
     r"\.git/(refs/remotes/.*|packed-refs)",
     r"\.git/(hooks(/.*)?|config(\.worktree)?|worktrees/[^/]+/config\.worktree)",
     r"\.gitconfig", r"\.config/git/(config|hooks(/.*)?)", r"\.poolhouse/(authority\.json|authority-audit\.jsonl)")
-REVIEWED = (*GUARD_PATHS, r"scripts/hooks/.*", r"\.claude/.*", r"\.codex/.*", r"\.agents/.*", r"\.vscode/tasks\.json",
-            r"\.mcp\.json", r"AGENTS\.md", r"CLAUDE\.md", r"\.github/.*",
-            r"docs/github-protection\.md", r"scripts/github-protection[\w-]*", r"scripts/sealed_git[\w.-]*",
-            r"scripts/(primary_sync|ci_watch)\.py",
-            r"src/poolhouse/(protectedwrites|worktreerules|authority|person|real_machine)\.py",
-            r"src/poolhouse/board/credentials\.py", r"src/poolhouse/workspace/authority_cli\.py",
-            r"scripts/agent_sandbox_profile\.py", r"scripts/affected[\w.-]*", r"scripts/test[\w.-]*", r"scripts/gates/.*",
-            r"tests/conftest\.py", r"pyproject\.toml", r"budgets\.json")
 GUARDS = re.compile(r"(^|/)(" + "|".join(GUARD_PATHS) + ")$", re.I)
-REVIEW = re.compile(r"(^|/)(" + "|".join(REVIEWED) + ")$", re.I)
 SECRETS = re.compile(r"(^|/)\.poolhouse/(person|node/client|node/person)(/|$)", re.I)
 HELD = tuple(tuple(path.split("/")) for path in (
-    "src/poolhouse/workspace/person_store.py", "src/poolhouse/workspace/run_hook.py", "scripts/hooks/person-consume",
-    "scripts/hooks/run-approval", "scripts/hooks/claude-user-prompt", "scripts/release-key", "src/poolhouse/credentials/__init__.py",
+    "src/poolhouse/workspace/harness_ancestry.py", "scripts/hooks/harness-ancestry",
+    "scripts/hooks/claude-harness-bind", "scripts/release-key", "src/poolhouse/credentials/__init__.py",
     ".git/hooks/pre-push", ".git/config", ".config/git/config", ".gitconfig"))
 MENTION = re.compile(
-    r"claude-user-prompt|person-consume|\.git/(hooks|config)"
-    r"|workspace/person_\w+|core\.hooksPath|\.gitconfig"
+    r"claude-harness-bind|harness-ancestry|\.git/(hooks|config)"
+    r"|workspace/harness_ancestry|core\.hooksPath|\.gitconfig"
     r"|\.poolhouse/(person|node/client|node/person|authority)", re.I)
 
 NATIVE_SESSION = frozenset({"POOLHOUSE_SESSION_ID", "POOLHOUSE_SESSION_HARNESS", "CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID"})
@@ -108,7 +100,9 @@ PATH_KEY = re.compile(r"(path|paths|file|files|dir|dirs|directory|directories|fo
 COMMAND_KEY = re.compile(r"(command|commands|cmd|cmds|script|scripts|argv|commandline|cmdline)$|^(run|exec|execute|shell|bash|zsh|sh)$")
 """Keys of a tool input, with every character but a letter taken out and lower case, that hold a path or a command."""
 TOO_COMPLEX = "is too long or too nested for the rules to read in bounded work: split it into smaller steps"
-PERSON = "git's hooks and config, the person record and the authority registry are changed by a person at a terminal"
+REFUSED = ("refused to an agent: the guards, the hook settings, git's hooks and config and the authority registry decide what an "
+           "agent may run, so an agent never changes them; leave them as they are and say in the report what should change")
+NOT_READ = "refused to an agent: the person folder holds the owner's keys and the session tokens; read a file of the project instead"
 
 
 def _roots(environ: Mapping[str, str]) -> list[str]:
@@ -118,7 +112,7 @@ def _roots(environ: Mapping[str, str]) -> list[str]:
 
 
 def secret(path: str, environ: Mapping[str, str] | None = None) -> bool:
-    """Whether ``path`` lies in the person record or the session tokens."""
+    """Whether ``path`` lies in the person folder or the session tokens."""
     if SECRETS.search(path):
         return True
     places, low = ("/person", "/node/client", "/node/person"), path.casefold()
@@ -139,7 +133,7 @@ def _holds_a_guard(path: str) -> bool:
 
 
 def file_guarded(path: str, environ: Mapping[str, str] | None = None) -> bool:
-    """Whether ``path`` is itself a person's: a guard, a hook setting, git's hooks or config, the authority registry."""
+    """Whether ``path`` is itself protected: a guard, a hook setting, git's hooks or config, the authority registry."""
     if GUARDS.search(path):
         return True
     return any(path.casefold() in (f"{root}/authority.json", f"{root}/authority-audit.jsonl")
@@ -147,13 +141,8 @@ def file_guarded(path: str, environ: Mapping[str, str] | None = None) -> bool:
 
 
 def guarded(path: str, environ: Mapping[str, str] | None = None) -> bool:
-    """Whether a write to ``path`` (a file, or a folder holding one) is a person's: the guards, settings, git's hooks."""
+    """Whether a write to ``path`` (a file, or a folder holding one) is refused to an agent: the guards, settings, git's hooks."""
     return file_guarded(path, environ) or _holds_a_guard(path)
-
-
-def touches_guards(paths: list[str]) -> list[str]:
-    """The repository-relative ``paths`` a person reviews before they land: the guards, the settings, the rules."""
-    return [p for p in paths if REVIEW.search(p)]
 
 
 def _flatten(command: str) -> str:
@@ -287,7 +276,7 @@ def _script_text(path: Path) -> str:
 class Shell:
     """What the command line being read knows: the working folder, the variables set so far and what it may do."""
 
-    def __init__(self, here: Path, environ: Mapping[str, str], released: Callable[[str], bool]) -> None:
+    def __init__(self, here: Path, environ: Mapping[str, str], released: Callable[[str], str]) -> None:
         self.here, self.environ, self.released = here, environ, released
         self.variables: dict[str, str] = {}
 
@@ -474,7 +463,7 @@ def _writes(verb: str, args: list[str], shell: Shell) -> str:
         found = shell.guarded(plain) if _in_place(args) else ""
     else:
         found = shell.guarded(_fetched(verb, args))
-    return f"`{verb}` would change {found}: {PERSON}." if found else ""
+    return f"`{verb}` would change {found}: {REFUSED}." if found else ""
 
 
 def _shell_code(args: list[str]) -> str:
@@ -496,7 +485,7 @@ def _code(verb: str, args: list[str], bodies: list[str], shell: Shell) -> str:
     if scripts and not shell.guarded(scripts[:1]):
         texts.append(_script_text(shell.here / scripts[0]))
     found = next((m.group(0) for t in texts for m in [MENTION.search(t)] if m), "")
-    return f"code run from a shell names {found}: {PERSON}; use the file tools for anything else." if found else ""
+    return f"code run from a shell names {found}: {REFUSED}; use the file tools for anything else." if found else ""
 
 
 def _first_words(words: list[str]) -> tuple[list[str], dict[str, str]]:
@@ -517,11 +506,13 @@ def _first_words(words: list[str]) -> tuple[list[str], dict[str, str]]:
 def _gh(args: list[str], shell: Shell) -> str:
     verbs = [a for a in args if not a.startswith("-")]
     head, rest = (verbs[0] if verbs else ""), verbs[1:2]
-    if head == "pr" and rest == ["merge"] and not shell.released(str(shell.here)):
-        return "`gh pr merge` merges into a protected branch: it needs the person's release approval (scripts/hooks/person-consume propose)."
+    if head == "pr" and rest == ["merge"] and (why := shell.released(str(shell.here))):
+        return ("`gh pr merge` merges into a protected branch: refused to an agent until the commit has a standing independent "
+                f"land-review accept (`poolhouse-workspace land-review`) and the checkout is clean; {why}.")
     blocked = GH_BLOCKED.get(head, frozenset({"-"}))
     if blocked is None or (rest and rest[0] in blocked):
-        return f"`gh {head}` changes how the repository is protected or who may act on it: a person runs it."
+        return (f"`gh {head}` changes how the repository is protected or who may act on it: refused to an agent; "
+                "leave the settings as they are and say in the report what should change.")
     return _gh_api(args) if head == "api" else ""
 
 
@@ -542,10 +533,12 @@ def _gh_api(args: list[str]) -> str:
     body = any(a in API_BODY or a.startswith(("--field=", "--raw-field=")) for a in args)
     endpoint = _endpoint(args)
     if endpoint == "graphql":
-        return "a GraphQL change to protection is a person's." if GRAPHQL.search(" ".join(args)) else ""
+        return ("a GraphQL change to protection is refused to an agent; leave the settings as they are and say in the report "
+                "what should change.") if GRAPHQL.search(" ".join(args)) else ""
     writes = method in MUTATING or (body and not method)
     if writes and (ADMIN.search(endpoint) or re.fullmatch(r"repos/[^/]+/[^/]+/?", endpoint)):
-        return "`gh api` writing to protection, secrets, releases or settings is a person's."
+        return ("`gh api` writing to protection, secrets, releases or settings is refused to an agent; leave them as they are "
+                "and say in the report what should change.")
     return ""
 
 
@@ -567,14 +560,14 @@ def _git_sub(args: list[str]) -> tuple[str, list[str], str]:
 def _git_config(args: list[str]) -> str:
     """Why a `git -c ...` or `git config ...` is refused: it moves where hooks run or what git runs."""
     if any(a == "-c" and GIT_CONFIG.match(args[i + 1].split("=", 1)[0]) for i, a in enumerate(args[:-1])):
-        return "`git -c` that changes where hooks run or what git runs is refused: the hooks are the last checks."
+        return "`git -c` that changes where hooks run or what git runs is refused to an agent: the hooks are the last checks."
     sub, rest, _ = _git_sub(args)
     key = next((a for a in rest if not a.startswith("-")), "")
     reading = any(a in ("--get", "--get-all", "--get-regexp", "-l", "--list", "--show-origin") for a in rest)
     removing = any(a.startswith("--unset") for a in rest)
     setting = len([a for a in rest if not a.startswith("-")]) > 1
     if sub == "config" and GIT_CONFIG.match(key) and not reading and (setting or removing):
-        return f"`git config {key}` changes where hooks run or what git runs: a person sets it."
+        return f"`git config {key}` changes where hooks run or what git runs: refused to an agent, since the hooks are the last checks."
     return ""
 
 
@@ -597,13 +590,14 @@ def _git_paths(args: list[str], shell: Shell) -> str:
             found = shell.guarded(named, deep=sub == "rm" or from_a_commit)
     finally:
         shell.here = here
-    return f"`git {sub}` would change {found}: {PERSON}." if found else ""
+    return f"`git {sub}` would change {found}: {REFUSED}." if found else ""
 
 
 def _fetch(words: list[str], shell: Shell) -> str:
     text = " ".join(words)
     if "api.github.com" in text and re.search(r"-X\s*(PUT|POST|PATCH|DELETE)|--request\s+(PUT|POST|PATCH|DELETE)|\s-d\b|--data", text):
-        return "writing to the GitHub API by hand skips the low-right identity the agents hold: a person does it."
+        return ("writing to the GitHub API by hand skips the low-right identity the agents hold: refused to an agent; "
+                "push and publish through `scripts/agent-identity`.")
     return _writes(words[0].rsplit("/", 1)[-1], words[1:], shell)
 
 
@@ -654,25 +648,25 @@ class Reader:
         shell = self.shell
         words, written, read = _split_redirects(words)
         if blocked := shell.hits(written, lambda p: guarded(p, shell.environ) or secret(p, shell.environ)):
-            return f"a redirection would write {blocked}: {PERSON}."
+            return f"a redirection would write {blocked}: {REFUSED}."
         if blocked := shell.hits(read, lambda p: secret(p, shell.environ)):
-            return f"a redirection would read {blocked}, the person record or a session token: an agent does not read or list it."
+            return f"a redirection would read {blocked}, in the person folder or a session token: {NOT_READ}."
         rest, assigned = _first_words(words)
         if not rest:
             shell.variables.update(assigned)
             return ""
         if any(GIT_ENV.match(name) for name in assigned):
-            return "GIT_CONFIG_* changes where hooks run: the hooks are the last checks."
+            return "GIT_CONFIG_* changes where hooks run: refused to an agent, since the hooks are the last checks."
         mentioned = shell.hits([a for a in rest if "=" not in a or "/" in a], lambda p: secret(p, shell.environ))
         if mentioned and not self._message(rest, mentioned):
-            return f"{mentioned} is the person record or a session token: an agent does not read or list it."
+            return f"{mentioned} is in the person folder or is a session token: {NOT_READ}."
         if reached := self._reaches(rest[0].rsplit("/", 1)[-1], rest[1:]):
-            return (f"{reached} holds the person record and the session tokens, and `{rest[0].rsplit('/', 1)[-1]}` would read what is "
-                    "under it: an agent does not read or list them; name a file of the project.")
+            return (f"{reached} holds the person folder and the session tokens, and `{rest[0].rsplit('/', 1)[-1]}` would read what is "
+                    f"under it: {NOT_READ}.")
         return self.verb(rest[0].rsplit("/", 1)[-1], rest, bodies, depth)
 
     def _reaches(self, verb: str, args: list[str]) -> str:
-        """The folder a command reads under when that folder holds the person record and the session tokens: the state folder, the
+        """The folder a command reads under when that folder holds the person folder and the session tokens: the state folder, the
         home folder or one above it. Only a command that reads what is under a folder is asked (see `_walks`); naming, measuring,
         making, removing or handing a state folder to a program reads none of it. The working folder counts when a search is
         given no folder."""
@@ -710,10 +704,10 @@ class Reader:
             return _fetch(rest, shell)
         script = _script_text(shell.here / rest[0]) if "/" in rest[0] and not shell.guarded(rest[:1]) else ""
         return _writes(verb, args, shell) or _code(verb, args, bodies, shell) or (
-            f"the script {rest[0]} names {m.group(0)}: {PERSON}." if (m := MENTION.search(script)) else "")
+            f"the script {rest[0]} names {m.group(0)}: {REFUSED}." if (m := MENTION.search(script)) else "")
 
 
-def refusal(command: str, cwd: str, released: Callable[[str], bool], environ: Mapping[str, str] | None = None) -> str:
+def refusal(command: str, cwd: str, released: Callable[[str], str], environ: Mapping[str, str] | None = None) -> str:
     """Why the shell ``command``, run from ``cwd``, may not run; an empty string when it may. A command past the bounds of
     `MOST_COMMAND`, `MOST_EXPANSIONS` and `DEPTH` is refused, not read in part."""
     try:
@@ -825,21 +819,21 @@ def _state_places(found: Mapping[str, str]) -> tuple[str, list[str]]:
 
 
 def holds_state(path: str, environ: Mapping[str, str] | None = None) -> bool:
-    """Whether ``path`` is the state folder that holds the person record, or the folder of the session tokens' node."""
+    """Whether ``path`` is the state folder that holds the person folder, or the folder of the session tokens' node."""
     folder = path.rstrip("/").casefold()
     _, roots = _state_places(environ or os.environ)
     return any(root == folder or f"{root}/node" == folder for root in roots)
 
 
 def above_state(path: str, environ: Mapping[str, str] | None = None) -> bool:
-    """Whether ``path`` is the home folder, a folder above it, or a state folder: a tree the person record sits in."""
+    """Whether ``path`` is the home folder, a folder above it, or a state folder: a tree the person folder sits in."""
     folder = path.rstrip("/").casefold()
     home, roots = _state_places(environ or os.environ)
     return any(own == folder or own.startswith(folder + "/") for own in [home, *roots] if own)
 
 
 def holds_secret(path: str, environ: Mapping[str, str] | None = None) -> bool:
-    """Whether ``path`` is the person record's folder, a folder it sits in directly, or an ancestor of the home folder."""
+    """Whether ``path`` is the person folder, a folder it sits in directly, or an ancestor of the home folder."""
     return holds_state(path, environ) or above_state(path, environ)
 
 
@@ -859,7 +853,7 @@ def _reaches_secrets(text: str, here: Path, environ: Mapping[str, str]) -> bool:
 def tool_refusal(name: str, given: Mapping[str, object], *, cwd: str = "", environ: Mapping[str, str] | None = None,
                  subagent: bool = False) -> str:
     """Why the tool call ``name`` with input ``given`` is refused: it drives the owner's browser, runs code outside the shell
-    rules, stops a task from a subagent, or reaches the person record or a guard; an empty string when it may run. A tool
+    rules, stops a task from a subagent, or reaches the person folder or a guard; an empty string when it may run. A tool
     nobody has listed is read by the shape of its input: a string under a key that names a path is a path it reaches. An
     input nested past `MOST_DEPTH` is refused, not read in part."""
     try:
@@ -885,8 +879,10 @@ def _tool_refusal(name: str, given: Mapping[str, object], here: Path, found: Map
         texts = _strings(given) if name.startswith("mcp__") else _keyed(given, PATH_KEY)
     for text in texts:
         for place in _places(text, here, found):
-            if secret(place, found) or (writes and guarded(place, found)):
-                return f"{text} is the person record, a session token or a guard: " + PERSON + "."
+            if secret(place, found):
+                return f"{text} is in the person folder or is a session token: {NOT_READ}."
+            if writes and guarded(place, found):
+                return f"{text} is a guard, a hook setting or the authority registry: {REFUSED}."
         if name in ("Glob", "Grep") and _reaches_secrets(text, here, found):
-            return f"a search from {text} reaches the person record: search a folder of the project."
+            return f"a search from {text} reaches the person folder: {NOT_READ}."
     return ""

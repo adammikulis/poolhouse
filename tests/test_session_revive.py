@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from poolhouse import authority, node_launch, person, runtime_trust
+from poolhouse import authority, caller, node_launch, runtime_trust
 from poolhouse.board import client as board_client, credentials, session as board_session
 
 pytest_plugins = ["node_kit"]
@@ -65,7 +65,7 @@ def test_a_subagent_has_no_native_main_session_to_register_and_stays_without_a_t
 def test_the_lead_whose_token_is_gone_is_authenticated_again_for_a_delegated_command(workspace_node, monkeypatch):
     monkeypatch.delenv(authority.FLOOR_ENV, raising=False)
     lead = workspace_node.member("lead")
-    for name in (*person.AGENT_MARKERS, authority.AGENT_ENV, authority.SUBAGENT_ENV, "CLAUDE_CODE_SESSION_ID"):
+    for name in (*caller.AGENT_MARKERS, authority.AGENT_ENV, authority.SUBAGENT_ENV, "CLAUDE_CODE_SESSION_ID"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("CLAUDECODE", "1")
     monkeypatch.setenv("POOLHOUSE_BOARD", workspace_node.board)

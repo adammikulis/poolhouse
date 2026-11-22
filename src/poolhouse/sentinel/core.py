@@ -17,10 +17,9 @@ from poolhouse.sentinel import canary as canaries, observers
 from poolhouse.sentinel.canary import Baseline, Results
 from poolhouse.sentinel.events import Bus, Event, EventLog, Severity
 from poolhouse.sentinel.findings import Finding
-from poolhouse.sentinel.heads_up import HeadsUp
 from poolhouse.sentinel.honey import Honey
-from poolhouse.sentinel.human import HumanGrant, protect
-from poolhouse.sentinel.integrity import Manifest, Pin, check_file
+from poolhouse.sentinel.integrity import FILE_KINDS, Manifest, Pin, check_file
+from poolhouse.sentinel.permit import Permit, automatic, protect
 from poolhouse.sentinel.policy import Mode, decide
 from poolhouse.sentinel.rails import RailWatch, reads_like_instruction
 from poolhouse.sentinel.rates import Abuse, MemberWatch, ToolMix
@@ -28,7 +27,6 @@ from poolhouse.sentinel.redaction import redact
 from poolhouse.sentinel.score import Score
 from poolhouse.sentinel.sealed import SealedFile
 from poolhouse.sentinel.store import (
-    KINDS,
     Holding,
     Record,
     State,
@@ -46,6 +44,9 @@ BECAUSE = "POOLHOUSE_SENTINEL_BECAUSE"
 MISSING = "integrity.missing"
 GONE_SCANS = 3
 """Scans in a row a pinned file may be gone before its pin is dropped."""
+HOLD_S = {"file": 7 * 86400.0, "other": 3600.0}
+"""How long a quarantine holds before it ends by itself: a week for a changed file, an hour for anything else. They are safety
+margins, not waits: a file is verified against its pin on every load and a detector holds a misbehaving subject again."""
 
 
 _RUNNING: ContextVar[tuple[tuple[Sentinel, str], ...]] = ContextVar("poolhouse_sentinel_running", default=())
@@ -88,11 +89,8 @@ class Sentinel:
         self.last_scan = 0.0
         self._derived: dict[str, list[str]] = {}
         self.store.on_quarantine.setdefault("session", []).append(self._taint_derived)
-        self.heads_up = HeadsUp(self.root / "notified.json", clock=clock, store=self.store,
-                                bus=self.bus)
         self._gone: dict[str, int] = {}
-        for kind in KINDS:
-            self.store.on_quarantine.setdefault(kind, []).append(self.heads_up.on_quarantine)
+        self._noted_binaries: set[str] = set()
         self._stop = threading.Event()
         self._verified = SealedFile(self.root / "verified.json")
         if self.off_because:
@@ -116,8 +114,8 @@ class Sentinel:
         saved = self._config.load().payload.get("mode", "")
         return Mode(saved) if saved in Mode else Mode.GUARDED
 
-    def set_mode(self, mode: Mode, grant: HumanGrant) -> None:
-        """Change the mode. Needs a grant for ``mode`` on ``sentinel``."""
+    def set_mode(self, mode: Mode, grant: Permit) -> None:
+        """Change the mode. Needs a permit for ``mode`` on ``sentinel``."""
         grant.check("mode", "sentinel")
         self._config.save({"mode": mode.value})
         self.bus.emit(Event("sentinel.mode", Severity.NOTICE, "core", "",
@@ -227,7 +225,7 @@ class Sentinel:
     def note(self, kind: str, key: str, signal: str, weight: float | None = None) -> list[str]:
         """Count one weak ``signal`` (a guard denial, a sandbox refusal, a refused lease)
         against the session or caller ``(kind, key)``. The score escalates it to watch and then
-        to quarantine; a person's release starts the count again. Returns what the policy did."""
+        to quarantine; a release starts the count again. Returns what the policy did."""
         if self.mode == Mode.OFF:
             return []
         if self.score.held(kind, key) and self.store.state_of(kind, key) == State.RELEASED:
@@ -393,11 +391,14 @@ class Sentinel:
         that is gone is logged once and its pin dropped after `GONE_SCANS` scans in a row;
         nothing is quarantined for it."""
         out: list[Finding] = []
+        self._release_binaries()
         for pin in self.manifest.pins().values():
             if self.store.state_of(pin.kind, pin.path) == State.QUARANTINED:
                 continue
             found = check_file(pin, deep=deep)
-            if found is not None:
+            if pin.kind == "binary" and (found is None or found.event.kind != MISSING):
+                self._note_binary(pin, found)
+            elif found is not None:
                 out.append(found)
             elif deep:
                 self.manifest.refresh_stat(pin)
@@ -405,8 +406,47 @@ class Sentinel:
         out.extend(self.honey.touched())
         self.handle_all([f for f in out if f.event.kind != MISSING])
         self.last_scan = self.clock()
-        self.heads_up.poll()
+        self.resolve_holds()
         return out
+
+    def _note_binary(self, pin: Pin, found: Finding | None) -> None:
+        """A changed managed binary is logged once and never held: it is vetted before every run (`poolhouse.serve.binary_trust`), which
+        re-pins what something vouches for and replaces what nothing does, so a hold nobody could end would only stop serving."""
+        if found is None:
+            self._noted_binaries.discard(pin.path)
+        elif pin.path not in self._noted_binaries:
+            self._noted_binaries.add(pin.path)
+            self.bus.emit(found.event)
+
+    def _release_binaries(self) -> None:
+        """End by itself a hold an older version put on a managed binary."""
+        for record in self.store.records(kind="binary", state=State.QUARANTINED):
+            self.store.release(record.id, automatic("release", record.id), "a managed binary is vetted before it runs; nothing holds it")
+
+    def _end(self, record: Record, why: str) -> None:
+        """End a hold on the sentinel's own rule: what was moved aside is deleted (never put back over a file that may be good), then the
+        hold is released. Nothing is asked and nothing is left for anyone to release."""
+        if record.action and not record.purged:
+            self.store.purge(record.id, automatic("purge", record.id))
+        self.store.release(record.id, automatic("release", record.id), why)
+        self.bus.emit(Event("sentinel.hold_ended", Severity.NOTICE, "core", f"{record.kind}:{record.key}",
+                            {"id": record.id, "why": why}, self.clock()))
+
+    def resolve_holds(self) -> None:
+        """Every quarantine ends by itself, by a fixed policy, so nothing waits for a release: a held file whose path now verifies against its
+        pin (it was fetched again, or restored) is released at once and the held copy deleted; a changed file's hold lapses after
+        `HOLD_S["file"]` (a load verifies the file against its pin every time, so ending the hold lets nothing unverified run); a hold on a
+        session, member, tool or other subject lapses after `HOLD_S["other"]` (a detector holds it again if it misbehaves again)."""
+        now = self.clock()
+        for record in self.store.records(state=State.QUARANTINED):
+            if record.kind in FILE_KINDS:
+                pin = self.manifest.pins().get(record.key)
+                if pin is not None and os.path.lexists(record.key) and check_file(pin, deep=True) is None:
+                    self._end(record, "the file at its own path verifies against its pin")
+                elif now - record.updated >= HOLD_S["file"]:
+                    self._end(record, "the hold lapsed")
+            elif now - record.updated >= HOLD_S["other"]:
+                self._end(record, "the hold lapsed")
 
     def _heal(self, missing: list[Finding]) -> None:
         """Count the scans a pinned file has been gone, drop the pin at `GONE_SCANS`, settle

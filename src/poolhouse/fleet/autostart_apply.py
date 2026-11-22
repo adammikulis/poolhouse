@@ -16,8 +16,6 @@ from poolhouse.files import read_json, write_json, writing
 from poolhouse.http import Options, ServerError, request_json
 from poolhouse.lock import Busy, only_one
 from poolhouse.log import say
-from poolhouse.person import require_person
-from poolhouse.sentinel.human import mint
 
 from . import autostart_ledger
 from .autostart_backends import Backend, backend_for, elevated
@@ -28,6 +26,7 @@ from .autostart_verify import Context, problems
 __all__ = ["ACTION", "Outcome", "Seams", "Work", "healthy", "install", "rollback"]
 
 ACTION = "install autostart units"
+GATE = "autostart.install"
 Step = tuple[list[str], bool]
 File = tuple[str, Path, Path | None, str]
 
@@ -67,13 +66,11 @@ class Work:
 
 @dataclass(frozen=True, slots=True)
 class Seams:
-    """What a test replaces: the service manager, the privilege prompt, the person's keyboard, the clock."""
+    """What a test replaces: the service manager, the privilege prompt, the clock."""
 
     backend: Backend | None = None
     ask: Callable[[str, str], tuple[bool, str]] | None = None
     probe: Callable[[Mapping[str, Any]], bool] = healthy
-    typed: Callable[[str], str] = input
-    terminal: tuple[bool, bool] | None = None
     env: Mapping[str, str] | None = None
     now: float = 0.0
     device: str = ""
@@ -193,9 +190,9 @@ def _summary(manifest: Manifest, show: Callable[[str], None]) -> None:
 
 
 def install(path: Path | str, *, system: bool = False, seams: Seams | None = None) -> Outcome:
-    """Install the units staged with ``path``'s manifest; only a person at a terminal may."""
+    """Install the units staged with ``path``'s manifest; decided at once by the `autostart.install` gate."""
     seam = seams or Seams()
-    require_person(ACTION, seam.terminal, seam.env)
+    authority.require(GATE, ACTION, seam.env)
     path = Path(path)
     try:
         manifest = parse(read_manifest(path))
@@ -210,7 +207,6 @@ def install(path: Path | str, *, system: bool = False, seams: Seams | None = Non
     if found:
         return Outcome(False, tuple(found))
     _summary(manifest, seam.show)
-    mint(ACTION, manifest.id, typed=seam.typed, terminal=seam.terminal, env=seam.env)
     backend = seam.backend or backend_for(platform, manifest.scope)
     try:
         with only_one(home.state("autostart", "apply.lock"), wait=False, note="autostart install"):
@@ -245,15 +241,14 @@ def _apply(manifest: Manifest, directory: Path, system: bool, backend: Backend, 
 
 
 def rollback(*, system: bool = False, seams: Seams | None = None) -> Outcome:
-    """Restore what the last install replaced and unload its units; only a person at a terminal may."""
+    """Restore what the last install replaced and unload its units; decided at once by the `autostart.install` gate."""
     seam = seams or Seams()
-    require_person("roll back autostart units", seam.terminal, seam.env)
+    authority.require(GATE, "roll back autostart units", seam.env)
     ledger = autostart_ledger.read()
     last = ledger["last"]
     if not last:
         return Outcome(False, ("nothing was installed from a manifest",))
     manifest = parse(last["manifest"])
-    mint("roll back autostart units", manifest.id, typed=seam.typed, terminal=seam.terminal, env=seam.env)
     backend = seam.backend or backend_for(manifest.platform, manifest.scope)
     try:
         with only_one(home.state("autostart", "apply.lock"), wait=False, note="autostart rollback"):

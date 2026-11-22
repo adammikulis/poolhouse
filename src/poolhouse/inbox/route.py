@@ -23,7 +23,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from poolhouse import person, requests
+from poolhouse import requests
+from poolhouse.caller import AgentRefused
 from poolhouse.graph.guard import refusal
 from poolhouse.requests.model import PENDING, STATES, Request
 from poolhouse.ui import assets_dir
@@ -86,7 +87,7 @@ def view(request: Request) -> dict[str, Any]:
             "model_state": request.raised_by.model_state, "who": request.raised_by.who, "project": request.raised_by.project,
             "created": request.created, "expires": request.expires, "answer": request.answer,
             "answered_by": request.answered_by, "answered_at": request.answered_at,
-            "human_only": request.human_only, "destructive": request.destructive,
+            "destructive": request.destructive,
             "choices": [{"id": c.id, "label": c.label, "effect": c.effect, "approving": c.approving}
                         for c in request.choices],
             "fingerprint": request.fingerprint}
@@ -233,7 +234,7 @@ class RequestsApp:
         except requests.Refused as exc:
             codes = {"unknown": 404, "resolved": 409, "changed": 409, "choice": 400}
             return _error(codes.get(exc.why, 400), str(exc))
-        except person.HumanRequired as exc:
+        except AgentRefused as exc:
             return _error(403, str(exc))
         except requests.Unavailable:
             return _error(503, "the request store is unavailable; nothing was answered")
@@ -248,7 +249,7 @@ class RequestsApp:
         for item in items:
             ident = str(item.get("id", ""))[:40] if isinstance(item, dict) else ""
             found = requests.get(ident, inbox=self.inbox)
-            if found is None or found.human_only or found.destructive or found.choice(choice) is None:
+            if found is None or found.destructive or found.choice(choice) is None:
                 return _error(400, "that kind of request is answered one at a time")
         for item in items:
             reply = self._one(str(item.get("id", ""))[:40], choice, str(item.get("fingerprint", ""))[:80])

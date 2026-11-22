@@ -1,9 +1,9 @@
 """What a coding harness's tool call is allowed to do under explicit session permissions.
 
-`decide` takes the immutable coding policy and tool call and returns allow, deny or ask. The
+`decide` takes the immutable coding policy and tool call and returns allow or deny, at once: nothing waits for an answer. The
 destructive-action classifier labels the call; the permission profile decides what each label gets. A call
-the classifier cannot read is ``unsure`` and asks. Text naming the launcher's session files, the
-state root or an action only a person can take is denied in every profile.
+the classifier cannot read is ``unsure`` and is denied with the reason. Text naming the launcher's session files, the
+state root or a protected action is denied in every profile.
 """
 
 from __future__ import annotations
@@ -103,25 +103,23 @@ def decide(policy: coding_policy.Policy, call: Call, *, roots: Sequence[str] = (
     if verdict.label == "safe":
         return Decision("allow", "safe", why)
     if refusal := refusal_for(_shell_line(name, args)):
-        return _denied("destructive", f"{refusal[0]} is for a person; run `{refusal[1]}` yourself")
+        return _denied("destructive", f"{refusal[0]} is refused to an agent; the owner runs `{refusal[1]}` from a terminal outside the agent")
     if not policy.writable:
         return _denied(verdict.label, f"{policy.execution_mode}/{policy.permissions} runs no acting call: {why}")
     if verdict.label == "unsure" or (verdict.label == "destructive" and policy.permissions != coding_policy.YOLO):
-        return Decision("ask", verdict.label, why, "tool_call_destructive")
-    if policy.permissions == coding_policy.ASK_CHANGES:
-        return Decision("ask", verdict.label, why)
+        return _denied(verdict.label, f"{why}; the {policy.permissions} profile runs no {verdict.label} call")
     return Decision("allow", verdict.label, why)
 
 
 def after_downloads(decision: Decision, name: str, args: dict[str, Any] | None, roots: Sequence[str], fetched: Sequence[str]) -> Decision:
-    """``decision``, turned into a question when the call runs a file this session downloaded."""
+    """``decision``, turned into a denial when the call runs a file this session downloaded."""
     line = _shell_line(name, args)
     used = fetchlog.uses(line, roots, [*fetched, *fetchlog.targets(line, roots, "", fetched)]) if line else ""
     if not used or decision.action == "deny":
         return decision
     why = f"runs {used}, which this session downloaded"
     label = decision.label if decision.label in ("unsure", "destructive") else "unsure"
-    return Decision("ask", label, f"{decision.reason}; {why}" if decision.action == "ask" else why, "tool_call_destructive")
+    return _denied(label, why)
 
 
 def workspace_authority(line: str, actor: str) -> Decision | None:

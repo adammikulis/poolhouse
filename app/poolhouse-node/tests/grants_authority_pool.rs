@@ -136,13 +136,13 @@ fn typed_sign(who: &Person) -> impl Fn(&[u8]) -> String + '_ {
 }
 
 #[test]
-fn the_founding_phone_approves_a_file_delete_and_it_waits_a_day_before_the_delete_works() {
+fn the_founding_phone_approves_a_file_delete_and_the_delete_works_at_once_into_the_trash() {
     let pool = Pool::new();
     let (handle, path, _) = pool.file();
     let done = pool.approve("file_delete", &handle);
     assert_eq!(done["state"], "approved", "{done}");
     let gid = pool.only_gid();
-    assert_eq!(pool.state(&gid).0, "not-yet", "a phone counts as a computer: an irreversible act waits a day for a key to revoke it");
+    assert_eq!(pool.state(&gid).0, "live", "the delete goes to a trash for seven days, so its grant waits for nothing");
     let row = {
         let mut node = pool.rig.node.lock().unwrap();
         let board = &node.host("demo").unwrap().board;
@@ -152,8 +152,10 @@ fn the_founding_phone_approves_a_file_delete_and_it_waits_a_day_before_the_delet
     assert_eq!(row["approval"]["decision"], "approve", "the row names the decision the phone signed: {row}");
     assert_eq!(row["person"], pool.phone.fingerprint().as_str(), "{row}");
     assert_eq!(pool.grants()["authority"], json!([pool.phone.fingerprint()]), "the founding phone is the one authority key of the pool");
-    assert_eq!(pool.delete(&handle)["ok"], false, "the delete waits for the day");
-    assert!(path.exists(), "nothing was deleted");
+    let deleted = pool.delete(&handle);
+    assert_eq!(deleted["ok"], true, "the delete works at once: {deleted}");
+    assert!(!path.exists(), "the bytes left the store");
+    assert!(path.parent().unwrap().parent().unwrap().join("trash").join(path.file_name().unwrap()).exists(), "and sit in the trash");
 }
 
 #[test]
@@ -249,23 +251,21 @@ fn a_device_in_no_pool_counts_any_enrolled_key() {
 }
 
 #[test]
-fn a_grant_of_an_irreversible_act_waits_a_day_however_it_was_signed() {
+fn a_grant_of_a_file_delete_starts_when_it_was_signed_however_it_was_signed() {
     let dir = tempfile::tempdir().unwrap();
     let mut node = kit::node(dir.path());
     let (name, token) = session(&mut node, "demo", "lead");
     kit::grants::enrolled(dir.path(), &mut |m, b, t, p| req(&mut node, m, b, t, p), &token);
-    let day = 24 * 3_600_000u64;
     let signed_at = kit::grants::now_ms();
     let issued = req(&mut node, "grant_issue", "demo", &token, person().issue_params("demo", "g-00000000000000c2", &Spec::session(&name, "file_delete")));
     assert_eq!(issued["ok"], true, "the person's key signed it directly, with no card: {issued}");
     let listing = ok(req(&mut node, "grants", "demo", &token, json!({})));
     let grant = &listing["grants"][0];
-    assert_eq!(grant["status"], "not-yet", "{listing}");
+    assert_eq!(grant["status"], "live", "{listing}");
     let starts = grant["starts_ms"].as_u64().unwrap();
-    assert!(starts >= signed_at + day && starts <= signed_at + day + 60_000, "it starts a day after it was signed: {starts} from {signed_at}");
-    assert!(grant["ends_ms"].as_u64().unwrap() >= starts + 3_000_000, "and lasts as long as it was signed for, from then");
+    assert!(starts >= signed_at.saturating_sub(60_000) && starts <= signed_at + 60_000, "it starts when it was signed: {starts} from {signed_at}");
     let revoked = req(&mut node, "grant_revoke", "demo", &token, person().revoke_params("demo", "g-00000000000000c2", "changed my mind"));
-    assert_eq!(revoked["ok"], true, "a key can still end it before it starts: {revoked}");
+    assert_eq!(revoked["ok"], true, "a key can still end it: {revoked}");
 }
 
 #[test]

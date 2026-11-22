@@ -17,7 +17,7 @@ PENDING = "pending"
 RESOLVED = ("approved", "denied", "expired", "cancelled", "superseded")
 STATES = (PENDING, *RESOLVED)
 VIAS = ("terminal", "ui", "dialog")
-"""The three ways a person answers: a terminal at a tty, the UI's browser session, the desktop dialog."""
+"""The three ways a request is answered: a terminal, the UI's browser session, the desktop dialog."""
 
 MOST = {"model": 80, "subject": 300, "reason": 700, "name": 64, "label": 40, "effect": 200}
 APPROVING = frozenset({"allow-once", "allow-always", "approve", "approve-other", "release"})
@@ -40,12 +40,9 @@ CHOICES: dict[str, tuple[str, str]] = {
 
 @dataclass(frozen=True, slots=True)
 class Kind:
-    """What a kind of request is: ``human_only`` kinds (a release, a host, a grant) are
-    re-checked by the action itself and never approved in bulk; ``destructive`` kinds never
-    offer an always choice or bulk approval."""
+    """What a kind of request is: ``destructive`` kinds never offer an always choice or bulk approval."""
 
     summary: str
-    human_only: bool = False
     destructive: bool = False
 
 
@@ -54,11 +51,11 @@ KINDS: dict[str, Kind] = {
     "tool_call_destructive": Kind("a destructive or unsure tool call", destructive=True),
     "memory_remember": Kind("a fact the agent wants remembered"),
     "hold": Kind("a held call counting down"),
-    "quarantine_release": Kind("something sentinel holds that a person may release", human_only=True),
-    "host_approval": Kind("a network host an agent asked to reach", human_only=True),
-    "join-code": Kind("a machine or agent asking to join", human_only=True),
-    "grant": Kind("a grant of a human-only action", human_only=True),
-    "keystore_unlock": Kind("the keystore asking to be unlocked", human_only=True),
+    "quarantine_release": Kind("something sentinel holds that a person may release"),
+    "host_approval": Kind("a network host an agent asked to reach"),
+    "join-code": Kind("a machine or agent asking to join"),
+    "grant": Kind("a grant of a protected action"),
+    "keystore_unlock": Kind("the keystore asking to be unlocked"),
     "rule_suggestion": Kind("a rule the agent suggests"),
 }
 
@@ -113,10 +110,6 @@ class Request:
     answer: str = ""
     key: str = ""
     extra: Mapping[str, str] = field(default_factory=dict)
-
-    @property
-    def human_only(self) -> bool:
-        return KINDS[self.kind].human_only
 
     @property
     def destructive(self) -> bool:

@@ -1,8 +1,8 @@
 """One quarantine store for every kind of subject, with one state machine.
 
-A subject is ``(kind, key)``. It is clear, watched, quarantined or released; only a person
+A subject is ``(kind, key)``. It is clear, watched, quarantined or released; only a permitted caller
 releases or purges. Held text lives in files beside the sealed state, redacted and capped,
-and is read back only with a `HumanGrant`.
+and is read back only with a `Permit`.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from poolhouse.files import write_text
 from poolhouse.lock import only_one
 from poolhouse.sentinel import moves
 from poolhouse.sentinel.events import Bus, Event, Severity
-from poolhouse.sentinel.human import HumanGrant
+from poolhouse.sentinel.permit import Permit
 from poolhouse.sentinel.redaction import redact, redact_value
 from poolhouse.sentinel.sealed import SealedFile
 
@@ -362,12 +362,12 @@ class Store:
         return sum(r.held.get("bytes", 0) for r in self._records.values()
                    if r.held and not r.purged)
 
-    # -- the human's side ------------------------------------------------------------
-    def release(self, ident: str, grant: HumanGrant, reason: str = "released by a person",
+    # -- release, read and purge ------------------------------------------------------------
+    def release(self, ident: str, grant: Permit, reason: str = "released",
                 ) -> Record:
         """Release a quarantined subject: restore its file, run the release hooks. A watched
         subject is returned to clear (nothing was blocked, so there is nothing to restore).
-        A grant for ``release`` on this id is required."""
+        A permit for ``release`` on this id is required."""
         grant.check("release", ident)
         if self.tampered:
             raise TransitionRefused("the sealed state failed its check; nothing is released")
@@ -377,7 +377,7 @@ class Store:
             if record is None:
                 raise KeyError(ident)
             if record.state == State.WATCH:
-                self._move(record, State.CLEAR, "watch ended by a person", "human", {})
+                self._move(record, State.CLEAR, "watch ended", "human", {})
                 self._save()
                 return record
             if record.state != State.QUARANTINED:
@@ -413,8 +413,8 @@ class Store:
                 self._save()
         return True
 
-    def read(self, ident: str, grant: HumanGrant) -> str:
-        """The redacted text held for ``ident``. A grant for ``inspect`` on this id is
+    def read(self, ident: str, grant: Permit) -> str:
+        """The redacted text held for ``ident``. A permit for ``inspect`` on this id is
         required."""
         grant.check("inspect", ident)
         record = self.get(ident)
@@ -427,9 +427,9 @@ class Store:
             raise TransitionRefused("the held text changed on disk")
         return str(json.loads(raw)["text"])
 
-    def purge(self, ident: str, grant: HumanGrant) -> Record:
+    def purge(self, ident: str, grant: Permit) -> Record:
         """Delete what is held for ``ident`` (its text or its moved file) and keep the
-        record. A grant for ``purge`` on this id is required."""
+        record. A permit for ``purge`` on this id is required."""
         grant.check("purge", ident)
         with self._lock, self._locked():
             self._refresh()

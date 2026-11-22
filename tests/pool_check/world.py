@@ -123,7 +123,7 @@ class World:
 
     def join(self, joiner: Device, via: Device) -> dict:
         """``joiner`` joins the governed pool ``via`` is in, at the address ``via`` has for the joiner: under `open` by the fingerprint of ``via``, under `secure` by
-        a code, after the admin key has signed the admit of the joiner's certificate (the person's yes) and ``via`` has taken it."""
+        a code, after the admin key has signed the admit of the joiner's certificate (the admin key's own act) and ``via`` has taken it."""
         host, port = via.reach(joiner)
         if via.pool()["policy"] == "open":
             return joiner.admin("join_pool", host=host, port=port, fingerprint=via.fingerprint)

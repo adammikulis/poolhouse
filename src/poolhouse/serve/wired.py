@@ -66,7 +66,6 @@ class Hooks:
     env: Mapping[str, str] | None = None
     runner: Runner | None = None
     system: str | None = None
-    terminal: tuple[bool, bool] | None = None
     daemon: Path | None = None
     read: Callable[[], int] | None = None
     contexts: Sequence[int] = CONTEXTS

@@ -10,9 +10,9 @@ from pathlib import Path
 
 from poolhouse.board import person
 from poolhouse.board.session import AGENT_ENV
+from poolhouse.caller import refuse_agent
 from poolhouse.command import Group, flag, option
 from poolhouse.log import say
-from poolhouse.sentinel import human
 from poolhouse.workspace import (
     approval_cli,
     authority_cli,
@@ -31,10 +31,8 @@ from poolhouse.workspace import (
     mail_cli,
     notes_cli,
     nudge,
-    person_view,
     phone_cli,
     pool_cli,
-    render,
     rooms_cli,
     scratch_cli,
     status_cli,
@@ -48,7 +46,7 @@ CANCELLED = threading.Event()
 
 
 def _chat(args: argparse.Namespace) -> int:
-    human.require_person("workspace chat")
+    refuse_agent("workspace chat", "it speaks on the board as the owner, and an agent speaks as itself with `poolhouse-workspace say`")
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: CANCELLED.set())
     chat.run(person.session(Path.cwd(), board=args.board), chat.Target(board=args.room, dm=args.to, backlog=args.backlog),
@@ -70,11 +68,6 @@ def _board_serve(args: argparse.Namespace) -> int:
     return 0
 
 
-def _attestations(args: argparse.Namespace) -> int:
-    render.show(args, person_view.listing(args.limit, args.session))
-    return 0
-
-
 COMMANDS = Group(
     "poolhouse-workspace",
     "Agents coordinate here: messages, shared notes, scratch folders and who owns what. "
@@ -89,8 +82,6 @@ for _name, _help, _options, _handler in (
          hooks_cli.SNIPPET, hooks_cli.snippet),
         ("install-hooks", "write the nudge hooks (post tool, prompt, stop) into Claude Code's and Codex's settings",
          hooks_cli.INSTALL, hooks_cli.install),
-        ("attestations", "what the harness hooks recorded the person saying, as person-attestations; read-only",
-         [flag("--session", default=""), flag("--limit", type=int, default=50)], _attestations),
         ("board-serve", "serve the Board page on a loopback port; the person's identity, no token in the page",
          [flag("--port", type=int, default=0)], _board_serve),
         ("chat", "live conversation with a room or one agent: streams it, sends each line you type; at a terminal",
@@ -103,7 +94,7 @@ for _name, _help, _options, _handler in (*board_cli.TABLE, *claims_cli.TABLE, *n
 for _name, _help, _options, _handler in cli_setup.TABLE:
     COMMANDS.add(_name, board_cli.exiting(_handler), help=_help, options=[*NODE_COMMON, *_options])
 COMMANDS.add("authority", board_cli.runner(authority_cli.run),
-             help="show, set or preset which gates a lead agent may pass instead of a person (preset dev|prod)",
+             help="show, set or preset which gates an agent passes (preset dev|prod); an agent may narrow a gate and is refused at once when it loosens one",
              options=[*NODE_COMMON, *authority_cli.OPTIONS])
 COMMANDS.add("agent", board_cli.guarded(localcli.command),
              help="start a local model as an agent that takes and gives tasks, stop one, or list them; start and stop at a terminal",
@@ -114,11 +105,11 @@ for _name, _help, _options, _handler in grants_cli.PERSON:
     COMMANDS.add(_name, grants_cli.person_runner(_handler), help=_help, options=[*NODE_COMMON, *_options])
 COMMANDS.add(grants_cli.REBIND[0], grants_cli.REBIND[3], help=grants_cli.REBIND[1], options=[*NODE_COMMON, *grants_cli.REBIND[2]])
 COMMANDS.add("approval", approval_cli.COMMAND, options=[*NODE_COMMON, *approval_cli.OPTIONS],
-             help="ask a person's phone for grants (request), wait for the answer, read what became of it; a person answers with decide")
+             help="ask for grants (request; decided at once by policy), read what became of it; a linked phone is only notified")
 COMMANDS.add("pool", pool_cli.COMMAND, options=[*NODE_COMMON, *pool_cli.OPTIONS],
-             help="found this device's pool for a person (found): the person answers on their phone or at this computer's prompt")
+             help="found this device's pool (found): this computer's own key governs it, made automatically")
 COMMANDS.add("phone", phone_cli.COMMAND, options=[*NODE_COMMON, *phone_cli.OPTIONS],
-             help="add the phone a person approves from (add: shows a code to scan), list the phones, remove one; add and remove are a person's")
+             help="add an optional phone that is notified (add: shows a code to scan), list the phones, remove one; add and remove are refused to an agent")
 COMMANDS.add("nudge", board_cli.guarded(board_cli.nudging),
              help="print one line summarising what waits for you (nothing when nothing does); for hooks",
              options=[*NODE_COMMON, flag("--hook", default="", choices=("", *nudge.EVENTS),

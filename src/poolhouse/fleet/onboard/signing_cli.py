@@ -1,4 +1,4 @@
-"""``poolhouse pool signing``: see the signing key, and the steps only a person may take."""
+"""``poolhouse pool signing``: see the signing key; exporting, rotating and revoking it are refused to an agent at once."""
 
 from __future__ import annotations
 
@@ -9,28 +9,24 @@ import json
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, person
+from poolhouse import home
+from poolhouse.caller import AgentRefused
 from poolhouse.files import read_json, write_json
 from poolhouse.log import say
-from poolhouse.sentinel.human import HumanRequired, mint
+from poolhouse.sentinel.permit import mint
 
 from .manifest import key_fingerprint
 from .signing import KeyStoreError, SigningKeys
 
-__all__ = ["add_signing", "cmd_signing", "confirm_signing"]
-
-
-def confirm_signing(summary: str) -> bool:
-    """Ask on the terminal device whether to sign; anything but a typed yes is a no."""
-    return person.confirm(f"{summary}? Type yes to sign: ")
+__all__ = ["add_signing", "cmd_signing"]
 
 
 def add_signing(sub: Any, common: Any) -> None:
-    p = common(sub.add_parser("signing", help="the signing key: show it; export, rotate, revoke "
-                                              "and confirm-before-signing need a person"))
-    p.add_argument("action", choices=["show", "export", "rotate", "revoke", "confirm", "accept"])
+    p = common(sub.add_parser("signing", help="the signing key: show it; export, rotate and revoke "
+                                              "are refused to an agent"))
+    p.add_argument("action", choices=["show", "export", "rotate", "revoke", "accept"])
     p.add_argument("value", nargs="?", default="",
-                   help="export: the file to write; revoke: a key id; confirm: on or off")
+                   help="export: the file to write; revoke: a key id")
 
 
 def _emit(args: argparse.Namespace, document: dict[str, Any], text: str) -> None:
@@ -42,7 +38,7 @@ def cmd_signing(args: argparse.Namespace) -> int:
     keys = SigningKeys(directory)
     try:
         return _run(args, keys, directory)
-    except (HumanRequired, KeyStoreError) as exc:
+    except (AgentRefused, KeyStoreError) as exc:
         _emit(args, {"error": str(exc)}, f"error: {exc}")
         return 2
 
@@ -51,8 +47,7 @@ def _run(args: argparse.Namespace, keys: SigningKeys, directory: Path) -> int:
     doc = keys.meta()
     if args.action == "show":
         _emit(args, {"key_id": doc["key_id"], "store": doc["store"], "public": doc["public"],
-                     "rotations": len(doc["rotations"]), "revoked": doc["revoked"],
-                     "confirm_before_signing": doc["confirm"]},
+                     "rotations": len(doc["rotations"]), "revoked": doc["revoked"]},
               f"signing key {doc['key_id']} ({doc['store']})")
     elif args.action == "export":
         grant = mint("export", doc["key_id"])
@@ -66,9 +61,6 @@ def _run(args: argparse.Namespace, keys: SigningKeys, directory: Path) -> int:
     elif args.action == "revoke":
         listed = keys.revoke(mint("revoke", args.value), args.value)
         _emit(args, {"revoked": listed}, f"revoked {args.value}")
-    elif args.action == "confirm":
-        keys.require_confirmation(mint("confirm-signing", doc["key_id"]), args.value == "on")
-        _emit(args, {"confirm_before_signing": args.value == "on"}, f"confirm-before-signing {args.value}")
     else:
         trust = read_json(directory / "trust.json", {})
         pending = trust.get("pending_key")

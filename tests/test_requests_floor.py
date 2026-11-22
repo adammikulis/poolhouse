@@ -1,17 +1,17 @@
-"""Answering a request is a person's act: no tool a model is offered, no MCP tool, no message and
-no argument a model writes can answer, cancel, list the answers of or change a request."""
+"""Answering a request is refused to an agent: no tool a model is offered, no MCP tool, no message and
+no argument a model writes can answer, cancel, list the answers of or change a request; the refusal
+is at once and names the command the owner runs outside the agent."""
 
 from __future__ import annotations
 
 import io
-import sys
 
 import pytest
 
 from poolhouse import chat, do, mcp, requests
-from poolhouse.chatpolicy import HumanOnlyRail, refusal_for
+from poolhouse.chatpolicy import ProtectedRail, refusal_for
 from poolhouse.interventions import Call, Context, Deny
-from poolhouse.sentinel.human import agent_may
+from poolhouse.sentinel.permit import agent_may
 from tests.requests_support import ask, no_markers
 
 __all__ = ["no_markers"]
@@ -30,8 +30,8 @@ def test_no_tool_offered_to_a_model_names_a_request_or_an_answer():
 
 
 @pytest.mark.parametrize("name", NAMES)
-def test_a_gullible_model_calling_a_tool_named_for_the_inbox_is_refused_with_the_terminal_command(name):
-    got = HumanOnlyRail().before_tool_call(Call(name, {"id": "rq_x", "choice": "allow-once"}), Context())
+def test_a_gullible_model_calling_a_tool_named_for_the_inbox_is_refused_with_the_owners_command(name):
+    got = ProtectedRail().before_tool_call(Call(name, {"id": "rq_x", "choice": "allow-once"}), Context())
     assert isinstance(got, Deny) and "poolhouse-requests answer" in got.reason
 
 
@@ -45,28 +45,31 @@ def test_an_argument_naming_the_inbox_is_refused_whichever_tool_carries_it(tool,
 
 
 def test_a_call_with_the_floor_in_its_text_is_denied_by_the_rail_not_just_the_helper():
-    rail = HumanOnlyRail()
+    rail = ProtectedRail()
     got = rail.before_tool_call(Call("run_shell", {"command": "poolhouse-requests answer rq_1 allow-once"}), Context())
     assert isinstance(got, Deny)
 
 
-def test_the_request_commands_refuse_a_process_an_agent_started(monkeypatch, capsys):
+def test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back(
+        monkeypatch, capsys):
     from poolhouse.inbox import cli
     held = requests.raise_request(ask())
     monkeypatch.setenv("CLAUDECODE", "1")
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
-    monkeypatch.setattr(sys.stdout, "isatty", lambda: True, raising=False)
-    for argv in (["list"], ["show", held.id], ["answer", held.id, "allow-once", "--fingerprint", held.fingerprint],
-                 ["watch", "--once"]):
-        assert cli.main(argv) == 2, argv
-    out = capsys.readouterr()
-    assert held.id not in out.out
+    monkeypatch.setenv("POOLHOUSE_AUTHORITY_FLOOR", "person")
+    for argv in (["list"], ["show", held.id], ["watch", "--once"]):
+        assert cli.main(argv) == 0, argv
+    assert held.id in capsys.readouterr().out
+    answer = ["answer", held.id, "allow-once", "--fingerprint", held.fingerprint]
+    assert cli.main(answer) == 2
+    assert "refused to an agent" in capsys.readouterr().err
     assert requests.get(held.id).state == "pending"
+    monkeypatch.delenv("POOLHOUSE_AUTHORITY_FLOOR")
+    assert cli.main(answer) == 0 and requests.get(held.id).state == "approved"
 
 
 @pytest.mark.parametrize('command', ['poolhouse-requests list --json', 'poolhouse-requests show rq_fixture',
                                     'poolhouse-requests answer rq_fixture allow-once'])
-def test_current_request_commands_keep_the_person_only_policy(command):
+def test_current_request_commands_are_protected_actions_for_the_chat_agent(command):
     refused = refusal_for(command)
     assert refused is not None
-    assert refused[1] == 'poolhouse-requests answer ID CHOICE, at a terminal'
+    assert refused[1] == 'poolhouse-requests answer ID CHOICE'

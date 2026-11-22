@@ -1,11 +1,12 @@
 """A device on an older build than its pool updates itself at a safe boundary, never mid-lease, and a pinned one is left alone."""
 
 import subprocess
+import types
 from pathlib import Path
 
 import pytest
 
-from poolhouse import build_update, node_pool, person, runtime_store
+from poolhouse import build_update, caller, node_pool, runtime_store
 from poolhouse.build_update import Steps
 
 OLD, NEW = "a" * 40, "b" * 40
@@ -52,13 +53,12 @@ class Calls:
 
 @pytest.fixture(autouse=True)
 def _a_person_with_a_source_checkout(monkeypatch, tmp_path):
-    for name in person.AGENT_MARKERS:
+    for name in caller.AGENT_MARKERS:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.delenv(build_update.PIN_ENV, raising=False)
     monkeypatch.setattr(build_update, "checkout_of", lambda: tmp_path)
     monkeypatch.setattr(build_update.writer, "record", lambda *a, **k: AUDIT.append((a, k)) or True)
     AUDIT.clear()
-    monkeypatch.setattr(build_update.person, "marked", lambda *a: "")
 
 
 def test_a_member_on_a_newer_build_makes_this_device_stale_and_an_older_one_does_not():
@@ -147,10 +147,26 @@ def test_a_release_install_takes_the_signed_update_path(monkeypatch):
 
 
 def test_a_process_an_agent_started_asks_for_the_background_build_and_is_tried_again_after_a_wait(monkeypatch):
-    monkeypatch.setattr(build_update.person, "marked", lambda *a: "CLAUDECODE")
+    monkeypatch.setenv("CLAUDECODE", "1")
     calls = Calls(switches=False)
     started = build_update.update_once(pool=pool(), steps=calls.steps())
     assert started.action == "started" and runtime_store.read_state()["update"]["fails"] == 1
+
+
+def test_the_build_command_asks_for_the_background_build_only_when_an_agent_started_the_process(monkeypatch, tmp_path):
+    """The command line the updater spawns: the foreground build for a process with no agent marker, the background one for an agent."""
+    spawned = []
+
+    def run(argv, **_options):
+        spawned.append(argv)
+        return subprocess.CompletedProcess(argv, 0, "built", "")
+
+    monkeypatch.setattr(build_update, "subprocess", types.SimpleNamespace(run=run, SubprocessError=subprocess.SubprocessError))
+    assert build_update.rebuild(tmp_path) == (0, "built")
+    assert "--background" not in spawned[-1] and spawned[-1][2:5] == ["poolhouse.runtime_cli", "ensure", "--no-update"]
+    monkeypatch.setenv("CLAUDECODE", "1")
+    build_update.rebuild(tmp_path)
+    assert spawned[-1][-1] == "--background" and spawned[-1][2:5] == ["poolhouse.runtime_cli", "ensure", "--no-update"]
 
 
 def test_an_incompatible_member_is_shown_with_the_exact_fix_in_status_doctor_and_members():

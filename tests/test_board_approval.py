@@ -1,4 +1,5 @@
-"""Asking from a shell, answering at a terminal, adding a phone with a code, and the bytes a second implementation agrees on."""
+"""Asking from a shell (decided at once by policy), answering with this device's key, adding a phone with a code, a phone's own answer, and the bytes
+a second implementation agrees on. Nobody types: a request is approved when policy allows it and refused with the reason when it does not."""
 
 from __future__ import annotations
 
@@ -14,11 +15,11 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
-from node_kit import PASSPHRASE, TYPED
 from phone_kit import PhoneKeys, add_phone, code_secret, endpoint_of
 
+from poolhouse import caller
 from poolhouse.board import approval, grants, phone as board_phone
-from poolhouse.board.approval import Approval
+from poolhouse.board.approval import Approval, Ask
 from poolhouse.workspace import qr
 
 pytest_plugins = ["node_kit", "phone_kit"]
@@ -47,11 +48,11 @@ def test_the_bytes_and_signature_another_implementation_made_are_the_ones_this_o
     public.verify(bytes.fromhex(file["add"]["proof_signature"]), file["add"]["proof_bytes"].encode(), ec.ECDSA(hashes.SHA256()))
 
 
-def test_what_the_person_is_asked_at_a_terminal_is_the_request_itself():
+def test_a_request_reads_back_in_words_from_the_bytes_that_are_signed_and_every_line_a_phone_shows_is_in_them():
     file = json.loads(VECTORS.read_text(encoding="utf-8"))
     shown = grants.describe(file["approve_bytes"].encode())
     assert shown.startswith("APPROVE the request ap-0123456789abcdef of claude-1a2b3c on board demo, which reads:")
-    assert all(line.strip() in shown for line in file["challenge"]["text"].split("\n")), "every line the phone shows is put to the person"
+    assert all(line.strip() in shown for line in file["challenge"]["text"].split("\n")), "every line the phone shows is in the words"
     assert grants.describe(file["deny_bytes"].encode()).startswith("DENY the request")
     assert grants.describe(file["block_bytes"].encode()).startswith("DENY AND BLOCK the request")
     assert grants.describe(file["approve_repeat_bytes"].encode()).startswith("APPROVE AGAIN (it was declined before) the request")
@@ -60,126 +61,156 @@ def test_what_the_person_is_asked_at_a_terminal_is_the_request_itself():
 def test_every_state_has_one_sentence_an_agent_can_pass_on():
     said = {s: Approval(None, {"state": s, "reason": "the node said why"}).message() for s in ("pending", *approval.ENDED)}  # type: ignore[arg-type]
     assert len(set(said.values())) == len(said) and all(m.endswith((".", "the node said why")) for m in said.values())
-    assert said["expired"] == "The request ended before you answered; ask again if it is still needed."
-    assert said["failed"] == "You approved it, but it could not be carried out: the node said why"
+    assert said["expired"] == "The request ended before it was answered; ask again if it is still needed."
+    assert said["failed"] == "It was approved, but it could not be carried out: the node said why"
+    assert "phone" not in " ".join(said.values()).lower() and "you" not in " ".join(said.values()).lower().split(), "no sentence is for a person who is not there"
 
 
-def test_the_shell_asks_waits_and_reads_what_became_of_the_request(phone_node):
-    team = phone_node
+def ask_phone(team, lead, *actions: str, **flags) -> Approval:
+    """A request raised the way a session raises it and left for a key to answer (what a linked phone's notification carries); nothing answers it here."""
+    asks = [Ask(action, resource or "*", "10m", 1) for action, _, resource in (a.partition(":") for a in actions)]
+    return approval.request(team.session(lead), approval.wire(asks, **flags))
+
+
+def test_the_shell_asks_and_has_the_answer_at_once_and_reads_what_became_of_the_request(workspace_node):
+    team = workspace_node
     lead = team.member("lead")
-    phone = add_phone(team)
     done = team.cli("approval", "request", "add_device", "link_write:demo>lab", "--for", "10m", "--uses", "1", "--note", "adding the Linux box", "--json", who=lead)
     made = json.loads(done.stdout)
-    assert done.returncode == 0 and made["state"] == "pending" and made["risk"] == "sensitive", done
+    assert done.returncode == 0 and made["state"] == "approved" and made["risk"] == "sensitive" and len(made["grants"]) == 2, done
     for label in LABELS:
-        assert re.search(rf"^{label}( \d)?:", made["text"], re.M), f"{label} is missing from what the person reads"
-    waiting = team.cli("approval", "wait", made["id"], "--timeout", "0.5", "--json", who=lead)
-    assert waiting.returncode == 0 and json.loads(waiting.stdout)["state"] == "pending", "waiting is not failing"
-    endpoint = endpoint_of(team)
-    seen = endpoint.ok("get", {"id": made["id"]}, token=phone.token)
-    assert re.fullmatch(r"\d\d", made["code"]), "a request that is not routine prints the number to show the person"
-    assert endpoint.ok("decide", phone.decision(seen, "approve", pick=made["code"]))["state"] == "approved"
+        assert re.search(rf"^{label}( \d)?:", made["text"], re.M), f"{label} is missing from what the request says"
     after = team.cli("approval", "status", made["id"], "--json", who=lead)
     assert after.returncode == 0 and json.loads(after.stdout)["state"] == "approved" and len(json.loads(after.stdout)["grants"]) == 2
     listed = team.cli("approval", "list", who=lead)
     assert made["id"] in listed.stdout and "approved" in listed.stdout
-    again = team.cli("approval", "request", "sync_now", "--wait", "0", who=lead)
-    assert again.returncode == 0 and "pending" in again.stdout and "what the person reads" in again.stdout
+    waiting = team.cli("approval", "wait", made["id"], "--timeout", "0.5", "--json", who=lead)
+    assert waiting.returncode == 0 and json.loads(waiting.stdout)["state"] == "approved", "waiting for what is answered already is no wait"
+    assert team.cli("approval", "pending", "--json", who=lead).stdout.strip() == "[]", "nothing waits"
+    assert sorted(g.action for g in grants.listing(team.session(lead)).grants if g.status == "live") == ["add_device", "link_write"]
     refused = team.cli("approval", "request", "grant_issue", who=lead)
     assert refused.returncode == 3 and "grant_issue is a floor" in refused.stderr + refused.stdout
+    assert team.cli("approval", "request", "sync_now", "--wait", "0", who=lead).returncode == 2, "there is no wait to ask for: it is answered"
+
+
+def test_a_request_raised_for_a_key_to_answer_waits_and_a_phone_answers_it_with_the_number_the_asker_was_shown(phone_node):
+    team = phone_node
+    lead = team.member("lead")
+    phone = add_phone(team)
+    made = ask_phone(team, lead, "add_device", "link_write:demo>lab", note="adding the Linux box")
+    assert made.state == approval.PENDING and made.risk == "sensitive" and re.fullmatch(r"\d\d", made.code)
+    waiting = team.cli("approval", "wait", made.id, "--timeout", "0.5", "--json", who=lead)
+    assert waiting.returncode == 0 and json.loads(waiting.stdout)["state"] == "pending", "waiting is not failing"
+    endpoint = endpoint_of(team)
+    seen = endpoint.ok("get", {"id": made.id}, token=phone.token)
+    assert endpoint.ok("decide", phone.decision(seen, "approve", pick=made.code))["state"] == "approved"
+    after = team.cli("approval", "status", made.id, "--json", who=lead)
+    assert after.returncode == 0 and json.loads(after.stdout)["state"] == "approved" and len(json.loads(after.stdout)["grants"]) == 2
+
+
+def test_on_a_node_whose_only_key_is_a_phones_the_shell_says_why_it_cannot_answer_and_the_phone_still_can(phone_node):
+    team = phone_node
+    lead = team.member("lead")
+    phone = add_phone(team)
+    done = team.cli("approval", "request", "sync_now", "--json", who=lead)
+    assert done.returncode == 3 and "another key" in json.loads(done.stdout)["error"], done.stdout
+    (waiting,) = json.loads(team.cli("approval", "pending", "--json", who=lead).stdout)
+    endpoint = endpoint_of(team)
+    assert endpoint.ok("decide", phone.decision(endpoint.ok("get", {"id": waiting["id"]}, token=phone.token), "approve"))["state"] == "approved"
+    assert [g.action for g in grants.listing(team.session(lead)).grants if g.status == "live"] == ["sync_now"]
 
 
 def test_a_deny_from_the_phone_is_a_failed_exit_the_agent_can_relay(phone_node):
     team = phone_node
     lead = team.member("lead")
     phone = add_phone(team)
-    made = json.loads(team.cli("approval", "request", "sync_now", "--json", who=lead).stdout)
+    made = ask_phone(team, lead, "sync_now")
     endpoint = endpoint_of(team)
-    endpoint.ok("decide", phone.decision(endpoint.ok("get", {"id": made["id"]}, token=phone.token), "deny"))
-    done = team.cli("approval", "wait", made["id"], "--timeout", "2", "--json", who=lead)
-    assert done.returncode == 3 and json.loads(done.stdout)["message"] == "You said no; nothing changed."
+    endpoint.ok("decide", phone.decision(endpoint.ok("get", {"id": made.id}, token=phone.token), "deny"))
+    done = team.cli("approval", "wait", made.id, "--timeout", "2", "--json", who=lead)
+    assert done.returncode == 3 and json.loads(done.stdout)["message"] == "It was declined; nothing changed."
 
 
-def test_a_person_without_an_agent_session_can_list_and_lift_another_sessions_block(phone_node):
+def test_the_device_lifts_the_block_a_phone_put_on_a_session_with_no_terminal_and_an_agent_cannot(phone_node):
     team = phone_node
     lead = team.member("lead")
     phone = add_phone(team)
-    made = json.loads(team.cli("approval", "request", "sync_now", "--json", who=lead).stdout)
+    made = ask_phone(team, lead, "sync_now")
     endpoint = endpoint_of(team)
-    seen = endpoint.ok("get", {"id": made["id"]}, token=phone.token)
-    endpoint.ok("decide", phone.decision(seen, "block"))
+    endpoint.ok("decide", phone.decision(endpoint.ok("get", {"id": made.id}, token=phone.token), "block"))
     who = f"{team.board}/{lead.name}"
-    code, out, err = team.terminal("approval", "blocks", "--json")
-    assert code == 0 and who in json.loads(next(line for line in out.splitlines() if line.startswith("{"))), (out, err)
-    code, out, err = team.terminal("approval", "lift", who, typed={"Type yes": "yes"})
-    assert code == 0 and "The block was lifted" in out, (out, err)
-    retry = team.cli("approval", "request", "sync_now", "--json", who=lead)
-    assert retry.returncode == 0 and json.loads(retry.stdout)["state"] == "pending", retry
+    blocks = team.cli("approval", "blocks", "--json")
+    assert blocks.returncode == 0 and who in json.loads(blocks.stdout), (blocks.stdout, blocks.stderr)
+    marked = team.cli("approval", "lift", who, env={"CLAUDECODE": "1"})
+    assert marked.returncode != 0 and "refused to an agent" in marked.stdout + marked.stderr
+    assert who in json.loads(team.cli("approval", "blocks", "--json").stdout), "the refused lift changed nothing"
+    lifted = team.cli("approval", "lift", who)
+    assert lifted.returncode == 0 and "The block was lifted" in lifted.stdout + lifted.stderr, (lifted.stdout, lifted.stderr)
+    assert ask_phone(team, lead, "sync_now").state == approval.PENDING, "the session may ask again"
 
 
-def test_a_person_at_a_terminal_answers_with_the_key_the_node_holds_once_they_type_yes(phone_node):
-    team = phone_node
+def test_the_device_answers_a_request_with_its_own_key_at_once_and_what_waits_is_read_with_that_key(workspace_node):
+    team = workspace_node
     lead = team.member("lead")
     team.keep_person_key(lead)
-    made = json.loads(team.cli("approval", "request", "sync_now", "--json", who=lead).stdout)
+    made = ask_phone(team, lead, "sync_now")
     assert json.loads(team.cli("approval", "pending", "--json", who=team.member("other")).stdout) == [], "another session reads none of what lead asked"
-    assert [a["id"] for a in json.loads(team.cli("approval", "pending", "--json", who=lead).stdout)] == [made["id"]], "a session reads its own"
-    code, out, err = team.terminal("approval", "decide", made["id"], "approve", who=lead, typed={"Type yes": "no", "signing key passphrase: ": PASSPHRASE})
-    assert code != 0 and "READ every request that waits for you" in out, "a person's key signs to read what waits, and a no ends it there: " + out + err
-    assert json.loads(team.cli("approval", "status", made["id"], "--json", who=lead).stdout)["state"] == "pending"
-    code, out, err = team.terminal("approval", "decide", made["id"], "approve", who=lead, typed=TYPED)
-    assert code == 0 and "approved" in out and "APPROVE the request" in out and "WHO:" in out, (out, err)
-    assert json.loads(team.cli("approval", "status", made["id"], "--json", who=lead).stdout)["state"] == "approved"
+    assert [a["id"] for a in json.loads(team.cli("approval", "pending", "--json", who=lead).stdout)] == [made.id], "a session reads its own"
+    everything = team.cli("approval", "pending", "--all", "--json", who=lead)
+    assert everything.returncode == 0 and [a["id"] for a in json.loads(everything.stdout)] == [made.id], "the device's key signs to read every request that waits"
+    done = team.cli("approval", "decide", made.id, "approve", "--json")
+    assert done.returncode == 0 and json.loads(done.stdout) == {"id": made.id, "state": "approved"}, (done.stdout, done.stderr)
+    assert json.loads(team.cli("approval", "status", made.id, "--json", who=lead).stdout)["state"] == "approved"
+    assert [g.action for g in grants.listing(team.session(lead)).grants if g.status == "live"] == ["sync_now"]
 
 
-def test_a_person_at_a_terminal_chooses_the_number_after_the_yes_and_types_again_for_a_scope_declined_before(phone_node):
-    team = phone_node
+def test_a_request_that_is_not_routine_is_answered_with_the_number_the_asker_was_shown_and_a_wrong_number_is_a_decline(workspace_node):
+    team = workspace_node
     lead = team.member("lead")
     team.keep_person_key(lead)
-    first = json.loads(team.cli("approval", "request", "add_device", "link_read:a>b", "--json", who=lead).stdout)
-    code, out, err = team.terminal("approval", "pending", "--all", "--json", who=lead, typed=TYPED)
-    assert code == 0, (out, err)
-    options = next(a for a in json.loads(next(line for line in out.splitlines() if line.startswith("["))) if a["id"] == first["id"])["challenge"]["context"]["pick"]
-    assert first["code"] in options and len(options) == 3, "the phone offers three numbers, the agent's among them"
-    other = next(n for n in options if n != first["code"])
-    code, out, err = team.terminal("approval", "decide", first["id"], "approve", who=lead, typed={**TYPED, "Which number": other})
-    assert code != 0 and "Which number did your agent show you?" in out and "not the one the agent showed" in out + err, (out, err)
-    assert json.loads(team.cli("approval", "status", first["id"], "--json", who=lead).stdout)["state"] == "denied", "a wrong number is a decline"
-    again = json.loads(team.cli("approval", "request", "add_device", "--json", who=lead).stdout)
-    assert "declined 1 time(s) before" in again["text"], "the scope that was declined says so"
-    code, out, err = team.terminal("approval", "decide", again["id"], "approve", who=lead, typed={"Type again": "no", **TYPED, "Which number": again["code"]})
-    assert code != 0 and "Type again to approve it anyway" in out, (out, err)
-    assert json.loads(team.cli("approval", "status", again["id"], "--json", who=lead).stdout)["state"] == "pending", "without the extra word nothing was signed"
-    code, out, err = team.terminal("approval", "decide", again["id"], "approve", who=lead, typed={"Type again": "again", **TYPED, "Which number": again["code"]})
-    assert code == 0 and "approved" in out, (out, err)
-    assert "APPROVE AGAIN" in out, "the person is told what is being signed"
+    first = ask_phone(team, lead, "add_device", "link_read:a>b")
+    seen = json.loads(team.cli("approval", "pending", "--all", "--json", who=lead).stdout)
+    options = next(a for a in seen if a["id"] == first.id)["challenge"]["context"]["pick"]
+    assert first.code in options and len(options) == 3, "the node offers three numbers, the asker's among them"
+    unlisted = team.cli("approval", "decide", first.id, "approve", "--pick", "00" if "00" not in options else "01")
+    assert unlisted.returncode != 0 and "--pick" in unlisted.stdout + unlisted.stderr, "a number that is not offered is refused before anything is signed"
+    unpicked = team.cli("approval", "decide", first.id, "approve")
+    assert unpicked.returncode != 0 and "--pick" in unpicked.stdout + unpicked.stderr
+    assert first.refresh() == approval.PENDING
+    other = next(n for n in options if n != first.code)
+    wrong = team.cli("approval", "decide", first.id, "approve", "--pick", other)
+    assert wrong.returncode != 0 and "not the one the agent showed" in wrong.stdout + wrong.stderr, (wrong.stdout, wrong.stderr)
+    assert first.refresh() == "denied", "a wrong number is a decline"
+    again = ask_phone(team, lead, "add_device")
+    assert "declined 1 time(s) before" in again.text, "the scope that was declined says so"
+    done = team.cli("approval", "decide", again.id, "approve", "--pick", again.code)
+    assert done.returncode == 0 and again.refresh() == "approved", (done.stdout, done.stderr)
 
 
-
-
-def test_an_agent_or_a_process_with_no_terminal_cannot_answer_or_add_a_phone(phone_node):
+def test_an_agent_cannot_answer_a_request_read_what_waits_or_add_or_remove_a_phone_and_the_refusal_says_why_at_once(phone_node):
     team = phone_node
     lead = team.member("lead")
-    team.keep_person_key(lead)
-    made = json.loads(team.cli("approval", "request", "sync_now", "--json", who=lead).stdout)
-    for argv in (["approval", "decide", made["id"], "approve"], ["phone", "add"], ["phone", "remove", "Pixel"]):
-        no_terminal = team.cli(*argv, who=lead)
-        assert no_terminal.returncode != 0 and "terminal" in no_terminal.stderr + no_terminal.stdout, argv
-        marked, out, err = team.terminal(*argv, who=lead, env={"CLAUDECODE": "1"})
-        assert marked != 0 and "agent" in out + err, (argv, out, err)
-    assert json.loads(team.cli("approval", "status", made["id"], "--json", who=lead).stdout)["state"] == "pending"
+    made = ask_phone(team, lead, "sync_now")
+    for argv in (["approval", "decide", made.id, "approve"], ["approval", "pending", "--all"], ["approval", "blocks"], ["phone", "add"], ["phone", "remove", "Pixel"]):
+        marked = team.cli(*argv, who=lead, env={"CLAUDECODE": "1"})
+        out = marked.stdout + marked.stderr
+        assert marked.returncode != 0 and "refused to an agent" in out and "terminal outside the agent" in out, (argv, out)
+    assert made.refresh() == approval.PENDING
     assert not (team.state / "phone_offer.json").exists(), "an agent's `phone add` left no code"
+    refused = [r for r in caller.audit_rows() if r["event"] == "refused"]
+    assert {r["action"] for r in refused} >= {"answering an approval", "reading every request that waits", "managing approval blocks", "adding a phone", "removing a phone"}
+    assert all("agent CLAUDECODE" in r["who"] and r["why"] for r in refused), "each refusal is on the log with who asked and why"
 
 
-def test_the_first_phone_is_added_from_a_code_drawn_in_the_terminal_and_never_an_image_file(phone_node):
+def test_the_first_phone_is_added_from_a_code_drawn_at_once_and_never_an_image_file(phone_node):
     team = phone_node
     lead = team.member("lead")
     image = team.state.parent / "first-phone.svg"
-    code, out, err = team.terminal("phone", "add", "--image", str(image), "--wait", "5", who=lead)
-    assert code != 0 and "no image file" in out + err, (out, err)
+    done = team.cli("phone", "add", "--image", str(image), "--wait", "5", who=lead)
+    assert done.returncode != 0 and "no image file" in done.stdout + done.stderr, (done.stdout, done.stderr)
     assert not image.exists() and not (team.state / "phone_offer.json").exists(), "nothing was written that could be read as a code"
-    code, out, err = team.terminal("phone", "add", "--wait", "2", who=lead, typed={"Type yes": "yes"})
-    assert code == 3 and "\x1b[30;47m" in out and "No phone scanned the code in time" in out, (out, err)
+    done = team.cli("phone", "add", "--wait", "2", who=lead)
+    assert done.returncode == 3 and "\x1b[30;47m" in done.stdout + done.stderr and "No phone scanned the code in time" in done.stdout + done.stderr, (done.stdout, done.stderr)
     phone = add_phone(team)
     listing = team.cli("phone", "list", who=lead)
     words = " ".join(phone.fingerprint[i:i + 4] for i in range(0, 24, 4))
@@ -194,7 +225,8 @@ def test_a_further_phone_is_added_by_an_image_and_waits_for_a_phone_you_hold_to_
     result: dict[str, object] = {}
 
     def person_runs_the_command():
-        result["run"] = team.terminal("phone", "add", "--image", str(image), "--wait", "60", who=lead, timeout=90)
+        done = team.cli("phone", "add", "--image", str(image), "--wait", "60", who=lead, timeout=90)
+        result["run"] = (done.returncode, done.stdout + done.stderr, "")
 
     thread = threading.Thread(target=person_runs_the_command)
     thread.start()

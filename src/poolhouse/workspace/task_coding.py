@@ -143,8 +143,7 @@ def perform(s: Session, base: Path, agent, task, run: Run):
     la.Status(base, agent.name).update(reputation=reputation)
     store = Conversations(la.folder(base) / f'{agent.name}-chats')
     governance = roles.get(agent.role)
-    permissions = (coding_policy.READ_ONLY if not governance.acts else coding_policy.ASK_CHANGES
-                   if governance.asks == "each" else coding_policy.ASK_DANGEROUS)
+    permissions = (coding_policy.READ_ONLY if not governance.acts else coding_policy.GUARDED)
     conversation = store.start(model=agent.model, title=task['title'], settings={
         'harness': agent.harness, 'role': agent.role, 'permissions': permissions, 'execution_mode': coding_policy.EXECUTE,
         'project': str(project), 'context': agent.ctx, 'draft': 'auto',

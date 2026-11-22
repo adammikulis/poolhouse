@@ -165,8 +165,7 @@ def test_person_unmerged_exception_does_not_authorize_a_different_recovery_commi
     repo, head = source
     unrelated = commit(repo, "unpublished")
     chosen = runtime.Runtime(tmp_path / "runtime", unrelated, "0", runtime.identity())
-    monkeypatch.setattr(runtime_source.person, "marked", lambda: False)
-    monkeypatch.setattr(runtime_source.person, "is_terminal", lambda _stream: True)
+    monkeypatch.setattr(runtime_source.caller, "marked", lambda: False)
     with pytest.raises(runtime_deploy.DeployError, match="published at origin"):
         runtime_deploy.switch(chosen, runtime_deploy.Plan(repo, head, None, allow_unmerged=True))
 
@@ -517,8 +516,7 @@ def test_person_node_exception_is_exact_and_keeps_authentication(source, tmp_pat
     monkeypatch.setattr(node_binary, "verified", lambda *args, **kwargs: None)
     monkeypatch.setattr(runtime_store, "rejected", lambda _: False)
     monkeypatch.setattr(runtime_store, "epoch_of", lambda _: 0)
-    monkeypatch.setattr(runtime_source.person, "marked", lambda: not person)
-    monkeypatch.setattr(runtime_source.person, "is_terminal", lambda _: person)
+    monkeypatch.setattr(runtime_source.caller, "marked", lambda: not person)
     allowed = unpublished if exact else "0" * 40
     if person and exact:
         node_supervise._admitted(binary, "sha", repo, allow_unmerged_commit=allowed)

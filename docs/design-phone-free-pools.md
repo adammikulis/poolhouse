@@ -19,8 +19,8 @@ taps and plain sentences, and the pool must say honestly how much weaker a compu
   computes the level it counts at from that claim. Only two levels count: `computer` (the computer's own prompt, or a phone or protected helper whose
   claim no member can check) and `weak` (a typed yes or a file, which counts toward nothing but ending a delegate). No member can verify a phone's
   attestation, so a `phone` or `native` claim counts as `computer`; they stay in the words the person reads. Acts fall in three classes: routine, sensitive and
-  governance (2.6). A pool is never blocked on a phone: because every counting key is a `computer` key, governance acts are held 7 days and irreversible
-  data acts wait a cancel window, each with a notification, never refused.
+  governance (2.6). A pool is never blocked on a phone: because every counting key is a `computer` key, governance acts are held 7 days with a notification, never refused (a file delete
+  needs no wait: it goes to a trash for seven days).
 - **The computer journey.** Found a pool: say it, tap **Make pool**, answer the computer's one prompt (2 counted steps).
   Add a device: answer the computer's prompt for the join window on the first computer, type the code it shows into the new device and answer that
   device's prompt for the join (a prompt each; no admit is asked of anyone while the 30-day delegate lives). Approve: tap, prompt. Remove a member: open, approve, prompt, pick a number. Recover: 24 words, seven days.
@@ -244,8 +244,8 @@ tap and prompt, 2 more. Renewal is its own approval, nudged a week ahead, never 
 Opening a join window while a delegate lives is the tap of journey 2, not this table: the agent's word opens nothing, and the admit itself needs no
 approval (D3), so the tap and the typed code are its two human steps.
 
-An irreversible data act (`file_delete`, `shard_consent`) is held with a cancel window (2.6): the card
-says "Waiting: this deletes 'notes' tomorrow at 10:03 unless you cancel", the agent is told "waiting", and every member device gets a notification.
+Superseded: a file delete is not held with a cancel window (2.6). It takes effect at once, into a trash the node empties by itself after seven days, and `file_restore`
+brings it back until then; no data act waits for a key.
 
 The card is the same text as the phone's, plus one new line, `LEVEL:` (2.7). The agent shows its number in its own chat, as for a phone.
 Nothing here asks twice. Opening the app to look asks nothing; a locked screen means the card waits.

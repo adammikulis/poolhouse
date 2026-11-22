@@ -20,7 +20,7 @@ sharing. [V `src/poolhouse/reputation/`, `docs/reputation.md`]
 | divergence alert | built: an established source (10 clean runs, 3 days) with short term >= 1 steps to watch at once; one notice through the single-flight dialog; unknown misbehaving source is just bad [V `model.py`, `notice.py`, `hooks.py`] |
 | recovery needs clean runs, not waiting | built: 10 clean runs for watch, 3x for bad; `forget` is human-only [V] |
 | only tightens; only observations move a score | built: `net.Policy.admit` raises `Distrusted`; no score function takes text [D `docs/reputation.md`] |
-| CLI | built: `poolhouse-reputation list|show|forget|export|stats`, person only [V] |
+| CLI | built: `poolhouse-reputation list|show|forget|export|stats`, gate `reputation.admin` [V] |
 | observation points | built for `net.Pipeline`, `net.download`, `DeviceWatch.note` (addresses), `web.read` [D] |
 | signed sharing across the user's own machines, as hearsay | **missing** |
 | the Rust node as an observer or an enforcer | **missing**: `accept_loop` takes every TCP connection and spawns a thread before TLS, with no source check, rate or cap; beacon intake has none either [V `net.rs` lines 73 to 103, `beacon.rs`] |
@@ -151,7 +151,7 @@ Addresses, MAC addresses and names are personal-ish data. [analysis]
 3. **Retention:** 30 days after `last_seen` for a `watching` or `cleared` row; the blocklist keeps a row
    until its expiry plus 30 days; the 1000-source cap evicts the oldest first. A row whose address is
    a private-range address of this segment is removed at 7 days. An export is `poolhouse-reputation
-   export` (person only); `forget --all` removes the local store; a pool row is removed by a
+   export` (gate `reputation.admin`); `forget --all` removes the local store; a pool row is removed by a
    `cleared` entry that carries no subject after retention (a redaction row), so history does not hold
    addresses forever. [analysis]
 4. **Not shared outside the pool.** No public feed in and none out; no network lookup for ASN or owner.
@@ -180,7 +180,7 @@ poolhouse sources safe-mode on|off
 - UI: one component on the Fleet page next to the flags panel: a table (subject, state, scope, short and
   long score, last seen, set by) with Block, Unblock, Allow, each one confirmation; `digest --status`
   gains "3 sources blocked, 1 allowed; safe mode off". New divergence and block events use the existing
-  single heads-up dialog. [analysis; V `explain.py` pattern]
+  dialog (superseded: a hold ends by itself, docs/sentinel.md). [analysis; V `explain.py` pattern]
 
 ## 7. Implemented vs missing, with slices
 

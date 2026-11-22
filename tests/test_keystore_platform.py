@@ -16,7 +16,7 @@ import keyring
 import pytest
 from keyring.backend import KeyringBackend
 
-from poolhouse import keystore, keystore_guard, person
+from poolhouse import caller, keystore, keystore_guard
 from poolhouse.keystore import Keystore, Wires
 from tests import keystore_support
 from tests.test_keystore import Said, make
@@ -33,7 +33,7 @@ class Tty(io.StringIO):
 @pytest.fixture
 def at_a_desktop(monkeypatch):
     """A terminal on stdin and a desktop session, and no agent marker."""
-    for marker in person.AGENT_MARKERS:
+    for marker in caller.AGENT_MARKERS:
         monkeypatch.delenv(marker, raising=False)
     monkeypatch.setattr(sys, "stdin", Tty())
     monkeypatch.setattr(keystore, "_desktop", lambda: True)
@@ -46,20 +46,24 @@ def test_a_person_at_a_desktop_is_interactive(at_a_desktop):
     assert REAL_INTERACTIVE() is True
 
 
-@pytest.mark.parametrize("marker", person.AGENT_MARKERS)
+@pytest.mark.parametrize("marker", caller.AGENT_MARKERS)
 def test_every_agent_marker_makes_a_process_background_whatever_its_terminal_and_desktop(at_a_desktop, monkeypatch,
                                                                                          marker):
     monkeypatch.setenv(marker, "1")
     assert REAL_INTERACTIVE() is False
 
 
-def test_an_agent_on_a_desktop_cannot_make_the_master(tmp_path, counting, at_a_desktop, monkeypatch):
+def test_an_agent_on_a_desktop_makes_the_master_itself_and_the_system_is_told_to_show_no_dialog(
+        tmp_path, counting, at_a_desktop, monkeypatch):
     monkeypatch.setenv("CLAUDECODE", "1")
     monkeypatch.setattr(keystore, "interactive", REAL_INTERACTIVE)
-    ks = Keystore(directory=tmp_path / "ks", wires=Wires(say=Said()))
-    with pytest.raises(keystore.KeystoreLocked, match="poolhouse-security unlock"):
-        ks.subkey("memory", "a")
-    assert counting.calls == [] and counting.held == {}
+    forbidden: list[str] = []
+    monkeypatch.setattr(keystore_guard, "forbid_prompts", lambda: forbidden.append("forbid") or True)
+    said = Said()
+    ks = Keystore(directory=tmp_path / "ks", wires=Wires(say=said))
+    assert len(ks.subkey("memory", "a")) == 32
+    assert ks.created and len(counting.held) == 1
+    assert forbidden and said.lines == []
 
 
 @pytest.mark.parametrize(("session", "expected"), [(0, False), (1, True), (None, True)])

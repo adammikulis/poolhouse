@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import inspect
 import json
 import threading
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
@@ -14,7 +13,6 @@ from typing import Any, Protocol
 from poolhouse.agent.auto import AutoCompact
 from poolhouse.agent.compact import Compaction, CompactResult
 from poolhouse.agent.events import (
-    ConfirmRequest,
     Event,
     Text,
     Thinking,
@@ -27,9 +25,6 @@ from poolhouse.client.tokens import estimate_tokens
 from poolhouse.guard import Unguarded, default, native
 from poolhouse.http import ServerError
 from poolhouse.interventions import (
-    Asker,
-    Call,
-    Confirm,
     Run,
 )
 from poolhouse.taint import TaintRail
@@ -85,7 +80,7 @@ class Agent:
     rails of `poolhouse.guard` and, when a local model can be leased for it, the model tier. A
     list replaces them, so ``[*guard.default(), mine]`` keeps them; running without any says so
     with ``interventions=guard.off(because=...)``, which is logged, and any other empty list is
-    refused. ``confirm`` answers a `Confirm`, and without it a `Confirm` is a refusal.
+    refused.
     Sentinel screens calls and results; ``sentinel=unwatched(because=...)`` or ``guard.off`` opts out.
     """
 
@@ -103,7 +98,6 @@ class Agent:
         self.budget = budget or Budget()
         self.auto = AutoCompact(client, auto_compact) if auto_compact else None
         self.interventions = None if interventions is None else list(interventions)
-        self.confirm: Asker | None = None
         self._asked: asyncio.Queue[Event] = asyncio.Queue()
         if hasattr(tools, "on_elicit"):
             tools.on_elicit = self._elicited
@@ -182,18 +176,9 @@ class Agent:
         finally:
             stop.set()
 
-    def _notify(self, ask: Confirm, call: Call | None) -> None:
-        self._asked.put_nowait(ConfirmRequest(call.id if call else "", call.name if call else "",
-                                              ask.question, dict(ask.details)))
-
     async def _elicited(self, message: str, details: dict[str, Any]) -> Any:
-        """A server's question to the person mid-call: put to ``confirm`` as a `ConfirmRequest`,
-        declined when there is no handler."""
-        self._asked.put_nowait(ConfirmRequest("", "elicitation", message, details))
-        if self.confirm is None:
-            return None
-        answer = self.confirm(Confirm(message, details), Call("elicitation"))
-        return await answer if inspect.isawaitable(answer) else answer
+        """A server's question to the person mid-call: declined at once, nothing waits for an answer."""
+        return None
 
     async def _watching(self, work: Awaitable[Any]) -> AsyncIterator[Any]:
         """Run ``work``, yielding the questions asked meanwhile as events, then its result."""

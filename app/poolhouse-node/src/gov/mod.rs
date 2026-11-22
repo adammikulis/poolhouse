@@ -68,8 +68,6 @@ pub const DAY_MS: i64 = 24 * HOUR_MS;
 /// How long an act of the governance class is held when only `computer` keys signed it, and how long the first recovery key and a
 /// replacement of the recovery key are held whoever signed them.
 pub const COMPUTER_HOLD_MS: i64 = 7 * DAY_MS;
-/// How long an irreversible data act approved by `computer` keys alone waits, with a notification, for a key to cancel it.
-pub const DATA_WINDOW_MS: i64 = DAY_MS;
 /// Whether a pool holding ``live`` admits has room for one more that ``admin_signed`` says an admin signed: an admin's admit is a
 /// person's decision and is always taken, so a flood of the devices' own admits can never keep a person from admitting a device.
 pub fn admit_fits(admin_signed: bool, live: usize) -> bool {

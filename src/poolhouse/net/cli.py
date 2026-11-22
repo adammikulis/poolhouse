@@ -13,12 +13,13 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import files, keystore
+from poolhouse.caller import AgentRefused, record, refuse_agent
 from poolhouse.command import flag, option
 from poolhouse.log import say, warn
 from poolhouse.net import policy, provenance
 from poolhouse.net.scan import ACTIONS, CATEGORIES, ScanPolicy
 from poolhouse.net.scanners import ClamAV, MacNotice, WindowsDefender, default_scanners
-from poolhouse.sentinel import human
+from poolhouse.sentinel import permit
 from poolhouse.sentinel.cli import COMMANDS
 
 __all__ = ["command"]
@@ -93,10 +94,10 @@ def hosts(args: argparse.Namespace) -> int:
                                               help="lapse after this many hours (default: never)"),
                            flag("--note", default="")))
 def approve_host(args: argparse.Namespace) -> int:
-    """Record an approval for one exact host name (a person at a terminal)."""
+    """Record an approval for one exact host name; an agent is refused while the gate is held back."""
     try:
-        human.mint_gated("sentinel.policy", "approve-host", args.host)
-    except human.HumanRequired as exc:
+        permit.mint_gated("sentinel.policy", "approve-host", args.host)
+    except AgentRefused as exc:
         warn(f"poolhouse security: {exc}")
         return 2
     row = policy.default().approve(args.host, by=getpass.getuser(), note=args.note,
@@ -131,15 +132,15 @@ def scanners(args: argparse.Namespace) -> int:
                            flag("action", nargs="?", default="",
                                 choices=["", *ACTIONS, "on", "off"])))
 def scan_policy(args: argparse.Namespace) -> int:
-    """Print the policy, or set one category (a person at a terminal)."""
+    """Print the policy, or set one category; an agent is refused while the gate is held back."""
     current = ScanPolicy.load()
     if args.category:
         if not args.action:
             warn("poolhouse security: say what to do: refuse, warn or allow (on or off for scan_models)")
             return 2
         try:
-            human.mint_gated("sentinel.policy", "scan-policy", args.category)
-        except human.HumanRequired as exc:
+            permit.mint_gated("sentinel.policy", "scan-policy", args.category)
+        except AgentRefused as exc:
             warn(f"poolhouse security: {exc}")
             return 2
         if args.category == "scan_models":
@@ -151,15 +152,11 @@ def scan_policy(args: argparse.Namespace) -> int:
     return _out(args, data, lambda: [f"{k}: {v}" for k, v in data.items()])
 
 
-@COMMANDS.command("unlock", help="create poolhouse's one keystore key (a person at a terminal); background "
+@COMMANDS.command("unlock", help="create poolhouse's one keystore key; background "
                   "processes may read it afterwards", options=(JSON,))
 def unlock(args: argparse.Namespace) -> int:
     """Make the master key if there is none, clear a refusal, and let background processes read it."""
-    try:
-        human.require_person("unlock")
-    except human.HumanRequired as exc:
-        warn(f"poolhouse security: {exc}")
-        return 2
+    record("keystore.unlock")
     store = keystore.Keystore(wires=keystore.Wires(interactive=lambda: True))
     try:
         made = store.provision()
@@ -183,12 +180,12 @@ def keystore_status(args: argparse.Namespace) -> int:
 @COMMANDS.command("keystore-reset", help="delete the keystore key; everything wrapped under it "
                   "becomes unreadable", options=())
 def keystore_reset(args: argparse.Namespace) -> int:
-    """Delete the master key after a person types the account name back."""
+    """Delete the master key; an agent is refused at once."""
     store = keystore.default()
     try:
-        human.mint("keystore-reset", store.user)
+        refuse_agent("keystore-reset", "it deletes the key that wraps every secret")
         store.reset()
-    except (human.HumanRequired, keystore.KeystoreError) as exc:
+    except (AgentRefused, keystore.KeystoreError) as exc:
         warn(f"poolhouse security: {exc}")
         return 2
     say("the keystore key is deleted")

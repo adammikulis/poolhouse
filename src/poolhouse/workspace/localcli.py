@@ -8,7 +8,7 @@ import os
 import time
 from pathlib import Path
 
-from poolhouse import authority, harnessing, node_launch, person as terminal, roles
+from poolhouse import authority, caller as terminal, harnessing, node_launch, roles
 from poolhouse.board import person, person_key, place, session as sessions
 from poolhouse.board.client import Client, Denied
 from poolhouse.command import flag

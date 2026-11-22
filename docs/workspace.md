@@ -241,14 +241,13 @@ not allowed, 4 over a quota, 5 claim conflict; `watch --timeout` exits 3 when no
 | messages | `send TO TYPE BODY [--subject S] [--reply-to SEQ]`, `announce KIND TEXT`, `inbox [--ack] [--raw] [--limit N\|--all] [--children]`, `attention`, `wait [--timeout S]`, `watch [--once] [--room R\|--thread N\|--dm NAME] [--since SEQ] [--timeout S]`, `outbox`, `ack REF`, `thread ROOT`, `dm [NAME [BODY]]`, `digest [--thread N] [--status] [--ack]`, `nudge [--hook post\|stop\|prompt]` |
 | rooms | `board list\|read NAME\|post NAME TEXT\|threads NAME\|create NAME [TITLE] [--private]\|add NAME AGENT\|mentions`, `join-board NAME`, `leave-board NAME`, `subscribe board\|thread\|agent\|kind\|mentions [TARGET] [--mode inbox\|digest\|silent] [--force]`, `unsubscribe`, `subs`, `chat [--room R\|--to NAME]` (the person, at a terminal), `board-serve [--port N]` |
 | notes | `notes-add KIND TITLE BODY [--source --tags --supersedes --verify-cmd --ttl-days]`, `notes-search QUERY [--kind] [--all]`, `notes-get ID`, `notes-verify ID --cwd DIR` |
-| files | `attach PATH\|- --to #room\|AGENT\|thread:SEQ`, `file HANDLE\|list\|search WORDS\|delete HANDLE` |
+| files | `attach PATH\|- --to #room\|AGENT\|thread:SEQ`, `file HANDLE\|list\|search WORDS\|delete HANDLE\|restore HANDLE` |
 | scratch | `scratch-new NAME [--ttl-hours H]`, `scratch-ls`, `scratch-path NAME [REL]`, `scratch-rm NAME` |
 | claims | `claim KIND KEY [--ttl S] [--pid N]`, `release KIND KEY [--held-by NAME]`, `heartbeat`, `who KIND KEY`, `claims [--kind K]` |
 | reviews | `land-review`, `land-trust` (docs/landing.md) |
 | tasks | `task-create`, `tasks`, `task`, `task-subscribe`, `task-unsubscribe`, `task-assign`, `task-claim`, `task-heartbeat`, `task-checkpoint`, `task-submit`, `task-review`, `task-credit`, `task-integrate`, `task-rebind-source`, `task-dematerialize`, `enforcement`, `issue-subscribe`, `issue-unsubscribe`, `worktrees` (docs/tasks.md) |
 | local agents | `agent start\|stop\|list\|backlog\|schedule\|supersede-issue\|resume-issue` (docs/local-agent.md) |
 | authority | `authority show\|set\|preset` (below) |
-| person record | `attestations [--session ID] [--limit N]`: what the harness hooks recorded the person typing, answering or authorizing, each shown as a `person-attestation` attested by the harness hook for its session (read only; no token or board post can write one) |
 | safety | `quarantine-ls`, `quarantine-release QID` (a person at a terminal) |
 | view | `status` (who is registered, unread counts, live claims with `expires_in_s`, the board's rooms and unread, the test-slot queue; read only) |
 
@@ -370,7 +369,7 @@ durable sender-visible read receipt.
 [GATE ...] [--project KEY]` changes some, and `authority preset dev|prod` changes all of them and the board's task
 enforcement mode together (see AGENTS.md, "System settings and the authority registry"). A lead agent or a person
 tightens (a gate to `person`); a subagent is refused. Loosening (a gate from `person` to `delegated`, including
-`preset dev` over a stricter registry) is a person's alone: a person at a terminal types `yes` to a list that names, in
+`preset dev` over a stricter registry) is refused to an agent at once with the reason, and runs directly for a process with no agent marker, with the list of what it names, in
 plain words, what a lead agent may then do without asking, and any agent-marked process is refused. Each flip is audited in `authority-audit.jsonl` under the state root, which also records
 each use of a delegated gate by an agent. A delegated gate passes an agent only under a session name the node
 recorded as a main session (a token on a board and no parent): an unnamed process, a name the node does not know and
@@ -421,7 +420,7 @@ with `{to, body, subject?, reply_to?, type?}` and `ack` with `{board|to, through
 numbers the node does not have: a message's number is its time in milliseconds times 4096 plus its tick
 (`board_page.Log`), the same for every device.
 
-`chat --room #ops` or `chat --to NAME` is the same conversation in a terminal, for the person only (it refuses an
+`chat --room #ops` or `chat --to NAME` is the same conversation in a terminal, refused to an agent at once (it refuses an
 agent process or a pipe): it prints the recent messages as plain text, prints each new one as it arrives, and sends
 every line typed until `/quit`. Posts from the page and from `chat` are activity records of kind `board.post` (room,
 size; never the text).
@@ -435,7 +434,7 @@ expanded into context.
     poolhouse-workspace file HANDLE [--meta | --text [--limit N | --all] | --out PATH]
     poolhouse-workspace file list [--room R] [--by AGENT] [--derived-from HANDLE]
     poolhouse-workspace file search WORDS [--room R] [--by AGENT] [--limit N]
-    poolhouse-workspace file delete HANDLE            # a person at a terminal, under the grant `file_delete`
+    poolhouse-workspace file delete HANDLE            # at once, to a trash for seven days; `file restore HANDLE` brings it back (the grant `file_delete`)
 
 `attach` posts a message of type `file`. The message carries one short line, never the content: `file: NAME 12 KB
 sha:ab12… (file ab12cd34ef56)`, plus an optional one-sentence note (over 200 characters is refused: put detail in the
@@ -476,7 +475,7 @@ counts what was held back), 10 search results.
   inside the current directory (no `..`, no symlink on the way, never overwriting, mode 0600). `attach` refuses links,
   folders and the workspace's own state.
 - No code path imports, executes or interprets a file; nothing in a file changes a role, rule or subscription.
-- Deleting is a person's, under the grant `file_delete`: the node overwrites and removes the bytes on this device; the
+- Deleting needs the grant `file_delete` (an agent asks for it with `approval request`; policy decides at once): the node overwrites and removes the bytes on this device; the
   messages stay and read as gone.
 
 ## Which model is it

@@ -233,8 +233,8 @@ test that resolves one (`tests/test_real_machine.py` checks both, and scans `src
 `tests/onboard_support.py`) and puts `tests` on its `PYTHONPATH`; a test that spawns a child with
 an environment built from scratch must do the same. A test that stripped the agent markers
 (`CLAUDECODE`, `POOLHOUSE_NONINTERACTIVE`) to look like a person at a screen is the most likely to
-reach the keystore: give it the file keyring. Nothing in the repo pops more than one dialog; a
-notice goes through `sentinel/heads_up.py` only, and `POOLHOUSE_NOTIFY=off` silences all of it.
+reach the keystore: give it the file keyring. Nothing in the repo pops a dialog for a hold: a sentinel hold ends by itself
+(`Sentinel.resolve_holds`), and `tests/test_sentinel_automatic_holds.py` fails if one opens.
 
 ## Attack runs against a served model
 

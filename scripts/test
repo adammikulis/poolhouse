@@ -428,7 +428,7 @@ def gate_steps(workers: int, rest: list[str]) -> list[tuple[str, list[str]]]:
                                              "tests/test_no_data_files.py", "tests/test_affected_scripts.py",
                                              "tests/test_budget_floors.py",
                                              "tests/test_budget_ratchet.py",
-                                             "tests/test_redteam_human_floor.py",
+                                             "tests/test_redteam_automatic_floor.py",
                                              "tests/test_requests_floor.py",
                                              "tests/test_onboard_human.py",
                                              "tests/test_cli_reference.py", *rest)]),

@@ -15,7 +15,7 @@ from poolhouse import private_counters
 from poolhouse.board.client import Denied
 from poolhouse.files import writing
 from poolhouse.private_path import problem, redirected, windows_mount
-from poolhouse.sentinel import human
+from poolhouse.sentinel import permit
 from poolhouse.windows_private import restrict, validate
 
 __all__ = ["cursors", "forget", "load", "prepare", "private", "remember", "store"]
@@ -46,7 +46,7 @@ def prepare(state: Path) -> Path:
     """The client folder under the node's ``state``, made owner-only and registered with sentinel so no tool call names it;
     ValueError when it is a symlink or reparse point, sits inside a git work tree or on a Windows-mounted filesystem."""
     path = state / "client"
-    human.protect(path)
+    permit.protect(path)
     if os.name == "nt":
         validate(state)
         validate(path)
@@ -103,8 +103,8 @@ def person_secret(state: Path) -> str:
     What keeps it from an agent is the harness and nothing else: the file is the account's (mode 0600 in a 0700 folder keeps other accounts out, not a
     process of the same user), Claude Code's sandbox and sandbox-runtime deny the folder to what an agent starts, and so do the file tools' rules. A
     process outside those (an agent under the staged Codex fragment, which has no per-path read deny; a hook, an MCP server or an excluded command that
-    runs unsandboxed) reads it. Where the computer has a prompt of the system's own that is only the right to ask the person, who answers with a
-    password or a fingerprint; where it has none, the typed yes such a process can ask for is approval by "a program running as you could approve it"."""
+    runs unsandboxed) reads it. It is only the right to ask the node for the first key, a pool's card or a window: nobody is asked, so a process
+    that holds it is "a program running as you", and that is what the pool's `computer` level says."""
     path = state / "person" / "ui.secret"
     try:
         return path.read_text(encoding="utf-8").strip()

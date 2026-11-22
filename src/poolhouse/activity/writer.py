@@ -16,8 +16,9 @@ import psutil
 from poolhouse import home, keystore
 from poolhouse.activity.log import ActivityLog, Limits
 from poolhouse.activity.schema import Said, build
+from poolhouse.caller import AGENT_MARKERS
 from poolhouse.files import read_json, write_json
-from poolhouse.sentinel.human import AGENT_MARKERS, protect
+from poolhouse.sentinel.permit import protect
 
 __all__ = ["ENV_OFF", "ENV_RETENTION", "FAILURES", "bind_session", "directory", "drops", "log",
            "record", "session"]

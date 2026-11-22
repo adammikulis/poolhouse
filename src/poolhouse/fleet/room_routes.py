@@ -1,4 +1,4 @@
-"""``/ui/room``: sizing the wiring limit for a model, and the person-only change to it."""
+"""``/ui/room``: sizing the wiring limit for a model, and the change to it from the machine's own browser session."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import platform
 import urllib.parse
 
 from poolhouse import hub
-from poolhouse.sentinel.human import HumanRequired
+from poolhouse.caller import AgentRefused
 from poolhouse.serve import wired, wired_apply
 
 from .session import parse_cookie
@@ -74,7 +74,7 @@ class RoomRoutes:
         return True
 
     def _person(self) -> str:
-        """Empty when this request is a person's browser session on this machine, else why not."""
+        """Empty when this request is from a browser session of this machine's own page, else why not."""
         ui = self.ui
         if self.client_ip != LOOPBACK or not ui.host_ok(self.host_header):
             return "the wiring limit is changed from the machine itself, in its own browser"
@@ -108,7 +108,7 @@ class RoomRoutes:
         hooks = self._hooks()
         try:
             done = self._apply(hooks)
-        except HumanRequired as no:
+        except AgentRefused as no:
             self.send(403, {"error": str(no)})
             return True
         except ValueError as no:

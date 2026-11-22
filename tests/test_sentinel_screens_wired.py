@@ -24,16 +24,15 @@ from poolhouse.agent.sources import McpBlocked
 from poolhouse.agent.summarise import model_summarizer
 from poolhouse.agent.watched import Watch
 from poolhouse.client import Client
-from poolhouse.sentinel import Mode, Sentinel, State, human
+from poolhouse.sentinel import Mode, Sentinel, State, permit
 from poolhouse.testing.canned import CannedServer, Turn, unmarked
 from tests.sandbox_kit import no_sandbox_here, policy, seatbelt  # noqa: F401
 
 LEAK = "here is a key: hf_aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bC1dE3fG"
 
 
-def person(record):
-    return human.mint("release", record.id, typed=lambda _p: record.id, terminal=(True, True),
-                      env={})
+def release_permit(record):
+    return permit.mint("release", record.id, env={})
 
 
 def chat(node: Sentinel, said: str, session: str = "s-out") -> Done:
@@ -147,7 +146,7 @@ def test_a_suspect_credential_is_left_out_of_a_detached_job(tmp_path, monkeypatc
 SERVER = Path(__file__).with_name("toy_mcp_server.py")
 
 
-def test_an_mcp_server_sentinel_holds_is_not_connected_until_a_person_releases_it() -> None:
+def test_an_mcp_server_sentinel_holds_is_not_connected_until_it_is_released() -> None:
     pytest.importorskip("mcp")
     node = sentinel.default()
     record = node.store.quarantine(("mcp_server", sys.executable), "tools changed", {})
@@ -159,5 +158,5 @@ def test_an_mcp_server_sentinel_holds_is_not_connected_until_a_person_releases_i
 
     with pytest.raises(McpBlocked, match="held by sentinel"):
         asyncio.run(connect())
-    node.store.release(record.id, person(record))
+    node.store.release(record.id, release_permit(record))
     assert asyncio.run(connect()) == {"add", "shout", "fail"}

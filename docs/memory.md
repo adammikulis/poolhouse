@@ -22,7 +22,7 @@ exists). The project id is `git:<origin url>` when the repository has an `origin
 and names the store directory. A git repository therefore keeps its memory when the folder is
 moved, renamed or cloned again with the same origin, and every worktree of one repository shares
 it. A folder with no origin is identified by its path: after moving it, run
-`poolhouse-memory relink OLD_PATH` inside the new location (person only) to move the old project's
+`poolhouse-memory relink OLD_PATH` inside the new location (gate `memory.admin`) to move the old project's
 facts into the new one (the new store must be empty; the old one is emptied). The project's name
 and root are kept inside the sealed file, and `poolhouse-memory projects` lists every project
 that has memory.
@@ -141,7 +141,7 @@ runs hostile text through every path).
   back to the previous copy (`recovered`), otherwise the store reads empty and refuses writes
   (`tampered`) until `poolhouse-memory forget --all`. Replacing the file with an older sealed
   copy made under the same key is not detected.
-- **Rekey.** `poolhouse-memory rekey` (person only) chooses a new salt, re-seals the store and
+- **Rekey.** `poolhouse-memory rekey` (gate `memory.admin`) chooses a new salt, re-seals the store and
   the previous copy under the key it gives, and the old key is no longer used; an interruption
   leaves a file that still opens under its own salt. Old ciphertext still opens for whoever
   holds the master key; `poolhouse-security keystore-reset` is what ends that. A version 1 file

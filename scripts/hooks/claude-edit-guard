@@ -161,7 +161,7 @@ def docstring_lines(node) -> int:
 
 def refuse(message: str, hard: bool = False) -> int:
     tail = ("no switch opens this rule" if hard else
-            "If this is genuinely the right code, say so and a person can write it, or set POOLHOUSE_GUARD=off")
+            "If this is genuinely the right code, say so in the report, or set POOLHOUSE_GUARD=off")
     print(f"blocked: {message}\n\n(poolhouse scripts/hooks/claude-edit-guard. {tail}.)", file=sys.stderr)
     return BLOCKED
 
@@ -295,11 +295,11 @@ def check(tool: str, given: dict) -> int:
 
 
 PERSON_STORE = re.compile(r"(^|/)\.poolhouse/person(/|$)")
-"""The person record: statements, authorizations and the key that seals them."""
+"""The person folder: the owner's keys and secrets and the record of the harness processes."""
 
 
 def in_person_store(path: str) -> bool:
-    """Whether ``path`` (links resolved) lies in the person record, in the default place or under the active
+    """Whether ``path`` (links resolved) lies in the person folder, in the default place or under the active
     state root."""
     if not path:
         return False
@@ -319,7 +319,7 @@ def main() -> int:
         return ALLOWED
     given = event.get("tool_input") or {}
     if in_person_store(str(given.get("file_path") or given.get("notebook_path") or "")):
-        return refuse("the person record is written only by the harness hooks when the person types", hard=True)
+        return refuse("the person folder holds the owner's keys and the harness record: an agent does not write it", hard=True)
     target = str(given.get("file_path") or given.get("notebook_path") or "")
     rules = rules_loader.load()
     if rules is not None and (why := rules.hard_edit_refusal([target], event.get("cwd") or "")):

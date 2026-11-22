@@ -1,6 +1,5 @@
-"""Many processes scanning one machine's pins never put more than one dialog on the screen,
-and a pinned file that is simply gone raises none. The desktop tools are shims that record
-when they start and end, so a stack of dialogs shows as overlapping records."""
+"""Many processes scanning one machine's pins never put a dialog on the screen, changed files or gone ones: a hold is handled by the scan
+itself and nothing is asked. The desktop tools are shims that record when they start, so a dialog shows as a record."""
 
 from __future__ import annotations
 
@@ -11,18 +10,14 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import home, sentinel
+from poolhouse import home, requests, sentinel
 
 SRC = str(Path(__file__).resolve().parents[1] / "src")
 CHILD = (
-    "import threading\n"
     "from poolhouse import sentinel\n"
     "node = sentinel.default()\n"
     "for _ in range(SCANS):\n"
-    "    node.scan(deep=True)\n"
-    "for t in threading.enumerate():\n"
-    "    if t.name == 'sentinel-heads-up':\n"
-    "        t.join()\n")
+    "    node.scan(deep=True)\n")
 
 @pytest.fixture
 def desk(tmp_path):
@@ -52,14 +47,6 @@ def desk(tmp_path):
 def lines(log: Path, word: str) -> list[str]:
     return [x for x in (log.read_text().splitlines() if log.exists() else [])
             if x.startswith(word)]
-
-
-def peak(log: Path) -> int:
-    live = top = 0
-    for line in log.read_text().splitlines() if log.exists() else []:
-        live += 1 if line.startswith("start") else -1
-        top = max(top, live)
-    return top
 
 
 def scan_in_processes(env, processes: int, scans: int) -> None:
@@ -93,14 +80,14 @@ def test_pinned_files_that_are_gone_raise_no_dialog_and_no_quarantine(desk):
     assert node.manifest.pins() == {}
 
 
-def test_four_changed_files_scanned_by_many_processes_are_one_dialog(desk):
+def test_four_changed_files_scanned_by_many_processes_raise_no_dialog_and_all_four_are_held(desk):
     env, log = desk
     for path in pinned(4):
         path.write_bytes(b"tampered")
     scan_in_processes(env, processes=6, scans=3)
-    assert len(lines(log, "start")) == 1
-    assert peak(log) == 1
+    assert lines(log, "start") == [], "no process showed a dialog"
     assert len(sentinel.default().store.records(state=sentinel.State.QUARANTINED)) == 4
+    assert requests.list_requests() == []
 
 
 REVIEW = "import sys\nfrom poolhouse.sentinel.cli import command\nsys.exit(command(['review']))\n"
@@ -112,32 +99,12 @@ def review_without_a_terminal(env, **extra) -> subprocess.CompletedProcess:
                           check=False)
 
 
-def test_review_with_no_terminal_is_one_dialog_and_never_a_terminal_or_editor(desk):
+@pytest.mark.parametrize("extra", [{}, {"CLAUDECODE": "1"}])
+def test_review_with_no_terminal_prints_the_list_and_raises_no_dialog_terminal_or_editor(desk, extra):
     env, log = desk
     held = sentinel.default().store.quarantine(("member", "10.0.0.7"), "member.forged_traffic: x", {})
-    done = review_without_a_terminal(env)
-    assert done.returncode == 0
-    started = lines(log, "start")
-    text = log.read_text()
-    assert len(started) == 1 and "10.0.0.7" in text and "Keep held" in text
-    assert not any(word in text for word in ("Terminal", ".command", "TextEdit"))
-    assert sentinel.default().store.get(held.id).state == sentinel.State.QUARANTINED
-
-
-def test_review_with_no_terminal_started_by_an_agent_prints_the_list_and_shows_nothing(desk):
-    env, log = desk
-    sentinel.default().store.quarantine(("member", "10.0.0.7"), "member.forged_traffic: x", {})
-    done = review_without_a_terminal(env, CLAUDECODE="1")
+    done = review_without_a_terminal(env, **extra)
     assert done.returncode == 0 and "member 10.0.0.7" in done.stdout
     assert lines(log, "start") == []
-
-
-def test_notify_off_stops_every_dialog_of_every_process(desk):
-    env, log = desk
-    env = {**env, "POOLHOUSE_NOTIFY": "off"}
-    for path in pinned(3):
-        path.write_bytes(b"tampered")
-    scan_in_processes(env, processes=3, scans=2)
-    review_without_a_terminal(env)
-    assert not log.exists()
-    assert len(sentinel.default().store.records(state=sentinel.State.QUARANTINED)) == 3
+    assert not log.exists() or not any(word in log.read_text() for word in ("Terminal", ".command", "TextEdit"))
+    assert sentinel.default().store.get(held.id).state == sentinel.State.QUARANTINED

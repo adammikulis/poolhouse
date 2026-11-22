@@ -1,10 +1,11 @@
-"""Interventions: hooks that watch an agent loop and answer Proceed, Deny, Confirm, Guide or Rewrite.
+"""Interventions: hooks that watch an agent loop and answer Proceed, Deny, Guide or Rewrite.
 
 An `Intervention` is any object with some of ``before_invocation``, ``before_model_call``,
 ``after_model_call``, ``before_tool_call``, ``after_tool_call`` and ``after_invocation``. The
 guard's rails, a decision model's tool-call check and an application's own policy are all this
-one thing. A loop owns one `Run`, which asks the interventions, resolves a `Confirm` with the
-person, collects `Guide` messages and tracks whether text from outside the person has been read.
+one thing. A loop owns one `Run`, which asks the interventions, collects `Guide` messages and
+tracks whether text from outside the person has been read. Every verdict is decided at once: a call
+is allowed or denied with the reason, and nothing waits for an answer.
 """
 
 from __future__ import annotations
@@ -21,7 +22,6 @@ __all__ = [
     "Allow",
     "Base",
     "Call",
-    "Confirm",
     "Context",
     "Deny",
     "Gate",
@@ -89,15 +89,6 @@ class Deny:
 
 
 @dataclass(frozen=True, slots=True)
-class Confirm:
-    """Ask the person first: ``question``, and the ``details`` to show with it."""
-
-    question: str
-    details: Mapping[str, Any] = field(default_factory=dict)
-    by: str = ""
-
-
-@dataclass(frozen=True, slots=True)
 class Guide:
     """Carry on, and tell the model ``message`` on its next turn."""
 
@@ -116,14 +107,14 @@ class Rewrite:
     by: str = ""
 
 
-Verdict = Proceed | Deny | Confirm | Guide | Rewrite
+Verdict = Proceed | Deny | Guide | Rewrite
 Allow = Proceed
 
-_RANK = {Proceed: 0, Rewrite: 1, Guide: 2, Confirm: 3, Deny: 4}
+_RANK = {Proceed: 0, Rewrite: 1, Guide: 2, Deny: 3}
 
 
 def severity(verdict: Verdict) -> int:
-    """0 for Proceed, then 1 Rewrite, 2 Guide, 3 Confirm, 4 Deny."""
+    """0 for Proceed, then 1 Rewrite, 2 Guide, 3 Deny."""
     return _RANK[type(verdict)]
 
 
@@ -171,7 +162,7 @@ def _hook(one: Any, name: str) -> Callable[..., Verdict | Awaitable[Verdict]]:
 
 
 def merge(found: Sequence[Verdict]) -> Verdict:
-    """The most severe verdict; several of one kind join their reasons, questions or messages."""
+    """The most severe verdict; several of one kind join their reasons or messages."""
     if not found:
         return Proceed()
     worst = max(severity(v) for v in found)
@@ -180,12 +171,6 @@ def merge(found: Sequence[Verdict]) -> Verdict:
     by = ", ".join(dict.fromkeys(v.by for v in same if getattr(v, "by", "")))
     if isinstance(first, Deny):
         return Deny("; ".join(dict.fromkeys(v.reason for v in same if isinstance(v, Deny))), by)
-    if isinstance(first, Confirm):
-        asks = [v for v in same if isinstance(v, Confirm)]
-        details: dict[str, Any] = {}
-        for one in asks:
-            details.update(one.details)
-        return Confirm("; ".join(dict.fromkeys(a.question for a in asks)), details, by)
     if isinstance(first, Rewrite):
         return first
     return Guide(" ".join(dict.fromkeys(v.message for v in same if isinstance(v, Guide))), by)
@@ -240,20 +225,14 @@ def require_all(*items: Any) -> Intervention:
     return _Combined(items, collect=True)
 
 
-Asker = Callable[[Confirm, Call | None], bool | Awaitable[bool]]
-"""``confirm(question, call)`` -> whether the person agrees; a coroutine function may wait."""
-Notify = Callable[[Confirm, Call | None], Any]
-
-
 @dataclass(frozen=True, slots=True)
 class Gate:
     """The outcome of the checks before a step: ``allowed``, and when it is not, the text the
-    model is told. ``verdict`` decided it; ``confirmed`` records an answered Confirm."""
+    model is told. ``verdict`` decided it."""
 
     allowed: bool
     text: str = ""
     verdict: Verdict = field(default_factory=Proceed)
-    confirmed: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -274,27 +253,23 @@ class Guarded:
     ran: bool
     text: str
     verdict: Verdict
-    confirmed: bool | None = None
 
 
 HOOK_FAILURES = (RuntimeError, ValueError, TypeError, KeyError, AttributeError, OSError)
 
 
 class Run:
-    """The interventions of one run, the person's answer to a `Confirm`, the guidance waiting for
+    """The interventions of one run, the guidance waiting for
     the model's next turn, and whether outside text has been read.
 
     Every question has an async form and a plain one; hooks may be plain functions (run on a
     worker thread when asked from async code) or coroutine functions. A hook that raises, or
-    answers with anything else, is a `Deny`. With no ``confirm`` a `Confirm` is a refusal.
+    answers with anything else, is a `Deny`.
     """
 
-    def __init__(self, items: Sequence[Any] = (), *, context: Context | None = None,
-                 confirm: Asker | None = None, notify: Notify | None = None) -> None:
+    def __init__(self, items: Sequence[Any] = (), *, context: Context | None = None) -> None:
         self.items = list(items)
         self.context = context or Context()
-        self.confirm = confirm
-        self.notify = notify
         self.guides: list[str] = []
         self.events: list[tuple[str, str, Verdict]] = []
 
@@ -323,7 +298,7 @@ class Run:
             got = Deny(f"{_name(one)}.{hook} answered {got!r}", _name(one))
         if not isinstance(got, Proceed):
             self.events.append((hook, _name(one), got))
-            logger.log(logging.WARNING if isinstance(got, Deny | Confirm) else logging.DEBUG,
+            logger.log(logging.WARNING if isinstance(got, Deny) else logging.DEBUG,
                        "%s: %s at %s", _name(one), type(got).__name__, hook)
         return got
 
@@ -341,34 +316,15 @@ class Run:
                 break
         return found
 
-    async def _agreed(self, ask: Confirm, call: Call | None) -> bool:
-        if self.notify is not None:
-            self.notify(ask, call)
-        if self.confirm is None:
-            return False
-        got = self.confirm(ask, call)
-        return bool(await got if inspect.isawaitable(got) else got)
-
     async def decide(self, hook: str, *args: Any, call: Call | None = None) -> Gate:
-        """Ask ``hook`` and settle it: a Deny refuses, the Confirms asked together are put to the
-        person as one question and refuse unless the person agrees, a Guide is kept for the
-        model's next turn."""
-        confirmed: bool | None = None
+        """Ask ``hook`` and settle it: a Deny refuses at once, a Guide is kept for the model's next turn."""
         found = await self.ask(hook, *args)
         for verdict in found:
             if isinstance(verdict, Deny):
                 return Gate(False, f"Denied: {verdict.reason}", verdict)
             if isinstance(verdict, Guide):
                 self.guides.append(verdict.message)
-        asks = [v for v in found if isinstance(v, Confirm)]
-        if asks:
-            verdict = merge(asks)
-            confirmed = await self._agreed(verdict, call)
-            if not confirmed:
-                return Gate(False, f"Denied: a person did not confirm: {verdict.question}",
-                            Deny(f"the person declined: {verdict.question}", verdict.by),
-                            confirmed)
-        return Gate(True, "", Proceed(), confirmed)
+        return Gate(True, "", Proceed())
 
     async def before_tool(self, call: Call) -> Gate:
         """Whether ``call`` may run."""
@@ -399,16 +355,13 @@ class Run:
             elif isinstance(verdict, Deny):
                 return Screened(f"[withheld by the {verdict.by or 'guard'} rail: "
                                 f"{verdict.reason}]", True, verdict)
-            elif isinstance(verdict, Confirm) and not await self._agreed(verdict, call):
-                return Screened(f"[withheld: the person declined: {verdict.question}]", True,
-                                Deny(verdict.question, verdict.by))
         return Screened(current, False, last)
 
     async def guarded(self, call: Call, execute: Callable[[Call], Any]) -> Guarded:
         """The whole step for one call: check it, run it if allowed, screen what came back."""
         gate = await self.before_tool(call)
         if not gate.allowed:
-            return Guarded(False, gate.text, gate.verdict, gate.confirmed)
+            return Guarded(False, gate.text, gate.verdict)
         got = execute(call)
         out = await got if inspect.isawaitable(got) else got
         shown = await self.after_tool(call, out)
@@ -416,8 +369,7 @@ class Run:
         if self.guides:
             text = f"{text}\n\n{' '.join(self.guides)}"
             self.guides = []
-        return Guarded(True, text, shown.verdict if shown.withheld else gate.verdict,
-                       gate.confirmed)
+        return Guarded(True, text, shown.verdict if shown.withheld else gate.verdict)
 
     def check_call(self, call: Call) -> Gate:
         """`before_tool`, from code that is not async."""
@@ -443,12 +395,9 @@ def _sync(coro: Awaitable[Any]) -> Any:
 
 
 async def guard_tool_call(call: Call, context: Context, execute: Callable[[Call], Any],
-                          interventions: Sequence[Any] = (), *,
-                          confirm: Callable[[Confirm], Any] | None = None) -> Guarded:
+                          interventions: Sequence[Any] = ()) -> Guarded:
     """Run ``call`` through every intervention's ``before_tool_call`` and ``after_tool_call``.
 
-    A Deny stops the call; a Confirm calls ``confirm`` and runs the call only when it answers
-    True (without ``confirm`` it is a Deny); a Guide's message is added to the result.
+    A Deny stops the call, with the reason; a Guide's message is added to the result.
     """
-    asker: Asker | None = (lambda ask, _call: confirm(ask)) if confirm else None
-    return await Run(interventions, context=context, confirm=asker).guarded(call, execute)
+    return await Run(interventions, context=context).guarded(call, execute)

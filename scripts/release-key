@@ -6,9 +6,8 @@
     scripts/release-key rotate [--write]     replace the stored key and the environment secret
     scripts/release-key agent                load the stored key into ssh-agent
 
-A person runs it at a terminal; an agent marker or a missing terminal refuses, except for one run of `create --write` that the
-owner approved for an agent (poolhouse.workspace.run_approval). It runs again under the selected runtime, the one copy of Poolhouse the
-machine's keystore admits.
+Refused at once, with the reason, to an agent (any agent marker in the environment); a terminal of your own runs it with no question asked.
+It runs again under the selected runtime, the one copy of Poolhouse the machine's keystore admits.
 """
 from __future__ import annotations
 
@@ -33,15 +32,12 @@ if __name__ == "__main__" and not sys.flags.isolated:
 
 from cryptography.hazmat.primitives import serialization  # noqa: E402
 
-from poolhouse import credentials, person  # noqa: E402
-from poolhouse.workspace import run_approval  # noqa: E402
+from poolhouse import caller, credentials  # noqa: E402
 
 REPO_NAME = "RELEASE_SIGNING_KEY"
 ITEM = "POOLHOUSE_RELEASE_SIGNING_KEY"
 SIGNING = ROOT / "src" / "poolhouse" / "fleet" / "signing.py"
 LINE = re.compile(r'^RELEASE_KEY = ".*"$', re.M)
-APPROVED: run_approval.Approval | None = None
-"""The owner's approval of this agent run, set by `main`; None for a person's run."""
 
 
 class Failed(RuntimeError):
@@ -50,8 +46,7 @@ class Failed(RuntimeError):
 
 def _run(argv: list[str], *, data: bytes | None = None, cwd: Path | None = None) -> bytes:
     try:
-        done = subprocess.run(argv, input=data, capture_output=True, cwd=cwd, check=False,
-                              env=APPROVED.environment if APPROVED else None)
+        done = subprocess.run(argv, input=data, capture_output=True, cwd=cwd, check=False)
     except FileNotFoundError:
         raise Failed(f"{argv[0]} is not installed") from None
     if done.returncode:
@@ -84,8 +79,6 @@ def _wipe(work: Path) -> None:
 
 
 def _generate() -> bytes:
-    if APPROVED:
-        APPROVED.verify()  # last look before any key exists: every Poolhouse module of this run is the approved code
     work = Path(tempfile.mkdtemp(prefix="release-key-"))
     try:
         work.chmod(0o700)
@@ -100,11 +93,8 @@ def _generate() -> bytes:
 
 
 def _set_secret(private: bytes) -> None:
-    if APPROVED:
-        APPROVED.verify()
     try:
-        pinned = ["--repo", APPROVED.slug] if APPROVED else []
-        _run(["gh", "secret", "set", REPO_NAME, "--env", "release", *pinned], data=private, cwd=ROOT)
+        _run(["gh", "secret", "set", REPO_NAME, "--env", "release"], data=private, cwd=ROOT)
     except Failed as exc:
         raise Failed(f"{exc}\nthe environment secret, the keystore and signing.py are unchanged; run "
                      "`gh auth status` in this repository and run the command again; an HTTP 404 means the environment "
@@ -125,8 +115,6 @@ def _record(public: str, write: bool) -> None:
 
 
 def _store(private: bytes) -> None:
-    if APPROVED:
-        APPROVED.verify()
     try:
         credentials.set(ITEM, base64.b64encode(private).decode(), keychain=True)
     except credentials.CredentialError as exc:
@@ -178,9 +166,7 @@ def agent(_args: argparse.Namespace) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None, terminal: tuple[bool, bool] | None = None, session: str | None = None) -> int:
-    global APPROVED
-    APPROVED = None
+def main(argv: list[str] | None = None) -> int:
     given = sys.argv[1:] if argv is None else argv
     parser = argparse.ArgumentParser(prog="release-key", description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -192,14 +178,12 @@ def main(argv: list[str] | None = None, terminal: tuple[bool, bool] | None = Non
     sub.add_parser("agent", help=agent.__doc__).set_defaults(run=agent)
     args = parser.parse_args(given)
     try:
-        APPROVED = run_approval.admit(ROOT / "scripts" / "release-key", given, terminal, session)
+        if args.command != "show-public":
+            caller.refuse_agent(f"release-key {args.command}", "it creates, replaces or loads the key that signs releases")
         return args.run(args)
-    except (Failed, person.HumanRequired, credentials.CredentialError, run_approval.Refused) as exc:
+    except (Failed, caller.AgentRefused, credentials.CredentialError) as exc:
         print(f"release-key: {exc}", file=sys.stderr)
         return 1
-    finally:
-        if APPROVED:
-            APPROVED.close()
 
 
 if __name__ == "__main__":

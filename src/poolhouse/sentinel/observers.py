@@ -90,14 +90,14 @@ def gate(kind: str, key: str) -> Gate | None:
 
 
 def summary() -> dict[str, Any]:
-    """Counts of sources by state and waiting notices, from the plaintext summary beside the
+    """Counts of sources by state, from the plaintext summary beside the
     sealed store (counts only, no names); empty when no ledger has written one."""
     for path in sorted(home.state("reputation").glob("u-*/summary.json")):
         try:
             doc = json.loads(path.read_text())
         except (OSError, ValueError):
             continue
-        if isinstance(doc, dict) and all(isinstance(doc.get(k), int) for k in ("watch", "bad", "notices")):
+        if isinstance(doc, dict) and all(isinstance(doc.get(k), int) for k in ("watch", "bad")):
             return doc
     return {}
 
@@ -107,6 +107,4 @@ def line() -> str:
     held = summary()
     if not held:
         return ""
-    waiting = f", {held['notices']} notice(s) waiting" if held["notices"] else ""
-    return (f"reputation: {held.get('established', 0)} established, {held['watch']} watched, "
-            f"{held['bad']} bad{waiting}")
+    return f"reputation: {held.get('established', 0)} established, {held['watch']} watched, {held['bad']} bad"

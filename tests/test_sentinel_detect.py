@@ -9,18 +9,22 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse.sentinel import Mode, Sentinel, State, canary, human
+from poolhouse import caller
+from poolhouse.caller import AgentRefused
+from poolhouse.sentinel import Mode, Sentinel, State, canary, permit
 from poolhouse.sentinel.events import Severity
 from poolhouse.sentinel.findings import HIGH
 from poolhouse.sentinel.honey import DECOY_TOOLS, Honey
 from poolhouse.sentinel.integrity import check_file
+from poolhouse.sentinel.permit import Permit
 from poolhouse.sentinel.rails import RailWatch
 from poolhouse.sentinel.rates import Abuse, AbuseLimits, MemberLimits, MemberWatch, ToolMix, Windows
 from poolhouse.sentinel.servers import exe_mismatches, unmanaged_findings
+from poolhouse.sentinel.store import Holding
 
 
 def grant(action, subject):
-    return human.mint(action, subject, typed=lambda _p: subject, terminal=(True, True), env={})
+    return permit.mint(action, subject, env={})
 
 
 @pytest.fixture
@@ -136,13 +140,25 @@ def test_pins_survive_a_new_sentinel_and_are_sealed(tmp_path, models):
     assert Sentinel(tmp_path / "s", roots=[models]).manifest.pins() == {}
 
 
-def test_a_pinned_binary_that_changes_is_quarantined(node, models):
+def test_a_pinned_binary_that_changes_is_logged_once_and_never_held(node, models):
     exe = models / "llama-server"
     exe.write_bytes(b"\x7fELF" + b"a" * 1000)
     node.manifest.pin(exe, "binary")
     exe.write_bytes(b"\x7fELF" + b"b" * 1000)
     node.scan(deep=True)
+    node.scan(deep=True)
+    assert node.store.state_of("binary", str(exe)) != State.QUARANTINED and exe.exists(), "serving vets the binary; the scan holds nothing"
+    assert [e.kind for e in node.bus.recent(kind="integrity.content_changed")] == ["integrity.content_changed"], "one event, not one per scan"
+
+
+def test_a_hold_an_older_version_put_on_a_binary_ends_by_itself_at_the_next_scan(node, models):
+    exe = models / "llama-server"
+    exe.write_bytes(b"\x7fELF" + b"a" * 1000)
+    node.manifest.pin(exe, "binary")
+    held = node.store.quarantine(("binary", str(exe)), "integrity.content_changed: changed", None, Holding(path=str(exe)))
     assert node.store.state_of("binary", str(exe)) == State.QUARANTINED
+    node.scan()
+    assert node.store.get(held.id).state == State.RELEASED and exe.exists(), "nobody ran a release command"
 
 
 # -- modes ------------------------------------------------------------------------------
@@ -203,13 +219,19 @@ def test_off_without_a_reason_is_ignored_and_logged(tmp_path, models, monkeypatc
     assert node.verify_before_load(path) is False
 
 
-def test_only_a_person_changes_the_mode(node):
-    from poolhouse.sentinel.human import HumanGrant, HumanRequired
-
-    with pytest.raises(HumanRequired):
-        node.set_mode(Mode.OFF, HumanGrant("mode", "sentinel", 9e18, object()))
+def test_the_mode_changes_for_a_process_with_no_agent_marker_and_an_agent_is_refused_at_once(node):
+    before = node.mode
+    with pytest.raises(AgentRefused):
+        node.set_mode(Mode.OFF, Permit("mode", "sentinel", 9e18, object()))
+    for marker in caller.AGENT_MARKERS:
+        with pytest.raises(AgentRefused, match="refused to an agent"):
+            permit.mint("mode", "sentinel", env={marker: "1"})
+    assert Sentinel(node.root).mode == before
+    assert [r["action"] for r in caller.audit_rows() if r["event"] == "refused"] == ["mode sentinel"] * len(caller.AGENT_MARKERS)
     node.set_mode(Mode.ENFORCE, grant("mode", "sentinel"))
     assert Sentinel(node.root).mode == Mode.ENFORCE
+    ran = [r for r in caller.audit_rows() if r["event"] == "ran" and r["action"] == "mode sentinel"]
+    assert len(ran) == 1 and ran[0]["who"].startswith("user ")
 
 
 def test_never_act_kinds_stay_watch_only_in_enforce(tmp_path, models):
@@ -326,7 +348,7 @@ def test_a_well_behaved_member_never_alarms():
         assert watch.note("10.0.0.8", "ok") is None
 
 
-def test_a_blocked_member_is_refused_and_released_by_a_person(node):
+def test_a_blocked_member_is_refused_until_a_permitted_release(node):
     now = [0.0]
     node.members = _watch(now)
     for _ in range(3):

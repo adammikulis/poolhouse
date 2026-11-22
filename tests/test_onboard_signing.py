@@ -1,5 +1,6 @@
 """The signing key: in the OS keystore by default, encrypted at rest when there is none, never
-plaintext on disk; export, rotation and revocation only with a person."""
+plaintext on disk; export, rotation and revocation need a permit, which is refused to an agent at once and minted
+directly for a process no agent started (no terminal, no typed confirmation)."""
 
 import base64
 import io
@@ -9,10 +10,10 @@ import keyring
 import pytest
 from onboard_support import FileKeyring, Recorder
 
-from poolhouse import keystore as keystore_module
+from poolhouse import caller, keystore as keystore_module
 from poolhouse.fleet.onboard import manifest as mf, signing
 from poolhouse.fleet.onboard.signing import KeyStoreError, SigningKeys
-from poolhouse.sentinel.human import HumanRequired, mint
+from poolhouse.sentinel.permit import AgentRefused, mint
 
 
 @pytest.fixture(autouse=True)
@@ -39,8 +40,9 @@ def no_keystore(monkeypatch):
     keyring.set_keyring(before)
 
 
-def person(action, subject):
-    return mint(action, subject, typed=lambda _p: subject, terminal=(True, True), env={})
+def permit(action, subject):
+    """The permit a process no agent started gets for ``action`` on ``subject``: no terminal, no typed confirmation."""
+    return mint(action, subject)
 
 
 def keys_in(tmp_path, **more):
@@ -119,63 +121,46 @@ def test_no_keystore_and_no_passphrase_is_a_clear_refusal_not_a_plaintext_key(
     assert files_under(tmp_path / "state") == []
 
 
-def test_exporting_needs_a_person_and_writes_only_an_encrypted_copy(tmp_path, keystore):
+def test_exporting_needs_a_permit_and_writes_only_an_encrypted_copy(tmp_path, keystore):
     keys, rec, _ = keys_in(tmp_path)
     keys.meta()
     out = tmp_path / "backup.enc"
-    with pytest.raises(HumanRequired):
-        keys.export(person("rotate", keys.key_id), out, "pw pw pw pw")     # a grant for another act
+    with pytest.raises(AgentRefused):
+        keys.export(permit("rotate", keys.key_id), out, "pw pw pw pw")     # a grant for another act
     assert not out.exists()
-    keys.export(person("export", keys.key_id), out, "pw pw pw pw")
+    keys.export(permit("export", keys.key_id), out, "pw pw pw pw")
     raw = signing.open_file(out, "pw pw pw pw")
     assert mf.Signer.from_raw(raw).key_id == keys.key_id
     assert raw not in out.read_bytes() and rec.of("onboard.signing.exported")
 
 
-def test_rotating_needs_a_person_and_the_old_key_announces_the_new_one(tmp_path, keystore):
+def test_rotating_needs_a_permit_and_the_old_key_announces_the_new_one(tmp_path, keystore):
     keys, rec, _ = keys_in(tmp_path)
     old_public, old_id = keys.public, keys.key_id
     f = tmp_path / "p.whl"
     f.write_bytes(b"x" * 100)
-    with pytest.raises(HumanRequired):
-        keys.rotate(person("export", old_id))
+    with pytest.raises(AgentRefused):
+        keys.rotate(permit("export", old_id))
     assert keys.key_id == old_id
-    fresh = keys.rotate(person("rotate", old_id))
+    fresh = keys.rotate(permit("rotate", old_id))
     assert fresh["key_id"] != old_id and len(fresh["rotations"]) == 1
     raw = keys.sign([mf.Signer.entry_for(f, kind="wheel")], serial=2)
     with pytest.raises(mf.RotationAnnounced) as moved:            # a member still on the old key
         mf.verify(raw, old_public)
     assert moved.value.new_public == keys.public
-    assert mf.verify(raw, keys.public).key_id == keys.key_id      # once a person has pinned it
+    assert mf.verify(raw, keys.public).key_id == keys.key_id      # once it has been pinned
     held = json.loads(keystore.read_text())
     assert list(held) == [f"{keystore_module.SERVICE}/{keystore_module.default().account}"]   # only the master is in the keystore
     assert keys.wrapped_path.exists()
     assert rec.of("onboard.signing.rotated")[0].severity == "warning"
 
 
-def test_revoking_needs_a_person_and_travels_in_every_manifest_after(tmp_path, keystore):
+def test_revoking_needs_a_permit_and_travels_in_every_manifest_after(tmp_path, keystore):
     keys, _, _ = keys_in(tmp_path)
-    with pytest.raises(HumanRequired):
-        keys.revoke(person("rotate", "ab" * 32), "ab" * 32)
-    keys.revoke(person("revoke", "ab" * 32), "ab" * 32)
+    with pytest.raises(AgentRefused):
+        keys.revoke(permit("rotate", "ab" * 32), "ab" * 32)
+    keys.revoke(permit("revoke", "ab" * 32), "ab" * 32)
     assert mf.verify(keys.sign([], serial=1), keys.public).revoked_keys == ("ab" * 32,)
-
-
-def test_confirm_before_signing_asks_every_time_and_turning_it_on_needs_a_person(
-        tmp_path, keystore):
-    keys, _, _ = keys_in(tmp_path)
-    with pytest.raises(HumanRequired):
-        keys.require_confirmation(person("export", keys.key_id), True)
-    keys.require_confirmation(person("confirm-signing", keys.key_id), True)
-    asked = []
-    with pytest.raises(KeyStoreError, match="confirmation"):
-        keys.sign([], serial=1)
-    with pytest.raises(KeyStoreError):
-        keys.sign([], serial=1, confirm=lambda s: asked.append(s) or False)
-    mf.verify(keys.sign([], serial=1, confirm=lambda s: asked.append(s) or True), keys.public)
-    assert len(asked) == 2 and "0 files" in asked[0]
-    keys.require_confirmation(person("confirm-signing", keys.key_id), False)
-    keys.sign([], serial=2)
 
 
 def test_a_key_that_was_in_the_keystore_does_not_silently_become_a_file(tmp_path, keystore):
@@ -187,19 +172,36 @@ def test_a_key_that_was_in_the_keystore_does_not_silently_become_a_file(tmp_path
     assert not keys.file_path.exists()
 
 
-def test_an_agent_has_no_path_to_the_key_commands(tmp_path, keystore, monkeypatch):
-    """The commands that need a person refuse a process an agent started, at a terminal or not."""
+@pytest.mark.parametrize("action", ["export", "rotate", "revoke"])
+def test_an_agent_is_refused_every_key_command_at_once_and_the_key_is_unchanged(tmp_path, keystore, monkeypatch, action):
+    """No permit is minted for a process an agent started, so the command never reaches the key."""
+    keys, rec, _ = keys_in(tmp_path)
+    keys.meta()
+    old_id, doc = keys.key_id, keys.wrapped_path.read_bytes()
+    monkeypatch.setenv("CLAUDECODE", "1")
+    with pytest.raises(AgentRefused, match="refused to an agent") as refused:
+        permit(action, old_id)
+    assert "CLAUDECODE" in str(refused.value) and action in str(refused.value)
+    assert keys.key_id == old_id and keys.wrapped_path.read_bytes() == doc
+    assert not rec.of("onboard.signing.exported") and not rec.of("onboard.signing.rotated") and not rec.of("onboard.signing.revoked")
+    rows = [r for r in caller.audit_rows() if r["event"] == "refused"]
+    assert len(rows) == 1 and rows[0]["action"] == f"{action} {old_id}" and rows[0]["who"].startswith("agent CLAUDECODE")
+
+
+def test_a_process_no_agent_started_gets_each_permit_with_no_terminal_and_the_audit_says_who(tmp_path, keystore):
     keys, _, _ = keys_in(tmp_path)
     keys.meta()
-    monkeypatch.setenv("CLAUDECODE", "1")
-    with pytest.raises(HumanRequired, match="agent"):
-        mint("rotate", keys.key_id, typed=lambda _p: keys.key_id, terminal=(True, True))
+    for action in ("export", "rotate", "revoke"):
+        permit(action, keys.key_id)
+    rows = [r for r in caller.audit_rows() if r["event"] == "ran"]
+    assert [r["action"] for r in rows] == [f"{a} {keys.key_id}" for a in ("export", "rotate", "revoke")]
+    assert all(r["who"].startswith("user ") for r in rows)
 
 
 def test_rotating_a_key_held_in_an_encrypted_file_replaces_the_file(tmp_path, no_keystore):
     keys, _, _ = keys_in(tmp_path, passphrase=lambda _p: "a long passphrase")
     old = keys.key_id
-    fresh = keys.rotate(person("rotate", old))
+    fresh = keys.rotate(permit("rotate", old))
     assert fresh["key_id"] != old and fresh["store"] == "file"
     assert signing.open_file(keys.file_path, "a long passphrase")
     mf.verify(keys.sign([], serial=1), keys.public)

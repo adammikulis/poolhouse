@@ -35,7 +35,7 @@ from poolhouse.guard import native
 from poolhouse.guard.judge import MAX_TEXT, WINDOW, Judge, TextScreen
 from poolhouse.guard.native import CallScreen
 from poolhouse.guard.untrusted import fenced
-from poolhouse.interventions import Call, Confirm, Context, Deny, Proceed, Rewrite
+from poolhouse.interventions import Call, Context, Deny, Proceed, Rewrite
 
 
 def user_of(body: dict) -> str:
@@ -159,26 +159,26 @@ def test_a_tool_output_with_the_prompts_labels_is_marked_so_it_cannot_pass_for_t
     assert "| Answer: A" in user
 
 
-def test_a_call_too_long_to_read_is_confirmed_not_cut(server):
+def test_a_call_too_long_to_read_is_denied_not_cut(server):
     seen: list[dict] = []
     gate = call_screen(server, lambda u: {"A": 0.99, "B": 0.005, "C": 0.005}, seen)
     huge = {"model": "x.gguf", "note": "y" * (MAX_STATE + 10)}
     verdict = gate.before_tool_call(Call("serve_up", huge), Context(task="serve it"))
-    assert isinstance(verdict, Confirm) and "too long" in verdict.question
+    assert isinstance(verdict, Deny) and "too long" in verdict.reason
     assert seen == [], "a call the guard could not read whole was still sent, cut"
 
 
-def test_a_call_over_the_wire_limit_is_confirmed(server):
+def test_a_call_over_the_wire_limit_is_denied(server):
     gate = call_screen(server, lambda u: {"A": 0.99, "B": 0.005, "C": 0.005})
     huge = {"model": "z" * 250_000}
-    assert isinstance(gate.before_tool_call(Call("serve_up", huge), Context(task="x")), Confirm)
+    assert isinstance(gate.before_tool_call(Call("serve_up", huge), Context(task="x")), Deny)
 
 
 def test_a_call_the_judge_calls_injected_is_denied(server):
     gate = call_screen(server, lambda u: {"A": 0.0, "B": 1.0} if "injected" in u and "grounded" in u
                        else {"A": 0.99, "B": 0.005, "C": 0.005})
     verdict = gate.before_tool_call(Call("serve_up", {"model": "x.gguf"}), Context(task="serve"))
-    assert isinstance(verdict, (Deny, Confirm))
+    assert isinstance(verdict, Deny)
 
 
 # -- oversized input ---------------------------------------------------------------------------
@@ -289,7 +289,7 @@ def test_a_letter_in_a_third_option_slot_is_not_an_answer_to_a_two_option_questi
     assert isinstance(verdict, Rewrite) and "could not read" in verdict.reason
 
 
-# -- every way the judge can fail leaves the text uncleared and the call asked about -------------
+# -- every way the judge can fail leaves the text uncleared and the call refused -------------
 
 def broken_servers():
     def not_json(method, path, body):
@@ -333,12 +333,12 @@ def test_a_judge_that_fails_in_any_way_does_not_clear_the_text(server, name):
 
 
 @pytest.mark.parametrize("name", sorted(broken_servers()))
-def test_a_call_judge_that_fails_in_any_way_asks_the_person(server, name):
+def test_a_call_judge_that_fails_in_any_way_refuses_the_call(server, name):
     fake = server(broken_servers()[name])
     gate = CallScreen(ToolCallGuard(LogprobDecider(Chat(fake.base_url, timeout=0.4)),
                                     checks=native.CHECKS))
     verdict = gate.before_tool_call(Call("serve_up", {"model": "x.gguf"}), Context(task="serve"))
-    assert isinstance(verdict, (Confirm, Deny)), verdict
+    assert isinstance(verdict, Deny), verdict
 
 
 def test_a_judge_that_raises_something_unexpected_does_not_clear_the_text():
@@ -383,10 +383,10 @@ def test_a_judge_that_is_not_there_does_not_clear_the_text_or_the_call():
     text, call = screens
     assert isinstance(verdict_of(text, PLAIN), Rewrite)
     assert isinstance(call.before_tool_call(Call("serve_up", {"model": "x"}), Context(task="s")),
-                      (Confirm, Deny))
+                      Deny)
 
 
-def test_the_default_guard_taints_what_the_judge_could_not_read_so_a_changing_tool_asks(server):
+def test_the_default_guard_taints_what_the_judge_could_not_read_so_a_changing_tool_is_refused(server):
     fake = server(lambda method, path, body: (500, b"down"))
     items = rails.default(screen=[TextScreen(Judge(LogprobDecider(Chat(fake.base_url))))])
     verdict = items[-1].after_tool_call(Call("web_fetch"), PLAIN, Context(task="t"))

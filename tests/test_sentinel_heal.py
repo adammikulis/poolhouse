@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import home, sentinel
-from poolhouse.sentinel import core, human
+from poolhouse import caller, home, sentinel
+from poolhouse.sentinel import core, permit
 from poolhouse.sentinel.store import State
 
 TESTS = str(Path(__file__).resolve().parent)
@@ -33,7 +33,6 @@ def pinned(node, count=2, kind="model"):
 
 def test_a_gone_pinned_file_is_logged_once_and_its_pin_dropped_after_three_scans():
     node = sentinel.default()
-    node.heads_up.spawn = lambda work: pytest.fail("a dialog was asked for")
     files = pinned(node)
     keep, gone = files
     gone.unlink()
@@ -74,7 +73,6 @@ def test_loading_a_gone_pinned_file_is_refused_without_quarantining_it():
 
 def test_a_changed_pinned_file_is_still_quarantined():
     node = sentinel.default()
-    node.heads_up.spawn = lambda work: None
     (path,) = pinned(node, 1)
     path.write_bytes(b"tampered")
     node.scan(deep=True)
@@ -189,14 +187,14 @@ def test_pins_made_before_a_failure_part_way_are_dropped(tmp_path, monkeypatch):
     assert sentinel.default().manifest.pins() == {}
 
 
-def test_a_release_by_dialog_needs_no_terminal_but_an_agent_marker_refuses_it():
-    grant = human.mint_clicked("release", "q-1", answer="Release", label="Release", env={})
+def test_a_release_needs_no_terminal_for_a_process_no_agent_started_and_an_agent_marker_refuses_it_at_once():
+    grant = permit.mint("release", "q-1", env={})
     grant.check("release", "q-1")
-    with pytest.raises(human.HumanRequired):
+    with pytest.raises(caller.AgentRefused):
         grant.check("release", "q-2")
-    with pytest.raises(human.HumanRequired):
-        human.mint_clicked("release", "q-1", answer="Release", label="Release",
-                           env={"CLAUDECODE": "1"})
+    with pytest.raises(caller.AgentRefused, match="refused to an agent"):
+        permit.mint("release", "q-1", env={"CLAUDECODE": "1"})
+    assert [r["event"] for r in caller.audit_rows()] == ["ran", "refused"]
 
 
 def test_unchanged_deep_scan_preserves_manifest_and_state_lock_mtimes():

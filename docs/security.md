@@ -312,20 +312,11 @@ no more than what its tests show:
   but not the bar: a purge still needs the id typed in full, the keys come only from the
   terminal, and everything printed from a held subject is escaped and bounded. Viewing
   (`review --list`, `status`) is open to agents.
-- **The release dialog is the one release that takes a click instead of a terminal.** When a
-  quarantine means something changed or was forged, one dialog lists it with `Release`,
-  `Keep held` and `Later`. The release is made only by the process that put the dialog up
-  (`heads_up.HeadsUp`, the only caller of `human.mint_clicked`), only for the ids the dialog
-  listed, only when the answer it got back is exactly the `Release` label, and never in a
-  process whose environment carries an agent marker; no tool, MCP endpoint, chat tool or
-  command-line flag can show it or answer it. It defends against an agent or a held text
-  that tries to release something: names in the dialog are escaped, the buttons are fixed,
-  and a name that spells `Release` presses nothing. It does not defend against another
-  process of the same user that drives the screen through the accessibility permission and
-  presses the button; that is the same-user limit the marker check has, and the reason the
-  dialog lists exactly what Release will unblock. A process that clears its own environment and drives a pseudo-terminal could
-  still press the keys, as it could for `quarantine release`; that is the limit of a
-  same-user marker (`docs/sentinel.md`, "Reviewing what is held").
+- **No release takes a click, a terminal or a person.** A quarantine ends by a fixed policy (`Sentinel.resolve_holds`, docs/sentinel.md): when the
+  file at its own path verifies against its pin again the hold is released and the moved-aside copy deleted, and a hold lapses by itself
+  (a week for a changed file, an hour for any other subject). There is no dialog, no request and nothing for a held text or an agent to press.
+  A prompt-injected agent cannot end a hold sooner: `quarantine release` and `purge` are refused to an agent at once with the reason
+  (`AGENT_REFUSED`), and ending a hold lets nothing unverified run because a load still checks the file against its pin.
 - **Decoy credentials** planted in the state root on the first run of an agent or a daemon turn
   any read or send of them into a high-confidence event that freezes the session.
 - **A bare `Agent` is screened without anyone calling sentinel:** a tool call a rail refuses

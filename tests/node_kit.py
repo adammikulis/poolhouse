@@ -36,16 +36,18 @@ from poolhouse.board import (
     session as board_session,
 )
 from poolhouse.fleet.onboard.manifest import Signer
-from poolhouse.fleet.onboard.signing import ConfirmedKeys
+from poolhouse.fleet.onboard.signing import UNLOCK_ENV, SigningKeys
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = str(ROOT / "src")
 STRIPPED = ("CODEX_THREAD_ID", "CODEX_SESSION_ID", "CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE",
             "POOLHOUSE_WORKSPACE_TOKEN", "POOLHOUSE_WORKSPACE_DENYLIST", "POOLHOUSE_WORKSPACE_AGENT", "POOLHOUSE_BOARD")
 BOARD = "demo"
-PASSPHRASE = "a passphrase for the person's test key"
-TYPED = {"new signing key: ": PASSPHRASE, "signing key passphrase: ": PASSPHRASE, "Type yes": "yes"}
-"""What a person types at the terminal: the passphrase of the key file when asked, and yes to each signature."""
+PASSPHRASE = "a passphrase for the test device's key"
+"""The passphrase the device's keys are kept under in a test: no keystore is reachable, so a key is a file, and its passphrase is only ever read
+from `POOLHOUSE_SIGNING_PASSPHRASE` (`WorkspaceNode.env` sets it), never asked for."""
+TYPED = {"new signing key: ": PASSPHRASE, "signing key passphrase: ": PASSPHRASE}
+"""What a pseudo-terminal types back to a command that still prints a passphrase prompt (`WorkspaceNode.terminal`)."""
 
 
 def runner_binary() -> Path:
@@ -73,23 +75,16 @@ class NoKeystore:
         return False
 
 
-class SaysYes(ConfirmedKeys):
-    """The person's key with the question answered yes and no terminal: the kit's stand-in for a person typing `yes`."""
-
-    def _ask(self, prompt: str) -> bool:
-        return True
+def person_keys(directory: Path) -> SigningKeys:
+    """This device's key in ``directory`` the way `person_key.keys` makes it, in a file under the kit's passphrase (never the keystore)."""
+    return SigningKeys(directory, ks=NoKeystore(), passphrase=lambda _prompt: PASSPHRASE)
 
 
-def person_keys(directory: Path, cls: type[ConfirmedKeys] = ConfirmedKeys) -> ConfirmedKeys:
-    """The person's key in ``directory`` the way `person_key.keys` makes it, in a file under the kit's passphrase (never the keystore)."""
-    return cls(directory, describe=board_grants.describe, ks=NoKeystore(), passphrase=lambda _prompt: PASSPHRASE)
-
-
-def enrol_first(client: board_client.Client, token: str, key: Signer | ConfirmedKeys) -> dict:
-    """The first person key on the node, after the person types yes to the question the node writes on a terminal of its own
-    (`wire.answer_presence`): the same steps as a person's, against the node as shipped."""
+def enrol_first(client: board_client.Client, token: str, key: Signer | SigningKeys) -> dict:
+    """The first person key on the node: the device's own session asks for the secret (`wire.answer_presence`), which the node makes at
+    once (`--presence auto`), and the key is enrolled with it: the same steps a command takes, against the node as shipped."""
     said = wire.answer_presence(client.state, "key", key.public.hex())
-    assert said["ok"] and said["result"]["state"] == "confirmed", f"the person's yes was not taken: {said}"
+    assert said["ok"] and said["result"]["state"] == "confirmed", f"the node made no secret: {said}"
     return board_grants.enrol(client, token, {**board_grants.enrolment(key, "a test person"), "secret": said["result"]["secret"]})
 
 
@@ -161,11 +156,11 @@ class WorkspaceNode:
         """The session ``name`` a hook or command registered, with the token it kept in its private file."""
         return Member(name, credentials.load(self.state, self.board, name), parent)
 
-    def keep_person_key(self, who: Member) -> ConfirmedKeys:
-        """A person's key kept beside this node as `grants-setup` leaves it, and enrolled on it (``who`` only carries the
-        request): a command run at a terminal signs for what it needs with it once the person types yes, and a process an
-        agent marked is refused before the question. The key returned says yes to every question; the one a command reads asks on its terminal."""
-        keys = person_keys(self.state / person_key.KEY_DIR, SaysYes)
+    def keep_person_key(self, who: Member) -> SigningKeys:
+        """This device's key kept beside this node as `grants-setup` leaves it, and enrolled on it (``who`` only carries the
+        request): a command signs for what it needs with it at once when policy allows, and a process an agent marked is refused
+        the grants an agent may not have, with the reason."""
+        keys = person_keys(self.state / person_key.KEY_DIR)
         held = board_grants.listing(self.session(who)).persons
         if board_grants.fingerprint(keys.public) in held:
             return keys
@@ -184,9 +179,10 @@ class WorkspaceNode:
         return allow(self.session(who), self.person, *actions, to=to, **limits)
 
     def env(self, who: Member | None = None, extra: dict[str, str] | None = None) -> dict[str, str]:
-        """The environment of a command run for ``who``: this node, this board, no marker of another agent."""
+        """The environment of a command run for ``who``: this node, this board, no marker of another agent, and the passphrase a key file
+        is kept under (a test reaches no keystore)."""
         env = {k: v for k, v in os.environ.items() if k not in STRIPPED}
-        env.update({"PYTHONPATH": SRC, "POOLHOUSE_HOME": str(self.state.parent), "POOLHOUSE_BOARD": self.board,
+        env.update({"PYTHONPATH": SRC, "POOLHOUSE_HOME": str(self.state.parent), "POOLHOUSE_BOARD": self.board, UNLOCK_ENV: PASSPHRASE,
                     **(who.env() if who else {}), **(extra or {})})
         return env
 
@@ -237,7 +233,7 @@ class WorkspaceNode:
         return proc.returncode, b"".join(chunks).decode(), message
 
     def start(self) -> dict:
-        """Start the node (again), asking the person on a terminal it reads itself like every node of the tests."""
+        """Start the node (again) as every node of the tests runs: the node as shipped, which asks nobody (`--presence auto`)."""
         return node_launch.ensure_node(self.state, extra=[*node_pool.network_args(), *wire.PRESENCE])
 
     def stop(self) -> None:
@@ -256,6 +252,7 @@ def workspace_node(node_binary, monkeypatch, request):
         (state / "write-limits.json").write_text(json.dumps(limits))
     monkeypatch.setenv("POOLHOUSE_HOME", str(root))
     monkeypatch.setenv("POOLHOUSE_BOARD", BOARD)
+    monkeypatch.setenv(UNLOCK_ENV, PASSPHRASE)  # no keystore is reachable: a key is a file, and its passphrase comes from here, as in a command's `env()`
     for name in STRIPPED:
         if name != "POOLHOUSE_BOARD":
             monkeypatch.delenv(name, raising=False)

@@ -13,11 +13,11 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import guard, sentinel
+from poolhouse import caller, guard, sentinel
 from poolhouse.agent import Agent, Denied, Done, FunctionTools, unwatched
 from poolhouse.agent.watched import Watch
 from poolhouse.client import Client
-from poolhouse.sentinel import State, human
+from poolhouse.sentinel import State, permit
 from poolhouse.testing.canned import CannedServer, Turn
 
 FETCH = {"name": "web_fetch", "description": "Read a page.", "inputSchema": {
@@ -130,17 +130,17 @@ def test_a_first_run_plants_the_decoys_under_the_state_root_and_not_in_the_proje
     assert list(project.iterdir()) == []
 
 
-def test_a_quarantined_session_stays_frozen_until_a_person_releases_it(served) -> None:
+def test_a_quarantined_session_stays_frozen_until_a_permitted_release_and_an_agent_cannot_mint_one(served) -> None:
     fake = served(call("read_file", path=sentinel.armed().honey.decoys()[0].path),
                   Turn(text=("x",)))
     agent = agent_for(fake, sentinel=Watch(sentinel.default(), "s-rel"))
     run(agent)
     node = sentinel.default()
     record = node.store.find("session", "s-rel")
-    with pytest.raises(human.HumanRequired):
-        human.mint("release", record.id, terminal=(False, False), env={})
-    node.store.release(record.id, human.mint("release", record.id, typed=lambda _p: record.id,
-                                             terminal=(True, True), env={}))
+    with pytest.raises(caller.AgentRefused, match="refused to an agent"):
+        permit.mint("release", record.id, env={"CLAUDECODE": "1"})
+    assert node.store.get(record.id).state == State.QUARANTINED
+    node.store.release(record.id, permit.mint("release", record.id, env={}))
     again = served(Turn(text=("fine",)))
     assert run(Agent(Client(again.base_url), tools(), sentinel=Watch(sentinel.default(), "s-rel")))[-1].reason == "answer"
 

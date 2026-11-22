@@ -1,10 +1,11 @@
 """The grant commands of `poolhouse-workspace`: what sessions may do beyond the default, who allowed it and how often it was
 used (docs/node.md, "Standing grants").
 
-`grants` and `grant-log` read; any session may run them. `grant`, `revoke-grant`, `grants-setup`, `person-proof`,
-`person-enroll` and `person-unenroll` are a person's: they refuse a process that carries an agent marker or has no terminal, and
-they sign with the person's key, which asks for a typed `yes` on the terminal device for each thing it signs. The markers and the
-question stop accidents and an agent that has no terminal of its own, not a process of the same user (docs/node.md, "Key custody").
+`grants` and `grant-log` read; any session may run them. `grant`, `revoke-grant`, `distrust`, `grants-setup`, `person-proof`,
+`person-enroll`, `person-unenroll` and `rebind` sign with this device's key, made and enrolled the first time it is needed, and ask
+nobody: a process with no agent marker runs them at once, and a process that carries one is refused at once with the reason
+(`caller.refuse_agent`; an agent asks with `approval request`, which policy decides). Every run is on the audit log with who ran it.
+The marker stops an agent that did not strip it, not a process of the same user that does (docs/node.md, "Key custody").
 """
 
 from __future__ import annotations
@@ -17,10 +18,16 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from poolhouse import person
-from poolhouse.board import grants, person as person_session, person_key, place, presence
+from poolhouse.board import (
+    autoapprove,
+    grants,
+    person as person_session,
+    person_key,
+    place,
+)
 from poolhouse.board.client import Client, Denied
 from poolhouse.board.session import Session
+from poolhouse.caller import refuse_agent
 from poolhouse.command import flag
 from poolhouse.log import say, warn
 from poolhouse.workspace import board_cli, render
@@ -81,12 +88,12 @@ def show_log(args: argparse.Namespace, s: Session) -> Any:
 
 
 def reader(handler: Any) -> Any:
-    """A command any session runs; a person at a terminal who holds no session reads as the screen's own."""
+    """A command any session runs; a process with no agent marker and no session reads as the device's own screen."""
     def run(args: argparse.Namespace) -> int:
         try:
             s = board_cli.connect(args)
         except Denied:
-            person.require_person("reading the grants without a session")
+            refuse_agent("reading the grants without a session", "it reads as the device's own screen, which an agent is not")
             s = person_session.session(Path.cwd(), Client(), args.board)
         render.show(args, handler(args, s))
         return 0
@@ -94,9 +101,9 @@ def reader(handler: Any) -> Any:
 
 
 def person_runner(handler: Any) -> Any:
-    """A command only a person at a terminal runs: it signs with the person's key and a session only carries the request."""
+    """A command that signs with this device's key, refused to an agent at once: an agent asks with `approval request`, which policy decides."""
     def run(args: argparse.Namespace) -> int:
-        person.require_person("granting")
+        refuse_agent("granting", "an agent must not mint or widen its own standing grants; `approval request` is decided by policy")
         client = Client()
         ctx = Ctx(client, person_session.session(Path.cwd(), client, args.board), person_key.keys(client.state))
         try:
@@ -110,11 +117,7 @@ def person_runner(handler: Any) -> Any:
 
 
 def _held(ctx: Ctx) -> Any:
-    if not person_key.kept(ctx.client.state):
-        raise Denied("denied", "no person key is kept on this device: run `poolhouse-workspace grants-setup`")
-    if grants.fingerprint(ctx.key.public) not in grants.listing(ctx.carrier).persons:
-        raise Denied("denied", "this node does not hold your key: run `poolhouse-workspace grants-setup`")
-    return ctx.key
+    return autoapprove.ensure_key(ctx.client, ctx.carrier)
 
 
 def _class_allowed(args: argparse.Namespace) -> None:
@@ -140,7 +143,7 @@ def _device(asked: str, this: str) -> str:
 
 
 def _pool_refuses(held: grants.Listing, *actions: str) -> None:
-    """Refuse, before any prompt is shown, a grant that a pool counts only from an admin key's approval on a phone."""
+    """Refuse, before anything is signed, a grant that a pool counts only from an admin key's approval on a phone."""
     if any(held.pool_wide(a) for a in actions):
         raise Denied("denied", grants.POOL_GRANTS)
 
@@ -179,14 +182,10 @@ def _chosen(args: argparse.Namespace, main: dict[str, Any]) -> list[str]:
         return list(dict.fromkeys(args.session))
     if not main:
         raise ValueError("no session is registered on this board yet: start the lead, then run this again")
-    say("The main sessions on this board (the model and harness are what each session says about itself):")
+    say("The main sessions on this board (the model and harness are what each session says about itself); all of them get the grants:")
     for number, agent in enumerate(main.values(), 1):
         say(f"  {number}. {agent.name}  model {agent.model or '?'}  harness {agent.harness or '?'}  last seen {grants.when(agent.seen_ms)}")
-    typed = input("The lead session or sessions to grant, by number or name: ").replace(",", " ").split()
-    names = [list(main)[int(t) - 1] if t.isdigit() and 0 < int(t) <= len(main) else t for t in typed]
-    if not names:
-        raise ValueError("no session was chosen")
-    return list(dict.fromkeys(names))
+    return list(main)
 
 
 def _who_gets(args: argparse.Namespace, ctx: Ctx) -> list[dict[str, Any]]:
@@ -201,7 +200,8 @@ def _who_gets(args: argparse.Namespace, ctx: Ctx) -> list[dict[str, Any]]:
 
 
 def setup(args: argparse.Namespace, ctx: Ctx) -> Any:
-    """Approve once the grants the lead needs: the exact list is printed and asked about at the terminal, every item is revoked by its own id."""
+    """Give the lead sessions the grants they need, at once: this device's key is made and enrolled if need be, the exact list is printed and signed,
+    and every item is revoked by its own id."""
     held = grants.listing(ctx.carrier)
     _pool_refuses(held, *grants.DEFAULT_ACTIONS)
     who = _who_gets(args, ctx)
@@ -211,12 +211,10 @@ def setup(args: argparse.Namespace, ctx: Ctx) -> Any:
     about = "".join(c for c in socket.gethostname() if c.isascii() and c.isprintable())[:40] or "this device"
     enrolling = not held.persons
     at = int(time.time() * 1000)
-    lines = [*([grants.enrol_line(ctx.key.public, about)] if enrolling else []), *(grants.want_line(ctx.carrier.board, want, at) for want, _ in bundle)]
     for action, text in dict.fromkeys((want.action, text) for want, text in bundle):
         say(f"  {action}: {text}")
-    ctx.key.approve(lines, f"These {len(lines)} signatures give the lead sessions above the grants listed, each for {args.days} days, none for more:")
     if enrolling:
-        grants.enrol_first(ctx.client, ctx.carrier.token, ctx.key, about, presence.Voice(say=say))
+        grants.enrol_first(ctx.client, ctx.carrier.token, ctx.key, about)
     done = [grants.issue(ctx.carrier, ctx.key, want, now_ms=at) for want, _ in bundle]
     return {"key_enrolled": enrolling, "to": [_who(to) for to in who], "granted": [{"gid": d["gid"], "action": d["action"]} for d in done],
             "revoke": "poolhouse-workspace revoke-grant ID", "see": "poolhouse-workspace grants"}
@@ -266,17 +264,17 @@ TABLE = (
 )
 
 PERSON = (
-    ("grant", "a person allows an action: to a session, a model family or a verified model, until a time, a number of times",
+    ("grant", "allow an action: to a session, a model family or a verified model, until a time, a number of times",
      [flag("action"), *TO, flag("--scope", default="*", metavar="RESOURCE", help="what it covers: a name, or a prefix ending in * (default: any)"),
       flag("--device", default="this", help="this (default), any, or a device fingerprint"),
       flag("--until", required=True, metavar="TIME", help="how long it lasts: 90m, 12h, 30d (at most a year)"),
       flag("--uses", type=int, default=0, help="how often it may be used (default: as often as it is needed)"),
       flag("--review", action="store_true", help="each use needs an independent review behind it")], grant),
-    ("revoke-grant", "a person ends a grant at once", [flag("gid"), flag("--reason", default="")], revoke_grant),
-    ("distrust", "a person stops this pool counting one of its admin keys, at once, on every board",
+    ("revoke-grant", "end a grant at once", [flag("gid"), flag("--reason", default="")], revoke_grant),
+    ("distrust", "stop this pool counting one of its admin keys, at once, on every board",
      [flag("--key", required=True, metavar="FINGERPRINT", help="the fingerprint of the admin key to stop counting (`pool status` lists them)"),
       flag("--reason", default="")], distrust),
-    ("grants-setup", "a person approves, once, the grants the lead sessions of this board need",
+    ("grants-setup", "give the lead sessions of this board the grants they need (this device's key is made and enrolled on the way)",
      [flag("--session", action="append", metavar="NAME", help="a lead session, by its unique name (repeat for several; default: pick from the list the board shows)"),
       flag("--family", default="", help="every main session that says it is of this model family; needs " + OPEN),
       flag(OPEN, dest="open_registration", action="store_true", help="--family: any process can register under any model id, so the grants go to whatever claims the family"),

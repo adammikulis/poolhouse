@@ -10,14 +10,13 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import home
+from poolhouse.caller import AgentRefused
 from poolhouse.log import say, warn
-from poolhouse.sentinel.human import HumanRequired
 
 from ..tailnet import detect
 from .devices import Devices
 from .routes import ssh_address
 from .signing import KeyStoreError, SigningKeys
-from .signing_cli import confirm_signing
 from .ssh import (
     NAMESPACE,
     Signed,
@@ -79,12 +78,11 @@ def cmd_ssh(args: argparse.Namespace) -> int:
             return 0
         directory = Path(args.state) if args.state else home.state("onboard")
         keys = SigningKeys(directory)
-        made = keys.attest(program_entries(share), serial=int(time.time()), namespace=NAMESPACE,
-                           confirm=confirm_signing)
+        made = keys.attest(program_entries(share), serial=int(time.time()), namespace=NAMESPACE)
         done = bootstrap_over_ssh(
             target, share, Signed(made["manifest"], made["sshsig"], made["allowed_signers"],
                                   made["key_id"]), _typed_fingerprint(args))
-    except (SshRefused, KeyStoreError, HumanRequired) as exc:
+    except (SshRefused, KeyStoreError, AgentRefused) as exc:
         _emit(args, {"error": str(exc)}, f"error: {exc}")
         return 2
     _emit(args, done, f"installed on {done['target']}")

@@ -234,16 +234,13 @@ impl Person {
     }
 }
 
-/// Give the session ``name`` of ``board`` the grant of ``action`` as the test person signed it two days ago and wrote it to the board: how a grant of
-/// an irreversible act stands once its day has passed. `grant_issue` takes only a grant signed at this moment, which starts a day later.
-pub fn waited_out(node: &mut poolhouse_node::node::Node, board: &str, token: &str, name: &str, action: &str) {
+/// Give the session ``name`` of ``board`` the grant of ``action``, signed by the test person now.
+pub fn granted(node: &mut poolhouse_node::node::Node, board: &str, token: &str, name: &str, action: &str) {
     let dir = node.dir.clone();
     let person = person();
     enrolled(&dir, &mut |m: &str, b: &str, t: &str, p: Value| crate_req(node, m, b, t, p), token);
-    let mut params = person.issue_params(board, &gid_of(name, action), &Spec::session(name, action).window(-2 * 24 * HOUR as i64, HOUR as i64));
-    params["op"] = json!("issue");
-    params["board"] = json!(board);
-    node.host(board).unwrap().board.append_person(poolhouse_node::row::Kind::Grant, name, params).unwrap();
+    let reply = person.issue(&mut |m: &str, b: &str, t: &str, p: Value| crate_req(node, m, b, t, p), board, token, &gid_of(name, action), &Spec::session(name, action));
+    assert_eq!(reply["ok"], true, "grant {action} to {name}: {reply}");
 }
 
 fn crate_req(node: &mut poolhouse_node::node::Node, method: &str, board: &str, token: &str, params: Value) -> Value {

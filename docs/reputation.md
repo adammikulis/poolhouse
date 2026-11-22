@@ -39,12 +39,9 @@ watch at once and one notice is queued. An unknown source that misbehaves is jus
 clean runs in a row (default 10); a bad source steps to watch after three times as many. A person
 clears a source with `poolhouse-reputation forget`.
 
-## The notice
+## No notice
 
-Raised through sentinel's single-flight dialog: one dialog at a time on the machine, the shared
-cooldown, off when `POOLHOUSE_NOTIFY=off`. Buttons: Later, Keep watching, Block it. With
-notifications off the notice stays queued and the counts show in `poolhouse-security status` and the
-chip.
+A reliable source that diverges steps to watch and nobody is asked: no dialog, no queued notice. The state shows in `poolhouse-reputation list` and in the counts of `poolhouse-security status`, and clean runs bring it back.
 
 ## Observation points
 

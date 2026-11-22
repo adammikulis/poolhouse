@@ -133,7 +133,7 @@ class PoolhouseRequests extends PoolhouseElement {
     const live = rows.filter((r) => r.state === "pending");
     const nodes = [h("h3", {}, `${plain(rows[0].who || agent, 160) || "unknown agent"} / ${plain(project, 64) || "no project"}`)];
     const kinds = new Set(live.map((r) => r.kind));
-    const bulkable = live.length > 1 && kinds.size === 1 && live.every((r) => !r.destructive && !r.human_only);
+    const bulkable = live.length > 1 && kinds.size === 1 && live.every((r) => !r.destructive);
     if (bulkable) nodes.push(this.bulkBox(key, live));
     nodes.push(...rows.map((r) => this.card(r)));
     return h("section", { class: "group" }, ...nodes);
@@ -158,7 +158,7 @@ class PoolhouseRequests extends PoolhouseElement {
     const open = r.state === "pending";
     const note = this.notes.get(r.id) || (open ? "" : `${plain(r.state, 20)}${r.answer ? `: ${plain(r.answer, 30)}` : ""}${r.answered_by ? ` (${plain(r.answered_by, 12)})` : ""}`);
     return h("article", { class: `card${open ? "" : " done"}` },
-      h("div", { class: "kind" }, `${plain(r.kind, 40)}${r.human_only ? " - the action asks again before it runs" : ""}`),
+      h("div", { class: "kind" }, plain(r.kind, 40)),
       h("div", { class: "subject" }, plain(r.subject, 300)),
       h("div", { class: "reason" }, plain(r.reason, 400)),
       h("div", { class: "choices" }, ...r.choices.map((c) => h("div", { class: "choice" },

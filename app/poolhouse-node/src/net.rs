@@ -41,7 +41,7 @@ pub struct NetConfig {
     /// How often to swap pool records and boards with every member; None for only on request.
     pub sync_every: Option<Duration>,
     /// The project key (`projectid::project_of`) of this device: while it is in no pool it joins an `open` pool of that project that
-    /// it hears. A device never founds a pool by itself; founding is a person's approval. None leaves the device as it is.
+    /// it hears. A device never founds a pool by itself; founding is asked for by a command. None leaves the device as it is.
     pub project: Option<String>,
 }
 

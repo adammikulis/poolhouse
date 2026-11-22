@@ -12,9 +12,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from poolhouse.board import approval as approvals, place, session as sessions
+from poolhouse.board import approval as approvals, autoapprove, place, session as sessions
 from poolhouse.board.approval import Approval, Ask
-from poolhouse.board.client import Client
+from poolhouse.board.client import Client, Denied
 from poolhouse.board.tasks import Tasks
 from poolhouse.board.terminal import terminal_id
 
@@ -247,12 +247,15 @@ class Board:
         return list(self._session.call("project_list"))
 
     def request_approval(self, asks: Sequence[Ask], *, note: str = "", task: str = "", ttl_s: int = 0, expect_policy: str = "") -> Approval:
-        """Ask the person, on their phone, for one to eight grants for this session; the `Approval` to wait on.
+        """Ask for one to eight grants for this session; the `Approval` to read back.
 
-        The node writes the question in plain words and keeps it until the person's key answers; `Approval.wait` returns
-        ``pending`` when its time runs out, which is not a failure. ``note`` is your own words (160 plain characters), shown
-        to the person as yours.
+        An agent asking for a grant it may not have (`poolhouse.board.autoapprove.refusal`) is refused at once with the reason, before any
+        request exists (`Denied`). The request is raised for whoever answers it, which can be a phone linked to this node; nothing waits for
+        it, and `poolhouse-workspace approval request` is the call that policy answers at once. ``note`` is your own words (160 plain
+        characters), shown as yours.
         """
+        if why := autoapprove.refusal(list(asks)):
+            raise Denied("denied", why)
         return approvals.request(self._session, approvals.wire(list(asks), note=note, task=task, ttl_s=ttl_s, expect_policy=expect_policy))
 
     def approval(self, handle: str) -> Approval:
@@ -264,7 +267,7 @@ class Board:
         return approvals.blocks(self._session)
 
     def lift_block(self, who: str) -> None:
-        """Ask the person at this computer to lift the block on ``board/session``."""
+        """Lift the block on ``board/session``: the device's own session may lift any, another main session only its own."""
         approvals.lift_at_computer(self._session, who)
 
     def approvals(self, state: str = "") -> list[Approval]:

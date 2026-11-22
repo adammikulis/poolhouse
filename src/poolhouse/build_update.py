@@ -18,7 +18,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from poolhouse import devbranch, node_pool, person, runtime, runtime_store
+from poolhouse import caller, devbranch, node_pool, runtime, runtime_store
 from poolhouse.activity import writer
 from poolhouse.fleet import updates
 from poolhouse.lock import held_by
@@ -127,7 +127,7 @@ def rebuild(checkout: Path) -> tuple[int, str]:
 
     A process an agent started may not run a deploy in the foreground; it asks for the background build the hooks use.
     """
-    argv = [sys.executable, "-m", "poolhouse.runtime_cli", "ensure", "--no-update", "--checkout", str(checkout), *(["--background"] if person.marked() else [])]
+    argv = [sys.executable, "-m", "poolhouse.runtime_cli", "ensure", "--no-update", "--checkout", str(checkout), *(["--background"] if caller.marked() else [])]
     try:
         done = subprocess.run(argv, capture_output=True, text=True, timeout=updates.PIP_TIMEOUT, check=False)
     except (OSError, subprocess.SubprocessError) as exc:
@@ -161,7 +161,7 @@ def _record(result: Result, fails: int, next_at: float, now: float) -> Result:
 
 def _audit(result: Result, agent: str = "") -> Result:
     writer.record(KIND, actor=f"agent:{agent}" if agent else None, subject=str(runtime_store.selection().get("commit", "")), outcome=result.action,
-                  meta={"command": "update", "agent": agent, "person": not person.marked(), "detail": result.detail[:150]})
+                  meta={"command": "update", "agent": agent, "person": not caller.marked(), "detail": result.detail[:150]})
     return result
 
 
@@ -200,7 +200,7 @@ def _catch_up(steps: Steps, target: int, fails: int, now: float) -> Result:
         code, text = steps.fetch(checkout)
         if code == 0:
             code, text = steps.ensure(checkout)
-    if code == 0 and checkout is not None and person.marked():
+    if code == 0 and checkout is not None and caller.marked():
         return _record(Result("started", "the build runs in the background; it is tried again after a wait if the device is still behind", target),
                        fails + 1, now + min(BACKOFF_S * 2 ** fails, BACKOFF_MAX_S), now)
     if code == 0 and (checkout is None or steps.selected() != previous):

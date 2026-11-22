@@ -170,7 +170,7 @@ fn distrust(node: &mut Node, token: &str, p: &Map<String, Value>) -> Result<Valu
 
 fn shown(g: &Grant, mine: bool) -> Value {
     let body = &g.row.body;
-    let (starts_ms, ends_ms) = super::book::span(&g.issue);
+    let (starts_ms, ends_ms) = (g.issue.at_ms, g.issue.until_ms);
     json!({"gid": g.issue.gid, "action": g.issue.action, "to": body["to"], "scope": body["scope"], "at_ms": g.issue.at_ms, "until_ms": g.issue.until_ms, "starts_ms": starts_ms, "ends_ms": ends_ms,
            "uses": g.issue.uses, "used": g.used, "review": g.issue.review, "status": g.status, "why": g.why, "person": g.issue.person,
            "entry": g.row.id(), "carried_by": g.row.actor, "mine": mine})
@@ -255,7 +255,8 @@ fn enroll(node: &mut Node, token: &str, p: &Map<String, Value>, peer: &Peer) -> 
     if !verifies(public, &message, text(p, "proof")?) {
         return Err(Error::Denied("a person key signs its own enrolment".into()));
     }
-    if node.persons.is_empty() {
+    // The first key of this computer: when none is enrolled yet (a phone's may be), and the secret its own prompt made comes with it.
+    if node.persons.is_empty() || (!node.persons.has_computer_key() && !text(p, "secret")?.is_empty()) {
         if !node.firsts.take(crate::presence::Purpose::Key, text(p, "secret")?, text(p, "public")?, node.now_ms()) {
             return Err(Error::Denied("the first person key is enrolled by `poolhouse-workspace grants-setup`, with the one-time secret the operating system's prompt makes when the person says yes".into()));
         }

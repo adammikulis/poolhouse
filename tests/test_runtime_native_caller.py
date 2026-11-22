@@ -7,8 +7,8 @@ from test_runtime_unmerged import cli_args, reviewed as _reviewed
 
 from poolhouse import (
     authority,
+    caller,
     node_launch,
-    person,
     runtime_cli,
     runtime_deploy,
     runtime_source,
@@ -24,7 +24,7 @@ reviewed = _reviewed
 @pytest.fixture
 def native(reviewed, monkeypatch):
     project, node, _, _, _, _ = reviewed
-    for name in (*person.AGENT_MARKERS, authority.AGENT_ENV, authority.SUBAGENT_ENV, "POOLHOUSE_WORKSPACE_TOKEN",
+    for name in (*caller.AGENT_MARKERS, authority.AGENT_ENV, authority.SUBAGENT_ENV, "POOLHOUSE_WORKSPACE_TOKEN",
                  "POOLHOUSE_SESSION_ID", "POOLHOUSE_SESSION_HARNESS"):
         monkeypatch.delenv(name, raising=False)
     actor = node.member("runtime-native-root", harness="codex")
@@ -128,7 +128,7 @@ def test_native_caller_cannot_turn_a_person_gate_into_delegation(native, gate):
 def test_an_asserted_name_without_markers_cannot_fall_back_to_anonymous_install(native, monkeypatch, declared):
     project, node, actor, original = native
     child = node.member("markerless-child", harness="codex", parent=actor)
-    for name in (*person.AGENT_MARKERS, authority.AGENT_ENV, "POOLHOUSE_WORKSPACE_TOKEN"):
+    for name in (*caller.AGENT_MARKERS, authority.AGENT_ENV, "POOLHOUSE_WORKSPACE_TOKEN"):
         monkeypatch.delenv(name, raising=False)
     plan = runtime_deploy.Plan(project.root, original[4], None, agent=child.name if declared == "child" else "unknown")
     monkeypatch.setattr(runtime_deploy, "prepare_root", lambda: pytest.fail("mutated runtime state"))
@@ -169,7 +169,7 @@ def test_readonly_runtime_plan_needs_no_workspace_registration(native, monkeypat
 
 def test_subagent_selector_alone_cannot_fall_back_to_anonymous_install_or_audit(native, monkeypatch):
     project, _, _, original = native
-    for name in (*person.AGENT_MARKERS, authority.AGENT_ENV, "POOLHOUSE_WORKSPACE_TOKEN"):
+    for name in (*caller.AGENT_MARKERS, authority.AGENT_ENV, "POOLHOUSE_WORKSPACE_TOKEN"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv(authority.SUBAGENT_ENV, "unknown-child")
     plan = runtime_deploy.Plan(project.root, original[4], None)

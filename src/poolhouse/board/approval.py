@@ -1,7 +1,8 @@
-"""Asking a person for grants, as an agent does it: one request of up to eight asks, a handle to wait on, and the sentence
-to pass on when it ends (docs/phone-approval.md).
+"""Asking for grants, as an agent does it: one request of up to eight asks, a handle to wait on, and the sentence to pass on when it ends
+(docs/phone-approval.md).
 
-The node writes the text the person reads and keeps the request until a person's key answers it. Nothing here answers one.
+The node writes the text a key's holder reads and keeps the request until a key answers it. Nothing here answers one: policy does
+(`poolhouse.board.autoapprove`: this device's key signs at once what the caller may have), and a linked phone's key may answer too.
 """
 
 from __future__ import annotations
@@ -20,14 +21,14 @@ ENDED = ("approved", "denied", "expired", "cancelled", "failed")
 POLL_START_S = 0.4
 POLL_MOST_S = 2.0
 SAYS = {
-    "pending": "Waiting for your answer on your phone.",
-    "approved": "You approved it, so the grants exist.",
-    "denied": "You said no; nothing changed.",
-    "expired": "The request ended before you answered; ask again if it is still needed.",
+    "pending": "Waiting for a key to answer it.",
+    "approved": "It was approved, so the grants exist.",
+    "denied": "It was declined; nothing changed.",
+    "expired": "The request ended before it was answered; ask again if it is still needed.",
     "cancelled": "The request was withdrawn.",
-    "failed": "You approved it, but it could not be carried out",
+    "failed": "It was approved, but it could not be carried out",
 }
-"""What an agent tells its person for each state, one sentence."""
+"""What an agent says of a request in each state, one sentence."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,9 +52,9 @@ class Ask:
 
 
 class Approval:
-    """A request a session made of the person, and what became of it.
+    """A request a session made, and what became of it.
 
-    `wait` returns ``pending`` when its time runs out: the request is still on the person's phone, and the same handle goes on
+    `wait` returns ``pending`` when its time runs out: the request is still open, and the same handle goes on
     being good until the request ends, so waiting is never a failure.
     """
 
@@ -75,7 +76,7 @@ class Approval:
 
     @property
     def text(self) -> str:
-        """The plain-words text the person reads, which the node wrote."""
+        """The plain-words text the node wrote for whoever answers."""
         return str(self._raw["text"])
 
     @property
@@ -90,7 +91,7 @@ class Approval:
 
     @property
     def code(self) -> str:
-        """The number to show your person when the request is not routine: they choose it among three after their fingerprint.
+        """The number to show a phone's holder when the request is not routine: they choose it among three after their fingerprint.
 
         Empty for a routine request, and once the request has ended.
         """
@@ -112,7 +113,7 @@ class Approval:
         return tuple(self._raw["grants"])
 
     def message(self) -> str:
-        """One sentence to pass on to the person for the state this is in."""
+        """One sentence to pass on for the state this is in."""
         base = SAYS.get(self.state, self.state)
         return f"{base}: {self._raw['reason']}" if self.state == "failed" and self._raw.get("reason") else base
 
@@ -122,7 +123,7 @@ class Approval:
         return self.state
 
     def wait(self, timeout_s: float = 30.0) -> str:
-        """Wait up to ``timeout_s`` seconds for the person to answer; the state, which is `pending` when none came."""
+        """Wait up to ``timeout_s`` seconds for an answer; the state, which is `pending` when none came."""
         end = time.monotonic() + timeout_s
         pause = POLL_START_S
         while self.refresh() == PENDING and time.monotonic() < end:
@@ -151,17 +152,17 @@ def wire(asks: list[Ask] | tuple[Ask, ...], *, note: str = "", task: str = "", t
 
 
 def request(session: Session, params: dict[str, Any]) -> Approval:
-    """Make the request ``params`` (from `wire`) of the person; the handle to wait on."""
+    """Make the request ``params`` (from `wire`); the handle to wait on. It is left for a key to answer: `autoapprove.request` answers it at once."""
     return Approval(session, dict(session.call("approval_request", **params)))
 
 
 def blocks(session: Session) -> dict[str, int]:
-    """The person's blocked sessions, or only this session's block for an agent."""
+    """The blocked sessions, or only this session's block for an agent."""
     return {str(who): int(until) for who, until in session.call("approval_blocks")["blocks"].items()}
 
 
 def lift_at_computer(session: Session, who: str) -> None:
-    """Ask the person at this computer to lift exactly ``who``'s block; a no or failed prompt changes nothing."""
+    """Lift exactly ``who``'s block: the device's own session may lift any, another main session only its own, and the node refuses anyone else."""
     draft = session.call("approval_lift_draft", who=who)
     answer = presence.ask_card(session.client, session.token, "card", presence.Card(str(draft["card"])))
     session.call("approval_lift_commit", nonce=str(draft["nonce"]), ticket=str(answer["secret"]))

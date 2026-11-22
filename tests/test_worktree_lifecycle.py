@@ -10,6 +10,7 @@ from harness_kit import checkouts, commit
 from node_kit import node_binary, workspace_node  # noqa: F401
 
 from poolhouse import claude, harness_claims, harnesshook, harnessid, harnessing
+from poolhouse.board import place
 from poolhouse.errors import Denied
 from poolhouse.workspace import (
     integration_git as repo,
@@ -20,8 +21,10 @@ from poolhouse.workspace import (
 
 
 @pytest.fixture
-def setup(workspace_node, tmp_path):  # noqa: F811
+def setup(workspace_node, tmp_path, monkeypatch):  # noqa: F811
     kit = SimpleNamespace(node=workspace_node, base=limits.root(), **vars(checkouts(tmp_path)))
+    monkeypatch.delenv('POOLHOUSE_BOARD')
+    workspace_node.board = place.resolve(workspace_node.client, kit.primary)
     kit.lead = workspace_node.member('lead')
     kit.sender = workspace_node.member('worker', parent=kit.lead)
     kit.name = kit.sender.name
@@ -180,7 +183,7 @@ def test_claude_settings_wire_stop_and_subagent_stop():
 def opened(kit, monkeypatch, messages):
     """The harness session of the worker over its recorded checkouts, as a launcher opens it."""
     session = harnessid.HarnessSession(kit.name, base=kit.base)
-    args = argparse.Namespace(project=str(kit.checkout), parent='', name=kit.name, permissions='ask-dangerous',
+    args = argparse.Namespace(project=str(kit.checkout), parent='', name=kit.name, permissions='guarded',
                               execution_mode='execute', protect=[], orders_from='owner', session_factory=lambda *args: session)
     return harnessing.opened(args, 'codex', ('http://127.0.0.1:9', 'fixture', 0), messages.append)
 

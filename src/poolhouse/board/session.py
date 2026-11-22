@@ -281,8 +281,12 @@ class Session:
         return self.read_all(files=True)
 
     def delete_file(self, handle: str) -> dict[str, Any]:
-        """Shred a file's bytes; only a session with that grant may."""
+        """Delete a file at once: its bytes go to the node's trash for seven days and are then overwritten by the node itself."""
         return dict(self.call("file_delete", handle=handle))
+
+    def restore_file(self, handle: str) -> dict[str, Any]:
+        """Bring a deleted file back from the trash, while its seven days last."""
+        return dict(self.call("file_restore", handle=handle))
 
     def status(self) -> dict[str, Any]:
         """What the node says of this board: its sessions, entries by kind and whether its logs are whole."""

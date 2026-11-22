@@ -1,36 +1,20 @@
-"""`ph.pool.found`, `ph.pool.status` and `ph.pool.join` as an agent calls them: a node of the test's own, the person's key made by the test, the phone's tap signed by a key the test made.
+"""`ph.pool.found`, `ph.pool.status` and `ph.pool.join` as an agent calls them: a node of the test's own, a key this computer makes, or a phone's key the test made.
 
-The sentences are what an agent passes on to its owner, so they are checked for what they name and for their length.
+Nobody is asked and nothing waits. The sentences are what an agent passes on to its owner, so they are checked for what they name and for their length.
 """
 
 from __future__ import annotations
 
-import threading
-import time
-
 import pytest
-from node_kit import enrol_as_phone_key
+from node_kit import NoKeystore, enrol_as_phone_key
 from phone_kit import add_phone, endpoint_of
 
 import poolhouse as ph
+from poolhouse import keystore
 from poolhouse.board import founding
 from poolhouse.fleet.onboard.manifest import Signer
 
 pytest_plugins = ["node_kit", "phone_kit"]
-
-
-def tap(node, phone, how: str = "approve", number: list[str] | None = None) -> str:
-    """The person's phone answers the one request that waits for it."""
-    endpoint = endpoint_of(node)
-    for _ in range(150):
-        waiting = endpoint.ok("list", {}, token=phone.token)["approvals"]
-        if waiting:
-            seen = endpoint.ok("get", {"id": waiting[0]["id"]}, token=phone.token)
-            while how == "approve" and not number:
-                time.sleep(0.05)
-            return str(endpoint.ok("decide", phone.decision(seen, how, pick=(number or [""])[0]))["state"])
-        time.sleep(0.1)
-    raise AssertionError("the agent never asked the phone")
 
 
 def test_status_of_a_fresh_device_says_it_is_unfounded_and_what_to_do(workspace_node):
@@ -38,35 +22,35 @@ def test_status_of_a_fresh_device_says_it_is_unfounded_and_what_to_do(workspace_
     assert pool.governance == "unfounded" and pool.name == "" and "pool of one" in pool.missing and len(pool.members) == 1
 
 
-def test_found_on_a_computer_with_no_prompt_puts_the_question_on_a_terminal_and_never_asks_for_a_phone(workspace_node):
+def test_found_makes_the_pool_at_once_with_a_key_this_computer_makes_and_a_second_call_says_it_is_there(workspace_node):
+    made = ph.pool.found("home")
+    assert isinstance(made, ph.pool.Founding) and not made.already and made.pool.name == "home" and made.pool.governance == "governed"
+    assert "now in the pool home" in made.say and "phone" not in made.say.lower() and "terminal" not in made.say.lower() and len(made.say) <= 260
+    assert len(workspace_node.client.call("person_keys")["keys"]) == 1, "the node enrolled the key it made"
+    assert (workspace_node.state / "person" / "pools").is_dir(), "and this computer kept it"
+    assert ph.pool.status().waiting == (), "nothing waits for anybody"
+    again = ph.pool.found("other")
+    assert again.already and "already in the pool home" in again.say and again.pool.id == made.pool.id
+
+
+def test_found_says_in_one_sentence_what_is_missing_when_this_computer_cannot_keep_the_key(workspace_node, monkeypatch):
+    monkeypatch.setattr(keystore, "default", NoKeystore)  # a machine with no keystore of its own, and no passphrase to keep a key file under
+    monkeypatch.delenv("POOLHOUSE_SIGNING_PASSPHRASE")
     with pytest.raises(ph.pool.Refusal) as refused:
         ph.pool.found("home")
-    assert isinstance(refused.value, ph.Denied) and "terminal" in str(refused.value) and "phone" not in str(refused.value).lower()
-    assert refused.value.needs == "approval" and len(str(refused.value)) <= 260 and ph.pool.status().governance == "unfounded"
+    assert isinstance(refused.value, ph.Denied) and "POOLHOUSE_SIGNING_PASSPHRASE" in str(refused.value) and "phone" not in str(refused.value).lower()
+    assert refused.value.needs == "device" and refused.value.then == "stop" and len(str(refused.value)) <= 260
+    assert ph.pool.status().governance == "unfounded"
     assert workspace_node.client.call("person_keys")["keys"] == [], "a refusal made no key"
     assert not (workspace_node.state / "person" / "pools").exists(), "and kept none"
 
 
-def test_found_with_a_linked_phone_asks_the_phone_and_a_second_call_says_it_is_there(phone_node):
-    phone = add_phone(phone_node)
+def test_found_with_a_phones_key_as_admin_makes_the_pool_at_once_and_a_second_call_says_it_is_there(workspace_node):
     admin = founding.Admin(Signer.generate())
-    enrol_as_phone_key(phone_node, admin.key)
-    told: list[str] = []
-    done: dict = {}
-    thread = threading.Thread(target=lambda: done.update(made=ph.pool.found("home", "open", admin=admin, say=told.append)))
-    thread.start()
-    answered: list[str] = []
-    number: list[str] = []
-    asker = threading.Thread(target=lambda: answered.append(tap(phone_node, phone, number=number)))
-    asker.start()
-    while not told:
-        time.sleep(0.05)
-    number.append(told[0].rsplit(" ", 1)[1].rstrip("."))
-    asker.join(30)
-    thread.join(30)
-    made = done["made"]
+    enrol_as_phone_key(workspace_node, admin.key)
+    made = ph.pool.found("home", "open", admin=admin)
     assert isinstance(made, ph.pool.Founding)
-    assert answered == ["approved"] and not made.already and made.pool.name == "home" and made.pool.policy == "open"
+    assert not made.already and made.pool.name == "home" and made.pool.policy == "open"
     assert made.pool.governance == "governed" and "now in the pool home" in made.say
     again = ph.pool.found("other", admin=admin)
     assert again.already and "already in the pool home" in again.say and again.pool.id == made.pool.id
@@ -74,11 +58,10 @@ def test_found_with_a_linked_phone_asks_the_phone_and_a_second_call_says_it_is_t
 
 
 def test_a_linked_phone_is_not_asked_for_the_key_this_computer_makes(phone_node):
-    add_phone(phone_node)
-    with pytest.raises(ph.pool.Refusal) as refused:
-        ph.pool.found("home")
-    assert "terminal" in str(refused.value) and "phone" not in refused.value.where
-    assert ph.pool.status().governance == "unfounded"
+    phone = add_phone(phone_node)
+    made = ph.pool.found("home")
+    assert made.pool.governance == "governed" and not made.already
+    assert endpoint_of(phone_node).ok("list", {}, token=phone.token)["approvals"] == [], "the phone has nothing to answer"
 
 
 def test_join_without_a_code_or_a_fingerprint_says_what_is_needed(workspace_node):

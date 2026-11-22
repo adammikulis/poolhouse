@@ -6,7 +6,8 @@ import json
 from pathlib import Path
 
 import pytest
-from node_kit import TYPED
+
+from poolhouse import caller
 
 pytest_plugins = ["node_kit"]
 
@@ -144,7 +145,8 @@ def test_text_that_matches_an_injection_pattern_is_held_until_a_person_releases_
     assert held.returncode == 3 and "held as q1" in held.stderr and "ignore all" not in held.stdout + held.stderr
     assert run(team, bob, "file", h, "--out", "e.txt").returncode == 3 and not (team.work / "e.txt").exists()
     assert json.loads(run(team, bob, "file", h, "--json").stdout)["state"] == "quarantined"
-    assert team.terminal("quarantine-release", "q1", "--json", who=bob, typed=TYPED)[0] == 0
+    assert team.cli("quarantine-release", "q1", "--json", who=bob, env={"CLAUDECODE": "1"}).returncode == 3, "an agent is refused the release at once"
+    assert team.cli("quarantine-release", "q1", "--json", who=bob).returncode == 0, "a process with no agent marker releases it, with no terminal"
     freed = run(team, bob, "file", h, "--text")
     assert freed.returncode == 0 and "ignore all" in freed.stdout and freed.stdout.lstrip().startswith("<untrusted")
 
@@ -160,18 +162,22 @@ def test_a_message_naming_a_file_shows_its_name_and_size_only_to_those_who_may_r
     assert all(f"file {h} (not available to you)" in m["text"] and "plan.txt" not in m["text"] for m in blind)
 
 
-def test_only_a_person_at_a_terminal_deletes_a_file_and_its_message_stays(team):
+def test_a_file_delete_is_signed_for_at_once_and_goes_to_the_trash_and_comes_back(team):
     lead, bob = team.lead, team.bob
-    h = put(team, lead, "gone.txt", b"to be shredded\n", "--to", "#ops")["file"]
-    refused = run(team, lead, "file", "delete", h)
-    assert refused.returncode == 3 and "terminal" in refused.stderr
+    h = put(team, lead, "gone.txt", b"to be restored\n", "--to", "#ops")["file"]
     assert run(team, lead, "file", h, "--text").returncode == 0
-    code, _, err = team.terminal("file", "delete", h, who=lead, typed=TYPED)
-    assert code == 0, err
-    assert run(team, bob, "file", h, "--text").returncode == 3
-    assert run(team, bob, "file", "list").stdout.strip() == "(none)"
-    assert "file: gone.txt" in run(team, bob, "board", "read", "#ops").stdout, "the message stays on the board"
-    assert not list((Path(team.state) / "boards" / team.board / "files" / "blobs").glob("*.bin"))
+    deleted = run(team, lead, "file", "delete", h, "--json")
+    assert deleted.returncode == 0, deleted.stderr
+    assert json.loads(deleted.stdout)["trashed"] == 1, "one command, at once: the bytes moved to the trash"
+    signed = [r for r in caller.audit_rows() if r["event"] == "grant.issued" and r["action"] == "file_delete"]
+    assert len(signed) == 1 and signed[0]["who"].startswith("user ") and signed[0]["resource"] == h, "signed at once, with no terminal and no question, and on the log with who asked"
+    assert run(team, bob, "file", h, "--text").returncode != 0, "the file is gone for everyone"
+    blobs = Path(team.state) / "boards" / team.board / "files"
+    assert not list((blobs / "blobs").glob("*.bin")) and list((blobs / "trash").glob("*.bin"))
+    back = run(team, lead, "file", "restore", h, "--json")
+    assert back.returncode == 0 and json.loads(back.stdout)["restored"] == h, back.stderr
+    assert run(team, bob, "file", h, "--text").returncode == 0, "it came back"
+    assert list((blobs / "blobs").glob("*.bin")) and not list((blobs / "trash").glob("*.bin"))
 
 
 def test_a_file_derived_from_another_is_found_by_it_and_a_listing_is_bounded(team):

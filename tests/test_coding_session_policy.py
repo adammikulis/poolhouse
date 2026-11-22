@@ -11,7 +11,7 @@ from poolhouse.fleet.conversations import Conversations
 def sessions(tmp_path):
     store = Conversations(tmp_path / "chat")
     first = store.start(model="model-a", settings={"harness": "pi", "project": str(tmp_path / "first"),
-                                                  "permissions": "ask-dangerous"})
+                                                  "permissions": "guarded"})
     second = store.start(model="model-a", settings={"harness": "pi", "project": str(tmp_path / "second"),
                                                    "permissions": "read-only", "execution_mode": "plan"})
     return store, first, second
@@ -106,7 +106,7 @@ def test_guarded_ui_api_round_trips_revision_and_rejects_replayed_changes(tmp_pa
     try:
         status, made, _ = served.call("/ui/conversations", method="POST",
                                      body={"operation_id": "c" * 32,
-                                           "settings": {"harness": "pi", "permissions": "ask-dangerous"}})
+                                           "settings": {"harness": "pi", "permissions": "guarded"}})
         assert status == 201 and made["policy_revision"] == 0
         path = "/ui/conversations/" + made["id"]
         change = {"settings": {"execution_mode": "plan"}, "expected_revision": 0}

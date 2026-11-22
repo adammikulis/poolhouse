@@ -12,7 +12,7 @@ import pytest
 from model_pins import pinned
 from net_site import gguf_bytes
 
-from poolhouse import http, hub, person, sentinel
+from poolhouse import caller, http, hub, sentinel
 from poolhouse.fleet.catalogue import SUGGESTED, UNFILTERED, is_unfiltered
 from poolhouse.fleet.models import ModelError, Models
 from poolhouse.hub import admission, publishers
@@ -62,11 +62,11 @@ def baseline_args(path, source="agent"):
     return argparse.Namespace(pin=[str(path)], kind="model", source=source, honey=False, json=False)
 
 
-def test_pinning_a_model_with_baseline_is_a_persons(tmp_path, monkeypatch):
+def test_pinning_a_model_with_baseline_is_refused_to_an_agent_at_once(tmp_path, monkeypatch):
     path = tmp_path / "evil.gguf"
     path.write_bytes(gguf_bytes(extra=300))
     monkeypatch.setenv("CLAUDECODE", "1")
-    with pytest.raises(person.HumanRequired):
+    with pytest.raises(caller.AgentRefused):
         sentinel_cli.baseline(baseline_args(path))
     assert str(path) not in pins()
 

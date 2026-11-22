@@ -1,5 +1,7 @@
 #!/bin/sh
-# Development publication guards refs only. Validation and CI run separately.
+# Development publication guards refs only. Validation and CI run separately. A push to main by an agent is the one merge: it is allowed
+# exactly when the rule the guards apply (poolhouse.workspace.release_check) allows it for the commit pushed, and refused at once with
+# its reason otherwise; nothing waits for anyone.
 set -eu
 
 # This source-repository policy is opt-in local scope, never library-consumer policy.
@@ -18,7 +20,7 @@ while [ -L "$self" ]; do
 done
 here=$(cd "$(dirname "$self")" && pwd)
 if [ -z "${CLAUDECODE-}${POOLHOUSE_AGENT-}${POOLHOUSE_WORKSPACE_AGENT-}${CODEX_THREAD_ID-}${CODEX_SESSION_ID-}" ] &&
-   ! "${PYTHON:-python3}" "$here/person-consume" harness </dev/null 2>/dev/null; then
+   ! "${PYTHON:-python3}" "$here/harness-ancestry" </dev/null 2>/dev/null; then
     exit 0
 fi
 primary=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
@@ -31,21 +33,40 @@ refuse() {
     exit 1
 }
 
+# Why the agent may not publish $1 to main, empty when it may: the commit has a standing independent land-review accept and the checkout is clean.
+release_refusal() {
+    src="$here/../../src"
+    PYTHONPATH="$src${PYTHONPATH:+:$PYTHONPATH}" "${PYTHON:-python3}" -c '
+import sys
+from poolhouse.workspace import release_check
+sys.stdout.write(release_check.refusal(".", {"CLAUDECODE": "1"}, sys.argv[1]))' "$1" </dev/null 2>/dev/null ||
+        echo "the release check could not run"
+}
+
 while read -r local_ref local_sha remote_ref remote_sha extra ||
       [ -n "$local_ref$local_sha$remote_ref$remote_sha$extra" ]; do
     [ -n "$local_ref$local_sha$remote_ref$remote_sha$extra" ] || continue
     [ -n "$local_ref" ] && [ -n "$local_sha" ] && [ -n "$remote_ref" ] &&
         [ -n "$remote_sha" ] && [ -z "$extra" ] || refuse "malformed record"
     [ "$local_sha" != "$zero" ] || refuse "deletions are not development pushes"
-    [ -n "$dev" ] && [ "$dev" != main ] || refuse "no development branch"
-    case "$remote_ref" in
-        "refs/heads/$dev"|refs/heads/promote/?*) ;;
-        *) refuse "only development and promotion snapshots are allowed" ;;
-    esac
+    merging=0
+    if [ "$remote_ref" = refs/heads/main ]; then
+        merging=1
+    else
+        [ -n "$dev" ] && [ "$dev" != main ] || refuse "no development branch"
+        case "$remote_ref" in
+            "refs/heads/$dev"|refs/heads/promote/?*) ;;
+            *) refuse "only development and promotion snapshots are allowed" ;;
+        esac
+    fi
     git check-ref-format "$remote_ref" >/dev/null 2>&1 || refuse "invalid destination ref"
     case "$local_sha$remote_sha" in *[!0-9a-f]*) refuse "invalid commit identifier" ;; esac
     [ "$(git --no-replace-objects cat-file -t "$local_sha" 2>/dev/null || true)" = commit ] ||
         refuse "local tip is not a known commit"
+    if [ "$merging" = 1 ]; then
+        why=$(release_refusal "$local_sha")
+        [ -z "$why" ] || refuse "$why"
+    fi
     if [ "$remote_sha" != "$zero" ]; then
         [ "$(git --no-replace-objects cat-file -t "$remote_sha" 2>/dev/null || true)" = commit ] ||
             refuse "fetch the remote commit before pushing"

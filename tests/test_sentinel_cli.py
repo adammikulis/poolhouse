@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import os
 
-from poolhouse import home, sentinel
+import pytest
+
+from poolhouse import caller, home, sentinel
 from poolhouse.sentinel import Mode, State
 from poolhouse.sentinel.cli import command
 from poolhouse.sentinel.store import Holding
@@ -29,7 +31,6 @@ def test_status_json_reports_the_mode_and_a_verified_log(capsys):
 def test_baseline_pins_then_scan_finds_a_change(capsys, monkeypatch):
     for marker in ("CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE"):
         monkeypatch.delenv(marker, raising=False)
-    monkeypatch.setattr("poolhouse.person.is_terminal", lambda _stream: True)
     model = home.home() / "m.gguf"
     model.parent.mkdir(parents=True, exist_ok=True)
     model.write_bytes(b"GGUF" * 1000)
@@ -74,14 +75,27 @@ def test_verify_passes_then_fails_after_an_edit(capsys):
     assert code == 1 and json.loads(out)["ok"] is False
 
 
-def test_show_prints_metadata_but_never_the_held_text_without_a_person(capsys):
+def test_show_prints_metadata_and_the_held_text_only_inert_for_a_process_no_agent_started(capsys):
     node = sentinel.default()
     held = node.store.quarantine(("message", "s:1"), "denied", None,
                                  Holding(text="SECRET INSTRUCTION TEXT"))
     code, out, _ = run(capsys, "quarantine", "show", held.id, "--json")
     assert code == 0 and "SECRET INSTRUCTION" not in out and held.id in out
     code, out, err = run(capsys, "quarantine", "show", held.id, "--text")
-    assert code == 2 and "SECRET INSTRUCTION" not in out + err
+    assert code == 0 and "SECRET INSTRUCTION TEXT" in out and not err
+    (ran,) = [r for r in caller.audit_rows() if r.get("action") == f"inspect {held.id}"]
+    assert ran["event"] == "ran" and ran["who"].startswith("user ")
+
+
+def test_show_text_is_refused_to_an_agent_at_once_while_the_gate_is_held_back_and_prints_none_of_it(capsys, monkeypatch):
+    node = sentinel.default()
+    held = node.store.quarantine(("message", "s:1"), "denied", None,
+                                 Holding(text="SECRET INSTRUCTION TEXT"))
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setenv("POOLHOUSE_AUTHORITY_FLOOR", "person")
+    code, out, err = run(capsys, "quarantine", "show", held.id, "--text")
+    assert code == 2 and "SECRET INSTRUCTION" not in out + err and "refused to an agent" in err
+    assert [r["action"] for r in caller.audit_rows() if r["event"] == "refused"] == [f"inspect {held.id}"]
 
 
 def test_add_quarantines_a_member_by_hand(capsys):
@@ -98,7 +112,36 @@ def test_honey_plant_status_remove(capsys):
     assert json.loads(run(capsys, "honey", "status", "--json")[1]) == []
 
 
-def test_mode_shows_and_refuses_a_change_without_a_person(capsys):
+def test_mode_shows_and_changes_for_a_process_no_agent_started_and_is_refused_to_an_agent_while_held_back(capsys, monkeypatch):
     assert run(capsys, "mode")[1].strip() == Mode.GUARDED.value
-    assert run(capsys, "mode", "off")[0] == 2
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setenv("POOLHOUSE_AUTHORITY_FLOOR", "person")
+    code, _, err = run(capsys, "mode", "off")
+    assert code == 2 and "refused to an agent" in err and "sentinel.policy" in err
+    assert run(capsys, "mode")[1].strip() == Mode.GUARDED.value
+    monkeypatch.delenv("CLAUDECODE")
+    assert run(capsys, "mode", "off")[0] == 0
+    assert run(capsys, "mode")[1].strip() == Mode.OFF.value
     assert sentinel.default().store.state_of("member", "x") == State.CLEAR
+
+
+def test_an_agent_may_not_pin_a_model_by_hand_and_nothing_is_pinned(capsys, monkeypatch):
+    model = home.home() / "m.gguf"
+    model.parent.mkdir(parents=True, exist_ok=True)
+    model.write_bytes(b"GGUF" * 1000)
+    monkeypatch.setenv("CLAUDECODE", "1")
+    with pytest.raises(caller.AgentRefused, match="pinning a model file by hand is refused to an agent"):
+        command(["baseline", "--pin", str(model), "--json"])
+    assert sentinel.default().manifest.pins() == {}
+    assert [r["action"] for r in caller.audit_rows() if r["event"] == "refused"] == ["pinning a model file by hand"]
+
+
+def test_review_lists_what_is_held_for_anyone_with_no_terminal_and_no_prompt(capsys, monkeypatch):
+    node = sentinel.default()
+    held = node.store.quarantine(("member", "10.7.7.7"), "forged", None)
+    code, out, err = run(capsys, "review")
+    assert code == 0 and "QUARANTINED" in out and "10.7.7.7" in out and not err
+    monkeypatch.setenv("CLAUDECODE", "1")
+    code, out, _ = run(capsys, "review", "--json")
+    assert code == 0 and [row["id"] for row in json.loads(out)] == [held.id]
+    assert node.store.get(held.id).state == State.QUARANTINED

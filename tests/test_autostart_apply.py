@@ -11,10 +11,10 @@ from pathlib import Path
 import pytest
 from autostart_support import Recorder, environment, seams, staged
 
-from poolhouse import authority, home
+from poolhouse import authority, caller, home
+from poolhouse.caller import AgentRefused
 from poolhouse.fleet import autostart_ledger
 from poolhouse.fleet.autostart_apply import install, rollback
-from poolhouse.person import HumanRequired
 
 
 @pytest.fixture
@@ -26,9 +26,14 @@ def unit_dir(user: Path) -> Path:
     return user / ".config" / "systemd" / "user"
 
 
+def tree(root: Path) -> list[str]:
+    """Every path under ``root`` except the audit log, which a refusal appends to."""
+    return sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.name != "authority-audit.jsonl")
+
+
 def run_install(done, recorder=None, **more):
     recorder = recorder or Recorder()
-    return install(done.path, seams=seams(recorder, typed=lambda _prompt: done.manifest.id, **more)), recorder
+    return install(done.path, seams=seams(recorder, **more)), recorder
 
 
 def test_install_places_the_staged_bytes_loads_them_and_records_it(tmp_path, user):
@@ -47,7 +52,7 @@ def test_install_places_the_staged_bytes_loads_them_and_records_it(tmp_path, use
     assert set(ledger["installed"]) == {"pool-daemon", "runtime-ensure"}
     assert "rollback" in outcome.rollback and sys.executable in outcome.rollback
     row = [r for r in authority.audit_rows() if r["event"] == "autostart.install"][-1]
-    assert row["by"] == "person" and row["manifest"] == done.manifest.id
+    assert row["who"].startswith("user ") and row["manifest"] == done.manifest.id
     assert {u["sha256"] for u in row["units"]} == {u.sha256 for r in done.manifest.roles for u in r.units}
 
 
@@ -62,7 +67,7 @@ def test_install_backs_up_what_it_replaces_and_rollback_restores_it(tmp_path, us
     assert (backup / "poolhouse-traind.service").read_text() == "[Service]\nExecStart=/old\n"
     assert json.loads((backup / "index.json").read_text())["version"] == 1
     assert old.read_bytes() != b"[Service]\nExecStart=/old\n"
-    undone = rollback(seams=seams(recorder, typed=lambda _p: done.manifest.id))
+    undone = rollback(seams=seams(recorder))
     assert undone.ok, undone.lines
     assert old.read_text() == "[Service]\nExecStart=/old\n"
     assert autostart_ledger.read()["installed"] == {}
@@ -72,7 +77,7 @@ def test_install_backs_up_what_it_replaces_and_rollback_restores_it(tmp_path, us
 def test_rollback_of_a_first_install_removes_the_files_and_unloads(tmp_path, user):
     done = staged(tmp_path)
     _, recorder = run_install(done)
-    undone = rollback(seams=seams(recorder, typed=lambda _p: done.manifest.id))
+    undone = rollback(seams=seams(recorder))
     assert undone.ok
     assert not any(unit_dir(user).glob("poolhouse-*"))
     assert ["systemctl", "--user", "disable", "--now", "poolhouse-traind.service"] in recorder.ran
@@ -161,7 +166,7 @@ def test_a_consistently_forged_environment_is_refused(tmp_path, user):
 
 
 def test_an_agent_is_refused_before_a_manifest_is_even_opened(tmp_path, user):
-    with pytest.raises(HumanRequired):
+    with pytest.raises(AgentRefused):
         install(tmp_path / "missing.json", seams=seams(Recorder(), env={"CLAUDECODE": "1"}))
 
 
@@ -236,40 +241,57 @@ def test_a_staging_directory_others_can_write_is_refused(tmp_path, user):
 
 
 @pytest.mark.parametrize("marker", ["CLAUDECODE", "POOLHOUSE_NONINTERACTIVE", "POOLHOUSE_AGENT"])
-def test_an_agent_is_refused_install_and_rollback_before_anything_is_read(tmp_path, user, marker):
+def test_an_agent_is_refused_install_and_rollback_at_once_before_anything_is_read(tmp_path, user, marker):
     done = staged(tmp_path)
-    before = sorted(p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*"))
+    before = tree(tmp_path)
     recorder = Recorder()
-    agent = seams(recorder, typed=lambda _p: done.manifest.id, env={marker: "1"})
-    with pytest.raises(HumanRequired):
+    agent = seams(recorder, env={marker: "1"})
+    with pytest.raises(AgentRefused, match=r"autostart\.install"):
         install(done.path, seams=agent)
-    with pytest.raises(HumanRequired):
+    with pytest.raises(AgentRefused, match="refused to an agent"):
         rollback(seams=agent)
     assert recorder.ran == [] and not unit_dir(user).exists()
-    assert sorted(p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*")) == before
+    assert tree(tmp_path) == before
+    refused = [r for r in authority.audit_rows() if r["event"] == "refused"]
+    assert [r["action"] for r in refused] == ["install autostart units", "roll back autostart units"]
+    assert all(r["who"].startswith(f"agent {marker}") for r in refused)
 
 
-def test_no_terminal_means_no_install(tmp_path, user):
+def test_a_process_no_agent_started_installs_and_rolls_back_with_no_terminal_and_nothing_asked(tmp_path, user, monkeypatch):
+    def asked(*_args, **_kwargs):
+        raise AssertionError("nothing may prompt")
+
+    monkeypatch.setattr("builtins.input", asked)
+    assert not caller.marked() and not caller.is_terminal(sys.stdin) and not caller.is_terminal(sys.stdout)
     done = staged(tmp_path)
-    with pytest.raises(HumanRequired):
-        install(done.path, seams=seams(Recorder(), terminal=(False, False)))
+    outcome, recorder = run_install(done)
+    assert outcome.ok, outcome.lines
+    assert rollback(seams=seams(recorder)).ok
+    ran = [r for r in authority.audit_rows() if r["event"] == "ran"]
+    assert [r["action"] for r in ran] == ["install autostart units", "roll back autostart units"]
+    assert all(r["who"].startswith("user ") for r in ran)
 
 
-def test_the_person_must_type_the_manifest_id(tmp_path, user):
-    done = staged(tmp_path)
-    with pytest.raises(HumanRequired):
-        install(done.path, seams=seams(Recorder(), typed=lambda _p: "yes"))
-    assert not unit_dir(user).exists()
+def test_an_agent_installs_while_the_gate_is_delegated_and_the_audit_names_it(tmp_path, user, monkeypatch):
+    monkeypatch.delenv(authority.FLOOR_ENV)
+    authority.set_state(["autostart.install"], authority.DELEGATED, by="test")
+    monkeypatch.setenv("CLAUDECODE", "1")
+    outcome, _ = run_install(staged(tmp_path))
+    assert outcome.ok, outcome.lines
+    used = [r for r in authority.audit_rows() if r["event"] == "authority.use" and r["gate"] == "autostart.install"]
+    assert len(used) == 1 and used[0]["who"].startswith("agent CLAUDECODE")
+    row = [r for r in authority.audit_rows() if r["event"] == "autostart.install"][-1]
+    assert row["who"].startswith("agent CLAUDECODE")
 
 
 def test_a_system_manifest_needs_the_flag_and_only_then(tmp_path, user):
     if sys.platform != "darwin":
         pytest.skip("the system directories are checked as they are on macOS")
     done = staged(tmp_path, platform="darwin", scope="system")
-    plain = install(done.path, seams=seams(Recorder(), "darwin", "system", typed=lambda _p: done.manifest.id))
+    plain = install(done.path, seams=seams(Recorder(), "darwin", "system"))
     assert not plain.ok and "--system" in " ".join(plain.lines)
     user_scope = staged(tmp_path, platform="darwin")
-    flagged = install(user_scope.path, system=True, seams=seams(Recorder(), "darwin", typed=lambda _p: user_scope.manifest.id))
+    flagged = install(user_scope.path, system=True, seams=seams(Recorder(), "darwin"))
     assert not flagged.ok and "--system" in " ".join(flagged.lines)
 
 
@@ -280,7 +302,7 @@ def test_a_system_install_asks_the_operating_system_and_builds_a_quoted_command(
     asked = []
     recorder = Recorder()
     outcome = install(done.path, system=True, seams=seams(
-        recorder, "darwin", "system", typed=lambda _p: done.manifest.id, ask=lambda cmd, why: (asked.append(cmd) or (True, ""))))
+        recorder, "darwin", "system", ask=lambda cmd, why: (asked.append(cmd) or (True, ""))))
     assert not outcome.ok
     command = asked[0]
     words = shlex.split(command.replace("&&", " ").replace("{", " ").replace("}", " ").replace(";", " "))

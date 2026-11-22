@@ -5,8 +5,8 @@ when a person key enrolled on that node signed it (docs/node.md, "Standing grant
 run alone: never in a keystore and never the key of the account. It is enrolled the way a phone's key is, as a file the account owns that the
 node reads when it starts (`wire.plant_key`), because a node lists a key in a pool at the level it recorded when the key was enrolled, and no call of the
 node, and no switch it honours, can enrol one that way. The rig signs each grant through the real `grant_issue`. What the rig does not exercise
-is the person's yes to the question the node writes on a terminal, the custody of a person's real key and the phone's own signing
-(docs/pool-check.md); founding no longer asks for it, and only the node's own tests and the test kit's `enrol_first` type it.
+is the custody of a person's real key and the phone's own signing (docs/pool-check.md). Nobody is asked anything: the node of the rig runs as
+shipped (`--presence auto`), and the first key's secret is made as the rig's person asks for it (`wire.answer_presence`).
 
 The same key is the admin of the pools the rig founds (`found`, `admit`, `remove`), named in each pool's charter. The node never holds it. It
 drafts an act (`pool_draft`, `pool_draft_found`), the rig signs the bytes it is given outside the node, and the node takes the signed act back
@@ -68,24 +68,24 @@ class RigPerson:
     def enrol(self, holder: Holder, key: Signer | None = None) -> dict:
         """Put ``key`` (the run's, already on the node from its start, by default) on the node of ``holder``'s device, carried by ``holder``'s session.
 
-        A key the node holds stays as it is; the first key on an empty node goes in with the one-time secret the node makes when the rig's person types
-        yes to its question; a later key with the approval of one the node holds, for this node, once, from this process's terminal.
+        A key the node holds stays as it is; the first key on an empty node goes in with the one-time secret the node makes when the rig's person asks
+        for it; a later key with the approval of one the node holds, for this node, once, from this process's terminal.
         """
         device, carried = holder.device, key or self.key
         held = {k["fingerprint"] for k in device.call("person_keys")["keys"]}
         if grants.fingerprint(carried.public) in held:
             return {"fingerprint": grants.fingerprint(carried.public)}
         if not held:
-            secret = self.says_yes(device, "key", carried.public.hex())["secret"]
+            secret = self.asks_first(device, "key", carried.public.hex())["secret"]
             return device.call("person_enroll", "", holder.token, **grants.enrolment(carried, ABOUT), secret=secret)
         return device.call("person_enroll", "", holder.token, **grants.approve(grants.enrolment(carried, ABOUT), self.key, self.where(device)))
 
-    def says_yes(self, device: Device, purpose: str, public: str = "") -> dict:
-        """The person types yes to the node's question for the first ``purpose`` (`key` or `phone`), asked by the person's own session: the node's reply,
-        which carries the one-time secret once, to the session that asked."""
+    def asks_first(self, device: Device, purpose: str, public: str = "") -> dict:
+        """The rig's person asks, as the device's own session, for the first ``purpose`` (`key` or `phone`): the node's reply, which carries the one-time
+        secret once, to the session that asked. The node asks nobody, so it is confirmed as it is asked."""
         out = device.wire("presence", "--state", device.state_text, "--purpose", purpose, "--public", public, check=False)
         if not out["ok"] or out["result"]["state"] != "confirmed":
-            raise RuntimeError(f"{device.name}: the person's yes to the node's question was not taken: {out}")
+            raise RuntimeError(f"{device.name}: the node made no secret for the first {purpose}: {out}")
         return dict(out["result"])
 
     def where(self, device: Device) -> grants.Where:

@@ -197,7 +197,7 @@ def test_codeowners_rules_cover_the_paths_that_decide_what_the_gates_accept(gp):
     rules = gp.owners_rules((SCRIPT.parent.parent / ".github" / "CODEOWNERS").read_text())
     for path in ("scripts/hooks/pre-push", "scripts/gates/ruff.py", "budgets.json",
                  "src/poolhouse/fleet/signing.py", "src/poolhouse/guard/x.py",
-                 "src/poolhouse/workspace/person_session.py", ".github/workflows/ci.yml",
+                 "src/poolhouse/workspace/harness_ancestry.py", ".github/workflows/ci.yml",
                  "scripts/sealed_git.py", "scripts/primary_sync.py", "scripts/ci_watch.py", "scripts/test", "pyproject.toml",
                  ".claude/settings.json"):
         rule, owners = gp.owners_of(path, rules)

@@ -11,7 +11,7 @@ import pytest
 from poolhouse import guard as g, macauth
 from poolhouse.interventions import Call
 from poolhouse.macauth import Authenticator, Stamp, Verdict
-from poolhouse.sentinel import Mode, Sentinel, State, human
+from poolhouse.sentinel import Mode, Sentinel, State, permit
 from poolhouse.sentinel.adapters import GuardLogHandler, screening, watch_authenticator
 from poolhouse.sentinel.servers import unmanaged_findings
 
@@ -22,7 +22,7 @@ HOST = "10.1.2.3:8770"
 
 
 def grant(action, subject):
-    return human.mint(action, subject, typed=lambda _p: subject, terminal=(True, True), env={})
+    return permit.mint(action, subject, env={})
 
 
 @pytest.fixture

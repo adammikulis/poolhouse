@@ -9,14 +9,14 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse.sentinel import Mode, Sentinel, State, human
+from poolhouse.sentinel import Mode, Sentinel, State, permit
 from poolhouse.sentinel.store import KINDS, Holding
 
 DOCS = Path(__file__).resolve().parent.parent / "docs"
 
 
 def grant(action, subject):
-    return human.mint(action, subject, typed=lambda _p: subject, terminal=(True, True), env={})
+    return permit.mint(action, subject, env={})
 
 
 @pytest.fixture

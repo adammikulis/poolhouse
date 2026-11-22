@@ -11,7 +11,7 @@ import pytest
 from poolhouse import mcp
 from poolhouse.activity import cli, schema, writer
 from poolhouse.activity.log import ActivityLog, Limits, Unreadable
-from poolhouse.sentinel import human
+from poolhouse.sentinel import permit as human
 from poolhouse.testing import injection_corpus as corpus
 from tests.activity_support import entries, person, ring
 from tests.test_chat import call, session
