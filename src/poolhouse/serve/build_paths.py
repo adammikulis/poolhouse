@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 from poolhouse import home
-from poolhouse.serve.binary import managed_current, managed_named, managed_root
+from poolhouse.serve.binary import managed_builds, managed_current, managed_named, managed_root
 
 __all__ = ["BuildFailed", "builds_dir", "current_link", "named_dest", "named_dir",
            "named_src_dir", "patch_files", "patch_stamp", "patches_dir", "root",
@@ -34,7 +34,7 @@ def src_dir() -> Path:
 
 def builds_dir() -> Path:
     """The directory holding one directory per build made."""
-    return root() / "builds"
+    return managed_builds()
 
 
 def current_link() -> Path:

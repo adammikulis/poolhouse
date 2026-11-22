@@ -1,7 +1,7 @@
 """A pin store written by a newer build reads in this one: a field this `Pin` does not have is dropped, not a crash.
 
 The failure this keeps out: `Manifest.pins()` built ``Pin(**stored)``, so one pin carrying a field a later build
-added (``host`` was one) made every launch of the machine's llama-server die in `llamacpp_trust.problem`.
+added (``host`` was one) made every launch of the machine's llama-server die in `binary.vetted`.
 """
 
 from __future__ import annotations
