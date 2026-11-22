@@ -149,26 +149,33 @@ def test_a_build_that_fails_its_smoke_test_leaves_the_old_build_active_and_is_ke
     assert binary.find_binary("llama-server").parent.name == good.build
 
 
-def test_a_tampered_managed_binary_is_refused_and_quarantined(site, pipe):
-    site.commit(100)
-    out = run(site, pipe)
-    target = builds_dir() / out.build / "llama-server"
+def test_a_tampered_managed_binary_falls_back_to_the_previous_build_and_nothing_is_moved_aside(site, pipe, caplog):
+    first = site.commit(100)
+    one = run(site, pipe, first)
+    site.commit(101)
+    two = run(site, pipe)
+    target = builds_dir() / two.build / "llama-server"
     with target.open("ab") as handle:
         handle.write(b"# patched\n")
-    with pytest.raises(binary.BinaryTampered, match="pin"):
-        binary.find_binary("llama-server")
-    assert sentinel.default().store.blocked("binary", str(target.resolve()))
-    with pytest.raises(binary.BinaryTampered, match="quarantined"):
-        binary.find_binary("llama-server")
+    with caplog.at_level("WARNING"):
+        assert binary.find_binary("llama-server") == (builds_dir() / one.build / "llama-server").resolve()
+    assert "NOT TRUSTED" in caplog.text and "FELL BACK" in caplog.text
+    assert target.is_file() and not sentinel.default().store.blocked("binary", str(target.resolve()))
+    assert binary.find_binary("llama-server") == (builds_dir() / one.build / "llama-server").resolve()   # and again, not held
 
 
-def test_a_binary_swapped_for_another_one_with_its_pin_removed_is_still_refused(site, pipe):
+def test_a_binary_swapped_for_another_one_with_its_pin_removed_is_not_trusted_either(site, pipe, monkeypatch):
     site.commit(100)
     out = run(site, pipe)
     target = builds_dir() / out.build / "llama-server"
     sentinel.default().manifest.unpin(target)
     target.write_text("#!/bin/sh\necho evil\n")
-    with pytest.raises(binary.BinaryTampered, match="not the binary that was built"):
+
+    def offline():
+        raise BuildFailed("could not reach GitHub")
+
+    monkeypatch.setattr(binary, "_fetch_good_build", offline)
+    with pytest.raises(binary.BinaryTampered, match=r"no earlier good build is kept.*fetching a good one"):
         binary.find_binary("llama-server")
 
 

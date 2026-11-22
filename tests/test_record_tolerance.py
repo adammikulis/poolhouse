@@ -17,7 +17,8 @@ import poolhouse.tolerant as tolerant
 from poolhouse import sentinel
 from poolhouse.files import sha256_file
 from poolhouse.sentinel.integrity import Manifest, Pin
-from poolhouse.serve import binary as binary_module, build_report, llamacpp_trust
+from poolhouse.serve import binary as binary_module, binary_trust, build_report, llamacpp_trust
+from poolhouse.serve.build_paths import BuildFailed
 from poolhouse.serve.holding import Hold
 from poolhouse.serve.policy import LocalPolicy
 
@@ -31,14 +32,14 @@ def newer_pin(file, kind="binary"):
 
 
 def test_up_does_not_crash_on_a_pin_a_newer_build_wrote(tmp_path):
-    """`llamacpp_trust.problem` is what `poolhouse-serve up` asks first; it reads every pin."""
+    """`vetted` is what `poolhouse-serve up` asks first; it reads every pin."""
     server = tmp_path / "llama-server"
     server.write_bytes(b"server")
     server.chmod(0o755)
     node = sentinel.default()
     node.manifest._file.save({"pins": {str(server): newer_pin(server)}})
 
-    assert llamacpp_trust.problem(server) == ""
+    assert binary_module.vetted(server, llamacpp_trust.PoolPolicy()) == server
     assert node.manifest.pin_of(server).sha256 == sha256_file(server)
 
 
@@ -120,17 +121,21 @@ def test_the_local_pin_file_ignores_unknown_entry_keys_and_they_grant_nothing(tm
     server = tmp_path / "llama-server"
     server.write_bytes(b"s")
     local.file.write_text(json.dumps({"schema_version": 1, "pins": {str(server): {
-        "sha256": "0" * 64, "source": "build", "held": False, "trusted": True, "allow_any_digest": True, **NEWER}}}))
-    assert local._read()[str(server)] == {"sha256": "0" * 64, "source": "build", "held": False, "previous": ""}
-    # the digest is not the file's and nothing vouches for the new bytes: still refused
-    assert local.problem(server) != ""
+        "sha256": "0" * 64, "source": "build", "trusted": True, "allow_any_digest": True, **NEWER}}}))
+    assert local._read()[str(server)] == {"sha256": "0" * 64, "source": "build", "previous": ""}
+    # the digest is not the file's and nothing vouches for the new bytes: it is not run, whatever the unknown keys say
+    def nothing_to_fetch():
+        raise BuildFailed("offline")
+
+    with pytest.raises(binary_trust.Untrusted):
+        binary_trust.vet(server, local, previous=list, recover=nothing_to_fetch)
 
 
-def test_a_restriction_a_newer_writer_expresses_as_held_is_honoured(tmp_path):
-    """The one restriction this build knows is `held`: written with fields it does not know, it still holds."""
+def test_a_restriction_a_newer_writer_expresses_as_held_holds_nothing_here(tmp_path):
+    """Nothing is held any more: a pin written with `held` by an older or newer build is read for its digest alone."""
     local = LocalPolicy(tmp_path / "pins.json")
     server = tmp_path / "llama-server"
     server.write_bytes(b"s")
-    local.file.write_text(json.dumps({"schema_version": 9, "pins": {str(server): {"held": True, "reason": {"by": "x"}}}}))
-    assert local.held(server)
-    assert local.problem(server) != ""
+    local.file.write_text(json.dumps({"schema_version": 9, "pins": {str(server): {
+        "sha256": sha256_file(server), "held": True, "reason": {"by": "x"}}}}))
+    assert binary_module.vetted(server, local) == server

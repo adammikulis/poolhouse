@@ -113,10 +113,12 @@ the old build active and keeps the new one under `failed/`.
 4. a vendor directory and the cache directory;
 5. Homebrew's and the login shell's directories, then PATH.
 
-The managed active build is used only when its pin verifies (`llamacpp_trust.problem`): a pinned
-binary must hash to its pin; a build `update` made and whose pin was lost must hash to the
-`sha256` in its `BUILD.json`; any other managed binary is pinned on first use. A mismatch
-quarantines the file like a model (sentinel moves it aside) and `find_binary` raises
-`BinaryTampered` instead of falling through to Homebrew, for that call and the ones after it.
-`llama-cpp rollback` switches to the previous build. An environment override is the owner's
+A managed binary whose pin no longer matches is never a reason to stop serving (`binary.vetted`, `binary_trust.vet`). A rebuilt one
+that something vouches for is re-pinned and used: the digest in the `BUILD.json` of Poolhouse's own build, a macOS signature that
+verifies and chains to Apple, or a Homebrew Cellar file owned by the user. One nothing vouches for (a `BUILD.json` recording another
+digest, a patched file, a pin that was lost and a file that is not what the build recorded) is not run: the newest earlier mainline
+build that still hashes to its own record replaces it, and with none kept the newest ggml-org/llama.cpp release for this machine is
+downloaded, made `current` and pinned. `BinaryTampered` is raised only when that fails as well, and names it. Each step is a
+warning in the log (`NOT TRUSTED`, `FELL BACK`, `RECOVERED`, `RE-PINNED`). A binary no pin or `BUILD.json` knows is pinned on first
+use. `llama-cpp rollback` still switches `current` to the previous build when you want that. An environment override is the owner's
 explicit choice and is not checked.

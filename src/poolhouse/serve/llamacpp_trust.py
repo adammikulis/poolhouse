@@ -1,34 +1,14 @@
-"""What sentinel holds for a managed llama-server: its pin, and the check before it is used."""
+"""What sentinel pins for a managed llama-server, and whether a kept build still is the one that was pinned."""
 
 from __future__ import annotations
 
-import json
-import logging
 from collections.abc import Mapping
 from pathlib import Path
 
 from poolhouse import sentinel
-from poolhouse.files import sha256_file
-from poolhouse.sentinel.events import Severity
-from poolhouse.sentinel.findings import HIGH, finding
+from poolhouse.serve.binary_trust import good_build
 
-logger = logging.getLogger(__name__)
-
-__all__ = ["PoolPolicy", "held", "pin", "problem", "unpin"]
-
-
-def _recorded(binary: Path) -> dict:
-    try:
-        info = json.loads((binary.parent / "BUILD.json").read_text())
-    except (OSError, ValueError):
-        return {}
-    return info if isinstance(info, dict) else {}
-
-
-def held(binary: Path) -> bool:
-    """Whether sentinel has quarantined ``binary``."""
-    node = sentinel.default()
-    return node.mode != sentinel.Mode.OFF and node.store.blocked("binary", str(binary))
+__all__ = ["PoolPolicy", "pin", "unpin", "verified"]
 
 
 def pin(binary: Path, sha256: str, *, source: str = "build") -> None:
@@ -41,62 +21,24 @@ def unpin(binary: Path) -> None:
     sentinel.default().manifest.unpin(binary)
 
 
-def problem(binary: Path) -> str:
-    """Why ``binary`` may not be used, or an empty string.
-
-    A binary sentinel holds is refused. A pinned binary must hash to its pin. A build this
-    code made carries the digest it was installed with in ``BUILD.json``: with no pin, the
-    file must hash to that digest and is pinned; otherwise it is quarantined. Any other binary
-    is pinned on first use.
-    """
-    node = sentinel.default()
-    if node.mode == sentinel.Mode.OFF:
-        return ""
-    if held(binary):
-        return (f"{binary} is quarantined by sentinel; a person releases it with "
-                f"`poolhouse-security release`")
-    if not binary.is_file():
-        return ""
-    pins = node.manifest.pins()
-    if str(binary) in pins:
-        if node.verify_before_load(binary, cached=True):
-            return ""
-        return (f"{binary} does not match its pin and is quarantined by sentinel; the file "
-                f"was moved aside. `poolhouse-serve llama-cpp rollback` switches to the previous build")
-    recorded = str(_recorded(binary).get("sha256") or "")
-    digest = sha256_file(binary)
-    if not recorded or recorded == digest:
-        node.manifest.pin_verified(binary, "binary", digest, source="build" if recorded else "first-use",
-                                   digest_from="expected" if recorded else "computed")
-        if not recorded:
-            logger.warning("%s had no pin: pinned on first use", binary)
-        return ""
-    found = finding("integrity.binary_mismatch", Severity.CRITICAL, ("binary", str(binary)), HIGH,
-                    {"sha256": digest, "recorded": recorded}, path=str(binary), move="file")
-    node.handle(found)
-    if node.mode == sentinel.Mode.OBSERVE:
-        return ""
-    return (f"{binary} is not the binary that was built (BUILD.json records another digest) and "
-            f"is quarantined by sentinel; the file was moved aside")
+def verified(binary: Path) -> bool:
+    """Whether ``binary`` is a build Poolhouse can name and still hashes to its pin (always, with the watch off)."""
+    policy = PoolPolicy()
+    return not policy.watching() or good_build(binary, policy.pinned(binary))
 
 
 class PoolPolicy:
-    """The pool's `poolhouse.serve.policy.Policy`: what the sentinel pins, holds and scrubs."""
+    """The pool's `poolhouse.serve.policy.Policy`: what the sentinel pins and scrubs."""
 
-    def held(self, binary: Path) -> bool:
-        return held(binary)
+    def watching(self) -> bool:
+        return sentinel.default().mode != sentinel.Mode.OFF
 
-    def problem(self, binary: Path) -> str:
-        return problem(binary)
+    def pinned(self, binary: Path) -> str:
+        found = sentinel.default().manifest.pin_of(binary)
+        return found.sha256 if found is not None else ""
 
-    def pin(self, binary: Path, sha256: str, *, source: str = "build") -> None:
+    def pin(self, binary: Path, sha256: str, *, source: str, previous: str = "") -> None:
         pin(binary, sha256, source=source)
-
-    def unpin(self, binary: Path) -> None:
-        unpin(binary)
-
-    def before_launch(self, argv: list[str]) -> None:
-        """The sentinel judged the binary when it was found; nothing more is asked at the launch."""
 
     def scrub_env(self, env: Mapping[str, str]) -> dict[str, str]:
         return sentinel.default().scrub_env(env)

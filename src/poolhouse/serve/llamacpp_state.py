@@ -105,7 +105,7 @@ def activate(build: Build) -> None:
 
 
 def rollback() -> Build:
-    """Switch to the most recent earlier build that is still installed and passes its pin.
+    """Switch to the most recent earlier build that is still installed and still the one that was pinned.
     `LookupError` when there is none."""
     state, here = load(), active()
     names = {b.name: b for b in builds()}
@@ -114,7 +114,7 @@ def rollback() -> Build:
         found = names.get(name)
         if found is None or (here and found.name == here.name):
             continue
-        if llamacpp_trust.problem(found.binary):
+        if not llamacpp_trust.verified(found.binary):
             continue
         point_current(found.path)
         state["pinned"] = ""
@@ -129,8 +129,8 @@ def pin(name: str) -> Build:
     found = next((b for b in builds() if b.name == name), None)
     if found is None:
         raise LookupError(f"no build {name!r} under {builds_dir()}")
-    if problem := llamacpp_trust.problem(found.binary):
-        raise LookupError(problem)
+    if not llamacpp_trust.verified(found.binary):
+        raise LookupError(f"{found.binary} is not the build that was pinned or its BUILD.json records another digest")
     activate(found)
     state = load()
     state["pinned"] = found.name

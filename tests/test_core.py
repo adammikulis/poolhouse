@@ -21,8 +21,10 @@ from poolhouse.files import sha256_file
 from poolhouse.serve import admission, backend as backend_module, binary as binary_module
 from poolhouse.serve.backend import Lease, LlamaServerBackend, ServerSpec
 from poolhouse.serve.binary import BinaryTampered
+from poolhouse.serve.build_paths import BuildFailed
 from poolhouse.serve.grant import NoGrant
 from poolhouse.serve.leases import recorded_servers
+from poolhouse.serve.policy import LocalPolicy
 from poolhouse.serve.process import listens_on, pid_exists
 from poolhouse.testing.canned import CANNED_MODEL_ID, canned_binary
 
@@ -42,6 +44,14 @@ def current_build(tmp_path):
     server = where / "llama-server"
     (where / "BUILD.json").write_text(json.dumps({"sha256": sha256_file(server)}))
     return server
+
+
+def build_beside(where, *, built_at):
+    """Another canned build, kept under the managed ``builds/`` directory with the BUILD.json a build writes."""
+    where.mkdir(parents=True)
+    server = canned_binary(where, name="llama-server")
+    (where / "BUILD.json").write_text(json.dumps({"sha256": sha256_file(server), "built_at": built_at}))
+    return server.resolve()
 
 
 @pytest.fixture
@@ -138,11 +148,25 @@ def test_two_processes_asking_at_once_cannot_both_take_the_memory(current_build,
         assert "REFUSED" in out.stdout, out.stdout + out.stderr
 
 
-def test_a_binary_that_is_not_the_one_that_was_built_starts_nothing(current_build, model):
+def test_a_binary_that_is_not_the_one_that_was_built_is_replaced_by_the_previous_build_and_the_server_starts(current_build, model):
+    previous = build_beside(binary_module.managed_builds() / "b100", built_at="2026-01-01")
     current_build.write_bytes(current_build.read_bytes() + b"# swapped")
-    with pytest.raises(BinaryTampered):
+    with core.serve(model, 2048, preflight=False) as server:
+        assert is_healthy(server.base_url, timeout=5.0)
+    assert (previous.parent / "argv.json").is_file()      # the previous build served it
+    assert not (current_build.parent / "argv.json").exists()    # the swapped one never ran
+
+
+def test_a_binary_that_is_not_the_one_that_was_built_and_cannot_be_replaced_starts_nothing(current_build, model, monkeypatch):
+    def offline():
+        raise BuildFailed("could not reach GitHub")
+
+    monkeypatch.setattr(binary_module, "_fetch_good_build", offline)
+    current_build.write_bytes(current_build.read_bytes() + b"# swapped")
+    with pytest.raises(BinaryTampered, match="fetching a good one"):
         core.serve(model, 2048, preflight=False)
     assert recorded_servers() == {}
+    assert not (current_build.parent / "argv.json").exists()
 
 
 def test_a_server_that_fails_to_start_leaves_no_record_and_no_process(current_build, model, monkeypatch):
@@ -215,15 +239,16 @@ def test_only_a_gguf_file_resolves(tmp_path):
         core.resolve(other)
 
 
-def test_a_binary_swapped_after_it_was_found_is_refused_by_the_launch_itself(current_build, tmp_path):
+def test_a_binary_swapped_after_it_was_found_starts_nothing_and_the_next_start_uses_the_replacement(current_build, model, tmp_path):
     from poolhouse.serve import backend
     from poolhouse.serve.grant import broker_grant
-    from poolhouse.serve.policy import BinaryRefused, LocalPolicy
 
     local = LocalPolicy()
-    assert local.problem(current_build) == ""
+    previous = build_beside(binary_module.managed_builds() / "b100", built_at="2026-01-01")
+    assert binary_module.vetted(current_build, local) == current_build
     current_build.write_bytes(current_build.read_bytes() + b"# swapped after the check")
-    with broker_grant(), pytest.raises(BinaryRefused):
+    with broker_grant(), pytest.raises(backend.ServerFailed, match=f"changed while the server was starting and {previous}"):
         backend.launch([str(current_build)], Lease(port=1, owner_pid=os.getpid(), state_file="x"),
-                       log_path=tmp_path / "log", timeout=5.0, env={}, policy=local)
+                       log_path=tmp_path / "log", timeout=5.0, env={}, policy=local, binary=current_build)
     assert not (tmp_path / "log").exists()
+    assert binary_module.find_binary(policy=local) == previous

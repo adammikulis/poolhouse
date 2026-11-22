@@ -40,12 +40,28 @@ pool's admission and not by the core's, because the core talks to no node. The n
 `unmanaged` one) is in the ledger only when the broker adopted it. Records of the core and of a `ServerManager` in one process
 are tagged by holder and no longer overwrite each other.
 
-## Trust: `serve.policy`
+## Trust: `serve.policy` and `serve.binary_trust`
 
-A launch asks a `Policy` two things: may this binary run (`held`, `problem`, `pin`, `unpin`) and what environment does the child
-get (`scrub_env`). The pool's answer is `llamacpp_trust.PoolPolicy` (the sentinel's sealed pins, quarantine and release), the
-default of every pool entry point and unchanged. The core's is `LocalPolicy`: the digest in the build's own `BUILD.json`, and a
-plain JSON pin file (`<state>/core/pins.json`) that pins a binary on first use and refuses one that no longer matches.
+A launch asks a `Policy` two things: which digest is recorded for this binary (`watching`, `pinned`, `pin`) and what environment the
+child gets (`scrub_env`). The pool's answer is `llamacpp_trust.PoolPolicy` (the sentinel's sealed pins), the default of every pool
+entry point. The core's is `LocalPolicy`: a plain JSON pin file (`<state>/core/pins.json`) that pins a binary on first use. What is
+done with a binary that no longer matches its pin is the same for both and is `binary_trust.vet`; nothing holds a binary and no
+person is asked:
+
+- A changed binary something vouches for is re-pinned and used, with a `RE-PINNED` warning naming both digests: the digest in the
+  `BUILD.json` Poolhouse's own build wrote beside it, a macOS code signature that verifies and chains to Apple
+  (`codesign --verify --strict -R="=anchor apple generic"`; an ad-hoc signature, which any compiler run makes, vouches for nothing), or a
+  Homebrew Cellar file (real path under a Cellar, owned by this user, writable by no one else).
+- A changed binary nothing vouches for, including one whose `BUILD.json` records another digest, is not run. The newest earlier
+  mainline build kept under `llama.cpp/builds/` that still hashes to its own record replaces it (`FELL BACK`). With none, a good
+  build is fetched (the newest ggml-org/llama.cpp release for this machine, as `poolhouse-serve build --from release` does), made
+  `current` and pinned (`RECOVERED`). Only when that fails too does `BinaryTampered` say so, naming the recovery that was tried.
+- A pin file that cannot be read is moved aside as `pins.json.unreadable-<UTC timestamp>` and the pins start again
+  (`PIN FILE REBUILT`).
+- A binary with no pin and no `BUILD.json` is pinned on first use (`TRUST ON FIRST USE`), as before.
+
+The binary is vetted again the instant before the exec; a start in which it changed meanwhile fails with a message naming the
+replacement, and the next start uses it.
 
 ## Records from a newer build
 
@@ -59,11 +75,11 @@ only known names are copied.
 
 If a newer writer adds a field that changes what a pin *means* (a revocation, a stricter digest rule), this build cannot know it
 and ignores it. That is why such a field must never be the only carrier of a restriction. What this build still enforces without
-it: the file must hash to its pinned digest, a pin with `held` stays held (also when the entry is otherwise unreadable), and an
-unreadable pin file refuses the start. A newer restriction is safe against an older reader only when it is also expressed as
-`held` or as a digest that no longer matches. A schema bump is not used to fail closed: `LocalPolicy` reads a newer
-`schema_version` on purpose (`tests/test_serve_policy.py`), because refusing it would stop `poolhouse-serve up` on every older
-snapshot, which is the failure this section exists to prevent.
+it: a binary that no longer hashes to its pin is judged by `binary_trust.vet`. Nothing is held and no flag keeps a binary from running
+(a `held` written by another build is an unknown field), so a newer restriction is safe against an older reader only as a digest
+that no longer matches. A schema bump is not used to fail closed: `LocalPolicy` reads a newer `schema_version` on purpose
+(`tests/test_serve_policy.py`), because refusing it would stop `poolhouse-serve up` on every older snapshot, which is the failure
+this section exists to prevent.
 
 ## Threat note: what `LocalPolicy` weakens, and what still protects
 
@@ -73,9 +89,13 @@ Weakened against the pool:
 
 - No identity. Nothing says which agent started a server, and nothing queues or revokes by caller. Any process of the account can
   import `poolhouse.core` and start a server.
-- No quarantine by a person. `LocalPolicy` holds a binary that fails its pin until `unpin`, and the pin file is the account's own, so
-  a process that can write it can release the hold. A pin file that cannot be read is never overwritten (a hold in it would be lost):
-  a start is refused until it is moved aside.
+- No quarantine by a person, and no hold at all: a binary that fails its pin is replaced or re-pinned automatically
+  (`binary_trust.vet`), and the pin file is the account's own, so a process that can write it can write a pin. A pin file that cannot
+  be read is moved aside under a timestamped name and the pins start again, so a corrupt file never stops a start; what it held is
+  kept in the moved file and named in the log.
+- A change that something vouches for is used without asking: whoever can write a binary's directory can write its `BUILD.json`, and a
+  Developer ID or Apple signature or a Homebrew Cellar location is as strong as the account's own files. A change nothing vouches
+  for is never run (an earlier build or a fetched one stands in), but the stand-in is chosen by what the managed directory holds.
 - The pin file is plain JSON, not sealed. An attacker who can write the state directory can write a pin, or replace the binary
   and its `BUILD.json` together, and every check agrees with the swap. That case is now loud and not silent: a binary that changed
   and is vouched for by its `BUILD.json` is re-pinned with a WARNING naming both digests, and the entry keeps the digest it replaced
@@ -85,16 +105,17 @@ Weakened against the pool:
   reaches the server.
 - No provenance in `servers.json`.
 - A `Policy` check and an exec cannot be one step. The binary is found once per start, and hashed again in `launch` the
-  instant before `Popen` (`Policy.before_launch`); a replacement between that hash and the exec of the same path is still possible
-  for an attacker who can write the binary's directory.
+  instant before `Popen` (`launch(binary=...)`, which fails the start and leaves the replacement to the next one); a replacement
+  between that hash and the exec of the same path is still possible for an attacker who can write the binary's directory.
 - The listener check (`process.listens_on`, in `launch`) confirms the server is a live process of ours and holds the port before the key is sent
   to it; a process that wins the port in the instant after the check is outside what it can see.
 
 Still protecting:
 
 - Every route to the binary (an explicit path, `$LLAMA_CPP_SERVER`, `$LLAMA_CPP_DIR`, a named build, a vendor directory, the cache,
-  PATH) is judged by the policy in the core (`find_binary(strict=True)`), and the route is logged. A binary whose `BUILD.json`
-  records another digest is refused on all of them; one with none is pinned on first use. The pool's default still judges `current` alone.
+  PATH) is vetted by the policy in the core (`find_binary(strict=True)`), and the route is logged. A binary whose `BUILD.json`
+  records another digest is not run on any of them (an earlier build or a fetched one replaces it); one with none is pinned on first
+  use. The pool's default still vets `current` alone.
 - A server starts only inside `grant.broker_grant()` with a `Lease` made there; a program that goes round `core` gets `NoGrant`.
 - Memory admission under a cross-process file lock, a recorded port never reused while live, and a refusal to take a port a process
   that is not ours holds.
@@ -112,9 +133,8 @@ checked; a key file is written by unlinking first and opening with `O_EXCL | O_N
 
 Accepted (same-user attacker, no boundary crossed): the broker's token and `servers.json` are the account's; a record there with a
 hostile `est_mb` or pid can make the ledger refuse or over-admit. `listens_on` proves our process listens on the port, not that
-nobody shares it (`SO_REUSEPORT` by a same-user stranger). The pool route's `PoolPolicy.before_launch` does not re-hash (the
-sentinel judged the binary when found); the core's `LocalPolicy` does. `BUILD.json` beside a binary vouches for it, and whoever can
-write the binary's directory can write both.
+nobody shares it (`SO_REUSEPORT` by a same-user stranger). Both routes vet the binary again at the launch. `BUILD.json` beside a
+binary vouches for it, and whoever can write the binary's directory can write both.
 
 Open, for follow-up (not done here): sandbox read set includes the whole `server-keys.d` directory (one directory per port);
 the wire still takes `slot_save_path`, `chat_template_file`, `lookup_*` and `Starting` flags (`anyway`, `preflight`) from a client;

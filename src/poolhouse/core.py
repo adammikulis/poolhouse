@@ -6,9 +6,10 @@
         server.base_url, server.model_id, server.api_key
 
 No session, token, board, workspace, approval or app is imported or asked for (`tests/test_core.py` reads
-``sys.modules`` after importing this module). The binary must hash to its ``BUILD.json`` and its pin (`LocalPolicy`); a server
-starts only inside the grant, opened in `_start` alone; memory is admitted against the machine's ledger
-(`poolhouse.serve.ledger`); the pool's broker starts and stops its servers through the same backend and `stop_server`.
+``sys.modules`` after importing this module). A binary that changed since its pin (`LocalPolicy`) is re-pinned when its
+``BUILD.json``, a code signature or a package manager vouches for it, else replaced by an earlier good build or a fetched
+one (`poolhouse.serve.binary_trust`); nothing holds it and nobody is asked. A server starts only inside the grant, opened
+in `_start` alone; memory is admitted against the machine's ledger (`poolhouse.serve.ledger`).
 """
 
 from __future__ import annotations
@@ -131,7 +132,7 @@ def serve(  # noqa: PLR0913 - what to serve, where, under which trust, and how t
     ``port`` is chosen under the admission lock when not given. ``policy`` is `LocalPolicy` unless a caller passes
     the pool's. ``spec`` is any other `ServerSpec` field (``parallel``, ``reasoning_budget=0`` to switch thinking
     off, ...). ``preflight=False`` skips the load check and is for plumbing tests alone. Raises `ModelNotFound`,
-    `AdmissionRefused`, `BinaryNotFound` (also when the binary fails its policy), `PreflightFailed` or `ServerFailed`;
+    `AdmissionRefused`, `BinaryNotFound` (also `BinaryTampered`, when a changed binary could be neither vouched for nor replaced), `PreflightFailed` or `ServerFailed`;
     nothing is left running when it raises.
     """
     policy = policy or LocalPolicy()
