@@ -10,7 +10,6 @@ from test_hub_discover import hf_repo, ollama
 
 from poolhouse import hub
 from poolhouse.hub import hf_cache
-from poolhouse.hub.admission import PERSON
 from poolhouse.hub.probe import GIB, MachineMemory
 from poolhouse.serve import models_cli
 from poolhouse.serve.backend import LlamaServerBackend, ServerSpec
@@ -62,7 +61,7 @@ def test_snapshot_downloads_a_revisioned_repo_into_the_standard_hub_cache(capsys
                     "--revision", "commit", "--json")
 
     assert code == 0
-    assert seen == [("Cloudflare/clef-flash", {"repo_type": "model", "revision": "commit", "trust": PERSON})]
+    assert seen == [("Cloudflare/clef-flash", {"repo_type": "model", "revision": "commit"})]
     assert json.loads(out) == {"repo": "Cloudflare/clef-flash", "repo_type": "model",
                                "requested_revision": "commit", "resolved_revision": "snapshot",
                                "path": str(tmp_path / "snapshot")}

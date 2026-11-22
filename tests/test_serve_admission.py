@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 
 import pytest
-from model_approval import approved
+from model_pins import pinned
 
 from poolhouse import leasetable, limits, sentinel
 from poolhouse.client import reported_models, serving_params
@@ -116,7 +116,7 @@ def test_servers_that_fit_run_together_and_a_third_that_does_not_is_refused(
     b = held.lease(spec(second))
     assert a.port != b.port and pid_exists(a.pid) and pid_exists(b.pid)
 
-    approved(third)
+    pinned(third)
     assert sentinel.default().verify_before_load(third, cached=True)
     began = time.monotonic()
     with pytest.raises(admission.AdmissionRefused) as why:
@@ -268,7 +268,7 @@ def test_two_processes_that_do_not_fit_together_do_not_both_start(tmp_path, mach
     """The second process is refused while the first, which has been killed, leaves its
     server running; then that leaked server is stopped and the second one starts."""
     binary = canned_binary(tmp_path)
-    first = approved(weights(tmp_path, "first.gguf", 6))
+    first = pinned(weights(tmp_path, "first.gguf", 6))
     second = weights(tmp_path, "second.gguf", 6)
     code = ("import sys, time\n"
             "import poolhouse.serve.unmanaged as u\n"

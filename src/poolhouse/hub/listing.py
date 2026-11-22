@@ -7,12 +7,12 @@ from pathlib import Path
 
 from poolhouse import errors, hub
 from poolhouse.hub import publishers, remote
-from poolhouse.hub.admission import PERSON, Trust
+from poolhouse.hub.admission import Trust
 from poolhouse.hub.naming import _SHARD, _precision
 from poolhouse.hub.transfer import pull
 
 # The known publishers, best first; the first one that has a model wins. Override with --prefer;
-# pass --prefer '' to rank by downloads alone. Ranking never approves a repository: `admission` does.
+# pass --prefer '' to rank by downloads alone. Ranking never admits a repository: `admission` does.
 PREFER = publishers.ORDER
 
 
@@ -160,9 +160,9 @@ class FetchError(OSError, errors.Error):
     """A Hub model could not be fetched; its cause retains the endpoint's refusal."""
 
 
-def fetch(reference: str, *, trust: Trust = PERSON) -> Path:
-    """Download an `hf:` reference into the Hugging Face hub cache, without serving it, under ``trust``
-    (a person answers for any publisher but the shipped ones by default).
+def fetch(reference: str, *, trust: Trust | None = None) -> Path:
+    """Download an `hf:` reference into the Hugging Face hub cache, without serving it, as ``trust`` says
+    (`hub.pull`: nobody is asked; an agent's pull of what is unusual is refused unless allowed).
 
     A sharded model's *every* shard comes down, not only the one named: the file given is
     one member of a build, and a server started against a partial download fails at the far

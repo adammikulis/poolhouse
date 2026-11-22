@@ -28,7 +28,7 @@ from poolhouse.client import Client
 from poolhouse.guard import native
 from poolhouse.serve import LlamaServerBackend, ServerManager, ServerSpec, free_port
 from poolhouse.serve.process import every_server
-from tests.model_approval import approved
+from tests.model_pins import pinned
 
 pytest_plugins = ["serve_node"]
 
@@ -280,7 +280,7 @@ class Real:
     def leased(self, use: str, **options: Any) -> Iterator[native.Leased]:
         """The guard's own lease (`native.Leased`) on the model pinned for ``use``, closed on exit."""
         _binary, model = self._ready(use)
-        approved(model)  # the broker's own process asks a person before it serves a file it has not seen
+        pinned(model)  # a pin the way a pull makes one, so what is served is checked against it
         held = native.Leased(model=str(model), lease_timeout=LEASE_S, **options)
         try:
             yield held

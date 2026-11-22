@@ -1,244 +1,145 @@
-"""Whether the files of a Hub repository may be fetched, under the `Trust` the caller passes: a known publisher,
-a name that does not say the model was altered, and bytes that match what was pulled before. What a `Trust`
-does not allow waits for a person (`PERSON`, the default) or is refused naming the argument."""
+"""What a pull of a Hub repository checks and notes before it fetches, and who it believes asked for it.
+
+Nobody is asked. A pull that a person or the app asked for (`PERSON`) fetches from any publisher; what is unusual about
+it (a publisher Poolhouse does not know, a Hub that is not the official one, a revision that is not the publisher's own
+branch, a name that says the model was altered) is logged and recorded in the pin of each file kept. A pull an agent
+started (`AGENT`) of something unusual is refused at once with the reason, unless the model is already on this
+machine or its owner or repository is a line of `allow_file`, a text file a person edits. Whoever asked, a file the
+Hub lists with other bytes than the same commit had when it was pulled is refused, and the file already kept stays
+as it is."""
 
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass
+import enum
+import logging
 from pathlib import Path
 
-from poolhouse import sentinel
-from poolhouse.files import sha256_file
+from poolhouse import home, person, sentinel
 from poolhouse.hub import publishers, remote
 from poolhouse.hub.remote import Ref, RemoteError, RemoteFile
-from poolhouse.requests.approvals import approved, ask
 from poolhouse.requests.model import shown
-from poolhouse.sentinel.events import Severity
-from poolhouse.sentinel.findings import HIGH, finding
-from poolhouse.sentinel.integrity import Pin
+from poolhouse.sentinel.events import Event, Severity
 
-__all__ = ["LIBRARY", "PERSON", "DigestChanged", "NotApproved", "Trust", "admit", "approved", "ask", "checked", "notes",
-           "question", "vetted"]
+__all__ = ["AGENT", "PERSON", "DigestChanged", "NotAllowed", "Trust", "admit", "allow_file", "allowed", "checked",
+           "notes"]
 
-CLOSING = "Models can hide behaviour that tests do not show. Use it anyway?"
-ARGUMENT = "From a program, `ph.models.pull(repo, file, trust=...)` (`poolhouse.hub.Trust`) decides this itself."
+logger = logging.getLogger(__name__)
 
 
-class NotApproved(RemoteError):
-    """The trust passed does not allow this repository at this commit."""
+class NotAllowed(RemoteError):
+    """An agent's pull of something unusual that is neither on this machine nor in the allow list."""
 
 
 class DigestChanged(RemoteError):
-    """The Hub lists other bytes for a file at a commit than it did when the file was pulled."""
+    """The Hub lists other bytes for a file at a commit than the file kept from that commit has."""
 
 
-@dataclass(frozen=True, slots=True)
-class Trust:
-    """What a pull may fetch without an answer. ``publishers`` are the owners fetched from freely (None and not
-    ``shipped``: any owner; ``shipped`` adds the publishers Poolhouse ships with); ``official_only`` counts a Hub
-    other than the official one as unknown; ``markers`` and ``moved`` check for a name that says the model was
-    altered and for bytes unlike an earlier pull of another commit; ``ask`` puts what is not allowed to a person
-    in the requests inbox, else the pull is refused and the message names this argument."""
+class Trust(enum.Enum):
+    """Who asked for a pull, which decides what it may fetch: ``PERSON`` (a person's command or a click in the app) or
+    ``AGENT`` (an agent). ``None`` where a pull takes one means the process says: an agent marker in its
+    environment (`poolhouse.person.marked`) makes it an agent's."""
 
-    publishers: frozenset[str] | None = None
-    shipped: bool = False
-    official_only: bool = False
-    markers: bool = False
-    moved: bool = False
-    ask: bool = False
-
-    def __post_init__(self) -> None:
-        if isinstance(self.publishers, str):
-            raise TypeError("publishers is a collection of owner names, not one string")
-        if self.publishers is not None:
-            object.__setattr__(self, "publishers", frozenset(self.publishers))
-
-    def restricts(self) -> bool:
-        """Whether some owners are not allowed without an answer."""
-        return self.publishers is not None or self.shipped
-
-    def allows(self, owner: str) -> bool:
-        """Whether ``owner`` is fetched from without an answer."""
-        return not self.restricts() or owner in (self.publishers or ()) or (self.shipped and owner in publishers.TRUSTED)
+    PERSON = "person"
+    AGENT = "agent"
 
 
-LIBRARY = Trust()
-"""Any owner, any Hub, any name; the digest check stays, and the pin of what is kept is recorded."""
+PERSON = Trust.PERSON
+AGENT = Trust.AGENT
 
-PERSON = Trust(shipped=True, official_only=True, markers=True, moved=True, ask=True)
-"""The shipped publishers on the official Hub, and a person answers the rest; the default of every pull."""
+ALLOW_NAME = "allowed-publishers.txt"
+
+
+def allow_file() -> Path:
+    """The text file whose lines (``owner`` or ``owner/repo``; ``#`` starts a comment) name what an agent may pull
+    although it is unusual. A person writes it; nothing here does."""
+    return home.state("models", ALLOW_NAME)
+
+
+def allowed(repo: str) -> bool:
+    """Whether ``repo`` or its owner is a line of `allow_file`."""
+    try:
+        lines = allow_file().read_text(encoding="utf-8").splitlines()
+    except (OSError, ValueError):
+        return False
+    listed = {line.split("#", 1)[0].strip() for line in lines}
+    return repo in listed or publishers.namespace(repo) in listed
 
 
 def checked(trust: object) -> Trust:
-    """``trust`` itself when it is a `Trust`; `TypeError` for anything else, such as a word."""
+    """``trust`` itself when it is a `Trust`; an agent's when it is None and the process carries an agent marker, else a
+    person's; `TypeError` for anything else, such as a word."""
+    if trust is None:
+        return AGENT if person.marked() else PERSON
     if not isinstance(trust, Trust):
-        raise TypeError(f"trust is a poolhouse.hub.Trust (PERSON, or Trust(...) to allow more), not {trust!r}")
+        raise TypeError(f"trust is a poolhouse.hub.Trust (PERSON or AGENT) or None, not {trust!r}")
     return trust
 
 
-def _changed(ref: Ref, files: list[RemoteFile]) -> list[str]:
-    """Paths of ``files`` whose digest differs from the one last pulled for them under another
-    commit; a digest that differs at the commit pulled before quarantines and raises `DigestChanged`."""
-    node = sentinel.default()
-    if node.mode == sentinel.Mode.OFF:
-        return []
-    moved: list[str] = []
-    for one in (f for f in files if f.sha256):
-        priors = node.manifest.pins_for(f"{ref.repo}/{one.path}")
-        key = f"hub:{ref.repo}/{one.path}@{ref.commit}"
-        if node.store.blocked("model", key):
-            raise DigestChanged(_held(one.path, ref))
-        if node.store.state_of("model", key) == sentinel.State.RELEASED:
-            continue
-        if any(p.commit == ref.commit and p.sha256 != one.sha256 for p in priors):
-            node.handle(finding("model.hub_digest_changed", Severity.CRITICAL, ("model", key), HIGH,
-                                {"repo": ref.repo, "path": one.path, "commit": ref.commit,
-                                 "listed": one.sha256}))
-            if node.mode != sentinel.Mode.OBSERVE:
-                raise DigestChanged(_held(one.path, ref))
-        elif priors and priors[0].sha256 != one.sha256:
-            moved.append(one.path)
-    return moved
-
-
-def _held(path: str, ref: Ref) -> str:
-    return (f"{path} of {ref.repo} at {ref.commit[:12]} is not the file pulled before: the Hub lists "
-            f"other bytes for a commit that cannot change. It was not downloaded and is quarantined "
-            f"by sentinel; a person releases it with `poolhouse-security release`")
-
-
-def _reasons(ref: Ref, files: list[RemoteFile], trust: Trust, moved: list[str], check=None) -> list[tuple[str, str]]:
-    """Why ``trust`` does not allow ``files`` of ``ref``: each reason as the sentence a person is asked and
-    as the phrase a program reads."""
+def _unusual(ref: Ref, files: list[RemoteFile], check=None) -> list[str]:
+    """The sentences that say what is unusual about ``files`` of ``ref``: who published them and where, and what their
+    names say."""
     publisher = publishers.namespace(ref.repo)
     host = remote.endpoint_host()
-    official = publishers.official(host)
-    why: list[tuple[str, str]] = []
-    if trust.official_only and not official:
-        why.append((f"This model is from {publisher} on {host}, a Hub Poolhouse does not know.",
-                    f"{host} is not the official Hub"))
-    elif not trust.allows(publisher):
-        why.append((f"This model is from {publisher}, who Poolhouse does not know.",
-                    f"{publisher} is not among the trusted publishers"))
-    elif trust.restricts() and official and not remote.on_branch(ref.repo, ref.commit, check=check):
-        why.append((f"This file is not from {publisher}'s own branch.", f"it is not from {publisher}'s own branch"))
-    if trust.markers and publishers.marker(ref.repo, *(f.path for f in files)):
-        why.append(("Its name says it was changed to answer what the original would refuse.",
-                    "its name says it was changed to answer what the original would refuse"))
-    if moved and trust.moved:
-        why.append((f"{shown(moved[0], 'label')} is not the file Poolhouse pulled from {ref.repo} before.",
-                    f"{moved[0]} differs from the file pulled before"))
-    return why
+    said: list[str] = []
+    if not publishers.official(host):
+        said.append(f"This model is from {publisher} on {host}, a Hub Poolhouse does not know.")
+    elif not publishers.trusted(ref.repo):
+        said.append(f"This model is from {publisher}, who Poolhouse does not know.")
+    elif not remote.on_branch(ref.repo, ref.commit, check=check):
+        said.append(f"This file is not from {publisher}'s own branch.")
+    if publishers.marker(ref.repo, *(f.path for f in files)):
+        said.append("Its name says it was changed to answer what the original would refuse.")
+    return said
 
 
-def notes(repo: str, commit: str, path: str, unvetted: str = "") -> dict[str, str]:
-    """What the pin of the file ``path`` of ``repo`` at ``commit`` records of its pull: the publisher, the commit, the Hub,
-    the file, and ``unvetted`` (the words `admit` returned) when there are any."""
-    return {"publisher": publishers.namespace(repo), "commit": commit, "host": remote.endpoint_host(),
-            "source_ref": f"{repo}/{path}", **({"unvetted": unvetted} if unvetted else {})}
+def _kept(ref: Ref, one: RemoteFile) -> str:
+    """The sha256 of a file of this commit still on this machine that is not the one ``one`` lists, or ''."""
+    for pin in sentinel.default().manifest.pins_for(f"{ref.repo}/{one.path}"):
+        if pin.commit == ref.commit and pin.sha256 != one.sha256 and Path(pin.path).exists():
+            return pin.sha256
+    return ""
 
 
-def question(repo: str, commit: str, reasons: str) -> tuple[str, str]:
-    """The subject and the sentence of the request that puts ``reasons`` about ``repo`` at ``commit`` to a person."""
-    return f"{repo}@{commit[:12]}", " ".join((reasons, f"It is {repo} at {commit[:12]}.", CLOSING))
-
-
-def admit(ref: Ref, files: list[RemoteFile], trust: Trust = PERSON, *, check=None) -> str:
-    """Return when ``files`` of ``ref`` (resolved to a commit) may be fetched under ``trust``: the words of
-    what a person would have been asked and ``trust`` did not ask (the pin of the files keeps them, and serving
-    them asks), empty when nothing is left. `NotApproved` for what ``trust`` does not allow, after asking a
-    person when it asks; `DigestChanged` when the Hub contradicts itself."""
-    trust = checked(trust)
-    if len(ref.commit) != 40:
-        raise ValueError(f"{ref.text} must be resolved to a commit before it is fetched")
-    moved = _changed(ref, files)
-    why = _reasons(ref, files, trust, moved, check)
-    person = why if trust == PERSON else _reasons(ref, files, PERSON, moved, check)
-    left = " ".join(words for words, code in person if (words, code) not in why)
-    if not why:
-        return left
-    it = f"It is {ref.repo} at {ref.commit[:12]}."
-    if not trust.ask:
-        raise NotApproved(f"Not fetched: {'; '.join(code for _, code in why)}. {it} Pass another `trust=` "
-                          f"(`Trust(publishers=...)` names the owners to fetch from).")
-    subject, sentence = question(ref.repo, ref.commit, " ".join(words for words, _ in why))
-    fields = {"publisher": publishers.namespace(ref.repo), "repo": ref.repo, "commit": ref.commit,
-              "host": remote.endpoint_host()}
-    if approved("model_publisher", subject, sentence, **fields):
-        return left
-    told = ask("model_publisher", subject, sentence, **fields)
-    raise NotApproved(told.replace(sentence, f"{sentence} {ARGUMENT}", 1))
-
-
-def _files(path: Path) -> list[str]:
-    """Every regular file at or under ``path``, directory links followed once each."""
-    if path.is_file():
-        return [str(path)]
-    found: list[str] = []
-    seen: set[str] = set()
-    todo = [str(path)]
-    while todo:
-        top = todo.pop()
-        real = os.path.realpath(top)
-        if real in seen:
-            continue
-        seen.add(real)
-        try:
-            with os.scandir(top) as entries:
-                for entry in entries:
-                    if entry.is_dir():
-                        todo.append(entry.path)
-                    elif entry.is_file():
-                        found.append(entry.path)
-        except OSError:
-            continue
-    return found
-
-
-def _pin_of_bytes(one: str, held: list[Pin], vouched: list[Pin]) -> Pin | None:
-    """The waiting pin whose size and digest the file ``one`` has, unless a pin nobody waits on has them too."""
-    try:
-        size = Path(one).stat().st_size
-        sames = [p for p in held if p.bytes == size]
-        if not sames:
-            return None
-        digest = sha256_file(one)
-    except OSError:
-        return None
-    if any(p.bytes == size and p.sha256 == digest for p in vouched):
-        return None
-    return next((p for p in sames if p.sha256 == digest), None)
-
-
-def _waiting(path: Path) -> list[Pin]:
-    """The pins of the pulled files at ``path`` (a file, or a folder of them, links followed) that wait on a question:
-    a file counts when it is a pulled file's path or has the size and digest of one, wherever it sits."""
-    every = list(sentinel.default().manifest.pins().values())
-    held = [p for p in every if p.unvetted]
-    if not held:
-        return []
-    by_path = {os.path.realpath(p.path): p for p in held}
-    vouched = [p for p in every if not p.unvetted]
-    found: dict[str, Pin] = {}
-    for one in _files(path):
-        pin = by_path.get(os.path.realpath(one)) or _pin_of_bytes(one, held, vouched)
-        if pin:
-            found[pin.path] = pin
-    return list(found.values())
-
-
-def vetted(path: Path | str) -> None:
-    """Return when no file at or under ``path`` waits on a question its pull did not ask (`Pin.unvetted`: a `Trust`
-    let it through that `PERSON` would have asked about). `NotApproved` after asking a person until they approved the
-    repository at that commit; one answer covers every file of it, and the pins no longer wait."""
+def _same_commit(ref: Ref, files: list[RemoteFile]) -> None:
+    """`DigestChanged` for a file the Hub lists with other bytes than the file kept from the same commit has. Nothing is
+    held or quarantined: the file kept stays as it is, and removing it lets the next pull take the Hub's bytes."""
     node = sentinel.default()
     if node.mode == sentinel.Mode.OFF:
         return
-    for pin in _waiting(Path(path).expanduser()):
-        repo = "/".join(pin.source_ref.split("/")[:2])
-        subject, sentence = question(repo, pin.commit, pin.unvetted)
-        fields = {"publisher": pin.publisher, "repo": repo, "commit": pin.commit, **({"host": pin.host} if pin.host else {})}
-        if not approved("model_publisher", subject, sentence, **fields):
-            raise NotApproved(ask("model_publisher", subject, sentence, **fields))
-        node.manifest.vet(pin)
+    for one in (f for f in files if f.sha256 and _kept(ref, f)):
+        node.bus.emit(Event("model.hub_digest_changed", Severity.WARNING, "hub", f"model:{ref.repo}/{one.path}",
+                            {"repo": ref.repo, "path": one.path, "commit": ref.commit, "listed": one.sha256,
+                             "kept": _kept(ref, one)}, node.clock()))
+        raise DigestChanged(
+            f"{shown(one.path, 'label')} of {ref.repo} at {ref.commit[:12]} is listed with other bytes than the file "
+            f"kept from that commit, which cannot change. It was not downloaded and the file you have is unchanged. "
+            f"To take the Hub's bytes instead, remove that file from the cache and pull again")
+
+
+def notes(repo: str, commit: str, path: str, note: str = "") -> dict[str, str]:
+    """What the pin of the file ``path`` of ``repo`` at ``commit`` records of its pull: the publisher, the commit, the
+    Hub, the file, and ``note`` (the words `admit` returned) when there are any."""
+    return {"publisher": publishers.namespace(repo), "commit": commit, "host": remote.endpoint_host(),
+            "source_ref": f"{repo}/{path}", **({"note": note} if note else {})}
+
+
+def admit(ref: Ref, files: list[RemoteFile], trust: object = None, *, check=None) -> str:
+    """Return when ``files`` of ``ref`` (resolved to a commit) may be fetched for whoever ``trust`` says asked: the
+    words of what is unusual about them (the pin of the files keeps them), empty when nothing is. `DigestChanged` for
+    other bytes than the same commit had; `NotAllowed` for an agent's pull of what is unusual that is not in the allow
+    list."""
+    trust = checked(trust)
+    if len(ref.commit) != 40:
+        raise ValueError(f"{ref.text} must be resolved to a commit before it is fetched")
+    _same_commit(ref, files)
+    said = _unusual(ref, files, check)
+    if not said:
+        return ""
+    words = " ".join(said)
+    if trust is AGENT and not allowed(ref.repo):
+        raise NotAllowed(f"Not fetched for an agent: {words} It is {ref.repo} at {ref.commit[:12]}. A pull a person "
+                         f"asks for in a terminal or the app fetches it; for agents to pull it, put "
+                         f"{publishers.namespace(ref.repo)} or {ref.repo} on a line of {allow_file()}.")
+    logger.info("%s at %s is pulled for %s: %s", ref.repo, ref.commit[:12],
+                "an agent" if trust is AGENT else "a person", words)
+    return words

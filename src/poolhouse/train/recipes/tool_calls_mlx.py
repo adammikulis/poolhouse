@@ -10,7 +10,6 @@ from typing import Any
 import numpy as np
 
 from poolhouse.files import sha256_file, versioned, write_json
-from poolhouse.hub import admission
 from poolhouse.train import lora
 from poolhouse.train.checkpoint import CheckpointError
 from poolhouse.train.recipes.base import resolve_base
@@ -23,13 +22,10 @@ def local_base(base: str) -> Path:
     """Resolve an installed model directory without downloading weights."""
     path = Path(base).expanduser()
     if path.is_dir():
-        admission.vetted(path)
         return path.resolve()
     from huggingface_hub import snapshot_download
 
-    found = Path(snapshot_download(base, local_files_only=True))
-    admission.vetted(found)
-    return found
+    return Path(snapshot_download(base, local_files_only=True))
 
 
 def base_identity(base: Path) -> dict[str, Any]:
