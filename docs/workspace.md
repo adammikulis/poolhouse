@@ -241,7 +241,7 @@ not allowed, 4 over a quota, 5 claim conflict; `watch --timeout` exits 3 when no
 | messages | `send TO TYPE BODY [--subject S] [--reply-to SEQ]`, `announce KIND TEXT`, `inbox [--ack] [--raw] [--limit N\|--all] [--children]`, `attention`, `wait [--timeout S]`, `watch [--once] [--room R\|--thread N\|--dm NAME] [--since SEQ] [--timeout S]`, `outbox`, `ack REF`, `thread ROOT`, `dm [NAME [BODY]]`, `digest [--thread N] [--status] [--ack]`, `nudge [--hook post\|stop\|prompt]` |
 | rooms | `board list\|read NAME\|post NAME TEXT\|threads NAME\|create NAME [TITLE] [--private]\|add NAME AGENT\|mentions`, `join-board NAME`, `leave-board NAME`, `subscribe board\|thread\|agent\|kind\|mentions [TARGET] [--mode inbox\|digest\|silent] [--force]`, `unsubscribe`, `subs`, `chat [--room R\|--to NAME]` (the person, at a terminal), `board-serve [--port N]` |
 | notes | `notes-add KIND TITLE BODY [--source --tags --supersedes --verify-cmd --ttl-days]`, `notes-search QUERY [--kind] [--all]`, `notes-get ID`, `notes-verify ID --cwd DIR` |
-| files | `attach PATH\|- --to #room\|AGENT\|thread:SEQ`, `file HANDLE\|list\|search WORDS\|delete HANDLE` |
+| files | `attach PATH\|- --to #room\|AGENT\|thread:SEQ`, `file HANDLE\|list\|search WORDS\|delete HANDLE\|restore HANDLE` |
 | scratch | `scratch-new NAME [--ttl-hours H]`, `scratch-ls`, `scratch-path NAME [REL]`, `scratch-rm NAME` |
 | claims | `claim KIND KEY [--ttl S] [--pid N]`, `release KIND KEY [--held-by NAME]`, `heartbeat`, `who KIND KEY`, `claims [--kind K]` |
 | reviews | `land-review`, `land-trust` (docs/landing.md) |
@@ -434,7 +434,7 @@ expanded into context.
     poolhouse-workspace file HANDLE [--meta | --text [--limit N | --all] | --out PATH]
     poolhouse-workspace file list [--room R] [--by AGENT] [--derived-from HANDLE]
     poolhouse-workspace file search WORDS [--room R] [--by AGENT] [--limit N]
-    poolhouse-workspace file delete HANDLE            # a person at a terminal, under the grant `file_delete`
+    poolhouse-workspace file delete HANDLE            # at once, to a trash for seven days; `file restore HANDLE` brings it back (the grant `file_delete`)
 
 `attach` posts a message of type `file`. The message carries one short line, never the content: `file: NAME 12 KB
 sha:ab12… (file ab12cd34ef56)`, plus an optional one-sentence note (over 200 characters is refused: put detail in the

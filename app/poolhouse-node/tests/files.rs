@@ -99,21 +99,25 @@ fn an_upload_is_checked_chunk_by_chunk_and_a_file_message_must_name_a_stored_blo
 }
 
 #[test]
-fn deleting_a_file_shreds_its_bytes_keeps_its_messages_and_needs_the_grant() {
+fn deleting_a_file_works_at_once_into_the_trash_keeps_its_messages_and_needs_the_grant() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let ((_, at), (bob, bt)) = (session(&mut n, "demo", "a"), session(&mut n, "demo", "b"));
     let blob = store(&mut n, &at, "upload0001", b"a secret worth shredding");
     let handle = blob[..12].to_string();
     ok(attach(&mut n, &at, &bob, meta(&blob, &handle, true)));
-    let path = dir.path().join("boards/demo/files/blobs").join(format!("{blob}.bin"));
+    let files_dir = dir.path().join("boards/demo/files");
+    let path = files_dir.join("blobs").join(format!("{blob}.bin"));
+    let kept = files_dir.join("trash").join(format!("{blob}.bin"));
     assert!(path.exists());
     assert_eq!(code(&req(&mut n, "file_delete", "demo", &bt, json!({"handle": handle}))), "denied");
-    kit::grants::waited_out(&mut n, "demo", &bt, &bob, "file_delete");
+    kit::grants::granted(&mut n, "demo", &bt, &bob, "file_delete");
     assert_eq!(code(&req(&mut n, "file_delete", "demo", &bt, json!({"handle": "0123456789ab"}))), "invalid", "no such file");
     assert_eq!(code(&req(&mut n, "file_delete", "demo", &bt, json!({"handle": "short"}))), "invalid");
-    assert_eq!(ok(req(&mut n, "file_delete", "demo", &bt, json!({"handle": handle})))["shredded"], 1);
-    assert!(!path.exists());
+    let done = ok(req(&mut n, "file_delete", "demo", &bt, json!({"handle": handle})));
+    assert_eq!(done["trashed"], 1, "{done}");
+    assert!(done["restorable_until_ms"].as_u64().unwrap() > poolhouse_node::poolops::wall_ms() + 6 * 24 * 3_600_000, "{done}");
+    assert!(!path.exists() && kept.exists(), "the bytes left the store and wait in the trash");
     assert_eq!(code(&get(&mut n, &bt, &blob, 0)), "denied", "a deleted file is not available to anyone");
     assert_eq!(code(&get(&mut n, &at, &blob, 0)), "denied");
     assert_eq!(files(&mut n, &bt)[0]["gone"], true, "the message stays, marked gone");
@@ -122,6 +126,47 @@ fn deleting_a_file_shreds_its_bytes_keeps_its_messages_and_needs_the_grant() {
     drop(n);
     let mut again = node(dir.path());
     assert_eq!(code(&get(&mut again, &bt, &blob, 0)), "denied", "still gone after a restart");
+}
+
+#[test]
+fn a_deleted_file_comes_back_from_the_trash_and_only_with_the_grant() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let ((_, at), (bob, bt)) = (session(&mut n, "demo", "a"), session(&mut n, "demo", "b"));
+    let blob = store(&mut n, &at, "upload0001", b"deleted by mistake");
+    let handle = blob[..12].to_string();
+    ok(attach(&mut n, &at, &bob, meta(&blob, &handle, true)));
+    kit::grants::granted(&mut n, "demo", &bt, &bob, "file_delete");
+    ok(req(&mut n, "file_delete", "demo", &bt, json!({"handle": handle})));
+    assert_eq!(code(&req(&mut n, "file_restore", "demo", &at, json!({"handle": handle}))), "denied", "a session without the grant brings nothing back");
+    assert_eq!(code(&get(&mut n, &bt, &blob, 0)), "denied");
+    let back = ok(req(&mut n, "file_restore", "demo", &bt, json!({"handle": handle})));
+    assert_eq!(back["restored"], handle.as_str(), "{back}");
+    assert_eq!(ok(get(&mut n, &bt, &blob, 0))["size"], 18, "the bytes are readable again");
+    assert_eq!(files(&mut n, &bt)[0]["gone"], false);
+    assert_eq!(code(&req(&mut n, "file_restore", "demo", &bt, json!({"handle": handle}))), "invalid", "nothing is left in the trash to bring back");
+}
+
+#[test]
+fn the_trash_overwrites_and_removes_a_file_by_itself_when_its_seven_days_are_over() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let ((_, at), (bob, bt)) = (session(&mut n, "demo", "a"), session(&mut n, "demo", "b"));
+    let blob = store(&mut n, &at, "upload0001", b"to lapse");
+    let handle = blob[..12].to_string();
+    ok(attach(&mut n, &at, &bob, meta(&blob, &handle, true)));
+    kit::grants::granted(&mut n, "demo", &bt, &bob, "file_delete");
+    ok(req(&mut n, "file_delete", "demo", &bt, json!({"handle": handle})));
+    let files_dir = dir.path().join("boards/demo/files");
+    let kept = files_dir.join("trash").join(format!("{blob}.bin"));
+    assert!(kept.exists());
+    let manifest = files_dir.join("trash.json");
+    let mut held: Value = serde_json::from_slice(&std::fs::read(&manifest).unwrap()).unwrap();
+    held[&handle]["at_ms"] = json!(poolhouse_node::poolops::wall_ms() - 7 * 24 * 3_600_000 - 1000);
+    std::fs::write(&manifest, serde_json::to_vec(&held).unwrap()).unwrap();
+    assert_eq!(files(&mut n, &bt)[0]["gone"], true, "reading the files is enough for the trash to empty itself");
+    assert!(!kept.exists(), "nobody asked for the bytes to be shredded");
+    assert_eq!(code(&req(&mut n, "file_restore", "demo", &bt, json!({"handle": handle}))), "invalid", "its days are over");
 }
 
 #[test]

@@ -16,7 +16,7 @@ import time
 import pytest
 from launch_support import browser, hand_typed, redeem, sign_in, ticket
 from test_fleet_ui import Serving
-from test_redteam_human_floor import run_command
+from test_redteam_automatic_floor import run_command
 
 from poolhouse import home, node_launch
 from poolhouse.board import person, session as sessions

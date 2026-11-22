@@ -22,12 +22,13 @@ def _git(where: str, *args: str) -> str:
     return done.stdout.strip() if done.returncode == 0 else ""
 
 
-def refusal(cwd: str, environ: dict[str, str] | None = None) -> str:
-    """Why an agent may not merge into a protected branch from ``cwd``, or an empty string when it may."""
+def refusal(cwd: str, environ: dict[str, str] | None = None, commit: str = "") -> str:
+    """Why an agent may not merge into a protected branch from ``cwd``, or an empty string when it may. ``commit`` is the commit a push
+    publishes (the pre-push hook names it); without it, the checkout's HEAD is."""
     if not caller.marked(environ):
         return ""
     where = cwd or str(Path.cwd())
-    head = _git(where, "rev-parse", "--verify", "HEAD^{commit}")
+    head = _git(where, "rev-parse", "--verify", f"{commit or 'HEAD'}^{{commit}}")
     if not head:
         return "git cannot name the commit that would be published"
     if _git(where, "status", "--porcelain"):

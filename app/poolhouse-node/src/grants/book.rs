@@ -148,15 +148,9 @@ fn refusal(authority: &Authority, persons: &Persons, own: &str, row: &Row, issue
     None
 }
 
-/// When ``issue`` begins and ends to count: the times it was signed for, moved a day later when the act cannot be undone, whoever approved it
-/// and however it was signed, so that a key can revoke it first.
-pub fn span(issue: &Issue) -> (u64, u64) {
-    let wait = crate::gov::charter::data_act_wait_ms(&issue.action).max(0) as u64;
-    (issue.at_ms.saturating_add(wait), issue.until_ms.saturating_add(wait))
-}
-
 fn status(issue: &Issue, used: u64, now_ms: u64) -> &'static str {
-    let (starts, ends) = span(issue);
+    // No act waits: a file delete goes to a trash for seven days (`files::TRASH_MS`) and is brought back from there.
+    let (starts, ends) = (issue.at_ms, issue.until_ms);
     if issue.uses.is_some_and(|n| used >= n) {
         "exhausted"
     } else if now_ms >= ends {

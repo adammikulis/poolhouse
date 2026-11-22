@@ -631,3 +631,27 @@ fn the_vectors_a_second_implementation_made_are_the_bytes_and_the_signature_this
     assert_eq!(String::from_utf8(proof.clone()).unwrap(), add["proof_bytes"].as_str().unwrap(), "a phone's proof of its own addition is the same bytes");
     assert!(poolhouse_node::grants::person::verifies_p256(file["key"]["public"].as_str().unwrap(), &proof, add["proof_signature"].as_str().unwrap()));
 }
+
+#[test]
+fn a_phone_enrolled_first_leaves_this_computers_own_key_to_its_own_prompt_and_only_one_such_key() {
+    let rig = Rig::new();
+    let mut phone = FakePhone::new("Pixel");
+    rig.add(&mut phone, None);
+    let (dir, mine) = {
+        let mut node = rig.node.lock().unwrap();
+        let dir = node.dir.clone();
+        (dir, person_token(&mut node, "demo", "the-person"))
+    };
+    assert_eq!(rig.node.lock().unwrap().persons.all().len(), 1, "the phone's key is the only one");
+    let secret = kit::grants::first_secret(&dir, &mut |m, b, t, p| rig.call(m, b, t, p), "key", &person().public());
+    let enrolled = ok(rig.call("person_enroll", "", &mine, {
+        let mut params = person().enrolment("this computer", None);
+        params["secret"] = json!(secret);
+        params
+    }));
+    assert_eq!(enrolled["keys"], 2, "this computer's key joined the phone's with no phone tap: {enrolled}");
+    let again = rig.call("presence_ask", "", &mine, json!({"purpose": "key", "public": kit::grants::agent().public()}));
+    assert_eq!(code(&again), "denied", "a second key of this computer is approved by one that is enrolled, not by this prompt: {again}");
+    let phones = rig.call("presence_ask", "", &mine, json!({"purpose": "phone", "terminal": ""}));
+    assert_eq!(code(&phones), "denied", "and a further phone is approved by a key, not by this prompt: {phones}");
+}

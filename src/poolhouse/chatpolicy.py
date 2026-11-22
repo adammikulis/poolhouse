@@ -18,7 +18,7 @@ from poolhouse.interventions import Base, Call, Context, Deny, Proceed, Verdict
 from poolhouse.net.cli import command as security_command
 from poolhouse.sentinel.permit import agent_may
 
-__all__ = ["ACTING", "APPROVE_FIRST", "FENCED", "PLAN_AND_GO", "PROTECTED", "READ", "READ_ONLY",
+__all__ = ["ACTING", "APPROVE_FIRST", "OUTSIDE", "PLAN_AND_GO", "PROTECTED", "READ", "READ_ONLY",
            "ROLE_NAMES", "ProtectedRail", "catalog", "refusal_for", "refused", "review_view"]
 
 READ_ONLY = "read-only"
@@ -48,8 +48,10 @@ ACTING: dict[str, str] = {
 """Tools that change something or cost something, with what each does. A role runs one only under its
 rules (a saved always rule, or the plan it approved); any other call is refused at once with the reason."""
 
-FENCED = EXTERNAL | READ | frozenset(ACTING)
-"""Tools whose results carry text nobody here wrote (names, logs, model cards, reasons)."""
+OUTSIDE = EXTERNAL - {"ollama_models"}
+"""Tools whose results come from a party outside this machine (a Hub search or listing, a web page, transcribed speech) and taint the run. The
+listings of this machine itself (its disk, its status, the Ollama daemon it runs) are fenced as data like every result and taint only when
+they read like an instruction (`guard.untrusted.injection_markers`)."""
 
 PROTECTED: tuple[tuple[str, re.Pattern[str], str], ...] = tuple(
     (what, re.compile(pattern, re.I | re.S), command) for what, pattern, command in (

@@ -82,7 +82,7 @@ def test_text_has_no_path_into_the_ledger_but_the_observation_points():
     import inspect
 
     from poolhouse.reputation import store
-    for name in ("observe", "trait", "clean", "block"):
+    for name in ("observe", "trait", "clean"):
         params = inspect.signature(getattr(store.Ledger, name)).parameters
         assert not any("text" in p or "content" in p or "body" in p for p in params)
 

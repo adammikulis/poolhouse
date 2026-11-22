@@ -19,7 +19,7 @@ from poolhouse.workspace import board_cli
 
 __all__ = ["COMMAND", "OPTIONS"]
 
-NEEDS_PERSON = 3
+NOT_FOUNDED = 3
 OPTIONS = [
     flag("verb", choices=("found",), help="found: make this device's pool, governed by the person's key"),
     flag("name", nargs="?", default=None, help="found: the pool's name (default: this computer's)"),
@@ -33,11 +33,11 @@ def _refused(refused: founding.Refusal, as_json: bool) -> int:
         say(json.dumps({"founded": False, "say": str(refused), "needs": refused.needs, "where": refused.where, "then": refused.then}))
     else:
         warn(f"{refused} Where: {refused.where or 'nowhere yet'}. Next: {refused.then}.")
-    return NEEDS_PERSON
+    return NOT_FOUNDED
 
 
 def command(args: argparse.Namespace) -> int:
-    """Found the pool; the exit status (0 founded or already there, 3 when the person has something to do first)."""
+    """Found the pool; the exit status (0 founded or already there, 3 when it cannot be founded yet, with the reason and what to do next)."""
     try:
         made = founding.found_here(Client(node_launch.default_state()), args.name, args.policy)
     except founding.Refusal as refused:

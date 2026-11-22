@@ -90,8 +90,7 @@ poolhouse-workspace flag-clear FLAG_ID --reason TEXT
 - One panel on the Fleet page: a list of open flags with the same fields, buttons Restrict, Suspend,
   Clear (each one confirmation; the same grant check). The panel is a component, not a page. [D
   `components-not-pages` memory; analysis]
-- A new flag raises the existing single heads-up dialog once (kinds `agent_flagged`,
-  `device_flagged`); `explain.WHY` gets one sentence each. [V `explain.py` test pattern]
+- A new flag raises no dialog (kinds `agent_flagged`, `device_flagged`; the hold ends by itself); `explain.WHY` gets one sentence each. [V `explain.py` test pattern]
 
 ## 4. Automatic detectors for agents
 

@@ -33,7 +33,6 @@ def pinned(node, count=2, kind="model"):
 
 def test_a_gone_pinned_file_is_logged_once_and_its_pin_dropped_after_three_scans():
     node = sentinel.default()
-    node.heads_up.spawn = lambda work: pytest.fail("a dialog was asked for")
     files = pinned(node)
     keep, gone = files
     gone.unlink()
@@ -74,7 +73,6 @@ def test_loading_a_gone_pinned_file_is_refused_without_quarantining_it():
 
 def test_a_changed_pinned_file_is_still_quarantined():
     node = sentinel.default()
-    node.heads_up.spawn = lambda work: None
     (path,) = pinned(node, 1)
     path.write_bytes(b"tampered")
     node.scan(deep=True)

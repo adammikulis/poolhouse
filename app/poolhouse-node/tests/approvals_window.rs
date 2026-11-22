@@ -1,6 +1,5 @@
-//! An irreversible data act waits a day before its grant starts, whoever approved it and however it was signed, and a person key can revoke
-//! the grant meanwhile. In a pool, a key below the sensitive floor approves nothing sensitive or irreversible, and signs no sensitive grant
-//! directly either.
+//! A file delete starts at once whoever approved it (it goes to a trash for seven days, so nothing waits for a key to revoke it), and a key can
+//! still revoke the grant. In a pool, a key below the sensitive floor approves nothing sensitive, and signs no sensitive grant directly either.
 
 mod kit;
 
@@ -16,8 +15,6 @@ use poolhouse_node::grants::{check, Scope};
 use poolhouse_node::identity::Holder;
 use poolhouse_node::membership::{Policy, Pool};
 use serde_json::{json, Value};
-
-const DAY_MS: u64 = 24 * 3600 * 1000;
 
 fn asked(asks: Value) -> (Rig, kit::phone::FakePhone, String, String, Value) {
     let rig = Rig::new();
@@ -63,35 +60,30 @@ fn key_at(rig: &Rig, level: Level) -> Person {
 }
 
 #[test]
-fn an_irreversible_act_a_computer_key_approved_waits_a_day_and_a_person_key_can_revoke_it() {
+fn a_file_delete_a_computer_key_approved_starts_at_once_and_a_key_can_still_revoke_it() {
     let (rig, phone, name, token, made) = asked(json!([ask("file_delete", "notes"), ask("sync_now", "demo")]));
     let studio = key_at(&rig, Level::Computer);
     let seen = rig.get(&phone, made["id"].as_str().unwrap());
     let (_, carrier) = rig.session("demo", "agent-2");
-    let decided = poolhouse_node::poolops::wall_ms();
     let done = decided_by(&rig, &studio, &seen, &carrier);
     assert_eq!(done["state"], "approved", "{done}");
-    assert!(live(&rig, &name, "sync_now", "demo"), "a reversible act starts at once");
-    assert!(!live(&rig, &name, "file_delete", "notes"), "an irreversible act waits");
     let held = statuses(&rig, &token);
-    let (_, status, starts) = held.iter().find(|(action, _, _)| action == "file_delete").cloned().unwrap();
-    assert_eq!(status, "not-yet");
-    assert!(starts >= decided + DAY_MS - 60_000 && starts <= decided + DAY_MS + 60_000, "it starts a day after the approval: {starts} from {decided}");
-    assert!(done["reason"].as_str().unwrap_or("").contains("24 hours"), "the approval says it waits: {done}");
+    assert!(held.iter().all(|(_, status, _)| status == "live"), "a delete goes to a trash for seven days, so nothing waits for a key to revoke it: {held:?}");
+    assert!(!done["reason"].as_str().unwrap_or("").contains("hours"), "the approval names no wait: {done}");
 
     let gid = done["grants"][0].as_str().unwrap().to_string();
     ok(rig.call("grant_revoke", "demo", &carrier, studio.revoke_params("demo", &gid, "changed my mind")));
-    let after = statuses(&rig, &token);
-    assert!(after.iter().all(|(action, status, _)| action != "file_delete" || status == "revoked"), "a key revoked it before it started: {after:?}");
+    assert!(!live(&rig, &name, "file_delete", "notes"), "a key can still end it");
+    assert!(live(&rig, &name, "sync_now", "demo"));
 }
 
 #[test]
-fn an_irreversible_act_a_phone_approved_waits_a_day_too() {
+fn a_file_delete_a_phone_approved_starts_at_once() {
     let (rig, phone, name, _token, made) = asked(json!([ask("file_delete", "notes")]));
     let seen = rig.get(&phone, made["id"].as_str().unwrap());
     let (status, reply) = rig.phone("POST", "decide", "", phone.decision(&seen, "approve"));
     assert_eq!((status, &reply["result"]["state"]), (200, &json!("approved")), "{reply}");
-    assert!(!live(&rig, &name, "file_delete", "notes"), "a phone counts as a computer: no member can check more, so its approval waits too");
+    assert!(live(&rig, &name, "file_delete", "notes"));
 }
 
 #[test]
@@ -125,15 +117,14 @@ fn a_key_at_the_floor_approves_what_a_typed_yes_was_refused() {
 }
 
 #[test]
-fn an_irreversible_act_a_typed_yes_approved_outside_a_pool_waits_a_day() {
+fn a_file_delete_a_typed_yes_approved_outside_a_pool_starts_at_once() {
     let (rig, phone, name, _token, made) = asked(json!([ask("file_delete", "notes")]));
     let key = key_at(&rig, Level::Weak);
     let seen = rig.get(&phone, made["id"].as_str().unwrap());
     let (_, carrier) = rig.session("demo", "agent-2");
     let done = decided_by(&rig, &key, &seen, &carrier);
     assert_eq!(done["state"], "approved", "{done}");
-    assert!(!live(&rig, &name, "file_delete", "notes"), "a typed yes is no stronger than a computer's key: it waits too");
-    assert!(done["reason"].as_str().unwrap_or("").contains("24 hours"), "{done}");
+    assert!(live(&rig, &name, "file_delete", "notes"));
 }
 
 #[test]

@@ -81,10 +81,7 @@ given. `poolhouse-security status` and `chip` carry the number waiting.
   in the UI or the dialog while the terminal waits settles the prompt. Always allow saves a rule
   only from the terminal; from the UI the call runs once and no rule is saved.
 * `remember`: a `memory_remember` request with the same menu.
-* Sentinel: a quarantine that needs a person raises one `quarantine_release` request listing what
-  is held. The single-flight dialog shows the oldest waiting request and answers it through the same
-  module (`POOLHOUSE_NOTIFY=off`, the cooldown and one dialog at a time are unchanged). Release,
-  Keep held and Later are carried out by sentinel for the ids the answered request lists.
+* Sentinel raises none: a quarantine ends by itself (docs/sentinel.md), so no `quarantine_release` request is filed and no dialog shows one.
 
 ## The page
 

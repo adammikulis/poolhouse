@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from poolhouse import caller
-from poolhouse.board import grants as board_grants
 
 pytest_plugins = ["node_kit"]
 
@@ -163,19 +162,22 @@ def test_a_message_naming_a_file_shows_its_name_and_size_only_to_those_who_may_r
     assert all(f"file {h} (not available to you)" in m["text"] and "plan.txt" not in m["text"] for m in blind)
 
 
-def test_a_file_delete_is_signed_for_at_once_and_waits_the_day_an_irreversible_act_waits_before_the_file_goes(team):
+def test_a_file_delete_is_signed_for_at_once_and_goes_to_the_trash_and_comes_back(team):
     lead, bob = team.lead, team.bob
-    h = put(team, lead, "gone.txt", b"to be shredded\n", "--to", "#ops")["file"]
+    h = put(team, lead, "gone.txt", b"to be restored\n", "--to", "#ops")["file"]
     assert run(team, lead, "file", h, "--text").returncode == 0
-    deleted = run(team, lead, "file", "delete", h)
-    assert deleted.returncode == 3 and "may not delete a file" in deleted.stderr, "the grant the device's key signed is for a day on: nothing was deleted by this command"
+    deleted = run(team, lead, "file", "delete", h, "--json")
+    assert deleted.returncode == 0, deleted.stderr
+    assert json.loads(deleted.stdout)["trashed"] == 1, "one command, at once: the bytes moved to the trash"
     signed = [r for r in caller.audit_rows() if r["event"] == "grant.issued" and r["action"] == "file_delete"]
     assert len(signed) == 1 and signed[0]["who"].startswith("user ") and signed[0]["resource"] == h, "signed at once, with no terminal and no question, and on the log with who asked"
-    waiting = [g for g in board_grants.listing(team.session(lead)).grants if g.action == "file_delete"]
-    assert [(g.status, g.scope["resource"], g.uses) for g in waiting] == [("not-yet", h, 1)], "the node starts an irreversible act a day later, so that a key can revoke it first"
-    assert run(team, bob, "file", h, "--text").returncode == 0, "the file is still there"
-    assert "file: gone.txt" in run(team, bob, "board", "read", "#ops").stdout
-    assert list((Path(team.state) / "boards" / team.board / "files" / "blobs").glob("*.bin"))
+    assert run(team, bob, "file", h, "--text").returncode != 0, "the file is gone for everyone"
+    blobs = Path(team.state) / "boards" / team.board / "files"
+    assert not list((blobs / "blobs").glob("*.bin")) and list((blobs / "trash").glob("*.bin"))
+    back = run(team, lead, "file", "restore", h, "--json")
+    assert back.returncode == 0 and json.loads(back.stdout)["restored"] == h, back.stderr
+    assert run(team, bob, "file", h, "--text").returncode == 0, "it came back"
+    assert list((blobs / "blobs").glob("*.bin")) and not list((blobs / "trash").glob("*.bin"))
 
 
 def test_a_file_derived_from_another_is_found_by_it_and_a_listing_is_bounded(team):

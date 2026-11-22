@@ -20,7 +20,7 @@ use crate::row::canonical;
 
 use super::act::{Act, WINDOW_MS};
 use super::keys::{AdminKey, Level, Role};
-use super::{DATA_WINDOW_MS, MAX_ADMINS};
+use super::MAX_ADMINS;
 
 /// The version of the charter this build reads and writes; a pool of another version is not one this build can run.
 pub const VERSION: u32 = 4;
@@ -58,16 +58,6 @@ pub fn floor_class(kind: &str) -> Option<Class> {
         "cancel" | "delegate" | "admin_add" | "admin_remove" | "set_threshold" | "set_holds" | "set_mode" | "set_floors" | "recovery_replace" => Some(Class::Governance),
         _ => None,
     }
-}
-
-/// The data acts that cannot be undone once done. Consent to sharding is not one: it is turned off again, and the node's own table of
-/// what an action costs (`approvals::content::risk_of`) calls it sensitive.
-pub const IRREVERSIBLE_DATA_ACTS: [&str; 1] = ["file_delete"];
-
-/// How long the data act ``action`` waits for a key to cancel it after it is approved: a day when it cannot be undone, none otherwise.
-/// Every key that approves is a `Computer` key or a typed yes, because no member can check a higher level (keys document C6).
-pub fn data_act_wait_ms(action: &str) -> i64 {
-    if IRREVERSIBLE_DATA_ACTS.contains(&action) { DATA_WINDOW_MS } else { 0 }
 }
 
 /// The lowest level at which an admin key counts for each class of act. A floor is `Weak` only in a pool founded where no key above a typed

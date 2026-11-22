@@ -221,7 +221,8 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `subscribe`, `unsubscribe`, `subs` | board, token (a main session) | `stype` (`board`, `thread`, `agent`, `kind`, `mentions`), `target`, `mode` (`inbox`, `digest`, `silent`), `force` | the subscription / what was removed / `{subs}` |
 | `file_put` | board, token | `upload` (8 to 64 lower-case letters and digits), `offset`, `total`, `data` (hex, at most 256 KiB a chunk) | `{staged}` until the last chunk, then `{blob, size}` (the blob is the SHA-256 of the bytes given) |
 | `file_get` | board, token | `blob`, `offset`, `limit` | `{data, size, offset}` (hex) to a session that may read a message carrying the blob |
-| `file_delete` | token with the grant `file_delete` | `handle` | `{deleted, shredded}`; the bytes are overwritten and removed, the messages stay |
+| `file_delete` | token with the grant `file_delete` | `handle` | `{deleted, trashed, restorable_until_ms}`; the delete takes effect at once: the bytes move to the board's trash and the node overwrites and removes them by itself seven days later, the messages stay |
+| `file_restore` | token with the grant `file_delete` | `handle` | `{restored, blobs}`; the bytes come back from the trash while its seven days last |
 | `scratch_new`, `scratch_ls`, `scratch_path`, `scratch_rm` | board, token (a main session) | `folder`, `ttl_s` / `owner` / `folder`, `relative`, `owner` / `folder`, `owner` | `{path}` / `{folders}` / `{path}` / `{removed}` |
 | `outbox` | board, token | `limit` | `{entries}`: the caller's messages, each with `status` (`synced` once every device that has synced this board holds it, else `provisional`) |
 | `quarantine_hold` | board, token | `entries` (`[{id, flags}]`: entries a reading client matched an injection pattern in) | `{items}`: one record per entry on this device, with `qid`, `state` (`quarantined` or `released`) and `flags`, never the text |
@@ -477,7 +478,7 @@ stops the node. A pool set aside for another charter version leaves `grants_floo
 counts on any board.
 
 **Who may sign on a device in no pool.** `person_enroll` takes `public`, `about`, `at_ms` and `proof` (the key's own
-signature over the enrolment). The first key also takes `secret`: `poolhouse-workspace approval request ...`, `grants-setup` or any command a refusal sends to the grant
+signature over the enrolment). The first key of this computer also takes `secret` (it is the first until a key made on this computer is enrolled: a phone's key enrolled earlier does not count, so this computer's own key is still enrolled by its own prompt and no phone has to tap): `poolhouse-workspace approval request ...`, `grants-setup` or any command a refusal sends to the grant
 policy (`poolhouse.board.autoapprove`) makes this device's own key on first use and asks the node (`presence_ask`) to allow the session to add it. **Nobody is
 asked**: a node runs as the user of the computer, and `--presence auto` (the default, and what the launcher starts) confirms at once. On a yes the node makes the random secret in its memory (never a file), hands it
 once to the session that asked (`presence_status`), accepts it once and for ten minutes, and spends it on any guess, so a wrong secret ends the
@@ -926,8 +927,7 @@ pool, through admin keys; a device never does, and the one thing a member device
   cancel, end a delegate; `sensitive`: admit a device, remove a member; `governance`: admins, thresholds, holds, floors, delegate, recovery key) and
   are all `computer`. A key counts toward a class only at or above its floor; a key below it is listed and counts for nothing, and a `weak`
   key may end a delegate and nothing else. Every key that counts is a `computer` key, so every governance act waits seven days and a dispute
-  lasts from the end of that wait. A grant of an irreversible data act (`file_delete`) approved on a card starts a day later, so a person key can
-  revoke it first. A key that signs `grant_issue` directly meets the same floor in a pool for a sensitive grant of a device-local act. A floor is
+  lasts from the end of that wait. A grant of `file_delete` starts when it was signed: a delete goes to a trash for seven days, so nothing waits for a key to revoke it. A key that signs `grant_issue` directly meets the same floor in a pool for a sensitive grant of a device-local act. A floor is
   `weak` only in a pool founded where no key above `weak` can exist (R2 of docs/design-phone-free-pools.md: the pool is approved by a typed yes, lists no key above `weak`, gives its first computer no delegate and keeps every hold) and is never lowered to `weak` later, and a floor above `computer` is void because no listed key can hold it. The `recovery` role states no claim and counts toward no
   immediate act. The founding computer is a delegate for thirty days by the charter itself (`first.delegate`), with no hold.
   Thresholds count distinct people (`unit: person`) or keys: `routine` (cancel, end a delegate) 1 by default, `sensitive`

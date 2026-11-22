@@ -42,7 +42,7 @@ ATTACH = [
     flag("--note", default="", help="one sentence; put detail in the file"),
     flag("--reply-to", default=""), flag("--derived-from", default="", help="a file handle or message number this came from")]
 FILE = [
-    flag("target", nargs="*", help="a file handle, or: list, search QUERY, delete HANDLE"),
+    flag("target", nargs="*", help="a file handle, or: list, search QUERY, delete HANDLE, restore HANDLE"),
     flag("--meta", action="store_true", help="metadata only (the default)"),
     flag("--text", action="store_true", help="the text, fenced as data and cut short"),
     flag("--out", default="", help="write the bytes to a new file inside your worktree"),
@@ -265,7 +265,7 @@ def _entry(s: Session, handle: str) -> Entry:
     """The message that lets the caller read the file ``handle`` (``file:`` and 12 hex characters)."""
     handle = handle.removeprefix("file:")
     if not valid_handle(handle):
-        raise ValueError("name one file handle (12 hex characters), or list, search QUERY, delete HANDLE")
+        raise ValueError("name one file handle (12 hex characters), or list, search QUERY, delete HANDLE, restore HANDLE")
     return _reach(s.files(), handle)
 
 
@@ -281,7 +281,7 @@ def save(s: Session, handle: str, out: str) -> dict[str, Any]:
 
 
 def file(args: argparse.Namespace, s: Session) -> Any:
-    """Describe, read, list, search or delete files."""
+    """Describe, read, list, search, delete or restore files."""
     first, rest = (args.target[0] if args.target else "list"), args.target[1:]
     where = Where(args.room, args.by, args.derived_from)
     if first == "list":
@@ -292,8 +292,12 @@ def file(args: argparse.Namespace, s: Session) -> Any:
         if not rest or not valid_handle(rest[0]):
             raise ValueError("a file handle is 12 hex characters")
         return s.delete_file(rest[0])
+    if first == "restore":
+        if not rest or not valid_handle(rest[0]):
+            raise ValueError("a file handle is 12 hex characters")
+        return s.restore_file(rest[0])
     if rest:
-        raise ValueError("name one file handle (12 hex characters), or list, search QUERY, delete HANDLE")
+        raise ValueError("name one file handle (12 hex characters), or list, search QUERY, delete HANDLE, restore HANDLE")
     return save(s, first, args.out) if args.out else show(s, first, args.text, args.limit, args.all)
 
 
@@ -331,5 +335,5 @@ def _save(s: Session, e: Entry, target: str) -> dict[str, Any]:
 
 TABLE = (
     ("attach", "post a file to a board, an agent or a thread; the message carries a handle, never the content", ATTACH, attach),
-    ("file", "a file by handle (--meta, --text, --out PATH), or: list, search QUERY, delete HANDLE (a person)", FILE, file),
+    ("file", "a file by handle (--meta, --text, --out PATH), or: list, search QUERY, delete HANDLE (to the trash for seven days), restore HANDLE", FILE, file),
 )

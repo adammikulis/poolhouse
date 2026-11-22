@@ -296,7 +296,7 @@ class Chat:
             DestructiveRail(roots=default_roots(), model=from_environment(os.environ),
                             catalog=policy.catalog(), floors=floors,
                             skip={*roles.OWN, *self.extension.checks_itself}),
-            UntrustedRail(external=policy.FENCED), SecretRail(),
+            UntrustedRail(external=policy.OUTSIDE), SecretRail(),
             TaintRail(registries={"models": do.on_disk_ids}), *self.extra]
         self.limits = next((r for r in mine if isinstance(r, ToolPolicyRail)), ToolPolicyRail())
         self.watch: Run = rails.start(mine, offered=schemas, task="")

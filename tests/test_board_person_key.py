@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from node_kit import PASSPHRASE, NoKeystore, enrol_first
+from node_kit import PASSPHRASE, NoKeystore, enrol_as_phone_key, enrol_first
 
 from poolhouse import caller, keystore
 from poolhouse.board import grants, person, person_key
@@ -171,6 +171,20 @@ def test_the_key_a_node_does_not_hold_yet_is_made_and_enrolled_by_the_first_gran
         team.client.call("pool_leave", "", plain.token)  # refused for want of a grant, the key made and enrolled, the grant signed and spent: the node then answers
     held = grants.listing(team.session(plain))
     assert person_key.kept(team.state) and held.persons == [grants.fingerprint(person_key.keys(team.state).public)], "the device's own key is the node's first key"
+    assert [e["op"] for e in grants.log(team.session(plain)) if e["action"] == "pool_leave"] == ["use", "issue"]
+
+
+def test_a_phone_key_enrolled_first_leaves_the_devices_own_key_to_be_enrolled_by_the_first_grant_a_command_needs(workspace_node):
+    team = workspace_node
+    plain = team.member("plain")
+    phone = Signer.generate()
+    enrol_as_phone_key(team, phone)
+    assert grants.listing(team.session(plain)).persons == [grants.fingerprint(phone.public)] and not person_key.kept(team.state)
+    team.client.person = person_key.provider(team.state, acting=person.acting(team.state))
+    with pytest.raises(Denied, match="not in a pool"):
+        team.client.call("pool_leave", "", plain.token)  # no phone tap: the key was made and enrolled beside the phone's, the grant signed and spent
+    mine = grants.fingerprint(person_key.keys(team.state).public)
+    assert sorted(grants.listing(team.session(plain)).persons) == sorted([grants.fingerprint(phone.public), mine])
     assert [e["op"] for e in grants.log(team.session(plain)) if e["action"] == "pool_leave"] == ["use", "issue"]
 
 

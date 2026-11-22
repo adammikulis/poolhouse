@@ -189,3 +189,56 @@ def test_the_switch_that_turns_soft_rules_off_does_not_open_a_merge(merge):
                           check=False, env=env)
     assert done.returncode == 2 and "land-review" in done.stderr
     assert os.environ.get("POOLHOUSE_GUARD") != "off"
+
+
+HOOK = ROOT / "scripts" / "hooks" / "pre-push"
+ZERO = "0" * 40
+
+
+def hook(merge, sha, base=ZERO, ref="refs/heads/main"):
+    """The pre-push hook as git runs it for an agent pushing ``sha`` to ``ref`` of the project."""
+    root = merge.project.root
+    git(root, "config", "--local", "poolhouse.hooks.repository", str((root / ".git").resolve()))
+    env = {**merge.node.env(merge.lead), **AGENT, "PYTHON": sys.executable}
+    return subprocess.run(["sh", str(HOOK), "origin", "https://example.invalid/x.git"], input=f"{ref} {sha} {ref} {base}\n", cwd=root,
+                          text=True, capture_output=True, timeout=120, check=False, env=env)
+
+
+def test_a_push_of_main_by_an_agent_is_allowed_with_a_standing_accept_on_that_commit_and_refused_at_once_without(merge):
+    refused = hook(merge, merge.head)
+    assert refused.returncode == 1 and "needs review" in refused.stderr and merge.head[:7] in refused.stderr, refused.stderr
+    assert "person" not in refused.stderr.lower().replace("person folder", "")
+    review(merge, merge.head)
+    allowed = hook(merge, merge.head)
+    assert allowed.returncode == 0, allowed.stderr
+    assert guard(merge, "git push origin main").returncode == 0, "the guard and the hook say the same"
+
+
+def test_an_accept_on_one_commit_does_not_open_a_push_of_another(merge):
+    review(merge, merge.head)
+    (merge.project.root / "later.txt").write_text("later\n")
+    later = merge.project.commit(merge.project.root, "later")
+    assert hook(merge, merge.head).returncode == 0, "the commit that was reviewed may be published"
+    refused = hook(merge, later)
+    assert refused.returncode == 1 and later[:7] in refused.stderr and "needs review" in refused.stderr, refused.stderr
+
+
+def test_a_dirty_checkout_is_refused_with_its_accept(merge):
+    review(merge, merge.head)
+    (merge.project.root / "scratch.txt").write_text("not committed\n")
+    refused = hook(merge, merge.head)
+    assert refused.returncode == 1 and "uncommitted changes" in refused.stderr, refused.stderr
+
+
+def test_an_accept_does_not_open_an_update_that_is_not_a_fast_forward(merge):
+    review(merge, merge.head)
+    tree = git(merge.project.root, "write-tree")
+    unrelated = git(merge.project.root, "commit-tree", tree, "-m", "elsewhere")
+    refused = hook(merge, merge.head, base=unrelated)
+    assert refused.returncode == 1 and "fast-forward" in refused.stderr, refused.stderr
+
+
+def test_the_hook_still_refuses_a_branch_that_is_not_the_development_branch_whatever_the_accept(merge):
+    review(merge, merge.head)
+    refused = hook(merge, merge.head, ref="refs/heads/some-work")
+    assert refused.returncode == 1 and "only development and promotion snapshots" in refused.stderr

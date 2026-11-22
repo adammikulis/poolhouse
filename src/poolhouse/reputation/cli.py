@@ -34,7 +34,7 @@ def _split(text: str) -> tuple[str, str]:
 def _line(s: Standing) -> str:
     day = time.strftime("%Y-%m-%d", time.gmtime(s.last))
     return (f"{s.kind}:{s.key}  {s.state:<11} short {s.short:.1f}  long {s.long:.1f}  "
-            f"clean {s.clean}  {day}{'  NOTICE' if s.notice == 'queued' else ''}")
+            f"clean {s.clean}  {day}")
 
 
 def _guarded(fn: Handler, *, writes: bool) -> Callable[[argparse.Namespace], int]:

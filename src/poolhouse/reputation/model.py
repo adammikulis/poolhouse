@@ -112,7 +112,6 @@ class Rec:
     long_at: float = 0.0
     recent: list[list[Any]] = field(default_factory=list)
     traits: dict[str, list[str]] = field(default_factory=dict)
-    notice: str = ""
     events: list[str] = field(default_factory=list)
 
     @classmethod
@@ -171,7 +170,6 @@ def misbehaved(rec: Rec, event: str, now: float, scale: float = 1.0) -> bool:
     if before == State.ESTABLISHED:
         if short >= WATCH_AT:
             _move(rec, State.WATCH, now)
-            rec.notice = "queued"
             return True
     elif before in (State.UNKNOWN, State.WATCH):
         if short >= BAD_AT:
@@ -199,7 +197,7 @@ def clean_run(rec: Rec, now: float, recover: int = RECOVER_CLEAN) -> None:
     if state == State.UNKNOWN and short_score(rec, now) < WATCH_AT:
         _move(rec, _standing(rec, now), now)
     elif state == State.WATCH and rec.streak >= recover:
-        rec.recent, rec.notice = [], ""
+        rec.recent = []
         _move(rec, _standing(rec, now), now)
     elif state == State.BAD and rec.streak >= 3 * recover:
         rec.recent, rec.streak = [], 0

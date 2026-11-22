@@ -47,15 +47,12 @@ Reads run without asking: `serve_status`, `models_find`, `models_files`, `models
 `doctor`, `jobs_status`, `jobs_wait`, and `review_view` (status, held items, events, hosts,
 downloads, scanners of the security review, as JSON).
 
-Each of these asks you, naming the arguments (and any path outside Poolhouse's state
-directory): `serve_up`, `serve_down`, `serve_escalate`, `models_fetch`, `bench_run`,
-`bench_standard`, `bench_speed`, `bench_compare`, `bench_animate`. The question offers
-`1) allow this time`, `2) always allow` and `3) never allow`; Enter, no answer, EOF or
-anything else is a no. Always and never become saved rules (`docs/agent-roles.md`), only on your
-own typed answer, and always is not offered for a downloaded model, a path outside Poolhouse's
-state, a wildcard value or a run that has read outside text. There is no `--yes`; an allow this
-time does not cover the next call; an answer to the model's own question (`ask_user`) is not an
-answer to a call.
+Each of these changes something or costs something, and nothing asks anyone: `serve_up`, `serve_down`, `serve_escalate`, `models_fetch`,
+`bench_run`, `bench_standard`, `bench_speed`, `bench_compare`, `bench_animate`. A call runs at once when a saved always rule allows it or
+the plan the model stated before it names it (the plan goes at once and covers each call it names once), and is refused at once, with the
+reason, otherwise. Always and never rules are saved only from your own typed `/rules` command, and an always rule is not accepted for a downloaded
+model, a path outside Poolhouse's state, a wildcard value or a run that has read outside text. There is no `--yes`; a plan covers a call once;
+an answer to the model's own question (`ask_user`) is not an answer to a call.
 
 Not offered at all: releasing or purging quarantine, approving a host, minting a human grant,
 changing the sentinel mode or the scan policy, planting baselines or decoys, the workspace and

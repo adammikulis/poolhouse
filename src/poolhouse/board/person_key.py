@@ -61,15 +61,16 @@ def kept(state: Path) -> bool:
 
 
 def enrolled(client: Client, carrier: Session) -> SigningKeys:
-    """This device's key, made on first use and enrolled on the node when the node holds none: ``carrier`` is the device's own session, the only one
-    the node lets make the first key. `Denied` when the node holds another key."""
+    """This device's key, made on first use and enrolled on the node when the node holds no key of this computer (a phone's, enrolled first, does
+    not count: the node enrols this computer's own key by its own prompt, so nothing waits for a phone). ``carrier`` is the device's own session,
+    the only one the node lets make that key. `Denied` when the node holds another key made on this computer."""
     key = keys(client.state)
-    held = grants.listing(carrier).persons
-    if not held:
+    if grants.fingerprint(key.public) not in grants.listing(carrier).persons:
         about = "".join(c for c in socket.gethostname() if c.isascii() and c.isprintable())[:40] or "this device"
-        grants.enrol_first(client, carrier.token, key, about)
-    elif grants.fingerprint(key.public) not in held:
-        raise Denied("denied", "this node already holds another key: carry this device's key over with `person-proof` and `person-enroll`")
+        try:
+            grants.enrol_first(client, carrier.token, key, about)
+        except Denied as err:
+            raise Denied("denied", "this node already holds another key made on this computer: carry this device's key over with `person-proof` and `person-enroll`") from err
     return key
 
 

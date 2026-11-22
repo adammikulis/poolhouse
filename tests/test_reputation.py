@@ -1,4 +1,4 @@
-"""Reputation of sources: the two timescales, the divergence step to watch and its one notice,
+"""Reputation of sources: the two timescales, the divergence step to watch,
 decay with a floor, recovery, the encrypted store and the human-only command."""
 
 from __future__ import annotations
@@ -9,10 +9,8 @@ import pytest
 
 from poolhouse import authority, caller, home
 from poolhouse.reputation import cli, model
-from poolhouse.reputation.notice import BLOCK, BUTTONS, LATER, WATCHING, Notifier
 from poolhouse.reputation.store import MAX_EVENTS, MAX_SOURCES, Ledger
 from poolhouse.sentinel import observers
-from poolhouse.sentinel.heads_up import Wires
 from tests import memory_keys
 
 ring = memory_keys.ring
@@ -52,12 +50,9 @@ def make_established(ledger, clock, kind="host", key="good.example"):
 
 
 def test_a_source_with_a_long_clean_history_steps_to_watch_on_the_first_deviation(ledger, clock):
-    notices = []
-    ledger.on_notice = lambda: notices.append(1)
     make_established(ledger, clock)
     held = ledger.observe("host", "good.example", "hash_change")
-    assert held.state == "watch" and notices == [1]
-    assert ledger.queued()[0].key == "good.example"
+    assert held.state == "watch"
 
 
 def test_a_new_certificate_is_the_same_deviation(ledger, clock):
@@ -68,11 +63,9 @@ def test_a_new_certificate_is_the_same_deviation(ledger, clock):
     assert ledger.standing("host", "good.example").state == "watch"
 
 
-def test_an_unknown_source_with_the_same_event_is_only_bad_and_raises_no_notice(ledger):
-    notices = []
-    ledger.on_notice = lambda: notices.append(1)
+def test_an_unknown_source_with_the_same_event_is_only_bad(ledger):
     held = ledger.observe("host", "new.example", "hash_change")
-    assert held.state == "bad" and notices == [] and ledger.queued() == []
+    assert held.state == "bad"
 
 
 def test_a_second_event_takes_a_watched_source_to_bad(ledger, clock):
@@ -119,7 +112,7 @@ def test_waiting_never_restores_a_source_only_a_clean_run_does(ledger, clock, mo
         ledger.clean("host", "good.example")
         clock.advance(model.CLEAN_GAP_S + 1)
     held = ledger.standing("host", "good.example")
-    assert held.state == "established" and held.notice == ""
+    assert held.state == "established"
 
 
 def test_the_clean_run_is_configurable_and_a_bad_source_needs_three_times_as_many(ledger, clock, monkeypatch):
@@ -192,92 +185,14 @@ def test_a_plaintext_summary_holds_counts_and_no_names(ledger, clock):
     assert json.loads(text)["bad"] == 1 and "secretname" not in text
 
 
-# -- the notice --------------------------------------------------------------------------
+# -- no notice, no dialog --------------------------------------------------------------
 
-class Desk:
-    def __init__(self, press=LATER):
-        self.shown, self.press = [], press
-
-    def choose(self, title, body, buttons):
-        self.shown.append((title, body, buttons))
-        return self.press
-
-
-def notifier(tmp_path, ledger, clock, desk, **env):
-    return Notifier(tmp_path / "notified.json", clock=clock, ledger=ledger,
-                    wires=Wires(desk.choose, lambda work: work(), env))
-
-
-def test_each_divergence_gets_its_dialog_with_a_real_button_and_none_is_held_back_or_stacked(tmp_path, ledger, clock):
-    desk = Desk(WATCHING)
-    note = notifier(tmp_path, ledger, clock, desk)
-    ledger.on_notice = note.on_divergence
-    make_established(ledger, clock)
-    make_established(ledger, clock, key="other.example")
-    ledger.observe("host", "good.example", "hash_change")
-    ledger.observe("host", "other.example", "cert_or_key_change")
-    assert len(desk.shown) == 2, "the second source is not kept waiting behind the first one's dialog"
-    _, body, buttons = desk.shown[0]
-    assert buttons == BUTTONS and BLOCK in buttons and "good.example" in body and "other.example" not in body
-    assert "other.example" in desk.shown[1][1]
-    assert note.prompt() == "" and len(desk.shown) == 2
-    assert ledger.standing("host", "good.example").notice == "done"
-
-
-def test_the_block_button_tightens_and_later_asks_again(tmp_path, ledger, clock):
-    desk = Desk(LATER)
-    note = notifier(tmp_path, ledger, clock, desk)
+def test_a_divergence_makes_the_source_watched_and_asks_nobody(ledger, clock):
     make_established(ledger, clock)
     ledger.observe("host", "good.example", "hash_change")
-    assert note.prompt() == LATER
-    clock.advance(600)
-    assert note.prompt() == ""
-    clock.advance(5 * 3600)
-    desk.press = BLOCK
-    assert note.prompt() == BLOCK
-    assert ledger.standing("host", "good.example").state == "bad"
-
-
-def test_a_second_source_that_diverges_right_after_a_dialog_is_asked_at_once(tmp_path, ledger, clock):
-    desk = Desk(LATER)
-    note = notifier(tmp_path, ledger, clock, desk)
-    make_established(ledger, clock)
-    make_established(ledger, clock, key="other.example")
-    ledger.observe("host", "good.example", "hash_change")
-    assert note.prompt() == LATER
-    ledger.observe("host", "other.example", "cert_or_key_change")
-    assert note.prompt() == LATER and len(desk.shown) == 2
-    assert "other.example" in desk.shown[1][1] and "good.example" not in desk.shown[1][1], "Later put off only the source it showed"
-
-
-def test_a_notice_nobody_answered_is_asked_again_at_the_next_poll(tmp_path, ledger, clock):
-    desk = Desk("timeout")
-    note = notifier(tmp_path, ledger, clock, desk)
-    make_established(ledger, clock)
-    ledger.observe("host", "good.example", "hash_change")
-    assert note.prompt() == "timeout"
-    assert note.prompt() == "timeout" and len(desk.shown) == 2
-
-
-def test_two_processes_raise_one_dialog(tmp_path, clock):
-    path = tmp_path / "rep" / "graph.enc"
-    a, b = Ledger(path, clock=clock, flush_s=0), Ledger(path, clock=clock, flush_s=0)
-    desk = Desk(WATCHING)
-    one = notifier(tmp_path, a, clock, desk)
-    two = notifier(tmp_path, b, clock, desk)
-    make_established(a, clock)
-    a.observe("host", "good.example", "hash_change")
-    assert one.prompt() == WATCHING and two.prompt() == "" and len(desk.shown) == 1
-
-
-def test_notify_off_shows_nothing_and_the_notice_waits_in_the_summary(tmp_path, ledger, clock):
-    desk = Desk()
-    note = notifier(tmp_path, ledger, clock, desk, POOLHOUSE_NOTIFY="off")
-    ledger.on_notice = note.on_divergence
-    make_established(ledger, clock)
-    ledger.observe("host", "good.example", "hash_change")
-    assert desk.shown == [] and note.prompt() == ""
-    assert ledger.queued() and json.loads((ledger.path.parent / "summary.json").read_text())["notices"] == 1
+    held = ledger.standing("host", "good.example")
+    assert held.state == "watch" and not hasattr(held, "notice")
+    assert "notices" not in json.loads((ledger.path.parent / "summary.json").read_text())
 
 
 # -- the command ------------------------------------------------------------------------------------

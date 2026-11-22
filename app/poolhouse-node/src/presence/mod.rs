@@ -167,7 +167,10 @@ pub fn call(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) 
             }
             node.firsts.ask_card(purpose, &by, text(p, "card")?, &terminal, now)?;
         } else {
-            if !node.persons.is_empty() {
+            // This computer's own key is enrolled by this prompt unless one is enrolled already, even when a phone's key came first, so that the
+            // computer never waits for a phone; a phone, or another key, is approved by a key that is enrolled.
+            let held = if purpose == Purpose::Key { node.persons.has_computer_key() } else { !node.persons.is_empty() };
+            if held {
                 return Err(Error::Denied("A person key is enrolled already: a further key or phone is approved by one that is, not by this prompt.".into()));
             }
             node.firsts.ask(purpose, &by, text(p, "public")?, &terminal, now)?;

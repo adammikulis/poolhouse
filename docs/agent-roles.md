@@ -28,8 +28,8 @@ that names one is refused to an agent with the command the owner runs outside th
 A plan step names a tool first and every value the call will carry
 (`bench_run ["run", "quince-2b.gguf", "--sample", "10"]`). A plan goes at once and covers a call when
 the tool matches and each of its values appears in a step; the step then covers that one call.
-A call outside the plan is refused. A run that has read text from outside (a model card, a log)
-refuses every acting call whatever the role, and a plan made after that text was read covers
+A call outside the plan is refused. A run that has read text from outside this machine (a Hub search or file listing, a web page,
+transcribed speech: `chatpolicy.OUTSIDE`), or a listing of this machine that reads like an instruction, refuses every acting call whatever the role, and a plan made after that text was read covers
 nothing: only an always rule set to apply after outside text (`/rules tainted N`) lets a call run
 then, and the taint rail still judges each value. A path outside Poolhouse's state is always refused.
 A call the destructive-action classifier labels destructive or unsure is refused in every role, and no

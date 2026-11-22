@@ -98,7 +98,7 @@ it from a caller: it records the level in `persons.json` when the key is enrolle
 and a charter that lists a key at a higher level is refused. A key added later carries the level the keys at the floor signed. **A key counts
 for a class of act only at or above the charter's floor for it** (routine, sensitive, governance; by default the lowest level present for routine and
 the highest for sensitive and governance, so a pool founded by a phone keeps every floor at `phone`). Removing a member is a sensitive act. What only
-`computer` keys sign waits: a governance act is held seven days, and an irreversible data act waits a day for a key to cancel it. A weak key may sign only the end of a delegate (a
+`computer` keys sign waits: a governance act is held seven days (a file delete waits for nothing: it goes to a trash for seven days). A weak key may sign only the end of a delegate (a
 reduction of power); it counts toward nothing else, because it proves less than that a person was there. `pool_status` carries the `levels` of the listed keys, the `floors` and `approved_from`; a charter that lists no admin key above `weak` founds no pool.
 
 **Roles.** `admin` signs and counts as above. `recovery` is a key kept offline (a phrase the person writes down, or a second phone

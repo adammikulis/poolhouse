@@ -105,9 +105,9 @@ def _port() -> Arg:
 
 def poolhouse_tools() -> Sinks:
     """The sinks for the `poolhouse.mcp` tools and the `poolhouse.chat` loop's own."""
-    reads = ("models_find", "models_files", "ollama_models", "speech_transcribe", "fleet_members")
+    reads = ("models_find", "models_files", "speech_transcribe", "fleet_members")
     local = ("serve_status", "bench_status", "bench_history", "bench_show", "setup_look",
-             "speech_providers", "doctor", "decide", "models_on_disk",
+             "speech_providers", "doctor", "decide", "models_on_disk", "ollama_models",
              "jobs_status", "jobs_wait")
     sinks = Sinks().with_reads(reads).with_reads(local, result="local")
     return sinks.with_(

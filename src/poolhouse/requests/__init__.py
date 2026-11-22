@@ -4,7 +4,7 @@
                                                  ("allow-once", "deny")))
     outcome = handle.outcome()      # the state now; outcome.approved is true only for an approving answer
 
-A terminal, the UI and the desktop dialog are three ways to answer the same request: the first
+A terminal and the UI are two ways to answer the same request: the first
 answer wins and a later one is refused as already resolved. An answer is bound to the fingerprint
 of the words shown, and the `requests.answer` gate decides at once whether the caller may answer
 (`AgentRefused` for an agent while the gate is held back). Nothing in an agent's call path waits for

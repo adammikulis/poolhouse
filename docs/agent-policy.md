@@ -37,8 +37,9 @@ primary checkout is on; `main` is never it); promotion to `main`, tags, releases
 - A promotion is a pull request from a frozen `promote/<date>` snapshot of development, opened by the agent and merged
   by it only when the automatic release check above passes for that pull request's head SHA.
 - Never push with force, delete a remote ref, or push `--all` or tags.
-- `scripts/hooks/pre-push` lets an agent push the development branch and nothing else, and lets the owner's own push
-  through. An agent is a process under the marker variable `CLAUDECODE` (docs/claude-code.md, "Hooks and settings") or a harness
+- `scripts/hooks/pre-push` lets an agent push the development branch, a `promote/<date>` snapshot and `main`, and lets the owner's own push
+  through. A push to `main` is allowed exactly when `poolhouse.workspace.release_check` allows it for the commit pushed (a standing independent
+  land-review accept on that exact commit and a clean checkout) and is refused at once with its reason otherwise, the same answer the Bash guard gives. An agent is a process under the marker variable `CLAUDECODE` (docs/claude-code.md, "Hooks and settings") or a harness
   process; a terminal is neither.
 
 ### Tests never reach the real machine

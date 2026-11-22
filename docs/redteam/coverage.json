@@ -1,7 +1,7 @@
 {
- "surfaces": 893,
+ "surfaces": 891,
  "by_status": {
-  "covered": 574,
+  "covered": 572,
   "partial": 183,
   "uncovered": 51,
   "n/a": 85,
@@ -51,7 +51,7 @@
    "unmapped": 0
   },
   "human": {
-   "covered": 61,
+   "covered": 60,
    "partial": 0,
    "uncovered": 0,
    "n/a": 1,
@@ -79,7 +79,7 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 90,
+   "covered": 89,
    "partial": 0,
    "uncovered": 47,
    "n/a": 0,
@@ -1250,9 +1250,10 @@
    "attacker": "attacker text reaches a dialog, notification or shell command",
    "status": "covered",
    "tests": [
-    "tests/test_redteam_dialog.py"
+    "tests/test_lan.py",
+    "tests/test_sentinel_automatic_holds.py"
    ],
-   "note": ""
+   "note": "nothing raises a dialog any more (a sentinel hold ends by itself): test_sentinel_automatic_holds fails if one opens, test_lan covers where the helper may show anything"
   },
   {
    "id": "desktop:desktop.py:_notify_send",
@@ -1262,9 +1263,10 @@
    "attacker": "attacker text reaches a dialog, notification or shell command",
    "status": "covered",
    "tests": [
-    "tests/test_redteam_dialog.py"
+    "tests/test_lan.py",
+    "tests/test_sentinel_automatic_holds.py"
    ],
-   "note": ""
+   "note": "nothing raises a dialog any more (a sentinel hold ends by itself): test_sentinel_automatic_holds fails if one opens, test_lan covers where the helper may show anything"
   },
   {
    "id": "desktop:desktop.py:choose",
@@ -1274,9 +1276,10 @@
    "attacker": "attacker text reaches a dialog, notification or shell command",
    "status": "covered",
    "tests": [
-    "tests/test_redteam_dialog.py"
+    "tests/test_lan.py",
+    "tests/test_sentinel_automatic_holds.py"
    ],
-   "note": ""
+   "note": "nothing raises a dialog any more (a sentinel hold ends by itself): test_sentinel_automatic_holds fails if one opens, test_lan covers where the helper may show anything"
   },
   {
    "id": "desktop:desktop.py:which_way",
@@ -1286,9 +1289,10 @@
    "attacker": "attacker text reaches a dialog, notification or shell command",
    "status": "covered",
    "tests": [
-    "tests/test_redteam_dialog.py"
+    "tests/test_lan.py",
+    "tests/test_sentinel_automatic_holds.py"
    ],
-   "note": ""
+   "note": "nothing raises a dialog any more (a sentinel hold ends by itself): test_sentinel_automatic_holds fails if one opens, test_lan covers where the helper may show anything"
   },
   {
    "id": "desktop:fleet/autostart.py:_windows_install",
@@ -4215,23 +4219,6 @@
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
   },
   {
-   "id": "human:sentinel/heads_up.py:HeadsUp._release",
-   "kind": "human",
-   "source": "sentinel/heads_up.py:HeadsUp._release",
-   "trust": "an agent process or a member",
-   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
-    "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
-    "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
    "id": "human:sentinel/permit.py:Permit.check",
    "kind": "human",
    "source": "sentinel/permit.py:Permit.check",
@@ -7117,20 +7104,6 @@
    "id": "parser:sentinel/events.py",
    "kind": "parser",
    "source": "sentinel/events.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_sentinel_store.py",
-    "tests/test_redteam_memory.py",
-    "tests/test_memory_vault.py::test_flipping_any_byte_of_the_ciphertext_or_header_is_detected"
-   ],
-   "note": ""
-  },
-  {
-   "id": "parser:sentinel/heads_up.py",
-   "kind": "parser",
-   "source": "sentinel/heads_up.py",
    "trust": "files, pages and archives from outside",
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
    "status": "covered",

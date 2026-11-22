@@ -43,7 +43,6 @@ class Standing:
     long: float
     clean: int
     streak: int
-    notice: str
     first: float
     last: float
     traits: dict[str, list[str]]
@@ -63,14 +62,13 @@ def recover_after() -> int:
 
 
 class Ledger:
-    """What is known about every source, encrypted at rest. ``on_notice`` is called, outside
-    the store, after a source diverges. ``flush_s`` is how long clean runs wait to be written."""
+    """What is known about every source, encrypted at rest. ``flush_s`` is how long clean runs wait to be written."""
 
     def __init__(self, path: Path | None = None, *, clock: Callable[[], float] = time.time,
                  keys: vault.Keys | None = None,
-                 on_notice: Callable[[], None] | None = None, flush_s: float = FLUSH_S) -> None:
+                 flush_s: float = FLUSH_S) -> None:
         self.sealed = SealedGraph(path, keys=keys)
-        self.clock, self.on_notice, self.flush_s = clock, on_notice, flush_s
+        self.clock, self.flush_s = clock, flush_s
         self._pending: dict[tuple[str, str], float] = {}
         self._flushed = clock()
 
@@ -91,7 +89,7 @@ class Ledger:
 
     def _standing(self, rec: Rec, now: float) -> Standing:
         return Standing(rec.kind, rec.key, rec.state, rec.since, model.short_score(rec, now),
-                        model.long_score(rec, now), rec.clean, rec.streak, rec.notice, rec.first,
+                        model.long_score(rec, now), rec.clean, rec.streak, rec.first,
                         rec.last, rec.traits, rec.recent)
 
     def standing(self, kind: str, key: str) -> Standing | None:
@@ -151,33 +149,23 @@ class Ledger:
     def _summary(self, g: GraphStore) -> None:
         held = [Rec.from_attrs(n["attrs"]) for n in g.nodes("source")]
         counts = {s.value: sum(r.state == s for r in held) for s in State}
-        counts["notices"] = sum(r.notice == "queued" for r in held)
         files.write_json(self.path.with_name("summary.json"), files.versioned(counts, SCHEMA_VERSION),
                          indent=None)
 
     def _edit(self, steps: list[Step]) -> list[Any]:
         """Apply each ``(kind, key, change)`` to its source (made when new) in one sealed write."""
-        diverged = False
 
         def run(g: GraphStore) -> list[Any]:
-            nonlocal diverged
             out = []
             for kind, key, change in steps:
                 rec = self._load(g, kind, key) or Rec.new(kind, key, self.clock())
                 out.append(change(rec, g))
-                diverged = diverged or out[-1] is True
                 self._write(rec, g)
             self._evict(g)
             self._summary(g)
             return out
 
-        done = self.sealed.edit(run)
-        if diverged and self.on_notice is not None:
-            try:
-                self.on_notice()
-            except (OSError, ValueError, RuntimeError) as exc:
-                logger.warning("reputation notice failed: %s", type(exc).__name__)
-        return done
+        return self.sealed.edit(run)
 
     def _pending_steps(self) -> list[Step]:
         taken, self._pending = self._pending, {}
@@ -226,24 +214,6 @@ class Ledger:
 
         self._edit([*self._pending_steps(), (kind, model.normal(kind, key), note)])
 
-    def block(self, kind: str, key: str) -> None:
-        """Put a source in bad now (the dialog's Block button)."""
-        def to_bad(rec: Rec, _g: GraphStore) -> None:
-            rec.state, rec.since, rec.notice, rec.streak = State.BAD, self.clock(), "done", 0
-
-        self._edit([(kind, model.normal(kind, key), to_bad)])
-
-    def settle_notice(self, kind: str, key: str, notice: str) -> None:
-        """Set where a source's notice stands (``queued``, ``shown`` or ``done``)."""
-        def mark(rec: Rec, _g: GraphStore) -> None:
-            rec.notice = notice
-
-        self._edit([(kind, model.normal(kind, key), mark)])
-
-    def queued(self) -> list[Standing]:
-        """The sources with a divergence notice waiting, oldest first."""
-        return sorted((s for s in self.sources() if s.notice == "queued"), key=lambda s: s.since)
-
     # -- the person's ------------------------------------------------------------------
     def forget(self, kind: str, key: str) -> bool:
         """Delete one source and the events tied to it; true when it was held."""
@@ -288,4 +258,4 @@ class Ledger:
         held = self.sources()
         return {"status": self.sealed.status, "path": str(self.path), "sources": len(held),
                 "limit": MAX_SOURCES, "by_state": {s.value: sum(h.state == s for h in held) for s in State},
-                "notices": sum(h.notice == "queued" for h in held), "encrypted": True}
+                "encrypted": True}

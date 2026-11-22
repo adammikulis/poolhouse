@@ -130,6 +130,12 @@ impl Persons {
         self.keys.is_empty()
     }
 
+    /// Whether a key made on a computer is enrolled: any key whose claim is not a phone's own. A phone enrolled first leaves this false, so
+    /// this computer's own key is still enrolled by its own prompt, with no phone to tap.
+    pub fn has_computer_key(&self) -> bool {
+        self.keys.values().any(|k| k.claim.method != crate::gov::keys::Method::PhoneKeystore)
+    }
+
     pub fn all(&self) -> &BTreeMap<String, Key> {
         &self.keys
     }

@@ -562,7 +562,6 @@
   "tests/test_sentinel_decoy_endpoint.py": 2.0,
   "tests/test_sentinel_detect.py": 6.2,
   "tests/test_sentinel_explain.py": 2.1,
-  "tests/test_sentinel_heads_up.py": 3.0,
   "tests/test_sentinel_heal.py": 5.9,
   "tests/test_sentinel_inert.py": 0.0,
   "tests/test_sentinel_integration.py": 7.0,
