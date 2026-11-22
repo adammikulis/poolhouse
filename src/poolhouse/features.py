@@ -18,7 +18,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from poolhouse import authority, home
+from poolhouse import authority, caller, home
 from poolhouse.files import read_json, write_json
 
 __all__ = ["FEATURES", "FLOORS", "STAGES", "Feature", "UnknownFeature", "enabled", "listing", "register", "switch", "turned_off"]
@@ -137,7 +137,7 @@ def switch(name: str, on: bool, *, root: str = "") -> bool:
     held = _file(path)
     before = _held(root).get(name) is True
     write_json(path, {**held, "features": {**_held(root), name: on}})
-    authority.record("features.set", by=os.environ.get(ACTOR_ENV) or "", feature=name,
+    authority.record("features.set", by=os.environ.get(ACTOR_ENV) or caller.who(), feature=name,
                      stage=FEATURES[name].stage, changed=before != on, to=on)
     return before != on
 

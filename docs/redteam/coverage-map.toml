@@ -1253,7 +1253,7 @@ tests = ["tests/test_sandbox_redteam.py", "tests/test_pdf_engine.py", "tests/tes
 [[group]]
 match = ["spawn:checks.py:ask"]
 status = "covered"
-tests = ["tests/test_redteam_spawn.py::test_the_only_shell_line_is_one_the_person_was_shown_and_confirmed"]
+tests = ["tests/test_redteam_spawn.py::test_a_fix_line_is_shown_and_runs_only_when_asked_for_with_yes_and_never_through_a_shell"]
 
 [[group]]
 match = ["spawn:jobs.py:detach", "spawn:serve/backend.py:launch", "spawn:bench/queue.py:*",

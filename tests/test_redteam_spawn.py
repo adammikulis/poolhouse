@@ -52,19 +52,19 @@ def finding(marker: Path) -> checks.Finding:
     return checks.Finding(name="x", good=False, said="broken", fix=["touch", str(marker)])
 
 
-def test_the_only_shell_line_is_one_the_person_was_shown_and_confirmed(tmp_path, monkeypatch):
+def test_a_fix_line_is_shown_and_runs_only_when_asked_for_with_yes_and_never_through_a_shell(tmp_path, monkeypatch, capsys):
     marker = tmp_path / "ran"
-    monkeypatch.setattr("sys.stdin", types.SimpleNamespace(isatty=lambda: False))
-    checks.ask([finding(marker)])
-    assert not marker.exists()
-    monkeypatch.setattr("sys.stdin", types.SimpleNamespace(isatty=lambda: True))
-    for refusal in ("", "n", "no", "yes please", "y; rm -rf ~"):
-        monkeypatch.setattr("builtins.input", lambda _prompt="", said=refusal: said)
+    for terminal in (False, True):
+        monkeypatch.setattr("sys.stdin", types.SimpleNamespace(isatty=lambda terminal=terminal: terminal))
+        monkeypatch.setattr("builtins.input", lambda _prompt="": pytest.fail("nothing is asked"))
         checks.ask([finding(marker)])
-        assert not marker.exists(), refusal
-    monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
-    checks.ask([finding(marker)])
-    assert marker.exists()
+        assert not marker.exists(), "shown, not run, whatever the terminal"
+    assert f"fix: touch {marker}" in capsys.readouterr().out
+    checks.ask([finding(marker)], yes=True)
+    assert marker.exists(), "asked for with yes, the shown line runs"
+    hostile = tmp_path / "ran; touch injected"
+    checks.ask([finding(hostile)], yes=True)
+    assert hostile.exists() and not (tmp_path / "injected").exists(), "the argument is one argument: no shell splits it"
 
 
 class Recorded:

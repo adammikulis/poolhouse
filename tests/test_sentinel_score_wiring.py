@@ -102,7 +102,8 @@ def test_a_release_lifts_a_frozen_session_and_the_count_starts_again() -> None:
     assert not node.session_frozen("s-rel")
     ok = denied_run("s-rel", 2, page="an ordinary page")
     assert ok[-1].reason != "denied"
-    assert node.store.state_of("session", "s-rel") == State.RELEASED, "two denials re-froze it"
+    assert node.store.state_of("session", "s-rel") != State.QUARANTINED and not node.session_frozen("s-rel"), "two denials re-froze it"
+    assert node.score.value("session", "s-rel") < QUARANTINE_AT, "the count started again at the release"
 
 
 @pytest.fixture

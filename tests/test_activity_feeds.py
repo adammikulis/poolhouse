@@ -34,17 +34,17 @@ def kinds():
     return [(e.kind, e.subject, e.outcome) for e in entries()]
 
 
-# -- chat tool calls and confirmations ------------------------------------------------------------
+# -- chat tool calls and the rules that decide them ----------------------------------------------
 def test_a_tool_call_is_recorded_with_its_outcome_and_argument_names_never_its_values(person):
-    chat_, _m, seen, _out = session([call("serve_up", model=BODY, port=8080), "done"], "1\n")
+    step = f"serve_up {BODY} 8080"
+    chat_, _m, seen, _out = session([call("plan", steps=[step]), call("serve_up", model=BODY, port=8080), "done"],
+                                    role="plan-and-go")
     chat_.turn("start it")
     assert seen
-    by_kind = {e.kind: e for e in entries()}
-    tool = by_kind["agent.tool_call"]
-    assert (tool.subject, tool.outcome, tool.refs["role"]) == ("serve_up", "ok", "approve-first")
+    tool = next(e for e in entries() if e.kind == "agent.tool_call" and e.subject == "serve_up")
+    assert (tool.subject, tool.outcome, tool.refs["role"]) == ("serve_up", "ok", "plan-and-go")
     assert tool.meta["arg_names"] == "model,port" and tool.meta["result_chars"] > 0
-    assert by_kind["approval.asked"].subject == "serve_up"
-    assert by_kind["approval.answered"].outcome == "allow_once"
+    assert not [e for e in entries() if e.kind in ("approval.asked", "approval.answered")], "nothing is asked"
     assert CANARY.encode() not in on_disk(writer.directory())
     assert BODY not in " ".join(repr(e) for e in entries())
 
@@ -64,15 +64,17 @@ def test_a_call_to_a_tool_that_does_not_exist_is_recorded_as_such(person):
         [e.outcome for e in entries() if e.kind == "agent.tool_call"] == ["no_such_tool"]
 
 
-def test_never_allow_records_the_answer_the_rule_saved_and_the_rule_that_later_fired(person):
+def test_a_never_rule_the_person_saved_is_recorded_and_so_is_each_call_it_refuses_at_once(person):
+    from poolhouse import rules as saved
     args = {"model": "m.gguf", "port": 8080}
-    chat_, _m, seen, _out = session([call("serve_up", **args), call("serve_up", **args), "done"], "3\n")
+    saved.Rules().add("serve_up", args, "never", "")
+    chat_, _m, seen, _out = session([call("serve_up", **args), call("serve_up", **args), "done"])
     chat_.turn("start it twice")
     got = kinds()
-    assert ("approval.answered", "serve_up", "never") in got
     assert ("rule.added", "serve_up", "never") in got
-    assert ("approval.rule_fired", "serve_up", "never") in got
-    assert got.count(("approval.asked", "serve_up", "")) == 1 and not seen
+    assert got.count(("approval.rule_fired", "serve_up", "never")) == 2 and not seen
+    assert [e.outcome for e in entries() if e.kind == "agent.tool_call"] == ["blocked", "blocked"]
+    assert not [k for k in got if k[0] in ("approval.asked", "approval.answered")], "nothing is asked"
     added = next(e for e in entries() if e.kind == "rule.added")
     assert added.actor == "person"
 

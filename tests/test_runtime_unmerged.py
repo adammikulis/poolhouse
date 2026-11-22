@@ -82,7 +82,7 @@ def test_bool_only_agent_exception_never_authorizes_source(reviewed):
 def test_person_floor_blocks_each_gate(reviewed, gate):
     granted = approval(reviewed)
     authority.set_state([gate], authority.PERSON, by=granted.actor)
-    with pytest.raises(runtime_source.DeployError, match="for a person"):
+    with pytest.raises(runtime_source.DeployError, match=r"is refused to an agent.*held back from agents"):
         runtime_unmerged.validate(granted, granted.primary, granted.commit)
 
 

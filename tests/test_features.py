@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from poolhouse import authority, features, features_cli
+from poolhouse import authority, caller, features, features_cli
 from poolhouse.fleet.settings import Settings
 
 
@@ -79,7 +79,7 @@ def test_a_switch_is_in_the_authority_audit_log_with_who_did_it(machine, monkeyp
     features.switch("test-runner-extras", False)
     rows = [r for r in authority.audit_rows() if r["event"] == "features.set"]
     assert [(r["by"], r["feature"], r["to"]) for r in rows] == [
-        (authority.PERSON, "test-runner-extras", True), ("claude-abc123", "test-runner-extras", False)]
+        (caller.who(), "test-runner-extras", True), ("claude-abc123", "test-runner-extras", False)]
 
 
 def test_the_command_lists_enables_and_disables(machine, capsys):

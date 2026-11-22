@@ -179,13 +179,13 @@ def test_moved_runtime_state_never_writes_account_command_bridges(routing, tmp_p
 
 def test_missing_session_never_fabricates_shared_install_claims(routing, monkeypatch):
     plan, _ = routing
-    monkeypatch.setattr(runtime_deploy.person, "marked", lambda: False)
+    monkeypatch.setattr(runtime_deploy.caller, "marked", lambda: False)
     with runtime_deploy.owning(runtime_deploy._switch_paths(plan), wait_s=0, who=None) as claimed:
         assert claimed == frozenset()
         expected = runtime_bridges.planned(plan.checkout, plan.commit, plan.launchers)
         with pytest.raises(OSError, match="changed while"):
             runtime_bridges.snapshot(expected, claimed)
-    monkeypatch.setattr(runtime_deploy.person, "marked", lambda: True)
+    monkeypatch.setattr(runtime_deploy.caller, "marked", lambda: True)
     with pytest.raises(runtime_deploy.DeployError, match="authenticated workspace agent"), \
             runtime_deploy.owning(runtime_deploy._switch_paths(plan), wait_s=0, who=None):
         pytest.fail("an agent without a session obtained install claims")

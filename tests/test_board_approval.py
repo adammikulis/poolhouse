@@ -108,16 +108,21 @@ def test_a_request_raised_for_a_key_to_answer_waits_and_a_phone_answers_it_with_
     assert after.returncode == 0 and json.loads(after.stdout)["state"] == "approved" and len(json.loads(after.stdout)["grants"]) == 2
 
 
-def test_on_a_node_whose_only_key_is_a_phones_the_shell_says_why_it_cannot_answer_and_the_phone_still_can(phone_node):
+def test_on_a_node_whose_only_key_is_a_phones_the_shell_enrols_this_devices_key_and_answers_at_once_and_the_phone_still_can(phone_node):
     team = phone_node
     lead = team.member("lead")
     phone = add_phone(team)
+    assert len(grants.listing(team.session(lead)).persons) == 1, "the phone's key is the node's only key"
     done = team.cli("approval", "request", "sync_now", "--json", who=lead)
-    assert done.returncode == 3 and "another key" in json.loads(done.stdout)["error"], done.stdout
-    (waiting,) = json.loads(team.cli("approval", "pending", "--json", who=lead).stdout)
+    assert done.returncode == 0 and json.loads(done.stdout)["state"] == "approved", done.stdout
+    assert len(grants.listing(team.session(lead)).persons) == 2, "this device's own key was enrolled beside the phone's, and no phone had to tap"
+    assert team.cli("approval", "pending", "--json", who=lead).stdout.strip() == "[]", "nothing waits for the phone"
+    made = ask_phone(team, lead, "add_device", "link_write:demo>lab", note="adding the Linux box")
+    assert made.state == approval.PENDING, "a request raised for a key to answer still waits for the phone"
     endpoint = endpoint_of(team)
-    assert endpoint.ok("decide", phone.decision(endpoint.ok("get", {"id": waiting["id"]}, token=phone.token), "approve"))["state"] == "approved"
-    assert [g.action for g in grants.listing(team.session(lead)).grants if g.status == "live"] == ["sync_now"]
+    seen = endpoint.ok("get", {"id": made.id}, token=phone.token)
+    assert endpoint.ok("decide", phone.decision(seen, "approve", pick=made.code))["state"] == "approved"
+    assert {"sync_now", "add_device", "link_write"} <= {g.action for g in grants.listing(team.session(lead)).grants if g.status == "live"}
 
 
 def test_a_deny_from_the_phone_is_a_failed_exit_the_agent_can_relay(phone_node):

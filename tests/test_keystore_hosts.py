@@ -33,7 +33,7 @@ def as_windows(monkeypatch):
 
     monkeypatch.setattr(platform, "is_windows", lambda: True)
     monkeypatch.setattr(platform.subprocess, "run", run)
-    monkeypatch.setattr(keystore.human, "protect", lambda _d: None)
+    monkeypatch.setattr(keystore.permit, "protect", lambda _d: None)
     return ran
 
 

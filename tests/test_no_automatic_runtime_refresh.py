@@ -67,7 +67,7 @@ def test_session_start_notification_does_not_request_runtime_refresh(monkeypatch
     environment = {"POOLHOUSE_WORKSPACE_AGENT": "synthetic-dispatch-only"}
     # This exercises dispatch only; no session is registered and no identity or authority is granted.
     monkeypatch.setattr(helper, "event", lambda stage: {"session_id": "synthetic-event", "model": "label-only"})
-    monkeypatch.setattr(helper, "person", lambda *args: 0)
+    monkeypatch.setattr(helper, "bind_harness", lambda *args: 0)
     monkeypatch.setattr(helper, "session_environment", lambda *args: environment)
     monkeypatch.setattr(helper, "name_session", lambda *args: "synthetic-dispatch-only")
     monkeypatch.setattr(helper, "persist_session", lambda *args: None)

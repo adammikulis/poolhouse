@@ -173,9 +173,11 @@ def test_the_refusal_names_the_command_that_leases():
     assert "poolhouse-serve up MODEL" in done.stderr and "poolhouse-serve down" in done.stderr
 
 
-def test_the_stash_refusal_names_the_stash_free_ways():
+def test_the_stash_refusal_names_the_stash_free_ways(tmp_path):
+    """Run from a folder that is no checkout, so the answer is the guard's own and does not depend on whether the suite runs in the primary
+    checkout (where the worktree rules answer first with their own words) or in a worktree."""
     done = subprocess.run(
-        [sys.executable, str(GUARD)], text=True, capture_output=True,
+        [sys.executable, str(GUARD)], text=True, capture_output=True, cwd=tmp_path,
         input=json.dumps({"tool_name": "Bash", "tool_input": {"command": "git stash"}}))
     assert done.returncode == BLOCKED
     for text in ("shared by every worktree", "wip:", "git restore --source=<parent-sha>",

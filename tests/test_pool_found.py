@@ -93,19 +93,20 @@ def test_the_draft_names_this_device_as_the_pools_first_member_and_the_card_says
     assert "put the computer" in draft["summary"] and "'home'" in draft["summary"], draft["summary"]
 
 
-def test_a_node_whose_only_key_is_a_phones_refuses_this_devices_key_at_once_and_founding_waits_for_nothing(phone_node):
+def test_a_node_whose_only_key_is_a_phones_enrols_this_devices_key_beside_it_and_founding_waits_for_nothing(phone_node):
     add_phone(phone_node)
     admin = person()
     enrol_as_phone_key(phone_node, admin.key)
     session = pool_session(phone_node)
     held = phone_node.client.call("person_keys")["keys"]
     began = time.monotonic()
-    with pytest.raises(Refusal) as refused:
-        founding.found(session, admin, "home", "secure")
-    assert time.monotonic() - began < 20, "nobody was waited for"
-    assert refused.value.then == "stop" and "another key" in refused.value.say and len(refused.value.say) <= 260, refused.value.say
-    assert governance(phone_node)["mode"] == "unfounded"
-    assert phone_node.client.call("person_keys")["keys"] == held, "nothing was enrolled on the way"
+    made = founding.found(session, admin, "home", "secure")
+    assert time.monotonic() - began < 20, "nobody was waited for: no phone tap"
+    assert (made.name, made.already) == ("home", False)
+    gov = governance(phone_node)
+    assert gov["mode"] == "governed" and gov["admins"][0]["claim"]["method"] == "phone-keystore"
+    after = phone_node.client.call("person_keys")["keys"]
+    assert len(after) == len(held) + 1 and {k["fingerprint"] for k in held} < {k["fingerprint"] for k in after}, "this device's own key joined the phone's"
 
 
 def test_a_key_the_node_did_not_hold_counts_for_nothing_when_it_is_enrolled_by_founding_and_no_pool_is_made(workspace_node):

@@ -15,6 +15,8 @@ REPO = Path(__file__).resolve().parent.parent
 SRC = REPO / "src" / "poolhouse"
 
 STANDALONE = {
+    "harnesshook": "the agent harnesses' hook command (`python -m poolhouse.harnesshook pre|post|stop`), named by module in the argv the "
+                   "runtime builds for them (harnessing, pi, task_coding), so no module imports it",
     "harness_claims": "explicit importable launcher-bound claim helpers; no automatic runtime caller",
     "coding": "called by the workspace runner as poolhouse.coding.launch_coding_agent",
     "coding_workspace": "the parent-owned snapshot runner for isolated coding tools; the isolated launcher that calls it "

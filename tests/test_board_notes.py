@@ -7,6 +7,7 @@ from dataclasses import replace
 
 import pytest
 
+from poolhouse import caller
 from poolhouse.board.client import NodeError
 from poolhouse.workspace import limits, notes_cli
 
@@ -109,10 +110,9 @@ def test_a_note_is_verified_only_by_a_session_that_holds_the_grant_and_a_run_tha
     limits.save(root, replace(limits.load(root), verify_allow=[["true"], ["false"]]))
     good = run(node, team.writer, "notes-add", "fact", "Math", "Two and two make four.", "--verify-cmd", "true")
     bad = run(node, team.writer, "notes-add", "fact", "Wrong", "One is two.", "--verify-cmd", "false")
-    refused = node.cli("notes-verify", good["id"], who=team.lead)
-    assert refused.returncode == 3 and "may not record a note verification" in refused.stderr
-    assert run(node, team.lead, "notes-get", good["id"])["trust"] == "agent-claimed"
-    node.allow(team.lead, "note_verify")
-    assert run(node, team.lead, "notes-verify", good["id"])["trust"] == "test-verified"
+    assert run(node, team.lead, "notes-get", good["id"])["trust"] == "agent-claimed", "a note nobody ran is only claimed"
+    assert run(node, team.lead, "notes-verify", good["id"])["trust"] == "test-verified", "the grant is signed at once by policy, then spent"
+    signed = [r for r in caller.audit_rows() if r["event"] == "grant.issued" and r["action"] == "note_verify"]
+    assert len(signed) == 1 and signed[0]["who"].startswith("user "), "and the log says who asked"
     failed = run(node, team.lead, "notes-verify", bad["id"])
     assert failed["trust"] == "agent-claimed" and "exit 1" in failed["status"]
