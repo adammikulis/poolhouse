@@ -259,13 +259,14 @@ def test_no_validation_or_build_helper_runs_during_ref_guard(checkout, tmp_path)
     hook.write_bytes(HOOK.read_bytes())
     for name in ("pushed", "harness-ancestry"):
         helper = copied / name
-        helper.write_text("#!/bin/sh\necho unexpected-helper >&2\nexit 99\n")
+        helper.write_text('#!/bin/sh\necho unexpected-helper >&2\ntouch "$0.ran"\nexit 99\n')
         helper.chmod(0o700)
     sha = git(checkout, "rev-parse", "HEAD")
     result = subprocess.run(["sh", str(hook)], cwd=checkout, text=True, capture_output=True,
                             input=f"HEAD {sha} refs/heads/0.9dev {ZERO}\n",
                             env={**os.environ, "CLAUDECODE": "1"})
     assert result.returncode == 0 and result.stderr == ""
+    assert not list(copied.glob("*.ran")), "a helper ran although the marker already said an agent pushes"
 
 
 @pytest.mark.parametrize("record", ["HEAD\n", "HEAD {sha} refs/heads/0.9dev\n",
