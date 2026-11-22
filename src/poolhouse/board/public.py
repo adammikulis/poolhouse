@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from poolhouse.board import approval as approvals, place, session as sessions
+from poolhouse.board import approval as approvals, autoapprove, place, session as sessions
 from poolhouse.board.approval import Approval, Ask
 from poolhouse.board.client import Client
 from poolhouse.board.tasks import Tasks
@@ -247,13 +247,13 @@ class Board:
         return list(self._session.call("project_list"))
 
     def request_approval(self, asks: Sequence[Ask], *, note: str = "", task: str = "", ttl_s: int = 0, expect_policy: str = "") -> Approval:
-        """Ask for one to eight grants for this session; the `Approval` to wait on.
+        """Ask for one to eight grants for this session; the `Approval`, already decided.
 
-        The node writes the request in plain words and keeps it until a key answers it (`Approval.wait` returns ``pending`` when its time
-        runs out, which is not a failure). ``note`` is your own words (160 plain characters), shown as yours. Policy
-        (`poolhouse.board.autoapprove`, used by `poolhouse-workspace approval request`) answers at once; this call only raises the request.
+        Policy (`poolhouse.board.autoapprove`, the same as `poolhouse-workspace approval request`) answers at once: this device's key signs what
+        the caller may have, and an agent asking for a grant it may not have is refused with the reason before any request exists (`Denied`).
+        ``note`` is your own words (160 plain characters), shown as yours.
         """
-        return approvals.request(self._session, approvals.wire(list(asks), note=note, task=task, ttl_s=ttl_s, expect_policy=expect_policy))
+        return autoapprove.request(self._session, list(asks), note=note, task=task, ttl_s=ttl_s, expect_policy=expect_policy)
 
     def approval(self, handle: str) -> Approval:
         """A request this session made, by its handle."""

@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import node_launch
-from poolhouse.board import person as person_session, phone, presence
+from poolhouse.board import autoapprove, person as person_session, phone, presence
 from poolhouse.board.client import Client, Denied
 from poolhouse.board.session import Session
 from poolhouse.caller import refuse_agent
@@ -82,6 +82,7 @@ def _add(args: argparse.Namespace) -> int:
         raise Denied("denied", "The first phone is added from the code drawn in this terminal, with no image file: a file could be read by any program that runs as you, "
                      "and the first phone is added on the strength of the code alone. Run it again without --image.")
     carrier = person_session.on(client, approval_cli.POOL)
+    autoapprove.ensure_key(client, carrier)  # this device's own key is enrolled first, so a phone is never the only way to answer
     _listening(client, args.port)
     before = {p["id"] for p in phone.phones(carrier)}
     code = _code(client, carrier, bool(client.call("phone_info")["keys"]))
