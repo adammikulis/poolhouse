@@ -259,7 +259,7 @@ def test_no_validation_or_build_helper_runs_during_ref_guard(checkout, tmp_path)
     hook.write_bytes(HOOK.read_bytes())
     for name in ("pushed", "harness-ancestry"):
         helper = copied / name
-        helper.write_text('#!/bin/sh\necho unexpected-helper >&2\ntouch "$0.ran"\nexit 99\n')
+        helper.write_text("import pathlib, sys\nsys.stderr.write('unexpected-helper\\n')\npathlib.Path(sys.argv[0] + '.ran').touch()\nsys.exit(99)\n")
         helper.chmod(0o700)
     sha = git(checkout, "rev-parse", "HEAD")
     result = subprocess.run(["sh", str(hook)], cwd=checkout, text=True, capture_output=True,
