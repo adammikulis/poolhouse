@@ -296,5 +296,6 @@ def register(name: str = "python", *, board: str = "", cwd: str | Path | None = 
     Registering the same name again from the same terminal returns the same session."""
     node = Client()
     where = place.existing(node, Path(cwd) if cwd else None, board)
-    got = sessions.register(node, where, sessions.Native("script", "python", f"{name}-{terminal_id()}"))
-    return Board(sessions.Session(node, where, got.token, got.name))
+    native = sessions.Native("script", "python", f"{name}-{terminal_id()}")
+    got = sessions.register(node, where, native)
+    return Board(sessions.Session(node, where, got.token, got.name, renew=lambda: sessions.register(node, where, native).token))

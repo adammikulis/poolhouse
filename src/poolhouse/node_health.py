@@ -40,13 +40,10 @@ class Refused(ValueError):
         self.code = code
 
 
-class SessionRetired(Refused):
-    """The node does not know the token a session holds: the session was retired or never registered. Asking again with the same
-    token is refused the same way, so this is never retried; only a person can move the session on (`poolhouse-workspace rebind`)."""
-
-
 NOT_KNOWN_WORDS = "the token is not known"
-"""How the node's refusal of a token it does not hold begins (`UNKNOWN_TOKEN` in `poolhouse-node`'s node.rs)."""
+"""How the node's refusal of a token it does not hold begins (`NOT_KNOWN` in `poolhouse-node`'s node.rs). A client that keeps a token
+registers its session again and asks once more when it reads these words: a session the node retired to free its resources, and a token
+of a process tree that ended, are answered so, and nobody is asked to do anything."""
 
 
 def token_unknown(why: Refused) -> bool:

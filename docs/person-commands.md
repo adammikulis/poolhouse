@@ -10,7 +10,6 @@ Refusal shapes: `X is for a person; this process was started by an agent (CLAUDE
 | --- | --- | --- | --- |
 | `poolhouse-workspace phone add` (first phone), `phone remove` | `workspace/phone_cli.py:79,105` | the person key that approves grants | later phones: `phone offer`, an existing phone approves |
 | `grant`, `revoke-grant`, `distrust`, `grants-setup`, `person-enroll`, `person-unenroll`, `person-proof` | `workspace/grants_cli.py:99` | grants of authority | `approval request ACTION`, a phone answers |
-| `rebind HARNESS SESSION` | `grants_cli.py:258`, node `sessions.rs:81` | a session's tokens moving to another terminal | none |
 | `approval decide`, `approval pending --all` | `workspace/approval_cli.py:144,87` | answering with the person key | agents request, status, wait, cancel their own |
 | `poolhouse-workspace chat` | `workspace/cli.py:50` | speaking as the person on the board | none (AGENTS.md section 1) |
 | `mint`, `delegate`; reads of the person record | `scripts/hooks/claude-bash-guard:114-119` | creating identities; the person's key and record | `poolhouse-workspace invite` |
@@ -56,7 +55,7 @@ Refusal shapes: `X is for a person; this process was started by an agent (CLAUDE
 
 - Any command run in an agent's shell is refused, including one the person types: `person.marked()` reads `CLAUDECODE`, `POOLHOUSE_AGENT` and `POOLHOUSE_NONINTERACTIVE` (`person.py:24,32-35`). A person typing a person-only command after `!` in the Claude Code prompt is refused too.
 - `person.require_person()` checks only that stdin and stdout are terminals (`person.py:53-63`), so an agent that unsets the marker and runs under a pseudo-terminal passes every T-AGENT gate that has no typed yes. The marker and the terminal are the only boundary.
-- A session registered from another process lineage gets no grants until a person runs `rebind` (`grants/mod.rs:137`).
+- A session registered while a live sibling runs it spends no grant until that sibling's lineage ends, which needs nobody (`grants/mod.rs`, `lineage_refusal`); `rebind` takes it over at once and is not person-only.
 - Budget raises are refused whenever `CLAUDECODE` is set, even for a person's commit.
 - Silent drops: `keystore.py:151` (no prompt when marked) and `fleet/runtime_paths.py:31` (the daemon token line is left out).
 

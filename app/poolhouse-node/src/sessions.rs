@@ -55,7 +55,10 @@ pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
 fn lookup(node: &mut Node, board: &str, p: &Map<String, Value>) -> Result<Value> {
     let hosted = node.boards.get(board).ok_or_else(|| Error::Denied("this node does not host that board".into()))?;
     match hosted.names.find(text(p, "harness")?, text(p, "session")?) {
-        Some(name) => Ok(json!({"name": name, "incarnation": hosted.names.get(name).expect("found above").incarnation})),
+        Some(name) => {
+            let ident = hosted.names.get(name).expect("found above");
+            Ok(json!({"name": name, "incarnation": ident.incarnation, "parent": ident.parent}))
+        }
         None => Err(Error::Denied("no session of that harness and id is registered on this board".into())),
     }
 }

@@ -171,18 +171,23 @@ class Session:
     named: str = ""
     clock: Callable[[], float] = time.time
     renew: Callable[[], str] | None = None
-    """Registers the harness's native session again and returns its new token: set for the session a harness runs as, so a token the node
-    no longer knows (the session was retired idle or at an earlier end) is replaced by the next command and never sent a person to a terminal."""
+    """Registers the harness's native session again and returns its new token: set for every session a client can name the native session
+    of, so a token the node does not know (the session was retired idle or at an earlier end, or the token's process tree ended) is replaced
+    by the next command, which is sent again once. Nobody is sent to a terminal, a phone or a person."""
 
-    def call(self, method: str, **params: Any) -> Any:
-        """One node method as this session; a token the node does not know is replaced once by `renew` and the call sent again."""
+    def _healed(self, send: Callable[[str], Any]) -> Any:
+        """``send`` with the token; a token the node does not know is replaced once by `renew` and ``send`` is called again."""
         try:
-            return self.client.call(method, self.board, self.token, **params)
+            return send(self.token)
         except Denied as err:
             if self.renew is None or UNKNOWN_TOKEN not in str(err):
                 raise
             self.token = self.renew()
-            return self.client.call(method, self.board, self.token, **params)
+            return send(self.token)
+
+    def call(self, method: str, **params: Any) -> Any:
+        """One node method as this session; a token the node does not know is replaced once by `renew` and the call sent again."""
+        return self._healed(lambda token: self.client.call(method, self.board, token, **params))
 
     @property
     def name(self) -> str:
@@ -211,7 +216,7 @@ class Session:
 
     def register(self, native: Native) -> Registration:
         """Register a native session as a subagent of this token's owner."""
-        return register(self.client, self.board, native, self.token)
+        return self._healed(lambda token: register(self.client, self.board, native, token))
 
     def post(self, to: str, kind: str, body: str, subject: str = "", reply_id: str = "") -> dict[str, Any]:
         """Write a message to ``#general``, ``#announcements``, a room or one session."""
@@ -413,27 +418,13 @@ class Session:
         return self.named
 
 
-def _own_token(client: Client, board: str, native: Native) -> str:
-    """The token this client keeps for the native session, or an empty string."""
-    try:
-        name = str(client.call("session_lookup", board, harness=native.harness, session=native.id)["name"])
-        return credentials.load(client.state, board, name)
-    except Denied:
-        return ""
-
-
 def register(client: Client, board: str, native: Native, parent_token: str = "", *, person: bool = False) -> Registration:
     """Register a native session on ``board`` (as a subagent of ``parent_token``'s owner when given);
-    its token is kept in a private file for later commands. A session registered before keeps presenting its own token, which
-    is how the node takes a session it holds no lineage for. ``person`` registers the person's own session, which the node marks."""
-    own = "" if parent_token else _own_token(client, board, native)
+    its token is kept in a private file for later commands. The node registers a main session from any process: one whose process tree
+    ended moves to this one, a live sibling gets a token of its own, and a session it retired comes back under its name. ``person``
+    registers the person's own session, which the node marks."""
     method, params = ("register_person", {"session": native.id, "proof": credentials.person_secret(client.state)}) if person else ("register", {"model": native.model, "harness": native.harness, "session": native.id})
-    try:
-        got = client.call(method, board, parent_token or own, **params)
-    except Denied:
-        if not own:
-            raise
-        got = client.call(method, board, "", **params)
+    got = client.call(method, board, parent_token, **params)
     credentials.store(client.state, board, got["name"], got["token"], got["parent"])
     return Registration(got["name"], got["token"], got["parent"], got["created"], board)
 
@@ -459,7 +450,15 @@ def _subagent(node: Client, where: str, native: str, agent: str) -> Session:
                      "that started it: hand the result back in the final message")
     if agent and agent != name:
         warn(f"--agent {agent} is not you: running as {name}")
-    return Session(node, where, credentials.load(node.state, where, name), name)
+
+    def renew() -> str:
+        """The subagent registered again by its parent, whose kept token the registration is made with."""
+        parent = str(node.call("session_lookup", where, harness=SUBAGENT_HARNESS, session=native).get("parent", ""))
+        if not parent:
+            raise Denied("denied", f"{name} is a main session of the board, which a subagent does not register again")
+        lead = Session(node, where, credentials.load(node.state, where, parent), parent, renew=_renewer(node, where, parent))
+        return lead.register(Native("", SUBAGENT_HARNESS, native)).token
+    return Session(node, where, credentials.load(node.state, where, name), name, renew=renew)
 
 
 def _named(node: Client, where: str, agent: str) -> Session:
@@ -467,14 +466,14 @@ def _named(node: Client, where: str, agent: str) -> Session:
     that has no token here is registered again from its native session id."""
     own = os.environ.get(AGENT_ENV, "")
     try:
-        return Session(node, where, credentials.load(node.state, where, agent or own), agent or own, renew=_renewer(node, where))
+        return Session(node, where, credentials.load(node.state, where, agent or own), agent or own, renew=_renewer(node, where, agent or own))
     except Denied:
         if (revived := revive(node, where)) is not None and revived.name == (agent or own):
             return revived
         if not (agent and own and agent != own):
             raise
     warn(f"--agent {agent} is not a live session here: running as {own}")
-    return Session(node, where, credentials.load(node.state, where, own), own, renew=_renewer(node, where))
+    return Session(node, where, credentials.load(node.state, where, own), own, renew=_renewer(node, where, own))
 
 
 NATIVE_SESSIONS = (("POOLHOUSE_SESSION_HARNESS", "POOLHOUSE_SESSION_ID"), ("", "CLAUDE_CODE_SESSION_ID"))
@@ -490,39 +489,48 @@ def _native(node: Client, where: str) -> Session | None:
         try:
             name = str(node.call("session_lookup", where, harness=os.environ.get(harness_env, "") or SUBAGENT_HARNESS,
                                  session=native)["name"])
-            return Session(node, where, credentials.load(node.state, where, name), name, renew=_renewer(node, where))
+            return Session(node, where, credentials.load(node.state, where, name), name, renew=_renewer(node, where, name))
         except Denied:
             continue
     return revive(node, where)
 
 
-def _renewer(node: Client, where: str) -> Callable[[], str]:
-    """What a session's `renew` calls: the token of the native session registered again, or the refusal that says why it cannot be."""
+def _renewer(node: Client, where: str, name: str = "") -> Callable[[], str]:
+    """What a session's `renew` calls: the token of the native session registered again. When ``name`` is given the session registered
+    must be that one: a token kept for one session is never replaced by another's."""
     def renew() -> str:
-        if (revived := revive(node, where)) is None:
+        revived = revive(node, where, strict=True)
+        if revived is None:
             raise Denied("denied", "this process runs as no native main session of a harness, so its session cannot be registered again")
+        if name and revived.name != name:
+            raise Denied("denied", f"this process runs as {revived.name}, not as {name}, whose token the node does not know")
         return revived.token
     return renew
 
 
-def revive(node: Client, where: str) -> Session | None:
+def revive(node: Client, where: str, *, strict: bool = False) -> Session | None:
     """The main session this process runs in, registered on ``where`` again from the native session id its harness set, or None when it runs in
     none (a subagent, a Codex thread and a process of no harness have no native main session to register).
 
-    A live session keeps its name and gets a token, and one that ended or was retired idle comes back under its name. The node alone decides
-    who may be registered: a session retired for cause never is, and a session live in another process tree is not taken (`Denied`, None here).
+    The node registers a main session from any process: a live session keeps its name and gets a token, one that ended or was retired idle comes
+    back under its name, one whose process tree ended moves to this one and a live sibling gets a token of its own. What it refuses is a
+    block placed on purpose (a session its parent ended for cause); ``strict`` raises that refusal, otherwise it is None here.
     """
     if os.environ.get(SUBAGENT_ENV, "").strip() or os.environ.get("CODEX_THREAD_ID", "").strip():
         return None
+    refused: Denied | None = None
     for harness_env, id_env in NATIVE_SESSIONS:
         native = os.environ.get(id_env, "").strip()
         if not native:
             continue
         try:
             made = register(node, where, Native("", os.environ.get(harness_env, "") or SUBAGENT_HARNESS, native))
-        except Denied:
+        except Denied as err:
+            refused = err
             continue
-        return Session(node, where, made.token, made.name, renew=_renewer(node, where))
+        return Session(node, where, made.token, made.name, renew=_renewer(node, where, made.name))
+    if strict and refused is not None:
+        raise refused
     return None
 
 
@@ -533,7 +541,9 @@ def _codex(node: Client, where: str, native: str, agent: str, token_file: str) -
     checks remain responsible for privileged operations; this lookup never registers a session.
     """
     name = str(node.call("session_lookup", where, harness="codex", session=native)["name"])
-    actor = Session(node, where, credentials.load(node.state, where, name), name)
+    def renew() -> str:
+        return register(node, where, Native("", "codex", native)).token
+    actor = Session(node, where, credentials.load(node.state, where, name), name, renew=renew)
     identity = actor.whoami()
     if identity.name != name or identity.harness != "codex" or identity.retired:
         raise Denied("denied", "native Codex session has no matching live registration")
@@ -570,7 +580,9 @@ def connect(*, token_file: str = "", agent: str = "", board: str = "", cwd: Path
     if native := os.environ.get(SUBAGENT_ENV, "").strip():
         return _subagent(node, where, native, agent)
     if token_file:
-        return Session(node, where, home.expand(token_file).read_text(encoding="utf-8").strip(), agent or os.environ.get(AGENT_ENV, ""))
+        named = agent or os.environ.get(AGENT_ENV, "")
+        return Session(node, where, home.expand(token_file).read_text(encoding="utf-8").strip(), named,
+                       renew=_renewer(node, where, named) if named else None)
     if agent or os.environ.get(AGENT_ENV, ""):
         return _named(node, where, agent)
     if os.environ.get(TOKEN_ENV, "").strip():

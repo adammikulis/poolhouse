@@ -21,15 +21,14 @@ from poolhouse.board import presence
 from poolhouse.board.client import Client
 from poolhouse.board.session import Session
 
-__all__ = ["DEFAULT_ACTIONS", "POOL_GRANTS", "Grant", "Listing", "MoveSession", "Signs", "Want", "Where", "approval_bytes", "approve", "canonical", "default_bundle", "describe", "duration_ms",
+__all__ = ["DEFAULT_ACTIONS", "POOL_GRANTS", "Grant", "Listing", "Signs", "Want", "Where", "approval_bytes", "approve", "canonical", "default_bundle", "describe", "duration_ms",
            "enrol", "enrol_first", "enrol_line", "enrolment", "fingerprint", "here", "issue", "list_bytes", "listing", "log", "rebind",
-           "rebind_ask", "rebind_finish", "revoke", "sign_approval", "sign_issue", "sign_list", "sign_rebind", "sign_revoke", "sign_unenroll", "unenrol", "want_line", "when"]
+           "revoke", "sign_approval", "sign_issue", "sign_list", "sign_revoke", "sign_unenroll", "unenrol", "want_line", "when"]
 
 SIGN_DOMAIN = b"poolhouse/grant/v1\n"
 ENROLL_DOMAIN = b"poolhouse/person-enroll/v1\n"
 APPROVE_DOMAIN = b"poolhouse/person-approve/v1\n"
 UNENROLL_DOMAIN = b"poolhouse/person-unenroll/v1\n"
-REBIND_DOMAIN = b"poolhouse/session-rebind/v1\n"
 APPROVAL_DOMAIN = b"poolhouse/approval/v1\n"
 LIST_DOMAIN = b"poolhouse/approval-list/v1\n"
 FRESH_MS = 5 * 60 * 1000
@@ -171,14 +170,6 @@ class Where:
     anchor: dict[str, int]
 
 
-@dataclass(frozen=True, slots=True)
-class MoveSession:
-    """The exact session state a signed move names."""
-
-    name: str
-    incarnation: str
-
-
 def terminal(client: Client) -> dict[str, int]:
     """The terminal this process runs in, as the node reads it: the process at the top of its lineage."""
     lineage = client.call("lineage")["lineage"]
@@ -228,32 +219,11 @@ def sign_unenroll(key: Signs, fingerprint_: str, where: Where, *, now_ms: int | 
     return sent | {"sig": key.sign_bytes(UNENROLL_DOMAIN + canonical(body).encode()).hex()}
 
 
-def sign_rebind(key: Signs, board: str, session: MoveSession, where: Where, *, now_ms: int | None = None) -> dict[str, Any]:
-    """The `rebind` params moving the main ``session`` of ``board`` to the process that sends them, on the node and from the
-    terminal ``where`` names, signed by ``key``."""
-    body = {"op": "rebind", "board": board, "name": session.name, "incarnation": session.incarnation, "node": where.node, "nonce": secrets.token_hex(16), "at_ms": _now_ms() if now_ms is None else now_ms,
-            "anchor": where.anchor}
-    _plain(body)
-    return {"at_ms": body["at_ms"], "nonce": body["nonce"], "anchor": where.anchor, "incarnation": session.incarnation, "by": fingerprint(key.public),
-            "sig": key.sign_bytes(REBIND_DOMAIN + canonical(body).encode()).hex()}
-
-
-def rebind(client: Client, board: str, harness: str, session: str, key: Signs) -> dict[str, Any]:
-    """Move the main session ``session`` of ``harness`` on ``board`` to this process's terminal, signed by ``key``; the tokens it held end."""
-    found = client.call("session_lookup", board, harness=harness, session=session)
-    return dict(client.call("rebind", board, "", harness=harness, session=session,
-                            **sign_rebind(key, board, MoveSession(str(found["name"]), str(found["incarnation"])), here(client))))
-
-
-def rebind_ask(client: Client, board: str, harness: str, session: str) -> dict[str, Any]:
-    """Ask a device in a pool to move the main session ``session`` of ``harness`` on ``board`` to this terminal on an admin phone's tap: the
-    request, with the number the person picks on the phone."""
-    return dict(client.call("rebind", board, "", harness=harness, session=session, anchor=terminal(client)))
-
-
-def rebind_finish(client: Client, board: str, harness: str, session: str, approval: str) -> dict[str, Any]:
-    """Carry out the move the request ``approval`` got approved, from this terminal; `moved` is false while the phone has not answered."""
-    return dict(client.call("rebind", board, "", harness=harness, session=session, anchor=terminal(client), approval=approval))
+def rebind(client: Client, board: str, harness: str, session: str) -> dict[str, Any]:
+    """Take the main session ``session`` of ``harness`` on ``board`` over now: it is registered from the terminal this process runs in from now
+    on and the tokens it held end, even when a process of the terminal it had still runs. Nothing is signed or tapped, and nothing requires it:
+    a session registers from any process by itself."""
+    return dict(client.call("rebind", board, "", harness=harness, session=session))
 
 
 def unenrol(client: Client, token: str, key: Signs, fingerprint_: str) -> dict[str, Any]:
@@ -434,12 +404,9 @@ def describe(data: bytes) -> str:
             return f"{DECISION_WORDS.get(str(body['decision']), str(body['decision']).upper())} the request {body['id']} of {body['session'] or 'a phone'} on board {body['board']}, which reads:\n{shown}"
         if domain + b"\n" == LIST_DOMAIN and body["op"] == "approval_list":
             return f"READ every request that waits for you on the node {body['node']}, with the words each one carries, so that you can answer one; good for thirty seconds"
-        if domain + b"\n" == REBIND_DOMAIN and body["op"] == "rebind":
-            return (f"move the session {body['name']} of board {body['board']} to the terminal this command runs in (the shell is process "
-                    f"{body['anchor']['pid']}), on the node {body['node']}, and end the tokens it holds now; once, until {when(body['at_ms'] + FRESH_MS)}")
         if domain + b"\n" == UNENROLL_DOMAIN and body["op"] == "unenroll":
             return (f"take the person key {body['fingerprint']} off the node {body['node']}, signed by the key {body['by']}, once, "
                     f"until {when(body['at_ms'] + FRESH_MS)}, in the terminal whose shell is process {body['anchor']['pid']}")
     except (KeyError, TypeError, AttributeError, ValueError):
         pass
-    raise ValueError("a person key signs a grant, the end of a grant, the enrolment or removal of a key, the move of a session or the answer to a request, and this is none of them")
+    raise ValueError("a person key signs a grant, the end of a grant, the enrolment or removal of a key or the answer to a request, and this is none of them")

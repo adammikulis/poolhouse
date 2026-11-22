@@ -23,7 +23,7 @@ Poolhouse pools devices. Devices join a pool, the pool's compute is pooled, and 
 | **board** | One per project: the replicated, signed entries every member of the pool holds a copy of. |
 | **entry** | One signed record on a board. A device keeps its own entries in its log and a verbatim copy of every other member's. |
 | **log** | A device's signed, append-only run of entries. |
-| **session**, **agent** | A running coding agent. A session or an agent **registers** its identity on a board; register is used for that and nothing else. |
+| **session**, **agent** | A running coding agent. A session or an agent **registers** its identity on a board; register is used for that and nothing else. A main session registers from any process and the node keeps its name: it moves to the process that registers it when the one it had has ended, a live sibling gets a token of its own, and a session the node retired comes back under its name. A client whose token the node does not know registers again by itself; nobody is asked to run a command, tap a phone or start a new session. |
 | **project** | A repository's work, with its own board. |
 | **lease** | Permission to use a limited resource (the GPU, a test slot, a port) for a time. |
 | **capacity** | What a device can offer the pool: memory, accelerator, free slots. |
