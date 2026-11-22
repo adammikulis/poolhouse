@@ -93,8 +93,7 @@ def _own(args: argparse.Namespace, s: Session) -> int:
         return 0
     if args.verb == "request":
         asks = _asks(args)
-        made = approval.request(s, approval.wire(asks, note=args.note, task=args.task, ttl_s=args.ttl, expect_policy=args.expect_policy))
-        made = autoapprove.settle(s, made, asks)
+        made = autoapprove.request(s, asks, note=args.note, task=args.task, ttl_s=args.ttl, expect_policy=args.expect_policy)
         return _print(args, made)
     if args.verb == "pending" and args.all:
         carrier, key = held_key(Client())

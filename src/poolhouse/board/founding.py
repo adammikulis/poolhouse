@@ -109,9 +109,8 @@ def _live(session: Session, name: str) -> bool:
 
 def _card(session: Session, ask: approval.Ask, note: str) -> None:
     """Get the grant ``ask`` at once: this device's key signs it when policy allows, and a refusal says why. Nobody is waited for."""
-    made = approval.request(session, approval.wire([ask], note=note))
     try:
-        made = autoapprove.settle(session, made, [ask])
+        made = autoapprove.request(session, [ask], note=note)
     except Denied as err:
         raise Refusal(str(err).removeprefix("denied: "), needs="none", then="stop") from None
     if made.state != "approved":
