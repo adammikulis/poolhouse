@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from poolhouse import home, sentinel
-from poolhouse.sentinel import State, canary, human, watch
+from poolhouse.sentinel import State, canary, permit, watch
 from poolhouse.serve import LlamaServerBackend, ServerManager, canaries, guarded
 from poolhouse.serve.broker import Ask, Broker
 from poolhouse.serve.leases import recorded_servers
@@ -84,9 +84,8 @@ def rounds(broker) -> tuple[canaries.Canaries, Clock]:
     return canaries.Canaries(sentinel.default(), broker.canary_targets, 3600.0, clock=clock), clock
 
 
-def person(record):
-    return human.mint("release", record.id, typed=lambda _p: record.id, terminal=(True, True),
-                      env={})
+def release_permit(record):
+    return permit.mint("release", record.id, env={})
 
 
 def test_the_first_round_records_a_sealed_baseline_and_a_steady_model_is_left_alone(
@@ -138,7 +137,7 @@ def test_a_large_confirmed_drift_quarantines_the_model_and_a_person_can_restore_
     assert not model.exists(), "the quarantined model was moved aside"
     record = node.store.records(kind="model", state=State.QUARANTINED)[0]
     assert [e.kind for e in node.bus.recent(kind="canary.hard_drift")]
-    node.store.release(record.id, person(record))
+    node.store.release(record.id, release_permit(record))
     assert model.exists() and node.store.state_of("model", str(model)) == State.RELEASED
 
 

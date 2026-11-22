@@ -5,24 +5,23 @@ from __future__ import annotations
 
 import json
 import os
-import pty
-import select
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-from poolhouse import home
-from poolhouse.sentinel import Mode, Sentinel, State, human
-from poolhouse.sentinel.permit import AgentRefused, Permit, agent_may
+from poolhouse import caller, home
+from poolhouse.caller import AgentRefused
+from poolhouse.sentinel import Mode, Sentinel, State, permit
+from poolhouse.sentinel.permit import Permit, agent_may
 from poolhouse.sentinel.store import Holding
 
 SRC = str(Path(__file__).resolve().parent.parent / "src")
 
 
 def grant(action, subject):
-    return human.mint(action, subject, typed=lambda _p: subject, terminal=(True, True), env={})
+    return permit.mint(action, subject, env={})
 
 
 @pytest.fixture
@@ -42,7 +41,7 @@ ATTACKS = [
     ("shell", {"command": "cat $HOME/.poolhouse/sentinel/state.json"}),
     ("write_file", {"path": "/Users/x/.poolhouse/sentinel/config.json", "content": "{}"}),
     ("edit_file", {"path": "src/poolhouse/sentinel/policy.py", "old": "a", "new": "b"}),
-    ("read_file", {"path": "src/poolhouse/sentinel/human.py"}),
+    ("read_file", {"path": "src/poolhouse/sentinel/permit.py"}),
     ("security_release", {"id": "q-1"}),
     ("sentinel_off", {}),
     ("mcp_call", {"server": "x", "args": ["--tool", "sentinel.release", "q-1"]}),
@@ -80,13 +79,14 @@ def test_the_state_directory_is_refused_wherever_it_is_moved(tmp_path, monkeypat
     assert agent_may("read_file", {"path": path})
 
 
-def test_a_grant_cannot_be_built_without_a_person():
+def test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one():
     forged = Permit("release", "q-1", 9e18, object())
-    with pytest.raises(AgentRefused):
+    with pytest.raises(AgentRefused, match="not a permit minted by policy"):
         forged.check("release", "q-1")
-    with pytest.raises(AgentRefused):
-        human.mint("release", "q-1", typed=lambda _p: "q-1", env={"CLAUDECODE": "1"},
-                   terminal=(True, True))
+    for marker in caller.AGENT_MARKERS:
+        with pytest.raises(AgentRefused, match="refused to an agent"):
+            permit.mint("release", "q-1", env={marker: "1"})
+    assert not [r for r in caller.audit_rows() if r["event"] == "ran"]
 
 
 def test_held_content_cannot_reach_a_model_by_any_in_process_path(node):
@@ -145,37 +145,23 @@ def test_a_member_cannot_lift_its_own_block(node):
     assert node.member_blocked("10.9.9.9")
 
 
-def _cli(*argv, env_extra=None, tty=False, answer=""):
+def _cli(*argv, env_extra=None):
     env = {**os.environ, "PYTHONPATH": SRC, **(env_extra or {})}
     code = f"import sys; from poolhouse.sentinel.cli import command; sys.exit(command({list(argv)!r}))"
-    if not tty:
-        return subprocess.run([sys.executable, "-c", code], env=env, capture_output=True,
-                              text=True, stdin=subprocess.DEVNULL, timeout=60)
-    master, slave = pty.openpty()
-    proc = subprocess.Popen([sys.executable, "-c", code], env=env, stdin=slave, stdout=slave,
-                            stderr=slave, close_fds=True)
-    os.close(slave)
-    out = b""
-    sent = False
-    while proc.poll() is None:
-        ready, _, _ = select.select([master], [], [], 0.2)
-        if ready:
-            try:
-                chunk = os.read(master, 4096)
-            except OSError:
-                break
-            out += chunk
-            if not sent and b"type " in out:
-                os.write(master, (answer + "\n").encode())
-                sent = True
-    proc.wait(timeout=30)
-    return subprocess.CompletedProcess(proc.args, proc.returncode, out.decode(errors="replace"), "")
+    return subprocess.run([sys.executable, "-c", code], env=env, capture_output=True,
+                          text=True, stdin=subprocess.DEVNULL, timeout=60)
 
 
 @pytest.fixture
-def cli_env(tmp_path):
+def cli_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "home"))
+    # the gates are as the registry has them (delegated): the suite's floor of `person` is lifted for the child
     return {"POOLHOUSE_HOME": str(tmp_path / "home"), "CLAUDECODE": "", "POOLHOUSE_AGENT": "",
-            "POOLHOUSE_NONINTERACTIVE": "", "POOLHOUSE_SENTINEL": ""}
+            "POOLHOUSE_NONINTERACTIVE": "", "POOLHOUSE_SENTINEL": "", "POOLHOUSE_AUTHORITY_FLOOR": "delegated"}
+
+
+HELD_BACK = {"POOLHOUSE_AUTHORITY_FLOOR": "person"}
+"""The floor variable holds every authority gate back from agents, as `prod` does."""
 
 
 def _seed(tmp_path) -> str:
@@ -183,35 +169,51 @@ def _seed(tmp_path) -> str:
     return node.store.quarantine(("member", "10.2.2.2"), "forged", None).id
 
 
-def test_the_command_line_refuses_release_without_a_terminal(tmp_path, cli_env):
+def _state(tmp_path, ident):
+    return Sentinel(tmp_path / "home" / "sentinel").store.get(ident).state
+
+
+@pytest.mark.parametrize("floor", ["delegated", "person"])
+def test_the_command_line_releases_for_a_process_no_agent_started_with_no_terminal_and_no_prompt(tmp_path, cli_env, floor):
     ident = _seed(tmp_path)
-    done = _cli("quarantine", "release", ident, env_extra=cli_env)
-    assert done.returncode == 2 and "terminal" in done.stderr
-    assert Sentinel(tmp_path / "home" / "sentinel").store.get(ident).state == State.QUARANTINED
+    done = _cli("quarantine", "release", ident, env_extra={**cli_env, "POOLHOUSE_AUTHORITY_FLOOR": floor})
+    assert done.returncode == 0 and f"{ident} released" in done.stdout, (done.stdout, done.stderr)
+    assert _state(tmp_path, ident) == State.RELEASED
+    (ran,) = [r for r in caller.audit_rows() if r.get("action") == f"release {ident}"]
+    assert ran["event"] == ("authority.use" if floor == "delegated" else "ran") and ran["who"].startswith("user ")
 
 
-def test_the_command_line_refuses_release_under_an_agent_even_with_a_terminal(tmp_path, cli_env):
+@pytest.mark.parametrize("marker", ["CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE"])
+def test_the_command_line_refuses_release_to_an_agent_at_once_while_the_gate_is_held_back(tmp_path, cli_env, marker):
     ident = _seed(tmp_path)
-    done = _cli("quarantine", "release", ident, env_extra={**cli_env, "CLAUDECODE": "1"},
-                tty=True, answer=ident)
-    assert done.returncode == 2 and "agent" in done.stdout
-    assert Sentinel(tmp_path / "home" / "sentinel").store.get(ident).state == State.QUARANTINED
+    done = _cli("quarantine", "release", ident, env_extra={**cli_env, **HELD_BACK, marker: "1"})
+    assert done.returncode == 2 and "refused to an agent" in done.stderr + done.stdout and "sentinel.quarantine" in done.stderr + done.stdout
+    assert _state(tmp_path, ident) == State.QUARANTINED
+    refused = [r for r in caller.audit_rows() if r["event"] == "refused"]
+    assert [r["action"] for r in refused] == [f"release {ident}"] and marker in refused[0]["who"]
 
 
-def test_a_person_at_a_terminal_can_release_by_typing_the_id(tmp_path, cli_env):
+def test_a_delegated_gate_lets_an_agent_release_and_the_audit_row_says_an_agent_did(tmp_path, cli_env):
     ident = _seed(tmp_path)
-    wrong = _cli("quarantine", "release", ident, env_extra=cli_env, tty=True, answer="nope")
-    assert wrong.returncode == 2
-    right = _cli("quarantine", "release", ident, env_extra=cli_env, tty=True, answer=ident)
-    assert right.returncode == 0, right.stdout
-    assert Sentinel(tmp_path / "home" / "sentinel").store.get(ident).state == State.RELEASED
+    done = _cli("quarantine", "release", ident, env_extra={**cli_env, "CLAUDECODE": "1"})
+    assert done.returncode == 0, (done.stdout, done.stderr)
+    assert _state(tmp_path, ident) == State.RELEASED
+    (used,) = [r for r in caller.audit_rows() if r["event"] == "authority.use"]
+    assert used["gate"] == "sentinel.quarantine" and used["action"] == f"release {ident}"
+    assert "CLAUDECODE" in used["who"]
 
 
-def test_purge_and_mode_also_need_a_person(tmp_path, cli_env):
+def test_purge_and_mode_run_for_a_process_no_agent_started_and_are_refused_to_an_agent_while_held_back(tmp_path, cli_env):
     ident = _seed(tmp_path)
-    assert _cli("quarantine", "purge", ident, env_extra=cli_env).returncode == 2
-    assert _cli("mode", "off", env_extra=cli_env).returncode == 2
-    assert _cli("mode", env_extra=cli_env).stdout.strip() == "guarded"
+    agent = {**cli_env, **HELD_BACK, "CLAUDECODE": "1"}
+    assert _cli("quarantine", "purge", ident, env_extra=agent).returncode == 2
+    assert _cli("mode", "off", env_extra=agent).returncode == 2
+    assert _cli("mode", env_extra=agent).stdout.strip() == "guarded"
+    assert _state(tmp_path, ident) == State.QUARANTINED
+    assert [r["action"] for r in caller.audit_rows() if r["event"] == "refused"] == [f"purge {ident}", "mode sentinel"]
+    assert _cli("mode", "off", env_extra=cli_env).returncode == 0
+    assert _cli("mode", env_extra=cli_env).stdout.strip() == "off"
+    assert _cli("quarantine", "purge", ident, env_extra=cli_env).returncode == 0
 
 
 def test_a_protected_directory_is_refused_by_its_resolved_and_its_given_name(tmp_path):
@@ -219,6 +221,6 @@ def test_a_protected_directory_is_refused_by_its_resolved_and_its_given_name(tmp
     real.mkdir()
     link = tmp_path / "link-state"
     link.symlink_to(real)
-    human.protect(link)
+    permit.protect(link)
     assert agent_may("read_file", {"path": str(real / "state.json")})
     assert agent_may("read_file", {"path": str(link / "state.json")})

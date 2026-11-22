@@ -186,7 +186,7 @@ def test_no_reputation_code_grants_approves_or_releases():
     from pathlib import Path
 
     root = Path(reputation.__file__).parent
-    banned = {"approve", "mint", "mint_clicked", "mint_pressed", "release", "set_role", "grant"}
+    banned = {"approve", "mint", "mint_gated", "release", "set_role", "grant"}
     for path in root.glob("*.py"):
         for node in ast.walk(ast.parse(path.read_text())):
             name = node.attr if isinstance(node, ast.Attribute) else getattr(node, "id", "")

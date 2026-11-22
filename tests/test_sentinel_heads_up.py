@@ -6,15 +6,16 @@ from __future__ import annotations
 
 import inspect
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-from poolhouse import desktop, home, sentinel
+from poolhouse import caller, desktop, home, sentinel
 from poolhouse.lock import only_one
-from poolhouse.sentinel import heads_up, human
+from poolhouse.sentinel import heads_up
 from poolhouse.sentinel.heads_up import BUTTONS, KEEP, LATER, RELEASE, HeadsUp
 from poolhouse.sentinel.store import State
 
@@ -138,10 +139,9 @@ def test_only_the_exact_label_releases(answer):
     desk = Desk(answer)
     node = wired(desk)
     made = held(node, "10.0.5.1")
+    assert len(desk.shown) == 1, "the dialog was really shown and answered"
     assert node.store.get(made.id).state == State.QUARANTINED
-    assert not [e for e in node.bus.log.read() if e.kind == "quarantine.released"]
-    with pytest.raises(human.AgentRefused):
-        human.mint_clicked("release", made.id, answer=answer, label=RELEASE, env={})
+    assert not [e for e in node.bus.log.read() if e.kind in ("quarantine.released", "sentinel.released_by_dialog")]
 
 
 def test_release_releases_exactly_the_listed_ids_and_logs_them():
@@ -178,7 +178,7 @@ def test_a_record_that_arrives_while_the_dialog_is_open_is_not_released_by_the_c
     assert len(titles) == 2 and "10.0.7.2" in titles[1], "what arrived while the dialog was open is the next dialog, not dropped"
 
 
-@pytest.mark.parametrize("marker", human.AGENT_MARKERS)
+@pytest.mark.parametrize("marker", caller.AGENT_MARKERS)
 def test_an_agent_marker_in_the_environment_refuses_the_release(marker):
     desk = Desk(RELEASE)
     node = wired(desk, **{marker: "1"})
@@ -293,11 +293,12 @@ def test_review_shows_everything_held_now_even_what_was_put_off():
     assert len(desk.shown) == 2 and "2 things" in desk.shown[1][0]
 
 
-def test_the_module_is_the_only_caller_of_the_click_grant_and_exposes_no_way_to_answer():
+def test_only_the_dialog_and_the_cli_mint_a_release_permit_and_the_dialog_exposes_no_way_to_answer():
     package = Path(sentinel.__file__).parent.parent
-    users = sorted(p.name for p in package.rglob("*.py")
-                   if "mint_clicked" in p.read_text() and p.name != "human.py")
-    assert users == ["heads_up.py"]
+    release = re.compile(r'mint(?:_gated)?\(\s*(?:"sentinel\.quarantine",\s*)?"release"')
+    users = sorted(p.relative_to(package).as_posix() for p in package.rglob("*.py")
+                   if release.search(p.read_text()) and p.name != "permit.py")
+    assert users == ["sentinel/cli.py", "sentinel/heads_up.py"]
     for name in ("on_quarantine", "poll", "prompt", "review"):
         assert "answer" not in inspect.signature(getattr(HeadsUp, name)).parameters
     source = inspect.getsource(heads_up)
