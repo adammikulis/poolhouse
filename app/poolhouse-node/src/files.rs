@@ -243,14 +243,21 @@ fn delete(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
         }
     }
     let now = node.now_ms();
+    // A second delete of the same file adds nothing and does not renew its days: the first delete's blobs and time stand.
     let mut held = trashed(node, board);
-    held.insert(handle.clone(), Trashed { at_ms: now, blobs: moved.clone() });
+    let entry = held.entry(handle.clone()).or_insert(Trashed { at_ms: now, blobs: Vec::new() });
+    for blob in &moved {
+        if !entry.blobs.contains(blob) {
+            entry.blobs.push(blob.clone());
+        }
+    }
+    let (at_ms, count) = (entry.at_ms, entry.blobs.len());
     save_trash(node, board, &held)?;
     let mut all = deleted(node, board);
     all.insert(handle.clone());
     write_atomic(&base.join("deleted.json"), &serde_json::to_vec(&all)?)?;
     node.writer(board, &access.actor)?.append(Kind::Audit, &access.actor, json!({"event": "file.delete", "subject": handle, "detail": format!("{} blobs moved to the trash for 7 days", moved.len())}), "")?;
-    Ok(json!({"deleted": handle, "trashed": moved.len(), "restorable_until_ms": now + TRASH_MS}))
+    Ok(json!({"deleted": handle, "trashed": count, "restorable_until_ms": at_ms + TRASH_MS}))
 }
 
 fn restore(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {

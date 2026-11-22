@@ -212,7 +212,6 @@ def test_nothing_in_the_library_asks_prompts_or_waits_for_a_person():
         "requests/__init__.py": "documentation example",
         "requests/approvals.py": "the model-download admission notice (owned by the download path)",
         "scrape/browser.py": "an interactive login a website demands",
-        "sentinel/heads_up.py": "an optional desktop notice whose buttons run in a background thread",
         "workspace/localtools.py": "local-agent approvals, removed by the chat and harness work",
     }
     optional_words = {"board/presence.py": "the sentence for a node started with --presence terminal, which the launcher never passes"}

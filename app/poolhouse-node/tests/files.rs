@@ -148,6 +148,22 @@ fn a_deleted_file_comes_back_from_the_trash_and_only_with_the_grant() {
 }
 
 #[test]
+fn deleting_a_file_twice_keeps_it_restorable_and_does_not_renew_its_days() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let ((_, at), (bob, bt)) = (session(&mut n, "demo", "a"), session(&mut n, "demo", "b"));
+    let blob = store(&mut n, &at, "upload0001", b"deleted twice");
+    let handle = blob[..12].to_string();
+    ok(attach(&mut n, &at, &bob, meta(&blob, &handle, true)));
+    kit::grants::granted(&mut n, "demo", &bt, &bob, "file_delete");
+    let first = ok(req(&mut n, "file_delete", "demo", &bt, json!({"handle": handle})));
+    let again = ok(req(&mut n, "file_delete", "demo", &bt, json!({"handle": handle})));
+    assert_eq!((again["trashed"].clone(), again["restorable_until_ms"].clone()), (json!(1), first["restorable_until_ms"].clone()), "{again}");
+    ok(req(&mut n, "file_restore", "demo", &bt, json!({"handle": handle})));
+    assert_eq!(ok(get(&mut n, &bt, &blob, 0))["size"], 13, "the blob the first delete moved is still there to restore");
+}
+
+#[test]
 fn the_trash_overwrites_and_removes_a_file_by_itself_when_its_seven_days_are_over() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());

@@ -180,7 +180,7 @@ poolhouse sources safe-mode on|off
 - UI: one component on the Fleet page next to the flags panel: a table (subject, state, scope, short and
   long score, last seen, set by) with Block, Unblock, Allow, each one confirmation; `digest --status`
   gains "3 sources blocked, 1 allowed; safe mode off". New divergence and block events use the existing
-  single heads-up dialog. [analysis; V `explain.py` pattern]
+  dialog (superseded: a hold ends by itself, docs/sentinel.md). [analysis; V `explain.py` pattern]
 
 ## 7. Implemented vs missing, with slices
 
