@@ -538,7 +538,8 @@ def _codex(node: Client, where: str, native: str, agent: str, token_file: str) -
     """Resolve an already registered Codex session; other selectors must corroborate it.
 
     The native environment selects credentials, not authority. Node grants and process-lineage
-    checks remain responsible for privileged operations; this lookup never registers a session.
+    checks remain responsible for privileged operations; this lookup registers no session of its own: a session the node already
+    registered, whose token it no longer knows, registers again under its name.
     """
     name = str(node.call("session_lookup", where, harness="codex", session=native)["name"])
     def renew() -> str:
