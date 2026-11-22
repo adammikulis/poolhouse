@@ -200,7 +200,7 @@ def _by_object_id(one: RemoteFile) -> Callable[[Path, dict[str, str]], str] | No
 def _want(parsed: remote.Ref, one: RemoteFile, auth: str, note: str = "") -> net.Want:
     return net.Want(kind=_kind(one.path), sha256=one.sha256, size=one.size, token=auth,
                     max_bytes=int(one.size * 1.001) + MARGIN if one.size else 1 << 41,
-                    purpose="model download", verify=_by_object_id(one),
+                    purpose="model download", verify=_by_object_id(one), reputation=False,
                     pin_notes=admission.notes(parsed.repo, parsed.commit, one.path, note))
 
 

@@ -185,6 +185,36 @@ def test_the_shipped_list_is_read_when_a_pull_is_checked(stand, an_agent, monkey
     assert server.downloads
 
 
+def test_a_hostile_allow_list_allows_nothing_and_cannot_hang_a_pull(stand, an_agent):
+    import os
+
+    stand(repos("maker/thing-GGUF"))
+    where = admission.allow_file()
+    where.parent.mkdir(parents=True, exist_ok=True)
+    hostile = {
+        "nul bytes": b"maker\x00\n" + b"#\x00" * 50,
+        "not utf-8": b"\xff\xfe maker\n\xc3\x28\n",
+        "a lookalike owner": "maker\u200b\n\u043caker\nmaker\u00a0\n".encode(),
+        "patterns": b"*\nmaker/*\nmak*\n?aker\n[m]aker\nmaker/thing-GGUF/\n/maker\n",
+        "past the first 64 KiB": b"# x\n" * 20_000 + b"maker\n",
+        "one enormous line": b"x" * 5_000_000 + b"\nmaker",
+    }
+    for what, body in hostile.items():
+        where.write_bytes(body)
+        assert admission.allowed("maker/thing-GGUF") is False, what
+        with pytest.raises(admission.NotAllowed):
+            hub.pull(f"hf:maker/thing-GGUF/{FILE}")
+    where.unlink()
+    where.mkdir()                                              # a folder is not a list
+    assert admission.allowed("maker/thing-GGUF") is False
+    where.rmdir()
+    os.mkfifo(where)                                           # a pipe nobody writes to would block a read
+    assert admission.allowed("maker/thing-GGUF") is False
+    where.unlink()
+    where.write_text("maker\n")
+    assert admission.allowed("maker/thing-GGUF") is True and hub.pull(f"hf:maker/thing-GGUF/{FILE}").name == FILE
+
+
 # -- a model pulled for a person is served without a question ----------------------------------------
 @pytest.mark.usefixtures("serve_leases")
 def test_a_model_pulled_from_an_unlisted_publisher_is_served_by_path_without_a_question(stand, tmp_path):

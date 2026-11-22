@@ -7,6 +7,7 @@ promoted; nothing is quarantined for a person to release. Nothing downloaded is 
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import logging
@@ -64,7 +65,9 @@ class Want:
     """What a download must be: its ``kind`` (from the name when empty), the ``sha256`` it is
     pinned to, whether a digest is ``require_digest``, and how an unscanned file is treated.
     ``verify(path, headers)`` returns why a staged file is not acceptable, or ''. ``rename(final_url,
-    headers)`` picks the file name once the answer is known. ``pin_notes`` (``publisher``, ``commit``,
+    headers)`` picks the file name once the answer is known. ``reputation`` is whether a failed check counts against the host in
+    the reputation ledger, whose only remedy is a person (a Hub download says no: its own retry and refusal protect the file).
+    ``pin_notes`` (``publisher``, ``commit``,
     ``source_ref``, ``host``, ``note``) are recorded in the pin of a model that is kept."""
 
     kind: str = ""
@@ -82,6 +85,7 @@ class Want:
     admit: bool = True
     verify: Callable[[Path, dict[str, str]], str] | None = None
     rename: Callable[[str, dict[str, str]], str] | None = None
+    reputation: bool = True
     pin_notes: dict[str, str] = field(default_factory=dict)
 
 
@@ -214,9 +218,10 @@ def _promote(staged: Path, dest: Path) -> None:
 
 
 def _reject(staged: Path, note: provenance.Provenance, reason: str,
-            error: type[Blocked] = Blocked) -> Blocked:
-    observed.rejected(note.url, note.sha256,
-                      {ChecksumMismatch: "hash_change", ScanHit: "scan_hit"}.get(error, "denial"))
+            error: type[Blocked] = Blocked, *, reputation: bool = True) -> Blocked:
+    if reputation:
+        observed.rejected(note.url, note.sha256,
+                          {ChecksumMismatch: "hash_change", ScanHit: "scan_hit"}.get(error, "denial"))
     discard(staged)
     provenance.record(replace(note, outcome="held", reason=reason, path=""))
     activity.record("net.download", subject=f"host:{host_of(note.url)}", outcome="held",
@@ -292,6 +297,7 @@ def _finish(pipe: Pipeline, staged: Path, final: Path, want: Want,
     """The checks every file passes before it is kept: size, pinned SHA-256, format, scan; then
     one promotion to ``final``. A file that fails is deleted."""
     name, headers, url = safe_filename(final.name), arrival.headers, arrival.url
+    refuse = functools.partial(_reject, staged, reputation=want.reputation)
     digest, size = files.sha256_file(staged), staged.stat().st_size
     served = headers.get("content-type", "")
     note = provenance.Provenance(
@@ -301,24 +307,24 @@ def _finish(pipe: Pipeline, staged: Path, final: Path, want: Want,
         headers=provenance.subset(headers), expected_sha256=want.sha256,
         host_source=arrival.host)
     if want.sha256 and digest != want.sha256.lower():
-        raise _reject(staged, note, "sha256 differs from the pinned one", ChecksumMismatch)
+        raise refuse(note, "sha256 differs from the pinned one", ChecksumMismatch)
     if want.size and size != want.size:
-        raise _reject(staged, note, f"{size} bytes, expected {want.size}")
+        raise refuse(note, f"{size} bytes, expected {want.size}")
     if want.verify is not None and (problem := want.verify(staged, headers)):
-        raise _reject(staged, note, problem)
+        raise refuse(note, problem)
     if want.library_links and not (want.require_digest and want.sha256):
-        raise _reject(staged, note, "library aliases require a pinned release digest")
+        raise refuse(note, "library aliases require a pinned release digest")
     verdict = sniff.sniff(staged, want.kind or sniff.expected_kind(name), content_type=served,
                           library_links=want.library_links)
     if not verdict.ok:
-        raise _reject(staged, note, "; ".join(verdict.problems))
+        raise refuse(note, "; ".join(verdict.problems))
     if arrival.phase:
         arrival.phase("scanning")
     summary = pipe.scan_policy.scan(staged, verdict.kind, pipe.scanners)
     keep, why = pipe.scan_policy.decide(verdict.kind, summary, allow_unscanned=want.allow_unscanned)
     if not keep:
         hit = any(r.outcome == Outcome.INFECTED for r in summary.results)
-        raise _reject(staged, note, why, ScanHit if hit else Blocked)
+        raise refuse(note, why, ScanHit if hit else Blocked)
     warnings = (*verdict.warnings, *(w for r in summary.results for w in r.warnings),
                 *(r.detail for r in summary.results if r.outcome == Outcome.NO_SCANNER))
     if arrival.phase:

@@ -124,7 +124,7 @@ def fetch(repo: str, *, revision: str = "main", repo_type: str = "model",
             net.download(url, target, net.Want(
                 kind=expected_kind(member.name), sha256=member.digest if member.lfs else "", size=member.size,
                 require_digest=member.lfs, max_bytes=max(1, member.size), verify=member.verify,
-                purpose="public Hub snapshot", pin_notes=admission.notes(repo, commit, member.name, note)),
+                purpose="public Hub snapshot", reputation=False, pin_notes=admission.notes(repo, commit, member.name, note)),
                 pipeline=net.default())
         if not COMMIT.fullmatch(revision):
             files.write_text(safe_join(root, f"refs/{revision}"), commit)

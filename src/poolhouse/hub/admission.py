@@ -47,6 +47,7 @@ PERSON = Trust.PERSON
 AGENT = Trust.AGENT
 
 ALLOW_NAME = "allowed-publishers.txt"
+ALLOW_BYTES = 64 * 1024
 
 
 def allow_file() -> Path:
@@ -56,12 +57,17 @@ def allow_file() -> Path:
 
 
 def allowed(repo: str) -> bool:
-    """Whether ``repo`` or its owner is a line of `allow_file`."""
+    """Whether ``repo`` or its owner is a line of `allow_file`: the first 64 KiB of a regular file, each line compared
+    whole with no pattern, so a file of any other kind, a hostile one or one that cannot be read allows nothing."""
+    where = allow_file()
     try:
-        lines = allow_file().read_text(encoding="utf-8").splitlines()
+        if not where.is_file():
+            return False
+        with where.open("rb") as stream:
+            lines = stream.read(ALLOW_BYTES).decode("utf-8").splitlines()
     except (OSError, ValueError):
         return False
-    listed = {line.split("#", 1)[0].strip() for line in lines}
+    listed = {line.split("#", 1)[0].strip(" \t") for line in lines}
     return repo in listed or publishers.namespace(repo) in listed
 
 
