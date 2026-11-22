@@ -62,10 +62,10 @@ class ComputerKey:
             raise TicketRequired(str(err)) from None
         return self._keys.sign_bytes(data)
 
-    def approve(self, card: str, *, voice: presence.Voice = presence.SILENT) -> None:
+    def approve(self, card: str) -> None:
         """Ask the node for the card it drafted and keep the answer as this key's ticket. Raises `Denied` with one plain sentence when the node
         does not make one."""
-        self.ticket = str(presence.ask_card(self._client, self._token, "card", presence.Card(card), voice)["secret"])
+        self.ticket = str(presence.ask_card(self._client, self._token, "card", presence.Card(card))["secret"])
 
     def forget(self) -> None:
         """Drop the sealed key of a pool that was not made, so an abandoned founding leaves nothing behind."""

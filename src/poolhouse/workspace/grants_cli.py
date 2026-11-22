@@ -24,7 +24,6 @@ from poolhouse.board import (
     person as person_session,
     person_key,
     place,
-    presence,
 )
 from poolhouse.board.client import Client, Denied
 from poolhouse.board.session import Session
@@ -215,7 +214,7 @@ def setup(args: argparse.Namespace, ctx: Ctx) -> Any:
     for action, text in dict.fromkeys((want.action, text) for want, text in bundle):
         say(f"  {action}: {text}")
     if enrolling:
-        grants.enrol_first(ctx.client, ctx.carrier.token, ctx.key, about, presence.Voice(say=say))
+        grants.enrol_first(ctx.client, ctx.carrier.token, ctx.key, about)
     done = [grants.issue(ctx.carrier, ctx.key, want, now_ms=at) for want, _ in bundle]
     return {"key_enrolled": enrolling, "to": [_who(to) for to in who], "granted": [{"gid": d["gid"], "action": d["action"]} for d in done],
             "revoke": "poolhouse-workspace revoke-grant ID", "see": "poolhouse-workspace grants"}

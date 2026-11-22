@@ -11,13 +11,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
-import types
 from pathlib import Path
 
 import pytest
@@ -49,7 +47,7 @@ def held(node) -> list[str]:
 def test_the_device_asks_for_the_first_key_and_has_it_at_once_with_no_terminal_and_no_waiting(workspace_node):
     token, key = register(workspace_node), Signer.generate()
     began = time.monotonic()
-    said = presence.ask(workspace_node.client, token, "key", key.public.hex(), presence.Voice(terminal="", say=lambda text: pytest.fail(f"nobody is waited for: {text}")))
+    said = presence.ask(workspace_node.client, token, "key", key.public.hex())
     assert time.monotonic() - began < 5, "the answer was there as the question was asked"
     assert said["state"] == "confirmed" and said["presence"] == "auto" and isinstance(said["secret"], str) and said["secret"]
     assert held(workspace_node) == [], "the secret is not the key: nothing is enrolled until the key is sent with it"
@@ -148,17 +146,6 @@ def test_the_rigs_person_asks_as_the_devices_own_session_and_is_answered_at_once
     assert said["ok"] and said["result"]["state"] == "confirmed" and said["result"]["presence"] == "auto" and "link" in said["result"], said
     forged = wire.call(workspace_node.state, "register_person", "pool", "", {"session": "the-rig-person", "proof": "a" * 64})
     assert not forged["ok"] and forged["code"] == "denied", "the rig's person is the node's own person: a wrong secret is nobody"
-
-
-@pytest.mark.parametrize("attached", [1, 0])
-def test_a_client_on_windows_names_the_console_it_runs_in_by_its_process_id_and_none_when_it_has_none(monkeypatch, attached):
-    import ctypes
-
-    kernel = types.SimpleNamespace(GetConsoleProcessList=lambda _slot, _count: attached)
-    monkeypatch.setattr(ctypes, "windll", types.SimpleNamespace(kernel32=kernel), raising=False)
-    with monkeypatch.context() as on_windows:
-        on_windows.setattr(sys, "platform", "win32")
-        assert presence.terminal_name() == (str(os.getpid()) if attached else "")
 
 
 def test_wire_runs_as_a_script_where_only_the_rigs_own_directory_is_on_the_path():

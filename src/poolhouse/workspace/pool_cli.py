@@ -11,7 +11,7 @@ import argparse
 import json
 
 from poolhouse import node_launch
-from poolhouse.board import founding, presence
+from poolhouse.board import founding
 from poolhouse.board.client import Client
 from poolhouse.command import flag
 from poolhouse.log import say, warn
@@ -39,7 +39,7 @@ def _refused(refused: founding.Refusal, as_json: bool) -> int:
 def command(args: argparse.Namespace) -> int:
     """Found the pool; the exit status (0 founded or already there, 3 when the person has something to do first)."""
     try:
-        made = founding.found_here(Client(node_launch.default_state()), args.name, args.policy, voice=presence.Voice(say=say))
+        made = founding.found_here(Client(node_launch.default_state()), args.name, args.policy)
     except founding.Refusal as refused:
         return _refused(refused, bool(args.json))
     say(json.dumps({"founded": not made.already, "say": made.say(), "pool": made.pool, "name": made.name}) if args.json else made.say())

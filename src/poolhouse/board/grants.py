@@ -211,10 +211,10 @@ def enrol(client: Client, token: str, params: dict[str, Any]) -> dict[str, Any]:
     return dict(client.call("person_enroll", "", token, **params))
 
 
-def enrol_first(client: Client, token: str, key: Signs, about: str, voice: presence.Voice = presence.SILENT) -> dict[str, Any]:
+def enrol_first(client: Client, token: str, key: Signs, about: str) -> dict[str, Any]:
     """Put the first person key on the node with the secret the node makes when the device's own session asks for it (`presence.ask`): the secret is
     the node's, bound to this key, and nothing this process writes can make one."""
-    secret = str(presence.ask(client, token, "key", key.public.hex(), voice)["secret"])
+    secret = str(presence.ask(client, token, "key", key.public.hex())["secret"])
     return enrol(client, token, {**enrolment(key, about), "secret": secret})
 
 

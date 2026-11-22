@@ -9,11 +9,12 @@ from __future__ import annotations
 import json
 
 import pytest
-from node_kit import PASSPHRASE, NoKeystore
+from node_kit import PASSPHRASE, NoKeystore, enrol_first
 
 from poolhouse import caller, keystore
-from poolhouse.board import grants, person_key
+from poolhouse.board import grants, person, person_key
 from poolhouse.board.client import Denied
+from poolhouse.fleet.onboard.manifest import Signer
 from poolhouse.fleet.onboard.signing import UNLOCK_ENV, KeyStoreError
 
 pytest_plugins = ["node_kit"]
@@ -159,6 +160,31 @@ def test_the_grant_an_agent_may_have_is_signed_for_it_at_once_and_a_node_spends_
     assert again.value.grant["action"] == "pool_leave", "the one use is spent: a second call is refused again, naming the grant"
     assert [r["who"] for r in caller.audit_rows() if r["event"] == "grant.issued" and r["action"] == "pool_leave"] == [caller.who()]
     assert "agent CLAUDECODE" in caller.who()
+
+
+def test_the_key_a_node_does_not_hold_yet_is_made_and_enrolled_by_the_first_grant_a_command_needs(workspace_node):
+    team = workspace_node
+    plain = team.member("plain")
+    assert grants.listing(team.session(plain)).persons == [] and not person_key.kept(team.state)
+    team.client.person = person_key.provider(team.state, acting=person.acting(team.state))
+    with pytest.raises(Denied, match="not in a pool"):
+        team.client.call("pool_leave", "", plain.token)  # refused for want of a grant, the key made and enrolled, the grant signed and spent: the node then answers
+    held = grants.listing(team.session(plain))
+    assert person_key.kept(team.state) and held.persons == [grants.fingerprint(person_key.keys(team.state).public)], "the device's own key is the node's first key"
+    assert [e["op"] for e in grants.log(team.session(plain)) if e["action"] == "pool_leave"] == ["use", "issue"]
+
+
+def test_a_node_that_holds_another_key_is_given_no_second_first_key_by_a_command_and_the_refusal_says_so(workspace_node):
+    team = workspace_node
+    plain = team.member("plain")
+    enrol_first(team.client, plain.token, Signer.generate())
+    with pytest.raises(Denied, match="another key"):
+        person_key.enrolled(team.client, team.session(plain))
+    team.client.person = person_key.provider(team.state, acting=person.acting(team.state))
+    with pytest.raises(Denied) as refused:
+        team.client.call("pool_leave", "", plain.token)
+    assert refused.value.grant["action"] == "pool_leave", "nothing was signed: the node's refusal stands and names the grant"
+    assert grants.log(team.session(plain)) == []
 
 
 def test_a_command_signs_with_no_terminal_for_a_process_with_no_marker_and_is_refused_to_an_agent_with_the_reason(workspace_node):

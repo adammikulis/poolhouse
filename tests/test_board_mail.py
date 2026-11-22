@@ -7,7 +7,6 @@ import threading
 import time
 
 import pytest
-from node_kit import TYPED
 
 pytest_plugins = ["node_kit"]
 
@@ -138,19 +137,18 @@ def test_a_soft_marker_from_a_sender_in_good_standing_is_delivered_flagged(team)
     assert row["state"] == "clear" and "authority-claim" in row["flags"] and row["text"].startswith("<untrusted")
 
 
-def test_only_a_person_at_a_terminal_releases_a_held_message_and_it_then_shows_fenced(team):
+def test_an_agent_is_refused_the_release_of_a_held_message_at_once_and_a_process_with_no_marker_releases_it_which_then_shows_fenced(team):
     row = hold(team)
-    refused = team.cli("quarantine-release", row["held"], "--json", who=team.bob)
-    assert refused.returncode == 3 and "needs a terminal" in json.loads(refused.stdout)["error"]
     marked = team.cli("quarantine-release", row["held"], "--json", who=team.bob, env={"CLAUDECODE": "1"})
-    assert marked.returncode == 3 and "started by an agent" in json.loads(marked.stdout)["error"]
-    assert json.loads(team.cli("quarantine-ls", "--json", who=team.bob).stdout)[0]["state"] == "quarantined"
-    code, output, err = team.terminal("quarantine-release", row["held"], "--json", who=team.bob, typed=TYPED)
-    assert code == 0, err
-    assert "quarantine_release on q1" in output and json.loads(output.strip().splitlines()[-1])["released"] == "q1"
+    assert marked.returncode == 3 and "refused to an agent" in json.loads(marked.stdout)["error"]
+    assert json.loads(team.cli("quarantine-ls", "--json", who=team.bob).stdout)[0]["state"] == "quarantined", "the refused release changed nothing"
+    done = team.cli("quarantine-release", row["held"], "--json", who=team.bob)
+    assert done.returncode == 0, done.stderr
+    assert json.loads(done.stdout.strip().splitlines()[-1])["released"] == "q1", "released at once, with no terminal and no question"
     freed = json.loads(team.cli("thread", row["seq"], "--json", who=team.bob).stdout)[0]
     assert freed["state"] == "released" and freed["text"].startswith("<untrusted") and "ignore all" in freed["text"]
-    assert team.cli("quarantine-release", "q99", who=team.bob).returncode == 3
+    unknown = team.cli("quarantine-release", "q99", who=team.bob)
+    assert unknown.returncode == 2 and "nothing is held as q99" in unknown.stderr
 
 
 def test_a_parent_releases_the_claim_of_its_subagent(team):

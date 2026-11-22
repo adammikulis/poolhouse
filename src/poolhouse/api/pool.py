@@ -8,12 +8,11 @@ code that `add_device` makes. A member is removed with `remove`. See docs/api.md
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from poolhouse import errors, hub, node_join, node_launch, node_pool
 from poolhouse.api import _node
-from poolhouse.board import founding, presence
+from poolhouse.board import founding
 from poolhouse.board.client import Client, NodeError
 
 __all__ = ["Capacity", "Founding", "Member", "Pool", "Refusal", "add_device", "capacity", "found", "join", "leave", "listen", "members",
@@ -152,7 +151,7 @@ def listen(*, agreed: bool = False) -> Pool:
     return status()
 
 
-def add_device(ttl_s: int = 300, *, say: Callable[[str], object] | None = None) -> dict[str, object]:
+def add_device(ttl_s: int = 300) -> dict[str, object]:
     """Make a short-lived code for another device to join this pool with (policy ``secure``).
 
     Returns what the node answers: the code and how long it is valid. Show the code to the person at the other
@@ -163,14 +162,14 @@ def add_device(ttl_s: int = 300, *, say: Callable[[str], object] | None = None) 
     person = _node.person_session()
     session = person or _node.session()
     try:
-        params |= founding.ticket_for(session, "add_device", {"ttl_s": ttl_s}, presence.Voice(say=say or (lambda _text: None)))
+        params |= founding.ticket_for(session, "add_device", {"ttl_s": ttl_s})
     except founding.Refusal as refused:
         if person is not None or refused.needs != "none":
             raise  # a session the node makes no ticket for goes on with the grant it holds
     return dict(_node.call("add_device", params, token=session.token))
 
 
-def join(host: str, code: str = "", *, port: int = DEFAULT_PORT, fingerprint: str = "", say: Callable[[str], object] | None = None) -> dict[str, object]:
+def join(host: str, code: str = "", *, port: int = DEFAULT_PORT, fingerprint: str = "") -> dict[str, object]:
     """Join the pool of the device at ``host``; this device becomes a member.
 
     A ``secure`` pool takes the ``code`` its `add_device` made. An ``open`` pool on this device's own network takes no code, only the
@@ -183,7 +182,7 @@ def join(host: str, code: str = "", *, port: int = DEFAULT_PORT, fingerprint: st
     session = person or _node.session()
     params = {"host": host, "port": port, **({"passphrase": code} if code else {"fingerprint": fingerprint})}
     try:
-        params |= founding.ticket_for(session, "join_pool", dict(params), presence.Voice(say=say or (lambda _text: None)))
+        params |= founding.ticket_for(session, "join_pool", dict(params))
     except founding.Refusal as refused:
         if person is not None or refused.needs != "none":
             raise
@@ -197,19 +196,17 @@ def join(host: str, code: str = "", *, port: int = DEFAULT_PORT, fingerprint: st
         raise founding.Refusal(str(err), needs="none", then="ask-owner") from None
 
 
-def found(name: str | None = None, policy: str = "secure", *, admin: founding.Admin | None = None,
-          say: Callable[[str], object] | None = None) -> Founding:
+def found(name: str | None = None, policy: str = "secure", *, admin: founding.Admin | None = None) -> Founding:
     """Make this device's pool, governed by the person's key: the one step that turns a pool of one into a pool others can join.
 
     ``policy`` is ``secure`` (devices join with a code, the default) or ``open`` (devices on this network join by themselves). Nobody is asked
     and nothing waits: this computer makes its own key for the pool and signs the charter with it (``admin`` names another key, a phone's, that
     signs instead). A device that is in a founded pool says so and changes nothing. Raises `Refusal` (an `ph.Denied`) whose message is one
     sentence an agent passes on, with ``needs``, ``where`` and ``then`` for what to do next.
-    ``say`` is told where an answer is waited for when the node was started by hand to ask its user (the launcher never does).
     """
     state = node_launch.default_state()
     node_launch.ensure_node(state)
-    made = founding.found_here(Client(state), name, policy, admin=admin, voice=presence.Voice(say=say or (lambda _text: None)))
+    made = founding.found_here(Client(state), name, policy, admin=admin)
     return Founding(status(), made.already, made.say())
 
 
@@ -226,12 +223,12 @@ def remove(device: str) -> Member:
     return next(m for m in members(include_removed=True) if m.fingerprint == found[0].fingerprint)
 
 
-def renew(*, say: Callable[[str], object] | None = None) -> Member:
+def renew() -> Member:
     """Give this device another 30 days of admitting devices without asking (the delegate a pool starts with): a change to who governs the pool, so
     this computer's key signs it at once and it takes effect after the pool's wait. Until then a window is still opened with a ticket (`add_device`).
     Raises `Refusal`."""
     this = next(m for m in members() if m.this_device)
-    founding.govern(Client(node_launch.default_state()), "delegate", {"fingerprint": this.fingerprint}, voice=presence.Voice(say=say or (lambda _text: None)))
+    founding.govern(Client(node_launch.default_state()), "delegate", {"fingerprint": this.fingerprint})
     return this
 
 

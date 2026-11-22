@@ -8,12 +8,11 @@ with who asked (`poolhouse.caller`).
 
 from __future__ import annotations
 
-import socket
 import time
 from typing import Any
 
 from poolhouse import caller
-from poolhouse.board import approval, grants, person as person_session, person_key, presence
+from poolhouse.board import approval, grants, person as person_session, person_key
 from poolhouse.board.client import Client, Denied
 from poolhouse.board.session import Session
 from poolhouse.fleet.onboard.signing import SigningKeys
@@ -37,14 +36,7 @@ def refusal(asks: list[approval.Ask]) -> str:
 
 def ensure_key(client: Client, carrier: Session) -> SigningKeys:
     """This device's person key, made on first use and enrolled on the node when the node holds none; `Denied` when the node holds another."""
-    key = person_key.keys(client.state)
-    held = grants.listing(carrier).persons
-    if not held:
-        about = "".join(c for c in socket.gethostname() if c.isascii() and c.isprintable())[:40] or "this device"
-        grants.enrol_first(client, carrier.token, key, about, presence.SILENT)
-    elif grants.fingerprint(key.public) not in held:
-        raise Denied("denied", "this node already holds another key: carry this device's key over with `person-proof` and `person-enroll`")
-    return key
+    return person_key.enrolled(client, carrier)
 
 
 def _waiting(carrier: Session, key: SigningKeys) -> dict[str, dict[str, Any]]:

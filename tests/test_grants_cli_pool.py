@@ -7,16 +7,16 @@ from typing import Any
 
 import pytest
 
-from poolhouse.board import person_key
+from poolhouse.board import grants, person_key
 from poolhouse.board.client import Denied
 from poolhouse.workspace import grants_cli
 
 DEVICE_LOCAL = ["link_read", "link_remove", "source_add", "quarantine_release", "pool_leave"]
 
 
-def listed(governance: str) -> dict[str, Any]:
-    """What the node answers to `grants` for a device in a pool or in none."""
-    return {"grants": [], "ignored": [], "persons": [], "registry": {"actions": [], "device_local": DEVICE_LOCAL}, "now_ms": 0, "device": "d" * 64,
+def listed(governance: str, persons: list[str] | None = None) -> dict[str, Any]:
+    """What the node answers to `grants` for a device in a pool or in none, holding the keys ``persons`` (fingerprints)."""
+    return {"grants": [], "ignored": [], "persons": persons or [], "registry": {"actions": [], "device_local": DEVICE_LOCAL}, "now_ms": 0, "device": "d" * 64,
             "governance": governance, "authority": [], "may_issue": [], "may_revoke": []}
 
 
@@ -89,12 +89,15 @@ def provider_on(governance: str, monkeypatch, tmp_path):
     signer, sent = Signer(), []
 
     class Node:
+        """The node of a device whose key the node holds already: it lists the key and takes the signed grant."""
+
         def __init__(self, state):
             assert state == tmp_path
+            self.state = state
 
         def call(self, method, board, token, **_):
             assert (method, board, token) == ("grants", "demo", "carrier"), (method, board, token)
-            return listed(governance)
+            return listed(governance, [grants.fingerprint(signer.public)])
 
     monkeypatch.setattr(person_key, "Client", Node)
     monkeypatch.setattr(person_key, "keys", lambda state: signer)
