@@ -15,14 +15,13 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import credentials
+from poolhouse import caller, credentials
 from poolhouse.fleet import signing
 from tests import memory_keys
 
 ring = memory_keys.ring
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "release-key"
-TTY = (True, True)
 SIGNING_TEXT = 'NAMESPACE = "x"\nRELEASE_KEY = ""\nOTHER = 1\n'
 
 
@@ -70,7 +69,7 @@ def _leftovers(tmp_path) -> list[str]:
 
 
 def test_create_stores_the_key_and_sends_it_to_gh_on_stdin(rk, tmp_path, capsys):
-    assert rk.main(["create"], TTY) == 0
+    assert rk.main(["create"]) == 0
     private = _stored(rk)
     assert private.startswith(b"-----BEGIN OPENSSH PRIVATE KEY-----")
     assert _stdin(rk) == private
@@ -86,9 +85,9 @@ def test_create_stores_the_key_and_sends_it_to_gh_on_stdin(rk, tmp_path, capsys)
 
 
 def test_the_public_line_verifies_a_signature_made_with_the_stored_key(rk, tmp_path, capsys):
-    rk.main(["create"], TTY)
+    rk.main(["create"])
     capsys.readouterr()
-    assert rk.main(["show-public"], TTY) == 0
+    assert rk.main(["show-public"]) == 0
     public = capsys.readouterr().out.strip()
     key = tmp_path / "k"
     key.write_bytes(_stored(rk))
@@ -106,7 +105,7 @@ def test_the_public_line_verifies_a_signature_made_with_the_stored_key(rk, tmp_p
 
 
 def test_write_sets_release_key_and_nothing_else(rk, capsys):
-    assert rk.main(["create", "--write"], TTY) == 0
+    assert rk.main(["create", "--write"]) == 0
     public = capsys.readouterr().out.split("public key: ")[1].split("\n")[0]
     assert rk.signing_py.read_text() == (
         f'NAMESPACE = "x"\nRELEASE_KEY = "{public}"\nOTHER = 1\n')
@@ -114,18 +113,18 @@ def test_write_sets_release_key_and_nothing_else(rk, capsys):
 
 
 def test_a_second_create_refuses_and_changes_nothing(rk):
-    rk.main(["create"], TTY)
+    rk.main(["create"])
     before = _stored(rk)
-    assert rk.main(["create"], TTY) == 1
+    assert rk.main(["create"]) == 1
     assert _stored(rk) == before
     assert not (rk.log / "stdin.1").exists()
 
 
 def test_rotate_replaces_the_item_the_secret_and_the_line(rk, capsys):
-    rk.main(["create", "--write"], TTY)
+    rk.main(["create", "--write"])
     first = _stored(rk)
     capsys.readouterr()
-    assert rk.main(["rotate", "--write"], TTY) == 0
+    assert rk.main(["rotate", "--write"]) == 0
     second = _stored(rk)
     assert second != first
     assert _stdin(rk, 1) == second
@@ -135,15 +134,15 @@ def test_rotate_replaces_the_item_the_secret_and_the_line(rk, capsys):
 
 
 def test_rotate_says_earlier_releases_verify_against_the_old_key(rk, capsys):
-    rk.main(["create"], TTY)
+    rk.main(["create"])
     capsys.readouterr()
-    rk.main(["rotate"], TTY)
+    rk.main(["rotate"])
     assert "old public key" in capsys.readouterr().out
 
 
 def test_gh_failing_leaves_the_keystore_and_signing_untouched(rk, monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("GH_FAIL", "1")
-    assert rk.main(["create", "--write"], TTY) == 1
+    assert rk.main(["create", "--write"]) == 1
     assert credentials.get(rk.ITEM) is None
     assert rk.signing_py.read_text() == SIGNING_TEXT
     err = capsys.readouterr().err
@@ -159,41 +158,68 @@ def test_a_missing_gh_is_named(rk, monkeypatch, capsys, tmp_path):
     keygen = subprocess.run(["which", "ssh-keygen"], capture_output=True, text=True).stdout.strip()
     (only / "ssh-keygen").symlink_to(keygen)
     monkeypatch.setenv("PATH", str(only))
-    assert rk.main(["create"], TTY) == 1
+    assert rk.main(["create"]) == 1
     assert "gh is not installed" in capsys.readouterr().err
     assert credentials.get(rk.ITEM) is None
 
 
-@pytest.mark.parametrize("marker", ["CLAUDECODE", "POOLHOUSE_NONINTERACTIVE"])
-def test_an_agent_marker_is_refused_and_nothing_runs(rk, monkeypatch, marker):
+@pytest.mark.parametrize("marker", ["CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE", "CODEX_THREAD_ID"])
+def test_an_agent_marker_is_refused_at_once_with_the_reason_and_nothing_runs(rk, monkeypatch, capsys, marker):
     monkeypatch.setenv(marker, "1")
-    for command in (["create"], ["rotate"], ["show-public"], ["agent"]):
-        assert rk.main(command, TTY) == 1
+    for command in (["create"], ["create", "--write"], ["rotate"], ["agent"]):
+        assert rk.main(command) == 1
+        said = capsys.readouterr().err
+        assert "refused to an agent" in said and f"{marker} is set" in said and "release" in said, said
     assert credentials.get(rk.ITEM) is None
     assert list(rk.log.iterdir()) == []
+    assert rk.signing_py.read_text() == SIGNING_TEXT
+    assert [r["action"] for r in caller.audit_rows() if r["event"] == "refused"] == [
+        "release-key create", "release-key create", "release-key rotate", "release-key agent"]
 
 
-def test_no_terminal_is_refused(rk):
-    assert rk.main(["create"], (False, True)) == 1
-    assert list(rk.log.iterdir()) == []
+def test_an_agent_may_still_read_the_public_line(rk, monkeypatch, capsys):
+    rk.main(["create"])
+    capsys.readouterr()
+    monkeypatch.setenv("CLAUDECODE", "1")
+    assert rk.main(["show-public"]) == 0
+    assert capsys.readouterr().out.startswith("ssh-ed25519 ")
+
+
+class Silent:
+    """A standard input that fails the test when anything reads it: nobody is asked anything."""
+
+    def read(self, *_):
+        raise AssertionError("the run read its standard input")
+
+    readline = readlines = read
+
+    def isatty(self):
+        return False
+
+
+def test_a_run_of_your_own_with_no_terminal_and_no_marker_asks_nothing_and_just_runs(rk, monkeypatch):
+    monkeypatch.setattr("sys.stdin", Silent())
+    assert rk.main(["create"]) == 0
+    assert credentials.get(rk.ITEM) is not None
+    assert [r["event"] for r in caller.audit_rows()] == ["ran"]
 
 
 def test_show_public_with_no_key_says_so(rk, capsys):
-    assert rk.main(["show-public"], TTY) == 1
+    assert rk.main(["show-public"]) == 1
     assert "no release key is stored" in capsys.readouterr().err
 
 
 def test_agent_loads_the_key_and_prints_the_git_lines(rk, monkeypatch, tmp_path, capsys):
-    rk.main(["create"], TTY)
+    rk.main(["create"])
     capsys.readouterr()
-    rk.main(["show-public"], TTY)
+    rk.main(["show-public"])
     public = capsys.readouterr().out.strip()
     sock = Path(tempfile.mkdtemp(prefix="ag", dir="/tmp")) / "s"
     started = subprocess.run(["ssh-agent", "-a", str(sock)], capture_output=True, text=True, check=True)
     pid = int(started.stdout.split("SSH_AGENT_PID=")[1].split(";")[0])
     try:
         monkeypatch.setenv("SSH_AUTH_SOCK", str(sock))
-        assert rk.main(["agent"], TTY) == 0
+        assert rk.main(["agent"]) == 0
         out = capsys.readouterr().out
         assert "git config gpg.format ssh" in out
         assert f"git config user.signingkey 'key::{public}'" in out
@@ -206,14 +232,14 @@ def test_agent_loads_the_key_and_prints_the_git_lines(rk, monkeypatch, tmp_path,
 
 
 def test_agent_without_an_ssh_agent_says_so(rk, monkeypatch, capsys):
-    rk.main(["create"], TTY)
+    rk.main(["create"])
     monkeypatch.delenv("SSH_AUTH_SOCK", raising=False)
-    assert rk.main(["agent"], TTY) == 1
+    assert rk.main(["agent"]) == 1
     assert "SSH_AUTH_SOCK" in capsys.readouterr().err
 
 
 def test_the_stored_item_is_not_a_readable_file(rk, tmp_path):
-    rk.main(["create"], TTY)
+    rk.main(["create"])
     held = credentials.wrapped_path()
     assert not stat.S_IMODE(held.stat().st_mode) & 0o077
     for path in (tmp_path / "home").rglob("*"):
