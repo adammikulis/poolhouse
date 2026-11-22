@@ -19,8 +19,13 @@ DETAIL_LIMIT = 150
 
 
 def is_person() -> bool:
-    """Whether stdin and stdout are terminals and no agent marker is set."""
-    return not caller.marked() and caller.is_terminal(sys.stdin) and caller.is_terminal(sys.stdout)
+    """Whether no agent marker is set: a process an agent did not start. It needs no terminal."""
+    return not caller.marked()
+
+
+def interactive() -> bool:
+    """Whether no agent marker is set and stdin and stdout are terminals: only a label for the audit row (a launcher or login unit is not one)."""
+    return is_person() and caller.is_terminal(sys.stdin) and caller.is_terminal(sys.stdout)
 
 
 def common_dir(path: Path) -> Path:
@@ -74,9 +79,9 @@ def primary_for(supplied: Path, *, deploying: bool = True, delegated: bool = Fal
     if is_person() or not deploying or (recorded is None and delegated):
         return main_worktree(supplied)
     if recorded is None:
-        raise DeployError("no source repository is recorded: a person, or a lead agent while `runtime.deploy` is delegated, "
+        raise DeployError("no source repository is recorded: a process with no agent marker, or a lead agent while `runtime.deploy` is delegated, "
                           "runs `poolhouse runtime ensure --checkout PATH`")
-    raise DeployError(f"{supplied} is not a worktree of the recorded repository {recorded}; another source repository requires person authentication")
+    raise DeployError(f"{supplied} is not a worktree of the recorded repository {recorded}; another source repository is named from a terminal outside the agent")
 
 
 def _git(primary: Path, *words: str) -> subprocess.CompletedProcess:
@@ -167,7 +172,7 @@ def audit(command: str, commit: str, result: str, *, agent: str = "", detail: st
             who = authority.current_agent(cwd=source).name
         except (OSError, ValueError):
             pass
-    actor = f"agent:{who}" if who else "agent:unavailable" if context else "person" if is_person() else "system:runtime"
+    actor = f"agent:{who}" if who else "agent:unavailable" if context else "person" if interactive() else "system:runtime"
     return writer.record(KIND, actor=actor, subject=commit, outcome=result,
-                         meta={"command": command, "agent": who, "person": not context and is_person(), "authority": passed.get("via", ""),
+                         meta={"command": command, "agent": who, "person": not context and interactive(), "authority": passed.get("via", ""),
                                "detail": detail[:DETAIL_LIMIT]})

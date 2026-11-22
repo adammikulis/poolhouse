@@ -14,6 +14,7 @@ import pytest
 from node_kit import WorkspaceNode
 
 from poolhouse import (
+    caller,
     keystore,
     node_binary as node_binary_module,
     node_supervise,
@@ -154,8 +155,7 @@ def test_a_commit_before_the_tip_is_admitted_and_one_beside_it_is_not(world):
     runtime_deploy.admit(world.repo, world.base)
     with pytest.raises(runtime_deploy.DeployError, match="development branch"):
         runtime_deploy.admit(world.repo, world.evil)
-    with pytest.raises(runtime_deploy.DeployError, match="person authentication"):
-        runtime_deploy.admit(world.repo, world.evil, allow_unmerged=True)
+    runtime_deploy.admit(world.repo, world.evil, allow_unmerged=True)  # a process no agent started, with no terminal: nothing is asked
 
 
 def test_the_floor_comes_from_the_development_tip_never_from_the_deployed_commit(world):
@@ -181,22 +181,28 @@ def test_an_agent_cannot_name_another_repository(world):
     assert not (runtime.directory() / world.tip).exists()
 
 
-def test_only_a_delegated_lead_records_the_first_repository_on_a_machine_with_none(world):
+def test_only_a_delegated_lead_or_an_unmarked_process_records_the_first_repository_on_a_machine_with_none(world, monkeypatch):
     (runtime.directory() / runtime_store.STATE).unlink()
+    monkeypatch.setenv("CLAUDECODE", "1")
     assert runtime_trust.primary_for(world.repo, delegated=True) == world.repo.resolve()
     with pytest.raises(runtime_deploy.DeployError, match="no source repository is recorded"):
         runtime_trust.primary_for(world.repo)
+    monkeypatch.delenv("CLAUDECODE")
+    for marker in caller.AGENT_MARKERS:
+        monkeypatch.delenv(marker, raising=False)
+    assert runtime_trust.primary_for(world.repo) == world.repo.resolve(), "a process no agent started needs no terminal and no delegation"
 
 
 def test_a_helper_agent_cannot_record_the_first_repository(world):
     helper = world.node.member("runtime-helper", parent=world.lead)
     (runtime.directory() / runtime_store.STATE).unlink()
     done = world.cli("ensure", "--checkout", str(world.repo), POOLHOUSE_WORKSPACE_AGENT=helper.name)
-    assert done.returncode != 0 and "not a helper" in done.stderr
+    assert done.returncode != 0 and "starts no runtime deploy" in done.stderr, done.stderr
     assert not (runtime.directory() / runtime_store.STATE).exists() and not (runtime.directory() / world.tip).exists()
 
 
-def test_a_delegated_lead_still_cannot_move_a_recorded_repository(world):
+def test_a_delegated_lead_still_cannot_move_a_recorded_repository(world, monkeypatch):
+    monkeypatch.setenv("CLAUDECODE", "1")
     clone = world.tmp / "clone"
     subprocess.run(["git", "clone", "-q", str(world.repo), str(clone)], check=True, capture_output=True)
     with pytest.raises(runtime_deploy.DeployError, match="recorded repository"):
@@ -237,25 +243,15 @@ def test_a_person_process_keeps_the_variables(world):
     assert done.returncode == 1 and "no source checkout recorded" in done.stderr
 
 
-def test_a_person_at_a_terminal_may_deploy_an_unmerged_commit_by_typing_its_ref(world):
-    import select
+def test_a_process_no_agent_started_deploys_an_unmerged_commit_and_is_asked_nothing(world):
     master, slave = pty.openpty()
     child = subprocess.Popen([sys.executable, "-m", "poolhouse.runtime_cli", "ensure", "--ref", world.evil, "--allow-unmerged",
                               "--timeout", "30"], env=world.env(), stdin=slave, stdout=slave, stderr=slave, close_fds=True)
     os.close(slave)
-    heard, typed = b"", False
-    while child.poll() is None:
-        if select.select([master], [], [], 0.2)[0]:
-            try:
-                heard += os.read(master, 4096)
-            except OSError:
-                break
-        if not typed and b"type " in heard:
-            os.write(master, (world.evil + "\n").encode())
-            typed = True
     child.wait(timeout=120)
+    heard = os.read(master, 65536)
     os.close(master)
-    assert typed and b"not on the development branch" not in heard
+    assert b"type " not in heard and b"not on the development branch" not in heard
     [entry] = world.audited()
     assert entry.subject == world.evil and entry.outcome != "refused" and entry.meta["person"] is True
 
@@ -316,11 +312,10 @@ def test_integration_checkout_cannot_supply_runtime_admission(world):
 
 
 def test_unmerged_boolean_never_bypasses_agent_review(world, monkeypatch):
-    monkeypatch.setattr(runtime_source.person, "is_terminal", lambda _stream: True)
-    monkeypatch.setattr(runtime_source.person, "marked", lambda: True)
+    monkeypatch.setattr(runtime_source.caller, "marked", lambda: True)
     with pytest.raises(runtime_deploy.DeployError, match="exact reviewed runtime approval"):
         runtime_deploy.admit(world.repo, world.evil, allow_unmerged=True)
-    monkeypatch.setattr(runtime_source.person, "marked", lambda: False)
+    monkeypatch.setattr(runtime_source.caller, "marked", lambda: False)
     runtime_deploy.admit(world.repo, world.evil, allow_unmerged=True)
 
 

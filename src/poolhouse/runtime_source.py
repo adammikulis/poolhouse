@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 
 from poolhouse import caller, runtime_git, runtime_unmerged
@@ -43,8 +42,6 @@ def admit(checkout: Path, commit: str, *, allow_unmerged: bool | runtime_unmerge
             if not isinstance(allow_unmerged, runtime_unmerged.Approval):
                 raise DeployError("an agent needs an exact reviewed runtime approval")
             runtime_unmerged.validate(allow_unmerged, checkout, commit)
-        elif not caller.is_terminal(sys.stdin) or not caller.is_terminal(sys.stdout):
-            raise DeployError("unpublished source needs person authentication through a supported approval route")
         return
     for ref in (f"refs/heads/{branch}", f"refs/remotes/origin/{branch}"):
         published = resolve_commit(checkout, ref)
