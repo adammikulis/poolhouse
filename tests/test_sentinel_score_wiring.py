@@ -93,7 +93,7 @@ def test_repeated_denials_in_one_session_escalate_to_watch_then_quarantine_and_o
     assert again[-1].reason == "denied" and "frozen" in again[-1].text
 
 
-def test_a_person_releases_a_frozen_session_and_the_count_starts_again() -> None:
+def test_a_release_lifts_a_frozen_session_and_the_count_starts_again() -> None:
     node = sentinel.default()
     denied_run("s-rel", 12)
     record = node.store.find("session", "s-rel")

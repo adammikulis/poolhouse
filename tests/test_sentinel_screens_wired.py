@@ -146,7 +146,7 @@ def test_a_suspect_credential_is_left_out_of_a_detached_job(tmp_path, monkeypatc
 SERVER = Path(__file__).with_name("toy_mcp_server.py")
 
 
-def test_an_mcp_server_sentinel_holds_is_not_connected_until_a_person_releases_it() -> None:
+def test_an_mcp_server_sentinel_holds_is_not_connected_until_it_is_released() -> None:
     pytest.importorskip("mcp")
     node = sentinel.default()
     record = node.store.quarantine(("mcp_server", sys.executable), "tools changed", {})

@@ -106,7 +106,7 @@ def test_a_third_party_cannot_make_a_good_source_look_bad(ledger, clock):
     assert (after.state, after.short, after.long, after.clean) == (before.state, before.short, before.long, before.clean)
 
 
-def test_a_watched_host_is_refused_until_a_person_approves_it(ledger, clock, tmp_path):
+def test_a_watched_host_is_refused_until_it_is_approved(ledger, clock, tmp_path):
     policy = net.Policy(allowed=["good.example"], path=tmp_path / "a.jsonl", clock=clock)
     assert policy.admit("https://good.example/x") == "good.example"
     make_established(ledger, clock, "host", "good.example")

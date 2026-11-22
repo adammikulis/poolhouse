@@ -6,8 +6,8 @@ from pathlib import Path
 
 from poolhouse import requests, sentinel
 
-PERSON = requests.Context(terminal=(True, True), env={})
-"""A terminal with a person at it and no agent marker in the process."""
+PERSON = requests.Context(env={})
+"""An answer made in a process with no agent marker, which the `requests.answer` gate lets through."""
 
 
 def approved(path: Path) -> Path:

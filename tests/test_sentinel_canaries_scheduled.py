@@ -124,7 +124,7 @@ def test_a_small_drift_puts_the_model_on_watch(broker, served, model, where) -> 
     assert model.exists(), "a watch must not move the file"
 
 
-def test_a_large_confirmed_drift_quarantines_the_model_and_a_person_can_restore_it(
+def test_a_large_confirmed_drift_quarantines_the_model_and_a_permitted_release_restores_it(
         broker, served, model, where) -> None:
     node = sentinel.default()
     round_, clock = rounds(broker)

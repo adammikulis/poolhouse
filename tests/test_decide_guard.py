@@ -107,7 +107,7 @@ def test_a_confident_safe_and_grounded_call_proceeds_and_asks_both_questions():
     assert set(guard.last) == {"destructive", "grounded"}
 
 
-def test_a_destructive_answer_asks_a_person_and_an_injected_one_is_denied():
+def test_a_destructive_answer_is_a_confirm_and_an_injected_one_is_denied():
     verdict = ToolCallGuard(Scripted({**SAFE, "Is": ("destructive", 0.9)})).before_tool_call(
         CALL, CTX)
     assert isinstance(verdict, Confirm) and "destructive" in verdict.question
@@ -146,7 +146,7 @@ def test_trusted_tools_skip_the_learned_checks_but_not_the_scope_check():
     assert isinstance(guard.before_tool_call(Call("read_file", {"path": "/etc/x"}), CTX), Confirm)
 
 
-def test_a_decider_that_fails_asks_a_person_by_default_and_denies_when_told_to():
+def test_a_decider_that_fails_is_a_confirm_by_default_and_denies_when_told_to():
     class Down:
         def decide(self, *a, **k):
             raise DecideError("server down")

@@ -44,7 +44,8 @@ _OUTCOMES = (("already seen", "replay"), ("outside the window", "clock"),
 
 class GuardLogHandler(logging.Handler):
     """Reads the ``poolhouse.guard`` warnings a `Run` writes (``rail, verdict, hook``) as
-    findings for ``session``: every Deny is a denial counted against the session. Attach it
+    findings for ``session``: every Deny is a denial counted against the session, and so is every Confirm (a `Run` refuses it at
+    once, with nobody to ask), counted without a finding of its own. Attach it
     with ``logging.getLogger("poolhouse.guard").addHandler``."""
 
     def __init__(self, sentinel: Sentinel, session: Callable[[], str] = lambda: "", *,
@@ -58,7 +59,12 @@ class GuardLogHandler(logging.Handler):
             return
         rail, verdict, hook = (str(a) for a in args)
         who = self.session()
-        if verdict != "Deny" or (self.only_known and not who):
+        if verdict not in ("Deny", "Confirm") or (self.only_known and not who):
+            return
+        if verdict == "Confirm":
+            if who:
+                self.sentinel.handle_all(self.sentinel.rails.counted(who, rail))
+                self.sentinel.note("session", who, "guard.denied")
             return
         self.sentinel.handle_all(self.sentinel.rails.noted(who or "none", rail, "deny", hook,
                                                            hook))

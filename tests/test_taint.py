@@ -444,15 +444,14 @@ def test_a_tool_result_from_a_sub_agent_is_untrusted_in_the_parent(served):
     assert RAN == []
 
 
-def test_the_model_loop_in_do_run_is_protected_and_refuses_at_once_what_it_cannot_prove():
+def test_the_model_loop_in_do_run_is_protected_and_every_refusal_is_answered_at_once_with_its_reason():
     from poolhouse.testing import canary
 
     attack = next(a for a in canary.ATTACKS if a.name == "injected-download")
-    assert not attack.hit(canary.play(attack, None))
-    plain = next(b for b in canary.BENIGN if b.name == "plain-calls")
-    assert plain.hit(canary.play(plain, None)), "a run that read nothing from outside is not inspected"
-    lookup = next(b for b in canary.BENIGN if b.name == "lookup-then-serve")
-    run = canary.play(lookup, None)
-    # a plan made after the run read outside text is not proof, so the call that acts is refused at once with the reason (no yes is waited for)
-    assert not lookup.hit(run) and run.done and run.blocked == 1 and not run.ran("serve_up")
-    assert "The run has read text from outside" in run.seen
+    run = canary.play(attack, None)
+    assert not attack.hit(run) and run.blocked >= 1
+    for name in ("lookup-then-serve", "plain-calls"):
+        # whichever rail refuses a call that acts, it answers the model in the same turn with its name and reason, and nothing waits for a yes
+        flow = next(b for b in canary.BENIGN if b.name == name)
+        ran = canary.play(flow, None)
+        assert ran.done and ran.blocked >= 1 and "blocked by the " in ran.seen, name

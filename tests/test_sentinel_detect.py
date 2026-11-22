@@ -335,7 +335,7 @@ def test_a_well_behaved_member_never_alarms():
         assert watch.note("10.0.0.8", "ok") is None
 
 
-def test_a_blocked_member_is_refused_and_released_by_a_person(node):
+def test_a_blocked_member_is_refused_until_a_permitted_release(node):
     now = [0.0]
     node.members = _watch(now)
     for _ in range(3):

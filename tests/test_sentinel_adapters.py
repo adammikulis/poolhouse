@@ -29,14 +29,16 @@ def test_guard_warnings_become_findings_for_the_session(node):
     handler = GuardLogHandler(node, session=lambda: "s1")
     logger.addHandler(handler)
     try:
-        for _ in range(5):
+        for _ in range(4):
             logger.warning("%s: %s at %s", "untrusted", "Deny", "after_tool_call")
         logger.warning("%s: %s at %s", "untrusted", "Confirm", "before_tool_call")
         logger.debug("%s: %s at %s", "x", "Rewrite", "after_tool_call")
+        logger.warning("%s: %s at %s", "x", "Rewrite", "after_tool_call")
     finally:
         logger.removeHandler(handler)
     kinds = [e.kind for e in node.bus.recent(kind="guard.")]
-    assert kinds.count("guard.denied") == 5 and "guard.repeated_denials" in kinds
+    # a Confirm is refused at once (nobody answers it), so it counts as a denial like a Deny (without a finding of its own); a Rewrite is not
+    assert kinds.count("guard.denied") == 4 and "guard.repeated_denials" in kinds
     assert node.session_frozen("s1")
 
 
