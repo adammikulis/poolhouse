@@ -465,7 +465,6 @@
   "tests/test_phone_poolkey_enrollment.py": 3.4,
   "tests/test_pi_harness.py": 0.7,
   "tests/test_pool_check.py": 2.8,
-  "tests/test_pool_check_terminal.py": 0.5,
   "tests/test_pool_found.py": 7.1,
   "tests/test_pre_push.py": 20.0,
   "tests/test_pre_push_promote_update.py": 2.8,

@@ -1,6 +1,6 @@
 """The phone side of the node as a client reaches it: where the node listens for phones and the phones it holds (docs/phone-approval.md).
 
-The one-time code of the first phone is made by the node when the person says yes to its own question (`board.presence`) and is kept in
+The one-time code of the first phone is made by the node when the device's own session asks for it (`board.presence`) and is kept in
 its memory; no file in the state directory makes one.
 """
 

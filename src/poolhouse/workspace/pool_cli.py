@@ -1,7 +1,8 @@
 """The `pool` command of `poolhouse-workspace`: an agent founds this device's pool for a person (docs/api.md, `ph.pool.found`).
 
-The owner says "make a pool called home" and never types this. It prints one sentence a person can read; when the person has something to
-do first (answer on the phone, link the phone) it prints the sentence, where they do it and what the agent does next, and exits 3.
+The owner says "make a pool called home" and never types this. Nobody is asked and nothing waits: this computer makes its own key and the pool
+is founded at once. It prints one sentence a person can read; when it cannot go on (this computer cannot keep a key, the node holds another
+device's key) it prints the sentence, what is missing and what the agent does next, and exits 3.
 """
 
 from __future__ import annotations

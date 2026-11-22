@@ -247,11 +247,11 @@ class Board:
         return list(self._session.call("project_list"))
 
     def request_approval(self, asks: Sequence[Ask], *, note: str = "", task: str = "", ttl_s: int = 0, expect_policy: str = "") -> Approval:
-        """Ask the person, on their phone, for one to eight grants for this session; the `Approval` to wait on.
+        """Ask for one to eight grants for this session; the `Approval` to wait on.
 
-        The node writes the question in plain words and keeps it until the person's key answers; `Approval.wait` returns
-        ``pending`` when its time runs out, which is not a failure. ``note`` is your own words (160 plain characters), shown
-        to the person as yours.
+        The node writes the request in plain words and keeps it until a key answers it (`Approval.wait` returns ``pending`` when its time
+        runs out, which is not a failure). ``note`` is your own words (160 plain characters), shown as yours. Policy
+        (`poolhouse.board.autoapprove`, used by `poolhouse-workspace approval request`) answers at once; this call only raises the request.
         """
         return approvals.request(self._session, approvals.wire(list(asks), note=note, task=task, ttl_s=ttl_s, expect_policy=expect_policy))
 
@@ -264,7 +264,7 @@ class Board:
         return approvals.blocks(self._session)
 
     def lift_block(self, who: str) -> None:
-        """Ask the person at this computer to lift the block on ``board/session``."""
+        """Lift the block on ``board/session``: the device's own session may lift any, another main session only its own."""
         approvals.lift_at_computer(self._session, who)
 
     def approvals(self, state: str = "") -> list[Approval]:

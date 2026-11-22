@@ -1,6 +1,6 @@
 """Which process registered a main session, against a real node: another terminal session cannot register as it, a refusal gives
-out and ends nothing, a session holds a few tokens and is refused more, and a person moves it to their own terminal with a
-key's signature and a typed yes."""
+out and ends nothing, a session holds a few tokens and is refused more, and a process with no agent marker moves it to its own terminal with
+this device's key's signature, at once, while an agent is refused the move with the reason."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import sys
 import termios
 
 import pytest
-from node_kit import SRC, STRIPPED, TYPED
+from node_kit import SRC, STRIPPED
 
 from poolhouse.board import credentials, grants as board_grants, session as board_session
 from poolhouse.board.client import Denied
@@ -197,14 +197,15 @@ def test_a_captured_move_is_not_used_twice_and_is_for_one_node_and_one_session(l
         node.client.call("rebind", node.board, "", **stale)
 
 
-def test_a_person_at_a_new_terminal_moves_the_session_there_and_the_harness_registers_from_that_terminal(lead):
+def test_a_process_at_a_new_terminal_moves_the_session_there_with_no_question_and_the_harness_registers_from_that_terminal(lead):
     node = lead
     node.keep_person_key(node.lead)
     script = (f"{sys.executable} -m poolhouse.workspace.cli rebind claude-code lead --json; "
               f"{sys.executable} -c \"{REGISTER}\" {node.state} {node.board} lead")
-    code, out, err = node.terminal(program=["/bin/sh", "-c", script], typed=TYPED, timeout=120)
+    code, out, err = node.terminal(program=["/bin/sh", "-c", script], timeout=120)
     assert code == 0, (out, err)
-    assert '"moved"' in out and node.lead.name in out and "Type yes to sign it: " in out and "move the session " + node.lead.name in out, out
+    assert '"moved"' in out and node.lead.name in out, out
+    assert "Type yes" not in out, "nobody was asked"
     assert '"token"' in out, "the harness started in that terminal registers as the session"
     with pytest.raises(Denied):
         node.session(node.lead).whoami()
@@ -212,20 +213,12 @@ def test_a_person_at_a_new_terminal_moves_the_session_there_and_the_harness_regi
     assert refused["code"] == "denied", "the terminal the session was in before no longer registers it"
 
 
-def test_the_move_asks_the_person_and_a_no_moves_nothing(lead):
+def test_an_agent_marked_process_is_refused_the_move_at_once_with_the_reason_and_nothing_moves(lead):
     node = lead
     node.keep_person_key(node.lead)
-    script = f"{sys.executable} -m poolhouse.workspace.cli rebind claude-code lead --json"
-    code, out, err = node.terminal(program=["/bin/sh", "-c", script], typed={**TYPED, "Type yes": "no"}, timeout=120)
-    assert code != 0 and "confirmation" in out + err, (out, err)
+    done = node.cli("rebind", "claude-code", "lead", "--json", who=node.lead, env={"CLAUDECODE": "1"}, timeout=120)
+    assert done.returncode == 3 and "refused to an agent" in json.loads(done.stdout)["error"], (done.stdout, done.stderr)
     assert node.session(node.lead).whoami().name == node.lead.name, "nothing was moved"
-
-
-def test_an_agent_marked_process_is_not_offered_the_key_to_move_a_session(lead):
-    node = lead
-    node.keep_person_key(node.lead)
-    code, out, err = node.terminal("rebind", "claude-code", "lead", "--json", who=node.lead, env={"CLAUDECODE": "1"}, typed=TYPED, timeout=120)
-    assert code != 0 and node.session(node.lead).whoami().name == node.lead.name, (out, err)
 
 
 API_SESSION = "from poolhouse.api import _node\nprint(_node.session().name)\n"

@@ -28,7 +28,7 @@ from poolhouse.board.session import Session
 from poolhouse.board.terminal import terminal_id
 from poolhouse.fleet.onboard.signing import KeyStoreError
 
-__all__ = ["Admin", "Founded", "NoComputerKey", "Refusal", "Terms", "asking_session", "found", "found_here", "found_on_computer", "govern", "pool_session", "with_card", "yes_for"]
+__all__ = ["Admin", "Founded", "NoComputerKey", "Refusal", "Terms", "asking_session", "found", "found_here", "found_on_computer", "govern", "pool_session", "ticket_for", "with_card"]
 
 POOL_GRANT_LASTS = "10m"
 POLICIES = ("open", "secure")
@@ -37,8 +37,8 @@ NOT_THE_DEVICE = "The node did not accept this process as this device's own sess
 
 
 class Refusal(errors.Denied):
-    """Founding could not go on; ``say`` is one sentence for the person, ``needs`` what is missing (`approval`, `device`, `time`, `none`),
-    ``where`` where the person taps or answers, and ``then`` what the agent does next (`wait`, `retry`, `ask-owner`, `stop`)."""
+    """Founding could not go on; ``say`` is one sentence to pass on, ``needs`` what is missing (`approval`, `device`, `time`, `none`),
+    ``where`` where it is supplied, and ``then`` what the agent does next (`wait`, `retry`, `ask-owner`, `stop`)."""
 
     def __init__(self, say: str, *, needs: str = "none", where: str = "", then: str = "ask-owner") -> None:
         super().__init__(say)
@@ -51,8 +51,7 @@ class NoComputerKey(Refusal):
 
 @dataclass(frozen=True, slots=True)
 class Admin:
-    """A key that is not this computer's and governs the pool (a phone's): it signs each act itself, so the person is asked by whatever stands
-    behind ``key``, the phone's card for the grant."""
+    """A key that is not this computer's and governs the pool (a phone's): it signs each act itself, where it is kept."""
 
     key: grants.Signs
     person: str = "owner"
@@ -94,8 +93,8 @@ def _enrolled(session: Session, admin: Admin, voice: presence.Voice) -> None:
     if grants.fingerprint(admin.key.public) in held:
         return
     if held:
-        raise Refusal("This device already trusts a different key of yours; add this one from your phone, or use that one.", needs="device",
-                      where="the Poolhouse app on your phone")
+        raise Refusal("This device already trusts a different key: carry this one over with `person-proof` and `person-enroll`, or use that one.", needs="device",
+                      where="the device that holds the key this device trusts")
     try:
         # only the device's own session makes the first key
         grants.enrol_first(session.client, pool_session(session.client, person_session=True).token, admin.key, admin.about, voice)
@@ -160,7 +159,7 @@ def _card_of(draft: dict[str, Any]) -> str:
     """The id of the card the node drafted, or the refusal that says why there is none."""
     card = draft.get("card")
     if not isinstance(card, str):
-        raise Refusal(str(draft.get("card_why") or "This change cannot be confirmed at the computer's prompt."), needs="none", then="stop")
+        raise Refusal(str(draft.get("card_why") or "The node made no card for this change, so it cannot be made."), needs="none", then="stop")
     return card
 
 
@@ -214,10 +213,10 @@ def found(session: Session, admin: Admin, name: str, policy: str = "secure", ter
     terms = terms or Terms()
     if (done := _checked(session, policy)) is not None:
         return done
+    _allowed(session, admin, name, terms.voice)  # first: the node drafts the charter with the claim it recorded for the key, so a key it holds as a typed yes says so
     draft = _draft(session, {"key": admin.key.public.hex(), "person": admin.person, "label": admin.label}, name, policy)
     if not draft["counting"]:
         raise Refusal(NOT_COUNTED, needs="none")
-    _allowed(session, admin, name, terms.voice)
     return _submit(session, _charter(admin.key, draft))
 
 
@@ -228,6 +227,10 @@ def found_on_computer(session: Session, name: str, policy: str = "secure", voice
     if (done := _checked(session, policy)) is not None:
         return done
     keys = computer_key.PoolKeys(session.client.state, session.client, session.token, ks=ks)
+    try:
+        keys.check()
+    except KeyStoreError as err:
+        raise Refusal(f"This computer cannot keep the key a pool needs: {err}", needs="device", where="this computer's keystore", then="stop") from None
     draft = _draft(session, {"computer": True, "person": "owner", "label": "this computer's key", "sealed": keys.sealed()}, name, policy)
     try:
         said = presence.ask_card(session.client, session.token, "pool_key", presence.Card(_card_of(draft)), voice)
@@ -245,7 +248,7 @@ def found_on_computer(session: Session, name: str, policy: str = "secure", voice
         raise
 
 
-def yes_for(session: Session, op: str, args: dict[str, Any], voice: presence.Voice = presence.SILENT, *, ks: keystore.Keystore | None = None) -> dict[str, Any]:
+def ticket_for(session: Session, op: str, args: dict[str, Any], voice: presence.Voice = presence.SILENT, *, ks: keystore.Keystore | None = None) -> dict[str, Any]:
     """The ticket for the operation ``op`` (`add_device` or `join_pool`) with ``args``, made at once, as the params the call then carries: the
     ticket, and for a window the act this computer's key signs under that same ticket, which lets this device admit what proves the window's
     code. The device's own session holds no grant; it opens a window or joins a pool with this ticket for exactly that."""

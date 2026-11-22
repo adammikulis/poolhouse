@@ -124,7 +124,7 @@ def held_key(client: Client) -> tuple[Session, Any]:
 
 
 def _waiting(carrier: Session, key: Any) -> dict[str, dict[str, Any]]:
-    """Every request that waits, by handle, read with the person's key: the key signs the reading (a typed yes), because a session reads only its own."""
+    """Every request that waits, by handle, read with this device's key: the key signs the reading, because a session reads only its own."""
     node = str(carrier.call("hello")["device"])
     signed = grants.sign_list(key, node, int(time.time() * 1000))
     return {a["id"]: a for a in carrier.call("approval_pending", **signed)["approvals"]}

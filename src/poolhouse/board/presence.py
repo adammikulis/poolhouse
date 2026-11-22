@@ -1,10 +1,11 @@
-"""The node's confirmation before the first person key, the first phone or a change to the pool is made (docs/phone-approval.md, "The first phone";
+"""How the first person key, the first phone or a change to the pool is made by the node (docs/phone-approval.md, "The first phone";
 docs/node.md, "Standing grants").
 
-The node confirms, never the client. A node started as the installed software starts it (`--presence auto`) asks nobody: the one-time secret
-or ticket is made at once, kept in the node's memory and handed once to the session that asked, so neither a file in the state directory
-nor a request can make one. A node started with `--presence os` or `terminal` puts a question to the user first, and `ask` then waits for
-the answer; it has no way to give one.
+The node makes it, never the client. A node started as the launcher starts it (`--presence auto`, the default) asks nobody: the one-time secret
+or ticket is made as it is asked for, kept in the node's memory and handed once to the session that asked, so neither a file in the state
+directory nor a request can make one; who may ask is the node's rule (the device's own session for the first key and phone, a live main session
+also for a pool's card), and a secret is bound to the key it was made for. A node somebody started by hand with `--presence os` or `terminal` puts
+a question to the user first, and `ask` then waits for the answer; this module has no way to give one, and the launcher never starts such a node.
 """
 
 from __future__ import annotations
@@ -48,7 +49,7 @@ def _has_console() -> bool:
 
 
 def _where(kind: str, sentence: str = "") -> str:
-    """What to tell the person, word for word what the prompt says and where to answer it: the dialog can open behind their windows."""
+    """What to say while a node started by hand with `--presence os` or `terminal` waits for its user: the question and where it is answered."""
     way = (
         "Say yes at the prompt this computer shows (it asks for your password or fingerprint)."
         if kind == "os"
@@ -72,19 +73,19 @@ def _why(said: dict[str, Any]) -> str:
 
 @dataclass(frozen=True, slots=True)
 class Voice:
-    """How the question is put: the terminal device the node writes it on when it asks on a terminal (this process's own by default) and
-    where the words that tell the person to answer go."""
+    """How a question is put by a node that asks (`--presence terminal`): the terminal device it writes on (this process's own by default) and
+    where the words that say where to answer go. A node that asks nobody (`auto`) ignores both."""
 
     terminal: str | None = None
     say: Callable[[str], Any] = lambda _text: None
 
 
 SILENT = Voice()
-"""The question put on this process's own terminal, with nothing said to the person about it."""
+"""This process's own terminal, with nothing said about it."""
 
 
 class Card(NamedTuple):
-    """A change the node drafted (``id``). The yes at its prompt enrols the key the node made for it, when it made one."""
+    """A change the node drafted (``id``). Asking for it enrols the key the node made for it, when it made one."""
 
     id: str
 
@@ -92,20 +93,20 @@ class Card(NamedTuple):
 def ask(
     client: Client, token: str, purpose: str, public: str = "", voice: Voice = SILENT
 ) -> dict[str, Any]:
-    """Ask the person, through the node, to allow the session ``token`` to add the first person key (``purpose`` `key`) or the first
-    phone (`phone`), and wait for the answer: the node's reply with the one-time `secret` (and, for a phone, its `link`).
+    """Ask the node for the one-time secret that lets the session ``token`` add the first person key (``purpose`` `key`) or the first phone
+    (`phone`): the node's reply, with the `secret` (and, for a phone, its `link`). The device's own session asks; the node refuses any other.
 
-    ``public`` is the public key (hex) of the first key: the person's yes is for that key and no other, and the question shows its words;
-    a phone has none. Raises `Denied` when the person said no, did not answer or the dialog could not be shown (each worded as what it was: only the
-    first is a no, and asking again raises the prompt again at once), or when the node has no way to ask.
+    ``public`` is the public key (hex) of the first key: the secret is for that key and no other; a phone has none. Raises `Denied` when the node
+    refuses the asker or a key is enrolled already; a node somebody started to ask a user (`os`, `terminal`) is waited for, and a no, a late
+    answer or a dialog that could not be shown are each worded as what they were.
     """
     return _asked(client, token, voice, purpose=purpose, public=public, card="")
 
 
 def ask_card(client: Client, token: str, purpose: str, card: Card, voice: Voice = SILENT) -> dict[str, Any]:
-    """Ask the person, through the node, to answer the change ``card`` names (``purpose`` `pool_key` for a card that made a key for this computer,
-    `card` for any other): the sentence the prompt shows is the node's, written from its draft, and the reply's `secret` is the ticket a signer
-    shows the node for each payload it signs (a `pool_key` reply also carries the new key's `seed`, once). Raises `Denied` as `ask` does."""
+    """Ask the node to answer the change ``card`` names (``purpose`` `pool_key` for a card that made a key for this computer, `card` for any other):
+    the reply's `secret` is the ticket a signer shows the node for each payload it signs (a `pool_key` reply also carries the new key's `seed`,
+    once). Raises `Denied` as `ask` does."""
     return _asked(client, token, voice, purpose=purpose, card=card.id)
 
 

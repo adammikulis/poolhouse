@@ -1,235 +1,185 @@
-"""The person's grant key: what it shows before it signs, that only a typed yes on the terminal device lets it sign, and that
-neither stdin and stdout nor the environment stands in for that."""
+"""This device's grant key: made on first use, kept in a file under the passphrase of the environment (never asked for at a terminal), and used to
+sign the grant a refusal names, at once, when policy allows it. A process with no agent marker may have any grant; a process an agent started
+is refused the few it may not have (`AGENT_REFUSED`), with the reason and before anything is signed or any key is made, and every decision is on
+the audit log with who asked.
+"""
 
 from __future__ import annotations
 
-import fcntl
 import json
-import os
-import pty
-import select
-import subprocess
-import sys
-import termios
-import time
-from pathlib import Path
 
 import pytest
-from node_kit import PASSPHRASE, TYPED, NoKeystore, person_keys
+from node_kit import PASSPHRASE, NoKeystore
 
+from poolhouse import caller, keystore
 from poolhouse.board import grants, person_key
-from poolhouse.fleet.onboard.signing import ConfirmedKeys, KeyStoreError, SigningKeys
+from poolhouse.board.client import Denied
+from poolhouse.fleet.onboard.signing import UNLOCK_ENV, KeyStoreError
 
 pytest_plugins = ["node_kit"]
-SRC = str(Path(__file__).resolve().parents[1] / "src")
-ASK = "import sys\nimport time\nfrom poolhouse import caller\ntime.sleep(float(sys.argv[2]))\nprint(caller.confirm('Type yes: ', wait_s=float(sys.argv[1])))\n"
 WANT = grants.Want("link_remove", {"kind": "session", "name": "claude-abc123"}, "feat/*", "ab" * 32, 7 * 86_400_000, 3)
 T0 = 1_800_000_000_000
 WHERE = grants.Where("ef" * 32, {"pid": 4242, "start": 1_700_000})
+HINT = {"action": "member_remove", "board": "demo", "name": "claude-abc123", "resource": "*", "device": "ab" * 32}
 
 
 class Capture:
-    """A key that keeps the bytes it is asked to sign, to put them to the person key the way a caller would."""
+    """A key that keeps the bytes it is asked to sign, to read them back the way a caller would."""
 
     public = b"\x01" * 32
 
+    def __init__(self) -> None:
+        self.data: list[bytes] = []
+
     def sign_bytes(self, data: bytes) -> bytes:
-        self.data = data
+        self.data.append(data)
         return b"\0" * 64
 
 
 @pytest.fixture
-def person_key_at(tmp_path, monkeypatch):
-    """A person key in a temporary directory whose terminal question is `person.confirm`, answered from ``answers`` and kept in ``asked``."""
-    def make(*answers: bool) -> tuple[ConfirmedKeys, list[str]]:
-        asked: list[str] = []
-        return person_keys(tmp_path / "person"), asked
-    return make
+def no_question(monkeypatch):
+    """Nothing may ask: a prompt for text or a passphrase on this process's terminal ends the test."""
+    def asked(*_args, **_kwargs):
+        raise AssertionError("the key asked for something at a terminal")
+    monkeypatch.setattr("builtins.input", asked)
+    monkeypatch.setattr("getpass.getpass", asked)
 
 
-def run_confirm(typed: str | None, *, controlling: bool = True, wait_s: float = 5.0, sleep: float = 0.0, expect: str = "Type yes: ") -> tuple[str, str]:
-    """`person.confirm` in a child whose stdin and stdout are pipes, with a pseudo-terminal as its controlling terminal (or none):
-    what it printed and what the terminal showed. ``typed`` is written once the prompt shows, or at once when ``sleep`` is set."""
-    leader, follower = pty.openpty()
-    kwargs = {"preexec_fn": lambda: fcntl.ioctl(follower, termios.TIOCSCTTY, 0)} if controlling else {}
-    child = subprocess.Popen([sys.executable, "-c", ASK, str(wait_s), str(sleep)], env={**os.environ, "PYTHONPATH": SRC}, stdin=subprocess.PIPE,
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True, pass_fds=(follower,), **kwargs)
-    shown = b""
-    sent = typed is None
-    if sleep and typed is not None:
-        os.write(leader, f"{typed}\n".encode())
-        sent = True
-    end = time.monotonic() + 30
-    while child.poll() is None and time.monotonic() < end:
-        if select.select([leader], [], [], 0.1)[0]:
-            try:
-                data = os.read(leader, 65536)
-            except OSError:
-                break
-            if not data:
-                break
-            shown += data
-            if not sent and expect.encode() in shown:
-                os.write(leader, f"{typed}\n".encode())
-                sent = True
-    out, err = child.communicate(timeout=30)
-    os.close(follower)
-    os.close(leader)
-    assert child.returncode == 0, err
-    return out.strip(), shown.decode(errors="replace")
+def test_the_key_is_made_on_first_use_beside_the_node_and_signs_with_no_question(tmp_path, monkeypatch, no_question):
+    monkeypatch.setenv(UNLOCK_ENV, PASSPHRASE)
+    assert not person_key.kept(tmp_path), "no key is made by looking for one"
+    key = person_key.keys(tmp_path)
+    signed = grants.sign_issue(key, "demo", WANT, now_ms=T0, gid="g-0123456789abcdef")
+    assert len(signed["sig"]) == 128 and person_key.kept(tmp_path) and key.directory == tmp_path / person_key.KEY_DIR
+    again = grants.sign_issue(person_key.keys(tmp_path), "demo", WANT, now_ms=T0, gid="g-0123456789abcdef")
+    assert again["sig"] == signed["sig"], "the same key signs again, from another object, with no question"
 
 
-@pytest.mark.parametrize(("typed", "said"), [("yes", "True"), ("YES", "True"), ("", "False"), ("y", "False"), ("no", "False"), ("yes please", "False"), ("ok", "False")])
-def test_only_a_typed_yes_on_the_terminal_device_is_a_yes_whatever_stdin_and_stdout_are(typed, said):
-    out, shown = run_confirm(typed)
-    assert out == said and "Type yes: " in shown
+def test_the_passphrase_of_the_key_file_comes_from_the_environment_only_and_its_absence_is_one_sentence(tmp_path, monkeypatch, no_question):
+    monkeypatch.setattr(keystore, "default", NoKeystore)  # a machine with no keystore of its own: the key is a file
+    monkeypatch.delenv(UNLOCK_ENV, raising=False)
+    key = person_key.keys(tmp_path)
+    with pytest.raises(KeyStoreError, match=UNLOCK_ENV):
+        _ = key.public
+    assert not person_key.kept(tmp_path), "nothing was made that nobody could open"
+    monkeypatch.setenv(UNLOCK_ENV, "")
+    with pytest.raises(KeyStoreError, match=UNLOCK_ENV):
+        _ = person_key.keys(tmp_path).public
+    monkeypatch.setenv(UNLOCK_ENV, PASSPHRASE)
+    made = person_key.keys(tmp_path).public
+    monkeypatch.setenv(UNLOCK_ENV, "another passphrase")
+    with pytest.raises(KeyStoreError):
+        person_key.keys(tmp_path).sign_bytes(b"data")
+    monkeypatch.setenv(UNLOCK_ENV, PASSPHRASE)
+    assert person_key.keys(tmp_path).public == made
 
 
-def test_text_typed_before_the_question_is_not_an_answer_and_no_answer_is_no():
-    out, shown = run_confirm("yes", sleep=1.5, wait_s=2.0)
-    assert out == "False" and "Type yes: " in shown and "no answer" in shown, "a yes typed ahead is dropped"
-    out, shown = run_confirm(None, wait_s=1.0)
-    assert out == "False" and "no answer" in shown
-
-
-def test_with_no_terminal_there_is_nobody_to_ask_and_the_answer_is_no_at_once():
-    started = time.monotonic()
-    out, shown = run_confirm("yes", controlling=False, wait_s=60.0)
-    assert out == "False" and shown == "" and time.monotonic() - started < 20
-
-
-def test_a_person_key_asks_what_it_would_sign_in_words_and_signs_only_after_a_yes(person_key_at):
-    key, asked = person_key_at(False, True)
-    with pytest.raises(KeyStoreError, match="confirmation"):
-        grants.sign_issue(key, "demo", WANT, now_ms=T0)
-    assert len(asked) == 1
-    for word in ("allow the session claude-abc123 to link_remove on feat/*", "board demo", "device " + "ab" * 32, "for 7 days", "ending " + grants.when(T0 + 7 * 86_400_000), "3 uses", "Type yes to sign it: "):
-        assert word in asked[0], (word, asked[0])
-    signed = grants.sign_issue(key, "demo", WANT)
-    assert len(asked) == 2 and len(signed["sig"]) == 128
-
-
-def test_the_question_is_read_from_the_bytes_signed_and_only_a_grant_a_revocation_or_a_key_is_signed(person_key_at):
-    key, asked = person_key_at(True, True, True, True)
-    revoke = grants.sign_revoke(key, "demo", "g-0123456789abcdef", "no longer needed")
-    assert "end the grant g-0123456789abcdef on board demo (no longer needed)" in asked[-1] and revoke["gid"] == "g-0123456789abcdef"
-    grants.enrolment(key, "the laptop")
-    assert f"let the key {key.public.hex()} (the laptop) act as a person key on the node" in asked[-1]
-    grants.sign_unenroll(key, "cd" * 32, WHERE, now_ms=T0)
-    assert f"take the person key {'cd' * 32} off the node {'ef' * 32}" in asked[-1] and f"until {grants.when(T0 + 300_000)}" in asked[-1]
-    assert "once" in asked[-1] and "process 4242" in asked[-1], asked[-1]
-    before = len(asked)
+def test_what_is_signed_is_read_back_in_words_from_the_bytes_and_nothing_else_is_described():
+    spy = Capture()
+    grants.sign_issue(spy, "demo", WANT, now_ms=T0)
+    line = grants.describe(spy.data[-1])
+    for word in ("allow the session claude-abc123 to link_remove on feat/*", "board demo", "device " + "ab" * 32, "for 7 days", "ending " + grants.when(T0 + 7 * 86_400_000), "3 uses"):
+        assert word in line, (word, line)
+    grants.sign_revoke(spy, "demo", "g-0123456789abcdef", "no longer needed", now_ms=T0)
+    assert "end the grant g-0123456789abcdef on board demo (no longer needed)" in grants.describe(spy.data[-1])
+    grants.enrolment(spy, "the laptop", now_ms=T0)
+    assert f"let the key {spy.public.hex()} (the laptop) act as a person key on the node" in grants.describe(spy.data[-1])
+    grants.sign_unenroll(spy, "cd" * 32, WHERE, now_ms=T0)
+    gone = grants.describe(spy.data[-1])
+    assert f"take the person key {'cd' * 32} off the node {'ef' * 32}" in gone and "once" in gone and "process 4242" in gone, gone
     for data in (b"anything at all", b"poolhouse/grant/v1\nnot json", b"poolhouse/grant/v1\n{}", b"poolhouse/other/v1\n{}", b"", json.dumps(["a"]).encode()):
         with pytest.raises(ValueError, match="person key signs"):
-            key.sign_bytes(data)
-    assert len(asked) == before, "bytes that are none of those are refused without a question"
+            grants.describe(data)
 
 
-def test_one_yes_covers_the_list_it_showed_and_nothing_else(person_key_at):
-    key, asked = person_key_at(True, False)
-    other = grants.Want("sync_now", {"kind": "session", "name": "claude-abc123"})
-    key.approve([grants.want_line("demo", WANT, T0)], "One thing:")
-    assert len(asked) == 1
-    assert grants.sign_issue(key, "demo", WANT, now_ms=T0)["sig"] and len(asked) == 1, "the line that was shown needs no second question"
-    with pytest.raises(KeyStoreError):
-        grants.sign_issue(key, "demo", WANT, now_ms=T0)
-    assert len(asked) == 2, "and it covered one signature"
-    with pytest.raises(KeyStoreError):
-        key.approve([grants.want_line("demo", other, T0)], "Refused:")
-
-
-def test_the_person_key_asks_every_time_whatever_its_record_says_and_the_share_signing_key_is_not_changed(person_key_at, tmp_path):
-    keys, asked = person_key_at(False, False)
-    assert keys.meta()["confirm"] is True, "a new person key records that it asks"
-    record = tmp_path / "person" / "signing.json"
-    record.write_text(json.dumps({**json.loads(record.read_text()), "confirm": False}))
-    with pytest.raises(KeyStoreError, match="confirmation"):
-        grants.sign_issue(keys, "demo", WANT, now_ms=T0)
-    assert len(asked) == 1
-    share = SigningKeys(tmp_path / "share", ks=NoKeystore(), passphrase=lambda _prompt: PASSPHRASE)
-    assert share.meta()["confirm"] is False and len(share.sign_bytes(b"data")) == 64, "the share signing key signs without asking, as before"
-
-
-def test_a_confirm_passed_by_the_caller_answers_nothing_and_the_question_is_still_put(person_key_at):
-    keys, asked = person_key_at(False)
-    spy = Capture()
-    grants.sign_issue(spy, "demo", WANT, now_ms=T0)
-    with pytest.raises(KeyStoreError, match="confirmation"):
-        keys.sign_bytes(spy.data, confirm=lambda _summary: True)
-    assert len(asked) == 1 and "Type yes to sign it: " in asked[0], "the caller's answer was not used: the person was asked"
-    keys, asked = person_key_at(True)
-    assert len(keys.sign_bytes(spy.data, confirm=lambda _summary: False)) == 64 and len(asked) == 1, "and the caller's no is not the person's"
-
-
-def test_the_person_key_signs_no_manifest_whoever_confirms(person_key_at):
-    keys, asked = person_key_at(True, True)
-    with pytest.raises(KeyStoreError, match="not manifests"):
-        keys.sign([], serial=1, confirm=lambda _summary: True)
-    with pytest.raises(KeyStoreError, match="not manifests"):
-        keys.attest([], serial=1, namespace="x", confirm=lambda _summary: True)
-    assert asked == []
-
-
-def test_an_approval_names_the_whole_node_the_key_and_when_it_ends(person_key_at):
-    keys, asked = person_key_at(True, True)
-    other = Capture()
+def test_an_approval_names_the_whole_node_the_key_and_when_it_ends():
+    other, spy = Capture(), Capture()
     carried = grants.enrolment(other, "a second device", now_ms=T0)
-    grants.approve(carried, keys, grants.Where("cd" * 32, WHERE.anchor), now_ms=T0)
-    assert f"let the key {other.public.hex()} (a second device) act as a person key on the node {'cd' * 32}" in asked[-1]
-    assert f"approved by the key {grants.fingerprint(keys.public)}" in asked[-1] and f"until {grants.when(T0 + 300_000)}" in asked[-1]
-    assert "in the terminal whose shell is process 4242" in asked[-1], asked[-1]
-    grants.sign_rebind(keys, "demo", grants.MoveSession("claude-abc123", "01" * 16), grants.Where("ab" * 32, WHERE.anchor), now_ms=T0)
-    assert "(the shell is process 4242)" in asked[-1] and f"on the node {'ab' * 32}" in asked[-1] and "end the tokens it holds" in asked[-1], asked[-1]
+    grants.approve(carried, spy, grants.Where("cd" * 32, WHERE.anchor), now_ms=T0)
+    line = grants.describe(spy.data[-1])
+    assert f"let the key {other.public.hex()} (a second device) act as a person key on the node {'cd' * 32}" in line
+    assert f"approved by the key {grants.fingerprint(spy.public)}" in line and f"until {grants.when(T0 + 300_000)}" in line
+    assert "in the terminal whose shell is process 4242" in line, line
 
 
-def test_the_question_of_the_person_key_is_the_terminal_question_and_nothing_else_answers_it(tmp_path, monkeypatch):
-    seen: list[tuple[str, dict]] = []
-    keys = person_keys(tmp_path / "person")
+def test_a_carried_key_whose_name_is_not_plain_text_is_refused_before_anything_is_signed():
     spy = Capture()
-    grants.sign_issue(spy, "demo", WANT, now_ms=T0)
-    with pytest.raises(KeyStoreError):
-        keys.sign_bytes(spy.data)
-    with pytest.raises(KeyStoreError):
-        keys.approve(["a line"], "Header:")
-    assert [text.rsplit("\n", 1)[-1] for text, _ in seen] == ["Type yes to sign it: ", "Type yes to sign it: "] and seen[0][1] == {}
-
-
-def test_a_carried_key_whose_name_is_not_plain_text_is_refused_before_the_person_is_asked(person_key_at):
-    keys, asked = person_key_at(True)
     carried = {"public": "ab" * 32, "at_ms": T0, "proof": "00" * 64}
-    for about in ("\x1b[2J\x1b[Hlet the key 0000 act", "line\nbreak", "caf\u00e9"):
+    for about in ("\x1b[2J\x1b[Hlet the key 0000 act", "line\nbreak", "café"):
         with pytest.raises(ValueError, match="plain ASCII"):
-            grants.approve({**carried, "about": about}, keys, grants.Where("ab" * 32, WHERE.anchor))
-    assert asked == []
+            grants.approve({**carried, "about": about}, spy, grants.Where("ab" * 32, WHERE.anchor))
+    assert spy.data == []
 
 
-def test_the_person_keys_passphrase_comes_from_the_terminal_and_never_from_the_environment(tmp_path, monkeypatch):
-    monkeypatch.setenv("POOLHOUSE_SIGNING_PASSPHRASE", "the wrong passphrase from the environment")
-    ConfirmedKeys(tmp_path / "person", ks=NoKeystore(), passphrase=lambda _prompt: PASSPHRASE).meta()
-    asked: list[str] = []
-    monkeypatch.setattr(person_key, "tty_passphrase", lambda prompt: asked.append(prompt) or PASSPHRASE)
-    key = person_key.keys(tmp_path)
-    assert key.directory == tmp_path / "person"
-    assert len(grants.sign_issue(key, "demo", WANT)["sig"]) == 128 and len(asked) == 1 and "passphrase" in asked[0]
-    assert len(grants.sign_issue(key, "demo", WANT)["sig"]) == 128 and len(asked) == 1, "the passphrase is typed once for the life of the process"
+def test_policy_refuses_an_agent_exactly_the_grants_that_end_a_place_in_the_pool_change_who_governs_it_or_release_what_failed_a_scan():
+    assert set(person_key.AGENT_REFUSED) == {"member_remove", "admin_manage", "land_trust", "quarantine_release"}
+    assert all(person_key.agent_refusal(action) for action in person_key.AGENT_REFUSED)
+    for action in ("sync_now", "pool_leave", "note_verify", "task_authority", "add_device", "file_delete"):
+        assert person_key.agent_refusal(action) == "", action
 
 
-def test_the_passphrase_prompt_needs_a_terminal_and_the_environment_does_not_stand_in_for_one(monkeypatch):
-    monkeypatch.setenv("POOLHOUSE_SIGNING_PASSPHRASE", PASSPHRASE)
-    with pytest.raises(KeyStoreError, match="terminal"):
-        person_key.tty_passphrase("signing key passphrase: ")
+@pytest.mark.parametrize("action", sorted(person_key.AGENT_REFUSED))
+def test_an_agent_is_refused_at_once_before_a_key_is_made_and_the_refusal_is_audited_with_who_asked(tmp_path, monkeypatch, no_question, action):
+    monkeypatch.setenv(UNLOCK_ENV, PASSPHRASE)
+    monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path))
+    monkeypatch.setenv("CLAUDECODE", "1")
+    assert person_key.provider(tmp_path / "node")("a-token", {**HINT, "action": action}) == "", "no token to send the request again with"
+    assert not person_key.kept(tmp_path / "node"), "refused before any key was made or opened"
+    rows = [r for r in caller.audit_rows() if r["event"] == "grant.refused"]
+    assert [(r["action"], "agent CLAUDECODE" in r["who"]) for r in rows] == [(action, True)] and rows[0]["why"] == person_key.AGENT_REFUSED[action]
 
 
-def test_a_process_with_a_terminal_and_the_passphrase_in_its_environment_signs_nothing_until_the_person_types_yes(workspace_node):
+def test_a_process_with_no_agent_marker_has_the_same_grants_signed_at_once_and_a_node_takes_them(workspace_node):
+    team = workspace_node
+    lead, plain = team.member("lead"), team.member("plain")
+    team.keep_person_key(lead)
+    with pytest.raises(Denied) as refused:
+        team.client.call("pool_leave", "", plain.token)
+    for action in sorted(person_key.AGENT_REFUSED):
+        token = person_key.provider(team.state)(plain.token, {**refused.value.grant, "action": action})
+        assert token == plain.token, f"{action} is signed at once for a process with no agent marker"
+        assert any(g.action == action and g.status == "live" and g.uses == 1 and g.until_ms - g.at_ms == person_key.LASTS_MS
+                   for g in grants.listing(team.session(plain)).grants), "good for one use and two minutes, for the session that was refused"
+    issued = [r for r in caller.audit_rows() if r["event"] == "grant.issued"]
+    assert [r["action"] for r in issued] == sorted(person_key.AGENT_REFUSED) and all(r["who"].startswith("user ") for r in issued)
+
+
+def test_the_grant_an_agent_may_have_is_signed_for_it_at_once_and_a_node_spends_it_once(workspace_node, monkeypatch):
+    team = workspace_node
+    lead, plain = team.member("lead"), team.member("plain")
+    team.keep_person_key(lead)
+    monkeypatch.setenv("CLAUDECODE", "1")
+    team.client.person = person_key.provider(team.state)
+    with pytest.raises(Denied, match="not in a pool"):
+        team.client.call("pool_leave", "", plain.token)  # allowed by policy, signed, spent: the node then answers the call itself
+    assert [e["op"] for e in grants.log(team.session(plain)) if e["action"] == "pool_leave"] == ["use", "issue"]
+    team.client.person = None
+    with pytest.raises(Denied) as again:
+        team.client.call("pool_leave", "", plain.token)
+    assert again.value.grant["action"] == "pool_leave", "the one use is spent: a second call is refused again, naming the grant"
+    assert [r["who"] for r in caller.audit_rows() if r["event"] == "grant.issued" and r["action"] == "pool_leave"] == [caller.who()]
+    assert "agent CLAUDECODE" in caller.who()
+
+
+def test_a_command_signs_with_no_terminal_for_a_process_with_no_marker_and_is_refused_to_an_agent_with_the_reason(workspace_node):
     team = workspace_node
     lead = team.member("lead")
     team.keep_person_key(lead)
-    env = {"POOLHOUSE_SIGNING_PASSPHRASE": "wrong: the person key never reads this"}
     argv = ["grant", "note_verify", "--to", lead.name, "--until", "1h", "--json"]
-    code, out, err = team.terminal(*argv, who=lead, env=env, typed={"Type yes": "no"})
-    assert code == 3 and "Type yes" in out and "confirmation" in out + err and grants.listing(team.session(lead)).grants == [], (out, err)
-    code, out, err = team.terminal(*argv, who=lead, env=env, typed={"Type yes": ""})
-    assert code == 3 and grants.listing(team.session(lead)).grants == [], "Enter is not yes"
-    code, out, err = team.terminal(*argv, who=lead, env=env, typed=TYPED)
-    assert code == 0 and "signing key passphrase: " in out, (out, err)
+    marked = team.cli(*argv, who=lead, env={"CLAUDECODE": "1"})
+    assert marked.returncode == 3 and "refused to an agent" in json.loads(marked.stdout)["error"], marked.stdout
+    assert grants.listing(team.session(lead)).grants == [], "nothing was signed for an agent"
+    plain = team.cli(*argv, who=lead)
+    assert plain.returncode == 0 and json.loads(plain.stdout)["action"] == "note_verify", (plain.stdout, plain.stderr)
     assert [g.action for g in grants.listing(team.session(lead)).grants] == ["note_verify"]
+    audit = [r for r in caller.audit_rows() if r.get("action") == "granting"]
+    assert [r["event"] for r in audit] == ["refused", "ran"]
+    assert "agent CLAUDECODE" in audit[0]["who"] and audit[1]["who"].startswith("user "), "each run is on the log with who ran it"
+
+
+def test_a_node_with_no_usable_keystore_and_no_passphrase_in_the_environment_signs_nothing_and_says_what_to_set(workspace_node):
+    team = workspace_node
+    lead = team.member("lead")
+    done = team.cli("grant", "note_verify", "--to", lead.name, "--until", "1h", "--json", who=lead, env={UNLOCK_ENV: ""})
+    assert done.returncode == 3 and UNLOCK_ENV in json.loads(done.stdout)["error"], done.stdout
+    assert grants.listing(team.session(lead)).grants == [] and not person_key.kept(team.state)

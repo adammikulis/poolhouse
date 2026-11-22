@@ -25,10 +25,14 @@ POOL = "pool"
 
 def refusal(asks: list[approval.Ask]) -> str:
     """Why policy refuses ``asks`` to the caller, or an empty string when it may have them all."""
-    if not caller.marked():
+    if not (marker := caller.marked()):
         return ""
-    why = [f"{a.action} ({person_key.agent_refusal(a.action)})" for a in asks if person_key.agent_refusal(a.action)]
-    return "an agent is refused: " + "; ".join(why) if why else ""
+    why = {a.action: person_key.agent_refusal(a.action) for a in asks if person_key.agent_refusal(a.action)}
+    if not why:
+        return ""
+    names = ", ".join(why)
+    reasons = "; ".join(f"{action}: {reason}" for action, reason in why.items())
+    return f"{names} {'is' if len(why) == 1 else 'are'} refused to an agent ({marker} is set): {reasons}. To get {'it' if len(why) == 1 else 'them'}, {caller.OUTSIDE}."
 
 
 def ensure_key(client: Client, carrier: Session) -> SigningKeys:
