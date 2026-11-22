@@ -82,13 +82,8 @@ def _ask_passphrase(prompt: str) -> str:
     told = os.environ.get(UNLOCK_ENV, "")
     if told:
         return told
-    import getpass
-    import sys
-    if sys.stdin.isatty():
-        return getpass.getpass(prompt)
     raise KeyStoreError("this machine has no OS keystore, so the signing key is kept in an "
-                        f"encrypted file and needs a passphrase: set {UNLOCK_ENV} or run "
-                        "in a terminal")
+                        f"encrypted file and needs a passphrase: set {UNLOCK_ENV} ({prompt.strip(': ')})")
 
 
 class SigningKeys:

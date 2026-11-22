@@ -99,13 +99,13 @@ def test_the_person_cannot_store_a_credential_or_a_permission_either(person, cap
     assert Store().facts() == []
 
 
-def test_forget_all_asks_first_and_stats_reports_tampering(person, monkeypatch, capsys):
+def test_forget_all_needs_the_yes_flag_and_asks_nobody_and_stats_reports_tampering(person, monkeypatch, capsys):
     store = Store()
     store.add("a fact")
-    monkeypatch.setattr("builtins.input", lambda _: "n")
+    monkeypatch.setattr("builtins.input", lambda _: pytest.fail("nothing is asked"))
     assert cli.main(["forget", "--all", "--scope", "user"]) == 1 and len(store.facts()) == 1
+    assert "pass --yes" in capsys.readouterr().out
     store.path.write_bytes(b"{}")
     store.prev.unlink(missing_ok=True)
     assert cli.main(["stats"]) == 1
-    monkeypatch.setattr("builtins.input", lambda _: "y")
-    assert cli.main(["forget", "--all", "--scope", "user"]) == 0 and Store().status == "fresh"
+    assert cli.main(["forget", "--all", "--scope", "user", "--yes"]) == 0 and Store().status == "fresh"
