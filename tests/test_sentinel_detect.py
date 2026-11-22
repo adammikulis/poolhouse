@@ -20,6 +20,7 @@ from poolhouse.sentinel.permit import Permit
 from poolhouse.sentinel.rails import RailWatch
 from poolhouse.sentinel.rates import Abuse, AbuseLimits, MemberLimits, MemberWatch, ToolMix, Windows
 from poolhouse.sentinel.servers import exe_mismatches, unmanaged_findings
+from poolhouse.sentinel.store import Holding
 
 
 def grant(action, subject):
@@ -139,13 +140,25 @@ def test_pins_survive_a_new_sentinel_and_are_sealed(tmp_path, models):
     assert Sentinel(tmp_path / "s", roots=[models]).manifest.pins() == {}
 
 
-def test_a_pinned_binary_that_changes_is_quarantined(node, models):
+def test_a_pinned_binary_that_changes_is_logged_once_and_never_held(node, models):
     exe = models / "llama-server"
     exe.write_bytes(b"\x7fELF" + b"a" * 1000)
     node.manifest.pin(exe, "binary")
     exe.write_bytes(b"\x7fELF" + b"b" * 1000)
     node.scan(deep=True)
+    node.scan(deep=True)
+    assert node.store.state_of("binary", str(exe)) != State.QUARANTINED and exe.exists(), "serving vets the binary; the scan holds nothing"
+    assert [e.kind for e in node.bus.recent(kind="integrity.content_changed")] == ["integrity.content_changed"], "one event, not one per scan"
+
+
+def test_a_hold_an_older_version_put_on_a_binary_ends_by_itself_at_the_next_scan(node, models):
+    exe = models / "llama-server"
+    exe.write_bytes(b"\x7fELF" + b"a" * 1000)
+    node.manifest.pin(exe, "binary")
+    held = node.store.quarantine(("binary", str(exe)), "integrity.content_changed: changed", None, Holding(path=str(exe)))
     assert node.store.state_of("binary", str(exe)) == State.QUARANTINED
+    node.scan()
+    assert node.store.get(held.id).state == State.RELEASED and exe.exists(), "nobody ran a release command"
 
 
 # -- modes ------------------------------------------------------------------------------

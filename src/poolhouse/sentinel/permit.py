@@ -18,7 +18,7 @@ from typing import Any
 from poolhouse import authority, home
 from poolhouse.caller import AgentRefused, refuse_agent
 
-__all__ = ["GRANT_TTL_S", "Permit", "agent_may", "mint", "mint_gated", "protect"]
+__all__ = ["GRANT_TTL_S", "Permit", "agent_may", "automatic", "mint", "mint_gated", "protect"]
 
 GRANT_TTL_S = 120.0
 _MINT = object()
@@ -61,6 +61,11 @@ WHY = "it changes what the sentinel holds or how it screens, and a prompt-inject
 def mint(action: str, subject: str, *, env: Mapping[str, str] | None = None, why: str = WHY) -> Permit:
     """A permit for ``action`` on ``subject`` for a process with no agent marker; an agent is refused at once with ``why``."""
     refuse_agent(f"{action} {subject}", why, env)
+    return Permit(action, subject, time.time() + GRANT_TTL_S, _MINT)
+
+
+def automatic(action: str, subject: str) -> Permit:
+    """A permit for an act the sentinel itself decided on its own rules (a hold that ends by itself); no caller asked for it."""
     return Permit(action, subject, time.time() + GRANT_TTL_S, _MINT)
 
 

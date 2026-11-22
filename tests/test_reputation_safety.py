@@ -118,6 +118,32 @@ def test_a_watched_host_is_refused_until_it_is_approved(ledger, clock, tmp_path)
     assert policy.admit("https://good.example/x") == "good.example"
 
 
+def test_a_watched_host_is_held_back_for_an_hour_and_then_fetched_from_again_with_nobody_asked(ledger, clock, tmp_path):
+    policy = net.Policy(allowed=["good.example"], path=tmp_path / "a.jsonl", clock=clock)
+    make_established(ledger, clock, "host", "good.example")
+    ledger.observe("host", "good.example", "hash_change")
+    with pytest.raises(Distrusted, match="ends by itself"):
+        policy.admit("https://good.example/x")
+    clock.advance(net.policy.HOLD_S["watch"] - 5)
+    with pytest.raises(Distrusted):
+        policy.admit("https://good.example/x")
+    clock.advance(10)
+    assert policy.admit("https://good.example/x") == "good.example", "the hold lapsed by itself"
+    assert policy.approvals() == [], "nobody approved anything"
+
+
+def test_a_bad_host_is_held_back_for_a_day_not_for_good(ledger, clock, tmp_path):
+    policy = net.Policy(allowed=["bad.example"], path=tmp_path / "a.jsonl", clock=clock)
+    ledger.observe("host", "bad.example", "scan_hit")
+    with pytest.raises(Distrusted):
+        policy.admit("https://bad.example/x")
+    clock.advance(net.policy.HOLD_S["watch"] + 1)
+    with pytest.raises(Distrusted):
+        policy.admit("https://bad.example/x")
+    clock.advance(net.policy.HOLD_S["bad"])
+    assert policy.admit("https://bad.example/x") == "bad.example"
+
+
 def test_reputation_never_admits_a_host_the_policy_refuses(ledger, clock, tmp_path):
     policy = net.Policy(allowed=[], path=tmp_path / "a.jsonl", clock=clock)
     make_established(ledger, clock, "host", "unlisted.example")

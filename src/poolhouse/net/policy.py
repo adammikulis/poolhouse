@@ -16,7 +16,7 @@ from poolhouse import home
 from poolhouse.httpguard import Refused
 from poolhouse.sentinel import observers
 
-__all__ = ["ALLOWED", "ANYWHERE", "ENV", "Approval", "Distrusted", "NeedsApproval", "Policy", "approvals_path",
+__all__ = ["ALLOWED", "ANYWHERE", "ENV", "HOLD_S", "Approval", "Distrusted", "NeedsApproval", "Policy", "approvals_path",
            "default", "host_of", "mirror_netloc"]
 
 ALLOWED: tuple[str, ...] = (
@@ -33,23 +33,28 @@ ANYWHERE: tuple[str, ...] = ("*",)
 
 ENV = "POOLHOUSE_NET_ALLOW_HOSTS"
 
+HOLD_S: dict[str, float] = {"watch": 3600.0, "bad": 86400.0}
+"""How long the reputation ledger's verdict on a host or URL holds fetches back: an hour for a source that was reliable and just
+changed, a day for one that misbehaved before and has no clean record since. The hold ends by itself, because a held source can earn
+no clean record: the next fetch is verified like every other (digest, size, scanner), and a failure there deletes what was fetched."""
+
 
 class NeedsApproval(Refused):
     """A host that is neither allow-listed nor approved; ``host`` is what to approve."""
 
     def __init__(self, host: str, purpose: str) -> None:
         super().__init__(f"{host} is not on the allow-list for {purpose}. A program lists it in the `allowed` "
-                         f"argument (`net.Policy(allowed=(..., {host!r}))` in a `net.Pipeline`); a person approves "
-                         f"it with `poolhouse-security approve-host {host}`")
+                         f"argument (`net.Policy(allowed=(..., {host!r}))` in a `net.Pipeline`); "
+                         f"`poolhouse-security approve-host {host}` approves it (decided by the sentinel.policy gate)")
         self.host, self.purpose = host, purpose
 
 
 class Distrusted(NeedsApproval):
     """A host or URL that is allowed but that the reputation ledger says to ask about."""
 
-    def __init__(self, host: str, purpose: str, reason: str) -> None:
-        Refused.__init__(self, f"{reason}. A person allows {host} again with "
-                         f"`poolhouse-security approve-host {host}` ({purpose} was not made).")
+    def __init__(self, host: str, purpose: str, reason: str, hold_s: float = 0.0) -> None:
+        ends = f"the hold ends by itself in about {max(1, round(hold_s / 60))} minutes, or `poolhouse-security approve-host {host}` ends it now"
+        Refused.__init__(self, f"{reason}; {ends} ({purpose} was not made).")
         self.host, self.purpose = host, purpose
 
 
@@ -162,14 +167,15 @@ class Policy:
         raise NeedsApproval(host, purpose)
 
     def _tighten(self, host: str, url: str, purpose: str) -> None:
-        """`Distrusted` for a host or URL the ledger watches or marks bad, unless a person
-        approved the host after that verdict. Only ever adds a refusal."""
+        """`Distrusted` for a host or URL the ledger watches or marks bad, for `HOLD_S` from the verdict, unless the host was approved after
+        it. The hold lapses by itself. Only ever adds a refusal."""
+        now = self.clock()
         for kind, key in (("host", host), ("url", url)):
             found = observers.gate(kind, key)
-            if found and not any(a.host == host and a.at >= found.since
-                                 and (not a.until or a.until > self.clock())
-                                 for a in self.approvals()):
-                raise Distrusted(host, purpose, found.reason)
+            if not found or now - found.since >= HOLD_S.get(found.state, HOLD_S["bad"]):
+                continue
+            if not any(a.host == host and a.at >= found.since and (not a.until or a.until > now) for a in self.approvals()):
+                raise Distrusted(host, purpose, found.reason, HOLD_S.get(found.state, HOLD_S["bad"]) - (now - found.since))
 
 
 _DEFAULT = Policy()

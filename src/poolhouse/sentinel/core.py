@@ -20,7 +20,7 @@ from poolhouse.sentinel.findings import Finding
 from poolhouse.sentinel.heads_up import HeadsUp
 from poolhouse.sentinel.honey import Honey
 from poolhouse.sentinel.integrity import Manifest, Pin, check_file
-from poolhouse.sentinel.permit import Permit, protect
+from poolhouse.sentinel.permit import Permit, automatic, protect
 from poolhouse.sentinel.policy import Mode, decide
 from poolhouse.sentinel.rails import RailWatch, reads_like_instruction
 from poolhouse.sentinel.rates import Abuse, MemberWatch, ToolMix
@@ -91,6 +91,7 @@ class Sentinel:
         self.heads_up = HeadsUp(self.root / "notified.json", clock=clock, store=self.store,
                                 bus=self.bus)
         self._gone: dict[str, int] = {}
+        self._noted_binaries: set[str] = set()
         for kind in KINDS:
             self.store.on_quarantine.setdefault(kind, []).append(self.heads_up.on_quarantine)
         self._stop = threading.Event()
@@ -393,11 +394,14 @@ class Sentinel:
         that is gone is logged once and its pin dropped after `GONE_SCANS` scans in a row;
         nothing is quarantined for it."""
         out: list[Finding] = []
+        self._release_binaries()
         for pin in self.manifest.pins().values():
             if self.store.state_of(pin.kind, pin.path) == State.QUARANTINED:
                 continue
             found = check_file(pin, deep=deep)
-            if found is not None:
+            if pin.kind == "binary" and (found is None or found.event.kind != MISSING):
+                self._note_binary(pin, found)
+            elif found is not None:
                 out.append(found)
             elif deep:
                 self.manifest.refresh_stat(pin)
@@ -407,6 +411,20 @@ class Sentinel:
         self.last_scan = self.clock()
         self.heads_up.poll()
         return out
+
+    def _note_binary(self, pin: Pin, found: Finding | None) -> None:
+        """A changed managed binary is logged once and never held: it is vetted before every run (`poolhouse.serve.binary_trust`), which
+        re-pins what something vouches for and replaces what nothing does, so a hold nobody could end would only stop serving."""
+        if found is None:
+            self._noted_binaries.discard(pin.path)
+        elif pin.path not in self._noted_binaries:
+            self._noted_binaries.add(pin.path)
+            self.bus.emit(found.event)
+
+    def _release_binaries(self) -> None:
+        """End by itself a hold an older version put on a managed binary."""
+        for record in self.store.records(kind="binary", state=State.QUARANTINED):
+            self.store.release(record.id, automatic("release", record.id), "a managed binary is vetted before it runs; nothing holds it")
 
     def _heal(self, missing: list[Finding]) -> None:
         """Count the scans a pinned file has been gone, drop the pin at `GONE_SCANS`, settle
