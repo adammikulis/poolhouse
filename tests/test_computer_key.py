@@ -19,7 +19,7 @@ from pool_check import wire
 from pool_check.terminal import at_terminal
 
 import poolhouse as ph
-from poolhouse import keystore, node_launch, person as persons
+from poolhouse import caller as persons, keystore, node_launch
 from poolhouse.api import _node
 from poolhouse.board import (
     client as board_client,

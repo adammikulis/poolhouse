@@ -15,7 +15,6 @@ from poolhouse.agent.compact import (
 from poolhouse.agent.context import ContextUsage, Counter, context_limit, context_usage
 from poolhouse.agent.events import (
     Compacted,
-    ConfirmRequest,
     Context,
     Denied,
     Done,
@@ -44,7 +43,6 @@ __all__ = [
     "Compacting",
     "Compaction",
     "Confirm",
-    "ConfirmRequest",
     "Context",
     "ContextUsage",
     "Counter",

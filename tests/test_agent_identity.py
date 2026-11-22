@@ -663,7 +663,7 @@ def test_delegated_setup_refuses_before_app_load_api_or_browser(ai, installed_se
     elif refusal == 'module':
         monkeypatch.setattr(ai, '__file__', str(selected.prefix.parent / 'source.py'))
     elif refusal == 'gate':
-        monkeypatch.setattr(github_release.authority, 'require', lambda *a: ai.person.require_person('fixture gate', (False, False)))
+        monkeypatch.setattr(github_release.authority, 'require', lambda *a: ai.caller.refuse_agent('fixture gate', (False, False)))
     args = ['setup', '--repo', 'other/project'] if refusal == 'repo' else ['setup']
     assert ai.command(args, (False, False)) == 1
     assert ai.gh.log == [] and ai.browser.opened == []

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import person, requests
+from poolhouse import caller, requests
 from poolhouse.requests import store as store_mod
 from poolhouse.requests.model import fingerprint
 from tests.requests_support import CANARY, SRC, ask, no_markers, person_home
@@ -190,13 +190,13 @@ def test_a_wait_returns_the_answer_given_while_it_waits(tmp_path):
 
 
 # -- only a person answers --------------------------------------------------------------
-@pytest.mark.parametrize("marker", person.AGENT_MARKERS)
+@pytest.mark.parametrize("marker", caller.AGENT_MARKERS)
 @pytest.mark.parametrize("via", ["terminal", "ui", "dialog"])
 def test_a_process_an_agent_started_cannot_answer_by_any_way(tmp_path, marker, via):
     held = inbox(tmp_path)
     handle = requests.raise_request(ask(), inbox=held)
     ctx = requests.Context(terminal=(True, True), env={marker: "1"}, inbox=held)
-    with pytest.raises(person.HumanRequired):
+    with pytest.raises(caller.AgentRefused):
         requests.answer(handle.id, "allow-once", handle.fingerprint, via, ctx)
     assert held.get(handle.id).state == "pending"
 
@@ -205,7 +205,7 @@ def test_a_terminal_answer_needs_a_terminal(tmp_path):
     held = inbox(tmp_path)
     handle = requests.raise_request(ask(), inbox=held)
     for tty in ((False, True), (True, False), (False, False)):
-        with pytest.raises(person.HumanRequired):
+        with pytest.raises(caller.AgentRefused):
             requests.answer(handle.id, "allow-once", handle.fingerprint, "terminal",
                             requests.Context(terminal=tty, env={}, inbox=held))
     assert held.get(handle.id).state == "pending"

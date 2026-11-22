@@ -281,7 +281,7 @@ def test_the_harness_hook_uses_tool_policy_for_primary_development_writes(repo, 
              "tool_input": {"file_path": str(primary / "a.py"), "content": "value = 2\n"}}
     monkeypatch.setattr(harnesshook, "_ask", lambda *args, **kwargs: (True, "authorized test operation"))
     monkeypatch.setattr(harness_claims, "conflict", lambda *args: pytest.fail("generic ownership lookup"))
-    out = harnesshook.pre(event, harnesshook.Rail(coding_policy.Policy("ask-dangerous"), "t",
+    out = harnesshook.pre(event, harnesshook.Rail(coding_policy.Policy("guarded"), "t",
                                                roots=[str(primary)]))["hookSpecificOutput"]
     assert out["permissionDecision"] == "allow"
 

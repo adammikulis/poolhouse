@@ -1,21 +1,19 @@
 """``poolhouse security``: status, events, quarantine, scan, baseline, verify. Releasing,
-purging and changing the mode need a person at a terminal."""
+purging and changing the mode are decided at once by the quarantine and policy gates (docs/sentinel.md)."""
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
-import sys
 from collections.abc import Callable
 from typing import Any
 
 from poolhouse import requests, sentinel
+from poolhouse.caller import AgentRefused, refuse_agent
 from poolhouse.command import Group, flag, option
 from poolhouse.log import say, warn
-from poolhouse.person import require_person
 from poolhouse.sandbox import cli as sandbox_cli
-from poolhouse.sentinel import human, inert, observers, review
+from poolhouse.sentinel import inert, observers, permit, review
 from poolhouse.sentinel.events import Severity
 from poolhouse.sentinel.explain import show
 from poolhouse.sentinel.integrity import FILE_KINDS
@@ -25,8 +23,8 @@ from poolhouse.sentinel.store import KINDS, Holding, Record, State, TransitionRe
 COMMANDS = Group(
     "poolhouse security",
     "What sentinel has seen and holds. Everything is read-only except `quarantine add`, "
-    "`scan`, `baseline` and `honey`; `release`, `purge` and `mode` ask a person at a "
-    "terminal to type the id, and refuse when an agent started this process.")
+    "`scan`, `baseline` and `honey`; `release`, `purge` and `mode` are decided at once "
+    "by the authority gates and refused with the reason to an agent while a gate is held back.")
 
 JSON = option("json")
 
@@ -129,7 +127,7 @@ def _show(args: argparse.Namespace) -> int:
     record = _find(args.subject)
     data = record.to_json()
     if args.text or args.html:
-        grant = human.mint_gated("sentinel.quarantine", "inspect", record.id)
+        grant = permit.mint_gated("sentinel.quarantine", "inspect", record.id)
         text = sentinel.default().store.read(record.id, grant)
         say(inert.render_html(record.id, text) if args.html else inert.render_text(text))
         return 0
@@ -138,14 +136,14 @@ def _show(args: argparse.Namespace) -> int:
 
 def _release(args: argparse.Namespace) -> int:
     record = _find(args.subject)
-    done = sentinel.default().store.release(record.id, human.mint_gated("sentinel.quarantine", "release", record.id))
+    done = sentinel.default().store.release(record.id, permit.mint_gated("sentinel.quarantine", "release", record.id))
     say(f"{done.id} released ({done.kind}:{done.key})")
     return 0
 
 
 def _purge(args: argparse.Namespace) -> int:
     record = _find(args.subject)
-    done = sentinel.default().store.purge(record.id, human.mint_gated("sentinel.quarantine", "purge", record.id))
+    done = sentinel.default().store.purge(record.id, permit.mint_gated("sentinel.quarantine", "purge", record.id))
     say(f"{done.id} purged: what was held is deleted, the record stays")
     return 0
 
@@ -180,7 +178,7 @@ def quarantine(args: argparse.Namespace) -> int:
         raise SystemExit("poolhouse security quarantine: this needs an id or kind:key")
     try:
         return _ACTIONS[args.action](args)
-    except human.HumanRequired as exc:
+    except AgentRefused as exc:
         warn(f"poolhouse security: {exc}")
         return 2
     except (TransitionRefused, OSError) as exc:
@@ -188,35 +186,14 @@ def quarantine(args: argparse.Namespace) -> int:
         return 1
 
 
-@COMMANDS.command("review", help="see everything held, and release or purge it with single keys "
-                  "(a person at a terminal); with no terminal a person gets one dialog with "
-                  "Release, Keep held and Later; --list and --json view anywhere", options=(
-    JSON, flag("--list", action="store_true", help="print the held subjects and exit")))
+@COMMANDS.command("review", help="list everything held, and what each one blocks and how to deal with it", options=(JSON,))
 def review_command(args: argparse.Namespace) -> int:
-    """View what is held (anywhere), act on it at a terminal, or answer one dialog."""
-    if args.list or args.json:
-        items = _held()
-        return _out(args, [i.to_json() for i in items], lambda: review.table(items))
-    if not (sys.stdin.isatty() and sys.stdout.isatty()):
-        return _dialog()
-    try:
-        return review.interactive()
-    except (human.HumanRequired, review.NeedsTerminal) as exc:
-        warn(f"poolhouse security: {exc}")
-        return 2
+    """Print what is held."""
+    items = _held()
+    return _out(args, [i.to_json() for i in items], lambda: review.table(items))
 
 
-def _dialog() -> int:
-    """No terminal: show the list as the dialog the heads-up uses, unless an agent started
-    this process or there is no desktop, when the list is printed."""
-    node = sentinel.default()
-    answered = "" if any(os.environ.get(m) for m in human.AGENT_MARKERS) else node.heads_up.review()
-    if not answered:
-        say("\n".join(review.table(_held())))
-    return 0
-
-
-@COMMANDS.command("release", help="release a quarantined subject (a person at a terminal)",
+@COMMANDS.command("release", help="release a quarantined subject (decided at once by the sentinel.quarantine gate)",
                   options=(flag("subject"),))
 def release(args: argparse.Namespace) -> int:
     """Release one record."""
@@ -239,9 +216,9 @@ def scan(args: argparse.Namespace) -> int:
     flag("--kind", default="model", choices=FILE_KINDS), flag("--source", default=""),
     flag("--honey", action="store_true", help="plant the decoy files")))
 def baseline(args: argparse.Namespace) -> int:
-    """Pin the named files as they are now; pinning a model is a person's, since a pin is what lets it load."""
+    """Pin the named files as they are now; an agent may not pin a model, since a pin is what lets it load."""
     if args.kind == "model" and args.pin:
-        require_person("pinning a model file by hand")
+        refuse_agent("pinning a model file by hand", "a pin is what lets a model file load, and an agent must not vouch for what it fetched")
     node = sentinel.default()
     pins = [node.manifest.pin(p, args.kind, args.source) for p in args.pin]
     if args.honey:
@@ -268,13 +245,13 @@ def verify(args: argparse.Namespace) -> int:
 @COMMANDS.command("mode", help="show or set observe | guarded | enforce | off", options=(
     flag("to", nargs="?", default="", choices=["", *[m.value for m in Mode]]),))
 def mode(args: argparse.Namespace) -> int:
-    """Print the mode, or change it (a person at a terminal)."""
+    """Print the mode, or change it; decided at once by the sentinel.policy gate."""
     if not args.to:
         say(sentinel.default().mode.value)
         return 0
     try:
-        grant = human.mint_gated("sentinel.policy", "mode", "sentinel")
-    except human.HumanRequired as exc:
+        grant = permit.mint_gated("sentinel.policy", "mode", "sentinel")
+    except AgentRefused as exc:
         warn(f"poolhouse security: {exc}")
         return 2
     sentinel.default().set_mode(Mode(args.to), grant)

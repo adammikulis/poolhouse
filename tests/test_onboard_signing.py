@@ -12,7 +12,7 @@ from onboard_support import FileKeyring, Recorder
 from poolhouse import keystore as keystore_module
 from poolhouse.fleet.onboard import manifest as mf, signing
 from poolhouse.fleet.onboard.signing import KeyStoreError, SigningKeys
-from poolhouse.sentinel.human import HumanRequired, mint
+from poolhouse.sentinel.permit import AgentRefused, mint
 
 
 @pytest.fixture(autouse=True)
@@ -123,7 +123,7 @@ def test_exporting_needs_a_person_and_writes_only_an_encrypted_copy(tmp_path, ke
     keys, rec, _ = keys_in(tmp_path)
     keys.meta()
     out = tmp_path / "backup.enc"
-    with pytest.raises(HumanRequired):
+    with pytest.raises(AgentRefused):
         keys.export(person("rotate", keys.key_id), out, "pw pw pw pw")     # a grant for another act
     assert not out.exists()
     keys.export(person("export", keys.key_id), out, "pw pw pw pw")
@@ -137,7 +137,7 @@ def test_rotating_needs_a_person_and_the_old_key_announces_the_new_one(tmp_path,
     old_public, old_id = keys.public, keys.key_id
     f = tmp_path / "p.whl"
     f.write_bytes(b"x" * 100)
-    with pytest.raises(HumanRequired):
+    with pytest.raises(AgentRefused):
         keys.rotate(person("export", old_id))
     assert keys.key_id == old_id
     fresh = keys.rotate(person("rotate", old_id))
@@ -155,7 +155,7 @@ def test_rotating_needs_a_person_and_the_old_key_announces_the_new_one(tmp_path,
 
 def test_revoking_needs_a_person_and_travels_in_every_manifest_after(tmp_path, keystore):
     keys, _, _ = keys_in(tmp_path)
-    with pytest.raises(HumanRequired):
+    with pytest.raises(AgentRefused):
         keys.revoke(person("rotate", "ab" * 32), "ab" * 32)
     keys.revoke(person("revoke", "ab" * 32), "ab" * 32)
     assert mf.verify(keys.sign([], serial=1), keys.public).revoked_keys == ("ab" * 32,)
@@ -164,7 +164,7 @@ def test_revoking_needs_a_person_and_travels_in_every_manifest_after(tmp_path, k
 def test_confirm_before_signing_asks_every_time_and_turning_it_on_needs_a_person(
         tmp_path, keystore):
     keys, _, _ = keys_in(tmp_path)
-    with pytest.raises(HumanRequired):
+    with pytest.raises(AgentRefused):
         keys.require_confirmation(person("export", keys.key_id), True)
     keys.require_confirmation(person("confirm-signing", keys.key_id), True)
     asked = []
@@ -192,7 +192,7 @@ def test_an_agent_has_no_path_to_the_key_commands(tmp_path, keystore, monkeypatc
     keys, _, _ = keys_in(tmp_path)
     keys.meta()
     monkeypatch.setenv("CLAUDECODE", "1")
-    with pytest.raises(HumanRequired, match="agent"):
+    with pytest.raises(AgentRefused, match="agent"):
         mint("rotate", keys.key_id, typed=lambda _p: keys.key_id, terminal=(True, True))
 
 

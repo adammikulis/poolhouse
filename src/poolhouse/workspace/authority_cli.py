@@ -1,4 +1,5 @@
-"""The `authority` command of `poolhouse-workspace`: show, set and preset the delegable gates."""
+"""The `authority` command of `poolhouse-workspace`: show, set and preset the gates. An agent may narrow a gate and is refused at once, with the reason,
+when it loosens one; a helper is refused both."""
 
 from __future__ import annotations
 
@@ -16,7 +17,7 @@ from poolhouse.workspace import enforcement_check
 
 ACTIONS = ('show', 'set', 'preset')
 OPTIONS = [
-    flag('action', choices=ACTIONS, help='show the gates, set some to person or delegated, or apply the dev or prod preset'),
+    flag('action', choices=ACTIONS, help='show the gates, set some to person (held back from agents) or delegated, or apply the dev or prod preset'),
     flag('words', nargs='*', default=[],
          help='set: person|delegated then ALL, a group or gates; preset: dev|prod'),
     flag('--project', default='', help='a project key: set its own state; preset: the project whose state follows'),
@@ -47,12 +48,12 @@ def _refused(s: Session, args: argparse.Namespace) -> None:
 
 
 def run(args: argparse.Namespace, s: Session) -> Any:
-    """Show the registry, or change it as a lead or a person; a subagent is refused."""
+    """Show the registry, or change it; a subagent is refused, and so is an agent that loosens a gate."""
     if args.action == 'show':
         return authority.show(args.project)
     if next((a.parent for a in s.agents() if a.name == s.name), ''):
         _refused(s, args)
-        raise Denied('only a lead or a person changes authority, not a helper')
+        raise Denied('only a lead agent or a process with no agent marker changes authority, not a helper')
     if args.action == 'preset':
         if len(args.words) != 1:
             raise ValueError('preset takes dev or prod')

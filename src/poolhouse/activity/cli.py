@@ -15,11 +15,11 @@ from poolhouse import authority
 from poolhouse.activity import query, view, writer
 from poolhouse.activity.log import ActivityLog
 from poolhouse.activity.schema import Entry
+from poolhouse.caller import AGENT_MARKERS, AgentRefused
 from poolhouse.command import Group, flag
 from poolhouse.files import write_text
 from poolhouse.keystore import KeystoreError
 from poolhouse.log import say, warn
-from poolhouse.sentinel.human import AGENT_MARKERS, HumanRequired
 
 __all__ = ["COMMAND", "main", "viewer"]
 
@@ -127,8 +127,8 @@ def _verify(args: argparse.Namespace, log: ActivityLog) -> int:
 
 def _export(args: argparse.Namespace, log: ActivityLog) -> int:
     try:
-        authority.require("activity.export", "poolhouse-log export", (sys.stdin.isatty(), sys.stdout.isatty()))
-    except HumanRequired as exc:
+        authority.require("activity.export", "poolhouse-log export")
+    except AgentRefused as exc:
         warn(str(exc))
         return DENIED
     target = Path(args.path).expanduser()

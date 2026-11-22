@@ -229,7 +229,7 @@ def test_source_admission_still_precedes_an_automatic_noop(automatic, monkeypatc
 
 @pytest.fixture
 def unpublished(workspace_node, automatic, monkeypatch):
-    from poolhouse import authority, node_launch, person
+    from poolhouse import authority, caller, node_launch
     from poolhouse.board import place
 
     args, plan, chosen, starts, snapshot = automatic
@@ -240,7 +240,7 @@ def unpublished(workspace_node, automatic, monkeypatch):
     workspace_node.board = place.resolve(workspace_node.client, repo)
     monkeypatch.setenv("POOLHOUSE_BOARD", workspace_node.board)
     actor = workspace_node.member("unpublished-docs-root", harness="codex")
-    for name in (*person.AGENT_MARKERS, authority.AGENT_ENV, authority.SUBAGENT_ENV,
+    for name in (*caller.AGENT_MARKERS, authority.AGENT_ENV, authority.SUBAGENT_ENV,
                  "POOLHOUSE_SESSION_HARNESS", "POOLHOUSE_SESSION_ID", "POOLHOUSE_WORKSPACE_TOKEN"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("CODEX_THREAD_ID", actor.session)

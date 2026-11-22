@@ -12,9 +12,9 @@ import pytest
 from autostart_support import Recorder, environment, seams, staged
 
 from poolhouse import authority, home
+from poolhouse.caller import AgentRefused
 from poolhouse.fleet import autostart_ledger
 from poolhouse.fleet.autostart_apply import install, rollback
-from poolhouse.person import HumanRequired
 
 
 @pytest.fixture
@@ -161,7 +161,7 @@ def test_a_consistently_forged_environment_is_refused(tmp_path, user):
 
 
 def test_an_agent_is_refused_before_a_manifest_is_even_opened(tmp_path, user):
-    with pytest.raises(HumanRequired):
+    with pytest.raises(AgentRefused):
         install(tmp_path / "missing.json", seams=seams(Recorder(), env={"CLAUDECODE": "1"}))
 
 
@@ -241,9 +241,9 @@ def test_an_agent_is_refused_install_and_rollback_before_anything_is_read(tmp_pa
     before = sorted(p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*"))
     recorder = Recorder()
     agent = seams(recorder, typed=lambda _p: done.manifest.id, env={marker: "1"})
-    with pytest.raises(HumanRequired):
+    with pytest.raises(AgentRefused):
         install(done.path, seams=agent)
-    with pytest.raises(HumanRequired):
+    with pytest.raises(AgentRefused):
         rollback(seams=agent)
     assert recorder.ran == [] and not unit_dir(user).exists()
     assert sorted(p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*")) == before
@@ -251,13 +251,13 @@ def test_an_agent_is_refused_install_and_rollback_before_anything_is_read(tmp_pa
 
 def test_no_terminal_means_no_install(tmp_path, user):
     done = staged(tmp_path)
-    with pytest.raises(HumanRequired):
+    with pytest.raises(AgentRefused):
         install(done.path, seams=seams(Recorder(), terminal=(False, False)))
 
 
 def test_the_person_must_type_the_manifest_id(tmp_path, user):
     done = staged(tmp_path)
-    with pytest.raises(HumanRequired):
+    with pytest.raises(AgentRefused):
         install(done.path, seams=seams(Recorder(), typed=lambda _p: "yes"))
     assert not unit_dir(user).exists()
 

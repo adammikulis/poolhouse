@@ -14,11 +14,14 @@ from typing import Any, Protocol
 
 from poolhouse import home, node_health
 from poolhouse.credentials.reading import CredentialError, read_text
-from poolhouse.person import HumanRequired
 from poolhouse.private_path import problem
 
 _COMPONENT = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
 _READS = frozenset({"whoami", "agents", "land_accepts"})
+
+
+class Unauthenticated(PermissionError):
+    """The current workspace session could not be identified: it names no registered live main agent."""
 
 
 class ClientState(Protocol):
@@ -132,7 +135,7 @@ def _authenticated(*, cwd: Path | None = None, client: ClientState | None = None
         if supplied and Admission(node, board, name, supplied).whoami().name != identity.name:
             raise ValueError("provided credential conflicts with identity")
     except (OSError, ValueError, KeyError, TypeError, CredentialError):
-        raise HumanRequired("could not authenticate the current workspace session") from None
+        raise Unauthenticated("could not authenticate the current workspace session") from None
     return AuthenticatedAgent(Admission(node, board, identity.name, token), identity)
 
 
@@ -140,7 +143,7 @@ def current(*, cwd: Path | None = None, client: ClientState | None = None) -> Au
     """Authenticate an existing live main agent without registration or starting a node."""
     actor = _authenticated(cwd=cwd, client=client)
     if actor.identity.retired or actor.identity.parent or actor.identity.person:
-        raise HumanRequired("this operation requires an authenticated live main agent, not a helper or a person session")
+        raise Unauthenticated("this operation needs the identity of a live main agent session, not a helper")
     return actor
 
 
@@ -148,7 +151,7 @@ def is_live_child(*, cwd: Path, asserted_name: str = "") -> bool:
     """Whether automatic work belongs to the caller's coordinator; grants no authority."""
     try:
         actor = _authenticated(cwd=cwd)
-    except HumanRequired:
+    except Unauthenticated:
         return False
     return bool(actor.identity.parent and not actor.identity.retired and not actor.identity.person and
                 (not asserted_name or asserted_name == actor.name))

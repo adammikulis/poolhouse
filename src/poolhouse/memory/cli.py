@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from poolhouse import authority
+from poolhouse.caller import AgentRefused
 from poolhouse.command import Group, flag, option
 from poolhouse.log import say, warn
 from poolhouse.memory.facts import KINDS, SOURCES, Fact, Refused
@@ -18,7 +18,6 @@ from poolhouse.memory.project import SCOPES, at
 from poolhouse.memory.store import FACT_LINKS, Setup, Store, Tampered
 from poolhouse.memory.union import Memory
 from poolhouse.memory.vault import KeyUnavailable
-from poolhouse.person import HumanRequired, is_terminal
 
 __all__ = ["COMMAND"]
 
@@ -35,13 +34,11 @@ def _line(store: Store, fact: Fact) -> str:
 
 
 def _guarded(fn: Handler, *, writes: bool) -> Callable[[argparse.Namespace], int]:
-    """``fn`` run only for a person: an agent marker in the environment refuses it, and a
-    command that writes also needs a terminal on stdin and stdout."""
+    """``fn`` run when the `memory.admin` gate lets this caller through: an agent is refused at once while the gate is held back."""
     def run(args: argparse.Namespace) -> int:
         try:
-            authority.require("memory.admin", f"poolhouse-memory {args.cmd}",
-                              (is_terminal(sys.stdin), True if not writes else is_terminal(sys.stdout)))
-        except HumanRequired as exc:
+            authority.require("memory.admin", f"poolhouse-memory {args.cmd}")
+        except AgentRefused as exc:
             warn(str(exc))
             return DENIED
         try:

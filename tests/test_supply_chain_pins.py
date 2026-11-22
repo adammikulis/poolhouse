@@ -190,7 +190,7 @@ def test_a_copy_of_a_pinned_file_is_pinned_without_asking(tmp_path, site, pipe):
 
 
 def test_an_agent_cannot_approve_a_model_file_even_where_answers_are_delegated(tmp_path, monkeypatch):
-    from poolhouse import authority, person
+    from poolhouse import authority, caller
 
     monkeypatch.delenv(authority.FLOOR_ENV, raising=False)
     assert authority.state_of("requests.answer") == authority.DELEGATED
@@ -201,7 +201,7 @@ def test_an_agent_cannot_approve_a_model_file_even_where_answers_are_delegated(t
     (asked,) = requests.list_requests(state="pending", kind="model_file")
     assert asked.human_only
     for env in ({"CLAUDECODE": "1"}, {"POOLHOUSE_AGENT": "claude-x"}):
-        with pytest.raises(person.HumanRequired):
+        with pytest.raises(caller.AgentRefused):
             requests.answer(asked.id, "approve", asked.fingerprint, "terminal",
                             requests.Context(terminal=(True, True), env=env))
     with pytest.raises(SentinelRefused):

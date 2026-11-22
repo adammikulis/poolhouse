@@ -23,7 +23,6 @@ from pathlib import Path
 from poolhouse import node_app, node_health, node_key, node_launch
 from poolhouse.command import Group, flag
 from poolhouse.log import say, warn
-from poolhouse.sentinel import human
 
 GRANTED, DENIED, NOT_ASKED = "GRANTED", "DENIED", "NOT ASKED"
 SECONDS = 30
@@ -112,9 +111,8 @@ def _key_command(args) -> int:
         say(f"the device key is kept in {WHERE.get(node_key.status(state)['custody'], 'an unknown place')}")
         return 0
     try:
-        human.require_person("move the device key")
         moved = node_key.migrate(state)
-    except (human.HumanRequired, OSError) as why:
+    except OSError as why:
         warn(f"node key: {why}")
         return 2
     if not moved["moved"]:

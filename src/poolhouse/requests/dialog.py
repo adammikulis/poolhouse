@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Mapping
 
-from poolhouse import person, requests
+from poolhouse import requests
 from poolhouse.requests.model import Choice, Request
 
 __all__ = ["BUTTONS_MOST", "ask", "buttons", "text"]
@@ -37,8 +37,7 @@ def text(request: Request, shown: list[Choice]) -> tuple[str, str]:
 def ask(request: Request, choose: Choose, *, env: Mapping[str, str] | None = None,
         inbox: requests.Inbox | None = None) -> str:
     """Put ``request`` in the dialog through ``choose`` and answer it with the button pressed;
-    returns the label pressed. An answer that is refused (already resolved, changed, an agent's
-    process) changes nothing."""
+    returns the label pressed. An answer that is refused (already resolved, changed, an agent refused) changes nothing."""
     shown = buttons(request)
     title, body = text(request, shown)
     pressed = choose(title, body, tuple(label_of(c) for c in shown))
@@ -47,6 +46,6 @@ def ask(request: Request, choose: Choose, *, env: Mapping[str, str] | None = Non
         try:
             requests.answer(request.id, picked.id, request.fingerprint, "dialog",
                             requests.Context(env=env, inbox=inbox))
-        except (requests.Refused, requests.Unavailable, person.HumanRequired) as exc:
+        except (requests.Refused, requests.Unavailable, PermissionError) as exc:
             logger.info("dialog answer not taken: %s", exc)
     return pressed

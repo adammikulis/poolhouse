@@ -13,10 +13,10 @@ from poolhouse import (
     authority,
     authority_caller,
     build_update,
+    caller,
     jobs,
     node_launch,
     node_pool,
-    person,
     runtime,
     runtime_await,
     runtime_board,
@@ -41,7 +41,6 @@ from poolhouse.fleet.runtime_paths import default_root
 from poolhouse.home import expand
 from poolhouse.lock import Busy, held_by, only_one
 from poolhouse.log import say, warn
-from poolhouse.sentinel import human
 
 
 def _source(path: Path) -> Path:
@@ -81,14 +80,14 @@ def plan_from(args: argparse.Namespace, *, deploying: bool = True) -> runtime_de
                                         delegated=getattr(args, "via", "") == authority.DELEGATED)
     exception = getattr(args, "allow_unmerged", False)
     commit = runtime_deploy.resolve_commit(primary, getattr(args, "ref", "HEAD"))
-    if deploying and person.marked():
+    if deploying and caller.marked():
         requested, args.agent = args.agent, _lead(primary)
         previous = getattr(args, "_reviewed_approval", None)
         if isinstance(previous, runtime_unmerged.Approval) and previous.actor != args.agent:
             raise runtime_deploy.DeployError("the runtime approval belongs to another agent")
         if requested and requested != args.agent:
             raise runtime_deploy.DeployError("runtime deployment needs the caller's own identity")
-    if exception and person.marked():
+    if exception and caller.marked():
         exception = getattr(args, "_reviewed_approval", None) or runtime_unmerged.approve(primary, commit, args.review_branch)
     if deploying:
         runtime_deploy.admit(primary, commit, allow_unmerged=exception)
@@ -154,11 +153,8 @@ def _ensure(args: argparse.Namespace) -> int:
         runtime_trust.refresh()
     else:
         args.via = runtime_trust.authorize("ensure", cwd=_checkout(args.checkout))
-    if args.allow_unmerged:
-        if args.background:
-            raise runtime_deploy.DeployError("--allow-unmerged builds in the foreground")
-        if not person.marked():
-            human.mint("deploy an unmerged commit", args.ref)
+    if args.allow_unmerged and args.background:
+        raise runtime_deploy.DeployError("--allow-unmerged builds in the foreground")
     if not args.background and not args.no_update and not args.allow_unmerged and not getattr(args, "automatic_from", ""):
         _caught_up(args)
     plan = _planned(args)

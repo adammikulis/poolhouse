@@ -7,8 +7,8 @@ import platform
 import re
 import sys
 
+from poolhouse.caller import AgentRefused
 from poolhouse.log import say, warn
-from poolhouse.sentinel.human import HumanRequired
 from poolhouse.serve import wired, wired_apply
 
 __all__ = ["run"]
@@ -115,8 +115,8 @@ def _number(args: argparse.Namespace, plan: wired.Plan | None) -> int | None:
 
 def _change(args: argparse.Namespace, plan: wired.Plan | None) -> int:
     try:
-        wired_apply.require_person(_how())
-    except HumanRequired as no:
+        wired_apply.require_gate()
+    except AgentRefused as no:
         warn(f"refused: {no}")
         return 3
     if platform.system() != "Darwin":
@@ -133,7 +133,7 @@ def _change(args: argparse.Namespace, plan: wired.Plan | None) -> int:
            else "macOS will ask for your password"))
     try:
         done = wired_apply.set_limit(mb, keep=keep, via=how)
-    except HumanRequired as no:
+    except AgentRefused as no:
         warn(f"refused: {no}")
         return 3
     except ValueError as no:
@@ -155,7 +155,7 @@ def run(args: argparse.Namespace) -> int:
     except (FileNotFoundError, ValueError) as no:
         warn(f"error: {no}")
         return 2
-    except HumanRequired as no:
+    except AgentRefused as no:
         warn(f"refused: {no}")
         return 3
     if plan is not None:

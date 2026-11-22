@@ -139,15 +139,16 @@ def protected():
     return sys.modules[name]
 
 
-def released(cwd: str) -> bool:
-    """Whether the person's release approval for the repository at `cwd` is live (`person-consume peek`)."""
-    tool = Path(__file__).resolve().parents[2] / "scripts" / "hooks" / "person-consume"
+def release_refusal(cwd: str) -> str:
+    """Why an agent may not merge into a protected branch from `cwd`, empty when it may: the commit has a standing independent
+    land-review accept and the checkout is clean (`poolhouse.workspace.release_check`)."""
+    source = str(Path(__file__).resolve().parents[1])
     try:
-        done = subprocess.run([sys.executable, str(tool), "peek"], cwd=cwd or None, capture_output=True, timeout=10,
-                              check=False)
+        done = subprocess.run([sys.executable, *["-c", "import sys; from poolhouse.workspace import release_check as r; why = r.refusal('.', {'CLAUDECODE': '1'}); sys.stdout.write(why); sys.exit(1 if why else 0)"]], cwd=cwd or None, capture_output=True,
+                              text=True, timeout=30, check=False, env={**os.environ, "PYTHONPATH": source})
     except (OSError, subprocess.TimeoutExpired):
-        return False
-    return done.returncode == 0
+        return "the release check could not run"
+    return done.stdout.strip() if done.returncode else ""
 
 
 def hard_edit_refusal(paths: Iterable[str], cwd: str) -> str:
@@ -307,7 +308,7 @@ def _worktree_target(segment: str) -> str | None:
 def hard_bash_refusal(command: str, cwd: str) -> str:
     """Why `command` may not run whatever POOLHOUSE_GUARD says: it writes a guard or the authority registry, touches the
     person record or the session tokens, or changes what protects the repository."""
-    return protected().refusal(command, cwd or str(Path.cwd()), released)
+    return protected().refusal(command, cwd or str(Path.cwd()), release_refusal)
 
 
 def bash_refusal(command: str, cwd: str) -> str:

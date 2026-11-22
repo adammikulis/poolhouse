@@ -8,7 +8,7 @@ from poolhouse import net
 from poolhouse.httpguard import Limits
 from poolhouse.net import cli, policy, provenance
 from poolhouse.net.scan import ScanPolicy
-from poolhouse.sentinel import human
+from poolhouse.sentinel import permit as human
 from tests.net_site import Site, gguf_bytes
 
 

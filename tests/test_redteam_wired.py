@@ -17,7 +17,7 @@ import pytest
 from test_room_routes import room  # noqa: F401
 from test_wired import SRC, Recorder, hooks
 
-from poolhouse.sentinel.human import HumanRequired
+from poolhouse.sentinel.permit import AgentRefused
 from poolhouse.serve import wired_apply as apply
 
 SAFE_SCRIPT = re.compile(r"[A-Za-z0-9 /:.=_;'%\\\-<>?\",!()&|\s]*")
@@ -101,7 +101,7 @@ def test_an_agent_marker_stops_every_entry_point(tmp_path):
                  lambda: apply.set_limit(65536, keep=True, via="sudo", hooks=h),
                  lambda: apply.set_limit(None, keep=False, via="osascript", hooks=h),
                  lambda: apply.reset(via="osascript", hooks=h)):
-        with pytest.raises(HumanRequired):
+        with pytest.raises(AgentRefused):
             call()
     assert ran.calls == []
 

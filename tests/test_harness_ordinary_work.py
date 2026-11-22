@@ -31,15 +31,15 @@ def no_coordination(monkeypatch):
     ("Bash", {"command": "git push origin HEAD:refs/heads/0.3dev"}),
 ])
 def test_ordinary_mutation_and_push_do_not_require_workspace(no_coordination, tmp_path, tool, arguments):
-    rail = harnesshook.Rail(coding_policy.Policy("ask-dangerous"), "own", [str(tmp_path)])
+    rail = harnesshook.Rail(coding_policy.Policy("guarded"), "own", [str(tmp_path)])
     result = harnesshook.pre({"tool_name": tool, "tool_input": arguments, "cwd": str(tmp_path)}, rail)
     assert result["hookSpecificOutput"]["permissionDecision"] == "allow"
 
 
 @pytest.mark.parametrize("tool,arguments,permissions", [
     ("Write", {"file_path": "app.py", "content": "denied by read-only role"}, "read-only"),
-    ("Bash", {"command": "poolhouse-workspace inbox --agent other"}, "ask-dangerous"),
-    ("Bash", {"command": "poolhouse-workspace inbox --agent own --token-file /tmp/other"}, "ask-dangerous"),
+    ("Bash", {"command": "poolhouse-workspace inbox --agent other"}, "guarded"),
+    ("Bash", {"command": "poolhouse-workspace inbox --agent own --token-file /tmp/other"}, "guarded"),
 ])
 def test_independent_role_and_explicit_identity_refusals_still_apply(no_coordination, tmp_path, tool, arguments, permissions):
     rail = harnesshook.Rail(coding_policy.Policy(permissions), "own", [str(tmp_path)])
@@ -49,7 +49,7 @@ def test_independent_role_and_explicit_identity_refusals_still_apply(no_coordina
 
 def test_destructive_call_still_requires_its_policy_approval(no_coordination, tmp_path, monkeypatch):
     monkeypatch.setattr(harnesshook, "_ask", lambda *args, **kwargs: (False, "declined"))
-    rail = harnesshook.Rail(coding_policy.Policy("ask-dangerous"), "own", [str(tmp_path)])
+    rail = harnesshook.Rail(coding_policy.Policy("guarded"), "own", [str(tmp_path)])
     result = harnesshook.pre({"tool_name": "Bash", "tool_input": {"command": "rm -rf ordinary-data"},
                               "cwd": str(tmp_path)}, rail)
     assert result["hookSpecificOutput"]["permissionDecision"] == "deny"

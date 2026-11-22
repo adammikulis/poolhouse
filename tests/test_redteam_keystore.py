@@ -14,7 +14,7 @@ from keyring.errors import KeyringError
 from poolhouse import home, keystore, mcp
 from poolhouse.keystore import Keystore, Wires
 from poolhouse.net import cli
-from poolhouse.sentinel import human
+from poolhouse.sentinel import permit as human
 from tests import keystore_support
 from tests.test_chat import call, session
 
@@ -76,8 +76,8 @@ def test_a_command_naming_the_security_tool_or_the_keystore_directory_is_refused
 @pytest.mark.parametrize("marker", human.AGENT_MARKERS)
 def test_an_agent_cannot_run_unlock_or_reset(counting, monkeypatch, marker):
     monkeypatch.setenv(marker, "1")
-    real = human.require_person
-    monkeypatch.setattr(human, "require_person", lambda action, terminal=None, env=None: real(action, (True, True), env))
+    real = human.refuse_agent
+    monkeypatch.setattr(human, "refuse_agent", lambda action, terminal=None, env=None: real(action, (True, True), env))
     assert cli.command(["unlock"]) == 2
     assert cli.command(["keystore-reset"]) == 2
     assert counting.calls == [] and counting.held == {}

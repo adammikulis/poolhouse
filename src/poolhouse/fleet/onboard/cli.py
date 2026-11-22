@@ -30,7 +30,7 @@ from .manifest import ManifestError, RotationAnnounced, Signer, key_fingerprint,
 from .routes import resolve
 from .share_cli import add_share, cmd_share
 from .signing import KeyStoreError, SigningKeys
-from .signing_cli import add_signing, cmd_signing, confirm_signing
+from .signing_cli import add_signing, cmd_signing
 from .ssh_cli import add_ssh, cmd_ssh
 from .transfer import (
     Downloader,
@@ -102,7 +102,7 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
                for f in sorted(share.iterdir())
                if f.is_file() and f.suffix in (".whl", ".gz", ".zip")]
     try:
-        raw = keys.sign(entries, serial=int(time.time()), confirm=confirm_signing)
+        raw = keys.sign(entries, serial=int(time.time()))
     except KeyStoreError as exc:
         _emit(args, {"error": str(exc)}, f"error: {exc}")
         return 2

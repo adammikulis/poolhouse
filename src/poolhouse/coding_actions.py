@@ -2,19 +2,15 @@
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
 import re
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass
 from typing import Any
 
-from poolhouse import requests
 from poolhouse.activity.source_snapshot import INDEX_LIMIT
 from poolhouse.client import completion
 from poolhouse.fleet.conversation_types import CodingState
-from poolhouse.harnesshook import _summary
 from poolhouse.json_objects import unique_object
-from poolhouse.requests.model import Origin, make_choices, shown
 
 MAX_FRAME = 4 * 1024 * 1024
 TOOLS = ("read", "bash", "edit", "write", "grep", "find", "ls")
@@ -107,7 +103,7 @@ class Action:
         if tool not in TOOLS:
             raise ValueError("Use a fixed stock coding tool")
         arguments = call_arguments(identifier, tool, inputs)
-        if decision.action not in ("allow", "ask", "deny"):
+        if decision.action not in ("allow", "deny"):
             raise ValueError("Invalid coding action decision")
         return cls(identifier, tool, arguments, canonical(workspace, limit=INDEX_LIMIT), canonical(asdict(decision)))
 
@@ -124,37 +120,6 @@ class Action:
 
     def semantic(self, execution: Execution) -> str:
         return digest({key: value for key, value in self.binding(execution).items() if key != "id"})
-
-
-def request_keys(seed: str, binding: str) -> tuple[str, str]:
-    key = bytes.fromhex(fingerprint(seed))
-    body = bytes.fromhex(fingerprint(binding))
-    return tuple(hmac.new(key, domain + body, hashlib.sha256).hexdigest()
-                 for domain in (b"poolhouse/coding/request/v1\0", b"poolhouse/coding/cancel/v1\0"))
-
-
-def approval_request(run: dict, execution: Execution, action: Action):
-    """Build the fixed parent-owned approval words and cancellation capability."""
-    row = run["actions"][action.id]
-    key, cancellation = request_keys(run["seed"], row["binding"])
-    who = run["binding"]["identity"]
-    origin = requests.Origin(who["actor"], execution.policy.conversation, who["native_session"], execution.policy.model)
-    decision = row["decision"]
-    ask = requests.Ask(decision["kind"], f"{action.tool} {_summary(action.tool, json.loads(action.arguments))}",
-                       decision["reason"], ("allow-once", "deny"), origin, key=key,
-                       extra=(("action_digest", row["binding"]), ("request_binding", key)))
-    return ask, cancellation
-
-
-def approval_matches(request, ask) -> bool:
-    """Compare every approval word with its fixed action-bound request."""
-    origin = ask.origin
-    expected = replace(request, kind=ask.kind, key=ask.key,
-        raised_by=Origin(shown(origin.agent, "name"), shown(origin.project, "name"), shown(origin.session, "name"),
-                         shown(origin.model, "model"), shown(origin.model_state, "label")),
-        subject=shown(ask.subject, "subject"), reason=shown(ask.reason, "reason"),
-        choices=make_choices(ask.choices), extra={"action_digest": dict(ask.extra)["action_digest"], "request_binding": ask.key})
-    return expected.fingerprint == request.fingerprint
 
 
 def call_arguments(identifier, tool, inputs) -> str:

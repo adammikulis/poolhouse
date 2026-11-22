@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from node_kit import PASSPHRASE, TYPED
 
-from poolhouse import node_launch, person
+from poolhouse import node_launch
 from poolhouse.board import grants as board_grants, person as person_session, person_key
 from poolhouse.board.client import Denied, Invalid
 from poolhouse.fleet.onboard.manifest import Signer
@@ -305,8 +305,6 @@ def test_hostile_arguments_to_the_person_commands_are_refused_before_anything_is
 def test_the_persons_screen_signs_for_one_use_only_after_the_person_types_yes_and_a_marked_process_cannot(team, monkeypatch):
     monkeypatch.setattr(node_launch, "default_state", lambda: team.state)
     questions: list[str] = []
-    answers = iter([False, True])
-    monkeypatch.setattr(person, "confirm", lambda text: questions.append(text) or next(answers))
     monkeypatch.setattr(person_key, "tty_passphrase", lambda _prompt: PASSPHRASE)
     team.keep_person_key(team.lead)
     screen = person_session.session(Path.cwd())

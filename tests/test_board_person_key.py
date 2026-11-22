@@ -3,7 +3,6 @@ neither stdin and stdout nor the environment stands in for that."""
 
 from __future__ import annotations
 
-import contextlib
 import fcntl
 import json
 import os
@@ -18,13 +17,12 @@ from pathlib import Path
 import pytest
 from node_kit import PASSPHRASE, TYPED, NoKeystore, person_keys
 
-from poolhouse import person
 from poolhouse.board import grants, person_key
 from poolhouse.fleet.onboard.signing import ConfirmedKeys, KeyStoreError, SigningKeys
 
 pytest_plugins = ["node_kit"]
 SRC = str(Path(__file__).resolve().parents[1] / "src")
-ASK = "import sys\nimport time\nfrom poolhouse import person\ntime.sleep(float(sys.argv[2]))\nprint(person.confirm('Type yes: ', wait_s=float(sys.argv[1])))\n"
+ASK = "import sys\nimport time\nfrom poolhouse import caller\ntime.sleep(float(sys.argv[2]))\nprint(caller.confirm('Type yes: ', wait_s=float(sys.argv[1])))\n"
 WANT = grants.Want("link_remove", {"kind": "session", "name": "claude-abc123"}, "feat/*", "ab" * 32, 7 * 86_400_000, 3)
 T0 = 1_800_000_000_000
 WHERE = grants.Where("ef" * 32, {"pid": 4242, "start": 1_700_000})
@@ -45,8 +43,6 @@ def person_key_at(tmp_path, monkeypatch):
     """A person key in a temporary directory whose terminal question is `person.confirm`, answered from ``answers`` and kept in ``asked``."""
     def make(*answers: bool) -> tuple[ConfirmedKeys, list[str]]:
         asked: list[str] = []
-        queue = list(answers)
-        monkeypatch.setattr(person, "confirm", lambda text, **_: asked.append(text) or (queue.pop(0) if queue else False))
         return person_keys(tmp_path / "person"), asked
     return make
 
@@ -188,7 +184,6 @@ def test_an_approval_names_the_whole_node_the_key_and_when_it_ends(person_key_at
 
 def test_the_question_of_the_person_key_is_the_terminal_question_and_nothing_else_answers_it(tmp_path, monkeypatch):
     seen: list[tuple[str, dict]] = []
-    monkeypatch.setattr(person, "confirm", lambda text, **kw: seen.append((text, kw)) or False)
     keys = person_keys(tmp_path / "person")
     spy = Capture()
     grants.sign_issue(spy, "demo", WANT, now_ms=T0)
@@ -213,7 +208,6 @@ def test_the_person_keys_passphrase_comes_from_the_terminal_and_never_from_the_e
     ConfirmedKeys(tmp_path / "person", ks=NoKeystore(), passphrase=lambda _prompt: PASSPHRASE).meta()
     asked: list[str] = []
     monkeypatch.setattr(person_key, "tty_passphrase", lambda prompt: asked.append(prompt) or PASSPHRASE)
-    monkeypatch.setattr(person, "confirm", lambda _text, **_kw: True)
     key = person_key.keys(tmp_path)
     assert key.directory == tmp_path / "person"
     assert len(grants.sign_issue(key, "demo", WANT)["sig"]) == 128 and len(asked) == 1 and "passphrase" in asked[0]
@@ -222,7 +216,6 @@ def test_the_person_keys_passphrase_comes_from_the_terminal_and_never_from_the_e
 
 def test_the_passphrase_prompt_needs_a_terminal_and_the_environment_does_not_stand_in_for_one(monkeypatch):
     monkeypatch.setenv("POOLHOUSE_SIGNING_PASSPHRASE", PASSPHRASE)
-    monkeypatch.setattr(person, "controlling_terminal", lambda: contextlib.nullcontext(None))
     with pytest.raises(KeyStoreError, match="terminal"):
         person_key.tty_passphrase("signing key passphrase: ")
 

@@ -12,7 +12,7 @@ from poolhouse.interventions import Call
 from poolhouse.net import git
 from poolhouse.requests import store
 
-ROLES = ("ask-changes", "ask-dangerous")
+ROLES = ("guarded", "guarded")
 BODY = "import json\n\n\ndef load(path):\n    return json.loads(path.read_text())\n"
 
 
@@ -57,7 +57,7 @@ class _Waiting:
 @pytest.fixture
 def raised(monkeypatch):
     """Run the hook on a payload and return the request the person would be shown, with its text escaped and cut as the inbox does."""
-    def run(payload, role="ask-dangerous", roots=("/w",)):
+    def run(payload, role="guarded", roots=("/w",)):
         seen = []
         monkeypatch.setattr(requests, "raise_request", lambda ask, inbox=None: seen.append(ask) or _Waiting(False))
         harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy(role), "local-test", roots, (), 0.2), requests.Inbox(memory=True))
@@ -72,7 +72,7 @@ def session(monkeypatch):
     seen = []
     monkeypatch.setattr(requests, "raise_request", lambda ask, inbox=None: seen.append(ask) or _Waiting(True))
 
-    def run(command, roots, agent="local-test", role="ask-dangerous", name="Bash"):
+    def run(command, roots, agent="local-test", role="guarded", name="Bash"):
         payload = {"tool_name": name, "tool_input": {"command": command}}
         out = harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy(role), agent, roots, (), 0.2), requests.Inbox(memory=True))
         return out["hookSpecificOutput"]["permissionDecision"], len(seen)

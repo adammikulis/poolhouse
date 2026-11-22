@@ -11,8 +11,8 @@ import pytest
 from test_runtime_trust import commit, git
 
 from poolhouse import authority, runtime, runtime_await, runtime_cli, runtime_deploy, runtime_source
+from poolhouse.caller import AgentRefused
 from poolhouse.lock import Busy, only_one
-from poolhouse.person import HumanRequired
 
 pytest_plugins = ["test_runtime_trust"]
 
@@ -144,7 +144,7 @@ def test_authority_is_checked_again_after_the_wait_and_before_anything_is_built(
     def authorize(command, **_named):
         seen.append(git(world.repo, "rev-parse", "refs/remotes/origin/dev"))
         if len(seen) > 1:
-            raise HumanRequired("runtime ensure is a person's again")
+            raise AgentRefused("runtime ensure is a person's again")
         threading.Timer(0.5, publish, (world, tip)).start()
         return authority.PERSON
 

@@ -11,7 +11,7 @@ import ipaddress
 import socket
 from collections.abc import Iterable, Mapping
 
-from poolhouse.person import AGENT_MARKERS
+from poolhouse.caller import AGENT_MARKERS
 
 __all__ = ["CREDENTIALS", "LAN_TESTS", "LIVE_API", "LIVE_NET", "MARKERS", "PAID_SDKS", "outside", "skip_reason"]
 

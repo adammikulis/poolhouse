@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from poolhouse import authority, home, node_launch, person, runtime_git, runtime_store
+from poolhouse import authority, caller, home, node_launch, runtime_git, runtime_store
 from poolhouse.activity import writer
 from poolhouse.board import session as board_session
 from poolhouse.board.client import Client, NodeError
@@ -20,7 +20,7 @@ DETAIL_LIMIT = 150
 
 def is_person() -> bool:
     """Whether stdin and stdout are terminals and no agent marker is set."""
-    return not person.marked() and person.is_terminal(sys.stdin) and person.is_terminal(sys.stdout)
+    return not caller.marked() and caller.is_terminal(sys.stdin) and caller.is_terminal(sys.stdout)
 
 
 def common_dir(path: Path) -> Path:
@@ -100,7 +100,7 @@ def floor(primary: Path) -> int:
 
 def ignore_redirects() -> list[str]:
     """Remove agent redirects; return only those that differ from the account's state root."""
-    if not person.marked():
+    if not caller.marked():
         return []
     names = [home.ROOT_ENV, home.CACHE_ENV, *home.OVERRIDES.values()]
     warnings = []
@@ -135,13 +135,13 @@ def authorize(command: str, *, cwd: Path | None = None) -> str:
     A launcher or login unit carries no agent marker, so it is not gated; the `authority.use` row this writes for a
     delegated pass names the agent.
     """
-    if not (person.marked() or os.environ.get(authority.SUBAGENT_ENV)):
+    if not (caller.marked() or os.environ.get(authority.SUBAGENT_ENV)):
         return authority.PERSON
     _own_session(recorded_primary() or cwd)
     return authority.require(GATE, f"runtime {command}", scope=authority.Scope(cwd=recorded_primary() or cwd))
 
 
-IDENTITY =(*person.AGENT_MARKERS, board_session.AGENT_ENV, board_session.TOKEN_ENV, board_session.SUBAGENT_ENV, "POOLHOUSE_BOARD",
+IDENTITY =(*caller.AGENT_MARKERS, board_session.AGENT_ENV, board_session.TOKEN_ENV, board_session.SUBAGENT_ENV, "POOLHOUSE_BOARD",
             "POOLHOUSE_SESSION_HARNESS", "CLAUDE_ENV_FILE")
 """The variables that name an agent to a process: a build started as the system carries none of them."""
 
@@ -158,7 +158,7 @@ def refresh() -> None:
 
 def audit(command: str, commit: str, result: str, *, agent: str = "", detail: str = "", **passed: str) -> bool:
     """Append a sealed activity record for one deploy command; True when it was written."""
-    context = bool(person.marked() or agent or os.environ.get(board_session.AGENT_ENV) or os.environ.get("POOLHOUSE_WORKSPACE_TOKEN") or
+    context = bool(caller.marked() or agent or os.environ.get(board_session.AGENT_ENV) or os.environ.get("POOLHOUSE_WORKSPACE_TOKEN") or
                    os.environ.get(authority.SUBAGENT_ENV))
     who = ""
     if context:

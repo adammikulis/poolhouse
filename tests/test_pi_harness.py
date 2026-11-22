@@ -115,7 +115,7 @@ def test_pi_post_checkpoint_failure_stops_the_session(tmp_path, monkeypatch):
     if not node:
         pytest.skip("Node is required by Pi")
     hook = tmp_path / "policy.mjs"
-    hook.write_text(pi.extension({"permissions": "ask-dangerous", "executionMode": "execute",
+    hook.write_text(pi.extension({"permissions": "guarded", "executionMode": "execute",
         "agent": "missing-checkpoint-identity", "root": str(tmp_path), "protected": []}))
     driver = tmp_path / "driver.mjs"
     driver.write_text(

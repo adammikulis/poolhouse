@@ -15,7 +15,7 @@ from poolhouse.workspace import coding_turns
 def coding(tmp_path):
     store = Conversations(tmp_path / "chat")
     conversation = store.start("model-a", settings={"harness": "pi", "project_id": "a" * 32,
-                                                    "permissions": "ask-dangerous"})
+                                                    "permissions": "guarded"})
     return store, conversation, store.coding_state(conversation.id)
 
 

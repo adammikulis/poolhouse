@@ -208,7 +208,7 @@ def test_no_tool_an_agent_is_offered_is_a_human_only_action():
 
 
 def test_a_tool_argument_naming_the_floor_is_refused_whichever_tool_carries_it():
-    from poolhouse.sentinel.human import agent_may
+    from poolhouse.sentinel.permit import agent_may
     for tool in ("bench_run", "serve_up", "models_fetch", "speech_say", "doctor", "decide"):
         for text in ("poolhouse security quarantine release q-1", "poolhouse-security mode off",
                      "python -m poolhouse.sentinel.cli release q-1"):
@@ -274,7 +274,7 @@ def test_no_mcp_tool_takes_a_secret_or_joins_a_fleet():
 
 def test_no_tool_an_agent_is_offered_sets_up_joins_delegates_grants_or_names_the_token_folder(tmp_path):
     from poolhouse.board import credentials
-    from poolhouse.sentinel.human import agent_may
+    from poolhouse.sentinel.permit import agent_may
     from poolhouse.workspace import tools
     for word in ("setup", "connect", "join", "delegate", "rotate", "invite", "token", "init", "grant", "enroll", "rebind"):
         assert not [n for n in tools.NAMES if word in n], word

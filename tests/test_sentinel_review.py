@@ -23,7 +23,7 @@ except ImportError:                                 # Windows: the tests skip th
     pty = None
 
 from poolhouse import home, sentinel
-from poolhouse.sentinel import human
+from poolhouse.sentinel import permit as human
 from poolhouse.sentinel.cli import command
 from poolhouse.sentinel.store import State
 
@@ -356,7 +356,7 @@ def test_a_watched_subject_is_released_only_with_a_grant():
     node = sentinel.default()
     watched = seed_watch("server", "port:1", "server.unmanaged: x")
     other = human.mint("release", "q-other", typed=lambda _: "q-other", terminal=(True, True), env={})
-    with pytest.raises(human.HumanRequired):
+    with pytest.raises(human.AgentRefused):
         node.store.release(watched.id, other)
     assert state_of(watched.id) == State.WATCH
     grant = human.mint("release", watched.id, typed=lambda _: watched.id, terminal=(True, True),
@@ -374,12 +374,12 @@ def test_a_pressed_grant_checks_the_person_before_it_reads_a_key():
 
     for kwargs in ({"env": {"CLAUDECODE": "1"}, "terminal": (True, True)},
                    {"env": {}, "terminal": (False, True)}, {"env": {}, "terminal": (True, False)}):
-        with pytest.raises(human.HumanRequired):
+        with pytest.raises(human.AgentRefused):
             human.mint_pressed("release", "q-1", pressed=pressed, **kwargs)
     assert asked == []
     grant = human.mint_pressed("release", "q-1", pressed=pressed, env={}, terminal=(True, True))
     grant.check("release", "q-1")
-    with pytest.raises(human.HumanRequired):
+    with pytest.raises(human.AgentRefused):
         human.mint_pressed("release", "q-1", pressed=lambda _: False, env={}, terminal=(True, True))
 
 

@@ -2,7 +2,7 @@
 
 import pytest
 
-from poolhouse.sentinel import human
+from poolhouse.sentinel import permit as human
 
 pytestmark = pytest.mark.redteam
 

@@ -17,6 +17,7 @@ must not block every Bash call.
 """
 
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -42,11 +43,9 @@ PUSH_FLAGS = (PUSHER + GIT_PUSH + r"[^;&|\n]*(--all\b|--mirror\b|--tags\b|--dele
               r"|--force|\s-f\b|\s-d\b)")
 MINT = RUN + r"(\S*/)?poolhouse-workspace\s+(-\S+\s+)*(mint|delegate)\b"
 PERSON_STORE = (r"\.poolhouse/person\b|person/statements\.log|\bCLAUDE_CONFIG_DIR=|"
-                r"(import|from)\s+poolhouse\.workspace(\.|\s+import\s+[^;\n]*\b)(person_\w+|run_(approval|hook))|"
+                r"(import|from)\s+poolhouse\.workspace(\.|\s+import\s+[^;\n]*\b)person_\w+|"
                 r"-m\s+poolhouse\.workspace\.(person|run)_|"
-                + RUN + r"(\S*python\S*\s+|(ba)?sh\s+)?(\S*/)?(claude-user-prompt|(person-consume|run-approval)(?!\s+propose\b))")
-# A plain command that starts with a script the owner can approve a run of; the guard then asks for a ticket (run_stamped).
-RUN_SCRIPT = re.compile(r"[\w./-]*scripts/(release-key|github-protection-apply)( [\w./ -]*)?")
+                + RUN + r"(\S*python\S*\s+|(ba)?sh\s+)?(\S*/)?(claude-user-prompt|person-consume)")
 SKIP_HOOKS = (PUSHER + r"git\s+(-[Cc]\s+\S+\s+|--\S+\s+)*(commit|push|merge|am|cherry-pick|rebase)\b[^;&|\n]*"
               r"(--no-verify\b|--no-gpg-sign\b)"
               r"|" + PUSHER + r"git\s+(-[Cc]\s+\S+\s+|--\S+\s+)*commit\b[^;&|\n]*\s-[a-zA-Z]*n[a-zA-Z]*(\s|$)"
@@ -123,9 +122,8 @@ REFUSE = [
      "An agent pushes the development branch by name: `git push origin <development branch>` "
      "after a merge lands on it. A push to `main` publishes: release-please reads the subjects "
      "there, so it moves the release pull request and releases every commit on the branch at "
-     "once. It needs the person's approval of that one commit: run "
-     "`scripts/hooks/person-consume propose`, ask its question with AskUserQuestion word for "
-     "word, and push main only after the person selects the approval."),
+     "once. It is refused until the commit has a standing independent land-review accept "
+     "(`poolhouse-workspace review`) and the checkout is clean; then it goes ahead, decided at once."),
     (MINT,
      "An agent does not create identities. A person at a terminal mints a token; a joined agent "
      "starts a new agent with `poolhouse-workspace invite`."),
@@ -220,31 +218,14 @@ def subagent_stamped(event: dict, given: dict) -> dict | None:
     return {**given, "command": "\n".join(lines) + "\n" + given["command"]}
 
 
-def run_stamped(event: dict, given: dict) -> dict | None:
-    """The tool input of the main session's exact run of a script the owner approved, with the command replaced by the line that starts it with its one-minute ticket, or None.
-
-    The ticket exists only here: a subagent's command, an inexact command and a run with no live approval get none, and the
-    script refuses without it. Spending the approval is what the ticket records, so a second run finds none."""
-    command = given.get("command")
-    if event.get("agent_id") or not isinstance(command, str) or not RUN_SCRIPT.fullmatch(command.strip(" \t")):
-        return None
-    sys.path.insert(0, str(HERE.parent.parent / "src"))
+def release_refusal(cwd: str) -> str:
+    """Why this session may not publish main from ``cwd``, empty when it may: the commit has a standing independent land-review accept."""
     try:
-        from poolhouse.workspace import run_hook
-        launch = run_hook.issue(command, str(event.get("cwd") or ""))
-    except (ImportError, OSError, ValueError, RuntimeError):
-        return None
-    return {**given, "command": launch}
-
-
-def release_approved(cwd: str) -> bool:
-    """Whether this session holds a live release-main approval for the repository at ``cwd``."""
-    try:
-        done = subprocess.run([sys.executable, str(HERE / "person-consume"), "peek"], cwd=cwd or None,
-                              capture_output=True, timeout=10, check=False)
+        done = subprocess.run([sys.executable, *["-c", "import sys; from poolhouse.workspace import release_check as r; why = r.refusal('.', {'CLAUDECODE': '1'}); sys.stdout.write(why); sys.exit(1 if why else 0)"]], cwd=cwd or None, capture_output=True, text=True,
+                              timeout=30, check=False, env={**os.environ, "PYTHONPATH": str(HERE.parent.parent / "src")})
     except (OSError, subprocess.TimeoutExpired):
-        return False
-    return done.returncode == 0
+        return "the release check could not run"
+    return done.stdout.strip() if done.returncode else ""
 
 
 def judge(event: dict, switched: bool, rules) -> str:
@@ -262,7 +243,7 @@ def judge(event: dict, switched: bool, rules) -> str:
         if switched and pattern not in HARD:
             continue
         if re.search(pattern, command, re.M):
-            if pattern is PUSH_MAIN and not re.search(PUSH_FLAGS, command) and release_approved(event.get("cwd") or ""):
+            if pattern is PUSH_MAIN and not re.search(PUSH_FLAGS, command) and not release_refusal(event.get("cwd") or ""):
                 continue
             tail = ("No switch opens this rule." if pattern in HARD else
                     "If this is genuinely the right command, say so and a person can run it, "
@@ -289,7 +270,7 @@ def main() -> int:
     if refused := judge(event, switched, rules):
         print(refused, file=sys.stderr)
         return 2
-    stamped = subagent_stamped(event, event.get("tool_input") or {}) or run_stamped(event, event.get("tool_input") or {})
+    stamped = subagent_stamped(event, event.get("tool_input") or {})
     if stamped:
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "updatedInput": stamped}}))
     return 0

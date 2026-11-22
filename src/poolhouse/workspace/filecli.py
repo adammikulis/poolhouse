@@ -18,7 +18,6 @@ from poolhouse.board import credentials, sealed
 from poolhouse.board.session import Entry, Session
 from poolhouse.command import flag
 from poolhouse.errors import Denied
-from poolhouse.person import require_person
 from poolhouse.workspace import limits, plain
 from poolhouse.workspace.files import (
     HOUR_S,
@@ -290,7 +289,6 @@ def file(args: argparse.Namespace, s: Session) -> Any:
     if first == "search":
         return search(s, " ".join(rest), where, args.limit)
     if first == "delete":
-        require_person("file delete")
         if not rest or not valid_handle(rest[0]):
             raise ValueError("a file handle is 12 hex characters")
         return s.delete_file(rest[0])

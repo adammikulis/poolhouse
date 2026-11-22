@@ -27,9 +27,9 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 from poolhouse import (
+    caller,
     home,
     keystore_guard,
-    person,
     platform,
     private_path,
     real_machine,
@@ -39,7 +39,7 @@ from poolhouse.files import read_json, write_json
 from poolhouse.kdf import hkdf
 from poolhouse.lock import Busy, only_one
 from poolhouse.log import warn
-from poolhouse.sentinel import human
+from poolhouse.sentinel import permit
 from poolhouse.sentinel.events import Event, Severity
 
 __all__ = ["ENV_NONINTERACTIVE", "NOTICE", "RATE_WINDOW_S", "READ_CEILING",
@@ -82,7 +82,7 @@ class KeystoreError(RuntimeError):
 
 
 class KeystoreDenied(KeystoreError):
-    """The operating system refused, or the person declined the prompt."""
+    """The operating system refused, or its prompt was declined."""
 
 
 class KeystoreBusy(KeystoreError):
@@ -90,7 +90,7 @@ class KeystoreBusy(KeystoreError):
 
 
 class KeystoreLocked(KeystoreError):
-    """A background process asked before a person ran the unlock command."""
+    """The key could not be made or read by this process."""
 
 
 class KeystoreMissing(KeystoreError):
@@ -133,9 +133,10 @@ def _desktop() -> bool:
 
 
 def interactive() -> bool:
-    """Whether a person could answer an OS prompt: a terminal or a desktop session, and no agent
-    marker (``POOLHOUSE_NONINTERACTIVE``, ``POOLHOUSE_AGENT``, ``CLAUDECODE``) set."""
-    if person.marked():
+    """Whether the OS may be left to show a prompt: a terminal or a desktop session, and no agent
+    marker (``POOLHOUSE_NONINTERACTIVE``, ``POOLHOUSE_AGENT``, ``CLAUDECODE``) set. Nothing waits on it: without one the
+    call is made with prompts forbidden and fails with the OS's own words."""
+    if caller.marked():
         return False
     try:
         if sys.stdin.isatty():
@@ -200,7 +201,7 @@ class Keystore:
         if not platform.private_dir(self.directory):
             logger.warning("could not restrict %s to your account with icacls; it keeps the "
                            "permissions it inherited", self.directory)
-        human.protect(self.directory)
+        permit.protect(self.directory)
 
     def _doc(self, name: str) -> dict[str, Any]:
         doc = read_json(self._path(name), {})
@@ -296,15 +297,6 @@ class Keystore:
         except (OSError, ValueError, RuntimeError) as exc:
             logger.debug("keystore event not recorded: %s", type(exc).__name__)
 
-    def _gate(self, purpose: str, *, person: bool = False) -> None:
-        if person or self._is_interactive():
-            return
-        if self._doc("provisioned.json").get("at"):
-            return
-        self._event("refused", purpose, "noninteractive", Severity.NOTICE)
-        raise KeystoreLocked("Poolhouse has no encryption key for this background process. A person "
-                             f"runs `{UNLOCK_COMMAND}` once in a terminal to create it.")
-
     def _spend(self, kind: str, purpose: str, *, person: bool = False) -> None:
         """Count one read, or check the count of changes (`_wrote` counts a change once the keystore made it), and record the
         process that asked. A person's own read (the unlock command) is counted and never turned away."""
@@ -366,11 +358,8 @@ class Keystore:
     @contextmanager
     def _flight(self, purpose: str, *, person: bool = False) -> Iterator[None]:
         self._ring()
-        with self._mutex:
-            self._gate(purpose, person=person)
-            with self._held("flight.lock", FLIGHT_WAIT_S):
-                self._gate(purpose, person=person)
-                yield
+        with self._mutex, self._held("flight.lock", FLIGHT_WAIT_S):
+            yield
 
     # -- the master key --
     def _master(self, purpose: str, *, create: bool, person: bool = False) -> bytes:
@@ -385,9 +374,6 @@ class Keystore:
             if key is None:
                 if not create:
                     raise KeystoreMissing("the OS keystore holds no poolhouse key")
-                if not (person or self._is_interactive()):
-                    raise KeystoreLocked("Poolhouse has no encryption key for this background process. "
-                                         f"A person runs `{UNLOCK_COMMAND}` once in a terminal.")
                 if not person and self._doc("provisioned.json").get("at"):
                     raise KeystoreMissing("the OS keystore no longer holds the key poolhouse made here, so "
                                           "everything wrapped under it stays locked; poolhouse will not make a "
@@ -404,7 +390,7 @@ class Keystore:
 
 
     def provision(self) -> bool:
-        """Make the master key if there is none (for the unlock command, a person present);
+        """Make the master key if there is none (for the unlock command);
         whether it was made now."""
         with self._mutex:
             self.created = False
@@ -482,7 +468,7 @@ def _refused(cause: BaseException) -> str:
         what = f"the keystore said: {said}"
     return (f"Poolhouse could not get its key, because {what}, so encrypted data stays locked. Nothing is remembered: "
             f"the next request asks the keystore again and your computer shows its prompt again. To set the key up now, "
-            f"run `{UNLOCK_COMMAND}` in a terminal.")
+            f"run `{UNLOCK_COMMAND}` to set the key up now.")
 
 
 def _over(ceiling: int, write: bool) -> str:
@@ -490,7 +476,7 @@ def _over(ceiling: int, write: bool) -> str:
     what = "changed" if write else "read"
     return (f"Poolhouse has already {what} the keystore {ceiling} times in the last hour, which only something repeating in a "
             f"loop does, so this call was not made and nothing is waiting for the person. Stop what is repeating; the count "
-            f"falls as the hour passes, and `{UNLOCK_COMMAND}` in a terminal is never turned away by it.")
+            f"falls as the hour passes, and `{UNLOCK_COMMAND}` is never turned away by it.")
 
 
 def _parse(held: Any) -> bytes | None:

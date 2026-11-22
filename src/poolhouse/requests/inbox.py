@@ -1,4 +1,4 @@
-"""Raising, answering and listing requests: the module every component that waits for a person calls."""
+"""Raising, answering and listing requests: the notices an optional answerer (a terminal, the UI, a dialog) may answer. Nothing in Poolhouse blocks on one."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from poolhouse import authority, keystore
-from poolhouse.person import require_person
+from poolhouse.caller import who
 from poolhouse.requests.model import PENDING, Request
 from poolhouse.requests.store import Ask, Inbox, Refused, Unavailable, build
 
@@ -145,30 +145,22 @@ def raise_request(ask: Ask, *, inbox: Inbox | None = None,
 
 @dataclass(frozen=True, slots=True)
 class Context:
-    """What an answer is made in: the terminal's tty state and the environment checked for agent
-    markers (the process's when None), and the inbox (the user's when None)."""
+    """What an answer is made in: the environment checked for agent markers (the process's when None), and the inbox (the user's
+    when None)."""
 
-    terminal: tuple[bool, bool] | None = None
     env: Mapping[str, str] | None = None
     inbox: Inbox | None = None
 
 
 def answer(ident: str, choice: str, fingerprint: str, via: str, ctx: Context | None = None) -> Request:
-    """A person's answer. Refused (`person.HumanRequired`) from a process an agent started, and
-    from a ``terminal`` answer that is not at a tty; an answer to a human-only kind is a person's
-    whatever the authority registry delegates; `Refused` when the request was already
-    resolved, changed since ``fingerprint`` was shown or has no such choice;
+    """An answer. Decided at once by the `requests.answer` gate (`AgentRefused` for an agent while the gate is held back);
+    `Refused` when the request was already resolved, changed since ``fingerprint`` was shown or has no such choice;
     `Unavailable` when the store cannot be used (nothing is approved)."""
     ctx = ctx or Context()
     box = ctx.inbox or default()
-    terminal = ctx.terminal if via == "terminal" else (True, True)
-    asked = box.get(ident)
-    if asked is not None and asked.human_only:
-        require_person("answering a request that only a person answers", terminal, ctx.env)
-    else:
-        authority.require("requests.answer", "answering a request", terminal, ctx.env)
+    authority.require("requests.answer", "answering a request", ctx.env)
     done = box.answer(ident, choice, fingerprint, via)
-    _record("request.answered", done, done.state, via, actor="person")
+    _record("request.answered", done, done.state, via, actor=who(ctx.env))
     return done
 
 
@@ -190,7 +182,7 @@ def list_requests(*, inbox: Inbox | None = None, **filters: Any) -> list[Request
 
 
 def pending_count(*, inbox: Inbox | None = None) -> int:
-    """How many requests wait for a person; 0 when the store cannot be read."""
+    """How many requests are unanswered; 0 when the store cannot be read."""
     return len(list_requests(state=PENDING, inbox=inbox))
 
 
@@ -201,13 +193,12 @@ def oldest_pending(*, inbox: Inbox | None = None) -> Request | None:
 
 
 def summary(*, inbox: Inbox | None = None) -> dict[str, Any]:
-    """The count by kind of what waits, for a status line or a chip."""
+    """The count by kind of what is unanswered, for a status line or a chip."""
     found = list_requests(state=PENDING, inbox=inbox)
     kinds: dict[str, int] = {}
     for item in found:
         kinds[item.kind] = kinds.get(item.kind, 0) + 1
-    return {"pending": len(found), "kinds": kinds,
-            "human_only": sum(1 for r in found if r.human_only)}
+    return {"pending": len(found), "kinds": kinds}
 
 
 Heard = Callable[[str, Request, str, str, str], None]

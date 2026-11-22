@@ -11,7 +11,7 @@ import pytest
 from poolhouse import authority
 from poolhouse.board import session as board_session
 from poolhouse.board.client import Denied, NodeError
-from poolhouse.sentinel.human import HumanRequired
+from poolhouse.sentinel.permit import AgentRefused
 
 pytest_plugins = ["node_kit"]
 ROOT = Path(__file__).resolve().parents[1]
@@ -93,7 +93,7 @@ def test_a_delegated_gate_refuses_a_spawned_subagent_but_not_its_lead(family, mo
     lead = {"CLAUDECODE": "1", "POOLHOUSE_WORKSPACE_AGENT": node.lead.name}
     assert authority.require("sentinel.policy", "mode", (False, False), lead) == authority.DELEGATED
     for helper in (node.first.name, node.nested.name, "../x", "A" * 3):
-        with pytest.raises(HumanRequired):
+        with pytest.raises(AgentRefused):
             authority.require("sentinel.policy", "mode", (False, False), {**lead, "POOLHOUSE_WORKSPACE_AGENT": helper})
 
 

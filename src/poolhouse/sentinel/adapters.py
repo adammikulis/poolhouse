@@ -23,7 +23,7 @@ from poolhouse.sandbox.backend import (
 )
 from poolhouse.sentinel.core import Sentinel
 from poolhouse.sentinel.events import Event, Severity
-from poolhouse.sentinel.human import agent_may
+from poolhouse.sentinel.permit import agent_may
 from poolhouse.sentinel.policy import Mode
 from poolhouse.sentinel.score import UNATTRIBUTED_WEIGHT, UNREPORTED_FAILURE_WEIGHT, WEIGHTS
 from poolhouse.sentinel.store import Record

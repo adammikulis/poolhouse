@@ -124,7 +124,7 @@ def test_a_project_file_moved_to_the_user_path_or_another_project_does_not_open(
 
 
 def test_the_stores_are_protected_from_tool_calls(mem):
-    from poolhouse.sentinel.human import agent_may
+    from poolhouse.sentinel.permit import agent_may
 
     mem.user.add("a", "note")
     mem.project.add("b", "note")

@@ -6,7 +6,7 @@ import os
 import pytest
 from testagentenv_pytest import AGENT_VARIABLES
 
-from poolhouse.person import HumanRequired, require_person
+from poolhouse.caller import AgentRefused, refuse_agent
 
 
 def test_no_agent_marker_reaches_a_test_by_default():
@@ -14,11 +14,11 @@ def test_no_agent_marker_reaches_a_test_by_default():
 
 
 def test_the_floor_passes_a_person_at_a_terminal_without_a_marker():
-    assert require_person("grant", (True, True)) is None
+    assert refuse_agent("grant", (True, True)) is None
 
 
 @pytest.mark.parametrize("marker", ["CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE"])
 def test_the_floor_still_refuses_a_marker_the_test_sets(monkeypatch, marker):
     monkeypatch.setenv(marker, "1")
-    with pytest.raises(HumanRequired, match=marker):
-        require_person("grant", (True, True))
+    with pytest.raises(AgentRefused, match=marker):
+        refuse_agent("grant", (True, True))

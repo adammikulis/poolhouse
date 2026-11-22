@@ -12,7 +12,7 @@ import pytest
 from poolhouse import memory
 from poolhouse.memory import recall as recalling, store as storing
 from poolhouse.memory.facts import MAX_FACT_CHARS, Refused, clean
-from poolhouse.sentinel.human import agent_may
+from poolhouse.sentinel.permit import agent_may
 from tests import memory_keys
 
 ring = memory_keys.ring

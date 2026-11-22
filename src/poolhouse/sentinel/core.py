@@ -19,8 +19,8 @@ from poolhouse.sentinel.events import Bus, Event, EventLog, Severity
 from poolhouse.sentinel.findings import Finding
 from poolhouse.sentinel.heads_up import HeadsUp
 from poolhouse.sentinel.honey import Honey
-from poolhouse.sentinel.human import HumanGrant, protect
 from poolhouse.sentinel.integrity import Manifest, Pin, check_file
+from poolhouse.sentinel.permit import Permit, protect
 from poolhouse.sentinel.policy import Mode, decide
 from poolhouse.sentinel.rails import RailWatch, reads_like_instruction
 from poolhouse.sentinel.rates import Abuse, MemberWatch, ToolMix
@@ -116,8 +116,8 @@ class Sentinel:
         saved = self._config.load().payload.get("mode", "")
         return Mode(saved) if saved in Mode else Mode.GUARDED
 
-    def set_mode(self, mode: Mode, grant: HumanGrant) -> None:
-        """Change the mode. Needs a grant for ``mode`` on ``sentinel``."""
+    def set_mode(self, mode: Mode, grant: Permit) -> None:
+        """Change the mode. Needs a permit for ``mode`` on ``sentinel``."""
         grant.check("mode", "sentinel")
         self._config.save({"mode": mode.value})
         self.bus.emit(Event("sentinel.mode", Severity.NOTICE, "core", "",
@@ -227,7 +227,7 @@ class Sentinel:
     def note(self, kind: str, key: str, signal: str, weight: float | None = None) -> list[str]:
         """Count one weak ``signal`` (a guard denial, a sandbox refusal, a refused lease)
         against the session or caller ``(kind, key)``. The score escalates it to watch and then
-        to quarantine; a person's release starts the count again. Returns what the policy did."""
+        to quarantine; a release starts the count again. Returns what the policy did."""
         if self.mode == Mode.OFF:
             return []
         if self.score.held(kind, key) and self.store.state_of(kind, key) == State.RELEASED:

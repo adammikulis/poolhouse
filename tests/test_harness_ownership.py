@@ -39,7 +39,7 @@ def test_explicit_claim_does_not_short_circuit_independent_tool_approval(kit):
     reserve(kit, kit.beta, 'Write', {'file_path': str(target), 'content': 'mine'})
     payload = {'tool_name': 'Write', 'tool_input': {'file_path': str(alias / target.name), 'content': 'hostile'},
                'cwd': str(kit.project)}
-    done = hook(kit.node, 'pre', payload, '--permissions', 'ask-dangerous', '--agent', kit.alpha.name, '--root', str(kit.project))
+    done = hook(kit.node, 'pre', payload, '--permissions', 'guarded', '--agent', kit.alpha.name, '--root', str(kit.project))
     assert done.returncode == 0, done.stderr
     decision = verdict(done)
     assert decision['permissionDecision'] == 'deny', decision
@@ -86,7 +86,7 @@ def test_a_token_file_of_another_session_is_not_the_launcher_identity(kit):
 def test_retired_identity_still_refuses_explicit_reservation_but_not_ordinary_write(kit):
     kit.a.retire()
     payload = {'tool_name': 'Write', 'tool_input': {'file_path': str(kit.project / 'retired.txt')}, 'cwd': str(kit.project)}
-    answer = harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy('ask-dangerous'), kit.alpha.name, roots=[str(kit.project)], wait_s=0))
+    answer = harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy('guarded'), kit.alpha.name, roots=[str(kit.project)], wait_s=0))
     decision = answer['hookSpecificOutput']
     assert decision['permissionDecision'] == 'allow'
     with pytest.raises(Denied, match='refused the token'):
@@ -98,7 +98,7 @@ def test_generic_hook_does_not_repeat_an_explicit_reservation(kit):
     reserve(kit, kit.beta, 'Write', {'file_path': str(target)})
     payload = {'tool_name': 'Write', 'tool_input': {'file_path': str(target), 'content': 'the second session writes this file\n'},
                'cwd': str(kit.project)}
-    answer = harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy('ask-dangerous'), kit.alpha.name, roots=[str(kit.project)], wait_s=0))
+    answer = harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy('guarded'), kit.alpha.name, roots=[str(kit.project)], wait_s=0))
     decision = answer['hookSpecificOutput']
     assert decision['permissionDecision'] == 'allow'
     assert held(kit.a, kit.alpha.name) == []
@@ -145,7 +145,7 @@ def test_approved_write_does_not_need_a_workspace_token_file(kit, monkeypatch):
     target = kit.project / 'source.py'
     payload = {'tool_name': 'Write', 'tool_input': {'file_path': str(target), 'content': 'x\n'}, 'cwd': str(kit.project)}
     monkeypatch.setattr(harnesshook, '_ask', lambda *args, **kwargs: (True, 'authorized test operation'))
-    answer = harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy('ask-dangerous'), kit.alpha.name, roots=[str(kit.project)], wait_s=0))['hookSpecificOutput']
+    answer = harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy('guarded'), kit.alpha.name, roots=[str(kit.project)], wait_s=0))['hookSpecificOutput']
     assert answer['permissionDecision'] == 'allow', answer
     assert 'ownership not' not in answer['permissionDecisionReason']
     assert held(kit.b, kit.beta.name) == [] and held(kit.b, kit.alpha.name) == []
@@ -242,7 +242,7 @@ def test_native_read_inventory_null_sink_needs_no_mutation_claim(kit, command):
     assert harness_claims.resources('Bash', {'command': command}, str(kit.project)) == []
     decision = harnesshook.pre({'tool_name': 'Bash', 'tool_input': {'command': command},
                                'cwd': str(kit.project)},
-                              harnesshook.Rail(coding_policy.Policy('ask-dangerous'), kit.alpha.name, roots=[str(kit.project)], wait_s=0))
+                              harnesshook.Rail(coding_policy.Policy('guarded'), kit.alpha.name, roots=[str(kit.project)], wait_s=0))
     assert decision['hookSpecificOutput']['permissionDecision'] == 'allow'
     assert held(kit.a, kit.alpha.name) == []
 

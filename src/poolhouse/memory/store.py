@@ -31,7 +31,7 @@ from poolhouse.memory.facts import (
     check,
 )
 from poolhouse.memory.project import Project
-from poolhouse.sentinel.human import protect
+from poolhouse.sentinel.permit import protect
 from poolhouse.serve.binary import managed_current
 
 __all__ = ["FACT_LINKS", "MAX_FACTS", "MAX_LINKS", "RELATIONS", "SCHEMA_VERSION", "Setup", "Store", "Tampered", "View",

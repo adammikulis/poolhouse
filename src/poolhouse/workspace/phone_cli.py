@@ -1,9 +1,8 @@
-"""The `phone` command of `poolhouse-workspace`: add the phone a person approves from, list the phones, remove one.
+"""The `phone` command of `poolhouse-workspace`: add a phone that is notified and can answer from afar, list the phones, remove one.
 
-`add` and `remove` are a person's at a terminal. `add` turns on the listener for phones and shows a code to scan; that is the
-whole of a further phone's setup; the first phone needs the person's yes to the question the node itself asks (docs/phone-approval.md,
-"The first phone"). `remove` asks a key the node
-holds to approve, with the typed yes. `list` and `offer` are any session's.
+A phone is optional: nothing needs one. `add` and `remove` act as this device's key, so an agent is refused them at once with the reason (a phone
+becomes a second place that can answer for the device). `add` turns on the listener for phones and shows a code to scan; the first phone's code is
+the node's own, made when this device's key is enrolled (docs/phone-approval.md). `list` and `offer` are any session's.
 """
 
 from __future__ import annotations
@@ -14,10 +13,11 @@ import time
 from pathlib import Path
 from typing import Any
 
-from poolhouse import node_launch, person
+from poolhouse import node_launch
 from poolhouse.board import person as person_session, phone, presence
 from poolhouse.board.client import Client, Denied
 from poolhouse.board.session import Session
+from poolhouse.caller import refuse_agent
 from poolhouse.command import flag
 from poolhouse.log import say, warn
 from poolhouse.workspace import approval_cli, board_cli, qr
@@ -27,7 +27,7 @@ __all__ = ["COMMAND", "OPTIONS"]
 VERBS = ("add", "list", "remove", "offer")
 POLL_S = 1.0
 OPTIONS = [
-    flag("verb", choices=VERBS, help="add (a person: shows a code to scan), list, remove NAME (a person), offer (a link for one more phone)"),
+    flag("verb", choices=VERBS, help="add (shows a code to scan), list, remove NAME, offer (a link for one more phone)"),
     flag("name", nargs="?", default="", help="remove: the phone's name"),
     flag("--port", type=int, default=phone.PORT, help="add: the port phones talk to (default 7449)"),
     flag("--image", default="", metavar="FILE", help="add (for a further phone), offer: also write the code as an image file a screen can show"),
@@ -45,7 +45,7 @@ def _row(p: dict[str, Any]) -> str:
 
 
 def _listening(client: Client, port: int) -> dict[str, Any]:
-    """The node's phone listener, turned on when it is not: running `phone add` is the person's yes."""
+    """The node's phone listener, turned on when it is not: running `phone add` asks for it."""
     info = client.call("phone_info")
     if not info["listening"]:
         say(f"This turns on the listener for your phone on port {port} of this device's local networks.")
@@ -68,15 +68,15 @@ def _show(code: str, image: str) -> None:
 
 
 def _code(client: Client, carrier: Session, further: bool) -> str:
-    """The link to scan. The first phone's is the node's own, made when the person says yes to the question it asks (the operating system's
-    prompt, or the person's terminal); a further phone's is asked of the node, which a phone that is already added approves."""
+    """The link to scan. The first phone's is the node's own, made when this device's key is enrolled; a further phone's is asked of the
+    node, which a phone that is already added approves."""
     if further:
         return str(carrier.call("phone_offer")["link"])
     return str(presence.ask(client, carrier.token, "phone", "", presence.Voice(say=say))["link"])
 
 
 def _add(args: argparse.Namespace) -> int:
-    person.require_person("adding a phone")
+    refuse_agent("adding a phone", "a phone becomes a second place that can answer for this device")
     client = Client()
     if args.image and not client.call("phone_info")["keys"]:
         raise Denied("denied", "The first phone is added from the code drawn in this terminal, with no image file: a file could be read by any program that runs as you, "
@@ -102,7 +102,7 @@ def _add(args: argparse.Namespace) -> int:
 
 
 def _remove(args: argparse.Namespace) -> int:
-    person.require_person("removing a phone")
+    refuse_agent("removing a phone", "removing a phone changes who can answer for this device")
     carrier, key = approval_cli.held_key(Client())
     target = phone.find(phone.phones(carrier), args.name)
     say(f"This asks your key to remove the phone \"{target['name']}\" (key {_words(target['fingerprint'])}).")

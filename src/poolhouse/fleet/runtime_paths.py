@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import contextlib
 import os
 from pathlib import Path
 
-from poolhouse import home, person
+from poolhouse import caller, home
 from poolhouse.log import say
 
 
@@ -26,7 +25,6 @@ def configure(root: Path) -> None:
 
 
 def announce_token(token: str) -> None:
-    """Display the daemon token to a person at an interactive terminal."""
-    with contextlib.suppress(person.HumanRequired):
-        person.require_person("display the daemon token")
+    """Display the daemon token unless an agent runs this: its output is read by the agent's model."""
+    if not caller.marked():
         say(f"  token {token}")

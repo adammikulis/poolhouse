@@ -81,25 +81,23 @@ def test_daemon_routes_roots_before_startup_services(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("marker", ["", "CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE"])
 def test_background_startup_does_not_display_token(marker, monkeypatch, capsys):
-    from poolhouse import person
+    from poolhouse import caller
     from poolhouse.fleet.runtime_paths import announce_token
 
-    for name in person.AGENT_MARKERS:
+    for name in caller.AGENT_MARKERS:
         monkeypatch.delenv(name, raising=False)
     if marker:
         monkeypatch.setenv(marker, "1")
-    monkeypatch.setattr(person, "is_terminal", lambda _stream: bool(marker))
     announce_token("fixture-token")
     assert capsys.readouterr().out == ""
 
 
 def test_person_startup_displays_token(monkeypatch, capsys):
-    from poolhouse import person
+    from poolhouse import caller
     from poolhouse.fleet.runtime_paths import announce_token
 
-    for name in person.AGENT_MARKERS:
+    for name in caller.AGENT_MARKERS:
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr(person, "is_terminal", lambda _stream: True)
     announce_token("fixture-token")
     assert capsys.readouterr().out == "  token fixture-token\n"
 

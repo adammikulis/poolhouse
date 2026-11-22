@@ -137,7 +137,7 @@ def test_a_quarantined_session_stays_frozen_until_a_person_releases_it(served) -
     run(agent)
     node = sentinel.default()
     record = node.store.find("session", "s-rel")
-    with pytest.raises(human.HumanRequired):
+    with pytest.raises(human.AgentRefused):
         human.mint("release", record.id, terminal=(False, False), env={})
     node.store.release(record.id, human.mint("release", record.id, typed=lambda _p: record.id,
                                              terminal=(True, True), env={}))

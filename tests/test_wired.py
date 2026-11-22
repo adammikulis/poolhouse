@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 from conftest import write_gguf
 
-from poolhouse.sentinel.human import HumanRequired
+from poolhouse.sentinel.permit import AgentRefused
 from poolhouse.serve import wired, wired_apply as apply
 
 GIB = 1024**3
@@ -254,14 +254,14 @@ def test_a_process_an_agent_started_cannot_change_keep_or_reset_the_limit(marker
     for call in (lambda h: apply.set_limit(65536, keep=True, via="osascript", hooks=h),
                  lambda h: apply.set_limit(None, keep=False, via="osascript", hooks=h),
                  lambda h: apply.reset(via="sudo", hooks=h)):
-        with pytest.raises(HumanRequired):
+        with pytest.raises(AgentRefused):
             call(hooks(ran, daemon, env=env, terminal=(True, True)))
     assert ran.calls == [] and apply.original_mb() is None
 
 
 def test_sudo_without_a_terminal_is_refused():
     ran = Recorder()
-    with pytest.raises(HumanRequired):
+    with pytest.raises(AgentRefused):
         apply.set_limit(65536, via="sudo", hooks=hooks(ran, terminal=(False, False)))
     assert ran.calls == []
 

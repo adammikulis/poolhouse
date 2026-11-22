@@ -115,7 +115,7 @@ class Runtime(Model):
             one.denied = '' if gate.allowed else getattr(gate.verdict, 'reason', '')
             if one.denied and owner.watch:
                 owner.watch.denied(one.name, one.args, getattr(gate.verdict, 'by', ''),
-                                   one.denied, logged=gate.confirmed is None)
+                                   one.denied, logged=True)
 
     async def get_response(self, *args: Any, **kwargs: Any) -> ModelResponse:
         input = args[1] if len(args) > 1 else kwargs['input']
@@ -203,8 +203,7 @@ async def execute(owner: Any, task: Any):
     """Yield application events from an SDK run."""
     messages = [{'role': 'user', 'content': task}] if isinstance(task, str) else task
     schemas = from_mcp(listed := await owner.tools.list_tools(), owner.budget.profile)
-    rail = start(owner._items(listed), offered=schemas, task=_task_of(messages),
-                 confirm=owner.confirm, notify=owner._notify)
+    rail = start(owner._items(listed), offered=schemas, task=_task_of(messages))
     rail.context.messages = messages
     runtime = Runtime(owner, messages, schemas, rail)
     runtime.agent = SdkAgent(name='local-agent', model=runtime,

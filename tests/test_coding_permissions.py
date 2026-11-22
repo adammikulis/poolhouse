@@ -24,8 +24,8 @@ def test_plan_and_readonly_profiles_deny_mutation_regardless_of_tool_arguments(t
     assert read.action == "allow"
 
 
-@pytest.mark.parametrize("permissions,expected", [("read-only", "deny"), ("ask-changes", "ask"),
-                                                  ("ask-dangerous", "ask"), ("yolo", "allow")])
+@pytest.mark.parametrize("permissions,expected", [("read-only", "deny"), ("guarded", "ask"),
+                                                  ("guarded", "ask"), ("yolo", "allow")])
 def test_known_destructive_commands_follow_selected_profile_inside_scope(tmp_path, permissions, expected):
     call = Call("Bash", {"command": "rm -rf disposable-output"})
     decision = harnesspolicy.decide(coding_policy.Policy(permissions), call, roots=[str(tmp_path)])

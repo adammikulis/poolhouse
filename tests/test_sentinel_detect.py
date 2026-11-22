@@ -204,10 +204,10 @@ def test_off_without_a_reason_is_ignored_and_logged(tmp_path, models, monkeypatc
 
 
 def test_only_a_person_changes_the_mode(node):
-    from poolhouse.sentinel.human import HumanGrant, HumanRequired
+    from poolhouse.sentinel.permit import AgentRefused, Permit
 
-    with pytest.raises(HumanRequired):
-        node.set_mode(Mode.OFF, HumanGrant("mode", "sentinel", 9e18, object()))
+    with pytest.raises(AgentRefused):
+        node.set_mode(Mode.OFF, Permit("mode", "sentinel", 9e18, object()))
     node.set_mode(Mode.ENFORCE, grant("mode", "sentinel"))
     assert Sentinel(node.root).mode == Mode.ENFORCE
 

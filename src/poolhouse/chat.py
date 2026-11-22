@@ -298,7 +298,7 @@ class Chat:
             UntrustedRail(external=policy.FENCED), SecretRail(),
             TaintRail(registries={"models": do.on_disk_ids}), *self.extra]
         self.limits = next((r for r in mine if isinstance(r, ToolPolicyRail)), ToolPolicyRail())
-        self.watch: Run = rails.start(mine, offered=schemas, task="", confirm=self.person.confirm)
+        self.watch: Run = rails.start(mine, offered=schemas, task="")
         self.started = False
         self.messages: list[dict[str, Any]] = [{"role": "system", "content": self.system()},
                                                *history]

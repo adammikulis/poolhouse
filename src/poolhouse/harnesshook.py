@@ -2,7 +2,7 @@
 
 ``python -m poolhouse.harnesshook pre --permissions PROFILE --execution-mode MODE --agent AGENT --root DIR --protect PATH`` reads
 one hook event on stdin and writes the decision as JSON: the destructive-action classifier and
-the role decide, and a call that asks is raised in the Requests inbox and waits for the person.
+the role decide, at once: a call is allowed or denied with the reason, and nothing waits for anyone.
 ``post`` runs ``poolhouse-workspace nudge`` and passes what it prints on as context. The role,
 agent and paths are on the command line the launcher wrote, never read from the environment or
 from the call. Admission hook failures block calls; notification failures produce diagnostics.
@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Any
 
-from poolhouse import coding_policy, hook_bootstrap, hook_diagnostics, runtime, safetext
+from poolhouse import coding_policy, hook_bootstrap, hook_diagnostics, runtime
 
 if __name__ == "__main__":
     sys.excepthook = hook_bootstrap.block
@@ -28,7 +28,7 @@ if __name__ == "__main__":
     hook_bootstrap.metadata({})
     hook_bootstrap.stage("imports")
 
-from poolhouse import platform, requests
+from poolhouse import platform
 from poolhouse.errors import Denied
 from poolhouse.guard import fetchlog
 from poolhouse.harnesspolicy import (
@@ -43,15 +43,12 @@ from poolhouse.interventions import Call
 from poolhouse.keystore import ENV_NONINTERACTIVE
 from poolhouse.serve.process import kill_process_tree
 
-__all__ = ["FAILURES", "WAIT_S", "Rail", "nudge", "post", "pre", "run"]
+__all__ = ["FAILURES", "Rail", "nudge", "post", "pre", "run"]
 
-WAIT_S = 300.0
 CLEANUP_RESERVE_S = 1.5
 NUDGE_S = hook_bootstrap.POST_SECONDS - CLEANUP_RESERVE_S
 NUDGE_MOST = 500
 NOTIFIER = "poolhouse.workspace.notification_reader"
-SUMMARY_MOST = 250
-SUMMARY_FIRST = ("file_path", "notebook_path", "path", "url", "pattern", "query", "input")
 FAILURES = (Denied, OSError, ValueError, TypeError, KeyError, AttributeError, LookupError, RuntimeError)
 HOOK_EVENTS = {"pre": "PreToolUse", "post": "PostToolUse", "stop": "Stop"}
 
@@ -66,57 +63,20 @@ def _diagnostic(error: BaseException) -> str:
     return hook_diagnostics.reason(error)
 
 
-def _shown(text: str, most: int = SUMMARY_MOST) -> str:
-    """``text`` as one ASCII line; a line over ``most`` keeps its start and its end."""
-    plain = safetext.escape(text.encode("ascii", "backslashreplace").decode("ascii"), 1 << 20)
-    if len(plain) <= most:
-        return plain
-    head = most * 3 // 5
-    return f"{plain[:head]} ... {plain[len(plain) - (most - head - 5):]}"
-
-
-def _summary(name: str, args: object) -> str:
-    """What the person is shown of a call: the command, or the file or address first, then the other argument names."""
-    if not isinstance(args, dict):
-        return "arguments that could not be read"
-    line = _shell_line(name, args)
-    if line:
-        return _shown(line)
-    first = next((k for k in SUMMARY_FIRST if isinstance(args.get(k), str)), "")
-    if not first:
-        try:
-            return _shown(json.dumps(args, default=str))
-        except (TypeError, ValueError):
-            return "arguments that could not be read"
-    rest = ", ".join(_shown(str(k), 20) for k in args if k != first)
-    return _shown(args[first]) + (f" (also {rest})"[:80] if rest else "")
-
-
-def _ask(payload: dict[str, Any], decision: Decision, agent: str, wait_s: float,
-         inbox: requests.Inbox | None) -> tuple[bool, str]:
-    name = str(payload.get("tool_name", ""))
-    origin = requests.Origin(agent, Path(str(payload.get("cwd", ""))).name, str(payload.get("session_id", "")))
-    ask = requests.Ask(decision.kind, f"{name} {_summary(name, payload.get('tool_input'))}",
-                       decision.reason, ("allow-once", "deny"), origin, ttl=wait_s)
-    outcome = requests.raise_request(ask, inbox=inbox).wait(timeout=wait_s)
-    return outcome.approved, outcome.why or outcome.state
-
-
 @dataclass(frozen=True, slots=True)
 class Rail:
     """What a launcher fixes for a session: the ``role``, the workspace ``agent``, the directories
-    writes may go to, the ``protected`` paths no call may name and how long a request waits."""
+    writes may go to and the ``protected`` paths no call may name."""
 
     policy: coding_policy.Policy
     agent: str
     roots: Sequence[str] = ()
     protected: Sequence[str] = ()
-    wait_s: float = WAIT_S
 
 
-def pre(payload: dict[str, Any], rail: Rail, inbox: requests.Inbox | None = None) -> dict[str, Any]:
-    """The PreToolUse answer for ``payload``: allow, deny, or the person's answer to a request."""
-    policy, agent, roots, protected, wait_s = rail.policy, rail.agent, rail.roots, rail.protected, rail.wait_s
+def pre(payload: dict[str, Any], rail: Rail) -> dict[str, Any]:
+    """The PreToolUse answer for ``payload``: allow or deny with the reason, at once."""
+    policy, agent, roots, protected = rail.policy, rail.agent, rail.roots, rail.protected
     event = HOOK_EVENTS["pre"]
     args = payload.get("tool_input")
     try:
@@ -134,11 +94,6 @@ def pre(payload: dict[str, Any], rail: Rail, inbox: requests.Inbox | None = None
     if decision.action == "deny":
         return _answer(event, "deny", f"poolhouse: {decision.reason}")
     reason = f"poolhouse: {decision.label}"
-    if decision.action == "ask":
-        approved, state = _ask(payload, decision, agent, wait_s, inbox)
-        if not approved:
-            return _answer(event, "deny", f"poolhouse: the person did not allow this call ({state})")
-        reason = "poolhouse: the person allowed this call"
     try:
         fetchlog.note(agent, fetchlog.targets(_shell_line(str(payload.get("tool_name", "")), args if isinstance(args, dict) else None), roots, str(payload.get("cwd") or ""), fetched))
     except FAILURES as error:
@@ -206,10 +161,10 @@ def stop(rail: Rail) -> dict[str, Any]:
 def _options(words: Sequence[str]) -> tuple[str, dict[str, list[str]]]:
     """The event and the ``--name value`` pairs the launcher wrote; ``ValueError`` for anything else."""
     if not words or words[0] not in HOOK_EVENTS or len(words) % 2 == 0:
-        raise ValueError("usage: harnesshook pre|post|stop [--permissions PROFILE] [--execution-mode MODE] [--agent A] [--root D] [--protect P] [--wait S]")
+        raise ValueError("usage: harnesshook pre|post|stop [--permissions PROFILE] [--execution-mode MODE] [--agent A] [--root D] [--protect P]")
     found: dict[str, list[str]] = {}
     for key, value in zip(words[1::2], words[2::2], strict=True):
-        if key not in ("--permissions", "--execution-mode", "--agent", "--root", "--protect", "--wait"):
+        if key not in ("--permissions", "--execution-mode", "--agent", "--root", "--protect"):
             raise ValueError(f"no option {key}")
         found.setdefault(key[2:], []).append(value)
     return words[0], found
@@ -232,7 +187,7 @@ def run(argv: Sequence[str] | None = None, stdin: IO[str] | None = None,
         agent = opts.get("agent", ["harness"])[-1]
         rail = Rail(coding_policy.Policy(opts.get("permissions", [coding_policy.READ_ONLY])[-1],
                                         opts.get("execution-mode", [coding_policy.EXECUTE])[-1]), agent, opts.get("root") or [str(payload.get("cwd", ""))],
-                    opts.get("protect", []), float(opts.get("wait", [WAIT_S])[-1]))
+                    opts.get("protect", []))
         stage = event
         hook_bootstrap.stage(stage)
         out = pre(payload, rail) if event == "pre" else stop(rail) if event == "stop" else post(agent, rail)

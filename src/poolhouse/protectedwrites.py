@@ -16,8 +16,8 @@ __all__ = ["TooComplex", "command_texts", "guarded", "holds_secret", "other_agen
            "tool_refusal", "touches_guards", "without_heredocs"]
 
 GUARD_PATHS = (
-    r"src/poolhouse/workspace/(person_\w+|run_(approval|hook))\.py",
-    r"scripts/hooks/(claude-user-prompt|person-consume|run-approval)",
+    r"src/poolhouse/workspace/person_\w+\.py",
+    r"scripts/hooks/(claude-user-prompt|person-consume)",
     r"scripts/(release-key|github-protection-apply|github-protection|agent-identity)", r"src/poolhouse/credentials/.*",
     r"\.git/(refs/remotes/.*|packed-refs)",
     r"\.git/(hooks(/.*)?|config(\.worktree)?|worktrees/[^/]+/config\.worktree)",
@@ -34,8 +34,8 @@ GUARDS = re.compile(r"(^|/)(" + "|".join(GUARD_PATHS) + ")$", re.I)
 REVIEW = re.compile(r"(^|/)(" + "|".join(REVIEWED) + ")$", re.I)
 SECRETS = re.compile(r"(^|/)\.poolhouse/(person|node/client|node/person)(/|$)", re.I)
 HELD = tuple(tuple(path.split("/")) for path in (
-    "src/poolhouse/workspace/person_store.py", "src/poolhouse/workspace/run_hook.py", "scripts/hooks/person-consume",
-    "scripts/hooks/run-approval", "scripts/hooks/claude-user-prompt", "scripts/release-key", "src/poolhouse/credentials/__init__.py",
+    "src/poolhouse/workspace/person_store.py", "scripts/hooks/person-consume",
+    "scripts/hooks/claude-user-prompt", "scripts/release-key", "src/poolhouse/credentials/__init__.py",
     ".git/hooks/pre-push", ".git/config", ".config/git/config", ".gitconfig"))
 MENTION = re.compile(
     r"claude-user-prompt|person-consume|\.git/(hooks|config)"
@@ -287,7 +287,7 @@ def _script_text(path: Path) -> str:
 class Shell:
     """What the command line being read knows: the working folder, the variables set so far and what it may do."""
 
-    def __init__(self, here: Path, environ: Mapping[str, str], released: Callable[[str], bool]) -> None:
+    def __init__(self, here: Path, environ: Mapping[str, str], released: Callable[[str], str]) -> None:
         self.here, self.environ, self.released = here, environ, released
         self.variables: dict[str, str] = {}
 
@@ -517,8 +517,8 @@ def _first_words(words: list[str]) -> tuple[list[str], dict[str, str]]:
 def _gh(args: list[str], shell: Shell) -> str:
     verbs = [a for a in args if not a.startswith("-")]
     head, rest = (verbs[0] if verbs else ""), verbs[1:2]
-    if head == "pr" and rest == ["merge"] and not shell.released(str(shell.here)):
-        return "`gh pr merge` merges into a protected branch: it needs the person's release approval (scripts/hooks/person-consume propose)."
+    if head == "pr" and rest == ["merge"] and (why := shell.released(str(shell.here))):
+        return f"`gh pr merge` merges into a protected branch: refused until the commit has a standing independent land-review accept ({why})."
     blocked = GH_BLOCKED.get(head, frozenset({"-"}))
     if blocked is None or (rest and rest[0] in blocked):
         return f"`gh {head}` changes how the repository is protected or who may act on it: a person runs it."
@@ -713,7 +713,7 @@ class Reader:
             f"the script {rest[0]} names {m.group(0)}: {PERSON}." if (m := MENTION.search(script)) else "")
 
 
-def refusal(command: str, cwd: str, released: Callable[[str], bool], environ: Mapping[str, str] | None = None) -> str:
+def refusal(command: str, cwd: str, released: Callable[[str], str], environ: Mapping[str, str] | None = None) -> str:
     """Why the shell ``command``, run from ``cwd``, may not run; an empty string when it may. A command past the bounds of
     `MOST_COMMAND`, `MOST_EXPANSIONS` and `DEPTH` is refused, not read in part."""
     try:

@@ -35,7 +35,7 @@ def session(root: str | Path, client: Client | None = None, board: str = "") -> 
     `Denied` when ``root`` is not part of a project the node can place.
     """
     state = node_launch.default_state()
-    node = client or Client(state, person=person_key.provider(state, attended=True))
+    node = client or Client(state, person=person_key.provider(state))
     return on(node, place.existing(node, Path(root), board))
 
 

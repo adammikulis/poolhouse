@@ -16,7 +16,7 @@ from node_kit import SRC
 from poolhouse import authority
 from poolhouse.board import session as board_session
 from poolhouse.board.client import Denied
-from poolhouse.sentinel.human import HumanRequired
+from poolhouse.sentinel.permit import AgentRefused
 
 pytest_plugins = ["node_kit"]
 ROOT = Path(__file__).resolve().parents[1]
@@ -207,7 +207,7 @@ def test_a_subagent_never_passes_a_delegated_gate_even_with_the_leads_name_in_it
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", scene.lead.session)
     lead = {"CLAUDECODE": "1", "POOLHOUSE_WORKSPACE_AGENT": scene.lead.name}
     assert authority.require("sentinel.policy", "mode", (False, False), lead) == authority.DELEGATED
-    with pytest.raises(HumanRequired):
+    with pytest.raises(AgentRefused):
         authority.require("sentinel.policy", "mode", (False, False), {**lead, "POOLHOUSE_SUBAGENT": "rev1"})
 
 

@@ -23,7 +23,7 @@ from typing import Any
 
 from poolhouse.files import read_json, write_json
 from poolhouse.platform import private_file
-from poolhouse.sentinel.human import HumanGrant
+from poolhouse.sentinel.permit import Permit
 
 from .manifest import SHARING_LEVELS, Entry
 
@@ -63,7 +63,7 @@ class Licences:
         rows = doc.get("accepted", []) if isinstance(doc, dict) else []
         return [r for r in rows if isinstance(r, dict)]
 
-    def record(self, grant: HumanGrant, entry: Entry, *, who: str | None = None) -> dict[str, Any]:
+    def record(self, grant: Permit, entry: Entry, *, who: str | None = None) -> dict[str, Any]:
         """Write down that the owner accepted ``entry``'s licence, after a person confirmed."""
         grant.check("accept-licence", entry.licence)
         row = {"licence": entry.licence, "url": entry.licence_url, "model": entry.name,

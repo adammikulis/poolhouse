@@ -13,9 +13,9 @@ import pytest
 from keyring.backend import KeyringBackend
 
 from poolhouse import keystore
+from poolhouse.caller import AGENT_MARKERS
 from poolhouse.http import Server
 from poolhouse.inbox.route import MAX_BODY, RequestsApp
-from poolhouse.person import AGENT_MARKERS
 from poolhouse.requests import Ask, Origin
 
 HERE = str(Path(__file__).resolve().parent)

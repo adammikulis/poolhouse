@@ -1,19 +1,22 @@
-"""The delegable authority registry: which gates a lead agent may pass and which stay a person's."""
+"""The authority registry: which gates an agent passes and which are held back from agents, decided automatically.
+
+A gate is `delegated` (an agent passes it; each pass is audited) or `person` (an agent is refused at once with the reason; a process
+with no agent marker passes). Nothing waits for a person, prompts or needs a terminal. Narrowing a gate is open to everyone; loosening
+one is refused to an agent with the reason, and runs directly for a process with no agent marker (`poolhouse.caller`).
+"""
 
 from __future__ import annotations
 
-import json
 import os
-import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, person
+from poolhouse import home
 from poolhouse.authority_caller import current as current_agent
+from poolhouse.caller import AgentRefused, audit_rows, marked, record, refuse_agent
 from poolhouse.files import read_json, write_json
-from poolhouse.person import HumanRequired, require_person
 
 __all__ = [
     "DELEGATED",
@@ -21,7 +24,6 @@ __all__ = [
     "GATES",
     "PERSON",
     "PRESETS",
-    "Asking",
     "Scope",
     "audit_rows",
     "current_agent",
@@ -51,6 +53,7 @@ GATES: dict[str, str] = {
     "reputation.admin": "reputation",
     "activity.export": "activity",
     "serve.wired-limit": "serve",
+    "autostart.install": "autostart",
     "chat.policy": "chat",
     "runtime.deploy": "runtime",
     "github.release": "github",
@@ -69,6 +72,7 @@ MEANS: dict[str, str] = {
     "reputation.admin": "change reputation records",
     "activity.export": "export the activity log",
     "serve.wired-limit": "raise the memory limit models may use",
+    "autostart.install": "install or roll back the login units that keep Poolhouse running",
     "chat.policy": "change what the chat refuses",
     "runtime.deploy": "deploy a new runtime build on this device",
     "github.release": "publish a reviewed development tip or prerelease through the repository App",
@@ -124,24 +128,6 @@ def show(project: str = "") -> dict[str, Any]:
             "gates": [{"gate": g, "group": group, "state": state_of(g, project)} for g, group in GATES.items()]}
 
 
-def _log(entry: Mapping[str, Any]) -> None:
-    path = home.state("authority-audit.jsonl")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps({"at": time.time(), **entry}) + "\n")
-
-
-def record(event: str, **fields: Any) -> None:
-    """Append an ``event`` a person took to the audit log, with ``fields``."""
-    _log({"event": event, "by": PERSON, **fields})
-
-
-def audit_rows() -> list[dict[str, Any]]:
-    """Every recorded flip and delegated use, oldest first."""
-    path = home.state("authority-audit.jsonl")
-    return [json.loads(line) for line in path.read_text("utf-8").splitlines() if line] if path.exists() else []
-
-
 @dataclass(frozen=True, slots=True)
 class Scope:
     """Where a change applies: a project (empty for the machine) and the preset it came from."""
@@ -151,31 +137,13 @@ class Scope:
     cwd: Path | None = None
 
 
-@dataclass(frozen=True, slots=True)
-class Asking:
-    """How a loosening reaches the person: the terminal flags and environment `require_person` reads, and the typed line."""
-
-    terminal: tuple[bool, bool] | None = None
-    env: Mapping[str, str] | None = None
-    typed: Callable[[str], str] | None = None
-
-
-def _ask_to_loosen(gates: list[str], asking: Asking) -> None:
-    """Raise `HumanRequired` unless a person at a terminal types `yes` to the list of what ``gates`` would let a lead do."""
-    require_person("loosening " + ", ".join(gates), asking.terminal, asking.env)
-    lines = "\n".join(f"  - {MEANS[g]} ({g})" for g in gates)
-    prompt = f"A lead agent would be able to do this without asking you:\n{lines}\nType yes to allow it: "
-    if (asking.typed or person.typed)(prompt).strip().lower() != "yes":
-        raise HumanRequired("loosening not confirmed: nothing was changed")
-
-
 def set_state(names: Iterable[str], new: str, *, by: str, scope: Scope | None = None,
-              asking: Asking | None = None) -> list[dict[str, str]]:
+              env: Mapping[str, str] | None = None) -> list[dict[str, str]]:
     """Set the selected gates to ``new`` for the machine (or ``project``) and audit who changed what.
-    Returns each gate's change; a helper identity (``parent/name``) is refused, and moving a gate from `person` to
-    `delegated` is made only by a person at a terminal who types `yes` to what it allows."""
+    Returns each gate's change. A helper identity (``parent/name``) is refused, and so is an agent that loosens a gate from `person`
+    to `delegated`: an agent narrows its own authority and never widens it. A process with no agent marker may do either."""
     if "/" in by:
-        raise HumanRequired("authority is flipped by a lead agent or a person, not a helper")
+        raise AgentRefused("authority is flipped by a lead agent or a user, not a helper")
     if new not in (PERSON, DELEGATED):
         raise ValueError(f"authority state must be {PERSON} or {DELEGATED}")
     project, preset = (scope.project, scope.preset) if scope else ("", "")
@@ -183,7 +151,8 @@ def set_state(names: Iterable[str], new: str, *, by: str, scope: Scope | None = 
     before = {g: state_of(g, project) for g in gates}
     loosened = [g for g in gates if new == DELEGATED and before[g] == PERSON]
     if loosened:
-        _ask_to_loosen(loosened, asking or Asking())
+        refuse_agent("loosening " + ", ".join(loosened),
+                     "an agent may narrow its own authority and never widen it: " + "; ".join(f"{MEANS[g]} ({g})" for g in loosened), env)
     data = _read()
     target = data.setdefault("projects", {}).setdefault(project, {}) if project else data.setdefault("gates", {})
     target.update(dict.fromkeys(gates, new))
@@ -191,27 +160,28 @@ def set_state(names: Iterable[str], new: str, *, by: str, scope: Scope | None = 
         data["preset"] = preset
     write_json(_file(), data)
     changes = [{"gate": g, "from": before[g], "to": new} for g in gates]
-    _log({"event": "authority.set", "by": by, "project": project, "gates": gates,
-          "from": sorted(set(before.values())), "to": new, "preset": preset})
+    record("authority.set", by=by, project=project, gates=gates, **{"from": sorted(set(before.values()))}, to=new, preset=preset)
     return changes
 
 
-def require(gate: str, action: str, terminal: tuple[bool, bool] | None = None,
-            env: Mapping[str, str] | None = None, *, scope: Scope | None = None) -> str:
-    """Authenticate a delegated main agent; keep person authorization separate.
-    Raises `HumanRequired` otherwise; each delegated pass is audited."""
+def require(gate: str, action: str, env: Mapping[str, str] | None = None, *, scope: Scope | None = None) -> str:
+    """Decide ``gate`` for ``action`` at once: the state it is in, or `AgentRefused` for an agent when the gate is held back from agents.
+    Every pass is audited with who ran it, the agent's authenticated name when the node knows the session."""
     scope = scope or Scope()
-    if state_of(gate, scope.project) == PERSON:
-        require_person(action, terminal, env)
+    state = state_of(gate, scope.project)
+    if state == PERSON:
+        refuse_agent(action, f"the gate {gate} is held back from agents (`poolhouse-workspace authority show`)", env)
         return PERSON
-    found = os.environ if env is None else env
-    context = (*person.AGENT_MARKERS, AGENT_ENV, SUBAGENT_ENV, "POOLHOUSE_WORKSPACE_TOKEN", "POOLHOUSE_SESSION_ID")
-    if not any(os.environ.get(key) or found.get(key) for key in context):
-        require_person(action, terminal, env)
-        return PERSON
-    caller = current_agent(cwd=scope.cwd)
-    if (found.get(SUBAGENT_ENV) or any(found.get(key) and found[key] != caller.name for key in (AGENT_ENV,))):
-        raise HumanRequired(f"{action}: supplied workspace identity conflicts with the authenticated caller")
-    _log({"event": "authority.use", "gate": gate, "action": action, "agent": caller.name,
-          "project": scope.project})
+    if marked(env):
+        record("authority.use", gate=gate, action=action, agent=_agent_name(scope), project=scope.project)
+    else:
+        record("authority.use", gate=gate, action=action, project=scope.project)
     return DELEGATED
+
+
+def _agent_name(scope: Scope) -> str:
+    """The authenticated session's name when the node knows it, else empty: a gate does not wait on the node."""
+    try:
+        return current_agent(cwd=scope.cwd).name
+    except (PermissionError, OSError, ValueError):
+        return ""

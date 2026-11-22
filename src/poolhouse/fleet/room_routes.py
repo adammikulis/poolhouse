@@ -6,7 +6,7 @@ import platform
 import urllib.parse
 
 from poolhouse import hub
-from poolhouse.sentinel.human import HumanRequired
+from poolhouse.caller import AgentRefused
 from poolhouse.serve import wired, wired_apply
 
 from .session import parse_cookie
@@ -108,7 +108,7 @@ class RoomRoutes:
         hooks = self._hooks()
         try:
             done = self._apply(hooks)
-        except HumanRequired as no:
+        except AgentRefused as no:
             self.send(403, {"error": str(no)})
             return True
         except ValueError as no:

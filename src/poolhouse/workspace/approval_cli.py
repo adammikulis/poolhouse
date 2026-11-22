@@ -1,8 +1,9 @@
-"""The `approval` command of `poolhouse-workspace`: ask a person's phone for grants, wait for the answer and read what became of it.
+"""The `approval` command of `poolhouse-workspace`: ask for grants and read what became of the request.
 
-`request`, `status`, `wait`, `cancel`, `list` and `pending` are any session's, and read only that session's own requests; `pending --all` and `decide` are a person's. `decide` is a person's at a terminal: it signs the
-answer with the person's key after a typed yes, the other way a person's key answers (the phone is the first). What an agent can do
-is ask and wait; no verb here answers for a person (docs/phone-approval.md).
+`request` is decided at once by policy (`poolhouse.board.autoapprove`): this device's key signs what the caller may have and the rest is
+refused with the reason; a linked phone only gets a notification. `status`, `wait`, `cancel`, `list` and `pending` are any session's and read only
+that session's own requests; `pending --all`, `decide`, `blocks` and `lift` act as the device's key and are refused to an agent
+(docs/phone-approval.md).
 """
 
 from __future__ import annotations
@@ -12,11 +13,11 @@ import json
 import time
 from typing import Any
 
-from poolhouse import person
-from poolhouse.board import approval, grants, person as person_session, person_key
+from poolhouse.board import approval, autoapprove, grants, person as person_session, person_key
 from poolhouse.board.approval import Approval, Ask
 from poolhouse.board.client import Client, Denied
 from poolhouse.board.session import Session
+from poolhouse.caller import refuse_agent
 from poolhouse.command import flag
 from poolhouse.log import say
 from poolhouse.workspace import board_cli
@@ -26,17 +27,17 @@ __all__ = ["COMMAND", "OPTIONS", "POOL", "answer", "held_key"]
 POOL = "pool"
 VERBS = ("request", "status", "wait", "cancel", "list", "pending", "decide", "blocks", "lift")
 OPTIONS = [
-    flag("verb", choices=VERBS, help="request ACTION[:RESOURCE]..., status ID, wait ID, cancel ID, list, pending, blocks, lift BOARD/SESSION, or (a person) decide ID approve|deny|block"),
+    flag("verb", choices=VERBS, help="request ACTION[:RESOURCE]..., status ID, wait ID, cancel ID, list, pending, blocks, lift BOARD/SESSION, or decide ID approve|deny|block"),
     flag("items", nargs="*", help="what the verb takes: asks for request, a handle for the others, then approve, deny or block for decide"),
     flag("--for", dest="lasts", default="1h", metavar="TIME", help="request: how long each grant lasts once approved: 90m, 12h, 30d (default 1h)"),
     flag("--uses", type=int, default=0, help="request: how often each may be used (default: as often as it is needed)"),
     flag("--review", action="store_true", help="request: each use needs an independent review behind it"),
-    flag("--note", default="", help="request: your own words for the person, up to 160 plain characters (shown as yours, checked by nobody)"),
+    flag("--note", default="", help="request: your own words for the notification, up to 160 plain characters (shown as yours, checked by nobody)"),
     flag("--task", default="", metavar="REF", help="request: the task on the board the request came from"),
-    flag("--ttl", type=int, default=0, metavar="SECONDS", help="request: how long it stays on the person's phone (default 30 minutes, at most 24 hours)"),
+    flag("--ttl", type=int, default=0, metavar="SECONDS", help="request: how long it stays pending (default 30 minutes, at most 24 hours)"),
     flag("--expect-policy", default="", choices=("", "open", "secure"), help="request: what you believe the pool's join policy is; the node refuses the request if it is not"),
-    flag("--all", action="store_true", help="pending: every request that waits, not only your own (a person at a terminal: your key signs to read them)"),
-    flag("--wait", type=float, default=0.0, metavar="SECONDS", help="request: wait this long for the answer"),
+    flag("--all", action="store_true", help="pending: every request that waits, not only your own (refused to an agent: your key signs to read them)"),
+    flag("--pick", default="", help="decide: the number the asker was shown, for a request that is not routine"),
     flag("--timeout", type=float, default=30.0, metavar="SECONDS", help="wait: how long to wait for the answer"),
 ]
 OK = ("pending", "approved")
@@ -91,12 +92,12 @@ def _own(args: argparse.Namespace, s: Session) -> int:
         say(json.dumps({"lifted": True}) if args.json else "The block was lifted.")
         return 0
     if args.verb == "request":
-        made = approval.request(s, approval.wire(_asks(args), note=args.note, task=args.task, ttl_s=args.ttl, expect_policy=args.expect_policy))
-        if args.wait:
-            made.wait(args.wait)
+        asks = _asks(args)
+        made = approval.request(s, approval.wire(asks, note=args.note, task=args.task, ttl_s=args.ttl, expect_policy=args.expect_policy))
+        made = autoapprove.settle(s, made, asks)
         return _print(args, made)
     if args.verb == "pending" and args.all:
-        person.require_person("reading every request that waits")
+        refuse_agent("reading every request that waits", "it lists other sessions' requests, which the device's key signs to read")
         carrier, key = held_key(Client())
         listed = list(_waiting(carrier, key).values())
         say(json.dumps(listed) if args.json else "\n".join(f"{a['id']}  {a['state']:<9} {a['risk']:<12} {a['title']}" for a in listed) or "(none)")
@@ -114,9 +115,9 @@ def _own(args: argparse.Namespace, s: Session) -> int:
 
 
 def held_key(client: Client) -> tuple[Session, Any]:
-    """The person's own session of this terminal on the pool board and the person's key, which this node must hold."""
+    """The person's own session of this terminal on the pool board and this device's key, which this node must hold."""
     if not person_key.kept(client.state):
-        raise Denied("denied", "no person key is kept on this device: run `poolhouse-workspace grants-setup`, or answer on your phone")
+        raise Denied("denied", "no person key is kept on this device: `poolhouse-workspace approval request` makes and enrols it")
     carrier = person_session.on(client, POOL)
     key = person_key.keys(client.state)
     if grants.fingerprint(key.public) not in grants.listing(carrier).persons:
@@ -131,46 +132,43 @@ def _waiting(carrier: Session, key: Any) -> dict[str, dict[str, Any]]:
     return {a["id"]: a for a in carrier.call("approval_pending", **signed)["approvals"]}
 
 
-def answer(carrier: Session, key: Any, request: dict[str, Any], decision: str) -> dict[str, Any]:
-    """Sign ``decision`` on the ``request`` as the node showed it, once the person has read its text and typed yes, and give it to the node.
-
-    A scope that was declined before takes one more typed word, and a request that is not routine asks which of three numbers the
-    agent showed, after the yes.
-    """
+def answer(carrier: Session, key: Any, request: dict[str, Any], decision: str, pick: str = "") -> dict[str, Any]:
+    """Sign ``decision`` on the ``request`` as the node showed it and give it to the node. A scope that was declined before is
+    answered ``approve_repeat``, and a request that is not routine carries ``pick``, the number the asker was shown."""
     context = dict(request.get("challenge", {}).get("context", {}))
     if decision == "approve" and context.get("repeat"):
-        if person.typed(f"This was declined {context['repeat']} time(s) before. Type again to approve it anyway: ") != "again":
-            raise Denied("denied", "nothing was approved: the extra word for a scope that was declined before was not typed")
         decision = "approve_repeat"
     try:
         signed = grants.sign_approval(key, request, decision)
     except RuntimeError as err:
         raise Denied("denied", str(err)) from err
     if decision.startswith("approve") and context.get("pick"):
-        signed["pick"] = person.typed("Which number did your agent show you? " + " / ".join(context["pick"]) + ": ")
+        if pick not in context["pick"]:
+            raise Denied("denied", "this request carries a number the asker was shown: pass it with --pick (" + " / ".join(context["pick"]) + ")")
+        signed["pick"] = pick
     return dict(carrier.call("approval_decide", **signed))
 
 
 def _decide(args: argparse.Namespace) -> int:
-    """Answer a request with the person's key, after the person has read its text and typed yes."""
-    person.require_person("answering an approval")
+    """Answer a request with this device's key."""
+    refuse_agent("answering an approval", "an agent asks with `approval request`, which policy decides at once")
     if len(args.items) != 2 or args.items[1] not in ("approve", "deny", "block"):
         raise ValueError("decide takes a handle and approve, deny or block: `approval decide ap-0123456789abcdef approve`")
     carrier, key = held_key(Client())
     waiting = _waiting(carrier, key)
     if args.items[0] not in waiting:
         raise ValueError("no request waiting has that handle: `poolhouse-workspace approval pending --all` lists them")
-    done = answer(carrier, key, waiting[args.items[0]], args.items[1])
+    done = answer(carrier, key, waiting[args.items[0]], args.items[1], args.pick)
     say(json.dumps({"id": done["id"], "state": done["state"]}) if args.json else f"{done['id']}  {done['state']}")
     return 0
 
 
 def command(args: argparse.Namespace) -> int:
-    """The `approval` command: a person's `decide`, or any session's own requests."""
+    """The `approval` command: `decide`, or any session's own requests."""
     if args.verb == "decide":
         return _decide(args)
     if args.verb in ("blocks", "lift"):
-        person.require_person("managing approval blocks")
+        refuse_agent("managing approval blocks", "a block ends a session's repeated requests, and an agent must not lift its own")
         return _own(args, person_session.on(Client(), POOL))
     return _own(args, board_cli.connect(args))
 

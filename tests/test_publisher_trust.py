@@ -11,7 +11,7 @@ import pytest
 from model_approval import approve, approved
 from net_site import gguf_bytes
 
-from poolhouse import authority, http, hub, person, requests, sentinel
+from poolhouse import authority, caller, http, hub, requests, sentinel
 from poolhouse.hub import admission, publishers, remote
 from poolhouse.serve import guarded
 from poolhouse.serve.backend import LlamaServerBackend, ServerFailed, ServerSpec
@@ -169,10 +169,10 @@ def test_an_agent_cannot_approve_a_publisher_even_where_answers_are_delegated(st
         hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     (waiting,) = asked()
     for env in ({"CLAUDECODE": "1"}, {"POOLHOUSE_AGENT": "claude-x"}):
-        with pytest.raises(person.HumanRequired):
+        with pytest.raises(caller.AgentRefused):
             requests.answer(waiting.id, "approve", waiting.fingerprint, "terminal",
                             requests.Context(terminal=(True, True), env=env))
-    with pytest.raises(person.HumanRequired):
+    with pytest.raises(caller.AgentRefused):
         requests.answer(waiting.id, "approve", waiting.fingerprint, "ui",
                         requests.Context(env={"CLAUDECODE": "1"}))
     with pytest.raises(admission.NotApproved):

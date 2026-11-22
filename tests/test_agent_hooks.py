@@ -11,7 +11,7 @@ import pytest
 from node_kit import node_binary, workspace_node  # noqa: F401
 
 from poolhouse import agent_hooks, authority
-from poolhouse.person import HumanRequired
+from poolhouse.caller import AgentRefused
 from poolhouse.workspace import hooks_cli, onboard
 
 CODEX_BEFORE = '''model = "gpt-6.1-sol"
@@ -168,7 +168,7 @@ def test_the_install_command_follows_the_registry(machine, monkeypatch, workspac
     authority.set_state(["workspace.setup"], authority.PERSON, by="lead")
     monkeypatch.setenv("CLAUDECODE", "1")
     monkeypatch.setenv("POOLHOUSE_WORKSPACE_AGENT", lead.name)
-    with pytest.raises(HumanRequired):
+    with pytest.raises(AgentRefused):
         hooks_cli.install(args)
     assert not (machine / "s.json").exists()
     authority_kit.delegate(["workspace.setup"])
@@ -209,7 +209,7 @@ def test_the_workspace_doctor_carries_the_hook_findings(machine, workspace_node)
 
 
 def test_the_install_command_writes_both_agents_into_named_files(machine, capsys, monkeypatch):
-    monkeypatch.setattr(authority, "require_person", lambda *a, **k: None)
+    monkeypatch.setattr(authority, "refuse_agent", lambda *a, **k: None)
     args = argparse.Namespace(settings=str(machine / "s.json"), codex_config=str(machine / "c.toml"), only=[], agent="")
     assert hooks_cli.install(args) == 0
     out = capsys.readouterr().out

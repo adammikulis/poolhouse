@@ -120,9 +120,9 @@ def test_a_quarantined_model_cannot_be_leased_until_a_person_releases_it(broker,
     held = node.store.quarantine(("model", str(model)), "seen misbehaving", {}, Holding())
     with pytest.raises(BrokerError, match="quarantined"):
         broker.lease(ask(model), timeout=30)
-    with pytest.raises(human.HumanRequired):
+    with pytest.raises(human.AgentRefused):
         human.mint("release", held.id, terminal=(False, False), env={})
-    with pytest.raises(human.HumanRequired):
+    with pytest.raises(human.AgentRefused):
         human.mint("release", held.id, typed=lambda _p: held.id, terminal=(True, True),
                    env={"POOLHOUSE_AGENT": "1"})
     with pytest.raises(BrokerError, match="quarantined"):

@@ -137,7 +137,7 @@ def switch(name: str, on: bool, *, root: str = "") -> bool:
     held = _file(path)
     before = _held(root).get(name) is True
     write_json(path, {**held, "features": {**_held(root), name: on}})
-    authority.record("features.set", by=os.environ.get(ACTOR_ENV) or authority.PERSON, feature=name,
+    authority.record("features.set", by=os.environ.get(ACTOR_ENV) or "", feature=name,
                      stage=FEATURES[name].stage, changed=before != on, to=on)
     return before != on
 

@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 from taskboard_kit import board as _board_fixture
 
-from poolhouse import authority, home, person
+from poolhouse import authority, home
 from poolhouse.board.tasks import Tasks
-from poolhouse.person import HumanRequired
+from poolhouse.caller import AgentRefused
 from poolhouse.workspace import authority_cli
 
 pytest_plugins = ["node_kit"]
@@ -42,7 +42,7 @@ def registry(monkeypatch, tmp_path):
 def passes(name: str | None) -> bool:
     try:
         return authority.require("runtime.deploy", "deploy", (False, False), env(name)) == authority.DELEGATED
-    except HumanRequired:
+    except AgentRefused:
         return False
 
 
@@ -110,14 +110,14 @@ def states() -> dict[str, str]:
 
 def test_a_lead_agent_cannot_loosen_a_gate(strict):
     asked, typed = said("yes")
-    with pytest.raises(HumanRequired, match="for a person"):
+    with pytest.raises(AgentRefused, match="for a person"):
         loosening(["ALL"], typed=typed, env={"CLAUDECODE": "1", "POOLHOUSE_WORKSPACE_AGENT": "agent-lead01"})
     assert set(states().values()) == {authority.PERSON} and not asked
 
 
 def test_a_process_with_no_terminal_cannot_loosen_a_gate(strict):
     asked, typed = said("yes")
-    with pytest.raises(HumanRequired, match="needs a terminal"):
+    with pytest.raises(AgentRefused, match="needs a terminal"):
         loosening(["runtime.deploy"], typed=typed, terminal=(False, False))
     assert states()["runtime.deploy"] == authority.PERSON and not asked
 
@@ -125,7 +125,7 @@ def test_a_process_with_no_terminal_cannot_loosen_a_gate(strict):
 def test_a_person_who_does_not_type_yes_loosens_nothing(strict):
     for answer in ("", "y", "no", "yes please", "YES, all of it"):
         asked, typed = said(answer)
-        with pytest.raises(HumanRequired, match="not confirmed"):
+        with pytest.raises(AgentRefused, match="not confirmed"):
             loosening(["ALL"], typed=typed)
         assert set(states().values()) == {authority.PERSON} and len(asked) == 1
 
@@ -153,7 +153,7 @@ def test_setting_a_gate_that_is_already_delegated_asks_nothing():
 
 def test_a_project_that_loosens_over_a_machine_that_is_a_person_s_asks(strict):
     asked, typed = said("")
-    with pytest.raises(HumanRequired):
+    with pytest.raises(AgentRefused):
         loosening(["runtime.deploy"], typed=typed, project="alpha")
     assert authority.state_of("runtime.deploy", "alpha") == authority.PERSON and len(asked) == 1
 
@@ -173,10 +173,8 @@ def cli(action, *words, project=""):
 def test_a_lead_agent_cannot_loosen_through_the_workspace_command(board, monkeypatch):
     authority_cli.run(cli("preset", "prod", project="alpha"), board.parent)
     monkeypatch.setenv("CLAUDECODE", "1")
-    monkeypatch.setattr(person, "is_terminal", lambda stream: True)
-    monkeypatch.setattr(person, "typed", lambda prompt, wait_s=0: "yes")
     for call in (cli("set", "delegated", "ALL", project="alpha"), cli("preset", "dev", project="alpha")):
-        with pytest.raises(HumanRequired, match="for a person"):
+        with pytest.raises(AgentRefused, match="for a person"):
             authority_cli.run(call, board.parent)
     assert authority.state_of("sentinel.quarantine", "alpha") == authority.PERSON
     assert Tasks(board.parent).mode()["mode"] == "strict"

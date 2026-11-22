@@ -14,7 +14,7 @@ passed as ``extra``. `start` makes the `Run` a loop asks.
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any
 
 from poolhouse import log
@@ -22,7 +22,7 @@ from poolhouse.guard.loop import parse_call
 from poolhouse.guard.policy import ToolPolicyRail, tool_schemas
 from poolhouse.guard.secrets import SecretRail
 from poolhouse.guard.untrusted import NOTICE, UntrustedRail
-from poolhouse.interventions import Call, Confirm, Context, Run
+from poolhouse.interventions import Context, Run
 from poolhouse.taint import TaintRail
 
 __all__ = ["BUILTIN", "NOTICE", "Unguarded", "default", "off", "parse_call", "rails", "start"]
@@ -76,8 +76,7 @@ def off(because: str) -> Unguarded:
 
 
 def start(items: Sequence[Any], *, offered: Sequence[Mapping[str, Any]] = (), task: str = "",
-          confirm: Callable[[Confirm, Call | None], bool | Awaitable[bool]] | None = None,
-          notify: Callable[[Confirm, Call | None], Any] | None = None) -> Run:
+) -> Run:
     """A `Run` over ``items`` for a loop that offers the tools ``offered`` (OpenAI-style
     definitions) to answer the request ``task``."""
     schemas = tool_schemas(offered)
@@ -85,4 +84,4 @@ def start(items: Sequence[Any], *, offered: Sequence[Mapping[str, Any]] = (), ta
         if isinstance(one, ToolPolicyRail):
             one.bind(schemas)
     context = Context(task=task, tools=[dict(t) for t in offered])
-    return Run(items, context=context, confirm=confirm, notify=notify)
+    return Run(items, context=context)

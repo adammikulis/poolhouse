@@ -305,16 +305,16 @@ def test_open_is_a_primary_command_and_help_never_requests_a_ticket(monkeypatch,
 
 
 def test_primary_open_print_is_denied_before_ticket_or_browser_work(monkeypatch):
+    from poolhouse.caller import AgentRefused
     from poolhouse.fleet import launch_open
-    from poolhouse.person import HumanRequired
 
     def denied(reason):
-        raise HumanRequired(reason)
+        raise AgentRefused(reason)
 
     def forbidden(*args):
         raise AssertionError("a denied caller reached ticket or browser work")
 
-    monkeypatch.setattr(launch_open, "require_person", denied)
+    monkeypatch.setattr(launch_open, "refuse_agent", denied)
     monkeypatch.setattr(launch_open, "ticket_url", forbidden)
     monkeypatch.setattr(launch_open.webbrowser, "open", forbidden)
     assert cli.main(["open", "--print"]) == 2

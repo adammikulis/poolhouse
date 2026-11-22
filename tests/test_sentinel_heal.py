@@ -192,9 +192,9 @@ def test_pins_made_before_a_failure_part_way_are_dropped(tmp_path, monkeypatch):
 def test_a_release_by_dialog_needs_no_terminal_but_an_agent_marker_refuses_it():
     grant = human.mint_clicked("release", "q-1", answer="Release", label="Release", env={})
     grant.check("release", "q-1")
-    with pytest.raises(human.HumanRequired):
+    with pytest.raises(human.AgentRefused):
         grant.check("release", "q-2")
-    with pytest.raises(human.HumanRequired):
+    with pytest.raises(human.AgentRefused):
         human.mint_clicked("release", "q-1", answer="Release", label="Release",
                            env={"CLAUDECODE": "1"})
 

@@ -15,7 +15,7 @@ from poolhouse import private_counters
 from poolhouse.board.client import Denied
 from poolhouse.files import writing
 from poolhouse.private_path import problem, redirected, windows_mount
-from poolhouse.sentinel import human
+from poolhouse.sentinel import permit
 from poolhouse.windows_private import restrict, validate
 
 __all__ = ["cursors", "forget", "load", "prepare", "private", "remember", "store"]
@@ -46,7 +46,7 @@ def prepare(state: Path) -> Path:
     """The client folder under the node's ``state``, made owner-only and registered with sentinel so no tool call names it;
     ValueError when it is a symlink or reparse point, sits inside a git work tree or on a Windows-mounted filesystem."""
     path = state / "client"
-    human.protect(path)
+    permit.protect(path)
     if os.name == "nt":
         validate(state)
         validate(path)

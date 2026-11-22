@@ -15,7 +15,7 @@ import pytest
 
 from poolhouse import home
 from poolhouse.sentinel import Mode, Sentinel, State, human
-from poolhouse.sentinel.human import HumanGrant, HumanRequired, agent_may
+from poolhouse.sentinel.permit import AgentRefused, Permit, agent_may
 from poolhouse.sentinel.store import Holding
 
 SRC = str(Path(__file__).resolve().parent.parent / "src")
@@ -81,10 +81,10 @@ def test_the_state_directory_is_refused_wherever_it_is_moved(tmp_path, monkeypat
 
 
 def test_a_grant_cannot_be_built_without_a_person():
-    forged = HumanGrant("release", "q-1", 9e18, object())
-    with pytest.raises(HumanRequired):
+    forged = Permit("release", "q-1", 9e18, object())
+    with pytest.raises(AgentRefused):
         forged.check("release", "q-1")
-    with pytest.raises(HumanRequired):
+    with pytest.raises(AgentRefused):
         human.mint("release", "q-1", typed=lambda _p: "q-1", env={"CLAUDECODE": "1"},
                    terminal=(True, True))
 
@@ -101,11 +101,11 @@ def test_held_content_cannot_reach_a_model_by_any_in_process_path(node):
     everything = json.dumps([r.to_json() for r in node.store.records()])
     everything += (node.root / "events.log").read_text()
     assert "evil@example.com" not in everything and "id_rsa" not in everything
-    for attempt in (lambda: node.store.read(held.id, HumanGrant("inspect", held.id, 9e18, object())),
+    for attempt in (lambda: node.store.read(held.id, Permit("inspect", held.id, 9e18, object())),
                     lambda: node.store.read(held.id, grant("release", held.id)),
-                    lambda: node.store.release(held.id, HumanGrant("release", held.id, 9e18,
+                    lambda: node.store.release(held.id, Permit("release", held.id, 9e18,
                                                                     object()))):
-        with pytest.raises(HumanRequired):
+        with pytest.raises(AgentRefused):
             attempt()
     assert node.screen(secret_instruction, "x").withheld == held.id
     node.store.release(held.id, grant("release", held.id))

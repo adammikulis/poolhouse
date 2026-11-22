@@ -140,7 +140,7 @@ def test_only_the_exact_label_releases(answer):
     made = held(node, "10.0.5.1")
     assert node.store.get(made.id).state == State.QUARANTINED
     assert not [e for e in node.bus.log.read() if e.kind == "quarantine.released"]
-    with pytest.raises(human.HumanRequired):
+    with pytest.raises(human.AgentRefused):
         human.mint_clicked("release", made.id, answer=answer, label=RELEASE, env={})
 
 

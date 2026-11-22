@@ -10,7 +10,7 @@ from pathlib import Path
 
 from poolhouse.files import writing
 from poolhouse.private_path import problem
-from poolhouse.sentinel import human
+from poolhouse.sentinel import permit
 from poolhouse.windows_private import restrict
 
 from .session import same
@@ -30,7 +30,7 @@ class LaunchError(RuntimeError):
 
 def _private_directory(root: Path) -> Path:
     path = root / DIRECTORY
-    human.protect(path)
+    permit.protect(path)
     why = problem(path)
     if why not in {"", "missing"} and not why.startswith("mode "):
         raise LaunchError(f"{path}: {why}")

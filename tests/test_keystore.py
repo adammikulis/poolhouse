@@ -19,7 +19,7 @@ from keyring.errors import KeyringError
 from poolhouse import home, keystore, memory, sentinel
 from poolhouse.fleet.onboard.signing import SigningKeys
 from poolhouse.keystore import Keystore, Wires
-from poolhouse.sentinel import human
+from poolhouse.sentinel import permit as human
 from poolhouse.sentinel.events import Bus, Event, Severity
 from tests import keystore_support
 from tests.onboard_support import Clock
@@ -434,8 +434,8 @@ def at_a_terminal(monkeypatch):
     """Stdin and stdout count as terminals; the agent-marker check stays real."""
     for name in human.AGENT_MARKERS:
         monkeypatch.delenv(name, raising=False)
-    real = human.require_person
-    monkeypatch.setattr(human, "require_person", lambda action, terminal=None, env=None: real(action, (True, True), env))
+    real = human.refuse_agent
+    monkeypatch.setattr(human, "refuse_agent", lambda action, terminal=None, env=None: real(action, (True, True), env))
 
 
 def test_unlock_is_for_a_person_at_a_terminal(counting, monkeypatch, capsys):

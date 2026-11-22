@@ -28,20 +28,20 @@ def test_post_outage_does_not_reverse_a_completed_tool(monkeypatch, capsys):
 
 def test_stop_is_not_blocked_when_the_board_is_unavailable(monkeypatch):
     monkeypatch.setattr(Client, 'call', lambda *args, **kwargs: pytest.fail('completion asked the node'))
-    assert harnesshook.stop(harnesshook.Rail(coding_policy.Policy('ask-dangerous'), 'worker', ['/project'])) == {}
+    assert harnesshook.stop(harnesshook.Rail(coding_policy.Policy('guarded'), 'worker', ['/project'])) == {}
 
 
 def test_stop_does_not_run_explicit_cleanup_admission(monkeypatch):
     def refused(*args, **kwargs):
         raise Denied('completion refused')
     monkeypatch.setattr(worktree_lifecycle, 'require_clean', refused)
-    result = harnesshook.stop(harnesshook.Rail(coding_policy.Policy('ask-dangerous'), 'worker', ['/project']))
+    result = harnesshook.stop(harnesshook.Rail(coding_policy.Policy('guarded'), 'worker', ['/project']))
     assert result == {}
 
 
 def test_pre_does_not_consult_workspace_ownership(monkeypatch):
     payload = {'tool_name': 'Write', 'tool_input': {'file_path': '/project/test.py'}, 'cwd': '/project'}
-    rail = harnesshook.Rail(coding_policy.Policy('ask-dangerous'), 'worker', ['/project'])
+    rail = harnesshook.Rail(coding_policy.Policy('guarded'), 'worker', ['/project'])
     def forbidden(*args, **kwargs):
         pytest.fail('ordinary writes must not query or reserve workspace ownership')
     monkeypatch.setattr(harness_claims, 'conflict', forbidden)
@@ -56,7 +56,7 @@ def test_an_ordinary_write_never_contacts_the_node(monkeypatch, tmp_path):
         pytest.fail('ordinary write contacted the node')
     monkeypatch.setattr(Client, 'call', down)
     payload = {'tool_name': 'Write', 'tool_input': {'file_path': str(tmp_path / 'test.py')}, 'cwd': str(tmp_path)}
-    answer = harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy('ask-dangerous'), 'worker', [str(tmp_path)]))['hookSpecificOutput']
+    answer = harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy('guarded'), 'worker', [str(tmp_path)]))['hookSpecificOutput']
     assert answer['permissionDecision'] == 'allow'
     assert 'ownership' not in answer['permissionDecisionReason']
 
@@ -73,7 +73,7 @@ def test_diagnostic_redacts_credentials(secret, monkeypatch):
     assert len(harnesshook._diagnostic(Denied('x' * 2000))) < 1100
 
 
-@pytest.mark.parametrize('role', ['read-only', 'ask-changes', 'ask-dangerous'])
+@pytest.mark.parametrize('role', ['read-only', 'guarded', 'guarded'])
 def test_launcher_keeps_normal_role_policy_without_admission(monkeypatch, tmp_path, role):
     def no_board_session(*args, **kwargs):
         pytest.fail('resource-free launcher requested mutation authority')
@@ -92,7 +92,7 @@ def test_a_board_outage_never_waives_the_destructive_call_guard(monkeypatch, tmp
     monkeypatch.setattr(harnesshook, '_ask', lambda *args, **kwargs: (False, 'test declined'))
     args = {'command': f'poolhouse --no-browser; rm -rf {tmp_path / "owned"}'}
     result = harnesshook.pre({'tool_name': 'Bash', 'tool_input': args, 'cwd': str(tmp_path)},
-                            harnesshook.Rail(coding_policy.Policy('ask-dangerous'), 'worker', [str(tmp_path)]))
+                            harnesshook.Rail(coding_policy.Policy('guarded'), 'worker', [str(tmp_path)]))
     assert result['hookSpecificOutput']['permissionDecision'] == 'deny'
 
 
@@ -136,7 +136,7 @@ def test_post_lifecycle_failure_preserves_stop_message_alert(monkeypatch):
     monkeypatch.setattr(harnesshook, '_reader_run', lambda *args, **kwargs:
                         SimpleNamespace(returncode=1, stdout='urgent message waiting; run inbox',
                                         stderr='checkpoint missing shadow'))
-    result = harnesshook.post('worker', harnesshook.Rail(coding_policy.Policy('ask-dangerous'), 'worker', ['/project']))
+    result = harnesshook.post('worker', harnesshook.Rail(coding_policy.Policy('guarded'), 'worker', ['/project']))
     context = result['hookSpecificOutput']['additionalContext']
     assert 'checkpoint missing shadow' in context
     assert 'urgent message waiting; run inbox' in context

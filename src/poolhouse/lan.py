@@ -13,7 +13,7 @@ import os
 import sys
 
 from poolhouse import home
-from poolhouse.person import AGENT_MARKERS
+from poolhouse.caller import AGENT_MARKERS
 
 OFF_ENV = "POOLHOUSE_NODE_LAN"
 TESTS_ENV = "POOLHOUSE_LAN_TESTS"

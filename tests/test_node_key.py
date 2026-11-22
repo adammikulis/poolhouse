@@ -278,7 +278,7 @@ def test_the_command_that_moves_the_key_is_a_persons(state, ks, monkeypatch):
 def test_the_command_moves_the_key_and_restarts_a_node_that_is_running(state, ks, monkeypatch, capsys):
     (state / "device.key").write_text(SEED.hex())
     calls: list[str] = []
-    monkeypatch.setattr(node_permission.human, "require_person", lambda _what: None)
+    monkeypatch.setattr(node_permission.human, "refuse_agent", lambda _what: None)
     monkeypatch.setattr(node_key.keystore, "default", lambda: ks)
     monkeypatch.setattr(node_health, "node_health", lambda _state: {"pid": 1})
     monkeypatch.setattr(node_launch, "stop_node", lambda _state: calls.append("stop") or True)
@@ -291,7 +291,7 @@ def test_the_command_moves_the_key_and_restarts_a_node_that_is_running(state, ks
 
 def test_the_command_says_so_when_the_node_does_not_start_again(state, ks, monkeypatch):
     (state / "device.key").write_text(SEED.hex())
-    monkeypatch.setattr(node_permission.human, "require_person", lambda _what: None)
+    monkeypatch.setattr(node_permission.human, "refuse_agent", lambda _what: None)
     monkeypatch.setattr(node_key.keystore, "default", lambda: ks)
     monkeypatch.setattr(node_health, "node_health", lambda _state: {"pid": 1})
     monkeypatch.setattr(node_launch, "stop_node", lambda _state: True)

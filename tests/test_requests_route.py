@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import person, requests
+from poolhouse import caller, requests
 from poolhouse.inbox import route
 from poolhouse.ui import assets_dir
 from tests.requests_support import ask, make_server, no_markers
@@ -231,7 +231,7 @@ def test_a_server_an_agent_started_answers_nothing(live, monkeypatch):
     status, _, _body = live.post(answer_of(handle))
     assert status == 403 and live.inbox.get(handle.id).state == "pending"
     monkeypatch.delenv("CLAUDECODE")
-    assert person.marked() == ""
+    assert caller.marked() == ""
 
 
 def test_answers_are_rate_limited_per_session(live):

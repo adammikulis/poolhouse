@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-__all__ = ["Compacted", "ConfirmRequest", "Context", "Denied", "Done", "Event", "Repair",
+__all__ = ["Compacted", "Context", "Denied", "Done", "Event", "Repair",
            "Text", "Thinking", "ToolCall", "ToolResult"]
 
 
@@ -74,23 +74,8 @@ class Compacted:
 
 
 @dataclass(frozen=True, slots=True)
-class ConfirmRequest:
-    """A question for the person before a call runs (``id`` and ``name`` are empty for a
-    question about the model call); the agent waits for the answer."""
-
-    id: str
-    name: str
-    question: str
-    details: dict[str, Any] = field(default_factory=dict)
-
-    def as_dict(self) -> dict[str, Any]:
-        return {"type": "confirm", "id": self.id, "name": self.name,
-                "question": self.question, "details": self.details}
-
-
-@dataclass(frozen=True, slots=True)
 class Denied:
-    """A call that was not run because an intervention or the person refused it."""
+    """A call that was not run because an intervention refused it."""
 
     id: str
     name: str
@@ -110,5 +95,5 @@ class Done:
     messages: list[dict[str, Any]] = field(default_factory=list, repr=False)
 
 
-Event = (Text | Thinking | ToolCall | ToolResult | Repair | Denied | ConfirmRequest
+Event = (Text | Thinking | ToolCall | ToolResult | Repair | Denied
          | Context | Compacted | Done)

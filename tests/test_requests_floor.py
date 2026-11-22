@@ -11,7 +11,7 @@ import pytest
 from poolhouse import chat, do, mcp, requests
 from poolhouse.chatpolicy import HumanOnlyRail, refusal_for
 from poolhouse.interventions import Call, Context, Deny
-from poolhouse.sentinel.human import agent_may
+from poolhouse.sentinel.permit import agent_may
 from tests.requests_support import ask, no_markers
 
 __all__ = ["no_markers"]

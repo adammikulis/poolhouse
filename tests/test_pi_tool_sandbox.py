@@ -34,7 +34,7 @@ def installed(tmp_path, seatbelt):
     project = tmp_path / "selected-repo"
     project.mkdir()
     files = Files(tmp_path / "control")
-    configured = pi_tools.prepared(files, binary, project, coding_policy.Policy("ask-dangerous"))
+    configured = pi_tools.prepared(files, binary, project, coding_policy.Policy("guarded"))
     return json.loads(configured.read_text())
 
 

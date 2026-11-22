@@ -8,7 +8,7 @@
     s.screen(tool_result, "tool:web", session="s1")
     s.bus.subscribe(print)
 
-Releasing and purging need a `HumanGrant`, minted by `human.mint` at a terminal.
+Releasing and purging need a `Permit`, minted by `permit.mint`, which refuses an agent at once.
 """
 
 from __future__ import annotations
@@ -20,13 +20,13 @@ from poolhouse.sentinel.adapters import sandbox_listener
 from poolhouse.sentinel.core import ENV, Screened, Sentinel
 from poolhouse.sentinel.events import Bus, Event, EventLog, Severity
 from poolhouse.sentinel.findings import HEURISTIC, HIGH, Finding
-from poolhouse.sentinel.human import HumanGrant, HumanRequired, agent_may, mint
+from poolhouse.sentinel.permit import Permit, agent_may, mint
 from poolhouse.sentinel.policy import Mode
 from poolhouse.sentinel.store import KINDS, Limits, Record, State, Store, sentinel_dir
 from poolhouse.sentinel.watch import arm_scan, ensure_honey, opt_out
 
 __all__ = ["ENV", "HEURISTIC", "HIGH", "KINDS", "Bus", "Event", "EventLog", "Finding",
-           "HumanGrant", "HumanRequired", "Limits", "Mode", "Record", "Screened", "Sentinel",
+           "Limits", "Mode", "Permit", "Record", "Screened", "Sentinel",
            "Severity", "State", "Store", "agent_may", "arm_scan", "armed", "default", "mint", "opt_out"]
 
 def armed() -> Sentinel:

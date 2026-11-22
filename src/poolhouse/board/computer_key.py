@@ -104,7 +104,7 @@ class PoolKeys:
         keystore where there is one, else under a passphrase typed at the person's terminal."""
         directory = self.directory / secrets.token_hex(16)
         directory.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        keys = SigningKeys(directory, passphrase=_no_passphrase if self.sealed() else person_key.tty_passphrase, ks=self._ks, say=lambda _text: None)
+        keys = SigningKeys(directory, passphrase=_no_passphrase if self.sealed() else person_key.no_prompt, ks=self._ks, say=lambda _text: None)
         keys.adopt(seed)
         return ComputerKey(keys, self.client, self.token)
 

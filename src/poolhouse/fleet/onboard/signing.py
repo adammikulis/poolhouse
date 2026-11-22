@@ -4,9 +4,8 @@ The key is generated on the controller and is a different key from the device's 
 one is not losing the other. It is kept in a file wrapped under a subkey of the user's master
 key in the operating system's keystore (`poolhouse.keystore`). With no usable keystore it is
 kept in a file encrypted under a passphrase (scrypt, ChaCha20-Poly1305, from `cryptography`,
-mode 0600) with a warning; there is no plaintext path. Signing is automatic, except for
-`ConfirmedKeys` (the person's grant key), which asks a person first every time. Exporting,
-rotating or revoking a key, and turning on confirm-before-signing, need a `HumanGrant`.
+mode 0600) with a warning; there is no plaintext path. Signing is automatic and never asks anyone. Exporting,
+rotating or revoking a key need a `Permit`, which `poolhouse.sentinel.permit.mint` refuses to an agent at once.
 
 It protects the key from a file copy, a backup or a repository, not from code running as you
 that can ask the keystore for it. A hardware key is the designed next step.
@@ -19,20 +18,20 @@ import hashlib
 import json
 import os
 import time
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
-from poolhouse import keystore, person
+from poolhouse import keystore
 from poolhouse.files import read_json, write_json, writing
 from poolhouse.log import warn
 from poolhouse.platform import private_file
-from poolhouse.sentinel.human import HumanGrant
+from poolhouse.sentinel.permit import Permit
 
 from .events import BUS, Bus
 from .manifest import VALID_S, Carried, Entry, Signer
 
-__all__ = ["UNLOCK_ENV", "ConfirmedKeys", "KeyStoreError", "SigningKeys", "open_file", "seal_file"]
+__all__ = ["UNLOCK_ENV", "KeyStoreError", "SigningKeys", "open_file", "seal_file"]
 
 PURPOSE = "fleet-signing"
 UNLOCK_ENV = "POOLHOUSE_SIGNING_PASSPHRASE"
@@ -94,8 +93,6 @@ def _ask_passphrase(prompt: str) -> str:
 
 class SigningKeys:
     """The signing key of the state directory ``directory``."""
-
-    always_confirm = False
 
     def __init__(self, directory: Path, *, passphrase: Callable[[str], str] = _ask_passphrase,
                  bus: Bus = BUS, say: Callable[[str], None] = warn,
@@ -187,22 +184,16 @@ class SigningKeys:
         signer = signer or Signer.generate()
         store = self._put(signer)
         doc = {"store": store, "key_id": signer.key_id, "public": base64.b64encode(signer.public).decode(),
-               "created": time.time(), "rotations": [], "revoked": [], "confirm": self.always_confirm}
+               "created": time.time(), "rotations": [], "revoked": []}
         self._write(doc)
         self.bus.emit("onboard.signing.created", "notice", f"key:{signer.key_id}", store=store)
         return doc
 
     # -- routine use: no prompts --
-    def sign(self, entries: Iterable[Entry], *, serial: int,
-             confirm: Callable[[str], bool] | None = None) -> bytes:
-        """A signed manifest of ``entries``. With confirm-before-signing on, ``confirm`` is
-        asked first and must say yes."""
+    def sign(self, entries: Iterable[Entry], *, serial: int) -> bytes:
+        """A signed manifest of ``entries``."""
         doc = self.meta()
         listed = list(entries)
-        if doc.get("confirm"):
-            summary = f"sign a manifest of {len(listed)} files with key {doc['key_id'][:16]}"
-            if confirm is None or not confirm(summary):
-                raise KeyStoreError("signing needs a person's confirmation and did not get it")
         signer = self._get(doc["store"])
         carried = Carried(tuple(doc.get("rotations", [])), tuple(doc.get("revoked", [])))
         raw = signer.sign(listed, serial=serial, valid_s=VALID_S, carried=carried)
@@ -210,19 +201,14 @@ class SigningKeys:
                       files=len(listed), serial=serial)
         return raw
 
-    def sign_bytes(self, data: bytes, *, confirm: Callable[[str], bool] | None = None) -> bytes:
-        """The signature of this key over ``data``; with confirm-before-signing on, ``confirm``
-        is asked first and must say yes."""
-        doc = self.meta()
-        if doc.get("confirm") and (confirm is None or not confirm(f"sign {len(data)} bytes with key {doc['key_id'][:16]}")):
-            raise KeyStoreError("signing needs a person's confirmation and did not get it")
-        return self._get(doc["store"]).sign_bytes(data)
+    def sign_bytes(self, data: bytes) -> bytes:
+        """The signature of this key over ``data``."""
+        return self._get(self.meta()["store"]).sign_bytes(data)
 
-    def attest(self, entries: Iterable[Entry], *, serial: int, namespace: str,
-               confirm: Callable[[str], bool] | None = None) -> dict[str, Any]:
+    def attest(self, entries: Iterable[Entry], *, serial: int, namespace: str) -> dict[str, Any]:
         """A signed manifest plus an OpenSSH signature over those bytes, for a machine that can
         only run ``ssh-keygen -Y verify``. The key never leaves this class."""
-        raw = self.sign(entries, serial=serial, confirm=confirm)
+        raw = self.sign(entries, serial=serial)
         signer = self._get(self.meta()["store"])
         return {"manifest": raw, "sshsig": signer.sshsig(raw, namespace),
                 "allowed_signers": signer.ssh_public_line() + "\n", "key_id": signer.key_id}
@@ -231,8 +217,8 @@ class SigningKeys:
         """An entry for a file; hashing needs no secret, so this never touches the key."""
         return Signer.entry_for(path, **terms)
 
-    # -- only a person --
-    def export(self, grant: HumanGrant, path: Path, passphrase: str) -> Path:
+    # -- kept from agents by policy: the caller mints a permit first --
+    def export(self, grant: Permit, path: Path, passphrase: str) -> Path:
         """The key written to ``path`` encrypted under ``passphrase``."""
         doc = self.meta()
         grant.check("export", doc["key_id"])
@@ -240,7 +226,7 @@ class SigningKeys:
         self.bus.emit("onboard.signing.exported", "warning", f"key:{doc['key_id']}")
         return path
 
-    def rotate(self, grant: HumanGrant) -> dict[str, Any]:
+    def rotate(self, grant: Permit) -> dict[str, Any]:
         """A new key takes over; the old one signs the announcement and is then destroyed."""
         doc = self.meta()
         grant.check("rotate", doc["key_id"])
@@ -260,7 +246,7 @@ class SigningKeys:
         self._drop(previous)
         return self._put(new)
 
-    def revoke(self, grant: HumanGrant, key_id: str) -> list[str]:
+    def revoke(self, grant: Permit, key_id: str) -> list[str]:
         """Name a key as no longer trusted; manifests carry the list from then on."""
         doc = self.meta()
         grant.check("revoke", key_id)
@@ -268,55 +254,3 @@ class SigningKeys:
         self._write({**doc, "revoked": revoked})
         self.bus.emit("onboard.signing.revoked", "warning", f"key:{key_id}")
         return revoked
-
-    def require_confirmation(self, grant: HumanGrant, on: bool) -> None:
-        """High-assurance mode: signing asks a person each time."""
-        doc = self.meta()
-        grant.check("confirm-signing", doc["key_id"])
-        self._write({**doc, "confirm": bool(on)})
-
-
-class ConfirmedKeys(SigningKeys):
-    """The person's grant key: every signature is put to the person on the terminal device first, by the key itself.
-
-    A `confirm` passed to a signing call is ignored, `approve` puts one question for a list of exactly the signatures it
-    names, and manifests are refused. The question is `person.confirm`, a typed `yes` on `/dev/tty`, put by `_ask`. It stops a
-    process that is not the person at the terminal; code of the same user that reads the key file and its passphrase, or the
-    keystore item, signs without it (docs/node.md, "Key custody").
-    """
-
-    always_confirm = True
-
-    def __init__(self, directory: Path, *, describe: Callable[[bytes], str] | None = None,
-                 passphrase: Callable[[str], str] = _ask_passphrase, ks: keystore.Keystore | None = None) -> None:
-        super().__init__(directory, passphrase=passphrase, ks=ks)
-        self._describe = describe
-        self._approved: list[str] = []
-
-    def _ask(self, prompt: str) -> bool:
-        return person.confirm(prompt)
-
-    def _line(self, data: bytes) -> str:
-        return self._describe(data) if self._describe else f"sign {len(data)} bytes with key {self.key_id[:16]}"
-
-    def approve(self, lines: Sequence[str], header: str) -> None:
-        """Put ``lines`` to the person once: the signatures that read back as exactly these need no second question."""
-        shown = "\n".join(f"  {number}. {line}" for number, line in enumerate(lines, 1))
-        if not self._ask(f"{header}\n{shown}\nType yes to sign {'it' if len(lines) == 1 else 'all of them'}: "):
-            raise KeyStoreError("nothing was signed: the person did not type yes")
-        self._approved = list(lines)
-
-    def sign_bytes(self, data: bytes, *, confirm: Callable[[str], bool] | None = None) -> bytes:
-        """The signature over ``data`` once the person has read what it does and typed yes; ``confirm`` is ignored."""
-        line = self._line(data)
-        if line in self._approved:
-            self._approved.remove(line)
-        elif not self._ask(f"Your person key is asked to sign:\n  {line}\nType yes to sign it: "):
-            raise KeyStoreError("signing needs a person's confirmation and did not get it")
-        return self._get(self.meta()["store"]).sign_bytes(data)
-
-    def sign(self, entries: Iterable[Entry], *, serial: int, confirm: Callable[[str], bool] | None = None) -> bytes:
-        raise KeyStoreError("the person's key signs grants and keys, not manifests")
-
-    def attest(self, entries: Iterable[Entry], *, serial: int, namespace: str, confirm: Callable[[str], bool] | None = None) -> dict[str, Any]:
-        raise KeyStoreError("the person's key signs grants and keys, not manifests")

@@ -8,8 +8,7 @@ nobody answered (it ran out) is asked again at the next poll. ``Release`` releas
 it lists, ``Keep held`` stops asking about them, ``Later`` puts off asking about just those for a few
 hours (what the person did not see is never put off). The release is the
 click: made by the process that put the dialog up, for the ids it listed, when the answer is
-exactly `RELEASE` and the environment has no agent marker (`human.mint_clicked`, called
-nowhere else). The text is fixed sentences from `explain` and names it has made safe.
+exactly `RELEASE` and the environment has no agent marker (`permit.mint`, which refuses an agent). The text is fixed sentences from `explain` and names it has made safe.
 """
 
 from __future__ import annotations
@@ -24,10 +23,11 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 from poolhouse import desktop, requests
+from poolhouse.caller import AgentRefused
 from poolhouse.files import write_text
 from poolhouse.lock import Busy, only_one
 from poolhouse.requests import dialog
-from poolhouse.sentinel import explain, human
+from poolhouse.sentinel import explain, permit
 from poolhouse.sentinel.events import Bus, Event, Severity
 from poolhouse.sentinel.store import Record, State, Store
 
@@ -244,11 +244,12 @@ class HeadsUp:
                 record = self.store.get(ident)
                 if record is None or record.state != State.QUARANTINED:
                     continue
-                grant = human.mint_clicked("release", ident, answer=answer, label=RELEASE,
-                                           env=self.env)
+                if answer != RELEASE:
+                    raise AgentRefused("release not confirmed")
+                grant = permit.mint("release", ident, env=self.env)
                 self.store.release(ident, grant, "released by the dialog's Release button")
                 done.append(ident)
-        except human.HumanRequired as exc:
+        except AgentRefused as exc:
             self._emit("sentinel.release_refused", {"why": str(exc)[:120]})
         except (OSError, KeyError, ValueError) as exc:
             logger.warning("sentinel heads-up release failed: %s", type(exc).__name__)

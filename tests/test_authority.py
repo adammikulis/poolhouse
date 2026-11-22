@@ -8,13 +8,13 @@ import re
 import pytest
 from taskboard_kit import board as _board_fixture
 
-from poolhouse import authority, chatpolicy, node_launch, person
+from poolhouse import authority, chatpolicy, node_launch
 from poolhouse.board.tasks import Tasks
+from poolhouse.caller import AgentRefused
 from poolhouse.errors import Denied
 from poolhouse.files import write_json
 from poolhouse.net import cli as net_cli
-from poolhouse.person import HumanRequired
-from poolhouse.sentinel import human
+from poolhouse.sentinel import permit as human
 from poolhouse.serve import wired, wired_apply
 from poolhouse.workspace import authority_cli
 
@@ -86,7 +86,7 @@ def test_the_floor_variable_can_only_tighten(monkeypatch):
 
 
 def test_a_helper_identity_cannot_flip_and_a_flip_is_audited():
-    with pytest.raises(HumanRequired):
+    with pytest.raises(AgentRefused):
         authority.set_state(["ALL"], authority.PERSON, by="lead/helper")
     assert authority.state_of("chat.policy") == authority.DELEGATED
     authority.set_state(["chat.policy"], authority.PERSON, by="lead")
@@ -96,7 +96,7 @@ def test_a_helper_identity_cannot_flip_and_a_flip_is_audited():
 
 def test_a_person_state_refuses_a_marked_process():
     authority.set_state(["ALL"], authority.PERSON, by="lead")
-    with pytest.raises(HumanRequired, match="for a person"):
+    with pytest.raises(AgentRefused, match="for a person"):
         authority.require("sentinel.policy", "mode", (True, True), LEAD)
     assert authority.require("sentinel.policy", "mode", (True, True), {}) == authority.PERSON
     assert not uses()
@@ -110,10 +110,10 @@ def test_a_delegated_gate_passes_a_lead_agent_and_audits_each_use(authenticated)
 
 def test_a_delegated_gate_refuses_helpers_and_unattended_processes():
     for env in ({**LEAD, "POOLHOUSE_WORKSPACE_AGENT": "claude-code/reader"},):
-        with pytest.raises(HumanRequired):
+        with pytest.raises(AgentRefused):
             authority.require("sentinel.policy", "mode", (False, False), env)
     for env in ({}, {"POOLHOUSE_NONINTERACTIVE": "1"}):
-        with pytest.raises(HumanRequired):
+        with pytest.raises(AgentRefused):
             authority.require("sentinel.policy", "mode", (False, False), env)
     assert not uses()
 
@@ -133,7 +133,7 @@ def test_a_delegated_quarantine_gate_grants_without_the_typed_confirmation(monke
     grant = human.mint_gated("sentinel.quarantine", "release", "q1", typed=typed, terminal=(False, False))
     grant.check("release", "q1")
     authority.set_state(["sentinel.quarantine"], authority.PERSON, by="lead")
-    with pytest.raises(HumanRequired):
+    with pytest.raises(AgentRefused):
         human.mint_gated("sentinel.quarantine", "release", "q1", typed=typed, terminal=(False, False))
 
 
@@ -153,10 +153,10 @@ def test_the_wired_limit_goes_through_the_administrator_dialog_for_a_delegated_l
     lead = {**LEAD, "POOLHOUSE_WORKSPACE_AGENT": authenticated.name}
     done, runs = wired_call(lead, "osascript")
     assert done.ok and runs[0][0] == "osascript" and "with administrator privileges" in runs[0][-1]
-    with pytest.raises(HumanRequired, match="needs a terminal"):
+    with pytest.raises(AgentRefused, match="needs a terminal"):
         wired_call(lead, "sudo")
     authority.set_state(["serve.wired-limit"], authority.PERSON, by="lead")
-    with pytest.raises(HumanRequired, match="for a person"):
+    with pytest.raises(AgentRefused, match="for a person"):
         wired_call(lead, "osascript")
 
 
@@ -184,8 +184,8 @@ def test_the_keystore_stays_a_person_s_whatever_the_registry_says(monkeypatch, c
 def test_the_gates_of_no_registry_name_survive_in_the_source():
     from pathlib import Path
     root = Path(authority.__file__).parent
-    pinned = {"net/cli.py": 'human.require_person("unlock")', "fleet/runtime_paths.py": 'person.require_person("display the daemon token")',
-              "sentinel/review.py": 'human.require_person("review")'}
+    pinned = {"net/cli.py": 'human.refuse_agent("unlock")', "fleet/runtime_paths.py": 'caller.refuse_agent("display the daemon token")',
+              "sentinel/review.py": 'human.refuse_agent("review")'}
     for name, call in pinned.items():
         assert call in (root / name).read_text()
     assert not re.search(r"authority\.require\([^)]*(keystore|passphrase|unlock)", (root / "net/cli.py").read_text())
@@ -215,8 +215,6 @@ def test_prod_makes_the_sensitive_gates_a_person_s_and_enforcement_strict_and_de
     assert prod["preflight"]["clear"] and prod["preflight"]["stranded"] == []
     assert authority.state_of("sentinel.quarantine", "alpha") == authority.PERSON
     assert authority.state_of("workspace.setup", "alpha") == authority.DELEGATED
-    monkeypatch.setattr(person, "is_terminal", lambda stream: True)
-    monkeypatch.setattr(person, "typed", lambda prompt, wait_s=0: "yes")
     dev = authority_cli.run(args("preset", "dev", project="alpha"), board.parent)
     assert dev["enforcement"]["mode"] == "open" and Tasks(board.parent).mode()["mode"] == "open"
     assert {row["state"] for row in authority.show("alpha")["gates"]} == {authority.DELEGATED}

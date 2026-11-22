@@ -35,9 +35,9 @@ if importlib.util.find_spec("jwt") is None:
              "which installs the github-app extra")
 
 from poolhouse import (
+    caller,
     credentials,
     home,
-    person,
     real_machine,
     runtime,
 )
@@ -445,7 +445,7 @@ class Preparation:
 def setup(args: argparse.Namespace) -> int:
     """Make the App, install it on the repository and record both."""
     prepared = getattr(args, "preparation", None)
-    if person.marked() and prepared is None:
+    if caller.marked() and prepared is None:
         prepared = Preparation.capture(args.repo)
     check = prepared.check if prepared is not None else None
     repo = prepared.source.repo if prepared is not None else valid_repo(args.repo or default_repo())
@@ -524,19 +524,16 @@ def publication(args: argparse.Namespace) -> int:
 
 # -- entry ---------------------------------------------------------------------------------
 
-def guard(args: argparse.Namespace, terminal: tuple[bool, bool] | None) -> None:
-    """Authenticate delegated setup; keep token and online checks at the person floor."""
-    tty = terminal or (person.is_terminal(sys.stdin), person.is_terminal(sys.stdout))
-    if args.cmd == "token":
-        tty = (tty[0], tty[1] or person.is_terminal(sys.stderr))
-    if args.cmd == "setup" and person.marked():
+def guard(args: argparse.Namespace) -> None:
+    """Decide at once: an agent's setup is captured from its own checkout; the token and the online check are refused to an agent."""
+    if args.cmd == "setup" and caller.marked():
         args.preparation = Preparation.capture(args.repo)
         return
-    if args.cmd in ("setup", "token") or getattr(args, "online", False):
-        person.require_person(f"scripts/agent-identity {args.cmd}", tty)
+    if args.cmd == "token" or getattr(args, "online", False):
+        caller.refuse_agent(f"scripts/agent-identity {args.cmd}", "it prints or spends the GitHub credential")
 
 
-def command(argv: list[str] | None = None, terminal: tuple[bool, bool] | None = None) -> int:
+def command(argv: list[str] | None = None) -> int:
     group = Group("agent-identity", __doc__.splitlines()[0])
     for name, fn in (("setup", setup), ("token", token), ("check", check), ("push-development", publication), ("publish-release", publication)):
         options = []
@@ -546,13 +543,13 @@ def command(argv: list[str] | None = None, terminal: tuple[bool, bool] | None = 
             options.append(flag("--repo", help="OWNER/NAME" + ("; defaults to the repository gh or origin names"
                                                               if name == "setup" else "")))
         if name == "check":
-            options.append(flag("--online", action="store_true", help="also ask GitHub (a person's, at a terminal)"))
+            options.append(flag("--online", action="store_true", help="also ask GitHub (refused to an agent)"))
         group.add(name, fn, help=fn.__doc__, options=options)
     args = group.parser().parse_args(argv)
     try:
-        guard(args, terminal)
+        guard(args)
         return args.run(args)
-    except (Failed, person.HumanRequired, credentials.CredentialError, real_machine.Refused, Busy) as exc:
+    except (Failed, caller.AgentRefused, credentials.CredentialError, real_machine.Refused, Busy) as exc:
         warn(f"agent-identity: {exc}")
         if "the owned Git transport cleanup is unconfirmed" in getattr(exc, "__notes__", []):
             warn("agent-identity: the owned Git transport cleanup is unconfirmed")

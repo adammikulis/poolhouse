@@ -11,7 +11,7 @@ from poolhouse import macauth
 from poolhouse.fleet.onboard import manifest as mf, sharing, transfer
 from poolhouse.fleet.onboard.devices import Devices
 from poolhouse.fleet.onboard.sharing import Licences
-from poolhouse.sentinel.human import HumanRequired, mint
+from poolhouse.sentinel.permit import AgentRefused, mint
 
 CHUNK = 65536
 PAYLOAD = os.urandom(CHUNK * 2 + 17)
@@ -151,10 +151,10 @@ def test_unknown_licence_status_is_treated_as_restricted(gated, forbids, level):
 
 def test_recording_a_licence_needs_a_person(world):
     entry = mf.Entry("m", 1, "0" * 64, CHUNK, ("0" * 64,), "model", "owner", "llama", URL)
-    with pytest.raises(HumanRequired):
+    with pytest.raises(AgentRefused):
         world.licences.record(mint("accept-licence", "llama", typed=lambda _p: "llama",
                                    terminal=(False, False), env={}), entry)
-    with pytest.raises(HumanRequired):
+    with pytest.raises(AgentRefused):
         world.licences.record(mint("export", "llama", typed=lambda _p: "llama",
                                    terminal=(True, True), env={}), entry)
     assert world.licences.accepted(entry) is None

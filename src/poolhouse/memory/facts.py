@@ -9,7 +9,7 @@ from typing import Any
 
 from poolhouse.guard.secrets import secrets_in
 from poolhouse.guard.untrusted import fold, injection_markers
-from poolhouse.sentinel.human import agent_may
+from poolhouse.sentinel.permit import agent_may
 from poolhouse.sentinel.redaction import redact
 
 __all__ = ["BUILD_BOUND", "KINDS", "MAX_FACTS", "MAX_FACT_CHARS", "SOURCES", "STALE_DAYS", "STATES", "Fact", "Refused",

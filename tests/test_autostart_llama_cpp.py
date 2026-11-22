@@ -9,10 +9,10 @@ import pytest
 from autostart_support import Recorder, environment, seams, staged
 
 from poolhouse import home
+from poolhouse.caller import AgentRefused
 from poolhouse.fleet.autostart_apply import install
 from poolhouse.fleet.autostart_manifest import ROLES, ManifestError, parse
 from poolhouse.fleet.autostart_verify import Context, problems
-from poolhouse.person import HumanRequired
 
 DAY = 24 * 3600
 
@@ -70,7 +70,7 @@ def test_a_manifest_whose_ensure_arguments_were_changed_does_not_parse_into_a_va
 def test_an_agent_is_refused_the_install(tmp_path, user):
     done = staged(tmp_path, roles=("llama-cpp-ensure",), platform="linux")
     recorder = Recorder()
-    with pytest.raises(HumanRequired):
+    with pytest.raises(AgentRefused):
         install(done.path, seams=seams(recorder, typed=lambda _p: done.manifest.id, env={"CLAUDECODE": "1"}))
     assert recorder.ran == [] and not (user / ".config" / "systemd").exists()
 

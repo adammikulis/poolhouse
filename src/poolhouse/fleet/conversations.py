@@ -7,7 +7,7 @@ import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
-from poolhouse import coding_actions, coding_workspace_state, requests
+from poolhouse import coding_actions, coding_workspace_state
 from poolhouse.client import completion
 from poolhouse.fleet import conversation_creation as creation, conversation_graph as graph
 from poolhouse.fleet.conversation_settings import checked
@@ -277,23 +277,8 @@ class Conversations:
             store.put_doc(f"coding:{execution.policy.conversation}", saved)
             return coding_actions.receipt(row)
 
-    def action_request(self, execution: coding_actions.Execution, action: coding_actions.Action, *, current):
-        """Attach approval initiation once and return fixed parent-only request inputs."""
-        with self.policy_guard(execution.policy, current=current) as store:
-            saved, run = _execution(store, execution)
-            row = _action(run, execution, action)
-            if row["state"] != "intent" or row["decision"]["action"] != "ask" or run["state"] != "active":
-                raise ValueError("This coding action cannot request another approval")
-            create = not row.get("request_started", False)
-            row["request_started"] = True
-            store.put_doc(f"coding:{execution.policy.conversation}", saved)
-            ask, cancellation = coding_actions.approval_request(run, execution, action)
-            return ask, cancellation, create
-
-    def start_action(self, execution: coding_actions.Execution, action: coding_actions.Action, *, current,
-                     approval: requests.Handle | None = None) -> bool:
-        """Consume exact approval and intent once before invoking a tool process."""
-        outcome = approval.outcome() if isinstance(approval, requests.Handle) else None
+    def start_action(self, execution: coding_actions.Execution, action: coding_actions.Action, *, current) -> bool:
+        """Consume the intent once, when the decision allows it, before invoking a tool process."""
         with self.policy_guard(execution.policy, current=current) as store:
             saved, run = _execution(store, execution)
             row = _action(run, execution, action)
@@ -302,21 +287,8 @@ class Conversations:
             if run["active_action"]:
                 raise ValueError("Another coding action is running or interrupted; it must not be repeated")
             if coding_actions.digest(saved.get("workspace")) != row["input"]:
-                raise ValueError("The coding workspace changed while this action waited")
-            if row["decision"]["action"] == "ask":
-                request = approval.request if isinstance(approval, requests.Handle) else None
-                ask, _cancel = coding_actions.approval_request(run, execution, action)
-                if not row.get("request_started") or request is None or not coding_actions.approval_matches(request, ask):
-                    raise ValueError("The approval does not belong to this coding action")
-                if outcome.state == "pending":
-                    return False
-                if not outcome.approved:
-                    known = outcome.state in ("expired", "cancelled") or (outcome.state == "denied" and outcome.choice == "deny")
-                    row["state"] = outcome.state if known else "interrupted"
-                    run["state"] = "blocked"
-                    store.put_doc(f"coding:{execution.policy.conversation}", saved)
-                    return False
-            elif row["decision"]["action"] != "allow" or approval is not None:
+                raise ValueError("The coding workspace changed before this action started")
+            if row["decision"]["action"] != "allow":
                 raise ValueError("This coding action has no valid execution decision")
             row["state"], run["active_action"] = "running", action.id
             store.put_doc(f"coding:{execution.policy.conversation}", saved)

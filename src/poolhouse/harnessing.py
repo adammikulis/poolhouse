@@ -25,11 +25,13 @@ from poolhouse import coding_policy, harnessid, home, hub, runtime
 from poolhouse.activity.source_snapshot import protected_roots, validate_storage
 from poolhouse.briefing import REQUIRED_BRIEFING
 from poolhouse.errors import Denied
-from poolhouse.harnesshook import WAIT_S
 from poolhouse.serve import chat_template, leases, profile, suggest, wired
 from poolhouse.serve.recent import note
 from poolhouse.serve.serving import Config, Serving, drafted, served, serving_params
 from poolhouse.windows_private import restrict as restrict_windows
+
+WAIT_S = 0.0
+"""Seconds a hook waits beyond its own thirty: none, because a hook decides a call at once and nothing waits for anyone."""
 
 __all__ = [
     "DEFAULT_CTX",
@@ -82,7 +84,7 @@ def parser(name: str, what: str, port: int, slots: int) -> argparse.ArgumentPars
                     help="conversations the server holds at once (default: %(default)s)")
     ap.add_argument("--ctx", type=int, default=DEFAULT_CTX,
                     help="tokens served in all, split across slots (default: largest safe fit for this device and model)")
-    ap.add_argument("--permissions", choices=coding_policy.PERMISSIONS, default=coding_policy.ASK_DANGEROUS,
+    ap.add_argument("--permissions", choices=coding_policy.PERMISSIONS, default=coding_policy.GUARDED,
                     help="coding changes allowed in the selected repository (default: %(default)s)")
     ap.add_argument("--execution-mode", choices=coding_policy.EXECUTION_MODES, default=coding_policy.EXECUTE,
                     help="plan inspects without applying changes; execute uses the selected permissions")
@@ -272,7 +274,7 @@ def session_files(cwd: Path) -> SessionFiles:
 def hook_command(event: str, *, policy: coding_policy.Policy, agent: str, root: Path, protect: list[str]) -> str:
     """The shell line a harness runs for a hook: absolute interpreter, role and paths fixed."""
     words = runtime.module_argv("poolhouse.harnesshook", root, event, "--permissions", policy.permissions, "--execution-mode", policy.execution_mode, "--agent", agent,
-             "--root", str(root), "--wait", str(int(WAIT_S)))
+             "--root", str(root))
     for each in protect:
         words += ["--protect", each]
     if os.name == "nt":

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import build_update, node_pool, person, runtime_store
+from poolhouse import build_update, caller, node_pool, runtime_store
 from poolhouse.build_update import Steps
 
 OLD, NEW = "a" * 40, "b" * 40
@@ -52,7 +52,7 @@ class Calls:
 
 @pytest.fixture(autouse=True)
 def _a_person_with_a_source_checkout(monkeypatch, tmp_path):
-    for name in person.AGENT_MARKERS:
+    for name in caller.AGENT_MARKERS:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.delenv(build_update.PIN_ENV, raising=False)
     monkeypatch.setattr(build_update, "checkout_of", lambda: tmp_path)

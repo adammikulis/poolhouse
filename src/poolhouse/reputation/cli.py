@@ -5,16 +5,15 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 from collections.abc import Callable
 from typing import Any
 
 from poolhouse import authority
+from poolhouse.caller import AgentRefused
 from poolhouse.command import Group, flag, option
 from poolhouse.log import say, warn
 from poolhouse.memory.vault import KeyUnavailable
-from poolhouse.person import HumanRequired
 from poolhouse.reputation import model
 from poolhouse.reputation.sealed import Tampered
 from poolhouse.reputation.store import Ledger, Standing
@@ -39,13 +38,11 @@ def _line(s: Standing) -> str:
 
 
 def _guarded(fn: Handler, *, writes: bool) -> Callable[[argparse.Namespace], int]:
-    """``fn`` run only for a person: an agent marker refuses it, and a command that writes
-    also needs a terminal on stdin and stdout."""
+    """``fn`` run when the `reputation.admin` gate lets this caller through: an agent is refused at once while the gate is held back."""
     def run(args: argparse.Namespace) -> int:
         try:
-            authority.require("reputation.admin", f"poolhouse-reputation {args.cmd}",
-                              (sys.stdin.isatty(), True if not writes else sys.stdout.isatty()))
-        except HumanRequired as exc:
+            authority.require("reputation.admin", f"poolhouse-reputation {args.cmd}")
+        except AgentRefused as exc:
             warn(str(exc))
             return DENIED
         ledger = Ledger()

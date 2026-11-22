@@ -15,7 +15,7 @@ from poolhouse.command_capture import captured
 from poolhouse.guard.untrusted import EXTERNAL
 from poolhouse.interventions import Base, Call, Context, Deny, Proceed, Verdict
 from poolhouse.net.cli import command as security_command
-from poolhouse.sentinel.human import agent_may
+from poolhouse.sentinel.permit import agent_may
 
 __all__ = ["APPROVE_FIRST", "CONFIRM", "FENCED", "HUMAN_ONLY", "PLAN_AND_GO", "READ",
            "READ_ONLY", "ROLE_NAMES", "HumanOnlyRail", "catalog", "refusal_for", "review_view"]

@@ -181,8 +181,8 @@ def persist_session(environment: dict) -> None:
 def person(value: dict, stage: str) -> int:
     """Hands a hook event to the person-record handlers; never blocks, so every failure is a warning."""
     try:
-        from poolhouse.workspace import person_hook, run_hook
-        outputs = [person_hook.on_event(value), run_hook.on_event(value)]
+        from poolhouse.workspace import person_hook
+        outputs = [person_hook.on_event(value)]
     except (ImportError, OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError) as error:
         warning(stage, error)
         return 0

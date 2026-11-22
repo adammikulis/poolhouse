@@ -28,8 +28,8 @@ def _decision(kind: str, reason: str) -> dict[str, Any]:
 
 def sdk_hooks(run: Run) -> dict[str, list[Any]]:
     """``PreToolUse`` and ``PostToolUse`` hook entries that put the interventions of ``run`` in
-    front of every tool the SDK runs. A `Deny` blocks; a `Confirm` (the taint rail's, after outside
-    text was read) is answered ``ask``, which puts the question to the person."""
+    front of every tool the SDK runs. A `Deny` or a `Confirm` (the taint rail's, after outside
+    text was read) blocks the call at once with the reason."""
     from claude_agent_sdk import HookMatcher
 
     async def before(data: dict[str, Any], _id: str | None, _ctx: Any) -> dict[str, Any]:
@@ -41,7 +41,7 @@ def sdk_hooks(run: Run) -> dict[str, list[Any]]:
                 return _decision("deny", f"Denied: {verdict.reason}")
             if isinstance(verdict, Confirm):
                 asks.append(verdict.question)
-        return _decision("ask", "; ".join(asks)) if asks else {}
+        return _decision("deny", "; ".join(asks)) if asks else {}
 
     async def after(data: dict[str, Any], _id: str | None, _ctx: Any) -> dict[str, Any]:
         name = str(data.get("tool_name") or "")
