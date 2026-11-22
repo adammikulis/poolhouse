@@ -11,7 +11,7 @@ import threading
 from pathlib import Path
 
 import pytest
-from model_approval import approved
+from model_pins import pinned
 from test_core import current_build, model  # noqa: F401 - the fixtures of the core's own tests
 from test_serve_admission import ServedBackend
 
@@ -49,7 +49,7 @@ def backend():
 def weights(tmp_path) -> Path:
     path = tmp_path / "pool-model.gguf"
     path.write_bytes(b"GGUF" + b"\x00" * 64)
-    approved(path)
+    pinned(path)
     return path
 
 

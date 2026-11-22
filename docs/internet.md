@@ -25,7 +25,7 @@ done = net.download(url, dest, net.Want(sha256=digest, require_digest=True))
 | Format | A `.gguf` must have GGUF magic, a known version and sane counts. A `.safetensors` must have a header that parses as JSON, known dtypes and tensor spans inside the data and not overlapping; tensors are never loaded. A PDF must have its header and a trailer, and is flagged for `/JavaScript`, `/Launch`, `/OpenAction` and embedded files. An archive is audited without extracting it: entry count, unpacked size, compression ratio, links and devices, absolute or climbing paths, and archives inside archives. Native-executable magic is refused for any data kind. Pickle suffixes (`.pt`, `.bin`, `.ckpt`, `.pkl`, ...) are refused as weights. A `text/html` answer for a binary kind is refused. | `net/sniff.py` |
 | Scan | Every available scanner looks at the file (below). Infected files are never kept. | `net/scan.py`, `net/scanners.py` |
 | Promotion | The file is moved to its final path in one step, and `<file>.provenance.json` is written beside it: URL, final URL, redirects, time, SHA-256, size, kind, a subset of response headers, the host, the scan line, warnings. The same row is appended to `net/downloads.jsonl`. | `net/provenance.py` |
-| Failure | A file that fails a check is handed to sentinel's quarantine store (kind `artifact`, moved to `.poolhouse-quarantine/`), sentinel raises its event, and the failure is recorded in the index with the reason. | `net/hold.py` |
+| Failure | A file that fails a check is deleted, never kept for anyone to release: the failure is raised to the caller, recorded in the index with the reason (outcome `held`, no path) and as the event `net.download.held`. A model pull whose bytes are not the sha256 the Hub lists is fetched once more before it fails. | `net/hold.py` |
 
 Nothing downloaded is executed, imported or loaded with `trust_remote_code` by the pipeline.
 llama.cpp builds and the Python runtime are unpacked only by the command the person ran to
@@ -79,7 +79,7 @@ reaches the internet on its own.
 | 11 | Web search | `web.py` | `ddgs` library (its own HTTP); SearXNG by urllib | SearXNG through the pipeline; titles and snippets cleaned | `ddgs` makes its own requests; its answers are untrusted text |
 | 12 | Page reading | `web.py`, `scrape/polite.py` | urllib with a resolve-then-connect check, trafilatura's own fetcher | pipeline (address pinned, every hop checked), hidden-content removal, fence, label | |
 | 13 | Rendered pages, screenshots | `web.py`, `scrape/browser.py` | Playwright navigates anywhere the page links | requests checked, downloads off | the browser resolves names itself, so a name that changes answer between the check and the load is not caught |
-| 14 | PDF and file download | `scrape/download.py`, `web.py` | stream, type and first-bytes check | pipeline: staging, format, scan, provenance, quarantine | |
+| 14 | PDF and file download | `scrape/download.py`, `web.py` | stream, type and first-bytes check | pipeline: staging, format, scan, provenance, deleted when a check fails | |
 | 15 | Document download for ingest | `media/download.py`, `ingest/run.py` | urllib stream | pipeline | |
 | 16 | Geocoding | `geo.py` | urllib | pipeline | place names leave the machine |
 | 17 | Hub and release lookups | `fleet/catalogue.py`, `fleet/weights.py`, `fleet/llama.py` | urllib | pipeline | |
@@ -89,7 +89,7 @@ reaches the internet on its own.
 | 21 | Fleet devices | `fleet/*` | signed, TLS-pinned LAN traffic | unchanged | not the internet |
 | 22 | Model servers and chat endpoints | `client/*`, `claude.py`, `bench/*` | urllib to the endpoint the person configured | unchanged | a remote provider's answers are model output |
 | 23 | Metrics address | `fleet/ui.py` | a page a signed-in person typed | unchanged | any address, behind a session |
-| 24 | Decider checkpoint files | `decide/fetch.py` | `hf_hub_download` (its own transport, hash checked after the file was kept) | pipeline: pinned size and SHA-256 required, laid out as the repository is, held when they differ | |
+| 24 | Decider checkpoint files | `decide/fetch.py` | `hf_hub_download` (its own transport, hash checked after the file was kept) | pipeline: pinned size and SHA-256 required, laid out as the repository is, deleted when they differ | |
 | 25 | Injection classifier model | `guard/classifier.py` | `snapshot_download` | pipeline, with the Hub's own size and SHA-256 per file | the Hub's hash is as good as the Hub |
 | 26 | Onboarding: joining, manifest and file transfer | `fleet/onboard/join_code.py`, `fleet/onboard/transfer.py` | own connections to a device | unchanged transport (the device's certificate is pinned), but a public address is refused at every connection (`fleet/onboard/lan.py`) | a device on a tailnet or VPN counts as this network |
 | 27 | Decide backend | `decide/logprob.py`, `decide/router.py` | `poolhouse.http` to `POOLHOUSE_DECIDE_URL` | loopback only unless the host is named in `POOLHOUSE_FETCH_ALLOW_HOSTS` | a decider sees every call it judges, so a remote one is an explicit choice |

@@ -26,7 +26,7 @@ from poolhouse.serve.broker import Ask, Broker, BrokerError
 from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.process import kill_process_tree
 from poolhouse.testing.canned import CannedServer, Turn, canned_binary
-from tests.model_approval import approved
+from tests.model_pins import pinned
 from tests.sandbox_kit import policy, seatbelt  # noqa: F401
 
 pytest_plugins = ["serve_node"]
@@ -124,7 +124,7 @@ def model(name: str):
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{name}.gguf"
     path.write_bytes(b"GGUF" + b"\x00" * 4096)
-    return approved(path)
+    return pinned(path)
 
 
 def ask(path, label: str) -> Ask:

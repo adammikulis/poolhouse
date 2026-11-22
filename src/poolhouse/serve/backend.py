@@ -21,7 +21,7 @@ from poolhouse import errors, home, serverkeys
 from poolhouse.client import families, wait_for_health
 from poolhouse.platform import end_child, process_group_kwargs
 from poolhouse.serve import confined as confinement, exit_guard, grant, kvcache, startup
-from poolhouse.serve.binary import child_env, require_binary
+from poolhouse.serve.binary import child_env, require_binary, vetted
 from poolhouse.serve.downloads import LLAMA_FLAGS, clean_env, unlisted_flag
 from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
 from poolhouse.serve.leases import recorded_servers
@@ -31,7 +31,6 @@ from poolhouse.serve.ports import DEFAULT_HOST, port_is_free, reclaim_port
 from poolhouse.serve.process import listens_on
 
 logger = logging.getLogger(__name__)
-
 
 LOGS_KEPT = 5
 """How many logs are kept for each server name and port, the newest first."""
@@ -481,16 +480,17 @@ def claim_port(spec: ServerSpec, lease: Lease) -> None:
 
 def launch(  # noqa: PLR0913 - the independent facts of one spawn; a bundle type would only rename them
         argv: list[str], lease: Lease, *, log_path: Path, timeout: float,
-        env: dict[str, str], cwd: str | None = None, policy: Policy | None = None) -> tuple[Any, str, float]:
+        env: dict[str, str], cwd: str | None = None, policy: Policy | None = None, binary: Path | None = None) -> tuple[Any, str, float]:
     """``(process, base_url, load seconds)`` for ``argv`` started and answering its health check.
 
-    The server stops with this process when the lease says ``stop_on_exit``. Raises
-    ``ServerFailed`` with the log's tail when it exits or never answers.
+    The server stops with this process when the lease says ``stop_on_exit``. Raises ``ServerFailed`` with the log's
+    tail when it exits or never answers, or when ``binary`` (the llama-server found) is replaced before the exec.
     """
     grant.require(lease, Lease)
     started_at = time.monotonic()
     policy = policy or default_policy()
-    policy.before_launch(argv)
+    if binary is not None and (now := vetted(binary, policy)) != binary:
+        raise ServerFailed(f"{binary} changed while the server was starting and {now} replaces it; nothing was started")
     with log_path.open("wb") as log_handle:
         process = subprocess.Popen(argv, stdout=log_handle, stderr=subprocess.STDOUT, env=policy.scrub_env(clean_env(env)),
                                    cwd=cwd, **process_group_kwargs())
@@ -834,8 +834,8 @@ class LlamaServerBackend(ServerBackend):
             argv, env = confined.argv, confined.env
         try:
             evidence = startup.current(evidence)
-            process, base_url, load_s = launch(argv, lease, log_path=log_path, timeout=timeout,
-                                               env=env, cwd=confined.cwd if confined else None, policy=self.policy)
+            process, base_url, load_s = launch(argv, lease, log_path=log_path, timeout=timeout, env=env,
+                                               cwd=confined.cwd if confined else None, policy=self.policy, binary=self.binary)
         except ServerFailed as failure:
             refused = confined.refusals() if confined else ""
             raise ServerFailed(f"{failure}\n{refused}" if refused else str(failure)) from failure
@@ -892,9 +892,9 @@ def fetched(ref: str | Path, what: str) -> str | Path:
     parts = ServerSpec.hf_parts(ref)
     if not parts:
         return ref
-    from poolhouse.hub import PERSON, fetch, pull
+    from poolhouse.hub import fetch, pull
 
     try:
-        return str(fetch(str(ref), trust=PERSON) if parts[1] else pull(str(ref), trust=PERSON))
+        return str(fetch(str(ref)) if parts[1] else pull(str(ref)))
     except (ValueError, OSError, RuntimeError) as exc:
         raise ServerFailed(f"could not fetch the {what} {ref}: {exc}") from exc

@@ -56,7 +56,7 @@ impl crate::node::Node {
     }
 
     /// Everything that waits for the person: the questions of the system's own prompt, then every open request they are to answer on their
-    /// phone (an agent's, a phone's addition or removal, a move of a session), each with the sentence to tell them.
+    /// phone (an agent's, a phone's addition or removal), each with the sentence to tell them.
     fn waiting(&self, now: u64) -> Vec<Value> {
         let mut out = self.firsts.waiting(now);
         out.extend(self.approvals.all().iter().filter(|a| a.pending()).map(|a| {

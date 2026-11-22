@@ -171,7 +171,7 @@ class _Meter:
         self.resumed = 0
         self.step = 0
         self.cancel: CancelToken | None = None
-        self.unvetted = ""
+        self.note = ""
 
     def send(self, phase: str, one: RemoteFile, got: int, *, force: bool = False) -> None:
         now = time.monotonic()
@@ -197,11 +197,11 @@ def _by_object_id(one: RemoteFile) -> Callable[[Path, dict[str, str]], str] | No
                                    else f"{one.path} differs from the object id the Hub lists")
 
 
-def _want(parsed: remote.Ref, one: RemoteFile, auth: str, unvetted: str = "") -> net.Want:
+def _want(parsed: remote.Ref, one: RemoteFile, auth: str, note: str = "") -> net.Want:
     return net.Want(kind=_kind(one.path), sha256=one.sha256, size=one.size, token=auth,
                     max_bytes=int(one.size * 1.001) + MARGIN if one.size else 1 << 41,
-                    purpose="model download", verify=_by_object_id(one),
-                    pin_notes=admission.notes(parsed.repo, parsed.commit, one.path, unvetted))
+                    purpose="model download", verify=_by_object_id(one), reputation=False,
+                    pin_notes=admission.notes(parsed.repo, parsed.commit, one.path, note))
 
 
 def _fetch(parsed: remote.Ref, one: RemoteFile, final: Path, meter: _Meter) -> None:
@@ -210,8 +210,14 @@ def _fetch(parsed: remote.Ref, one: RemoteFile, final: Path, meter: _Meter) -> N
     meter.resumed += _staged(url, final)
     hooks = net.Hooks(cancel=cancel, progress=lambda done, _t: meter.send("downloading", one, done),
                       phase=lambda name: meter.send(name, one, one.size, force=True))
+    want = _want(parsed, one, auth, meter.note)
     try:
-        net.download(url, final, _want(parsed, one, auth, meter.unvetted), pipeline=net.default(), hooks=hooks)
+        try:
+            net.download(url, final, want, pipeline=net.default(), hooks=hooks)
+        except net.ChecksumMismatch:
+            logger.warning("%s of %s: the bytes were not the sha256 %s lists; fetching it once more",
+                           one.path, parsed.repo, remote.endpoint_host())
+            net.download(url, final, want, pipeline=net.default(), hooks=hooks)
     except net.Truncated as exc:
         if cancel and cancel.cancelled:
             raise Cancelled(one.path) from exc
@@ -224,7 +230,8 @@ def _fetch(parsed: remote.Ref, one: RemoteFile, final: Path, meter: _Meter) -> N
         raise
     except net.ChecksumMismatch as exc:
         raise ChecksumMismatch(
-            f"{one.path}: sha256 differs from the one {remote.endpoint()} lists") from exc
+            f"{one.path}: sha256 differs from the one {remote.endpoint()} lists, twice; the bytes were deleted "
+            f"and nothing was kept") from exc
 
 
 def _staged(url: str, final: Path) -> int:
@@ -261,17 +268,14 @@ def _space(folder: Path, need: int) -> None:
 
 def pull(ref: str, dest: str | Path | None = None, on_progress: Report | None = None,
          cancel: CancelToken | None = None, *,
-         trust: admission.Trust = admission.PERSON) -> Path:
+         trust: admission.Trust | None = None) -> Path:
     """Download ``ref`` and return its GGUF file or safetensors folder, in the Hub cache's snapshot.
 
     ``dest`` writes plain files into that folder instead of the cache. Every shard of a sharded build comes
-    down; files already complete are kept. Raises `NotFound`, `GatedRepo` (with how to
-    get a token), `NotEnoughSpace`, `ChecksumMismatch` or `Cancelled`; a cancelled or
-    failed pull leaves ``<file>.part`` and the next pull of the same reference continues
-    it. Two processes pulling the same file take turns.
-
-    ``trust`` says what is fetched
-    without an answer; the default asks a person about anything but a shipped publisher (`admission.Trust`).
+    down; files already complete are kept. Raises `NotFound`, `GatedRepo`, `NotEnoughSpace`, `ChecksumMismatch`
+    (bytes that are not the listed sha256, deleted and fetched once more first), `DigestChanged`, `NotAllowed` or
+    `Cancelled`; a cancelled or failed pull leaves ``<file>.part`` for the next pull to continue. ``trust`` says who
+    asked (`admission.Trust`, the process's by default); nobody is asked.
     """
     run = _Run(on_progress, cancel, admission.checked(trust))
     run.check()
@@ -302,12 +306,24 @@ class _Run:
 
     report: Report | None = None
     cancel: CancelToken | None = None
-    trust: admission.Trust = admission.PERSON
+    trust: admission.Trust | None = None
 
     def check(self) -> None:
         """Cancel the actual next operation; trusted token properties may raise unchanged."""
         if self.cancel is not None and self.cancel.cancelled:
             raise Cancelled("The model transfer was cancelled")
+
+
+def _admitted(parsed: remote.Ref, chosen: list[RemoteFile], run: _Run) -> tuple[str, list[RemoteFile]]:
+    """What is unusual about ``chosen`` (`admission.admit`) and the files to fetch. When the Hub lists other bytes than
+    the file kept from this commit, the commit is listed once more in case the answer was a stale one; the second
+    answer is the one used, and if it says the same the refusal stands."""
+    try:
+        return admission.admit(parsed, chosen, run.trust, check=run.check), chosen
+    except admission.DigestChanged:
+        again = {f.path: f for f in remote.listing(parsed.repo, parsed.commit, check=run.check)}
+        fresh = [again.get(f.path, f) for f in chosen]
+        return admission.admit(parsed, fresh, run.trust, check=run.check), fresh
 
 
 def _bring(parsed: remote.Ref, chosen: list[RemoteFile], dest: str | Path | None,
@@ -321,11 +337,14 @@ def _bring(parsed: remote.Ref, chosen: list[RemoteFile], dest: str | Path | None
         if (relative.is_absolute() or ".." in relative.parts
                 or not (folder / relative.parent).resolve().is_relative_to(root)):
             raise ValueError(f"Unsafe model file path: {one.path}")
-    unvetted = admission.admit(parsed, chosen, run.trust, check=run.check)
+    note = ""
+    if any(not _present(t.final, t.file) for t in targets):
+        note, chosen = _admitted(parsed, chosen, run)
+        folder, targets = _targets(parsed, chosen, dest)
     run.check()
     _space(targets[0].final.parent, sum(_remaining(parsed, t) for t in targets))
     meter = _Meter(parsed.text, sum(f.size for f in chosen), len(chosen), run.report)
-    meter.cancel, meter.unvetted = run.cancel, unvetted
+    meter.cancel, meter.note = run.cancel, note
     for index, target in enumerate(targets):
         meter.index = index
         target.final.parent.mkdir(parents=True, exist_ok=True)
@@ -349,9 +368,9 @@ PICKLES = (".bin", ".pt", ".pth", ".ckpt", ".pkl", ".pickle", ".h5", ".msgpack",
 
 def snapshot(repo: str, revision: str = "main", on_progress: Report | None = None,
              cancel: CancelToken | None = None, *, dest: str | Path | None = None,
-             trust: admission.Trust = admission.PERSON) -> Path:
+             trust: admission.Trust | None = None) -> Path:
     """Every file of ``repo`` but its pickle-based weights, in the Hub cache (or ``dest``);
-    returns the snapshot folder. For a repository that holds safetensors, fetched under ``trust``."""
+    returns the snapshot folder. For a repository that holds safetensors, fetched as ``trust`` says (`pull`)."""
     run = _Run(on_progress, cancel, trust=admission.checked(trust))
     run.check()
     parsed = remote.resolve(remote.Ref(repo, "", "", revision), check=run.check)
@@ -367,12 +386,10 @@ def _snapshot_files(parsed: remote.Ref, files: list[RemoteFile], dest: str | Pat
     return _bring(parsed, chosen, dest, run)
 
 
-def base_folder(base: str, *, trust: admission.Trust = admission.PERSON) -> str:
-    """A base model to train from, as a folder: ``base`` when it is one on this machine (a person is asked first about
-    a pulled one the pull did not ask about, `admission.vetted`), else the snapshot of the repository
-    (``hf:owner/repo`` or ``owner/repo``) pulled under ``trust``."""
+def base_folder(base: str, *, trust: admission.Trust | None = None) -> str:
+    """A base model to train from, as a folder: ``base`` when it is one on this machine, else the snapshot of the
+    repository (``hf:owner/repo`` or ``owner/repo``) pulled as ``trust`` says (`pull`)."""
     if Path(base).expanduser().is_dir():
-        admission.vetted(Path(base).expanduser())
         return str(Path(base).expanduser())
     return str(snapshot(base.removeprefix("hf:"), trust=trust))
 

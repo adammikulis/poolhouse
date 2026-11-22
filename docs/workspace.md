@@ -32,9 +32,12 @@ A person runs nothing to connect a coding agent: nobody mints, copies or pastes 
 
 The token is a bearer secret kept in `<state>/client/<board>/<name>.token` (mode 0600 in a 0700 directory; the node
 state is `~/.poolhouse/node`, moved by `POOLHOUSE_HOME`). The node knows a process by the lineage that registered
-it: a main session registers again, and its token spends a grant, only from the terminal or program it was
-registered from. A person moves a session to another terminal with `poolhouse-workspace rebind HARNESS SESSION`.
-What the lineage stops, and what it does not, is in [docs/node.md](node.md), "Identity".
+it: a main session registers from any process (one whose terminal ended moves to the process that registers it,
+a live sibling gets a token of its own), and its token spends a grant only from the terminal or program it was
+registered from while that one runs. A client whose token the node does not know registers again by itself;
+`poolhouse-workspace rebind HARNESS SESSION` is an optional command that takes a session over at once. Nothing asks
+a person to type, tap or start a new session. What the lineage stops, and what it does not, is in
+[docs/node.md](node.md), "Identity".
 
 On WSL, keep the state on the Linux filesystem under the WSL home directory. The client refuses token files on
 Windows-mounted paths such as `/mnt/c`: `chmod` there does not establish the Windows account permissions the check
@@ -119,7 +122,7 @@ places of a project ([docs/node.md](node.md), "Standing grants", has the registr
 | `revoke-grant ID` | a person at a terminal: ends a grant at once |
 | `grants-setup [--session NAME]` | a person at a terminal, once: approves the grants the lead sessions of this board need (`task_authority`, `shard_call`, and `note_verify` for their subagents), 30 days each; enrols the person's key if the node holds none |
 | `person-proof`, `person-enroll --proof TEXT`, `person-unenroll --key FINGERPRINT` | a person at a terminal: carry a key to another device, put it on a node, take one off |
-| `rebind HARNESS SESSION` | a person at a terminal: moves a main session to the terminal the command runs in |
+| `rebind HARNESS SESSION` | optional, any terminal: takes a main session over now, to the terminal the command runs in (nothing is signed or tapped) |
 
 Each command a person runs shows what it will sign and signs only after a typed `yes` on the terminal device. A
 refusal for want of a grant names the action, the resource, the session and the device, so the person can sign
@@ -164,7 +167,7 @@ untrusted-input surface first and a convenience second.
    `private-terms` in the workspace folder, one term per line, never committed) refuses the write with a message
    naming the category and not the match. A message or a note over its size limit is refused the same way.
 6. Every sender is a session with its own token. The node keeps only the SHA-256 of the token and the lineage it
-   was registered from; a session's grants are held by its name and spent only from that lineage. A session is
+   was registered from; a session's grants are held by its name and spent only from the lineage that runs it. A session is
    ended by `retire` (its tokens stop working, its claims are released) or by the person's `revoke-grant` for what
    it was allowed.
 7. Text is screened before it reaches a model. Markers come in two tiers:
@@ -220,7 +223,7 @@ untrusted-input surface first and a convenience second.
 ### What this does not do
 
 * It is not a boundary against a hostile process of the same user. Such a process can read a token from its file
-  and use it from inside the lineage that registered it, or sign with the person's key if it can answer the key's
+  and use it from inside the lineage that registered it (or, once that lineage has ended, from its own), or sign with the person's key if it can answer the key's
   question (docs/node.md, "What the grants protect against, and what they do not").
 * It does not stop a model from obeying text it was shown. It labels, fences and screens it.
 * Pattern screens are heuristics and miss paraphrase; holding is for what they do catch.

@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 
 use crate::error::{Error, Result};
 use crate::fsutil::{hex, random_hex, sha256_hex, write_atomic};
-use crate::lineage::{shares, Anchor, ENFORCED};
+use crate::lineage::{running, shares, Anchor, ENFORCED};
 
 pub const SHORT: usize = 6;
 pub const MAX_IDENTITIES: usize = 10_000;
@@ -59,7 +59,8 @@ pub struct Ident {
     pub model_state: ModelState,
     pub harness: String,
     pub retired: bool,
-    /// Why a retired session ended: empty or ``done`` for an ordinary end, ``revoked`` or ``forged`` for a cause.
+    /// Why a retired session ended: empty, ``done`` or ``idle`` for an ordinary end (the session comes back when it registers), ``revoked`` or
+    /// ``forged`` for a cause (a block its parent placed on purpose: it does not come back).
     #[serde(default)]
     pub retired_reason: String,
     /// Whether this is the person's own session, made by `register_person`; no claim sets it and no other device's entry carries it.
@@ -320,11 +321,10 @@ impl Registry {
         self.names.is_empty()
     }
 
-    /// The unique name of this session, recorded so no later session takes the same one. The
-    /// same session always gets the same name back (``true`` when it is new), to a process of the lineage it was
-    /// registered from only (``proven``: the request carried a valid token of that name); a session whose short suffix
-    /// collides with another's gets a longer one.
-    pub fn assign(&mut self, who: Who, model: &str, state: ModelState, now_ms: u64, lineage: &[Anchor], proven: bool) -> Result<(String, bool)> {
+    /// The unique name of this session, recorded so no later session takes the same one. The same session always gets the same name back
+    /// (`Assigned::created` is true when it is new), from whichever process registers it (`admit`); a session whose short suffix collides
+    /// with another's gets a longer one.
+    pub fn assign(&mut self, who: Who, model: &str, state: ModelState, now_ms: u64, lineage: &[Anchor]) -> Result<Assigned> {
         let Who { harness, session, parent } = who;
         if session.is_empty() || harness.is_empty() {
             return Err(Error::Denied("a session name needs the native harness and session id".into()));
@@ -333,8 +333,8 @@ impl Registry {
         let model = clean_model(model)?;
         let known = self.names.iter().find(|(_, i)| i.digest == full).map(|(n, _)| n.clone());
         if let Some(name) = known {
-            self.admit(&name, (parent, lineage, proven), now_ms)?;
-            return Ok((name, false));
+            let moved = self.admit(&name, (parent, lineage), now_ms)?;
+            return Ok(Assigned { name, created: false, moved });
         }
         if self.names.len() >= MAX_IDENTITIES {
             return Err(crate::limits::refuse("this board holds as many sessions as it may", MAX_IDENTITIES, "MAX_IDENTITIES", "identity.rs"));
@@ -347,66 +347,47 @@ impl Registry {
             retired: false, retired_reason: String::new(), person: false, seen_ms: now_ms, lineage: lineage.to_vec(), incarnation: random_hex(16)?, inbox_read: BTreeMap::new(),
         });
         self.save()?;
-        Ok((name, true))
+        Ok(Assigned { name, created: true, moved: false })
     }
 
-    /// Whether the session ``name`` may be registered again by a process of ``lineage`` under ``parent``: a retired subagent or a main
-    /// session retired for cause never; a main session that ended (``done``) or was retired idle comes back to life from any readable
-    /// lineage and is bound to it; a subagent only under its own parent, a live main session only from the lineage it was registered from. A main
-    /// session with no lineage recorded (registered before lineages were kept, or by a process that could not be read) is taken
-    /// by a process that presents a token of that name (``proven``), and by nobody else until a person moves it.
-    fn admit(&mut self, name: &str, from: (&str, &[Anchor], bool), now_ms: u64) -> Result<()> {
+    /// Register the session ``name`` again from ``lineage`` under ``parent``; true when the session moved to ``lineage``. A registration of a known session never
+    /// fails for the process it comes from, since a person has nothing to do about that:
+    ///
+    /// - a session that ended (``done``) or was retired idle comes back to life, from wherever its harness runs it now, under a new incarnation
+    ///   and bound to the lineage that registers it (a subagent comes back under its own parent only);
+    /// - a main session registered from a lineage none of whose processes runs any more, or from none that was recorded, moves to the lineage
+    ///   registering it: a terminal that was closed, a session resumed in another, a daemon;
+    /// - a main session registered from a lineage that still runs is not moved by a process of another: that one is a live sibling, it gets a
+    ///   token bound to its own lineage, and the session's grants stay with the lineage that runs it (`grants::lineage_allows`);
+    /// - a request whose process could not be read registers and moves nothing: its token spends no grant.
+    ///
+    /// What stays refused is a block placed on purpose: a session its parent ended for cause (``revoked`` or ``forged``).
+    fn admit(&mut self, name: &str, (parent, lineage): (&str, &[Anchor]), now_ms: u64) -> Result<bool> {
         let known = self.names.get(name).expect("found above");
-        let back = known.retired;
-        if back && !(known.parent.is_empty() && matches!(known.retired_reason.as_str(), "" | "done" | "idle")) {
-            return Err(Error::Denied(format!("{name} was retired; its session cannot register again")));
-        }
-        if back && from.0.is_empty() && (!ENFORCED || !from.1.is_empty()) {
-            // An ended main session holds nothing: its tokens ended, its leases were released and a grant is spent only by a token bound to the
-            // lineage that registers it, so it comes back from wherever its harness runs it now (a session resumed in another terminal) and is
-            // bound to that lineage from now on. A live session is not moved this way, and a lineage the node could not read does not count.
-            let incarnation = random_hex(16)?;
-            let known = self.names.get_mut(name).expect("found above");
-            (known.retired, known.retired_reason, known.seen_ms) = (false, String::new(), now_ms);
-            known.incarnation = incarnation;
-            if ENFORCED {
-                known.lineage = from.1.to_vec();
-            }
-            return self.save();
-        }
-        self.admit_from(name, from)?;
-        if back {
-            let incarnation = random_hex(16)?;
-            let known = self.names.get_mut(name).expect("found above");
-            (known.retired, known.retired_reason, known.seen_ms) = (false, String::new(), now_ms);
-            known.incarnation = incarnation;
-            self.save()?;
-        }
-        Ok(())
-    }
-
-    fn admit_from(&mut self, name: &str, (parent, lineage, proven): (&str, &[Anchor], bool)) -> Result<()> {
-        let known = self.names.get_mut(name).expect("found above");
         if known.parent != parent {
             return Err(Error::Denied(format!("{name} is already registered under another parent")));
         }
-        if !parent.is_empty() || !ENFORCED {
-            return Ok(());
+        let (back, cause) = (known.retired, known.retired_reason.clone());
+        if back && matches!(cause.as_str(), "revoked" | "forged") {
+            return Err(Error::Denied(format!("{name} was ended for cause ({cause}) by its parent and stays ended: a block placed on purpose is not lifted by registering again. \
+                                              Its parent starts a new subagent, and a new session of a harness has a name of its own")));
         }
-        if known.lineage.is_empty() {
-            if !proven || lineage.is_empty() {
-                return Err(Error::Denied("this session has no process lineage recorded, so a process cannot be told from the one that registered it; \
-                                          a process that holds one of its tokens registers it again, or a person moves it to the terminal where it \
-                                          runs now with `poolhouse-workspace rebind HARNESS SESSION`, which ends the tokens it holds".into()));
-            }
+        let from_here = ENFORCED && !lineage.is_empty();
+        let moves = !back && parent.is_empty() && from_here && !shares(&known.lineage, lineage) && !running(&known.lineage);
+        if !back && !moves {
+            return Ok(false);
+        }
+        let incarnation = random_hex(16)?;
+        let known = self.names.get_mut(name).expect("found above");
+        if back {
+            (known.retired, known.retired_reason, known.seen_ms) = (false, String::new(), now_ms);
+        }
+        if from_here {
             known.lineage = lineage.to_vec();
-            return self.save();
         }
-        if shares(&known.lineage, lineage) {
-            return Ok(());
-        }
-        Err(Error::Denied("this session is registered from another process lineage (another terminal or program); a person moves it to the terminal \
-                           where it runs now with `poolhouse-workspace rebind HARNESS SESSION`, which ends the tokens it holds".into()))
+        known.incarnation = incarnation;
+        self.save()?;
+        Ok(moves)
     }
 
     /// Move the main session ``name`` to ``lineage``: it is registered from there from now on.
@@ -420,6 +401,15 @@ impl Registry {
         ident.incarnation = incarnation;
         self.save()
     }
+}
+
+/// What `Registry::assign` did for a registration.
+pub struct Assigned {
+    pub name: String,
+    /// The session had no name before.
+    pub created: bool,
+    /// The session was registered before and moved to the lineage that registered it now: the one it had has ended or was never known.
+    pub moved: bool,
 }
 
 /// The native session a registration names: its harness, its id and the parent it registers under (empty for a main session).
@@ -438,7 +428,7 @@ pub struct Holder {
 }
 
 /// A token as the file keeps it: whose it is, when in order of issue it was made, and the lineage it was registered from
-/// (empty when none was recorded: such a token spends no grant until a person moves its session).
+/// (empty when none was recorded: such a token spends no grant, and the session registers again from a readable process).
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 struct Held {
     #[serde(flatten)]
@@ -470,7 +460,7 @@ impl Tokens {
 
     /// A fresh random token for ``board``/``name`` bound to ``lineage``, returned once and never stored. A name holds at most a
     /// few tokens; past them the oldest goes, except the first the name was given, which only the end of the session (or a
-    /// person's `rebind`) takes away. A node holds `MOST_TOKENS` at most.
+    /// move of the session, `rebind`) takes away. A node holds `MOST_TOKENS` at most.
     pub fn issue(&mut self, board: &str, name: &str, lineage: &[Anchor]) -> Result<String> {
         let holder = Holder { board: board.into(), name: name.into() };
         let mut same: Vec<(u64, String)> = self.held.iter().filter(|(_, h)| h.holder == holder).map(|(k, h)| (h.seq, k.clone())).collect();
@@ -498,6 +488,12 @@ impl Tokens {
             write_atomic(&self.path, &serde_json::to_vec(&self.held)?)?;
         }
         Ok(gone)
+    }
+
+    /// Drop the tokens of ``board``/``name`` that were registered from a lineage no process of which runs (or none was recorded): the tokens of
+    /// a session that moved off a lineage that ended. A token of a lineage that still runs stays. How many were dropped.
+    pub fn revoke_unrunning(&mut self, board: &str, name: &str) -> Result<usize> {
+        self.revoke_where_held(&|h, lineage| h.board == board && h.name == name && !running(lineage))
     }
 
     /// Who ``token`` belongs to.
@@ -530,8 +526,12 @@ impl Tokens {
 
     /// Drop every token whose holder ``gone`` names; how many there were.
     pub fn revoke_where(&mut self, gone: &dyn Fn(&Holder) -> bool) -> Result<usize> {
+        self.revoke_where_held(&|holder, _| gone(holder))
+    }
+
+    fn revoke_where_held(&mut self, gone: &dyn Fn(&Holder, &[Anchor]) -> bool) -> Result<usize> {
         let before = self.held.len();
-        self.held.retain(|_, h| !gone(&h.holder));
+        self.held.retain(|_, h| !gone(&h.holder, &h.lineage));
         let ended = before - self.held.len();
         if ended > 0 {
             write_atomic(&self.path, &serde_json::to_vec(&self.held)?)?;

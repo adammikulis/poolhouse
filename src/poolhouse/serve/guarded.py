@@ -1,5 +1,5 @@
 """What the Broker asks sentinel before a model server starts: a quarantined model or server is
-refused, a pinned model must still hash to its pin, and an unpinned model waits for a person."""
+refused, a pinned model must still hash to its pin, and an unpinned model is pinned as it is."""
 
 from __future__ import annotations
 
@@ -12,9 +12,6 @@ from typing import Any
 from poolhouse import sentinel
 from poolhouse.files import sha256_file
 from poolhouse.fleet.onboard.trusted import TrustedLists
-from poolhouse.hub import admission
-from poolhouse.requests import approvals
-from poolhouse.requests.model import shown
 from poolhouse.sentinel import Sentinel
 from poolhouse.sentinel.adapters import broker_listener, serve_hooks
 from poolhouse.sentinel.events import Event, Severity
@@ -38,8 +35,8 @@ class SentinelRefused(ServerFailed):
 
 _HOOKED: weakref.WeakKeyDictionary[Sentinel, set[str]] = weakref.WeakKeyDictionary()
 
-VOUCHING = frozenset({"pull", "approved", "manifest", "pinned-digest"})
-"""The pin sources whose bytes another file may be matched to: a download, a person, a signed list."""
+VOUCHING = frozenset({"pull", "manifest", "pinned-digest"})
+"""The pin sources whose bytes another file may be matched to: a download or a signed list."""
 
 
 def file_of(model: object) -> Path | None:
@@ -162,29 +159,15 @@ def _by_manifest(node: Sentinel, path: Path, digest: str, name: str) -> str:
                           f"quarantined by sentinel; the file was moved aside")
 
 
-def _first_use(node: Sentinel, path: Path, digest: str, vouched: bool) -> str:
-    """The source of the pin for a file with none: a signed list that names it, bytes already pinned
-    elsewhere (a pin a download, a person or a signed list made), or a person's approval of this path
-    and these bytes. Otherwise a person is asked and `SentinelRefused` is raised, in every mode."""
+def _first_use(node: Sentinel, digest: str, vouched: bool) -> str:
+    """The source of the pin for a file with none: a signed list that names it, bytes already pinned elsewhere (a pin a
+    download or a signed list made), else the file as it is now, which is trusted on first use and checked against this
+    pin from then on. Nobody is asked."""
     if vouched:
         return "manifest"
-    if (held := node.manifest.pin_with_digest(digest)) is not None and held.source in VOUCHING and not held.unvetted:
+    if (held := node.manifest.pin_with_digest(digest)) is not None and held.source in VOUCHING:
         return "pinned-digest"
-    sentence = (f"{path.name} was not downloaded by Poolhouse and Poolhouse has not seen it before. "
-                f"It is {shown(str(path), 'subject')} (sha256 {digest[:12]}). "
-                f"Models can hide behaviour that tests do not show. Use it anyway?")
-    if approvals.approved("model_file", path.name, sentence, path=str(path), sha256=digest):
-        return "approved"
-    raise SentinelRefused(approvals.ask("model_file", path.name, sentence, path=str(path), sha256=digest))
-
-
-def _vetted(path: Path) -> None:
-    """Put a pulled model (a file, or a folder of them) to a person when its pull did not (`Pin.unvetted`):
-    `SentinelRefused` until a person approved the repository at that commit."""
-    try:
-        admission.vetted(path)
-    except admission.NotApproved as exc:
-        raise SentinelRefused(str(exc)) from None
+    return "first-use"
 
 
 def parts_of(spec: Any) -> tuple[object, ...]:
@@ -197,10 +180,8 @@ def parts_of(spec: Any) -> tuple[object, ...]:
 def verify(model: object, *, state_file: Path, stop: Callable[[int], Any]) -> str:
     """Refuse to start a server for ``model`` when sentinel holds it, its bytes differ from
     the pin, or a signed manifest this machine accepted lists other bytes for it. A model with
-    no pin is pinned only when a signed list vouches for it, its bytes are already pinned or a
-    person approved it. A model poolhouse pulled has its pin from the pull; when the pull did not
-    ask what a person would have been asked (`Pin.unvetted`), a person is asked before the first
-    serve. Returns ``verified by manifest serial N`` when a manifest vouched for the file, else ''."""
+    no pin is pinned when a signed list vouches for it, when its bytes are already pinned, or as it is on
+    first use. A model poolhouse pulled has its pin from the pull. Returns ``verified by manifest serial N`` when a manifest vouched for the file, else ''."""
     node = sentinel.armed()
     register(node, state_file, stop)
     if node.mode == sentinel.Mode.OFF:
@@ -209,7 +190,6 @@ def verify(model: object, *, state_file: Path, stop: Callable[[int], Any]) -> st
         raise SentinelRefused(why)
     path = file_of(model)
     if path is None:
-        _vetted(Path(str(model)).expanduser())
         return ""
     name = path.name
     pin = node.manifest.pin_of(path)
@@ -218,7 +198,7 @@ def verify(model: object, *, state_file: Path, stop: Callable[[int], Any]) -> st
         path = path.resolve() if path.is_symlink() else path
         digest = sha256_file(path)
         said = _by_manifest(node, path, digest, name)
-        source = _first_use(node, path, digest, bool(said))
+        source = _first_use(node, digest, bool(said))
         node.manifest.pin_verified(path, "model", digest, source=source, digest_from="computed")
         logger.warning("%s was not pulled by poolhouse and had no pin: pinned as %s (its bytes are "
                        "trusted as they are now)", name, source)
@@ -228,6 +208,4 @@ def verify(model: object, *, state_file: Path, stop: Callable[[int], Any]) -> st
     if not node.verify_before_load(path, cached=True):
         raise SentinelRefused(f"{name} does not match its pin and is quarantined by "
                               f"sentinel; the file was moved aside")
-    if pin.unvetted:
-        _vetted(path)
     return _by_manifest(node, Path(pin.path), pin.sha256, name)

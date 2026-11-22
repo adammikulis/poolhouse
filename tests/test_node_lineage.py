@@ -1,6 +1,7 @@
-"""Which process registered a main session, against a real node: another terminal session cannot register as it, a refusal gives
-out and ends nothing, a session holds a few tokens and is refused more, and a person moves it to their own terminal with a
-key's signature and a typed yes."""
+"""Which process registered a main session, against a real node: any process registers it (a live sibling gets a token of its own and
+cannot spend the grants of the terminal that runs the session; a terminal whose processes ended hands it to the next one), a session holds
+a few tokens, and a client whose token the node does not know registers again by itself and asks once more, with nobody asked to do
+anything."""
 
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ import sys
 import termios
 
 import pytest
-from node_kit import SRC, STRIPPED, TYPED
+from node_kit import SRC, STRIPPED
 
 from poolhouse.board import credentials, grants as board_grants, session as board_session
 from poolhouse.board.client import Denied
@@ -64,14 +65,14 @@ def lead(workspace_node):
     return workspace_node
 
 
-def test_another_terminal_session_does_not_get_a_token_for_a_registered_main_session(lead):
+def test_another_terminal_registers_a_registered_main_session_and_the_first_keeps_it(lead):
     node = lead
     same = registered_by_a_child(node, "lead", own_session=False)
     assert same["name"] == node.lead.name, "a process started from the registrant's own terminal is the same lineage"
     apart = registered_by_a_child(node, "lead", own_session=True)
-    assert "token" not in apart and apart["code"] == "denied" and "another process lineage" in apart["refused"] and "rebind" in apart["refused"], apart
-    assert node.lead.token not in apart["refused"] and same["token"] not in apart["refused"]
-    assert node.session(node.lead).whoami().name == node.lead.name, "the refusal ended nothing"
+    assert apart["name"] == node.lead.name and "token" in apart and "refused" not in apart, f"another terminal registers the session too: {apart}"
+    assert node.session(node.lead).whoami().name == node.lead.name, "and ended nothing the first held"
+    assert board_session.Session(node.client, node.board, apart["token"], apart["name"]).whoami().name == node.lead.name
     stranger = registered_by_a_child(node, "someone-else", own_session=True)
     assert stranger["name"] != node.lead.name and "token" in stranger, "a session nobody registered yet registers from anywhere"
 
@@ -94,7 +95,7 @@ SPEND = (
 )
 
 
-def test_a_token_read_from_its_file_in_another_terminal_reads_and_spends_no_grant(lead):
+def test_a_token_read_from_its_file_in_another_live_terminal_reads_and_spends_no_grant(lead):
     node = lead
     node.allow(node.lead, "task_authority")
     args = (str(node.state), node.board, node.lead.name)
@@ -102,12 +103,16 @@ def test_a_token_read_from_its_file_in_another_terminal_reads_and_spends_no_gran
     assert here == {"whoami": node.lead.name, "spent": True}, "the terminal that registered the session spends its grant"
     apart = json.loads(child_output(SPEND, *args, node=node, own_terminal=True))
     assert apart["whoami"] == node.lead.name, "a process of another terminal that read the file is the session for reading"
-    assert "spent" not in apart and "rebind" in apart["refused"] and apart["hint"] is None, apart
+    assert "spent" not in apart and apart["hint"] is None, apart
+    said = apart["refused"]
+    assert "still running" in said and node.lead.name in said, said
+    for word in ("rebind", "phone", "typed", "new session"):
+        assert word not in said, (word, said)
     uses = [e for e in board_grants.log(node.session(node.lead)) if e["op"] == "use"]
     assert len(uses) == 1, "only the use from the registering terminal was written"
 
 
-def test_a_session_registered_before_presents_its_own_token_when_it_registers_again_and_falls_back_when_that_token_is_gone(lead, monkeypatch):
+def test_a_client_registers_a_main_session_without_a_token_and_a_subagent_with_its_parents(lead, monkeypatch):
     node = lead
     sent: list[str] = []
     real = node.client.call
@@ -119,15 +124,12 @@ def test_a_session_registered_before_presents_its_own_token_when_it_registers_ag
 
     monkeypatch.setattr(node.client, "call", spy)
     native = board_session.Native("claude-sonnet-5-5", "claude-code", "lead")
-    again = board_session.register(node.client, node.board, native)
-    assert again.name == node.lead.name and sent == [node.lead.token], "the token the client keeps goes with the registration"
-    sent.clear()
     credentials.store(node.state, node.board, node.lead.name, "0" * 64)
-    third = board_session.register(node.client, node.board, native)
-    assert third.name == node.lead.name and sent == ["0" * 64, ""], "a token the node no longer holds is tried once and the session registers without it"
+    again = board_session.register(node.client, node.board, native)
+    assert again.name == node.lead.name and sent == [""], "no token goes with the registration of a main session, so a stale one in the file is no obstacle"
     sent.clear()
-    kid = board_session.register(node.client, node.board, board_session.Native("claude-sonnet-5-5", "claude-code", "kid"), third.token)
-    assert kid.parent == node.lead.name and sent == [third.token], "a parent's token is what a subagent presents"
+    kid = board_session.register(node.client, node.board, board_session.Native("claude-sonnet-5-5", "claude-code", "kid"), again.token)
+    assert kid.parent == node.lead.name and sent == [again.token], "a parent's token is what a subagent presents"
 
 
 def test_a_session_holds_eight_tokens_and_past_them_the_oldest_but_the_first_goes(lead):
@@ -140,92 +142,80 @@ def test_a_session_holds_eight_tokens_and_past_them_the_oldest_but_the_first_goe
     tokens = [node.lead.token, *(board_session.register(node.client, node.board, native).token for _ in range(7))]
     assert [whoami(t) for t in tokens] == [node.lead.name] * 8
     for _ in range(3):
-        assert registered_by_a_child(node, "lead", own_session=True)["code"] == "denied"
-    assert [whoami(t) for t in tokens] == [node.lead.name] * 8, "refused registrations ended nothing"
+        assert registered_by_a_child(node, "lead", own_session=True)["name"] == node.lead.name
+    assert whoami(tokens[0]) == node.lead.name, "the first token is never the one that goes"
     ninth = board_session.register(node.client, node.board, native).token
     assert whoami(tokens[0]) == whoami(ninth) == node.lead.name, "the first token stays"
     with pytest.raises(Denied):
         whoami(tokens[1])
-    assert [whoami(t) for t in tokens[2:]] == [node.lead.name] * 6
 
 
-def test_a_move_signed_in_another_terminal_moves_nothing(lead):
+EXIT = (
+    "import json, sys\n"
+    "from pathlib import Path\n"
+    "from poolhouse.board import session\n"
+    "from poolhouse.board.client import Client\n"
+    "state, board, native = Path(sys.argv[1]), sys.argv[2], sys.argv[3]\n"
+    "got = session.register(Client(state), board, session.Native('claude-sonnet-5-5', 'claude-code', native))\n"
+    "print(json.dumps({'name': got.name, 'token': got.token}))\n"
+)
+
+
+def test_a_session_registered_from_a_terminal_that_has_ended_moves_to_the_process_that_registers_it_next(workspace_node):
+    node = workspace_node
+    first = json.loads(child_output(EXIT, str(node.state), node.board, "walker", node=node, own_terminal=True))
+    # the terminal's only process ended with the command: nothing of the lineage the session was registered from runs
+    second = json.loads(child_output(EXIT, str(node.state), node.board, "walker", node=node, own_terminal=True))
+    assert second["name"] == first["name"], "the session resumed in another terminal is the session it was"
+    with pytest.raises(Denied, match="the token is not known"):
+        board_session.Session(node.client, node.board, first["token"], first["name"]).whoami()
+    assert board_session.Session(node.client, node.board, second["token"], second["name"]).whoami().name == first["name"]
+    # a person is asked for nothing: this test's own process registers it too, and it is simply a sibling of a lineage that has ended
+    mine = board_session.register(node.client, node.board, board_session.Native("claude-sonnet-5-5", "claude-code", "walker"))
+    assert mine.name == first["name"]
+
+
+def test_a_command_whose_token_the_node_does_not_know_registers_its_session_again_and_runs(lead):
     node = lead
-    key = node.keep_person_key(node.lead)
-    code = (
-        "import json, sys\n"
-        "from pathlib import Path\n"
-        "from poolhouse.board import grants\n"
-        "from poolhouse.board.client import Client\n"
-        "print(json.dumps(grants.here(Client(Path(sys.argv[1]))).anchor))\n"
-    )
-    elsewhere = json.loads(child_output(code, str(node.state), node=node, own_terminal=True))
-    incarnation = node.client.call("session_lookup", node.board, harness="claude-code", session="lead")["incarnation"]
-    signed = board_grants.sign_rebind(key, node.board, board_grants.MoveSession(node.lead.name, incarnation), board_grants.Where(node.client.call("hello")["device"], elsewhere))
-    with pytest.raises(Denied, match="another terminal"):
-        node.client.call("rebind", node.board, "", harness="claude-code", session="lead", **signed)
-    assert node.session(node.lead).whoami().name == node.lead.name, "nothing was moved"
+    credentials.store(node.state, node.board, node.lead.name, "0" * 64)
+    done = node.cli("whoami", "--json", who=node.lead, env={"CLAUDE_CODE_SESSION_ID": "lead"})
+    assert done.returncode == 0, (done.stdout, done.stderr)
+    assert json.loads(done.stdout)["id"] == node.lead.name, "the command ran as the session it always ran as"
+    fresh = credentials.load(node.state, node.board, node.lead.name)
+    assert fresh != "0" * 64 and node.client.call("whoami", node.board, fresh)["name"] == node.lead.name, "the new token is kept for the next command"
 
 
-def test_a_signed_move_carries_the_session_to_the_process_that_sends_it_and_ends_the_tokens_it_held(lead):
+def test_a_subagent_command_whose_token_the_node_does_not_know_is_registered_again_by_its_parent_and_runs(lead):
     node = lead
-    key = node.keep_person_key(node.lead)
-    done = board_grants.rebind(node.client, node.board, "claude-code", "lead", key)
-    assert done["name"] == node.lead.name and done["moved"] is True and done["tokens_ended"] >= 1
-    with pytest.raises(Denied):
+    kid = node.member("kid", parent=node.lead)
+    credentials.store(node.state, node.board, kid.name, "0" * 64)
+    done = node.cli("whoami", "--json", env={"POOLHOUSE_SUBAGENT": "kid"})
+    assert done.returncode == 0, (done.stdout, done.stderr)
+    assert json.loads(done.stdout)["id"] == kid.name and json.loads(done.stdout)["parent"] == node.lead.name
+    fresh = credentials.load(node.state, node.board, kid.name)
+    assert fresh != "0" * 64 and node.client.call("whoami", node.board, fresh)["name"] == kid.name
+
+
+def test_a_session_the_node_retired_for_idleness_comes_back_with_its_next_command(lead):
+    node = lead
+    node.session(node.lead).retire()
+    with pytest.raises(Denied, match="the token is not known"):
         node.session(node.lead).whoami()
-    fresh = board_session.register(node.client, node.board, board_session.Native("claude-sonnet-5-5", "claude-code", "lead"))
-    assert fresh.name == node.lead.name and board_session.Session(node.client, node.board, fresh.token, fresh.name).whoami().name == fresh.name
+    done = node.cli("whoami", "--json", who=node.lead, env={"CLAUDE_CODE_SESSION_ID": "lead"})
+    assert done.returncode == 0 and json.loads(done.stdout)["id"] == node.lead.name, (done.stdout, done.stderr)
 
 
-def test_a_captured_move_is_not_used_twice_and_is_for_one_node_and_one_session(lead):
+def test_a_session_its_parent_ended_for_cause_stays_ended_and_its_command_says_why(lead):
     node = lead
-    key = node.keep_person_key(node.lead)
-    here = board_grants.here(node.client)
-    incarnation = node.client.call("session_lookup", node.board, harness="claude-code", session="lead")["incarnation"]
-    signed = board_grants.sign_rebind(key, node.board, board_grants.MoveSession(node.lead.name, incarnation), here)
-    sent = {"harness": "claude-code", "session": "lead", **signed}
-    assert node.client.call("rebind", node.board, "", **sent)["moved"] is True
-    with pytest.raises(Denied, match="session changed"):
-        node.client.call("rebind", node.board, "", **sent)
-    incarnation = node.client.call("session_lookup", node.board, harness="claude-code", session="lead")["incarnation"]
-    elsewhere = {"harness": "claude-code", "session": "lead", **board_grants.sign_rebind(key, node.board, board_grants.MoveSession(node.lead.name, incarnation), board_grants.Where("ab" * 32, here.anchor))}
-    with pytest.raises(Denied, match="for this node"):
-        node.client.call("rebind", node.board, "", **elsewhere)
-    stale = {"harness": "claude-code", "session": "lead", **board_grants.sign_rebind(key, node.board, board_grants.MoveSession(node.lead.name, incarnation), here, now_ms=1)}
-    with pytest.raises(Exception, match="five minutes"):
-        node.client.call("rebind", node.board, "", **stale)
-
-
-def test_a_person_at_a_new_terminal_moves_the_session_there_and_the_harness_registers_from_that_terminal(lead):
-    node = lead
-    node.keep_person_key(node.lead)
-    script = (f"{sys.executable} -m poolhouse.workspace.cli rebind claude-code lead --json; "
-              f"{sys.executable} -c \"{REGISTER}\" {node.state} {node.board} lead")
-    code, out, err = node.terminal(program=["/bin/sh", "-c", script], typed=TYPED, timeout=120)
-    assert code == 0, (out, err)
-    assert '"moved"' in out and node.lead.name in out and "Type yes to sign it: " in out and "move the session " + node.lead.name in out, out
-    assert '"token"' in out, "the harness started in that terminal registers as the session"
-    with pytest.raises(Denied):
-        node.session(node.lead).whoami()
-    refused = registered_by_a_child(node, "lead", own_session=False)
-    assert refused["code"] == "denied", "the terminal the session was in before no longer registers it"
-
-
-def test_the_move_asks_the_person_and_a_no_moves_nothing(lead):
-    node = lead
-    node.keep_person_key(node.lead)
-    script = f"{sys.executable} -m poolhouse.workspace.cli rebind claude-code lead --json"
-    code, out, err = node.terminal(program=["/bin/sh", "-c", script], typed={**TYPED, "Type yes": "no"}, timeout=120)
-    assert code != 0 and "confirmation" in out + err, (out, err)
-    assert node.session(node.lead).whoami().name == node.lead.name, "nothing was moved"
-
-
-def test_an_agent_marked_process_is_not_offered_the_key_to_move_a_session(lead):
-    node = lead
-    node.keep_person_key(node.lead)
-    code, out, err = node.terminal("rebind", "claude-code", "lead", "--json", who=node.lead, env={"CLAUDECODE": "1"}, typed=TYPED, timeout=120)
-    assert code != 0 and node.session(node.lead).whoami().name == node.lead.name, (out, err)
+    kid = node.member("kid", parent=node.lead)
+    node.session(node.lead).retire(kid.name, "revoked")
+    done = node.cli("whoami", "--json", env={"POOLHOUSE_SUBAGENT": "kid"})
+    assert done.returncode != 0, (done.stdout, done.stderr)
+    said = done.stdout + done.stderr
+    assert "ended for cause (revoked)" in said, said
+    for word in ("rebind", "phone", "typed"):
+        assert word not in said, (word, said)
+    assert node.session(node.lead).whoami().name == node.lead.name, "and ended nothing of the parent's"
 
 
 API_SESSION = "from poolhouse.api import _node\nprint(_node.session().name)\n"

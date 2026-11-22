@@ -40,6 +40,8 @@ Refusal shape: `X is refused to an agent (CLAUDECODE is set): <why>. To do it, r
 `autostart.install`, `chat.policy`, `runtime.deploy`, `runtime.deploy-unmerged`, `github.release`, `workspace.setup`, `workspace.model`,
 `workspace.agents`. `prod` keeps only `workspace.setup`, `workspace.model` and `workspace.agents` delegated.
 
+A session registered while a live sibling runs it spends no grant until that sibling's lineage ends, which needs nobody (`grants/mod.rs`, `lineage_refusal`); `rebind` takes it over at once and is not a protected action.
+
 ## Not bound
 
 A process that removes the agent marker from its own environment (`env -u CLAUDECODE ...`) is not recognised as an agent. The audit log

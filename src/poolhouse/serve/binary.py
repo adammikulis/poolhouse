@@ -6,12 +6,14 @@ import logging
 import os
 import platform
 import shutil
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from poolhouse import credentials, errors, home
+from poolhouse import credentials, errors, home, lazy
 from poolhouse.credentials import child_environment
-from poolhouse.serve import policy as trust
+from poolhouse.files import read_json
+from poolhouse.serve import binary_trust, policy as trust
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +35,11 @@ def managed_named() -> Path:
     return managed_root() / "named"
 
 
+def managed_builds() -> Path:
+    """The directory holding one directory per build made."""
+    return managed_root() / "builds"
+
+
 # The repository `poolhouse-serve build` builds by default. A BUILD.json naming any other
 # `repo` is a fork, and a fork is the only kind of build that can load a draft head its
 # repository says "does not work on mainline".
@@ -52,7 +59,7 @@ class BinaryNotFound(RuntimeError, errors.Error):
 
 
 class BinaryTampered(BinaryNotFound):
-    """The managed build is not the one that was pinned, or sentinel holds it."""
+    """A binary changed, nothing vouches for it, and neither an earlier build nor a fetched one could replace it."""
 
 
 def is_windows() -> bool:
@@ -61,15 +68,44 @@ def is_windows() -> bool:
 
 def find_binary(name: str = "llama-server", *, policy: trust.Policy | None = None, strict: bool = False,
                 **how: Any) -> Path | None:
-    """`locate_binary`; with ``strict``, whichever route found the file is judged by ``policy`` (an explicit path,
+    """`locate_binary`; with ``strict``, whichever route found the file is vetted by ``policy`` (an explicit path,
     ``$LLAMA_CPP_SERVER``, ``$LLAMA_CPP_DIR``, a named build, a vendor directory, the cache and PATH are as
-    trusted as ``current``) and the route is logged. Without it the policy judges ``current`` alone, as it always has."""
+    trusted as ``current``) and the route is logged. Without it the policy vets ``current`` alone, as it always has."""
     found = locate_binary(name, policy=policy, **how)
     if strict and found is not None:
         logger.info("llama.cpp binary %s", found)
-        if why := (policy or trust.default()).problem(found):
-            raise BinaryTampered(why)
+        return vetted(found, policy or trust.default())
     return found
+
+
+def vetted(binary: Path, policy: trust.Policy) -> Path:
+    """The binary to run for ``binary``: itself, or the build that replaces it (`binary_trust.vet`: an update something
+    vouches for is re-pinned, a change nothing vouches for falls back to an earlier build or a fetched one).
+    `BinaryTampered` only when all of that failed."""
+    try:
+        return binary_trust.vet(binary, policy, previous=lambda: _previous_builds(binary), recover=_fetch_good_build)
+    except binary_trust.Untrusted as exc:
+        raise BinaryTampered(str(exc)) from exc
+
+
+def _previous_builds(bad: Path) -> Iterator[Path]:
+    """The mainline builds kept under `managed_builds` other than ``bad``, newest first (a fork's build is no stand-in)."""
+    kept = []
+    for manifest in managed_builds().glob("*/BUILD.json"):
+        info = read_json(manifest, {})
+        info = info if isinstance(info, dict) else {}
+        if str(info.get("repo") or MAINLINE).strip().lower() != MAINLINE:
+            continue
+        for candidate in _name_variants("llama-server"):
+            real = Path(os.path.realpath(manifest.parent / candidate))
+            if real.is_file() and real != bad:
+                kept.append((str(info.get("built_at", "")), real))
+    return (server for _, server in sorted(kept, reverse=True))
+
+
+def _fetch_good_build() -> Path:
+    """The binary of a good build fetched now, made `current` (`poolhouse.serve.build_recover`)."""
+    return lazy.load("poolhouse.serve.build_recover", "fetch")()
 
 
 def locate_binary(
@@ -89,8 +125,8 @@ def locate_binary(
     or ``$LLAMA_CPP_SERVER``, so a caller that names a build gets it even while ``current``
     stays mainline, and never another binary in its place.
 
-    ``policy`` decides whether the managed build may be used (`poolhouse.serve.policy`); the
-    pool's, which asks the sentinel, when none is given.
+    ``policy`` holds the pin of the managed build (`poolhouse.serve.policy`); the pool's, which
+    is the sentinel's, when none is given.
     """
     candidates = _name_variants(name)
 
@@ -129,10 +165,8 @@ def locate_binary(
         for candidate in candidates:
             path = managed_current() / candidate
             real = Path(os.path.realpath(path))
-            if path.is_file() or policy.held(real):
-                if why := policy.problem(real):
-                    raise BinaryTampered(why)
-                return real
+            if path.is_file() or (policy.pinned(real) and not real.exists()):   # a pinned build that is gone is replaced too
+                return vetted(real, policy)
 
     for directory in (vendor_dir, home.cache()):
         if directory is None:

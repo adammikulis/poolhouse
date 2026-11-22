@@ -34,7 +34,7 @@ from poolhouse.testing import (
     fake_serve,
     mirrors,
 )
-from tests.model_approval import approved
+from tests.model_pins import pinned
 
 pytest_plugins = ["serve_node"]
 
@@ -406,8 +406,8 @@ def test_the_binary_really_launches_and_answers_on_the_port_it_was_given(tmp_pat
     model.write_bytes(b"GGUF" + b"\x00" * 64)
     draft = tmp_path / "mtp.gguf"
     draft.write_bytes(b"GGUF" + b"\x00" * 64)
-    approved(model)
-    approved(draft)
+    pinned(model)
+    pinned(draft)
     spec = ServerSpec(model=model, port=free_port(), context=2048, draft=str(draft),
                       spec_type="mtp")
     from conftest import leased

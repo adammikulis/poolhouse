@@ -129,14 +129,23 @@ def test_a_file_already_complete_is_not_fetched_again(server, tmp_path):
     assert server.downloads == before
 
 
-def test_a_wrong_checksum_is_refused_and_the_partial_removed(server, tmp_path):
+def test_a_wrong_checksum_is_fetched_once_more_then_refused_and_nothing_is_kept(server, tmp_path):
     server.corrupt.add("maker/thing-GGUF/thing-Q4_K_M.gguf")
-    with pytest.raises(pulling.ChecksumMismatch):
+    with pytest.raises(pulling.ChecksumMismatch, match="twice"):
         hub.pull("hf:maker/thing-GGUF/thing-Q4_K_M.gguf", tmp_path)
+    assert server.downloads["maker/thing-GGUF/thing-Q4_K_M.gguf"] == 2
     assert not list(tmp_path.glob("thing-Q4_K_M.gguf*"))
-    assert not list((tmp_path / "machine-state" / "net" / "staging").glob("*.part*"))
-    (held,) = (tmp_path / "machine-state" / ".poolhouse-quarantine").rglob("*thing-Q4_K_M.gguf")
-    assert held.stat().st_size == 3 * MIB
+    assert not list((tmp_path / "machine-state" / "net" / "staging").glob("*thing-Q4_K_M.gguf*"))
+    assert not (tmp_path / "machine-state" / ".poolhouse-quarantine").exists()
+    server.corrupt.clear()
+    assert hub.pull("hf:maker/thing-GGUF/thing-Q4_K_M.gguf", tmp_path).stat().st_size == 3 * MIB
+
+
+def test_bytes_that_were_wrong_once_are_fetched_again_without_anyone_asked(server, tmp_path):
+    server.corrupt_once.add("maker/thing-GGUF/thing-Q4_K_M.gguf")
+    got = hub.pull("hf:maker/thing-GGUF/thing-Q4_K_M.gguf", tmp_path)
+    assert got.stat().st_size == 3 * MIB and server.downloads["maker/thing-GGUF/thing-Q4_K_M.gguf"] == 2
+    assert not (tmp_path / "machine-state" / ".poolhouse-quarantine").exists()
 
 
 def test_too_little_disk_is_refused_before_a_byte_is_read(server, tmp_path, monkeypatch):

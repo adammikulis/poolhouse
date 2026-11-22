@@ -29,7 +29,8 @@ class FakeHub:
     """The hub and its CDN. ``gated`` repositories answer 401 without the bearer ``token``.
 
     ``cut_after`` closes the connection after that many body bytes the first time a file is
-    read; ``ignore_range`` answers a range request with the whole file; ``corrupt`` names paths whose served bytes differ from the listed sha256;
+    read; ``ignore_range`` answers a range request with the whole file; ``corrupt`` names ``repo/path`` files whose served bytes
+    differ from the listed sha256, ``corrupt_once`` those that do for the first read only;
     ``redirect`` sends file reads through the CDN socket. ``plain`` names ``repo/path`` files listed as
     small non-LFS files (an object id, no sha256); ``commit(repo)`` is the commit every revision means (``moved[repo] += 1`` makes a new one). ``hub_seen`` and ``cdn_seen`` are
     ``(method, path, range, authorization)`` for every request.
@@ -42,6 +43,7 @@ class FakeHub:
         self.cut_after: int | None = None
         self.ignore_range = False
         self.corrupt: set[str] = set()
+        self.corrupt_once: set[str] = set()
         self.plain: set[str] = set()
         self.moved: dict[str, int] = {}
         self.prs: dict[str, dict[str, str]] = {}
@@ -154,8 +156,10 @@ class FakeHub:
                 for n, name in enumerate(sorted(self.repos)) if query.lower() in name.lower()]
 
     def _served(self, repo: str, path: str) -> bytes:
-        body = self.repos[repo][path]
-        return body[::-1] if f"{repo}/{path}" in self.corrupt else body
+        body, key = self.repos[repo][path], f"{repo}/{path}"
+        wrong = key in self.corrupt or key in self.corrupt_once
+        self.corrupt_once.discard(key)
+        return body[::-1] if wrong else body
 
     def _handler(self, *, cdn: bool) -> type[BaseHTTPRequestHandler]:
         hub = self

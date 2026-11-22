@@ -482,10 +482,11 @@ human").
   no session and no delegation (it runs as `system:runtime`, forward from the selected runtime only, and a subagent starts none), so an
   ended registration never blocks installing the build that repairs it.
 - **Credentials and sessions.** A session reads and writes only its own board until a grant is issued (policy issues the ones an
-  agent may have when it asks, `approval request`; `grants-setup` gives the lead sessions their bundle); registering again or a move
-  to another terminal (`rebind`) gains no grant. Other devices of the pool hold the same board, so there is no invitation to one. The
-  owner's credentials are never read or minted through an agent flow, and the protected actions of section 1 are refused to an agent
-  automatically with the reason.
+  agent may have when it asks, `approval request`; `grants-setup` gives the lead sessions their bundle); registering again, a
+  session's move to the process that runs it and `rebind` gain no grant: a session's grants stay with its name and are spent only by
+  the lineage that runs it (docs/node.md, "Identity"). Other devices of the pool hold the same board, so there is no invitation to
+  one. The owner's credentials are never read or minted through an agent flow, and the protected actions of section 1 are refused to
+  an agent automatically with the reason.
 - **The model is a label.** No model identifier decides who may coordinate, be promoted, land or review; a subagent is
   not a main session and a main session may coordinate by default, both structural facts. A lead joining passes its own
   model id (`--model <id>`), recorded as a claim; the model is a label, never a right.

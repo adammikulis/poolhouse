@@ -32,7 +32,7 @@ from poolhouse.command import flag
 from poolhouse.log import say, warn
 from poolhouse.workspace import board_cli, render
 
-__all__ = ["PERSON", "TABLE", "person_runner", "reader"]
+__all__ = ["PERSON", "REBIND", "TABLE", "person_runner", "reader"]
 
 OPEN = "--i-understand-registration-is-open"
 TO = [flag("--to", default="", metavar="NAME", help="one session, by its unique name"),
@@ -238,31 +238,22 @@ def unenroll(args: argparse.Namespace, ctx: Ctx) -> Any:
     return grants.unenrol(ctx.client, ctx.carrier.token, _held(ctx), args.key)
 
 
-REBIND_POLL_S = 2.0
 STARTED = "start the harness in this terminal: it registers as that session"
 
 
-def _rebind_by_phone(args: argparse.Namespace, ctx: Ctx) -> Any:
-    """Move a main session in a pool: an admin phone approves, the person picks the number this terminal shows, and the move completes from here."""
-    board = ctx.carrier.board
-    asked = grants.rebind_ask(ctx.client, board, args.harness, args.session)
-    say(f"Approve the move on your phone and choose {asked['code']}, the number this terminal shows.")
-    until = int(asked["expires_ms"]) / 1000 + REBIND_POLL_S
-    while True:
-        done = grants.rebind_finish(ctx.client, board, args.harness, args.session, str(asked["id"]))
-        if done.get("moved"):
-            return {"moved": done["name"], "tokens_ended": done["tokens_ended"], "next": STARTED}
-        if time.time() >= until:
-            raise Denied("denied", "Nobody approved the move in time: run the command again when your phone is at hand.")
-        time.sleep(REBIND_POLL_S)
+def rebind(args: argparse.Namespace) -> int:
+    """Take a main session over now: the node registers it from the terminal this runs in and ends the tokens it held, even while a process of the
+    terminal it had still runs. Nothing requires this (a session registers from any process by itself) and nobody is asked to type or tap anything."""
+    client = Client()
+    board = place.existing(client, Path.cwd(), args.board)
+    done = grants.rebind(client, board, args.harness, args.session)
+    render.show(args, {"moved": done["name"], "tokens_ended": done["tokens_ended"], "next": STARTED})
+    return 0
 
 
-def rebind(args: argparse.Namespace, ctx: Ctx) -> Any:
-    """Move a main session to the terminal this runs in: the node ends the tokens it holds, and the harness registers it from here."""
-    if grants.listing(ctx.carrier).governance == "governed":
-        return _rebind_by_phone(args, ctx)
-    done = grants.rebind(ctx.client, ctx.carrier.board, args.harness, args.session, _held(ctx))
-    return {"moved": done["name"], "tokens_ended": done["tokens_ended"], "next": STARTED}
+REBIND = ("rebind", "take a main session over now: it registers from the terminal this runs in and the tokens it held end (optional: a session registers from any process by itself)",
+          [flag("harness", help="the harness of the session (claude-code, codex, ...)"),
+           flag("session", help="the native session id of the harness")], board_cli.guarded(rebind))
 
 
 TABLE = (
@@ -292,9 +283,6 @@ PERSON = (
      [flag("--about", default="a person's key", help="what to call the key there")], proof),
     ("person-enroll", "put a key carried from another device on this node, approved by this node's key",
      [flag("--proof", required=True, help="what `person-proof` printed")], enroll),
-    ("rebind", "move a main session to the terminal this runs in, ending the tokens it holds, so its harness can register from here",
-     [flag("harness", help="the harness of the session, as the refusal named it (claude-code, codex, ...)"),
-      flag("session", help="the native session id of the harness, as the refusal named it")], rebind),
     ("person-unenroll", "take a key off this node, signed by a key this node holds (the last key stays)",
      [flag("--key", required=True, metavar="FINGERPRINT", help="the fingerprint of the key to remove (`grants` lists the keys the node holds)")], unenroll),
 )
