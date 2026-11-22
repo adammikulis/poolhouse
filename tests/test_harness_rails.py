@@ -246,7 +246,7 @@ class TestCodex:
 
     def test_the_role_sets_codexs_own_sandbox_and_approval(self):
         assert codex.policy_flags(coding_policy.Policy("read-only")) == ["--sandbox", "read-only", "--ask-for-approval", "never"]
-        assert "workspace-write" in codex.policy_flags(coding_policy.Policy("guarded"))
+        assert codex.policy_flags(coding_policy.Policy("guarded")) == ["--sandbox", "workspace-write", "--ask-for-approval", "never"], "codex is never left to ask"
         assert "danger-full-access" not in codex.policy_flags(coding_policy.Policy("guarded"))
 
     def test_the_environment_has_its_own_home_and_no_api_key(self, tmp_path):

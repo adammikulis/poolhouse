@@ -67,10 +67,11 @@ def config_toml(base_url: str, alias: str, window: int, hooks: tuple[str, str, f
 
 def policy_flags(policy: coding_policy.Policy) -> list[str]:
     """Codex's own sandbox and approval flags for ``role``: read-only never writes; the others write
-    inside the working directory and ask before leaving it."""
+    inside the working directory and leave it only through the hook's decision. Codex is never left to ask: a command outside the
+    sandbox fails at once and the hook says why."""
     if not policy.writable:
         return ["--sandbox", "read-only", "--ask-for-approval", "never"]
-    return ["--sandbox", "workspace-write", "--ask-for-approval", "on-request"]
+    return ["--sandbox", "workspace-write", "--ask-for-approval", "never"]
 
 
 def environment(home: Path, base: Mapping[str, str] | None = None, key: str = "") -> dict[str, str]:
