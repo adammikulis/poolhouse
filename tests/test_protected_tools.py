@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -82,7 +83,7 @@ def tool(name: str, given: dict, **more) -> str:
 
 
 @pytest.mark.parametrize("name, given", [
-    ("Read", {"file_path": "/home/p/.poolhouse/person/statements.log.key"}),
+    ("Read", {"file_path": "/home/p/.poolhouse/person/harness-sessions.json"}),
     ("Read", {"file_path": "~/.poolhouse/node/client/board/agent-aaaaaa.token"}),
     ("Read", {"file_path": "/home/p/.poolhouse/node/person/key"}),
     ("Grep", {"pattern": "token", "path": "/home/p/.poolhouse/node/client"}),
@@ -94,12 +95,25 @@ def tool(name: str, given: dict, **more) -> str:
     ("mcp__ide__executeCode", {"code": "print(1)"}),
     ("mcp__files__write_file", {"path": "/work/.git/hooks/pre-push", "content": "exit 0"}),
     ("mcp__files__write_file", {"path": "/work/.git/config", "content": "{}"}),
-    ("mcp__files__read_file", {"path": "/home/p/.poolhouse/person/statements.log"}),
+    ("mcp__files__read_file", {"path": "/home/p/.poolhouse/person/harness-sessions.json"}),
     ("mcp__files__move", {"source": "/tmp/x", "destination": "/work/.git/hooks/pre-push"}),
     ("mcp__files__batch", {"edits": [{"path": "/work/src/ok.py"}, {"path": "/work/.git/config"}]}),
 ])
-def test_a_tool_that_reaches_the_person_record_a_guard_or_the_owners_browser_is_refused(name, given):
+def test_a_tool_that_reaches_the_person_folder_a_guard_or_the_owners_browser_is_refused(name, given):
     assert tool(name, given), (name, given)
+
+
+@pytest.mark.parametrize("name, given", [
+    ("Read", {"file_path": "/home/p/.poolhouse/person/harness-sessions.json"}),
+    ("Read", {"file_path": "~/.poolhouse/node/client/board/agent-aaaaaa.token"}),
+    ("Grep", {"pattern": "key", "path": "/home/p/.poolhouse/person"}),
+    ("mcp__files__write_file", {"path": "/work/.git/hooks/pre-push", "content": "exit 0"}),
+    ("mcp__files__move", {"source": "/tmp/x", "destination": "/work/.git/config"}),
+])
+def test_the_refusal_of_a_tool_is_automatic_and_names_the_reason_and_what_to_do_instead(name, given):
+    reason = tool(name, given)
+    assert "refused to an agent" in reason and re.search(r"read a file of the project|leave them as they are", reason), reason
+    assert not re.search(r"a person|person's|person at|person record|terminal|approval|approve", reason, re.I), reason
 
 
 @pytest.mark.parametrize("name, given", [
@@ -134,14 +148,14 @@ def test_the_active_state_root_is_protected_where_it_is():
     assert not tool("Read", {"file_path": "/srv/state/sentinel/x"}, environ=environ)
 
 
-def test_a_search_rooted_above_the_person_record_is_refused(tmp_path):
+def test_a_search_rooted_above_the_person_folder_is_refused(tmp_path):
     (tmp_path / ".poolhouse" / "person").mkdir(parents=True)
     assert tool("Grep", {"pattern": "key", "path": str(tmp_path)}, environ={"HOME": str(tmp_path)})
     assert tool("Glob", {"pattern": "**/*", "path": str(tmp_path / ".poolhouse")}, environ={"HOME": str(tmp_path)})
     assert not tool("Grep", {"pattern": "key", "path": str(tmp_path / "elsewhere")}, environ={"HOME": str(tmp_path)})
 
 
-def test_a_link_to_the_person_record_or_a_session_token_is_refused_where_it_is_read(tmp_path):
+def test_a_link_to_the_person_folder_or_a_session_token_is_refused_where_it_is_read(tmp_path):
     record, tokens = tmp_path / ".poolhouse" / "person", tmp_path / ".poolhouse" / "node" / "client"
     for folder in (record, tokens):
         folder.mkdir(parents=True)
@@ -206,8 +220,8 @@ def run(event: dict, **env: str) -> subprocess.CompletedProcess:
 def test_the_tool_guard_script_refuses_and_says_what_to_do():
     done = run({"tool_name": "mcp__claude-in-chrome__navigate", "cwd": "/work", "tool_input": {"url": "https://example.org"}})
     assert done.returncode == 2 and "blocked:" in done.stderr
-    done = run({"tool_name": "Read", "cwd": "/work", "tool_input": {"file_path": "~/.poolhouse/person/statements.log"}})
-    assert done.returncode == 2 and "person record" in done.stderr
+    done = run({"tool_name": "Read", "cwd": "/work", "tool_input": {"file_path": "~/.poolhouse/person/harness-sessions.json"}})
+    assert done.returncode == 2 and "person folder" in done.stderr and "refused to an agent" in done.stderr
     assert run({"tool_name": "Read", "cwd": "/work", "tool_input": {"file_path": "/work/src/x.py"}}).returncode == 0
 
 
@@ -217,7 +231,7 @@ def test_the_tool_guard_script_treats_an_event_with_an_agent_id_as_a_subagent():
 
 
 def test_the_tool_guard_script_keeps_the_hard_rules_when_the_guard_is_off():
-    event = {"tool_name": "Read", "cwd": "/work", "tool_input": {"file_path": "~/.poolhouse/person/statements.log"}}
+    event = {"tool_name": "Read", "cwd": "/work", "tool_input": {"file_path": "~/.poolhouse/person/harness-sessions.json"}}
     assert run(event, POOLHOUSE_GUARD="off").returncode == 2
 
 

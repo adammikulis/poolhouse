@@ -4,7 +4,8 @@
 Claude Code runs this before every Bash and Monitor call. Exit 2 blocks the command and hands the
 message back.
 Set POOLHOUSE_GUARD=off to disable the soft rules for a session; the hard rules (pushes of main, tags,
-force and deletions, minting identities, the person record) stay in force.
+force and deletions, minting identities, the person folder) stay in force. Every refusal is decided here, at once, and says why
+and what to do instead: nothing waits for a person.
 
 Wire it in as a PreToolUse hook on Bash and Monitor in a project's `.claude/settings.json`:
 
@@ -17,10 +18,8 @@ must not block every Bash call.
 """
 
 import json
-import os
 import re
 import shlex
-import subprocess
 import sys
 from pathlib import Path
 
@@ -35,17 +34,17 @@ PUSHER = (r"(^|[;&|(]\s*|\bthen\s+|\bdo\s+|\bexec\s+|[\"'`]\s*|\bsudo\s+|\bcomma
           r"|\benv\s+(-\S+\s+(\w+\s+)?|\w+=\S*\s+)*)(\w+=\S*\s+)*")
 GIT_PUSH = r"git\s+(-[Cc]\s+\S+\s+|--\S+\s+)*push\b"
 
-# The remote-tracking refs are what an approved run's question compares the code with: only fetch and push move them.
+# The remote-tracking refs record what the remote holds and the push checks compare the code with them: only fetch and push move them.
 MOVE_REMOTE_REFS = (PUSHER + r"git\s+(-[Cc]\s+\S+\s+|--\S+\s+)*(update-ref|symbolic-ref)\b[^;&|\n]*((refs/)?remotes/|--stdin)"
                     r"|" + PUSHER + r"git\s+(-[Cc]\s+\S+\s+|--\S+\s+)*(fetch|pull|push)\b[^;&|\n]*:\+?(refs/)?remotes/")
 PUSH_MAIN = PUSHER + GIT_PUSH + r"[^;&|\n]*\bmain\b"
 PUSH_FLAGS = (PUSHER + GIT_PUSH + r"[^;&|\n]*(--all\b|--mirror\b|--tags\b|--delete\b"
               r"|--force|\s-f\b|\s-d\b)")
 MINT = RUN + r"(\S*/)?poolhouse-workspace\s+(-\S+\s+)*(mint|delegate)\b"
-PERSON_STORE = (r"\.poolhouse/person\b|person/statements\.log|\bCLAUDE_CONFIG_DIR=|"
-                r"(import|from)\s+poolhouse\.workspace(\.|\s+import\s+[^;\n]*\b)person_\w+|"
-                r"-m\s+poolhouse\.workspace\.(person|run)_|"
-                + RUN + r"(\S*python\S*\s+|(ba)?sh\s+)?(\S*/)?(claude-user-prompt|person-consume)")
+PERSON_STORE = (r"\.poolhouse/person\b|person/harness-sessions|\bCLAUDE_CONFIG_DIR=|"
+                r"(import|from)\s+poolhouse\.workspace(\.|\s+import\s+[^;\n]*\b)harness_ancestry|"
+                r"-m\s+poolhouse\.workspace\.harness_ancestry|"
+                + RUN + r"(\S*python\S*\s+|(ba)?sh\s+)?(\S*/)?claude-harness-bind")
 SKIP_HOOKS = (PUSHER + r"git\s+(-[Cc]\s+\S+\s+|--\S+\s+)*(commit|push|merge|am|cherry-pick|rebase)\b[^;&|\n]*"
               r"(--no-verify\b|--no-gpg-sign\b)"
               r"|" + PUSHER + r"git\s+(-[Cc]\s+\S+\s+|--\S+\s+)*commit\b[^;&|\n]*\s-[a-zA-Z]*n[a-zA-Z]*(\s|$)"
@@ -61,7 +60,6 @@ STASH_MESSAGE = (
     "run the test, then `git restore --source=HEAD -- <those files>`; or a throwaway "
     "`git worktree add <scratchpad>/parent <parent-sha>` (remove it with `git worktree remove --force` after).\n"
     "Merging with local changes: make a WIP commit first, then `git merge origin/<dev>`.")
-HERE = Path(__file__).resolve().parent
 
 # (what it matches, what to do instead). Ordered: the first match wins.
 REFUSE = [
@@ -112,31 +110,32 @@ REFUSE = [
      "killing the process leaves the lease behind and the next `up` refuses."),
     (PUSH_FLAGS,
      "An agent pushes one branch by name: `git push origin <branch>`. Every branch at "
-     "once, a tag, a deletion and a forced push stay the owner's, and no opener opens "
+     "once, a tag, a deletion and a forced push are refused to an agent, and no switch opens "
      "them."),
     (MOVE_REMOTE_REFS,
-     "The remote-tracking refs (refs/remotes) are what the question for an approved run compares the code with, so "
-     "only `git fetch` and `git push` move them: `git update-ref`, `git symbolic-ref` and a fetch or push whose "
-     "refspec ends in refs/remotes are a person's."),
+     "The remote-tracking refs (refs/remotes) record what the remote holds and the push checks compare the code with "
+     "them, so only `git fetch` and `git push` move them: `git update-ref`, `git symbolic-ref` and a fetch or push whose "
+     "refspec ends in refs/remotes are refused to an agent."),
     (PUSH_MAIN,
      "An agent pushes the development branch by name: `git push origin <development branch>` "
      "after a merge lands on it. A push to `main` publishes: release-please reads the subjects "
      "there, so it moves the release pull request and releases every commit on the branch at "
-     "once. It is refused until the commit has a standing independent land-review accept "
-     "(`poolhouse-workspace review`) and the checkout is clean; then it goes ahead, decided at once."),
+     "once. It is refused to an agent until the commit has a standing independent land-review accept "
+     "(`poolhouse-workspace land-review`) and the checkout is clean; this guard decides at once and says which is missing. "
+     "Release goes through a `promote/<date>` snapshot and its pull request."),
     (MINT,
-     "An agent does not create identities. A person at a terminal mints a token; a joined agent "
-     "starts a new agent with `poolhouse-workspace invite`."),
+     "An agent does not create identities: `poolhouse-workspace mint` and `delegate` are refused to an agent. "
+     "A joined agent starts a new agent with `poolhouse-workspace invite`."),
     (PERSON_STORE,
-     "The person record is written only by the harness hooks when the person types. An agent "
-     "does not read its key, open its log or import its writers; `poolhouse-workspace "
-     "attestations` shows what the hooks recorded."),
+     "The person folder (`~/.poolhouse/person`) holds the owner's keys and the harness record. An agent "
+     "does not read, list or write it, import the code that records the harness process or run its hook "
+     "script (`claude-harness-bind`): refused to an agent, with no switch."),
     (SKIP_HOOKS,
      "The commit and push hooks are the last checks between this tree and the owner's repository, and an "
      "agent never skips them (--no-verify, commit -n, SKIP_BUDGETS=1): fix what the hook reported, take the "
-     "sites out of the tree, or say in the report that a budget is over. Skipping is a person's, at a terminal."),
+     "sites out of the tree, or say in the report that a budget is over. Skipping a hook is refused to an agent."),
     (r"(^|[;&|]\s*|\benv\s+)SKIP_NAME_CHECK=1",
-     "SKIP_NAME_CHECK is a person's to set, not an agent's. The hook is the last thing "
+     "SKIP_NAME_CHECK is refused to an agent. The hook is the last thing "
      "between a real community and a public repository. If it flagged an invented name, add "
      "it to known-fixtures.txt; if it flagged a real one, the fix is to invent one."),
 ]
@@ -218,16 +217,6 @@ def subagent_stamped(event: dict, given: dict) -> dict | None:
     return {**given, "command": "\n".join(lines) + "\n" + given["command"]}
 
 
-def release_refusal(cwd: str) -> str:
-    """Why this session may not publish main from ``cwd``, empty when it may: the commit has a standing independent land-review accept."""
-    try:
-        done = subprocess.run([sys.executable, *["-c", "import sys; from poolhouse.workspace import release_check as r; why = r.refusal('.', {'CLAUDECODE': '1'}); sys.stdout.write(why); sys.exit(1 if why else 0)"]], cwd=cwd or None, capture_output=True, text=True,
-                              timeout=30, check=False, env={**os.environ, "PYTHONPATH": str(HERE.parent.parent / "src")})
-    except (OSError, subprocess.TimeoutExpired):
-        return "the release check could not run"
-    return done.stdout.strip() if done.returncode else ""
-
-
 def judge(event: dict, switched: bool, rules) -> str:
     """The text that refuses the shell command of ``event``, or an empty string when it may run."""
     raw = (event.get("tool_input") or {}).get("command") or ""
@@ -237,16 +226,19 @@ def judge(event: dict, switched: bool, rules) -> str:
         why = check(raw, event.get("cwd") or "") or subagent_naming_another(event, raw, rules)
     if why:
         return (f"blocked: {why}\n\n(poolhouse scripts/hooks/claude-bash-guard. Set "
-                f"POOLHOUSE_GUARD=off for a person's own session.)")
+                f"POOLHOUSE_GUARD=off switches off the soft rules only.)")
     command = MESSAGE.sub(r"\1 ''", without_search_patterns(without_heredocs(raw)))
     for pattern, instead in REFUSE:
         if switched and pattern not in HARD:
             continue
         if re.search(pattern, command, re.M):
-            if pattern is PUSH_MAIN and not re.search(PUSH_FLAGS, command) and not release_refusal(event.get("cwd") or ""):
-                continue
+            if pattern is PUSH_MAIN and not re.search(PUSH_FLAGS, command):
+                missing = rules.release_refusal(event.get("cwd") or "") if rules else "the release rules could not be loaded"
+                if not missing:
+                    continue
+                instead = f"{instead} Right now: {missing}."
             tail = ("No switch opens this rule." if pattern in HARD else
-                    "If this is genuinely the right command, say so and a person can run it, "
+                    "If this is genuinely the right command, say so in the report, "
                     "or set POOLHOUSE_GUARD=off.")
             return f"blocked: {instead}\n\n(poolhouse scripts/hooks/claude-bash-guard. {tail})"
     return ""

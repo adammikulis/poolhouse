@@ -18,7 +18,7 @@ while [ -L "$self" ]; do
 done
 here=$(cd "$(dirname "$self")" && pwd)
 if [ -z "${CLAUDECODE-}${POOLHOUSE_AGENT-}${POOLHOUSE_WORKSPACE_AGENT-}${CODEX_THREAD_ID-}${CODEX_SESSION_ID-}" ] &&
-   ! "${PYTHON:-python3}" "$here/person-consume" harness </dev/null 2>/dev/null; then
+   ! "${PYTHON:-python3}" "$here/harness-ancestry" </dev/null 2>/dev/null; then
     exit 0
 fi
 primary=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")

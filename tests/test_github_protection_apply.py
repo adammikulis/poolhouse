@@ -1,5 +1,5 @@
 """scripts/github-protection-apply: a dry run by default, the order of the changes, the backup, and
-the person-only refusal."""
+the automatic refusal of --apply to an agent (at once, with the reason; a process of your own is asked nothing)."""
 
 from __future__ import annotations
 
@@ -13,11 +13,11 @@ from pathlib import Path
 
 import pytest
 
+from poolhouse import caller
 from tests.github_support import GOOD, REPO, ruleset, serve
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "github-protection-apply"
-TERMINAL = (True, True)
 APPLY = ["--repo", REPO, "--apply"]
 READY = (True, "agent identity: ready: App test-agents (id 1), installation 2 on " + REPO)
 MISSING = (False, "agent identity: not set up; run scripts/agent-identity setup")
@@ -61,13 +61,13 @@ def writes(log):
 def test_the_repository_comes_from_gh_when_not_named(ap, tmp_path, monkeypatch, capsys):
     log = serve(tmp_path, monkeypatch, before_state())
     monkeypatch.setattr(ap, "this_repo", lambda: REPO)
-    assert ap.main([], TERMINAL) == 0
+    assert ap.main([]) == 0
     assert writes(log) == [] and f"repos/{REPO}" in str(calls(log))
 
 
 def test_without_apply_nothing_is_changed_and_the_diff_is_printed(ap, tmp_path, monkeypatch, capsys):
     log = serve(tmp_path, monkeypatch, before_state())
-    assert ap.main(["--repo", REPO], TERMINAL) == 0
+    assert ap.main(["--repo", REPO]) == 0
     out = capsys.readouterr().out
     assert writes(log) == []
     assert "== release environment" in out and "== remove the ruleset named default" in out
@@ -81,7 +81,7 @@ def test_apply_without_a_stored_identity_makes_the_release_environment_and_names
         ap, tmp_path, monkeypatch, capsys):
     log = serve(tmp_path, monkeypatch, before_state())
     monkeypatch.setattr(ap, "identity", lambda _repo: MISSING)
-    assert ap.main(["--repo", REPO, "--apply"], TERMINAL) == 1
+    assert ap.main(["--repo", REPO, "--apply"]) == 1
     base = f"repos/{REPO}/environments/release"
     assert writes(log) == [("PUT", base), ("POST", f"{base}/deployment-branch-policies")]
     assert "scripts/agent-identity setup" in capsys.readouterr().err
@@ -91,7 +91,7 @@ def test_apply_without_a_stored_identity_makes_the_release_environment_and_names
 def test_a_dry_run_says_the_identity_is_missing_and_still_prints_the_diff(ap, tmp_path, monkeypatch, capsys):
     serve(tmp_path, monkeypatch, before_state())
     monkeypatch.setattr(ap, "identity", lambda _repo: MISSING)
-    assert ap.main(["--repo", REPO], TERMINAL) == 0
+    assert ap.main(["--repo", REPO]) == 0
     out = capsys.readouterr().out
     assert out.startswith(MISSING[1]) and "== release environment" in out
 
@@ -99,7 +99,7 @@ def test_a_dry_run_says_the_identity_is_missing_and_still_prints_the_diff(ap, tm
 def test_the_flag_that_stood_for_the_identity_is_gone(ap, tmp_path, monkeypatch):
     log = serve(tmp_path, monkeypatch, before_state())
     with pytest.raises(SystemExit) as raised:
-        ap.main([*APPLY, "--identity-ready"], TERMINAL)
+        ap.main([*APPLY, "--identity-ready"])
     assert raised.value.code == 2 and writes(log) == []
 
 
@@ -125,7 +125,7 @@ def test_with_nothing_stored_the_real_check_says_so(ap):
 
 def test_the_changes_are_made_in_order_after_a_backup(ap, tmp_path, monkeypatch, capsys):
     log = serve(tmp_path, monkeypatch, before_state())
-    assert ap.main(APPLY, TERMINAL) == 1
+    assert ap.main(APPLY) == 1
     base = f"repos/{REPO}"
     assert writes(log) == [
         ("PUT", f"{base}/environments/release"),
@@ -150,7 +150,7 @@ def test_the_changes_are_made_in_order_after_a_backup(ap, tmp_path, monkeypatch,
 
 def test_the_environment_body_names_the_owner_and_main_only(ap, tmp_path, monkeypatch):
     log = serve(tmp_path, monkeypatch, before_state())
-    ap.main(APPLY, TERMINAL)
+    ap.main(APPLY)
     put = next(c for c in calls(log) if c[0] == "PUT" and c[1].endswith("environments/release"))
     assert json.loads(put[2]) == {
         "reviewers": [{"type": "User", "id": 7}], "can_admins_bypass": False,
@@ -161,7 +161,7 @@ def test_the_environment_body_names_the_owner_and_main_only(ap, tmp_path, monkey
 
 def test_a_repository_already_at_the_target_ends_with_no_findings(ap, tmp_path, monkeypatch, capsys):
     serve(tmp_path, monkeypatch, GOOD)
-    assert ap.main(APPLY, TERMINAL) == 0
+    assert ap.main(APPLY) == 0
     assert capsys.readouterr().out.strip().endswith("0 findings")
 
 
@@ -170,7 +170,7 @@ def test_it_stops_before_the_rulesets_when_the_key_is_not_in_the_environment(
     replies = before_state()
     replies[f"repos/{REPO}/environments/release/secrets"] = {"secrets": []}
     log = serve(tmp_path, monkeypatch, replies)
-    assert ap.main(APPLY, TERMINAL) == 1
+    assert ap.main(APPLY) == 1
     assert all("/environments/" in p for _m, p in writes(log))
     assert "release-key" in capsys.readouterr().err
 
@@ -178,7 +178,7 @@ def test_it_stops_before_the_rulesets_when_the_key_is_not_in_the_environment(
 def test_it_stops_at_the_first_error(ap, tmp_path, monkeypatch, capsys):
     base = f"repos/{REPO}"
     log = serve(tmp_path, monkeypatch, before_state(), fail=f"{base}/rulesets/1")
-    assert ap.main(APPLY, TERMINAL) == 1
+    assert ap.main(APPLY) == 1
     assert writes(log)[-1] == ("PUT", f"{base}/rulesets/1")
     assert "422" in capsys.readouterr().err
 
@@ -193,14 +193,14 @@ def test_the_owner_review_switch_changes_only_the_main_ruleset(ap):
 def test_restore_puts_back_the_old_ruleset_and_removes_the_new_ones(ap, tmp_path, monkeypatch, capsys):
     before = before_state()
     serve(tmp_path, monkeypatch, before)
-    ap.main(APPLY, TERMINAL)
+    ap.main(APPLY)
     saved = next((tmp_path / "home" / "github-protection").glob("backup-*.json"))
     after = copy.deepcopy(GOOD)
     after[f"repos/{REPO}/rulesets"] = [{"id": 1, "name": "main"}, {"id": 5, "name": "extra"}]
     after[f"repos/{REPO}/rulesets/5"] = ruleset("extra", "branch", ["x"], [])
     (tmp_path / "again").mkdir()
     log = serve(tmp_path / "again", monkeypatch, after)
-    assert ap.main(["--restore", str(saved), "--apply"], TERMINAL) == 0
+    assert ap.main(["--restore", str(saved), "--apply"]) == 0
     done = writes(log)
     base = f"repos/{REPO}"
     assert ("DELETE", f"{base}/rulesets/5") in done
@@ -208,24 +208,53 @@ def test_restore_puts_back_the_old_ruleset_and_removes_the_new_ones(ap, tmp_path
     assert done[-1] == ("PATCH", base)
 
 
-def test_an_agent_marker_refuses_before_any_request(ap, tmp_path, monkeypatch, capsys):
+MARKED_RUNS = [(marker, argv) for marker in ("CLAUDECODE", "POOLHOUSE_AGENT", "CODEX_THREAD_ID", "POOLHOUSE_SESSION_ID")
+               for argv in (APPLY, ["--restore", "saved.json", "--apply"])]
+
+
+@pytest.mark.parametrize("case", MARKED_RUNS, ids=lambda case: f"{case[0]} {' '.join(case[1][:1])}")
+def test_an_agent_marker_refuses_apply_before_any_request_and_says_why_and_audits_it(ap, tmp_path, monkeypatch, capsys, case):
+    marker, argv = case
     log = serve(tmp_path, monkeypatch, GOOD)
-    monkeypatch.setenv("CLAUDECODE", "1")
-    assert ap.main(APPLY, TERMINAL) == 1
+    monkeypatch.setenv(marker, "1")
+    assert ap.main(argv) == 1
     assert log.read_text() == ""
-    assert "agent" in capsys.readouterr().err
+    said = capsys.readouterr().err
+    assert "refused to an agent" in said and f"{marker} is set" in said and "rulesets" in said
     assert not (tmp_path / "home" / "github-protection").exists()
+    (row,) = [r for r in caller.audit_rows() if r["event"] == "refused"]
+    assert row["action"].startswith("github-protection-apply") and marker in row["who"]
 
 
-def test_no_terminal_refuses_before_any_request(ap, tmp_path, monkeypatch, capsys):
-    log = serve(tmp_path, monkeypatch, GOOD)
-    assert ap.main(APPLY, (False, False)) == 1
-    assert log.read_text() == ""
-    assert "terminal" in capsys.readouterr().err
+def test_an_agent_may_still_read_what_would_change(ap, tmp_path, monkeypatch, capsys):
+    log = serve(tmp_path, monkeypatch, before_state())
+    monkeypatch.setenv("CLAUDECODE", "1")
+    assert ap.main(["--repo", REPO]) == 0
+    assert writes(log) == [] and "== release environment" in capsys.readouterr().out
 
 
-NAMING_IT = tuple(ROOT / "src" / "poolhouse" / name for name in ("workspace/run_approval.py", "workspace/guard_patch.py", "protectedwrites.py"))
-"""The registry of the runs an agent may make on the owner's approval and the two lists of guarded paths name the script; they match the name and start nothing."""
+class Silent:
+    """A standard input that fails the test when anything reads it: nobody is asked anything."""
+
+    def read(self, *_):
+        raise AssertionError("the run read its standard input")
+
+    readline = readlines = read
+
+    def isatty(self):
+        return False
+
+
+def test_a_run_of_your_own_with_no_terminal_and_no_marker_asks_nothing_and_just_runs(ap, tmp_path, monkeypatch, capsys):
+    log = serve(tmp_path, monkeypatch, before_state())
+    monkeypatch.setattr(sys, "stdin", Silent())
+    ap.main(APPLY)
+    assert writes(log)[0] == ("PUT", f"repos/{REPO}/environments/release")
+    assert [r["event"] for r in caller.audit_rows()] == ["ran"]
+
+
+NAMING_IT = (ROOT / "src" / "poolhouse" / "protectedwrites.py",)
+"""The list of guarded paths names the script; it matches the name and starts nothing."""
 
 
 def test_no_library_code_reaches_the_apply_script():

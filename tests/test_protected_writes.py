@@ -1,9 +1,11 @@
-"""An agent's shell may not write git's hooks and config, the authority registry or touch the person record."""
+"""An agent's shell may not write git's hooks and config, the authority registry or touch the person folder; every refusal is
+immediate and says why and what to do instead."""
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -19,7 +21,7 @@ GUARD = Path(__file__).resolve().parent.parent / "scripts" / "hooks" / "claude-b
 def tree(tmp_path):
     for name in ("scripts/hooks/pre-push", "scripts/hooks/claude-bash-guard", "scripts/hooks/claude-edit-guard",
                  ".claude/settings.json", ".git/config", ".git/hooks/pre-push", "src/poolhouse/x.py", "docs/x.md",
-                 "src/poolhouse/workspace/person_store.py"):
+                 "src/poolhouse/workspace/harness_ancestry.py"):
         path = tmp_path / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("x\n", encoding="utf-8")
@@ -29,18 +31,22 @@ def tree(tmp_path):
 
 
 def home_of(tree: Path) -> Path:
-    """The home folder of the tests: beside the tree, so that the tree is not a folder above the person record."""
+    """The home folder of the tests: beside the tree, so that the tree is not a folder above the person folder."""
     return tree.parent / f"{tree.name}-home"
 
 
-def why(command: str, tree: Path, released: bool = False, environ: dict | None = None) -> str:
+NO_ACCEPT = "abc1234: needs review: no independent accept that still stands"
+
+
+def why(command: str, tree: Path, released: str = NO_ACCEPT, environ: dict | None = None) -> str:
+    """Why the command is refused when the release check answers ``released`` (empty: it may merge), else an empty string."""
     return protectedwrites.refusal(command, str(tree), lambda cwd: released, environ or {"HOME": str(home_of(tree))})
 
 
 WRITES_A_GUARD = [
     "printf x > .git/hooks/pre-push",
     "echo x >> .git/config",
-    "cp /tmp/x src/poolhouse/workspace/person_store.py",
+    "cp /tmp/x src/poolhouse/workspace/harness_ancestry.py",
     "echo x > ~/.gitconfig",
     "echo x > ~/.poolhouse/authority.json",
     "sed -i 's/person/delegated/' ~/.poolhouse/authority.json",
@@ -53,7 +59,7 @@ WRITES_A_GUARD = [
     "find . -name '*.py' -exec rm {} +",
     "find src -name '*.py' -exec sed -i s/a/b/ {} +",
     "find . -name '*.py' -exec sh -c 'echo x' \\;",
-    "find . -name person_store.py -delete",
+    "find . -name harness_ancestry.py -delete",
     "find . -exec echo {} \\; -delete",
     "find . -name '*.py' -exec wc -l {} \\; -exec rm {} \\;",
     "find . -exec ./wc {} +",
@@ -103,7 +109,7 @@ TOUCHES_GIT_OR_GITHUB = [
 TOUCHES_A_SECRET = [
     "cat ~/.poolhouse/node/client/board/agent-aaaaaa.token",
     "ls ~/.poolhouse/person",
-    "cat $HOME/.poolhouse/person/statements.log.key",
+    "cat $HOME/.poolhouse/person/harness-sessions.json",
     "ls ~/.Poolhouse/PERSON",
     "cd ~/.poolhouse && cat node/person/x",
     "grep -r token ~/.poolhouse/node/client",
@@ -122,7 +128,7 @@ def test_a_shell_form_that_widens_access_is_refused_and_says_what_to_do(command,
 
 
 @pytest.mark.parametrize("command", TOUCHES_A_SECRET)
-def test_the_person_record_and_the_tokens_are_not_read_or_listed(command, tree):
+def test_the_person_folder_and_the_tokens_are_not_read_or_listed(command, tree):
     assert why(command, tree, environ={"HOME": str(Path.home())}), command
 
 
@@ -155,8 +161,8 @@ ALLOWED = [
     "git log -p -- scripts/hooks/pre-push",
     "git diff HEAD -- .claude/settings.json",
     "git add scripts/hooks/pre-push",
-    "scripts/hooks/person-consume propose",
-    "python3 scripts/hooks/person-consume propose",
+    "scripts/hooks/harness-ancestry",
+    "python3 scripts/hooks/harness-ancestry",
     "bash scripts/hooks/pre-push",
     "git status --short",
     "ls .claude scripts/hooks",
@@ -277,14 +283,26 @@ ALLOWED = [
 
 
 @pytest.mark.parametrize("command", ALLOWED)
-def test_ordinary_commands_that_name_a_guard_or_the_person_record_are_not_refused(command, tree):
+def test_ordinary_commands_that_name_a_guard_or_the_person_folder_are_not_refused(command, tree):
     assert not why(command, tree), command
 
 
-def test_merging_a_pull_request_is_allowed_while_the_person_s_release_approval_is_live(tree):
-    assert why("gh pr merge 12 --squash", tree, released=False)
-    assert not why("gh pr merge 12 --squash", tree, released=True)
-    assert why("gh api -X PUT repos/o/r/rulesets/5 -f x=y", tree, released=True)
+def test_merging_a_pull_request_is_refused_with_the_reason_of_the_release_check_and_allowed_when_it_has_none(tree):
+    refused = why("gh pr merge 12 --squash", tree)
+    assert "refused to an agent" in refused and "land-review" in refused and NO_ACCEPT in refused
+    assert not why("gh pr merge 12 --squash", tree, released="")
+    assert why("gh api -X PUT repos/o/r/rulesets/5 -f x=y", tree, released="")
+
+
+def test_the_release_check_is_asked_only_about_a_merge_and_from_the_folder_the_command_runs_in(tree):
+    asked = []
+    for command in ("git status", "gh pr view 3", "gh pr create --title x", "git push origin dev", "git merge --ff-only work"):
+        assert not protectedwrites.refusal(command, str(tree), lambda cwd: asked.append(cwd) or "", {"HOME": str(home_of(tree))})
+    assert asked == []
+    (tree / "src").mkdir(exist_ok=True)
+    assert not protectedwrites.refusal("cd src && gh pr merge 3", str(tree), lambda cwd: asked.append(cwd) or "",
+                                       {"HOME": str(home_of(tree))})
+    assert asked == [str(tree / "src")]
 
 
 def test_the_guard_script_refuses_the_bypasses_the_review_found(tree):
@@ -297,23 +315,10 @@ def test_the_guard_script_refuses_the_bypasses_the_review_found(tree):
 
 
 def test_the_edit_rules_refuse_what_the_file_tools_may_not_write(tree):
-    for path in (".git/hooks/pre-push", ".git/config", "src/poolhouse/workspace/person_store.py"):
+    for path in (".git/hooks/pre-push", ".git/config", "src/poolhouse/workspace/harness_ancestry.py"):
         assert worktreerules.edit_refusal([path], str(tree)), path
     assert not worktreerules.edit_refusal(["src/poolhouse/x.py", "AGENTS.md", ".claude/agents/branch-worker.md",
                                            ".claude/commands/x.md", "scripts/hooks/pre-push"], str(tree))
-
-
-def test_the_files_a_person_reviews_before_they_land_are_named_in_one_place():
-    assert protectedwrites.touches_guards(["src/poolhouse/x.py", "docs/a.md"]) == []
-    named = ["AGENTS.md", "CLAUDE.md", "src/poolhouse/authority.py", "src/poolhouse/person.py",
-             "src/poolhouse/real_machine.py", "src/poolhouse/board/credentials.py", "scripts/agent_sandbox_profile.py",
-             "src/poolhouse/workspace/authority_cli.py", "scripts/hooks/weakened-assertions",
-             "src/poolhouse/workspace/person_release.py", ".github/workflows/ci.yml",
-             ".github/CODEOWNERS", "scripts/github-protection", "scripts/sealed_git.py",
-             "src/poolhouse/worktreerules.py", "src/poolhouse/protectedwrites.py", "scripts/affected.py", "scripts/affected_rules.py",
-             "scripts/test", "scripts/testslots.py", "scripts/gates/duplicates.py", "tests/conftest.py", "pyproject.toml", "budgets.json",
-             "scripts/hooks/pre-push", "scripts/primary_sync.py", "scripts/ci_watch.py"]
-    assert protectedwrites.touches_guards(["src/poolhouse/x.py", *named]) == named
 
 
 READS_THE_RECORD = [
@@ -350,7 +355,7 @@ READS_THE_RECORD = [
 
 
 @pytest.mark.parametrize("command", READS_THE_RECORD)
-def test_a_command_that_reads_the_person_record_or_the_tokens_through_a_redirect_or_a_folder_above_them_is_refused(tree, command):
+def test_a_command_that_reads_the_person_folder_or_the_tokens_through_a_redirect_or_a_folder_above_them_is_refused(tree, command):
     (home_of(tree) / ".poolhouse" / "person").mkdir(parents=True, exist_ok=True)
     assert why(command, tree), command
 
@@ -378,7 +383,7 @@ def test_a_command_that_reads_the_person_record_or_the_tokens_through_a_redirect
     "cd src && grep -r VALUE .",
     "git status",
 ])
-def test_reading_what_is_not_the_person_record_stays_allowed(tree, command):
+def test_reading_what_is_not_the_person_folder_stays_allowed(tree, command):
     (home_of(tree) / ".poolhouse" / "person").mkdir(parents=True, exist_ok=True)
     assert not why(command, tree), command
 
@@ -400,24 +405,28 @@ def test_a_link_is_followed_before_a_parent_step_collapses_in_a_shell_path(tree,
     assert not why("cat key", tree)
 
 
-def test_the_release_question_names_every_hook_and_harness_setting_though_an_agent_may_edit_them():
-    """The guards let an agent change these files (an owner's order), so the person who releases `main` is told of each."""
-    wiring = [".claude/settings.json", ".claude/settings.local.json", ".claude/agents/branch-worker.md",
-              ".claude/commands/x.md", ".claude/skills/s/SKILL.md", ".claude/hooks/h.sh", "scripts/hooks/claude-bash-guard",
-              "scripts/hooks/claude-edit-guard", "scripts/hooks/claude-tool-guard", "scripts/hooks/rules_loader.py",
-              "scripts/hooks/subagent_records.py", "scripts/hooks/workspace_hook.py", "scripts/hooks/claude-subagent-start",
-              "scripts/hooks/a-hook-added-next-year", ".codex/config.toml", ".codex/hooks/x.sh", ".agents/skills/x/SKILL.md",
-              ".vscode/tasks.json", ".mcp.json"]
-    assert protectedwrites.touches_guards(["src/poolhouse/x.py", "docs/a.md", *wiring]) == wiring
-
-
-def test_a_path_that_differs_only_in_case_is_the_same_guard_and_the_same_reviewed_file():
-    spelled = [".GIT/Hooks/pre-push", "scripts/Hooks/Person-Consume", "agents.md",
-               "Src/Poolhouse/Authority.py", ".GITHUB/workflows/ci.yml"]
-    assert protectedwrites.touches_guards(["src/poolhouse/x.py", *spelled]) == spelled
+def test_a_path_that_differs_only_in_case_is_the_same_guard_and_the_same_secret():
     assert protectedwrites.guarded("/r/.GIT/Hooks/pre-push")
+    assert protectedwrites.guarded("/r/scripts/Hooks/Harness-Ancestry")
     assert protectedwrites.secret("/home/me/.Poolhouse/Person/key")
     assert not protectedwrites.guarded("/r/.claude/worktrees/x")
+
+
+def test_the_hook_settings_and_wiring_stay_open_to_the_file_tools_of_an_agent():
+    """The guards let an agent change these files (an owner's order); only the guard scripts and the record code are closed."""
+    for path in (".claude/settings.json", ".claude/agents/branch-worker.md", "scripts/hooks/claude-bash-guard",
+                 "scripts/hooks/workspace_hook.py", "scripts/hooks/a-hook-added-next-year", ".codex/config.toml", ".mcp.json"):
+        assert not protectedwrites.guarded(f"/r/{path}"), path
+    for path in ("scripts/hooks/harness-ancestry", "scripts/hooks/claude-harness-bind",
+                 "src/poolhouse/workspace/harness_ancestry.py", "scripts/release-key"):
+        assert protectedwrites.guarded(f"/r/{path}"), path
+
+
+@pytest.mark.parametrize("command", [*WRITES_A_GUARD, *TOUCHES_GIT_OR_GITHUB, *TOUCHES_A_SECRET, *MENTIONS_A_GUARD_IN_CODE])
+def test_every_refusal_is_automatic_and_says_it_is_refused_to_an_agent_and_asks_for_no_person(command, tree):
+    reason = why(command, tree, environ={"HOME": str(Path.home())} if command in TOUCHES_A_SECRET else None)
+    assert "refused to an agent" in reason, (command, reason)
+    assert not re.search(r"a person|person's|person at|person record|terminal|approval|approve", reason, re.I), (command, reason)
 
 
 def test_reading_a_command_line_costs_milliseconds(tree):

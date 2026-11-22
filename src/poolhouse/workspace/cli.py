@@ -31,10 +31,8 @@ from poolhouse.workspace import (
     mail_cli,
     notes_cli,
     nudge,
-    person_view,
     phone_cli,
     pool_cli,
-    render,
     rooms_cli,
     scratch_cli,
     status_cli,
@@ -70,11 +68,6 @@ def _board_serve(args: argparse.Namespace) -> int:
     return 0
 
 
-def _attestations(args: argparse.Namespace) -> int:
-    render.show(args, person_view.listing(args.limit, args.session))
-    return 0
-
-
 COMMANDS = Group(
     "poolhouse-workspace",
     "Agents coordinate here: messages, shared notes, scratch folders and who owns what. "
@@ -89,8 +82,6 @@ for _name, _help, _options, _handler in (
          hooks_cli.SNIPPET, hooks_cli.snippet),
         ("install-hooks", "write the nudge hooks (post tool, prompt, stop) into Claude Code's and Codex's settings",
          hooks_cli.INSTALL, hooks_cli.install),
-        ("attestations", "what the harness hooks recorded the person saying, as person-attestations; read-only",
-         [flag("--session", default=""), flag("--limit", type=int, default=50)], _attestations),
         ("board-serve", "serve the Board page on a loopback port; the person's identity, no token in the page",
          [flag("--port", type=int, default=0)], _board_serve),
         ("chat", "live conversation with a room or one agent: streams it, sends each line you type; at a terminal",
