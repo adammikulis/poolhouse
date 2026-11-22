@@ -379,8 +379,7 @@ Armed (tests: `tests/test_publisher_trust.py`, `tests/test_supply_chain_pins.py`
   ("This model is from X, who Poolhouse does not know. It is X/repo at 1a2b3c4d5e6f. Models can hide behaviour that tests do not
   show. Use it anyway?"). It is approved for that publisher, host, repository and commit only, and only when the approved
   request's subject, words and fields are exactly the ones the check builds, so a request raised in other words by anything else
-  approves nothing. At most ten such requests wait. Answering it passes `require_person` whatever the authority registry
-  delegates, and the shipped list has no add path. A digest that differs at a commit already pulled (a commit cannot change) is
+  approves nothing. At most ten such requests wait. Answering it passes the `requests.answer` gate, and the shipped list has no add path. A digest that differs at a commit already pulled (a commit cannot change) is
   not downloaded; the file is quarantined under `hub:<repo>/<path>@<commit>` and a person releases it with
   `poolhouse-security release`. The pin records `publisher`, `commit` and `source_ref`. Every other way a model arrives goes
   through the same pull: the fleet's model download (`fleet/models.py`, Hugging Face references only), the vLLM and SGLang
@@ -390,7 +389,7 @@ Armed (tests: `tests/test_publisher_trust.py`, `tests/test_supply_chain_pins.py`
   tuning flags of `serve/downloads.py` (`LLAMA_FLAGS`), so `-m`, `--model`, `-md`, `--mmproj`, `--lora`, `--control-vector`,
   `--chat-template-file`, `--lookup-cache-static`, `-mv`, `-Hf` and any flag not on the list are refused; the child's `LLAMA_ARG_`
   repository, URL and token variables are removed. A start verifies the weights, the draft, the projector, the chat template and
-  the static lookup cache (`guarded.parts_of`). `sentinel baseline --pin FILE --kind model` is a person's, and a pin counts
+  the static lookup cache (`guarded.parts_of`). `sentinel baseline --pin FILE --kind model` is refused to an agent at once, and a pin counts
   as vouching for another file's bytes only when it came from a pull, a person, or a signed list.
 
 * **Pinned at pull.** Every model file (`gguf`, `safetensors`) that `net.download` or `net.accept` keeps

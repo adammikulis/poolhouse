@@ -59,8 +59,8 @@ Counts: A 32, B 34, C 117, D 6 (a variable name counts once, a row naming no var
 | `POOLHOUSE_MUTATION` | `scripts/gates/_mutation.py` | normal runs | the mutation runner | its own child | no | kept |
 | `POOLHOUSE_FLEET_TLS` | nothing: removed | nothing | nobody | ignored (a test proves it) | no | removed |
 
-Not a variable but a switch: `CLAUDECODE`, `POOLHOUSE_AGENT` and `POOLHOUSE_NONINTERACTIVE` mark an agent (`person.AGENT_MARKERS`); a command could run
-`env -u CLAUDECODE`, so every person-only action also needs a controlling terminal (`person.controlling_terminal`), which an agent's shell does not have.
+Not a variable but a switch: `CLAUDECODE`, `POOLHOUSE_AGENT` and `POOLHOUSE_NONINTERACTIVE` mark an agent (`caller.AGENT_MARKERS`); a command could run
+`env -u CLAUDECODE`: the marker is an input to automatic policy (`caller.marked`) and the audit log (`authority-audit.jsonl`) records who ran each action, so this is detected afterwards, not stopped.
 `poolhouse node join --yes` and `--force-build` are an ordered agent's on the owner's instruction, and are audited by the authority registry.
 
 ## C: plain config

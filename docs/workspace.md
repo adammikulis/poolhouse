@@ -367,7 +367,7 @@ durable sender-visible read receipt.
 [GATE ...] [--project KEY]` changes some, and `authority preset dev|prod` changes all of them and the board's task
 enforcement mode together (see AGENTS.md, "System settings and the authority registry"). A lead agent or a person
 tightens (a gate to `person`); a subagent is refused. Loosening (a gate from `person` to `delegated`, including
-`preset dev` over a stricter registry) is a person's alone: a person at a terminal types `yes` to a list that names, in
+`preset dev` over a stricter registry) is refused to an agent at once with the reason, and runs directly for a process with no agent marker, with the list of what it names, in
 plain words, what a lead agent may then do without asking, and any agent-marked process is refused. Each flip is audited in `authority-audit.jsonl` under the state root, which also records
 each use of a delegated gate by an agent. A delegated gate passes an agent only under a session name the node
 recorded as a main session (a token on a board and no parent): an unnamed process, a name the node does not know and
@@ -418,7 +418,7 @@ with `{to, body, subject?, reply_to?, type?}` and `ack` with `{board|to, through
 numbers the node does not have: a message's number is its time in milliseconds times 4096 plus its tick
 (`board_page.Log`), the same for every device.
 
-`chat --room #ops` or `chat --to NAME` is the same conversation in a terminal, for the person only (it refuses an
+`chat --room #ops` or `chat --to NAME` is the same conversation in a terminal, refused to an agent at once (it refuses an
 agent process or a pipe): it prints the recent messages as plain text, prints each new one as it arrives, and sends
 every line typed until `/quit`. Posts from the page and from `chat` are activity records of kind `board.post` (room,
 size; never the text).
@@ -473,7 +473,7 @@ counts what was held back), 10 search results.
   inside the current directory (no `..`, no symlink on the way, never overwriting, mode 0600). `attach` refuses links,
   folders and the workspace's own state.
 - No code path imports, executes or interprets a file; nothing in a file changes a role, rule or subscription.
-- Deleting is a person's, under the grant `file_delete`: the node overwrites and removes the bytes on this device; the
+- Deleting needs the grant `file_delete` (an agent asks for it with `approval request`; policy decides at once): the node overwrites and removes the bytes on this device; the
   messages stay and read as gone.
 
 ## Which model is it
