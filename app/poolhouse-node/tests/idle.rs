@@ -1,5 +1,5 @@
-//! Terminals register main sessions up to the number a board holds live, idle sessions are marked and retired by the node, and a session
-//! that ends retires itself and its subagents and nobody else.
+//! Terminals register main sessions up to the number a board holds live, idle sessions are marked and retired by the node (cleanup: the
+//! session registers again under its name), and a session that ends retires itself and its subagents and nobody else.
 #![cfg(unix)]
 
 mod kit;
@@ -61,7 +61,7 @@ fn a_session_that_ends_loses_its_token_and_its_subagents_and_retires_nobody_else
 }
 
 #[test]
-fn a_session_that_ended_registers_again_from_wherever_it_runs_and_a_subagent_that_ended_never_does() {
+fn a_session_that_ended_registers_again_from_wherever_it_runs_and_its_subagents_come_back_under_it() {
     let dir = tempdir().unwrap();
     let mut n = open(dir.path());
     let (outside, me) = (process(true), me());
@@ -70,19 +70,42 @@ fn a_session_that_ended_registers_again_from_wherever_it_runs_and_a_subagent_tha
     let kid = ok(req(&mut n, "register", "demo", &old, json!({"model": "claude-haiku-5-5", "harness": "claude-code", "session": "kid"})));
     ok(req(&mut n, "retire", "demo", &old, json!({})));
     assert_eq!(code(&req(&mut n, "whoami", "demo", &old, json!({}))), "denied");
-    assert_eq!(code(&start(&mut n, &Peer::none(), "claude-code", "lead")), "denied", "a process that cannot be read is no lineage to bind the session to");
+    let unread = ok(start(&mut n, &Peer::none(), "claude-code", "lead"));
+    assert_eq!((unread["name"].as_str().unwrap(), unread["created"].clone()), (name.as_str(), json!(false)), "a process that cannot be read still brings the session back");
+    ok(req(&mut n, "retire", "demo", unread["token"].as_str().unwrap(), json!({})));
     let again = ok(start(&mut n, &peer(&outside), "claude-code", "lead"));
     assert_eq!((again["name"].as_str().unwrap(), again["created"].clone()), (name.as_str(), json!(false)), "resumed in another terminal it is the session it was");
     let fresh = again["token"].as_str().unwrap();
-    assert_eq!(code(&start(&mut n, &me, "claude-code", "lead")), "denied", "and it is that terminal's from now on: a live session is not taken from it");
+    let sibling = ok(start(&mut n, &me, "claude-code", "lead"));
+    assert_eq!(sibling["name"], name.as_str(), "the first terminal registers it too, as a live sibling: nobody is locked out");
     assert_eq!(ok(req(&mut n, "whoami", "demo", fresh, json!({})))["name"], name.as_str());
-    assert_eq!(code(&req(&mut n, "whoami", "demo", &old, json!({}))), "denied", "the token it ended with stays refused");
+    assert_eq!(code(&req(&mut n, "whoami", "demo", &old, json!({}))), "denied", "the token it ended with stays unknown");
     let all = names(&mut n, fresh, true);
     assert_eq!(all.iter().find(|a| a["name"] == name.as_str()).unwrap()["retired"], false);
-    let sub = req(&mut n, "register", "demo", fresh, json!({"model": "claude-haiku-5-5", "harness": "claude-code", "session": "kid"}));
-    assert_eq!(code(&sub), "denied", "its subagent ended with it and a retired subagent registers no more");
-    assert_eq!(all.iter().find(|a| a["name"] == kid["name"]).unwrap()["retired"], true);
+    assert_eq!(all.iter().find(|a| a["name"] == kid["name"]).unwrap()["retired"], true, "its subagent ended with it");
+    let back = ok(req(&mut n, "register", "demo", fresh, json!({"model": "claude-haiku-5-5", "harness": "claude-code", "session": "kid"})));
+    assert_eq!((back["name"].clone(), back["created"].clone(), back["parent"].clone()), (kid["name"].clone(), json!(false), json!(name)), "a subagent that ended with its parent registers again under it");
+    assert_eq!(names(&mut n, fresh, false).iter().find(|a| a["name"] == kid["name"]).unwrap()["retired"], false);
     done(vec![outside]);
+}
+
+#[test]
+fn a_subagent_its_parent_ended_for_cause_stays_ended_and_the_refusal_says_why() {
+    let dir = tempdir().unwrap();
+    let mut n = open(dir.path());
+    let (_, lead) = session(&mut n, "demo", "lead");
+    let kid = ok(req(&mut n, "register", "demo", &lead, json!({"model": "claude-haiku-5-5", "harness": "claude-code", "session": "kid"})));
+    let (kid_name, kt) = (kid["name"].as_str().unwrap().to_string(), kid["token"].as_str().unwrap().to_string());
+    ok(req(&mut n, "retire", "demo", &lead, json!({"target": kid_name, "reason": "revoked"})));
+    assert_eq!(code(&req(&mut n, "whoami", "demo", &kt, json!({}))), "denied");
+    let again = req(&mut n, "register", "demo", &lead, json!({"model": "claude-haiku-5-5", "harness": "claude-code", "session": "kid"}));
+    assert_eq!(code(&again), "denied", "a block its parent placed on purpose is not lifted by registering again");
+    let said = again["error"]["message"].as_str().unwrap();
+    assert!(said.contains("ended for cause (revoked)") && said.contains("starts a new subagent"), "{said}");
+    for word in ["rebind", "phone", "tap", "typed", "type yes"] {
+        assert!(!said.contains(word), "the refusal sends nobody to a person ({word}): {said}");
+    }
+    assert_eq!(ok(req(&mut n, "whoami", "demo", &lead, json!({})))["identity"]["retired"], false, "and it ended nothing of the parent's");
 }
 
 #[test]
@@ -166,7 +189,7 @@ fn a_main_session_whose_harness_runs_keeps_its_name_and_its_token_however_long_i
 }
 
 #[test]
-fn a_token_of_a_session_the_node_retired_for_idleness_is_refused() {
+fn a_session_the_node_retired_for_idleness_does_not_know_its_token_and_registers_again_under_its_name() {
     let dir = tempdir().unwrap();
     let (name, token, watcher);
     {
@@ -180,8 +203,21 @@ fn a_token_of_a_session_the_node_retired_for_idleness_is_refused() {
     age(dir.path(), &name, 2 * DAY_MS);
     let mut n = open(dir.path());
     assert_eq!(names(&mut n, &watcher, false).len(), 1, "listing retires it");
-    assert_eq!(code(&req(&mut n, "whoami", "demo", &token, json!({}))), "denied");
+    let unknown = req(&mut n, "whoami", "demo", &token, json!({}));
+    assert_eq!(code(&unknown), "denied");
+    let said = unknown["error"]["message"].as_str().unwrap();
+    assert!(said.starts_with("denied: the token is not known") || said.starts_with("the token is not known"), "its client is told in the words that make it register again: {said}");
+    for word in ["rebind", "phone", "new session", "person"] {
+        assert!(!said.contains(word), "nobody is sent anywhere ({word}): {said}");
+    }
     assert_eq!(code(&req(&mut n, "post", "demo", &token, json!({"kind": "message", "fields": {"type": "status", "body": "still here"}}))), "denied");
+
+    let back = ok(start(&mut n, &me(), "claude-code", "forgotten"));
+    assert_eq!((back["name"].as_str().unwrap(), back["created"].clone()), (name.as_str(), json!(false)), "the next use registers it again under the name it had");
+    let sent = post(&mut n, "demo", back["token"].as_str().unwrap(), "still here");
+    assert_eq!(sent["ok"], true, "{sent}");
+    let listed = names(&mut n, back["token"].as_str().unwrap(), false);
+    assert_eq!(listed.iter().find(|a| a["name"] == name.as_str()).unwrap()["retired"], false);
 }
 
 fn person(n: &mut Node, from: &Peer, id: &str) -> Value {

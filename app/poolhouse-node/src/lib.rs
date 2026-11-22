@@ -63,7 +63,6 @@ pub mod reap;
 pub mod registry;
 pub mod row;
 pub mod root_auth;
-pub mod rebind;
 pub mod rooms;
 pub mod rules;
 pub mod scratch;

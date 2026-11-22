@@ -20,7 +20,7 @@ use crate::device::{self, fingerprint, Custody, Supplied};
 use crate::error::{Error, Result};
 use crate::fold::{self, check_local, Context, Entry};
 use crate::fsutil::{private_dir, write_atomic};
-use crate::identity::{self, Holder, Ident, ModelState, Registry, Tokens, Who};
+use crate::identity::{self, Assigned, Holder, Ident, ModelState, Registry, Tokens, Who};
 use crate::lease::Leases;
 use crate::limits::Rates;
 use crate::lineage::{shares, Anchor, Asking, Peer};
@@ -49,9 +49,12 @@ pub const READ_MAX: usize = 1000;
 pub const MAX_BOARDS: usize = 256;
 /// How many boards the live sessions of one process tree hold at most.
 pub const MOST_BOARDS_PER_LINEAGE: usize = 32;
-/// What a request with a token the node does not hold is told.
+/// How the answer to a token the node does not hold begins; a client that keeps a token registers its session again and asks once more
+/// when it reads these words (`UNKNOWN_TOKEN` in `board/session.py`).
+pub const NOT_KNOWN: &str = "the token is not known";
+/// What a request with a token the node does not hold is told: the session registers again by itself, so nobody is sent anywhere.
 const UNKNOWN_TOKEN: &str =
-    "the token is not known: its session was retired (an idle session is retired after a day, and so is one its parent ends) or never registered; start a new session";
+    "the token is not known: its session was retired to free its resources (an idle session is) or it never registered; the next registration of its harness's session, which a client makes by itself, gives it a token";
 
 /// One board this node holds and the names registered on it.
 pub struct Hosted {
@@ -326,21 +329,22 @@ impl Node {
     }
 
     /// The parent a registration names and the lineage its token is bound to. A token given makes the new session a subagent of the
-    /// token's owner, and the new token carries the owner's lineage; a token of the very session being registered proves the
-    /// registrant holds it (``true``) and registers it again as what it is.
-    fn parent_of(&self, board: &str, token: Option<&str>, who: (&str, &str), from: &[Anchor]) -> Result<(String, bool, Vec<Anchor>)> {
-        let Some(token) = token else { return Ok((String::new(), false, from.to_vec())) };
-        let Some(holder) = self.tokens.resolve(token).filter(|h| h.board == board) else {
+    /// token's owner, and the new token carries the owner's lineage; a token of the very session being registered registers it again as
+    /// what it is.
+    fn parent_of(&self, board: &str, token: Option<&str>, who: (&str, &str), from: &[Anchor]) -> Result<(String, Vec<Anchor>)> {
+        let Some(token) = token else { return Ok((String::new(), from.to_vec())) };
+        let Some(holder) = self.tokens.resolve(token) else { return Err(Error::Denied(UNKNOWN_TOKEN.into())) };
+        if holder.board != board {
             return Err(Error::Denied("a parent must be a session of this board".into()));
-        };
+        }
         let held = self.tokens.lineage_of(token).unwrap_or_default().to_vec();
         let names = self.boards.get(board).map(|h| &h.names);
         if names.and_then(|n| n.find(who.0, who.1)) != Some(holder.name.as_str()) {
-            return Ok((holder.name.clone(), false, held));
+            return Ok((holder.name.clone(), held));
         }
         let parent = names.and_then(|n| n.get(&holder.name)).map(|i| i.parent.clone()).unwrap_or_default();
         let bound = if parent.is_empty() { from.to_vec() } else { held };
-        Ok((parent, true, bound))
+        Ok((parent, bound))
     }
 
     /// Drop the tokens of sessions idle for `identity::IDLE_MS` when the node holds as many as it will.
@@ -398,8 +402,8 @@ impl Node {
     }
 
     /// Register a session on ``board`` (creating the board on first use) from the process ``peer``; a token given makes
-    /// the new session a subagent of the token's owner. A main session that is already registered gets a token only from
-    /// the lineage it was registered from. A node hosts a bounded number of boards, and one process tree makes a bounded number
+    /// the new session a subagent of the token's owner. A main session that is already registered gets a token from any process: it
+    /// moves to the process's lineage when the one it had has ended, and stays with a lineage that still runs otherwise (`Registry::admit`). A node hosts a bounded number of boards, and one process tree makes a bounded number
     /// of them. The identity entry of a new or returning session is written for it, to its share of the log, and a registration
     /// the log refuses leaves the registry as it was. Returns name, token, whether new. The harness of the person's own session is
     /// not registered here (`register_person`).
@@ -438,7 +442,7 @@ impl Node {
         if fresh {
             self.make_room_for_a_board(&lineage)?;
         }
-        let (parent, proven, bound) = self.parent_of(board, parent_token, (&harness, session), &lineage)?;
+        let (parent, bound) = self.parent_of(board, parent_token, (&harness, session), &lineage)?;
         if person && !parent.is_empty() {
             return Err(Error::Denied("the person's session has no parent: it is registered with no token, or with its own".into()));
         }
@@ -458,7 +462,7 @@ impl Node {
         let (model, state) = if inherited.is_empty() { (model, ModelState::Claimed) } else { (inherited, ModelState::Inherited) };
         let hosted = self.host(board)?;
         let now = hosted.board.now_ms();
-        let (name, created) = hosted.names.assign(Who { harness: &harness, session, parent: &parent }, &model, state, now, &lineage, proven)?;
+        let Assigned { name, created, moved } = hosted.names.assign(Who { harness: &harness, session, parent: &parent }, &model, state, now, &lineage)?;
         hosted.board.group(&name, &hosted.names.tree(&name));
         if person {
             hosted.names.mark_person(&name)?;
@@ -469,6 +473,11 @@ impl Node {
                 self.host(board)?.names.restore(&name, before.map(|(_, i)| i))?;
                 return Err(refused);
             }
+        }
+        if moved {
+            // The session left a lineage that ended: the tokens of that lineage end with it, and the ones of a lineage that still runs stay.
+            self.tokens.revoke_unrunning(board, &name)?;
+            self.regroup(board)?;
         }
         let origin = self.host(board)?.board.origin().to_string();
         let token = self.tokens.issue(board, &name, &bound)?;
