@@ -27,6 +27,7 @@ from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.policy import LocalPolicy
 from poolhouse.serve.process import listens_on, pid_exists
 from poolhouse.testing.canned import CANNED_MODEL_ID, canned_binary
+from tests.binary_fetch_guard import no_build_is_made_or_fetched  # noqa: F401  (an autouse fixture)
 
 MIB = 1 << 20
 

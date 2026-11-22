@@ -23,6 +23,7 @@ from poolhouse.serve.binary import BinaryTampered, find_binary, managed_builds, 
 from poolhouse.serve.build_paths import BuildFailed
 from poolhouse.serve.llamacpp_trust import PoolPolicy
 from poolhouse.serve.policy import LocalPolicy
+from tests.binary_fetch_guard import no_build_is_made_or_fetched  # noqa: F401  (an autouse fixture)
 
 
 def build(where: Path, content: bytes = b"server one", *, record: bool = True, built_at: str = "") -> Path:

@@ -28,6 +28,7 @@ from poolhouse.serve import (
 )
 from poolhouse.serve.build_paths import BuildFailed, builds_dir, current_link, root
 from poolhouse.serve.llamacpp_smoke import Result
+from tests.binary_fetch_guard import no_build_is_made_or_fetched  # noqa: F401  (an autouse fixture)
 from tests.llamacpp_site import UpstreamSite, toolchain
 from tests.sandbox_kit import require_native_sandbox
 
