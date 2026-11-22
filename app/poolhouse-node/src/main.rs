@@ -181,7 +181,7 @@ fn run(state: &Path, args: &[String]) -> Result<(), String> {
     let shared = server.node();
     set_build(&mut *shared.lock().map_err(|e| e.to_string())?, args)?;
     if let Some(name) = flag(args, "--presence") {
-        let mode = poolhouse_node::presence::Mode::parse(name).ok_or("--presence is os (the operating system's prompt) or terminal (the person's terminal device)")?;
+        let mode = poolhouse_node::presence::Mode::parse(name).ok_or("--presence is auto (nobody is asked, the default), os (the operating system's prompt) or terminal (the person's terminal device)")?;
         shared.lock().map_err(|e| e.to_string())?.firsts = poolhouse_node::presence::Firsts::new(mode.presence(state));
     }
     if let Some(listen) = phone {

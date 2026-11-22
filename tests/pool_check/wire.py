@@ -28,14 +28,8 @@ from poolhouse import node_binary, node_launch, node_supervise
 from poolhouse.board import phone
 from poolhouse.node_health import API_VERSION, exchange
 
-try:
-    from pool_check.terminal import at_terminal
-except ImportError:  # run as a script, where the rig's own directory is the one on the path
-    from terminal import at_terminal
-
-PRESENCE = ["--presence", "terminal"]
-"""How a node of a rig or a test asks the person for the first key or phone: on a terminal the node reads itself, where `answer_presence` types
-yes. It is the node a person installs; only the installed software on the real home asks with the operating system's prompt."""
+PRESENCE = ["--presence", "auto"]
+"""How a node of a rig or a test asks for the first key or phone: nobody is asked (`auto`), the way the installed node runs."""
 
 
 def call(state: Path, method: str, board: str = "", token: str = "", params: dict | None = None) -> dict:
@@ -52,35 +46,12 @@ def call(state: Path, method: str, board: str = "", token: str = "", params: dic
 
 
 def answer_presence(state: Path, purpose: str, public: str = "") -> dict:
-    """Play the person at the node's own question: ask as the person's own session (registered with the secret the node keeps for the person) for the
-    one-time secret of the first key or phone, name a terminal of this device (`terminal.at_terminal`: a pseudo-terminal, or a ConPTY pseudo-console on
-    Windows) as where to ask, and type `yes` there when the node has written its question on it.
-
-    This is what a person does at a terminal, against the node as shipped: the node writes the question itself and reads the line itself,
-    so the answer does not pass through the process that asked (docs/pool-check.md). Only the rig's person runs it; the node has no
-    switch that answers for anyone.
-    """
-    import time
-
-    terminal = at_terminal()
-    try:
-        me = call(state, "register_person", "pool", "", {"session": "the-rig-person", "proof": (Path(state) / "person" / "ui.secret").read_text().strip()})
-        if not me["ok"]:
-            return me
-        token = me["result"]["token"]
-        asked = call(state, "presence_ask", "", token, {"purpose": purpose, "public": public, "terminal": terminal.name})
-        if not asked["ok"] or asked["result"]["state"] != "asking":
-            return asked
-        if not terminal.shows("Type yes", 20.0):
-            return {"ok": False, "code": "TimeoutError", "error": "the node wrote no question on the terminal it was given"}
-        terminal.types("yes" + terminal.ENTER)
-        said, end = asked, time.monotonic() + 20
-        while said["ok"] and said["result"]["state"] == "asking" and time.monotonic() < end:
-            time.sleep(0.1)
-            said = call(state, "presence_status", "", token)
-        return said
-    finally:
-        terminal.close()
+    """Ask as the person's own session (registered with the secret the node keeps for the person) for the one-time secret of the first key or
+    phone. The node asks nobody (`--presence auto`), so the answer is there at once; the reply is the node's own status of the ask."""
+    me = call(state, "register_person", "pool", "", {"session": "the-rig-person", "proof": (Path(state) / "person" / "ui.secret").read_text().strip()})
+    if not me["ok"]:
+        return me
+    return call(state, "presence_ask", "", me["result"]["token"], {"purpose": purpose, "public": public, "terminal": ""})
 
 
 def post_many(state: Path, session: tuple[str, str], count: int, size: int, prefix: str) -> dict:

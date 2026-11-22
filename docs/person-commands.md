@@ -1,66 +1,46 @@
-# Commands an agent is refused
+# Commands an agent is refused, and why
 
-Inventory taken 2026-10-12 (read-only sweep of `src/poolhouse`, `app/poolhouse-node/src`, `scripts/hooks`, the authority registry). Classes: **HARD** is a floor (keystore, secrets, passphrases, the administrator prompt, signing a person's key, `main`, grants of authority) or a hard-coded refusal guarding identity or a trust root; **REGISTRY** is a gate in `poolhouse.authority` that the dev preset already delegates; **ROUTED** is refused to the session but a phone or a person's key can grant it; **CONVENIENCE** is a refusal with no security reason visible in the code. In the dev preset every registry gate is delegated; prod keeps only `workspace.setup`, `workspace.model` and `workspace.agents` delegated.
+Nothing in Poolhouse waits for a person. There is no typed yes, no phone tap, no "needs a terminal on stdin", no Requests-inbox answer
+that a command parks on. Every action is decided at once by one of three rules, and every decision is audited with who ran it
+(`authority-audit.jsonl` under the state root: `poolhouse.caller.audit_rows()`; `who` is the process or session, for example
+`agent CLAUDECODE session s-1 pid 4242` or `user alice pid 77`).
 
-Refusal shapes: `X is for a person; this process was started by an agent (CLAUDECODE is set)` (`person.py:60`), `X needs a terminal on stdin and stdout` (`person.py:63`), `Only a person can X ... Run this in your own terminal` (`chatpolicy.py:138`).
+1. **Upkeep runs for whoever runs it.** Sessions, tokens, pool founding and joining, phones, the device key, grants an agent may have,
+   model downloads (a download that fails its checksum or scan is deleted and fetched again, never released) and the rest of the routine
+   commands need no approval. The device's own key is made and enrolled the first time it is needed.
+2. **A gate in the authority registry** (`poolhouse-workspace authority show`): `delegated` lets an agent through (audited), `person`
+   refuses an agent at once with the reason. Both let a process with no agent marker through. An agent may narrow a gate; loosening one
+   is refused to an agent and runs for a process with no agent marker.
+3. **A protected action** is refused to an agent at once, with the reason, whatever the gates say. A process with no agent marker runs it
+   directly, with no question. A person typing `! cmd` inside Claude Code inherits the agent marker and cannot be told from the agent, so
+   the refusal says to run the command from a terminal outside the agent.
 
-## Hard
+Refusal shape: `X is refused to an agent (CLAUDECODE is set): <why>. To do it, run it from a terminal outside the agent (...)`
+(`poolhouse.caller.refuse_agent`).
 
-| Command | Enforced | Protects | An agent's route |
-| --- | --- | --- | --- |
-| `poolhouse-workspace phone add` (first phone), `phone remove` | `workspace/phone_cli.py:79,105` | the person key that approves grants | later phones: `phone offer`, an existing phone approves |
-| `grant`, `revoke-grant`, `distrust`, `grants-setup`, `person-enroll`, `person-unenroll`, `person-proof` | `workspace/grants_cli.py:99` | grants of authority | `approval request ACTION`, a phone answers |
-| `rebind HARNESS SESSION` | `grants_cli.py:258`, node `sessions.rs:81` | a session's tokens moving to another terminal | none |
-| `approval decide`, `approval pending --all` | `workspace/approval_cli.py:144,87` | answering with the person key | agents request, status, wait, cancel their own |
-| `poolhouse-workspace chat` | `workspace/cli.py:50` | speaking as the person on the board | none (AGENTS.md section 1) |
-| `mint`, `delegate`; reads of the person record | `scripts/hooks/claude-bash-guard:114-119` | creating identities; the person's key and record | `poolhouse-workspace invite` |
-| `poolhouse-security unlock`, `keystore-reset` | `net/cli.py:159,189` | the keystore | none |
-| `poolhouse-node key --migrate` | `node_permission.py:115` | device key custody | none |
-| onboard `signing export/rotate/revoke/confirm/accept` | `fleet/onboard/signing_cli.py` | the signing key | `signing show` is open |
-| `poolhouse-security review` | `sentinel/review.py:209` | the review screen | none |
-| `poolhouse open` | `fleet/launch_open.py:main` | a signed-in ticket to the owner's page | none |
-| `poolhouse-workspace file delete`, `quarantine-release` | `workspace/filecli.py:292`, `mail_cli.py:123` | irreversible deletion; held messages | none through these |
-| chat tool names matching release, approv, grant, mint, sentinel, polic, guard, role, rule, request, answer | `chatpolicy.py:90-155` | the same actions as chat tools | none |
-| `git push` naming `main`; `--all`, `--tags`, `--mirror`, `--delete`, `--force` | `claude-bash-guard:102-113` | the owner's release; history | `main`: `person-consume propose`, a person selects the approval |
-| `scripts/release-key` (all but `create --write`), `scripts/github-protection-apply --apply`, `--restore` | `person.require_person` in each script | the release signing key; the repository's rulesets, environment and settings | `release-key create --write` and `github-protection-apply --apply --repo OWNER/NAME` once each: `scripts/hooks/run-approval propose`, the owner selects the approval, the Bash guard hands the main session's exact command a ticket (`workspace/run_approval.py`). The dry run of the apply script is open |
-| `--no-verify`, `commit -n`, `SKIP_BUDGETS=`, `SKIP_NAME_CHECK=1` | `claude-bash-guard:120-127` | the last checks before the repo | fix the finding |
-| budget raise (`--allow-increase`, editing `budgets.json`) | `scripts/hooks/budgets-only-fall:124` | the ratchet | report the overage |
+## Protected actions (refused to an agent)
 
-## Registry (delegated in dev, a person's in prod)
-
-| Command | Gate |
-| --- | --- |
-| `poolhouse-security release`, `purge`, `inspect`, `mode`, `approve-host`, `scan-policy` | `sentinel.quarantine`, `sentinel.policy` |
-| `poolhouse-requests answer` | `requests.answer` |
-| `poolhouse-memory ...` | `memory.admin` |
-| `poolhouse-reputation ...` | `reputation.admin` |
-| `poolhouse-log export` | `activity.export` |
-| `poolhouse-runtime ensure`, `rollback`, `restart-host`, `pin` | `runtime.deploy` |
-| `poolhouse-runtime ensure --allow-unmerged --ref SHA --review-branch BRANCH` (live eligible lead, independent exact-SHA approval) | `runtime.deploy` and `runtime.deploy-unmerged` |
-| `poolhouse-serve memory --apply` (wired limit, through the macOS administrator dialog; the sudo path needs a terminal) | `serve.wired-limit` |
-| `poolhouse-workspace install-hooks` | `workspace.setup` |
-| `poolhouse-workspace agent start`, `stop`, `supersede-issue`, `resume-issue` | `workspace.agents` |
-| chat text: release or purge held content, approve a host, change sentinel or guard policy, plant baselines, `/role`, answer or cancel a request | `chat.policy` |
-
-## Convenience, or refused with a reason that is not a security one
-
-| Command | Enforced | Note |
+| Command | Enforced | Protects |
 | --- | --- | --- |
-| `node_join join` | `node_join.py:59` | refused unless `--yes`; the flag is the only check |
-| `ph.pool.listen()` | `api/pool.py:148` | refused unless `agreed=True`; self-declared |
-| `poolhouse-requests list`, `show`, `watch` | `inbox/cli.py:29-33` | read-only; `approval list` and `status` show an agent's own requests |
-| `poolhouse-serve up --iq` through MCP | `mcp.py:219` | a model-quality choice; the CLI has no check |
-| autostart `install`, `rollback` | `fleet/autostart_apply.py:198,250` | AGENTS.md section 1 keeps these a person's (login persistence); `prepare` is open. Designed, not built: a lead agent passes them for `pool-daemon` and `runtime-ensure` under gate `autostart.install` ([agent-login-unit-install.md](agent-login-unit-install.md)) |
+| `poolhouse-workspace phone add`, `phone remove` | `workspace/phone_cli.py` | who can answer for this device |
+| `grant`, `revoke-grant`, `distrust`, `grants-setup`, `person-enroll`, `person-unenroll`, `person-proof`, `approval decide`, `approval pending --all`, `approval blocks`, `lift` | `workspace/grants_cli.py`, `approval_cli.py` | an agent minting or widening its own standing grants (it asks with `approval request`, which policy decides) |
+| `poolhouse-workspace chat` | `workspace/cli.py` | speaking on the board as the owner |
+| `poolhouse-workspace quarantine-release` | `workspace/mail_cli.py` | an agent releasing the message that was held for it |
+| `poolhouse-security keystore-reset`, `baseline --kind model --pin` | `net/cli.py`, `sentinel/cli.py` | the key that wraps every secret; what lets a model file load |
+| onboard `signing export/rotate/revoke/accept`, `share --accept-licence` | `fleet/onboard/signing_cli.py`, `share_cli.py` | the signing key; accepting a licence |
+| `poolhouse open` | `fleet/launch_open.py` | the sign-in ticket that makes the holder the owner of the device's page |
+| `scripts/release-key`, `scripts/github-protection-apply --apply`, `scripts/agent-identity token` / `check --online` | the scripts | the release key, the repository's protection, the GitHub credential |
+| `gh pr merge`, a push of `main`, edits to the guards, hook settings, git's hooks and config | `protectedwrites.py`, `worktreerules.py`, `scripts/hooks/*` | releases and the rules that protect them; allowed for `gh pr merge` / `main` only when `workspace/release_check.py` finds a standing independent land-review accept and a clean checkout |
+| grants `member_remove`, `admin_manage`, `land_trust`, `quarantine_release` | `board/person_key.py` (`AGENT_REFUSED`) | another device's place in the pool, who governs it, what it trusts to land, what a scan failed |
+| chat tool calls and text naming the above | `chatpolicy.py` | the same actions through a model's tools |
 
-## Refused by environment, not by design
+## Gates (delegated in `dev`, held back from agents in `prod`)
 
-- Any command run in an agent's shell is refused, including one the person types: `person.marked()` reads `CLAUDECODE`, `POOLHOUSE_AGENT` and `POOLHOUSE_NONINTERACTIVE` (`person.py:24,32-35`). A person typing a person-only command after `!` in the Claude Code prompt is refused too.
-- `person.require_person()` checks only that stdin and stdout are terminals (`person.py:53-63`), so an agent that unsets the marker and runs under a pseudo-terminal passes every T-AGENT gate that has no typed yes. The marker and the terminal are the only boundary.
-- A session registered from another process lineage gets no grants until a person runs `rebind` (`grants/mod.rs:137`).
-- Budget raises are refused whenever `CLAUDECODE` is set, even for a person's commit.
-- Silent drops: `keystore.py:151` (no prompt when marked) and `fleet/runtime_paths.py:31` (the daemon token line is left out).
+`sentinel.quarantine`, `sentinel.policy`, `requests.answer`, `memory.admin`, `reputation.admin`, `activity.export`, `serve.wired-limit`,
+`autostart.install`, `chat.policy`, `runtime.deploy`, `runtime.deploy-unmerged`, `github.release`, `workspace.setup`, `workspace.model`,
+`workspace.agents`. `prod` keeps only `workspace.setup`, `workspace.model` and `workspace.agents` delegated.
 
-## For the owner
+## Not bound
 
-- A lead agent can run `authority set` and `authority preset`; only subagents are refused (`authority_cli.py:49-54`). No gate protects the registry.
-- The onboarding journey (AGENTS.md section 2) is blocked today by: the network-on step in a terminal, the first phone, autostart `install`, the owner's page (`open`), and the hidden daemon token.
+A process that removes the agent marker from its own environment (`env -u CLAUDECODE ...`) is not recognised as an agent. The audit log
+records who ran each action so this is detected afterwards, not stopped.

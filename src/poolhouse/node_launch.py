@@ -27,7 +27,6 @@ from poolhouse import (
     node_health as health,
     node_pool,
     node_supervise,
-    real_machine,
     runtime,
     runtime_git,
     runtime_store,
@@ -78,18 +77,16 @@ PRESENCE_FLAG = "--presence"
 
 
 def _presence(extra: list[str] | None) -> list[str]:
-    """``extra`` with the way the node asks the person for the first key or phone. The installed software on the real home asks with the
-    operating system's prompt and no other way: a terminal can be answered by the program that asks, so `--presence terminal` is dropped
-    there (and the node refuses it on that home as well). Anywhere else (a test, a checkout, a rig, a server) `--presence os` is dropped, so
-    none raises a dialog (`real_machine`), and `--presence terminal` is the caller's own word."""
-    real, words, out, i = real_machine.allowed(), list(extra or []), [], 0
+    """``extra`` for the node: nobody is asked for the first key or phone, so the node's default (`--presence auto`) stands and an
+    operating-system prompt (`--presence os`), which would wait for a person, is dropped everywhere; any other `--presence` is the caller's own word."""
+    words, out, i = list(extra or []), [], 0
     while i < len(words):
-        if words[i] != PRESENCE_FLAG:
+        if words[i] != PRESENCE_FLAG or words[i + 1 : i + 2] != ["os"]:
             out.append(words[i])
-        elif words[i + 1 : i + 2] == ["terminal"] and not real:
-            out += words[i : i + 2]
-        i += 2 if words[i] == PRESENCE_FLAG else 1
-    return [*out, PRESENCE_FLAG, "os"] if real else out
+            i += 1
+        else:
+            i += 2
+    return out
 
 
 def _start_supervisor(state: Path, extra: list[str]) -> spawned.Child:
