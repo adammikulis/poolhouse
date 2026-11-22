@@ -1402,6 +1402,14 @@ tests = ["tests/test_serve_policy.py::test_a_binary_path_that_looks_like_an_opti
 note = "the argv is the fixed codesign path, fixed words and the binary's absolute path as one element, never through a shell; a directory named like an option or a command is still one argument and only fails to verify"
 
 [[group]]
+match = ["spawn:workspace/release_check.py:_git"]
+status = "covered"
+count = 1
+tests = ["tests/test_release_check.py::test_a_checkout_with_uncommitted_changes_is_refused_even_with_an_accept",
+         "tests/test_release_check.py::test_the_commit_with_a_standing_independent_accept_may_be_merged"]
+note = "fixed git argument vectors with a timeout read the commit and the dirtiness a merge into a protected branch is judged on; a failure to read is a refusal"
+
+[[group]]
 match = ["spawn:*"]
 status = "partial"
 tests = ["tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"]
@@ -1753,11 +1761,3 @@ match = ["route:fleet/setup_routes.py:/ui/setup/suggest", "route:fleet/setup_rou
 status = "partial"
 tests = ["tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header", "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine"]
 note = "The shared UI-header boundary and prejoin discovery boundary are attacked; individual preference, suggestion and member routes lack a complete hostile-request matrix."
-
-[[group]]
-match = ["spawn:workspace/release_check.py:_git"]
-status = "covered"
-count = 1
-tests = ["tests/test_release_check.py::test_a_checkout_with_uncommitted_changes_is_refused_even_with_an_accept",
-         "tests/test_release_check.py::test_the_commit_with_a_standing_independent_accept_may_be_merged"]
-note = "fixed git argument vectors with a timeout read the commit and the dirtiness a merge into a protected branch is judged on; a failure to read is a refusal"

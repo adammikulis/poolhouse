@@ -1,8 +1,8 @@
 {
  "surfaces": 893,
  "by_status": {
-  "covered": 573,
-  "partial": 184,
+  "covered": 574,
+  "partial": 183,
   "uncovered": 51,
   "n/a": 85,
   "unmapped": 0
@@ -100,8 +100,8 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 103,
-   "partial": 65,
+   "covered": 104,
+   "partial": 64,
    "uncovered": 0,
    "n/a": 4,
    "unmapped": 0
@@ -12775,11 +12775,12 @@
    "source": "workspace/release_check.py:_git",
    "trust": "arguments built from model output, member messages or file names",
    "attacker": "attacker text becomes a command line, environment or working directory",
-   "status": "partial",
+   "status": "covered",
    "tests": [
-    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
+    "tests/test_release_check.py::test_a_checkout_with_uncommitted_changes_is_refused_even_with_an_accept",
+    "tests/test_release_check.py::test_the_commit_with_a_standing_independent_accept_may_be_merged"
    ],
-   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
+   "note": "fixed git argument vectors with a timeout read the commit and the dirtiness a merge into a protected branch is judged on; a failure to read is a refusal"
   },
   {
    "id": "spawn:worktreerules.py:_blob",
