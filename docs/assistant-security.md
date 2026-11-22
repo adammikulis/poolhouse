@@ -91,8 +91,8 @@ parent's token. The subagent holds a grant only when a person signed one that na
 coordinator-eligible. A session ends with `retire` (its tokens stop working and its claims are released), and a parent ends a
 descendant. Nothing the agent read can register one: the chat assistant has no tool for it. There is no invitation to
 a workspace: every device of the pool holds the board, and a person widens what a session may do by signing a grant
-(`grants-setup`, `grant`), each with its own typed yes. Signing grants, enrolling or removing the person's key, and
-moving a session to another terminal (`rebind`) remain person-only.
+(`grants-setup`, `grant`), each with its own typed yes. Signing grants and enrolling or removing the person's key remain
+person-only. Moving a session to another terminal is not: a session registers from any process by itself, and `rebind` takes it over at once (docs/node.md, "Identity").
 
 ## Surface inventory
 

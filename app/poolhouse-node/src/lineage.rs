@@ -1,15 +1,18 @@
 //! Where a registration came from: the process that made the request and the processes above it, up to the shell of its
 //! terminal (the leader of a session that has a controlling terminal) or, with none, to the top.
 //!
-//! A main session is registered once, from some lineage; a later `register` of the same native session is answered only to
-//! a process that shares one of those processes: the same process tree, or the same terminal. A harness that starts each
-//! command in a session of its own is still its own terminal's, since the walk goes on past a session with no terminal. A
-//! process that double-forks and is left to the system's first process has no parents to share. The processes are read from
-//! the operating system by the peer id of the socket, so a request cannot name its own. Windows does not report the peer
-//! yet: there nothing is recorded and nothing is refused (`ENFORCED`).
+//! A main session is registered from some lineage, and its tokens are bound to the lineage that registered them. A later `register` of
+//! the same native session always succeeds: from a lineage that shares a process with the recorded one it is the same session; from one
+//! that shares none while no process of the recorded one runs any more (the terminal was closed, the harness was resumed elsewhere, a
+//! daemon registers it) the session moves to the new lineage by itself (`running`); from one that shares none while the recorded one
+//! still runs it is a live sibling, which gets a token of its own lineage and leaves the session where it is. A harness that starts each
+//! command in a session of its own is still its own terminal's, since the walk goes on past a session with no terminal. A process that
+//! double-forks and is left to the system's first process has no parents to share. The processes are read from the operating system by
+//! the peer id of the socket, so a request cannot name its own. Windows does not report the peer yet: there nothing is recorded
+//! (`ENFORCED`).
 //!
-//! Every token is bound to the lineage that registered it, and a grant is spent only by a request from a process that shares
-//! it (`Asking`).
+//! What a lineage still decides is who spends a grant (`Asking`): a request spends one only with a token registered from a lineage it
+//! shares, and, while a process of the lineage the session is registered from runs, only from that one, so a live sibling cannot spend it.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -50,14 +53,23 @@ impl Anchor {
 pub struct Asking {
     pub token: String,
     pub peer: Peer,
-    /// Set when a grant would have let the request through but the token was registered from another lineage.
-    pub lineage_refused: bool,
+    /// Set when a grant would have let the request through but the lineage it came from may not spend it (`Refusal`).
+    pub refused: Option<Refusal>,
 }
 
 impl Asking {
     pub fn of(token: &str, peer: &Peer) -> Asking {
-        Asking { token: crate::identity::Tokens::key(token), peer: *peer, lineage_refused: false }
+        Asking { token: crate::identity::Tokens::key(token), peer: *peer, refused: None }
     }
+}
+
+/// Why a grant the session holds was not spent by the request that asked.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Refusal {
+    /// The token was registered from a process tree that has ended: it is a stale token, and registering the session again here replaces it.
+    Ended,
+    /// A process tree of the session that still runs is the one that spends its grants: the request comes from a live sibling of it.
+    Sibling,
 }
 
 /// The process on the other end of a request, as far as the system says.
@@ -107,6 +119,11 @@ pub fn tree_of(lineage: &[Anchor]) -> Option<Anchor> {
 /// Whether the two lineages have a process in common.
 pub fn shares(a: &[Anchor], b: &[Anchor]) -> bool {
     a.iter().any(|x| b.contains(x))
+}
+
+/// Whether a process of ``lineage`` still runs. A lineage the node could not read (empty) tells nothing, so it is not running.
+pub fn running(lineage: &[Anchor]) -> bool {
+    lineage.iter().any(|a| crate::lease::live::is_alive(a.pid, Some(a.start)))
 }
 
 #[cfg(all(test, unix))]

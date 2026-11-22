@@ -498,8 +498,8 @@ human").
   no session and no delegation (it runs as `system:runtime`, forward from the selected runtime only, and a subagent starts none), so an
   ended registration never blocks installing the build that repairs it.
 - **Credentials and sessions.** A session reads and writes only its own board until a person signs a grant
-  (`grants-setup`, `grant`); registering again or a person's move to another terminal (`rebind`) gains no grant or
-  person's right. Other devices of the pool hold the same board, so there is no invitation to one. Private person
+  (`grants-setup`, `grant`); registering again, a session's move to the process that runs it and `rebind` gain no grant or
+  person's right: a session's grants stay with its name and are spent only by the lineage that runs it (docs/node.md, "Identity"). Other devices of the pool hold the same board, so there is no invitation to one. Private person
   credentials are never read or minted through an agent flow and approval is never bypassed; person-only provisioning
   and system settings remain person-only (section 1).
 - **The model is a label.** No model identifier decides who may coordinate, be promoted, land or review; a subagent is

@@ -46,9 +46,6 @@ pub const FAILED: &str = "failed";
 pub const GRANTS: &str = "grants";
 pub const PHONE_ADD: &str = "phone_add";
 pub const PHONE_REMOVE: &str = "phone_remove";
-/// The move of a main session to the terminal that asked, and the state of one that was carried out.
-pub const REBIND: &str = "rebind";
-pub const USED: &str = "used";
 
 /// How many requests wait on a node: memory. The person sees every one of them, and a request past it is told so.
 pub const MOST_PENDING: usize = 64;

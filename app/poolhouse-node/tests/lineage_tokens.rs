@@ -1,6 +1,8 @@
-//! A token is a bearer secret in a file its user can read, so what it spends is bound to the lineage that registered it: a
-//! token presented from another terminal still reads and sends, and spends no grant. A name with no lineage recorded is
-//! adopted only by a process that presents a token of that name, and an orphan that registers first adopts nothing.
+//! A token is a bearer secret in a file its user can read, so what it spends is bound to the lineage that registered it: a token
+//! presented from another terminal still reads and sends, and spends no grant. While a process of the lineage a session is registered
+//! from runs, no other live process spends what the session holds, even with a token of its own; when that lineage ends the session
+//! follows the process that registers it, and a stale token is answered in the words that make its client register again. Nothing in
+//! a refusal sends anyone to a terminal, a phone or a person.
 #![cfg(unix)]
 
 mod kit;
@@ -36,11 +38,32 @@ fn lead(n: &mut Node) -> (String, String) {
 }
 
 fn message(reply: &Value) -> String {
-    reply["error"]["message"].as_str().unwrap().to_string()
+    reply["error"]["message"].as_str().unwrap().trim_start_matches("denied: ").to_string()
+}
+
+/// A refusal that asks nothing of a person.
+fn calm(reply: &Value) -> String {
+    let said = message(reply);
+    for word in ["rebind", "phone", "tap ", "typed", "type yes", "new session"] {
+        assert!(!said.to_lowercase().contains(word), "a refusal sends nobody anywhere ({word}): {said}");
+    }
+    said
+}
+
+/// A main session registered from ``from`` that holds `task_authority`.
+fn walker(n: &mut Node, from: &Peer) -> (String, String) {
+    let first = ok(register(n, from, "walker", ""));
+    let (name, token) = (first["name"].as_str().unwrap().to_string(), first["token"].as_str().unwrap().to_string());
+    allow(n, "demo", &token, &name, &["task_authority"]);
+    (name, token)
+}
+
+fn registered_from(n: &Node, name: &str) -> Vec<u32> {
+    n.boards["demo"].names.get(name).unwrap().lineage.iter().map(|a| a.pid).collect()
 }
 
 #[test]
-fn a_token_read_from_its_file_spends_no_grant_from_another_terminal_and_still_reads_and_sends() {
+fn a_token_read_from_its_file_spends_no_grant_from_another_live_terminal_and_still_reads_and_sends() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let (_, token) = lead(&mut n);
@@ -51,8 +74,8 @@ fn a_token_read_from_its_file_spends_no_grant_from_another_terminal_and_still_re
 
     let refused = brake(&mut n, &peer(&outside), &token);
     assert_eq!(code(&refused), "denied", "{refused}");
-    let said = message(&refused);
-    assert!(said.contains("rebind") && said.contains("terminal"), "the refusal tells the person to rebind: {said}");
+    let said = calm(&refused);
+    assert!(said.contains("still running") && said.contains("terminal"), "the refusal says why and that it passes: {said}");
     assert!(refused["error"].get("grant").is_none(), "a grant is no help: no key is asked to sign one: {refused}");
     assert!(!said.contains(&token), "{said}");
     let uses = |n: &mut Node| ok(req(n, "grant_log", "demo", &token, json!({"limit": 200})))["log"].as_array().unwrap().iter().filter(|e| e["op"] == "use").count();
@@ -87,7 +110,7 @@ fn a_subagent_token_spends_only_where_its_parent_was_registered() {
     assert_eq!(ok(taken)["parent"], name.as_str(), "a subagent registers with its parent's token from any process");
     let refused = verify(&mut n, &peer(&outside), &stolen, &note);
     assert_eq!(code(&refused), "denied", "a token registered with a lifted parent token spends nowhere the parent was not: {refused}");
-    assert!(message(&refused).contains("rebind"), "{refused}");
+    calm(&refused);
     assert_eq!(verify(&mut n, &me(), &stolen, &note)["ok"], true, "the lineage it carries is its parent's");
     done(vec![outside]);
 }
@@ -135,22 +158,56 @@ fn strip_lineage(dir: &std::path::Path) {
 }
 
 #[test]
-fn a_token_with_no_lineage_recorded_spends_nothing_until_a_person_rebinds_it() {
+fn a_live_sibling_that_registers_the_same_session_cannot_spend_its_grant_until_the_terminal_that_runs_it_ends() {
     let dir = tempdir().unwrap();
-    let token = {
-        let mut n = node(dir.path());
-        lead(&mut n).1
-    };
-    strip_lineage(dir.path());
     let mut n = node(dir.path());
-    let refused = brake(&mut n, &me(), &token);
+    let (a, b) = (process(true), process(true));
+    let (name, held) = walker(&mut n, &peer(&a));
+    assert_eq!(brake(&mut n, &peer(&a), &held)["ok"], true, "the terminal that runs the session spends its grant");
+
+    let sibling = ok(register(&mut n, &peer(&b), "walker", ""));
+    assert_eq!(sibling["name"], name.as_str(), "the second terminal registers: nothing sends a person anywhere");
+    let mine = sibling["token"].as_str().unwrap().to_string();
+    let refused = brake(&mut n, &peer(&b), &mine);
     assert_eq!(code(&refused), "denied", "{refused}");
-    assert!(message(&refused).contains("rebind"), "{refused}");
-    assert_eq!(req(&mut n, "whoami", "demo", &token, json!({}))["ok"], true, "it still reads");
+    let said = calm(&refused);
+    assert!(said.contains(&name) && said.contains("still running"), "the refusal names the session and why: {said}");
+    assert!(refused["error"].get("grant").is_none(), "{refused}");
+    assert_eq!(registered_from(&n, &name), vec![a.id()], "the session stayed where it runs");
+    assert_eq!(brake(&mut n, &peer(&a), &held)["ok"], true, "and the live sibling took nothing from it");
+    assert_eq!(brake(&mut n, &peer(&b), &held)["ok"], false, "a token read from the other terminal's file spends nothing either");
+    let uses = |n: &mut Node| ok(req(n, "grant_log", "demo", &held, json!({"limit": 200})))["log"].as_array().unwrap().iter().filter(|e| e["op"] == "use").count();
+    assert_eq!(uses(&mut n), 2, "only the two spends of the terminal that runs it, and the refused calls spent nothing");
+
+    done(vec![a]);
+    assert_eq!(brake(&mut n, &peer(&b), &mine)["ok"], true, "when the terminal that ran it ends, the one that is left spends the session's grant with the token it has");
+    done(vec![b]);
 }
 
 #[test]
-fn an_orphan_that_registers_first_adopts_no_name_and_the_lead_who_holds_its_token_is_not_locked_out() {
+fn a_stale_token_is_answered_as_unknown_and_registering_again_from_where_it_runs_spends() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let (a, b) = (process(true), process(true));
+    let (name, stale) = walker(&mut n, &peer(&a));
+    done(vec![a]);
+
+    let refused = brake(&mut n, &peer(&b), &stale);
+    assert_eq!(code(&refused), "denied", "{refused}");
+    let said = calm(&refused);
+    assert!(said.starts_with("the token is not known"), "its client reads the words that make it register again: {said}");
+    assert!(refused["error"].get("grant").is_none(), "{refused}");
+
+    let again = ok(register(&mut n, &peer(&b), "walker", ""));
+    assert_eq!(again["name"], name.as_str(), "the same session, from the terminal it runs in now");
+    assert_eq!(registered_from(&n, &name), vec![b.id()]);
+    assert_eq!(brake(&mut n, &peer(&b), again["token"].as_str().unwrap())["ok"], true, "the grants followed the session");
+    assert_eq!(code(&brake(&mut n, &peer(&b), &stale)), "denied", "the stale token ended with the lineage it came from");
+    done(vec![b]);
+}
+
+#[test]
+fn a_token_with_no_lineage_recorded_is_replaced_by_the_next_registration_and_spends_again() {
     let dir = tempdir().unwrap();
     let (name, token) = {
         let mut n = node(dir.path());
@@ -158,20 +215,40 @@ fn an_orphan_that_registers_first_adopts_no_name_and_the_lead_who_holds_its_toke
     };
     strip_lineage(dir.path());
     let mut n = node(dir.path());
-    let (outside, daemon) = (process(true), orphan());
+    let refused = brake(&mut n, &me(), &token);
+    assert_eq!(code(&refused), "denied", "{refused}");
+    assert!(calm(&refused).starts_with("the token is not known"), "{refused}");
+    assert_eq!(req(&mut n, "whoami", "demo", &token, json!({}))["ok"], true, "it still reads");
 
-    let adopted = register(&mut n, &peer(&outside), "lead", "");
-    assert_eq!(code(&adopted), "denied", "an orphan with no token of that name adopts nothing: {adopted}");
-    assert!(message(&adopted).contains("rebind"), "{adopted}");
-    assert_eq!(code(&register(&mut n, &Peer { pid: Some(daemon) }, "lead", "")), "denied", "nor does a daemon");
-    assert_eq!(code(&register(&mut n, &me(), "lead", "")), "denied", "and a process with no token of that name is not the lead either");
+    let again = ok(register(&mut n, &me(), "lead", ""));
+    assert_eq!(again["name"], name.as_str());
+    assert_eq!(brake(&mut n, &me(), again["token"].as_str().unwrap())["ok"], true, "a session with no lineage recorded is adopted by the process that registers it");
+    assert_eq!(code(&req(&mut n, "whoami", "demo", &token, json!({}))), "denied", "and the token that named no lineage ended");
+}
 
-    let again = register(&mut n, &me(), "lead", &token);
-    assert_eq!(ok(again.clone())["name"], name.as_str(), "the lead presents the token it holds and is bound where it runs: {again}");
-    let fresh = ok(again)["token"].as_str().unwrap().to_string();
-    assert_eq!(brake(&mut n, &me(), &fresh)["ok"], true, "the grants it held are its again");
-    assert_eq!(code(&register(&mut n, &peer(&outside), "lead", "")), "denied", "the orphan still adopts nothing");
-    assert_eq!(code(&register(&mut n, &peer(&outside), "lead", &fresh)), "denied", "and a token lifted from the file registers nothing from another terminal");
-    unsafe { libc::kill(daemon as i32, libc::SIGKILL) };
+#[test]
+fn an_orphan_that_registers_first_adopts_the_session_and_the_lead_that_registers_next_is_a_live_sibling() {
+    let dir = tempdir().unwrap();
+    let (name, token) = {
+        let mut n = node(dir.path());
+        lead(&mut n)
+    };
+    strip_lineage(dir.path());
+    let mut n = node(dir.path());
+    let outside = process(true);
+
+    let adopted = ok(register(&mut n, &peer(&outside), "lead", ""));
+    assert_eq!(adopted["name"], name.as_str(), "an orphan that registers first adopts the session, as anything that registers a session with no lineage does");
+    assert_eq!(registered_from(&n, &name), vec![outside.id()]);
+    assert_eq!(code(&req(&mut n, "whoami", "demo", &token, json!({}))), "denied", "the token that named no lineage ended");
+
+    let lead_again = ok(register(&mut n, &me(), "lead", ""));
+    let fresh = lead_again["token"].as_str().unwrap().to_string();
+    assert_eq!(lead_again["name"], name.as_str(), "the lead registers: nobody is sent anywhere");
+    let refused = brake(&mut n, &me(), &fresh);
+    assert_eq!(code(&refused), "denied", "while the orphan runs, the lead is its live sibling and spends nothing of the session: {refused}");
+    calm(&refused);
+    assert_eq!(brake(&mut n, &peer(&outside), adopted["token"].as_str().unwrap())["ok"], true, "the grants it held are the orphan's now");
     done(vec![outside]);
+    assert_eq!(brake(&mut n, &me(), &fresh)["ok"], true, "and the lead's again when the orphan ends");
 }

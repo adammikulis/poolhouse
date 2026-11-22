@@ -35,13 +35,20 @@ def native_id(value: object) -> str:
     return value
 
 
-def own(node: client.Client, board: str, identifier: str, expected: str = '') -> session.Session:
+def own(node: client.Client, board: str, identifier: str, expected: str = '', parent: str = '') -> session.Session:
     name = str(node.call("session_lookup", board, harness="codex", session=identifier)["name"])
     if not name:
         raise ValueError('native session has no authenticated workspace registration')
     if expected and name != expected:
         raise ValueError('assigned session does not own this Codex registration')
-    found = session.Session(node, board, credentials.load(node.state, board, name), name)
+
+    def renew() -> str:
+        """The native session registered again (a subagent by its parent) when the node no longer knows its token."""
+        native = session.Native('', 'codex', identifier)
+        if parent:
+            return own(node, board, parent).register(native).token
+        return session.register(node, board, native).token
+    found = session.Session(node, board, credentials.load(node.state, board, name), name, renew=renew)
     identity = found.whoami()
     if identity.name != name or identity.harness != 'codex' or identity.retired:
         raise ValueError('native workspace registration belongs to another harness')
@@ -70,9 +77,9 @@ def actor_for(event: dict, node: client.Client, board: str, child: str | None, a
         else:
             parent = own(node, board, parent_id)
         parent.register(session.Native(str(event.get('model') or ''), 'codex', child))
-        actor = own(node, board, child)
+        actor = own(node, board, child, parent=parent_id)
     elif child:
-        actor = own(node, board, child)
+        actor = own(node, board, child, parent=identifier)
     elif assigned:
         actor = assigned_session(node, board, assigned, identifier)
     elif stage == 'SessionStart':

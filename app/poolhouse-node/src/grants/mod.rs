@@ -25,8 +25,8 @@ use serde_json::json;
 
 use crate::error::{Error, Result};
 use crate::identity::{Holder, ModelState, Registry};
-use crate::lineage::{shares, ENFORCED};
-use crate::node::Node;
+use crate::lineage::{running, shares, Refusal, ENFORCED};
+use crate::node::{Node, NOT_KNOWN};
 use crate::row::Kind;
 
 use spec::{covers, grantable, Grantee};
@@ -77,14 +77,27 @@ pub fn names(registry: &Registry, name: &str, to: &Grantee) -> bool {
     }
 }
 
-/// Whether the process asking may spend what ``holder`` holds: the token it presented was registered from a lineage it shares. A
-/// token that names no lineage, or another session than ``holder``, or no request at all, is not held to it here.
-fn lineage_allows(node: &Node, holder: &Holder) -> bool {
+/// Why the process asking may not spend what ``holder`` holds, when it may not: the token it presented was registered from a lineage it
+/// shares (a token is a bearer secret in a file, and what it spends is bound to where it was registered), and, for a main session, no process
+/// of the lineage the session is registered from still runs without it sharing that lineage with the asker, so one live agent cannot spend
+/// what a live sibling holds. A token that names no lineage, or another session than ``holder``, or no request at all, is not held to it here.
+/// Both refusals end by themselves: a stale token registers its session again (`Refusal::Ended`), and the live sibling's lineage ending
+/// leaves the session to the one that is still running (`Refusal::Sibling`).
+fn lineage_refusal(node: &Node, holder: &Holder) -> Option<Refusal> {
     if !ENFORCED {
-        return true;
+        return None;
     }
     let ask = &node.asking;
-    node.tokens.bound(&ask.token).is_none_or(|(who, bound)| who != holder || shares(bound, &ask.peer.lineage()))
+    let (who, bound) = node.tokens.bound(&ask.token)?;
+    if who != holder {
+        return None;
+    }
+    let here = ask.peer.lineage();
+    if !shares(bound, &here) {
+        return Some(if running(bound) { Refusal::Sibling } else { Refusal::Ended });
+    }
+    let own = node.boards.get(&holder.board).and_then(|h| h.names.get(&holder.name)).filter(|i| i.parent.is_empty());
+    own.filter(|i| running(&i.lineage) && !shares(&i.lineage, bound)).map(|_| Refusal::Sibling)
 }
 
 /// The id of the live grant that lets ``holder`` take ``action`` on ``scope`` now, if one does and the token asking is used from
@@ -102,9 +115,11 @@ pub fn find(node: &mut Node, holder: &Holder, action: &str, scope: &Scope) -> Re
         g.status == "live" && i.action == action && names(registry, &holder.name, &i.to) && p.board == holder.board && (p.device == "*" || p.device == device)
             && covers(&p.resource, scope.resource) && (!i.review || scope.reviewed)
     }).map(|g| g.issue.gid.clone());
-    if found.is_some() && !lineage_allows(node, holder) {
-        node.asking.lineage_refused = true;
-        return Ok(None);
+    if found.is_some() {
+        if let Some(why) = lineage_refusal(node, holder) {
+            node.asking.refused = Some(why);
+            return Ok(None);
+        }
     }
     Ok(found)
 }
@@ -126,18 +141,22 @@ pub fn check(node: &mut Node, holder: &Holder, action: &str, scope: &Scope) -> R
 }
 
 /// The refusal for the session behind ``token`` that holds no grant for ``action`` on ``resource``: ``message`` says why, and the
-/// error names what a person's client would sign to allow it.
+/// error names what a person's client would sign to allow it. A grant the session holds that this request could not spend says why
+/// in words that need nobody to do anything: a stale token is answered as an unknown one, which its client replaces by registering
+/// the session again, and a live sibling is told the grant is spent where the session runs.
 pub fn refused_for(node: &Node, token: &str, action: &str, resource: &str, message: &str) -> Error {
-    if node.asking.lineage_refused {
-        return Error::Denied(format!("{message}: the grant is held, but this token was registered from another terminal or process tree than the one \
-                                      using it now, and a token spends a grant only where it was registered; a person moves the session to this terminal \
-                                      with `poolhouse-workspace rebind HARNESS SESSION` (a typed yes), which ends the tokens it holds"));
-    }
-    match node.tokens.resolve(token) {
-        Some(h) => Error::NoGrant {
+    let holder = node.tokens.resolve(token);
+    match (node.asking.refused, holder) {
+        (Some(Refusal::Ended), _) => Error::Denied(format!("{NOT_KNOWN}: it was registered from a terminal or process tree that has ended, so this process registers the session \
+                                                           again and gets a token of its own ({message})")),
+        (Some(Refusal::Sibling), holder) => Error::Denied(format!("{message}: the grant is held by {}, which is in use in another terminal or process tree that is still \
+                                                                  running. A grant is spent only where its session runs, so a second live process cannot spend it; \
+                                                                  it is spent from there, and from here as soon as that one ends. Nothing needs to be run.",
+                                                                  holder.map_or("this session", |h| h.name.as_str()))),
+        (None, Some(h)) => Error::NoGrant {
             message: message.into(),
             grant: json!({"action": action, "resource": resource, "board": h.board, "name": h.name, "device": node.cert.fingerprint()}),
         },
-        None => Error::Denied(message.into()),
+        (None, None) => Error::Denied(message.into()),
     }
 }

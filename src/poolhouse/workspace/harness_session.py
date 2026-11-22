@@ -8,7 +8,7 @@ from pathlib import Path
 from poolhouse import node_launch
 from poolhouse.board import credentials, place
 from poolhouse.board.client import Client, NodeError
-from poolhouse.board.session import Entry, Session
+from poolhouse.board.session import Entry, Native, Session
 from poolhouse.client.health import reported_models
 from poolhouse.errors import Denied
 from poolhouse.workspace import worktree_lifecycle
@@ -71,6 +71,8 @@ class HarnessSession:
     managed_inbox: bool = False
     persistent: bool = False
     state: Path | None = None
+    native: Native | None = None
+    """The native identity the launcher registered this session under: the launcher registers it again when the node no longer knows its token."""
 
     def flags(self) -> list[str]:
         """The workspace command flags this session's messages carry."""
@@ -79,7 +81,9 @@ class HarnessSession:
     def session(self) -> Session:
         """The session's own token on its board."""
         node = Client(self.state or node_launch.default_state())
-        return Session(node, self.board, credentials.load(node.state, self.board, self.name), self.name)
+        lead, native = self.parent, self.native
+        return Session(node, self.board, credentials.load(node.state, self.board, self.name), self.name,
+                       renew=(lambda: lead.register(native).token) if lead is not None and native is not None else None)
 
     def record_model(self, alias: str, harness: str, server: str = "") -> bool:
         """Record a connected agent's model as claimed; False on an inactive session or refusal."""
