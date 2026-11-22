@@ -72,7 +72,7 @@ def signed(binary: Path) -> bool:
 def packaged(binary: Path) -> bool:
     """Whether ``binary`` is a package manager's own file: under a Cellar, owned by this user, writable by no one else."""
     real = Path(os.path.realpath(binary))
-    if not hasattr(os, "getuid") or not any(real.is_relative_to(prefix) for prefix in PACKAGE_PREFIXES):
+    if not hasattr(os, "getuid") or not any(real.is_relative_to(os.path.realpath(prefix)) for prefix in PACKAGE_PREFIXES):
         return False
     try:
         info = real.stat()
@@ -135,7 +135,7 @@ def _replacement(binary: Path, digest: str, policy: Pins, previous: Callable[[],
         fetched = recover()
     except (OSError, RuntimeError, ValueError) as exc:   # a refused host, a failed download, a build or check that did not pass
         raise Untrusted(f"{binary} {now} and nothing vouches for it, no earlier good build is kept, and fetching "
-                        f"a good one (the newest ggml-org/llama.cpp release for this machine) failed: {exc}") from exc
+                        f"a good one (as `poolhouse-serve build` does) failed: {exc}") from exc
     policy.pin(fetched, sha256_file(fetched), source="recovered")
     logger.warning("RECOVERED: %s fetched and pinned in place of %s", fetched, binary)
     return fetched

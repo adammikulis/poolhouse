@@ -54,8 +54,9 @@ person is asked:
   Homebrew Cellar file (real path under a Cellar, owned by this user, writable by no one else).
 - A changed binary nothing vouches for, including one whose `BUILD.json` records another digest, is not run. The newest earlier
   mainline build kept under `llama.cpp/builds/` that still hashes to its own record replaces it (`FELL BACK`). With none, a good
-  build is fetched (the newest ggml-org/llama.cpp release for this machine, as `poolhouse-serve build --from release` does), made
-  `current` and pinned (`RECOVERED`). Only when that fails too does `BinaryTampered` say so, naming the recovery that was tried.
+  build is made the way `poolhouse-serve build` makes one (from source when a compiler is installed, else the newest release, and
+  the other if that fails), switched to as `current` and pinned (`RECOVERED`). Only when that fails too does `BinaryTampered` say
+  so, naming every attempt.
 - A pin file that cannot be read is moved aside as `pins.json.unreadable-<UTC timestamp>` and the pins start again
   (`PIN FILE REBUILT`).
 - A binary with no pin and no `BUILD.json` is pinned on first use (`TRUST ON FIRST USE`), as before.

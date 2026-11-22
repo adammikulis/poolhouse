@@ -181,6 +181,20 @@ def test_a_binary_a_package_manager_installed_is_pinned_again_when_it_changes(tm
     assert pins(local)[str(server)]["source"] == "package" and "RE-PINNED" in caplog.text
 
 
+def test_a_package_prefix_that_is_itself_a_link_is_compared_by_where_it_leads(tmp_path, monkeypatch):
+    real = tmp_path / "real"
+    server = build(real / "Cellar" / "llama.cpp" / "1" / "bin", record=False)
+    (tmp_path / "prefix").symlink_to(real, target_is_directory=True)
+    monkeypatch.setattr(binary_trust, "PACKAGE_PREFIXES", (str(tmp_path / "prefix" / "Cellar"),))
+    local = LocalPolicy(tmp_path / "pins.json")
+    server.chmod(0o555)
+    assert vetted(server, local) == server
+    server.chmod(0o755)
+    server.write_bytes(b"brew upgrade")
+    server.chmod(0o555)
+    assert vetted(server, local) == server and pins(local)[str(server)]["source"] == "package"
+
+
 def test_a_binary_in_a_package_directory_that_others_can_write_is_not_the_package_managers(tmp_path, monkeypatch):
     cellar = tmp_path / "Cellar"
     monkeypatch.setattr(binary_trust, "PACKAGE_PREFIXES", (str(cellar),))
@@ -341,23 +355,28 @@ def test_the_pool_policy_pins_in_the_sentinel_and_vets_the_same_way(tmp_path, ca
     assert server.is_file()   # and nothing was moved aside
 
 
-def test_the_fetch_that_replaces_a_binary_nothing_vouches_for_installs_checks_and_switches_to_a_release(tmp_path, monkeypatch, caplog):
-    """The whole chain but the download: `build_from_release` is replaced by a copy of a release already on disk (a canned
-    plumbing server, which answers ``--help`` as a build does); the install, the ``--help`` and architecture check,
-    the switch of `current` and the pin are the real code."""
-    from poolhouse.serve import build_recover
-    from poolhouse.serve.build_paths import builds_dir, current_link
+def release_standing_in(args):
+    """A copy of a release already on disk (a canned plumbing server, which answers ``--help`` as a build does) in the
+    place of the download."""
+    from poolhouse.serve.build_paths import builds_dir
     from poolhouse.testing.canned import canned_binary
 
-    def release(args):
-        assert args.force   # a copy of the release that is already in builds/ is the one that was rejected
-        dest = builds_dir() / "b9999"
-        dest.mkdir(parents=True)
-        canned_binary(dest, name="llama-server")
-        (dest / "BUILD.json").write_text(json.dumps({"commit": "b9999", "source": "release"}))
-        return dest, "b9999"
+    assert args.force   # a copy already in builds/ is the one that was rejected
+    dest = builds_dir() / "b9999"
+    dest.mkdir(parents=True)
+    canned_binary(dest, name="llama-server")
+    (dest / "BUILD.json").write_text(json.dumps({"commit": "b9999", "source": "release"}))
+    return dest, "b9999"
 
-    monkeypatch.setattr(build_recover, "build_from_release", release)
+
+def test_the_fetch_that_replaces_a_binary_nothing_vouches_for_installs_checks_and_switches_to_a_release(tmp_path, monkeypatch, caplog):
+    """The whole chain but the download: the install, the ``--help`` and architecture check, the switch of `current`
+    and the pin are the real code."""
+    from poolhouse.serve import build_recover
+    from poolhouse.serve.build_paths import builds_dir, current_link
+
+    monkeypatch.setattr(build_recover, "can_build_from_source", lambda: False)
+    monkeypatch.setattr(build_recover, "build_from_release", release_standing_in)
     local = LocalPolicy()
     current = binary_module.managed_current()
     server = build(current)
@@ -369,6 +388,28 @@ def test_the_fetch_that_replaces_a_binary_nothing_vouches_for_installs_checks_an
     assert got == fetched and current.resolve() == fetched.parent
     assert pins(local)[str(fetched)]["source"] == "recovered" and "RECOVERED" in caplog.text
     assert find_binary(policy=local) == fetched and current_link().resolve() == fetched.parent   # and later calls find it
+
+
+def test_a_build_from_source_that_fails_is_followed_by_the_release_and_both_are_named_when_both_fail(tmp_path, monkeypatch, caplog):
+    from poolhouse.serve import build_recover
+
+    def source_fails(args):
+        raise BuildFailed("the patches do not apply to this commit")
+
+    monkeypatch.setattr(build_recover, "can_build_from_source", lambda: True)
+    monkeypatch.setattr(build_recover, "build_from_source", source_fails)
+    monkeypatch.setattr(build_recover, "build_from_release", release_standing_in)
+    with caplog.at_level(logging.WARNING):
+        assert build_recover.fetch().parent.name == "b9999"
+    assert "from source failed: the patches do not apply" in caplog.text
+
+    def release_fails(args):
+        raise BuildFailed("no asset for this machine")
+
+    monkeypatch.setattr(build_recover, "build_from_release", release_fails)
+    with pytest.raises(BuildFailed) as both:
+        build_recover.fetch()
+    assert "from source: the patches do not apply" in str(both.value) and "from the newest release: no asset" in str(both.value)
 
 
 def test_a_binary_path_that_looks_like_an_option_or_a_command_is_one_argument_of_codesign(tmp_path):
@@ -383,3 +424,4 @@ def test_a_binary_path_that_looks_like_an_option_or_a_command_is_one_argument_of
     apple_signed(server)
     assert binary_trust.signed(server) is True   # the same strange path verifies when the signature is real
     assert not marker.exists()
+
