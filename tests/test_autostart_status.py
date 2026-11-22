@@ -31,7 +31,7 @@ def user(tmp_path, monkeypatch):
 def installed(tmp_path, roles=("pool-daemon",)):
     done = staged(tmp_path, roles=roles)
     recorder = Recorder()
-    got = install(done.path, seams=seams(recorder, typed=lambda _p: done.manifest.id))
+    got = install(done.path, seams=seams(recorder))
     assert got.ok, got.lines
     return done, recorder
 

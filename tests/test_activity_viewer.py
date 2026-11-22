@@ -3,12 +3,13 @@ refusals. Real log under an isolated home."""
 
 from __future__ import annotations
 
-import io
 import json
+import sys
 import time
 
 import pytest
 
+from poolhouse import authority, caller
 from poolhouse.activity import cli, query, writer
 from tests.activity_support import entries, person, ring
 
@@ -171,38 +172,39 @@ def test_an_agent_sees_records_only_as_fenced_inert_data(person, capsys, monkeyp
     assert out.count("</activity-log-data>") == 1 and "&lt;/activity-log-data&gt;" in out
 
 
-def tty(monkeypatch):
-    class Terminal(io.StringIO):
-        def isatty(self):
-            return True
-    monkeypatch.setattr(cli.sys, "stdin", Terminal())
-    monkeypatch.setattr(cli.sys, "stdout", Terminal())
-
-
 @pytest.mark.parametrize("marker", ["CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE"])
-def test_an_agent_cannot_export(person, capsys, monkeypatch, tmp_path, marker):
+def test_an_agent_cannot_export_and_is_refused_at_once_with_the_reason(person, capsys, monkeypatch, tmp_path, marker):
     seeded()
-    tty(monkeypatch)
     monkeypatch.setenv(marker, "1")
     assert cli.main(["export", "--json", str(tmp_path / "out.json")]) == cli.DENIED
+    err = capsys.readouterr().err
+    assert "refused to an agent" in err and marker in err and "activity.export" in err
     assert not (tmp_path / "out.json").exists()
     assert "export" not in "".join(e.kind for e in entries())
+    refused = [r for r in caller.audit_rows() if r["event"] == "refused"]
+    assert len(refused) == 1 and refused[0]["who"].startswith(f"agent {marker}")
 
 
-def test_export_needs_a_terminal(person, capsys, tmp_path):
+def test_a_process_no_agent_started_exports_with_no_terminal_to_a_new_file_and_the_export_is_logged_with_who(
+        person, capsys, tmp_path):
     seeded()
-    assert cli.main(["export", "--json", str(tmp_path / "out.json")]) == cli.DENIED
-    assert not (tmp_path / "out.json").exists()
-
-
-def test_a_person_exports_to_a_new_file_they_name_and_the_export_is_logged(person, capsys, monkeypatch, tmp_path):
-    seeded()
-    tty(monkeypatch)
+    assert not caller.is_terminal(sys.stdin) and not caller.is_terminal(sys.stdout)
     target = tmp_path / "out.json"
     assert cli.main(["export", "--json", str(target), "--kind", "workspace"]) == 0
     rows = json.loads(target.read_text())
     assert [r["kind"] for r in rows] == ["workspace.claim", "workspace.message"]
     assert target.stat().st_mode & 0o077 == 0
     assert entries()[-1].kind == "activity.export" and entries()[-1].meta["records"] == 2
+    assert entries()[-1].actor.startswith("user ")
     assert cli.main(["export", "--json", str(target)]) == 2
     assert cli.main(["export", "--json", str(writer.directory() / "copy.json")]) == 2
+
+
+def test_an_agent_exports_while_the_gate_is_delegated_and_the_log_names_the_agent(person, capsys, monkeypatch, tmp_path):
+    seeded()
+    monkeypatch.delenv(authority.FLOOR_ENV)
+    authority.set_state(["activity.export"], authority.DELEGATED, by="test")
+    monkeypatch.setenv("CLAUDECODE", "1")
+    target = tmp_path / "out.json"
+    assert cli.main(["export", "--json", str(target)]) == 0 and target.exists()
+    assert entries()[-1].kind == "activity.export" and entries()[-1].actor.startswith("agent CLAUDECODE")

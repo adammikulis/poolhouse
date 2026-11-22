@@ -93,13 +93,14 @@ def test_an_attacker_cannot_farm_reputation_in_a_burst(ledger):
 
 
 @pytest.mark.parametrize("marker", ["CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE"])
-def test_an_agent_cannot_run_any_command(monkeypatch, capsys, ledger, marker):
+def test_an_agent_cannot_run_any_command_and_is_refused_at_once(monkeypatch, capsys, ledger, marker):
     ledger.observe("host", "a.example", "scan_hit")
     monkeypatch.setenv(marker, "1")
     for argv in (["list"], ["show", "host:a.example"], ["export"], ["stats"], ["forget", "host:a.example"],
                  ["forget", "--all", "--yes"]):
         assert cli.main(argv) == cli.DENIED
-    assert "a.example" not in capsys.readouterr().out
+    shown = capsys.readouterr()
+    assert "a.example" not in shown.out and shown.err.count("refused to an agent") == 6
     assert ledger.standing("host", "a.example") is not None
 
 
