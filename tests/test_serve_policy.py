@@ -344,3 +344,17 @@ def test_the_fetch_that_replaces_a_binary_nothing_vouches_for_installs_checks_an
     assert got == fetched and current.resolve() == fetched.parent
     assert pins(local)[str(fetched)]["source"] == "recovered" and "RECOVERED" in caplog.text
     assert find_binary(policy=local) == fetched and current_link().resolve() == fetched.parent   # and later calls find it
+
+
+def test_a_binary_path_that_looks_like_an_option_or_a_command_is_one_argument_of_codesign(tmp_path):
+    """The path goes to `codesign` as one argv element, never through a shell: a directory named like an option or
+    a command substitution verifies nothing, runs nothing and leaves no marker file."""
+    if sys.platform != "darwin":
+        pytest.skip("code signatures are checked on macOS")
+    marker = tmp_path / "ran"
+    where = tmp_path / f"--force -s evil; touch {marker}; $(touch {marker}) `touch {marker}`\nnext"
+    server = build(where, record=False)
+    assert binary_trust.signed(server) is False
+    apple_signed(server)
+    assert binary_trust.signed(server) is True   # the same strange path verifies when the signature is real
+    assert not marker.exists()

@@ -1,7 +1,7 @@
 {
- "surfaces": 909,
+ "surfaces": 910,
  "by_status": {
-  "covered": 591,
+  "covered": 592,
   "partial": 183,
   "uncovered": 51,
   "n/a": 84,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 103,
+   "covered": 104,
    "partial": 64,
    "uncovered": 0,
    "n/a": 4,
@@ -12645,6 +12645,19 @@
     "tests/test_redteam_mcp.py::test_a_hostile_model_name_is_one_argument_never_a_shell_line"
    ],
    "note": ""
+  },
+  {
+   "id": "spawn:serve/binary_trust.py:signed",
+   "kind": "spawn",
+   "source": "serve/binary_trust.py:signed",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_serve_policy.py::test_a_binary_path_that_looks_like_an_option_or_a_command_is_one_argument_of_codesign",
+    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
+   ],
+   "note": "the argv is the fixed codesign path, fixed words and the binary's absolute path as one element, never through a shell; a directory named like an option or a command is still one argument and only fails to verify"
   },
   {
    "id": "spawn:serve/build_persist.py:_install_persist_macos",
