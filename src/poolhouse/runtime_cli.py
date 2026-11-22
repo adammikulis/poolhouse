@@ -76,6 +76,8 @@ def _lead(primary: Path) -> str:
 
 def plan_from(args: argparse.Namespace, *, deploying: bool = True) -> runtime_deploy.Plan:
     """The deploy plan an ensure, status or rollback command names, built from the recorded primary checkout."""
+    if deploying and caller.marked() and authority_caller.is_live_child(cwd=_checkout(args.checkout)):
+        raise runtime_deploy.DeployError("a subagent starts no runtime deploy")
     primary = runtime_trust.primary_for(_checkout(args.checkout), deploying=deploying,
                                         delegated=getattr(args, "via", "") == authority.DELEGATED)
     exception = getattr(args, "allow_unmerged", False)

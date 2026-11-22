@@ -198,7 +198,7 @@ def test_a_helper_agent_cannot_record_the_first_repository(world):
     (runtime.directory() / runtime_store.STATE).unlink()
     done = world.cli("ensure", "--checkout", str(world.repo), POOLHOUSE_WORKSPACE_AGENT=helper.name)
     assert done.returncode != 0 and "starts no runtime deploy" in done.stderr, done.stderr
-    assert not (runtime.directory() / runtime_store.STATE).exists() and not (runtime.directory() / world.tip).exists()
+    assert not runtime_store.read_state().get("checkout") and not (runtime.directory() / world.tip).exists(), "no repository was recorded and nothing was built"
 
 
 def test_a_delegated_lead_still_cannot_move_a_recorded_repository(world, monkeypatch):
