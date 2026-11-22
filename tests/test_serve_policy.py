@@ -88,6 +88,31 @@ def test_a_binary_whose_build_record_claims_a_digest_it_does_not_have_is_not_tru
     assert str(liar) not in (pins(local) if local.file.exists() else {})
 
 
+def test_an_earlier_build_that_is_not_what_it_recorded_is_not_a_stand_in(tmp_path, caplog):
+    local = LocalPolicy(tmp_path / "pins.json")
+    good = kept("b50", b"oldest build", "2025-01-01")
+    patched = kept("b100", b"older build", "2026-01-01")
+    patched.write_bytes(b"older build, patched since")
+    liar = kept("b200", b"newest build", "2026-02-01")
+    liar.write_bytes(b"not what BUILD.json says")
+    with caplog.at_level(logging.WARNING):
+        assert vetted(liar, local) == good   # the patched one in between is passed over
+    assert str(patched) not in caplog.text.split("FELL BACK")[-1]
+
+
+def test_a_forks_build_is_not_a_stand_in_for_the_mainline_build(tmp_path, monkeypatch):
+    local = LocalPolicy(tmp_path / "pins.json")
+    fork = kept("fork-abc", b"a fork's build", "2026-03-01")
+    info = json.loads((fork.parent / "BUILD.json").read_text())
+    (fork.parent / "BUILD.json").write_text(json.dumps({**info, "repo": "someone/llama.cpp", "name": "fork"}))
+    liar = kept("b200", b"newest build", "2026-02-01")
+    liar.write_bytes(b"not what BUILD.json says")
+    asked = no_fetch(monkeypatch)
+    with pytest.raises(BinaryTampered):
+        vetted(liar, local)
+    assert asked == [1]   # nothing else was kept, so a good build was asked for
+
+
 def test_a_pinned_binary_that_is_replaced_falls_back_to_the_previous_build_and_nothing_is_held(tmp_path, caplog):
     local = LocalPolicy(tmp_path / "pins.json")
     older = kept("b100", b"older build", "2026-01-01")
