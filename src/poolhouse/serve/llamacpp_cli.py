@@ -148,8 +148,8 @@ def _prune(args, upstream, pipeline) -> int:
         return 0
     for item in doomed:
         say(f"would delete {item.path}")
-    if not args.yes and input("delete these builds? type 'yes': ").strip().lower() != "yes":
-        say("nothing deleted")
+    if not args.yes:
+        say("nothing deleted: pass --yes to delete these builds")
         return 0
     for item in doomed:
         llamacpp_state.remove(item)

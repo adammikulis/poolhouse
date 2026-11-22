@@ -1,5 +1,7 @@
 # Person-spoken authorization
 
+> **Superseded.** The release-main approval, the run approvals (`person-consume`, `run-approval`, tickets) and every wait for the owner described below were replaced by automatic checks: `poolhouse.workspace.release_check` for merging into a protected branch and `caller.refuse_agent` for the scripts that change the release key and the repository protection (docs/person-commands.md). Read the rest as history.
+
 Design note. Slice 1a (section 12) is implemented; the rest is not. Owner decision of 2026-10-08: development
 pushes need no authorization, and the authorizable kinds are `release-main` and `run-script`, created only by the
 structured approval question (sections 7 and 12). Sections 5.1 to 5.3 describe the earlier prose design: typed words now

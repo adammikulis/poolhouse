@@ -1,5 +1,7 @@
 # Lead agents installing login units
 
+> **Superseded.** Installing and rolling back login units is decided at once by the `autostart.install` gate (delegated in `dev`); nothing asks a person (docs/person-commands.md).
+
 Status: design only; nothing in this document is built. Decided by the owner on 2026-10-16: a lead agent may run
 `install` and `rollback` of `python -m poolhouse.fleet.autostart` for the `pool-daemon` and `runtime-ensure` roles. Read
 against development `34e5e3aef` (the files it cites are unchanged since `f803ba49f`); no autostart command was run to write it. An independent attack-first review of the first

@@ -94,8 +94,8 @@ def main():
     if args.dry_run:
         print("dry run: files verified in", work)
         return
-    if not args.yes and input("Install %s with pip? [y/N] " % ", ".join(w.name for w in wheels)).lower() != "y":
-        sys.exit("not installed")
+    if not args.yes:
+        sys.exit("not installed: pass --yes to install %s with pip" % ", ".join(w.name for w in wheels))
     subprocess.check_call([sys.executable, "-m", "pip", "install", *map(str, wheels)])
 
 

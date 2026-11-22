@@ -12,7 +12,8 @@
 //! prompt for exactly that operation (the card of a pool, a removal, a join window, a join). What the prompt does not do is make an
 //! unsandboxed program that runs as the person unable to sign: that is the weakness of a `computer` key, and why governance is held.
 //!
-//! There is no switch that turns the prompt off. A node started with no `--presence` has no way to ask and refuses (`Closed`). `--presence os`
+//! A node started with no `--presence` asks nobody (`Auto`): the user of this computer runs it, nothing waits for a person, and a key, a
+//! ticket or a card is made at once. `--presence os`
 //! asks with the operating system's own prompt where the system has one, and otherwise (a computer with no prompt of its own, `os::can_prompt`)
 //! on the person's terminal, and what that makes counts as a typed yes; the launcher passes it only for the installed software on the real home
 //! (`poolhouse.real_machine`), so a test, a checkout or a rig never raises a dialog. `--presence terminal` asks on the person's terminal device
@@ -32,7 +33,7 @@ use crate::error::{Error, Result};
 use crate::node::Node;
 
 pub use firsts::Firsts;
-pub use os::{can_prompt, default_presence, Closed, Mode, Os};
+pub use os::{can_prompt, default_presence, Auto, Mode, Os};
 pub(crate) use os::{on_real_home, plain};
 
 pub const METHODS: [&str; 3] = ["presence_ask", "presence_status", "ticket_spend"];
@@ -188,7 +189,7 @@ pub(crate) fn may_ask(node: &mut Node, holder: &crate::identity::Holder) -> bool
     if person_session(node, holder) {
         return true;
     }
-    node.firsts.kind() == "os" && node.host(&holder.board).ok().and_then(|hosted| hosted.names.get(&holder.name).map(|i| i.parent.is_empty() && !i.retired)).unwrap_or(false)
+    matches!(node.firsts.kind(), "os" | "auto") && node.host(&holder.board).ok().and_then(|hosted| hosted.names.get(&holder.name).map(|i| i.parent.is_empty() && !i.retired)).unwrap_or(false)
 }
 
 /// Whether ``holder`` is the person's own session: registered with the secret the node keeps for the person (`Node::register_person`), which

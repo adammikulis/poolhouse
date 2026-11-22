@@ -1,5 +1,14 @@
 # Approving from a phone
 
+> **Current model.** A phone is an optional notification and remote-control channel; nothing requires one. Grants are issued
+> automatically by policy (`poolhouse.board.autoapprove`, `poolhouse.board.person_key`): `poolhouse-workspace approval request`
+> is decided at once, signed with this device's own key, which is made and enrolled the first time it is needed. A process
+> with no agent marker may have every grant the node's floors allow; an agent is refused at once, with the reason, the few that
+> end another device's place in the pool, change who governs it or release what a scan failed. Nothing waits for a tap, a typed
+> `yes` or an inbox answer, and each decision is audited with who asked (`poolhouse.caller`). The protocol below still describes
+> what a linked phone is shown and what it signs; read "ask the person" as "tell the phone", and read every typed `yes` as the
+> automatic decision above.
+
 A person's phone is the second way a person signs. Today a person's signature on a node is a typed `yes` at `/dev/tty`
 (docs/node.md, "Key custody"). With the phone, an agent asks, the phone shows what is asked in plain words, the person
 looks at it and approves with a fingerprint, and the phone's key signs exactly the text the person saw. Nothing the
