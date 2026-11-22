@@ -117,7 +117,7 @@ reason = "(schema, callable) pairs, name-shaped pairs and similar tuples in tool
 
 [[allow]]
 path = ["src/poolhouse/do.py", "src/poolhouse/web.py", "src/poolhouse/harnesshook.py", "src/poolhouse/hookcheck.py",
-        "src/poolhouse/roles.py", "src/poolhouse/runtime_store.py", "src/poolhouse/tar_libraries.py",
+        "src/poolhouse/roles.py", "src/poolhouse/runtime_store.py",
         "src/poolhouse/testfarm/report.py", "packaging/smoke.py",
         "scripts/test_terminal_bank.py", "scripts/test_container_bridge.py", "scripts/gates/_perfile.py",
         "scripts/hooks/*", "scripts/install-hooks.sh", "tests/test_hooks_installed.py",

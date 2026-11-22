@@ -182,7 +182,7 @@ def asset_for(release: Release, key: str = "") -> dict[str, Any] | None:
 
 
 def download(asset: dict[str, Any], into: Path | str, *, on_progress: Any = None,
-             allow_unscanned: bool = False, library_links: bool = False) -> Path:
+             allow_unscanned: bool = False) -> Path:
     """Fetch one asset through the net pipeline and check it against the digest GitHub reports
     for it; an asset with no digest, or a name that is not one plain file name, is refused
     before anything is fetched.
@@ -205,7 +205,7 @@ def download(asset: dict[str, Any], into: Path | str, *, on_progress: Any = None
     try:
         net.download(str(asset["browser_download_url"]), target, net.Want(
             sha256=want, size=int(asset.get("size") or 0), require_digest=True,
-            allow_unscanned=allow_unscanned, library_links=library_links,
+            allow_unscanned=allow_unscanned,
             max_bytes=8 << 30, purpose="release download"),
             pipeline=net.default(), hooks=hooks)
     except net.ChecksumMismatch:

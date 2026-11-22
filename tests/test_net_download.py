@@ -79,27 +79,13 @@ def library_tar(tmp_path):
     return path
 
 
-def test_library_aliases_require_the_verified_release_digest_and_scan(pipe, library_tar, tmp_path):
+def test_a_release_archive_with_contained_library_links_is_kept_and_scanned(pipe, library_tar, tmp_path):
     digest = files.sha256_file(library_tar)
     kept = tmp_path / "kept.tar.gz"
-    accept(library_tar, kept, net.Want(sha256=digest, require_digest=True,
-                                         library_links=True), "https://release.invalid/server", pipe)
+    accept(library_tar, kept, net.Want(sha256=digest, require_digest=True),
+           "https://release.invalid/server", pipe)
     assert files.sha256_file(kept) == digest
     assert pipe.scanners[0].seen
-
-
-def test_library_alias_mode_cannot_skip_the_pinned_digest(pipe, library_tar, tmp_path):
-    with pytest.raises(net.Blocked, match="pinned release digest"):
-        accept(library_tar, tmp_path / "kept.tar.gz", net.Want(library_links=True),
-                   "https://release.invalid/server", pipe)
-    assert not pipe.scanners[0].seen
-
-
-def test_library_alias_mode_cannot_accept_a_mismatched_digest(pipe, library_tar, tmp_path):
-    with pytest.raises(net.ChecksumMismatch):
-        accept(library_tar, tmp_path / "kept.tar.gz", net.Want(sha256="0" * 64,
-                   require_digest=True, library_links=True), "https://release.invalid/server", pipe)
-    assert not pipe.scanners[0].seen
 
 
 def test_a_good_gguf_is_staged_checked_scanned_and_promoted(tmp_path, site, pipe):

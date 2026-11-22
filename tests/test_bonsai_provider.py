@@ -185,7 +185,7 @@ def test_official_archive_dynamic_closure_is_inertly_validated(tmp_path, monkeyp
     compressed = payload / 'release.tar.gz'
     shutil.copyfile(source, compressed)
     from poolhouse.net.sniff import sniff
-    verdict = sniff(compressed, 'archive', library_links=True)
+    verdict = sniff(compressed, 'archive')
     assert verdict.ok, verdict.problems
     entries = provider_archive.contents(compressed, provider.ARCHIVE_SHA256, provider.PREFIX)
     for name, entry in entries.items():

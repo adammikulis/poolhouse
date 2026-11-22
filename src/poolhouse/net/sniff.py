@@ -10,8 +10,7 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from poolhouse.safenames import Unsafe, safe_join
-from poolhouse.tar_libraries import members as library_members
+from poolhouse.safenames import Unsafe, check_links, safe_join
 
 __all__ = ["EXTENSIONS", "Verdict", "audit_archive", "detect", "expected_kind", "sniff"]
 
@@ -161,9 +160,13 @@ def _pdf(path: Path, size: int) -> tuple[list[str], list[str]]:
     return problems, warnings
 
 
-def _archive_names(path: Path, library_links: bool = False) -> tuple[list[tuple[str, int, int, bool, bool]], int]:
-    """``(name, size, compressed, is_link, is_dir)`` per entry and the archive's own size."""
+def _archive_names(path: Path) -> tuple[list[tuple[str, int, int, bool, bool]], int,
+                                        list[tuple[str, str, str]]]:
+    """``(name, size, compressed, is_link, is_dir)`` per entry, the archive's own size, and
+    a tar's ``(name, kind, linkname)`` entries for `check_links` (its symlinks are not
+    ``is_link``; a zip's are)."""
     rows: list[tuple[str, int, int, bool, bool]] = []
+    entries: list[tuple[str, str, str]] = []
     if zipfile.is_zipfile(path):
         with zipfile.ZipFile(path) as zf:
             for info in zf.infolist():
@@ -172,25 +175,24 @@ def _archive_names(path: Path, library_links: bool = False) -> tuple[list[tuple[
                              info.is_dir()))
     else:
         with tarfile.open(path) as tf:
-            if library_links:
-                return [(item.name, source.size, source.size, False, item.isdir())
-                        for item, source in library_members(tf)], path.stat().st_size
             for member in tf:
                 rows.append((member.name, member.size, member.size,
-                             member.issym() or member.islnk() or member.isdev(), member.isdir()))
+                             member.islnk() or member.isdev(), member.isdir()))
+                entries.append((member.name, "dir" if member.isdir() else
+                                "link" if member.issym() else "file", member.linkname))
                 if len(rows) > MOST_ARCHIVE_ENTRIES:
                     break
-    return rows, path.stat().st_size
+    return rows, path.stat().st_size, entries
 
 
 def audit_archive(path: Path, *, max_entries: int = MOST_ARCHIVE_ENTRIES,
-                  max_bytes: int = MOST_ARCHIVE_BYTES, max_ratio: int = MOST_RATIO,
-                  library_links: bool = False) -> list[str]:
+                  max_bytes: int = MOST_ARCHIVE_BYTES, max_ratio: int = MOST_RATIO) -> list[str]:
     """Why an archive must not be unpacked: too many entries, too large once unpacked, a
-    compression ratio over ``max_ratio``, a link, an absolute or climbing path, or an archive
-    inside it. Empty when it is fine. Nothing is extracted."""
+    compression ratio over ``max_ratio``, a hard link, a device, a zip's symlink or a tar's
+    that `check_links` refuses, an absolute or climbing path, or an archive inside it. Empty
+    when it is fine. Nothing is extracted."""
     try:
-        rows, own = _archive_names(path, library_links)
+        rows, own, entries = _archive_names(path)
     except (zipfile.BadZipFile, tarfile.TarError, OSError, EOFError, Unsafe) as exc:
         return [f"the archive cannot be read: {type(exc).__name__}"]
     problems: list[str] = []
@@ -201,6 +203,11 @@ def audit_archive(path: Path, *, max_entries: int = MOST_ARCHIVE_ENTRIES,
         problems.append(f"unpacks to {total} bytes (most {max_bytes})")
     if own and total / own > max_ratio:
         problems.append(f"compresses {total // own} to 1 (most {max_ratio})")
+    if len(rows) <= max_entries:
+        try:
+            check_links(entries)
+        except Unsafe as exc:
+            problems.append(str(exc))
     seen = {"link": False, "path": False, "nested": False}
     for name, _size, _comp, link, _dir in rows:
         if link and not seen["link"]:
@@ -218,7 +225,7 @@ def audit_archive(path: Path, *, max_entries: int = MOST_ARCHIVE_ENTRIES,
     return problems
 
 
-def sniff(path: Path, kind: str = "", *, content_type: str = "", library_links: bool = False) -> Verdict:
+def sniff(path: Path, kind: str = "", *, content_type: str = "") -> Verdict:
     """Whether ``path`` is the ``kind`` of file it should be (by default what its name claims).
 
     A ``.gguf`` has GGUF magic, a sane version and counts; a ``.safetensors`` has a header
@@ -251,7 +258,7 @@ def sniff(path: Path, kind: str = "", *, content_type: str = "", library_links: 
         if shown not in ("zip", "gzip", "tar"):
             problems.append(f"the bytes are {shown or 'unrecognised'}, not an archive")
         else:
-            problems += audit_archive(path, library_links=library_links)
+            problems += audit_archive(path)
     elif claimed in ("png", "jpeg", "step") and shown != claimed:
         problems.append(f"the bytes are {shown or 'unrecognised'}, not {claimed}")
     elif claimed == "json":
