@@ -139,27 +139,37 @@ def protected():
     return sys.modules[name]
 
 
+RELEASE_CHECK = (
+    "import sys; from poolhouse.workspace import release_check; "
+    "why = release_check.refusal('.', {'CLAUDECODE': '1'}); sys.stdout.write(why); sys.exit(1 if why else 0)")
+"""What a child Python runs to ask `poolhouse.workspace.release_check` about the checkout it starts in, as an agent."""
+
+
 def release_refusal(cwd: str) -> str:
     """Why an agent may not merge into a protected branch from `cwd`, empty when it may: the commit has a standing independent
-    land-review accept and the checkout is clean (`poolhouse.workspace.release_check`)."""
+    land-review accept and the checkout is clean (`poolhouse.workspace.release_check`). Asked at once, never waited on."""
     source = str(Path(__file__).resolve().parents[1])
     try:
-        done = subprocess.run([sys.executable, *["-c", "import sys; from poolhouse.workspace import release_check as r; why = r.refusal('.', {'CLAUDECODE': '1'}); sys.stdout.write(why); sys.exit(1 if why else 0)"]], cwd=cwd or None, capture_output=True,
-                              text=True, timeout=30, check=False, env={**os.environ, "PYTHONPATH": source})
+        done = subprocess.run([sys.executable, "-c", RELEASE_CHECK], cwd=cwd or None, capture_output=True, text=True,
+                              timeout=30, check=False, env={**os.environ, "PYTHONPATH": source})
     except (OSError, subprocess.TimeoutExpired):
         return "the release check could not run"
-    return done.stdout.strip() if done.returncode else ""
+    if not done.returncode:
+        return ""
+    lines = done.stderr.strip().splitlines()
+    return done.stdout.strip() or f"the release check could not run ({lines[-1] if lines else 'no reason given'})"
 
 
 def hard_edit_refusal(paths: Iterable[str], cwd: str) -> str:
     """Why a write to any of `paths` is refused whatever POOLHOUSE_GUARD says: a guard, a hook setting, the hooks and
-    settings of the version control, the person record or the authority registry."""
+    settings of the version control, the person folder or the authority registry."""
     base = Path(cwd or Path.cwd())
     for raw in filter(None, paths):
         target = base / _unquote(raw)
         place = os.path.normpath(str(target))
         if protected().guarded(place) or protected().guarded(os.path.realpath(place)) or protected().secret(place):
-            return f"{target} is one of the guards, hook settings, the person record or the authority registry: a person changes it."
+            return (f"{target} is one of the guards, hook settings, the person folder or the authority registry: refused to an "
+                    "agent, since they decide what an agent may run; leave it as it is and say in the report what should change.")
     return ""
 
 
@@ -307,7 +317,7 @@ def _worktree_target(segment: str) -> str | None:
 
 def hard_bash_refusal(command: str, cwd: str) -> str:
     """Why `command` may not run whatever POOLHOUSE_GUARD says: it writes a guard or the authority registry, touches the
-    person record or the session tokens, or changes what protects the repository."""
+    person folder or the session tokens, or changes what protects the repository."""
     return protected().refusal(command, cwd or str(Path.cwd()), release_refusal)
 
 
@@ -362,7 +372,7 @@ def _acting_as_agent(environ: dict[str, str]) -> bool:
 
 
 def commit_refusal(cwd: str, environ: dict[str, str] | None = None) -> str:
-    """Why an agent may not commit from `cwd`, empty for a person at a terminal."""
+    """Why an agent may not commit from `cwd`, empty for a process with no agent marker and a terminal."""
     env = dict(os.environ if environ is None else environ)
     if switched_off() or not _acting_as_agent(env):
         return ""

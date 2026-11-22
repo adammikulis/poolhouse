@@ -39,8 +39,8 @@ PROTECTED = (
     "scripts/test*",
     "scripts/release-key", "scripts/github-protection", "scripts/audit_gate.py",
     "tests/known-fixtures.txt", "src/poolhouse/fleet/signing.py", "src/poolhouse/guard/",
-    "src/poolhouse/person.py", "src/poolhouse/worktreerules.py",
-    "src/poolhouse/workspace/person_*.py", "scripts/github-protection-apply", "scripts/notices.py",
+    "src/poolhouse/caller.py", "src/poolhouse/worktreerules.py",
+    "src/poolhouse/workspace/harness_ancestry.py", "scripts/github-protection-apply", "scripts/notices.py",
     "release-please-config.json", ".release-please-manifest.json", "src/poolhouse/fleet/updates.py",
     "src/poolhouse/redact/", "tests/test_budgets.py", "tests/test_wiring.py", "tests/test_layers.py",
 )

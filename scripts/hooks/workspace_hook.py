@@ -178,18 +178,13 @@ def persist_session(environment: dict) -> None:
         warning('SessionStart', error)
 
 
-def person(value: dict, stage: str) -> int:
-    """Hands a hook event to the person-record handlers; never blocks, so every failure is a warning."""
+def bind_harness(value: dict, stage: str) -> int:
+    """Records the harness process a session hook runs under (`harness_ancestry`); never blocks, so every failure is a warning."""
     try:
-        from poolhouse.workspace import person_hook
-        outputs = [person_hook.on_event(value)]
+        from poolhouse.workspace import harness_ancestry
+        harness_ancestry.on_event(value)
     except (ImportError, OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError) as error:
         warning(stage, error)
-        return 0
-    spoken = [o for o in outputs if o]
-    if spoken:
-        context = "\n".join(o["hookSpecificOutput"]["additionalContext"] for o in spoken)
-        print(json.dumps({"hookSpecificOutput": {**spoken[0]["hookSpecificOutput"], "additionalContext": context}}))
     return 0
 
 

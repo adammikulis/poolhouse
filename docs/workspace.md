@@ -245,7 +245,6 @@ not allowed, 4 over a quota, 5 claim conflict; `watch --timeout` exits 3 when no
 | tasks | `task-create`, `tasks`, `task`, `task-subscribe`, `task-unsubscribe`, `task-assign`, `task-claim`, `task-heartbeat`, `task-checkpoint`, `task-submit`, `task-review`, `task-credit`, `task-integrate`, `task-rebind-source`, `task-dematerialize`, `enforcement`, `issue-subscribe`, `issue-unsubscribe`, `worktrees` (docs/tasks.md) |
 | local agents | `agent start\|stop\|list\|backlog\|schedule\|supersede-issue\|resume-issue` (docs/local-agent.md) |
 | authority | `authority show\|set\|preset` (below) |
-| person record | `attestations [--session ID] [--limit N]`: what the harness hooks recorded the person typing, answering or authorizing, each shown as a `person-attestation` attested by the harness hook for its session (read only; no token or board post can write one) |
 | safety | `quarantine-ls`, `quarantine-release QID` (a person at a terminal) |
 | view | `status` (who is registered, unread counts, live claims with `expires_in_s`, the board's rooms and unread, the test-slot queue; read only) |
 

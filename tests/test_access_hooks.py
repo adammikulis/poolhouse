@@ -1,5 +1,5 @@
 """The hooks the settings wire: the tool guard is wired, the hard forms hold
-when POOLHOUSE_GUARD=off, a subagent acts only as itself and the release question names the guards a release changes."""
+when POOLHOUSE_GUARD=off and a subagent acts only as itself."""
 
 from __future__ import annotations
 
@@ -12,8 +12,6 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-
-from person_support import commit, proposal, repository
 
 ROOT = Path(__file__).resolve().parent.parent
 HOOKS = ROOT / "scripts" / "hooks"
@@ -60,7 +58,7 @@ HARD = (
     "echo x > .git/config",
     "git -c core.hooksPath=/dev/null push origin dev",
     "gh pr merge 12",
-    "cat ~/.poolhouse/person/statements.log",
+    "cat ~/.poolhouse/person/harness-sessions.json",
     "python3 - <<'EOF'\nopen('.git/hooks/pre-push', 'w')\nEOF",
 )
 
@@ -77,7 +75,7 @@ def test_an_ordinary_command_passes_with_the_guard_on_or_off():
 
 
 def test_the_edit_guard_keeps_the_hard_paths_when_the_guard_is_off():
-    for path in (".git/config", ".git/hooks/pre-push", "scripts/hooks/person-consume"):
+    for path in (".git/config", ".git/hooks/pre-push", "scripts/hooks/harness-ancestry"):
         event = {"tool_name": "Write", "cwd": str(ROOT), "tool_input": {"file_path": str(ROOT / path), "content": "x\n"}}
         assert hook(EDIT, event, POOLHOUSE_GUARD="off").returncode == 2, path
     event = {"tool_name": "Write", "cwd": str(ROOT), "tool_input": {"file_path": str(ROOT / "docs" / "x.md"), "content": "x\n"}}
@@ -110,18 +108,6 @@ def test_a_subagent_acts_only_as_itself(monkeypatch, capsys):
         assert ("claude-aaaaaa" in capsys.readouterr().err) is blocked, command
 
 
-def test_the_release_question_names_the_guards_the_release_changes(tmp_path):
-    repo = repository(tmp_path / "repo")
-    state = tmp_path / "state"
-    assert "Guards changed: none" in proposal(repo, state)[0]
-    (repo / "scripts" / "hooks").mkdir(parents=True)
-    commit(repo, "scripts/hooks/person-consume")
-    commit(repo, "AGENTS.md")
-    question = proposal(repo, state)[0]
-    assert "Guards changed: AGENTS.md, scripts/hooks/person-consume" in question
-    assert "Commits ahead of origin/main: 3" in question
-
-
 TOOLS = HOOKS / "claude-tool-guard"
 UNKNOWN = "A_Tool_Added_Next_Year"
 
@@ -148,7 +134,7 @@ def test_a_command_in_a_tool_no_guard_knows_meets_the_shell_rules():
 
 def test_a_path_in_a_tool_no_guard_knows_is_checked_like_the_read_tool():
     for key in ("filePath", "file_path", "path", "notebook_path"):
-        asked = {"tool_name": "LSP", "cwd": str(ROOT), "tool_input": {key: "~/.poolhouse/person/statements.log", "line": 1}}
+        asked = {"tool_name": "LSP", "cwd": str(ROOT), "tool_input": {key: "~/.poolhouse/person/harness-sessions.json", "line": 1}}
         assert hook(TOOLS, asked).returncode == 2, key
     ordinary = {"tool_name": "LSP", "cwd": str(ROOT), "tool_input": {"filePath": str(ROOT / "src" / "poolhouse" / "authority.py")}}
     assert hook(TOOLS, ordinary).returncode == 0
@@ -172,7 +158,7 @@ def test_a_command_in_any_shape_of_input_meets_the_shell_rules():
     assert hook(TOOLS, {"tool_name": UNKNOWN, "cwd": str(ROOT), "tool_input": {"argv": ["git", "status"]}}).returncode == 0
 
 
-PERSON_RECORD = "~/.poolhouse/person/statements.log"
+PERSON_RECORD = "~/.poolhouse/person/harness-sessions.json"
 PATH_SHAPES = {
     "file-path": {"file-path": PERSON_RECORD},
     "targetPath": {"targetPath": PERSON_RECORD},
