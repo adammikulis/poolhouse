@@ -120,7 +120,7 @@ def test_a_process_with_a_terminal_and_the_passphrase_in_its_environment_signs_a
     env = {UNLOCK_ENV: PASSPHRASE}
     argv = ["grant", "note_verify", "--to", lead.name, "--until", "1h", "--json"]
     code, out, err = team.terminal(*argv, who=lead, env=env)
-    assert code == 0 and "Type yes" not in out + err and "passphrase: " not in out, (out, err)
+    assert code == 0 and "Type yes" not in out + err and "signing key passphrase: " not in out, (out, err)
     assert [g.action for g in grants.listing(team.session(lead)).grants] == ["note_verify"]
 
 
@@ -129,5 +129,5 @@ def test_without_the_passphrase_the_command_is_refused_at_once_with_the_reason_a
     lead = team.member("lead")
     team.keep_person_key(lead)
     code, out, err = team.terminal("grant", "note_verify", "--to", lead.name, "--until", "1h", "--json", who=lead, timeout=60)
-    assert code != 0 and UNLOCK_ENV in out + err and "passphrase: " not in out
+    assert code != 0 and UNLOCK_ENV in out + err and "signing key passphrase: " not in out
     assert grants.listing(team.session(lead)).grants == []
