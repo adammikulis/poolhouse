@@ -351,13 +351,15 @@ def test_show_asks_for_a_scope_when_both_hold_the_id_and_stats_shows_both(person
     assert [s["scope"] for s in json.loads(capsys.readouterr().out)] == ["user", "project"]
 
 
-def test_forget_all_asks_which_scope(person, capsys, monkeypatch, tmp_path):
+def test_forget_all_needs_the_scope_and_the_yes_flag_and_asks_nobody(person, capsys, monkeypatch, tmp_path):
     proj = str(repo(tmp_path, "alpha"))
     cli.main(["add", "likes tea", "--scope", "user", "--project", proj])
     cli.main(["add", "staging flag", "--scope", "project", "--project", proj])
-    answers = iter(["project", "y"])
-    monkeypatch.setattr("builtins.input", lambda _: next(answers))
-    assert cli.main(["forget", "--all", "--project", proj]) == 0
+    monkeypatch.setattr("builtins.input", lambda _: pytest.fail("nothing is asked"))
+    assert cli.main(["forget", "--all", "--project", proj]) == 2, "no scope named: refused at once"
+    assert cli.main(["forget", "--all", "--scope", "project", "--project", proj]) == 1, "no --yes: nothing is forgotten"
+    assert len(memory.Memory.open(explicit=proj).project.facts()) == 1
+    assert cli.main(["forget", "--all", "--scope", "project", "--yes", "--project", proj]) == 0
     fresh = memory.Memory.open(explicit=proj)
     assert fresh.project.facts() == [] and len(fresh.user.facts()) == 1
     assert cli.main(["forget", "--all", "--yes", "--project", proj]) == 2

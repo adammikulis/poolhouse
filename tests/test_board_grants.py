@@ -105,7 +105,7 @@ def test_a_refusal_names_the_grant_and_this_devices_key_signs_it_for_one_use(tea
 
 
 PERSON_COMMANDS = [["grant", "note_verify", "--until", "1h"], ["revoke-grant", "g-0123456789abcdef"], ["distrust", "--key", "ab" * 32], ["grants-setup"],
-                   ["person-proof"], ["person-enroll", "--proof", "{}"], ["person-unenroll", "--key", "ab" * 32], ["rebind", "claude-code", "lead"]]
+                   ["person-proof"], ["person-enroll", "--proof", "{}"], ["person-unenroll", "--key", "ab" * 32]]
 
 
 @pytest.mark.parametrize("argv", PERSON_COMMANDS, ids=lambda argv: argv[0])

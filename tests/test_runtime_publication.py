@@ -171,7 +171,8 @@ def test_a_waiter_for_a_commit_off_the_branch_is_refused_without_waiting(unpubli
 
 
 @pytest.mark.usefixtures("unpublished")
-def test_a_waiter_for_another_repository_is_refused_without_waiting(monkeypatch, tmp_path, capsys):
+def test_a_waiter_for_another_repository_is_refused_to_an_agent_without_waiting(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("CLAUDECODE", "1")
     foreign = tmp_path / "foreign"
     foreign.mkdir()
     git(foreign, "init", "-q", "-b", "dev")
@@ -179,7 +180,7 @@ def test_a_waiter_for_another_repository_is_refused_without_waiting(monkeypatch,
     monkeypatch.setattr(runtime_await, "following", lambda *a, **k: pytest.fail("waited in a repository that was not admitted"))
     code = runtime_cli.main(["ensure", "--now", "--no-update", "--await-published", "30", "--checkout", str(foreign)])
     refusal = capsys.readouterr().err
-    assert code == 1 and ("recorded repository" in refusal or "no source repository is recorded" in refusal)
+    assert code == 1 and ("recorded repository" in refusal or "no source repository is recorded" in refusal or "held back from agents" in refusal), refusal
 
 
 def test_the_wait_for_a_push_is_fifteen_minutes_at_most():

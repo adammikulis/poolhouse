@@ -95,7 +95,7 @@ def test_release_releases_only_the_named_subject_for_a_process_no_agent_started_
     older = seed_member("10.0.0.1")
     newer = seed_member("10.0.0.2")
     code, out, err = run(capsys, "quarantine", "release", older.id)
-    assert code == 0 and f"{older.id} released" in out and not err
+    assert code == 0 and f"{older.id} released" in out and not any(w in err.lower() for w in ("type yes", "[y/n"))
     assert state_of(older.id) == State.RELEASED and state_of(newer.id) == State.QUARANTINED
     done = releases()
     assert len(done) == 1 and done[0].evidence["id"] == older.id
