@@ -144,13 +144,13 @@ def test_authority_is_checked_again_after_the_wait_and_before_anything_is_built(
     def authorize(command, **_named):
         seen.append(git(world.repo, "rev-parse", "refs/remotes/origin/dev"))
         if len(seen) > 1:
-            raise AgentRefused("runtime ensure is a person's again")
+            raise AgentRefused("the gate runtime.deploy is held back from agents again")
         threading.Timer(0.5, publish, (world, tip)).start()
         return authority.PERSON
 
     monkeypatch.setattr(runtime_cli.runtime_trust, "authorize", authorize)
     code, plans = waiter(world, monkeypatch, 30)
-    assert code == 1 and plans == [] and "a person's again" in capsys.readouterr().err
+    assert code == 1 and plans == [] and "held back from agents again" in capsys.readouterr().err
     assert len(seen) == 2 and seen[0] != tip and seen[1] == tip
 
 

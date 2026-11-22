@@ -16,12 +16,12 @@ def test_a_test_that_sets_the_agent_marker_in_process_sets_it():
     assert os.environ[ENV_NONINTERACTIVE] == "1"
 
 
-def test_the_next_test_does_not_see_it_and_a_person_at_a_terminal_passes_the_floor():
+def test_the_next_test_does_not_see_it_and_a_process_with_no_marker_passes_the_floor_directly():
     assert ENV_NONINTERACTIVE not in os.environ
     assert "POOLHOUSE_TEST_LEAK" not in os.environ
-    assert refuse_agent("grant", (True, True)) is None
+    assert refuse_agent("grant", "it hands out a protected action") is None
 
 
-def test_a_real_agent_marker_is_still_refused():
-    with pytest.raises(AgentRefused):
-        refuse_agent("grant", (True, True), {ENV_NONINTERACTIVE: "1"})
+def test_a_real_agent_marker_is_still_refused_at_once():
+    with pytest.raises(AgentRefused, match=ENV_NONINTERACTIVE):
+        refuse_agent("grant", "it hands out a protected action", {ENV_NONINTERACTIVE: "1"})

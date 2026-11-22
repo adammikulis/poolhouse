@@ -16,7 +16,7 @@ from node_kit import SRC
 from poolhouse import authority
 from poolhouse.board import session as board_session
 from poolhouse.board.client import Denied
-from poolhouse.sentinel.permit import AgentRefused
+from poolhouse.caller import AgentRefused
 
 pytest_plugins = ["node_kit"]
 ROOT = Path(__file__).resolve().parents[1]
@@ -70,11 +70,14 @@ class Scene:
         assert done.returncode == 0 and not done.stdout.strip(), (done.stdout, done.stderr)
 
     def hand_back(self, agent: str, kind: str = "general-purpose") -> None:
-        """Stop a subagent whose tree holds unlanded work: two refusals, then the stop goes through with its identity kept."""
-        for _ in range(2):
-            refused = self.hook("claude-subagent-stop", self.event(agent, kind))
-            assert refused.returncode == 0 and json.loads(refused.stdout)["decision"] == "block", (refused.stdout, refused.stderr)
-        self.stop(agent, kind)
+        """End the turns of a subagent whose tree holds unlanded work: a turn end only notifies, never blocks, and its identity is kept."""
+        for _ in range(3):
+            self.stop(agent, kind)
+
+    def finish(self, agent: str) -> None:
+        """The subagent says it is done: it retires its own session, which is the only thing that ends an identity."""
+        done = self.node.cli("retire", who=self.node.adopt(self.name(agent)))
+        assert done.returncode == 0, done.stderr
 
     def name(self, agent: str) -> str:
         return board_session.find("claude-code", agent, client=self.node.client)
@@ -150,12 +153,12 @@ def test_a_finished_reviewer_is_retired_and_its_name_stops_working(scene):
     assert scene.run("rev2", f"poolhouse-workspace land-review fix/y {sha} --verdict accept").returncode == 0
     token = scene.node.adopt(child).token
     scene.stop("rev2")
+    scene.node.client.call("whoami", scene.node.board, token)
+    scene.finish("rev2")
     with pytest.raises(Denied):
         scene.node.client.call("whoami", scene.node.board, token)
     agents = {a.name: a for a in scene.node.session(scene.lead).agents(retired=True)}
     assert agents[child].retired
-    revived = scene.start("rev2")
-    assert scene.name("rev2.2") not in ("", child) and scene.name("rev2.2") in revived
 
 
 def test_a_lead_registers_any_number_of_subagents_and_a_finished_one_is_retired(scene):
@@ -164,7 +167,7 @@ def test_a_lead_registers_any_number_of_subagents_and_a_finished_one_is_retired(
         context = scene.start(agent, "branch-worker")
         assert scene.name(agent) and scene.name(agent) in context, context
     old = scene.name("a0")
-    scene.stop("a0", "branch-worker")
+    scene.finish("a0")
     live = {a.name for a in scene.node.session(scene.lead).agents()}
     assert len(live) >= 19 and old not in live
 
@@ -200,15 +203,24 @@ def test_a_subagent_cannot_name_another_identity_or_the_subagent_variable(scene)
 
 
 @pytest.mark.redteam
-def test_a_subagent_never_passes_a_delegated_gate_even_with_the_leads_name_in_its_environment(scene, monkeypatch):
+def test_a_subagent_is_never_audited_as_the_lead_even_with_the_leads_name_in_its_environment(scene, monkeypatch):
     monkeypatch.delenv(authority.FLOOR_ENV, raising=False)
     monkeypatch.setenv("POOLHOUSE_BOARD", scene.node.board)
     monkeypatch.setenv("POOLHOUSE_WORKSPACE_AGENT", scene.lead.name)
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", scene.lead.session)
-    lead = {"CLAUDECODE": "1", "POOLHOUSE_WORKSPACE_AGENT": scene.lead.name}
-    assert authority.require("sentinel.policy", "mode", (False, False), lead) == authority.DELEGATED
-    with pytest.raises(AgentRefused):
-        authority.require("sentinel.policy", "mode", (False, False), {**lead, "POOLHOUSE_SUBAGENT": "rev1"})
+    monkeypatch.setenv("CLAUDECODE", "1")
+
+    def audited() -> str:
+        return [row for row in authority.audit_rows() if row["event"] == "authority.use"][-1]["agent"]
+
+    assert authority.require("sentinel.policy", "mode") == authority.DELEGATED and audited() == scene.lead.name
+    monkeypatch.setenv("POOLHOUSE_SUBAGENT", "rev1")
+    assert authority.require("sentinel.policy", "mode") == authority.DELEGATED and audited() == ""
+    authority.set_state(["sentinel.policy"], authority.PERSON, by=scene.lead.name)
+    for subagent in ("", "rev1"):
+        monkeypatch.setenv("POOLHOUSE_SUBAGENT", subagent)
+        with pytest.raises(AgentRefused, match="held back from agents"):
+            authority.require("sentinel.policy", "mode")
 
 
 def without_marker(*argv: str) -> str:
