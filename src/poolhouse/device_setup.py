@@ -2,7 +2,7 @@
 
     python -m poolhouse.device_setup [--yes] [--dry-run] [--wait SECONDS]
 
-It lists every change this device needs, asks one yes (`--yes` for an agent or script that is already allowed), makes them
+It lists every change this device needs, makes them only with `--yes`,
 and ends with READY, or NOT READY and the one fix. Per platform: Windows and WSL get inbound firewall rules (one Windows
 administrator prompt) and WSL gets mirrored networking in the Windows user's .wslconfig (the old file is kept; WSL then
 restarts, which ends this session, so run the same command again); every platform gets the node (a binary already
@@ -123,10 +123,12 @@ def survey(repo: Path) -> Needs:
     return Needs(kind, mode, changed, windows and device_host.firewall_missing(), node_source(repo, selected=runtime.selection_prefix(), cargo=shutil.which("cargo")))
 
 
-def confirmed(steps: list[str], *, yes: bool, ask=input) -> bool:
-    """Show the steps and take the one yes; `yes` stands for a person who already agreed."""
+def confirmed(steps: list[str], *, yes: bool) -> bool:
+    """Show the steps; they are made only when the command said `--yes`. Nothing is asked and nothing waits."""
     say("This will change on this device:\n" + "\n".join(f"  - {s}" for s in steps))
-    return yes or (sys.stdin.isatty() and ask("Make these changes? [y/N] ").strip().lower() in ("y", "yes"))
+    if not yes:
+        say("nothing was changed: pass --yes to make these changes")
+    return yes
 
 
 def prepare(needs: Needs) -> str:

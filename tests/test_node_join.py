@@ -122,11 +122,9 @@ def test_only_the_opt_in_tests_here_turn_the_machines_network_on():
             assert not any(call in source for call in NETWORK_CALLS), f"{node.name} listens beyond loopback outside `if LAN:`"
 
 
-def test_turning_the_network_on_needs_a_person_to_agree_and_starts_nothing_without_one(home):
-    with pytest.raises(node_join.PoolError, match="needs a person"):
-        node_join.consent(1, 2, yes=False, interactive=False)
+def test_turning_the_network_on_needs_the_yes_flag_and_asks_nobody_and_starts_nothing_without_it(home):
     with pytest.raises(node_join.PoolError, match="stays off"):
-        node_join.consent(1, 2, yes=False, ask=lambda _: "n", interactive=True)
-    node_join.consent(1, 2, yes=False, ask=lambda _: "y", interactive=True)
-    assert node_join.main(["join", "--state", str(home / "never")]) == 1, "no terminal, no --yes: refused before any node starts"
+        node_join.consent(1, 2, yes=False)
+    node_join.consent(1, 2, yes=True)
+    assert node_join.main(["join", "--state", str(home / "never")]) == 1, "no --yes: refused before any node starts, and nothing was asked"
     assert not (home / "never").exists()

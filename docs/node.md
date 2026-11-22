@@ -478,27 +478,14 @@ stops the node. A pool set aside for another charter version leaves `grants_floo
 counts on any board.
 
 **Who may sign on a device in no pool.** `person_enroll` takes `public`, `about`, `at_ms` and `proof` (the key's own
-signature over the enrolment). The first key also takes `secret`: `poolhouse-workspace grants-setup`, run by a person at a terminal, asks the node (`presence_ask`)
-to allow the session to add the first key, and the node asks the person itself: the operating system's own prompt (a password or a fingerprint,
-on macOS and Linux, raised only by the installed software on the real home: the launcher passes `--presence os` only when
-`poolhouse.real_machine.allowed()`, and the node itself asks only for the account's own node directory (`~/.poolhouse/node`, that directory and
-no other under it, never as the administrator account). **On the real home the operating system's prompt is the only presence**: a computer
-with no such prompt (a Linux without `pkexec` or a desktop session, a standard macOS account) asks on the person's terminal instead, and
-what that makes counts as a typed yes (`presence::can_prompt`, `Mode::Os`): it is never left with no way to ask, and never counted above what it is. **That terminal is found by the node and never
-named by the asker:** it is the controlling terminal of the process on the other end of the request (`presence::tty`, from the system's own record of that process), so a program that opens a
-terminal of its own and names it asks nowhere it can answer, and a request from a process with no terminal (a sandbox with none) is refused with a sentence that sends the person to run the
-command in a terminal of theirs. The prompt shows the words of the key being added, the yes
-is for that key only (`presence_ask` takes its `public`; another key presented with the secret is refused), and the prompt ends when two minutes
-are up whether or not anything polls. For a node on any other state directory (a server, a container, the pool check's rig, a test) started
-with `--presence terminal`, the node writes the question on the terminal device the asker names and reads the typed `yes` itself; it refuses that
-mode on the real home, because the program that asks could open a terminal of its own and answer. A node started with no `--presence`
-cannot ask and refuses the first key and the first phone. On a yes the node makes the random secret in its memory (never a file), hands it
+signature over the enrolment). The first key also takes `secret`: `poolhouse-workspace approval request ...`, `grants-setup` or any command a refusal sends to the grant
+policy (`poolhouse.board.autoapprove`) makes this device's own key on first use and asks the node (`presence_ask`) to allow the session to add it. **Nobody is
+asked**: a node runs as the user of the computer, and `--presence auto` (the default, and what the launcher starts) confirms at once. On a yes the node makes the random secret in its memory (never a file), hands it
 once to the session that asked (`presence_status`), accepts it once and for ten minutes, and spends it on any guess, so a wrong secret ends the
-attempt; a node that holds a key never asks. **A change the node drafted is answered at the same prompt**, and so is every operation the person's own session does without a grant. Who may ask is proven, and the node tells the two prompts apart for each request:
-the person's own session (`register_person` with the secret the node keeps for the person) asks for every purpose; a live main session of an agent (not a subagent, not retired)
-asks for a pool's card (`pool_key`, `card`: founding, a window, a join, a change) only when the node's prompt is the system's own dialog (`presence` kind `os`), which no process can
-answer for the person, and its draft then has a card; the first key and the first phone stay the person's own session's. Where the only prompt is a typed yes on a terminal, `presence_ask`
-from an agent's session is refused whatever terminal it names, and its draft is a charter with no card. A card is asked for with `presence_ask` (`purpose: pool_key` for a card that made a key for this computer, `card` for any other, and the `card` that `pool_draft_found`,
+attempt; a node that holds a key never makes another this way. `--presence os` (the operating system's password prompt) and `--presence terminal` (a typed `yes` on a terminal the node reads itself)
+remain as options for a node whose user wants the stronger question; the launcher never passes them. **A change the node drafted is confirmed the same way**, and so is every operation the device's own session does without a grant. Who may ask is
+proven, and the node tells the sessions apart for each request: the device's own session (`register_person` with the secret the node keeps for the local user) asks for every purpose; a live main session of an agent (not a subagent, not retired)
+asks for a pool's card (`pool_key`, `card`: founding, a window, a join, a change) when the presence is `os` or `auto`; the first key and the first phone stay the device's own session's. A card is asked for with `presence_ask` (`purpose: pool_key` for a card that made a key for this computer, `card` for any other, and the `card` that `pool_draft_found`,
 `pool_draft` or `op_draft` returned; it never takes a key from the request). **A request the person has not answered is never held back.** There is no quiet after a no, no count of prompts per
 ten minutes or per day, and no allowance shared by agents; nothing about asking is kept in a file, so a restart carries no suppression. The only refusal is one prompt open per asker (whatever it is for: a card, the first key, the first phone): asking for the
 same thing again returns the same open prompt, and asking for another thing while one is open is refused with the sentence that is open, and sixteen cards wait per asker. A no, a timeout and a dialog that failed are three different ends. Only the system's own cancel is a no
@@ -629,8 +616,8 @@ that does not exist) spends no use; the other sites spend before they act.
 **Commands.** `poolhouse-workspace grant ACTION --to NAME [--with-subagents]|--class FAMILY|--account MODEL --scope RESOURCE --until 30d [--uses N]`,
 `revoke-grant ID`, `grants` (who holds what, and its state; a grant that names a verified model says it matches nobody yet),
 `grant-log` (issues, revocations and uses), `grants-setup` (below), `person-proof` and `person-enroll` (carry a key from another
-device) and `person-unenroll --key FINGERPRINT`. The six that make or end a grant or a key need a person at a terminal with the key
-and a typed `yes` for each thing they sign; `grants` and `grant-log` are for any session, and the public
+device) and `person-unenroll --key FINGERPRINT`. The six that make or end a grant or a key sign with this device's own key at once and are
+refused to an agent with the reason (an agent asks with `approval request`, which policy decides); `grants` and `grant-log` are for any session, and the public
 `ph.board.Board.grants()` is planned (docs/api.md). A refusal for want of a grant names it; a command a person runs asks whether to
 sign that grant for one use and two minutes and, on a typed `yes`, asks again as the person's own session of that terminal
 (`board.person.acting`: the grant is signed for that session, since another terminal's token spends no grant here, and the use is
@@ -820,7 +807,7 @@ listener is the one network port.
   and never read as "new device", and no key is made for a directory that holds a device's files. Only a person starts over, by
   moving the directory aside. A new device is born into the keystore when the keystore's master key exists, or when a person is at
   the screen to be asked its one Keychain question, so nothing else is asked of anyone; otherwise it starts with a weak file.
-  `poolhouse node key` says where the key is kept, and `poolhouse node key --migrate` (a person at a terminal) moves a key out of
+  `poolhouse node key` says where the key is kept, and `poolhouse node key --migrate` moves a key out of
   its file, leaves the note, and restarts the node; a backup made before the move still holds the old key file. A keystore that will
   not answer (locked, not yet up) does not end the supervisor: it says why once a minute in `node.log` and in the error
   `ensure_node` raises, and starts the node when the keystore answers. One that was refused (the person declined the prompt, or

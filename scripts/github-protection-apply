@@ -296,8 +296,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--strict-tags", action="store_true", help="block creation of v* tags")
     args = parser.parse_args(given)
     try:
-        if args.apply:
-            caller.refuse_agent("github-protection-apply --apply", "it changes the rulesets, environment and settings that protect the repository")
+        if args.apply or args.restore:
+            caller.refuse_agent("github-protection-apply --apply or --restore", "it changes the rulesets, environment and settings that protect the repository")
         if not (args.repo or args.restore):
             args.repo = this_repo()
         return run(args)

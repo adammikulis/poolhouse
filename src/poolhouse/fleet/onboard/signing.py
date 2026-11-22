@@ -217,7 +217,7 @@ class SigningKeys:
         """An entry for a file; hashing needs no secret, so this never touches the key."""
         return Signer.entry_for(path, **terms)
 
-    # -- kept from agents by policy: the caller mints a permit first --
+    # -- refused to an agent by policy: the caller mints a permit first --
     def export(self, grant: Permit, path: Path, passphrase: str) -> Path:
         """The key written to ``path`` encrypted under ``passphrase``."""
         doc = self.meta()

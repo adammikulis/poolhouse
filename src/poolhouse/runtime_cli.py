@@ -327,7 +327,7 @@ def _reported(run: Callable[[argparse.Namespace], int]) -> Callable[[argparse.Na
         for name in os.environ.keys() - worktreerules._git_environment().keys():
             os.environ.pop(name, None)
         for name in runtime_trust.ignore_redirects():
-            warn(f"poolhouse runtime: ignoring {name}: this process was started by an agent")
+            warn(f"poolhouse runtime: ignoring {name}: an agent marker is set, so the state root is the account's own")
         try:
             return run(args)
         except (runtime_deploy.DeployError, OSError, ValueError) as exc:

@@ -102,7 +102,7 @@ class HeadsUp:
 
     # -- when to ask ---------------------------------------------------------------
     def on_quarantine(self, record: Record) -> None:
-        """Store hook: ask about it unless it is a person's own doing or needs no person.
+        """Store hook: notify about it unless it is a command-line hold or needs no notice.
         Never raises."""
         try:
             if record.history and record.history[-1].get("actor") == "human":
