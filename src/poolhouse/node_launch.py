@@ -319,7 +319,8 @@ def _command(run):
 STATE = [flag("--state", default="", help="the node's state directory (default: the machine's)")]
 GROUP = Group("poolhouse.node_launch", "Find, start, stop and move the node of this device.")
 GROUP.add("ensure", _command(lambda state, args: ensure_node(state, extra=args.arg)), help="start the node if it is not answering",
-          options=[*STATE, flag("--arg", action="append", default=[], help="an argument for `poolhouse-node run`")])
+          options=[*STATE, flag("--arg", action="append", default=None,
+                                help="an argument for `poolhouse-node run` (none given: the machine's own, e.g. --lan)")])
 GROUP.add("status", _command(lambda state, args: status(state)), help="the node's health", options=STATE)
 GROUP.add("stop", _command(lambda state, args: {"stopped": stop_node(state)}), help="stop the node and its supervisor", options=STATE)
 GROUP.add("swap", _command(lambda state, args: swap(state)), help="move the node onto the selected runtime's binary", options=STATE)
