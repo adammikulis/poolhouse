@@ -508,9 +508,7 @@ impl Node {
         let mut label = |o: &str| labels.get(o).cloned().unwrap_or_default();
         let is_local = |n: &str| names.contains(n);
         let (entries, rejected) = fold::fold(&rows, Context { own_origin: &own, label: &mut label, is_local: &is_local });
-        for (id, why) in rejected {
-            board.reject(&id, &why)?;
-        }
+        board.record_rejected(&rejected)?;
         Ok(entries)
     }
 

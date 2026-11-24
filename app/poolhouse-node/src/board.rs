@@ -641,17 +641,24 @@ impl Board {
         Ok(label)
     }
 
-    /// Record a foreign row that was not folded, keeping the latest few.
-    pub fn reject(&mut self, id: &str, reason: &str) -> Result<()> {
-        let reason: String = reason.chars().filter(|c| !c.is_control()).take(200).collect();
-        let rejected = &mut self.state.t.rejected;
-        if !rejected.iter().any(|(i, _)| i == id) {
-            rejected.push((id.into(), reason));
-            let excess = rejected.len().saturating_sub(MAX_REJECTED);
-            rejected.drain(..excess);
-            self.state.save()?;
+    /// Record the rows one fold did not take (id and reason, in merged order), keeping the latest `MAX_REJECTED` of them: one save, and
+    /// none when every one of the latest is recorded already. The rows are read again at every fold, so only the latest are candidates
+    /// (an older one would be forgotten as soon as it was learnt, and learnt again at the next fold), and what makes room is a row
+    /// no longer among them, oldest first.
+    pub fn record_rejected(&mut self, found: &[(String, String)]) -> Result<()> {
+        let latest = &found[found.len().saturating_sub(MAX_REJECTED)..];
+        let recorded = &mut self.state.t.rejected;
+        let mut known: BTreeSet<&str> = recorded.iter().map(|(id, _)| id.as_str()).collect();
+        let fresh: Vec<(String, String)> = latest.iter().filter(|(id, _)| known.insert(id))
+            .map(|(id, why)| (id.clone(), why.chars().filter(|c| !c.is_control()).take(200).collect())).collect();
+        if fresh.is_empty() {
+            return Ok(());
         }
-        Ok(())
+        let latest: BTreeSet<&str> = latest.iter().map(|(id, _)| id.as_str()).collect();
+        let mut excess = (recorded.len() + fresh.len()).saturating_sub(MAX_REJECTED);
+        recorded.retain(|(id, _)| latest.contains(id.as_str()) || excess == 0 || { excess -= 1; false });
+        recorded.extend(fresh);
+        self.state.save()
     }
 
     pub fn rejected(&self) -> &[(String, String)] {

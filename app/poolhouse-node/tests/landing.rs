@@ -4,6 +4,7 @@ use kit::*;
 use poolhouse_node::node::Node;
 use poolhouse_node::row::Kind;
 use serde_json::{json, Value};
+use std::time::{Duration, Instant};
 use tempfile::tempdir;
 
 fn sha(n: u8) -> String {
@@ -112,6 +113,60 @@ fn entries_of_the_removed_landing_queue_are_refused_and_count_for_nothing() {
     }
     assert!(reviewers(&accepts(&mut n, &lt, &tip)).is_empty(), "a review of the queue names a request, not a branch, and counts for nothing");
     assert_eq!(n.host("demo").unwrap().board.rejected().len(), old_count, "every old entry is refused: {:?}", n.host("demo").unwrap().board.rejected());
+}
+
+/// An entry of the removed landing queue, one of the six kinds, with the commit it was written for.
+fn removed_queue_entry(i: usize, tip: &str) -> Value {
+    match i % 6 {
+        0 => json!({"ev": "request", "branch": "feat", "sha": tip, "target": "dev", "selectors": ["tests/test_x.py"], "replaces": "x"}),
+        1 => json!({"ev": "cancel", "req": "demo:d1:1"}),
+        2 => json!({"ev": "pause", "reason": "r"}),
+        3 => json!({"ev": "resume"}),
+        4 => json!({"ev": "state", "req": "demo:d1:1", "status": "landed", "detail": "d"}),
+        _ => json!({"ev": "beat", "what": "x"}),
+    }
+}
+
+#[test]
+fn a_flood_of_refused_rows_is_recorded_in_one_save_and_a_repeated_read_saves_nothing() {
+    // The rows of a log are read again at every call, and the refused ones with them. Recording one at a time and dropping the oldest
+    // past the cap forgot the oldest as it learnt the newest, so every fold of more rows than the cap fsynced once per row, for good.
+    const FLOOD: usize = 1000;
+    const KEPT: usize = 200; // MAX_REJECTED, docs/limits.md
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let ((worker, _), (_, lt)) = (session(&mut n, "demo", "worker"), session(&mut n, "demo", "pusher"));
+    let drafts: Vec<(Kind, String, Value)> = (0..FLOOD).map(|i| (Kind::Landing, worker.clone(), removed_queue_entry(i, &sha(9)))).collect();
+    assert_eq!(n.host("demo").unwrap().board.append_many(drafts).unwrap(), FLOOD);
+
+    let started = Instant::now();
+    let entries = n.view("demo").unwrap();
+    assert!(started.elapsed() < Duration::from_secs(2), "the first fold of {FLOOD} refused rows took {:?}", started.elapsed());
+    assert!(entries.iter().all(|e| e.kind != Kind::Landing), "a refused row counts for nothing");
+    assert!(reviewers(&accepts(&mut n, &lt, &sha(9))).is_empty());
+    let kept = n.host("demo").unwrap().board.rejected().to_vec();
+    assert_eq!(kept.len(), KEPT, "the record stays bounded");
+
+    // From here every save fails: the file the board replaces at a save is a folder with something in it.
+    let state = n.dir.join("boards").join("demo").join("log").join("state.json");
+    std::fs::remove_file(&state).unwrap();
+    std::fs::create_dir(&state).unwrap();
+    std::fs::write(state.join("held"), b"x").unwrap();
+    for round in 0..3 {
+        let again = n.view("demo").unwrap_or_else(|e| panic!("fold {round} saved again though no row was new: {e}"));
+        assert_eq!(again.len(), entries.len());
+        assert_eq!(n.host("demo").unwrap().board.rejected(), kept.as_slice(), "fold {round} changed what it had recorded");
+    }
+
+    // A row refused after the flood is recorded once, in place of the oldest.
+    std::fs::remove_dir_all(&state).unwrap();
+    let body = removed_queue_entry(0, &sha(9));
+    let last = n.host("demo").unwrap().board.append(Kind::Landing, &worker, body, "").unwrap();
+    n.view("demo").unwrap();
+    let now = n.host("demo").unwrap().board.rejected().to_vec();
+    assert_eq!((now.len(), now.last().map(|(id, _)| id.clone())), (KEPT, Some(last.id())));
+    assert_eq!(&now[..KEPT - 1], &kept[1..], "the oldest is the one that left");
+    assert!(state.is_file(), "the save of the new row went through");
 }
 
 fn child(n: &mut Node, parent_token: &str, id: &str) -> (String, String) {
