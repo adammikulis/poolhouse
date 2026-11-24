@@ -662,6 +662,16 @@
    "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
   },
   {
+   "id": "cli:poolhouse-local-network",
+   "kind": "cli",
+   "source": "poolhouse.node_permission:main",
+   "trust": "the person at a terminal; arguments may carry text from outside",
+   "attacker": "hostile argument text or path reaches the command",
+   "status": "n/a",
+   "tests": [],
+   "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
+  },
+  {
    "id": "cli:poolhouse-log",
    "kind": "cli",
    "source": "poolhouse.activity.cli:main",
@@ -704,16 +714,6 @@
    "id": "cli:poolhouse-models",
    "kind": "cli",
    "source": "poolhouse.serve.models_cli:run",
-   "trust": "the person at a terminal; arguments may carry text from outside",
-   "attacker": "hostile argument text or path reaches the command",
-   "status": "n/a",
-   "tests": [],
-   "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
-  },
-  {
-   "id": "cli:poolhouse-node",
-   "kind": "cli",
-   "source": "poolhouse.node_permission:main",
    "trust": "the person at a terminal; arguments may carry text from outside",
    "attacker": "hostile argument text or path reaches the command",
    "status": "n/a",
