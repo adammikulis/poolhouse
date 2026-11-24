@@ -51,7 +51,7 @@ def test_a_list_may_print_nothing_when_the_project_says_so(tmp_path, capsys):
 def test_a_missing_file_is_status_4_with_the_way_to_make_one_and_no_units(tmp_path, capsys):
     root = project(tmp_path, None, {"tests/t_a.sh": "exit 0\n"})
     status, out, err = check(root, capsys)
-    assert status == 4 and "poolhouse-test init" in err and "units" not in out
+    assert status == 4 and "poolhouse test init" in err and "units" not in out
 
 
 def test_check_prints_the_units_labels_steps_and_the_split_mode(tmp_path, capsys):

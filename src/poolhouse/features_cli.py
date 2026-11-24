@@ -1,8 +1,8 @@
-"""``poolhouse-features``: see the experimental features, turn one on or off.
+"""``poolhouse features``: see the experimental features, turn one on or off.
 
-    poolhouse-features list [--json]     every feature with its stage, risk and state
-    poolhouse-features enable NAME       turn one on for this machine (audited)
-    poolhouse-features disable NAME      turn it off again (audited)
+    poolhouse features list [--json]     every feature with its stage, risk and state
+    poolhouse features enable NAME       turn one on for this machine (audited)
+    poolhouse features disable NAME      turn it off again (audited)
 
 Each takes ``--root DIR`` for a daemon kept somewhere other than the usual place.
 """

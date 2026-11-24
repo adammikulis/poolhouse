@@ -1,14 +1,15 @@
-"""The commands page's table is the registry's, and the registry names every command."""
+"""The commands page's table is made from the registry, so no command can be missing from it."""
 
 from __future__ import annotations
 
+import importlib
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
 
-from poolhouse.cli import PREFIX, commands
-from poolhouse.cli.reference import HELP, TABLE, table
+from poolhouse.cli import PYPROJECT, commands
+from poolhouse.cli.reference import HELP, TABLE, Row
+from poolhouse.cli.registry import rows, table
 
 REPO = Path(__file__).resolve().parent.parent
 PAGE = REPO / "docs" / "commands.md"
@@ -24,8 +25,8 @@ def committed() -> list[str]:
 
 
 def test_the_committed_table_is_the_one_the_registry_makes():
-    assert committed() == table().splitlines(), (
-        "docs/commands.md's table and poolhouse.cli.reference disagree; "
+    assert committed() == table(PYPROJECT).splitlines(), (
+        "docs/commands.md's table and poolhouse.cli.registry disagree; "
         "scripts/reference --write writes the registry's")
 
 
@@ -37,16 +38,41 @@ def test_every_command_has_a_line_and_every_line_a_command():
 
 
 def test_every_row_names_a_command_that_exists():
-    scripts = set(tomllib.loads((REPO / "pyproject.toml").read_text())["project"]["scripts"])
+    declared = set(commands())
     for row in TABLE:
-        assert row.command in scripts, f"{row.invocation!r} names no console script"
+        assert row.word == "" or row.word in declared, f"{row.invocation!r} names no command"
 
 
-def test_every_command_has_a_row_of_its_own():
-    named = {row.command for row in TABLE}
-    runtime = any(row.invocation.startswith("poolhouse runtime ") for row in TABLE)
-    missing = sorted(w for w in HELP if f"{PREFIX}{w}" not in named and not (w == "runtime" and runtime))
-    assert not missing, f"no row in the command table for: {missing}"
+def test_a_row_is_about_the_word_either_spelling_names():
+    assert Row("poolhouse-serve fit", "x").word == "serve"
+    assert Row("poolhouse serve fit", "x").word == "serve"
+    assert Row("poolhouse device-setup [--yes]", "x").word == "device-setup"
+    assert Row("poolhouse runtime ensure\\|status", "x").word == "runtime"
+    assert Row("poolhouse <command>", "x").word == ""
+
+
+def test_every_registered_command_is_in_the_table_even_with_no_prose_of_its_own(monkeypatch):
+    monkeypatch.setattr(importlib.import_module("poolhouse.cli.registry"), "TABLE", ())
+    made = {row.word for row in rows(PYPROJECT)}
+    assert set(commands()) <= made, f"missing from the generated table: {sorted(set(commands()) - made)}"
+    assert "| `poolhouse traind` |" in table(PYPROJECT)
+
+
+def test_a_command_without_prose_gets_a_row_from_its_registry_summary(monkeypatch):
+    module = importlib.import_module("poolhouse.cli.registry")
+    declared = module.registry(REPO / "pyproject.toml")
+    declared["quince"] = module.Command("quince:main", "Counts quinces.")
+    monkeypatch.setattr(module, "registry", lambda _pyproject: declared)
+    assert Row("poolhouse quince", "Counts quinces.") in rows(PYPROJECT)
+
+
+def test_the_pool_row_names_listen_and_the_developer_commands_are_written_through_the_front_door():
+    invocations = [row.invocation for row in TABLE]
+    assert any(i.startswith("poolhouse-pool ") and "listen" in i for i in invocations)
+    for word in ("test", "test-devices", "open", "help", "device", "device-setup", "features",
+                 "credentials", "local-network"):
+        assert not any(i.split()[0] == f"poolhouse-{word}" for i in invocations), word
+        assert any(i.split()[:2] == ["poolhouse", word] for i in invocations), word
 
 
 def test_the_script_prints_what_the_page_holds():

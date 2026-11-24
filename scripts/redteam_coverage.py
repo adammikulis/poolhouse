@@ -408,7 +408,10 @@ def find_slash(found: dict[str, Surface], where: str, tree: ast.Module) -> None:
 
 def find_scripts(found: dict[str, Surface]) -> None:
     data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    for script, target in sorted(data["project"]["scripts"].items()):
+    from poolhouse.cli.registry import PREFIX, ROUTED
+
+    commands = {**data["project"]["scripts"], **{f"{PREFIX}{word}": target for word, target in ROUTED.items()}}
+    for script, target in sorted(commands.items()):
         add(found, "cli", script, target)
 
 

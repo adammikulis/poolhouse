@@ -27,7 +27,7 @@ Commands execute in the daemon files root with the existing job environment and 
 | Graph store and graph server | Tools: poolhouse-store, poolhouse-graph |
 | World model, ingestion, walking, retrieval surfaces | Tools: python -m poolhouse.world, python -m poolhouse.ingest, python -m poolhouse.walk, python -m poolhouse.surface |
 | Speech providers, transcription and synthesis | Tools: poolhouse-speech |
-| Security, audit and credentials | Tools: poolhouse-security, poolhouse-audit, poolhouse-credentials |
+| Security, audit and credentials | Tools: poolhouse-security, poolhouse-audit, poolhouse credentials |
 | Diagnostics and installation | Tools: poolhouse-doctor, poolhouse-setup |
 | Workspace coordination, jobs, suites | Tools: poolhouse-workspace, poolhouse-jobs, python -m poolhouse.train suite |
 | Agent and MCP workflows | Tools: poolhouse-agent, poolhouse-claude, poolhouse-mcp |

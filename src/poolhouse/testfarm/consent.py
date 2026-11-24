@@ -4,7 +4,7 @@
     python -m poolhouse.testfarm.consent allow DEVICE... | deny DEVICE... | off | status [--json]
 
 Run at the device that would run the tests, by its person or by its agent on the person's order. A DEVICE
-is a name from `poolhouse-test-devices` or a fingerprint. Nobody is allowed until named, however the pool
+is a name from `poolhouse test-devices` or a fingerprint. Nobody is allowed until named, however the pool
 was joined. Turning on and allowing are audited on the pool board; `deny` and `off` stop the next upload.
 """
 

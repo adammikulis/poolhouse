@@ -86,7 +86,7 @@ There is no way to rotate the master and keep the data.
 |---|---|---|
 | service `poolhouse-memory`, one JSON key per user/profile/directory | the first open of that memory store | every file of the store is re-sealed under the new subkey and read back; then the item is deleted. A file that does not verify keeps the item |
 | service `poolhouse`, account `onboard-signing-<hash>` (the signing seed) | the first signing call | wrapped into `signing.key.wrapped` and unwrapped to the same key id; the item is deleted, then the record's `store` changes to `keystore`. Cut off at either point, the next call finishes |
-| service `poolhouse`, account `<NAME>` (a credential) | the first `poolhouse-credentials` command a person runs that names it | wrapped into `credentials.json`, read back equal, then the item is deleted. Library code asking for a credential never probes the keystore for an old item |
+| service `poolhouse`, account `<NAME>` (a credential) | the first `poolhouse credentials` command a person runs that names it | wrapped into `credentials.json`, read back equal, then the item is deleted. Library code asking for a credential never probes the keystore for an old item |
 
 ## Passphrase fallback
 

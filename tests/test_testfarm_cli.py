@@ -1,4 +1,4 @@
-"""poolhouse-test init, check and list as a person runs them."""
+"""poolhouse test init, check and list as a person runs them."""
 from __future__ import annotations
 
 import json
@@ -22,7 +22,7 @@ def test_init_writes_a_file_to_fill_in_and_never_overwrites_one(tmp_path, capsys
     root = project(tmp_path, None)
     status, out, _ = run("init", "--root", str(root), capsys=capsys)
     written = (root / "testfarm.toml").read_text()
-    assert status == 0 and "schema = 1" in written and "poolhouse-test check" in out
+    assert status == 0 and "schema = 1" in written and "poolhouse test check" in out
     (root / "testfarm.toml").write_text("schema = 1\n# mine\n")
     status, _, err = run("init", "--root", str(root), capsys=capsys)
     assert status == 4 and "is left as it is" in err and (root / "testfarm.toml").read_text() == "schema = 1\n# mine\n"
@@ -69,7 +69,7 @@ def test_the_root_is_the_first_directory_up_with_a_file_or_a_git_entry_and_the_w
     below.mkdir(parents=True)
     assert project_core.find_root(below) == repo.resolve()
     status, _, err = run("check", "--root", str(below), capsys=capsys)
-    assert status == 4 and "poolhouse-test init" in err
+    assert status == 4 and "poolhouse test init" in err
     (repo / "testfarm.toml").write_text("schema = 1\n")
     assert project_core.find_root(below) == repo.resolve()
     (repo / "app" / ".git").mkdir()

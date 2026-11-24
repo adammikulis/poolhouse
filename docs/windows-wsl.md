@@ -140,14 +140,14 @@ node (this document's steps) and its own switch, in its own checkout.
    needed, run it with the 3.13 interpreter, or pass `--python PATH`; if it says the repo has no `shard_exec.py`,
    this checkout is older than the feature: update it, restart the node (`python -m poolhouse.node_launch swap`) and
    run it again. The node must be the new build, since it carries the shard ops.
-   `MAC_NAME` is the Mac's name in `poolhouse-test-devices` (or its fingerprint). This device takes tests only from
+   `MAC_NAME` is the Mac's name in `poolhouse test-devices` (or its fingerprint). This device takes tests only from
    the devices it names; to add or remove one later: `python -m poolhouse.testfarm.consent allow NAME` or `deny NAME`.
    Never allow a device you did not mean to: it can run code here as this user. Joining the pool is not enough.
-3. Ask the Mac's agent to run `poolhouse-test-devices` and then `scripts/test all tests/test_x.py --on THIS_DEVICE`;
+3. Ask the Mac's agent to run `poolhouse test-devices` and then `scripts/test all tests/test_x.py --on THIS_DEVICE`;
    the result comes back to the Mac's session, and a `test-result` message is on the board.
 4. To stop: `python -m poolhouse.testfarm.consent off`. It takes effect on the next upload; a run already going
    finishes or is cancelled from the Mac. Everything on and off is in the pool board's audit entries.
 
 Failures say what to do: `Python 3.13 is missing` (install it and run step 2), `test shards are off on this
 device` (step 2), `this device's CPU slots are in use` (wait), `no other active device ... is called` (the name
-in `poolhouse-test-devices`).
+in `poolhouse test-devices`).
