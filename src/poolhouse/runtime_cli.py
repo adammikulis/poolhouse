@@ -11,7 +11,6 @@ from pathlib import Path
 
 from poolhouse import (
     authority,
-    authority_caller,
     build_update,
     caller,
     jobs,
@@ -31,6 +30,7 @@ from poolhouse import (
     runtime_store,
     runtime_trust,
     runtime_unmerged,
+    session_identity,
     worktreerules,
 )
 from poolhouse.command import Group, flag
@@ -66,7 +66,7 @@ def _lead(primary: Path) -> str:
     """The name of the authenticated lead agent running this command, or "" when the node has no session for it: a published commit needs
     no identity (the delegated gate of a foreground deploy and an unmerged commit's approval each ask for the session themselves). An
     authenticated helper starts no deploy."""
-    if authority_caller.is_live_child(cwd=primary):
+    if session_identity.is_live_child(cwd=primary):
         raise runtime_deploy.DeployError("a subagent starts no runtime deploy")
     try:
         return runtime_unmerged.current_actor(primary).name
@@ -76,7 +76,7 @@ def _lead(primary: Path) -> str:
 
 def plan_from(args: argparse.Namespace, *, deploying: bool = True) -> runtime_deploy.Plan:
     """The deploy plan an ensure, status or rollback command names, built from the recorded primary checkout."""
-    if deploying and caller.marked() and authority_caller.is_live_child(cwd=_checkout(args.checkout)):
+    if deploying and caller.marked() and session_identity.is_live_child(cwd=_checkout(args.checkout)):
         raise runtime_deploy.DeployError("a subagent starts no runtime deploy")
     primary = runtime_trust.primary_for(_checkout(args.checkout), deploying=deploying,
                                         delegated=getattr(args, "via", "") == authority.DELEGATED)
@@ -146,7 +146,7 @@ def _audited(args: argparse.Namespace, command: str, plan: runtime_deploy.Plan, 
 
 
 def _ensure(args: argparse.Namespace) -> int:
-    if getattr(args, "hook_refresh", False) and authority_caller.is_live_child(
+    if getattr(args, "hook_refresh", False) and session_identity.is_live_child(
             cwd=_checkout(args.checkout), asserted_name=args.agent):
         return 0
     if args.settle and not args.now and not getattr(args, "automatic_from", ""):

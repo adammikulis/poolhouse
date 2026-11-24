@@ -161,7 +161,7 @@ def automatic(source, tmp_path, monkeypatch):
     wanted = save(repo, "docs/notes/proof.md")
     chosen = runtime.Runtime(tmp_path / "installed", previous, "0.3.0-dev.1", runtime.identity())
     plan = runtime_deploy.Plan(repo, wanted, None)
-    monkeypatch.setattr(runtime_cli.authority_caller, "is_live_child", lambda **kw: False)
+    monkeypatch.setattr(runtime_cli.session_identity, "is_live_child", lambda **kw: False)
     monkeypatch.setattr(runtime_cli, "_planned", lambda args: plan)
     monkeypatch.setattr(runtime_deploy, "settled", lambda plan: "")
     monkeypatch.setattr(runtime, "available", lambda: chosen)

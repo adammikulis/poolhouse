@@ -10,8 +10,8 @@ from dataclasses import replace
 
 import pytest
 
-from poolhouse.authority_caller import Identity
 from poolhouse.net import github_release as net
+from poolhouse.session_identity import Identity
 from poolhouse.workspace import github_app, github_release as holder
 
 pytest_plugins = ["node_kit"]

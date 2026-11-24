@@ -14,9 +14,9 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import home
-from poolhouse.authority_caller import current as current_agent
 from poolhouse.caller import AgentRefused, audit_rows, marked, record, refuse_agent, who
 from poolhouse.files import read_json, write_json
+from poolhouse.session_identity import current as current_agent
 
 __all__ = [
     "DELEGATED",

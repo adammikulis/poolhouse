@@ -7,9 +7,9 @@ import os
 import pytest
 
 from poolhouse import authority, caller, node_launch
-from poolhouse.authority_caller import Unauthenticated
 from poolhouse.board import client, session as sessions
 from poolhouse.caller import AgentRefused
+from poolhouse.session_identity import Unauthenticated
 
 pytest_plugins = ["node_kit"]
 

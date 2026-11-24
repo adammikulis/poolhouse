@@ -15,8 +15,8 @@ from pathlib import Path
 from packaging.version import InvalidVersion, Version
 
 from poolhouse import authority, credentials, real_machine, runtime, runtime_git, worktreerules
-from poolhouse.authority_caller import Identity, Unauthenticated
 from poolhouse.net import github_release as remote
+from poolhouse.session_identity import Identity, Unauthenticated
 from poolhouse.workspace import github_app
 
 SHA = re.compile(r"[0-9a-f]{40}")

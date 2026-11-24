@@ -18,16 +18,6 @@ GATE = "runtime.deploy"
 DETAIL_LIMIT = 150
 
 
-def is_person() -> bool:
-    """Whether no agent marker is set: a process an agent did not start. It needs no terminal."""
-    return not caller.marked()
-
-
-def interactive() -> bool:
-    """Whether no agent marker is set and stdin and stdout are terminals: only a label for the audit row (a launcher or login unit is not one)."""
-    return is_person() and caller.is_terminal(sys.stdin) and caller.is_terminal(sys.stdout)
-
-
 def recorded_primary() -> Path | None:
     """The primary checkout of the source recorded by an earlier deploy, or None."""
     named = runtime_store.read_state().get("checkout")
@@ -48,7 +38,7 @@ def primary_for(supplied: Path, *, deploying: bool = True, delegated: bool = Fal
     recorded = recorded_primary()
     if recorded is not None and runtime_git.common_dir(supplied) == runtime_git.common_dir(recorded):
         return recorded
-    if is_person() or not deploying or (recorded is None and delegated):
+    if not caller.marked() or not deploying or (recorded is None and delegated):
         return runtime_git.main_worktree(supplied)
     if recorded is None:
         raise DeployError("no source repository is recorded: a process with no agent marker, or a lead agent while `runtime.deploy` is delegated, "
@@ -144,7 +134,8 @@ def audit(command: str, commit: str, result: str, *, agent: str = "", detail: st
             who = authority.current_agent(cwd=source).name
         except (OSError, ValueError):
             pass
-    actor = f"agent:{who}" if who else "agent:unavailable" if context else "person" if interactive() else "system:runtime"
+    at_terminal = not context and caller.is_terminal(sys.stdin) and caller.is_terminal(sys.stdout)  # only a label: a launcher or login unit has none
+    actor = f"agent:{who}" if who else "agent:unavailable" if context else "person" if at_terminal else "system:runtime"
     return writer.record(KIND, actor=actor, subject=commit, outcome=result,
-                         meta={"command": command, "agent": who, "person": not context and interactive(), "authority": passed.get("via", ""),
+                         meta={"command": command, "agent": who, "person": at_terminal, "authority": passed.get("via", ""),
                                "detail": detail[:DETAIL_LIMIT]})
