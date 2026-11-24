@@ -187,7 +187,7 @@ objects.
 ## Decisions for the owner
 
 1. Check that `cryptography` stays optional (`fleet-tls`) with a clear message when it is missing.
-2. Whether `docs/INTEGRATION-REPORT.md` stays after the release.
+2. Whether `docs/notes/INTEGRATION-REPORT.md` stays after the release.
 3. Whether a fresh `tests-collected` is recorded from a machine that has every extra installed.
 4. Whether the red-team tier (`--redteam`) joins the default tier or a scheduled job; it is what
    found bug 7, and it runs nowhere by default.

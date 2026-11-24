@@ -2,8 +2,8 @@
 
 Subject: `docs/design-test-runner.md` on `origin/0.3dev` at `620a7c589`. The pass started at `19b40866d`; the one commit between them edits
 the receiver's time bound (4.8, 6.1, 6.6, 10.3, 10.6, 10.8, 14, 15), which step 3 does not build, and its text was re-read. Reviewer: an agent
-other than the author of the design and other than the authors of `docs/design-test-runner-breakit.md` (F1 to F30) and
-`docs/design-test-runner-breakit-2.md` (N1 to N18). The design is not edited by this pass. Scope, as briefed: the gate seam (`PersonGate`), the one
+other than the author of the design and other than the authors of `docs/notes/design-test-runner-breakit.md` (F1 to F30) and
+`docs/notes/design-test-runner-breakit-2.md` (N1 to N18). The design is not edited by this pass. Scope, as briefed: the gate seam (`PersonGate`), the one
 spawn function, the confined Parser worker, scratch copies for unnamed projects, `own`, the settings file, project identity (4.9), the
 `owner/` and `work/` split and the control units; the original attack of N1 to N6 (and N10 to N12 where step 3 touches them) against the new text,
 then the structures the rewrite added. Findings of this pass are S1 to S16.

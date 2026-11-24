@@ -29,5 +29,13 @@ def test_the_note_starts_at_the_warning_line_and_not_before(tmp_path):
     assert "300 lines" in handoff_size.notes(tmp_path)[0]
 
 
+def test_a_short_file_of_very_long_lines_is_past_the_word_wall_from_the_line_that_crosses_it(tmp_path):
+    per_line = handoff_size.WALL_WORDS // 10 + 1
+    (tmp_path / "HANDOFF.md").write_text("\n".join(" ".join(["word"] * per_line) for _ in range(12)) + "\n", encoding="utf-8")
+    found = handoff_size.find(tmp_path)
+    assert [f.line for f in found] == [10, 11, 12]
+    assert "words" in handoff_size.notes(tmp_path)[0]
+
+
 def test_a_missing_file_has_no_finding_and_no_note(tmp_path):
     assert handoff_size.find(tmp_path) == [] and handoff_size.notes(tmp_path) == []

@@ -86,7 +86,7 @@ generator; the gate (`scripts/test gate`) re-checks the file itself.
 `quick` adds the cheap tree-wide checks (`test_layers`, `test_wiring`, the conftest and isolation
 guards) to every selection and leaves out the slow ones (`test_budgets`, `test_gates_*`,
 `test_no_data_files`): the pre-commit hook runs the budgets, and `full` and `all` run all
-of them. `tests/test_quick_select.py` pins the selection rules, and `scripts/verify-quick`
+of them. `tests/test_quick_select.py` pins the selection rules, and `scripts/mutation-check-quick`
 mutates a function in each module named and reports any mutation `quick` let through that a
 test would have caught (run it in a throwaway worktree).
 

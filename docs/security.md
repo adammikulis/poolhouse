@@ -23,7 +23,7 @@ else on the LAN.
 (`POST /jobs`), downloads what a device names (`POST /models/get`) and writes files a device
 sends (`PUT /files/*`). A request from another machine
 is answered only over mutual TLS 1.3 by a device whose own certificate the node lists as a member
-(`docs/pool-node-services.md`), so a device is put out alone (`poolhouse pool remove`) and is refused
+(`docs/node.md, "Pool compute service bindings"`), so a device is put out alone (`poolhouse pool remove`) and is refused
 from its next handshake and next request. A member runs the test shards (a tree of code and test files) that any
 member sends it, as its user, until a person runs `poolhouse features disable remote-tests` there (docs/test-farm.md).
 A job a device submits is limited to an allowlist of Poolhouse commands
@@ -275,7 +275,7 @@ These need a decision, or work that belongs to another branch (`HANDOFF.md`, Poo
 
 - **Windows:** the mode and ownership checks on credential files do not apply, `icacls` is
   best effort, and the exit watchdog was not run on Windows.
-- **`scripts/test-on-linux`** needs Docker's daemon; `docs/INTEGRATION-REPORT.md` says whether it
+- **`scripts/test-on-linux`** needs Docker's daemon; `docs/notes/INTEGRATION-REPORT.md` says whether it
   ran for that integration.
 
 ## Requests

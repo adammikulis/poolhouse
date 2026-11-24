@@ -195,6 +195,18 @@ integration batch before publication. The full suite runs on GitHub for pull req
 | `scripts/test all` | slow included: what CI runs | |
 | `scripts/test ratchet` | compares the last `full` run with `tests/full-tier-time.json` (10 % tolerance) | |
 
+### Which script when
+
+| script | use it to |
+|---|---|
+| `scripts/test` | run tests: affected files (`scripts/test all tests/<file>.py`), a tier (`quick`, `gate`, `fast`, `full`), or `ratchet`; it runs `preflight` first |
+| `scripts/gaterun.py` | not a command: the library `scripts/test gate` uses to run the gate steps in parallel lanes |
+| `scripts/mutation-check-quick` | check, in a throwaway worktree, that `scripts/test quick` fails when a function in a named module is mutated; it writes into `src/` |
+| `scripts/preflight` | learn what this machine lacks for a purpose (`dev`, `gate`, `build`, `runtime`) and the command that closes the gap |
+| `scripts/status` | learn whether anything is stuck: the verdict, the test broker, test jobs and GitHub runs of the development branch |
+| `scripts/sync-dev` | in a plain clone (a VS Code task, cron, a timer): fetch and fast-forward the current checkout when it is the development branch and clean |
+| `scripts/primary_sync.py` | fast-forward the primary checkout of a worktree layout to `origin/<dev>`; the push hook and `scripts/worktrees sweep` start it |
+
 The main agent owns `quick`; its cold-map recording and fallback can start full runs.
 Workers use explicit affected selectors: the files they changed and the files `scripts/affected.py` selects for their diff.
 The push hook runs that selection (`scripts/test all FILES --redteam`, reuse on) and refuses the push while a selected test is red

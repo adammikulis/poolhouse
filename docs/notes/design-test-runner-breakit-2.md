@@ -2,7 +2,7 @@
 
 Subject: `docs/design-test-runner.md` as it stands on `origin/0.3dev` at `e399a1d4a` (identical at `e97621879`, checked with `git diff`),
 the revised sections 10, 5.3, 6 and 3.5 above all. Reviewer: a non-author agent told to defeat the design (AGENTS.md section 1, "Attack
-first"; author of neither the design nor the first pass `docs/design-test-runner-breakit.md`). The design is not edited by this pass.
+first"; author of neither the design nor the first pass `docs/notes/design-test-runner-breakit.md`). The design is not edited by this pass.
 Finding numbers F1 to F30 are the first pass's; the findings of this pass are N1 to N18. Section numbers without a file name are the
 design's.
 

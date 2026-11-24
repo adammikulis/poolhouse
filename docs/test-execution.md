@@ -1,7 +1,7 @@
 # Shared test execution
 
 > **Replaced by the test runner design.** The fixed numbers this note describes as current (a 30 s backfill wait, a sample clipped to three times the value, an unrecorded test at 30 s, a background class at 180 s, aging at 600 s, a build deadline and a three-day folder age, the reserved core) are replaced by measured or
-> project-set values in the migration of `docs/design-test-runner.md` (section 15 and migration steps 1 to 11); until that step lands
+> project-set values in the migration of `docs/design-test-runner.md` (full text: `git show ac0639291:docs/design-test-runner.md`) (section 15 and migration steps 1 to 11); until that step lands
 > they are what the code does, and none is to be copied into new code.
 
 Run tests with `python scripts/test fast`, `full`, `slow`, `all`, or `quick`.

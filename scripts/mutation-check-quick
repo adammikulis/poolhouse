@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check that `scripts/test quick` notices a broken function.
 
-    scripts/verify-quick src/poolhouse/units.py src/poolhouse/http.py [--workers N]
+    scripts/mutation-check-quick src/poolhouse/units.py src/poolhouse/http.py [--workers N]
 
 For each module, one function is mutated (an operator from scripts/gates/_mutation), the mutant
 is written into this checkout, and `scripts/test quick --base HEAD` runs. A passing quick run is
@@ -82,9 +82,9 @@ def main() -> int:
     parser.add_argument("--workers", type=int, default=2)
     args = parser.parse_args()
     if sh("git", "status", "--porcelain")[1].strip():
-        raise SystemExit("verify-quick: the tree has uncommitted changes; use a clean worktree")
+        raise SystemExit("mutation-check-quick: the tree has uncommitted changes; use a clean worktree")
     if not DATA.exists():
-        raise SystemExit("verify-quick: no .testmondata; run `scripts/test quick` once first")
+        raise SystemExit("mutation-check-quick: no .testmondata; run `scripts/test quick` once first")
     shutil.copy2(DATA, KEPT)
     pool = _mutation.candidates(ROOT)
     missed = 0
@@ -101,7 +101,7 @@ def main() -> int:
             if caught or row.get("naming_tests_status", 0) != 0:
                 missed += not caught
                 break
-    print(f"verify-quick: {missed} mutation(s) quick missed that a test would have caught")
+    print(f"mutation-check-quick: {missed} mutation(s) quick missed that a test would have caught")
     return 1 if missed else 0
 
 

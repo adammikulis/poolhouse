@@ -684,7 +684,7 @@ across `src/`.
   makes the next `quick` a full run, and each new worktree pays one full run to record its map.
   Seeding a new worktree's map from the last one, or ignoring the packages that change often
   (`testmon_ignore_dependencies`), would stop that.
-- [ ] **`scripts/verify-quick` has covered seven modules, not fifteen, and `quick` reruns about
+- [ ] **`scripts/mutation-check-quick` has covered seven modules, not fifteen, and `quick` reruns about
   855 tests whatever changed.** It mutated `serve/ports`, `serve/escalation`, `client/tokens`,
   `client/cache`, `harness`, `claude` and `hub/naming`; the one miss (`claude.main`, reached only
   through `tests/test_cli_help.py`'s computed import) is covered by `affected.dynamic_tests` and
@@ -1159,7 +1159,7 @@ Capabilities that do not exist yet.
   if a headless machine wants one.
 
 ### Integration (0.3.0)
-`docs/INTEGRATION-REPORT.md` has the merge order, the commands and the numbers.
+`docs/notes/INTEGRATION-REPORT.md` has the merge order, the commands and the numbers.
 - [ ] **Two integration decisions to check by a person.** (1) `redteam/tools.py` reads a page with
   the plain extractor on purpose, so the hidden-text attacks still reach the guards behind the
   reader; the reader the agent really uses (`web.read`) strips them first, and

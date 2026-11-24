@@ -14,7 +14,7 @@ this document was written; the commands are in section 5.6), **PREDICTED** (from
 check the slice that needs it runs first; until it has run, the design reads the worse case). Devices used: this Mac (macOS 26.6,
 build 25G70, Apple M4 Max, `/usr/bin/sandbox-exec` present) and a Linux VM that is **not** the WSL device (Docker Desktop's kernel
 7.0.14-linuxkit, Ubuntu 24.04 userland, bubblewrap 0.9.0, Landlock ABI 8). The WSL device and the Windows PC were not reachable
-(`poolhouse-test-devices`: this pool has no other active device), so every WSL and Windows statement is PREDICTED or PROBE.
+(`poolhouse test devices`: this pool has no other active device), so every WSL and Windows statement is PREDICTED or PROBE.
 
 Read first: AGENTS.md sections 1 and 2 ("Attack first", "Never a fake model", "A number comes from a source", "Reporting a problem":
 redesign, not patch), `docs/agent-sandbox.md`, `docs/sandbox.md`, `docs/harnesses.md`, `docs/compromised-agents.md` 2.1,
@@ -345,7 +345,7 @@ with `TIOCSTI` answers no `confirm`. Until slice L6 an interactive launch refuse
    macOS it is the follower's tree (`sandbox.process_tree.Tree`), which follows every fork through `kqueue` whatever its group or
    session, and the barrier is: (1) stop every member (`SIGSTOP`) and list again until a pass adds none, so no member forks while
    the others are ended; (2) `SIGKILL` every member; (3) wait until the follower reports no live member. A member is named by pid
-   and start time, so a reused pid is never signalled. Every step is a wait with a hang guard (`docs/design-test-runner.md`,
+   and start time, so a reused pid is never signalled. Every step is a wait with a hang guard (`docs/design-test-runner.md`, full text `git show ac0639291:docs/design-test-runner.md`,
    "Hang guards: no progress first, a total second"): the no-progress stretch is measured from the step's own progress (the
    number of members still live, the pass that adds none), there is no number in this design, and a step that stops making
    progress ends the barrier with a survivor. When the tree is not complete (`Tree.complete` is false, or the run started more
@@ -1429,7 +1429,7 @@ confinements" is the count the parent holds of confinements running now; the per
 | Requests in flight to the model server | the lease's slot count | one conversation per slot (`docs/harnesses.md`) |
 | Bridge token | 32 random bytes (256 bits) | the session token of `docs/design-session-capabilities.md` 1.1 |
 | Stage build | progress-based: stalled when the files visited and the bytes advanced do not change | no clock; replaces the 30 s deadline |
-| Every wait this design adds (the barrier of 4.2 item 3, the flush and verification read of 4.4.3, the workspace, service and installer steps) | a no-progress guard, then a total guard: the no-progress stretch is the longest silence the step's own recorded runs showed times the project's margin, the total is the recorded typical duration times the project's margin | the hang guards of `docs/design-test-runner.md` ("Hang guards: no progress first, a total second"); both margins are the project's and there is no default number here; a step with no history is guarded by the gaps it produces itself and the report says so |
+| Every wait this design adds (the barrier of 4.2 item 3, the flush and verification read of 4.4.3, the workspace, service and installer steps) | a no-progress guard, then a total guard: the no-progress stretch is the longest silence the step's own recorded runs showed times the project's margin, the total is the recorded typical duration times the project's margin | the hang guards of `docs/design-test-runner.md`, full text `git show ac0639291:docs/design-test-runner.md` ("Hang guards: no progress first, a total second"); both margins are the project's and there is no default number here; a step with no history is guarded by the gaps it produces itself and the report says so |
 | Approval wait | `harnesshook.WAIT_S` | an existing constant, unchanged (no recorded reason) |
 | Namespace probe | `bubblewrap._probe` timeout | an existing constant, unchanged (no recorded reason) |
 | Harness event line | `coding_turns.MAX_EVENT` | an existing constant, unchanged (no recorded reason) |

@@ -57,6 +57,33 @@ description to `abandoned: REASON`. Removal forces only `--abandon` of a dirty t
 A tree removed some other way (`git worktree remove`, `rm -rf` then `git worktree prune`) leaves nothing to
 reconcile.
 
+## Recovery workflow
+
+Coding sessions use their authenticated agent identity. Connect and device-session setup may run automatically for the
+agent's own session through supported tooling. Agents never initialize a human workspace, read an owner credential file,
+or mint a person's credentials. Explicit invalid credentials remain errors; a board selected on another device never
+falls back to a board on this device.
+
+1. Acquire authenticated branch, worktree and file-area claims before mutation. Record the task, owner, process
+   identity, source commit and expiry. Use task-scoped handoffs for an existing reservation and verify expired or
+   dead-worker recovery.
+2. Create isolated worktrees beside the primary checkout. A failed checkout releases its reservation. Keep independent
+   workers on separate branches and paths.
+3. Preserve uncommitted changes and unique commits before integrating. Review independently and run affected tests and
+   structural/security gates. Integrate through a gated fast-forward to the development branch; synchronize only the
+   development branch with its upstream.
+4. Before cleanup, inspect unmerged commits, tracked/untracked changes, ignored state and live worker ownership.
+   Preserve unique data and never remove a tree used by an active worker.
+5. Remove a landed, clean worktree from outside that tree; delete its merged local branch and prune registrations.
+   Verify `git worktree list` no longer contains the path before completion.
+6. When Windows or Cloud Files refuses cleanup, record the exact path and retryable state. Recovery verifies absolute
+   administrative paths remain within the selected repository and avoids following reparse-point targets. Keep
+   completion pending while registration remains.
+
+Affected Windows checks use the maintained test broker. Linux testing runs on the WSL device through
+`scripts/test-on-linux`. Full suites run in the background after reviewed batches; workers run affected checks and
+report exact commands, commits, results and platform gaps.
+
 ## A subagent's stop
 
 The Claude `SubagentStop` hook (`scripts/hooks/claude-subagent-stop`, `scripts/hooks/stop_landed.py`) refuses to let a

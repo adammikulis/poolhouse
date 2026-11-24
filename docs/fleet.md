@@ -247,7 +247,7 @@ survives a reboot.
 **Who can reach it.** The daemon listens on TCP 8770 and nothing else. It listens on this machine alone
 until `--lan`, `--host ADDRESS` or `--setup-from-lan` says otherwise. A request from another machine
 arrives over TLS 1.3 and is authorized by the node for the pool it belongs to
-(docs/pool-node-services.md); a device the pool has put out is refused. An unsigned `/health` from another
+(docs/node.md, "Pool compute service bindings"); a device the pool has put out is refused. An unsigned `/health` from another
 machine says only that a daemon is there. File downloads, model downloads and the streamed output of the
 `/infer` proxy travel inside the daemon's TLS. The web interface answers other machines (`--ui-from-lan`)
 over TLS only and signs in with a launch ticket from the Poolhouse window (`poolhouse open`).

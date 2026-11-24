@@ -43,7 +43,7 @@ path = "docs/*REPORT*.md"
 reason = "dated report, a record of what was true when written"
 
 [[exclude]]
-path = "docs/codex-code-report.md"
+path = "docs/notes/codex-code-report.md"
 reason = "dated report, a record of what was true when written"
 
 [[exclude]]

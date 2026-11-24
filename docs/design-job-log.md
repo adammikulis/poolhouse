@@ -408,7 +408,7 @@ Tests retired, each ported (the assertions kept, run against the new calls, watc
 `test_subagent_stop_landed.py`. A diff that weakens an assertion of a red-team, guard or authority test needs a
 `Reviewed-by-second:` line; a port keeps the assertion.
 
-Docs: `docs/worktree-lifecycle-recovery.md`; the lease section of `node.md`; the claims, mutation ownership and limits parts of
+Docs: `docs/worktrees.md`; the lease section of `node.md`; the claims, mutation ownership and limits parts of
 `workspace.md`; `test-execution.md`, `worktrees.md`, `landing.md` (CI run); the decisions table of `board-replication.md`.
 AGENTS.md and CLAUDE.md lose the `announce` kinds and the claim wording; the owner orders that edit and it lands at once.
 
