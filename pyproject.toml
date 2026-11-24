@@ -155,56 +155,39 @@ Issues = "https://github.com/adammikulis/poolhouse/issues"
 Changelog = "https://github.com/adammikulis/poolhouse/blob/main/CHANGELOG.md"
 
 [project.scripts]
-# Every command this package installs starts with `poolhouse`, so `compgen -c poolhouse` (or a
-# tab) lists the whole toolkit. That is not tidiness for its own sake: an agent that cannot
-# enumerate these writes the command again by hand, which is how searching the Hub, timing a
-# question set and picking a free port each got done twice before becoming commands.
-#
-# `poolhouse <command>` runs any `poolhouse-<command>` below; bare, it starts the daemon and
-# opens the browser on it (`poolhouse.fleet.launch`).
+# `poolhouse <command>` is the one front door: it runs any command in `poolhouse.cli.registry`
+# (this table, plus `ROUTED` there), and bare it starts the daemon and opens the browser on it
+# (`poolhouse.fleet.launch`). A command is installed as `poolhouse-<command>` below only where
+# something invokes it by that name, which is what each group of comments says. Every other
+# command is `ROUTED` in the registry and is typed `poolhouse <command>` (`test`, `open`, `help`,
+# `device`, `device-setup`, `features`, `credentials`, `local-network`, `runtime`).
+# tests/test_cli_umbrella.py holds the two tables apart.
 poolhouse = "poolhouse.cli:main"
-poolhouse-open = "poolhouse.fleet.launch_open:main"
+
+# named by the installers (packaging/install.sh, install.ps1), the login unit and the launchers
+# `poolhouse runtime ensure` writes
 poolhouse-traind = "poolhouse.cli.daemon:main"
-# the macOS identity of the LAN node: build Poolhouse.app, ask for Local Network permission
-poolhouse-local-network = "poolhouse.node_permission:main"
-poolhouse-device = "poolhouse.fleet.device_cli:main"
-# the pool of this device's node: found, join, members, and plan, pause and resume compute on its devices
 poolhouse-pool = "poolhouse.pool_cli:main"
-# the same functions the commands call, as MCP tools over stdio, for an agent to drive
-poolhouse-mcp = "poolhouse.mcp:main"
-# choose one of a named set of options and say how sure: ask, score, calibrate, compare
-poolhouse-decide = "poolhouse.decide_cli:main"
-# what this machine can do, and what it does without being asked; --checkouts adds the
-# repositories and working state poolhouse-doctor checks on their own
+poolhouse-serve = "poolhouse.serve.cli:main"
+poolhouse-models = "poolhouse.serve.models_cli:run"
 poolhouse-setup = "poolhouse.setup:main"
 poolhouse-doctor = "poolhouse.doctor:main"
-# experimental features: list them, turn one on or off (audited)
-poolhouse-features = "poolhouse.features_cli:main"
-# tokens and keys: set, list, unset; read from a prompt or stdin, kept in a 0600 file or the keychain
-poolhouse-credentials = "poolhouse.credentials.cli:command"
-# what this machine can hear and say: transcribe a file, say a line, find the speech in it
-poolhouse-speech = "poolhouse.speech.cli:main"
-poolhouse-serve = "poolhouse.serve.cli:main"
-# find a model newer than anything the assistant remembers, and print how to serve it
-poolhouse-models = "poolhouse.serve.models_cli:run"
-poolhouse-store = "poolhouse.graph.store_cli:main"
-# set this device up to join a pool (firewall rules in one Windows prompt, the node, the join check): poolhouse device-setup --yes
-poolhouse-device-setup = "poolhouse.device_setup:main"
-# the long commands this machine has recorded: what is running, waiting on one, stopping it
-poolhouse-jobs = "poolhouse.jobs:main"
-# the other devices of the pool that take tests (scripts/test TIER --on DEVICE): platform, free slots, last result
-poolhouse-test = "poolhouse.testfarm.cli:command"
-poolhouse-test-devices = "poolhouse.testfarm.devices:command"
+# the same functions the commands call, as MCP tools over stdio, for an agent to drive:
+# `claude mcp add poolhouse -- poolhouse-mcp`
+poolhouse-mcp = "poolhouse.mcp:main"
+
+# agents: the hooks, the node's own messages and the agent files name these
 # agents coordinating: messages, notes, scratch folders and claims, all data and no authority
 poolhouse-workspace = "poolhouse.workspace.cli:main"
+# a served model as a coding harness; scripts/review-backlog and scripts/compare-harnesses launch them by name
 poolhouse-claude = "poolhouse.claude:main"
 poolhouse-codex = "poolhouse.codex:launch"
+# one agentic task on the same lease; the workspace names its local harness `poolhouse-agent`
 poolhouse-agent = "poolhouse.harness:main"
-# a rendered graph page served on loopback, with the model behind it
-poolhouse-graph = "poolhouse.graph.serve:main"
-# a task in words: a served model asks what is open, plans, asks go, then runs the commands
-# a conversation with a served model that operates poolhouse, asking before it changes anything
+# a conversation with a served model that operates poolhouse, asking before it changes anything;
+# the chat policy recognises the commands it may run by these names
 poolhouse-chat = "poolhouse.chat:main"
+poolhouse-security = "poolhouse.net.cli:command"
 # what the chat agent remembers across sessions: list, add, forget, export
 poolhouse-memory = "poolhouse.memory.cli:main"
 # how every source (host, URL, member, repository, hash) has behaved: list, show, forget, export
@@ -212,12 +195,19 @@ poolhouse-reputation = "poolhouse.reputation.cli:main"
 # the activity log: what agents, people and the stack did, read-only
 poolhouse-log = "poolhouse.activity.cli:main"
 poolhouse-requests = "poolhouse.inbox.cli:main"
-poolhouse-help = "poolhouse.cli:help_main"
+
+# named in the messages and hints these commands print, and in the docs a person follows
+# choose one of a named set of options and say how sure: ask, score, calibrate, compare
+poolhouse-decide = "poolhouse.decide_cli:main"
+# what this machine can hear and say: transcribe a file, say a line, find the speech in it
+poolhouse-speech = "poolhouse.speech.cli:main"
+poolhouse-store = "poolhouse.graph.store_cli:main"
+# a rendered graph page served on loopback, with the model behind it
+poolhouse-graph = "poolhouse.graph.serve:main"
+# the long commands this machine has recorded: what is running, waiting on one, stopping it
+poolhouse-jobs = "poolhouse.jobs:main"
 # every tracked file read for a person's details, reported and never blocked
 poolhouse-audit = "poolhouse.redact.audit:main"
-# what sentinel has seen and holds: events, quarantine, pins, the log's hash chain; and what
-# came in from the internet: downloads, hosts, scanners
-poolhouse-security = "poolhouse.net.cli:command"
 
 [tool.hatch.build.targets.sdist]
 exclude = [".claude", "CLAUDE.md", "HANDOFF.md"]

@@ -9,7 +9,7 @@ scripts/test all tests/test_x.py --on "Windows PC"     those files on one device
 scripts/test quick --on all                            the files the change reaches, on every other device
 scripts/test gate --on wsl-box                         the structural checks there
 scripts/test full --on all --split                     (a person) divide the list between this machine and the devices
-poolhouse-test-devices                                  the devices: platform, free slots out of two, last result
+poolhouse test-devices                                  the devices: platform, free slots out of two, last result
 ```
 
 The exit status is the worst of the runs; 70 means a device never ran its part (not in the pool, shards off,
@@ -31,7 +31,7 @@ both off, and both audited:
 python -m poolhouse.testfarm.consent on --from "MAC NAME"     # allow DEVICE... | deny DEVICE... | off | status
 ```
 
-A DEVICE is a name from `poolhouse-test-devices` or a fingerprint. **Being in the pool is not being allowed.**
+A DEVICE is a name from `poolhouse test-devices` or a fingerprint. **Being in the pool is not being allowed.**
 The device takes tests only from the devices in its `allowed` list, which is empty until a person names some
 (`--from`, `allow`), so a device that joined the pool by itself (for instance under policy `open` on the same
 network) can ask whether tests are taken (`shard_caps`) and nothing else: `shard_put`, `shard_start`,
@@ -96,7 +96,7 @@ op. The local API has two methods: `shard_call` (a registered session asks one o
 - Per-device results: the reuse key holds the device's fingerprint, its platform (`wsl` included), Python and the
   tier besides the file's content key, so a pass on Windows never satisfies macOS or WSL. Only a run that ended
   with pytest's exit 0 or 1 records passes, and only for files with passes and no failures. The ledger is
-  `remote-results.json` in the project's reuse folder; `poolhouse-test-devices` reads the last result from it.
+  `remote-results.json` in the project's reuse folder; `poolhouse test-devices` reads the last result from it.
 - Retired: the member HTTP route (`/workspace/v1/test-shards`), `Settings.test_shards` and
   `fleet/shard_consent.py`. There is one remote path.
 

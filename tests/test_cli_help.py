@@ -20,6 +20,9 @@ from unittest import mock
 
 import pytest
 
+from poolhouse.cli.reference import Row
+from poolhouse.cli.registry import ROUTED
+
 REPO = Path(__file__).resolve().parent.parent
 README = REPO / "README.md"
 DOCS = REPO / "docs"
@@ -36,9 +39,10 @@ MODULE_RUN = re.compile(r"^python3? -m poolhouse\.([a-z]+)\b")
 
 
 def _scripts() -> dict[str, str]:
-    """``command -> module:attr`` for every entry point ``pyproject.toml`` installs, and the experimental commands."""
+    """``command -> module:attr`` for every entry point ``pyproject.toml`` installs, the commands only ``poolhouse <word>`` runs, and the experimental ones."""
     table = tomllib.loads((REPO / "pyproject.toml").read_text())["project"]["scripts"]
-    return {**table, **EXPERIMENTAL_COMMANDS}
+    routed = {f"poolhouse-{word}": target for word, target in ROUTED.items()}
+    return {**table, **routed, **EXPERIMENTAL_COMMANDS}
 
 
 SCRIPTS = _scripts()
@@ -244,7 +248,8 @@ def _documented() -> list[tuple[str, str, tuple[str, ...], set[str], argparse.Ar
         for number, line in enumerate(text.splitlines(), start=1):
             if not line.startswith("| `poolhouse"):
                 continue
-            command = line.split("`", 2)[1].split()[0]
+            word = Row(line.split("`", 2)[1], "").word
+            command = f"poolhouse-{word}" if word else "poolhouse"
             if command not in SCRIPTS:
                 continue
             flags = {f for span in CODE_SPAN.findall(line) for f in FLAG.findall(span)}

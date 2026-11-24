@@ -36,12 +36,12 @@ cancels its job. Jobs use the admission below and are owned by the submitting wo
 which `scripts/testslots.py status` shows beside each lease. A run that names test files reuses
 earlier passes of unchanged files and says so per file ([test-reuse.md](test-reuse.md)).
 
-## `poolhouse-test`: a project describes its tests
+## `poolhouse test`: a project describes its tests
 
 A repository describes its tests to the runner in one file, `testfarm.toml` (`docs/design-test-runner.md` is the design; schema 1). It gives
 a LIST command that prints the test ids, a RUN template that runs a subset of ids, and optionally which files each id depends on.
-`poolhouse-test init` writes a file to fill in and never overwrites one. `poolhouse-test check` validates the file and runs LIST;
-`poolhouse-test list [SELECTOR...]` prints the units. `ph.test.config(root)` and `ph.test.units(root, select)` are the same for a program. The project root is the first directory at or above the
+`poolhouse test init` writes a file to fill in and never overwrites one. `poolhouse test check` validates the file and runs LIST;
+`poolhouse test list [SELECTOR...]` prints the units. `ph.test.config(root)` and `ph.test.units(root, select)` are the same for a program. The project root is the first directory at or above the
 working directory (or the path a command names) that holds a `testfarm.toml` or a `.git` entry; the walk never climbs into a parent repository.
 
 - **Strict.** An unknown key is named with the nearest known one. A command is an array of arguments, never a shell string. A number

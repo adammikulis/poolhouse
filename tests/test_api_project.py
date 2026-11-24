@@ -19,7 +19,7 @@ def test_config_returns_the_validated_file_and_units_run_the_projects_list(tmp_p
 
 
 def test_a_wrong_or_missing_file_and_an_empty_selection_raise_error_with_one_sentence(tmp_path):
-    with pytest.raises(ph.Error, match=r"poolhouse-test init"):
+    with pytest.raises(ph.Error, match=r"poolhouse test init"):
         ph.test.config(project(tmp_path / "none", None))
     with pytest.raises(ph.Error, match=r"'argvv' is not a key; did you mean 'argv'"):
         ph.test.config(project(tmp_path / "typo", "schema = 1\n[run]\nargvv = ['sh']\n"))

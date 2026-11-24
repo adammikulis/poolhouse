@@ -1,4 +1,4 @@
-"""``poolhouse-test-devices``: the pool's other devices, whether each takes tests, and its last result here."""
+"""``poolhouse test-devices``: the pool's other devices, whether each takes tests, and its last result here."""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ def describe(shards: Shards, device: dict, ledger: Ledger) -> dict:
 
 
 def table(rows: list[dict]) -> list[str]:
-    """The lines `poolhouse-test-devices` prints."""
+    """The lines `poolhouse test-devices` prints."""
     lines = [f"{'DEVICE':<20} {'REACH':<8} {'PLATFORM':<34} {'SLOTS':<6} {'TAKES TESTS':<12} LAST RESULT"]
     for row in rows:
         caps = row["caps"]

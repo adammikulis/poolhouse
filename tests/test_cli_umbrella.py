@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import re
 import sys
 import tomllib
 import types
@@ -338,3 +339,40 @@ def test_primary_open_runs_for_a_process_no_agent_started_with_no_terminal_and_t
     assert "launch_ticket" not in capsys.readouterr().out
     rows = [r for r in caller.audit_rows() if r["event"] == "ran"]
     assert len(rows) == 2 and all(r["action"] == "open the poolhouse page" and r["who"].startswith("user ") for r in rows)
+
+
+SCRIPTS = tomllib.loads((REPO / "pyproject.toml").read_text())["project"]["scripts"]
+
+
+def test_routed_commands_run_through_the_front_door_and_have_no_console_script():
+    routed = declarations.ROUTED
+    assert {"test", "test-devices", "open", "help", "device", "device-setup", "features", "credentials",
+            "local-network", "runtime"} == set(routed)
+    words = cli.commands()
+    for word, target in routed.items():
+        assert f"poolhouse-{word}" not in SCRIPTS, f"{word} is routed and installed twice"
+        assert words[word] == target and callable(cli.load(target)), word
+
+
+def test_a_console_script_cannot_declare_a_routed_word(tmp_path):
+    for word in declarations.ROUTED:
+        project = tmp_path / f"{word}.toml"
+        project.write_text(f'[project.scripts]\npoolhouse-{word} = "quince:main"\n')
+        with pytest.raises(ValueError, match="reserved"):
+            declarations.registry(project)
+
+
+def test_every_command_an_installer_or_login_unit_runs_by_name_is_a_console_script():
+    named: set[str] = set()
+    for path in ("packaging/install.sh", "packaging/install.ps1"):
+        text = (REPO / path).read_text(encoding="utf-8")
+        named |= set(re.findall(r"(?<![\w./-])poolhouse-[a-z]+(?:-[a-z]+)*(?=\.exe\b|[\"'\s;)]|$)", text))
+    from poolhouse.fleet import autostart_manifest
+
+    named |= {role["launcher"] for role in autostart_manifest.ROLE_INFO.values()}
+    ignored = {"poolhouse", "poolhouse-headless"}
+    assert {"poolhouse-pool", "poolhouse-traind", "poolhouse-serve"} <= named
+    missing = sorted(n for n in named - ignored if n not in SCRIPTS and n[len("poolhouse-"):] not in declarations.ROUTED)
+    assert not missing, f"an installer or unit runs {missing} by name, and no console script installs it"
+    routed = sorted(n for n in named if n[len("poolhouse-"):] in declarations.ROUTED)
+    assert not routed, f"{routed} are routed (no script) yet an installer or unit runs them by name"

@@ -37,7 +37,7 @@ def load(root: Path) -> Config:
     try:
         data = path.read_bytes()
     except FileNotFoundError:
-        raise ConfigError(f"no {CONFIG_NAME} in {root}: run `poolhouse-test init` there to write one") from None
+        raise ConfigError(f"no {CONFIG_NAME} in {root}: run `poolhouse test init` there to write one") from None
     except OSError as error:
         raise ConfigError(f"{path} cannot be read: {error.strerror or error}") from None
     return parse(data)

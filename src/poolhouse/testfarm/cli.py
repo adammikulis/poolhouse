@@ -1,4 +1,4 @@
-"""``poolhouse-test``: describe a project to the runner (``init``), validate that description (``check``) and list its units (``list``)."""
+"""``poolhouse test``: describe a project to the runner (``init``), validate that description (``check``) and list its units (``list``)."""
 
 from __future__ import annotations
 
@@ -50,9 +50,9 @@ def init(args: argparse.Namespace) -> int:
         with target.open("x", encoding="utf-8") as stream:
             stream.write(SKELETON)
     except FileExistsError:
-        warn(ids.one_line(f"poolhouse-test: {target} exists and is left as it is"))
+        warn(ids.one_line(f"poolhouse test: {target} exists and is left as it is"))
         return exitcodes.REFUSED
-    say(ids.one_line(f"wrote {target}: put your own LIST and RUN commands in it, then run `poolhouse-test check`"))
+    say(ids.one_line(f"wrote {target}: put your own LIST and RUN commands in it, then run `poolhouse test check`"))
     return exitcodes.OK
 
 
@@ -61,7 +61,7 @@ def check(args: argparse.Namespace) -> int:
     try:
         say("\n".join(project.check(_root(args), state_location())))
     except ConfigError as error:
-        warn(ids.one_line(f"poolhouse-test: {error}"))
+        warn(ids.one_line(f"poolhouse test: {error}"))
         return error.status
     return exitcodes.OK
 
@@ -72,7 +72,7 @@ def listing(args: argparse.Namespace) -> int:
         config = project.load(_root(args))
         chosen = select.select(project.list_units(_root(args), config).units, config, args.select)
     except ConfigError as error:
-        warn(ids.one_line(f"poolhouse-test: {error}"))
+        warn(ids.one_line(f"poolhouse test: {error}"))
         return error.status
     if args.json:
         say(json.dumps([dataclasses.asdict(unit) for unit in chosen], indent=2))

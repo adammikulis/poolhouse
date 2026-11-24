@@ -162,7 +162,7 @@ following nothing, which is a machine somebody has to visit.
 
 ```
 poolhouse-pool members                                    the second device is a member
-poolhouse-test-devices                                    each member, whether it takes tests, its platform, Python and last result
+poolhouse test-devices                                    each member, whether it takes tests, its platform, Python and last result
 scripts/test all tests/test_x.py --on NAME                those files there; its output arrives as it is written, prefixed [NAME]
 scripts/test all tests/test_x.py tests/test_y.py --on NAME --split     divide the files between this machine and NAME
 ```

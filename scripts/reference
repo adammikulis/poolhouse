@@ -15,7 +15,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
-from poolhouse.cli.reference import table  # noqa: E402
+from poolhouse.cli import PYPROJECT  # noqa: E402
+from poolhouse.cli.registry import table  # noqa: E402
 
 SECTION = "# The commands"
 
@@ -37,7 +38,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--check", action="store_true", help="check the generated table")
     ap.add_argument("--page", default=str(REPO / "docs" / "commands.md"), help="which file")
     args = ap.parse_args(argv)
-    made = table()
+    made = table(PYPROJECT)
     if args.check:
         where = Path(args.page)
         text = where.read_text(encoding="utf-8")
