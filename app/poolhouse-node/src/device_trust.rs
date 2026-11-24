@@ -1,6 +1,6 @@
 //! Whose board entries this device counts. An entry of the `task` or `grant` kind counts only when this device
 //! wrote it, or when a device that joined the pool is on this list and still an active member. The list is a
-//! decision of this device alone (never replicated, empty by default) and is set through `land_trust`.
+//! decision of this device alone (never replicated, empty by default) and is set through `device_trust`.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -20,19 +20,19 @@ struct File {
 }
 
 /// The devices of one pool whose entries are counted, kept in one atomically replaced file.
-pub struct LandTrust {
+pub struct DeviceTrust {
     path: PathBuf,
     file: File,
 }
 
-impl LandTrust {
-    pub fn open(path: &Path) -> Result<LandTrust> {
+impl DeviceTrust {
+    pub fn open(path: &Path) -> Result<DeviceTrust> {
         let file = match std::fs::read(path) {
             Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => File::default(),
             Err(e) => return Err(e.into()),
         };
-        Ok(LandTrust { path: path.into(), file })
+        Ok(DeviceTrust { path: path.into(), file })
     }
 
     /// The certificate fingerprints trusted in ``pool``; a list made for another pool counts for nothing.
@@ -67,7 +67,7 @@ pub struct Writers {
 /// Which foreign origins of ``board`` hold trusted devices, decided now from the pool record and the
 /// key that verified each log, never from anything a log says about itself.
 pub fn writers(node: &mut Node, board: &str) -> Result<Writers> {
-    let allowed = node.land_trust.devices(&node.members.id);
+    let allowed = node.device_trust.devices(&node.members.id);
     let by_key: BTreeMap<String, (String, String, bool)> = node.members.devices().into_iter()
         .filter_map(|d| {
             let key = board_fingerprint(&d.der()?).ok()?;
@@ -97,13 +97,13 @@ mod tests {
     #[test]
     fn a_list_is_kept_per_pool_and_a_list_of_another_pool_counts_for_nothing() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("land_trust.json");
+        let path = dir.path().join("device_trust.json");
         let fp = "ab".repeat(32);
-        let mut t = LandTrust::open(&path).unwrap();
+        let mut t = DeviceTrust::open(&path).unwrap();
         assert!(t.devices("p1").is_empty(), "empty by default: only this device");
         assert!(t.set("p1", &fp, true).unwrap());
         assert!(!t.set("p1", &fp, true).unwrap());
-        assert_eq!(LandTrust::open(&path).unwrap().devices("p1").len(), 1, "kept on disk");
+        assert_eq!(DeviceTrust::open(&path).unwrap().devices("p1").len(), 1, "kept on disk");
         assert!(t.devices("p2").is_empty());
         assert!(t.set("p1", &fp, false).unwrap());
         assert!(t.devices("p1").is_empty());

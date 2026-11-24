@@ -17,6 +17,7 @@ use crate::grants::person::Persons;
 use crate::gov::signer::Signer;
 use crate::membership::Pool;
 use crate::device::{self, fingerprint, Custody, Supplied};
+use crate::device_trust::DeviceTrust;
 use crate::error::{Error, Result};
 use crate::fold::{self, check_local, Context, Entry};
 use crate::fsutil::{private_dir, write_atomic};
@@ -24,7 +25,6 @@ use crate::identity::{self, Assigned, Holder, Ident, ModelState, Registry, Token
 use crate::lease::Leases;
 use crate::limits::Rates;
 use crate::lineage::{shares, Anchor, Asking, Peer};
-use crate::landtrust::LandTrust;
 use crate::links::Links;
 use crate::quarantine::Quarantine;
 use crate::registry::Projects;
@@ -104,7 +104,7 @@ pub struct Node {
     /// Where a sealed notification goes.
     pub pusher: Box<dyn crate::phone::push::Pusher>,
     /// The other devices whose board entries this device counts; empty by default.
-    pub land_trust: LandTrust,
+    pub device_trust: DeviceTrust,
     pub facts: Facts,
     pub boards: BTreeMap<String, Hosted>,
     pub tokens: Tokens,
@@ -247,7 +247,7 @@ impl Node {
             dir: dir.into(), pool: String::new(), cert, members, services: crate::services::Services::new()?, persons: Persons::open(&dir.join("persons.json"))?,
             approvals: crate::approvals::Approvals::open(&dir.join("approvals.json"))?, answered: crate::approvals::answered::Answered::open(&dir.join("answered.json"))?,
             evidence: Box::new(crate::approvals::context::Unrecorded), phones: crate::phone::Phones::open(&dir.join("phones.json"))?,
-            phone_cert: crate::phone::cert::load_or_create(dir)?, phone_port: 0, local_server: Weak::new(), firsts: crate::presence::Firsts::new(crate::presence::default_presence()), offer: None, pusher: Box::new(crate::phone::push::NoPusher), land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, custody, boards: BTreeMap::new(),
+            phone_cert: crate::phone::cert::load_or_create(dir)?, phone_port: 0, local_server: Weak::new(), firsts: crate::presence::Firsts::new(crate::presence::default_presence()), offer: None, pusher: Box::new(crate::phone::push::NoPusher), device_trust: DeviceTrust::open(&dir.join("device_trust.json"))?, facts, key, custody, boards: BTreeMap::new(),
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
             projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir, activity.clone())?, rates: Rates::default(), board_grace_ms: writes.board_grace_s * 1000, writes, log_bounds: crate::logbounds::Bounds::default(), log_rotate_percent: crate::logbounds::ROTATE_PERCENT, asking: Asking::default(),
             stop: Arc::new(AtomicBool::new(false)), started: Instant::now(), folds: 0,

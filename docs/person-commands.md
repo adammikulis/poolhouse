@@ -31,7 +31,7 @@ Refusal shape: `X is refused to an agent (CLAUDECODE is set): <why>. To do it, r
 | `poolhouse open` | `fleet/launch_open.py` | the sign-in ticket that makes the holder the owner of the device's page |
 | `scripts/release-key`, `scripts/github-protection-apply --apply`, `scripts/agent-identity token` / `check --online` | the scripts | the release key, the repository's protection, the GitHub credential |
 | `gh pr merge`, a push of `main`, edits to the guards, hook settings, git's hooks and config | `protectedwrites.py`, `worktreerules.py`, `scripts/hooks/*` | releases and the rules that protect them; allowed for `gh pr merge` / `main` only when `workspace/release_check.py` finds a standing independent land-review accept and a clean checkout |
-| grants `member_remove`, `admin_manage`, `land_trust`, `quarantine_release` | `board/person_key.py` (`AGENT_REFUSED`) | another device's place in the pool, who governs it, what it trusts to land, what a scan failed |
+| grants `member_remove`, `admin_manage`, `device_trust`, `quarantine_release` | `board/person_key.py` (`AGENT_REFUSED`) | another device's place in the pool, who governs it, which devices it counts, what a scan failed |
 | chat tool calls and text naming the above | `chatpolicy.py` | the same actions through a model's tools |
 
 ## Gates (delegated in `dev`, held back from agents in `prod`)

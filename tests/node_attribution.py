@@ -24,7 +24,7 @@ LARGEST = 8_000_000
 MOST_BOARDS = 256
 TOLERANCE_MS = 1500
 GUARDED_NAMES = frozenset({"device.key", "device.key.wrapped", "device.key.enc", "device.custody.json", "device.cert", "enroll_secret.json", "persons.json", "persons_removed.json",
-                           "persons_nonces.json", "land_trust.json"})
+                           "persons_nonces.json", "device_trust.json"})
 GUARDED_PARTS = frozenset({"person", "persons", "grants", "keystore"})
 GUARDED_SUFFIXES = (".key", ".cert", ".pem")
 OFFSET_MS = int(psutil.boot_time() * 1000) if sys.platform.startswith("linux") else 0

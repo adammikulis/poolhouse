@@ -52,7 +52,7 @@ def test_an_agent_gets_the_grants_policy_allows_at_once_signed_by_the_device_key
     assert any(r["event"] == "approval.approved" and "agent CLAUDECODE" in r["who"] for r in audit(node))
 
 
-@pytest.mark.parametrize("action", ["member_remove", "admin_manage", "quarantine_release", "land_trust"])
+@pytest.mark.parametrize("action", ["member_remove", "admin_manage", "quarantine_release", "device_trust"])
 def test_an_agent_is_refused_the_grants_that_end_a_place_in_the_pool_at_once_and_nothing_is_left_pending(workspace_node, action):
     node = workspace_node
     lead = node.member("lead")

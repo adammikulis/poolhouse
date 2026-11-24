@@ -16,7 +16,7 @@ fn sites() -> Vec<(&'static str, &'static str, Value, &'static str)> {
         ("sync_now", "", json!({}), "sync_now"),
         ("shard_call", "", json!({"device": "nobody", "op": "shard_caps"}), "shard_call"),
         ("shard_consent", "", json!({"enabled": false}), "shard_consent"),
-        ("land_trust", "demo", json!({"device": "ab".repeat(32), "trusted": false}), "land_trust"),
+        ("device_trust", "demo", json!({"device": "ab".repeat(32), "trusted": false}), "device_trust"),
         ("task_mode", "demo", json!({"mode": "strict"}), "task_authority"),
     ]
 }

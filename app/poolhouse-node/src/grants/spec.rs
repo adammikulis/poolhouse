@@ -9,7 +9,7 @@ use crate::row::{canonical, valid_name};
 
 /// The actions of this node that need a grant. Anything else is refused by name.
 pub const ACTIONS: [&str; 19] = [
-    "member_remove", "add_device", "join_pool", "sync_now", "shard_call", "shard_consent", "land_trust", "service_bind",
+    "member_remove", "add_device", "join_pool", "sync_now", "shard_call", "shard_consent", "device_trust", "service_bind",
     "task_authority", "note_verify", "quarantine_release", "file_delete", "link_read", "link_write", "link_remove", "source_add", "pool_create", "pool_leave", "admin_manage",
 ];
 /// The actions another device's grant may cover (when that device is trusted); every other action is this device's alone.

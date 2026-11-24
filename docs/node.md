@@ -377,11 +377,11 @@ review of a branch, a commit and a verdict is refused.
 `landing.rejected` and `landing.standing` drop a reviewer retired as `revoked` or `forged`. No model identifier decides who may land, review or
 coordinate: the model on a review is the id the session claimed, kept as a label.
 
-A review counts only when this device wrote it. The device list (`<state>/land_trust.json`, kept per pool, empty by default,
-never replicated) decides whose `task` and `grant` entries count besides this device's own; it is changed by `land_trust`
+A review counts only when this device wrote it. The device list (`<state>/device_trust.json`, kept per pool, empty by default,
+never replicated) decides whose `task` and `grant` entries count besides this device's own; it is changed by `device_trust`
 (`device` the certificate fingerprint, `trusted` a boolean): the caller is a session with no parent holding the grant
-`land_trust`, the device must be an active member and not this one, and the change is an audit entry (`land.trust`,
-`land.untrust`).
+`device_trust`, the device must be an active member and not this one, and the change is an audit entry (`device.trust`,
+`device.untrust`).
 
 **The task board** is the `task` entries of the board (channel `#tasks`), one kind with an `op` field: `create` (title,
 description, acceptance criteria, `deps`, `capabilities`, `limits` of `model`, `max_wall_s` and `max_retries`, a
@@ -432,7 +432,7 @@ allows nothing. What gates a signature is the custody of the key: the operating-
 ("Key custody" below says exactly what that does and does not protect).
 
 **The registry.** The actions in `grants::spec::ACTIONS` are `member_remove`, `add_device`, `join_pool`,
-`sync_now`, `shard_call`, `shard_consent`, `land_trust`, `task_authority`, `note_verify`, `quarantine_release`,
+`sync_now`, `shard_call`, `shard_consent`, `device_trust`, `task_authority`, `note_verify`, `quarantine_release`,
 `file_delete`, `link_read`, `link_write`, `link_remove`, `source_add`, `pool_create`, `pool_leave`, `admin_manage` and `service_bind`. Anything else is `invalid` to grant. A `service_bind` grant names one exact `service:<digest>` resource, the receiving device fingerprint and one use; it authorizes the compute certificate and endpoint shown by `service_draft`. A fresh proof of the same service private key renews the current approved capability across restarts, with a new live generation. **The floors** are refused by name, at issue, in the fold and at every
 use, whoever signed: `push_main`, `merge_main`, `release_main`, `tag_release`, `force_push`, `act_as_person`, `agent_is_human`,
 `keystore`, `second_gpu`, `forge`, `grant_issue`, `grant_revoke`, `person_enroll` and `sudo`. Pushing `main` stays with the
@@ -593,14 +593,14 @@ other users, bound to a lineage ("Identity").
 **What counts.** `grants::check(node, holder, action, scope)` answers true, and writes the use, only for a live grant: this
 board, this device (or `*`), a resource the pattern covers, a session or class the grant names (a class never covers a subagent
 unless `main` is false), before `until_ms`, with uses left, not revoked. `holds` asks without spending. An entry written on
-another device counts only when that device is on this device's landing trust list and still a member, the signature verifies
+another device counts only when that device is on this device's device trust list and still a member, the signature verifies
 against a key enrolled here, and the action may travel: `task_authority`, `note_verify`, `sync_now` and `shard_call`. The rest (the
-pool actions, `land_trust`, `shard_consent`, `quarantine_release`, `file_delete`) are granted on the device they apply to.
+pool actions, `device_trust`, `shard_consent`, `quarantine_release`, `file_delete`) are granted on the device they apply to.
 A revocation or a use from a device this one does not trust changes nothing.
 
 **Where it is checked.** `member_remove` (resource: the fingerprint), `add_device`, `join_pool` (the
 host), `sync_now`, `shard_call` (the device), `shard_consent`, `pool_create` (the title), `pool_leave` and `admin_manage` (the kind of act, or
-`cosign`) before they run; a grant lets a session ask, and an admin's signature is what makes a governing act true for everyone; `land_trust` (the fingerprint), besides having no parent; `task_authority` (the task, or `mode`)
+`cosign`) before they run; a grant lets a session ask, and an admin's signature is what makes a governing act true for everyone; `device_trust` (the fingerprint), besides having no parent; `task_authority` (the task, or `mode`)
 wherever a session with no parent acts for the person (assign, review in strict mode, block, recover, set the mode, record a
 landing), spent only where it is what lets the call through; `note_verify` (the note), `quarantine_release` (the held id) and
 `file_delete` (the handle); `link_read` and `link_write` (`FROM>TO`, for a link of mode `ro` and `rw`), `link_remove` (the link id) and `source_add` (the project id,
@@ -627,7 +627,7 @@ picked from the list of the board's main sessions it prints, where the model and
 It enrols the person's key if the node holds none and signs one grant per action and session on this device, 30 days each:
 `task_authority`, `shard_call`, and `note_verify` for the session's subagents too. The
 exact list is the one question, answered by a typed `yes` on the terminal. Nothing else: the pool actions, `shard_consent`, `sync_now`,
-`land_trust`, `quarantine_release`, `file_delete`, `link_read`, `link_write`, `link_remove` and `source_add` stay with the person's own
+`device_trust`, `quarantine_release`, `file_delete`, `link_read`, `link_write`, `link_remove` and `source_add` stay with the person's own
 commands (`poolhouse-workspace grant shard_consent --to NAME --until 30d`, each its own typed `yes`). Each is revoked
 by its id. A class grant stays in the registry but is refused by `grants-setup --family` and `grant --class` unless the person passes
 `--i-understand-registration-is-open`: it is held by every session that says it is of the family, which is any process.
@@ -640,7 +640,7 @@ the pool that allowed this one, and read and cancel it: `shard_put`, `shard_star
 `note_verify` (record that a note's command was run, which sets the note's trust). The subagents of the lead hold `note_verify` only.
 The lead's lineage cannot do what the bundle leaves out: it cannot turn test shards on, or name which devices may run its tests
 here (`shard_consent`, the most sensitive grant, since it lets code from another device run here), cannot ask for a sync (`sync_now`),
-and cannot touch the pool, landing trust, quarantine, files, links or places without a grant of a person's own.
+and cannot touch the pool, device trust, quarantine, files, links or places without a grant of a person's own.
 
 **What the grants protect against, and what they do not.** A grant names one session. A token is a bearer secret, kept in a file
 every process of the same operating-system user can read, protected by the file mode against other users only. What the node adds is the
@@ -806,7 +806,7 @@ listener is the one network port.
   and never read as "new device", and no key is made for a directory that holds a device's files. Only a person starts over, by
   moving the directory aside. A new device is born into the keystore when the keystore's master key exists, or when a person is at
   the screen to be asked its one Keychain question, so nothing else is asked of anyone; otherwise it starts with a weak file.
-  `poolhouse node key` says where the key is kept, and a key in a file moves out of it, leaving the note, when the node is next started on
+  `poolhouse local-network key` says where the key is kept, and a key in a file moves out of it, leaving the note, when the node is next started on
   a computer whose keystore is ready; a backup made before the move still holds the old key file. A keystore that will
   not answer (locked, not yet up) does not end the supervisor: it says why once a minute in `node.log` and in the error
   `ensure_node` raises, and starts the node when the keystore answers. One that was refused (the person declined the prompt, or
@@ -1039,11 +1039,11 @@ when the verified binary's checksum differs from the one inside, so the supervis
   requirement `identifier "app.poolhouse.node" and certificate leaf = H"<sha1>"`. It names no cdhash, so rebuilding the binary
   keeps the grant. If the certificate cannot be made, the bundle is signed ad hoc with the identifier-only requirement and a
   warning says the permission may be asked again after a rebuild. A bundle is built beside its place and moved in only once signed.
-- **Asking once.** `poolhouse node permission` launches the bundle through Launch Services with `poolhouse-node probe`, which joins
+- **Asking once.** `poolhouse local-network permission` launches the bundle through Launch Services with `poolhouse-node probe`, which joins
   the beacon group, sends datagrams of its own (multicast, each network's broadcast address and the router) and listens for
   itself, up to 30 seconds. It prints GRANTED, DENIED (the sends were refused or never heard) or NOT ASKED (the bundle did not
   run). This is the only place that touches multicast on a Mac outside a node the person turned the network on for.
-  `poolhouse node build [--binary PATH]` builds and signs the bundle by hand.
+  `poolhouse local-network build [--binary PATH]` builds and signs the bundle by hand.
 - **What the probe cannot see.** Hearing its own datagram is delivered inside the machine, so a refused send (`No route to host`
   on the multicast group) is the signal of a denied permission, and a run launched from a terminal borrows that terminal's
   permission; only the `open` launch the command uses measures the bundle's own.

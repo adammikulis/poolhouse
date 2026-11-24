@@ -25,8 +25,8 @@ Git's push hook. Existing pre-commit checks and the plan's native proof requirem
 
 ## Reviews
 
-`land-review` and `land-trust` are the `poolhouse-workspace` commands for the board's `landing` entries (docs/node.md,
-"Landing reviews"). A review is advice: an accept is needed by nothing that pushes the development branch. The
+`land-review` is the `poolhouse-workspace` command for the board's `landing` entries (docs/node.md, "Landing reviews");
+`device-trust` names the devices whose `task` and `grant` entries this device counts. A review is advice: an accept is needed by nothing that pushes the development branch. The
 runtime deployment of a commit that is not yet on the development branch (`runtime_unmerged.py`) asks for a standing accept of
 that exact commit from a reviewer other than the lead that deploys it.
 

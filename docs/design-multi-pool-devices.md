@@ -302,7 +302,7 @@ has its slice and test here.
 **Modules, Rust:** new `pools.rs`, `label.rs`, `retire.rs`; changed `node.rs` (`Node` loses `members`, `cert`, `key` and `facts` for the pool, `host` takes the pool and the pool's key),
 `membership.rs` (`Pool::load` reads many; `can_join_other` goes), `gov/ops.rs` (about 22 uses), `gov/wire.rs`, `gov/roster.rs` (`leave` a union), `gov/logs.rs` (tips advisory for a leave, cuts only for the pool's boards), `net.rs`
 (`Net.me`, `server_config`, `heard`, `join_open`, `join_pool`, `adopt`, the sync loop, the window key), `tls.rs` (per-slot configs, the label, the ring, the Revoked answer), the member-protocol module (the connection's pool, `leave_notice`), `beacon.rs`, `facts.rs`,
-`netsync.rs`, `poolapi.rs`, `poolops.rs` (the per-pool history board), `rooms.rs`, `landing.rs`, `landtrust.rs`, `subs.rs`, `build.rs`, `shard/` (consent per pool), `approvals/request.rs`, `phone/` (the
+`netsync.rs`, `poolapi.rs`, `poolops.rs` (the per-pool history board), `rooms.rs`, `landing.rs`, `device_trust.rs`, `subs.rs`, `build.rs`, `shard/` (consent per pool), `approvals/request.rs`, `phone/` (the
 four reads of `members`), `registry.rs`/`project.rs` (`pool`), `links.rs`, `grants/` (pool in the scope, no wildcard for pool-level acts, storage), `lease/` (label). **Python:** `node_pool.py`, `api/pool.py`, `board/founding.py`,
 `board/place.py`, `node_join.py`, `fleet/onboard/cli.py`, `workspace` `pool` verbs, `poolhouse-pool`, `tests/pool_check/*`, `tests/node_kit.py`.
 

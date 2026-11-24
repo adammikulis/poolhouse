@@ -51,11 +51,11 @@ a day in the 7.49-day tally.
 | Messages to `#general`, `#announcements`, a room, a session of another device; file messages | sessions; members | shared by definition | `status` to `#general` refused; a message between two sessions of one device leaves (section 1.B, mail) |
 | Rooms (`room`) | sessions; fold on every device | members must agree on who is in a room | one row, not a row and an audit copy (`rooms.rs:201-202`) |
 | Notes and `verify` rows | sessions; members | shared knowledge, and who ran the check | unchanged |
-| Tasks (`task`) | sessions; members that trust the writer (`landtrust`) | the shared task board; `tasks/fold.rs:344` also reads other devices' held claims | unchanged; no `enforcement.set` audit copy |
+| Tasks (`task`) | sessions; members that trust the writer (`device_trust`) | the shared task board; `tasks/fold.rs:344` also reads other devices' held claims | unchanged; no `enforcement.set` audit copy |
 | Grants: issue, revoke, use (`grants/`, `approvals/decide.rs`) | a person's signature or approval; members | four actions travel between devices (`task_authority`, `note_verify`, `sync_now`, `shard_call`) | unchanged; no volume (zero rows in the tally) |
 | Landing reviews (`landing.rs`) | reviewer session; pre-push and `land_accepts` | an attributable verdict about a commit that any device may push | the `review` row only (was 43 a day, plus a 43 a day audit copy); queue kinds stay retired |
 | Pool-wide claims (`lease` rows) | the holder's device; every device that wants the same thing | `branch` and `area` name the shared repository (areas are `/.poolhouse-areas/<project>/<path>`, not device paths); `tasks/fold.rs:344` reads held `task` claims and `model_slot` leases to tell that a worker still holds its lease, counted only for the worker's own origin (section 3.1) | only these four keys (branch and area were 416 a day; the other keys 1,228 a day) |
-| Authority audits: `land.trust`, `land.untrust`, `quarantine.release`, `authority.set_denied`, and a session ended for cause | node; every member | a record of a change of authority that no process of one device can rewrite | stay log rows (node class, a few a day) |
+| Authority audits: `device.trust`, `device.untrust`, `quarantine.release`, `authority.set_denied`, and a session ended for cause | node; every member | a record of a change of authority that no process of one device can rewrite | stay log rows (node class, a few a day) |
 | Heads | node; verifying members | every stored row hangs from one | unchanged |
 
 ### B. Local: tables and files the node owns on one device
@@ -69,7 +69,7 @@ a day in the 7.49-day tally.
 | Mail between sessions of one device and the node's notices (`notice.rs`: claim expired, subagent retired) | log today (96 a day of direct messages; notices) | nobody else reads it, and today every member's copy of the log holds it | `local/mail/<board>.jsonl`, S3 |
 | Diagnostics and device-only audit: `link`, `unlink` (`api.rs:168`, on both boards), `rebind`, `file.delete`, `agent.effort`, `announce_over_quota`, subagent retire | audit rows (59 a day for retire alone) | the effect is on this device and changes no authority; a record is wanted, a copy on every member is not | `local/events.jsonl`, S2 (a hash chain with a retention per class, section 3.2) |
 | Quarantine records, scratch folders, file bytes and staged uploads | `quarantine`, `scratch/`, `files`; node | bytes and flags for this device; the `file` message is the replicated part | unchanged |
-| Projects, links, land trust, member addresses and facts (`facts.rs`: "never replicated"), board bookkeeping (`state.json`: acks, damage marks; `rejected`) | `projects.json`, `links.json`, `land_trust.json`, the addresses file, memory | configuration and verification state of this device | unchanged |
+| Projects, links, device trust, member addresses and facts (`facts.rs`: "never replicated"), board bookkeeping (`state.json`: acks, damage marks; `rejected`) | `projects.json`, `links.json`, `device_trust.json`, the addresses file, memory | configuration and verification state of this device | unchanged |
 | Person keys, phones, approvals, fatigue, presence prompts | `persons.json`, `phones.json`, `approvals.json`, `fatigue.json`, `presence/` | secrets and prompts for the person at this device; the decision replicates as a grant row (A) | unchanged |
 | Shards (`shard/`, `shards.json`) | node-to-node ops already, run here for another device | work done for a member, asked and answered, never a row | unchanged: the model for section 3 |
 | Limits and configuration | `write-limits.json`, `lease-config.json`, in-memory `Rates` | settings of one node | unchanged |
@@ -224,7 +224,7 @@ the answering device decides what it gives, which the asker cannot argue with. T
 2. the board is one both devices hold. In one pool every member holds the board of the project, so this stops only a member that shares
    another board; the level and its scope in 3 carry the defence against a member that scrapes;
 3. the level for this asker and topic: `off`, `summary` or `detail`. The default is `summary` for every asker. `detail` is the grant
-   `expose_state`, scoped like `land_trust` (`Scope::on`) to the answering device and the asker's certificate fingerprint, signed
+   `expose_state`, scoped like `device_trust` (`Scope::on`) to the answering device and the asker's certificate fingerprint, signed
    by a person once like `shard_consent`; the level is read from the grant fold, so a revoke applies at the next ask. A pool
    whose charter names one person offers the grant for a device it admits on the admit card itself (one tap, no further card);
    other devices of one person are batched into one card. `detail` for every member, including devices added later, is a separate
@@ -290,7 +290,7 @@ until 1.0"):
   not folded); the fold per tick in `lease/rpc.rs::foreign` (replaced by the incremental index of section 3.1).
 - S2: the `land.review` audit copy (`landing.rs`, `audit()` in `review`), the `board.*` audit (`rooms.rs:202`), `enforcement.set` (`tasks/calls.rs:483`), the `retire` audit
   except for cause (`sessions.rs:178`), `rebind` (`sessions.rs:99`), `link`/`unlink` (`api.rs:168`), `file.delete`; `events.rs`
-  writes `local/events.jsonl`. `land.trust`, `land.untrust`, `quarantine.release` and `authority.set_denied` stay log rows. All
+  writes `local/events.jsonl`. `device.trust`, `device.untrust`, `quarantine.release` and `authority.set_denied` stay log rows. All
   of `logbounds.rs` stays, `RESERVED_ROWS`, `RESERVED_BYTES` and `Class::Node` included: the node stretch holds the end rows of
   pool-wide claims (section 3.1).
 - S3: the log write in `notice.rs`; the identity row in `node.rs:440,449` for a session with a parent.
@@ -371,7 +371,7 @@ post with one `idem`, an ask).
   stay log rows; identity rows only for sessions with no parent (register, model, retire); a `status` message to `#general` is
   refused with a one-sentence `say`; `RESERVED_*` and `Class::Node` stay. Tests: each listed call writes the one row of its fact
   or none; registering and retiring a subagent writes no row; a `status` post to `#general` is refused; the source scan fails on an
-  unlisted `append`, `append_node`, `append_person`, `append_many` or `board.seal` caller; `land_trust_audit_stays_a_log_row`,
+  unlisted `append`, `append_node`, `append_person`, `append_many` or `board.seal` caller; `device_trust_audit_stays_a_log_row`,
   `an_ask_loop_cannot_evict_an_audit_event`, `an_edited_events_line_breaks_the_chain` (H5); a v2 row of a kind outside table A is
   stored and not folded. Cost: an event write is one append; `log_bounds.rs` still proves the last stretch signs a head.
 - **S3 Local mail.** A message whose sender and recipient are sessions of this device (the node included) is written to
@@ -497,7 +497,7 @@ Each is written fail-first (S1, S2, S8 above name the rest).
 | A restated claim reorders the race (H2) | `carry` with `of` and `beats`; `view` ranks by `of` | `a_carried_claim_still_beats_its_loser` |
 | Table and log disagree after a crash (H3) | `idem` per (lease, action), reconcile both ways each tick | `reconcile_writes_the_missing_row_and_ends_the_orphan_once` |
 | A foreign hold blocks or keeps a task alive (H4) | life by `ttl_s` and `renew`; removed and damaged origins left out; cap 512; task held rule | `a_foreign_hold_lapses_without_renewal`, `a_removed_origins_claims_stop_holding`, `a_foreign_origin_holds_at_most_512_claims`, `a_foreign_row_cannot_keep_a_task_alive` |
-| Security audits in an evictable file (H5) | authority audits stay log rows; chain; per-class retention; asks are counters | `land_trust_audit_stays_a_log_row`, `an_ask_loop_cannot_evict_an_audit_event` |
+| Security audits in an evictable file (H5) | authority audits stay log rows; chain; per-class retention; asks are counters | `device_trust_audit_stays_a_log_row`, `an_ask_loop_cannot_evict_an_audit_event` |
 | `detail` shown to every member (H6) | `expose_state` per asker fingerprint; `expose_state_all` separate | `asker_of_another_person_gets_summary_while_the_owner_gets_detail` |
 | Creators ledger evicts and fails open (H7) | no unlanded eviction, refuse before evict, fsync first, damaged fails closed | `a_busy_creator_never_evicts_an_unlanded_entry`, `a_damaged_ledger_yields_no_reviews` |
 | Rotation tests and S2, S3 (H8) | node stretch kept; merge order of section 6 | the branch's four test files pass unchanged after the merge |

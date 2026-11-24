@@ -1,6 +1,6 @@
 //! The grant entries of one board, kept as they arrive, and what they add up to now.
 //!
-//! An entry counts only when it was written by this device or by a trusted one (the landing trust list), the key
+//! An entry counts only when it was written by this device or by a trusted one (the device trust list), the key
 //! that signed it has the authority `authority` gives it (any key enrolled on this node, or in a pool an admin key of the pool for
 //! an action that reaches beyond the device) and, from another device, the action may travel. A revocation beats the grant it
 //! names whatever the order; a use counts toward the grant's limit.
@@ -176,7 +176,7 @@ pub fn standing(node: &mut Node, board: &str) -> Result<Standing> {
         let foreign = hosted.book.foreign(&own);
         (own, foreign)
     };
-    let trusted: BTreeSet<String> = if foreign { crate::landtrust::writers(node, board)?.trusted } else { BTreeSet::new() };
+    let trusted: BTreeSet<String> = if foreign { crate::device_trust::writers(node, board)?.trusted } else { BTreeSet::new() };
     let counted = |origin: &str| origin == own || trusted.contains(origin);
     let rows = {
         let hosted = node.host(board)?;

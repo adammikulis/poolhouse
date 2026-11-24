@@ -14,16 +14,16 @@ use crate::grants::Scope;
 use crate::node::Node;
 use crate::row::{is_line, Kind};
 
-pub const METHODS: [&str; 3] = ["land_review", "land_accepts", "land_trust"];
+pub const METHODS: [&str; 3] = ["land_review", "land_accepts", "device_trust"];
 /// The grant a session needs, besides having no parent, to name another device whose entries count.
-pub const TRUST: &str = "land_trust";
+pub const TRUST: &str = "device_trust";
 pub const REVIEW_KEYS: [&str; 5] = ["ev", "branch", "sha", "verdict", "standing"];
 
 pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
         "land_review" => &["branch", "sha", "verdict"],
         "land_accepts" => &["branch", "sha", "worktree"],
-        "land_trust" => &["device", "trusted"],
+        "device_trust" => &["device", "trusted"],
         _ => return None,
     })
 }
@@ -178,12 +178,12 @@ fn accepts(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) ->
 }
 
 /// Name a device whose entries this device counts, or stop counting them: a session with no parent
-/// that holds the grant ``land_trust``, recorded on the board.
+/// that holds the grant ``device_trust``, recorded on the board.
 fn trust(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let actor = member(node, token, board)?;
     let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("the token is not known".into()))?;
     let top = node.host(board)?.names.get(&actor).is_some_and(|i| i.parent.is_empty());
-    let message = "only a session with no parent that holds the grant land_trust names the devices whose entries count";
+    let message = "only a session with no parent that holds the grant device_trust names the devices whose entries count";
     let fingerprint = text(p, "device");
     if !top || !crate::grants::holds(node, &holder, TRUST, &Scope::on(fingerprint))? {
         return Err(crate::grants::refused_for(node, token, TRUST, fingerprint, message));
@@ -200,9 +200,9 @@ fn trust(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> R
         return Err(crate::grants::refused_for(node, token, TRUST, fingerprint, message));
     }
     let pool = node.members.id.clone();
-    let changed = node.land_trust.set(&pool, fingerprint, on)?;
+    let changed = node.device_trust.set(&pool, fingerprint, on)?;
     let name = device.map(|d| d.name).unwrap_or_default();
-    audit(node, board, &actor, if on { "land.trust" } else { "land.untrust" }, fingerprint, &name)?;
+    audit(node, board, &actor, if on { "device.trust" } else { "device.untrust" }, fingerprint, &name)?;
     Ok(json!({"device": fingerprint, "trusted": on, "changed": changed}))
 }
 

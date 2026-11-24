@@ -31,9 +31,9 @@ def trust(s: Session, device: str, trusted: bool = True) -> dict[str, Any]:
     """Count (or stop counting) the tasks and grants of another device of the pool, by its certificate fingerprint.
 
     Authority is this device's own until this says otherwise; the node needs a session with no parent that
-    holds the grant `land_trust` and records the change on the board.
+    holds the grant `device_trust` and records the change on the board.
     """
-    return dict(s.call("land_trust", device=device, trusted=trusted))
+    return dict(s.call("device_trust", device=device, trusted=trusted))
 
 
 def _stamped(entry: dict[str, Any], who: str) -> dict[str, Any]:

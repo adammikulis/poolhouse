@@ -1090,8 +1090,8 @@ a roll only when a person chose them in the review, and the review defaults them
 | Names | Unique per board as today (hash of harness and session, extended on collision). A name written on another device is shown `name@dN`; the identity entry names the writer's pool. |
 | Sessions | A session registers on its device's node through a pool it is a member of; the token records it. It reads and writes the whole board subject to the pool's right. |
 | Claims | `branch` and `area` claims are board-wide, so pool B's claim of a branch blocks pool A's request for it, naming the holder: coordination across pools, wanted. Device resources are not mirrored. |
-| Tasks | Entries count only from this device and from devices on this device's landing trust list, as today; a device of another pool is "foreign, ignored" until a person trusts it for that board. |
-| Landing queue | Same: `land_trust` is per board and per device; a roll device of another pool is never trusted by default. |
+| Tasks | Entries count only from this device and from devices on this device's trust list, as today; a device of another pool is "foreign, ignored" until a person trusts it for that board. |
+| Landing queue | Same: `device_trust` is per board and per device; a roll device of another pool is never trusted by default. |
 | Grants | A grant is scoped to a board and a pool. A grant entry counts only when signed by a key enrolled on the checking device, so another pool's grants count for nothing here. Board-level grant entries are visible to every participant; pool-level uses go to the pool's own history board. |
 | Direct messages and private rooms | **Refused on a shared board.** They replicate like any row, so the other pool's devices would store them in the clear. Open rooms and `#general` work. Lifted when sealed messages land (`docs/pool-encryption.md`, slice 4). |
 | Files | Message metadata replicates; the bytes stay on the device that stored them (unchanged). |

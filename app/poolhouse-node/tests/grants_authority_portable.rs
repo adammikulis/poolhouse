@@ -49,7 +49,7 @@ fn joined() -> Joined {
     let (x, token) = here.session("demo", "x");
     let (actor, _) = there.session("demo", "scribe");
     sync_both(&here, &there);
-    here.ok("land_trust", "demo", &here.token, json!({"device": there.fp(), "trusted": true}));
+    here.ok("device_trust", "demo", &here.token, json!({"device": there.fp(), "trusted": true}));
     Joined { here, there, actor, x, token }
 }
 

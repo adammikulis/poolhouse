@@ -29,7 +29,7 @@ fn a_task_of_another_device_counts_once_this_device_names_it_and_carries_its_mak
     let listed = a.ok("task_list", "demo", &a.token, json!({}));
     assert_eq!((listed["tasks"].as_array().unwrap().len(), listed["foreign_ignored"].clone()), (0, json!(1)), "{listed}");
 
-    assert_eq!(a.call("land_trust", "demo", &a.token, json!({"device": b.fp(), "trusted": true}))["ok"], true);
+    assert_eq!(a.call("device_trust", "demo", &a.token, json!({"device": b.fp(), "trusted": true}))["ok"], true);
     let listed = a.ok("task_list", "demo", &a.token, json!({}));
     let task = &listed["tasks"][0];
     assert_eq!((task["title"].clone(), task["state"].clone(), listed["foreign_ignored"].clone()), (json!("Remote work"), json!("queued"), json!(0)), "{listed}");

@@ -47,7 +47,7 @@ def test_a_signature_made_in_python_is_one_the_node_verifies_and_only_the_enroll
     assert held.persons == [board_grants.fingerprint(team.person.public)]
     stranger = Signer.generate()
     with pytest.raises(Denied):
-        issued(team, lead, board_grants.Want("land_trust", {"kind": "session", "name": lead.name}), key=stranger)
+        issued(team, lead, board_grants.Want("device_trust", {"kind": "session", "name": lead.name}), key=stranger)
     again = Signer.generate()
     with pytest.raises(Denied):
         board_grants.enrol(team.client, lead.token, board_grants.enrolment(again, "an agent's key"))
@@ -64,7 +64,7 @@ def test_a_second_key_is_enrolled_only_with_the_approval_of_the_first(team):
     approved = board_grants.approve(proof, team.person, here)
     done = board_grants.enrol(team.client, team.kid.token, approved)
     assert done["keys"] == 2
-    issued(team, team.lead, board_grants.Want("land_trust", {"kind": "session", "name": team.lead.name}), key=other)
+    issued(team, team.lead, board_grants.Want("device_trust", {"kind": "session", "name": team.lead.name}), key=other)
     board_grants.unenrol(team.client, team.kid.token, team.person, board_grants.fingerprint(other.public))
     with pytest.raises(Denied, match="used already"):
         board_grants.enrol(team.client, team.kid.token, approved)
@@ -224,13 +224,13 @@ def test_the_grant_command_issues_what_it_says_and_nothing_else(team):
     held = {g.gid: g for g in board_grants.listing(team.session(kid)).grants}[done["granted"]]
     assert (held.action, held.to, held.scope["resource"], held.uses, held.used, held.mine) == ("file_delete", {"kind": "session", "name": kid.name}, "abc*", 3, 0, True)
     assert 0 < held.until_ms - held.at_ms <= 2 * 3_600_000
-    for argv in (["grant", "land_trust", "--until", "1h"], ["grant", "land_trust", "--to", "a", "--class", "claude", "--until", "1h"],
-                 ["grant", "push_main", "--to", kid.name, "--until", "1h"], ["grant", "land_trust", "--to", kid.name, "--until", "400d"]):
+    for argv in (["grant", "device_trust", "--until", "1h"], ["grant", "device_trust", "--to", "a", "--class", "claude", "--until", "1h"],
+                 ["grant", "push_main", "--to", kid.name, "--until", "1h"], ["grant", "device_trust", "--to", kid.name, "--until", "400d"]):
         code, out, err = run(team, *argv, "--json", who=lead)
         assert code in (2, 3), (argv, out, err)
     code, out, err = run(team, "grant", "task_authority", "--to", kid.name, "--uses", "2", "--device", "any", "--until", "1h", "--json", who=lead)
     assert code in (2, 3) and "names the one device" in out + err, "a use count on an action another device may use names a device: " + out + err
-    assert "land_trust" not in {g.action for g in board_grants.listing(team.session(lead)).grants}
+    assert "device_trust" not in {g.action for g in board_grants.listing(team.session(lead)).grants}
 
 
 def test_a_key_carried_from_another_device_is_enrolled_by_the_key_the_node_holds(team):
@@ -255,15 +255,15 @@ def test_a_key_is_taken_off_the_node_by_a_key_the_node_holds_and_the_last_key_st
     code, out, err = run(team, "person-enroll", "--proof", json.dumps(board_grants.enrolment(other, "a lost laptop")), who=lead)
     assert code == 0, (out, err)
     lost = board_grants.fingerprint(other.public)
-    issued(team, lead, board_grants.Want("land_trust", {"kind": "session", "name": lead.name}), key=other)
-    assert "land_trust" in {g.action for g in board_grants.listing(team.session(lead)).grants if g.status == "live"}
+    issued(team, lead, board_grants.Want("device_trust", {"kind": "session", "name": lead.name}), key=other)
+    assert "device_trust" in {g.action for g in board_grants.listing(team.session(lead)).grants if g.status == "live"}
     code, out, err = run(team, "person-unenroll", "--key", lost, "--json", who=lead, env={"CLAUDECODE": "1"})
     assert code == 3 and lost in board_grants.listing(team.session(lead)).persons, "an agent's removal of a key signs nothing"
     code, out, err = run(team, "person-unenroll", "--key", lost, "--json", who=lead)
     assert code == 0 and lost[:16] in out, (out, err)
     held = board_grants.listing(team.session(lead))
     assert lost not in held.persons and len(held.persons) == 1
-    assert {g.status for g in held.grants if g.action == "land_trust"} == {"ignored"}, "what the removed key signed counts no more"
+    assert {g.status for g in held.grants if g.action == "device_trust"} == {"ignored"}, "what the removed key signed counts no more"
     mine = board_grants.fingerprint(person_key.keys(team.state).public)
     code, out, err = run(team, "person-unenroll", "--key", mine, who=lead)
     assert code == 3 and "last person key" in out + err, (out, err)
@@ -297,7 +297,7 @@ def test_hostile_arguments_to_the_person_commands_are_refused_before_anything_is
         ["grant", "note_verify", "--to", kid.name, "--until", "0d"], ["grant", "note_verify", "--to", kid.name, "--until", "-1h"],
         ["grant", "note_verify", "--to", kid.name, "--until", "99999999999d"], ["grant", "note_verify", *fine, "--uses", "-3"],
         ["grant", "note_verify", *fine, "--uses", "2000000"], ["grant", "note_verify", *fine, "--device", "not-a-device"],
-        ["grant", "release_main", *fine], ["grant", "sudo", *fine], ["grant", "", *fine], ["grant", "land_trust\nnote_verify", *fine],
+        ["grant", "release_main", *fine], ["grant", "sudo", *fine], ["grant", "", *fine], ["grant", "device_trust\nnote_verify", *fine],
         ["revoke-grant", "g-nope"], ["revoke-grant", "../../etc/passwd"], ["revoke-grant", "g-" + "0" * 16],
         ["person-enroll", "--proof", "{not json"], ["person-enroll", "--proof", '{"public": 5}'], ["person-enroll", "--proof", "[]"],
         ["person-enroll", "--proof", '{"public": "ab", "about": "\\u001b[2J\\u001b[Hlet the key", "at_ms": 1, "proof": "00"}'],

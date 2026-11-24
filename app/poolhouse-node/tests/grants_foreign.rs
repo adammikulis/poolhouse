@@ -45,7 +45,7 @@ fn issue(d: &Dev, gid: &str, spec: &Spec) {
 }
 
 fn trust(a: &Dev, b: &Dev, on: bool) {
-    a.ok("land_trust", "demo", &a.token, json!({"device": b.fp(), "trusted": on}));
+    a.ok("device_trust", "demo", &a.token, json!({"device": b.fp(), "trusted": on}));
 }
 
 const NV: &str = "g-00000000000000e1";

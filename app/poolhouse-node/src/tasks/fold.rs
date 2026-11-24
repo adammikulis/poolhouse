@@ -331,7 +331,7 @@ impl Board {
 pub fn fold(node: &mut Node, board: &str) -> Result<Board> {
     crate::lease::rpc::tick(node, &[board])?;
     let entries = node.view(board)?;
-    let writers = crate::landtrust::writers(node, board)?;
+    let writers = crate::device_trust::writers(node, board)?;
     let own = node.host(board)?.board.origin().to_string();
     let mut out = Board { own: own.clone(), now: node.leases.now(), mode: "open".into(), ..Board::default() };
     for e in entries.iter().filter(|e| e.kind == Kind::Task) {

@@ -80,7 +80,7 @@ after; a worktree claim 2 before and 0 after; a branch claim 2 before and 2 afte
 counts the label-only model record (40 rows for ten before, 20 after) and the model of its own (40 before, 30 after).
 
 Audit kinds, and which stay: `retire` is folded into the identity row of the end (its subject, who ended it and the counts are fields of that row);
-`rebind` (a person moved a session), `land.review`, `land.trust` and `land.untrust`, `lease_takeover` (for the leases that are written),
+`rebind` (a person moved a session), `land.review`, `device.trust` and `device.untrust`, `lease_takeover` (for the leases that are written),
 `board.create` and its siblings, `file.delete`, `quarantine.release`, `enforcement.set`, `agent.effort`, `authority.set_denied`,
 `announce_over_quota` and the pool's governance entries all stay: each records an act a person or another device may need to see, and none of
 them is written at the rate of a session. A takeover of a device-only claim is not an entry because the claim is not.

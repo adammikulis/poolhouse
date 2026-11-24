@@ -1,4 +1,4 @@
-//! A device named with `land_trust` is counted for tasks and grants and never for a landing review: two real nodes,
+//! A device named with `device_trust` is counted for tasks and grants and never for a landing review: two real nodes,
 //! joined over loopback TLS, and a review written on the other one counts for nothing here.
 
 mod kit;
@@ -34,7 +34,7 @@ fn reviews(d: &Dev) -> Vec<Value> {
 }
 
 fn trust(a: &Dev, b: &Dev, on: bool) -> Value {
-    a.call("land_trust", "demo", &a.token, json!({"device": b.fp(), "trusted": on}))
+    a.call("device_trust", "demo", &a.token, json!({"device": b.fp(), "trusted": on}))
 }
 
 #[test]
@@ -53,14 +53,14 @@ fn naming_a_device_is_for_a_session_with_no_parent_and_only_for_an_active_member
     let (a, b, _) = join();
     let kid = a.ok("register", "demo", &a.token, json!({"model": "claude-sonnet-5-5", "harness": "claude-code", "session": "kid"}))["token"].as_str().unwrap().to_string();
     let code = |r: Value| r["error"]["code"].as_str().unwrap_or("ok").to_string();
-    assert_eq!(code(a.call("land_trust", "demo", &kid, json!({"device": b.fp(), "trusted": true}))), "denied", "a subagent never names a device");
-    assert_eq!(code(a.call("land_trust", "demo", "", json!({"device": b.fp(), "trusted": true}))), "denied");
-    assert_eq!(code(a.call("land_trust", "demo", &a.token, json!({"device": "ab".repeat(32), "trusted": true}))), "invalid", "not a member");
-    assert_eq!(code(a.call("land_trust", "demo", &a.token, json!({"device": a.fp(), "trusted": true}))), "invalid", "this device always counts");
-    assert_eq!(code(a.call("land_trust", "demo", &a.token, json!({"device": b.fp()}))), "invalid", "trusted is a boolean");
+    assert_eq!(code(a.call("device_trust", "demo", &kid, json!({"device": b.fp(), "trusted": true}))), "denied", "a subagent never names a device");
+    assert_eq!(code(a.call("device_trust", "demo", "", json!({"device": b.fp(), "trusted": true}))), "denied");
+    assert_eq!(code(a.call("device_trust", "demo", &a.token, json!({"device": "ab".repeat(32), "trusted": true}))), "invalid", "not a member");
+    assert_eq!(code(a.call("device_trust", "demo", &a.token, json!({"device": a.fp(), "trusted": true}))), "invalid", "this device always counts");
+    assert_eq!(code(a.call("device_trust", "demo", &a.token, json!({"device": b.fp()}))), "invalid", "trusted is a boolean");
     assert_eq!(code(trust(&a, &b, true)), "ok");
     assert_eq!(code(trust(&a, &b, false)), "ok");
     let audit = a.ok("read", "demo", &a.token, json!({"kind": "audit", "limit": 50}));
     let events: Vec<&str> = audit["entries"].as_array().unwrap().iter().map(|e| e["fields"]["event"].as_str().unwrap()).collect();
-    assert!(events.contains(&"land.trust") && events.contains(&"land.untrust"), "recorded on the board: {events:?}");
+    assert!(events.contains(&"device.trust") && events.contains(&"device.untrust"), "recorded on the board: {events:?}");
 }

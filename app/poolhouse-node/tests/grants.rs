@@ -172,7 +172,7 @@ fn a_person_grant_allows_exactly_its_scope() {
     assert!(!check(&mut n, &me, "link_remove", &Scope::on("dev")).unwrap(), "another resource");
     assert!(!check(&mut n, &me, "link_remove", &Scope::on("feat/../dev")).unwrap(), "a path that climbs out of the pattern");
     assert!(!check(&mut n, &me, "link_remove", &Scope::any()).unwrap(), "no resource named is not every resource");
-    assert!(!check(&mut n, &me, "land_trust", &Scope::on("feat/x")).unwrap(), "another action");
+    assert!(!check(&mut n, &me, "device_trust", &Scope::on("feat/x")).unwrap(), "another action");
     assert!(!check(&mut n, &other, "link_remove", &Scope::on("feat/x")).unwrap(), "another session");
     assert!(!check(&mut n, &holder("other", &a), "link_remove", &Scope::on("feat/x")).unwrap(), "the same name on another board");
 
@@ -343,7 +343,7 @@ fn the_default_grants_helper_gives_one_session_its_actions_and_no_other() {
     let (b, _) = session(&mut n, "demo", "b");
     allow(&mut n, "demo", &at, &a, &["link_remove", "note_verify"]);
     assert!(check(&mut n, &holder("demo", &a), "link_remove", &Scope::any()).unwrap());
-    assert!(!check(&mut n, &holder("demo", &a), "land_trust", &Scope::any()).unwrap());
+    assert!(!check(&mut n, &holder("demo", &a), "device_trust", &Scope::any()).unwrap());
     assert!(!check(&mut n, &holder("demo", &b), "link_remove", &Scope::any()).unwrap());
     assert_eq!(status_of(&mut n, &at, &gid_of(&a, "link_remove")), "live");
 }

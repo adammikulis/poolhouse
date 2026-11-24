@@ -30,7 +30,7 @@ LASTS_MS = 120_000
 AGENT_REFUSED = {
     "member_remove": "it ends another device's place in the pool",
     "admin_manage": "it changes who governs the pool",
-    "land_trust": "it widens what the pool trusts to land",
+    "device_trust": "it widens which devices' tasks and grants this device counts",
     "quarantine_release": "what failed a scan is deleted and fetched again, never released",
 }
 """The grants an agent is refused at once, with why: the automatic floor under every grant that policy issues."""

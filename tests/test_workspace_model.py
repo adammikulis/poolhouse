@@ -96,7 +96,7 @@ def test_a_claimed_model_changes_no_right(duo):
         with pytest.raises(Denied):
             alice.free("q-nothing")
         with pytest.raises(Denied):
-            alice.call("land_trust", device="a" * 64, trusted=True)
+            alice.call("device_trust", device="a" * 64, trusted=True)
 
 
 def test_a_node_session_claims_a_model_through_whoami_and_it_shows_in_the_inbox_and_the_listing(duo):
