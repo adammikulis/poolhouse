@@ -10,7 +10,8 @@ import pytest
 from poolhouse.graph.store import GraphStore
 from poolhouse.graph.store_cli import main
 
-pytest.importorskip("ladybug", reason="the store needs poolhouse[store]")
+pytest_plugins = ["extras"]
+pytestmark = pytest.mark.needs("ladybug", reason="the store needs poolhouse[store]")
 
 GRAPH = {
     "nodes": [

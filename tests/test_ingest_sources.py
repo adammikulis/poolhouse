@@ -15,7 +15,8 @@ from test_ingest import a_part_read_source, a_read, in_store, said
 
 from poolhouse import ingest
 
-pytest.importorskip("ladybug", reason="poolhouse[store]")
+pytest_plugins = ["extras"]
+pytestmark = pytest.mark.needs("ladybug", reason="poolhouse[store]")
 
 FIELD_GUIDE = "ambleford-field-guide"
 OPEN_TEXTS = "velthorne-open-texts"

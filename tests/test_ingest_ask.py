@@ -15,7 +15,8 @@ from test_ingest import a_part_read_source, a_read, said
 from poolhouse import ingest
 from poolhouse.testing import ScriptedModel
 
-pytest.importorskip("ladybug", reason="poolhouse[store]")
+pytest_plugins = ["extras"]
+pytestmark = pytest.mark.needs("ladybug", reason="poolhouse[store]")
 
 OPEN_TEXTS = "velthorne-open-texts"
 

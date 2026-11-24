@@ -1,5 +1,9 @@
 """The destructive-action rail in the chat agent and its model layer: a call the classifier labels
-destructive or unsure is refused at once with the reason, whatever the role, plan or rule says."""
+destructive or unsure is refused at once with the reason, whatever the role, plan or rule says.
+
+PLUMBING ONLY (layer 2): the model layer answers from a scripted logprob server (tests/decide_fakes.py), so those
+tests show how the rail acts on a verdict, never that a model gives it. The chat model is the scripted one of
+tests/test_chat.py."""
 
 from __future__ import annotations
 

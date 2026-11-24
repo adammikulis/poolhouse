@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 
 import pytest
+from extras import optional
 
 from poolhouse.gguf import (
     ADD_SPACE_PREFIX,
@@ -29,8 +30,10 @@ from poolhouse.gguf import (
     tools,
 )
 
-gguf = pytest.importorskip("gguf", reason="poolhouse[gguf]")
-np = pytest.importorskip("numpy", reason="poolhouse[arrays]")
+gguf = optional("gguf")
+np = optional("numpy")
+pytest_plugins = ["extras"]
+pytestmark = [pytest.mark.needs("gguf", reason="poolhouse[gguf]"), pytest.mark.needs("numpy", reason="poolhouse[arrays]")]
 
 
 def test_the_unsloth_checkout_is_searched():

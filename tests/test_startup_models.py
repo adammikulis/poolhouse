@@ -59,7 +59,7 @@ class StartupModelTests(unittest.TestCase):
         row = Getting(id="test", name="model", source="hf:example/model/model.gguf", components=[
             {"kind": "mtp", "packaging": "separate", "name": "mtp-head.gguf",
              "ref": "hf:example/model/MTP/mtp-head.gguf"}])
-        downloads._run(row, None, True)
+        downloads._run(row, True)
         self.assertEqual(row.state, "failed")
         self.assertIn("head download interrupted", row.error)
 
@@ -100,9 +100,9 @@ class StartupModelTests(unittest.TestCase):
         handler.headers = {}
         ui = Mock()
         ui.authed.return_value = False
+        ui.founded.return_value = False
         ui.may_setup.return_value = "remote setup refused"
-        with patch.object(routes, "choices_for") as offered, patch.object(
-                routes, "in_pool", return_value=False), patch.object(routes.Router, "send") as send:
+        with patch.object(routes, "choices_for") as offered, patch.object(routes.Router, "send") as send:
             routes.Router(ui, handler).run()
             self.assertEqual(send.call_args.args[0], 403)
             offered.assert_not_called()

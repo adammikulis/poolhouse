@@ -12,7 +12,8 @@ from test_ingest import EMPTY, a_model
 
 from poolhouse import ingest
 
-pytest.importorskip("pymupdf", reason="pymupdf is the test-only PDF writer here (AGPL, opt-in): pip install pymupdf")
+pytest_plugins = ["extras"]
+pytestmark = pytest.mark.needs("pymupdf", reason="pymupdf is the test-only PDF writer here (AGPL, opt-in): pip install pymupdf")
 
 GOLD = Path(__file__).parent / "fixtures" / "extraction-gold.json"
 

@@ -1,4 +1,6 @@
-"""The logprob backend against a server that reports first-token log-probabilities."""
+"""PLUMBING ONLY: the logprob backend's request and its reading of first-token log-probabilities, against a scripted
+server (tests/decide_fakes.py) that reports the probabilities the test hands it. What a real model answers through
+this path is asserted in tests/test_real_model_uses.py (``--real-model``)."""
 
 from __future__ import annotations
 

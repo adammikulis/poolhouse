@@ -24,7 +24,8 @@ from test_ingest import a_part_read_source, a_read
 from poolhouse import ingest
 from poolhouse.bench.report import report
 
-pytest.importorskip("ladybug", reason="poolhouse[store]")
+pytest_plugins = ["extras"]
+pytestmark = pytest.mark.needs("ladybug", reason="poolhouse[store]")
 
 RUN = "run:20260101T090000"
 RUN2 = "run:20260101T113000"

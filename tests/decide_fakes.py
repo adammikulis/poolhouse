@@ -1,5 +1,7 @@
-"""Stand-ins for the models behind poolhouse.decide: a chat server that reports log-probabilities
-and an embedder that hashes words."""
+"""PLUMBING ONLY: stand-ins for the models behind poolhouse.decide, a chat server that reports scripted
+log-probabilities and an embedder that hashes words. They carry the wire format and the arithmetic of the decider;
+they decide nothing, so a test built on them never claims what a model picks. What a model picks is asserted in
+tests/test_real_model_uses.py (``--real-model``)."""
 
 from __future__ import annotations
 

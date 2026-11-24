@@ -22,7 +22,8 @@ from poolhouse import hub, ingest, jobs
 from poolhouse.contracts import grammar_for
 from poolhouse.testing.canned import canned_chat_reply
 
-pytest.importorskip("pymupdf", reason="pymupdf is the test-only PDF writer here (AGPL, opt-in): pip install pymupdf")
+pytest_plugins = ["extras"]
+pytestmark = pytest.mark.needs("pymupdf", reason="pymupdf is the test-only PDF writer here (AGPL, opt-in): pip install pymupdf")
 
 
 # What a model is scripted to say about the invented lattice textbook.

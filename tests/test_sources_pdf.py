@@ -9,8 +9,11 @@ printed to PDF by a browser -- which is the case the heading heuristics exist fo
 from __future__ import annotations
 
 import pytest
+from extras import optional
 
-pymupdf = pytest.importorskip("pymupdf", reason="pymupdf is the test-only PDF writer here (AGPL, opt-in): pip install pymupdf")
+pymupdf = optional("pymupdf")
+pytest_plugins = ["extras"]
+pytestmark = pytest.mark.needs("pymupdf", reason="pymupdf is the test-only PDF writer here (AGPL, opt-in): pip install pymupdf")
 
 from poolhouse.sources import pdf  # noqa: E402
 

@@ -1,5 +1,6 @@
-"""``POST /decide`` on the daemon: the same bearer token as every route, a size limit, and
-the decision a served model gives."""
+"""PLUMBING ONLY: ``POST /decide`` on the daemon: the same bearer token as every route, a size limit, and the
+decision a served model gives, here a scripted logprob server (tests/decide_fakes.py): the scripted probabilities
+choose each answer; what is asserted is the route, its limits and its error codes."""
 
 from __future__ import annotations
 

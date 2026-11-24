@@ -11,6 +11,7 @@ from __future__ import annotations
 import io
 
 import pytest
+from extras import optional
 
 from poolhouse.media import from_data_url, kind, probe_png
 from poolhouse.vision import (
@@ -27,8 +28,9 @@ from poolhouse.vision import (
     to_supported_format,
 )
 
-PIL = pytest.importorskip("PIL", reason="poolhouse[vision]")
-from PIL import Image  # noqa: E402
+Image = optional("PIL.Image")
+pytest_plugins = ["extras"]
+pytestmark = pytest.mark.needs("PIL", reason="poolhouse[vision]")
 
 
 def png_of(size: tuple[int, int], colour=(120, 30, 200)) -> bytes:

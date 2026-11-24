@@ -14,6 +14,9 @@ from poolhouse.board import person
 from poolhouse.fleet.conversations import Conversations
 from poolhouse.workspace import coding_turns
 
+pytest_plugins = ["gate_open"]
+pytestmark = pytest.mark.usefixtures("gate_open")
+
 
 @pytest.fixture
 def coding_api(tmp_path, monkeypatch, workspace_node):  # noqa: F811
@@ -25,7 +28,10 @@ def coding_api(tmp_path, monkeypatch, workspace_node):  # noqa: F811
     server.ui.conversations = Conversations(tmp_path / "chats")
     folder = tmp_path / "project"
     folder.mkdir()
-    made = server.ui.conversations.start(model="test-model", settings={"project": str(folder), "permissions": "read-only", "execution_mode": "execute", "harness": "codex"})
+    owner = workspace_node.member("project-owner")
+    workspace_node.allow(owner, "source_add")
+    workspace_node.client.call("project_add", "", owner.token, id=workspace_node.board, kind="folder", path=str(folder))
+    made =server.ui.conversations.start(model="test-model", settings={"project": str(folder), "permissions": "read-only", "execution_mode": "execute", "harness": "codex"})
     try:
         yield server, made, workspace_node
     finally:
@@ -37,8 +43,9 @@ def coding_api(tmp_path, monkeypatch, workspace_node):  # noqa: F811
 
 
 def sessions(node, retired=False):
-    """The sessions of the board as the person's session sees them."""
-    return person.on(node.client, node.board).agents(retired=retired)
+    """The sessions of the board as the person's session sees them, without the members the test registered itself."""
+    own = {member.name for member in node.members.values()}
+    return [a for a in person.on(node.client, node.board).agents(retired=retired) if a.name not in own]
 
 
 def post(server, cid, operation, body, **options):
@@ -60,7 +67,8 @@ def finished(server, cid):
 def test_native_turns_resume_and_revoke_only_their_agent(coding_api):
     server, conversation, node = coding_api
     assert post(server, conversation.id, "start", {"message": "inspect the brakes"})[0] == 202
-    assert finished(server, conversation.id)["state"] == "completed"
+    first = finished(server, conversation.id)
+    assert first["state"] == "completed", first
     assert post(server, conversation.id, "start", {"message": "inspect the sensors"})[0] == 202
     final = finished(server, conversation.id)
     assert final["state"] == "completed"
@@ -73,7 +81,8 @@ def test_native_turns_resume_and_revoke_only_their_agent(coding_api):
     assert [a.harness for a in live.values()] == ["poolhouse-ui"] and persons.name in live
     ended = [a for a in sessions(node, retired=True) if a.retired]
     assert [a.parent for a in ended] == [persons.name, persons.name]
-    assert [path.name for path in (node.state / "client" / node.board).glob("*.token")] == [f"{persons.name}.token"]
+    kept = {path.name for path in (node.state / "client" / node.board).glob("*.token")}
+    assert kept == {f"{persons.name}.token", *(f"{member.name}.token" for member in node.members.values())}
 
 
 def test_cancel_stops_native_process_and_the_next_turn_can_start(coding_api):
@@ -132,10 +141,8 @@ def test_launcher_refusal_is_failed_instead_of_a_completed_empty_turn(coding_api
 
 
 def test_joined_coding_session_is_required_before_starting_a_worker(coding_api, monkeypatch):
-    from poolhouse.fleet import routes
-
     server, conversation, _node = coding_api
-    monkeypatch.setattr(routes, "in_pool", lambda _: True)
+    monkeypatch.setattr(server.ui, "founded", lambda: True)
     assert post(server, conversation.id, "start", {"message": "unsigned"}, cookie="")[0] == 401
     assert server.ui.conversations.get(conversation.id).messages == []
     cookie = server.ui.sessions.cookie_header(server.ui.sessions.open("person", "launch-ticket"))

@@ -12,7 +12,7 @@
   "local-imports": 371,
   "long-docstrings": 74,
   "long-functions": 7,
-  "module-skips": 30,
+  "module-skips": 10,
   "mutation-survivors": 0,
   "print-calls": 0,
   "process-scans": 1,

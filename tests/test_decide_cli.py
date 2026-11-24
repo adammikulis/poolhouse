@@ -1,4 +1,5 @@
-"""``poolhouse-decide`` against a fake chat server."""
+"""PLUMBING ONLY: ``poolhouse-decide`` against a scripted chat server (tests/decide_fakes.py). The scripted
+probabilities, not a model, choose each answer; what is asserted is the command's printing, flags and exit codes."""
 
 from __future__ import annotations
 

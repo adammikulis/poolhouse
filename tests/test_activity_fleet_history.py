@@ -8,7 +8,6 @@ from test_fleet_ui import Serving
 
 from poolhouse.activity import writer
 from poolhouse.activity.log import ActivityLog
-from poolhouse.fleet import routes
 from tests.activity_support import person, ring
 
 __all__ = ['person', 'ring']
@@ -46,7 +45,7 @@ def test_installed_history_extension_reads_redacted_actions(history):
 @pytest.mark.redteam
 def test_history_requires_ui_header_and_joined_session(history, monkeypatch):
     assert history.call('/ui/history/events', ui_header=False)[0] == 403
-    monkeypatch.setattr(routes, 'in_pool', lambda _: True)
+    monkeypatch.setattr(history.ui, 'founded', lambda: True)
     assert history.call('/ui/history/events', cookie='')[0] == 401
     cookie = history.ui.sessions.cookie_header(history.ui.sessions.open('person', 'launch-ticket'))
     assert history.call('/ui/history/events', cookie=cookie)[0] == 200

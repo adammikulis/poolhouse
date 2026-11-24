@@ -1,4 +1,5 @@
-"""Choosing a backend, keeping it warm, and the pinned-file check."""
+"""PLUMBING ONLY: choosing a backend, keeping it warm, and the pinned-file check. The logprob backend answers from a
+scripted server (tests/decide_fakes.py), so a choice here shows which backend was taken, never what a model picks."""
 
 from __future__ import annotations
 
