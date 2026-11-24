@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from extras import optional
 from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 
 from poolhouse.log import to
@@ -17,6 +18,8 @@ from poolhouse.testing.canned import CANNED_MARKER, CANNED_MODEL_ID, marked
 from poolhouse.walk import ops
 from poolhouse.walk.cli import report
 from poolhouse.walk.ops import FLEET, GRAPH, Stop, Walk
+
+pytest_plugins = ["extras"]
 
 
 class TestWhichScreens:
@@ -75,7 +78,8 @@ class TestWhatItPrints:
 
 # -- a real daemon, driven ------------------------------------------------------------------
 
-pw = pytest.importorskip("playwright.sync_api", reason="poolhouse[scrape]")
+pw = optional("playwright.sync_api")
+PLAYWRIGHT = pytest.mark.needs("playwright.sync_api", reason="poolhouse[scrape]")
 
 
 @pytest.fixture
@@ -103,6 +107,7 @@ def walked(served, tmp_path, play, screens=FLEET, **over):
 
 
 @pytest.mark.slow
+@PLAYWRIGHT
 class TestWalkingTheDaemon:
     def test_the_wizard_is_walked_as_far_as_it_goes_without_changing_the_machine(
             self, daemon, tmp_path, playwright):
@@ -170,6 +175,7 @@ def slow_model(monkeypatch):
 
 
 @pytest.mark.slow
+@PLAYWRIGHT
 def test_asking_the_graph_page_waits_for_the_whole_streamed_answer(slow_model, tmp_path,
                                                                     monkeypatch, playwright):
     from conftest import threaded_server
@@ -201,6 +207,7 @@ def test_asking_the_graph_page_waits_for_the_whole_streamed_answer(slow_model, t
 
 
 @pytest.mark.slow
+@PLAYWRIGHT
 def test_saying_something_in_the_fleet_chat_waits_for_the_whole_reply(slow_model, tmp_path,
                                                                       monkeypatch,
                                                                       playwright, studio_node):  # noqa: F811
@@ -234,6 +241,7 @@ def test_saying_something_in_the_fleet_chat_waits_for_the_whole_reply(slow_model
 
 
 @pytest.mark.slow
+@PLAYWRIGHT
 def test_the_review_pane_is_opened_and_read(tmp_path, monkeypatch, playwright):
     from conftest import threaded_server
 

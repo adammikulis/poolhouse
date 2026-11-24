@@ -7,10 +7,10 @@ import pytest
 
 from poolhouse.files import read_json, write_json
 from poolhouse.graph.review import Queue, as_change, listed
-
-pytest.importorskip("ladybug", reason="poolhouse[store]")
-
 from poolhouse.graph.store import GraphStore
+
+pytest_plugins = ["extras"]
+pytestmark = pytest.mark.needs("ladybug", reason="poolhouse[store]")
 
 GRAPH = {
     "meta": {"model": "m"},

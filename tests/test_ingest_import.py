@@ -14,7 +14,8 @@ import pytest
 
 from poolhouse import ingest
 
-pytest.importorskip("ladybug", reason="poolhouse[store]")
+pytest_plugins = ["extras"]
+pytestmark = pytest.mark.needs("ladybug", reason="poolhouse[store]")
 
 
 NODE_COLUMNS = ["node_id", "label", "category", "definition", "aliases", "source_text",

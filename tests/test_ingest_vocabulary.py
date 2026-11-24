@@ -17,7 +17,8 @@ from test_sources_pdf import a_textbook
 from poolhouse import ingest
 from poolhouse.ingest.vocabulary import DOC, MOST, Vocabulary
 
-pytest.importorskip("pymupdf", reason="pymupdf is the test-only PDF writer here (AGPL, opt-in): pip install pymupdf")
+pytest_plugins = ["extras"]
+pytestmark = pytest.mark.needs("pymupdf", reason="pymupdf is the test-only PDF writer here (AGPL, opt-in): pip install pymupdf")
 
 
 def a_reading(*verbs, kind="structure"):

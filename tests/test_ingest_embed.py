@@ -8,12 +8,13 @@ import json
 import pytest
 from conftest import json_reply
 
-pytest.importorskip("ladybug", reason="the store needs poolhouse[store]")
-
 from poolhouse.client.embed import BATCH
 from poolhouse.graph.store import GraphStore
 from poolhouse.graph.vectors import embedded
 from poolhouse.ingest.embed import embed_store, texts_for
+
+pytest_plugins = ["extras"]
+pytestmark = pytest.mark.needs("ladybug", reason="the store needs poolhouse[store]")
 
 GRAPH = {
     "nodes": [

@@ -21,14 +21,16 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
+from extras import optional
 
 from poolhouse.http import Server
 
-pw = pytest.importorskip("playwright.sync_api", reason="poolhouse[scrape]")
+pw = optional("playwright.sync_api")
 
 #: Every test here launches headless Chromium and drives a real page. Nothing in
 #: the module is under a second, so the whole of it is what `-m "not slow"` drops.
-pytestmark = pytest.mark.slow
+pytest_plugins = ["extras"]
+pytestmark = [pytest.mark.slow, pytest.mark.needs("playwright.sync_api", reason="poolhouse[scrape]")]
 
 from poolhouse.graph import page as graph_page  # noqa: E402
 

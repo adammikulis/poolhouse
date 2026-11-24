@@ -17,7 +17,8 @@ from poolhouse.graph.vectors import RememberOptions, embedded, remember
 from poolhouse.http import Options
 from poolhouse.testing import needs_a_backend
 
-pytest.importorskip("ladybug", reason="the store needs poolhouse[store]")
+pytest_plugins = ["extras"]
+pytestmark = pytest.mark.needs("ladybug", reason="the store needs poolhouse[store]")
 
 # a toy space where the first number is "about machines" and the second "about selling"
 SAID = {

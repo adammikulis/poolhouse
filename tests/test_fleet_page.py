@@ -11,16 +11,21 @@ the models, the conversations and the measurements are invented in ``tmp_path``.
 from __future__ import annotations
 
 import pytest
+from extras import optional
 
-pw = pytest.importorskip("playwright.sync_api", reason="poolhouse[scrape]")
+pw = optional("playwright.sync_api")
 
 #: Every test here launches headless Chromium and drives a real page.
-pytestmark = pytest.mark.slow
-pytest_plugins = ("testfarm_kit",)  # the `node_binary` fixture the founded-pool tests use
+pytestmark = [pytest.mark.slow, pytest.mark.needs("playwright.sync_api", reason="poolhouse[scrape]")]
+pytest_plugins = ("testfarm_kit", "extras")  # the `node_binary` fixture the founded-pool tests use
 
 from launch_support import hand_typed, sign_in  # noqa: E402
 from test_fleet_ui import Serving  # noqa: E402
-from test_fleet_ui_founded import gated, governed  # noqa: E402, F401  (governed is a fixture)
+from test_fleet_ui_founded import (  # noqa: E402, F401  (founded_node and governed are fixtures)
+    founded_node,
+    gated,
+    governed,
+)
 
 #: where each screen is reached from the workspace rail
 RAIL = {"Chat": "#nav-tabs a[data-workspace='conversations']", "Studio": "#nav-tabs a[data-workspace='studio']",
