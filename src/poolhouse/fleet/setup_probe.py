@@ -4,7 +4,7 @@ import os
 import re
 from pathlib import Path
 
-from poolhouse import gate, http_cancel
+from poolhouse import gate, http
 from poolhouse.client import Client, Request, Transport, families
 from poolhouse.json_objects import unique_object
 from poolhouse.serve import broker_wire, startup
@@ -19,7 +19,7 @@ TOOL = {'type': 'function', 'function': {
         'required': ['left', 'right'], 'additionalProperties': False}}}
 
 
-class Control(http_cancel.Cancellation):
+class Control(http.Cancellation):
     """Only cheap actual session/context checks belong in the HTTP polling path."""
 
     def __init__(self, current):
@@ -118,7 +118,7 @@ class _Probe:
         if claim['fresh'] is not True:
             raise PreparationStopped('This setup request already has a durable intent.')
         self._check()
-        with http_cancel.scope(self.control):
+        with http.cancel_scope(self.control):
             reply = self.client.chat(messages, **arguments)
         self._check()
         accepted = _accepted(phase, reply)

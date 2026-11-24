@@ -11,8 +11,7 @@ import httpx2
 from agents import OpenAIChatCompletionsModel
 from openai import AsyncOpenAI
 
-from poolhouse.http import Options, ServerError, open_stream
-from poolhouse.http_cancel import Cancellation, scope
+from poolhouse.http import Cancellation, Options, ServerError, cancel_scope, open_stream
 
 
 class _Body(httpx2.AsyncByteStream):
@@ -57,7 +56,7 @@ class _Body(httpx2.AsyncByteStream):
 def _open_response(url: str, data: bytes, cancelled: Cancellation, options: Options, service: Any = None) -> Any:
     if service is not None:
         options = service.current_options(options)
-    with scope(cancelled):
+    with cancel_scope(cancelled):
         response = open_stream(url, data=data, method="POST", options=options)
     authorized = False
     try:

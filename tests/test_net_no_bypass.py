@@ -52,7 +52,6 @@ ALLOWED: dict[str, str] = {
                                "any other endpoint is refused",
     "fleet/launch_open.py": "asks the recorded daemon on 127.0.0.1 for a one-use launch ticket",
     "fleet/wsl_ui.py": "relays stdio to the daemon through a Linux loopback connection",
-    "http_cancel.py": "cancellable sockets under poolhouse.http; it is the guarded client's own plumbing",
     "train/recipes/tool_calls_mlx.py": "resolves a base model already on disk (local_files_only=True); "
                                        "it downloads nothing",
     "fleet/ui.py": "a /metrics address a person typed into the fleet view (needs a session)",

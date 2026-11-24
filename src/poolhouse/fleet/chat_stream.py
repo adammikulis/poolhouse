@@ -10,7 +10,7 @@ import threading
 from typing import Any
 
 from poolhouse.gate import turn
-from poolhouse.http_cancel import Cancellation, scope
+from poolhouse.http import Cancellation, cancel_scope
 
 from .chat import stream
 
@@ -85,7 +85,7 @@ class Transfer:
                     return
                 self.state("rebuilding", "Rebuilding model context from the conversation transcript")
                 self.state("loading", "Waiting for the model to begin generating")
-                with scope(self.cancellation), contextlib.closing(
+                with cancel_scope(self.cancellation), contextlib.closing(
                         (self.source or stream)(self.target, self.payload, control=self)) as upstream:
                     for block in upstream:
                         self.emit(block)

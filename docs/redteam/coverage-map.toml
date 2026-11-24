@@ -1457,7 +1457,7 @@ tests = ["tests/test_wsl_backend.py::test_relay_preserves_stream_and_releases_po
 note = "loopback relays opaque hostile HTTP and binary bytes through the private Unix socket; the managed model command includes its API key"
 
 [[group]]
-match = ["listener:http_cancel.py:*"]
+match = ["listener:http.py:Cancellation.*", "listener:http.py:cancel_handlers.*"]
 status = "n/a"
 note = "outbound HTTP sockets bind an optional source address; they never listen or accept connections"
 

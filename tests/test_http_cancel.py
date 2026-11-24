@@ -109,8 +109,7 @@ def test_unlimited_sdk_can_cancel_during_tls_handshake():
 
 def test_cancelling_queued_request_gives_its_place_in_the_line_back(workspace_node, monkeypatch):
     from poolhouse import gate, leasetable
-    from poolhouse.http import Options, ServerError, request_json
-    from poolhouse.http_cancel import Cancellation, scope
+    from poolhouse.http import Cancellation, Options, ServerError, cancel_scope, request_json
 
     monkeypatch.setattr(gate, 'device_of', lambda _url: 'cancel-test')
     table = leasetable.default()
@@ -121,7 +120,7 @@ def test_cancelling_queued_request_gives_its_place_in_the_line_back(workspace_no
     control, errors = Cancellation(), []
     def work():
         try:
-            with scope(control):
+            with cancel_scope(control):
                 request_json('http://127.0.0.1:1/v1/chat/completions', payload={}, options=Options(timeout=None))
         except ServerError as error:
             errors.append(error)

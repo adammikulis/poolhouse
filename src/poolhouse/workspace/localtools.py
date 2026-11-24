@@ -13,8 +13,7 @@ from typing import Any
 from poolhouse import do, roles
 from poolhouse.board.client import NodeError
 from poolhouse.board.session import Session
-from poolhouse.http import ServerError
-from poolhouse.http_cancel import Cancellation, scope
+from poolhouse.http import Cancellation, ServerError, cancel_scope
 from poolhouse.workspace import (
     inbound,
     localeffort as le,
@@ -123,7 +122,7 @@ class Guarded:
         watcher = threading.Thread(target=supervise, daemon=True)
         watcher.start()
         try:
-            with scope(control):
+            with cancel_scope(control):
                 result = self.client.chat(messages, **{**kwargs, "think": self.think})
             if reason:
                 raise TaskStopped(reason[0])

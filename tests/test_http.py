@@ -121,8 +121,8 @@ def test_guarded_numeric_loopback_has_no_ambient_proxy(monkeypatch, host, direct
 
     seen, guarded = [], []
     control = object() if cancelled else None
-    monkeypatch.setattr(http.http_cancel, 'active', lambda: control)
-    monkeypatch.setattr(http.http_cancel, 'handlers', lambda *_: [])
+    monkeypatch.setattr(http, 'active_cancellation', lambda: control)
+    monkeypatch.setattr(http, 'cancel_handlers', lambda *_: [])
     monkeypatch.setattr(urllib.request, 'build_opener', lambda *handlers:
                         SimpleNamespace(open=lambda *_args, **_kwargs: seen.extend(handlers)))
     url = f'https://{host}:16443/status'
@@ -322,7 +322,7 @@ def test_request_tls_context_overrides_pin_for_normal_and_cancelled_open(monkeyp
     global_pin = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     url = 'https://127.0.0.1:18443/request-context'
     observed, cancelled_contexts = [], []
-    original_handlers = http.http_cancel.handlers
+    original_handlers = http.cancel_handlers
     def handlers(control, context):
         cancelled_contexts.append(context)
         return original_handlers(control, context)
@@ -330,9 +330,9 @@ def test_request_tls_context_overrides_pin_for_normal_and_cancelled_open(monkeyp
         observed.extend(handler._context for handler in configured if isinstance(handler, urllib.request.HTTPSHandler))
         return SimpleNamespace(open=lambda *args, **kwargs: SimpleNamespace(headers={}, status=200))
     monkeypatch.setattr(urllib.request, 'build_opener', opener)
-    monkeypatch.setattr(http.http_cancel, 'handlers', handlers)
+    monkeypatch.setattr(http, 'cancel_handlers', handlers)
     options = http.Options(tls_context=selected if explicit else None, guard=lambda value: value)
-    with http.http_cancel.scope(http.http_cancel.Cancellation() if cancelled else None):
+    with http.cancel_scope(http.Cancellation() if cancelled else None):
         http.pin('127.0.0.1:18443', global_pin)
         try:
             http.open_stream(url, options=options)
@@ -362,7 +362,7 @@ def test_explicit_no_redirect_contacts_once_for_hostnames_and_loopback(monkeypat
     import urllib.request
     from http.server import BaseHTTPRequestHandler
 
-    from poolhouse import http, http_cancel
+    from poolhouse import http
 
     calls = []
 
@@ -391,7 +391,7 @@ def test_explicit_no_redirect_contacts_once_for_hostnames_and_loopback(monkeypat
     try:
         options = http.Options(headers={'Authorization': ''}, follow_redirects=False,
                                guard=lambda value: value, timeout=2)
-        with http_cancel.scope(http_cancel.Cancellation() if cancelled else None), pytest.raises(http.ServerError) as caught:
+        with http.cancel_scope(http.Cancellation() if cancelled else None), pytest.raises(http.ServerError) as caught:
             http.request_bytes(endpoint, method='POST', data=b'{}', options=options)
         assert caught.value.status == status
         assert calls == [('POST', '/original')]

@@ -89,7 +89,7 @@ EGRESS = {
     "socket.create_connection",
 }
 EGRESS_PREFIX = ("poolhouse.http.", "poolhouse.httpguard.")
-HTTP_DATA_CONSTRUCTORS = {"poolhouse.http.Options", "poolhouse.http.Retry"}
+HTTP_DATA_CONSTRUCTORS = {"poolhouse.http.Options", "poolhouse.http.Retry", "poolhouse.http.Cancellation", "poolhouse.http.cancel_scope"}
 HUMAN = {"refuse_agent", "mint", "mint_gated", "protect", "agent_may"}
 DESKTOP_WORDS = ("osascript", "notify-send", "powershell", "toast")
 KEYSTORE_WORDS = ("add-generic-password", "find-generic-password", "keyring", "secret-tool")
