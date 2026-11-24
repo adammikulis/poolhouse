@@ -36,7 +36,7 @@ LAYERS: tuple[tuple[str, tuple[str, ...]], ...] = (
               "serverkeys", "spawned",
               "studio_launch", "subscribers", "taint", "telemetry", "tool_schema", "trees", "ui", "unix_socket", "units", "win32", "windows_private", "worktreerules")),
     ("model", ("client", "decide", "hub", "spec", "speech")),
-    ("graph", ("board_names", "graph")),
+    ("graph", ("graph",)),
     ("machine", ("doctor", "fleet", "serve", "setup", "studio")),
     ("tools", ("coordination", "agent", "chat", "chatpolicy", "claude", "cli", "codex", "coding", "coding_actions", "decide_cli", "pi_tools",
                "do", "guard", "harness", "harness_claims", "harnessid", "harnessing", "harnesshook", "harnesspolicy", "mcp", "memory", "reputation", "inbox", "roles", "rules",

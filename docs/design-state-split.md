@@ -288,8 +288,7 @@ until 1.0"):
 - S1: the `lease_takeover` audit in `mirror`; every `lease` line but
   `claim:branch`, `claim:area`, `claim:task` and `model_slot` from `fold::lease` (a foreign row with another key is rejected,
   not folded); the fold per tick in `lease/rpc.rs::foreign` (replaced by the incremental index of section 3.1).
-- S2: the `land.review` audit copy (`landing.rs`, `audit()` in `review`), the `RETIRED` queue names in `landing.rs` (S0 set the old
-  boards aside, so no row of them remains), the `board.*` audit (`rooms.rs:202`), `enforcement.set` (`tasks/calls.rs:483`), the `retire` audit
+- S2: the `land.review` audit copy (`landing.rs`, `audit()` in `review`), the `board.*` audit (`rooms.rs:202`), `enforcement.set` (`tasks/calls.rs:483`), the `retire` audit
   except for cause (`sessions.rs:178`), `rebind` (`sessions.rs:99`), `link`/`unlink` (`api.rs:168`), `file.delete`; `events.rs`
   writes `local/events.jsonl`. `land.trust`, `land.untrust`, `quarantine.release` and `authority.set_denied` stay log rows. All
   of `logbounds.rs` stays, `RESERVED_ROWS`, `RESERVED_BYTES` and `Class::Node` included: the node stretch holds the end rows of

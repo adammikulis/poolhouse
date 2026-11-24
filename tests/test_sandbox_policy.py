@@ -13,9 +13,8 @@ from poolhouse import sandbox
 from poolhouse.sandbox import AllowUnsandboxed, Limits, Net, Policy, PolicyError, policies, run
 from poolhouse.sandbox.backend import Availability
 from poolhouse.sandbox.bubblewrap import Bubblewrap, arguments
-from poolhouse.sandbox.container import Container
 from poolhouse.sandbox.seatbelt import ProfileError, profile, quote
-from tests.sandbox_kit import require_native_sandbox
+from tests.sandbox_kit import AbsentBackend, require_native_sandbox
 
 SYSTEM_BIN = os.path.realpath("/bin")
 SYSTEM_SHELL = os.path.realpath("/bin/sh")
@@ -206,13 +205,13 @@ def test_without_a_backend_the_command_is_not_run_and_the_refusal_is_an_event(tm
     pol = Policy("untrusted", read=(str(tmp_path),), write=(str(tmp_path),), exec=(SYSTEM_BIN,),
                  env={"PATH": "/bin"})
     with pytest.raises(sandbox.SandboxUnavailable, match="not run"):
-        run(["/usr/bin/touch", str(marker)], pol, via=Container(),
+        run(["/usr/bin/touch", str(marker)], pol, via=AbsentBackend(),
             on_event=lambda n, f: events.append((n, f)))
     assert not marker.exists()
     assert [n for n, _ in events] == ["sandbox.unavailable"]
     with pytest.raises(sandbox.SandboxUnavailable):
         run(["/usr/bin/touch", str(marker)], pol, via=Bubblewrap() if os.uname().sysname == "Darwin"
-            else Container())
+            else AbsentBackend())
 
 
 def test_running_unsandboxed_needs_a_named_reason_and_is_logged(tmp_path, caplog):
@@ -220,7 +219,7 @@ def test_running_unsandboxed_needs_a_named_reason_and_is_logged(tmp_path, caplog
     events: list[tuple[str, dict]] = []
     pol = Policy("untrusted", env={"PATH": "/bin"})
     caplog.set_level("WARNING", logger="poolhouse.sandbox")
-    result = run(["/usr/bin/touch", str(marker)], pol, via=Container(),
+    result = run(["/usr/bin/touch", str(marker)], pol, via=AbsentBackend(),
                  unsandboxed=AllowUnsandboxed("test on a host with no sandbox"),
                  on_event=lambda n, f: events.append((n, f)), cwd=str(tmp_path))
     assert marker.exists() and result.returncode == 0 and not result.sandboxed
@@ -230,12 +229,6 @@ def test_running_unsandboxed_needs_a_named_reason_and_is_logged(tmp_path, caplog
     assert any("WITHOUT a sandbox" in r.getMessage() for r in caplog.records)
     with pytest.raises(PolicyError):
         AllowUnsandboxed("  ")
-
-
-def test_the_container_backend_is_a_documented_stub():
-    assert not Container().available().ok
-    with pytest.raises(NotImplementedError, match=r"docs/sandbox\.md"):
-        Container().wrap(["/bin/true"], Policy("p"))
 
 
 def test_native_policy_factories_use_resolved_system_paths(tmp_path):

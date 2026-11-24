@@ -61,46 +61,6 @@ class WorkLedger:
             return {**evidence, 'id': ident, 'recorded': True}
         return self.sealed.edit(change)
 
-    def migrate_credit_awards(self) -> int:
-        """Grant immutable v1 base awards to previously verified historical evidence once."""
-        def change(graph):
-            count = 0
-            for node in list(graph.nodes('work_evidence')):
-                evidence = node['attrs']
-                if evidence.get('award') is not None:
-                    continue
-                evidence = {**evidence, 'award': economy.assessment(
-                    {'checks': evidence['checks'], 'artifacts': evidence['artifacts']})}
-                graph.upsert_node({**node, 'attrs': evidence})
-                agent_id = _agent_id(graph, evidence)
-                _details(graph, node['id'], agent_id, evidence)
-                count += 1
-            return count
-        return self.sealed.edit(change)
-
-    def migrate_namespace(self, previous: str, current: str) -> int:
-        """Move historical scope metadata once while preserving immutable record and award IDs."""
-        if len(previous) != 64 or any(char not in '0123456789abcdef' for char in previous) \
-                or not current.startswith('workspace:') or len(current) != 42 \
-                or any(char not in '0123456789abcdef' for char in current[10:]):
-            raise ValueError('migration needs an old path digest and coordinator ID')
-        def change(graph):
-            _namespace_collisions(graph, previous, current)
-            count = 0
-            for kind in ('work_evidence', 'work_contribution', 'work_agent', 'work_task_reference'):
-                for node in graph.nodes(kind):
-                    attrs = node['attrs']
-                    if attrs.get('workspace') == previous:
-                        graph.upsert_node({**node, 'attrs': {**attrs, 'workspace': current,
-                                                           'origin_workspace': previous}})
-                        count += kind in ('work_evidence', 'work_contribution')
-            if count:
-                key = 'work-migration:' + hashlib.sha256(f'{previous}:{current}'.encode()).hexdigest()
-                graph.upsert_node({'id': key, 'kind': 'work_namespace_migration', 'label': current,
-                                   'attrs': {'from': previous, 'to': current, 'records': count}})
-            return count
-        return self.sealed.edit(change)
-
     def standings(self, workspace: str) -> list[dict[str, Any]]:
         """Completion counts and evidence for each agent in ``workspace``."""
         graph = self.sealed.graph()
@@ -196,13 +156,3 @@ def _agent_id(graph, evidence):
                      if _matches(node, evidence, ('workspace', 'agent'))), None)
     return existing or 'work-agent:' + hashlib.sha256(
         f"{evidence['workspace']}:{evidence['agent']}".encode()).hexdigest()
-
-
-def _namespace_collisions(graph, previous, current):
-    for kind, fields in (('work_evidence', ('agent', 'task')), ('work_contribution', ('completion',))):
-        rows = graph.nodes(kind)
-        targets = {tuple(node['attrs'][key] for key in fields) for node in rows
-                   if node['attrs'].get('workspace') == current}
-        if any(tuple(node['attrs'][key] for key in fields) in targets for node in rows
-               if node['attrs'].get('workspace') == previous):
-            raise ValueError('namespace migration would merge duplicate independent awards or reviews')

@@ -15,7 +15,6 @@ import pytest
 
 import poolhouse.setup as stack_setup
 from poolhouse import sandbox, sentinel
-from poolhouse.sandbox.container import Container
 from poolhouse.sandbox.run import wrapped
 from poolhouse.serve import (
     binary,
@@ -30,7 +29,7 @@ from poolhouse.serve.build_paths import BuildFailed, builds_dir, current_link, r
 from poolhouse.serve.llamacpp_smoke import Result
 from tests.binary_fetch_guard import no_build_is_made_or_fetched  # noqa: F401  (an autouse fixture)
 from tests.llamacpp_site import UpstreamSite, toolchain
-from tests.sandbox_kit import require_native_sandbox
+from tests.sandbox_kit import AbsentBackend, require_native_sandbox
 
 
 def passes(binary_path, model=None, say=None):
@@ -355,7 +354,7 @@ def test_missing_native_sandbox_refuses_managed_compile(site, pipe, monkeypatch)
 
     def refuse(argv, policy, **kwargs):
         launched.append(argv)
-        return wrapped(argv, policy, via=Container())
+        return wrapped(argv, policy, via=AbsentBackend())
 
     monkeypatch.setattr(llamacpp_compile.sandbox, "run", refuse)
     env = llamacpp_update.Env(site.upstream, pipe, toolchain(), 2, passes)

@@ -8,7 +8,7 @@ passphrase in ``POOLHOUSE_DEVICE_KEY_PASSPHRASE``, or, when there is neither, in
 ``device.key`` holds a note that is not a key, so a node that does not know of the keystore stops on it instead of making another identity.
 
 The supervisor asks `release` for the key and gives it to the node on its standard input; the node never writes it. A key that
-is in a file moves into the keystore when the node is next started on a computer whose keystore is ready (`release`), or by `poolhouse node key --migrate`. A device never gets another key by
+is in a file moves into the keystore when the node is next started on a computer whose keystore is ready (`release`). A device never gets another key by
 losing its record: a state directory that holds the files of a device and no record of its key is refused.
 """
 

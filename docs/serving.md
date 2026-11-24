@@ -473,8 +473,7 @@ starting or adopting anything; `poolhouse-models fetch hf:owner/repo/file.gguf` 
 every shard of a build into the same cache ahead of time (the standard Hugging Face hub cache,
 `blobs/<digest>` with a `snapshots/<commit>/` link, the same one `hf` uses; the file a server is
 started on is that snapshot link, and sentinel's pin from the pull is kept on the blob it points
-at), so a benchmark's timed window never pays for the download. Models an older version put in
-`~/.poolhouse/models` are moved there once by `poolhouse-models migrate plan` then `run`, and the decider's, the weights views' and the drafters' copies by `poolhouse-models adopt plan` then `run` (`docs/model-discovery.md`, "Adopting the models kept outside the cache"); the speculative engine's quantized DFlash and MTP drafters are kept there as `poolhouse-derived/...` repositories, keyed by the source repository and commit. A lease also records `load_s` (and `warmup_s`, from one short
+at), so a benchmark's timed window never pays for the download. The decider's, the weights views' and the drafters' copies are taken in by `poolhouse-models adopt plan` then `run` (`docs/model-discovery.md`, "Adopting the models kept outside the cache"); the speculative engine's quantized DFlash and MTP drafters are kept there as `poolhouse-derived/...` repositories, keyed by the source repository and commit. A lease also records `load_s` (and `warmup_s`, from one short
 completion sent right after the health check, so the first *measured* question is not the
 one paying for shader compilation) — both show up in `poolhouse-serve status --json`, and the
 load timeout itself scales with the weights on disk (`60s + 1.5s/GB`, floor 300s) rather than

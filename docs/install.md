@@ -54,9 +54,7 @@ Declining leaves your cache alone. It never copies.
 That cache is also where Poolhouse puts what it downloads. `poolhouse-models pull`, `fetch`, `snapshot`
 and serving an `hf:` reference write the layout `huggingface_hub` writes (`models--owner--repo/blobs`,
 `snapshots/<commit>`, `refs`) into whichever folder `HF_HUB_CACHE`, `HF_HOME` or `XDG_CACHE_HOME` names,
-so `hf`, transformers and Poolhouse share one copy. Earlier versions kept models in `~/.poolhouse/models`;
-`poolhouse-models migrate plan` then `poolhouse-models migrate run` move them into the cache once
-(docs/model-discovery.md, "Moving the old store").
+so `hf`, transformers and Poolhouse share one copy.
 
 Everything Poolhouse keeps for itself is under `~/.poolhouse`: the measured records, the runs
 store, the llama.cpp builds it made, the record of which model servers are running, and how

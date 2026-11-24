@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 
@@ -20,12 +21,20 @@ from poolhouse import home, hub
 from poolhouse.hub import adopt, derived, hfstore, remote
 from poolhouse.log import say, warn
 from poolhouse.serve.models_adopt_sources import Draft, decide_folders, drafters, weight_views
-from poolhouse.serve.models_migrate import append_log
 from poolhouse.units import human_bytes
 
 __all__ = ["Part", "Report", "command", "run"]
 
 LOG = "models-adopt.log"
+
+
+def append_log(name: str, lines: list[str]) -> None:
+    """Append ``lines`` with a time to ``<state>/<name>``, the log a command keeps of what it did."""
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%S")
+    where = home.state(name)
+    where.parent.mkdir(parents=True, exist_ok=True)
+    with where.open("a", encoding="utf-8") as out:
+        out.writelines(f"{stamp} {line}\n" for line in lines)
 
 
 @dataclass

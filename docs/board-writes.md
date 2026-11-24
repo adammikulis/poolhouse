@@ -32,7 +32,7 @@ Ranked by rows per day over the whole period.
 | rank | writer (code) | rows | per day, all | per day, now | read by | acted on | now |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | test file claim and end: `testboard.BoardEvents.claimed` and `.finished`, one `test-run` and one `test-result` per test file | 17,669 | 2,400 | 2,477 | `scripts/test subscribe --key` | no | cut |
-| 2 | landing queue: `beat`, `state`, `request`, `cancel` rows and their `audit land.*` copies (the old lander) | 14,939 | 2,030 | 0 | the lander runner | no | removed 2026-10-17; `landing.rs` keeps the names as retired |
+| 2 | landing queue: `beat`, `state`, `request`, `cancel` rows and their `audit land.*` copies (the old lander) | 14,939 | 2,030 | 0 | the lander runner | no | removed 2026-10-17 |
 | 3 | test job start and end: `job_started`, `job_done`, two rows per background job | 8,896 | 1,209 | 1,317 | followers of the thread, task watchers | no | cut; the end of a job is one row only when a task watcher follows it |
 | 4 | install claims: `runtime_deploy.owning`, acquire and release for the new tree, the launchers and the selection of every build | 8,033 | 1,091 | 85 | the claim check of the hooks | no | cut to the launchers and the selection of a switch that happens (4 rows); the node writes none (device-only) |
 | 5 | branch and worktree claims: `claim`, `task_worktrees`, the harness hooks | 2,110 | 287 | 151 | the claim check, `scripts/worktrees` | yes, a refusal | branch claims kept; worktree claims cut (device-only) |

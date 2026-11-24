@@ -17,9 +17,7 @@ use crate::row::{is_line, Kind};
 pub const METHODS: [&str; 3] = ["land_review", "land_accepts", "land_trust"];
 /// The grant a session needs, besides having no parent, to name another device whose entries count.
 pub const TRUST: &str = "land_trust";
-/// Events of the landing queue that no longer exists; boards still hold them and they count for nothing.
-const RETIRED: [&str; 6] = ["request", "cancel", "pause", "resume", "state", "beat"];
-const REVIEW_KEYS: [&str; 5] = ["ev", "branch", "sha", "verdict", "standing"];
+pub const REVIEW_KEYS: [&str; 5] = ["ev", "branch", "sha", "verdict", "standing"];
 
 pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
@@ -54,9 +52,6 @@ fn full_sha(sha: &str) -> bool {
 /// Check the fields of one landing entry, with the rules a peer applies to a row it receives.
 pub fn check(map: &Map<String, Value>) -> Result<()> {
     let ev = word(map, "ev", 16)?;
-    if RETIRED.contains(&ev.as_str()) || map.contains_key("req") {
-        return Ok(());
-    }
     if ev != "review" || map.keys().any(|k| !REVIEW_KEYS.contains(&k.as_str())) {
         return bad("a landing entry is a review of a branch, a commit and a verdict");
     }
@@ -164,7 +159,7 @@ fn accepts(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) ->
     let creators = creators(node, board, branch, worktree)?;
     let entries = node.view(board)?;
     let mut last: BTreeMap<String, &Entry> = BTreeMap::new();
-    for e in entries.iter().filter(|e| e.kind == Kind::Landing && e.origin == own && field(e, "ev") == "review" && !e.fields.contains_key("req")) {
+    for e in entries.iter().filter(|e| e.kind == Kind::Landing && e.origin == own && field(e, "ev") == "review") {
         if field(e, "sha") == sha {
             last.insert(e.sender.clone(), e);
         }

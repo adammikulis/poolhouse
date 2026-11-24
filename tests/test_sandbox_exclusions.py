@@ -184,11 +184,11 @@ def test_backend_revalidates_aliases_created_after_policy_validation(tmp_path):
 
 
 def test_exclusions_cannot_be_downgraded_to_unsandboxed_execution(tmp_path):
-    from poolhouse.sandbox.container import Container
+    from tests.sandbox_kit import AbsentBackend
 
     marker = tmp_path / "ran"
     held = sandbox.Policy(deny_write=(str(tmp_path / "control"),))
     with pytest.raises(sandbox.PolicyError, match="cannot run without"):
-        sandbox.run(["/usr/bin/touch", str(marker)], held, via=Container(),
+        sandbox.run(["/usr/bin/touch", str(marker)], held, via=AbsentBackend(),
                     unsandboxed=sandbox.AllowUnsandboxed("requested fallback"))
     assert not marker.exists()

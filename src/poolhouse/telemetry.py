@@ -14,11 +14,6 @@ llama.cpp's ``timings`` reports. `Spent` is now the sum of its `Call`s -- `Spent
 builds one and folds it in -- and with ``keep_calls`` it keeps them, so an answer can be
 read call by call and not only as a total.
 
-The bench's trace entries are the same record in a dict: `Call.from_trace` reads one back,
-so ``python -m poolhouse.bench show --trace`` and a page's ``/metrics`` can print the same rows. The
-two-line change that would make the bench *write* `Call` rather than a hand-built dict is
-in `from_trace`'s docstring; measure.py is not edited here.
-
 Nothing in this module talks to a server or a store. It is a record and its arithmetic, so
 a test builds one from a fake reply in a line.
 """
@@ -211,68 +206,6 @@ class Call:
         """One record `public` wrote, read back; the keys it derives are left out."""
         known = {f.name for f in fields(cls)}
         return cls(**{k: v for k, v in (one or {}).items() if k in known})
-
-    @classmethod
-    def from_trace(cls, entry: Mapping[str, Any]) -> Call:
-        """One entry of the bench's transcript (`Counting.trace`) as a `Call`.
-
-        The bench writes an assistant entry per reply -- ``model``, ``content``/``chars``,
-        ``thinking_chars``, ``finish``, ``seconds``, ``offered``, ``tool_calls`` and the
-        ``timings`` and ``tokens`` it read off the same reply -- and a ``tool`` entry per
-        result, with the result's ``chars`` and the ``ids`` it named. Both map here: an
-        assistant entry fills the timings, a tool entry fills ``tool``, ``result_chars``
-        and ``result_ids`` and leaves them zero. Anything else (``role: "tools"``, the
-        system and user messages) comes back as an empty record, so a caller can map a
-        whole trace and drop the empties.
-
-        The two-line change that would make `measure.Counting._reply` *write* this record
-        rather than a dict shaped like it, once nobody reads the old key names::
-
-            from poolhouse.telemetry import Call                       # 1: the import
-            ...
-            self.trace.append(Call.from_reply(reply, took, offered=tools,   # 2: the body
-                                              cap=TRACE_CAP).public())
-
-        It is not made here: `bench.transcript` and ``show --trace`` read the old keys, and
-        the run store on disk is full of them. `from_trace` is the bridge until then, and
-        is what lets ``show --trace`` print a page's calls and a bench's the same way.
-        """
-        entry = dict(entry or {})
-        role = str(entry.get("role") or "")
-        if role == "tool":
-            return cls(tool=str(entry.get("name") or ""),
-                       result_chars=int(entry.get("chars") or 0),
-                       result_ids=int(entry.get("ids") or 0))
-        if role != "assistant":
-            return cls()
-        timings = entry.get("timings") or {}
-        tokens = entry.get("tokens") or {}
-        made = [{"name": str(one.get("name") or ""),
-                 "args": args_summary(one.get("args"))}
-                for one in (entry.get("tool_calls") or ()) if isinstance(one, Mapping)]
-        return cls(
-            when=float(entry.get("when") or 0.0),
-            model=str(entry.get("model") or ""),
-            host=str(entry.get("host") or ""), port=int(entry.get("port") or 0),
-            tool=str(entry.get("tool") or "") or " + ".join(one["name"] for one in made),
-            args=dict(made[0]["args"]) if made else {},
-            asked=made,
-            offered=_offered(entry.get("offered")),
-            result_chars=int(entry.get("chars") or 0),
-            result_ids=int(entry.get("ids") or 0),
-            finish=str(entry.get("finish") or ""),
-            thinking_chars=int(entry.get("thinking_chars") or 0),
-            prompt_ms=float(timings.get("prompt_ms") or 0),
-            predicted_ms=float(timings.get("predicted_ms") or 0),
-            prompt_n=int(timings.get("prompt_n") or 0),
-            cache_n=int(timings.get("cache_n") or 0),
-            predicted_n=int(timings.get("predicted_n") or 0),
-            draft_n=int(timings.get("draft_n") or 0),
-            draft_n_accepted=int(timings.get("draft_n_accepted") or 0),
-            prompt_tokens=int(tokens.get("prompt") or 0),
-            completion_tokens=int(tokens.get("completion") or 0),
-            seconds=float(entry.get("seconds") or 0.0),
-        )
 
     # ------------------------------------------------------------------ arithmetic
 

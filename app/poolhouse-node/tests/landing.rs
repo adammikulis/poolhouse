@@ -93,7 +93,7 @@ fn a_session_of_another_board_or_a_retired_one_asks_nothing() {
 }
 
 #[test]
-fn entries_of_the_retired_landing_queue_fold_and_count_for_nothing() {
+fn entries_of_the_removed_landing_queue_are_refused_and_count_for_nothing() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let ((worker, _), (judge, _), (_, lt)) = (session(&mut n, "demo", "worker"), session(&mut n, "demo", "judge"), session(&mut n, "demo", "pusher"));
@@ -106,11 +106,12 @@ fn entries_of_the_retired_landing_queue_fold_and_count_for_nothing() {
         (&worker, json!({"ev": "beat", "what": "x"})),
         (&worker, json!({"ev": "pause", "reason": "r"})),
     ];
+    let old_count = old.len();
     for (actor, body) in old {
         n.host("demo").unwrap().board.append(Kind::Landing, actor, body, "").unwrap();
     }
     assert!(reviewers(&accepts(&mut n, &lt, &tip)).is_empty(), "a review of the queue names a request, not a branch, and counts for nothing");
-    assert!(n.host("demo").unwrap().board.rejected().is_empty(), "the old entries fold: {:?}", n.host("demo").unwrap().board.rejected());
+    assert_eq!(n.host("demo").unwrap().board.rejected().len(), old_count, "every old entry is refused: {:?}", n.host("demo").unwrap().board.rejected());
 }
 
 fn child(n: &mut Node, parent_token: &str, id: &str) -> (String, String) {

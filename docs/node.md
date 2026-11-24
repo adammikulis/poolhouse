@@ -372,9 +372,8 @@ never runs `verify_cmd`: a client does and records `exit` and the SHA-256 of the
 live session behind the token. `land_accepts` (`sha`, and optionally `branch` and `worktree`) answers the push hook and the unmerged runtime deployment: the last review of
 each reviewer of this device for exactly that commit under any branch name, without the caller and, given a branch or worktree,
 without any session that ever held its claim or was started by one (through any number of subagents); a session of that kind
-cannot write a review of the branch either, and the creators of record come back with the answer. Entries of the
-retired landing queue (`request`, `cancel`, `pause`, `resume`, `state`, `beat`, and reviews of a request) fold and count
-for nothing.
+cannot write a review of the branch either, and the creators of record come back with the answer. A landing entry that is not a
+review of a branch, a commit and a verdict is refused.
 `landing.rejected` and `landing.standing` drop a reviewer retired as `revoked` or `forged`. No model identifier decides who may land, review or
 coordinate: the model on a review is the id the session claimed, kept as a label.
 
@@ -807,8 +806,8 @@ listener is the one network port.
   and never read as "new device", and no key is made for a directory that holds a device's files. Only a person starts over, by
   moving the directory aside. A new device is born into the keystore when the keystore's master key exists, or when a person is at
   the screen to be asked its one Keychain question, so nothing else is asked of anyone; otherwise it starts with a weak file.
-  `poolhouse node key` says where the key is kept, and `poolhouse node key --migrate` moves a key out of
-  its file, leaves the note, and restarts the node; a backup made before the move still holds the old key file. A keystore that will
+  `poolhouse node key` says where the key is kept, and a key in a file moves out of it, leaving the note, when the node is next started on
+  a computer whose keystore is ready; a backup made before the move still holds the old key file. A keystore that will
   not answer (locked, not yet up) does not end the supervisor: it says why once a minute in `node.log` and in the error
   `ensure_node` raises, and starts the node when the keystore answers. One that was refused (the person declined the prompt, or
   the system said no) is asked again only after the keystore's own cooldown of ten minutes, and the supervisor leaves after the

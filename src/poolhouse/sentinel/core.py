@@ -394,7 +394,6 @@ class Sentinel:
         that is gone is logged once and its pin dropped after `GONE_SCANS` scans in a row;
         nothing is quarantined for it."""
         out: list[Finding] = []
-        self._release_binaries()
         for pin in self.manifest.pins().values():
             if self.store.state_of(pin.kind, pin.path) == State.QUARANTINED:
                 continue
@@ -420,11 +419,6 @@ class Sentinel:
         elif pin.path not in self._noted_binaries:
             self._noted_binaries.add(pin.path)
             self.bus.emit(found.event)
-
-    def _release_binaries(self) -> None:
-        """End by itself a hold an older version put on a managed binary."""
-        for record in self.store.records(kind="binary", state=State.QUARANTINED):
-            self.store.release(record.id, automatic("release", record.id), "a managed binary is vetted before it runs; nothing holds it")
 
     def _end(self, record: Record, why: str) -> None:
         """End a hold on the sentinel's own rule: what was moved aside is deleted (never put back over a file that may be good), then the

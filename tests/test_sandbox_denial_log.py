@@ -14,7 +14,6 @@ from poolhouse import sandbox, sentinel
 from poolhouse.sandbox import denial_log, policies, run
 from poolhouse.sandbox.backend import NO_REFUSAL_LOG
 from poolhouse.sandbox.bubblewrap import Bubblewrap
-from poolhouse.sandbox.container import Container
 from poolhouse.sandbox.denial_log import DenialLog, parse
 from poolhouse.sentinel.adapters import sandbox_listener
 from poolhouse.sentinel.score import UNATTRIBUTED_WEIGHT, WEIGHTS
@@ -214,8 +213,8 @@ def test_a_run_that_was_not_diagnosed_does_not_claim_its_refusals_were_unreadabl
 
 
 def test_a_backend_that_keeps_no_refusal_log_says_so_instead_of_reporting_a_clean_run():
-    assert Bubblewrap().denials("tag", 0.0) is None and Container().denials("tag", 0.0) is None
-    assert Bubblewrap().unreadable("tag") == Container().unreadable("tag") == NO_REFUSAL_LOG
+    assert Bubblewrap().denials("tag", 0.0) is None and UnloggedBackend().denials("tag", 0.0) is None
+    assert Bubblewrap().unreadable("tag") == UnloggedBackend().unreadable("tag") == NO_REFUSAL_LOG
 
 
 def test_a_failed_run_on_a_backend_without_a_refusal_log_cannot_pass_check(tmp_path):

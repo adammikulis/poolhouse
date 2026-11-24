@@ -28,7 +28,6 @@ const AUDIT_KEYS: [&str; 3] = ["event", "subject", "detail"];
 const GRANT_KEYS: [&str; 19] = ["op", "board", "gid", "to", "action", "scope", "at_ms", "until_ms", "uses", "conditions", "person", "sig", "reason", "target", "user", "approval", "key", "since", "pool"];
 const ROOM_KEYS: [&str; 5] = ["op", "room", "who", "title", "open"];
 const ROOM_OPS: [&str; 4] = ["create", "join", "leave", "add"];
-const LANDING_KEYS: [&str; 14] = ["ev", "branch", "sha", "target", "selectors", "replaces", "req", "verdict", "status", "detail", "evidence", "reason", "what", "standing"];
 pub const BODY_BYTES: usize = 64 * 1024;
 const NOTES_PER_SENDER: usize = 200;
 
@@ -269,7 +268,7 @@ fn room(row: &Row, ctx: &mut Context, foreign: bool) -> Result<(String, Map<Stri
 }
 
 fn landing(row: &Row, ctx: &mut Context, foreign: bool) -> Result<(String, Map<String, Value>)> {
-    let map = only(&row.body, &LANDING_KEYS)?;
+    let map = only(&row.body, &crate::landing::REVIEW_KEYS)?;
     let who = sender(row, None, ctx, foreign)?;
     crate::landing::check(&map)?;
     Ok((who, map))
