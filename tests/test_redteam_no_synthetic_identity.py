@@ -32,7 +32,6 @@ REGISTERED_BY = {
     "src/poolhouse/board/public.py": {"register"},
     "src/poolhouse/board/session.py": {"register"},
     "src/poolhouse/harnessid.py": {"register"},
-    "src/poolhouse/node_join.py": {"register"},
     "src/poolhouse/node_join_check.py": {"register"},
     "src/poolhouse/workspace/board_cli.py": {"register"},
     "src/poolhouse/workspace/codex_hooks.py": {"register"},

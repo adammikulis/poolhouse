@@ -4,21 +4,24 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from dataclasses import asdict, is_dataclass
 from typing import Any
 
-from poolhouse import errors
+from poolhouse import errors, node_join
 from poolhouse.api import pool
 from poolhouse.fleet import compute_cli
 from poolhouse.fleet.onboard.cli import add_service_commands, run as run_service
 from poolhouse.log import say, warn
+
+JOIN_CODE_ENV = "POOLHOUSE_JOIN_CODE"
 
 
 def parser() -> argparse.ArgumentParser:
     """Return the parser for pool membership operations."""
     root = argparse.ArgumentParser(prog="poolhouse-pool", description=__doc__)
     commands = root.add_subparsers(dest="cmd", required=True)
-    for name in ("status", "members", "found", "add-device", "join", "remove", "leave", "sync"):
+    for name in ("status", "members", "found", "add-device", "join", "listen", "remove", "leave", "sync"):
         command = commands.add_parser(name)
         command.add_argument("--json", action="store_true", help="print the structured node result")
         if name == "found":
@@ -27,10 +30,12 @@ def parser() -> argparse.ArgumentParser:
         elif name == "add-device":
             command.add_argument("--ttl", type=int, default=300, help="seconds the join code remains valid")
         elif name == "join":
-            command.add_argument("code", nargs="?", default="")
+            command.add_argument("code", nargs="?", default="", help=f"the code the other device showed (else {JOIN_CODE_ENV} in the environment)")
             command.add_argument("--host", required=True, help="the device offering the pool")
             command.add_argument("--port", type=int, default=pool.DEFAULT_PORT)
             command.add_argument("--fingerprint", default="", help="the signed beacon's fingerprint for an open pool")
+        elif name == "listen":
+            command.add_argument("--yes", action="store_true", help="agree to turning the network on without being asked")
         elif name == "remove":
             command.add_argument("device")
         elif name == "members":
@@ -56,7 +61,13 @@ def execute(args: argparse.Namespace) -> Any:
         case "add-device":
             return pool.add_device(args.ttl)
         case "join":
-            return pool.join(args.host, args.code, port=args.port, fingerprint=args.fingerprint)
+            return pool.join(args.host, args.code or os.environ.get(JOIN_CODE_ENV, ""), port=args.port, fingerprint=args.fingerprint)
+        case "listen":
+            try:
+                node_join.consent(node_join.DEFAULT_PORT, node_join.DEFAULT_BEACON_PORT, yes=args.yes)
+            except node_join.PoolError as exc:
+                raise errors.Error(str(exc)) from exc
+            return pool.listen(agreed=True)
         case "remove":
             return pool.remove(args.device)
         case "leave":

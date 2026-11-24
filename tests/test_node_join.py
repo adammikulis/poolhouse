@@ -1,5 +1,5 @@
 """Joining a pool by the beacon with real node processes: two devices (two state directories) enrol each other under
-`open`, share a board, and a revoked one stays out; the CLI turns the network on; the check names the step that fails."""
+`open`, share a board, and a revoked one stays out; `poolhouse pool listen` turns the network on; the check names the step that fails."""
 
 from __future__ import annotations
 
@@ -9,12 +9,8 @@ import socket
 from pathlib import Path
 
 import pytest
-from node_kit import allow
 
-from poolhouse import node_join, node_join_check, node_launch
-from poolhouse.board import session as board_session
-from poolhouse.board.client import Client
-from poolhouse.fleet.onboard.manifest import Signer
+from poolhouse import node_join, node_join_check, node_launch, pool_cli
 from poolhouse.node_health import call
 from tests import test_node_launch as launch
 
@@ -49,13 +45,6 @@ def say(state: Path, text: str) -> str:
     token = call(state, "register", {"model": "claude-sonnet-5-5", "harness": "claude-code", "session": state.name}, board="demo")["token"]
     call(state, "post", {"kind": "message", "fields": {"type": "status", "body": text}}, board="demo", token=token)
     return token
-
-
-def allowed(state: Path, person: Signer, *actions: str) -> None:
-    """The test person grants the pool session of the node at ``state`` (the one `node_join` acts as) what it names."""
-    token = node_join._token(state)
-    client = Client(state)
-    allow(board_session.Session(client, node_join.BOARD, token, client.call("whoami", node_join.BOARD, token)["name"]), person, *actions)
 
 
 def bodies(state: Path, token: str) -> list[str]:
@@ -126,5 +115,4 @@ def test_turning_the_network_on_needs_the_yes_flag_and_asks_nobody_and_starts_no
     with pytest.raises(node_join.PoolError, match="stays off"):
         node_join.consent(1, 2, yes=False)
     node_join.consent(1, 2, yes=True)
-    assert node_join.main(["join", "--state", str(home / "never")]) == 1, "no --yes: refused before any node starts, and nothing was asked"
-    assert not (home / "never").exists()
+    assert pool_cli.main(["listen"]) == 1, "no --yes: refused before any node starts, and nothing was asked"

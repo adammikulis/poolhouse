@@ -32,7 +32,7 @@ step that passes may print what it measured. The exit status is 1 when any step 
 * With `--wsl`, one more device behind NAT, described below.
 
 Every node runs under the real supervisor (`node_launch`), is asked through its real local socket, and joins through the real join path
-(`add_device` and `join_pool`, which `python -m poolhouse.node_join` calls) with an explicit address: Docker Desktop cannot carry
+(`add_device` and `join_pool`, which `poolhouse pool add-device` and `poolhouse pool join` call) with an explicit address: Docker Desktop cannot carry
 multicast to the machine it runs on, so discovery by beacon is not exercised.
 
 ### The rig is the person of its pool

@@ -176,7 +176,7 @@ def step_converge(c: Check) -> Step:
 
     _until(c, other_wrote, c.wait_s)
     if not seen:
-        return Step("converge", False, "the other device's message did not arrive", "run the check on the other device too, then sync: python -m poolhouse.node_join status")
+        return Step("converge", False, "the other device's message did not arrive", "run the check on the other device too, then sync: poolhouse pool status")
     return Step("converge", True, f"received: {seen[0]}")
 
 

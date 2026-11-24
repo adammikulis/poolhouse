@@ -101,9 +101,9 @@ code is valid for five minutes; you read it from the Mac's session, never from t
 
 ```sh
 # on the Mac (its agent runs this)
-python -m poolhouse.node_join invite            # prints {"code": "...", "port": 7447, "expires_in_s": 300, ...}
+poolhouse pool add-device --json          # prints {"code": "...", "port": 7447, "expires_in_s": 300, ...}
 # on this device (the Mac's agent sends you the code and the Mac's address over the board; the code is short-lived)
-POOLHOUSE_JOIN_CODE=CODE python -m poolhouse.node_join join-with-code --host MAC_ADDRESS
+POOLHOUSE_JOIN_CODE=CODE poolhouse pool join --host MAC_ADDRESS
 ```
 
 The code is in the environment, not the command line, so it is not left in a process list. Do not write it in a

@@ -8,7 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import device_host, device_setup, node_binary, node_join
+from poolhouse import device_host, device_setup, node_binary, node_join, pool_cli
+from poolhouse.api import pool
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -133,10 +134,11 @@ def test_a_missing_firewall_rule_after_the_prompt_is_not_ready_with_the_fix(monk
     assert "NOT READY" in capsys.readouterr().err
 
 
-def test_joining_without_a_code_is_refused_before_the_node_is_asked(tmp_path, monkeypatch, capsys):
-    monkeypatch.delenv(node_join.JOIN_CODE_ENV, raising=False)
-    assert node_join.main(["join-with-code", "--host", "192.0.2.1", "--state", str(tmp_path)]) == 1
-    assert node_join.JOIN_CODE_ENV in capsys.readouterr().err
+def test_joining_without_a_code_is_refused_before_the_node_is_asked(monkeypatch, capsys):
+    monkeypatch.delenv(pool_cli.JOIN_CODE_ENV, raising=False)
+    monkeypatch.setattr(pool.founding, "ticket_for", lambda *a, **k: pytest.fail("the node was asked"))
+    assert pool_cli.main(["join", "--host", "192.0.2.1"]) == 1
+    assert "give the code" in capsys.readouterr().out
 
 
 def _recorded(monkeypatch, stdout=""):

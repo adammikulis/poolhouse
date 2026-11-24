@@ -893,7 +893,7 @@ the multicast group and each network's broadcast address (`netif.rs` reads the i
 a segment), each beacon advertising the address of the interface it leaves by. Open join is accepted from, and dialled
 to, an address inside a subnet of this machine only. `pool_status` adds `beacon_sent|heard|own|rejected`, the last send
 error and `last_join`: a node that sends but never hears its own beacon is blocked by the system (macOS Local Network,
-a firewall, WSL2 NAT). `python -m poolhouse.node_join join` starts it that way after showing what
+a firewall, WSL2 NAT). `poolhouse pool listen` starts it that way after showing what
 it does and getting a yes (`--yes` for a script), and `scripts/pool-join-check` walks every step on one device and prints
 the fix for the first that fails.
 

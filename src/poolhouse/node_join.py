@@ -1,7 +1,5 @@
-"""Join this device to a pool by the beacon: start the node with its network on, and show who is in.
-
-    python -m poolhouse.node_join join [--state DIR] [--binary PATH] [--wait SECONDS]
-    python -m poolhouse.node_join status [--state DIR]
+"""Join this device to a pool by the beacon: start the node with its network on, and show who is in. A library: `poolhouse pool listen` and
+`poolhouse pool join` are the commands.
 
 A device in no pool joins an `open` pool whose signed beacon it hears on the same network; each enrolment is recorded (by `open`, with the certificate fingerprint) and can be revoked
 with `member_remove`. A `secure` pool takes no one without a join code; a pool is founded on this device by its own key, with nothing asked. `pool-join-check` (scripts/) walks every step
@@ -10,24 +8,16 @@ of this on one device and says which fails and what to change.
 
 from __future__ import annotations
 
-import json
-import os
 import time
 from pathlib import Path
 
 from poolhouse import node_binary, node_pool, node_supervise
-from poolhouse.board import person_key
-from poolhouse.board.terminal import terminal_id
-from poolhouse.command import Group, flag
-from poolhouse.log import say, warn
+from poolhouse.log import say
 from poolhouse.node_health import call, node_health
-from poolhouse.node_launch import NodeUnavailable, default_state, ensure_node, stop_node
+from poolhouse.node_launch import NodeUnavailable, ensure_node, stop_node
 
 DEFAULT_PORT = 7447
 DEFAULT_BEACON_PORT = 7448
-BOARD = "pool"
-SESSION = "pool-join"
-JOIN_CODE_ENV = "POOLHOUSE_JOIN_CODE"
 POLL_S = 1.0
 
 
@@ -53,7 +43,7 @@ def consent(port: int, beacon_port: int, *, yes: bool) -> None:
     """
     say(EXPLANATION.format(port=port, beacon_port=beacon_port))
     if not yes:
-        raise PoolError("the network stays off: pass --yes to turn it on after reading the above")
+        raise PoolError("the network stays off: pass --yes (`poolhouse pool listen --yes`) to turn it on after reading the above")
 
 
 def network_args() -> list[str]:
@@ -71,17 +61,6 @@ def pin_binary(state: Path, binary: Path) -> None:
 def status(state: Path) -> dict:
     """The node's `pool_status`: the pool, the policy, the members, and what the beacon has sent and heard."""
     return call(state, "pool_status")
-
-
-def _token(state: Path) -> str:
-    """A session on the board `pool` (the same one each time from one terminal); changing the pool needs a registered session."""
-    return call(state, "register", {"model": "claude-sonnet-5-5", "harness": "poolhouse-pool", "session": f"{SESSION}-{terminal_id()}"}, board=BOARD)["token"]
-
-
-def _act(state: Path, method: str, params: dict) -> dict:
-    """``method`` as the pool session; a person at a terminal who holds a key allows what the node says is missing."""
-    token = _token(state)
-    return person_key.retrying(state, token, lambda: call(state, method, params, token=token))
 
 
 def _wants_restart(state: Path, port: int) -> bool:
@@ -120,53 +99,3 @@ def join(state: Path, *, wait_s: float = 0.0, **start_args) -> dict:
         if others(shown) or time.monotonic() >= end:
             return shown
         time.sleep(POLL_S)
-
-
-def _run(handler):
-    def command(args) -> int:
-        state = Path(args.state) if args.state else default_state()
-        try:
-            result = handler(state, args)
-        except OSError as exc:
-            warn(f"pool: {exc}")
-            return 1
-        say(json.dumps(result))
-        return 0
-    return command
-
-
-STATE = flag("--state", default="", help="the node's state directory (default: the machine's)")
-GROUP = Group("poolhouse.node_join", "Join this device to a pool by the beacon.")
-def _join(state: Path, a) -> dict:
-    consent(DEFAULT_PORT, DEFAULT_BEACON_PORT, yes=a.yes)
-    return join(state, wait_s=a.wait, binary=Path(a.binary) if a.binary else None)
-
-
-GROUP.add("join", _run(_join),
-    help="start the node with its network on, so a device in no pool joins an open pool it hears",
-    options=[STATE, flag("--wait", type=float, default=0.0, help="seconds to wait for another device to appear"),
-             flag("--yes", action="store_true", help="agree to turning the network on without being asked"),
-             flag("--binary", default="", help="run this poolhouse-node binary instead of the selected runtime's")])
-def _invite(state: Path, a) -> dict:
-    return _act(state, "add_device", {"ttl_s": a.ttl})
-
-
-def _join_with_code(state: Path, a) -> dict:
-    code = a.code or os.environ.get(JOIN_CODE_ENV, "")
-    if not code:
-        raise PoolError(f"give the code the other device printed: --code, or {JOIN_CODE_ENV} in the environment")
-    return _act(state, "join_pool", {"host": a.host, "port": a.port, "passphrase": code})
-
-
-GROUP.add("invite", _run(_invite), help="make a short-lived join code for another device to join this pool with (policy secure)",
-    options=[STATE, flag("--ttl", type=int, default=300, help="seconds the code stays valid")])
-GROUP.add("join-with-code", _run(_join_with_code), help="join the pool of the device that printed a join code",
-    options=[STATE, flag("--host", required=True, help="that device's address"), flag("--port", type=int, default=DEFAULT_PORT),
-             flag("--code", default="", help=f"the code (else {JOIN_CODE_ENV})")])
-GROUP.add("status", _run(lambda state, a: status(state)), help="the pool, its members and the beacon's counts", options=[STATE])
-
-main = GROUP.run
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
