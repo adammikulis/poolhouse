@@ -68,13 +68,13 @@ def count_tokens(client: Any, text: str) -> tuple[int | None, str]:
     ``/tokenize``, else ``reply`` from a one-token request's prompt count; ``(None,
     "unknown")`` when it will say neither."""
     if hasattr(client, "tokenize"):
-        with contextlib.suppress(ServerError, NotImplementedError):  # no /tokenize here
+        with contextlib.suppress(ServerError):  # no /tokenize here
             got = client.tokenize(text)
             if got:
                 return len(got), "tokenize"
     try:
         reply = client.chat([{"role": "user", "content": text}], think=False, n_predict=1)
-    except (ServerError, NotImplementedError):  # a server that will not answer counts nothing
+    except ServerError:  # a server that will not answer counts nothing
         return None, "unknown"
     timings = timings_of(reply)
     if timings.get("prompt_n") is not None:
@@ -135,11 +135,11 @@ def _one(client: Any, text: str, *, generate: int) -> dict[str, Any]:
         if not first:
             first.append(time.perf_counter() - started)
 
-    streamed = getattr(client, "api", "") != "ollama"
+    streamed = getattr(client, "streams", True)
     try:
         reply = client.chat([{"role": "user", "content": text}], think=False,
                             **({"on_delta": arrived} if streamed else {}))
-    except (ServerError, NotImplementedError) as exc:  # a failed request is a result
+    except ServerError as exc:  # a failed request is a result
         error = f"{type(exc).__name__}: {exc}"[:200]
     wall = time.time() - began
     timings = timings_of(reply) if reply is not None else {}

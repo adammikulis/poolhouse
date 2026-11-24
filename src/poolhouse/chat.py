@@ -334,10 +334,8 @@ class Chat:
                 self.person.stdout.write(text)
                 self.person.stdout.flush()
 
-        try:
-            reply = self.client.chat(self.messages, think=False, tools=schemas, on_delta=delta)
-        except NotImplementedError:
-            reply = self.client.chat(self.messages, think=False, tools=schemas)
+        streams = getattr(self.client, "streams", True)
+        reply = self.client.chat(self.messages, think=False, tools=schemas, **({"on_delta": delta} if streams else {}))
         said = getattr(reply, "content", "") or ""
         shown = self.watch.screen_model(said).text
         if streamed:

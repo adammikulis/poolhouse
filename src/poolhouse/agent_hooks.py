@@ -67,10 +67,6 @@ def _own(command_line: str) -> bool:
         words = shlex.split(command_line)
     except ValueError:
         return False
-    legacy = home.user_home() / home.DEFAULT_NAME / "hooks" / "claude-nudge.sh"
-    if ((words and words[:-1] in ([], ["sh"]) and home.expand(words[-1]) == legacy)
-            or words in (["python", "-m", "poolhouse.codex_lifecycle"], ["python3", "-m", "poolhouse.codex_lifecycle"])):
-        return True
     if len(words) < 2 or words[0] != BINARY:
         return False
     options = {"nudge": {"--agent", "--hook"}, "codex-hook": {"--assigned"}, "codex-stop": {"--assigned"}}

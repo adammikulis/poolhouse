@@ -30,7 +30,6 @@ Backends sit behind one `Backend` protocol (`available`, `wrap`, `denials`):
 |---|---|---|
 | `seatbelt` | macOS, `sandbox-exec -p <profile> -- argv` | implemented, tested against the real tool |
 | `bubblewrap` | Linux, `bwrap --unshare-all --unshare-user --disable-userns --cap-drop ALL --die-with-parent --new-session --clearenv ...` | read grants, network denial, the relay for named ports, nested namespaces, capabilities and the process allowance tested on Ubuntu 24.04 (bubblewrap 0.9.0); model relay and GPU discovery tested on WSL |
-| `container` | any | stub that raises `NotImplementedError`; plan below |
 | none | | `run` raises `SandboxUnavailable` and does not start the command |
 
 Untrusted execution fails closed. Running without a sandbox takes an explicit
@@ -50,8 +49,8 @@ used here anyway.
 - **Mitigations:** it logs one warning per process saying the tool is deprecated;
   `poolhouse security sandbox status` and `poolhouse security status` print it; the binary's
   existence is checked before each use; untrusted execution is refused when it is missing.
-- **Replacement path:** a container backend (below) for CPU-only work, behind the same
-  `Backend` protocol, so the change is one file.
+- **Replacement path:** none is written. A container backend for CPU-only work would sit behind the same
+  `Backend` protocol, so the change would be one file.
 - **GPU workloads have no non-deprecated replacement.** Containers and virtual machines on macOS
   cannot use Metal. A model server on the GPU can only be confined with Seatbelt today. This stays
   true until Apple ships GPU access for containers; nothing in this repository can change that.
@@ -118,8 +117,8 @@ Known limits:
   failed with "Operation not permitted" and the stream carried no refusal for it),
   `Result.denials_unavailable` is set, `Result.check()` raises `SandboxViolation`, and a
   `sandbox.denials-unavailable` event (warning) goes to the sentinel. Only events sent by the
-  kernel's Sandbox extension count as refusals, and only for a run the process watched. Bubblewrap and
-  the container backend keep no refusal log at all: a failed run on them reports
+  kernel's Sandbox extension count as refusals, and only for a run the process watched. Bubblewrap
+  keeps no refusal log at all: a failed run on it reports
   `sandbox.denials-unavailable` with the detail "this backend keeps no refusal log" and
   `Result.check()` raises.
 - The kernel cuts a refusal report over about 1010 bytes at its end, which removes the profile's tag
@@ -239,15 +238,6 @@ builds. Each is a candidate for review as it takes input from an agent.
 Sandbox events go to the sentinel bus through `sentinel.adapters.sandbox_listener`:
 `sandbox.denied` (warning), `sandbox.denials-unavailable` (warning), `sandbox.failure-unreported` (notice), `sandbox.unavailable` (warning), `sandbox.unsandboxed` (warning),
 `sandbox.timeout` (notice).
-
-## Replacement path: container backend
-
-Written when Apple's `container` (or a VM runner) is installed and measured:
-`Container.wrap` turns the policy into `container run --rm --network none --read-only` with the
-read trees mounted read-only, the write trees read-write, an explicit `--env` list and the limits
-as `--cpus`/`--memory`, and a Linux build of the tool inside the image. It serves CPU-only work
-(shells, MCP servers, converters). It cannot serve GPU work. Until then `Container.wrap` raises
-`NotImplementedError` and `available()` is false.
 
 ## Linux
 

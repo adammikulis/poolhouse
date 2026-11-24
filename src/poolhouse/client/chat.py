@@ -328,6 +328,11 @@ class Client:
 
     # --------------------------------------------------------------- calls
 
+    @property
+    def streams(self) -> bool:
+        """Whether ``chat`` can stream its pieces to ``on_delta``; the Ollama api cannot."""
+        return self.api != "ollama"
+
     def chat(
         self,
         messages: list[dict[str, Any]],
@@ -344,10 +349,9 @@ class Client:
         ``("thinking", text)`` and ``("content", text)`` as pieces arrive, and the
         assembled Reply is returned as usual.
         """
-        if self.api == "ollama" and on_delta is not None:
-            raise NotImplementedError(
-                "streaming (on_delta) is not implemented for the Ollama api yet; call "
-                "chat() without on_delta and read the whole Reply")
+        if on_delta is not None and not self.streams:
+            raise ValueError("this api cannot stream: ask `streams` first, and call chat() without on_delta "
+                             "to read the whole Reply")
         body = self.build_body(messages, tools=tools, tool_choice=tool_choice,
                                stream=on_delta is not None, **extra)
         if self.api == "ollama":

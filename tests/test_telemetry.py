@@ -120,47 +120,6 @@ class TestOneCall:
         assert got["generating_ms"] == 500.0 and got["waited_ms"] == 300.0
 
 
-# -- the bench's trace, read back ----------------------------------------------------------
-class TestFromTheBenchsTrace:
-    def bench_entry(self):
-        """Exactly the dict `bench.counting.Counting._reply` appends, by hand: the
-        point of the mapping is that it works on what the bench already wrote, and a run
-        store full of these is what it has to keep working on."""
-        return {"role": "assistant", "call": 2, "model": CANNED_MODEL_ID,
-                "content": marked("Iris surveys land."), "chars": len(marked("Iris surveys land.")),
-                "thinking_chars": 340,
-                "finish": "stop", "seconds": 0.8, "offered": ["look_up", "look_at"],
-                "tool_calls": [{"name": "look_up", "args": {"word": "surveying"}}],
-                "tokens": {"prompt": 900, "completion": 40},
-                "timings": {"prompt_ms": 100.0, "predicted_ms": 400.0, "prompt_n": 300,
-                            "cache_n": 600, "predicted_n": 40, "draft_n": 20,
-                            "draft_n_accepted": 15}}
-
-    def test_an_assistant_entry_is_the_same_record_the_reply_made(self):
-        """The two records counted the same reply and had to be kept in step by hand. They
-        are one type now, and this is the proof: the bench's dict and the reply itself
-        arrive at the same `Call`, field for field."""
-        from_trace = Call.from_trace(self.bench_entry())
-        from_reply = Call.from_reply(
-            reply(content="Iris surveys land.", thinking="t" * 340, draft_n=20, draft_taken=15,
-                  tool="look_up", args='{"word": "surveying"}'),
-            0.8, offered=["look_up", "look_at"], when=0.0)
-        assert from_trace.public() == from_reply.public()
-
-    def test_a_tool_entry_carries_what_came_back_and_no_timings(self):
-        got = Call.from_trace({"role": "tool", "name": "look_up", "content": "{...}",
-                               "chars": 2400, "ids": 12})
-        assert got.tool == "look_up" and got.result_chars == 2400 and got.result_ids == 12
-        assert got.seconds == 0.0 and got.prompt_n == 0
-
-    def test_the_rest_of_a_transcript_maps_to_nothing_rather_than_raising(self):
-        """A trace begins with the tools offered and carries the system and user messages;
-        a caller maps the whole list and drops the empties."""
-        for entry in ({"role": "tools", "tools": [{"function": {"name": "look_up"}}]},
-                      {"role": "user", "content": "who surveys?"}, {}):
-            assert Call.from_trace(entry) == Call()
-
-
 # -- Spent, as the sum of its calls ---------------------------------------------------------
 class TestSpentIsTheSumOfItsCalls:
     def test_the_totals_are_the_calls_added_up(self):

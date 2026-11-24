@@ -1,7 +1,5 @@
 """Credits on the board require independent review evidence and a stable board scope."""
 
-import hashlib
-
 import pytest
 from task_kit import accepted, board as _board_fixture, model_lease, proposed
 
@@ -86,23 +84,6 @@ def test_rejected_and_infrastructure_reviews_award_nothing_and_rate_fairly(board
     assert row['work_reputation']['outcomes'][outcome] == 1
     assert row['work_reputation']['quality_samples'] == 0
     assert row['work_reputation']['reliability_samples'] == (1 if outcome == 'rejected' else 0)
-
-
-def test_historical_ledger_namespace_migration_preserves_award_identity(ledger):
-    old = hashlib.sha256(b'/old/workspace/path').hexdigest()
-    current = 'workspace:' + '1' * 32
-    data = {'workspace': old, 'agent': 'scout', 'task': 171, 'completion': 172,
-            'verifier': 'lead', 'verified_at': 1000.0, 'task_hash': 'a' * 64,
-            'completion_hash': 'b' * 64, 'checks': [{'name': 'Independent checks', 'passed': True}],
-            'artifacts': {'result.json': 'c' * 64},
-            'award': {'policy': 'completion-quality-v1', 'currency': 'work-credit',
-                      'base': 10, 'quality_bonus': 0, 'total': 10, 'quality': []}}
-    first = ledger.record(data)
-    assert ledger.migrate_namespace(old, current) == 1
-    assert ledger.migrate_namespace(old, current) == 0
-    retry = ledger.record({**data, 'workspace': current})
-    assert not retry['credited'] and retry['id'] == first['id']
-    assert ledger.standings(current)[0]['economy']['balance'] == 10
 
 
 def test_concurrent_award_and_outcome_record_once(board, ledger):

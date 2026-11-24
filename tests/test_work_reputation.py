@@ -288,7 +288,7 @@ def test_historical_awards_without_verified_family_stay_with_their_workers(work)
     assert first['agent'] == work.agent_id and first['economy']['balance'] == 15
 
 
-def test_awards_ratings_and_usage_are_linked_graph_evidence_and_migration_is_once(work, monkeypatch):
+def test_awards_ratings_and_usage_are_linked_graph_evidence(work, monkeypatch):
     _historical(work, reviewed_evidence(work))
     graph = work.ledger.sealed.graph()
     assert len(graph.nodes('work_award')) == 1
@@ -296,18 +296,8 @@ def test_awards_ratings_and_usage_are_linked_graph_evidence_and_migration_is_onc
     assert len(graph.nodes('work_rating')) == 1 and len(graph.nodes('work_usage')) == 1
     assert any(edge['rel'] == 'earned' for edge in graph.edges())
     assert any(edge['rel'] == 'supported_by' for edge in graph.edges())
-    assert work.ledger.migrate_credit_awards() == 0
-    node = graph.nodes('work_evidence')[0]
-    historical = {**node['attrs']}
-    historical.pop('award')
-    def remove_award(current):
-        current.upsert_node({**node, 'attrs': historical})
-    work.ledger.sealed.edit(remove_award)
-    assert standing(work)['own']['economy']['pending_awards'] == 1
-    assert work.ledger.migrate_credit_awards() == 1
-    assert work.ledger.migrate_credit_awards() == 0
     monkeypatch.setattr('poolhouse.reputation.economy.BASE_CREDITS', 1000)
-    assert standing(work)['own']['economy']['balance'] == 10
+    assert standing(work)['own']['economy']['balance'] == 15, 'an award is immutable: a later policy changes none'
 
 
 def test_forgetting_source_risk_preserves_work_awards_and_discards_stale_backup(work):

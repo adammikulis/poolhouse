@@ -223,11 +223,12 @@ class TestOllamaChat:
         assert Client(fake.base_url, model=MODEL,
                       transport=Transport(api="ollama")).chat([]).truncated
 
-    def test_streaming_is_refused_with_a_reason(self, server):
+    def test_the_ollama_api_says_it_does_not_stream_and_refuses_a_stream_asked_of_it(self, server):
         fake = an_ollama(server)
-        with pytest.raises(NotImplementedError, match="stream"):
-            Client(fake.base_url, model=MODEL, transport=Transport(api="ollama")).chat(
-                [], on_delta=lambda channel, text: None)
+        client = Client(fake.base_url, model=MODEL, transport=Transport(api="ollama"))
+        assert client.streams is False and Client(fake.base_url, model=MODEL).streams is True
+        with pytest.raises(ValueError, match="stream"):
+            client.chat([], on_delta=lambda channel, text: None)
 
     def test_a_raw_completion_is_refused(self, server):
         fake = an_ollama(server)

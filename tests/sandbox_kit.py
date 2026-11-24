@@ -61,6 +61,18 @@ class UnreadableBackend:
         return None
 
 
+class AbsentBackend(UnreadableBackend):
+    """A backend that is not on this host: never available, and never asked to wrap."""
+
+    name = "absent"
+
+    def available(self):
+        return Availability(False, "this backend is not on this host")
+
+    def wrap(self, argv, policy):
+        raise AssertionError("an absent backend is never asked to wrap a command")
+
+
 class UnloggedBackend(UnreadableBackend):
     """A backend that confines nothing and keeps no refusal log by construction."""
 

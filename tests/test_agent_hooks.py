@@ -62,7 +62,7 @@ def test_claude_hooks_are_idempotent_keep_other_hooks_and_replace_earlier_nudges
     path = machine / "settings.json"
     path.write_text(json.dumps({"model": "x", "hooks": {
         "PostToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "other-tool"}]},
-                        {"matcher": "*", "hooks": [{"type": "command", "command": "sh ~/.poolhouse/hooks/claude-nudge.sh"}]}],
+                        {"matcher": "*", "hooks": [{"type": "command", "command": "poolhouse-workspace nudge --agent old --hook post"}]}],
         "Stop": [{"hooks": [{"type": "command", "command": "keep-me"},
                             {"type": "command", "command": "poolhouse-workspace nudge --agent old --hook stop"}]}]}}))
     assert agent_hooks.install_claude(path) == ["PostToolUse", "Stop", "UserPromptSubmit"]
@@ -290,7 +290,8 @@ def test_migrate_owned_stop_command_preserves_unrelated_hooks_and_trust(machine)
 @pytest.mark.parametrize('foreign', ['echo "poolhouse-workspace nudge"',
     'poolhouse-workspace nudge --agent claude --hook post && foreign-tool',
     '/foreign/poolhouse-workspace nudge --agent claude --hook post',
-    'other-tool --note "claude-nudge.sh"', 'echo "poolhouse.codex_lifecycle"'])
+    'other-tool --note "claude-nudge.sh"', 'echo "poolhouse.codex_lifecycle"',
+    'sh ~/.poolhouse/hooks/claude-nudge.sh', 'python -m poolhouse.codex_lifecycle', 'python3 -m poolhouse.codex_lifecycle'])
 def test_install_preserves_foreign_commands_that_only_mention_owned_hooks(machine, foreign):
     path = machine / 'settings.json'
     path.write_text(json.dumps({'hooks': {'PostToolUse': [{'hooks': [{'type': 'command', 'command': foreign}]}]}}))
