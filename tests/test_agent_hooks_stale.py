@@ -8,7 +8,7 @@ import tomllib
 
 import pytest
 
-from poolhouse import agent_hooks, agent_hooks_stale, authority
+from poolhouse import agent_hooks, authority
 from poolhouse.workspace import hooks_cli
 
 GONE = "/private/tmp/retired-hook-runtime-1a2b/bin/python"
@@ -62,13 +62,13 @@ def commands(data, event):
 
 @pytest.mark.parametrize("line", [f"{GONE} --hook post", f"{GONE} -m anything"])
 def test_a_missing_absolute_program_is_stale(line):
-    assert agent_hooks_stale.is_stale(line)
+    assert agent_hooks.is_stale(line)
 
 
 @pytest.mark.parametrize("line", ["poolhouse-workspace nudge --hook post", "sh /workspace/example-project/scripts/hook",
                                   "python -m poolhouse.harnesshook post", "/bin/sh -c true", ""])
 def test_a_current_command_is_not_stale_based_on_its_arguments(line):
-    assert not agent_hooks_stale.is_stale(line)
+    assert not agent_hooks.is_stale(line)
 
 
 def test_install_hooks_preserves_missing_foreign_claude_programs(machine, capsys):
@@ -102,7 +102,7 @@ def test_a_file_with_nothing_stale_is_not_rewritten_or_backed_up(machine):
     path = machine / "s.json"
     agent_hooks.install_claude(path)
     before = path.read_text()
-    assert agent_hooks_stale.remove("claude-code", path) == []
+    assert agent_hooks.strip_stale("claude-code", path) == []
     assert path.read_text() == before and not list(machine.glob("s.json.bak-*"))
 
 

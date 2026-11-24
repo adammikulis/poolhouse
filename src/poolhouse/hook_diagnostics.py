@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import poolhouse
-from poolhouse import home, lock, windows_private
+from poolhouse import home, lock, private_path, windows_private
 from poolhouse.command import Group, flag
 from poolhouse.files import writing
 from poolhouse.log import say, warn
@@ -44,12 +44,10 @@ def directory() -> Path:
 
 def _private(path: Path, *, folder: bool = False) -> None:
     held = path.lstat()
-    allowed = stat.S_ISDIR(held.st_mode) if folder else stat.S_ISREG(held.st_mode)
     if sys.platform == "win32":
         windows_private.validate(path)
-        if not allowed or windows_private.problem(path):
-            raise PermissionError("hook diagnostics require an owned private Windows path")
-    elif not allowed or held.st_uid != os.getuid() or held.st_mode & 0o077:
+    allowed = stat.S_ISDIR(held.st_mode) if folder else stat.S_ISREG(held.st_mode)
+    if not allowed or private_path.problem(path):
         raise PermissionError("hook diagnostics require an owned private plain path")
 
 
@@ -120,14 +118,10 @@ def _write(path: Path, value: dict) -> None:
     data = json.dumps(value, ensure_ascii=False, sort_keys=True).encode()
     if len(data) > MAX_RECORD:
         raise ValueError("hook diagnostic record exceeds its bound")
-    with writing(path) as temporary:
+    with writing(path) as temporary:  # created private (0600) by this user, then promoted atomically
         if sys.platform == "win32":
             windows_private.restrict(temporary)
-        descriptor = _open(path.parent, temporary.name, os.O_WRONLY)
-        with os.fdopen(descriptor, "wb") as stream:
-            stream.write(data)
-            stream.flush()
-            os.fsync(stream.fileno())
+        temporary.write_bytes(data)
 
 
 def _occurrence(root: Path, body: dict) -> dict:
