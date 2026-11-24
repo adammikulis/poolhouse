@@ -28,41 +28,13 @@ def interactive() -> bool:
     return is_person() and caller.is_terminal(sys.stdin) and caller.is_terminal(sys.stdout)
 
 
-def common_dir(path: Path) -> Path:
-    """The git directory shared by every worktree of the repository at `path`, read from files without running git."""
-    link = path / ".git"
-    if link.is_dir():
-        return link.resolve()
-    try:
-        text = link.read_text(encoding="utf-8").strip() if link.is_file() else ""
-    except (OSError, ValueError):
-        text = ""
-    if not text.startswith("gitdir:"):
-        raise DeployError(f"{path} is not a git checkout")
-    gitdir = Path(text.split(":", 1)[1].strip())
-    gitdir = gitdir if gitdir.is_absolute() else path / gitdir
-    pointer = gitdir / "commondir"
-    if pointer.is_file():
-        target = Path(pointer.read_text(encoding="utf-8").strip())
-        gitdir = target if target.is_absolute() else gitdir / target
-    return gitdir.resolve()
-
-
-def main_worktree(path: Path) -> Path:
-    """The primary checkout of the repository that holds `path`."""
-    shared = common_dir(path)
-    if shared.name != ".git":
-        raise DeployError(f"{path} belongs to a repository with no primary checkout")
-    return shared.parent
-
-
 def recorded_primary() -> Path | None:
     """The primary checkout of the source recorded by an earlier deploy, or None."""
     named = runtime_store.read_state().get("checkout")
     if not isinstance(named, str) or not named:
         return None
     try:
-        return main_worktree(home.expand(named).resolve())
+        return runtime_git.main_worktree(home.expand(named).resolve())
     except DeployError:
         return None
 
@@ -74,10 +46,10 @@ def primary_for(supplied: Path, *, deploying: bool = True, delegated: bool = Fal
     may record the first one on a machine with none; any other process that deploys must use the one already recorded.
     """
     recorded = recorded_primary()
-    if recorded is not None and common_dir(supplied) == common_dir(recorded):
+    if recorded is not None and runtime_git.common_dir(supplied) == runtime_git.common_dir(recorded):
         return recorded
     if is_person() or not deploying or (recorded is None and delegated):
-        return main_worktree(supplied)
+        return runtime_git.main_worktree(supplied)
     if recorded is None:
         raise DeployError("no source repository is recorded: a process with no agent marker, or a lead agent while `runtime.deploy` is delegated, "
                           "runs `poolhouse runtime ensure --checkout PATH`")

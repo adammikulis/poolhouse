@@ -41,11 +41,9 @@ def argument(value: str) -> str:
 def current_source(cwd: Path, sha: str) -> bool:
     """Whether this is the actual primary checkout at the reviewed immutable commit."""
     try:
-        found = runtime_git.git(cwd, "rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir", check=False).splitlines()
-        return (len(found) == 2 and Path(found[0]).resolve() == Path(found[1]).resolve().parent
-                and Path(found[1]).name == ".git"
-                and runtime_git.git(cwd, "rev-parse", "--verify", "HEAD^{commit}", check=False) == sha)
-    except (OSError, subprocess.SubprocessError):
+        runtime_git.primary(cwd)
+        return runtime_git.git(cwd, "rev-parse", "--verify", "HEAD^{commit}", check=False) == sha
+    except (OSError, subprocess.SubprocessError, runtime_git.DeployError):
         return False
 
 

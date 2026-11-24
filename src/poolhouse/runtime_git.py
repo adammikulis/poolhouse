@@ -45,12 +45,44 @@ def git(checkout: Path, *words: str, check: bool = True) -> str:
 
 
 
+def common_dir(path: Path) -> Path:
+    """The git directory shared by every worktree of the repository at `path`, read from files without running git."""
+    link = path / ".git"
+    if link.is_dir():
+        return link.resolve()
+    try:
+        text = link.read_text(encoding="utf-8").strip() if link.is_file() else ""
+    except (OSError, ValueError):
+        text = ""
+    if not text.startswith("gitdir:"):
+        raise DeployError(f"{path} is not a git checkout")
+    gitdir = Path(text.split(":", 1)[1].strip())
+    gitdir = gitdir if gitdir.is_absolute() else path / gitdir
+    pointer = gitdir / "commondir"
+    if pointer.is_file():
+        target = Path(pointer.read_text(encoding="utf-8").strip())
+        gitdir = target if target.is_absolute() else gitdir / target
+    return gitdir.resolve()
+
+
+def main_worktree(path: Path) -> Path:
+    """The primary checkout of the repository that holds `path`."""
+    shared = common_dir(path)
+    if shared.name != ".git":
+        raise DeployError(f"{path} belongs to a repository with no primary checkout")
+    return shared.parent
+
+
 def primary(checkout: Path) -> Path:
     """Return the literal primary source checkout, refusing linked worktrees."""
-    paths = git(checkout, "rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir").splitlines()
-    if len(paths) != 2 or Path(paths[0]).resolve() != Path(paths[1]).resolve().parent or Path(paths[1]).name != ".git":
+    top = Path(git(checkout, "rev-parse", "--show-toplevel")).resolve()
+    try:
+        found = main_worktree(top)
+    except DeployError:
+        found = None
+    if found != top:
         raise DeployError("runtime selection must use the primary source checkout")
-    return Path(paths[0]).resolve()
+    return top
 
 
 def boundary(checkout: Path) -> Path:

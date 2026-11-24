@@ -20,6 +20,7 @@ from poolhouse import (
     node_supervise,
     runtime,
     runtime_deploy,
+    runtime_git,
     runtime_source,
     runtime_store,
     runtime_trust,
@@ -167,7 +168,7 @@ def test_the_floor_comes_from_the_development_tip_never_from_the_deployed_commit
 def test_a_worktree_is_only_a_source_of_objects(world):
     other = world.tmp / "worktree"
     git(world.repo, "worktree", "add", "-q", "-b", "side", str(other), world.base)
-    assert runtime_trust.main_worktree(other) == world.repo.resolve()
+    assert runtime_git.main_worktree(other) == world.repo.resolve()
     done = world.cli("status", "--json", "--checkout", str(other))
     record = json.loads(done.stdout)
     assert done.returncode == 0 and record["wanted"] == world.tip and record["floor"] == 2
