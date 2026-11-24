@@ -95,6 +95,61 @@ def test_unavailable_node_is_not_started_or_downgraded_to_person(native, monkeyp
         authority.current_agent(client=client.Client(node.state))
 
 
+def _refusal(**kwargs) -> str:
+    with pytest.raises(Unauthenticated) as refused:
+        authority.current_agent(**kwargs)
+    return str(refused.value)
+
+
+def test_a_down_node_is_named_with_the_command_to_run_next(native):
+    node, actor = native
+    node.stop()
+    said = _refusal(client=client.Client(node.state))
+    assert "node did not answer" in said and "poolhouse-workspace doctor" in said
+    assert actor.token not in said
+
+
+def test_an_unregistered_session_names_the_step_that_failed(native, monkeypatch):
+    _node, actor = native
+    monkeypatch.setenv("CODEX_THREAD_ID", "unknown-native")
+    said = _refusal()
+    assert "looking up this session" in said and "poolhouse-workspace doctor" in said
+    assert actor.token not in said and "unknown-native" not in said
+
+
+def test_a_token_file_that_is_not_private_names_the_file_not_its_content(native):
+    node, actor = native
+    (node.state / "client" / node.board / f"{actor.name}.token").chmod(0o644)
+    said = _refusal()
+    assert "reading the session token" in said and "not a private regular file" in said
+    assert "chmod 600" in said and actor.token not in said
+
+
+def test_conflicting_selectors_name_the_variables_to_unset(native, monkeypatch):
+    _node, actor = native
+    monkeypatch.setenv("POOLHOUSE_SESSION_HARNESS", "claude-code")
+    monkeypatch.setenv("POOLHOUSE_SESSION_ID", actor.session)
+    said = _refusal()
+    assert "CODEX_THREAD_ID" in said and "POOLHOUSE_SESSION_ID" in said and "keep only" in said
+
+
+def test_a_helper_is_told_whose_session_it_is_and_what_to_do(native, monkeypatch):
+    node, parent = native
+    child = node.member("native-child", harness="codex", parent=parent)
+    monkeypatch.setenv("CODEX_THREAD_ID", child.session)
+    said = _refusal()
+    assert "live main agent session" in said
+    assert child.name in said and parent.name in said and "poolhouse-workspace approval request" in said
+    assert child.token not in said and parent.token not in said
+
+
+def test_a_retired_session_says_it_is_retired(native):
+    node, actor = native
+    node.session(actor).retire()
+    said = _refusal()
+    assert "retired" in said and "poolhouse-workspace doctor" in said
+
+
 def test_admission_handle_cannot_mutate_the_node_or_expose_its_token(native):
     node, actor = native
     caller = authority.current_agent()
