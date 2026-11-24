@@ -8,7 +8,7 @@
     "contract:check": "tsc --noEmit --strict --target es2022 --module esnext --moduleResolution bundler --lib es2022 contracts/node_types_test.ts"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "2.11.4",
+    "@tauri-apps/cli": "2.12.6",
     "esbuild": "0.28.2",
     "jolt-physics": "1.1.0",
     "typescript": "7.0.2"
