@@ -11,7 +11,8 @@ import threading
 from pathlib import Path
 
 import psutil
-from test_kernel_endpoint import private_directory, socket_identity, verify_socket
+
+from testkit.kernel_endpoint import private_directory, socket_identity, verify_socket
 
 
 def identifier(value) -> bool:

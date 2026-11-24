@@ -10,14 +10,13 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from test_fixture_plan import FixturePlan, invocation_selectors
-from test_kernel_browser import prepare as prepare_assets
-from test_kernel_browser_endpoints import EndpointBank
-
 from poolhouse.activity.source_snapshot import SourceSnapshot, private_namespace, protected_roots
 from poolhouse.fleet.onboard.lan import primary_ip
 from poolhouse.sandbox.policy import Policy
 from poolhouse.sandbox.seatbelt import quote
+from testkit.fixture_plan import FixturePlan, invocation_selectors
+from testkit.kernel_browser import prepare as prepare_assets
+from testkit.kernel_browser_endpoints import EndpointBank
 
 CURRENT = contextvars.ContextVar('test_fixture_resources', default=None)
 
@@ -32,7 +31,7 @@ def bind(run):
 
 
 def source_plan(command: list[str], environment: dict[str, str]) -> FixturePlan:
-    root = Path(__file__).resolve().parent.parent
+    root = Path(__file__).resolve().parents[2]
     storage = private_namespace(environment, 'poolhouse-fixture-plan-')
     snapshot = None
     try:

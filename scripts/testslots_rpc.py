@@ -17,7 +17,7 @@ from pathlib import Path
 
 import testslots
 import testslots_policy
-from test_kernel_endpoint import connection, private_directory, socket_identity, verify_socket
+from testkit.kernel_endpoint import connection, private_directory, socket_identity, verify_socket
 
 
 class AdmissionWaitExpired(RuntimeError):

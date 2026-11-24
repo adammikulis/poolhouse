@@ -16,7 +16,6 @@ import tarfile
 import time
 
 import pytest
-import test_on
 from testfarm_kit import (
     BOARD,
     devices as started,
@@ -28,6 +27,7 @@ from testfarm_kit import (
     skip_unless_possible,
     until,
 )
+from testkit import on_device
 
 from poolhouse import features, features_cli, node_launch
 from poolhouse.fleet import shard_split, shard_tree
@@ -70,7 +70,7 @@ def test_a_device_nobody_enabled_takes_nothing_and_is_listed_with_why(pool, caps
     assert caps["accepts"] is False and "testfarm.consent" in caps["reason"]
     with pytest.raises(ShardError, match="off on this device"):
         shards.call(fp, "shard_put", id="ab" * 16, offset=0, data="00")
-    assert go(fp, tree, ["tests/test_a.py"]) == test_on.NOT_RUN
+    assert go(fp, tree, ["tests/test_a.py"]) == on_device.NOT_RUN
     assert "does not take tests" in capsys.readouterr().err
     assert devices.command(["--json"]) == 0
     (row,) = json.loads(capsys.readouterr().out)
@@ -267,7 +267,7 @@ def test_a_device_that_cannot_be_reached_is_an_error_not_a_hang(pool, capsys):
     with pytest.raises(ShardError):
         shards.capability(fp)
     assert time.monotonic() - began < 30
-    assert go(fp, tree, ["tests/test_a.py"]) == test_on.NOT_RUN
+    assert go(fp, tree, ["tests/test_a.py"]) == on_device.NOT_RUN
     assert "does not take tests: did not answer" in capsys.readouterr().err
 
 
@@ -277,10 +277,10 @@ def test_split_gives_this_machine_and_the_device_a_share_each_and_learns_duratio
     fp = member(a)["fingerprint"]
     (tree / "tests" / "test_mac.py").write_text("import sys\nONLY = sys.platform == 'darwin'\n", encoding="utf-8")
     kept = []
-    monkeypatch.setattr(test_on, "local", lambda root, tier, files: kept.append(files) or 0)
-    history = test_on.history(tree)
+    monkeypatch.setattr(on_device, "local", lambda root, tier, files: kept.append(files) or 0)
+    history = on_device.history(tree)
     args = argparse.Namespace(tier="all", on=fp, split=True, base="main", timeout=300.0)
-    assert test_on.main(args, ["tests/test_a.py", "tests/test_mac.py"], tree, lambda t, f: [], True) == 0
+    assert on_device.main(args, ["tests/test_a.py", "tests/test_mac.py"], tree, lambda t, f: [], True) == 0
     assert kept == [["tests/test_mac.py"]], "a file that names darwin stays here"
     assert "1 passed" in capsys.readouterr().out and jobs_on(b) == 1
     assert "tests/test_a.py" in shard_split.load(history), "what the device measured is kept for the next split"

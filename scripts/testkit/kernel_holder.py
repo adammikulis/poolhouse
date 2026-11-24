@@ -269,7 +269,7 @@ def prepare(command: list[str], control: Path, environment: dict[str, str],
     source = Path("/private/tmp/poolhouse-holder-fixture-prefixes-68a5f5/holder-manifest.json")
     manifest = read_manifest(source)
     assets = verify_assets(manifest, protected, admitted)
-    from test_kernel_role_home import selected_cases
+    from testkit.kernel_role_home import selected_cases
     if selected_cases(command):
         return prepare_roles(manifest, assets, command, (control, protected, admitted), environment), None, None
     project_variants(assets, manifest, wanted)
@@ -295,13 +295,13 @@ def prepare(command: list[str], control: Path, environment: dict[str, str],
 
 def prepare_roles(manifest: dict, originals: Assets, command: list[str], context: tuple,
                   environment: dict[str, str]) -> Assets:
-    from test_kernel_role_home import FENCE_NODE, copy_cases, state_rules
+    from testkit.kernel_role_home import FENCE_NODE, copy_cases, state_rules
     control, protected, admitted = context
     bank_root, bank = copy_cases(manifest, command, protected, time.monotonic() + 30)
     copied = verify_assets({"variants": {case: entry["prepared"] for case, entry in bank["cases"].items()}},
                            protected, admitted)
     originals.recheck()
-    inventory = json.loads(Path(__file__).with_name("test_kernel_holder_imports.json").read_text())
+    inventory = json.loads(Path(__file__).with_name("kernel_holder_imports.json").read_text())
     if (set(inventory) != {"version", "source_commit", "roots", "files"}
             or type(inventory["version"]) is not int or inventory["version"] != 1 or inventory["source_commit"] != SOURCE
             or type(inventory["files"]) is not list or len(inventory["files"]) != 475

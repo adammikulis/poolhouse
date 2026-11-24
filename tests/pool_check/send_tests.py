@@ -2,9 +2,9 @@
 
     python send_tests.py --repo DIR --on DEVICE [--tier all] FILE...
 
-``DIR`` is a root with `scripts/test_on.py` of this checkout beside it; the tree that travels is a small git tree made here: a
+``DIR`` is a root with `scripts/testkit/on_device.py` of this checkout beside it; the tree that travels is a small git tree made here: a
 `scripts/test` that runs pytest on the files it is given (the executor's own command line) and test files that check where they
-ran. The sender is `scripts/test_on.main`, the same function `scripts/test --on` calls.
+ran. The sender is `scripts/testkit/on_device.main`, the same function `scripts/test --on` calls.
 """
 
 from __future__ import annotations
@@ -46,12 +46,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("files", nargs="*")
     args = ap.parse_args(argv)
     sys.path.insert(0, str(Path(args.repo) / "scripts"))
-    import test_on
-
+    from testkit import on_device
     with tempfile.TemporaryDirectory(prefix="pcsend") as folder:
         tree = make_tree(Path(folder) / "tree", args.expect)
         namespace = argparse.Namespace(tier=args.tier, on=args.on, split=False, base="main", timeout=300.0)
-        return int(test_on.main(namespace, args.files or ["tests/test_where.py", "tests/test_anywhere.py"], tree, lambda tier, f: [sys.executable, "-m", "pytest", "-q", f], False))
+        return int(on_device.main(namespace, args.files or ["tests/test_where.py", "tests/test_anywhere.py"], tree, lambda tier, f: [sys.executable, "-m", "pytest", "-q", f], False))
 
 
 if __name__ == "__main__":

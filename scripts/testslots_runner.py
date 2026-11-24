@@ -50,13 +50,13 @@ def environment_for(env: dict[str, str] | None) -> dict[str, str]:
     for name in ("PYTEST_XDIST_WORKER", "PYTEST_XDIST_WORKER_COUNT", "PYTEST_XDIST_TESTRUNUID"):
         environment.pop(name, None)
     if confining(environment):
-        from test_kernel_isolation import validate_control_roots
+        from testkit.kernel_isolation import validate_control_roots
         validate_control_roots(environment)
     return environment
 
 
 def run_artifact_pytest(command: list[str], want: int, environment: dict[str, str], artifacts) -> int:
-    from test_kernel_outputs import ArtifactOutputs
+    from testkit.kernel_outputs import ArtifactOutputs
     if not confining(environment) or type(artifacts) is not ArtifactOutputs:
         raise RuntimeError("test confinement: strict artifact mode requires its macOS supervisor context")
     artifacts.validate()
@@ -115,7 +115,7 @@ def run_once(command: list[str], want: int = 0, label: str = "pytest", env: dict
     testslots._reject_nested()
     launch = None
     if container:
-        from test_container_launch import ContainerRun
+        from testkit.container_launch import ContainerRun
         launch = ContainerRun(command, environment)
     run_class, admission, record = open_admission(environment, label, want, confining(environment) or launch is not None)
     process = None
@@ -194,7 +194,7 @@ def finish(output, admission, terminals, confined):
             finally:
                 if confined is not None:
                     try:
-                        from test_kernel_lifecycle import held_shutdown, retired_probe
+                        from testkit.kernel_lifecycle import held_shutdown, retired_probe
                         held_shutdown()
                         retired_probe(confined)
                     finally:
@@ -216,18 +216,18 @@ def prepare_pytest(command, environment, admission, launch, prepared):
         environment["DEV_TEST_PYTEST_IDENTITY"] = json.dumps(admission.identity)
         command, environment = launch.command(environment)
     elif confining(environment):
-        import test_browser_admission
-        from test_kernel_isolation import ConfinedRun, check_selectors
-        from test_terminal_bank import TerminalBank
+        from testkit import browser_admission
+        from testkit.kernel_isolation import ConfinedRun, check_selectors
+        from testkit.terminal_bank import TerminalBank
         plan = check_selectors(command)
         if plan is not None:
-            prepared.browser = test_browser_admission.BrowserRun(command, environment, admission, workers, plan=plan)
+            prepared.browser = browser_admission.BrowserRun(command, environment, admission, workers, plan=plan)
         terminals = TerminalBank(64, admission.terminal_admission)
         prepared.terminals = terminals
         admission.terminals = terminals
         environment.update(DEV_TEST_PTY_TOKEN=terminals.token, DEV_TEST_PTY_ENDPOINT=terminals.endpoint,
                            DEV_TEST_PTY_IDENTITY=json.dumps(terminals.identity), DEV_TEST_PYTEST_IDENTITY=json.dumps(admission.identity))
-        with test_browser_admission.bind(prepared.browser):
+        with browser_admission.bind(prepared.browser):
             confined = ConfinedRun(command, environment, admission.endpoint,
                                    terminal_endpoint=terminals.endpoint, artifacts=ARTIFACT_CONTEXT.get())
         prepared.confined = confined

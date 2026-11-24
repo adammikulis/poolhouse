@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-import test_container_bridge as bridge
+import testkit.container_bridge as bridge
 
 
 @pytest.fixture

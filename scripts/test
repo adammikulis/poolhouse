@@ -175,7 +175,7 @@ def launch(command: list[str], env: dict[str, str] | None = None, tier: str = ""
     given = next((a.split("=", 1)[1] for a in command if a.startswith("--junitxml=")), "")
     artifacts = None
     if confining(environment):
-        from test_kernel_outputs import ArtifactOutputs
+        from testkit.kernel_outputs import ArtifactOutputs
         artifacts = ArtifactOutputs(environment, strict=artifact_output)
         junit = artifacts.directory / "junit.xml"
     elif given:
@@ -703,8 +703,8 @@ def main(argv: list[str] | None = None) -> int:
         if refusal := testscope.tier_refusal(args.tier, rest, ROOT):
             print(f"test: {refusal}", file=sys.stderr)
             return 4
-        import test_on
-        return test_on.main(args, rest, ROOT, lambda tier, file: pytest_command(1, *TIER_FLAGS[tier], file), REUSE["on"])
+        from testkit import on_device
+        return on_device.main(args, rest, ROOT, lambda tier, file: pytest_command(1, *TIER_FLAGS[tier], file), REUSE["on"])
     if args.confine:
         os.environ["DEV_TEST_CONFINE"] = "1"
     if args.artifact_output and args.tier not in ("gate", "all"):

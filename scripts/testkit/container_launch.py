@@ -15,11 +15,10 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from test_kernel_isolation import check_selectors
-
 from poolhouse.activity.source_snapshot import SourceSnapshot, private_namespace
+from testkit.kernel_isolation import check_selectors
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 GUEST_TMP = Path("/tmp")  # noqa: S108 - supervisor-created private container tmpfs
 TMP_OPTIONS = "rw,nosuid,nodev,noexec,size=1073741824"
 
@@ -128,7 +127,7 @@ class ContainerRun:
         self.validate(self.setup, runtime=False)
         self.call("exec", self.setup, "bash", "/src/scripts/test-on-linux-setup", *self.arguments,
                   capture=False, timeout=3600)
-        self.call("exec", self.setup, "/usr/local/bin/python", "/src/scripts/test_container_seal.py",
+        self.call("exec", self.setup, "/usr/local/bin/python", "/src/scripts/testkit/container_seal.py",
                   self.source_digest, capture=False, timeout=600)
         if source_digest(source, self.source_manifest) != self.source_digest:
             raise RuntimeError("container admission: staged source proof changed")
@@ -153,11 +152,11 @@ class ContainerRun:
         validate_container(row, ContainerProof(identifier, self.owner, expected, self.control / "source", self.volume, runtime), running=running)
 
     def command(self, environment):
-        from test_container_bridge import HostBridge
+        from testkit.container_bridge import HostBridge
         self.validate(self.runtime, runtime=True)
         self.recheck_assets()
-        self.bridge_process = subprocess.Popen(self.argv("exec", "-i", "--user", "1000:1000", self.runtime,
-                                           "/priv-venv/bin/python", "/work/scripts/test_container_bridge.py",
+        self.bridge_process = subprocess.Popen(self.argv("exec", "-i", "--user", "1000:1000", "-e", "PYTHONPATH=/work/scripts", self.runtime,
+                                           "/priv-venv/bin/python", "/work/scripts/testkit/container_bridge.py",
                                            "--guest", "--directory", str(GUEST_TMP / "admission")),
                                            env=self.environment, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                            stderr=subprocess.PIPE, close_fds=True)
@@ -279,7 +278,7 @@ def container_id(value):
 
 
 def asset_identity(path, content=False):
-    from test_kernel_assets import owned_ancestors
+    from testkit.kernel_assets import owned_ancestors
     owned_ancestors(path)
     info = path.stat()
     value = (info.st_dev, info.st_ino, info.st_uid, info.st_mode, info.st_size, info.st_mtime_ns)

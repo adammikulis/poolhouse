@@ -8,10 +8,10 @@ import threading
 
 import pytest
 from confinement import needs_confinement
-from test_fixture_plan import resources
-from test_kernel_browser import Assets, identity, prepare, seal
-from test_kernel_browser_client import Listener
-from test_kernel_browser_endpoints import EndpointBank, local_interface
+from testkit.fixture_plan import resources
+from testkit.kernel_browser import Assets, identity, prepare, seal
+from testkit.kernel_browser_client import Listener
+from testkit.kernel_browser_endpoints import EndpointBank, local_interface
 
 
 @needs_confinement
@@ -152,7 +152,7 @@ def test_endpoint_bank_requires_per_active_test_typed_resource_authority():
 @needs_confinement
 @pytest.mark.parametrize('proof', [False, None, 'pytest exited'])
 def test_browser_run_refuses_endpoint_teardown_without_supervisor_drain_proof(proof):
-    from test_browser_admission import BrowserRun
+    from testkit.browser_admission import BrowserRun
 
     run = BrowserRun.__new__(BrowserRun)
     retained = object()

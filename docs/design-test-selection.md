@@ -44,7 +44,7 @@ exists. Decisions the owner has made are in section 11.
 | `scripts/test quick` | `scripts/test`, `scripts/affected.py` | `affected.select` files, then testmon's per-checkout map for the rest; an unmapped path runs the full tier |
 | Reuse | `scripts/testreuse_*.py`, docs/test-reuse.md | A file's stored pass is reused when its key and manifest still hold |
 | GitHub `ci` | `.github/workflows/ci.yml`, `scripts/ci_shards.py` | Every test file, in 8 shards balanced by `tests/ci-durations.json`, on a pull request, a push to `main`, the nightly schedule and a manual dispatch; a push to a development branch runs no shard (`de1df9fc7`, the `shards` job `if:`); junit uploaded. HANDOFF records that no sharded run has completed yet |
-| Test farm | `scripts/test_on.py`, docs/test-farm.md | `--on DEVICE` runs a tier on a member of the pool |
+| Test farm | `scripts/testkit/on_device.py`, docs/test-farm.md | `--on DEVICE` runs a tier on a member of the pool |
 | Broker | `scripts/testslots.py`, docs/test-execution.md | One admission queue for CPU leases on a machine; `scripts/test-on-linux` runs a container under it |
 
 ### 2.2 How `affected.select` decides [code]
@@ -135,7 +135,7 @@ What the table shows, from the diffs and the reasons `select` records:
   test file over all 920), a fifth of the files.
   `a0ab8321c` leaves 5 Rust paths unmapped, not 3.
 - **Depth 1 hides indirection.** `3d48da3f4` changes `scripts/testslots.py`; `tests/test_test_kernel_isolation.py`
-  imports `test_kernel_attestation` and `test_kernel_lifecycle`, which import `testslots`, and was not picked.
+  imports `testkit.kernel_attestation` and `testkit.kernel_lifecycle`, which import `testslots`, and was not picked.
 - **Static transitive reach is unusable.** The module-level column is 778 whenever a hub module changes (`2d412f828`);
   for `258dc2826` the earlier 779 is not reproducible and the review counted 868 files over all edges at depth 50 (that
   column's other cells were not re-run); no static rule separates the tests that execute the changed code from those that import it.

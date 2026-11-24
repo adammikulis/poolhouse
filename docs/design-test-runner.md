@@ -14,7 +14,7 @@ reference, trust zones, the core, transports, presets, security attack list, mig
 | Result reuse: per-file key, chain-hashed store, single flight, canary | `scripts/testreuse_{key,store,run,plugin,facts,imports,narrow}.py`, `docs/test-reuse.md` |
 | Gate steps reused while their inputs are unchanged | `scripts/gaterun.py`, `scripts/gatescope.py` |
 | Affected selection (import graph and string rules) | `scripts/affected.py`, `scripts/affected_rules.py` |
-| Shards to a pool device, with a per-device allow list and a reuse ledger | `app/poolhouse-node/src/shard/`, `src/poolhouse/testfarm/` (`client.py`, `consent.py`, `devices.py`, `ledger.py`, `report.py`), `scripts/test_on.py`, `poolhouse test devices` |
+| Shards to a pool device, with a per-device allow list and a reuse ledger | `app/poolhouse-node/src/shard/`, `src/poolhouse/testfarm/` (`client.py`, `consent.py`, `devices.py`, `ledger.py`, `report.py`), `scripts/testkit/on_device.py`, `poolhouse test devices` |
 | The project description: `testfarm.toml`, `poolhouse test init`, `check`, `list` | `src/poolhouse/testfarm/cli.py`, `core/project.py`, `core/select.py`, `model/` |
 | CI division into shards | `scripts/ci_shards.py`, `tests/ci-durations.json` |
 

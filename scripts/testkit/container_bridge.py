@@ -21,7 +21,7 @@ BUFFER = FRAME * 4
 
 
 def identity(path):
-    from test_kernel_endpoint import socket_identity
+    from testkit.kernel_endpoint import socket_identity
     return socket_identity(str(path))
 
 

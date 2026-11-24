@@ -11,7 +11,7 @@ import threading
 import time
 from pathlib import Path
 
-from test_kernel_endpoint import private_directory, socket_identity, verify_socket
+from testkit.kernel_endpoint import private_directory, socket_identity, verify_socket
 
 
 class TerminalBank:

@@ -282,7 +282,7 @@ Answered by the owner:
   packages in section 5.
 - **D2. Keep speech.** Slice 8 is not built; the voice controls and MCP tools stay.
 - **D3. Keep the local-model chat agent** (`chat`, `agent`, `do`, `memory`, `pi`, `coding`) for the release.
-- **D6. Keep `testfarm` and `ph.test`.** `fleet/shard_exec`, `app/poolhouse-node/src/shard` and `scripts/test_on.py` stay;
+- **D6. Keep `testfarm` and `ph.test`.** `fleet/shard_exec`, `app/poolhouse-node/src/shard` and `scripts/testkit/on_device.py` stay;
   `testing` still leaves the wheel only (slice 5), and `testfarm` does not move.
 
 Decided by the lead:

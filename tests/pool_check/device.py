@@ -156,7 +156,7 @@ class Device:
         raise NotImplementedError
 
     def root_of_checkout(self) -> PurePath:
-        """The checkout of this tree on this device (the one `scripts/test_on.py` is in), as that device spells paths."""
+        """The checkout of this tree on this device (the one `scripts/testkit/on_device.py` is in), as that device spells paths."""
         raise NotImplementedError
 
     def session_env(self) -> dict[str, str]:

@@ -7,7 +7,7 @@ import json
 import os
 import socket
 
-from test_kernel_endpoint import connection
+from testkit.kernel_endpoint import connection
 
 
 def received_descriptors(ancillary) -> list[int]:

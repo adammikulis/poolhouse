@@ -20,11 +20,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-import test_on
 from node_kit import STRIPPED, node_binary  # noqa: F401  (a fixture the ones below use)
 from pool_check import wire
 from pool_check.person import RigPerson
 from testfarm_tree import make_tree
+from testkit import on_device
 
 from poolhouse import (
     features,
@@ -192,7 +192,7 @@ def member(a: Device) -> dict:
 def go(b_fp: str, tree: Path, files: list[str], reuse: bool = True, tier: str = "all") -> int:
     """`scripts/test` with a tier and test files, run on one device by its fingerprint, in this process."""
     args = argparse.Namespace(tier=tier, on=b_fp, split=False, base="main", timeout=300.0)
-    return test_on.main(args, files, tree, lambda t, f: [sys.executable, "-m", "pytest", "-n", "1", f], reuse)
+    return on_device.main(args, files, tree, lambda t, f: [sys.executable, "-m", "pytest", "-n", "1", f], reuse)
 
 
 def jobs_on(b: Device) -> int:

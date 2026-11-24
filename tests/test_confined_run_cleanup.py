@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
-import test_kernel_isolation as isolation
+import testkit.kernel_isolation as isolation
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="the Seatbelt kernel runs on macOS")

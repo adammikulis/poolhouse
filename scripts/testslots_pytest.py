@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 import testslots
 import testslots_rpc
-from test_kernel_endpoint import AdmissionUnreachable
+from testkit.kernel_endpoint import AdmissionUnreachable
 
 UNADMITTED_STATUS = 4
 NOT_STARTED_STATUS = 75

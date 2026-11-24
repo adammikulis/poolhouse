@@ -45,7 +45,7 @@ def test_the_runner_is_executable():
 def test_the_runner_never_lets_the_credential_helper_be_consulted():
     """A pull through the macOS desktop helper can hang until it is killed."""
     assert "credsStore" in RUNNER.read_text(encoding="utf-8"), "--help has to say why"
-    launch = (REPO / "scripts" / "test_container_launch.py").read_text(encoding="utf-8")
+    launch = (REPO / "scripts" / "testkit" / "container_launch.py").read_text(encoding="utf-8")
     assert '{"auths":{}}' in launch, "the config directory holds no credential helper"
     assert "--config" in launch
 
@@ -67,7 +67,7 @@ def test_a_machine_without_docker_is_refused_before_anything_starts(monkeypatch)
     monkeypatch.syspath_prepend(str(REPO / "scripts"))
     monkeypatch.setenv("PATH", os.defpath)
     monkeypatch.setattr("shutil.which", lambda name: None)
-    from test_container_launch import ContainerRun
+    from testkit.container_launch import ContainerRun
 
     with pytest.raises(RuntimeError, match="Docker is required"):
         ContainerRun([sys.executable, "-m", "pytest", "tests/test_layers.py"], {})

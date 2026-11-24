@@ -59,7 +59,7 @@ def observe(control: Path) -> dict:
     (repo / ".gitattributes").write_text("*.py filter=hostile\n")
     global_config = root / "global-config"
     global_config.write_text(hostile)
-    source_root = Path(__file__).resolve().parents[1]
+    source_root = Path(__file__).resolve().parents[2]
     source_identity = source_tree(source_root, control)
     clone = root / "snapshot.py"
     clone.write_bytes((source_root / "src/poolhouse/activity/source_snapshot.py").read_bytes())

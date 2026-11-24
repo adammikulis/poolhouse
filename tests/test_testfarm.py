@@ -21,8 +21,8 @@ import time
 from pathlib import Path
 
 import pytest
-import test_on
 from testfarm_tree import MARKERS, make_tree
+from testkit import on_device
 
 from poolhouse import features
 from poolhouse.fleet import shard_exec, shard_spec, shard_split, shard_tree
@@ -261,30 +261,30 @@ def test_the_device_table_says_how_each_device_is_reached_and_the_fix_when_it_is
                                   ["/etc/passwd"], ["tests/sub/test_a.py"], ["tests/.hidden.py"]])
 def test_a_remote_run_takes_test_files_and_nothing_else(rest, capsys):
     args = argparse.Namespace(tier="all", on="somewhere", split=False, base="main", timeout=60.0)
-    assert test_on.main(args, rest, ROOT, lambda tier, file: [], True) == 4
+    assert on_device.main(args, rest, ROOT, lambda tier, file: [], True) == 4
     assert "test files tests/NAME.py only" in capsys.readouterr().err
 
 
 def test_the_gate_takes_no_files_and_a_job_command_does_not_run_elsewhere(capsys):
     args = argparse.Namespace(tier="gate", on="somewhere", split=False, base="main", timeout=60.0)
-    assert test_on.main(args, ["tests/test_a.py"], ROOT, lambda tier, file: [], True) == 4
+    assert on_device.main(args, ["tests/test_a.py"], ROOT, lambda tier, file: [], True) == 4
     assert "the gate takes no files" in capsys.readouterr().err
     args.tier = "submit"
-    assert test_on.main(args, [], ROOT, lambda tier, file: [], True) == 4
+    assert on_device.main(args, [], ROOT, lambda tier, file: [], True) == 4
     assert "does not run on another device" in capsys.readouterr().err
 
 
 def test_the_tiers_a_node_accepts_are_the_ones_the_runner_has():
-    assert set(shard_spec.TIERS) | {"quick"} == set(test_on.TIERS)
+    assert set(shard_spec.TIERS) | {"quick"} == set(on_device.TIERS)
     with pytest.raises(shard_spec.Refused):
         shard_spec.check_header({"id": ID, "tree_sha256": "0" * 64, "tier": "heavy"})
 
 
 def test_nothing_is_sent_or_taken_until_the_experimental_feature_is_on(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path))
-    monkeypatch.setattr(test_on, "pool_devices", lambda: pytest.fail("no device is looked for while the feature is off"))
+    monkeypatch.setattr(on_device, "pool_devices", lambda: pytest.fail("no device is looked for while the feature is off"))
     args = argparse.Namespace(tier="all", on="somewhere", split=False, base="main", timeout=60.0)
-    assert test_on.main(args, ["tests/test_a.py"], ROOT, lambda tier, file: [], True) == 4
+    assert on_device.main(args, ["tests/test_a.py"], ROOT, lambda tier, file: [], True) == 4
     assert "experimental feature" in capsys.readouterr().err
     assert features.enabled(consent.FEATURE) is False and consent.run(["on"]) == 1
     assert "poolhouse features enable remote-tests" in capsys.readouterr().out
@@ -293,9 +293,9 @@ def test_nothing_is_sent_or_taken_until_the_experimental_feature_is_on(tmp_path,
 def test_a_person_who_turned_remote_tests_off_here_sends_nothing_to_any_device(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path))
     features.switch(consent.FEATURE, False)
-    monkeypatch.setattr(test_on, "pool_devices", lambda: pytest.fail("no device is looked for once tests were turned off here"))
+    monkeypatch.setattr(on_device, "pool_devices", lambda: pytest.fail("no device is looked for once tests were turned off here"))
     args = argparse.Namespace(tier="all", on="somewhere", split=False, base="main", timeout=60.0)
-    assert test_on.main(args, ["tests/test_a.py"], ROOT, lambda tier, file: [], True) == 4
+    assert on_device.main(args, ["tests/test_a.py"], ROOT, lambda tier, file: [], True) == 4
     assert "turned off here" in capsys.readouterr().err
 
 

@@ -14,7 +14,8 @@ from pathlib import Path
 
 import psutil
 import testslots_rpc
-from test_kernel_endpoint import verify_socket
+
+from testkit.kernel_endpoint import verify_socket
 
 CHECKS = ["read", "write", "symlink", "hardlink-canary", "hardlink-manifest", "unix", "tcp", "signal", "descendant", "admission"]
 
@@ -73,7 +74,7 @@ class Attestation:
             raise
 
     def prepare(self, arguments: list[str]) -> None:
-        from test_kernel_git import observe
+        from testkit.kernel_git import observe
         self.git_observation = observe(self.confined.control)
         self.denied = testslots_rpc.Admission()
         target_code = "import signal,time,os;signal.signal(signal.SIGUSR1,signal.SIG_IGN);os.write(1,b'r');time.sleep(3600)"
@@ -92,11 +93,11 @@ class Attestation:
         self.descriptors.update((self.report, output, acknowledgement, self.release))
         self.pass_fds = (output, acknowledgement)
         self.code = self.confined.control / "bootstrap.py"
-        self.code.write_bytes(Path(__file__).with_name("test_kernel_bootstrap.py").read_bytes())
+        self.code.write_bytes(Path(__file__).with_name("kernel_bootstrap.py").read_bytes())
         self.code.chmod(0o400)
         self.code_hash = hashlib.sha256(self.code.read_bytes()).hexdigest()
-        self.helper = self.confined.control / "test_kernel_endpoint.py"
-        self.helper.write_bytes(Path(__file__).with_name("test_kernel_endpoint.py").read_bytes())
+        self.helper = self.confined.control / "kernel_endpoint.py"
+        self.helper.write_bytes(Path(__file__).with_name("kernel_endpoint.py").read_bytes())
         self.helper.chmod(0o400)
         self.helper_hash = hashlib.sha256(self.helper.read_bytes()).hexdigest()
         self.manifest = self.confined.control / "bootstrap.json"

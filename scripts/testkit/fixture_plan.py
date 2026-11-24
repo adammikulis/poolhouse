@@ -150,7 +150,7 @@ class Module:
                 autouse, name = values.get('autouse', False), values.get('name')
                 if name is not None and not isinstance(name, str):
                     raise RuntimeError('fixture plan: dynamic fixture name')
-            elif dotted_name == 'test_fixture_plan.resources':
+            elif dotted_name == 'testkit.fixture_plan.resources':
                 if call is None or call.keywords:
                     raise RuntimeError('fixture plan: resource declaration must be literal')
                 values = [literal(item) for item in call.args]

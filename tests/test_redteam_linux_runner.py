@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_container_spawn_keeps_arguments_literal_and_mounts_read_only(monkeypatch):
-    from test_container_launch import ContainerRun
+    from testkit.container_launch import ContainerRun
 
     for name in ("POOLHOUSE_HOME", "POOLHOUSE_CACHE"):  # the suite's state root lives under the temporary directory the plan stores in
         monkeypatch.delenv(name, raising=False)

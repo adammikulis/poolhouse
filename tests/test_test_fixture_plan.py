@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from test_fixture_plan import FixturePlan, resources
+from testkit.fixture_plan import FixturePlan, resources
 
 
 def source(root: Path, name: str, text: str) -> Path:
@@ -31,7 +31,7 @@ def test_confined_plugin_options_are_exact(tmp_path):
 def test_literal_transitive_imported_fixture_aliases_plan_without_executing_test_code(tmp_path):
     helper = source(tmp_path, 'tests/helper.py', '''
 import pytest
-from test_fixture_plan import resources
+from testkit.fixture_plan import resources
 raise RuntimeError("supervisor must not import test code")
 @resources('browser', 'browser-endpoints')
 @pytest.fixture
@@ -58,7 +58,7 @@ def test_chat(conversation, size):
 def test_autouse_usefixtures_class_selection_and_conftest_overrides(tmp_path):
     outer = source(tmp_path, 'conftest.py', '''
 import pytest
-from test_fixture_plan import resources
+from testkit.fixture_plan import resources
 @resources('javascript')
 @pytest.fixture(autouse=True)
 def logging(monkeypatch):
@@ -70,7 +70,7 @@ def display():
 ''')
     inner = source(tmp_path, 'tests/conftest.py', '''
 import pytest
-from test_fixture_plan import resources
+from testkit.fixture_plan import resources
 @resources('browser-endpoints')
 @pytest.fixture
 def display():
@@ -97,7 +97,7 @@ class TestChat:
 def test_dynamic_or_forged_resource_declarations_are_refused(tmp_path, declaration):
     test = source(tmp_path, 'tests/test_example.py', f'''
 import pytest
-from test_fixture_plan import resources
+from testkit.fixture_plan import resources
 {declaration}
 @pytest.fixture
 def page():
@@ -138,7 +138,7 @@ def test_chat(request):
 def test_visible_unadmitted_conftest_and_module_usefixtures_are_accounted_for(tmp_path):
     configuration = source(tmp_path, 'tests/conftest.py', '''
 import pytest
-from test_fixture_plan import resources
+from testkit.fixture_plan import resources
 @resources('javascript')
 @pytest.fixture
 def parsed_scripts():
@@ -159,7 +159,7 @@ def test_chat():
 def test_autouse_override_uses_effective_fixture_and_self_dependency_reaches_parent(tmp_path):
     outer = source(tmp_path, 'conftest.py', '''
 import pytest
-from test_fixture_plan import resources
+from testkit.fixture_plan import resources
 @resources('browser')
 @pytest.fixture(autouse=True)
 def context():
@@ -167,7 +167,7 @@ def context():
 ''')
     inner = source(tmp_path, 'tests/conftest.py', '''
 import pytest
-from test_fixture_plan import resources
+from testkit.fixture_plan import resources
 @resources('javascript')
 @pytest.fixture
 def context():
@@ -189,7 +189,7 @@ def test_unsupported_selection_forms_refuse_instead_of_dropping_sources(tmp_path
 def test_module_usefixtures_marks_apply_to_tests_and_do_not_modify_fixture_dependencies(tmp_path):
     test = source(tmp_path, 'tests/test_example.py', '''
 import pytest
-from test_fixture_plan import resources
+from testkit.fixture_plan import resources
 pytestmark = pytest.mark.usefixtures('display')
 @resources('browser-endpoints')
 @pytest.fixture

@@ -151,7 +151,7 @@ def test_the_device_behind_nat_cannot_be_dialed_by_anything():
 
 def test_the_image_holds_what_a_device_needs_and_nothing_of_the_owners():
     names = dock.tracked_files()
-    assert "src/poolhouse/node_join.py" in names and "app/poolhouse-node/src/net.rs" in names and "scripts/test_on.py" in names
+    assert "src/poolhouse/node_join.py" in names and "app/poolhouse-node/src/net.rs" in names and "scripts/testkit/on_device.py" in names
     assert not any(name.startswith(("tests/", "docs/", ".claude/", ".git")) for name in names), "the image carries only the packaging and the node; the rig's own files travel separately"
     assert dock.context_hash(names) == dock.context_hash(list(names)), "the tag is a function of the contents"
 

@@ -30,7 +30,7 @@ There was no hook entry, workflow step, glossary or allowlist entry, red-team co
   (`runtime_unmerged.py`) still asks for a standing accept from a reviewer other than the deploying lead.
 - `land-trust` is not landing: it names the devices whose `task` and `grant` entries this device counts. It stays under its name
   and is a pending item in `HANDOFF.md`.
-- `scripts/affected.py` and `affected_rules.py` are the test selector (`scripts/test`, `gatescope`, `test_on`, `testreuse_key`); they stay.
+- `scripts/affected.py` and `affected_rules.py` are the test selector (`scripts/test`, `gatescope`, `testkit.on_device`, `testreuse_key`); they stay.
 - `runner.lock` was the lander's push lock and the runtime cutover's wait. It is now only the cutover lock:
   `<git-common-dir>/runtime-cutover.lock`, taken by `runtime_git.crossing` while a runtime build or switch crosses the boundary and
   waited on by `runtime_git.until_free`, `node_supervise` and the node launch (`runtime_git.boundary`,

@@ -8,7 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from test_container_launch import (
+from testkit.container_launch import (
     ContainerProof,
     ContainerRun,
     source_digest,
@@ -121,10 +121,8 @@ def test_wrapper_and_selector_admission_remain_exact():
 def test_failed_native_preparation_closes_owned_resources(monkeypatch, tmp_path, failure):
     import contextlib
 
-    import test_kernel_isolation
-    import test_kernel_lifecycle
-    import test_terminal_bank
     import testslots_runner
+    from testkit import kernel_isolation, kernel_lifecycle, terminal_bank
 
     calls = []
     primary = RuntimeError("native image preparation failed")
@@ -166,10 +164,10 @@ def test_failed_native_preparation_closes_owned_resources(monkeypatch, tmp_path,
     monkeypatch.setattr(testslots_runner.testslots, "_reject_nested", lambda: None)
     monkeypatch.setattr(testslots_runner.testslots, "lease", lambda *args, **kwargs: contextlib.nullcontext())
     monkeypatch.setattr(testslots_runner.testslots_rpc, "UnixAdmission", lambda *args: admission)
-    monkeypatch.setattr(test_terminal_bank, "TerminalBank", Terminals)
-    monkeypatch.setattr(test_kernel_isolation, "ConfinedRun", Confined)
-    monkeypatch.setattr(test_kernel_lifecycle, "held_shutdown", lambda: calls.append("held_shutdown"))
-    monkeypatch.setattr(test_kernel_lifecycle, "retired_probe", lambda value: calls.append("retired_probe"))
+    monkeypatch.setattr(terminal_bank, "TerminalBank", Terminals)
+    monkeypatch.setattr(kernel_isolation, "ConfinedRun", Confined)
+    monkeypatch.setattr(kernel_lifecycle, "held_shutdown", lambda: calls.append("held_shutdown"))
+    monkeypatch.setattr(kernel_lifecycle, "retired_probe", lambda value: calls.append("retired_probe"))
 
     def spawn(*arguments, **options):
         raise AssertionError("failed preparation launched pytest")

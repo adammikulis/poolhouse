@@ -13,10 +13,10 @@ from dataclasses import replace
 from pathlib import Path
 
 import psutil
-from test_kernel_role_home import IMPORT_NODE
 
 from poolhouse.platform import start_process, terminate_process_group
 from poolhouse.sandbox.seatbelt import Seatbelt
+from testkit.kernel_role_home import IMPORT_NODE
 
 CONTROL_NODE = "tests/test_kernel_role_home.py::test_owned_smoke_reaps_exited_leader_and_known_stdout_child"
 CONTROL_SCRIPT = (

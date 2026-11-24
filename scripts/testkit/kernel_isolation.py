@@ -15,20 +15,20 @@ import tempfile
 from dataclasses import replace
 from pathlib import Path
 
-import test_browser_admission
-from test_fixture_plan import FixturePlan
-from test_kernel_holder import (
-    identity as holder_asset_identity,
-    prepare as prepare_holder,
-    private_directory,
-)
-from test_kernel_selectors import admitted_node
 from testcommand import CONFINED_PLUGINS
 
 from poolhouse.activity.source_snapshot import actual_git, git_environment
 from poolhouse.sandbox.path_language import exact_language
 from poolhouse.sandbox.policy import Net, Policy
 from poolhouse.sandbox.seatbelt import Seatbelt, quote
+from testkit import browser_admission
+from testkit.fixture_plan import FixturePlan
+from testkit.kernel_holder import (
+    identity as holder_asset_identity,
+    prepare as prepare_holder,
+    private_directory,
+)
+from testkit.kernel_selectors import admitted_node
 
 GATE = frozenset({"test_layers.py", "test_budgets.py", "test_budget_floors.py",
                   "test_budget_ratchet.py", "test_redteam_human_floor.py", "test_requests_floor.py",
@@ -76,7 +76,7 @@ def check_selectors(command: list[str]) -> FixturePlan | None:
     if not selected:
         raise RuntimeError("test confinement: explicit reviewed gate selectors are required")
     if source_plan:
-        return test_browser_admission.source_plan(command, dict(os.environ))
+        return browser_admission.source_plan(command, dict(os.environ))
 
 
 def worktree_pointer(repo: Path) -> Path:
@@ -113,7 +113,7 @@ def source_reads(repo: Path, environment: dict[str, str]) -> tuple[list[Path], s
         if snapshot is not None:
             snapshot.close()
         storage.rmdir()
-    files.extend((Path(__file__).resolve(), repo / "scripts/test_terminal_bank.py", repo / "scripts/test_kernel_assets.py",
+    files.extend((Path(__file__).resolve(), repo / "scripts/testkit/terminal_bank.py", repo / "scripts/testkit/kernel_assets.py",
                   repo / "tests/test_test_kernel_isolation.py"))
     files = [path.resolve() for path in files if path.is_file() and path.resolve().is_relative_to(repo)]
     directories = {repo}
@@ -151,7 +151,7 @@ class ConfinedRun:
         self.relays = []
         self.relay_error = None
         self.artifacts = artifacts
-        self.browser = test_browser_admission.CURRENT.get()
+        self.browser = browser_admission.CURRENT.get()
         self.denied_listener = None
         self.bootstrap = None
         self.control = None
@@ -184,7 +184,7 @@ class ConfinedRun:
         for root in roots.values():
             root.mkdir(mode=0o700)
         self.prepare_canaries()
-        repo = Path(__file__).resolve().parent.parent
+        repo = Path(__file__).resolve().parents[2]
         self.environment = filtered_environment(environment)
         config_keys = {"GIT_CONFIG_NOSYSTEM", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"}
         self.environment.update({key: value for key, value in git_environment().items() if key in config_keys})
@@ -215,7 +215,7 @@ class ConfinedRun:
             if config.is_file():
                 files.append(config)
             files.extend(Path(prefix).resolve().glob("lib/*.dylib"))
-        from test_kernel_assets import interpreter_assets
+        from testkit.kernel_assets import interpreter_assets
         files, aliases, self.images = interpreter_assets(files, protected, self.observation_seconds)
         self.prepare_role_images(files, aliases, protected)
         self.prepare_git(files, aliases, protected)
@@ -256,7 +256,7 @@ class ConfinedRun:
             return
         if self.holder_assets.scope == "immutable-role-fences":
             return
-        from test_kernel_assets import loader_assets
+        from testkit.kernel_assets import loader_assets
         native = [path for path in self.holder_assets.files if path.name.endswith(".so")]
         if len(native) != 3 * len(self.holder_assets.role_cases):
             raise RuntimeError("holder role: native image closure changed")
@@ -268,7 +268,7 @@ class ConfinedRun:
         self.images.update(identities)
 
     def prepare_git(self, files: list[Path], aliases: set[Path], protected: tuple[Path, ...]) -> None:
-        from test_kernel_assets import loader_assets
+        from testkit.kernel_assets import loader_assets
         self.git = actual_git()
         git_files, git_aliases, git_images = loader_assets([self.git], protected, self.observation_seconds)
         files.extend(git_files)
@@ -280,7 +280,7 @@ class ConfinedRun:
         self.environment["PATH"] = os.pathsep.join((str(self.git.parent), str(Path(sys.executable).parent), os.defpath))
 
     def prepare_outputs(self, command: list[str], protected: tuple[Path, ...]) -> list[str]:
-        from test_kernel_outputs import OutputSink, junit_sink
+        from testkit.kernel_outputs import OutputSink, junit_sink
         if self.artifacts is None:
             for stream in (sys.stdout, sys.stderr):
                 self.relays.append(OutputSink(stream.fileno(), protected))
@@ -305,35 +305,35 @@ class ConfinedRun:
         return arguments
 
     def launch_profile(self, arguments, policy: Policy) -> None:
-        from test_kernel_role_smoke import CONTROL_NODE, observe_control
+        from testkit.kernel_role_smoke import CONTROL_NODE, observe_control
         if CONTROL_NODE in arguments:
             report, receipt = observe_control(self, policy)
             self.environment["POOLHOUSE_TEST_ROLE_CONTROL_REPORT"] = str(report)
             policy = replace(policy, read_files=(*policy.read_files, str(report))).validated()
             if self.artifacts is not None:
                 self.artifacts.proof["owned_process_control"] = receipt
-        from test_kernel_role_home import IMPORT_NODE
+        from testkit.kernel_role_home import IMPORT_NODE
         if IMPORT_NODE in arguments:
-            from test_kernel_role_smoke import observe as observe_role
+            from testkit.kernel_role_smoke import observe as observe_role
             report, receipt = observe_role(self, policy)
             self.environment["POOLHOUSE_TEST_ROLE_IMPORT_REPORT"] = str(report)
             policy = replace(policy, read_files=(*policy.read_files, str(report))).validated()
             self.holder_assets.identities[report] = holder_asset_identity(report.lstat())
             if self.artifacts is not None:
                 self.artifacts.proof["holder_import_smoke"] = receipt
-        from test_kernel_compile import NODE as COMPILE_NODE, observe as compile_components
+        from testkit.kernel_compile import NODE as COMPILE_NODE, observe as compile_components
         if any(part.split("[", 1)[0] == COMPILE_NODE for part in arguments):
             report = compile_components(self, policy)
             self.environment["DEV_TEST_COMPILER_REPORT"] = str(report)
             policy = replace(policy, read_files=(*policy.read_files, str(report))).validated()
-        from test_kernel_regex import NODE, observe
+        from testkit.kernel_regex import NODE, observe
         if any(part.split("[", 1)[0] == NODE for part in arguments):
             result, report = observe(self, policy)
             self.environment["DEV_TEST_REGEX_REPORT"] = str(report)
             policy = replace(policy, read_files=(*policy.read_files, str(report))).validated()
             if self.artifacts is not None:
                 self.artifacts.proof["native_regex"] = result
-        from test_kernel_attestation import Attestation
+        from testkit.kernel_attestation import Attestation
         self.bootstrap = Attestation(self, arguments)
         policy = replace(policy, read_files=(*policy.read_files, str(self.bootstrap.code), str(self.bootstrap.helper), str(self.bootstrap.manifest))).validated()
         self.policy = policy
@@ -343,7 +343,7 @@ class ConfinedRun:
         if self.holder_assets is not None and self.holder_assets.role_rules:
             with (self.control / "profile.sb").open("a") as stream:
                 stream.write("\n" + "\n".join(self.holder_assets.role_rules) + "\n")
-        from test_kernel_compile import LITERAL_NODE, replace_exact_file_language
+        from testkit.kernel_compile import LITERAL_NODE, replace_exact_file_language
         if any(part.split("[", 1)[0] == LITERAL_NODE for part in arguments):
             receipt = replace_exact_file_language(self.control / "profile.sb", policy.read_files)
             if self.artifacts is not None:

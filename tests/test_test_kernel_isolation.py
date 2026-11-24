@@ -15,15 +15,15 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-import test_kernel_holder as holder
-import test_kernel_isolation as isolation
+import testkit.kernel_holder as holder
+import testkit.kernel_isolation as isolation
 import testslots_rpc
 from confinement import needs_confinement
-from test_kernel_attestation import CHECKS, Attestation, validate_result
-from test_kernel_endpoint import connection, verify_socket
-from test_kernel_holder import Assets, ancestry, private_directory
-from test_kernel_lifecycle import observe_exit
-from test_kernel_regex import execute
+from testkit.kernel_attestation import CHECKS, Attestation, validate_result
+from testkit.kernel_endpoint import connection, verify_socket
+from testkit.kernel_holder import Assets, ancestry, private_directory
+from testkit.kernel_lifecycle import observe_exit
+from testkit.kernel_regex import execute
 
 from poolhouse.sandbox import path_language
 from poolhouse.sandbox.policy import Net, Policy
@@ -379,7 +379,7 @@ def test_preflight_does_not_import_pytest_or_conftest():
 def test_host_admin_index_rule_keeps_other_paths_and_world_writes_refused(monkeypatch):
     import grp
 
-    import test_kernel_assets as assets
+    import testkit.kernel_assets as assets
     monkeypatch.setattr(grp, "getgrnam", lambda name: SimpleNamespace(gr_gid=80))
     info = SimpleNamespace(st_mode=0o40775, st_uid=os.getuid(), st_gid=80)
     assert assets.trusted_host_index(Path("/opt/homebrew/Cellar"), info)
@@ -396,7 +396,7 @@ def test_host_admin_index_rule_keeps_other_paths_and_world_writes_refused(monkey
 @pytest.mark.skipif(sys.platform != "darwin", reason="macOS descriptor path validation")
 @pytest.mark.parametrize("alias", ["direct", "symlink", "hardlink"])
 def test_supervisor_output_refuses_protected_destinations(tmp_path, alias):
-    from test_kernel_outputs import junit_sink
+    from testkit.kernel_outputs import junit_sink
     protected = tmp_path / "protected"
     protected.mkdir()
     target = protected / "result.xml"
@@ -417,7 +417,7 @@ def test_supervisor_output_refuses_protected_destinations(tmp_path, alias):
 @needs_confinement
 @pytest.mark.skipif(sys.platform != "darwin", reason="macOS descriptor path validation")
 def test_supervisor_output_pins_both_streams_and_bounds_writes(tmp_path):
-    from test_kernel_outputs import LIMIT, OutputSink
+    from testkit.kernel_outputs import LIMIT, OutputSink
     protected = tmp_path / "protected"
     protected.mkdir()
     for name in ("stdout", "stderr"):
@@ -470,7 +470,7 @@ def test_source_inventory_does_not_execute_inherited_fsmonitor():
 
 @pytest.fixture
 def artifact_outputs(tmp_path, monkeypatch):
-    from test_kernel_outputs import ArtifactOutputs
+    from testkit.kernel_outputs import ArtifactOutputs
 
     from poolhouse.activity import source_snapshot
     protected = tmp_path / "protected"
@@ -534,7 +534,7 @@ def test_artifact_replaced_output_cannot_be_presented_as_pinned_evidence(artifac
 
 @needs_confinement
 def test_artifact_console_overflow_is_aggregate_across_duplicate_descriptors(artifact_outputs):
-    from test_kernel_outputs import LIMIT, OutputSink
+    from testkit.kernel_outputs import LIMIT, OutputSink
     console = artifact_outputs.sinks["console.log"]
     duplicate = OutputSink(console.fd, artifact_outputs.roots, private=True)
     try:
@@ -739,7 +739,7 @@ def test_explicit_literal_holder_inventory_runs_only_normal():
 
 @needs_confinement
 def test_literal_experiment_preserves_exact_native_terminal_union(tmp_path):
-    from test_kernel_compile import literal_language, replace_exact_file_language
+    from testkit.kernel_compile import literal_language, replace_exact_file_language
     paths = ["/owned/a", "/owned/ab", "/owned/a/child", '/owned/quote"file',
              "/owned/back\\slash", "/owned/café", "/owned/meta$[]()+*?{}^.|", "/owned/漢字"]
     lines, receipt = literal_language(paths + paths[:1])
@@ -816,7 +816,7 @@ def test_runtime_projection_keeps_all_verified_identities_without_unselected_gra
 
 @needs_confinement
 def test_role_case_allocation_keeps_parameters_and_generations_separate():
-    from test_kernel_role_home import CASE_FILE, selected_cases
+    from testkit.kernel_role_home import CASE_FILE, selected_cases
     base = CASE_FILE + "test_actual_immutable_runtime_receipt_is_verified_outside_the_socket_deadline"
     assert selected_cases([base]) == {base + "[broker]": "normal", base + "[holder]": "normal"}
     assert selected_cases([base + "[holder]"]) == {base + "[holder]": "normal"}
@@ -827,7 +827,7 @@ def test_role_case_allocation_keeps_parameters_and_generations_separate():
 
 @needs_confinement
 def test_role_copy_has_independent_inode_and_refuses_changed_content(tmp_path):
-    from test_kernel_role_home import copy_file
+    from testkit.kernel_role_home import copy_file
     source = tmp_path / "source"
     source.write_bytes(b"immutable fixture")
     source.chmod(0o400)
@@ -848,7 +848,7 @@ def test_role_copy_has_independent_inode_and_refuses_changed_content(tmp_path):
 @needs_confinement
 @pytest.mark.parametrize("change", ["identity", "writable", "hardlinked", "unpinned"])
 def test_role_native_image_requires_its_exact_readonly_verified_pin(tmp_path, change):
-    from test_kernel_assets import owned_image
+    from testkit.kernel_assets import owned_image
     image = tmp_path / "fixture.so"
     image.write_bytes(b"\xcf\xfa\xed\xfe" + b"fixture")
     image.chmod(0o400)

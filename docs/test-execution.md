@@ -190,7 +190,7 @@ denies every write outside the private scratch root. Source reads name tracked f
 individually; dependency prefixes are read-only. The child receives only its authenticated
 private Unix admission and descriptor-transfer endpoints. Fixtures that need more require
 explicit pre-launch endpoint reservations, and the kernel accepts only reviewed gate files and
-the nodes listed in `scripts/test_kernel_selectors.py`; other selectors fail before collection
+the nodes listed in `scripts/testkit/kernel_selectors.py`; other selectors fail before collection
 rather than receiving loopback access. The human-floor terminal fixture uses a supervisor-owned
 PTY bank through bounded authenticated operations on that endpoint. The kernel does not walk the
 real state root: a canary file outside the scratch root and the profile's write denial carry

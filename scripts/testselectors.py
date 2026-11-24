@@ -47,7 +47,7 @@ def refuse_unrequested(target: Path, shown: str, arguments: list[str]) -> None:
 def validate(arguments: list[str], root: Path) -> None:
     """Reject missing files before broker admission while preserving pytest selectors."""
     if sys.platform == "darwin" and os.environ.get("DEV_TEST_CONFINE") == "1":
-        from test_kernel_isolation import check_selectors
+        from testkit.kernel_isolation import check_selectors
         try:
             check_selectors([sys.executable, "-m", "pytest", *arguments])
         except RuntimeError as error:

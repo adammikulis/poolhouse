@@ -120,7 +120,7 @@
       ]
     },
     {
-      "path": "scripts/test_fixture_plan.py",
+      "path": "scripts/testkit/fixture_plan.py",
       "sha256": "9d6b0d4589a02357bc0cd31dd913fcac2eef0e13e0e029738334bdbe4edb4b56",
       "sites": [
         {

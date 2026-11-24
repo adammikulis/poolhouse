@@ -11,7 +11,8 @@ import time
 
 import psutil
 import testslots_rpc
-from test_kernel_endpoint import connection, verify_socket
+
+from testkit.kernel_endpoint import connection, verify_socket
 
 RETIRED = ["closed-cpu", "closed-terminal", "unlink", "rebind", "create-denied", "escaped-read", "escaped-tcp"]
 

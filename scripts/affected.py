@@ -21,7 +21,7 @@ import affected_rules as rules
 
 PACKAGE_ROOTS = (("src", "poolhouse"), ("scripts", "gates"))
 SCRIPT_TABLE = re.compile(r'''\[["']project["']\]\[["']scripts["']\]''')
-DOTTED = re.compile(r"\b((?:poolhouse|gates|tests)(?:\.\w+)+|poolhouse|gates)\b")
+DOTTED = re.compile(r"\b((?:poolhouse|gates|testkit|tests)(?:\.\w+)+|poolhouse|gates|testkit)\b")
 INERT = {"CHANGELOG.md", "HANDOFF.md", "README.md", "LICENSE", "NOTICE", "CLAUDE.md",
          "AGENTS.md", "release-please-config.json", "version.txt", ".gitignore"}
 EVERYTHING = {"pyproject.toml", "budgets.json", "tests/conftest.py", "tests/known-fixtures.txt"}

@@ -8,17 +8,17 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-import test_kernel_assets as loader
-import test_kernel_role_smoke as smoke
+import testkit.kernel_assets as loader
+import testkit.kernel_role_smoke as smoke
 
 from poolhouse.files import write_json
 
 
 def _holder_file(name):
-    """The file the kernel holder (scripts/test_kernel_holder.py) hands these cases; absent in a plain run."""
+    """The file the kernel holder (scripts/testkit/kernel_holder.py) hands these cases; absent in a plain run."""
     value = os.environ.get(name)
     if value is None:
-        pytest.skip(f"{name} is set only by scripts/test_kernel_holder.py, which prepares the role home")
+        pytest.skip(f"{name} is set only by scripts/testkit/kernel_holder.py, which prepares the role home")
     return Path(value)
 
 
