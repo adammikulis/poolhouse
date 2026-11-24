@@ -18,6 +18,7 @@ from pathlib import Path
 
 import psutil
 
+from poolhouse.lock import pid_alive
 from poolhouse.sandbox import netforward
 
 __all__ = ["Relay", "sweep"]
@@ -39,13 +40,6 @@ def _base(name: str) -> str:
     return base if longest <= SOCKET_PATH_MOST else "/tmp"  # noqa: S108 - a short fallback, the directory itself is private
 
 
-def _alive(pid: int, started: int) -> bool:
-    try:
-        return int(psutil.Process(pid).create_time()) == started
-    except psutil.Error:
-        return False
-
-
 def sweep() -> None:
     """Remove the relay directories of processes that no longer exist (a hard kill leaves them). Only this user's plain directories whose
     name is exactly a relay directory's are touched."""
@@ -56,7 +50,7 @@ def sweep() -> None:
             info = entry.lstat()
         except OSError:
             continue
-        if found and entry.is_dir() and not entry.is_symlink() and info.st_uid == os.getuid() and not _alive(int(found[1]), int(found[2])):
+        if found and entry.is_dir() and not entry.is_symlink() and info.st_uid == os.getuid() and not pid_alive(int(found[1]), int(found[2]), tolerance=1.0):
             shutil.rmtree(entry, ignore_errors=True)
 
 

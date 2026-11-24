@@ -238,21 +238,32 @@ def held_by(what: str | Path) -> str:
         os.close(handle)
 
 
-def pid_alive(pid: int) -> bool:
-    """Whether a process is running here. Asked, never assumed."""
+def pid_alive(pid: int, started: float | None = None, tolerance: float = 0.0) -> bool:
+    """Whether a process is running here. Asked, never assumed. With ``started`` (seconds since the epoch) it must also be the process
+    that started then, give or take ``tolerance``: a recycled pid is somebody else."""
     if pid <= 0:
         return False
     if sys.platform == "win32":
-        return win32.process_alive(pid)  # os.kill(pid, 0) is CTRL_C_EVENT there, not a probe
+        running = win32.process_alive(pid)  # os.kill(pid, 0) is CTRL_C_EVENT there, not a probe
+    else:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            running = True   # it exists; it belongs to somebody else
+        except OSError:
+            return False
+        else:
+            running = not _exited(pid)
+    if not running or started is None:
+        return running
+    import psutil
+
     try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
+        return abs(psutil.Process(pid).create_time() - started) <= tolerance
+    except psutil.Error:
         return False
-    except PermissionError:
-        return True          # it exists; it belongs to somebody else
-    except OSError:
-        return False
-    return not _exited(pid)
 
 
 def _exited(pid: int) -> bool:

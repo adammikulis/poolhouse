@@ -14,7 +14,7 @@ import threading
 
 import pytest
 
-from poolhouse.lock import Busy, held, held_by, only_one, release, take
+from poolhouse.lock import Busy, held, held_by, only_one, pid_alive, release, take
 
 
 def test_a_second_holder_is_refused_rather_than_allowed_to_overlap(tmp_path):
@@ -234,3 +234,12 @@ def test_denial_after_actual_acquisition_releases_only_that_lock(tmp_path):
     assert checks == [1, 1]
     with only_one(path, wait=False):
         assert str(os.getpid()) in path.read_text()
+
+
+def test_a_process_is_alive_only_when_it_started_when_the_record_says():
+    import psutil
+
+    started = psutil.Process().create_time()
+    assert pid_alive(os.getpid(), started, tolerance=0.5)
+    assert not pid_alive(os.getpid(), started + 3600, tolerance=2.0)  # the pid was recycled: somebody else
+    assert not pid_alive(2 ** 22 - 1, started, tolerance=2.0)

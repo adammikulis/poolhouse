@@ -31,7 +31,7 @@ from typing import Any
 from poolhouse import home, maintenance, optional
 from poolhouse.home import machine_id
 from poolhouse.hub import room as machine_room
-from poolhouse.lock import held_by
+from poolhouse.lock import held_by, pid_alive
 from poolhouse.paths import repo_root
 from poolhouse.units import human_bytes
 
@@ -321,20 +321,6 @@ def detach_bench(line: Sequence[str], home: Path, python: Path) -> tuple[int, Pa
     return pid, log
 
 
-def _alive(pid: int) -> bool:
-    """Whether ``pid`` is still doing something -- a zombie is not."""
-    if not pid or pid <= 0:
-        return False
-    import psutil
-
-    try:
-        return psutil.Process(pid).status() != psutil.STATUS_ZOMBIE
-    except psutil.AccessDenied:
-        return True
-    except psutil.Error:
-        return False
-
-
 def ended_badly(log: Path, *, lines: int = 60) -> str:
     """The line near the end of a detached bench's log that says it failed, or "" when
     nothing does. See `FAILED_MARKS` for why the log, and not an exit code, is the record."""
@@ -489,7 +475,7 @@ class BenchHost:
     def _watch(self, job: DaemonJob) -> None:
         """Wait for the detached pid to go, then settle the job from its log and remove
         what it shipped. A job `stop` already marked ``stopped`` stays so."""
-        while _alive(int(job.pid or 0)):
+        while pid_alive(int(job.pid or 0)):
             time.sleep(self.poll_s)
         shutil.rmtree(self._given(job.id), ignore_errors=True)
         if job.state == "running":

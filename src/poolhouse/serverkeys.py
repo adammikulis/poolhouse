@@ -10,7 +10,7 @@ from pathlib import Path
 
 from poolhouse import home
 from poolhouse.files import read_json, write_json
-from poolhouse.lock import only_one
+from poolhouse.lock import only_one, pid_alive
 
 __all__ = ["bind", "for_url", "forget", "issue", "key_file", "write_key_file"]
 
@@ -27,24 +27,13 @@ def _entries() -> dict[str, dict]:
     return found if isinstance(found, dict) else {}
 
 
-def _alive(pid: object) -> bool:
-    if not isinstance(pid, int) or pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except OSError:
-        return True
-    return True
-
-
 def _live(entry: object) -> bool:
     if not isinstance(entry, dict) or not isinstance(entry.get("key"), str):
         return False
     if entry.get("pid") == 0:
         return time.time() - float(entry.get("at", 0)) < STARTING_S
-    return _alive(entry.get("pid"))
+    pid = entry.get("pid")
+    return isinstance(pid, int) and pid_alive(pid)
 
 
 def _save(entries: dict[str, dict]) -> None:
@@ -97,7 +86,7 @@ def forget(port: int) -> None:
     with _locked():
         entries = _entries()
         entry = entries.get(str(int(port)))
-        if isinstance(entry, dict) and entry.get("pid") and _alive(entry["pid"]):
+        if isinstance(entry, dict) and isinstance(entry.get("pid"), int) and pid_alive(entry["pid"]):
             return
         if entries.pop(str(int(port)), None) is not None:
             _save(entries)
