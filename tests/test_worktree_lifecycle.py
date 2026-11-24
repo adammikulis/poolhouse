@@ -5,11 +5,12 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 
+import harness_claims_kit as harness_claims
 import pytest
 from harness_kit import checkouts, commit
 from node_kit import node_binary, workspace_node  # noqa: F401
 
-from poolhouse import claude, harness_claims, harnesshook, harnessid, harnessing
+from poolhouse import claude, harnesshook, harnessid, harnessing
 from poolhouse.board import place
 from poolhouse.errors import Denied
 from poolhouse.workspace import (

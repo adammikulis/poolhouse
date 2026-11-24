@@ -1,4 +1,4 @@
-"""Optional explicit Python helpers for launcher-bound claims; no automatic hook caller."""
+"""Explicit launcher-bound claim helpers (reserve, conflict, resources) the tests use to set up native claims on a real board; no production code calls them."""
 
 import os
 import shlex

@@ -41,7 +41,9 @@ def test_actual_path_mapping_ignores_selectors_but_connection_selection_keeps_th
 def test_board_locator_cannot_bypass_execution_project_guards(known, monkeypatch, tmp_path, target, guard):
     from functools import partial
 
-    from poolhouse import harness_claims, harnessid
+    import harness_claims_kit as harness_claims
+
+    from poolhouse import harnessid
     from poolhouse.board.tasks import Tasks
     from poolhouse.errors import Denied
     from poolhouse.workspace import harness_session, localagent, task_authority

@@ -7,11 +7,11 @@ from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
+import harness_claims_kit as harness_claims
 import pytest
 from node_kit import node_binary, workspace_node  # noqa: F401
 from taskboard_kit import accepted, board as _board_fixture
 
-from poolhouse import harness_claims
 from poolhouse.board.tasks import Tasks
 from poolhouse.errors import Denied
 from poolhouse.workspace import (

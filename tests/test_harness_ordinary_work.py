@@ -2,7 +2,7 @@
 
 import pytest
 
-from poolhouse import coding_policy, harness_claims, harnesshook, node_launch
+from poolhouse import coding_policy, harnesshook, node_launch
 from poolhouse.board import place
 from poolhouse.board.client import Client
 
@@ -12,8 +12,6 @@ def no_coordination(monkeypatch):
     def forbidden(*args, **kwargs):
         pytest.fail("ordinary tool policy contacted project, identity or claim coordination")
 
-    for method in ("conflict", "reserve", "resources", "session_of"):
-        monkeypatch.setattr(harness_claims, method, forbidden)
     monkeypatch.setattr(place, "resolve", forbidden)
     monkeypatch.setattr(Client, "call", forbidden)
     monkeypatch.setattr(node_launch, "ensure_node", forbidden)

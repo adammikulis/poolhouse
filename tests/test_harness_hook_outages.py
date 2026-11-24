@@ -5,15 +5,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from poolhouse import coding_policy, harness_claims, harnesshook
+from poolhouse import coding_policy, harnesshook
 from poolhouse.board.client import Client
 from poolhouse.errors import Denied
 from poolhouse.interventions import Call
-from poolhouse.workspace import harness_session, worktree_lifecycle
-
-
-def unavailable(*args, **kwargs):
-    raise harness_session.BoardUnavailable('board unavailable: connection refused')
+from poolhouse.workspace import worktree_lifecycle
 
 
 def test_post_outage_does_not_reverse_a_completed_tool(monkeypatch, capsys):
@@ -42,10 +38,6 @@ def test_stop_does_not_run_explicit_cleanup_admission(monkeypatch):
 def test_pre_does_not_consult_workspace_ownership(monkeypatch):
     payload = {'tool_name': 'Write', 'tool_input': {'file_path': '/project/test.py'}, 'cwd': '/project'}
     rail = harnesshook.Rail(coding_policy.Policy('guarded'), 'worker', ['/project'])
-    def forbidden(*args, **kwargs):
-        pytest.fail('ordinary writes must not query or reserve workspace ownership')
-    monkeypatch.setattr(harness_claims, 'conflict', forbidden)
-    monkeypatch.setattr(harness_claims, 'reserve', forbidden)
     answer = harnesshook.pre(payload, rail)['hookSpecificOutput']
     assert answer['permissionDecision'] == 'allow'
     assert 'ownership' not in answer['permissionDecisionReason']
@@ -75,9 +67,6 @@ def test_diagnostic_redacts_credentials(secret, monkeypatch):
 
 @pytest.mark.parametrize('role', ['read-only', 'guarded', 'yolo'])
 def test_launcher_keeps_normal_role_policy_without_admission(monkeypatch, tmp_path, role):
-    def no_board_session(*args, **kwargs):
-        pytest.fail('resource-free launcher requested mutation authority')
-    monkeypatch.setattr(harness_claims, 'session_of', no_board_session)
     args = {'command': 'poolhouse --no-browser'}
     rail = harnesshook.Rail(coding_policy.Policy(role), 'worker', [str(tmp_path)])
     expected = harnesshook.decide(coding_policy.Policy(role), Call('Bash', args), roots=rail.roots)
@@ -85,13 +74,6 @@ def test_launcher_keeps_normal_role_policy_without_admission(monkeypatch, tmp_pa
     action = result['hookSpecificOutput']['permissionDecision']
     assert action == ('allow' if expected.action == 'allow' else 'deny')
 
-
-def test_a_board_outage_never_waives_the_destructive_call_guard(monkeypatch, tmp_path):
-    monkeypatch.setattr(harness_claims, 'session_of', unavailable)
-    args = {'command': f'poolhouse --no-browser; rm -rf {tmp_path / "owned"}'}
-    result = harnesshook.pre({'tool_name': 'Bash', 'tool_input': args, 'cwd': str(tmp_path)},
-                            harnesshook.Rail(coding_policy.Policy('guarded'), 'worker', [str(tmp_path)]))
-    assert result['hookSpecificOutput']['permissionDecision'] == 'deny'
 
 
 @pytest.mark.parametrize('error', [Denied('board offline'), OSError('connection refused'),

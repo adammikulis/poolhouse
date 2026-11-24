@@ -3,11 +3,12 @@
 from functools import partial
 from types import SimpleNamespace
 
+import harness_claims_kit as harness_claims
 import pytest
 from harness_kit import checkouts
 from test_board_connection_existing import known as _known
 
-from poolhouse import harness_claims, harnessid
+from poolhouse import harnessid
 from poolhouse.board import client, person
 from poolhouse.board.tasks import Tasks
 from poolhouse.errors import Denied

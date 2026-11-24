@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from git_template import copy_checkout
 
-from poolhouse import coding_policy, harness_claims, harnesshook, harnesspolicy, worktreerules
+from poolhouse import coding_policy, harnesshook, harnesspolicy, worktreerules
 
 HOOKS = Path(__file__).resolve().parent.parent / "scripts" / "hooks"
 BASH, EDIT = HOOKS / "claude-bash-guard", HOOKS / "claude-edit-guard"
@@ -280,7 +280,6 @@ def test_the_harness_hook_uses_tool_policy_for_primary_development_writes(repo, 
     overwrite is destructive: denied with the reason under `guarded`, allowed under `yolo`; a new file is reversible), never by a
     lookup of who owns the path and never by asking anyone."""
     primary, work, _ = repo
-    monkeypatch.setattr(harness_claims, "conflict", lambda *args: pytest.fail("generic ownership lookup"))
 
     def decision(name: str, profile: str) -> dict:
         event = {"tool_name": "Write", "cwd": str(work), "tool_input": {"file_path": str(primary / name), "content": "value = 2\n" * 40}}
@@ -341,8 +340,6 @@ def test_primary_development_write_does_not_reserve_workspace_ownership(repo, mo
     primary, _, _ = repo
     monkeypatch.setattr(harnesshook, "decide",
                         lambda *args, **kwargs: harnesspolicy.Decision("allow", "reversible", "owned write"))
-    monkeypatch.setattr(harness_claims, "conflict", lambda *args: pytest.fail("generic ownership lookup"))
-    monkeypatch.setattr(harness_claims, "reserve", lambda *args: pytest.fail("generic ownership reservation"))
     event = {"tool_name": "Write", "cwd": str(primary),
              "tool_input": {"file_path": str(primary / "a.py")}}
     out = harnesshook.pre(event, harnesshook.Rail("plan-and-go", "worker", roots=[str(primary)]))

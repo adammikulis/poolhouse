@@ -5,11 +5,12 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 
+import harness_claims_kit as harness_claims
 import pytest
 from harness_kit import held, hook, verdict
 from node_kit import node_binary, workspace_node  # noqa: F401
 
-from poolhouse import coding_policy, harness_claims, harnesshook
+from poolhouse import coding_policy, harnesshook
 from poolhouse.board import place, session as board_session
 from poolhouse.errors import Conflict, Denied
 from poolhouse.net import git
