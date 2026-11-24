@@ -28,8 +28,11 @@ def native_cli() -> None:
 
 
 def fixture_worker(root, cid, conversation, prompt, communication) -> None:
-    from poolhouse import coding, harnessid
+    """PLUMBING ONLY: the turn worker with the launcher and the isolation gate stood in for (see tests/gate_open.py);
+    this process is spawned, so the parent's monkeypatch does not reach it."""
+    from poolhouse import coding, harnessid, harnessing
     from poolhouse.workspace.coding_turns import worker
+    harnessing.require_isolated_execution = lambda: None
     def launch(model, role, project, **options):
         if prompt == "startup rejected":
             raise SystemExit(2)

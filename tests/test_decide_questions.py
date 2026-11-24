@@ -1,4 +1,6 @@
-"""Named typed questions over the real rules and logprob deciders."""
+"""PLUMBING ONLY: named typed questions over the rules decider and the logprob decider, the latter against a
+scripted chat server (tests/decide_fakes.py). The scripted probabilities choose each answer; what is asserted is how
+answers are typed, normalised, abstained and rendered, and that a hostile state cannot change the prompt."""
 
 from __future__ import annotations
 

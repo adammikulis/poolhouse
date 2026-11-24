@@ -1,4 +1,4 @@
-"""The judge attacked directly (issue 30): text and tool calls aimed at the model that reads them
+"""PLUMBING ONLY: the judge attacked directly (issue 30): text and tool calls aimed at the model that reads them
 for injections. A scripted chat server that reports log-probabilities stands in for the model and
 records every prompt it is sent, so what is checked is what the judge controls: how the prompt is
 built, how much of the input reaches it, how its answer is read, and what happens when it fails.
@@ -395,15 +395,14 @@ def test_the_default_guard_taints_what_the_judge_could_not_read_so_a_changing_to
 
 # -- the judge can be the target of every attack at once, and nothing gets through ---------------
 
-@pytest.mark.parametrize("name", sorted(EVERYTHING))
+@pytest.mark.parametrize("name", sorted(set(EVERYTHING) - {"other-language"}))
 def test_no_attack_text_is_cleared_by_a_judge_that_reads_the_goal_as_an_injection(server, name):
     """A judge that is not fooled by the wording (it flags the goal sentence wherever it is) is
-    not made to clear any of the attacks by the way they are written."""
+    not made to clear any of the attacks by the way they are written. ("other-language" is left out:
+    its goal sentence is in another language, which only the real model run reads.)"""
     screen = screen_for(server, lambda u: says_yes(u) if "fleet_join" in u or "collect.example" in u
                         else says_no(u))
     verdict = verdict_of(screen, EVERYTHING[name])
-    if name == "other-language":
-        pytest.skip("the goal sentence is in another language here; the real model run covers it")
     assert not isinstance(verdict, Proceed), f"{name} was cleared"
 
 

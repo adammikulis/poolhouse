@@ -10,7 +10,6 @@ from test_fleet_ui import Serving
 
 from poolhouse import node_launch
 from poolhouse.board import person
-from poolhouse.fleet import routes
 
 pytest_plugins = ["node_kit"]
 pytestmark = pytest.mark.redteam
@@ -60,7 +59,7 @@ def test_local_person_posts_dm_and_thread_without_exposing_credentials(board):
 
 def test_joined_session_is_required_before_the_persons_session_is_used(board, monkeypatch):
     server, _, worker = board
-    monkeypatch.setattr(routes, 'in_pool', lambda _: True)
+    monkeypatch.setattr(server.ui, 'founded', lambda: True)
     assert post(server, {'to': 'builder', 'body': 'Unsigned'}, cookie='')[0] == 401
     cookie = server.ui.sessions.cookie_header(server.ui.sessions.open('person', 'launch-ticket'))
     assert post(server, {'to': board[1].worker.name, 'body': 'Signed'}, cookie=cookie)[0] == 200

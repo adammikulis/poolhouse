@@ -1,4 +1,6 @@
-"""The embed backend: zero-shot ranking, trained heads, and the file a head is saved in."""
+"""PLUMBING ONLY: the embed backend's ranking arithmetic, trained heads and the file a head is saved in, over a
+hashing bag-of-words embedder (tests/decide_fakes.py), not an embedding model. Whether a real embedding model puts a
+paraphrase nearer is asserted in tests/test_real_model_uses.py (``--real-model``)."""
 
 from __future__ import annotations
 

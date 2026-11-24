@@ -1,4 +1,6 @@
-"""Graph edits: a model may pick from the listing, and may not invent anything."""
+"""PLUMBING ONLY: graph edits: a model may pick from the listing, and may not invent anything. The replies here
+(`FakeClient`, the canned chat server) are written by hand to feed the validation, so what is asserted is what is kept
+and dropped from a reply, never what a model proposes."""
 
 from __future__ import annotations
 

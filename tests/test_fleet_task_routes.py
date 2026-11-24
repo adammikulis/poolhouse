@@ -4,7 +4,6 @@ import pytest
 from person_kit import person_session
 
 from poolhouse.board.tasks import Tasks
-from poolhouse.fleet import routes
 
 pytest_plugins = ["node_kit", "person_kit"]
 pytestmark = pytest.mark.redteam
@@ -50,7 +49,7 @@ def test_foreign_page_cannot_create_tasks(tasks_ui, options):
 
 def test_joined_unsigned_and_browser_claims_are_refused(tasks_ui, monkeypatch):
     server, node = tasks_ui
-    monkeypatch.setattr(routes, 'in_pool', lambda _: True)
+    monkeypatch.setattr(server.ui, 'founded', lambda: True)
     assert post(server, {'spec': {'title': 'x', 'acceptance': ['x']}}, cookie='')[0] == 401
     cookie = server.ui.sessions.cookie_header(server.ui.sessions.open('person', 'launch-ticket'))
     assert post(server, {'action': 'claim', 'token': 'worker', 'allocation_id': 'fake'}, cookie=cookie)[0] == 400

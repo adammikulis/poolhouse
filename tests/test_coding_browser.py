@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import pytest
 from coding_kit import fixture_worker
+from launch_support import sign_in
 from node_kit import node_binary, workspace_node  # noqa: F401
+from service_kit import one_node  # noqa: F401
 from test_fleet_ui import Serving
 
 from poolhouse.fleet.conversation_settings import DEFAULTS
@@ -14,7 +16,7 @@ pytestmark = pytest.mark.slow
 
 
 @pytest.fixture
-def coding_browser(tmp_path, monkeypatch, browser_owner, workspace_node):  # noqa: F811
+def coding_browser(tmp_path, monkeypatch, browser_owner, workspace_node, one_node):  # noqa: F811
     monkeypatch.setenv("POOLHOUSE_WORKSPACE_HOME", str(tmp_path / "workspace"))
     monkeypatch.setattr(coding_turns, "worker", fixture_worker)
     monkeypatch.setattr(coding_turns.harnessing, "binary_for", lambda name: "fixture-cli" if name == "codex" else "")
@@ -26,6 +28,9 @@ def coding_browser(tmp_path, monkeypatch, browser_owner, workspace_node):  # noq
         project = tmp_path / "project"
         project.mkdir()
         with browser_owner.pages() as page:
+            name, value = sign_in(served).split("=", 1)
+            page.context.add_cookies([{"name": name, "value": value, "url": f"http://127.0.0.1:{served.port}/ui",
+                                       "httpOnly": True}])
             page.route("**/ui/conversations/defaults", lambda route: route.fulfill(json={"settings": {**DEFAULTS, "max_output_tokens": 13579}}))
             page.route("**/ui/chat", lambda route: route.fulfill(json={"models": [{"model": "test-model", "local": True}]}))
             page.route("**/ui/coding/catalogue", lambda route: route.fulfill(json={

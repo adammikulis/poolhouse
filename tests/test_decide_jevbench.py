@@ -1,5 +1,6 @@
-"""JevBench's record format as cases, and the scoring of a run, on a tiny synthetic file in that
-format (no download, no model): the real logprob decider against the fake chat server."""
+"""PLUMBING ONLY: JevBench's record format as cases, and the scoring of a run, on a tiny synthetic file in that
+format (no download, no model): the logprob decider against a scripted chat server (tests/decide_fakes.py) whose
+fixed probabilities make the accuracy and Brier arithmetic checkable. No score here says what a model gets right."""
 
 from __future__ import annotations
 

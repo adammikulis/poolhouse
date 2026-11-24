@@ -33,6 +33,8 @@ from poolhouse.harnesspolicy import decide
 from poolhouse.interventions import Call
 
 SRC = str(Path(__file__).resolve().parent.parent / "src")
+pytest_plugins = ["gate_open"]
+pytestmark = pytest.mark.usefixtures("gate_open")
 
 
 def _hook(event, payload, *args, env=None):
@@ -355,6 +357,9 @@ class TestHarnessSession:
         lead = workspace_node.member("lead")
         project = tmp_path / "proj"
         project.mkdir()
+        workspace_node.allow(lead, "source_add")
+        workspace_node.client.call("project_add", "", lead.token, id=workspace_node.board, kind="folder",
+                                   path=str(project))
         return SimpleNamespace(node=workspace_node, lead=lead, board=workspace_node.session(lead), project=project)
 
     @staticmethod

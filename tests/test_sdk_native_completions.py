@@ -1,4 +1,6 @@
-"""Native SDK payload, frame, endpoint and joined-cancellation contracts."""
+"""PLUMBING ONLY: native SDK payload, frame, endpoint and joined-cancellation contracts. The provider frames are
+canned (``canned_chunk``, a canned model id), so what is asserted is how frames are read, bounded and closed, never
+what a model says."""
 from __future__ import annotations
 
 import gzip
