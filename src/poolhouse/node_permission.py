@@ -1,4 +1,4 @@
-"""`poolhouse node permission`: make macOS ask for Local Network permission for Poolhouse, and say what the person answered.
+"""`poolhouse local-network permission`: make macOS ask for Local Network permission for Poolhouse, and say what the person answered.
 
 It launches Poolhouse.app once with `probe`, which joins the beacon multicast group, sends one datagram of its own to it (and one to the router) and
 listens for it coming back (`poolhouse-node probe`). The first time, macOS shows the Local Network prompt for "Poolhouse" and
@@ -6,9 +6,9 @@ holds the probe's traffic until the person answers, so the probe waits up to 30 
 hears. This is the only place that touches multicast on this Mac outside a node the person turned the network on for; tests
 parse results and build command lines, and open no sockets.
 
-    poolhouse node permission [--seconds N]
-    poolhouse node build [--binary PATH] [--icon SVG]
-    poolhouse node key
+    poolhouse local-network permission [--seconds N]
+    poolhouse local-network build [--binary PATH] [--icon SVG]
+    poolhouse local-network key
 """
 
 from __future__ import annotations
@@ -72,7 +72,7 @@ def explanation(verdict_: str, result: dict | None) -> str:
     if verdict_ == GRANTED:
         return "Poolhouse heard its own message on this network, so Local Network access is allowed."
     if verdict_ == NOT_ASKED:
-        return "Poolhouse did not run, so macOS was not asked. Build it with `poolhouse node build` and try again."
+        return "Poolhouse did not run, so macOS was not asked. Build it with `poolhouse local-network build` and try again."
     detail = f" ({result.get('error') or result.get('last_error')})" if result and (result.get("error") or result.get("last_error")) else ""
     return ("Poolhouse could not hear itself on this network" + detail + ". If you clicked Don't Allow, turn Poolhouse on in "
             "System Settings > Privacy & Security > Local Network, then run this again.")
@@ -82,7 +82,7 @@ def permission(seconds: int = SECONDS) -> str:
     """Run the probe through Poolhouse.app once and return the verdict; the bundle must have been built."""
     bundle = node_app.bundle_path()
     if not node_app.executable_path(bundle).is_file():
-        warn(f"node permission: {bundle} is not built; run `poolhouse node build` first")
+        warn(f"node permission: {bundle} is not built; run `poolhouse local-network build` first")
         return NOT_ASKED
     with tempfile.TemporaryDirectory(prefix="poolhouse-probe") as scratch:
         out = Path(scratch) / "probe.json"
@@ -105,7 +105,7 @@ WHERE = {"keystore": "the keystore", "passphrase": "a file under a passphrase (w
 
 
 def _key_command(args) -> int:
-    """``poolhouse node key``: say where the device key is kept."""
+    """``poolhouse local-network key``: say where the device key is kept."""
     state = Path(args.state) if args.state else node_launch.default_state()
     say(f"the device key is kept in {WHERE.get(node_key.status(state)['custody'], 'an unknown place')}")
     return 0

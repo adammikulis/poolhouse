@@ -1,4 +1,4 @@
-"""Where the node's device key is kept, and how it reaches the node: `poolhouse node key`.
+"""Where the node's device key is kept, and how it reaches the node: `poolhouse local-network key`.
 
 On a device with an operating-system keystore the key is wrapped under a key of that keystore (`poolhouse.keystore`, purpose
 ``device-key``, owned by the state directory) and kept as ``device.key.wrapped``, which opens only on this computer and for

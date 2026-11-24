@@ -8,7 +8,7 @@ the binary's hash, so rebuilding the binary keeps the permission the person gave
 The bundle lives under `~/.poolhouse/apps/`, outside the repository. `BUNDLE_ID` is never changed: a new id is a new app to macOS
 and loses every grant.
 
-    poolhouse node build [--binary PATH] [--icon SVG]     (poolhouse.node_permission)
+    poolhouse local-network build [--binary PATH] [--icon SVG]     (poolhouse.node_permission)
 """
 
 from __future__ import annotations

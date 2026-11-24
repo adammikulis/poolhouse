@@ -166,7 +166,7 @@ poolhouse = "poolhouse.cli:main"
 poolhouse-open = "poolhouse.fleet.launch_open:main"
 poolhouse-traind = "poolhouse.cli.daemon:main"
 # the macOS identity of the LAN node: build Poolhouse.app, ask for Local Network permission
-poolhouse-node = "poolhouse.node_permission:main"
+poolhouse-local-network = "poolhouse.node_permission:main"
 poolhouse-device = "poolhouse.fleet.device_cli:main"
 # the pool of this device's node: found, join, members, and plan, pause and resume compute on its devices
 poolhouse-pool = "poolhouse.pool_cli:main"
