@@ -44,8 +44,9 @@ def confinable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 @pytest.fixture
 def from_a_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
     """The launch is made from a terminal outside any agent, as a person's or the daemon's is. A test of the launcher's plumbing is run by a suite an
-    agent may run, whose process tree has an agent in it, and the widening gate refuses that caller `--project` (tests/test_isolation_gate.py holds the
-    gate's own cases), so here the decision of the widenings is the empty one."""
+    agent may run, whose process tree has an agent in it, and the gate refuses that caller `--project` and registers no project for it
+    (tests/test_isolation_gate.py and tests/test_launch_registers_project.py hold the gate's own cases), so here the decision of the widenings is the
+    empty one."""
     monkeypatch.setattr(harnessing, "decided", lambda args, asked: isolation.Launch((), (), False, False))
 
 

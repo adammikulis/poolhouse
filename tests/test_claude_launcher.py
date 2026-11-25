@@ -12,7 +12,7 @@ from poolhouse.isolation.environment import MODEL_VARS, Inputs
 from tests.confined_kit import repository
 
 pytest_plugins = ["tests.confined_kit"]
-pytestmark = pytest.mark.usefixtures("confinable")
+pytestmark = pytest.mark.usefixtures("confinable", "from_a_terminal")
 
 
 @pytest.fixture(autouse=True)

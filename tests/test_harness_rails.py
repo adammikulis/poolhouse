@@ -275,7 +275,7 @@ def _fake_serving(seen):
     return serving
 
 
-@pytest.mark.usefixtures("confinable")
+@pytest.mark.usefixtures("confinable", "from_a_terminal")
 class TestLaunch:
     @pytest.fixture(autouse=True)
     def _quiet(self, monkeypatch, tmp_path):
