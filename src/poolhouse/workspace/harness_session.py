@@ -20,11 +20,11 @@ class BoardUnavailable(Denied):
     """The board could not be reached or authenticated: local work carries on with a warning."""
 
 
-def _authenticated(actor, cwd) -> tuple[Session, str]:
-    """Construct and authenticate this launcher actor on the project's board."""
+def _authenticated(actor, cwd, board: str = "") -> tuple[Session, str]:
+    """Construct and authenticate this launcher actor on ``board``, which is the project's board unless the session is known to be on another."""
     try:
         node = Client(node_launch.default_state())
-        board = place.at_path(node, Path(cwd))
+        board = board or place.at_path(node, Path(cwd))
     except (NodeError, OSError) as error:
         raise BoardUnavailable(f'the board of {Path(cwd).name} is not reachable as {actor}: {error}') from error
     try:
@@ -50,9 +50,9 @@ def session_of(actor, cwd) -> Session:
     return _authenticated(actor, cwd)[0]
 
 
-def inbox_of(actor: str, cwd: Path, limit: int) -> tuple[str, float, list[Entry]]:
+def inbox_of(actor: str, cwd: Path, limit: int, board: str = "") -> tuple[str, float, list[Entry]]:
     """Read unread metadata within one private authenticated session transaction."""
-    session, name = _authenticated(actor, cwd)
+    session, name = _authenticated(actor, cwd, board)
     cursor = credentials.cursors(session.client.state, session.board, name).get("inbox", {})
     entries = session.read(cursor, inbox=True, limit=limit).entries
     return name, session.clock(), entries

@@ -115,7 +115,7 @@ def test_the_hook_post_event_carries_the_unread_line_of_the_launchers_agent(kit,
 
 def test_explicit_parent_hook_preserves_launcher_root(monkeypatch):
     captured = []
-    monkeypatch.setattr(harnesshook, 'nudge', lambda label, rail: captured.append((label, rail.roots)) or '')
+    monkeypatch.setattr(harnesshook, 'nudge', lambda label, rail, board='': captured.append((label, rail.roots)) or '')
     assert harnesshook.run(['post', '--agent', 'project-parent', '--root', '/launcher-root'],
                            io.StringIO('{"cwd":"/unrelated"}'), io.StringIO()) == 0
     assert captured == [('project-parent', ['/launcher-root'])]

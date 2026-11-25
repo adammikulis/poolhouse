@@ -14,10 +14,10 @@ import math
 import re
 import unicodedata
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
-__all__ = ["LABEL", "RESERVED", "VERBS", "Verb", "check", "describe", "labelled"]
+__all__ = ["LABEL", "LEAD", "RESERVED", "VERBS", "Verb", "check", "describe", "labelled"]
 
 LABEL = "from a confined agent: data"
 """What the bridge puts in front of every text a confined session sends; the reader treats what follows as data."""
@@ -50,6 +50,10 @@ class Verb:
     """Arguments that name a message kind or type: none may name one of the launcher's."""
     always: tuple[str, ...] = ()
     """One-line arguments that carry the label alone when the session gives none, so no message leaves without it."""
+    help: str = ""
+    """What the tool is for, in the words a small model reads beside its name (empty: the generic sentence of the client)."""
+    hints: Mapping[str, str] = field(default_factory=dict)
+    """What each argument is, by name."""
 
 
 VERBS: dict[str, Verb] = {
@@ -78,6 +82,17 @@ VERBS: dict[str, Verb] = {
 }
 """The closed table. `attach` takes text and never a path, since a path would be read in the parent; the verbs that write or make a path
 of the parent's (`file_save`, `scratch_*`), the task verbs and every verb of administration are not in it."""
+LEAD: dict[str, Verb] = {
+    "ask": Verb("ask", {"question": TEXT}, ("question",), acts=True, bodies=("question",),
+                help="Ask your lead one question and wait for its answer, which is returned. Ask only what the files cannot tell you.",
+                hints={"question": "the question, in plain words"}),
+    "note": Verb("note", {"text": TEXT}, ("text",), acts=True, bodies=("text",),
+                 help="Tell your lead a finding or a progress note. It returns at once and nothing comes back.",
+                 hints={"text": "what to tell your lead, in plain words"}),
+}
+"""The table of a delegate (`poolhouse.delegate_confined`): the two tools of a session that talks to its lead and to no one else. There is no recipient and no kind
+to name: the parent's handler sends to the lead and nobody else, and these are the only tools the session has, so the model has no three-argument
+generic send to get wrong. A session has this table or `VERBS`, never both."""
 KIND = {TEXT: str, WHOLE: int, NUMBER: (int, float), FLAG: bool}
 
 
@@ -100,11 +115,11 @@ def _typed(name: str, value: object, kind: str) -> object:
     return value
 
 
-def check(name: str, arguments: object, *, ttl_cap: float = TTL_CAP) -> tuple[Verb, dict[str, Any]]:
-    """The verb ``name`` and its arguments ready to run: each named in the table, of its type, every needed one given, no kind that is the
-    launcher's, and the sender label in front of every text a reader will read. A time to live is held at ``ttl_cap``, and a number that is not
-    finite (`NaN`, `Infinity`) is no number. ``ValueError`` names what is wrong, never the text given."""
-    verb = VERBS.get(name)
+def check(name: str, arguments: object, *, ttl_cap: float = TTL_CAP, table: Mapping[str, Verb] = VERBS) -> tuple[Verb, dict[str, Any]]:
+    """The verb ``name`` of ``table`` (the session's own) and its arguments ready to run: each named in the table, of its type, every needed one
+    given, no kind that is the launcher's, and the sender label in front of every text a reader will read. A time to live is held at ``ttl_cap``, and a
+    number that is not finite (`NaN`, `Infinity`) is no number. ``ValueError`` names what is wrong, never the text given."""
+    verb = table.get(name)
     if verb is None or not isinstance(arguments, dict):
         raise ValueError("no such verb")
     unknown = sorted(set(arguments) - set(verb.takes))
@@ -130,6 +145,8 @@ def check(name: str, arguments: object, *, ttl_cap: float = TTL_CAP) -> tuple[Ve
     return verb, ready
 
 
-def describe() -> dict[str, dict[str, Any]]:
-    """The table as a client reads it: per verb the arguments by type, the ones needed and whether it acts."""
-    return {name: {"takes": dict(verb.takes), "needs": list(verb.needs), "acts": verb.acts} for name, verb in VERBS.items()}
+def describe(table: Mapping[str, Verb] = VERBS) -> dict[str, dict[str, Any]]:
+    """The table as a client reads it: per verb the name of its tool, the arguments by type, the ones needed, whether it acts and the words that say
+    what the tool and each argument are."""
+    return {name: {"tool": verb.tool, "takes": dict(verb.takes), "needs": list(verb.needs), "acts": verb.acts, "help": verb.help,
+                   "hints": dict(verb.hints)} for name, verb in table.items()}

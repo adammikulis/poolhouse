@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import IO, Any
 
 from poolhouse import activity, coding_policy, home as state_home
-from poolhouse.isolation import client as client_module
+from poolhouse.isolation import client as client_module, session_verbs
 from poolhouse.isolation.attestation import attest
 from poolhouse.isolation.capability import require_capable
 from poolhouse.isolation.environment import Inputs, environment
@@ -117,6 +117,8 @@ class Plan:
     conversation: str = ""
     extras: Mapping[str, str] = field(default_factory=dict)
     interactive: bool = False
+    verbs: Mapping[str, session_verbs.Verb] = field(default_factory=lambda: session_verbs.VERBS)
+    """The closed table of verbs the session has: the workspace's, or a delegate's two ways to its lead."""
 
 
 class Admission:
@@ -322,7 +324,7 @@ def _services(plan: Plan, session: Session, parts: Parts) -> tuple[ModelBridge, 
     answer = plan.decide(str(session.stage.physical))
     root = tempfile.mkdtemp(prefix="pp-", dir="/tmp")
     parts.scratch.append(root)
-    bridge = SessionBridge(Handlers(decide, plan.workspace, activity.record, _events), Terms(plan.policy.writable, plan.lease.window), root=root, admit=parts.admission)
+    bridge = SessionBridge(Handlers(decide, plan.workspace, activity.record, _events), Terms(plan.policy.writable, plan.lease.window, verbs=plan.verbs), root=root, admit=parts.admission)
     bridge.start()
     parts.stack.append(bridge)
     return model, bridge

@@ -35,7 +35,7 @@ from poolhouse.briefing import REQUIRED_BRIEFING
 from poolhouse.client import is_healthy
 from poolhouse.errors import Denied
 from poolhouse.hub.probe import MachineMemory
-from poolhouse.isolation import places
+from poolhouse.isolation import places, session_verbs
 from poolhouse.isolation.refusals import sentence
 from poolhouse.sandbox import run as sandbox_run
 from poolhouse.serve import admission, chat_template, leases, profile, suggest, wired
@@ -477,6 +477,8 @@ class Harness:
     interactive: bool = False
     workspace: Callable[[str, Mapping[str, Any]], Any] | None = None
     conversation: str | None = None
+    verbs: Mapping[str, session_verbs.Verb] = dataclasses.field(default_factory=lambda: session_verbs.VERBS)
+    """The closed table of verbs the harness's tools are made from: the workspace's by default, or a delegate's two ways to its lead."""
 
 
 @contextlib.contextmanager
@@ -491,14 +493,14 @@ def confined(args: argparse.Namespace, run: Session, how: Harness,
         # a call is judged against the stage it writes to; what the board tells the helper is read for the person's project, whose board it is
         rail, project = rail_of(args, helper.name, stage), rail_of(args, helper.name, str(run.cwd))
         return lambda event, payload: (harnesshook.pre(payload, rail) if event == "pre" else harnesshook.stop(rail) if event == "stop"
-                                       else harnesshook.post(helper.name, project))
+                                       else harnesshook.post(helper.name, project, board=helper.board))
 
     notice = isolation.Notice(None if parent is None else isolation.Reporter(_post(parent)), getattr(parent, "name", ""), REPORT_CAP,
                               lambda name, fields: sandbox_run.HOOKS.events and sandbox_run.HOOKS.events(name, fields))
     plan = isolation.Plan(how.name, how.binary, str(run.cwd), coding_policy.Policy(args.permissions, args.execution_mode), base_url,
                           isolation.Lease.of(alias, window, args.slots), serverkeys.for_url(base_url), helper.name, decide,
                           how.workspace or (lambda verb, arguments: tools.as_session(helper.session())(verb, arguments)), render, notice,
-                          args.launch.grants, helper.name if how.conversation is None else how.conversation, dict(how.extras), how.interactive)
+                          args.launch.grants, helper.name if how.conversation is None else how.conversation, dict(how.extras), how.interactive, how.verbs)
     confinement = isolation.prepare(plan)
     try:
         yield confinement
