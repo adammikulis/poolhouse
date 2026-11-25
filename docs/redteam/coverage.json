@@ -1,8 +1,8 @@
 {
  "surfaces": 890,
  "by_status": {
-  "covered": 564,
-  "partial": 186,
+  "covered": 568,
+  "partial": 182,
   "uncovered": 51,
   "n/a": 89,
   "unmapped": 0
@@ -37,8 +37,8 @@
    "unmapped": 0
   },
   "egress": {
-   "covered": 58,
-   "partial": 46,
+   "covered": 59,
+   "partial": 45,
    "uncovered": 0,
    "n/a": 1,
    "unmapped": 0
@@ -100,8 +100,8 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 104,
-   "partial": 66,
+   "covered": 107,
+   "partial": 63,
    "uncovered": 0,
    "n/a": 4,
    "unmapped": 0
@@ -2290,11 +2290,13 @@
    "source": "isolation/probe.py:request",
    "trust": "addresses and redirects named by pages, repositories and members",
    "attacker": "a redirect or address sends the request somewhere the person did not choose",
-   "status": "partial",
+   "status": "covered",
    "tests": [
-    "tests/test_net_no_bypass.py"
+    "tests/test_redteam_isolation_proof.py::test_a_proof_with_the_profile_the_harness_gets_passes_and_names_every_attempt",
+    "tests/test_redteam_isolation_proof.py::test_a_proof_with_a_weakened_profile_stops_the_launch",
+    "tests/test_redteam_isolation_proof.py::test_project_content_cannot_change_the_probe"
    ],
-   "note": "loopback and LAN calls to servers the person configured; the net-no-bypass scan keeps public hosts out, answers from a hostile server (oversized, slow, malformed JSON) are not sent"
+   "note": "The probe's own requests and programs run inside the real Seatbelt profile: each reaches only the parent's bridge and fixed system tools, every argv is a literal of the probe, and nineteen weakened profiles each let a named attempt through and stop the launch. The parent's one program is a fixed `ioreg`, `ifconfig` or `sysctl` with no input of the project's."
   },
   {
    "id": "egress:net/browserguard.py:allowed",
@@ -11460,11 +11462,13 @@
    "source": "isolation/probe.py:said_by",
    "trust": "arguments built from model output, member messages or file names",
    "attacker": "attacker text becomes a command line, environment or working directory",
-   "status": "partial",
+   "status": "covered",
    "tests": [
-    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
+    "tests/test_redteam_isolation_proof.py::test_a_proof_with_the_profile_the_harness_gets_passes_and_names_every_attempt",
+    "tests/test_redteam_isolation_proof.py::test_a_proof_with_a_weakened_profile_stops_the_launch",
+    "tests/test_redteam_isolation_proof.py::test_project_content_cannot_change_the_probe"
    ],
-   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
+   "note": "The probe's own requests and programs run inside the real Seatbelt profile: each reaches only the parent's bridge and fixed system tools, every argv is a literal of the probe, and nineteen weakened profiles each let a named attempt through and stop the launch. The parent's one program is a fixed `ioreg`, `ifconfig` or `sysctl` with no input of the project's."
   },
   {
    "id": "spawn:isolation/probe.py:tool",
@@ -11472,11 +11476,13 @@
    "source": "isolation/probe.py:tool",
    "trust": "arguments built from model output, member messages or file names",
    "attacker": "attacker text becomes a command line, environment or working directory",
-   "status": "partial",
+   "status": "covered",
    "tests": [
-    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
+    "tests/test_redteam_isolation_proof.py::test_a_proof_with_the_profile_the_harness_gets_passes_and_names_every_attempt",
+    "tests/test_redteam_isolation_proof.py::test_a_proof_with_a_weakened_profile_stops_the_launch",
+    "tests/test_redteam_isolation_proof.py::test_project_content_cannot_change_the_probe"
    ],
-   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
+   "note": "The probe's own requests and programs run inside the real Seatbelt profile: each reaches only the parent's bridge and fixed system tools, every argv is a literal of the probe, and nineteen weakened profiles each let a named attempt through and stop the launch. The parent's one program is a fixed `ioreg`, `ifconfig` or `sysctl` with no input of the project's."
   },
   {
    "id": "spawn:isolation/proof.py:_said",
@@ -11484,11 +11490,13 @@
    "source": "isolation/proof.py:_said",
    "trust": "arguments built from model output, member messages or file names",
    "attacker": "attacker text becomes a command line, environment or working directory",
-   "status": "partial",
+   "status": "covered",
    "tests": [
-    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
+    "tests/test_redteam_isolation_proof.py::test_a_proof_with_the_profile_the_harness_gets_passes_and_names_every_attempt",
+    "tests/test_redteam_isolation_proof.py::test_a_proof_with_a_weakened_profile_stops_the_launch",
+    "tests/test_redteam_isolation_proof.py::test_project_content_cannot_change_the_probe"
    ],
-   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
+   "note": "The probe's own requests and programs run inside the real Seatbelt profile: each reaches only the parent's bridge and fixed system tools, every argv is a literal of the probe, and nineteen weakened profiles each let a named attempt through and stop the launch. The parent's one program is a fixed `ioreg`, `ifconfig` or `sysctl` with no input of the project's."
   },
   {
    "id": "spawn:jobs.py:_start",
