@@ -42,7 +42,7 @@ fn idle_now(node: &mut Node, board: &str, name: &str, i: &Ident) -> Result<bool>
     Ok(!i.retired && !crate::writes::is_live(node, board, name, i, now))
 }
 
-/// The sessions of every hosted board that run in the process tree ``here`` (the lineage of a request, read by the peer id of its
+/// The sessions of every board this node keeps that run in the process tree ``here`` (the lineage of a request, read by the peer id of its
 /// socket): the registered, not retired sessions that have a process in common with ``here`` that still runs. The process at the top of a
 /// session's own lineage is the shell of the terminal it was started in, which stays after the agent has gone, so a session counts for that
 /// one process alone only while the session is live. A caller that none of them runs in is a process of no agent the node knows: a

@@ -10,14 +10,11 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
-import functools
 import os
 import secrets
 import sys
-from collections.abc import Callable, Iterator
 from importlib import import_module
 from pathlib import Path
-from typing import ParamSpec, TypeVar
 
 from poolhouse.files import promote
 
@@ -26,9 +23,6 @@ if os.name == "posix":
 
 __all__ = ["CACHE_ENV", "OVERRIDES", "ROOT_ENV", "account_roots", "cache", "device_id", "expand", "guarded", "home", "machine_id",
            "moved", "real_roots", "state", "under_test", "user_home", "using_real_roots"]
-
-P = ParamSpec("P")
-R = TypeVar("R")
 
 ROOT_ENV = "POOLHOUSE_HOME"
 """Moves the state root."""
@@ -80,23 +74,23 @@ def under_test() -> bool:
 _REAL: contextvars.ContextVar[bool] = contextvars.ContextVar("poolhouse_real_roots", default=False)
 
 
-@contextlib.contextmanager
-def using_real_roots() -> Iterator[None]:
-    """Within the block, `guarded` names the account's own roots and not the ones the environment moves (a test run keeps its own)."""
-    token = _REAL.set(True)
-    try:
-        yield
-    finally:
-        _REAL.reset(token)
+class _RealRoots(contextlib.ContextDecorator):
+    """Within the block or the decorated function, `guarded` names the account's own roots and not the ones the environment moves (a test run
+    keeps its own). The launch gate, the project policy and the node's attestation of who is asking run inside it."""
+
+    def _recreate_cm(self) -> _RealRoots:
+        return _RealRoots()
+
+    def __enter__(self) -> _RealRoots:
+        self._token = _REAL.set(True)
+        return self
+
+    def __exit__(self, *_ignored: object) -> None:
+        _REAL.reset(self._token)
 
 
-def real_roots[**P, R](function: Callable[P, R]) -> Callable[P, R]:
-    """``function`` run within `using_real_roots`: the launch gate, the policy of a project and the node's attestation of who is asking."""
-    @functools.wraps(function)
-    def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
-        with using_real_roots():
-            return function(*args, **kwargs)
-    return wrapped
+using_real_roots = _RealRoots
+real_roots = _RealRoots()
 
 
 def guarded(*parts: str) -> Path:
