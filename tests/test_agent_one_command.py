@@ -87,6 +87,41 @@ def test_the_record_of_a_server_that_started_without_its_head_names_no_head(tmp_
     assert recorded_servers(state)[65001]["draft"] == "/heads/mtp-shared.gguf"
 
 
+def test_a_server_running_with_a_head_is_the_server_a_lease_that_wants_one_asks_for():
+    """The record keeps the head's name (or `embedded`) and a lease asks yes or no: `is` between the two
+    refused every identical ask of a server that drafts."""
+    from dataclasses import replace
+
+    from poolhouse.serve import admission
+    from poolhouse.serve.backend import ServerSpec
+
+    kept = {"cache_type_k": "q8_0", "cache_type_v": "q8_0"}
+    spec = ServerSpec(model=MODEL, port=1, context=4096, mtp=True)
+    assert admission.compatible(spec, {**kept, "mtp": "embedded"}, [])
+    assert not admission.compatible(spec, {**kept, "mtp": ""}, [])
+    assert admission.compatible(replace(spec, mtp=False), {**kept, "mtp": ""}, [])
+    assert not admission.compatible(replace(spec, mtp=False), {**kept, "mtp": "mtp-x.gguf"}, [])
+
+
+def test_the_manager_adopts_what_the_session_asks_for(standing, tmp_path):
+    from poolhouse.serve.backend import LlamaServerBackend, ServerSpec
+    from poolhouse.serve.manager import ServerManager
+    from poolhouse.testing.fakes import fake_binary
+
+    fake = standing(mtp="")
+    config = harnessing.adopted(MODEL, harnessing.Want(), PATCHED, said_to([]))
+    assert config.lease()["mtp"] is False, "a server with no head is asked for as one with no head"
+    manager = ServerManager(LlamaServerBackend(binary=fake_binary(tmp_path, help_text="")), state_file=lease_file())
+    info = manager.adopt(ServerSpec(model=MODEL, **config.lease(), chat_template_file=PATCHED))
+    assert info is not None and info.adopted and info.port == fake.port
+
+
+def test_a_server_that_drafts_is_asked_for_without_a_say_on_the_head(standing):
+    standing(mtp="embedded")
+    config = harnessing.adopted(MODEL, harnessing.Want(), PATCHED, said_to([]))
+    assert config is not None and "mtp" not in config.lease()
+
+
 def test_a_record_of_another_quantisation_is_not_a_coding_sessions_settings():
     ask_on_iq4 = record("Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf", cache_type="q8_0",
                         draft="mtp-Qwen3.8-Flash-Next-shared-Q4_K_M.gguf", spec_type="draft-mtp")
@@ -103,6 +138,7 @@ def test_the_server_up_on_these_weights_is_taken_as_it_serves_them(standing):
     lines: list[str] = []
     config = harnessing.adopted(MODEL, harnessing.Want(), PATCHED, said_to(lines))
     assert config is not None and config.serving.slots == 1
+    assert config.port == fake.port, "the broker shares a lease only with an ask for the same port"
     assert config.serving.slot_context == 256000 and config.serving.cache_type == "q8_0"
     assert config.serving.draft == "" and config.serving.spec_type == "" and config.serving.build == ""
     assert config.lease()["context"] == 256000 and "chat_template_file" not in config.lease()

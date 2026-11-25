@@ -196,8 +196,9 @@ def adopted(found: str, want: Want, patched: Path | None, say: Callable[[str], N
             why = f"runs without the draft head {want.draft} that was named"
         else:
             cache = said_cache(str(entry.get("cache_type_k") or ""), str(entry.get("cache_type_v") or ""))
-            return Config(serving=Serving(model=found, port=want.port, slots=held, slot_context=each,
-                                          cache_type=cache or KV))
+            # asked on that server's own port: the broker shares a `serve:` lease only with an ask for the same port
+            return Config(serving=Serving(model=found, port=port, slots=held, slot_context=each,
+                                          cache_type=cache or KV, mtp=None if entry.get("mtp") else False))
         declined.append(f"{up} {why}; leasing its own")
     if declined:
         say(declined[0])
