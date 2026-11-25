@@ -20,7 +20,7 @@ from functools import cache
 from poolhouse.contracts.loader import ContractError, load
 from poolhouse.guard import ecosystems, harnesses
 
-__all__ = ["CLASSES", "PLAIN", "Verdict", "classify", "follows", "harness_names", "registry", "tree", "wired"]
+__all__ = ["CLASSES", "HIDDEN_FILE", "HIDDEN_FOLDER", "PLAIN", "READ_LIMIT", "Verdict", "classify", "follows", "harness_names", "registry", "tree", "wired"]
 
 PLAIN = "plain"
 CLASSES = {

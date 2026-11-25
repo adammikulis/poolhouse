@@ -40,7 +40,8 @@ def _entry_map(capture: Capture) -> dict:
     return {entry.path: entry for entry in capture.entries}
 
 
-def _changes(before: Capture, after: Capture) -> tuple[Change, ...]:
+def between(before: Capture, after: Capture) -> tuple[Change, ...]:
+    """The changes from ``before`` to ``after``: each path whose entry differs, with the digests and modes on both sides."""
     left, right = _entry_map(before), _entry_map(after)
     return tuple(Change(path, left[path].sha256 if path in left else None,
                         right[path].sha256 if path in right else None,
@@ -203,7 +204,7 @@ class Workspace:
             raise ValueError("The tool created a protected or credential path")
         if not writable and state.manifest(captured) != state.manifest(stage.before):
             raise ValueError("A read-only coding tool changed its input snapshot")
-        changes = _changes(stage.before, captured)
+        changes = between(stage.before, captured)
         current = self._capture(self.master, "current", stage.before)
         if state.manifest(current) != state.manifest(stage.before):
             raise ValueError("The coding workspace changed while the tool was running")
@@ -235,6 +236,26 @@ class Workspace:
                 if self.persisted is publication:
                     self.persisted = previous[4]
         return changes
+
+    def observe(self, stage: Stage, base: Capture) -> tuple[Capture, tuple[bytes, ...]]:
+        """The stage as it is now, for a per-launch session that publishes after each turn (docs/design-isolated-launcher.md, W6). A control path or a
+        credential name the tool made is not carried and is returned by name, beside the capture, so the rest is published; `finish` is
+        unchanged and still refuses the whole result for either. ``base`` is the capture the session last published."""
+        present = {os.fsencode(prefix) for prefix in state.CONTROL_PREFIXES if os.path.lexists(stage.physical / prefix)}
+        captured = self._capture(stage.physical, "result", base)
+        return captured, tuple(sorted(present | {name for name in captured.excluded if name not in base.excluded}))
+
+    def adopt(self, kept: Path) -> Stage:
+        """Take a stage an earlier launch of the same conversation kept (a directory of another private namespace of this account) as the working
+        copy, moved and never rebuilt from the master, so what the agent already made is still there (4.4, step 6)."""
+        if not self.current() or not kept.name.startswith("tool-") or kept.is_symlink() or not kept.is_dir() or private_path.problem(kept):
+            raise ValueError("The kept coding stage is not a private directory of this account")
+        physical = self.directory / f"tool-{uuid.uuid4().hex}"
+        files.promote_new(kept, physical)
+        temporary = self.directory / f"alias-{uuid.uuid4().hex}"
+        temporary.symlink_to(physical)
+        files.promote(temporary, self.alias)
+        return Stage(physical, self.alias, self.last or self.initial, self.revision)
 
     def _room(self, capture: Capture) -> None:
         """Refuse to stage a project the volume cannot hold, with the figures. The one bound on a project is the free bytes of the stage's volume

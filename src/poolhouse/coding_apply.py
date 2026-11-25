@@ -10,6 +10,7 @@ decided before, by `guard.runs_later`, and arrives as `Edit`s.
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import hashlib
 import json
@@ -31,12 +32,14 @@ NO_EXCHANGE = (errno.ENOTSUP, errno.EINVAL, errno.ENOSYS)
 
 @dataclass(frozen=True, slots=True)
 class Edit:
-    """One path of the change set: the digest of the base (``None`` when the path was absent), the result bytes (``None`` to delete) and its mode."""
+    """One path of the change set: the digest of the base (``None`` when the path was absent), the result bytes (``None`` to delete) and its mode.
+    ``link`` makes the edit a new relative symbolic link to that target, which is only ever installed where nothing is."""
 
     path: str
     base: str | None
     data: bytes | None
     mode: int = 0o644
+    link: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,11 +92,15 @@ def _read(descriptor: int) -> tuple[str, tuple[int, ...]]:
     return hasher.hexdigest(), (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_mode)
 
 
-def _directory(project: Path, parts: Sequence[str]) -> int:
-    """The directory of a path, each component opened without following a link, so a link in the live path is an error and never a way out."""
+def _directory(project: Path, parts: Sequence[str], *, create: bool = False) -> int:
+    """The directory of a path, each component opened without following a link, so a link in the live path is an error and never a way out.
+    ``create`` makes a missing component (for a new file), by a make-directory relative to the one held, which never follows a link either."""
     descriptor = os.open(project, os.O_RDONLY | os.O_DIRECTORY)
     try:
         for part in parts:
+            if create:
+                with contextlib.suppress(FileExistsError):
+                    os.mkdir(part, 0o755, dir_fd=descriptor)
             following = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
             os.close(descriptor)
             descriptor = following
@@ -107,7 +114,7 @@ def _keep(target: Target) -> Path:
     """Keep the agent's version of a path for the session to read, under a counter name the parent chooses and never the agent's own."""
     target.keep.mkdir(parents=True, exist_ok=True)
     kept = target.keep / f"v{len(list(target.keep.iterdir()))}-{uuid.uuid4().hex[:8]}.kept"
-    kept.write_bytes(target.edit.data or b"")
+    kept.write_bytes(target.edit.data if target.edit.data is not None else (target.edit.link or "").encode())
     return kept
 
 
@@ -154,7 +161,7 @@ def _exchange(parent: int, one: str, other: str) -> str:
 def _one(project: Path, edit: Edit, log: Path, keep: Path, after: Callable[[str, str], None]) -> Outcome:
     parts = Path(edit.path).parts
     try:
-        parent = _directory(project, parts[:-1])
+        parent = _directory(project, parts[:-1], create=edit.base is None and (edit.data is not None or edit.link is not None))
     except OSError:
         return Outcome(edit.path, "refused")
     try:
@@ -174,6 +181,8 @@ def _apply(target: Target) -> Outcome:
     try:
         held = Held(descriptor, *_read(descriptor)) if descriptor is not None else None
         target.after(edit.path, "held")
+        if edit.link is not None:
+            return _link(target, held)
         live = held.digest if held else None
         if live == result:
             return Outcome(edit.path, "unchanged")
@@ -218,6 +227,24 @@ def _finish(target: Target, held: Held, temp: str, ours: tuple[int, int], method
     files.promote_new(temp, aside, source_fd=parent, target_fd=parent)
     _note(target.log, {"path": edit.path, "step": "conflict", "beside": aside})
     return Outcome(edit.path, "conflict", method, kept=_keep(target), beside=Path(aside))
+
+
+def _link(target: Target, held: Held | None) -> Outcome:
+    """Install a new symbolic link with a rename that never replaces: anything the person put at the name stays, and the link is kept instead."""
+    edit, parent = target.edit, target.parent
+    if held is not None or edit.base is not None:
+        return Outcome(edit.path, "conflict", "link", kept=_keep(target))
+    temp = f"{TEMP}{uuid.uuid4().hex}"
+    os.symlink(edit.link, temp, dir_fd=parent)
+    _note(target.log, {"path": edit.path, "step": "prepared", "temp": temp, "base": None, "result": None})
+    target.after(edit.path, "prepared")
+    try:
+        files.promote_new(temp, target.name, source_fd=parent, target_fd=parent)
+    except FileExistsError:
+        os.unlink(temp, dir_fd=parent)
+        return Outcome(edit.path, "conflict", "link", kept=_keep(target))
+    _note(target.log, {"path": edit.path, "step": "done"})
+    return Outcome(edit.path, "applied", "link")
 
 
 def _create(target: Target, temp: str) -> Outcome:
@@ -293,6 +320,9 @@ def recover(project: str | os.PathLike[str], log: Path) -> list[Outcome]:
 def _recover_one(parent: int, name: str, record: dict, path: str) -> Outcome:
     temp = record.get("temp", "")
     try:
+        if stat.S_ISLNK(os.stat(temp, dir_fd=parent, follow_symlinks=False).st_mode):
+            os.unlink(temp, dir_fd=parent)
+            return Outcome(path, "unchanged", "recovered")
         descriptor = os.open(temp, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
     except OSError:
         return Outcome(path, "unchanged")

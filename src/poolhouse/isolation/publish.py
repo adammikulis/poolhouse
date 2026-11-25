@@ -21,7 +21,7 @@ from poolhouse.coding_workspace_state import CONTROL_PREFIXES
 from poolhouse.guard import runs_later
 from poolhouse.isolation.toolchain import Identity
 
-__all__ = ["NotPublishable", "PublishRule", "bind", "governing", "matches"]
+__all__ = ["ENVIRONMENTS", "NotPublishable", "PublishRule", "bind", "environment_files", "governing", "matches", "readable"]
 
 GLOB = re.compile(r"[*?\[\]{}]")
 
@@ -39,7 +39,7 @@ class PublishRule:
     file: Identity | None
 
 
-def _facts(root: Path):
+def readable(root: Path):
     """The reader `runs_later.tree` takes: the first bytes, the mode bits and the link count of a regular file, opened without following a link."""
 
     def read(rel: str) -> tuple[bytes, int, int] | None:
@@ -54,15 +54,45 @@ def _facts(root: Path):
     return read
 
 
+ENVIRONMENTS = frozenset({"node_modules", ".venv", "venv", "site-packages", ".tox"})
+"""Folders the person's tools install into: nothing of the project is in them, but a file in one can run by its path alone (a `.pth`, a package's
+manifest) and name a file of the project."""
+
+
+def environment_files(root: Path) -> set[str] | None:
+    """The files inside the environment folders of ``root``, and the hooks of its `.git`, that run by their path below the folder alone (a `.pth`,
+    a manifest, a hook): the files the walk of the project skips and that can still name a published file. Caches and other checkouts hold none.
+    ``None`` when the project outside those folders is too large to walk."""
+    found: set[str] = set()
+    outside = 0
+    for here, dirs, names in os.walk(root):
+        parts = Path(here).relative_to(root).parts
+        folder = next((index for index, part in enumerate(parts) if part in ENVIRONMENTS or part == ".git"), None)
+        keep = ("hooks",) if parts[-1:] == (".git",) else None
+        dirs[:] = [d for d in dirs if (d in keep if keep else d not in secretpaths.SKIP_DIRS or d in ENVIRONMENTS or d == ".git")]
+        if folder is None:
+            outside += 1
+            if outside > secretpaths.MAX_WALK:
+                return None
+            continue
+        for name in names:
+            sub = "/".join((*parts[folder + 1:], name))
+            if (why := runs_later.classify(sub).runs) and why not in (runs_later.HIDDEN_FOLDER, runs_later.HIDDEN_FILE):
+                found.add(Path(here, name).relative_to(root).as_posix())
+    return found
+
+
 def _files(root: Path) -> set[str] | None:
-    """Every file of the project the walk reaches, or ``None`` when the project is too large to read what names what."""
+    """Every file of the project the walk reaches, with the files of its environment folders that run by their path alone, or ``None`` when the
+    project is too large to read what names what."""
     found: set[str] = set()
     for count, (here, dirs, names) in enumerate(os.walk(root)):
         dirs[:] = [d for d in dirs if d not in secretpaths.SKIP_DIRS]
         found.update(Path(here, name).relative_to(root).as_posix() for name in names)
         if count > secretpaths.MAX_WALK:
             return None
-    return found
+    actors = environment_files(root)
+    return None if actors is None else found | actors
 
 
 def governing(project: str | os.PathLike[str], relpath: str) -> str:
@@ -72,7 +102,7 @@ def governing(project: str | os.PathLike[str], relpath: str) -> str:
     paths = _files(root)
     if paths is None:
         return "the project is too large to check what names this file"
-    verdict = runs_later.tree(paths | {relpath}, _facts(root))[relpath]
+    verdict = runs_later.tree(paths | {relpath}, readable(root))[relpath]
     return verdict.sentence if verdict.governing else ""
 
 

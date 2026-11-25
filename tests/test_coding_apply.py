@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import errno
+import os
 from pathlib import Path
 
 import pytest
@@ -86,6 +87,61 @@ def test_publication_never_overwrites_a_concurrent_edit(world, how, step):
 
 def apm_conflict(each: Path) -> bool:
     return each.is_file() and each.name.startswith("app.py" + apply_module.CONFLICT)
+
+
+def displaced(project: Path) -> Path:
+    return next(each for each in project.rglob("*") if each.name.startswith(apply_module.TEMP))
+
+
+def test_the_exchange_moves_the_change_time_of_the_displaced_file_so_the_check_is_the_digest_read_through_the_held_descriptor(world):
+    """The ctime question of 4.4.3 step 4: a file renamed by the exchange has a new change time with nothing written, so comparing it would refuse
+    every application; the identity holds the inode, size, modification time and mode, and the digest is read again through the descriptor held since step 1."""
+    project, log, keep = world
+    live = project / "src" / "app.py"
+    seen = {}
+
+    def after(path: str, step: str) -> None:
+        if step == "held":
+            seen["before"] = live.stat()
+        if step == "swapped":
+            seen["after"] = displaced(project).stat()
+
+    [done] = apply(project, [edit()], log=log, keep=keep, after=after)
+    assert done.state == "applied" and (seen["after"].st_ino, seen["after"].st_mtime_ns) == (seen["before"].st_ino, seen["before"].st_mtime_ns)
+    assert seen["after"].st_ctime_ns != seen["before"].st_ctime_ns, "the exchange itself moved the change time: it cannot be part of the identity"
+
+
+def test_a_save_that_keeps_the_size_and_the_modification_time_is_found_by_the_digest_read_through_the_held_descriptor(world):
+    project, log, keep = world
+    same_size = b"mine = 3\n"
+    assert len(same_size) == len(BASE)
+
+    def after(path: str, step: str) -> None:
+        if step == "swapped":
+            held = displaced(project)
+            before = held.stat()
+            with held.open("r+b") as stream:
+                stream.write(same_size)
+            os.utime(held, ns=(before.st_atime_ns, before.st_mtime_ns))
+
+    [done] = apply(project, [edit()], log=log, keep=keep, after=after)
+    assert done.state == "conflict" and (project / "src" / "app.py").read_bytes() == same_size and done.kept.read_bytes() == RESULT
+    assert left_over(project) == []
+
+
+def test_a_new_link_is_installed_where_nothing_is_and_never_replaces_a_file_or_a_link(world):
+    project, log, keep = world
+    (project / "src" / "real.py").write_bytes(BASE)
+    [made] = apply(project, [Edit("src/alias.py", None, None, link="real.py")], log=log, keep=keep)
+    assert (made.state, made.method) == ("applied", "link") and (project / "src" / "alias.py").readlink() == Path("real.py") and left_over(project) == []
+    [again] = apply(project, [Edit("src/alias.py", None, None, link="real.py")], log=log, keep=keep)
+    assert again.state == "refused", "a link already there is not opened, so it is not replaced"
+    (project / "src" / "file.py").write_bytes(PERSON)
+    [raced] = apply(project, [Edit("src/file.py", None, None, link="real.py")], log=log, keep=keep)
+    assert raced.state == "conflict" and (project / "src" / "file.py").read_bytes() == PERSON and raced.kept.read_text() == "real.py"
+    appears = lambda path, step: (project / path).write_bytes(PERSON) if step == "prepared" else None  # noqa: E731
+    [late] = apply(project, [Edit("src/late.py", None, None, link="real.py")], log=log, keep=keep, after=appears)
+    assert late.state == "conflict" and (project / "src" / "late.py").read_bytes() == PERSON and left_over(project) == []
 
 
 def test_an_exchange_the_filesystem_cannot_do_is_a_claim_that_never_replaces(world, monkeypatch):
