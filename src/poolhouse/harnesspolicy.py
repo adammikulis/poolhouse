@@ -45,12 +45,11 @@ SHELL_TOOLS = frozenset({"Bash", "shell", "local_shell", "exec_command", "contai
 
 @dataclass(frozen=True, slots=True)
 class Decision:
-    """``action`` is allow, deny or ask; ``kind`` is the request kind an ask raises."""
+    """``action`` is allow or deny, decided at once; ``label`` is what the classifier called the call, ``reason`` why."""
 
     action: str
     label: str
     reason: str
-    kind: str = "tool_call"
 
 
 def _denied(label: str, reason: str) -> Decision:

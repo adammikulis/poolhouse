@@ -97,12 +97,12 @@ def test_visible_hours_can_wrap_around_midnight():
     assert within_hours(22, 4, now=at(3)) and not within_hours(22, 4, now=at(12))
 
 
-def test_signing_in_without_a_selector_to_wait_for_is_refused_at_once_and_reads_no_terminal(monkeypatch):
+def test_signing_in_without_a_selector_to_wait_for_is_refused_at_once_and_reads_no_terminal(monkeypatch, tmp_path):
     from poolhouse.scrape import sign_in
 
     monkeypatch.setattr("builtins.input", lambda _p="": pytest.fail("a terminal was read"))
     with pytest.raises(ValueError, match="nothing is read from a terminal"):
-        sign_in(Window(profile="unused"), "https://example.org/login", done="")
+        sign_in(Window(profile=str(tmp_path / "profile")), "https://example.org/login", done="")
 
 
 def test_a_second_run_only_reads_what_is_new(tmp_path):

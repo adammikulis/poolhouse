@@ -41,8 +41,6 @@ def detail(e: Entry) -> str:
 def _said(e: Entry) -> str:
     who, what, out = show(e.actor, 40), show(e.subject, 80), show(e.outcome, 48)
     told = {
-        "approval.asked": f"{who} was asked: {what}",
-        "approval.answered": f"you answered {out}",
         "approval.rule_fired": f"a saved rule decided {what}: {out}",
         "agent.tool_call": f"{who} called {what}: {out}",
         "model.lease": f"model lease {out} for {what}",
