@@ -36,7 +36,7 @@ Refusal shape: `X is refused to an agent (CLAUDECODE is set): <why>. To do it, r
 ## Gates (delegated in `dev`, held back from agents in `prod`)
 
 `sentinel.quarantine`, `sentinel.policy`, `memory.admin`, `reputation.admin`, `activity.export`, `serve.wired-limit`,
-`autostart.install`, `chat.policy`, `runtime.deploy`, `runtime.deploy-unmerged`, `github.release`, `workspace.setup`, `workspace.model`,
+`autostart.install`, `chat.policy`, `runtime.deploy`, `runtime.deploy-unmerged`, `github.release`, `isolation.grant`, `workspace.setup`, `workspace.model`,
 `workspace.agents`. `prod` keeps only `workspace.setup`, `workspace.model` and `workspace.agents` delegated.
 
 A session registered while a live sibling runs it spends no grant until that sibling's lineage ends, which needs nobody (`grants/mod.rs`, `lineage_refusal`); `rebind` takes it over at once and is not a protected action.
