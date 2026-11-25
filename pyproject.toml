@@ -185,6 +185,8 @@ poolhouse-claude = "poolhouse.claude:main"
 poolhouse-codex = "poolhouse.codex:launch"
 # one agentic task on the same lease; the workspace names its local harness `poolhouse-agent`
 poolhouse-agent = "poolhouse.harness:main"
+# a lead session hands a task to a local agent on that lease, which can message the lead; `start`, `status`, `result`, `stop`
+poolhouse-delegate = "poolhouse.delegate:main"
 # a conversation with a served model that operates poolhouse, asking before it changes anything;
 # the chat policy recognises the commands it may run by these names
 poolhouse-chat = "poolhouse.chat:main"

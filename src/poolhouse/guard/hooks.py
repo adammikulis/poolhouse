@@ -8,17 +8,17 @@ from poolhouse.guard.policy import ToolPolicyRail
 from poolhouse.guard.secrets import SecretRail
 from poolhouse.guard.untrusted import NOTICE, UntrustedRail
 from poolhouse.interventions import Call, Deny, Run
-from poolhouse.taint import TaintRail, claude_code
+from poolhouse.taint import Sinks, TaintRail, claude_code
 
 __all__ = ["sdk_guard", "sdk_hooks"]
 
 READS_OUTSIDE = frozenset({"WebFetch", "WebSearch", "Read", "Grep", "Glob", "BashOutput"})
 
 
-def sdk_guard() -> list[Any]:
-    """The built-in rails for a tool set the guard has no schemas for."""
+def sdk_guard(sinks: Sinks | None = None) -> list[Any]:
+    """The built-in rails for a tool set the guard has no schemas for; ``sinks`` classifies its tools (default: Claude Code's)."""
     return [UntrustedRail(), SecretRail(), ToolPolicyRail(open_world=True),
-            TaintRail(claude_code())]
+            TaintRail(sinks or claude_code())]
 
 
 def _decision(kind: str, reason: str) -> dict[str, Any]:
