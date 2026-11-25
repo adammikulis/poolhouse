@@ -37,6 +37,7 @@ __all__ = [
     "budget_mb",
     "compatible",
     "device_of",
+    "differences",
     "entry_mb",
     "estimate_bytes",
     "live",
@@ -129,28 +130,38 @@ def pending_serves(spec: ServerSpec, entry: Mapping[str, Any]) -> bool:
             and not (spec.mmproj and not entry.get("mmproj")))
 
 
-def compatible(spec: ServerSpec, entry: Mapping[str, Any], mismatches: list[str]) -> bool:
-    """Whether the server on ``entry`` can serve ``spec`` as it is, given the settings
-    in which it differs (``mismatches``, from `serving_mismatch`)."""
-    if mismatches:
-        return False
+def differences(spec: ServerSpec, entry: Mapping[str, Any], mismatches: list[str]) -> list[str]:
+    """Each way the server on ``entry`` differs from ``spec``, in plain words: ``mismatches``
+    (from `serving_mismatch`) and then the recorded settings that were asked for and are not
+    the server's. Empty when it can serve ``spec`` as it is."""
+    out = list(mismatches)
     if bool(entry.get("embedding")) != bool(spec.embedding):
-        return False
+        out.append("embedding: the server " + ("serves embeddings" if entry.get("embedding") else "does not"))
     if bool(entry.get("reranking")) != bool(spec.reranking):
-        return False
+        out.append("reranking: the server " + ("reranks" if entry.get("reranking") else "does not"))
     if spec.mtp is not None and bool(entry.get("mtp")) is not bool(spec.mtp):
-        return False
+        out.append("draft head: " + ("one was asked for and the server runs none" if spec.mtp
+                                     else f"none was asked for and the server runs {entry.get('mtp')}"))
     kept = kvcache.effective(spec)
     for field, asked in (("cache_type_k", kept.k), ("cache_type_v", kept.v),
                          ("spec_type", spec.spec_type)):
         if asked and entry.get(field) != asked:
-            return False
+            out.append(f"{field}: asked for {asked}, the server runs {entry.get(field) or 'none'}")
     for field in ("draft", "chat_template_file"):
         asked = getattr(spec, field)
         loaded = entry.get(field)
         if asked and (not loaded or Path(asked).resolve() != Path(loaded).resolve()):
-            return False
-    return not (spec.mmproj and not entry.get("mmproj"))
+            out.append(f"{field}: asked for {Path(str(asked)).name}, the server runs "
+                       f"{Path(str(loaded)).name if loaded else 'none'}")
+    if spec.mmproj and not entry.get("mmproj"):
+        out.append("mmproj: a vision projector was asked for and the server runs none")
+    return out
+
+
+def compatible(spec: ServerSpec, entry: Mapping[str, Any], mismatches: list[str]) -> bool:
+    """Whether the server on ``entry`` can serve ``spec`` as it is, given the settings
+    in which it differs (``mismatches``, from `serving_mismatch`)."""
+    return not differences(spec, entry, mismatches)
 
 
 def tag_of(port: int) -> str:

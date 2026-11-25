@@ -122,6 +122,68 @@ def test_a_server_that_drafts_is_asked_for_without_a_say_on_the_head(standing):
     assert config is not None and "mtp" not in config.lease()
 
 
+HEAD = "/models/mtp-Qwen3.8-Flash-Next-shared-Q4_K_M.gguf"
+
+
+def test_the_standing_server_of_2026_11_24_is_asked_for_as_it_runs(standing, tmp_path):
+    """Driven 2026-11-24: a sharded model on the patched template, 262,144 a slot, drafting with a head `drafted`
+    chose (so the record's `mtp` is empty). The lease asked `mtp=False` over a server that drafts; the machine's
+    broker, still running the code before `compatible` compared truthiness, answered `'' is not False`, would not
+    share it, roamed to a second copy and was refused for memory after 60s. Asked for by its own head and with no say
+    on `mtp`, every generation of the broker's comparison takes it."""
+    from poolhouse.serve.backend import LlamaServerBackend, ServerSpec
+    from poolhouse.serve.manager import ServerManager
+    from poolhouse.testing.fakes import fake_binary
+
+    head = tmp_path / "mtp-Qwen3.8-Flash-Next-shared-Q4_K_M.gguf"
+    head.write_bytes(b"x")
+    fake = standing(context=262144, mtp="", draft=str(head), spec_type="draft-mtp")
+    lines: list[str] = []
+    config = harnessing.adopted(MODEL, harnessing.Want(), PATCHED, said_to(lines))
+    assert config is not None and lines == []
+    lease = config.lease()
+    assert lease["draft"] == str(head) and lease["spec_type"] == "draft-mtp" and "mtp" not in lease
+    assert lease["context"] == 262144 and lease["port"] == fake.port
+    manager = ServerManager(LlamaServerBackend(binary=fake_binary(tmp_path, help_text="")), state_file=lease_file())
+    spec = ServerSpec(model=MODEL, **lease, chat_template_file=PATCHED)
+    assert manager._with_mtp(spec, False)[0] == spec, "the head the server runs is not replaced by a default pick"
+    info = manager.adopt(spec)
+    assert info is not None and info.adopted and info.port == fake.port
+    from poolhouse.serve import admission
+
+    assert admission.differences(spec, lease_entry(fake.port), []) == []
+
+
+def lease_entry(port):
+    from poolhouse.serve.leases import recorded_servers
+
+    return recorded_servers()[port]
+
+
+def test_a_named_head_the_server_runs_is_the_server_a_session_takes(standing, tmp_path):
+    head = tmp_path / "mtp-Qwen3.8-Flash-Next-shared-Q4_K_M.gguf"
+    head.write_bytes(b"x")
+    standing(draft=str(head), spec_type="draft-mtp", mtp="")
+    named = harnessing.Want(draft=head.name)
+    assert harnessing.adopted(MODEL, named, PATCHED, said_to([])) is not None
+
+
+def test_a_server_that_differs_is_refused_naming_how_and_without_a_second_copy(standing, tmp_path):
+    """A session that took the server up never starts another beside it: the refusal is at once, and it says how
+    the server differs, not that the machine's memory is full."""
+    from poolhouse.serve.backend import LlamaServerBackend, ServerFailed, ServerSpec
+    from poolhouse.serve.manager import ServerManager, Starting
+    from poolhouse.testing.fakes import fake_binary
+
+    fake = standing(mtp="mtp-x.gguf", draft="/heads/mtp-x.gguf", spec_type="draft-mtp")
+    manager = ServerManager(LlamaServerBackend(binary=fake_binary(tmp_path, help_text="")), state_file=lease_file())
+    spec = ServerSpec(model=MODEL, port=fake.port, context=256000, mtp=False, chat_template_file=PATCHED)
+    with pytest.raises(ServerFailed) as refused:
+        manager._start_server(spec, how=Starting(roam=False))
+    assert str(fake.port) in str(refused.value) and "draft head" in str(refused.value)
+    assert "no memory came free" not in str(refused.value)
+
+
 def test_a_record_of_another_quantisation_is_not_a_coding_sessions_settings():
     ask_on_iq4 = record("Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf", cache_type="q8_0",
                         draft="mtp-Qwen3.8-Flash-Next-shared-Q4_K_M.gguf", spec_type="draft-mtp")
@@ -175,7 +237,9 @@ def test_other_weights_and_a_server_that_does_not_answer_are_not_adopted(standin
     gone = standing()
     gone.close()
     assert other.port != gone.port
-    assert harnessing.adopted(MODEL, harnessing.Want(), PATCHED, said_to([])) is None
+    lines: list[str] = []
+    assert harnessing.adopted(MODEL, harnessing.Want(), PATCHED, said_to(lines)) is None
+    assert len(lines) == 1 and str(gone.port) in lines[0] and "leasing its own" in lines[0], "a decline is never silent"
 
 
 def test_a_named_draft_head_is_not_something_a_server_without_it_serves(standing):
@@ -218,4 +282,5 @@ def test_the_session_leases_what_is_up_and_not_its_own_variant(standing, monkeyp
     lease = seen["lease"]
     assert lease["context"] == 256000 and lease["parallel"] == 1 and lease["cache_type_k"] == "q8_0"
     assert "draft" not in lease and "spec_type" not in lease
+    assert lease["roam"] is False, "a session that took the server up is never given a second copy beside it"
     assert not any("scored best" in line or "automatically selected" in line for line in lines)

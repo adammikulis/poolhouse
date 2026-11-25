@@ -279,10 +279,14 @@ class ServerManager(Admitting):
                     if roam and (reused := self._reusable(spec, on_event=on_event)):
                         return reused
                     if not roam or not port_is_free(spec.port):
-                        elsewhere = (self._beside(spec, timeout=resolved_timeout,
-                                                  on_event=on_event, anyway=anyway,
-                                                  **how.checks())
-                                    if roam else None)
+                        try:
+                            elsewhere = (self._beside(spec, timeout=resolved_timeout,
+                                                      on_event=on_event, anyway=anyway,
+                                                      **how.checks())
+                                         if roam else None)
+                        except admission.AdmissionRefused as refused:
+                            raise admission.AdmissionRefused(f"{refused}. The server up on port "
+                                                             f"{spec.port} was not shared: {why}") from refused
                         if elsewhere is not None:
                             return elsewhere
                     raise
@@ -525,8 +529,7 @@ class ServerManager(Admitting):
 
         mismatch = serving_mismatch(spec, reported_models(base_url), serving_params(base_url))
         entry = self._load().get(str(spec.port), {})
-        if not admission.compatible(spec, entry, mismatch):
-            mismatch = mismatch or ["recorded cache, draft, or template settings differ"]
+        if mismatch := admission.differences(spec, entry, mismatch):
             raise ServerFailed(
                 f"port {spec.port} is already serving different settings -- "
                 + "; ".join(mismatch)
