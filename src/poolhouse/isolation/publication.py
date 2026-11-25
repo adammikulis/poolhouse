@@ -224,9 +224,10 @@ def _lines(data: bytes | None) -> list[str] | None:
 
 
 def patch_text(basis: Basis, refused: Sequence[Refusal]) -> bytes:
-    """The patch of the refused files against the person's checkout, for the session to read: what it wrote itself, kept as data. A file that is
-    not text, or larger than what the parent reads, is named with its size and digest and not copied; control, credential and special files
-    are never read."""
+    """The patch of the refused files for the session to read: what it wrote itself, kept as data, each file as an addition. Nothing of the
+    person's checkout is copied into it (a file the session named may be one the checkout holds and the stage does not), so the reader diffs it
+    against the checkout itself. A file that is not text, or larger than what the parent reads, is named with its size and digest and not
+    copied; control, credential and special files are never read."""
     out: list[str] = []
     for each in refused:
         shown = each.path.encode("unicode_escape").decode()
@@ -234,12 +235,12 @@ def patch_text(basis: Basis, refused: Sequence[Refusal]) -> bytes:
             out.append(f"# {shown}: not read ({REASONS[each.klass]})\n")
             continue
         new = _open(basis.result.directory, each.path, runs_later.READ_LIMIT + 1)
-        old = _open(basis.project, each.path, runs_later.READ_LIMIT + 1)
-        data = None if new is None else new[0]
-        before, after = _lines(None if old is None else old[0]), _lines(data)
-        if before is None or after is None or any(found and len(found[0]) > runs_later.READ_LIMIT for found in (new, old)):
-            digest = "none" if data is None else hashlib.sha256(data).hexdigest()
-            out.append(f"# {shown}: {each.size} bytes, sha256 {digest}, not copied (not text, or larger than the parent reads)\n")
+        if new is None:
+            out.append(f"# {shown}: deleted by the session\n")
             continue
-        out.extend(difflib.unified_diff(before, after, f"a/{shown}", "/dev/null" if new is None else f"b/{shown}"))
+        after = _lines(new[0])
+        if after is None or len(new[0]) > runs_later.READ_LIMIT:
+            out.append(f"# {shown}: {each.size} bytes, sha256 {hashlib.sha256(new[0]).hexdigest()}, not copied (not text, or larger than the parent reads)\n")
+            continue
+        out.extend(difflib.unified_diff([], after, "/dev/null", f"b/{shown}"))
     return "".join(out).encode()

@@ -167,6 +167,21 @@ def test_a_control_path_or_a_credential_in_the_stage_is_left_out_and_reported_an
     assert "TOKEN" not in turn.text and "abc" not in turn.text
 
 
+def test_a_patch_never_copies_the_checkouts_own_bytes_even_of_an_ignored_file_the_session_guessed_the_name_of(project, tmp_path):
+    (project / "config").mkdir()
+    (project / "config" / "prod.json").write_text('{"key": "PRIVATE-LIVE-BYTES"}\n')
+    (project / ".gitignore").write_text("config/\n")
+    session = begin(project, tmp_path, Sink())
+    assert not (session.stage.physical / "config").exists(), "a folder the checkout ignores is not in the stage"
+    write(session, ".gitignore", "")
+    write(session, "config/prod.json", '{"note": "the session wrote this"}\n')
+    turn = session.publish_turn()
+    patch = (session.kept.directory / turn.patch.name).read_text()
+    assert {(each.path, each.klass) for each in turn.refused} == {("config/prod.json", "data"), (".gitignore", "hidden")}
+    assert "the session wrote this" in patch and "PRIVATE-LIVE-BYTES" not in patch, "the patch holds what the session wrote and nothing of the checkout"
+    assert (project / "config" / "prod.json").read_text() == '{"key": "PRIVATE-LIVE-BYTES"}\n'
+
+
 def test_special_files_in_the_stage_are_left_out_and_named_and_never_applied(project, tmp_path):
     session = begin(project, tmp_path, Sink())
     os.mkfifo(session.stage.physical / "pipe")
