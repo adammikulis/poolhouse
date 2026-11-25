@@ -19,8 +19,8 @@ from poolhouse import home
 from poolhouse.client import chat, families, settings
 from poolhouse.hub.modelfile import scan_gguf
 from poolhouse.serve.build_platform import verify_libraries
-from poolhouse.serve.preflight import shard_names
 from poolhouse.serve.process import cmdline_digest, started_at
+from poolhouse.serve.tensors import shard_names
 
 
 def _digest(value) -> str:

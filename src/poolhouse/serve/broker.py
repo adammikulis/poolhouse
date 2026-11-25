@@ -51,7 +51,7 @@ from poolhouse.serve.ports import DEFAULT_HOST, free_port, port_is_free
 from poolhouse.serve.preflight import PreflightFailed
 from poolhouse.serve.process import every_server, kill_process_tree, pid_exists
 from poolhouse.serve.reclaim import busy_now
-from poolhouse.serve.weights import weight_of
+from poolhouse.serve.weights import resident_of
 
 __all__ = ["Ask", "Broker", "BrokerError", "Grant", "Held", "Waiting"]
 
@@ -569,7 +569,7 @@ class Broker(BrokerHolds):
         return self._fit(ask, evict)
 
     def _fit(self, ask: Ask, evict: list[Held]) -> tuple[None, list[Held], str]:
-        need, room = ask.weight or weight_of(ask.models[0]), self.room()
+        need, room = ask.weight or resident_of(ask.models[0]), self.room()
         if not need or room is None:
             return None, evict, ""
         freed = sum(h.weight for h in evict)
@@ -617,7 +617,7 @@ class Broker(BrokerHolds):
         asked = ask.port if ask.port and port_is_free(ask.port) and not any(
             h.port == ask.port for h in self.servers.values()) else 0
         placeholder = Held(port=asked or free_port(), model=ask.models[0], purpose=ask.purpose,
-                           loading=True, weight=ask.weight or weight_of(ask.models[0]),
+                           loading=True, weight=ask.weight or resident_of(ask.models[0]),
                            shape=_shape_of(ask.spec),
                            holders={waiting.lease: (ask.pid, ask.label)},
                            records={waiting.lease: dict(ask.record)})

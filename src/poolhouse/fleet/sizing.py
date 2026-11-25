@@ -23,7 +23,7 @@ def estimate(model: str, *, context: int = 32768, draft: str = "auto",
     ``preflight`` is `serve.preflight.Preflight` unless a test hands in a fake.
     """
     from poolhouse.serve.preflight import RUNTIME_ALLOWANCE_BYTES
-    from poolhouse.serve.weights import weight_of
+    from poolhouse.serve.weights import resident_of
 
     path = _at_hand(model)
     if path is None:
@@ -46,11 +46,11 @@ def estimate(model: str, *, context: int = 32768, draft: str = "auto",
             binary = str(find_binary() or "llama-server")
         report = preflight(ServerSpec(model=path, context=int(context), draft=head),
                            binary=binary, limit_bytes=0)
-        weights = int(report.weights_bytes) or weight_of(path)
+        weights = int(report.weights_bytes) or resident_of(path)
         kv = int(report.kv_estimate_bytes)
     except Exception:  # noqa: BLE001 - a preflight that cannot read it still leaves the weights
-        weights, kv = weight_of(path), 0
-    return weights + kv + (weight_of(head) if head else 0) + RUNTIME_ALLOWANCE_BYTES
+        weights, kv = resident_of(path), 0
+    return weights + kv + (resident_of(head) if head else 0) + RUNTIME_ALLOWANCE_BYTES
 
 
 def _at_hand(model: str) -> Path | None:

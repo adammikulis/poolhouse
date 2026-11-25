@@ -77,7 +77,7 @@ from poolhouse.serve.process import (
 )
 from poolhouse.serve.python_engines import ENGINES
 from poolhouse.serve.slotdump import default_slot_save_path
-from poolhouse.serve.weights import scaled_timeout, weight_of
+from poolhouse.serve.weights import resident_of, scaled_timeout, weight_of
 
 logger = logging.getLogger(__name__)
 
@@ -491,12 +491,13 @@ class ServerManager(Admitting):
                 anyway: bool = False, **starting: Any) -> ServerInfo | None:
         """Serve it next to whatever holds the port, when there is room. None when there is not.
 
-        Room is judged against the weights on disk: a model is roughly its file size in
-        memory, and a machine that cannot hold one more should say so rather than start a
-        load that will be killed halfway or swap the other server to a crawl.
+        Room is judged against the weights a server holds: a model is roughly its file size in
+        memory less any gathered table it pages, and a machine that cannot hold one more should
+        say so rather than start a load that will be killed halfway or swap the other server to
+        a crawl.
         """
         room = free_memory()
-        wanted = weight_of(spec.model)
+        wanted = resident_of(spec.model)
         if room is not None and wanted and wanted > room * BESIDE_HEADROOM:
             return None
         moved = replace(spec, port=free_port())

@@ -6,8 +6,11 @@ from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from poolhouse import hub
 from poolhouse.serve.fit import Fit
 from poolhouse.serve.profile import Profile, family_of, quant_of
+from poolhouse.serve.tensors import table_bytes
+from poolhouse.serve.weights import weight_of
 from poolhouse.units import human_bytes
 
 __all__ = ["PREFERENCES", "Placement", "Room", "Row", "fit_for", "place", "ranked",
@@ -65,12 +68,20 @@ def _plain(name: str) -> str:
     return str(name or "").replace("\\", "/").rsplit("/", 1)[-1].strip().lower()
 
 
+def _carried(fit: Fit, model: str) -> Fit:
+    """``fit`` carried to the file ``model`` names; as it stands when that file is not here to size."""
+    text = str(model)
+    found = hub.located(text.rsplit("/", 1)[-1] if text.startswith("hf:") else text)
+    on_disk = weight_of(found) if found else 0
+    return fit.for_file(weights=on_disk, table=table_bytes(found)) if on_disk else fit
+
+
 def fit_for(model: str, fits: Sequence[Fit], *, cache_type: str = "",
             spec: str = "") -> Fit | None:
-    """The memory record for ``model``: by file name, then family and quantisation, then
-    family. Among several, the one measured at ``cache_type`` and ``spec`` first."""
+    """The memory record for ``model``: its own file's, else another quantisation's carried to it (`Fit.for_file`)."""
     asked = _plain(model)
     same = [f for f in fits if _plain(f.model) == asked]
+    own = bool(same)
     if not same:
         family, quant = family_of(model).lower(), quant_of(model).lower()
         if family:
@@ -87,7 +98,8 @@ def fit_for(model: str, fits: Sequence[Fit], *, cache_type: str = "",
         return (f.cache_type.lower() != wanted_cache, f.spec.lower() != wanted_spec,
                 f.model.lower())
 
-    return min(same, key=order)
+    best = min(same, key=order)
+    return best if own else _carried(best, model)
 
 
 @dataclass(frozen=True)

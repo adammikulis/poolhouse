@@ -19,7 +19,8 @@ from conftest import LLAMA_SERVER_HELP, fake_binary, write_gguf
 import poolhouse.serve.preflight as preflight
 from poolhouse.serve import backend as backend_module
 from poolhouse.serve.backend import LlamaServerBackend, ServerSpec
-from poolhouse.serve.preflight import Preflight, PreflightFailed, read_gguf_header, shard_names
+from poolhouse.serve.preflight import Preflight, PreflightFailed, read_gguf_header
+from poolhouse.serve.tensors import shard_names
 from poolhouse.testing.canned import canned_binary
 from tests.conftest import leased
 

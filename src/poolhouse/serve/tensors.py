@@ -3,17 +3,18 @@ shape and size, without reading a byte of tensor data or starting a server."""
 
 from __future__ import annotations
 
+import re
+import struct
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
 from poolhouse.hub import pretty_name
 from poolhouse.hub.modelfile import scan_gguf
-from poolhouse.serve.preflight import shard_names
 from poolhouse.units import human_bytes
 
-__all__ = ["Tensor", "render_tensors", "shard_paths", "table_bytes", "tensors_by_shard", "tensors_of",
-           "totals_by_role", "totals_by_type"]
+__all__ = ["Tensor", "render_tensors", "resident_bytes", "shard_names", "shard_paths", "table_bytes",
+           "tensors_by_shard", "tensors_of", "totals_by_role", "totals_by_type"]
 
 # ggml's own block quantisation, as (name, values per block, bytes per block). Straight out
 # of `ggml.c`'s type_traits table; the arithmetic below is ggml_nbytes' arithmetic, which is
@@ -76,6 +77,19 @@ class Tensor:
         if "token_embd" in low or low.startswith("output."):
             return "embedding"
         return "other"
+
+
+_SHARD = re.compile(r"-(\d{5})-of-(\d{5})(?=\.gguf$)", re.IGNORECASE)
+
+
+def shard_names(filename: str) -> list[str]:
+    """Every shard name a sharded GGUF implies, from its first file's name, so an absent one is named exactly."""
+    match = _SHARD.search(filename)
+    if not match:
+        return [filename]
+    total = int(match.group(2))
+    prefix, suffix = filename[: match.start()], filename[match.end():]
+    return [f"{prefix}-{i:05d}-of-{total:05d}{suffix}" for i in range(1, total + 1)]
 
 
 def shard_paths(model: str | Path) -> list[Path]:
@@ -156,8 +170,20 @@ def table_bytes(model: str | Path) -> int:
     be read. Never raises: a record is worth writing without this number."""
     try:
         return sum(one.bytes for one in tensors_of(model) if one.role == "table")
-    except (OSError, ValueError):
+    except (OSError, ValueError, struct.error):
         return 0
+
+
+def resident_bytes(file_bytes: int, first: str | Path | None) -> int:
+    """What a server must hold of ``file_bytes`` of weights: the file less its gathered table.
+
+    An n-gram table (Flash-Next's is 26.8G of 103.7G) is gathered a few rows a token, and with
+    mmap its other pages never become resident or wired, so it is paged from SSD and costs
+    page cache, not the wired limit (`poolhouse.serve.fit`, "Why a model is smaller in
+    memory"). ``first`` is the model's first shard on this machine, or None when it is not here
+    to read (then nothing is known to be left out). The one place this subtraction is made.
+    """
+    return max(int(file_bytes) - (table_bytes(first) if first else 0), 0)
 
 
 def _dims(shape: Iterable[int]) -> str:

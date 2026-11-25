@@ -14,7 +14,6 @@ raises before ``Popen`` when it fails.
 from __future__ import annotations
 
 import logging
-import re
 import struct
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
@@ -24,10 +23,10 @@ from typing import Any
 from poolhouse import home
 from poolhouse.hub.modelfile import scan_gguf
 from poolhouse.serve import kvcache
+from poolhouse.serve.tensors import resident_bytes, shard_names
 from poolhouse.units import human_bytes
 
-__all__ = ["Check", "Preflight", "PreflightFailed", "Report", "read_gguf_header",
-           "shard_names"]
+__all__ = ["Check", "Preflight", "PreflightFailed", "Report", "read_gguf_header"]
 
 
 class PreflightFailed(RuntimeError):
@@ -49,6 +48,8 @@ class Report:
 
     checks: list[Check] = field(default_factory=list)
     weights_bytes: int = 0
+    """What a server must hold of the weights: their size on disk less a gathered lookup table
+    the file carries (`poolhouse.serve.tensors.resident_bytes`)."""
     kv_estimate_bytes: int = 0
 
     @property
@@ -73,27 +74,6 @@ def read_gguf_header(path: Path | str) -> dict[str, object]:
     holds raises `NotAModelFile`, a `ValueError`.
     """
     return scan_gguf(path).values
-
-
-# ---------------------------------------------------------------- sharded models
-
-_SHARD = re.compile(r"-(\d{5})-of-(\d{5})(?=\.gguf$)", re.IGNORECASE)
-
-
-def shard_names(filename: str) -> list[str]:
-    """Every shard name a sharded GGUF implies, generated from its first file's name.
-
-    Reconstructed rather than globbed for, so a shard that is simply absent is named
-    exactly -- ``model-00002-of-00003.gguf`` -- instead of a directory listing that is
-    merely short one entry and does not say which. A name with no shard marker is not
-    sharded, and is its own single-element answer.
-    """
-    match = _SHARD.search(filename)
-    if not match:
-        return [filename]
-    total = int(match.group(2))
-    prefix, suffix = filename[: match.start()], filename[match.end():]
-    return [f"{prefix}-{i:05d}-of-{total:05d}{suffix}" for i in range(1, total + 1)]
 
 
 def _local_index() -> dict[str, Path]:
@@ -168,14 +148,17 @@ def _hf_shards(repo: str, name: str) -> tuple[int, Path | None, Check]:
 
 
 def _shards_of(spec) -> tuple[int, Path | None, Check]:
-    """The weights' size, the first shard's path when it is on this machine, and the
-    shards check -- off the disk for a path, through the Hub cache for an `hf:` reference.
-    The default ``shards_of`` reader; the one fact a preflight cannot ask without touching
-    a file or the Hub."""
+    """The weights a server holds, the first shard when it is here, and the shards check (the default ``shards_of``)."""
     if spec.is_hf_ref:
         repo, name = spec.hf_parts(spec.model)
-        return _hf_shards(repo, name)
-    return _local_shards(Path(spec.model))
+        on_disk, first, check = _hf_shards(repo, name)
+    else:
+        on_disk, first, check = _local_shards(Path(spec.model))
+    held = resident_bytes(on_disk, first)
+    if held < on_disk:
+        check = replace(check, detail=f"{check.detail}; {human_bytes(on_disk - held)} of the "
+                                      f"{human_bytes(on_disk)} is a lookup table paged from disk, never held")
+    return held, first, check
 
 
 def _ref_bytes(ref: str | Path | None) -> int:

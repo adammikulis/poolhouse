@@ -573,7 +573,7 @@ def measure(names: Sequence[str], *, spec: ServerSpec, backend: LlamaServerBacke
             # named as the person named it: a bare file name, the file in an hf: reference,
             # or a path's last part -- never the Hub cache's blob hash
             measured, model=Path(str(named).rsplit("/", 1)[-1]).name,
-            weights=preflight_mod._shards_of(one)[0] or weight_of(model),
+            weights=weight_of(hub.located(named) or model),
             draft=preflight_mod._ref_bytes(head or None), room=room,
             cache_type=kvcache.effective(one).said or measured.cache_type, spec=kind,
             context=one.context, parallel=one.parallel,
