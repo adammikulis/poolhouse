@@ -247,6 +247,21 @@ def test_a_file_the_session_published_itself_is_edited_again_in_a_later_turn_wit
     assert copies(session) == {sha(b"one\n"): b"one\n"}
 
 
+def test_a_version_that_cannot_be_kept_is_not_displaced_and_the_next_turn_tries_again(project, tmp_path):
+    session = begin(project, tmp_path, Sink())
+    write(session, "notes/todo.md", "changed\n")
+    session.restores.directory.chmod(0o500)
+    try:
+        stuck = session.publish_turn()
+    finally:
+        session.restores.directory.chmod(0o700)
+    assert [(each.path, each.klass) for each in stuck.refused] == [("notes/todo.md", "restore")] and not stuck.applied
+    assert (project / "notes" / "todo.md").read_bytes() == b"todo\n", "the file is untouched when its previous version cannot be kept"
+    assert "could not keep" in stuck.text and "?" not in stuck.text
+    again = session.publish_turn()
+    assert again.applied == ("notes/todo.md",) and (project / "notes" / "todo.md").read_bytes() == b"changed\n" and copies(session) == {sha(b"todo\n"): b"todo\n"}
+
+
 def test_an_untracked_file_changed_in_the_checkout_since_launch_is_a_conflict_that_is_never_overwritten_or_deleted(project, tmp_path):
     session = begin(project, tmp_path, Sink())
     (project / "notes" / "todo.md").write_bytes(b"the person's own line\n")

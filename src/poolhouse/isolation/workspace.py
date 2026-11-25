@@ -222,7 +222,8 @@ class Session:
         settled = {os.fsencode(each.path) for each in done if each.state in ("applied", "unchanged")}
         by_path = {each.path: each for each in changes}
         self.decided.update({os.fsencode(each.path): (by_path[os.fsencode(each.path)].after, by_path[os.fsencode(each.path)].after_mode)
-                             for each in (*refused, *(Refusal(path, "conflict") for path in conflicts)) if os.fsencode(each.path) in by_path})
+                             for each in (*refused, *(Refusal(path, "conflict") for path in conflicts))
+                             if os.fsencode(each.path) in by_path and each.klass != "restore"})
         self._advance(captured, settled)
         patch = self.kept.write(publication.patch_text(basis, refused)) if refused else None
         applied = tuple(each.path for each in done if each.state == "applied")

@@ -203,7 +203,10 @@ poolhouse-delegate stop NAME
   when the run ends, the launcher publishes the plain source the agent changed into the project and refuses everything else
   at once (a workflow, a hook, a build or package file, a program, a hidden configuration file): the refusal is kept as a patch
   under `~/.poolhouse/isolation/refused/NAME/` and the lead gets one `isolation.report` message from the launcher's own
-  identity, in the launcher's words (counts and causes, no name the agent chose). The same words end `result NAME`. There is
+  identity, in the launcher's words (counts and causes, no name the agent chose). The same words end `result NAME`. An edit
+  or a deletion of a file git does not hold (a draft of yours, a file an earlier run made) is published too: the launcher keeps
+  the version it displaces first, read-only and named by the digest of its bytes, under `~/.poolhouse/isolation/restored/NAME/`,
+  and says where in the same words; a file you changed since the run started is never overwritten. There is
   no scratch copy of the project and no second implementation of an editing run. `stop NAME` ends every process of the
   confinement, publishes nothing further (what the agent had changed and not yet had published is dropped, the patches already
   kept stay) and removes what the launch made.
