@@ -29,6 +29,9 @@ class Spec:
     project: str = ""
     policy: coding_policy.Policy = field(default_factory=coding_policy.Policy)
     interactive: bool = False
+    frozen: tuple[str, ...] = ()
+    """Paths inside the agent home the launcher wrote and the harness reads: its settings, its hooks and its client. The home is writable, so these
+    are refused a write one by one, and the harness cannot rewrite the gate it runs under."""
 
     @property
     def read_only_stage(self) -> bool:

@@ -5,6 +5,7 @@ import time
 
 import pytest
 from coding_kit import SESSION, fixture_worker
+from confined_kit import repository
 from launch_support import signed
 from node_kit import node_binary, workspace_node  # noqa: F401
 from test_fleet_ui import Serving
@@ -13,9 +14,6 @@ from poolhouse import coding_policy
 from poolhouse.board import person
 from poolhouse.fleet.conversations import Conversations
 from poolhouse.workspace import coding_turns
-
-pytest_plugins = ["gate_open"]
-pytestmark = pytest.mark.usefixtures("gate_open")
 
 
 @pytest.fixture
@@ -27,7 +25,7 @@ def coding_api(tmp_path, monkeypatch, workspace_node):  # noqa: F811
     server.ui.settings.setup_done = True
     server.ui.conversations = Conversations(tmp_path / "chats")
     folder = tmp_path / "project"
-    folder.mkdir()
+    repository(folder)
     owner = workspace_node.member("project-owner")
     workspace_node.allow(owner, "source_add")
     workspace_node.client.call("project_add", "", owner.token, id=workspace_node.board, kind="folder", path=str(folder))

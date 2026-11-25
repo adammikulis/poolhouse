@@ -7,10 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import claude, harnessid
+from poolhouse import claude, harnessid, isolation
+from poolhouse.isolation.environment import MODEL_VARS, Inputs
+from tests.confined_kit import repository
 
-pytest_plugins = ["gate_open"]
-pytestmark = pytest.mark.usefixtures("gate_open")
+pytest_plugins = ["tests.confined_kit"]
+pytestmark = pytest.mark.usefixtures("confinable")
 
 
 @pytest.fixture(autouse=True)
@@ -18,20 +20,17 @@ def _no_workspace(monkeypatch, tmp_path):
     monkeypatch.setattr(harnessid, "invite", lambda name, project, parent, say, *, claim: harnessid.HarnessSession(
         name, base=tmp_path / "workspace"))
     # a launch refuses a project that holds the trusted runtime, and the working directory is this checkout
-    (tmp_path / "tree").mkdir()
+    repository(tmp_path / "tree")
     monkeypatch.chdir(tmp_path / "tree")
 
 
-def test_the_environment_points_every_model_call_at_the_server_and_nothing_elsewhere():
-    env = claude.environment("http://127.0.0.1:8080/", "kestrel-8B",
-                             base={"ANTHROPIC_API_KEY": "sk-real", "HOME": "/h"})
+def test_the_environment_points_every_model_call_at_the_bridge_and_nothing_elsewhere():
+    env = isolation.environment(Inputs("claude", "/h", ("/usr/bin",), "http://127.0.0.1:8080/", "bridge-token", "kestrel-8B", 262144))
     assert env["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:8080"
-    assert env["ANTHROPIC_AUTH_TOKEN"] == "local" and "ANTHROPIC_API_KEY" not in env
-    assert {env[name] for name in claude.MODEL_VARS} == {"kestrel-8B"}
-    assert env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
-    assert env["CLAUDE_CODE_DISABLE_1M_CONTEXT"] == "1" and env["HOME"] == "/h"
-    online = claude.environment("http://x", "m", offline=False, base={})
-    assert "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC" not in online
+    assert env["ANTHROPIC_AUTH_TOKEN"] == "bridge-token" and "ANTHROPIC_API_KEY" not in env
+    assert {env[name] for name in MODEL_VARS} == {"kestrel-8B"}
+    assert env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1" and env["CLAUDE_CODE_DISABLE_1M_CONTEXT"] == "1"
+    assert env["HOME"] == "/h" and set(env) <= isolation.allowed("claude")
     assert json.loads(claude.settings()) == {"skipWebFetchPreflight": True,
                                              "alwaysThinkingEnabled": False}
 
@@ -62,8 +61,8 @@ def test_launch_leases_the_best_settings_and_runs_claude_inside_it(monkeypatch, 
     binary.write_text("#!/bin/sh\nexit 0\n")
     binary.chmod(0o755)
 
-    def run_claude(command, env):
-        seen["command"], seen["env"] = command, env
+    def run_claude(confinement):
+        seen["command"], seen["env"] = list(confinement.argv), dict(confinement.env)
         assert not seen.get("released"), "claude runs inside the lease"
         return 7
 
@@ -74,8 +73,9 @@ def test_launch_leases_the_best_settings_and_runs_claude_inside_it(monkeypatch, 
     assert seen["lease"]["cache_type_k"] == "q8_0", "what it scored best with"
     assert seen["command"][0] == str(binary) and seen["command"][1] == "--settings"
     assert seen["command"][-2:] == ["--print", "hello"]
-    assert seen["env"]["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:8899"
-    assert seen["env"]["ANTHROPIC_MODEL"] == "kestrel-8B"
+    bridge = seen["env"]["ANTHROPIC_BASE_URL"]
+    assert bridge.startswith("http://127.0.0.1:") and bridge != "http://127.0.0.1:8899", "the harness reaches the bridge, never the server"
+    assert seen["env"]["ANTHROPIC_MODEL"] == "kestrel-8B" and "8899" not in "".join(seen["env"].values())
     assert seen["released"], "and the server goes when claude exits"
 
 
@@ -103,14 +103,14 @@ def test_slots_asked_for_reach_the_lease(monkeypatch, tmp_path):
     binary = tmp_path / "claude"
     binary.write_text("#!/bin/sh\nexit 0\n")
     binary.chmod(0o755)
-    started = ["kestrel", "--ctx", "262144", "--port", "8899", "--claude", str(binary)]
+    started = ["kestrel", "--ctx", "262144", "--port", "8899", "--claude", str(binary), "--", "--print", "go"]
 
-    claude.launch(started, say=lambda _: None, run_claude=lambda command, env: 0)
+    claude.launch(started, say=lambda _: None, run_claude=lambda confinement: 0)
     assert (seen["lease"]["parallel"], seen["lease"]["context"]) == (1, 262144), \
         "one slot holding the whole 256K window"
 
-    claude.launch([*started, "--slots", "4"], say=lambda _: None,
-                  run_claude=lambda command, env: 0)
+    claude.launch([*started[:-3], "--slots", "4", *started[-3:]], say=lambda _: None,
+                  run_claude=lambda confinement: 0)
     assert (seen["lease"]["parallel"], seen["lease"]["context"]) == (4, 262144), \
         "four slots share the window"
 
@@ -159,8 +159,8 @@ class TestServingWithTheHead:
         binary.write_text("#!/bin/sh\nexit 0\n")
         binary.chmod(0o755)
         said: list[str] = []
-        claude.launch([*argv, "--ctx", "262144", "--claude", str(binary)], say=said.append,
-                      run_claude=lambda cmd, env: 0)
+        claude.launch([*argv, "--ctx", "262144", "--claude", str(binary), "--", "--print", "go"], say=said.append,
+                      run_claude=lambda confinement: 0)
         return seen, said
 
     def test_the_cheapest_head_is_served_and_named_on_the_launch_line(self, monkeypatch,
@@ -231,12 +231,13 @@ class TestJoiningAServerAlreadyUp:
         binary.chmod(0o755)
         said: list[str] = []
         where: dict = {}
-        claude.launch(["quince-2b", "--ctx", "32768", "--port", "8123", "--claude", str(binary)],
+        claude.launch(["quince-2b", "--ctx", "32768", "--port", "8123", "--claude", str(binary), "--", "--print", "go"],
                       say=said.append,
-                      run_claude=lambda cmd, env: where.update(env=env) or 0)
+                      run_claude=lambda confinement: where.update(env=dict(confinement.env), upstream=confinement.plan.upstream) or 0)
         assert seen["model"] == "/models/quince-2b-Q4_K_M.gguf"
         assert any("already up on 8123" in one and "left running" in one for one in said)
-        assert where["env"]["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:8123"
+        assert where["upstream"] == "http://127.0.0.1:8123", "the bridge's upstream is the server already up"
+        assert where["env"]["ANTHROPIC_BASE_URL"].startswith("http://127.0.0.1:") and "8123" not in where["env"]["ANTHROPIC_BASE_URL"]
 
     def test_nothing_up_on_the_port_leases_the_model(self, monkeypatch, tmp_path):
         from poolhouse.serve import leases
@@ -252,6 +253,6 @@ class TestJoiningAServerAlreadyUp:
         binary = tmp_path / "claude"
         binary.write_text("#!/bin/sh\nexit 0\n")
         binary.chmod(0o755)
-        claude.launch(["quince-2b", "--ctx", "262144", "--claude", str(binary)], say=lambda _: None,
-                      run_claude=lambda cmd, env: 0)
+        claude.launch(["quince-2b", "--ctx", "262144", "--claude", str(binary), "--", "--print", "go"], say=lambda _: None,
+                      run_claude=lambda confinement: 0)
         assert "lease" in seen

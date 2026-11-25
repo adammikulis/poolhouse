@@ -6,118 +6,46 @@ from types import SimpleNamespace
 
 import pytest
 
-from poolhouse import coding_policy, harnessing
+from poolhouse import isolation, pi
 from poolhouse.workspace import localagent, task_coding
+from tests.isolation_kit import without_a_sandbox
+from tests.sandbox_kit import AbsentBackend
 
 
 def owning_session(identity="bound-worker"):
     return SimpleNamespace(board="demo", call=lambda method: {"name": identity})
 
 
-@pytest.fixture
-def native(tmp_path):
-    project, home = tmp_path / 'project', tmp_path / 'harness'
-    project.mkdir()
-    home.mkdir()
-    settings = home / 'settings.json'
-    command = harnessing.hook_command('pre', policy=coding_policy.Policy('read-only'),
-                                     agent='bound-worker', root=project, protect=[str(home)])
-    settings.write_text(json.dumps({'hooks': {'PreToolUse': [{'matcher': '*', 'hooks': [
-        {'type': 'command', 'command': command}]}]}}))
-    return ['claude', '--settings', str(settings)], (home, 'claude', 'prompt', str(project))
-
+def manager_of(**fields):
+    agent = localagent.Agent('worker', fields.pop('model', 'qwen'), identity='bound-worker', **fields)
+    return task_coding.TaskManager(None, owning_session(), None, agent)
 
 
 @pytest.mark.redteam
-def test_native_turn_and_output_limits_preserve_authority(monkeypatch, native):
-    agent = localagent.Agent('worker', 'qwen', identity='bound-worker', profile='coding', harness='claude',
-                             effort='high', max_effort='low')
-    seen = {}
-    def process(self, turn, command, environment, context):
-        seen.update(command=command, environment=environment)
-        return 0
-    monkeypatch.setattr(task_coding.Manager, '_process', process)
-    manager = task_coding.TaskManager(None, owning_session(), None, agent)
-    command, context = native
-    manager._process(None, [*command, '--print'], {'AUTHORITY': 'unchanged'}, context)
-    assert '--max-turns' not in seen['command']
-    settings = json.loads(context[0].joinpath('task-settings.json').read_text())
-    hooks = settings['hooks']['PreToolUse']
-    assert '--protect' in hooks[0]['hooks'][0]['command']
-    assert 'poolhouse.workspace.task_caps' in hooks[1]['hooks'][0]['command']
-    assert seen['command'][seen['command'].index('--system-prompt') + 1] == task_coding.BOOTSTRAP
-    assert seen['command'][seen['command'].index('--tools') + 1] == 'Read,Edit,Write,Bash,Glob,Grep,Agent'
-    assert '--dangerously-skip-permissions' not in seen['command']
-    assert 'CLAUDE_CODE_MAX_OUTPUT_TOKENS' not in seen['environment']
-    assert seen['environment']['CLAUDE_CODE_EFFORT_LEVEL'] == 'low'
-    assert seen['environment']['AUTHORITY'] == 'unchanged'
-    manager._process(None, ['pi', '--mode', 'json'], {'AUTHORITY': 'unchanged'},
-                     (None, 'pi', 'prompt', None))
-    assert seen['command'] == ['pi', '--mode', 'json']
-    assert seen['environment']['AUTHORITY'] == 'unchanged'
+def test_native_turn_and_tool_limits_are_arguments_of_the_launch_and_never_a_change_of_its_settings():
+    manager = manager_of(profile='coding', harness='claude', effort='high', max_effort='low')
+    args = manager._arguments('claude', ['--print'])
+    assert args[0] == '--print' and '--system-prompt' in args and args[args.index('--tools') + 1] == 'Read,Edit,Write,Bash,Glob,Grep,Agent'
+    assert manager._arguments('pi', ['--mode', 'json']) == ['--mode', 'json']
+    assert manager._extras('pi') == {}
+    with pytest.raises(ValueError, match='supported coding harness'):
+        manager._arguments('unrecognized', [])
 
 
 @pytest.mark.parametrize('effort, thinking', [('off', False), ('medium', True)])
-def test_native_template_thinking_is_separate_from_output_and_stream(monkeypatch, native, effort, thinking):
-    agent = localagent.Agent('worker', 'Qwen3.8-27B.gguf', identity='bound-worker', harness='claude', effort=effort)
-    seen = {}
-    monkeypatch.setattr(task_coding.Manager, '_process',
-                        lambda self, turn, command, environment, context: seen.update(environment) or 0)
-    manager = task_coding.TaskManager(None, owning_session(), None, agent)
-    command, context = native
-    manager._process(None, command, {'CLAUDE_CODE_MAX_OUTPUT_TOKENS': '12000',
-        'CLAUDE_CODE_EXTRA_BODY': json.dumps({'stream': True, 'max_tokens': 12000,
-            'chat_template_kwargs': {'custom': 'kept', 'enable_thinking': not thinking}})},
-        context)
-    body = json.loads(seen['CLAUDE_CODE_EXTRA_BODY'])
-    assert body == {'stream': True, 'max_tokens': 12000,
-                    'chat_template_kwargs': {'custom': 'kept', 'enable_thinking': thinking}}
-    assert seen['CLAUDE_CODE_MAX_OUTPUT_TOKENS'] == '12000'
-    assert 'MAX_THINKING_TOKENS' not in seen
+def test_native_template_thinking_is_separate_from_output_and_stream(effort, thinking):
+    manager = manager_of(model='Qwen3.8-27B.gguf', harness='claude', effort=effort)
+    extras = manager._extras('claude')
+    assert json.loads(extras['CLAUDE_CODE_EXTRA_BODY']) == {'chat_template_kwargs': {'enable_thinking': thinking}}
+    assert 'MAX_THINKING_TOKENS' not in extras and 'CLAUDE_CODE_MAX_OUTPUT_TOKENS' not in extras
+    assert set(extras) <= isolation.allowed('claude')
 
 
-def test_native_effort_switch_has_no_generated_output_or_thinking_cap(monkeypatch, native):
-    agent = localagent.Agent('worker', '/cache/Qwen3.8-27B-UD-Q4_K_XL.gguf', identity='bound-worker', harness='claude', effort='off')
-    seen = {}
-    monkeypatch.setattr(task_coding.Manager, '_process',
-                        lambda self, turn, command, environment, context: seen.update(environment) or 0)
-    manager = task_coding.TaskManager(None, owning_session(), None, agent)
-    command, context = native
-    manager._process(None, command, {}, context)
-    assert json.loads(seen['CLAUDE_CODE_EXTRA_BODY'])['chat_template_kwargs']['enable_thinking'] is False
-    assert 'MAX_THINKING_TOKENS' not in seen and 'CLAUDE_CODE_MAX_OUTPUT_TOKENS' not in seen
-    manager.agent = replace(agent, effort='medium')
-    manager._process(None, command, seen.copy(), context)
-    assert json.loads(seen['CLAUDE_CODE_EXTRA_BODY'])['chat_template_kwargs']['enable_thinking'] is True
-    manager._process(None, command, {'MAX_THINKING_TOKENS': '0'}, context)
-    assert seen['MAX_THINKING_TOKENS'] == '0'
-    assert json.loads(seen['CLAUDE_CODE_EXTRA_BODY'])['chat_template_kwargs']['enable_thinking'] is False
-
-
-@pytest.mark.parametrize('body', ['broken', '[]', '{"chat_template_kwargs":[]}'])
-def test_invalid_native_extra_body_does_not_launch(monkeypatch, native, body):
-    monkeypatch.setattr(task_coding.Manager, '_process', lambda *_: pytest.fail('native launched'))
-    manager = task_coding.TaskManager(None, owning_session(), None, localagent.Agent('worker', 'qwen', identity='bound-worker'))
-    command, context = native
-    with pytest.raises(ValueError):
-        manager._process(None, command, {'CLAUDE_CODE_EXTRA_BODY': body}, context)
-
-
-@pytest.mark.parametrize('stopped', [False, True])
-def test_task_refuses_before_conversation_or_cancellation_work(tmp_path, monkeypatch, stopped):
-    def forbidden(*args, **kwargs):
-        pytest.fail('Closed task dispatch reached a side effect')
-    for owner, name in ((task_coding, 'Conversations'), (task_coding.la, 'Status'),
-                        (task_coding.work_reputation, 'brief_on'), (task_coding.Turn, 'cancel')):
-        monkeypatch.setattr(owner, name, forbidden)
-    task = {'id': 'task:' + 'a' * 32, 'title': 'Fix queue', 'description': 'Fix the queue',
-            'acceptance': ['Fails correctly']}
-    for _ in range(2):
-        with pytest.raises(ValueError, match='cannot enforce isolated session permissions'):
-            task_coding.perform(owning_session(), tmp_path,
-                                localagent.Agent('worker', 'qwen', identity='bound-worker'), task,
-                                task_coding.Run(tmp_path, lambda: stopped, forbidden))
-    assert list(tmp_path.iterdir()) == []
+def test_native_effort_switch_has_no_generated_output_or_thinking_cap():
+    manager = manager_of(model='/cache/Qwen3.8-27B-UD-Q4_K_XL.gguf', harness='claude', effort='off')
+    assert json.loads(manager._extras('claude')['CLAUDE_CODE_EXTRA_BODY'])['chat_template_kwargs']['enable_thinking'] is False
+    manager.agent = replace(manager.agent, effort='medium')
+    assert json.loads(manager._extras('claude')['CLAUDE_CODE_EXTRA_BODY'])['chat_template_kwargs']['enable_thinking'] is True
 
 
 def test_proposal_binds_committed_files_and_deletions(tmp_path):
@@ -153,7 +81,6 @@ def test_proposal_binds_committed_files_and_deletions(tmp_path):
 
 
 def test_saved_task_settings_keep_independent_budget_without_opening_dispatch(tmp_path, monkeypatch):
-    from poolhouse import coding
     from poolhouse.fleet.conversations import Conversations
 
     project = tmp_path / 'project'
@@ -171,19 +98,17 @@ def test_saved_task_settings_keep_independent_budget_without_opening_dispatch(tm
     with pytest.raises(ValueError, match='unknown conversation setting'):
         store.start(model='qwen', settings={'mode': 'coding'})
 
-    def forbidden(*args, **kwargs):
-        pytest.fail('Closed task dispatch reached a native or person operation')
-    monkeypatch.setattr(coding, 'launch_coding_agent', forbidden)
     from poolhouse.workspace import coding_turns
-    monkeypatch.setattr(coding_turns.person, 'session', forbidden)
+    monkeypatch.setattr(coding_turns.person, 'session', lambda project: SimpleNamespace(name='bound-worker'))
+    without_a_sandbox(monkeypatch, AbsentBackend)
+    monkeypatch.setattr(pi.harnessing, 'binary_for', lambda _name: '/usr/bin/true')
     agent = localagent.Agent('worker', 'qwen', identity='bound-worker', profile='coding', harness='pi', max_output_tokens=32000)
     manager = task_coding.TaskManager(store, owning_session(), None, agent)
     turn = task_coding.Turn(conversation.id)
-    for _ in range(2):
-        with pytest.raises(ValueError, match='cannot enforce isolated session permissions'):
-            manager._run(turn, conversation, 'Implement a queue')
+    manager._run(turn, conversation, 'Implement a queue')
+    assert turn.state == 'failed' and 'exited with status 2' in turn.error
+    assert any('built-in sandbox tool is missing' in str(event.get('status', '')) for event in turn.events), 'the sentence is told at once'
     assert store.get(conversation.id).settings == saved.settings
-    assert store.get(conversation.id).messages == []
     assert list(project.iterdir()) == []
 
 
@@ -201,23 +126,6 @@ def test_unlimited_native_tool_counter_preserves_parser_bounds(tmp_path):
         task_caps.admit(path)
 
 
-def test_task_turn_refuses_before_creating_saved_state_or_dispatch(tmp_path, monkeypatch):
-    def forbidden(*args, **kwargs):
-        pytest.fail('Closed task turn reached saved state or dispatch')
-    monkeypatch.setattr(task_coding.la, 'Status', forbidden)
-    monkeypatch.setattr(task_coding, 'Conversations', forbidden)
-    monkeypatch.setattr(task_coding.TaskManager, '_run', forbidden)
-    monkeypatch.setattr(task_coding, '_proposal', forbidden)
-    task = {'id': 'task:' + 'b' * 32, 'title': 'Inspect queue', 'description': 'Inspect the queue',
-            'acceptance': ['Returns a report']}
-    agent = localagent.Agent('worker', 'qwen', identity='bound-worker', harness='pi', max_output_tokens=32000)
-    for _ in range(2):
-        with pytest.raises(ValueError, match='cannot enforce isolated session permissions'):
-            task_coding.perform(owning_session(), tmp_path / 'state', agent, task,
-                                task_coding.Run(tmp_path, lambda: False, forbidden))
-    assert list(tmp_path.iterdir()) == []
-
-
 @pytest.mark.parametrize('authenticated', ['', None, 'other-worker'])
 def test_task_parent_rejects_empty_or_mismatched_authenticated_identity(authenticated):
     agent = localagent.Agent('worker', 'qwen', identity='bound-worker')
@@ -233,19 +141,3 @@ def test_task_parent_does_not_fall_back_after_authentication_refusal():
     agent = localagent.Agent('worker', 'qwen', identity='bound-worker')
     with pytest.raises(PermissionError, match='scratch session refused'):
         task_coding.TaskManager(None, session, None, agent)
-
-
-def test_task_launch_refuses_classifier_substitution_before_native_process(native, monkeypatch):
-    import shlex
-    import sys
-
-    command, context = native
-    settings = json.loads(context[0].joinpath('settings.json').read_text())
-    settings['hooks']['PreToolUse'][0]['hooks'][0]['command'] = shlex.join([
-        sys.executable, '-c', "print('poolhouse.harnesshook pre')", '--protect', str(context[0])])
-    context[0].joinpath('settings.json').write_text(json.dumps(settings))
-    monkeypatch.setattr(task_coding.Manager, '_process', lambda *_args: pytest.fail('native launched'))
-    manager = task_coding.TaskManager(None, owning_session(), None,
-                                    localagent.Agent('worker', 'qwen', identity='bound-worker'))
-    with pytest.raises(ValueError, match='maintained classifier hook'):
-        manager._process(None, command, {}, context)

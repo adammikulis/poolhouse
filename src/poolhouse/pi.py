@@ -1,18 +1,16 @@
-"""Pi coding agent sessions on models served by poolhouse."""
+"""Pi coding agent sessions on models served by poolhouse, in a proved confinement: Pi's own tools run inside the box, and its extension asks the
+parent's classifier over the session bridge before each call."""
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
-import subprocess
 import sys
 import time
 from collections.abc import Callable, Sequence
-from pathlib import Path
 from typing import Any
 
-from poolhouse import coding_policy, harnessing, pi_tools, runtime
+from poolhouse import coding_policy, harnessing, isolation
 from poolhouse.claude import DEFAULT_PORT, DEFAULT_SLOTS, alias_of
 from poolhouse.client import families
 from poolhouse.guard import harnesses
@@ -25,25 +23,23 @@ INSTRUCTIONS = harnesses.RECORDS["pi"]
 """The instruction and settings names Pi reads from a project; `guard.runs_later` refuses a change to one at any depth."""
 
 
-def models(base_url: str, alias: str, window: int, max_output_tokens: int | None = None) -> str:
-    """Pi provider configuration for the model already served by poolhouse."""
+def models(base_url: str, alias: str, window: int, max_output_tokens: int | None = None, key: str = "local") -> str:
+    """Pi provider configuration for the model already served by poolhouse; ``base_url`` is the bridge and ``key`` its token."""
     model = {"id": alias, "name": alias, "reasoning": True, "input": ["text"],
              "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
              "contextWindow": window, "maxTokens": max_output_tokens if max_output_tokens is not None else window}
     return json.dumps({"providers": {"poolhouse": {"baseUrl": base_url.rstrip("/"),
-        "api": "openai-completions", "apiKey": "local", "models": [model]}}}, sort_keys=True)
+        "api": "openai-completions", "apiKey": key, "models": [model]}}}, sort_keys=True)
 
 
 def extension(settings: dict[str, Any]) -> str:
-    """Pi extension applying poolhouse's tool classifier and turn limit."""
-    config = json.dumps({**settings, "hookCommand": runtime.module_argv("poolhouse.harnesshook", Path(settings["root"])),
-                         "toolCommand": runtime.module_argv("poolhouse.pi_tools", Path(settings["root"]))})
+    """Pi extension applying poolhouse's tool classifier and turn limit. ``settings["hook"]`` is the client command that asks the parent."""
+    config = json.dumps(settings)
     return f'''import {{ spawnSync }} from "node:child_process";
-import {{ pathToFileURL }} from "node:url";
 const cfg = {config};
 const names = {{bash:"Bash",powershell:"PowerShell",read:"Read",edit:"Edit",write:"Write",grep:"Grep",find:"Glob",ls:"LS"}};
-function call(args, payload) {{
-  const result = spawnSync(cfg.hookCommand[0], [...cfg.hookCommand.slice(1), ...args], {{input:JSON.stringify(payload),encoding:"utf8",timeout:310000}});
+function call(event, payload) {{
+  const result = spawnSync(cfg.hook[0], [...cfg.hook.slice(1), event], {{input:JSON.stringify(payload),encoding:"utf8",timeout:310000}});
   if (result.error || result.status !== 0) return {{failed:true}};
   try {{ return JSON.parse(result.stdout || "{{}}") }} catch {{ return {{failed:true}} }}
 }}
@@ -67,32 +63,16 @@ export default function (pi) {{
     const mapped = names[event.toolName] || event.toolName;
     const input = {{...event.input}};
     if (input.path && !input.file_path) input.file_path = input.path;
-    const result = call(["pre","--permissions",cfg.permissions,"--execution-mode",cfg.executionMode,"--agent",cfg.agent,"--root",cfg.root,
-      ...cfg.protected.flatMap(path => ["--protect",path]),"--wait","300"],
-      {{tool_name:mapped,tool_input:input,cwd:cfg.root}});
+    const result = call("pre", {{tool_name:mapped,tool_input:input,cwd:cfg.root}});
     if (result.failed) return {{block:true,reason:"poolhouse: tool policy failed; blocked"}};
     const answer = result.hookSpecificOutput || {{}};
     if (answer.permissionDecision === "deny") return {{block:true,reason:"poolhouse: " + (answer.permissionDecisionReason || "blocked by policy")}};
   }});
   pi.on("tool_result", (_event, ctx) => {{
-    const result = call(["post","--agent",cfg.agent,"--root",cfg.root],{{}});
+    const result = call("post", {{}});
     if (result.failed) {{
       console.log(JSON.stringify({{type:"error",message:"Pi mutation checkpoint failed"}}));
       ctx.abort(); ctx.shutdown();
-    }}
-  }});
-  if (cfg.toolConfig) return import(pathToFileURL(cfg.toolModule).href).then(api => {{
-    const factories = [api.createReadToolDefinition,api.createBashToolDefinition,
-      api.createEditToolDefinition,api.createWriteToolDefinition,api.createGrepToolDefinition,
-      api.createFindToolDefinition,api.createLsToolDefinition];
-    for (const factory of factories) {{
-      const definition = factory(cfg.root);
-      pi.registerTool({{...definition, execute: async (_id,input) => {{
-        const result = spawnSync(cfg.toolCommand[0],[...cfg.toolCommand.slice(1),cfg.toolConfig],
-          {{input:JSON.stringify({{tool:definition.name,input}}),encoding:"utf8",timeout:130000,maxBuffer:4194304}});
-        if (result.error || result.status !== 0) throw Error("poolhouse: isolated tool worker failed");
-        return JSON.parse(result.stdout);
-      }}}});
     }}
   }});
 }}
@@ -108,8 +88,8 @@ def parser() -> argparse.ArgumentParser:
 
 
 def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = say,
-           run_pi: Callable[..., int] | None = None, session_factory: Callable[..., Any] | None = None) -> int:
-    """Run Pi against a leased local model with per-tool poolhouse policy checks."""
+           run_pi: Callable[[isolation.Confinement], int] | None = None, session_factory: Callable[..., Any] | None = None) -> int:
+    """Run Pi against a leased local model inside a proved confinement, with per-tool poolhouse policy checks in the parent."""
     words = list(sys.argv[1:] if argv is None else argv)
     ours, extra = (words[:words.index("--")], words[words.index("--") + 1:]) if "--" in words else (words, [])
     args = parser().parse_args(ours)
@@ -130,14 +110,14 @@ def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = sa
         return 2
     try:
         coding_policy.Policy(args.permissions, args.execution_mode)
-        args.project = str(harnessing.check_project(args.project))
-        harnessing.require_isolated_execution()
+        asked, args.project = args.project, str(harnessing.check_project(args.project))
+        harnessing.admit(args, "pi", asked, interactive=False)
     except (OSError, RuntimeError, ValueError) as why:
         say(f"error: {why}")
         return 2
     if args.max_turns is None or args.max_output_tokens is None:
         say("Task limits include none. Tasks could run indefinitely until cancelled.")
-    runner = run_pi or (lambda command, env: subprocess.call(command, env=env, cwd=args.project or None))
+    runner = run_pi or harnessing.terminal_runner
     if args.on:
         base_url = args.on.rstrip("/")
         alias = alias_of(base_url, "")
@@ -157,29 +137,33 @@ def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = sa
         return 2
 
 
-def _run(args, command, served, say, runner):
-    base_url, alias, window = served
+def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, str, int], say: Callable[[str], None],
+         runner: Callable[[isolation.Confinement], int]) -> int:
+    """Prove a confinement for ``command`` (``pi`` and its arguments) and hand it to the runner."""
+    _, alias, window = served
     binary, *extra = command
+    how = harnessing.Harness("pi", binary, served, say)
+    opened: list[harnessing.Session] = []
+
+    def render(context: isolation.Context) -> isolation.Rendering:
+        run = opened[0]
+        hook = context.file("session/poolhouse.ts")
+        files = {".pi-config/models.json": models(context.base_url, alias, window, args.max_output_tokens, context.token),
+                 "session/poolhouse.ts": extension({"hook": context.client_argv("hook"), "root": context.stage, "maxTurns": args.max_turns,
+                                                    "maxOutputTokens": args.max_output_tokens,
+                                                    "thinking": families.for_model_id(alias).think_kwargs(args.effort != "off")})}
+        return isolation.Rendering((binary, "--provider", "poolhouse", "--model", alias, "--mode", "json", "--print", "--no-session", "--no-mcp",
+                                    "--no-skills", "--no-prompt-templates", "--no-extensions", "--extension", str(hook), "--append-system-prompt",
+                                    run.brief, "--thinking", args.effort, *extra), files)
+
     try:
-        with harnessing.opened(args,"pi",served,say) as run:
-            config_dir = run.files.path
-            (config_dir / "models.json").write_text(models(base_url,alias,window,args.max_output_tokens),encoding="utf-8")
-            tool_config = pi_tools.prepared(run.files, binary, run.cwd, coding_policy.Policy(args.permissions, args.execution_mode))
-            tool_module = json.loads(tool_config.read_text())["module"]
-            protected = harnessing.protected_paths(run.files, args.protect)
-            hook = run.files.write("poolhouse.ts", extension({"permissions": args.permissions, "executionMode": args.execution_mode, "agent": run.session.name, "root": str(run.cwd),
-                "toolConfig": str(tool_config), "toolModule": tool_module,
-                "protected": protected, "maxTurns": args.max_turns, "maxOutputTokens": args.max_output_tokens,
-                "thinking": families.for_model_id(alias).think_kwargs(args.effort != "off")}))
-            run.files.lock()
-            env = {**os.environ,"PI_CODING_AGENT_DIR":str(config_dir),"PI_OFFLINE":"1",
-                   "POOLHOUSE_AGENT":"1","POOLHOUSE_NONINTERACTIVE":"1"}
-            argv = [binary,"--provider","poolhouse","--model",alias,"--mode","json","--print","--no-session",
-                    "--no-mcp","--no-skills","--no-prompt-templates","--no-extensions","--extension",str(hook),
-                    "--append-system-prompt",run.brief,"--thinking",args.effort,*extra]
-            say(f"permissions {args.permissions}; mode {args.execution_mode}; Pi tools pass through poolhouse's classifier")
-            return int(runner(argv,env))
-    except ValueError as why:
+        with harnessing.opened(args, "pi", served, say) as run:
+            opened.append(run)
+            with harnessing.confined(args, run, how, render) as confinement:
+                say(f"permissions {args.permissions}; mode {args.execution_mode}; working on a copy of {run.cwd}, in a box the operating system "
+                    "holds; Pi's tool calls pass through poolhouse's classifier")
+                return int(runner(confinement))
+    except (OSError, RuntimeError, ValueError) as why:
         say(f"error: {why}")
         return 2
 

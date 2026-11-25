@@ -5,7 +5,7 @@ import json
 import time
 from contextlib import suppress
 
-from poolhouse import coding, harnessing, hub, roles
+from poolhouse import coding, harnessing, hub, isolation, roles
 from poolhouse.fleet import setup_context
 from poolhouse.workspace import localagent, localmodel, localroute
 from poolhouse.workspace.boardroute import Request
@@ -15,11 +15,7 @@ LIMIT = 1048576
 
 
 def catalogue() -> dict:
-    can_start, enforcement_error = True, ""
-    try:
-        harnessing.require_isolated_execution()
-    except ValueError as error:
-        can_start, enforcement_error = False, str(error)
+    report = isolation.capability()
     installed = hub.discover(formats=("gguf",))
     preferred = localmodel.choose(installed=installed, selection=localmodel.Selection(
         coding=True, search=False, context=0))
@@ -28,7 +24,7 @@ def catalogue() -> dict:
     if preferred.ok:
         with suppress(OSError, ValueError):
             context = localmodel.context_for(preferred)
-    return {"can_start": can_start, "enforcement_error": enforcement_error,
+    return {"can_start": report.can_start, "enforcement_error": report.enforcement_error, "isolation": report.to_dict(),
             "harnesses": [{"name": name, "available": bool(harnessing.binary_for(name))} for name in coding.HARNESSES],
             "roles": localagent.role_choices(), "default_role": roles.DEFAULT,
             "context": context, "default_model": preferred_path, "model_problem": preferred.problem,

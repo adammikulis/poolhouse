@@ -28,6 +28,7 @@ else:
 
 from poolhouse import procscan
 from poolhouse.platform import start_process
+from poolhouse.sandbox import process_tree
 from poolhouse.sandbox.backend import (
     SILENT_REFUSAL_LOG,
     UNREPORTED_FAILURE_LOG,
@@ -41,7 +42,7 @@ from poolhouse.sandbox.policy import AllowUnsandboxed, Limits, Policy, PolicyErr
 from poolhouse.sandbox.seatbelt import Seatbelt
 from poolhouse.sandbox.windows import Windows
 
-__all__ = ["Events", "Result", "SandboxViolation", "backend", "fair_share", "run", "wrapped"]
+__all__ = ["Events", "Result", "SandboxViolation", "Started", "backend", "fair_share", "run", "spawn", "wrapped"]
 
 logger = logging.getLogger("poolhouse.sandbox")
 
@@ -439,6 +440,64 @@ def run(argv: Sequence[str], policy: Policy, *,  # noqa: PLR0913 - one keyword p
             chosen.finish(tag)
     _report(emit, argv, policy, name, result)
     return result
+
+
+@dataclass(slots=True)
+class Started:
+    """A process `spawn` started under a policy: its `Popen`, the tree followed from its first instruction (what the end of the session walks, never a
+    process group), the backend that holds it and the run's tag. `release` hands back what the start took; call it once, when the process is over."""
+
+    process: subprocess.Popen[bytes]
+    tree: process_tree.Tree
+    tag: str
+    backend: Backend
+    counted: bool = False
+    released: bool = False
+
+    def release(self) -> None:
+        if self.released:
+            return
+        self.released = True
+        if self.counted:
+            with _LIVE_LOCK:
+                _LIVE[0] -= 1
+        self.backend.finish(self.tag)
+
+
+def spawn(argv: Sequence[str], policy: Policy, *, cwd: str | os.PathLike[str], stdin: Any = subprocess.DEVNULL, stdout: Any = subprocess.PIPE,  # noqa: PLR0913 - one keyword per choice
+          stderr: Any = subprocess.PIPE, via: Backend | None = None) -> Started:
+    """Start ``argv`` under ``policy`` and return it running, with the caller's own pipes. The environment is exactly ``policy.env``. The process
+    runs nothing until its processes are followed (`sandbox.hold`), so no child of it escapes the tree. When no backend can hold the policy,
+    `SandboxUnavailable` and nothing is started: there is no way to start without one."""
+    full, tag, chosen = wrapped(argv, policy, via=via)
+    if chosen is None:
+        raise SandboxUnavailable(f"{policy.name}: no sandbox holds this policy; nothing was started")
+    followed: list[process_tree.Tree] = []
+    hold = Hold(lambda pid: followed.append(process_tree.follow(pid)))
+    limits = _limits(policy.limits)
+
+    def prepare() -> None:
+        limits()
+        hold.wait()
+
+    proc, failure = None, None
+    try:
+        proc = start_process(full, stdin=stdin, stdout=stdout, stderr=stderr, env=HOOKS.environment(policy.env), cwd=cwd, preexec_fn=prepare,
+                             close_fds=True)
+    except (OSError, subprocess.SubprocessError) as exc:
+        failure = exc
+    finally:
+        hold.finish()
+    if hold.error is not None or proc is None:
+        if proc is not None:
+            _reap(proc)
+        for tree in followed:
+            process_tree.release(tree)
+        chosen.finish(tag)
+        raise SandboxUnavailable(f"{policy.name}: could not start {argv[0]} where its processes can be followed: {hold.error or failure}")
+    with _LIVE_LOCK:
+        _LIVE[0] += 1
+    return Started(proc, followed[0], tag, chosen, counted=True)
 
 
 def _report(emit: Callable[..., None], argv: Sequence[str], policy: Policy, backend_name: str, result: Result) -> None:

@@ -6,6 +6,7 @@ import pytest
 
 from poolhouse import agent_dependency
 from poolhouse.fleet.chat_routes import ChatRoutes
+from poolhouse.isolation import IsolationRefused
 from poolhouse.workspace import localstart
 
 
@@ -59,8 +60,12 @@ def test_chat_readiness_reports_actual_dependency(monkeypatch):
 
 
 def test_missing_chat_sdk_does_not_change_coding_prerequisites(monkeypatch, tmp_path):
+    from tests.isolation_kit import without_a_sandbox
+    from tests.sandbox_kit import AbsentBackend
+
     monkeypatch.setitem(sys.modules, "agents", None)
-    with pytest.raises(ValueError, match="cannot enforce isolated session permissions"):
+    without_a_sandbox(monkeypatch, AbsentBackend)
+    with pytest.raises(IsolationRefused, match="built-in sandbox tool is missing"):
         localstart.start(SimpleNamespace(board="b"), localstart.Ask(profile="coding"), base=tmp_path)
 
 
@@ -158,6 +163,7 @@ class MissingTransport(importlib.abc.MetaPathFinder):
             raise ModuleNotFoundError('missing transport', name='httpx2')
 sys.meta_path.insert(0, MissingTransport())
 from poolhouse import agent_dependency
+from poolhouse.isolation import IsolationRefused
 problem = agent_dependency.problem()
 assert 'incomplete or incompatible' in problem, problem
 assert 'poolhouse[agents]' not in problem, problem

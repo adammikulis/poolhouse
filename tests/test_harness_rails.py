@@ -12,6 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from confined_kit import repository
 from harness_kit import held
 from node_kit import node_binary, workspace_node  # noqa: F401
 
@@ -23,6 +24,7 @@ from poolhouse import (
     harnesshook,
     harnessid,
     harnessing,
+    isolation,
     private_path,
     runtime,
 )
@@ -32,8 +34,14 @@ from poolhouse.harnesspolicy import decide
 from poolhouse.interventions import Call
 
 SRC = str(Path(__file__).resolve().parent.parent / "src")
-pytest_plugins = ["gate_open"]
-pytestmark = pytest.mark.usefixtures("gate_open")
+pytest_plugins = ["tests.confined_kit"]
+CLIENT = str(Path(__file__).resolve().parent.parent / "src" / "poolhouse" / "isolation" / "client.py")
+
+
+def context(tmp_path, socket="/tmp/ph-x/s", client=CLIENT, pid=4242):
+    """What a harness's files are made from, for a launch that has not started: the places and the one client a hook runs."""
+    return isolation.Context(tmp_path, tmp_path / ".claude-config", str(tmp_path), os.path.realpath(sys.executable), client, socket, pid,
+                             "http://127.0.0.1:1", "qwen", 4096, "bridge-token-never-in-a-command")
 
 
 def _hook(event, payload, *args, env=None):
@@ -157,9 +165,8 @@ class TestSessionFiles:
         tree.mkdir()
         files = harnessing.session_files(tree)
         try:
-            pre = harnessing.hook_command("pre", policy=coding_policy.Policy("guarded"), agent="l", root=tree,
-                                          protect=harnessing.protected_paths(files))
-            path = files.write("settings.json", claude.settings(pre, "post-cmd", harnessing.WAIT_S))
+            here = context(tmp_path)
+            path = files.write("settings.json", claude.settings(here.hook("pre"), here.hook("post"), harnessing.WAIT_S, here.hook("stop")))
             files.lock()
             assert tree not in path.parents and files.path not in (tree, *tree.parents)
             assert not os.access(path, os.W_OK)
@@ -170,16 +177,12 @@ class TestSessionFiles:
             else:
                 assert not os.access(files.path, os.W_OK)
             text = path.read_text()
-            for secret in ("ANTHROPIC", "sk-synthetic-private-key", "TOKEN", "KEY", "password"):
+            for secret in ("ANTHROPIC", "sk-synthetic-private-key", "bridge-token-never-in-a-command", "password"):
                 assert secret not in text
             hooks = json.loads(text)["hooks"]
             command = hooks["PreToolUse"][0]["hooks"][0]["command"]
-            command = _command_text(command)
-            if os.name == "nt":
-                assert "'--permissions' 'guarded'" in command
-            else:
-                assert "--permissions guarded" in command
-            assert "poolhouse.harnesshook" in command
+            assert shlex.split(command)[-2:] == ["hook", "pre"] and "--socket" in command and "poolhouse.harnesshook" not in command
+            assert {"PreToolUse", "PostToolUse", "Stop", "SubagentStop"} <= set(hooks)
             assert "disableAllHooks" not in text
         finally:
             files.release()
@@ -191,25 +194,26 @@ class TestSessionFiles:
         with pytest.raises(ValueError, match="overlap"):
             harnessing.session_files(home.state("harness"))
 
-    def test_the_hook_command_names_this_interpreter_and_quotes_its_paths(self, tmp_path):
+    def test_the_hook_command_names_this_interpreter_the_client_and_quotes_its_paths(self, tmp_path):
         odd = tmp_path / "a dir"
-        cmd = harnessing.hook_command("pre", policy=coding_policy.Policy("guarded"), agent="x y", root=odd, protect=["/p q"])
-        if os.name == "nt":
-            script = _command_text(cmd)
-            assert script.startswith("& '" + sys.executable + "'")
-            assert "'x y'" in script and "'/p q'" in script
-        else:
-            args = shlex.split(cmd)
-            assert args[0] == sys.executable and "x y" in args and "/p q" in args
+        cmd = context(tmp_path, socket=str(odd / "s p"), client=str(odd / "client.py")).hook("pre")
+        assert shlex.split(cmd) == [os.path.realpath(sys.executable), "-I", str(odd / "client.py"), "--socket", str(odd / "s p"), "--pid", "4242",
+                                    "hook", "pre"]
 
-    def test_generated_hook_executes_with_quoted_project_paths(self, tmp_path):
+    def test_generated_hook_executes_with_quoted_project_paths_against_a_real_bridge(self, tmp_path):
+        """The hook a harness runs is the client: it asks a real session bridge, whose rail the launcher fixed, and prints the answer."""
         odd = tmp_path / "a dir & user's project"
         odd.mkdir()
-        cmd = harnessing.hook_command("pre", policy=coding_policy.Policy("read-only"), agent="x y", root=odd, protect=[])
-        payload = {"tool_name": "Read", "tool_input": {"file_path": str(odd / "source.py")}, "cwd": str(odd)}
-        done = subprocess.run(cmd if os.name == "nt" else shlex.split(cmd), input=json.dumps(payload),
-                              capture_output=True, text=True, timeout=60, check=False,
-                              env={**os.environ, "PYTHONPATH": SRC})
+        rail = harnesshook.Rail(coding_policy.Policy("read-only"), "x y", (str(odd),), ())
+        bridge = isolation.SessionBridge(isolation.Handlers(lambda event, payload: harnesshook.pre(payload, rail), lambda *_: {}),
+                                         isolation.Terms(False, 4096), root=str(Path("/tmp")))
+        socket_path = bridge.start()
+        try:
+            cmd = context(tmp_path, socket=socket_path, pid=os.getpid()).hook("pre")
+            payload = {"tool_name": "Read", "tool_input": {"file_path": str(odd / "source.py")}, "cwd": str(odd)}
+            done = subprocess.run(shlex.split(cmd), input=json.dumps(payload), capture_output=True, text=True, timeout=60, check=False)
+        finally:
+            bridge.stop()
         assert done.returncode == 0, done.stderr
         assert _verdict(done)["permissionDecision"] == "allow"
 
@@ -229,7 +233,8 @@ class TestAdmission:
 
 class TestCodex:
     def test_the_config_names_the_provider_the_window_and_the_hook(self):
-        text = codex.config_toml("http://127.0.0.1:8080/", "qwen", 262144, ("PRE", "POST", 300.0))
+        mcp = ("/py", "-I", "/home/client.py", "--socket", "/tmp/ph-x/s", "--pid", "7", "mcp")
+        text = codex.config_toml("http://127.0.0.1:8080/", "qwen", 262144, ("PRE", "POST", 300.0), mcp)
         got = tomllib.loads(text)
         assert got["model_provider"] == "poolhouse" and got["model"] == "qwen"
         provider = got["model_providers"]["poolhouse"]
@@ -239,18 +244,19 @@ class TestCodex:
         assert got["features"]["hooks"] is True
         assert got["features"]["code_mode"]["direct_only_tool_namespaces"] == ["mcp__workspace"]
         assert got["hooks"]["PreToolUse"][0]["hooks"][0]["command"] == "PRE"
-        assert got["hooks"]["PostToolUse"][0]["hooks"][0]["command"] == "poolhouse-workspace codex-hook"
-        assert "SessionStart" in got["hooks"] and "SubagentStart" in got["hooks"]
-        assert text == codex.config_toml("http://127.0.0.1:8080/", "qwen", 262144, ("PRE", "POST", 300.0))
+        assert got["hooks"]["PostToolUse"][0]["hooks"][0]["command"] == "POST"
+        assert "SessionStart" not in got["hooks"], "no hook of the harness's own reaches a poolhouse command the box cannot run"
+        assert got["mcp_servers"]["workspace"] == {"command": "/py", "args": list(mcp[1:]), "startup_timeout_sec": 30, "required": True}
+        assert text == codex.config_toml("http://127.0.0.1:8080/", "qwen", 262144, ("PRE", "POST", 300.0), mcp)
 
-    def test_the_role_sets_codexs_own_sandbox_and_approval(self):
-        assert codex.policy_flags(coding_policy.Policy("read-only")) == ["--sandbox", "read-only", "--ask-for-approval", "never"]
-        assert codex.policy_flags(coding_policy.Policy("guarded")) == ["--sandbox", "workspace-write", "--ask-for-approval", "never"], "codex is never left to ask"
-        assert "danger-full-access" not in codex.policy_flags(coding_policy.Policy("guarded"))
+    def test_codexs_own_sandbox_is_off_inside_the_confinement_and_it_never_asks(self):
+        assert codex.FLAGS[:4] == ("--sandbox", "danger-full-access", "--ask-for-approval", "never"), "the mount enforces the role"
+        assert "--dangerously-bypass-hook-trust" in codex.FLAGS and not hasattr(codex, "policy_flags")
 
-    def test_the_environment_has_its_own_home_and_no_api_key(self, tmp_path):
-        env = codex.environment(tmp_path, {"OPENAI_API_KEY": "sk-x", "CODEX_API_KEY": "k", "PATH": "/bin"})
-        assert env["CODEX_HOME"] == str(tmp_path) and "OPENAI_API_KEY" not in env and "CODEX_API_KEY" not in env
+    def test_the_environment_has_its_own_home_and_the_bridge_token_and_no_api_key(self, tmp_path):
+        env = isolation.environment(isolation.Inputs("codex", str(tmp_path), ("/usr/bin",), "http://127.0.0.1:8080", "bridge-token"))
+        assert env["CODEX_HOME"] == str(tmp_path / ".codex-home") and env["POOLHOUSE_API_KEY"] == "bridge-token"
+        assert not hasattr(codex, "environment") and {"OPENAI_API_KEY", "CODEX_API_KEY"}.isdisjoint(env) and set(env) <= isolation.allowed("codex")
 
 
 class _Config:
@@ -269,13 +275,14 @@ def _fake_serving(seen):
     return serving
 
 
+@pytest.mark.usefixtures("confinable")
 class TestLaunch:
     @pytest.fixture(autouse=True)
     def _quiet(self, monkeypatch, tmp_path):
         monkeypatch.setattr(harnessid, "invite", lambda name, project, parent, say, **kwargs: harnessid.HarnessSession(name, board="demo", base=tmp_path / "workspace"))
         monkeypatch.setattr(claude, "alias_of", lambda url, model: "qwen-27b")
         monkeypatch.setattr(codex, "alias_of", lambda url, model: "qwen-27b")
-        (tmp_path / "tree").mkdir()
+        repository(tmp_path / "tree")
         monkeypatch.chdir(tmp_path / "tree")
 
     def test_claude_gets_the_hooks_window_and_a_settings_file_that_goes_when_it_exits(self, monkeypatch, tmp_path):
@@ -283,42 +290,48 @@ class TestLaunch:
         monkeypatch.setattr(harnessing, "serving", _fake_serving(seen))
         binary = tmp_path / "claude"
         binary.write_text("#!/bin/sh\n")
+        binary.chmod(0o755)
 
-        def run(command, env):
-            seen["command"], seen["env"] = command, env
-            seen["settings"] = json.loads(Path(command[2]).read_text())
+        def run(confinement):
+            seen["command"], seen["env"] = list(confinement.argv), dict(confinement.env)
+            seen["path"] = Path(confinement.argv[2])
+            seen["settings"] = json.loads(seen["path"].read_text())
+            seen["writable"] = os.access(seen["path"], os.W_OK)
             return 0
 
-        assert claude.launch(["--claude", str(binary), "--permissions", "guarded"], say=lambda _: None,
+        assert claude.launch(["--claude", str(binary), "--permissions", "guarded", "--", "-p", "go"], say=lambda _: None,
                              run_claude=run) == 0
         assert seen["model"] == harnessing.DEFAULT_MODEL and seen["want"].ctx == 0 and seen["want"].slots == 1
         assert seen["env"]["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] == "262144"
         assert seen["env"]["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] == "262144"
-        command = _command_text(seen["settings"]["hooks"]["PreToolUse"][0]["hooks"][0]["command"])
-        assert ("'--permissions' 'guarded'" if os.name == "nt" else "--permissions guarded") in command
-        assert not Path(seen["command"][2]).exists() and seen["released"]
+        command = seen["settings"]["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        assert shlex.split(command)[-2:] == ["hook", "pre"] and "--permissions" not in command, "the rail is the launcher's, in no command"
+        assert not seen["writable"] and not seen["path"].exists() and seen["released"]
 
     def test_codex_gets_its_own_home_with_the_provider_and_the_hook_flag(self, monkeypatch, tmp_path):
         seen = {}
         monkeypatch.setattr(harnessing, "serving", _fake_serving(seen))
         binary = tmp_path / "codex"
         binary.write_text("#!/bin/sh\n")
+        binary.chmod(0o755)
 
-        def run(command, env):
-            seen["command"] = command
-            seen["config"] = tomllib.loads((Path(env["CODEX_HOME"]) / "config.toml").read_text())
-            seen["home"] = Path(env["CODEX_HOME"])
+        def run(confinement):
+            seen["command"] = list(confinement.argv)
+            seen["text"] = (confinement.config / "config.toml").read_text()
+            seen["config"] = tomllib.loads(seen["text"])
+            seen["home"] = confinement.home
             return 3
 
         assert codex.launch(["qwen", "--codex", str(binary), "--", "exec", "fix it"], say=lambda _: None,
                             run_codex=run) == 3
         assert seen["config"]["model_context_window"] == 262144
+        bridge = seen["config"]["model_providers"]["poolhouse"]["base_url"]
+        assert bridge.startswith("http://127.0.0.1:") and ":8899/" not in bridge, "Codex reaches the bridge; the server's port is in no profile"
         scope = seen["config"]["mcp_servers"]["workspace"]
         assert scope["required"] is True
-        assert scope["command"] == sys.executable
-        assert scope["args"][-1] == "--workspace-only"
-        assert scope["env"]["POOLHOUSE_WORKSPACE_AGENT"] == "local-qwen-27b-codex" and scope["env"]["POOLHOUSE_BOARD"] == "demo"
-        assert "POOLHOUSE_WORKSPACE_TOKEN" not in scope["env"]
+        assert scope["command"] == os.path.realpath(sys.executable)
+        assert scope["args"][-1] == "mcp" and "--socket" in scope["args"] and "env" not in scope
+        assert "POOLHOUSE_WORKSPACE_TOKEN" not in seen["text"] and "POOLHOUSE_BOARD" not in seen["text"]
         assert "--dangerously-bypass-hook-trust" in seen["command"] and seen["command"][-2:] == ["exec", "fix it"]
         assert tmp_path / "tree" not in seen["home"].parents and not seen["home"].exists()
 
@@ -326,6 +339,7 @@ class TestLaunch:
         monkeypatch.setattr(harnessing, "serving", lambda *a, **k: pytest.fail("served"))
         binary = tmp_path / "claude"
         binary.write_text("#!/bin/sh\n")
+        binary.chmod(0o755)
         with pytest.raises(SystemExit) as refused:
             claude.launch(["--claude", str(binary), "--permissions", "root"], say=lambda _: None)
         assert refused.value.code == 2
@@ -352,8 +366,7 @@ class TestHarnessSession:
     @pytest.fixture
     def kit(self, workspace_node, tmp_path):  # noqa: F811
         lead = workspace_node.member("lead")
-        project = tmp_path / "proj"
-        project.mkdir()
+        project = repository(tmp_path / "proj")
         workspace_node.allow(lead, "source_add")
         workspace_node.client.call("project_add", "", lead.token, id=workspace_node.board, kind="folder",
                                    path=str(project))
@@ -430,22 +443,24 @@ class TestHarnessSession:
         assert self.agents(kit)[session.name].model == "other"
         assert harnessid.HarnessSession("x").record_model("m", "codex") is False
 
+    @pytest.mark.usefixtures("confinable")
     def test_ending_the_session_retires_it_and_removes_harness_files(self, kit, monkeypatch, tmp_path):
         seen = {}
         monkeypatch.setattr(harnessing, "serving", _fake_serving(seen))
         monkeypatch.setattr(codex, "alias_of", lambda url, model: "qwen")
         binary = tmp_path / "codex"
         binary.write_text("#!/bin/sh\n")
+        binary.chmod(0o755)
 
-        def run(command, env):
-            seen["home"] = Path(env["CODEX_HOME"])
-            config = tomllib.loads((seen["home"] / "config.toml").read_text())
-            seen["name"] = config["mcp_servers"]["workspace"]["env"]["POOLHOUSE_WORKSPACE_AGENT"]
+        def run(confinement):
+            seen["home"] = confinement.home
+            seen["name"] = confinement.agent
+            assert seen["name"] != kit.lead.name, "the harness acts as a helper made for this launch, never as the launcher"
             assert not self.agents(kit)[seen["name"]].retired
             assert credentials.load(kit.node.state, kit.node.board, seen["name"])
             return 0
 
-        assert codex.launch(["--codex", str(binary), "--project", str(kit.project), "--as", kit.lead.name],
+        assert codex.launch(["--codex", str(binary), "--project", str(kit.project), "--as", kit.lead.name, "--", "exec", "go"],
                             say=lambda _: None, run_codex=run) == 0
         assert self.agents(kit, retired=True)[seen["name"]].retired
         assert not (kit.node.state / "client" / kit.node.board / f"{seen['name']}.token").exists()
@@ -493,6 +508,7 @@ class TestHarnessSession:
         assert "--agent n" in text and "the lead (claude), reviewer" in text and "data written by" in text
 
 
+@pytest.mark.usefixtures("confinable")
 class TestCodingAgent:
     def test_launch_coding_agent_runs_codex_with_the_project_and_the_orders(self, monkeypatch, tmp_path):
         seen = {}
@@ -502,11 +518,12 @@ class TestCodingAgent:
             name=name, project=project, claim=claim) or harnessid.HarnessSession(name, base=tmp_path / "workspace"))
         binary = tmp_path / "codex"
         binary.write_text("#!/bin/sh\n")
-        (tmp_path / "proj").mkdir()
+        binary.chmod(0o755)
+        repository(tmp_path / "proj")
 
-        def run(command, env):
-            seen["agents"] = (Path(env["CODEX_HOME"]) / "AGENTS.md").read_text()
-            seen["command"] = command
+        def run(confinement):
+            seen["agents"] = (confinement.config / "AGENTS.md").read_text()
+            seen["command"] = list(confinement.argv)
             return 0
 
         monkeypatch.setattr(codex.shutil, "which", lambda n: str(binary))
@@ -516,7 +533,7 @@ class TestCodingAgent:
         assert seen["name"] == "local-qwen-27b-codex" and seen["project"] == (tmp_path / "proj").resolve()
         assert seen["claim"] == ("qwen-27b", "codex")
         assert "reviewer" in seen["agents"] and seen["command"][-2:] == ["exec", "go"]
-        assert "workspace-write" in seen["command"]
+        assert "danger-full-access" in seen["command"] and "workspace-write" not in seen["command"]
 
     def test_pi_is_the_default_coding_harness(self, monkeypatch, tmp_path):
         seen = {}

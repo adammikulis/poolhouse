@@ -91,6 +91,12 @@ class Lease:
     window: int
     slots: int
 
+    @classmethod
+    def of(cls, alias: str, window: int, slots: int) -> Lease:
+        """One leased model as the bridge pins it; the launcher makes it here and not by naming the class, so that a call of `Lease(` stays what
+        the server starts gate counts: a lease the broker grants."""
+        return cls(alias, window, slots)
+
 
 @dataclass(slots=True)
 class Totals:

@@ -9,7 +9,7 @@ pytest_plugins = ['node_kit']
 pytestmark = pytest.mark.slow
 
 
-def test_tools_are_explicit_and_unisolated_runtime_does_not_replay_or_switch_conversation(coding_browser, tmp_path):
+def test_tools_are_explicit_and_a_computer_that_cannot_confine_does_not_replay_or_switch_conversation(coding_browser, tmp_path):
     served, page, project = coding_browser
     saved = served.ui.conversations.start(model='test-model', title='One conversation')
     served.ui.conversations.append(saved.id, 'user', 'Prior direct question')
@@ -35,7 +35,7 @@ def test_tools_are_explicit_and_unisolated_runtime_does_not_replay_or_switch_con
     composer.fill('A single new tool request')
     page.screenshot(path=str(tmp_path / 'tool-request-configured.png'))
     composer.press('Enter')
-    expect(page.locator('#chat-note')).to_contain_text('This coding runtime cannot enforce isolated session permissions')
+    expect(page.locator('#chat-note')).to_contain_text('This Mac cannot confine coding agents: its built-in sandbox tool is missing.')
     expect(composer).to_have_value('A single new tool request')
     page.screenshot(path=str(tmp_path / 'tool-request-isolation-refusal.png'))
     expect(page.get_by_role('button', name='Stop', exact=True)).to_be_hidden()

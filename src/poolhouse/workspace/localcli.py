@@ -8,7 +8,7 @@ import os
 import time
 from pathlib import Path
 
-from poolhouse import authority, caller as terminal, harnessing, node_launch, roles
+from poolhouse import authority, caller as terminal, isolation, node_launch, roles
 from poolhouse.board import person, person_key, place, session as sessions
 from poolhouse.board.client import Client, Denied
 from poolhouse.command import flag
@@ -145,7 +145,7 @@ def _start(args: argparse.Namespace, s: sessions.Session, base: Path) -> int:
         return 0 if args.no_wait else _wait(base, got.name, READY_WAIT_S)
     selected_profile = lp.profile(args.profile)
     if selected_profile.name == "coding":
-        harnessing.require_isolated_execution()
+        isolation.require_capable()
     selected_context = lp.parse_ctx(args.ctx) or selected_profile.ctx
     project = args.project or ("." if selected_profile.name == "coding" else "")
     selected_role = args.role or (la.PLAN_AND_GO if selected_profile.name == "coding" else roles.DEFAULT)

@@ -25,11 +25,14 @@ from poolhouse.sandbox import Limits, Net, Policy
 from poolhouse.sandbox.policies import SYSTEM_EXEC
 from poolhouse.sandbox.run import fair_share
 
-__all__ = ["Profile", "build", "interpreter_reads", "system_toolchain"]
+__all__ = ["Profile", "build", "interpreter_reads", "search_path", "system_toolchain"]
 
 HOMEBREW = ("bin", "lib", "opt", "Cellar", "share", "include", "Frameworks")
 """What of `/opt/homebrew` and `/usr/local` is the system toolchain: not their `etc` or `var` (8.2)."""
 COMMAND_LINE_TOOLS = "/Library/Developer/CommandLineTools"
+PREFERENCES = {"codex": ("com.openai.codex",)}
+"""The preference domains a harness reads on macOS (found by running it under the profile: Codex fails to start without its own domain, which it
+reads for the settings an administrator manages), and no other."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +77,7 @@ def _digest(policy: Policy, grants: Sequence[Grant], spec: Spec) -> str:
     so a token the launcher minted is never in a digest."""
     body = {"harness": spec.harness, "name": policy.name, "read": policy.read, "write": policy.write, "exec": policy.exec,
             "net": [policy.net.mode.value, policy.net.ports], "env": sorted(policy.env), "strict": policy.strict,
+            "preferences": policy.preferences,
             "deny_write": policy.deny_write, "unix_sockets": policy.unix_sockets, "signal_children": policy.signal_children,
             "limits": [policy.limits.processes, policy.limits.wall_seconds], "gpu": policy.gpu,
             "grants": sorted(f"{grant.kind}:{grant.subject}:{grant.fingerprint}" for grant in grants)}
@@ -91,10 +95,15 @@ def build(spec: Spec, grants: Sequence[Grant] = (), env: Mapping[str, str] | Non
     policy = Policy(f"coding-{spec.harness}", read=tuple(dict.fromkeys(readable)), write=tuple(writable),
                     exec=tuple(dict.fromkeys([*SYSTEM_EXEC, os.path.realpath(sys.executable), spec.install, *system_toolchain(), *runs,
                                               *_git_directory()])),
-                    net=Net.only(*ports), env=dict(env or {}), strict=True, signal_children=True,
+                    net=Net.only(*ports), env=dict(env or {}), strict=True, signal_children=True, preferences=PREFERENCES.get(spec.harness, ()),
                     unix_sockets=(spec.session_socket,) if spec.session_socket else (),
-                    deny_write=tuple(str(Path(spec.stage) / name) for name in CONTROL_PREFIXES),
+                    deny_write=(*(str(Path(spec.stage) / name) for name in CONTROL_PREFIXES), *spec.frozen),
                     limits=limits or Limits(wall_seconds=None, output_bytes=None, processes=fair_share()))
-    path = (str(Path(spec.home) / "bin"), *_git_directory(), *SYSTEM_EXEC, *(str(Path(each) / "bin") for each in runs))
-    return Profile(policy, spec.stage, spec.home, path, tuple(grants), _digest(policy, grants, spec), spec.harness, spec.interactive,
-                   spec.read_only_stage)
+    return Profile(policy, spec.stage, spec.home, search_path(spec, grants), tuple(grants), _digest(policy, grants, spec), spec.harness,
+                   spec.interactive, spec.read_only_stage)
+
+
+def search_path(spec: Spec, grants: Sequence[Grant] = ()) -> tuple[str, ...]:
+    """The directories of ``PATH`` a session runs with: the agent home's shims, the git it can run, the system, and each granted toolchain."""
+    runs = [grant.subject for grant in grants if grant.kind == "toolchain"]
+    return (str(Path(spec.home) / "bin"), *_git_directory(), *SYSTEM_EXEC, *(str(Path(each) / "bin") for each in runs))

@@ -4,57 +4,25 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import subprocess
 import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from poolhouse import coding_policy, harnessing, serverkeys
+from poolhouse import coding_policy, harnessing, isolation
 from poolhouse.client import reported_models
 from poolhouse.guard import harnesses
 from poolhouse.log import say
 from poolhouse.serve import provenance
 
-__all__ = ["INSTRUCTIONS", "environment", "launch", "main", "settings"]
+__all__ = ["INSTRUCTIONS", "launch", "main", "settings"]
 
 INSTRUCTIONS = harnesses.RECORDS["claude"]
 """The instruction and settings names Claude Code reads from a project; `guard.runs_later` refuses a change to one at any depth."""
 DEFAULT_PORT = 8080
 
-MIN_COMPACT_WINDOW = 100000
 DEFAULT_SLOTS = 1      # one conversation, one slot, the whole measured cache
-OFFLINE = {
-    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-    "CLAUDE_CODE_DISABLE_1M_CONTEXT": "1",
-    "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING": "1",
-    "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
-    "CLAUDE_CODE_SKIP_FAST_MODE_ORG_CHECK": "1",
-    "DISABLE_TELEMETRY": "1",
-}
-MODEL_VARS = ("ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL",
-              "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-              "ANTHROPIC_DEFAULT_FABLE_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL")
-
-
-def environment(base_url: str, alias: str, *, offline: bool = True, context: int = 0,
-                base: Mapping[str, str] | None = None) -> dict[str, str]:
-    """The process environment Claude Code runs with, over ``base`` (the caller's own)."""
-    env = dict(os.environ if base is None else base)
-    env.pop("ANTHROPIC_API_KEY", None)
-    env["ANTHROPIC_BASE_URL"] = base_url.rstrip("/")
-    env["ANTHROPIC_AUTH_TOKEN"] = serverkeys.for_url(base_url) or "local"
-    if context:
-        env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] = str(int(context))
-        if context >= MIN_COMPACT_WINDOW:
-            env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = str(int(context))
-    for name in MODEL_VARS:
-        env[name] = alias
-    if offline:
-        env.update(OFFLINE)
-    return env
 
 
 def settings(pre: str = "", post: str = "", wait: float = 0.0, stop: str = "") -> str:
@@ -84,16 +52,19 @@ def alias_of(base_url: str, model: str) -> str:
 
 
 def parser() -> argparse.ArgumentParser:
-    ap = harnessing.parser("claude", "Claude Code", DEFAULT_PORT, DEFAULT_SLOTS)
-    ap.add_argument("--online", action="store_true",
-                    help="leave Claude Code's telemetry and feature-flag calls on")
-    return ap
+    return harnessing.parser("claude", "Claude Code", DEFAULT_PORT, DEFAULT_SLOTS)
+
+
+def printing(extra: Sequence[str]) -> bool:
+    """Whether the arguments after ``--`` make Claude Code answer once and exit (its print mode), the only mode a launch has until the relay of L6."""
+    return any(word in ("-p", "--print") for word in extra)
 
 
 def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = say,
-           run_claude: Callable[..., int] | None = None,
-           session_factory: Callable[..., Any] | None = None) -> int:
-    """Lease the model, run ``claude`` inside the lease with the session's hooks, return its exit code."""
+           run_claude: Callable[[isolation.Confinement], int] | None = None,
+           session_factory: Callable[..., Any] | None = None, extras: Mapping[str, str] | None = None) -> int:
+    """Lease the model, run ``claude`` inside a proved confinement and the lease, return its exit code. ``run_claude`` is given the confinement and
+    starts the harness with its `popen`; ``extras`` are the variables (the effort and the extra body of a task) the caller sets for it."""
     words = list(sys.argv[1:] if argv is None else argv)
     ours, extra = (words[: words.index("--")], words[words.index("--") + 1:]) \
         if "--" in words else (words, [])
@@ -109,12 +80,12 @@ def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = sa
         return 2
     try:
         coding_policy.Policy(args.permissions, args.execution_mode)
-        args.project = str(harnessing.check_project(args.project))
-        harnessing.require_isolated_execution()
+        asked, args.project = args.project, str(harnessing.check_project(args.project))
+        harnessing.admit(args, "claude", asked, interactive=not printing(extra))
     except (OSError, RuntimeError, ValueError) as why:
         say(f"error: {why}")
         return 2
-    runner = run_claude or (lambda cmd, env: subprocess.call(cmd, env=env, cwd=args.project or None))
+    runner = run_claude or harnessing.terminal_runner
     if args.on:
         base_url = args.on.rstrip("/")
         alias = alias_of(base_url, "")
@@ -122,7 +93,7 @@ def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = sa
             say(f"error: {base_url} did not say what model it serves")
             return 2
         say(f"claude on {base_url} as {alias!r}; this server was already up and is left up")
-        return _run(args, [binary, *extra], (base_url, alias, harnessing.window_of(base_url)), say, runner)
+        return _run(args, [binary, *extra], (base_url, alias, harnessing.window_of(base_url)), say, (runner, extras))
     began = time.time()
     try:
         with harnessing.serving(
@@ -130,29 +101,35 @@ def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = sa
                 harnessing.Want(args.port, args.slots, args.ctx, args.no_profile, args.draft), say, "claude") as (base_url, config, found):
             alias = alias_of(base_url, found)
             say(f"claude on {base_url} as {alias!r}, up in {time.time() - began:.0f}s")
-            return _run(args, [binary, *extra], (base_url, alias, config.serving.slot_context), say, runner)
+            return _run(args, [binary, *extra], (base_url, alias, config.serving.slot_context), say, (runner, extras))
     except ValueError as why:
         say(f"error: {why}")
         return 2
 
 
-def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, str, int],
-         say: Callable[[str], None], runner: Callable[..., int]) -> int:
-    """Write the session's settings and brief, and run ``command`` (``claude`` and its arguments)
-    with them; ``served`` is the base URL, the alias and the window."""
-    base_url, alias, window = served
+def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, str, int], say: Callable[[str], None],
+         start: tuple[Callable[[isolation.Confinement], int], Mapping[str, str] | None]) -> int:
+    """Prove a confinement for ``command`` (``claude`` and its arguments) and hand it to the runner; ``served`` is the base URL, the alias and the
+    window. The settings and the brief are written read-only inside the agent home, and the hooks are clients of the session bridge."""
+    runner, extras = start
     binary, *extra = command
+    how = harnessing.Harness("claude", binary, served, say, extras or {}, not printing(extra))
+    brief = ""
+
+    def render(context: isolation.Context) -> isolation.Rendering:
+        files = {"session/settings.json": settings(context.hook("pre"), context.hook("post"), harnessing.WAIT_S, context.hook("stop")),
+                 "session/brief.md": brief}
+        return isolation.Rendering((binary, "--settings", str(context.file("session/settings.json")), "--append-system-prompt-file",
+                                    str(context.file("session/brief.md")), *extra), files)
+
     try:
         with harnessing.opened(args, "claude-code", served, say) as run:
-            path = run.files.write("settings.json", settings(run.pre, run.post, harnessing.WAIT_S, run.stop))
-            brief = run.files.write("brief.md", run.brief)
-            run.files.lock()
-            env = environment(base_url, alias, offline=not args.online, context=window)
-            say(f"permissions {args.permissions}; mode {args.execution_mode}; every tool call goes through poolhouse's classifier "
-                f"(settings {path}, outside the working tree)")
-            return int(runner([binary, "--settings", str(path), "--append-system-prompt-file", str(brief),
-                               *extra], env))
-    except ValueError as why:
+            brief = run.brief
+            with harnessing.confined(args, run, how, render) as confinement:
+                say(f"permissions {args.permissions}; mode {args.execution_mode}; working on a copy of {run.cwd}, in a box the operating system "
+                    "holds; changes arrive when the turn ends")
+                return int(runner(confinement))
+    except (OSError, RuntimeError, ValueError) as why:
         say(f"error: {why}")
         return 2
 

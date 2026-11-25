@@ -2,15 +2,15 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-from poolhouse import coding_policy, harnesshook, harnessing, pi, pi_tools, runtime
+from poolhouse import coding_policy, harnesshook, harnessing, isolation, pi, runtime
 
 pytest_plugins = ["tests.sandbox_kit"]
 
@@ -31,61 +31,47 @@ def hostile(tmp_path, monkeypatch):
     return project, marker
 
 
+CLIENT = Path(isolation.client.__file__) if hasattr(isolation, "client") else Path(sys.modules["poolhouse.isolation.client"].__file__)
+
+
+def hook_against_a_real_bridge(project: Path, client: Path, tool_input: dict):
+    """The hook command a confined harness runs, asking a real session bridge in this process; its answer and the process's exit status."""
+    rail = harnesshook.Rail(coding_policy.Policy("read-only"), "isolated-worker", (str(project),), ())
+    bridge = isolation.SessionBridge(isolation.Handlers(lambda event, payload: harnesshook.pre(payload, rail), lambda *_: {}),
+                                     isolation.Terms(False, 4096), root="/tmp")
+    path = bridge.start()
+    try:
+        context = isolation.Context(project, project, str(project), os.path.realpath(sys.executable), str(client), path, os.getpid(), "", "", 0)
+        command = shlex.split(context.hook("pre"))
+        done = subprocess.run(command, input=json.dumps({"tool_name": "Read", "tool_input": tool_input, "cwd": str(project)}), text=True,
+                              capture_output=True, timeout=30, check=False)
+    finally:
+        bridge.stop()
+    return command, done
+
+
 @pytest.mark.parametrize("invalid_python_home", [False, True])
 def test_actual_generated_hook_ignores_repository_package_and_python_environment(hostile, monkeypatch, invalid_python_home):
     project, marker = hostile
     if not invalid_python_home:
         monkeypatch.delenv("PYTHONHOME")
-    command = harnessing.hook_command("pre", policy=coding_policy.Policy("read-only"),
-                                     agent="isolated-worker", root=project, protect=[])
-    done = subprocess.run(shlex.split(command), input=json.dumps({"tool_name": "Read", "tool_input": {"path": "safe.txt"},
-                                                               "cwd": str(project)}),
-                          text=True, capture_output=True, timeout=30, check=False)
+    _, done = hook_against_a_real_bridge(project, CLIENT, {"path": "safe.txt"})
     assert done.returncode == 0, done.stderr
     assert json.loads(done.stdout)["hookSpecificOutput"]["permissionDecision"] == "allow"
-    assert not marker.exists()
+    assert not marker.exists(), "the hostile package in the project was never imported: the client runs isolated and imports nothing of Poolhouse"
 
 
-def test_newline_and_quoted_arguments_cannot_change_the_hook_command(hostile):
+def test_newline_and_quoted_arguments_cannot_change_the_hook_command(hostile, tmp_path):
     project, marker = hostile
-    root = project / "line\nbreak ' $(touch injected)"
-    root.mkdir()
-    command = harnessing.hook_command("pre", policy=coding_policy.Policy("read-only"),
-                                     agent="isolated-worker", root=root, protect=[])
-    arguments = shlex.split(command)
-    assert arguments[arguments.index("--root") + 1] == str(root)
-    done = subprocess.run(arguments, input=json.dumps({"tool_name": "Read", "tool_input": {"path": "safe.txt"},
-                                                       "cwd": str(root)}),
-                          text=True, capture_output=True, timeout=30, check=False)
+    odd = project / "line\nbreak ' $(touch injected)"
+    odd.mkdir()
+    client = odd / "client.py"
+    client.write_text(CLIENT.read_text())
+    command, done = hook_against_a_real_bridge(project, client, {"path": "safe.txt"})
+    assert command[command.index("-I") + 1] == str(client), "the whole odd path is one argument"
     assert done.returncode == 0, done.stderr
     assert json.loads(done.stdout)["hookSpecificOutput"]["permissionDecision"] == "allow"
     assert not (project / "injected").exists() and not marker.exists()
-
-
-def test_actual_pi_extension_bridge_uses_trusted_imports(hostile, seatbelt):
-    project, marker = hostile
-    binary, node = shutil.which("pi"), shutil.which("node")
-    if not binary or not node:
-        pytest.skip("Installed Pi and Node are required")
-    (project / "safe.txt").write_text("trusted tool read")
-    files = harnessing.session_files(project)
-    try:
-        configuration = pi_tools.prepared(files, binary, project, coding_policy.Policy("read-only"))
-        settings = {"permissions": "read-only", "executionMode": "execute", "agent": "isolated-worker",
-                    "root": str(project), "protected": [], "toolConfig": str(configuration),
-                    "toolModule": json.loads(configuration.read_text())["module"]}
-        (project / "policy.mjs").write_text(pi.extension(settings))
-        (project / "driver.mjs").write_text('import extension from "./policy.mjs";\n'
-            'const tools={}; await extension({on:()=>{},registerTool:tool=>tools[tool.name]=tool});\n'
-            'console.log(JSON.stringify(await tools.read.execute("read-1",{path:"safe.txt"})));\n')
-        files.lock()
-        done = subprocess.run([node, str(project / "driver.mjs")], text=True, capture_output=True,
-                              timeout=30, check=False)
-        assert done.returncode == 0, done.stderr
-        assert "trusted tool read" in json.dumps(json.loads(done.stdout))
-        assert not marker.exists()
-    finally:
-        files.release()
 
 
 def test_actual_notification_caller_uses_isolated_module_argv(hostile, monkeypatch):

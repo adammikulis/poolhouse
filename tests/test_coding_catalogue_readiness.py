@@ -10,6 +10,8 @@ from poolhouse.fleet.conversations import Conversations
 from poolhouse.fleet.projects import ProjectRegistry
 from poolhouse.fleet.setup_projects import Projects
 from poolhouse.workspace import coding_routes
+from tests.isolation_kit import without_a_sandbox
+from tests.sandbox_kit import AbsentBackend
 
 
 @pytest.fixture
@@ -32,19 +34,42 @@ def get(app, **options):
     return app.call('/ui/coding/catalogue', headers=browser(app), **options)
 
 
-def test_actual_closed_floor_is_not_opened_by_installed_harnesses(catalogue_api):
+def test_a_computer_that_confines_can_start_and_says_how(monkeypatch):
+    """The admitted half: on this Mac the real capability report holds every guarantee, so the catalogue says a coding turn can start."""
+    monkeypatch.setattr(coding_routes.hub, 'discover', lambda **_options: [])
+    monkeypatch.setattr(coding_routes.harnessing, 'binary_for', lambda _name: 'fixture-installed')
+    data = coding_routes.catalogue()
+    assert data['can_start'] is True and data['enforcement_error'] == ''
+    assert data['isolation']['can_start'] is True and len(data['isolation']['guarantees']) == 13
+
+
+def test_a_computer_that_cannot_confine_says_why_in_the_catalogue(monkeypatch):
+    from tests.isolation_kit import without_a_sandbox
+    from tests.sandbox_kit import AbsentBackend
+
+    monkeypatch.setattr(coding_routes.hub, 'discover', lambda **_options: [])
+    monkeypatch.setattr(coding_routes.harnessing, 'binary_for', lambda _name: 'fixture-installed')
+    without_a_sandbox(monkeypatch, AbsentBackend)
+    data = coding_routes.catalogue()
+    assert data['can_start'] is False and data['enforcement_error'] == 'This Mac cannot confine coding agents: its built-in sandbox tool is missing.'
+    assert data['isolation']['can_start'] is False
+
+
+def test_a_computer_that_cannot_confine_is_not_opened_by_installed_harnesses(catalogue_api, monkeypatch):
+    without_a_sandbox(monkeypatch, AbsentBackend)
     app = catalogue_api
     status, first, _ = get(app)
     assert status == 200
     assert first['can_start'] is False
-    assert first['enforcement_error'] == 'This coding runtime cannot enforce isolated session permissions'
+    assert first['enforcement_error'] == 'This Mac cannot confine coding agents: its built-in sandbox tool is missing.'
     assert all(row['available'] for row in first['harnesses'])
     assert first['selected_project'] is None
     assert get(app)[1] == first
     assert not app.ui.projects.boards() and not app.ui.conversations.all() and not app.runner.jobs
 
 
-def test_selected_folder_uses_current_registered_identity_without_paths(catalogue_api):
+def test_selected_folder_uses_current_registered_identity_without_paths(catalogue_api, monkeypatch):
+    without_a_sandbox(monkeypatch, AbsentBackend)
     app = catalogue_api
     folder = app.ui.root.parent / 'chosen'
     folder.mkdir(mode=0o700)
@@ -59,7 +84,8 @@ def test_selected_folder_uses_current_registered_identity_without_paths(catalogu
     assert data['can_start'] is False
 
 
-def test_constructor_without_project_registry_is_honestly_unselected(catalogue_api):
+def test_constructor_without_project_registry_is_honestly_unselected(catalogue_api, monkeypatch):
+    without_a_sandbox(monkeypatch, AbsentBackend)
     app = catalogue_api
     app.ui.projects = None
     status, data, _ = get(app)

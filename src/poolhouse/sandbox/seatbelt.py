@@ -166,6 +166,12 @@ def profile(policy: Policy, program: str, tag: str) -> str:
             + [f"(sysctl-name-prefix {quote(s)})" for each in EXPOSURES for s in each.sysctl_prefixes]) + ")",
         *([] if policy.strict else ["(allow mach-lookup " + " ".join(f"(global-name {quote(s)})" for s in MACH_SERVICES) + ")"]),
     ]
+    if policy.preferences:
+        out += [f'(allow user-preference-read {" ".join(f"(preference-domain {quote(each)})" for each in policy.preferences)})',
+                '(allow ipc-posix-shm-read-data (ipc-posix-name-prefix "apple.cfprefs."))',
+                '(allow mach-lookup (global-name "com.apple.cfprefsd.daemon") (global-name "com.apple.cfprefsd.agent") '
+                '(global-name "com.apple.system.opendirectoryd.libinfo"))',
+                '(allow file-read* (literal "/private/etc/passwd"))']
     if policy.read_files:
         if policy.strict:
             out += ["(allow file-read* " + value + ")" for value in expressions(policy.read_files, quote)]

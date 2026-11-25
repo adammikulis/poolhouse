@@ -15,10 +15,8 @@ REPO = Path(__file__).resolve().parent.parent
 SRC = REPO / "src" / "poolhouse"
 
 STANDALONE = {
-    "harnesshook": "the agent harnesses' hook command (`python -m poolhouse.harnesshook pre|post|stop`), named by module in the argv the "
-                   "runtime builds for them (harnessing, pi, task_coding), so no module imports it",
-    "isolation": "the isolated launcher's library (slices L2 to L4, with the workspace session that calls coding_workspace and coding_apply); the "
-                 "launchers that call it land in slice L5, which removes this entry together with harnessing.require_isolated_execution",
+    "pi_tools": "the tool-proxy model's per-tool worker, kept until the native path is proven (docs/design-isolated-launcher.md, 15.2 and 18.10); "
+                "Pi's launcher no longer calls it, since Pi's own tools run inside the confinement",
     "protectedwrites":"loaded by file through poolhouse.worktreerules, so the hook scripts need no package on the path",
 }
 
@@ -152,3 +150,11 @@ def test_an_unrelated_target_string_is_not_a_caller(tmp_path, monkeypatch):
     monkeypatch.setitem(globals(), "SRC", tmp_path)
     assert _imported_by(source) == set()
     assert _callers() == {}
+
+
+@pytest.mark.parametrize(("name", "caller"), [("coding_workspace", "src/poolhouse/isolation/workspace.py"), ("isolation", "src/poolhouse/claude.py"),
+                                                ("isolation", "src/poolhouse/codex.py"), ("isolation", "src/poolhouse/pi.py"),
+                                                ("isolation", "src/poolhouse/harnessing.py")])
+def test_the_isolated_launcher_and_the_stage_it_builds_have_their_callers_outside_the_tests(name: str, caller: str) -> None:
+    """Neither is standalone any more: the launchers reach the library through `isolation.prepare`, and the library reaches the stage."""
+    assert name not in STANDALONE and caller in CALLERS.get(name, set())

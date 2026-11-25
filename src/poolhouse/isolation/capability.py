@@ -220,6 +220,8 @@ def _launch_facts(spec: Spec, stage_free: int, need: int) -> tuple[str, ...]:
     if _wsl() == "wsl1":
         out.append(sentence("wsl1"))
     project = os.path.realpath(spec.project) if spec.project else ""
+    if project and not os.path.lexists(Path(project) / ".git"):
+        out.append(sentence("not_a_repository"))
     if _wsl() and project.startswith("/mnt/") and len(project.split("/")) > 2 and len(project.split("/")[2]) == 1:
         out.append(sentence("windows_drive"))
     if need and stage_free < need:

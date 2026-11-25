@@ -5,6 +5,7 @@ import hashlib
 import json
 import multiprocessing
 import queue
+import re
 import shutil
 import signal
 import subprocess
@@ -16,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from poolhouse import coding, coding_policy, harnessing, platform
+from poolhouse import coding, coding_policy, harnessing, isolation
 from poolhouse.board import person
 from poolhouse.fleet import conversation_graph as graph
 from poolhouse.fleet.conversation_types import safe
@@ -84,7 +85,7 @@ class Manager:
     def start(self, cid: str, prompt: str) -> Turn:
         if not safe(cid) or not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 200000:
             raise ValueError("a turn needs an existing conversation and a nonempty message under 200000 characters")
-        harnessing.require_isolated_execution()
+        isolation.require_capable()
         conversation = self.store.get(cid)
         if conversation is None:
             raise ValueError("choose an existing conversation first")
@@ -161,7 +162,6 @@ class Manager:
         return self.status(cid)
 
     def _run(self, turn: Turn, conversation, prompt: str) -> None:
-        harnessing.require_isolated_execution()
         settings = conversation.settings
         fingerprint = hashlib.sha256(json.dumps({"model": conversation.model, **settings}, sort_keys=True).encode()).hexdigest()[:24]
         home = self.store.root / "harness" / conversation.id / fingerprint
@@ -189,7 +189,10 @@ class Manager:
                 args = ["--print", "--verbose", "--output-format", "stream-json", "--include-partial-messages"]
                 if turn.session:
                     args += ["--resume", turn.session]
+            args = self._arguments(harness, args)
             launch_options = {"protected_paths": self._protected_paths(home)}
+            if harness != "pi" and (extras := self._extras(harness)):
+                launch_options["extras"] = extras
             if harness == "pi":
                 launch_options["max_turns"] = self._max_turns()
                 launch_options["max_output_tokens"] = settings["max_output_tokens"]
@@ -199,7 +202,7 @@ class Manager:
                 settings["project"], harness=harness, context=settings["context"], draft=settings.get("draft", "auto"), name=f"chat-{conversation.id}",
                 parent=self._parent(settings["project"]),
                 harness_args=args, say=lambda text: turn.emit({"status": text}),
-                **{f"run_{harness}": lambda command, env: self._process(turn, command, env, (home, harness, prompt, settings["project"]))},
+                **{f"run_{harness}": lambda confinement: self._process(turn, confinement, (home, harness, prompt, settings["project"]))},
                 **launch_options)
             if result and not turn.cancelled.is_set():
                 raise RuntimeError(turn.error or f"{harness} exited with status {result}")
@@ -218,6 +221,14 @@ class Manager:
 
     def _protected_paths(self, _home: Path) -> tuple[str, ...]:
         return ()
+
+    def _arguments(self, harness: str, args: list[str]) -> list[str]:
+        """The arguments after ``--`` the harness is started with."""
+        return args
+
+    def _extras(self, harness: str) -> dict[str, str]:
+        """The variables this caller sets for the harness (the closed environment names the rest of them)."""
+        return {}
 
     def _parent(self, project):
         return person.session(project).name
@@ -245,29 +256,24 @@ class Manager:
         if payload:
             turn.emit(payload)
 
-    def _process(self, turn, command, environment, context) -> int:
-        home, harness, prompt, folder = context
-        environment = dict(environment)
-        if harness == "codex":
-            temporary = Path(environment["CODEX_HOME"])
+    def _process(self, turn, confinement, context) -> int:
+        """Start the harness in ``confinement`` for one turn: the conversation's saved history is copied into the harness's config folder in the
+        agent home before it starts, and what it wrote comes back after, so a native session resumes. The harness gets pipes, never a terminal."""
+        home, harness, prompt, _folder = context
+        config = confinement.config
+        if harness in ("codex", "claude"):
             for path in home.iterdir():
-                destination = temporary / path.name
+                destination = config / path.name
                 if path.is_dir():
                     shutil.copytree(path, destination, dirs_exist_ok=True)
                 elif not destination.exists():
                     shutil.copy2(path, destination)
-        elif harness == "claude":
-            environment["CLAUDE_CONFIG_DIR"] = str(home)
-            temporary = home
-        else:
-            temporary = None
+        if harness == "claude":
+            self._relocate(config / "projects", confinement.cwd)
         if turn.cancelled.is_set():
             return 0
-        if harness == "pi":
-            command = [*command, "--", prompt]
-        with (home / "stderr.log").open("w") as errors:
-            process = platform.start_process(command, env=environment, cwd=folder, stdin=subprocess.PIPE,
-                                       stdout=subprocess.PIPE, stderr=errors, text=True, bufsize=1)
+        with (home / "stderr.log").open("wb") as errors:
+            process = confinement.popen(stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors)
             turn.process = process
             turn.state = "running"
             turn.emit({"state": turn.state})
@@ -275,7 +281,7 @@ class Manager:
                 if harness == "pi":
                     process.stdin.close()
                 else:
-                    process.stdin.write(prompt)
+                    process.stdin.write(prompt.encode())
                     process.stdin.close()
                 while line := process.stdout.readline(MAX_EVENT + 1):
                     if len(line) > MAX_EVENT:
@@ -291,8 +297,8 @@ class Manager:
                     kill_process_tree(process.pid, grace_s=2)
                     process.wait()
                 turn.process = None
-                if harness == "codex":
-                    for path in temporary.iterdir():
+                if harness in ("codex", "claude"):
+                    for path in config.iterdir():
                         if path.name in ("config.toml", "AGENTS.md", "auth.json"):
                             continue
                         destination = home / path.name
@@ -300,6 +306,16 @@ class Manager:
                             shutil.copytree(path, destination, dirs_exist_ok=True)
                         else:
                             shutil.copy2(path, destination)
+
+    @staticmethod
+    def _relocate(projects: Path, folder: str) -> None:
+        """A resumed Claude Code session is found by the working directory it ran in, and each launch works in a stage of its own: the saved
+        transcripts of this conversation are put where the harness will look for them."""
+        if not projects.is_dir():
+            return
+        here = projects / re.sub(r"[^A-Za-z0-9]", "-", folder)
+        for earlier in [path for path in projects.iterdir() if path.is_dir() and path != here]:
+            shutil.copytree(earlier, here, dirs_exist_ok=True)
 
 
 def worker(root, cid, conversation, prompt, communication) -> None:

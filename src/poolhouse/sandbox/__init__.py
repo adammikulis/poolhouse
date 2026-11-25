@@ -23,8 +23,8 @@ from poolhouse.sandbox.policy import (
                                      PolicyError,
                                      checked_path,
 )
-from poolhouse.sandbox.run import Result, SandboxViolation, backend, run, wrapped
+from poolhouse.sandbox.run import Result, SandboxViolation, Started, backend, run, spawn, wrapped
 
 __all__ = ["AllowUnsandboxed", "Availability", "Backend", "Limits", "Net", "NetMode", "Policy",
-           "PolicyError", "Result", "SandboxUnavailable", "SandboxViolation", "backend",
-           "checked_path", "confined", "run", "wrapped"]
+           "PolicyError", "Result", "SandboxUnavailable", "SandboxViolation", "Started", "backend",
+           "checked_path", "confined", "run", "spawn", "wrapped"]

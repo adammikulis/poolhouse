@@ -16,11 +16,20 @@ from __future__ import annotations
 
 from poolhouse.isolation.attestation import Attestation, attest
 from poolhouse.isolation.capability import Report, capability, require_capable
+from poolhouse.isolation.confinement import (
+           Confinement,
+           Context,
+           Plan,
+           Rendering,
+           install_tree,
+           prepare,
+)
 from poolhouse.isolation.egress_proxy import EgressProxy, Wiring
 from poolhouse.isolation.environment import Inputs, allowed, environment
 from poolhouse.isolation.gate import Arguments, Launch, check_on, decide_launch, require_widening
 from poolhouse.isolation.grants import Decision, Grant, Request, Rule, decide
 from poolhouse.isolation.model_bridge import Lease, ModelBridge
+from poolhouse.isolation.notices import Notice
 from poolhouse.isolation.profile import Profile, build
 from poolhouse.isolation.proof import Proof, Services, run as run_proof
 from poolhouse.isolation.refusals import IsolationFailed, IsolationRefused
@@ -28,7 +37,7 @@ from poolhouse.isolation.reports import Reporter
 from poolhouse.isolation.session_bridge import Handlers, SessionBridge, Terms
 from poolhouse.isolation.spec import Spec
 
-__all__ = ["Arguments", "Attestation", "Decision", "EgressProxy", "Grant", "Handlers", "Inputs", "IsolationFailed", "IsolationRefused",
-           "Launch", "Lease", "ModelBridge", "Profile", "Proof", "Report", "Reporter", "Request", "Rule", "Services", "SessionBridge", "Spec",
-           "Terms", "Wiring", "allowed", "attest", "build", "capability", "check_on", "decide", "decide_launch", "environment",
-           "require_capable", "require_widening", "run_proof"]
+__all__ = ["Arguments", "Attestation", "Confinement", "Context", "Decision", "EgressProxy", "Grant", "Handlers", "Inputs", "IsolationFailed",
+           "IsolationRefused", "Launch", "Lease", "ModelBridge", "Notice", "Plan", "Profile", "Proof", "Rendering", "Report", "Reporter", "Request",
+           "Rule", "Services", "SessionBridge", "Spec", "Terms", "Wiring", "allowed", "attest", "build", "capability", "check_on", "decide",
+           "decide_launch", "environment", "install_tree", "prepare", "require_capable", "require_widening", "run_proof"]

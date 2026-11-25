@@ -2,7 +2,6 @@
 
 import hashlib
 import json
-import shlex
 import sys
 import threading
 from collections.abc import Callable
@@ -10,7 +9,7 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from poolhouse import coding_policy, harnessing, roles, runtime
+from poolhouse import coding_policy, roles
 from poolhouse.board.session import Session
 from poolhouse.chatpolicy import READ_ONLY
 from poolhouse.client import families
@@ -76,55 +75,28 @@ class TaskManager(Manager):
     def _max_turns(self):
         return localloop.caps_of(self.agent).rounds
 
-    def _process(self, turn, command, environment, context):
-        harness = context[1]
+    def _arguments(self, harness, args):
         if harness not in ('pi', 'claude'):
             raise ValueError('coding needs a supported coding harness')
         if harness == 'pi':
-            return super()._process(turn, command, environment, context)
+            return args
         caps = localloop.caps_of(self.agent)
-        command = [*command, '--system-prompt', BOOTSTRAP,
-                   '--tools', 'Read,Edit,Write,Bash,Glob,Grep,Agent']
+        args = [*args, '--system-prompt', BOOTSTRAP, '--tools', 'Read,Edit,Write,Bash,Glob,Grep,Agent']
         if caps.rounds is not None:
-            command += ['--max-turns', str(caps.rounds)]
-        counter = context[0] / 'task-tool-calls.json'
-        counter.write_text(json.dumps({'version': 1, 'calls': 0, 'limit': caps.calls}), encoding='utf-8')
-        setting_index = command.index('--settings') + 1
-        settings = json.loads(Path(command[setting_index]).read_text(encoding='utf-8'))
-        hooks = settings.setdefault('hooks', {}).setdefault('PreToolUse', [])
-        prefix = runtime.module_argv("poolhouse.harnesshook", Path(context[3]), "pre")
-        protected = False
-        for entry in hooks:
-            for hook in entry.get('hooks', []):
-                words = shlex.split(hook.get('command', ''))
-                tail = words[len(prefix):]
-                options = list(zip(tail[::2], tail[1::2], strict=True)) if len(tail) % 2 == 0 else []
-                if words[:len(prefix)] == prefix and ('--protect', str(context[0])) in options:
-                    protected = True
-        if not protected:
-            raise ValueError('native task settings require the maintained classifier hook and protected task home')
-        hooks.append({'matcher': '*', 'hooks': [{'type': 'command', 'timeout': 10,
-                      'command': shlex.join(runtime.module_argv("poolhouse.workspace.task_caps", Path(context[3]), str(counter)))}]})
-        task_settings = context[0] / 'task-settings.json'
-        if task_settings.exists():
-            task_settings.chmod(0o600)
-        task_settings.write_text(json.dumps(settings), encoding='utf-8')
-        task_settings.chmod(0o444)
-        command[setting_index] = str(task_settings)
+            args += ['--max-turns', str(caps.rounds)]
+        return args
+
+    def _extras(self, harness):
+        """The effort and the extra body a native task asks of Claude Code: the thinking switch of the model family, separate from the output
+        and the stream. The tool and model call limits are counted in the parent, from the harness's own event stream (`_event`)."""
+        if harness != 'claude':
+            return {}
         level = localeffort.clamp(self.agent.effort if self.agent.effort != 'auto' else 'low', self.agent.max_effort)
-        environment = {**environment, 'CLAUDE_CODE_EFFORT_LEVEL': 'low' if level == 'off' else level}
-        extra = json.loads(environment.get('CLAUDE_CODE_EXTRA_BODY') or '{}')
-        if not isinstance(extra, dict):
-            raise ValueError('CLAUDE_CODE_EXTRA_BODY must be a JSON object')
-        kwargs = extra.get('chat_template_kwargs', {})
-        if not isinstance(kwargs, dict):
-            raise ValueError('chat_template_kwargs must be a JSON object')
+        extras = {'CLAUDE_CODE_EFFORT_LEVEL': 'low' if level == 'off' else level}
         family = families.for_model_id(self.agent.model)
         if family is not families.GENERIC:
-            thinking = localeffort.thinks(level) and environment.get('MAX_THINKING_TOKENS', '').strip() != '0'
-            extra['chat_template_kwargs'] = {**kwargs, **family.think_kwargs(thinking)}
-        environment['CLAUDE_CODE_EXTRA_BODY'] = json.dumps(extra)
-        return super()._process(turn, command, environment, context)
+            extras['CLAUDE_CODE_EXTRA_BODY'] = json.dumps({'chat_template_kwargs': family.think_kwargs(localeffort.thinks(level))})
+        return extras
 
 
 class Run(NamedTuple):
@@ -137,7 +109,6 @@ class Run(NamedTuple):
 
 def perform(s: Session, base: Path, agent, task, run: Run):
     """Return a native harness report and hashed worktree changes for independent review."""
-    harnessing.require_isolated_execution()
     project, stopped, checkpoint = run
     reputation = work_reputation.brief_on(s)
     la.Status(base, agent.name).update(reputation=reputation)

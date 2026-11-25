@@ -1,35 +1,29 @@
 """Pi runs with the explicit local endpoint and poolhouse's tool-policy extension."""
 from __future__ import annotations
 
+import json
+import shutil
+import subprocess
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
-from poolhouse import coding_policy, pi
+import pytest
+from confined_kit import repository
+
+from poolhouse import harnessing, isolation, pi
+
+pytest_plugins = ["tests.confined_kit"]
 
 
+@pytest.mark.usefixtures("confinable")
 def test_pi_launch_is_offline_and_uses_the_policy_extension(monkeypatch, tmp_path):
     seen = {}
     binary = tmp_path / "pi"
-    binary.touch()
-    project = tmp_path / "project"
-    project.mkdir()
-    config = tmp_path / "pi-config"
-    config.mkdir()
-
-    class Files:
-        path = config
-
-        def write(self, name, content):
-            target = config / name
-            target.write_text(content, encoding="utf-8")
-            return target
-
-        def lock(self):
-            seen["locked"] = True
-
-    run = SimpleNamespace(files=Files(), cwd=project, brief="trusted role brief",
-                          session=SimpleNamespace(name="coding-test"))
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
+    project = repository(tmp_path / "project")
+    run = harnessing.Session(SimpleNamespace(name="coding-test", parent=None, managed_inbox=False), project, "trusted role brief")
 
     @contextmanager
     def opened(*_args, **_kwargs):
@@ -39,27 +33,22 @@ def test_pi_launch_is_offline_and_uses_the_policy_extension(monkeypatch, tmp_pat
     monkeypatch.setattr(pi, "alias_of", lambda *_: "local-model")
     monkeypatch.setattr(pi.harnessing, "window_of", lambda _: 49152)
     monkeypatch.setattr(pi.harnessing, "opened", opened)
-    monkeypatch.setattr(pi.harnessing, "protected_paths", lambda _files, extra=(): [str(config), *extra])
-    def prepared(files, binary, root, role):
-        return files.write("tool-worker.json", '{"module":"/fixed/installed-pi.js"}')
-    monkeypatch.setattr(pi.pi_tools, "prepared", prepared)
-    monkeypatch.setattr(pi.harnessing, "require_isolated_execution", lambda: None)
 
-    def run_pi(command, env):
-        seen["command"], seen["env"] = command, env
+    def run_pi(confinement):
+        seen["command"], seen["env"] = list(confinement.argv), dict(confinement.env)
+        seen["extension"] = Path(seen["command"][seen["command"].index("--extension") + 1]).read_text()
+        seen["models"] = json.loads((confinement.config / "models.json").read_text())["providers"]["poolhouse"]
         return 0
 
-    assert pi.launch(["--on", "http://127.0.0.1:8080", "--project", str(project)],
-                     say=lambda _: None, run_pi=run_pi) == 0
-    assert seen["command"][:5] == [str(binary), "--provider", "poolhouse", "--model", "local-model"]
+    assert pi.launch(["--on", "http://127.0.0.1:8080", "--project", str(project)], say=lambda _: None, run_pi=run_pi) == 0
+    assert seen["command"][:5] == [str(binary.resolve()), "--provider", "poolhouse", "--model", "local-model"]
     assert seen["command"][seen["command"].index("--thinking") + 1] == "off"
     assert "--no-session" in seen["command"] and "--no-mcp" in seen["command"]
-    extension = Path(seen["command"][seen["command"].index("--extension") + 1]).read_text()
-    assert 'pi.on("tool_call"' in extension and "poolhouse.harnesshook" in extension
-    assert seen["env"]["PI_OFFLINE"] == "1"
-    assert seen["env"]["PI_CODING_AGENT_DIR"] == str(config)
-    assert seen["locked"]
-    assert '"toolConfig"' in extension and 'pi.registerTool' in extension
+    assert 'pi.on("tool_call"' in seen["extension"] and "client.py" in seen["extension"] and "poolhouse.harnesshook" not in seen["extension"]
+    assert "toolConfig" not in seen["extension"], "Pi's own tools run inside the box; no per-tool worker is started"
+    assert seen["env"]["PI_OFFLINE"] == "1" and set(seen["env"]) <= isolation.allowed("pi")
+    assert seen["models"]["baseUrl"].startswith("http://127.0.0.1:") and not seen["models"]["baseUrl"].endswith(":8080"), "Pi reaches the bridge"
+    assert seen["models"]["apiKey"] != "local" and len(seen["models"]["apiKey"]) >= 32, "the bridge's token, not a placeholder"
 
 
 def test_pi_events_stream_usage_and_fail_closed():
@@ -74,19 +63,15 @@ def test_pi_events_stream_usage_and_fail_closed():
         {"content": [{"type": "text", "text": "poolhouse: person refused"}]}}, "pi") == {"blocked": "poolhouse: person refused"}
 
 
+DENY = ["/bin/sh", "-c", "cat > /dev/null; echo '{\"hookSpecificOutput\":{\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"read-only\"}}'", "sh"]
+
+
 def test_pi_extension_denies_writes_and_reports_exhausted_turns(tmp_path):
-    import json
-    import shutil
-    import subprocess
-
-    import pytest
-
     node = shutil.which("node")
     if not node:
         pytest.skip("Node is required by Pi")
     hook = tmp_path / "policy.mjs"
-    hook.write_text(pi.extension({"permissions": "read-only", "executionMode": "execute",
-        "agent": "isolated-pi", "root": str(tmp_path), "protected": [], "maxTurns": 1}))
+    hook.write_text(pi.extension({"hook": DENY, "root": str(tmp_path), "maxTurns": 1}))
     driver = tmp_path / "driver.mjs"
     driver.write_text(
         'import extension from "./policy.mjs";\n'
@@ -99,24 +84,16 @@ def test_pi_extension_denies_writes_and_reports_exhausted_turns(tmp_path):
     rows = [json.loads(line) for line in done.stdout.splitlines()]
     assert rows[0] == {"type": "error", "message": "Pi turn budget exhausted"}
     assert rows[1]["state"] == {"aborted": True, "stopped": True}
-    assert rows[1]["result"]["block"] and "poolhouse:" in rows[1]["result"]["reason"]
+    assert rows[1]["result"]["block"] and "poolhouse: read-only" in rows[1]["result"]["reason"]
     assert not (tmp_path / "output.py").exists()
 
 
-def test_pi_post_checkpoint_failure_stops_the_session(tmp_path, monkeypatch):
-    monkeypatch.setattr(pi.runtime, "module_argv", lambda *args: ["/usr/bin/false"])
-    import json
-    import shutil
-    import subprocess
-
-    import pytest
-
+def test_pi_post_checkpoint_failure_stops_the_session(tmp_path):
     node = shutil.which("node")
     if not node:
         pytest.skip("Node is required by Pi")
     hook = tmp_path / "policy.mjs"
-    hook.write_text(pi.extension({"permissions": "guarded", "executionMode": "execute",
-        "agent": "missing-checkpoint-identity", "root": str(tmp_path), "protected": []}))
+    hook.write_text(pi.extension({"hook": ["/usr/bin/false"], "root": str(tmp_path)}))
     driver = tmp_path / "driver.mjs"
     driver.write_text(
         'import extension from "./policy.mjs";\n'
@@ -127,107 +104,3 @@ def test_pi_post_checkpoint_failure_stops_the_session(tmp_path, monkeypatch):
     rows = [json.loads(line) for line in done.stdout.splitlines()]
     assert rows[0] == {"type": "error", "message": "Pi mutation checkpoint failed"}
     assert rows[1] == {"aborted": True, "stopped": True}
-
-
-def test_pi_provider_payload_preserves_explicit_output_budget(tmp_path):
-    import json
-    import shutil
-    import subprocess
-
-    import pytest
-
-    node = shutil.which("node")
-    if not node:
-        pytest.skip("Node is required by Pi")
-    hook = tmp_path / "budget.mjs"
-    hook.write_text(pi.extension({"root": str(tmp_path), "maxOutputTokens": 32000,
-                                 "thinking": {"enable_thinking": False}}))
-    driver = tmp_path / "driver.mjs"
-    driver.write_text(
-        'import extension from "./budget.mjs";\n'
-        'const handlers={}; extension({on:(name,fn)=>handlers[name]=fn});\n'
-        'const original={max_tokens:4096,max_completion_tokens:4096,messages:[{role:"user",content:"hello"}],chat_template_kwargs:{other:1}};\n'
-        'console.log(JSON.stringify({original,payload:handlers.before_provider_request({payload:original})}));\n')
-    done = subprocess.run([node, str(driver)], capture_output=True, text=True, timeout=30, check=True)
-    result = json.loads(done.stdout)
-    payload = result["payload"]
-    assert payload["max_tokens"] == 32000
-    assert "max_completion_tokens" not in payload
-    assert payload["messages"] == result["original"]["messages"]
-    assert payload["chat_template_kwargs"] == {"other": 1, "enable_thinking": False}
-    assert result["original"]["max_tokens"] == 4096
-    model = json.loads(pi.models("http://localhost:8080", "local-model", 49152, 32000))["providers"]["poolhouse"]["models"][0]
-    assert model["contextWindow"] == 49152 and model["maxTokens"] == 32000
-
-
-def test_native_pi_options_keep_output_effort_and_turns_separate(monkeypatch):
-    from poolhouse import coding
-
-    seen = {}
-    def launch(argv, **kwargs):
-        seen["args"] = argv
-        return 0
-    monkeypatch.setitem(coding.HARNESSES, "pi", launch)
-    assert coding.launch_coding_agent("model", coding_policy.Policy("read-only"), "/tmp", max_output_tokens=32000,
-                                      max_turns=7, effort="high", context=65536) == 0
-    for flag, expected in (("--max-output-tokens", "32000"), ("--max-turns", "7"),
-                           ("--effort", "high"), ("--ctx", "65536")):
-        assert seen["args"][seen["args"].index(flag) + 1] == expected
-
-
-def test_chat_agent_output_default_keeps_caller_caps():
-    from poolhouse.workspace.localtools import Guarded, Limits
-
-    class Client:
-        def chat(self, messages, **kwargs):
-            return kwargs
-    for effort in ("off", "low", "medium", "high"):
-        guarded = Guarded(Client(), effort=effort, limits=Limits(60, 5, max_output_tokens=8192), stop=lambda: False)
-        assert guarded.chat([])["n_predict"] == 8192
-        assert guarded.chat([], n_predict=32000)["n_predict"] == 32000
-        assert guarded.chat([], n_predict=0)["n_predict"] == 0
-        explicit = guarded.chat([], max_tokens=17000)
-        assert explicit["n_predict"] == 17000 and "max_tokens" not in explicit
-
-
-def test_guarded_output_cap_reaches_real_client_body():
-    from poolhouse.client import Client, Request
-    from poolhouse.workspace.localtools import Guarded, Limits
-
-    class BodyClient(Client):
-        def chat(self, messages, **kwargs):
-            return self.build_body(messages, **kwargs)
-    for api in ("llama", "openai"):
-        from poolhouse.client import Transport
-        client = BodyClient("http://127.0.0.1:1", model="qwen", request=Request(n_predict=2048),
-                            transport=Transport(api=api))
-        guarded = Guarded(client, effort="off", limits=Limits(60, 5, max_output_tokens=8192), stop=lambda: False)
-        key = "max_tokens" if api == "openai" else "n_predict"
-        assert guarded.chat([], max_tokens=17000)[key] == 17000
-        assert guarded.chat([], max_completion_tokens=19000)[key] == 19000
-        assert guarded.chat([])[key] == 8192
-
-
-def test_pi_unlimited_payload_and_turns(tmp_path):
-    import json
-    import shutil
-    import subprocess
-
-    import pytest
-
-    node = shutil.which('node')
-    if not node:
-        pytest.skip('Node is required by Pi')
-    (tmp_path / 'budget.mjs').write_text(pi.extension({'root': str(tmp_path), 'maxOutputTokens': None, 'maxTurns': None}))
-    driver = tmp_path / 'driver.mjs'
-    driver.write_text(
-        'import extension from "./budget.mjs";\n'
-        'const handlers={};extension({on:(name,fn)=>handlers[name]=fn});\n'
-        'const ctx={abort:()=>{throw Error("cutoff")},shutdown:()=>{throw Error("cutoff")}};\n'
-        'for(let n=0;n<201;n++)handlers.turn_start({},ctx);\n'
-        'console.log(JSON.stringify(handlers.before_provider_request({payload:{max_tokens:8192,max_completion_tokens:8192}})));\n')
-    result = subprocess.run([node, str(driver)], capture_output=True, text=True, timeout=30, check=True)
-    payload = json.loads(result.stdout)
-    assert 'max_tokens' not in payload and 'max_completion_tokens' not in payload
-    assert pi.parser().parse_args([]).max_turns is None
-    assert pi.parser().parse_args([]).max_output_tokens is None

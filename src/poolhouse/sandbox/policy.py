@@ -198,6 +198,9 @@ class Policy:
     deny_read: tuple[str, ...] = ()
     deny_write: tuple[str, ...] = ()
     signal_children: bool = False
+    preferences: tuple[str, ...] = ()
+    """macOS only: the preference domains the process may read (a program that loads its settings through the system's preference service, as Codex
+    does for the settings an administrator manages), and with them the lookups that service needs and nothing of another domain."""
     binds: tuple[tuple[str, str, bool], ...] = ()
     """Linux and WSL only: (source, target, writable), a directory bound at another path inside the namespace, such as the stage at the person's
     own project path. Another platform refuses a policy that holds one."""

@@ -161,3 +161,13 @@ def hostile_project(root: Path) -> str:
     (project / "linked-dir").symlink_to(outside)
     os.mkfifo(project / "special.fifo")
     return str(project.resolve())
+
+
+def without_a_sandbox(monkeypatch: pytest.MonkeyPatch, backend: type) -> None:
+    """Make ``backend`` the backend this computer has, for the capability report and for every start of a confined process: the one seam of the
+    engine (`sandbox.run.backend`), so that a launch on a computer that cannot confine, or that confines nothing, is the real code path."""
+    import sys
+
+    monkeypatch.setattr(sys.modules["poolhouse.sandbox.run"], "backend", backend)
+    monkeypatch.setattr(sys.modules["poolhouse.isolation.capability"], "platform_backend", backend)
+    sys.modules["poolhouse.isolation.capability"].drop_cache()

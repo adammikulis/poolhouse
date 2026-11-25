@@ -1,51 +1,51 @@
 """Codex on a model this machine serves: ``poolhouse-codex MODEL [-- codex args]``.
 
 Codex speaks only the Responses API (``wire_api = "responses"``), which llama-server serves at
-``/v1/responses``. The launcher leases the model (262,144 tokens, one slot, q8_0 KV cache), writes
-a ``config.toml`` for this run into a private ``CODEX_HOME`` under the state root, and runs
-``codex`` with that home so the person's ``~/.codex`` is never read or changed. The config holds
-the provider, the context window and auto-compact limit, the sandbox and approval policy for the
-role, and a PreToolUse hook (``poolhouse.harnesshook``) that sends Bash, ``apply_patch`` and MCP calls
-through the destructive-action classifier. The hook is pre-trusted for this run with
-``--dangerously-bypass-hook-trust``, since the launcher wrote it. The server goes when Codex exits.
+``/v1/responses``. The launcher leases the model (262,144 tokens, one slot, q8_0 KV cache), proves a
+confinement for the run (`poolhouse.isolation`) and starts ``codex`` inside it with a ``CODEX_HOME`` of its
+own in the agent home, so the person's ``~/.codex`` is never read or changed. The config, written read-only,
+holds the provider, the context window and auto-compact limit and the hooks that send Bash, ``apply_patch``
+and MCP calls through the destructive-action classifier in the parent, over the session bridge. Codex's own
+sandbox is off inside the confinement (it cannot start there) and it never asks. The hook is pre-trusted for
+this run with ``--dangerously-bypass-hook-trust``, since the launcher wrote it. The server goes when Codex exits.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
-import subprocess
 import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
-from pathlib import Path
 from typing import Any
 
-from poolhouse import agent_hooks, coding_policy, harnessing, serverkeys
+from poolhouse import coding_policy, harnessing, isolation
 from poolhouse.claude import DEFAULT_PORT, DEFAULT_SLOTS, alias_of
 from poolhouse.guard import harnesses
 from poolhouse.log import say
 from poolhouse.serve import provenance
 
-__all__ = ["INSTRUCTIONS", "config_toml", "environment", "launch", "policy_flags"]
+__all__ = ["FLAGS", "INSTRUCTIONS", "config_toml", "launch", "printing"]
 
 INSTRUCTIONS = harnesses.RECORDS["codex"]
 """The instruction and settings names Codex reads from a project; `guard.runs_later` refuses a change to one at any depth."""
 PROVIDER = "poolhouse"
 KEY_ENV = "POOLHOUSE_API_KEY"
 COMPACT_SHARE = 0.9
+FLAGS = ("--sandbox", "danger-full-access", "--ask-for-approval", "never", "--dangerously-bypass-hook-trust")
+"""Codex's own sandbox is off and it never asks: its macOS sandbox cannot start inside the confinement (a nested `sandbox_apply` is refused), and the
+mount enforces what each permission profile means (docs/design-isolated-launcher.md, 8.1)."""
 
 
 def _q(text: str) -> str:
     return json.dumps(text, ensure_ascii=True)
 
 
-def config_toml(base_url: str, alias: str, window: int, hooks: tuple[str, str, float], *, assigned: str = "") -> str:
-    """The ``config.toml`` for one run: provider, window, and the (pre, post, wait) hooks. Same
-    input, same bytes."""
-    pre, _post, wait = hooks
+def config_toml(base_url: str, alias: str, window: int, hooks: tuple[str, str, float], mcp: Sequence[str] = ()) -> str:
+    """The ``config.toml`` for one run: provider, window, the (pre, post, wait) hooks, and the workspace MCP server (``mcp`` is its command line).
+    Same input, same bytes."""
+    pre, post, wait = hooks
     lines = [
         f"model = {_q(alias)}",
         f"model_provider = {_q(PROVIDER)}",
@@ -64,33 +64,25 @@ def config_toml(base_url: str, alias: str, window: int, hooks: tuple[str, str, f
         "", "[[hooks.PreToolUse]]", 'matcher = ".*"',
         "", "[[hooks.PreToolUse.hooks]]", 'type = "command"', f"command = {_q(pre)}",
         f"timeout = {int(wait) + 30}", 'statusMessage = "poolhouse: checking the call"',
+        "", "[[hooks.PostToolUse]]", 'matcher = ".*"',
+        "", "[[hooks.PostToolUse.hooks]]", 'type = "command"', f"command = {_q(post)}", "timeout = 10",
     ]
-    return "\n".join(lines) + "\n" + agent_hooks.codex_hooks(True, False, assigned)
+    if mcp:
+        lines += ["", "[mcp_servers.workspace]", f"command = {_q(mcp[0])}", f"args = {json.dumps(list(mcp[1:]))}", "startup_timeout_sec = 30",
+                  "required = true"]
+    return "\n".join(lines) + "\n"
 
 
-def policy_flags(policy: coding_policy.Policy) -> list[str]:
-    """Codex's own sandbox and approval flags for ``role``: read-only never writes; the others write
-    inside the working directory and leave it only through the hook's decision. Codex is never left to ask: a command outside the
-    sandbox fails at once and the hook says why."""
-    if not policy.writable:
-        return ["--sandbox", "read-only", "--ask-for-approval", "never"]
-    return ["--sandbox", "workspace-write", "--ask-for-approval", "never"]
-
-
-def environment(home: Path, base: Mapping[str, str] | None = None, key: str = "") -> dict[str, str]:
-    """The process environment Codex runs with: its own home and the local server's key, no real API key."""
-    env = dict(os.environ if base is None else base)
-    for name in ("OPENAI_API_KEY", "OPENAI_BASE_URL", "CODEX_API_KEY"):
-        env.pop(name, None)
-    env["CODEX_HOME"] = str(home)
-    env[KEY_ENV] = key or "local"
-    return env
+def printing(extra: Sequence[str]) -> bool:
+    """Whether the arguments after ``--`` run Codex's non-interactive `exec`, the only mode a launch has until the relay of L6."""
+    return bool(extra) and extra[0] in ("exec", "e")
 
 
 def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = say,
-           run_codex: Callable[..., int] | None = None,
-           session_factory: Callable[..., Any] | None = None) -> int:
-    """Lease the model, run ``codex`` inside the lease with this run's home, return its exit code."""
+           run_codex: Callable[[isolation.Confinement], int] | None = None,
+           session_factory: Callable[..., Any] | None = None, extras: Mapping[str, str] | None = None) -> int:
+    """Lease the model, run ``codex`` inside a proved confinement and the lease, return its exit code. ``run_codex`` is given the confinement and
+    starts the harness with its `popen`."""
     words = list(sys.argv[1:] if argv is None else argv)
     ours, extra = (words[: words.index("--")], words[words.index("--") + 1:]) \
         if "--" in words else (words, [])
@@ -106,19 +98,19 @@ def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = sa
         return 2
     try:
         coding_policy.Policy(args.permissions, args.execution_mode)
-        args.project = str(harnessing.check_project(args.project))
-        harnessing.require_isolated_execution()
+        asked, args.project = args.project, str(harnessing.check_project(args.project))
+        harnessing.admit(args, "codex", asked, interactive=not printing(extra))
     except (OSError, RuntimeError, ValueError) as why:
         say(f"error: {why}")
         return 2
-    runner = run_codex or (lambda cmd, env: subprocess.call(cmd, env=env, cwd=args.project or None))
+    runner = run_codex or harnessing.terminal_runner
     if args.on:
         base_url = args.on.rstrip("/")
         alias = alias_of(base_url, "")
         if not alias:
             say(f"error: {base_url} did not say what model it serves")
             return 2
-        return _run(args, [binary, *extra], (base_url, alias, harnessing.window_of(base_url)), say, runner)
+        return _run(args, [binary, *extra], (base_url, alias, harnessing.window_of(base_url)), say, (runner, extras))
     began = time.time()
     try:
         with harnessing.serving(
@@ -127,46 +119,41 @@ def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = sa
         ) as (base_url, config, found):
             alias = alias_of(base_url, found)
             say(f"codex on {base_url} as {alias!r}, up in {time.time() - began:.0f}s")
-            return _run(args, [binary, *extra], (base_url, alias, config.serving.slot_context), say, runner)
+            return _run(args, [binary, *extra], (base_url, alias, config.serving.slot_context), say, (runner, extras))
     except ValueError as why:
         say(f"error: {why}")
         return 2
 
 
-
-def workspace_config(session) -> str:
-    """The assigned-session MCP settings, or empty for a parent-managed inbox task."""
-    if session.managed_inbox:
-        return ""
-    workspace = ["", "[mcp_servers.workspace]", f"command = {_q(sys.executable)}",
-         'args = ["-m", "poolhouse.mcp", "--builtin", "--workspace-only"]',
-         "startup_timeout_sec = 30", "required = true", "[mcp_servers.workspace.env]"]
-    workspace += [f"{name} = {_q(value)}" for name, value in {
-        "POOLHOUSE_WORKSPACE_AGENT": session.name, "POOLHOUSE_BOARD": session.board,
-        "POOLHOUSE_HOME": str(session.base.parent), "POOLHOUSE_WORKSPACE_HOME": str(session.base),
-        "PYTHONPATH": os.environ.get("PYTHONPATH", ""),
-        "POOLHOUSE_AGENT": "1", "POOLHOUSE_NONINTERACTIVE": "1"}.items()]
-    return "\n".join(workspace) + "\n"
-
-def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, str, int],
-         say: Callable[[str], None], runner: Callable[..., int]) -> int:
-    """Write this run's ``CODEX_HOME`` and run ``command`` (``codex`` and its arguments) in it."""
-    base_url, alias, window = served
+def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, str, int], say: Callable[[str], None],
+         start: tuple[Callable[[isolation.Confinement], int], Mapping[str, str] | None]) -> int:
+    """Prove a confinement for ``command`` (``codex`` and its arguments) and hand it to the runner. This run's ``CODEX_HOME`` is inside the agent
+    home; its config and its instructions are written read-only, and its hooks and its workspace MCP server are clients of the session bridge."""
+    runner, extras = start
     binary, *extra = command
+    how = harnessing.Harness("codex", binary, served, say, extras or {}, not printing(extra))
+    _, alias, window = served
+    opened: list[harnessing.Session] = []
+
+    def render(context: isolation.Context) -> isolation.Rendering:
+        run = opened[0]
+        managed = run.session.managed_inbox
+        config = config_toml(context.base_url, alias, window, (context.hook("pre"), context.hook("post"), harnessing.WAIT_S),
+                             () if managed else context.client_argv("mcp"))
+        note = "" if managed else (
+            "\nUse the workspace MCP tools for inbox/send/thread/claim. They already carry your "
+            "assigned identity; never use shell workspace commands inside the coding sandbox.\n")
+        files = {".codex-home/config.toml": config, ".codex-home/AGENTS.md": run.brief + note}
+        return isolation.Rendering((binary, *FLAGS, "--cd", context.stage, *extra), files)
+
     try:
         with harnessing.opened(args, "codex", served, say) as run:
-            config = config_toml(base_url, alias, window, (run.pre, run.post, harnessing.WAIT_S),
-                                 assigned=run.session.name)
-            path = run.files.write("config.toml", config + workspace_config(run.session))
-            extra_brief = "" if run.session.managed_inbox else (
-                "\nUse the workspace MCP tools for inbox/send/thread/claim. They already carry your "
-                "assigned identity; never use shell workspace commands inside the coding sandbox.\n")
-            run.files.write("AGENTS.md", run.brief + extra_brief)
-            say(f"permissions {args.permissions}; mode {args.execution_mode}; Bash, apply_patch and MCP calls go through poolhouse's classifier "
-                f"(CODEX_HOME {path.parent}, outside the working tree)")
-            flags = [*policy_flags(coding_policy.Policy(args.permissions, args.execution_mode)), "--dangerously-bypass-hook-trust", "--cd", str(run.cwd)]
-            return int(runner([binary, *flags, *extra], environment(run.files.path, key=serverkeys.for_url(base_url))))
-    except ValueError as why:
+            opened.append(run)
+            with harnessing.confined(args, run, how, render) as confinement:
+                say(f"permissions {args.permissions}; mode {args.execution_mode}; working on a copy of {run.cwd}, in a box the operating system "
+                    "holds; changes arrive when the turn ends")
+                return int(runner(confinement))
+    except (OSError, RuntimeError, ValueError) as why:
         say(f"error: {why}")
         return 2
 

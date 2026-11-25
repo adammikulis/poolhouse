@@ -15,7 +15,7 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from poolhouse import chat as chatting, harnessing, hub
+from poolhouse import chat as chatting, harnessing, hub, isolation
 from poolhouse.board.client import Denied, NodeError
 from poolhouse.board.session import Entry, Session
 from poolhouse.client import Client, Request, Transport, serving_params
@@ -132,7 +132,7 @@ def checked_caps(saved: dict) -> Caps:
 def lease_model(agent: la.Agent, *, wait_s: float = LEASE_WAIT_S) -> Held:
     """Lease the maintained harness serving profile with its cached head and chat template."""
     if agent.profile != "chat" or agent.harness != lh.OWN:
-        harnessing.require_isolated_execution()
+        isolation.require_capable()
     found = str(hub.located(agent.model, loose=True) or agent.model)
     config = harnessing.config_for(found, harnessing.Want(port=0, ctx=agent.ctx), logger.info)
     spec = config.lease()
@@ -342,8 +342,6 @@ def run(base: Path, name: str, settings: Settings | None = None) -> int:
     agent = la.load(base, name)
     if agent is None:
         raise ValueError(f"no local agent called {name}")
-    if agent.profile != "chat" or agent.harness != lh.OWN:
-        harnessing.require_isolated_execution()
     settings = settings or Settings()
     status, flag, idle = la.Status(base, name), settings.cancel or threading.Event(), [False]
 

@@ -43,6 +43,7 @@ SENTENCES: dict[str, str] = {
     "stage_too_small": ("This computer has {free} MB free for the working copy and this project needs {need} MB; free some space and "
                         "the agent will start."),
     "no_git": "Coding agents need git, and none was found that Poolhouse can trust.",
+    "not_a_repository": "A coding agent works on a copy of a git project, and this folder is not one.",
     "on_not_loopback": "A coding agent can only use a model server on this computer; {url} is not.",
     "interactive": "Interactive mode is not available yet; use the coding agent's print mode.",
     "service_failed": "The coding agent's helper ({name}) could not start, so the agent was not started.",

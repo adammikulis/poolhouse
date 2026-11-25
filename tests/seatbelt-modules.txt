@@ -46,3 +46,9 @@ test_activity_isolation.py
 test_redteam_isolation_bridge.py
 test_redteam_isolation_session.py
 test_isolation_workspace.py
+test_isolation_confinement.py
+test_claude_launcher.py
+test_harness_rails.py
+test_coding_routes.py
+test_coding_admission.py
+test_pi_harness.py
