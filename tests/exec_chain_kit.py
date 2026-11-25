@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from poolhouse import coding_policy, harnesshook, requests
+from poolhouse import coding_policy, harnesshook
 from poolhouse.harnesspolicy import after_downloads, decide
 from poolhouse.interventions import Call
 from poolhouse.net import git
@@ -60,10 +60,10 @@ def raised():
 
 @pytest.fixture
 def session():
-    """A hook session: each call returns the hook's answer and how many requests it raised (none, ever)."""
+    """A hook session: each call returns the hook's answer."""
     def run(command, roots, agent="local-test", role="guarded", name="Bash"):
         payload = {"tool_name": name, "tool_input": {"command": command}}
         out = harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy(role), agent, roots, ()))
-        return out["hookSpecificOutput"]["permissionDecision"], len(requests.list_requests())
+        return out["hookSpecificOutput"]["permissionDecision"]
 
     return run

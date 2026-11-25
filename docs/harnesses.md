@@ -55,13 +55,12 @@ The hook is `python -m poolhouse.harnesshook pre`, a PreToolUse command hook tha
 before every tool call (Claude Code: every tool; Codex: Bash, `apply_patch`, MCP and other local
 function tools). It labels the call with the destructive-action classifier
 (`docs/destructive-actions.md`, deterministic layer) and applies the permissions. A call the classifier
-cannot read, or a tool it does not know, is `unsure` and asks. An ask is a request in the Requests
-inbox (`docs/requests.md`) that the hook waits on, up to five minutes; only the person answers it
-(`poolhouse-requests`), never the model. Not answered, expired, or a request store that cannot be
-opened (the hook runs without a terminal, so it never prompts the keystore) is a denial.
+cannot read, or a tool it does not know, is `unsure` and is denied at once with the reason. Nothing
+waits for a person: the hook runs without a terminal and never prompts, so a call is allowed by the
+profile or refused with the reason before it runs.
 
 Denied in every profile: a call whose text names the session's files or the state root, and a shell
-command that asks for an action only a person can take (answer a request, change a permission, release
+command that asks for an action only a person can take (change a permission, release
 quarantine; the human-only table in `chatpolicy.py`). The permissions, the execution mode, the label and the paths are on the
 hook's command line, written by the launcher; nothing in the environment, the tool arguments or
 a file the model reads changes them. A hook that crashes exits 2, which both harnesses read as a
@@ -74,7 +73,7 @@ conversation and nothing that changes the prompt prefix.
 
 A tampered model, or text it takes for an order, can write a script that downloads code and then
 run it through a tool that looks harmless. The hook reads these in every profile, by fixed rules and
-with no model, and each one asks (`unsure`, a request of kind `tool_call_destructive`) or is denied:
+with no model, and each one is `unsure` or denied, and both are refused at once with the reason:
 
 - **A write to a file that runs by itself later** asks even when its content looks harmless: a git
   hook, `.git/config`, the agent folders (`.claude`, `.codex`, `.cursor`, `.agents`), `conftest.py`,

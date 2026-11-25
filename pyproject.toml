@@ -194,7 +194,6 @@ poolhouse-memory = "poolhouse.memory.cli:main"
 poolhouse-reputation = "poolhouse.reputation.cli:main"
 # the activity log: what agents, people and the stack did, read-only
 poolhouse-log = "poolhouse.activity.cli:main"
-poolhouse-requests = "poolhouse.inbox.cli:main"
 
 # named in the messages and hints these commands print, and in the docs a person follows
 # choose one of a named set of options and say how sure: ask, score, calibrate, compare

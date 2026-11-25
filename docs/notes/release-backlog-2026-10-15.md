@@ -152,18 +152,6 @@ What the 2026-10 hardening pass left open; `docs/security.md` has the model and 
   questions (`docs/serving.md`); the pre-registered re-measurement is pending.
 - [ ] **Grant ledger, connector credential broker, a hard outward-send rule and the "what can it do
   now" listing are not built** (`docs/assistant-security.md`, "Order of work").
-- [ ] **Requests inbox: sources not raised through it yet** (`docs/requests.md`). Fleet join requests
-  (`fleet/onboard/requests.py`, `fleet/onboard/cli.py` accept and decline), `poolhouse-security
-  approve-host` (`net/cli.py`, refusals in `net/policy.py`), the reputation notice
-  (`reputation/notice.py`, its own dialog), keystore unlock, hold windows and rule suggestions keep
-  their own prompts; the kinds exist in `poolhouse.requests.model.KINDS`.
-- [ ] **Requests page in the shell.** The element (`ui/assets/poolhouse-requests.js`) and
-  `inbox.route.RequestsApp.dispatch` are not mounted in the workspace shell yet, and the page has
-  only had DOM-level tests (a probe of `plain()` under node), no browser run.
-- [ ] **Always allow answered in the UI saves no rule.** The call runs once; a rule is saved only from
-  the terminal's second prompt.
-- [ ] **A background process that cannot read the keystore keeps no requests on disk.** Sentinel's
-  dialog keeps its own in memory for that process; the page does not see them.
 
 ## Restart audit
 - **Restart audit issues not fixed:** capacity held for an uncertain launch has no person-gated release (`src/poolhouse/fleet/jobs.py:263`); a verification receipt is trusted from a file the run wrote (`src/poolhouse/runtime_store.py:55,62`); the chat repair path cannot register a candidate runtime (`src/poolhouse/fleet/runtime_repair.py:115-146`).
@@ -360,8 +348,7 @@ directory. What it does not do yet:
   `graph.search.lexical` is what exists.
 - [ ] **Embedding search over files**: `file search` ranks words with `graph.search.lexical`
   fused per word; vectors are not used.
-- [ ] **A request to the person for a held file**: a held file waits in the quarantine
-  (`quarantine-ls`); nothing raises a `requests` item for it.
+- [ ] **A held file** waits in the quarantine (`quarantine-ls`); nothing is raised for the person.
 - [ ] **The verified or claimed model on a file's `posted_by` edge**, once model identity is
   on the integration branch; the edge carries `agent-claimed` only.
 - [ ] **The Board page lists a file's download on its message** but has no per-board file list.
@@ -1207,4 +1194,4 @@ Capabilities that do not exist yet.
 - **Not driven for real, only tested against fakes:** `scripts/review-backlog --local` on a model (try Qwen3.8-27B UD-Q4_K_XL against a branch with a known bug before trusting a report; its read-only `poolhouse-claude` command line and default model pick are untested); the system snapshot probes on this machine; `poolhouse-serve llama-cpp ensure` building, updating and its unit; `--context fit` and `--thinking-levels` against a served model; the Bonsai ternary quants (Q2_0, PQ2_0, PTQ1_0) loading on the managed llama.cpp.
 - **The Qwen tier table** lists Qwen3.8-27B and Qwen3.8-Flash-Next on claimed-id trust (the node verifies no model); its globs end in `*` before `.gguf`, so a suffixed id also matches; `localmodel.model_identity` strips the quantisation, so every quant registers as one id.
 - **Baseline failures on a clean tip:** `tests/test_fleet_bench.py::test_sweep_fleet_discovers_a_real_daemon_and_measures_on_it_for_real`, `tests/test_cli_help.py` for `poolhouse-device-setup`, and the affected-tests check of a landing batch (not yet read).
-- **Open for the owner, from `docs/person-commands.md`:** a lead agent can flip the authority registry; a person typing a person-only command after `!` in the Claude Code prompt runs with the agent marker set and is refused; the network-on step, `requests list`, the MCP `--iq` refusal and hiding the daemon token refuse an agent with no security reason.
+- **Open for the owner, from `docs/person-commands.md`:** a lead agent can flip the authority registry; a person typing a person-only command after `!` in the Claude Code prompt runs with the agent marker set and is refused; the network-on step, the MCP `--iq` refusal and hiding the daemon token refuse an agent with no security reason.

@@ -453,13 +453,13 @@ def test_a_name_that_escapes_is_refused(tmp_path, site, pipe):
 
 
 def test_failures_are_deleted_and_recorded_with_an_event_and_nothing_waits_for_a_person(tmp_path, site, pipe):
-    from poolhouse import requests, sentinel
+    from poolhouse import sentinel
 
     body = gguf_bytes()
     site.add("/m.gguf", body)
     with pytest.raises(net.ChecksumMismatch):
         pull(pipe, site, "/m.gguf", tmp_path / "m.gguf", net.Want(sha256="1" * 64))
-    assert sentinel.default().store.records(kind="artifact") == [] and requests.list_requests() == []
+    assert sentinel.default().store.records(kind="artifact") == []
     assert not (home.home() / ".poolhouse-quarantine").exists()
     log = sentinel.default().bus.log.path.read_text(encoding="utf-8")
     assert "net.download.held" in log

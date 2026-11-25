@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import chat, chatpolicy, do, mcp, requests, rules as saved
+from poolhouse import chat, chatpolicy, do, mcp, rules as saved
 from poolhouse.agent import Compacting, Compaction
 from poolhouse.serve import suggest
 from poolhouse.testing.fakes import FakeLlamaServer, Served, reply_from
@@ -130,7 +130,6 @@ def test_a_tool_that_does_those_things_is_refused_with_the_command_to_run(tool, 
     assert seen == []
     told = model.told()
     assert "Refused to an agent" in told and command in told
-    assert requests.list_requests() == []
 
 
 @pytest.mark.parametrize("argv", [
@@ -198,7 +197,7 @@ def step(tool: str) -> str:
 def test_each_acting_tool_is_refused_at_once_with_the_reason_when_no_rule_covers_it(tool):
     chat_, model, seen, out = session([call(tool, **ASKING[tool]), "stopped"], "y\ny\n")
     chat_.turn("go")
-    assert seen == [] and requests.list_requests() == []
+    assert seen == []
     told = model.told()
     assert "blocked by the role rail" in told and REFUSED in told
     assert "allow it?" not in out.getvalue(), "nothing is put to anyone to answer"
@@ -209,7 +208,7 @@ def test_a_stated_plan_that_names_the_call_runs_it_at_once_in_plan_and_go(tool):
     script = [call("plan", steps=[step(tool)]), call(tool, **ASKING[tool]), "started"]
     chat_, _model, seen, out = session(script, role="plan-and-go")
     chat_.turn("go")
-    assert seen == [(tool, ASKING[tool])] and requests.list_requests() == []
+    assert seen == [(tool, ASKING[tool])]
     assert "go?" not in out.getvalue() and "allow it?" not in out.getvalue()
 
 
@@ -218,7 +217,7 @@ def test_a_saved_always_rule_runs_exactly_that_call_in_approve_first(tool):
     rule = saved.Rules().add(tool, ASKING[tool], "always", "")
     chat_, _model, seen, _ = session([call(tool, **ASKING[tool]), "started"])
     chat_.turn("go")
-    assert seen == [(tool, ASKING[tool])] and requests.list_requests() == []
+    assert seen == [(tool, ASKING[tool])]
     assert saved.Rules().rules[0].fired == 1 and rule.fired == 0
 
 
@@ -236,7 +235,7 @@ def test_the_answer_to_a_question_is_not_a_go_for_the_next_call():
               call("serve_up", model="x.gguf"), "stopped"]
     chat_, model, seen, _ = session(script, "1\n")
     chat_.turn("start it")
-    assert seen == [] and REFUSED in model.told() and requests.list_requests() == []
+    assert seen == [] and REFUSED in model.told()
 
 
 def test_a_rule_for_one_call_does_not_cover_the_next():
@@ -251,7 +250,6 @@ def test_reads_run_without_a_rule_or_a_plan():
     chat_, model, seen, _out = session([call("bench_status"), "idle"])
     chat_.turn("is it measuring?")
     assert seen == [("bench_status", {})] and "blocked" not in model.told()
-    assert requests.list_requests() == []
 
 
 def test_a_path_outside_the_state_directory_is_refused_and_named_whatever_covers_the_call():
@@ -261,7 +259,7 @@ def test_a_path_outside_the_state_directory_is_refused_and_named_whatever_covers
     chat_.turn("export")
     told = model.told()
     assert "names paths outside poolhouse's state" in told and "/etc/cron.d/x.json" in told
-    assert seen == [] and requests.list_requests() == []
+    assert seen == []
 
 
 def test_a_tool_that_is_not_on_offer_is_refused_whatever_it_is_called():
@@ -292,7 +290,6 @@ def test_a_plan_stated_before_outside_text_covers_its_call_and_an_injected_call_
     chat_, model, seen, _ = session(script, role="plan-and-go", answers={"find": [{"card": ATTACK}]})
     chat_.turn("find qwen")
     assert seen == [("models_find", {"words": "qwen"}), ("serve_up", {"model": "quince-2b.gguf"})]
-    assert requests.list_requests() == []
     assert "the run has read text from outside, and no plan stated before it names this call" in model.told()
 
 
@@ -311,7 +308,6 @@ def test_a_call_written_in_a_result_is_never_run():
                                       answers={"find": [inject]})
     chat_.turn("find q")
     assert [n for n, _ in seen] == ["models_find"]
-    assert requests.list_requests() == []
 
 
 def test_the_models_own_reply_is_screened_and_what_is_kept_is_the_screened_text():

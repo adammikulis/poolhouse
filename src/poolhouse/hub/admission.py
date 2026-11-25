@@ -17,7 +17,7 @@ from pathlib import Path
 from poolhouse import caller, home, sentinel
 from poolhouse.hub import publishers, remote
 from poolhouse.hub.remote import Ref, RemoteError, RemoteFile
-from poolhouse.requests.model import shown
+from poolhouse.safetext import escape
 from poolhouse.sentinel.events import Event, Severity
 
 __all__ = ["AGENT", "PERSON", "DigestChanged", "NotAllowed", "Trust", "admit", "allow_file", "allowed", "checked",
@@ -117,7 +117,7 @@ def _same_commit(ref: Ref, files: list[RemoteFile]) -> None:
                             {"repo": ref.repo, "path": one.path, "commit": ref.commit, "listed": one.sha256,
                              "kept": _kept(ref, one)}, node.clock()))
         raise DigestChanged(
-            f"{shown(one.path, 'label')} of {ref.repo} at {ref.commit[:12]} is listed with other bytes than the file "
+            f"{escape(one.path, 40)} of {ref.repo} at {ref.commit[:12]} is listed with other bytes than the file "
             f"kept from that commit, which cannot change. It was not downloaded and the file you have is unchanged. "
             f"To take the Hub's bytes instead, remove that file from the cache and pull again")
 

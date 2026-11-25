@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import home, requests, sentinel
+from poolhouse import home, sentinel
 
 SRC = str(Path(__file__).resolve().parents[1] / "src")
 CHILD = (
@@ -87,7 +87,6 @@ def test_four_changed_files_scanned_by_many_processes_raise_no_dialog_and_all_fo
     scan_in_processes(env, processes=6, scans=3)
     assert lines(log, "start") == [], "no process showed a dialog"
     assert len(sentinel.default().store.records(state=sentinel.State.QUARANTINED)) == 4
-    assert requests.list_requests() == []
 
 
 REVIEW = "import sys\nfrom poolhouse.sentinel.cli import command\nsys.exit(command(['review']))\n"

@@ -5,8 +5,8 @@
 open, states its plan once, runs the calls the plan names and ends on `done`, printing
 a cost line. What differs between the two is a role, a row in `poolhouse.roles.ROLES`.
 
-Every call is decided at once: it runs, or it is refused with the reason. Nothing waits for a yes,
-nothing is put in the Requests inbox, and no one has to be at a terminal. The person's own messages (the task, an
+Every call is decided at once: it runs, or it is refused with the reason. Nothing waits for a yes
+and no one has to be at a terminal. The person's own messages (the task, an
 answer to `ask_user`, `/role`, `/rules`) are how they steer.
 
 | role | tools | what lets a call that acts run | default for | limits (calls, GPU time) |

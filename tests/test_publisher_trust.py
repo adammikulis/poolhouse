@@ -13,7 +13,7 @@ import pytest
 from model_pins import pinned
 from net_site import gguf_bytes
 
-from poolhouse import caller, http, hub, requests, sentinel
+from poolhouse import caller, http, hub, sentinel
 from poolhouse.hub import admission, listing, publishers, remote
 from poolhouse.serve import guarded
 from poolhouse.serve.backend import LlamaServerBackend, ServerFailed, ServerSpec
@@ -121,7 +121,6 @@ def test_a_person_pulls_from_an_unknown_publisher_with_no_question_and_the_pin_s
     server = stand(repos("maker/thing-GGUF"))
     got = hub.pull(f"hf:maker/thing-GGUF/{FILE}")
     assert got.name == FILE and server.downloads
-    assert requests.list_requests() == []
     commit = server.commit("maker/thing-GGUF")
     (pin,) = pins().values()
     assert (pin.publisher, pin.commit, pin.source, pin.source_ref) == (
@@ -134,7 +133,7 @@ def test_a_person_pulls_from_an_unknown_publisher_with_no_question_and_the_pin_s
 def test_a_known_publisher_is_fetched_with_nothing_to_note(stand):
     server = stand(repos("unsloth/thing-GGUF"))
     got = hub.pull(f"hf:unsloth/thing-GGUF/{FILE}")
-    assert got.name == FILE and server.downloads and requests.list_requests() == []
+    assert got.name == FILE and server.downloads
     (pin,) = pins().values()
     assert pin.publisher == "unsloth" and pin.commit == server.commit("unsloth/thing-GGUF") and pin.note == ""
 
@@ -168,7 +167,7 @@ def test_a_mirror_is_fetched_from_for_a_person_and_the_host_is_noted(stand):
 def test_the_app_names_a_person_whatever_marker_the_process_carries(stand, an_agent):
     server = stand(repos("maker/thing-GGUF"))
     assert hub.pull(f"hf:maker/thing-GGUF/{FILE}", trust=hub.PERSON).name == FILE
-    assert server.downloads and requests.list_requests() == []
+    assert server.downloads
 
 
 def test_a_trust_is_a_trust_and_not_a_word(stand):
@@ -188,7 +187,7 @@ def test_an_agents_pull_from_an_unknown_publisher_is_refused_with_the_reason_and
     assert said.startswith(f"Not fetched for an agent: {UNKNOWN} It is maker/thing-GGUF at "
                            f"{server.commit('maker/thing-GGUF')[:12]}.")
     assert str(admission.allow_file()) in said
-    assert server.downloads == {} and pins() == {} and requests.list_requests() == []
+    assert server.downloads == {} and pins() == {}
 
 
 def test_a_process_carrying_an_agent_marker_pulls_as_an_agent_unless_a_person_is_named(stand, monkeypatch):
@@ -344,7 +343,7 @@ def test_other_bytes_for_a_commit_already_pulled_are_refused_and_the_file_kept_s
     (pin,) = pins().values()
     assert guarded.verify(first, state_file=tmp_path / "servers.json", stop=lambda _p: None) == ""
     assert sentinel.default().store.state_of("model", pin.path) != sentinel.State.QUARANTINED
-    assert requests.list_requests() == [] and not (tmp_path / "machine-state" / ".poolhouse-quarantine").exists()
+    assert not (tmp_path / "machine-state" / ".poolhouse-quarantine").exists()
     assert sentinel.default().bus.recent(kind="model.hub_digest_changed")
 
 
@@ -391,7 +390,6 @@ def test_other_bytes_under_a_new_commit_are_a_normal_update_and_the_old_file_sta
     held["unsloth/thing-GGUF"][FILE] = gguf_bytes(extra=9000)
     updated = hub.pull(f"hf:unsloth/thing-GGUF/{FILE}")
     assert updated.read_bytes() == held["unsloth/thing-GGUF"][FILE] and first.read_bytes() == kept
-    assert requests.list_requests() == []
     newest = max(pins().values(), key=lambda p: p.pinned_at)
     assert newest.commit == server.commit("unsloth/thing-GGUF") and newest.source_ref.endswith(FILE)
 
@@ -449,7 +447,7 @@ def test_a_projector_that_is_not_pinned_is_pinned_as_it_is(tmp_path):
     projector = tmp_path / "mmproj-F16.gguf"
     projector.write_bytes(b"GGUF" + b"\x01" * 64)
     assert guarded.verify(projector, state_file=tmp_path / "servers.json", stop=lambda _p: None) == ""
-    assert pins()[str(projector)].source == "first-use" and requests.list_requests() == []
+    assert pins()[str(projector)].source == "first-use"
 
 
 def test_a_projector_that_no_longer_matches_its_pin_is_refused_at_load(tmp_path):

@@ -9,7 +9,7 @@ import io
 
 import pytest
 
-from poolhouse import chat, do, memory, requests
+from poolhouse import chat, do, memory
 from tests import memory_keys
 from tests.test_chat import Model, registry
 from tests.test_memory import inject
@@ -81,7 +81,6 @@ def test_remember_writes_at_once_to_the_scope_the_model_named_and_shows_what_it_
     assert "! remembered: Remember for this project (alpha): CI needs the staging flag" in out.getvalue()
     assert "CI needs the staging flag" in [f.text for f in mem.project.facts()]
     assert "CI needs the staging flag" not in [f.text for f in mem.user.facts()]
-    assert requests.list_requests() == []
 
 
 def test_a_secret_in_a_remembered_fact_is_refused_at_once_by_the_secrets_rail_and_not_stored(tmp_path):
@@ -90,7 +89,7 @@ def test_a_secret_in_a_remembered_fact_is_refused_at_once_by_the_secrets_rail_an
     session, model, mem, _, _ = make(tmp_path, [call], stdin="y\n")
     session.turn("remember it")
     assert not [f for f in mem.user.facts() + mem.project.facts() if "hf_" in f.text]
-    assert "blocked by the secrets rail" in model.told() and requests.list_requests() == []
+    assert "blocked by the secrets rail" in model.told()
 
 
 def test_no_rule_can_cover_remember_and_a_session_may_add_only_so_many_facts(tmp_path):
@@ -108,7 +107,6 @@ def test_no_rule_can_cover_remember_and_a_session_may_add_only_so_many_facts(tmp
     assert [t["stored"] for t in told] == [True] * SESSION_WRITES + [False]
     assert "facts were added this session; stop" in told[-1]["error"]
     assert len([f for f in mem.user.facts() if "build number" in f.text]) == SESSION_WRITES
-    assert requests.list_requests() == []
 
 
 @pytest.mark.parametrize("role", ["read-only", "approve-first", "plan-and-go"])

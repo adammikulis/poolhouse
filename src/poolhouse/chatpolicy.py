@@ -82,17 +82,12 @@ PROTECTED: tuple[tuple[str, re.Pattern[str], str], ...] = tuple(
          r"|upgrad\w*|admin|escalat\w*|grant\w*|chang\w*|switch\w*|set)\b"
          rf"|\b(?:{_ROLE_WORDS})\b.{{0,20}}\b(?:roles?|mode)\b",
          "/role NAME"),
-        ("answer, approve, deny or cancel a request in the Requests inbox",
-         r"\b(?:answer\w*|approv\w*|den(?:y|ies)|cancel\w*|resolv\w*|dismiss\w*|withdraw\w*)\b.{0,40}"
-         r"\b(?:requests?|inbox|confirmations?)\b|\bpoolhouse-requests\b"
-         r"|\b(?:requests?|inbox)\b.{0,30}\b(?:answer\w*|approv\w*|cancel\w*)\b",
-         "poolhouse-requests answer ID CHOICE"),
     ))
 """Actions an agent is always refused: what it is, how it is spelled, the command the owner runs outside the agent."""
 
 _TOOL_NAME = re.compile(
     r"quarantin|releas|purg|approv|grant|mint|sentinel|security|baseline|honey|polic|guard|rail|"
-    r"unblock|role|permission|privilege|rule|always|classif|request|answer", re.I)
+    r"unblock|role|permission|privilege|rule|always|classif", re.I)
 
 
 def catalog() -> dict[str, str]:
@@ -123,8 +118,6 @@ def _command_for(name: str) -> tuple[str, str]:
     low = name.lower()
     if re.search(r"quarantin|releas|purg|unblock", low):
         return PROTECTED[0][0], PROTECTED[0][2]
-    if re.search(r"request|answer", low):
-        return PROTECTED[6][0], PROTECTED[6][2]
     if re.search(r"approv|host", low):
         return PROTECTED[1][0], PROTECTED[1][2]
     if re.search(r"grant|mint", low):

@@ -12,7 +12,6 @@ from poolhouse import keystore, sealing
 from poolhouse.activity.log import ActivityLog, Unreadable
 from poolhouse.fleet.onboard import signing
 from poolhouse.memory import vault
-from poolhouse.requests.store import Ask, Inbox, Unavailable, build
 
 KEY = bytes(range(32))
 FOREIGN = b'foreign/application/v1'
@@ -45,22 +44,6 @@ def test_memory_key_identifier_has_current_domain_and_authenticates_header(monke
     for altered in (foreign, blob[:8] + bytes([blob[8] ^ 1]) + blob[9:]):
         with pytest.raises(vault.BadSeal):
             vault.open_blob(altered, [KEY], owner='owner')
-
-
-@pytest.mark.parametrize("tag,aad", [(b"PHR1", FOREIGN), (b"F0R1", b"poolhouse/requests/v1")])
-def test_foreign_request_file_cannot_be_read_or_overwritten(tmp_path, tag, aad):
-    accessed = []
-    inbox = Inbox(tmp_path, key=lambda: accessed.append(True) or KEY)
-    nonce = bytes(range(12))
-    original = tag + nonce + keystore.aead(KEY).encrypt(nonce, b'{"rows":[]}', aad)
-    inbox.path.write_bytes(original)
-    with pytest.raises(Unavailable):
-        inbox.list()
-    with pytest.raises(Unavailable):
-        inbox.add(build(Ask('tool_call', 'synthetic operation', 'reversible local operation',
-                            ('allow-once', 'deny')), 1800000000.0), 'synthetic-secret')
-    assert inbox.path.read_bytes() == original
-    assert accessed == ([True] if tag == b"PHR1" else [])
 
 
 def test_activity_reports_foreign_ciphertext_in_place(tmp_path):
@@ -97,18 +80,6 @@ def test_unsupported_signing_storage_never_migrates_or_generates_identity(tmp_pa
         with pytest.raises(signing.KeyStoreError, match='Unsupported'):
             operation('unsupported')
     assert not list(tmp_path.rglob('*'))
-
-
-def test_current_request_file_tag_roundtrips_across_reopen(tmp_path):
-    request = build(Ask('tool_call', 'synthetic operation', 'reversible local operation',
-                        ('allow-once', 'deny')), 1800000000.0)
-    inbox = Inbox(tmp_path, key=lambda: KEY, clock=lambda: 1800000000.0)
-    inbox.add(request, 'synthetic-secret')
-    assert inbox.path.read_bytes().startswith(b'PHR1')
-    reopened = Inbox(tmp_path, key=lambda: KEY, clock=lambda: 1800000000.0)
-    assert reopened.get(request.id) == request
-    assert reopened.get(request.id) == request
-    assert reopened.list() == [request]
 
 
 def test_current_memory_file_tag_roundtrips_and_foreign_tag_never_decrypts(tmp_path, monkeypatch):

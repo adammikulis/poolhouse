@@ -281,7 +281,7 @@ For a `-gpu` package the script prints the section list with its items and nothi
 
 ## Limits
 
-- Poolhouse's model fetch refused `litert-community` as an unknown publisher until a person answers in the requests inbox, and
+- Poolhouse's model fetch refused `litert-community` as an unknown publisher to an agent unless its owner is a line of the allow list, and
   the Hugging Face command-line download is blocked for agents. The four packages were fetched with `curl` from the pinned
   revisions into a scratch directory, hashed against the Hub, and read as bytes; no runtime loaded them.
 - The inspection shows what the files declare. Backend selection, the delegate's stored type, the Kotlin `activationDataType`

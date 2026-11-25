@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import home, http, hub, net, requests, sentinel
+from poolhouse import home, http, hub, net, sentinel
 from poolhouse.fleet.onboard.manifest import Entry, ManifestError, Signer
 from poolhouse.fleet.onboard.trusted import TrustedLists
 from poolhouse.httpguard import Limits
@@ -116,7 +116,6 @@ def test_a_model_downloaded_through_a_pipeline_that_lists_every_host_is_not_pinn
     net.download(site.base + "/m.gguf", final, net.Want(), anywhere)
     assert final.read_bytes() == body and str(final) not in pins()
     assert load(final) == "" and pins()[str(final)].source == "first-use"
-    assert requests.list_requests() == []
 
 
 @pytest.mark.parametrize("allowed", [("*.*",), ("?*",)])
@@ -158,7 +157,6 @@ def test_a_model_poolhouse_did_not_pull_is_pinned_as_it_is_without_anyone_asked(
     assert pin.source == "first-use" and pin.digest_from == "computed" and pin.origin == ""
     assert sentinel.default().bus.recent(kind="model.pinned_first_use")
     assert not sentinel.default().bus.recent(kind="model.pinned_at_pull")
-    assert requests.list_requests() == []
 
 
 def test_a_first_use_pin_covers_the_path_and_bytes_it_was_made_for(tmp_path):

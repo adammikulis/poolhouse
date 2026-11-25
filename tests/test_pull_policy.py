@@ -15,7 +15,7 @@ import pytest
 from net_site import gguf_bytes
 
 import poolhouse as ph
-from poolhouse import caller, http, hub, requests, sentinel
+from poolhouse import caller, http, hub, sentinel
 from poolhouse.api import models as api_models
 from poolhouse.hub import admission, hf_cache, listing, publishers, transfer
 from poolhouse.hub.admission import Trust
@@ -104,7 +104,6 @@ def test_the_default_pull_from_a_publisher_nobody_listed_fetches_for_a_person_an
     server = stand(repos())
     got = ph.models.pull("maker/thing-GGUF", FILE)
     assert got.name == FILE and got.read_bytes() == server.repos["maker/thing-GGUF"][FILE]
-    assert requests.list_requests() == []
     (pin,) = pins().values()
     assert (pin.publisher, pin.commit, pin.source_ref) == (
         "maker", server.commit("maker/thing-GGUF"), f"maker/thing-GGUF/{FILE}")
@@ -123,7 +122,7 @@ def test_the_default_pull_and_fetch_and_snapshot_and_base_folder_refuse_an_agent
         hub.snapshot("maker/thing-GGUF")
     with pytest.raises(admission.NotAllowed):
         hub.base_folder("maker/thing-GGUF")
-    assert server.downloads == {} and pins() == {} and requests.list_requests() == []
+    assert server.downloads == {} and pins() == {}
 
 
 def test_the_command_line_has_no_way_to_say_who_asked(stand, an_agent, capsys):
@@ -230,7 +229,6 @@ def test_a_model_pulled_from_an_unlisted_publisher_is_served_by_path_without_a_q
         for entry in recorded_servers(state).values():
             if entry.get("pid"):
                 kill_process_tree(entry["pid"])
-    assert requests.list_requests() == []
     assert pins()[str(got.resolve())].note.startswith("This model is from maker")
 
 
@@ -248,7 +246,7 @@ def test_the_snapshot_command_fetches_and_pins_the_files_for_a_person(stand, cap
     assert (pin.publisher, pin.commit, pin.source_ref, pin.source) == (
         "maker", server.commit("maker/thing"), f"maker/thing/{FILE}", "pull")
     assert pin.host == urllib.parse.urlsplit(server.url).netloc and "maker, who Poolhouse does not know" in pin.note
-    assert load(folder / FILE, tmp_path) == "" and requests.list_requests() == []
+    assert load(folder / FILE, tmp_path) == ""
 
 
 def test_the_snapshot_command_fetches_a_shipped_publisher_with_nothing_to_note(stand, tmp_path):
@@ -297,7 +295,7 @@ def test_a_base_folder_is_fetched_for_a_person_and_a_folder_of_mine_is_returned_
     assert hub.base_folder(str(tmp_path / "mine")) == str(tmp_path / "mine")
     folder = hub.base_folder("hf:maker/base")
     assert (tmp_path / "hub" / "models--maker--base" / "snapshots").is_dir() and server.downloads
-    assert {p.publisher for p in pins().values()} == {"maker"} and requests.list_requests() == []
+    assert {p.publisher for p in pins().values()} == {"maker"}
     assert Path(folder) == hub.held_snapshot("maker/base")
 
 
@@ -309,4 +307,3 @@ def test_the_loaders_that_take_a_path_ask_nobody_about_a_pulled_folder(stand):
     assert tool_calls_mlx.local_base(str(folder)) == folder.resolve()
     engine = pytest.importorskip("poolhouse.spec.engine")
     assert engine.weights(folder) == folder
-    assert requests.list_requests() == []

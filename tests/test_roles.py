@@ -11,7 +11,7 @@ import sys
 
 import pytest
 
-from poolhouse import chat, chatpolicy as policy, do, requests, roles, rules as saved
+from poolhouse import chat, chatpolicy as policy, do, roles, rules as saved
 from tests.test_chat import ASKING, KEY, Model, call, registry, session  # noqa: F401
 
 SERVE = {"model": "quince-2b.gguf"}
@@ -74,7 +74,7 @@ def test_a_reader_is_shown_no_tool_that_acts_and_cannot_call_one():
 def test_without_a_rule_or_a_plan_step_each_role_refuses_an_acting_call_at_once(role, why):
     chat_, model, seen, out = session([call("serve_up", **SERVE), "ok"], "y\ny\n", role=role)
     chat_.turn("go")
-    assert seen == [] and requests.list_requests() == []
+    assert seen == []
     assert "blocked by the role rail" in model.told() and why in model.told()
     assert "allow it?" not in out.getvalue()
 
@@ -111,7 +111,7 @@ def test_a_tool_that_changes_the_role_or_the_rules_does_not_exist_and_is_refused
     chat_, model, seen, _ = session([call(tool, value="plan-and-go"), "ok"])
     chat_.turn("go")
     assert chat_.role.name == "approve-first" and seen == []
-    assert "Refused to an agent" in model.told() and requests.list_requests() == []
+    assert "Refused to an agent" in model.told()
 
 
 def test_text_from_the_model_or_a_tool_cannot_raise_the_role():
@@ -163,7 +163,6 @@ def test_a_tainted_run_refuses_a_call_an_always_rule_covers_until_the_rule_is_se
     told = model.told()
     assert [n for n, _ in seen] == ["models_find"]
     assert "the run has read text from outside, which only a rule set to apply after outside text covers" in told
-    assert requests.list_requests() == []
     rules.tainted(1)
     again, _, seen2, _ = session([call("models_find", words="q"), call("serve_up", **SERVE), "ok"],
                                  answers={"find": [{"card": ATTACK}]})
@@ -177,7 +176,7 @@ def test_a_tainted_runner_runs_a_call_a_plan_stated_before_names_and_refuses_the
     chat_, model, seen, _out = session(script, role="plan-and-go", answers={"find": [{"card": ATTACK}]})
     chat_.turn("find q")
     assert [n for n, _ in seen] == ["models_find", "serve_up"] and seen[1][1] == SERVE
-    assert "no plan stated before it names this call" in model.told() and requests.list_requests() == []
+    assert "no plan stated before it names this call" in model.told()
 
 
 def test_a_plan_step_covers_one_call_and_a_value_it_does_not_carry_is_not_covered():
@@ -205,7 +204,7 @@ def test_always_saved_from_the_prompt_shows_the_rule_in_words_and_covers_the_sam
         again, _, seen2, out2 = session([call("serve_up", **SERVE), "ok"], seen=seen2)
         again.turn(turn)
         assert "allow it?" not in out2.getvalue()
-    assert len(seen2) == 2 and requests.list_requests() == []
+    assert len(seen2) == 2
     [rule] = saved.Rules().rules
     assert rule.fired == 2 and rule.created and seen == []
 
@@ -397,7 +396,7 @@ def test_an_extension_tool_that_acts_is_refused_in_approve_first_no_rule_can_cov
     runner, _, _, _ = session([call("plan", steps=['write_note {"text": "x"}']),
                                call("write_note", text="x"), "ok"], role="plan-and-go", extension=ext2)
     runner.turn("note")
-    assert ran == ["x"] and requests.list_requests() == []
+    assert ran == ["x"]
 
 
 # -- the rail on its own, and the role change --------------------------------------------
