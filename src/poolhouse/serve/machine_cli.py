@@ -122,10 +122,10 @@ OPTIONS_LIMITS = [
     flag("--idle", default="", metavar="TIME",
          help="stop a server unused for this long -- 10m, 1h, 600. "
               "`poolhouse-serve reclaim` and the fleet daemon act on it"),
-    flag("--adopt-unmanaged", default="", metavar="MODE", choices=["", "off", "ask", "auto"],
+    flag("--adopt-unmanaged", default="", metavar="MODE", choices=["", "off", "auto"],
          help="off (default): report llama-servers poolhouse did not start and leave them; "
-              "ask: adopt one when asked to confirm; auto: adopt one that passes the "
-              "loopback, owner, binary and fingerprint checks. POOLHOUSE_ADOPT_UNMANAGED "
+              "auto: adopt one that passes the loopback, owner, binary and fingerprint "
+              "checks and refuse the rest at once with the reason. POOLHOUSE_ADOPT_UNMANAGED "
               "overrides it"),
     flag("--clear", action="store_true", help="take every limit off this machine"),
 ]

@@ -169,7 +169,6 @@ class ServerManager(Admitting):
         self.state_file = state_file or lease_file()
         self.say: Callable[[str], None] | None = None
         self._broker = broker
-        self.confirm: Callable[[str], bool] | None = None
         self._leases: dict[str, ServerInfo] = {}
         self._mine: dict[str, dict] = {}
         self.children = Children()

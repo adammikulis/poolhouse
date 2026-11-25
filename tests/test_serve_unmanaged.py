@@ -1,7 +1,7 @@
 """A llama-server poolhouse did not start is reported, counted, and adopted only on request.
 
 Adoption is off until ``POOLHOUSE_ADOPT_UNMANAGED`` or the ``adopt_unmanaged`` limit says
-``auto`` or ``ask``. Even then the listener is identified before anything is sent to it. The
+``auto``; there is no mode that asks anybody. Even then the listener is identified before anything is sent to it. The
 hostile listener below is a real process that answers like llama-server on loopback; the
 checks that refuse it read the real process table.
 """
@@ -58,12 +58,12 @@ def served():
 def test_adoption_is_off_unless_it_is_asked_for(monkeypatch):
     monkeypatch.delenv(unmanaged.ENV, raising=False)
     assert unmanaged.mode() == "off"
-    limits.changed(adopt_unmanaged="ask")
-    assert unmanaged.mode() == "ask"
-    monkeypatch.setenv(unmanaged.ENV, "auto")
-    assert unmanaged.mode() == "auto", "the environment wins over the limits file"
+    limits.changed(adopt_unmanaged="auto")
+    assert unmanaged.mode() == "auto"
+    monkeypatch.setenv(unmanaged.ENV, "off")
+    assert unmanaged.mode() == "off", "the environment wins over the limits file"
     monkeypatch.setenv(unmanaged.ENV, "sometimes")
-    assert unmanaged.mode() == "ask", "a word that is not a mode is ignored"
+    assert unmanaged.mode() == "auto", "a word that is not a mode is ignored"
     monkeypatch.delenv(unmanaged.ENV)
     limits.changed(adopt_unmanaged="sometimes")
     assert unmanaged.mode() == "off"
@@ -293,23 +293,16 @@ def test_auto_does_not_adopt_a_server_serving_something_else(served, tmp_path, m
     assert any("not adopting" in line and "model" in line for line in told)
 
 
-def test_ask_adopts_only_when_the_confirm_hook_says_yes(served, tmp_path, monkeypatch):
+def test_ask_is_not_a_mode_so_nothing_waits_for_a_confirmation(served, tmp_path, monkeypatch):
     fake, process = served(), sleeping()
     monkeypatch.setenv(unmanaged.ENV, "ask")
     monkeypatch.setattr(unmanaged, "listener", listener_of(pid=process.pid))
-    asked: list[str] = []
     try:
         manager, _, lease = lease_beside(tmp_path, fake.port, model="model.gguf", roam=True)
-        assert lease().port != fake.port, "no hook set: nothing is adopted"
-
-        manager.confirm = lambda what: asked.append(what) or False
+        assert unmanaged.mode() == "off"
+        assert not hasattr(manager, "confirm")
         assert lease().port != fake.port
-        assert asked and str(process.pid) in asked[0] and str(fake.port) in asked[0]
         assert recorded_servers(tmp_path / "servers.json").get(fake.port) is None
-
-        manager.confirm = lambda what: True
-        assert lease().port == fake.port
-        assert recorded_servers(tmp_path / "servers.json")[fake.port]["unmanaged"]
     finally:
         process.kill()
         process.wait()

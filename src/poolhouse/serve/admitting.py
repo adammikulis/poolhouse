@@ -43,7 +43,6 @@ class Admitting:
 
     state_file: Path
     say: Callable[[str], None] | None
-    confirm: Callable[[str], bool] | None
     table: leasetable.Table
     if TYPE_CHECKING:
         _mine: dict[str, dict]
@@ -206,9 +205,6 @@ class Admitting:
             told(f"port {spec.port}: not adopting pid {seen.pid} -- " + "; ".join(mismatch))
             return None
         what = f"pid {seen.pid} on port {spec.port} serving {Path(seen.model).name or '?'}"
-        if how == "ask" and not (self.confirm is not None and self.confirm(what)):
-            told(f"port {spec.port}: not adopting {what}; it was not confirmed")
-            return None
         self.register_unmanaged(spec.port, seen)
         told(f"port {spec.port}: adopted {what} (setting {unmanaged.ENV}={how}); poolhouse "
              "queues its requests and counts its memory, and never stops it")

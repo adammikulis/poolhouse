@@ -145,8 +145,7 @@ broker does about them:
 | setting | behaviour |
 |---------|-----------|
 | `off` (default) | report only |
-| `ask` | adopt when the manager's `confirm` hook returns true for the description (pid, port, model); with no hook, nothing is adopted |
-| `auto` | adopt every one that passes the checks below |
+| `auto` | adopt every one that passes the checks below, and refuse the rest at once with the failed check as the reason; nobody is asked |
 
 `unmanaged.examine` adopts a listener only when all of these hold, tested in this order and
 before anything is sent to it:
