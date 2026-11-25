@@ -29,6 +29,7 @@ fn params_for(method: &str) -> Option<&'static [&'static str]> {
         "unlink" => &["id"],
         "project_add" | "source_add" => &["id", "kind", "path"],
         "project_list" => &[],
+        "project_remove" => &["id"],
         "project_resolve" => &["path"],
         m => return crate::poolapi::params(m).or_else(|| crate::lease::rpc::params_for(m)).or_else(|| crate::sessions::params_for(m))
             .or_else(|| crate::claims::params_for(m)).or_else(|| crate::events::params_for(m)).or_else(|| crate::landing::params_for(m)).or_else(|| crate::notes::params_for(m))
@@ -189,6 +190,16 @@ fn project(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) -
     Ok(json!(done))
 }
 
+/// Forget a project. As only a session of a board adds its project, only a session of that board removes it.
+fn project_remove(node: &mut Node, token: &str, p: &Map<String, Value>) -> Result<Value> {
+    let id = str_of(p, "id")?;
+    let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("a registered session removes its project".into()))?;
+    if holder.board != id {
+        return Err(Error::Denied("only a session of a board removes its project".into()));
+    }
+    Ok(json!(node.projects.remove(id)?))
+}
+
 fn status(node: &mut Node, token: &str, board: &str) -> Result<Value> {
     let mut out = json!({"v": API_VERSION, "pid": std::process::id(), "version": env!("CARGO_PKG_VERSION"),
                          "boards": node.boards.len(), "uptime_s": node.started.elapsed().as_secs()});
@@ -226,6 +237,7 @@ fn dispatch(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
             Ok(json!({"lineage": here, "sessions": sessions}))
         }
         "project_list" => Ok(json!(node.projects.all())),
+        "project_remove" => project_remove(node, token, p),
         "project_resolve" => node.projects.resolve(str_of(p, "path")?).map(|p| json!({"board": p.id})),
         m if crate::poolapi::handles(m) => crate::poolapi::dispatch(node, m, token, p),
         m if crate::lease::rpc::METHODS.contains(&m) => crate::lease::rpc::call(node, m, board, token, p),
@@ -303,7 +315,7 @@ pub fn parse(request: &Value) -> Result<Call> {
         return Err(Error::Invalid(format!("unknown param {}", k.chars().take(40).collect::<String>())));
     }
     let (board, token) = (str_of(map, "board")?, str_of(map, "token")?);
-    if board.is_empty() && !matches!(method, "hello" | "status" | "lineage" | "project_add" | "source_add" | "project_list" | "project_resolve") && !crate::poolapi::handles(method) && !crate::grants::calls::boardless(method)
+    if board.is_empty() && !matches!(method, "hello" | "status" | "lineage" | "project_add" | "source_add" | "project_list" | "project_remove" | "project_resolve") && !crate::poolapi::handles(method) && !crate::grants::calls::boardless(method)
         && !crate::approvals::calls::boardless(method) && !crate::phone::calls::boardless(method) && !crate::presence::boardless(method) {
         return Err(Error::Invalid("this method names a board".into()));
     }

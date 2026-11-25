@@ -34,8 +34,9 @@ pytest_plugins = ["tests.sandbox_kit"]
 ISSUER = "user test pid 1"
 
 
-def nobody(project: str) -> bool:
-    return False
+def registered(project: str) -> bool:
+    """The project is one the node holds: these tests decide toolchains, and no node is under test."""
+    return True
 
 
 def shim(folder: Path, name: str = "python3.12") -> Path:
@@ -62,7 +63,7 @@ def test_a_pyvenv_cfg_that_names_a_folder_outside_the_closed_list_grants_nothing
     (project / ".venv" / "pyvenv.cfg").write_text(f"home = {named}\nversion = 3.12\n")
     assert toolchain.declared(project) == [], "a folder the project names is not a toolchain because it holds a Python"
     seen = []
-    launch = decide_launch(Arguments(), project=str(project), on_event=lambda name, fields: seen.append(name), registered=nobody)
+    launch = decide_launch(Arguments(), project=str(project), on_event=lambda name, fields: seen.append(name), registered=registered)
     refused = [each for each in launch.decisions if not each.granted]
     assert launch.grants == () and not launch.widened and seen == [], "nothing was granted and nothing widened"
     assert len(refused) == 1 and refused[0].line == sentence("declared_elsewhere"), "the launch goes on, and says why it went on without it"
@@ -119,7 +120,7 @@ def test_a_declared_interpreter_is_granted_as_its_bin_and_its_lib_python_only_an
     project = Path(hostile_project(tmp_path))
     (project / ".python-version").write_text("3.99.0\n")
     seen = []
-    launch = decide_launch(Arguments(), project=str(project), on_event=lambda name, fields: seen.append((name, fields)), registered=nobody)
+    launch = decide_launch(Arguments(), project=str(project), on_event=lambda name, fields: seen.append((name, fields)), registered=registered)
     assert [each.subject for each in launch.grants] == [os.path.realpath(root)], "the person's own version folder is granted, and the certificate in its tests does not stop it"
     assert seen and seen[0][0] == "isolation.widened" and seen[0][1]["kinds"] == ["toolchain"], "a declaration is signalled to the sentinel like any widening"
     assert launch.widened

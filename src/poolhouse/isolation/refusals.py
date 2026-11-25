@@ -52,6 +52,15 @@ SENTENCES: dict[str, str] = {
     "confined_caller": "Refused: a coding session cannot change what another coding session may reach; this process runs inside one.",
     "not_the_lead": "Refused: only the session that launches coding agents for the person can widen what one may reach.",
     "held_back": "Refused: widening a coding session is held back from agents on this computer.",
+    "project_unregistered": ("Refused: this folder is not a registered project of this computer, and only the session that launches coding "
+                             "agents for the person registers one."),
+    "project_home": "Refused: a coding session cannot work in your home folder or a folder around it.",
+    "project_state": "Refused: a coding session cannot work in the folder where Poolhouse keeps its own state or around it.",
+    "project_system": "Refused: a coding session cannot work in a folder of the operating system.",
+    "project_stage": "Refused: a coding session cannot work in the working copy of another coding session.",
+    "project_credential": "Refused: that folder is where credentials are kept, so no coding session can work in it.",
+    "project_not_added": "Refused: this computer could not make this folder a project ({why}).",
+    "project_not_removed": "Refused: this computer could not remove that project ({why}).",
     "declared_elsewhere": ("Refused: the interpreter folder this project's virtual environment names is not one a version manager or the "
                            "system installed, so the coding session runs without it."),
 }

@@ -1127,8 +1127,15 @@ with the reason. The environment only narrows: a subagent's marker or the name o
 makes a caller the lead, so `env -i` does not hide an agent (the `person` gate refuses it) and a process outside the lead's tree that names the lead is refused. The
 authority registry, its audit log, the project policies and the node's state are the account's own (`home.guarded`, `home.real_roots`): the environment moves them only in a
 test run. The person's policy belongs to the project the node has registered around the launch's folder (a worktree and every other place of it give the same project),
-the temporary-folder exemption is gone, and the lead's own repository (a worktree of the git repository it stands in) is added to the node by the launch when it was not
-yet there, so a fresh project of the lead needs no terminal step; any other folder (a copy, a fresh clone) is refused to an agent with the reason. **What the tree cannot
+the temporary-folder exemption is gone, and a git repository the launch works in (the one named by `--project` or the folder the launcher runs in) that the node did not yet hold
+is registered by the launch itself, through the node's place verb, for the lead and for a terminal outside any agent: naming a project is the base reach of a launch (the
+confined copy and the publication of plain source) and widens nothing, so there is no terminal step and nobody is asked. The registration is logged (`isolation.project_registered`)
+and sent to the sentinel as one signal of that name, which carries the project's id, a digest of its place and the issuer. A folder that is the person's home or one around it,
+Poolhouse's state root or one around it or inside it, a folder of the operating system, the working copy of another coding session, or a credential location (`secretpaths`) is
+refused at once with its own plain sentence (`isolation/places.py`), a folder that is no git repository is refused with the sentence of section 9, and a copy of a registered
+repository is a project of its own with no policy of the person (R9). Any other agent, a subagent or an agent the node cannot place, registers nothing: it works only in a project the node
+holds, and an unregistered folder is refused to it with the reason. `poolhouse-workspace project remove PROJECT` (its id, or a folder of it, one that no longer exists too; the lead
+or a terminal only) forgets a project at once, so an orphan record does not hold the place around it. **What the tree cannot
 attest:** inside one harness the lead and its subagents are one process tree, and a process that leaves its tree (a double fork, a pseudo-terminal of its own) is read as
 a terminal; against a subagent that rewrites its own command line the gate is the harness hook's marker and no more. What would attest it is a wrapper process the hook puts
 above each subagent command and registers with the node as that helper's anchor, which a subagent cannot take out of its own ancestry: that is a change of the harness hooks, not
@@ -1161,8 +1168,8 @@ terminal outside every agent is refused at once, for every widening argument tog
 working directory and nothing else. `POOLHOUSE_AUTHORITY_FLOOR=person` (the `prod` preset) reads the gate as `person`, which
 refuses the lead too and passes only a terminal outside any agent. Nothing prompts and nothing waits in either reading.
 
-**The deputy checks.** A launcher run by an agent takes `--project` only for a directory the project registry holds or one under
-the system temporary root, and refuses `--protect` and `--on` values that name anything outside loopback. These checks sit at
+**The deputy checks.** A launcher run by an agent takes `--project` only from the lead (the gate above), works only in a project the node
+holds or the launch registers for the lead (8.3, the registration), and refuses `--protect` and `--on` values that name anything outside loopback. These checks sit at
 the choke point, in `launch_coding_agent` and `isolation.prepare`, before an argument reaches a launcher's parser, and not in
 each launcher (`claude.launch` and `codex.launch` read them from `argv` unchecked, F17). `--on` is checked for a numeric loopback
 address for every caller. A widening is therefore never reachable by the model, by an injected instruction inside a
@@ -1213,6 +1220,13 @@ sentences are the host facts of the exception recorded in "Zero friction":
 | No trusted git | "Coding agents need git, and none was found that Poolhouse can trust." |
 | `--on` names a non-loopback server | "A coding agent can only use a model server on this computer; `URL` is not." |
 | The project is not a git repository | "A coding agent works on a copy of a git project, and this folder is not one." |
+| The project is the person's home or a folder around it | "Refused: a coding session cannot work in your home folder or a folder around it." |
+| The project is Poolhouse's state root, or around or inside it | "Refused: a coding session cannot work in the folder where Poolhouse keeps its own state or around it." |
+| The project is a folder of the operating system | "Refused: a coding session cannot work in a folder of the operating system." |
+| The project is inside another session's working copy | "Refused: a coding session cannot work in the working copy of another coding session." |
+| The project is a credential location | "Refused: that folder is where credentials are kept, so no coding session can work in it." |
+| An agent that is not the lead names an unregistered folder | "Refused: this folder is not a registered project of this computer, and only the session that launches coding agents for the person registers one." |
+| The node does not take the folder as a project, or the project to remove is unknown | "Refused: this computer could not make this folder a project (`reason`)." and "Refused: this computer could not remove that project (`reason`)." |
 | Interactive mode before L6 | "Interactive mode is not available yet; run it with its print option, for example `poolhouse-claude -- -p 'your request'`." |
 | A service did not start | "The coding agent's helper (`name`) could not start, so the agent was not started." |
 | The proof failed | "Poolhouse could not confirm that the safety box holds on this computer (it allowed `attempt`), so the coding agent was not started." |
@@ -1533,7 +1547,9 @@ of a governing file, exact files only, never in-place with a network host, hosts
 policy, when present, bounds what the lead may pass; each grant records its issuer and source; every widened launch is a
 sentinel signal, the one reader that exists; no rule names a credential location, the state root, a control name, a governing
 file or a special file, and nothing a rule adds carries a credential or an environment variable. What remains: an injected lead
-that invents a task inside the caps, which the signal makes visible and the caps make bounded.
+that invents a task inside the caps, which the signal makes visible and the caps make bounded; and a copy or a clone of a project
+that has a policy, which the lead's launch registers as a project of its own with no policy (8.3), so the person's policy of the
+original does not bound a widening argument for the copy, only the caps do, and the `isolation.project_registered` signal makes it visible.
 
 ### 14.2 The cases of AGENTS.md section 1
 

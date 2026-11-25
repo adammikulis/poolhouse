@@ -15,9 +15,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from poolhouse import home, secretpaths
+from poolhouse import secretpaths
 from poolhouse.contracts.loader import ContractError
-from poolhouse.isolation import egress, publish, toolchain
+from poolhouse.isolation import egress, places, publish, toolchain
 from poolhouse.isolation.policy import ProjectPolicy
 from poolhouse.isolation.refusals import DECISION_LINES, KIND_PHRASES, refusal_line, sentence
 
@@ -96,24 +96,12 @@ def _granted(request: Request, rule: Rule, subject: str, held: toolchain.Resolve
                                                  line, held))
 
 
-def _beyond(real: str) -> str:
-    """Why a folder can never be a grant: a credential location, the person's home or a folder above it, or the state root, a folder above
-    it or one inside it."""
-    path = Path(real)
-    if secretpaths.path_hit(real) is not None:
-        return "credential location"
-    states = {home.home().resolve(), home.account_roots()[0].resolve()}
-    if secretpaths.inside_home(path) or any(path == state or path in state.parents or state in path.parents for state in states):
-        return "ancestor of the state root or of the home folder"
-    return ""
-
-
 def _folder(request: Request, rule: Rule, *, program: bool) -> Decision:
     """A read or a toolchain: the folder resolved once, every refusal run on that object, and the grant built from the same object."""
     held = toolchain.resolve(request.subject)
     if held is None:
         return _refused(request, "not a folder that can be opened without following a link")
-    if why := _beyond(held.path):
+    if why := places.never(held.path):
         held.close()
         return _refused(request, why)
     if program and not any(os.access(each, os.X_OK) for each in Path(held.path).glob("bin/*") if each.is_file()):

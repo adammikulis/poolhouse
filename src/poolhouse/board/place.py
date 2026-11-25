@@ -9,10 +9,11 @@ import re
 import subprocess
 from pathlib import Path
 
+from poolhouse import home
 from poolhouse.board.client import Client, Denied, Invalid
 from poolhouse.board.terminal import terminal_id
 
-__all__ = ["BOARD_ENV", "PLACER", "add", "at_path", "board_id", "existing", "resolve"]
+__all__ = ["BOARD_ENV", "PLACER", "add", "at_path", "board_id", "existing", "find", "remove", "resolve"]
 
 BOARD_ENV = "POOLHOUSE_BOARD"
 PLACER = "poolhouse-place"
@@ -70,14 +71,44 @@ def resolve(client: Client, path: Path | None = None, named: str = "") -> str:
     return add(client, where)
 
 
+def _placer(client: Client, board: str) -> str:
+    """The token of the session that places a project on ``board``: the node takes a project from a session of its own board and asks nobody."""
+    return str(client.call("register", board, "", model="", harness=PLACER, session=f"place-{terminal_id()}")["token"])
+
+
 def add(client: Client, where: Path) -> str:
     """Add the git repository ``where`` is in as a project of the node (a worktree of one the node knows resolves to it already) and return its
-    board, whatever the environment names: the node takes a project from a session of its own board and asks nobody."""
+    board, whatever the environment names. The node's reason is raised when it does not take the place (`Invalid`)."""
     found = board_id(where)
     if found is None:
-        raise Denied("this directory is not in a git repository")
+        raise Denied("denied", "this directory is not in a git repository")
     board, tree = found
-    placer = client.call("register", board, "", model="", harness=PLACER, session=f"place-{terminal_id()}")["token"]
-    with contextlib.suppress(Invalid):
-        client.call("project_add", "", str(placer), id=board, kind="git", path=str(tree))
+    try:
+        client.call("project_add", "", _placer(client, board), id=board, kind="git", path=str(tree))
+    except Invalid:
+        with contextlib.suppress(Denied):
+            return str(client.call("project_resolve", path=str(where))["board"])
+        raise
     return str(client.call("project_resolve", path=str(where))["board"])
+
+
+def find(client: Client, target: str) -> str:
+    """The board of the registered project ``target`` names: its id, or a folder that is one of its places (one that no longer exists too);
+    `Denied` when the node holds none."""
+    held = {str(row["id"]): [str(source["path"]) for source in row["sources"]] for row in client.call("project_list")}
+    if target in held:
+        return target
+    named = home.expand(target).resolve()
+    with contextlib.suppress(Denied):
+        return at_path(client, named)
+    for board, places in held.items():
+        if str(named) in places:
+            return board
+    raise Denied("denied", "no registered project has that id or that folder")
+
+
+def remove(client: Client, target: str) -> str:
+    """Forget the registered project ``target`` names (`find`) and return its board; the project's places are free for another project."""
+    board = find(client, target)
+    client.call("project_remove", "", _placer(client, board), id=board)
+    return board

@@ -188,10 +188,10 @@ def test_a_launcher_run_by_any_agent_but_the_lead_or_inside_a_confinement_refuse
     assert subagent.parent, "a helper of the lead, which the node knows by its parent"
 
 
-def test_the_lead_passes_what_its_task_names_and_is_refused_a_project_that_is_not_registered_or_a_server_outside_this_computer(lead, terminal):
+def test_the_lead_passes_what_its_task_names_and_is_refused_a_folder_that_is_no_git_project_or_a_server_outside_this_computer(lead, terminal):
     launch = decide_launch(Arguments(allow_net=("pypi.org",)), project=terminal)
     assert launch.widened and [each.granted for each in launch.decisions] == [True]
-    with pytest.raises(IsolationRefused, match="not a registered project"):
+    with pytest.raises(IsolationRefused, match="this folder is not one"):
         decide_launch(Arguments(project="/definitely/not/registered"), project=terminal)
     decide_launch(Arguments(project=terminal), project=terminal)
     with pytest.raises(IsolationRefused, match="model server on this computer"):

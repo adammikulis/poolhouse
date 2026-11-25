@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from poolhouse import authority, node_launch
+from poolhouse.caller import AgentRefused
 from poolhouse.isolation import Arguments, IsolationRefused, decide_launch, policy as policies
 from poolhouse.isolation.policy import ProjectPolicy
 from tests.isolation_kit import SOURCE, person_home, registered_project
@@ -155,16 +156,23 @@ def test_a_worktree_of_the_registered_project_in_the_temp_folder_has_the_project
         assert launch.decisions[0].cause == "outside the project policy", "the person's policy bounds the read a task names"
 
 
-def test_a_copy_of_the_project_is_no_registered_project_and_an_agent_that_widens_in_it_is_refused(lead, terminal, tmp_path):
+def test_a_copy_of_the_project_is_a_project_of_its_own_that_only_the_lead_registers_and_a_folder_that_is_no_repository_is_refused(
+        lead, terminal, workspace_node, tmp_path, monkeypatch):
     copy = tmp_path / "copy"
     subprocess.run(["cp", "-R", terminal, str(copy)], check=True)
     assert policies.key_of(str(copy)) == "", "a copy holds its own git directory: another repository, which the node does not hold"
-    for arguments in (Arguments(read=("/usr/share",)), Arguments(project=str(copy))):
-        with pytest.raises(IsolationRefused, match="not a registered project"):
+    kid = workspace_node.member("kid", parent=lead)
+    monkeypatch.setenv("POOLHOUSE_WORKSPACE_AGENT", kid.name)
+    for arguments in (Arguments(read=("/usr/share",)), Arguments(project=str(copy)), Arguments()):
+        with pytest.raises(AgentRefused):
             decide_launch(arguments, project=str(copy))
+    assert policies.key_of(str(copy)) == "", "a subagent registers nothing"
+    monkeypatch.setenv("POOLHOUSE_WORKSPACE_AGENT", lead.name)
+    decide_launch(Arguments(read=("/usr/share",)), project=str(copy))
+    assert policies.key_of(str(copy)) not in ("", policies.key_of(terminal)), "the lead's launch made the copy a project of its own"
     nowhere = Path(tempfile.gettempdir()).resolve() / "ph-attack-not-registered"
     nowhere.mkdir(exist_ok=True)
-    with pytest.raises(IsolationRefused, match="not a registered project"):
+    with pytest.raises(IsolationRefused, match="this folder is not one"):
         decide_launch(Arguments(project=str(nowhere)), project=terminal)
 
 
@@ -179,5 +187,5 @@ def test_the_project_the_lead_runs_in_is_registered_by_the_launch_when_the_node_
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     subprocess.run(["git", "init", "-q", str(elsewhere)], check=True, capture_output=True)
-    with pytest.raises(IsolationRefused, match="not a registered project"):
-        decide_launch(Arguments(project=str(elsewhere)), project=str(elsewhere))
+    decide_launch(Arguments(project=str(elsewhere)), project=str(elsewhere))
+    assert policies.key_of(str(elsewhere)) not in ("", policies.key_of(str(fresh))), "a repository the lead names is registered too"

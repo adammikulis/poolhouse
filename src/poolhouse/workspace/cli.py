@@ -32,6 +32,7 @@ from poolhouse.workspace import (
     notes_cli,
     nudge,
     pool_cli,
+    project_cli,
     rooms_cli,
     scratch_cli,
     status_cli,
@@ -105,6 +106,8 @@ for _name, _help, _options, _handler in grants_cli.PERSON:
 COMMANDS.add(grants_cli.REBIND[0], grants_cli.REBIND[3], help=grants_cli.REBIND[1], options=[*NODE_COMMON, *grants_cli.REBIND[2]])
 COMMANDS.add("approval", approval_cli.COMMAND, options=[*NODE_COMMON, *approval_cli.OPTIONS],
              help="ask for grants (request): decided at once by policy, this device's key signs what the caller may have and the rest is refused with the reason")
+COMMANDS.add("project", project_cli.COMMAND, options=[*NODE_COMMON, *project_cli.OPTIONS],
+             help="list the projects of this computer, or remove one at once (a launch registers the project it works in by itself)")
 COMMANDS.add("pool", pool_cli.COMMAND, options=[*NODE_COMMON, *pool_cli.OPTIONS],
              help="found this device's pool (found): this computer's own key governs it, made automatically")
 COMMANDS.add("nudge", board_cli.guarded(board_cli.nudging),

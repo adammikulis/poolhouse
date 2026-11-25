@@ -28,7 +28,10 @@ A person runs nothing to connect a coding agent: nobody mints, copies or pastes 
    `POOLHOUSE_WORKSPACE_AGENT`, so a main session runs commands with no `--agent`.
 3. The board is the project's. The working directory resolves to a project through the node's project registry
    (`POOLHOUSE_BOARD` or `--board ID` names a board directly); a directory that is part of no project is refused,
-   never given another project's board ([docs/node.md](node.md), "Boards, projects, links").
+   never given another project's board ([docs/node.md](node.md), "Boards, projects, links"). A launch of `poolhouse-claude` or
+   `poolhouse-codex` by the lead (or from a terminal) registers the git project it works in when the node does not hold it, with no
+   step for anyone; `poolhouse-workspace project list` shows the projects of this computer and `project remove PROJECT` (the
+   project's id, or a folder of it, one that no longer exists too) forgets one at once, for the lead or a terminal.
 
 The token is a bearer secret kept in `<state>/client/<board>/<name>.token` (mode 0600 in a 0700 directory; the node
 state is `~/.poolhouse/node`, moved by `POOLHOUSE_HOME`). The node knows a process by the lineage that registered

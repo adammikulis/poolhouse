@@ -23,7 +23,7 @@ from poolhouse.activity import source_snapshot
 from poolhouse.activity.source_snapshot import Capture, CaptureEntry
 from poolhouse.coding_workspace import Stage, Workspace, between
 from poolhouse.coding_workspace_state import CONTROL_PREFIXES
-from poolhouse.isolation import publication, toolchain
+from poolhouse.isolation import places, publication, toolchain
 from poolhouse.isolation.notices import HEAD, Kept, Notice, Patch, Reports, words
 from poolhouse.isolation.publication import Refusal, fold
 from poolhouse.isolation.publish import PublishRule
@@ -153,7 +153,7 @@ class Session:
                 raise ValueError("the kept record is not of a shape this launcher reads")
             kept, namespace = Path(saved["stage"]), Path(saved["namespace"])
             entries = tuple(CaptureEntry(bytes.fromhex(path), mode.encode(), bytes.fromhex(sha), size) for path, mode, sha, size in saved["base"])
-            if kept.parent != namespace or namespace == workspace.directory or not namespace.name.startswith("poolhouse-coding-"):
+            if kept.parent != namespace or namespace == workspace.directory or not namespace.name.startswith(places.STAGE_PREFIX):
                 raise ValueError("the kept stage is not in a namespace of this account")
             stage = workspace.adopt(kept)
         except (OSError, ValueError, KeyError, TypeError):

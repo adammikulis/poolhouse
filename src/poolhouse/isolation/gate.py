@@ -4,7 +4,8 @@ One function, `decide_launch`, runs before any launch argument reaches a launche
 decides each widening at once and never waits: a process the operating system reports as confined is refused every control, an agent that is
 not the lead is refused every widening argument, the `isolation.grant` gate is read at once (`delegated` passes only the lead, `person`
 passes only a terminal outside any agent), and then the grants are decided under the caps, logged, and reported to the sentinel as one
-signal. Nothing is typed, confirmed or pasted, and no token is issued.
+signal. A project the launch works in that the node does not hold is registered by the launch for the lead and for a terminal outside any agent
+(`projects`): naming a project is the base reach and widens nothing. Nothing is typed, confirmed or pasted, and no token is issued.
 """
 
 from __future__ import annotations
@@ -14,19 +15,17 @@ import ipaddress
 import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from pathlib import Path
 from urllib.parse import urlparse
 
 from poolhouse import activity, authority, caller, home
-from poolhouse.board import client as board_client, place
 from poolhouse.contracts.loader import ContractError
-from poolhouse.isolation import ancestry, egress, policy, toolchain
+from poolhouse.isolation import ancestry, egress, policy, projects, toolchain
 from poolhouse.isolation.grants import Decision, Grant, Request, Rule, decide, fingerprint
 from poolhouse.isolation.refusals import IsolationRefused, sentence
 from poolhouse.sandbox.confinement import confined
 from poolhouse.sandbox.run import HOOKS
 
-__all__ = ["GATE", "Arguments", "Launch", "check_on", "decide_launch", "registered_by_the_node", "require_widening"]
+__all__ = ["GATE", "Arguments", "Launch", "check_on", "decide_launch", "registered_by_the_node", "remove_project", "require_widening"]
 
 GATE = "isolation.grant"
 Events = Callable[[str, dict[str, object]], None]
@@ -98,22 +97,6 @@ def registered_by_the_node(path: str) -> bool:
     return bool(policy.key_of(path))
 
 
-def _registered_for_the_lead(path: str) -> bool:
-    """Whether ``path`` is registered, adding it first when it is the project the lead runs in: a worktree of the git repository the caller
-    stands in (the same common directory). The node takes the project from a session of its own board and asks nobody; any other folder, a
-    copy of the repository and a fresh clone included, is not the lead's project and is not added."""
-    if registered_by_the_node(path):
-        return True
-    try:
-        mine, named = place.board_id(Path.cwd()), place.board_id(Path(path))
-        if mine is None or named is None or mine[0] != named[0]:
-            return False
-        place.add(board_client.Client(ancestry.node_state()), Path(path))
-    except (OSError, ValueError, KeyError, board_client.Denied, board_client.Invalid):
-        return False
-    return registered_by_the_node(path)
-
-
 def _refuse(action: str, key: str) -> caller.AgentRefused:
     """The refusal of ``action`` with the sentence ``key``, audited; a confinement that cannot write the audit log is refused all the same."""
     with contextlib.suppress(OSError):
@@ -131,6 +114,24 @@ def _attest() -> ancestry.Ancestry:
         raise caller.AgentRefused(str(why)) from why
 
 
+def _caller(action: str) -> ancestry.Ancestry:
+    """Who runs this process for ``action``: a process inside a confinement is refused whatever its markers say, and the rest is read from the
+    process tree by the node."""
+    if confined():
+        raise _refuse(action, "confined_caller")
+    return _attest()
+
+
+@home.real_roots
+def remove_project(target: str, env: Mapping[str, str] | None = None) -> str:
+    """Forget the registered project ``target`` names (its id, or a folder of it) and return its board, at once. Only the lead and a terminal
+    outside every agent may: any other agent, a process inside a confinement or a node that cannot say who asks is refused, audited."""
+    action = "removing a project of this computer"
+    if not _caller(action).may_launch(env):
+        raise _refuse(action, "not_the_lead")
+    return projects.remove(target, issuer=caller.who(env))
+
+
 @home.real_roots
 def require_widening(action: str, env: Mapping[str, str] | None = None, project: str = "") -> ancestry.Ancestry:
     """The `isolation.grant` gate, decided at once. A process inside a confinement is refused whatever its markers say. Whether the caller is an
@@ -138,33 +139,44 @@ def require_widening(action: str, env: Mapping[str, str] | None = None, project:
     `person` (the `prod` preset) an agent is refused, the lead included, and a terminal outside any agent passes; with it `delegated` only
     the lead passes among the agents: any other agent is refused, whether it is a subagent, a tool, an agent the node does not know, or an
     agent that runs the launcher outside the owner's sandbox. The ancestry the decision was made on is returned."""
-    if confined():
-        raise _refuse(action, "confined_caller")
-    where = _attest()
+    where = _caller(action)
     scope = authority.Scope(project=project)
     seen = "an agent's process tree runs it" if where.agent else ""
     if authority.state_of(GATE, project) == authority.PERSON:
         authority.require(GATE, action, env, scope=scope, attested=seen)
         return where
-    if (caller.marked(env) or where.agent) and (where.lead is None or where.helper(env)):
+    if not where.may_launch(env):
         raise _refuse(action, "not_the_lead")
     authority.require(GATE, action, env, scope=scope, attested=seen)
     return where
 
 
-def _deputy(arguments: Arguments, registered: Callable[[str], bool], agent: bool, project: str) -> None:
-    """The checks of a launcher run by an agent, which sit here and not in each launcher: the project, the protected paths and the server.
-    The server is checked for every caller. An agent that widens a session names only a registered project (a worktree of one included), so
-    the person's policy for it is the one that applies; the project the lead runs in is registered when it was not yet."""
+def _controls(arguments: Arguments) -> None:
+    """The checks of the launcher controls, which sit here and not in each launcher: the server (for every caller) and the protected paths."""
     if arguments.on:
         check_on(arguments.on)
-    if agent and arguments.widening:
-        for named in dict.fromkeys(each for each in (arguments.project, project) if each):
-            if not registered(os.path.realpath(named)):
-                raise IsolationRefused("Refused: this folder is not a registered project of this computer.")
     for value in arguments.protect:
         if "://" in value and urlparse(value).hostname not in ("127.0.0.1", "::1"):
             raise IsolationRefused(f"Refused: {_short(value)} names something outside this computer.")
+
+
+def _unregistered(arguments: Arguments, project: str, registered: Callable[[str], bool]) -> dict[str, str]:
+    """The folders the launch works in (the one it names and the one it runs in) that the node does not hold, each with where the launch got it."""
+    asked = os.path.realpath(arguments.project) if arguments.project else ""
+    named = dict.fromkeys(os.path.realpath(each) for each in (arguments.project, project) if each)
+    return {each: "named" if each == asked else "working directory" for each in named if not registered(each)}
+
+
+def _admit_projects(missing: dict[str, str], where: ancestry.Ancestry | None, env: Mapping[str, str] | None, on_event: Events | None) -> None:
+    """Make every folder of ``missing`` a registered project: the node adds a git project it does not hold, for the lead and for a terminal outside
+    any agent, because naming a project is the base reach of a launch and widens nothing (8.3). What no session is given (`places`) is refused with
+    its reason, and any other agent works only in a project the node already holds."""
+    if missing and confined():
+        raise _refuse("registering a project", "confined_caller")
+    if missing and not (where or _attest()).may_launch(env):
+        raise _refuse("registering a project", "project_unregistered")
+    for named, source in missing.items():
+        projects.register(named, issuer=caller.who(env), source=source, emit=lambda name, fields: _emit(name, fields, on_event))
 
 
 def _log(decision: Decision, request: Request) -> None:
@@ -172,17 +184,21 @@ def _log(decision: Decision, request: Request) -> None:
                     meta={"issuer": request.issuer, "source": request.source, "cause": decision.cause, "line": decision.line})
 
 
+def _emit(name: str, fields: Mapping[str, object], on_event: Events | None) -> None:
+    """Send one signal to the sentinel and to the launcher's own callback; a listener that fails changes nothing for the launch."""
+    for call in (HOOKS.events, on_event):
+        if call is not None:
+            with contextlib.suppress(OSError, ValueError, RuntimeError):
+                call(name, dict(fields))
+
+
 def _signal(grants: tuple[Grant, ...], unusual: bool, on_event: Events | None) -> None:
     """One signal to the sentinel for a widened launch: the kinds, the digests of the subjects, the source and the issuer. In place, and a
     network host beside a published file, are marked unusual (AF7)."""
     kinds = sorted({grant.kind for grant in grants})
-    fields: dict[str, object] = {"severity": "warning" if unusual else "notice", "policy": "isolation", "kinds": kinds, "unusual": unusual,
-                                 "subjects": [grant.fingerprint for grant in grants], "source": sorted({grant.source for grant in grants}),
-                                 "issuer": grants[0].issuer}
-    for call in (HOOKS.events, on_event):
-        if call is not None:
-            with contextlib.suppress(OSError, ValueError, RuntimeError):
-                call("isolation.widened", dict(fields))
+    _emit("isolation.widened", {"severity": "warning" if unusual else "notice", "policy": "isolation", "kinds": kinds, "unusual": unusual,
+                                "subjects": [grant.fingerprint for grant in grants], "source": sorted({grant.source for grant in grants}),
+                                "issuer": grants[0].issuer}, on_event)
 
 
 @home.real_roots
@@ -195,9 +211,8 @@ def decide_launch(arguments: Arguments, *, project: str, env: Mapping[str, str] 
     if confined() and arguments.controls:
         raise _refuse("launching a coding agent with launcher controls", "confined_caller")
     where = require_widening("launching a coding agent with a wider reach than the default", env, project) if arguments.widening else None
-    lead = where is not None and where.lead is not None
-    _deputy(arguments, registered or (_registered_for_the_lead if lead else registered_by_the_node),
-            bool(caller.marked(env)) or (where is not None and where.agent), project)
+    _controls(arguments)
+    _admit_projects(_unregistered(arguments, project, registered or registered_by_the_node), where, env, on_event)
     issuer = caller.who(env)
     requests = (*arguments.requests(issuer, project),
                 *(Request("toolchain", each.subject, issuer, "declaration", project) for each in toolchain.declarations(project)))

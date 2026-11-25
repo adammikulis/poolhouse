@@ -160,6 +160,16 @@ impl Projects {
         Ok(done)
     }
 
+    /// Forget the project ``id``: its places are free for another project to take; the project's board is left as it is.
+    pub fn remove(&mut self, id: &str) -> Result<Project> {
+        let at = self.all.iter().position(|p| p.id == id).ok_or_else(|| Error::Invalid("no such project".into()))?;
+        let mut rest = self.all.clone();
+        let gone = rest.remove(at);
+        write_atomic(&self.path, &serde_json::to_vec(&rest)?)?;
+        self.all = rest;
+        Ok(gone)
+    }
+
     /// A place may not be, lie inside, or hold a place of another project.
     fn claim_check(&self, id: &str, source: &Source) -> Result<()> {
         let overlaps = |s: &Source| source.path.starts_with(&s.path) || s.path.starts_with(&source.path);
@@ -195,5 +205,21 @@ mod tests {
         let more = dir.path().join("more");
         std::fs::create_dir(&more).unwrap();
         assert!(matches!(projects.add("more", "folder", more.to_str().unwrap()), Err(Error::Quota(_))));
+    }
+
+    #[test]
+    fn a_removed_project_frees_its_place_for_another_and_stays_removed_when_reopened() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("projects.json");
+        let place = dir.path().join("work");
+        std::fs::create_dir(&place).unwrap();
+        let mut projects = Projects::open(&file).unwrap();
+        projects.add("first", "folder", place.to_str().unwrap()).unwrap();
+        assert!(projects.add("second", "folder", place.to_str().unwrap()).is_err(), "a place belongs to one project");
+        assert_eq!(projects.remove("first").unwrap().id, "first");
+        assert!(projects.get("first").is_none() && projects.resolve(place.to_str().unwrap()).is_err());
+        assert!(matches!(projects.remove("first"), Err(Error::Invalid(_))), "an id that is gone is not a project");
+        projects.add("second", "folder", place.to_str().unwrap()).unwrap();
+        assert_eq!(Projects::open(&file).unwrap().all().iter().map(|p| p.id.as_str()).collect::<Vec<_>>(), ["second"]);
     }
 }

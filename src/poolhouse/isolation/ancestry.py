@@ -64,6 +64,13 @@ class Ancestry:
         claimed = caller.named(env)
         return any(each.name == claimed and each.parent for each in self.sessions)
 
+    def may_launch(self, env: Mapping[str, str] | None = None) -> bool:
+        """Whether the caller launches coding agents for the person: a terminal outside every agent, or the lead (a main session of the tree
+        it runs in) when it does not say it is a helper. A marked caller the node finds no lead for is neither."""
+        if not (caller.marked(env) or self.agent):
+            return True
+        return self.lead is not None and not self.helper(env)
+
 
 @home.real_roots
 def node_state() -> Path:

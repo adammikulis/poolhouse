@@ -26,7 +26,14 @@ from poolhouse.isolation.confinement import (
 )
 from poolhouse.isolation.egress_proxy import EgressProxy, Wiring
 from poolhouse.isolation.environment import Inputs, allowed, environment
-from poolhouse.isolation.gate import Arguments, Launch, check_on, decide_launch, require_widening
+from poolhouse.isolation.gate import (
+           Arguments,
+           Launch,
+           check_on,
+           decide_launch,
+           remove_project,
+           require_widening,
+)
 from poolhouse.isolation.grants import Decision, Grant, Request, Rule, decide
 from poolhouse.isolation.model_bridge import Lease, ModelBridge
 from poolhouse.isolation.notices import Notice
@@ -40,4 +47,4 @@ from poolhouse.isolation.spec import Spec
 __all__ = ["Arguments", "Attestation", "Confinement", "Context", "Decision", "EgressProxy", "Grant", "Handlers", "Inputs", "IsolationFailed",
            "IsolationRefused", "Launch", "Lease", "ModelBridge", "Notice", "Plan", "Profile", "Proof", "Rendering", "Report", "Reporter", "Request",
            "Rule", "Services", "SessionBridge", "Spec", "Terms", "Wiring", "allowed", "attest", "build", "capability", "check_on", "decide",
-           "decide_launch", "environment", "install_tree", "prepare", "require_capable", "require_widening", "run_proof"]
+           "decide_launch", "environment", "install_tree", "prepare", "remove_project", "require_capable", "require_widening", "run_proof"]

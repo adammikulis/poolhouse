@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
-from poolhouse.isolation import Arguments, IsolationFailed, decide_launch, proof
+from poolhouse.isolation import Arguments, IsolationFailed, decide_launch, proof, remove_project
 from poolhouse.sandbox.seatbelt import Seatbelt
 from tests.activity_support import (
     entries,
     person,
     ring,
 )
+from tests.confined_kit import repository
 from tests.isolation_kit import person_home, registered_project, world
 
 __all__ = ["person", "ring"]  # fixtures this module's tests ask for by name
@@ -28,6 +31,19 @@ def test_every_decision_is_logged_with_its_issuer_and_the_source_it_claimed_and_
     assert all(row.meta["issuer"].startswith("user ") and row.meta["source"] == "task" for row in rows)
     assert all(":" in row.subject and "evil.example" not in row.subject and "src/app.py" not in row.subject for row in rows)
     assert rows[0].meta["line"] == launch.decisions[0].line and rows[0].meta["cause"] == "not on the registry list"
+
+
+def test_a_registered_and_a_removed_project_are_logged_with_the_id_and_who_asked_and_never_the_path(tmp_path, monkeypatch, person, workspace_node):
+    person_home(tmp_path, monkeypatch)
+    monkeypatch.setenv("POOLHOUSE_HOME", str(workspace_node.state.parent))
+    named = str(repository(tmp_path / "accept-repo").resolve())
+    decide_launch(Arguments(), project=named)
+    [row] = [row for row in entries() if row.kind == "isolation.project_registered"]
+    assert row.outcome == "registered" and row.subject == row.meta["project"] != "" and row.meta["source"] == "working directory"
+    assert row.meta["issuer"].startswith("user ") and named not in json.dumps(row.meta) and len(row.meta["place"]) == 16
+    assert remove_project(named) == row.subject
+    [gone] = [row for row in entries() if row.kind == "isolation.project_removed"]
+    assert (gone.outcome, gone.subject) == ("removed", row.subject) and gone.meta["issuer"].startswith("user ")
 
 
 class Open(Seatbelt):

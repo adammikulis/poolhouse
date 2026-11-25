@@ -34,6 +34,8 @@ from poolhouse.briefing import REQUIRED_BRIEFING
 from poolhouse.client import is_healthy
 from poolhouse.errors import Denied
 from poolhouse.hub.probe import MachineMemory
+from poolhouse.isolation import places
+from poolhouse.isolation.refusals import sentence
 from poolhouse.sandbox import run as sandbox_run
 from poolhouse.serve import admission, chat_template, leases, profile, suggest, wired
 from poolhouse.serve.matching import model_matches
@@ -366,6 +368,8 @@ def check_project(project: str) -> Path:
     root = Path(project or Path.cwd()).resolve(strict=True)
     if not root.is_dir():
         raise ValueError("Choose an existing project directory")
+    if key := places.project_refusal(str(root)):
+        raise isolation.IsolationRefused(sentence(key))
     root = validate_storage(root, protected_roots(dict(os.environ)))
     runtime.module_argv("poolhouse.harnesshook", root)
     return root

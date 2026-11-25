@@ -235,6 +235,7 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `link`, `unlink`, `links` | board, token with the grant `link_read` or `link_write` (make), `link_remove` (end) | `to, channels, mode` / `id` | the link |
 | `project_add` | token of a session of that board; for a place that is not a git repository, the grant `source_add` | `id, kind, path` | the project |
 | `source_add` | token of that project, with the grant `source_add` | `id, kind, path` | the project |
+| `project_remove` | token of a session of that board | `id` | the project that was removed; its places are free for another project and its board is kept |
 | `project_list`, `project_resolve` | | `path` | projects / `{board}` |
 | `status` | (board, token for detail) | | counts; with a token, the board's detail: `sessions`, `entries` by kind, `damaged`, `rejected` |
 | `shutdown` | board, token | | `{stopping}` |
