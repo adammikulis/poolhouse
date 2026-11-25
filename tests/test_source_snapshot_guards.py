@@ -94,6 +94,7 @@ def test_actual_git_uses_owned_fixed_asset_without_inherited_path(git_asset, tmp
     monkeypatch.setenv("PATH", str(tmp_path / "hostile"))
     assert source.actual_git() == image
     (root / "opt/git").unlink()
+    monkeypatch.setattr(source, "APPLE_GIT", tmp_path / "no-apple-git")
     with pytest.raises(RuntimeError, match="Apple shim refused"):
         source.actual_git()
 

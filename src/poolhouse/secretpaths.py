@@ -147,6 +147,12 @@ def path_hit(text: str, base: str = "") -> Hit | None:
     return Hit(rule, path) if rule else None
 
 
+def name_hit(relative: str) -> str:
+    """The credential entry a project-relative path names by its spelling alone: no link is followed and nothing is read, so a whole tree is
+    matched in one pass; empty when it names none."""
+    return _rule(Path(relative))
+
+
 def _braces(text: str) -> list[str]:
     match = re.search(r"\{([^{}]*,[^{}]*)\}", text)
     if not match:

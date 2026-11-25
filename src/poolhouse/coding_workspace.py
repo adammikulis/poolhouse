@@ -15,6 +15,10 @@ from poolhouse.activity import source_snapshot
 from poolhouse.activity.source_snapshot import Capture, SourceSnapshot
 
 
+def _free_bytes(directory: Path) -> int:
+    return shutil.disk_usage(directory).free
+
+
 @dataclass(frozen=True)
 class Stage:
     physical: Path
@@ -49,7 +53,8 @@ def _changes(before: Capture, after: Capture) -> tuple[Change, ...]:
 class Workspace:
     """Keep canonical coding bytes outside every tool's writable roots."""
 
-    def __init__(self, source: Path):
+    def __init__(self, source: Path, *, free: Callable[[Path], int] = _free_bytes):
+        self.free = free
         self.source = source_snapshot.validate_storage(source, source_snapshot.protected_roots(dict(os.environ)))
         self.directory = source_snapshot.private_namespace(dict(os.environ), "poolhouse-coding-")
         self.source_identity, self.directory_identity = state.identity(self.source), state.identity(self.directory)
@@ -61,7 +66,7 @@ class Workspace:
         self.last: Capture | None = None
         self.changes: tuple[Change, ...] = ()
         self.persisted: dict | None = None
-        snapshot = SourceSnapshot(self.source, self.directory)
+        snapshot = SourceSnapshot(self.source, self.directory, strict=False)
         try:
             self.initial = snapshot.capture(self.master, excluded=self._excluded(snapshot))
         finally:
@@ -117,7 +122,7 @@ class Workspace:
             made.source, made.directory = source.resolve(strict=True), directory
             made.source_identity = tuple(receipt["source_identity"])
             made.directory_identity = tuple(receipt["directory_identity"])
-            made.alias, made.lock = directory / "workspace", threading.Lock()
+            made.alias, made.lock, made.free = directory / "workspace", threading.Lock(), _free_bytes
             made.revision, made.persisted = receipt["revision"], receipt
             made.excluded = state.paths(receipt["initial"]["manifest"]["excluded"])
             made.initial = made._restore_capture(receipt["initial"])
@@ -135,7 +140,7 @@ class Workspace:
         if target.resolve(strict=True) != target or private_path.problem(target):
             raise ValueError("The coding snapshot directory changed")
         missing = state.paths(saved["manifest"]["missing"])
-        snapshot = SourceSnapshot(target, self.directory, known_paths=missing)
+        snapshot = SourceSnapshot(target, self.directory, known_paths=missing, strict=False)
         try:
             if any(os.path.lexists(snapshot.path(path)) for path in missing):
                 raise ValueError("An absent coding snapshot path appeared")
@@ -148,27 +153,28 @@ class Workspace:
         return proof
 
     def _excluded(self, snapshot: SourceSnapshot) -> tuple[bytes, ...]:
-        credentials = (name for name in snapshot.entries
-                       if secretpaths.path_hit(os.fsdecode(snapshot.root / os.fsdecode(name))))
+        credentials = (name for name in snapshot.entries if secretpaths.name_hit(os.fsdecode(name)))
         return tuple(sorted({*self.excluded, *credentials, *(os.fsencode(path) for path in state.CONTROL_PREFIXES)}))
 
     def _capture(self, root: Path, label: str, previous: Capture) -> Capture:
-        snapshot = SourceSnapshot(root, self.directory, known_paths=previous.missing)
+        snapshot = SourceSnapshot(root, self.directory, known_paths=previous.missing, strict=False)
         try:
             return snapshot.capture(self.directory / f"{label}-{uuid.uuid4().hex}",
                                     excluded=self._excluded(snapshot))
         finally:
             snapshot.close()
 
-    def _index(self, root: Path, capture: Capture) -> None:
+    def _index(self, root: Path, capture: Capture, *, intent: bool = False) -> None:
+        """Make ``root`` a throwaway repository of ``capture``: a full index for the stage the agent runs `git diff` in, and only the names
+        (`git add --intent-to-add`) for a captured directory the parent alone reads the file list of."""
         if not (root / ".git").exists():
             source_snapshot.git_output(["init", "--quiet", str(root)], cwd=self.directory)
         names = self.directory / f"paths-{uuid.uuid4().hex}"
         try:
             names.write_bytes(b"\0".join(entry.path for entry in capture.entries) + b"\0")
             if capture.entries:
-                source_snapshot.git_output(["--literal-pathspecs", "add", "--force", "--pathspec-from-file=" + str(names),
-                                            "--pathspec-file-nul"], cwd=root)
+                source_snapshot.git_output(["--literal-pathspecs", "add", "--force", *(["--intent-to-add"] if intent else []),
+                                            "--pathspec-from-file=" + str(names), "--pathspec-file-nul"], cwd=root)
         finally:
             names.unlink(missing_ok=True)
 
@@ -177,8 +183,10 @@ class Workspace:
         if not self.current():
             raise ValueError("The coding workspace roots changed")
         before = self._capture(self.master, "before", self.last or self.initial)
+        self._room(before)
         physical = self.directory / f"tool-{uuid.uuid4().hex}"
-        shutil.copytree(before.directory, physical)
+        if not files.clone_tree(before.directory, physical):
+            shutil.copytree(before.directory, physical, symlinks=True)
         self._index(physical, before)
         temporary = self.directory / f"alias-{uuid.uuid4().hex}"
         temporary.symlink_to(physical)
@@ -199,7 +207,7 @@ class Workspace:
         current = self._capture(self.master, "current", stage.before)
         if state.manifest(current) != state.manifest(stage.before):
             raise ValueError("The coding workspace changed while the tool was running")
-        self._index(captured.directory, captured)
+        self._index(captured.directory, captured, intent=True)
         previous = self.master, self.last, self.changes, self.revision, self.persisted
         publication = self.next_receipt(captured, stage.revision)
         published = False
@@ -227,6 +235,20 @@ class Workspace:
                 if self.persisted is publication:
                     self.persisted = previous[4]
         return changes
+
+    def _room(self, capture: Capture) -> None:
+        """Refuse to stage a project the volume cannot hold, with the figures. The one bound on a project is the free bytes of the stage's volume
+        and it counts allocated blocks, so a sparse file stages by what it holds and not by its apparent size."""
+        need = sum(os.lstat(capture.directory / os.fsdecode(entry.path)).st_blocks * 512 for entry in capture.entries if entry.mode != b"120000")
+        have = self.free(self.directory)
+        if need > have:
+            raise ValueError(f"the stage needs {need} bytes and the volume of {self.directory} has {have} free: the project is staged where there is room "
+                             "for it, or the launch is given a folder on a larger volume")
+
+    def left_out(self) -> tuple[tuple[bytes, str], ...]:
+        """The paths the working copy does not carry, each with why: a submodule, a link that leaves the tree, a special file, a hard-linked or
+        foreign-owned file. The first line of a session names them (docs/design-isolated-launcher.md, W3)."""
+        return (self.last or self.initial).left_out
 
     def run(self, execute: Callable[[Stage], dict], guard: Callable[[Capture, int], AbstractContextManager], *, writable: bool) -> dict:
         """Run one tool without exposing the parent master to its children."""

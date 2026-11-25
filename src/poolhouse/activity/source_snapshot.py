@@ -5,6 +5,7 @@ import ctypes
 import hashlib
 import ntpath
 import os
+import posixpath
 import selectors
 import shutil
 import stat
@@ -28,7 +29,16 @@ OUTPUT_LIMIT = 8 * 1024 * 1024
 INDEX_LIMIT = 32 * 1024 * 1024
 FILE_LIMIT = 16 * 1024 * 1024
 TOTAL_LIMIT = 256 * 1024 * 1024
+"""The ceilings of a bounded snapshot (the test kernel and delegation take one); a coding workspace takes none (`SourceSnapshot(strict=False)`)."""
+ZEROS = bytes(65536)
+"""A block of zeros a capture does not write, so a sparse file stays sparse in its copy."""
+STALL_S = 30.0
+"""Seconds a capture may go without a file visited or a byte read before it is judged stalled. No recorded reason: it is the 30 s deadline the
+capture used to have as a total, kept as a stretch with no progress, so a slow disk is not a failure and a stalled one is (docs/design-isolated-launcher.md, W4)."""
 GIT_ROOTS = (Path("/opt/homebrew"), Path("/usr/local"))
+APPLE_GIT = Path("/Library/Developer/CommandLineTools/usr/bin/git")
+MACH_O = (b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xfe\xed\xfa\xce", b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca",
+          b"\xca\xfe\xba\xbf", b"\xbf\xba\xfe\xca")
 
 
 def _identity(info: os.stat_result) -> tuple[int, ...]:
@@ -43,6 +53,14 @@ def _optional_identity(path: Path) -> tuple[int, ...] | None:
         return None
 
 
+def _optional_directory(path: Path) -> tuple[int, int] | None:
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return None
+    return info.st_dev, info.st_ino
+
+
 @dataclass(frozen=True)
 class CaptureEntry:
     path: bytes
@@ -53,11 +71,17 @@ class CaptureEntry:
 
 @dataclass(frozen=True)
 class Capture:
+    """A frozen copy of a working tree. ``left_out`` names each path the capture could not carry and why (a submodule, a link that leaves the
+    tree, a special file, a hard-linked or foreign-owned file) and ``notes`` each file it carried with a change (group and world write bits
+    cleared); no path is left out or changed without a name here."""
+
     directory: Path
     entries: tuple[CaptureEntry, ...]
     missing: tuple[bytes, ...]
     excluded: tuple[bytes, ...]
     tree_hash: str
+    left_out: tuple[tuple[bytes, str], ...] = ()
+    notes: tuple[tuple[bytes, str], ...] = ()
 
 
 def validate_storage(base: Path, protected: tuple[Path, ...]) -> Path:
@@ -170,8 +194,28 @@ def _git_image(alias: Path, root: Path) -> Path:
     return resolved
 
 
+def _apple_git(image: Path) -> Path:
+    """The git of Apple's command-line developer tools: a root-owned Mach-O in directories only root writes, reached with no link in its path.
+    The `/usr/bin/git` selector shim is never this file and is never executed."""
+    if image.resolve(strict=True) != image:
+        raise RuntimeError("source snapshot: Apple's Git is reached through a link")
+    for parent in image.parents:
+        info = parent.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+            raise RuntimeError("source snapshot: Apple's Git ancestry is not owned by root and closed to writers")
+    descriptor = os.open(image, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, "rb") as stream:
+        before = os.fstat(stream.fileno())
+        if (not stat.S_ISREG(before.st_mode) or before.st_uid != 0 or before.st_mode & 0o022 or not before.st_mode & 0o111
+                or before.st_nlink != 1 or stream.read(4) not in MACH_O):
+            raise RuntimeError("source snapshot: Apple's Git is not a root-owned Mach-O program")
+        if _identity(before) != _identity(os.fstat(stream.fileno())) or _identity(image.lstat()) != _identity(before):
+            raise RuntimeError("source snapshot: Apple's Git changed during verification")
+    return image
+
+
 def actual_git() -> Path:
-    """Resolve fixed owned Git assets; macOS never executes the Apple selector shim."""
+    """Resolve fixed owned Git assets; macOS runs a Homebrew git or the one of Apple's command-line developer tools, never the Apple selector shim."""
     if sys.platform != "darwin":
         program = shutil.which("git", path=os.defpath)
         if program is None:
@@ -181,10 +225,13 @@ def actual_git() -> Path:
         alias = root / "opt" / "git" / "bin" / "git"
         if alias.is_symlink() or alias.exists():
             return _git_image(alias, root)
+    if APPLE_GIT.exists():
+        return _apple_git(APPLE_GIT)
     raise RuntimeError("source snapshot: owned Git unavailable; Apple shim refused")
 
 
 def git_output(args: list[str], *, cwd: Path, seconds: float = 15) -> bytes:
+    """Git's output for ``args``; ``seconds`` is how long it may go without writing a byte, not a total."""
     program = actual_git()
     if seconds <= 0:
         raise RuntimeError("source snapshot: Git or deadline unavailable")
@@ -204,6 +251,7 @@ def git_output(args: list[str], *, cwd: Path, seconds: float = 15) -> bytes:
                 if not block:
                     break
                 value.extend(block)
+                deadline = time.monotonic() + seconds
                 if len(value) > OUTPUT_LIMIT:
                     raise RuntimeError("source snapshot: Git inventory output exceeds bound")
         if process.wait(timeout=max(.001, deadline - time.monotonic())):
@@ -244,14 +292,18 @@ def metadata_directory(root: Path) -> Path:
 class SourceSnapshot:
     """Inventory a worktree using private Git metadata without configured filters."""
 
-    def __init__(self, root: Path, storage: Path, *, known_paths: tuple[bytes, ...] = ()):
+    def __init__(self, root: Path, storage: Path, *, known_paths: tuple[bytes, ...] = (), strict: bool = True):
         self.root = validate_storage(root, protected_roots(dict(os.environ)))
         storage = validate_storage(storage, ())
         owner = storage.stat()
         if owner.st_uid != os.getuid() or owner.st_mode & 0o077:
             raise RuntimeError("source snapshot: private owned storage required")
+        self.strict = strict
         self.deadline = time.monotonic() + 30
         self.total = 0
+        self.moved, self.files, self.bytes = time.monotonic(), 0, 0
+        self.parents: dict[Path, tuple[int, int] | None] = {}
+        self.chain: list[tuple[bytes, int]] = []
         self.directory = Path(tempfile.mkdtemp(prefix="source-git-", dir=storage))
         with ExitStack() as cleanup:
             cleanup.callback(self.close)
@@ -296,10 +348,30 @@ class SourceSnapshot:
             self.entries[name] = mode, bytes.fromhex(digest.decode())
         self.tracked = tuple(self.entries)
         self.untracked = self.command(["ls-files", "--others", "--exclude-standard", "-z"])
+        self.specials = () if self.strict else self._specials()
         for name in self.untracked.split(b"\0"):
             if name:
                 self.path(name)
                 self.entries.setdefault(name, (b"100644", b""))
+
+    def _specials(self) -> tuple[bytes, ...]:
+        """The FIFOs, sockets and device nodes Git never lists, found by walking every directory but `.git` and the ones Git ignores, so
+        that none is left out of a capture without a name."""
+        listed = self.command(["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"])
+        ignored = {name.rstrip(b"/") for name in listed.split(b"\0") if name.endswith(b"/")}
+        found, pending = [], [(self.root, b"")]
+        while pending:
+            here, prefix = pending.pop()
+            self.advance(1)
+            with os.scandir(here) as scan:
+                for entry in scan:
+                    name = prefix + os.fsencode(entry.name)
+                    if entry.is_dir(follow_symlinks=False):
+                        if entry.name != ".git" and name not in ignored:
+                            pending.append((Path(entry.path), name + b"/"))
+                    elif not entry.is_file(follow_symlinks=False) and not entry.is_symlink():
+                        found.append(name)
+        return tuple(sorted(found))
 
     def _retain_paths(self, names: tuple[bytes, ...]) -> None:
         if (type(names) is not tuple or any(type(name) is not bytes for name in names)
@@ -321,26 +393,58 @@ class SourceSnapshot:
         self.tracked = tuple(sorted(set(self.tracked).union(names)))
 
     def command(self, args: list[str]) -> bytes:
-        return git_output(["--git-dir=" + str(self.directory), "--work-tree=" + str(self.root), *args],
-                          cwd=self.root, seconds=self.deadline - time.monotonic())
+        return git_output(["--git-dir=" + str(self.directory), "--work-tree=" + str(self.root), *args], cwd=self.root, seconds=STALL_S)
+
+    def advance(self, files: int = 0, size: int = 0) -> None:
+        """Count progress: an unbounded capture is judged stalled when none has been made for `STALL_S`, never by how long it takes in all (a
+        bounded one keeps its total deadline)."""
+        now = time.monotonic()
+        if self.strict and now >= self.deadline:
+            raise TimeoutError("source snapshot: capture deadline exceeded")
+        if now - self.moved > STALL_S:
+            raise TimeoutError("source snapshot: no file visited and no byte read for the stall limit")
+        self.moved, self.files, self.bytes = now, self.files + files, self.bytes + size
 
     def path(self, name: bytes) -> Path:
+        """The path of ``name`` under the root. Each distinct parent directory is validated once per snapshot and its identity kept, so a
+        directory replaced while the capture runs is found by `_verify_capture` and not paid for again at every file."""
         parts = name.split(b"/")
         if not name or any(part in (b"", b".", b"..") for part in parts):
             raise RuntimeError("source snapshot: invalid source pathname")
         path = self.root / os.fsdecode(name)
-        if path.parent.resolve() != path.parent:
-            raise RuntimeError("source snapshot: redirected source parent")
-        parent = path.parent
-        while not parent.exists():
-            parent = parent.parent
-        validate_storage(parent, ())
+        if path.parent not in self.parents:
+            self._check_directories(path.parent)
         return path
 
+    def _check_directories(self, parent: Path) -> None:
+        """Validate the directories between the root (checked once, with everything above it, when the snapshot began) and ``parent``, each one
+        the first time it is met: a real directory, no link, owned by this account or root and closed to other writers (a sticky directory
+        of root's excepted), as `validate_storage` asks of every ancestor."""
+        unseen = []
+        for each in (parent, *parent.parents):
+            if each == self.root:
+                break
+            if each in self.parents:
+                break
+            unseen.append(each)
+        else:
+            raise RuntimeError("source snapshot: redirected source parent")
+        for each in reversed(unseen):
+            try:
+                info = each.lstat()
+            except FileNotFoundError:
+                self.parents[each] = None
+                continue
+            sticky = info.st_uid == 0 and info.st_mode & stat.S_ISVTX
+            if (not stat.S_ISDIR(info.st_mode) or info.st_uid not in (0, os.getuid()) or (info.st_mode & 0o022 and not sticky)):
+                raise RuntimeError("source snapshot: redirected source parent or storage ancestry is foreign or writable")
+            self.parents[each] = info.st_dev, info.st_ino
+
     def blob(self, path: Path, info, target: BinaryIO | None = None) -> tuple[bytes, bytes]:
-        if info.st_size > FILE_LIMIT or self.total + info.st_size > TOTAL_LIMIT:
-            raise RuntimeError("source snapshot: source bytes exceed bounds")
-        self.total += info.st_size
+        if self.strict:
+            if info.st_size > FILE_LIMIT or self.total + info.st_size > TOTAL_LIMIT:
+                raise RuntimeError("source snapshot: source bytes exceed bounds")
+            self.total += info.st_size
         digest = hashlib.sha1(f"blob {info.st_size}\0".encode(), usedforsecurity=False)
         content = hashlib.sha256()
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
@@ -353,12 +457,16 @@ class SourceSnapshot:
                 read += len(block)
                 if read > info.st_size:
                     raise RuntimeError("source snapshot: source grew during read")
-                if time.monotonic() >= self.deadline:
-                    raise TimeoutError("source snapshot: source read deadline exceeded")
+                self.advance(size=len(block))
                 digest.update(block)
                 content.update(block)
                 if target is not None:
-                    target.write(block)
+                    if block == ZEROS[:len(block)]:
+                        target.seek(len(block), os.SEEK_CUR)
+                    else:
+                        target.write(block)
+            if target is not None:
+                target.truncate(read)
             final = os.fstat(stream.fileno())
             if (read != info.st_size or _identity(final) != _identity(initial)
                     or _identity(path.lstat()) != _identity(initial)):
@@ -368,8 +476,7 @@ class SourceSnapshot:
     def tree_hash(self) -> str:
         tree = {}
         for name, (mode, digest) in self.entries.items():
-            if time.monotonic() >= self.deadline:
-                raise TimeoutError("source snapshot: tree deadline exceeded")
+            self.advance(1)
             path = self.path(name)
             try:
                 info = path.lstat()
@@ -419,9 +526,11 @@ class SourceSnapshot:
             inventory = tuple(self.entries.items())
             tracked = self.tracked
             self.total = 0
+            self.moved = time.monotonic()
             with ExitStack() as stack:
                 descriptor = os.open(target, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
                 stack.callback(os.close, descriptor)
+                stack.callback(self._release)
                 if _identity(os.fstat(descriptor)) != _identity(created):
                     raise RuntimeError("source snapshot: capture target changed")
                 result = self._capture_files(descriptor, excluded)
@@ -429,15 +538,35 @@ class SourceSnapshot:
                 self._verify_output(descriptor, result[0])
                 if _identity(target.lstat()) != _identity(os.fstat(descriptor)):
                     raise RuntimeError("source snapshot: capture target changed")
-            captured = Capture(target, tuple(result[0]), tuple(result[1]), excluded, tree_digest(result[2]).hex())
+            captured = Capture(target, tuple(result[0]), tuple(result[1]), excluded, tree_digest(result[2]).hex(),
+                               tuple(result[4]), tuple(result[5]))
             cleanup.pop_all()
             return captured
 
+    def _left_out(self, name: bytes, mode: bytes, info: os.stat_result, path: Path) -> str:
+        """Why a path cannot be carried into a capture, which lists it by name and says so, or empty when it can."""
+        if mode == b"160000" or stat.S_ISDIR(info.st_mode):
+            return "a submodule"
+        if stat.S_ISLNK(info.st_mode):
+            return "" if self._inside(name, str(path.readlink())) else "a link that leaves the tree"
+        if not stat.S_ISREG(info.st_mode):
+            return "a special file (a FIFO, a socket or a device)"
+        if info.st_uid != os.getuid():
+            return "a file owned by another account"
+        return "a file with more than one link" if info.st_nlink != 1 else ""
+
+    @staticmethod
+    def _inside(name: bytes, target: str) -> bool:
+        """Whether a link at ``name`` to ``target`` is relative and stays in the tree and out of the Git metadata."""
+        if not target or "\0" in target or Path(target).is_absolute():
+            return False
+        joined = posixpath.normpath(posixpath.join(posixpath.dirname(os.fsdecode(name)), target))
+        return not (joined == ".." or joined.startswith("../") or any(part.lower() == ".git" for part in joined.split("/")))
+
     def _capture_files(self, descriptor: int, excluded: tuple[bytes, ...]) -> tuple:
-        entries, missing, tree, states = [], [], {}, {}
+        entries, missing, tree, states, left, notes = [], [], {}, {}, [], []
         for name, (mode, _) in sorted(self.entries.items()):
-            if time.monotonic() >= self.deadline:
-                raise TimeoutError("source snapshot: capture deadline exceeded")
+            self.advance(1)
             if any(part.lower() == b".git" for part in name.split(b"/")):
                 raise RuntimeError("source snapshot: Git metadata is not source content")
             if any(name == prefix or name.startswith(prefix + b"/") for prefix in excluded):
@@ -451,42 +580,76 @@ class SourceSnapshot:
                 missing.append(name)
                 states[name] = None
                 continue
-            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
-                    or info.st_nlink != 1 or info.st_mode & 0o022 or mode == b"160000"):
-                raise RuntimeError("source snapshot: capture requires owned protected regular files")
             states[name] = _identity(info)
-            mode = b"100755" if info.st_mode & 0o111 else b"100644"
-            with self._capture_file(descriptor, name, mode) as stream:
-                digest, content = self.blob(path, info, stream)
-                stream.flush()
-                output = os.fstat(stream.fileno())
-                if (not stat.S_ISREG(output.st_mode) or output.st_nlink != 1
-                        or output.st_uid != os.getuid() or output.st_mode & 0o077
-                        or output.st_size != info.st_size):
-                    raise RuntimeError("source snapshot: unsafe capture output")
-            entries.append(CaptureEntry(name, mode, content, info.st_size))
+            if self.strict and (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_nlink != 1
+                                or info.st_mode & 0o022 or mode == b"160000"):
+                raise RuntimeError("source snapshot: capture requires owned protected regular files")
+            if why := self._left_out(name, mode, info, path):
+                left.append((name, why))
+                continue
+            if stat.S_ISLNK(info.st_mode):
+                mode, digest, content, size = self._link(descriptor, name, str(path.readlink()))
+            else:
+                if info.st_mode & 0o022:
+                    notes.append((name, "copied with the group and world write bits cleared"))
+                mode = b"100755" if info.st_mode & 0o111 else b"100644"
+                with self._capture_file(descriptor, name, mode) as stream:
+                    digest, content = self.blob(path, info, stream)
+                    stream.flush()
+                    output = os.fstat(stream.fileno())
+                    if (not stat.S_ISREG(output.st_mode) or output.st_nlink != 1
+                            or output.st_uid != os.getuid() or output.st_mode & 0o077
+                            or output.st_size != info.st_size):
+                        raise RuntimeError("source snapshot: unsafe capture output")
+                size = info.st_size
+            entries.append(CaptureEntry(name, mode, content, size))
             cursor = tree
             parts = name.split(b"/")
             for part in parts[:-1]:
                 cursor = cursor.setdefault(part, {})
             cursor[parts[-1]] = mode, digest
-        return entries, missing, tree, states
+        left += [(name, "a special file (a FIFO, a socket or a device)") for name in self.specials
+                 if not any(name == prefix or name.startswith(prefix + b"/") for prefix in excluded)]
+        return entries, missing, tree, states, left, notes
+
+    def _link(self, descriptor: int, name: bytes, target: str) -> tuple[bytes, bytes, bytes, int]:
+        """Carry the link ``name`` to ``target`` as a link: its mode, its Git digest, its content digest and its size."""
+        value = os.fsencode(target)
+        os.symlink(target, name.split(b"/")[-1], dir_fd=self._capture_directory(descriptor, name))
+        return (b"120000", hashlib.sha1(f"blob {len(value)}\0".encode() + value, usedforsecurity=False).digest(),
+                hashlib.sha256(value).digest(), len(value))
+
+    def _capture_directory(self, descriptor: int, name: bytes) -> int:
+        """The descriptor of the directory a captured ``name`` goes in, made one component at a time without following a link. The chain of
+        directories open for the file before is kept and shared, so a directory is opened and checked once for all the files in it."""
+        parts = name.split(b"/")[:-1]
+        shared = 0
+        while shared < min(len(parts), len(self.chain)) and self.chain[shared][0] == parts[shared]:
+            shared += 1
+        for _, held in self.chain[shared:]:
+            os.close(held)
+        del self.chain[shared:]
+        parent = self.chain[-1][1] if self.chain else descriptor
+        for part in parts[shared:]:
+            with suppress(FileExistsError):
+                os.mkdir(part, 0o700, dir_fd=parent)
+            parent = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+            info = os.fstat(parent)
+            if info.st_uid != os.getuid() or info.st_mode & 0o077:
+                os.close(parent)
+                raise RuntimeError("source snapshot: unsafe capture directory")
+            self.chain.append((part, parent))
+        return parent
+
+    def _release(self) -> None:
+        for _, held in self.chain:
+            os.close(held)
+        self.chain.clear()
 
     def _capture_file(self, descriptor: int, name: bytes, mode: bytes) -> BinaryIO:
-        with ExitStack() as stack:
-            parent = descriptor
-            parts = name.split(b"/")
-            for part in parts[:-1]:
-                with suppress(FileExistsError):
-                    os.mkdir(part, 0o700, dir_fd=parent)
-                parent = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
-                stack.callback(os.close, parent)
-                info = os.fstat(parent)
-                if info.st_uid != os.getuid() or info.st_mode & 0o077:
-                    raise RuntimeError("source snapshot: unsafe capture directory")
-            fd = os.open(parts[-1], os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-                         0o700 if mode == b"100755" else 0o600, dir_fd=parent)
-            return os.fdopen(fd, "wb")
+        fd = os.open(name.split(b"/")[-1], os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                     0o700 if mode == b"100755" else 0o600, dir_fd=self._capture_directory(descriptor, name))
+        return os.fdopen(fd, "wb")
 
     def _verify_capture(self, root_state: tuple, inventory: tuple, tracked: tuple, states: dict) -> None:
         if (tuple(self.entries.items()) != inventory or self.tracked != tracked
@@ -497,10 +660,11 @@ class SourceSnapshot:
             raise RuntimeError("source snapshot: source index changed")
         if self.command(["ls-files", "--others", "--exclude-standard", "-z"]) != self.untracked:
             raise RuntimeError("source snapshot: source inventory changed")
+        if any(_optional_directory(parent) != held for parent, held in self.parents.items()):
+            raise RuntimeError("source snapshot: a source directory was replaced during the capture")
         for name, before in states.items():
-            path = self.path(name)
-            after = _optional_identity(path)
-            if before != after:
+            self.advance(1)
+            if before != _optional_identity(self.root / os.fsdecode(name)):
                 raise RuntimeError("source snapshot: source changed after capture")
 
     def _verify_output(self, descriptor: int, entries: list[CaptureEntry]) -> None:
@@ -515,36 +679,50 @@ class SourceSnapshot:
         if root.st_uid != os.getuid() or root.st_mode & 0o077:
             raise RuntimeError("source snapshot: unsafe capture root")
         for relative, dirs, files, parent in os.fwalk(".", dir_fd=descriptor, follow_symlinks=False, onerror=fail):
+            links = []
             for name in dirs:
                 info = os.stat(name, dir_fd=parent, follow_symlinks=False)
-                if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid()
+                if stat.S_ISLNK(info.st_mode):
+                    links.append(name)
+                elif (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid()
                         or info.st_mode & 0o077 or os.fsencode(str(Path(relative) / name)) not in directories):
                     raise RuntimeError("source snapshot: unsafe capture directory")
-            for name in files:
+            for name in [*files, *links]:
                 path = os.fsencode(str(Path(relative) / name))
                 entry = expected.get(path)
                 if entry is None:
                     raise RuntimeError("source snapshot: unexpected capture output")
-                fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
-                with os.fdopen(fd, "rb") as stream:
-                    before = os.fstat(stream.fileno())
-                    if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
-                            or before.st_uid != os.getuid() or before.st_mode & 0o077
-                            or bool(before.st_mode & 0o100) != (entry.mode == b"100755")
-                            or before.st_size != entry.size):
-                        raise RuntimeError("source snapshot: unsafe capture output")
-                    digest, size = hashlib.sha256(), 0
-                    for block in iter(lambda: stream.read(65536), b""):
-                        size += len(block)
-                        if size > entry.size or time.monotonic() >= self.deadline:
-                            raise RuntimeError("source snapshot: capture output changed or deadline exceeded")
-                        digest.update(block)
-                    if (_identity(before) != _identity(os.fstat(stream.fileno()))
-                            or digest.digest() != entry.sha256 or size != entry.size):
-                        raise RuntimeError("source snapshot: capture output changed")
+                self._verify_entry(name, parent, entry)
                 seen.add(path)
         if seen != set(expected):
             raise RuntimeError("source snapshot: capture output disappeared")
+
+    def _verify_entry(self, name: str, parent: int, entry: CaptureEntry) -> None:
+        """Read one captured file or link back and check it is what the capture recorded."""
+        self.advance(1)
+        if entry.mode == b"120000":
+            value = os.fsencode(os.readlink(name, dir_fd=parent))
+            if hashlib.sha256(value).digest() != entry.sha256 or len(value) != entry.size:
+                raise RuntimeError("source snapshot: capture output changed")
+            return
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+        with os.fdopen(fd, "rb") as stream:
+            before = os.fstat(stream.fileno())
+            if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
+                    or before.st_uid != os.getuid() or before.st_mode & 0o077
+                    or bool(before.st_mode & 0o100) != (entry.mode == b"100755")
+                    or before.st_size != entry.size):
+                raise RuntimeError("source snapshot: unsafe capture output")
+            digest, size = hashlib.sha256(), 0
+            for block in iter(lambda: stream.read(65536), b""):
+                size += len(block)
+                if size > entry.size:
+                    raise RuntimeError("source snapshot: capture output changed")
+                self.advance(size=len(block))
+                digest.update(block)
+            if (_identity(before) != _identity(os.fstat(stream.fileno()))
+                    or digest.digest() != entry.sha256 or size != entry.size):
+                raise RuntimeError("source snapshot: capture output changed")
 
     def close(self) -> None:
         shutil.rmtree(self.directory)

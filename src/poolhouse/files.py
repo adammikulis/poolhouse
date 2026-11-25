@@ -27,8 +27,8 @@ else:
     open_read = None
     replace = os.replace
 
-__all__ = ["UNVERSIONED", "CrossDevice", "promote", "promote_new", "prune_orphans", "read_json", "reading", "records_in",
-           "sha256_file", "stat_signature", "version_of", "versioned", "write_json", "write_text", "writing"]
+__all__ = ["UNVERSIONED", "CrossDevice", "clone_tree", "promote", "promote_new", "prune_orphans", "read_json", "reading", "records_in",
+           "sha256_file", "stat_signature", "swap", "version_of", "versioned", "write_json", "write_text", "writing"]
 
 #: A record with no version key.
 UNVERSIONED = 0
@@ -133,6 +133,36 @@ def promote_new(source: Path | str | bytes, target: Path | str | bytes, *,
         if code == errno.EXDEV:
             raise CrossDevice(code, "Atomic promotion requires the same filesystem", os.fsdecode(target))
         raise OSError(code, os.strerror(code), os.fsdecode(target))
+
+
+def swap(one: Path | str | bytes, other: Path | str | bytes, *, directory_fd: int) -> None:
+    """Exchange two direct children of the directory ``directory_fd`` in one step, so each name holds what the other held (macOS
+    `renameatx_np` with RENAME_SWAP, Linux `renameat2` with RENAME_EXCHANGE). `OSError` with ENOTSUP or EINVAL where the filesystem cannot."""
+    _directory_descriptor(directory_fd)
+    names = _child_name(one), _child_name(other)
+    libc = ctypes.CDLL(None, use_errno=True)
+    if sys.platform == "darwin" and hasattr(libc, "renameatx_np"):
+        operation, flag = libc.renameatx_np, 0x00000002  # RENAME_SWAP
+    elif sys.platform == "linux" and hasattr(libc, "renameat2"):
+        operation, flag = libc.renameat2, 2  # RENAME_EXCHANGE
+    else:
+        raise OSError(errno.ENOTSUP, "An atomic exchange of two names is unavailable")
+    operation.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+    operation.restype = ctypes.c_int
+    if operation(directory_fd, names[0], directory_fd, names[1], flag) != 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code), os.fsdecode(names[0]))
+
+
+def clone_tree(source: Path | str, target: Path | str) -> bool:
+    """Copy the tree ``source`` to the new path ``target`` by copy-on-write where the filesystem has it (macOS `clonefile` on APFS); False,
+    with nothing made, where it does not, and the caller copies."""
+    if sys.platform != "darwin":
+        return False
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.clonefile.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint32]
+    libc.clonefile.restype = ctypes.c_int
+    return libc.clonefile(os.fsencode(source), os.fsencode(target), 0) == 0
 
 
 def _promote_relative(source: Path, target: Path, descriptor: int) -> None:
