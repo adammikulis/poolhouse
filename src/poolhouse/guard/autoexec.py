@@ -1,6 +1,7 @@
 """Writes that put code where something runs it later: git hooks, build and test files, shell startup files, agent settings.
 
-`path_reason` says why a path runs by itself; `write_findings` reads the files a Write, Edit, MultiEdit,
+`path_reason` says why a path runs by itself, from `guard.runs_later.classify` and the records it reads (the language registry snapshot, the
+harness and ecosystem records); no list of names is kept here. `write_findings` reads the files a Write, Edit, MultiEdit,
 NotebookEdit or apply_patch call would change and returns one finding per file.
 """
 
@@ -15,48 +16,13 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import files, home, secretpaths
-from poolhouse.guard import fetchexec
+from poolhouse.guard import fetchexec, runs_later
 from poolhouse.guard.harm import Finding, outside, resolve
 from poolhouse.guard.verbs import words_of
 
 __all__ = ["path_reason", "write_findings", "written"]
 
 U, D = "unsure", "destructive"
-HOOKS = "runs when git commits, merges or pushes"
-AGENT = "changes what the coding agent may run or is told to do"
-BUILD = "runs when the project is built or tested"
-SHELL_START = "runs every time a shell starts"
-CI = "runs on the build servers"
-EDITOR = "runs when an editor opens the project"
-RUNS = {
-    (".git", "hooks"): HOOKS, (".git", "config"): "sets commands git runs on its own", (".github", "workflows"): CI,
-    (".github", "actions"): CI, (".local", "bin"): "puts a program on the command search path",
-    (".cargo", "config.toml"): BUILD, (".cargo", "config"): BUILD, (".git", "info"): "sets commands git runs on its own",
-    ("scripts", "test"): "runs when the project is tested", ("scripts", "hooks"): HOOKS,
-    (".config", "systemd"): "starts programs for the person", (".config", "autostart"): "starts programs at login",
-}
-FOLDERS = {
-    ".githooks": HOOKS, ".husky": HOOKS, ".claude": AGENT, ".codex": AGENT, ".cursor": AGENT, ".agents": AGENT,
-    ".vscode": EDITOR, ".idea": EDITOR, ".devcontainer": EDITOR, ".circleci": CI, ".buildkite": CI, ".direnv": SHELL_START,
-    "launchagents": "runs at login", "launchdaemons": "runs at startup",
-}
-FILES = {
-    **dict.fromkeys(("conftest.py", "setup.py", "setup.cfg", "pyproject.toml", "tox.ini", "noxfile.py", "pytest.ini", "makefile", "gnumakefile",
-                     "justfile", "taskfile.yml", "taskfile.yaml", "package.json", ".npmrc", ".yarnrc", ".yarnrc.yml", ".pnpmfile.cjs",
-                     "cargo.toml", "build.rs", "build.gradle", "build.gradle.kts", "settings.gradle", "pom.xml", "gemfile",
-                     "rakefile", "vagrantfile", "cmakelists.txt", "procfile", ".pre-commit-config.yaml"), BUILD),
-    **dict.fromkeys(("sitecustomize.py", "usercustomize.py"), "runs every time python starts"),
-    **dict.fromkeys((".envrc", ".tool-versions", "mise.toml", ".mise.toml"), "runs when a shell enters the folder"),
-    **dict.fromkeys((".bashrc", ".bash_profile", ".bash_login", ".bash_logout", ".profile", ".zshrc", ".zshenv", ".zprofile", ".zlogin",
-                     ".zlogout", ".cshrc", ".tcshrc", ".kshrc", "config.fish", ".vimrc", ".exrc", "init.vim", "init.lua", ".emacs", "init.el",
-                     ".xinitrc", ".xprofile", "crontab"), SHELL_START),
-    **dict.fromkeys((".gitconfig", ".gitmodules", ".gitattributes"), "sets commands git runs on its own"),
-    **dict.fromkeys((".mcp.json", "claude.md", "agents.md", "gemini.md", ".cursorrules"), AGENT),
-    **dict.fromkeys((".gitlab-ci.yml", ".travis.yml", "azure-pipelines.yml", "bitbucket-pipelines.yml", "jenkinsfile", ".drone.yml"), CI),
-}
-SUFFIX = ((".pth", "runs every time python starts"), (".mk", BUILD), (".gemspec", BUILD), (".plist", "can start a program when launchd loads it"),
-          (".service", "can start a program when systemd loads it"), (".timer", "can start a program when systemd loads it"))
-CONFIGS = re.compile(r"(?i).+\.config\.(?:js|mjs|cjs|ts)|\.(?:eslintrc|babelrc)\.(?:js|cjs)")
 EDITS = frozenset({"edit", "write", "append", "create", "update", "patch", "replace", "insert", "save", "put"})
 WRITE_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch"})
 PATH_KEYS = ("file_path", "path", "notebook_path", "filepath", "filename", "file")
@@ -94,20 +60,7 @@ def path_reason(path: str, roots: Sequence[str] = ()) -> str:
 
 def _reason(path: str, roots: Sequence[str]) -> str:
     parts = _parts(path, roots)
-    if not parts:
-        return ""
-    for run, why in RUNS.items():
-        if any(parts[at:at + len(run)] == run for at in range(len(parts) - len(run) + 1)):
-            return why
-    name = parts[-1]
-    folder = next((FOLDERS[p] for p in parts[:-1] if p in FOLDERS), "")
-    if folder:
-        return folder
-    if name in FILES:
-        return FILES[name]
-    if CONFIGS.fullmatch(name):
-        return BUILD
-    return next((why for suffix, why in SUFFIX if name.endswith(suffix) and name != suffix), "")
+    return runs_later.classify("/".join(parts)).runs if parts else ""
 
 
 def _patch(text: str) -> Iterator[tuple[str, str]]:

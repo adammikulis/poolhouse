@@ -14,11 +14,14 @@ from typing import Any
 
 from poolhouse import coding_policy, harnessing, serverkeys
 from poolhouse.client import reported_models
+from poolhouse.guard import harnesses
 from poolhouse.log import say
 from poolhouse.serve import provenance
 
-__all__ = ["environment", "launch", "main", "settings"]
+__all__ = ["INSTRUCTIONS", "environment", "launch", "main", "settings"]
 
+INSTRUCTIONS = harnesses.RECORDS["claude"]
+"""The instruction and settings names Claude Code reads from a project; `guard.runs_later` refuses a change to one at any depth."""
 DEFAULT_PORT = 8080
 
 MIN_COMPACT_WINDOW = 100000

@@ -18,20 +18,12 @@ from pathlib import Path, PurePosixPath
 
 from poolhouse import secretpaths
 from poolhouse.coding_workspace_state import CONTROL_PREFIXES
-from poolhouse.guard import autoexec
+from poolhouse.guard import runs_later
 from poolhouse.isolation.toolchain import Identity
 
-__all__ = ["GOVERNING_NAMES", "NotPublishable", "PublishRule", "bind", "governing", "matches"]
+__all__ = ["NotPublishable", "PublishRule", "bind", "governing", "matches"]
 
 GLOB = re.compile(r"[*?\[\]{}]")
-PATH_RUN = re.compile(r"[A-Za-z0-9._/@+-]+")
-GOVERNING_NAMES = frozenset({"codeowners", "gradlew", "gradlew.bat", "mvnw", "mvnw.cmd", "lefthook.yml", "lefthook.yaml", "dockerfile",
-                             "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "cargo.lock", "poetry.lock", "uv.lock", "go.mod",
-                             "go.sum", "pipfile", "pipfile.lock", "requirements.txt", "workspace", "build.bazel"})
-"""Names of governing files beyond the ones `guard.autoexec` knows: review governance, wrapper scripts, hook managers and the records that
-decide what an install runs. `guard.runs_later` computes the whole set from structure, the language registry and the project's own wiring
-and replaces this and the tables of `guard.autoexec` (design 4.4.2, slice L4)."""
-GOVERNING_SUFFIXES = (".jar", ".bzl", ".cmake", ".gradle", ".kts", ".sln", ".csproj", ".props")
 
 
 class NotPublishable(ValueError):
@@ -47,48 +39,41 @@ class PublishRule:
     file: Identity | None
 
 
-def governing(project: str | os.PathLike[str], relpath: str) -> str:
-    """Why ``relpath`` governs what runs or who reviews (it runs by itself later, or is named by a file that does), or empty."""
-    name = PurePosixPath(relpath).name.lower()
-    if reason := autoexec.path_reason(relpath, [str(project)]):
-        return reason
-    if name in GOVERNING_NAMES or name.endswith(GOVERNING_SUFFIXES):
-        return "decides what runs or who reviews"
-    return "named by a file that runs it" if _named_by_a_governing_file(Path(project), relpath) else ""
+def _facts(root: Path):
+    """The reader `runs_later.tree` takes: the first bytes, the mode bits and the link count of a regular file, opened without following a link."""
+
+    def read(rel: str) -> tuple[bytes, int, int] | None:
+        try:
+            descriptor = os.open(root / rel, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        except OSError:
+            return None
+        with os.fdopen(descriptor, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            return (stream.read(runs_later.READ_LIMIT), info.st_mode, info.st_nlink) if stat.S_ISREG(info.st_mode) else None
+
+    return read
 
 
-def _is_governing(root: Path, found: Path) -> bool:
-    rel = found.relative_to(root).as_posix()
-    low = found.name.lower()
-    return bool(autoexec.path_reason(rel, [str(root)])) or low in GOVERNING_NAMES or low.endswith(GOVERNING_SUFFIXES)
-
-
-def _named_by_a_governing_file(root: Path, relpath: str) -> bool:
-    """Whether a governing file of the project, or a file one of them names in turn, contains the path ``relpath`` as a maximal run of path
-    characters that resolves to it from the project root or from that file's directory."""
-    target, seen, queue = (root / relpath).resolve(), set(), []
+def _files(root: Path) -> set[str] | None:
+    """Every file of the project the walk reaches, or ``None`` when the project is too large to read what names what."""
+    found: set[str] = set()
     for count, (here, dirs, names) in enumerate(os.walk(root)):
         dirs[:] = [d for d in dirs if d not in secretpaths.SKIP_DIRS]
-        queue += [Path(here) / n for n in names if _is_governing(root, Path(here) / n)]
+        found.update(Path(here, name).relative_to(root).as_posix() for name in names)
         if count > secretpaths.MAX_WALK:
-            return True
-    while queue:
-        current = queue.pop()
-        if current in seen or not current.is_file():
-            continue
-        seen.add(current)
-        try:
-            text = current.read_bytes()[:autoexec.MAX_FILE].decode("utf-8", errors="replace")
-        except OSError:
-            continue
-        for token in PATH_RUN.findall(text):
-            for base in (root, current.parent):
-                reached = (base / token).resolve()
-                if reached == target:
-                    return True
-                if reached.is_file() and root in reached.parents and reached not in seen:
-                    queue.append(reached)
-    return False
+            return None
+    return found
+
+
+def governing(project: str | os.PathLike[str], relpath: str) -> str:
+    """Why ``relpath`` governs what runs or who reviews (a path, a name or a record says it runs by itself later, or a non-plain file of the
+    project names it), or empty. A project too large to read for what names what is refused."""
+    root = Path(project)
+    paths = _files(root)
+    if paths is None:
+        return "the project is too large to check what names this file"
+    verdict = runs_later.tree(paths | {relpath}, _facts(root))[relpath]
+    return verdict.sentence if verdict.governing else ""
 
 
 def _folded(name: str) -> str:
