@@ -22,6 +22,8 @@ from tests.isolation_kit import without_a_sandbox
 from tests.sandbox_kit import AbsentBackend
 
 SENTENCE = SENTENCES["no_sandbox_tool"]
+pytest_plugins = ["tests.confined_kit"]
+pytestmark = pytest.mark.usefixtures("from_a_terminal")
 
 
 class Reached(AssertionError):

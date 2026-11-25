@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from poolhouse import harnessing, isolation
 from poolhouse.isolation import confinement
 from poolhouse.isolation.proof import run as run_proof
 
@@ -38,6 +39,14 @@ def confinable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(confinement.Session, "begin", staticmethod(begin))
     monkeypatch.setattr(confinement, "run_proof", lambda profile, services: run_proof(profile, services, lan=False))
     return storage
+
+
+@pytest.fixture
+def from_a_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The launch is made from a terminal outside any agent, as a person's or the daemon's is. A test of the launcher's plumbing is run by a suite an
+    agent may run, whose process tree has an agent in it, and the widening gate refuses that caller `--project` (tests/test_isolation_gate.py holds the
+    gate's own cases), so here the decision of the widenings is the empty one."""
+    monkeypatch.setattr(harnessing, "decided", lambda args, asked: isolation.Launch((), (), False, False))
 
 
 def repository(path: Path) -> Path:

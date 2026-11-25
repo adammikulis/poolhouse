@@ -38,14 +38,6 @@ pytest_plugins = ["tests.confined_kit"]
 CLIENT = str(Path(__file__).resolve().parent.parent / "src" / "poolhouse" / "isolation" / "client.py")
 
 
-@pytest.fixture
-def from_a_terminal(monkeypatch):
-    """The launch is made from a terminal outside any agent, as a person's or the daemon's is. These tests are about the launcher's plumbing, and a
-    suite an agent runs has an agent for an ancestor, which the widening gate refuses for `--project` (tests/test_isolation_gate.py holds the gate's
-    own cases), so the decision of the widenings is the empty one here."""
-    monkeypatch.setattr(harnessing, "decided", lambda args, asked: isolation.Launch((), (), False, False))
-
-
 def context(tmp_path, socket="/tmp/ph-x/s", client=CLIENT, pid=4242):
     """What a harness's files are made from, for a launch that has not started: the places and the one client a hook runs."""
     return isolation.Context(tmp_path, tmp_path / ".claude-config", str(tmp_path), os.path.realpath(sys.executable), client, socket, pid,

@@ -16,7 +16,7 @@ from poolhouse import harnessing, isolation, pi
 pytest_plugins = ["tests.confined_kit"]
 
 
-@pytest.mark.usefixtures("confinable")
+@pytest.mark.usefixtures("confinable", "from_a_terminal")
 def test_pi_launch_is_offline_and_uses_the_policy_extension(monkeypatch, tmp_path):
     seen = {}
     binary = tmp_path / "pi"
