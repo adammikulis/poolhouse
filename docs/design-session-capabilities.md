@@ -358,8 +358,8 @@ needs the connecting process's id on a named pipe (`GetNamedPipeClientProcessId`
 and `lease::live::inspect` already reads a start time on Windows. Until slice S3 provides it, Windows sessions use `hook` and
 `file` custody, which is what a Windows session has now (nothing). Custody files take the `restrict` ACL as token files do.
 `anchor.rs` reads no terminal on Windows, so a Windows root has no evidence anchor and is cause `agent` for
-`docs/compromised-agents.md` 3.5 until a person taps `[Trust this session]` for that root (that document's `anchor` card, once
-per root).
+`docs/compromised-agents.md` 3.5, which the node decides at once by its own rule: the root keeps the rights of an agent session
+and nothing waits for a tap or a card.
 
 ## 4. The onboarding rule
 

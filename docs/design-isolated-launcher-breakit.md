@@ -10,6 +10,11 @@ first"; the design's own section 14 asked for this pass). Read with it: AGENTS.m
 built; several findings are about code that does not exist yet (`isolation.*`, `Workspace.apply`, the AppArmor
 profile) and are marked as design-level, not run.
 
+Where a finding or a verdict below is worded around a person's step (a question asked at publication, a grant typed at a
+terminal, an ask that fatigues the person), the design decides it by an automatic rule or an immediate refusal and keeps the
+property the finding names (`docs/design-isolated-launcher.md`, "Zero friction" and 14.3). The red tests assert the property,
+never a step by a person.
+
 **Environment**: this Mac (macOS 26.6, build 25G70, Apple M4 Max, `/usr/bin/sandbox-exec` present), same device
 the design itself used. No Linux or Windows device was reachable (same gap the design records), so every Linux
 and Windows claim below is a read of the code or of the design text, not a run; marked **NOT RUN (no device)**.
