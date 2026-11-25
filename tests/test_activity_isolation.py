@@ -11,19 +11,17 @@ from tests.activity_support import (
     person,
     ring,
 )
-from tests.isolation_kit import hostile_project, person_home, world
+from tests.isolation_kit import person_home, registered_project, world
 
 __all__ = ["person", "ring"]  # fixtures this module's tests ask for by name
+pytest_plugins = ["node_kit"]
 
 
-def nobody(project: str) -> bool:
-    return False
-
-
-def test_every_decision_is_logged_with_its_issuer_and_the_source_it_claimed_and_never_the_subject(tmp_path, monkeypatch, person):
+def test_every_decision_is_logged_with_its_issuer_and_the_source_it_claimed_and_never_the_subject(tmp_path, monkeypatch, person, workspace_node):
     person_home(tmp_path, monkeypatch)
-    project = hostile_project(tmp_path)
-    launch = decide_launch(Arguments(allow_net=("evil.example",), publish=("src/app.py",)), project=project, registered=nobody)
+    monkeypatch.setenv("POOLHOUSE_HOME", str(workspace_node.state.parent))
+    project = registered_project(tmp_path, workspace_node)
+    launch = decide_launch(Arguments(allow_net=("evil.example",), publish=("src/app.py",)), project=project)
     assert [each.granted for each in launch.decisions] == [False, True]
     rows = [row for row in entries() if row.kind == "isolation.grant"]
     assert [row.outcome for row in rows] == ["refused", "granted"]

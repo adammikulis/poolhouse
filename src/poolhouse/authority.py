@@ -85,7 +85,7 @@ PRESETS = ("dev", "prod")
 
 
 def _file():
-    return home.state("authority.json")
+    return home.guarded("authority.json")
 
 
 def _read() -> dict[str, Any]:
@@ -164,15 +164,16 @@ def set_state(names: Iterable[str], new: str, *, by: str, scope: Scope | None = 
     return changes
 
 
-def require(gate: str, action: str, env: Mapping[str, str] | None = None, *, scope: Scope | None = None) -> str:
+def require(gate: str, action: str, env: Mapping[str, str] | None = None, *, scope: Scope | None = None, attested: str = "") -> str:
     """Decide ``gate`` for ``action`` at once: the state it is in, or `AgentRefused` for an agent when the gate is held back from agents.
-    Every pass is audited with who ran it, the agent's authenticated name when the node knows the session."""
+    Every pass is audited with who ran it, the agent's authenticated name when the node knows the session. ``attested`` names an agent the
+    node found in the caller's process ancestry, which counts as an agent whatever the environment says."""
     scope = scope or Scope()
     state = state_of(gate, scope.project)
     if state == PERSON:
-        refuse_agent(action, f"the gate {gate} is held back from agents (`poolhouse-workspace authority show`)", env)
+        refuse_agent(action, f"the gate {gate} is held back from agents (`poolhouse-workspace authority show`)", env, attested=attested)
         return PERSON
-    if marked(env):
+    if marked(env) or attested:
         record("authority.use", who=who(env), gate=gate, action=action, agent=_agent_name(scope), project=scope.project)
     else:
         record("authority.use", gate=gate, action=action, project=scope.project)

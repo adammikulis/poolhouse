@@ -11,6 +11,7 @@ import contextlib
 import json
 import os
 import socket
+import subprocess
 import sys
 import tempfile
 import threading
@@ -22,6 +23,7 @@ from pathlib import Path
 import pytest
 
 from poolhouse import coding_policy
+from poolhouse.board import place
 from poolhouse.isolation import Services, Spec, build, environment
 from poolhouse.isolation.egress import Host
 from poolhouse.isolation.environment import Inputs
@@ -126,7 +128,7 @@ def interpreter() -> str:
     return os.path.realpath(sys.executable)
 
 
-REGISTRY = {"pypi.org": Host("pypi.org", "python", "https://pypi.org/help/", 5000, "pip download, measured by the test kit", "2026-11-24")}
+REGISTRY = {"pypi.org": Host("pypi.org", "python", "https://pypi.org/help/", 5000, "pip download, measured by the test kit", "2026-11-24", 12000)}
 """One host with every field a registry entry must carry, for the tests of the decisions; the file of the list has its own test."""
 
 
@@ -139,6 +141,15 @@ def person_home(root: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("HOME", str(house))
     monkeypatch.setenv("POOLHOUSE_HOME", str(house / ".poolhouse"))
     return house
+
+
+def registered_project(root: Path, node) -> str:
+    """`hostile_project` made a git repository and registered with the real node ``node`` as a project, the way a session's first hook adds the
+    repository it runs in; the node's state is the state root of this test."""
+    project = hostile_project(root)
+    subprocess.run(["git", "init", "-q", project], check=True, capture_output=True)
+    place.add(node.client, Path(project))
+    return project
 
 
 def hostile_project(root: Path) -> str:

@@ -12,12 +12,14 @@ from __future__ import annotations
 import errno
 import os
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 from poolhouse import home
 
-__all__ = ["MANAGERS", "Identity", "Resolved", "declared", "resolve"]
+__all__ = ["MANAGERS", "Declaration", "Identity", "Resolved", "declarations", "declared", "interpreter_roots", "reach", "resolve",
+           "system_toolchain"]
 
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,39}")
 """What a version declaration may name: one plain token, never a path."""
@@ -104,18 +106,87 @@ def _holds_program(directory: Path, program: str) -> bool:
     return any(os.access(found, os.X_OK) for found in directory.glob(f"bin/{program}*") if found.is_file())
 
 
-def _venv_prefix(project: Path) -> list[Path]:
-    """The directory a virtual environment's interpreter belongs to, from ``home =`` of its ``pyvenv.cfg``; a file that names anything
-    else, or a directory with no interpreter, names nothing."""
+@dataclass(frozen=True, slots=True)
+class Declaration:
+    """What a project's own file names as a toolchain folder: the real path it names, and why it is refused (empty when it is granted)."""
+
+    subject: str
+    refused: str = ""
+
+
+HOMEBREW = ("bin", "lib", "opt", "Cellar", "share", "include", "Frameworks")
+"""What of `/opt/homebrew` and `/usr/local` is the system toolchain: not their `etc` or `var` (8.2)."""
+COMMAND_LINE_TOOLS = "/Library/Developer/CommandLineTools"
+
+
+def system_toolchain() -> tuple[str, ...]:
+    """The system toolchain every session may read and run, as the directories this machine has (5.2 and 8.2): the command-line developer
+    tools, and the program and library trees of Homebrew and `/usr/local`."""
+    found = [COMMAND_LINE_TOOLS] if sys.platform == "darwin" else []
+    for prefix in ("/opt/homebrew", "/usr/local"):
+        found += [f"{prefix}/{name}" for name in HOMEBREW]
+    return tuple(os.path.realpath(path) for path in found if Path(path).is_dir() and os.path.realpath(path) == path)
+
+
+VERSION_FOLDERS = (".pyenv/versions", ".local/share/uv/python")
+"""Where the person's own version managers keep one folder per interpreter, under the home folder (each manager's documented layout)."""
+SYSTEM_VERSION_FOLDERS = ("/Library/Frameworks/Python.framework/Versions",)
+"""Where the system installer keeps one folder per interpreter."""
+NOT_INSTALLED = "the interpreter folder a virtual environment names is not one a version manager or the system installed"
+"""Why a `home =` outside the closed list is refused: a fact of the folder, never the text the project chose."""
+
+
+def interpreter_roots() -> frozenset[str]:
+    """The closed list of folders a virtual environment's ``home =`` may name as its interpreter's prefix: each real folder (never a link) that
+    sits directly in a version-manager or system install folder, and the prefix of the interpreter that runs this code. Nothing a project
+    holds adds to it."""
+    found = {os.path.realpath(sys.base_prefix)}
+    folders = [str(home.user_home() / each) for each in VERSION_FOLDERS] + list(SYSTEM_VERSION_FOLDERS)
+    for folder in folders:
+        try:
+            entries = list(Path(folder).iterdir())
+        except OSError:
+            continue
+        found.update(os.path.realpath(entry) for entry in entries if entry.is_dir() and not entry.is_symlink())
+    return frozenset(found)
+
+
+def reach(root: str) -> tuple[str, ...]:
+    """What of a granted toolchain folder a session reads and runs. An interpreter's folder is only its ``bin`` and its ``lib/pythonX.Y``: the
+    rest of a prefix (``etc``, ``var``, ``share``, a keyring a tool keeps beside it) is not the interpreter's; any other toolchain is its folder."""
+    base = Path(root)
+    if not _holds_program(base, "python"):
+        return (root,)
+    libs = sorted(str(each) for each in base.glob("lib/python[0-9]*") if each.is_dir() and not each.is_symlink())
+    return (str(base / "bin"), *libs)
+
+
+def _system(path: Path) -> bool:
+    """Whether every session already reads and runs ``path``: it lies in the system toolchain (Homebrew, the command-line tools)."""
+    return any(path == Path(each) or Path(each) in path.parents for each in system_toolchain())
+
+
+def _venv(project: Path) -> list[Declaration]:
+    """The interpreter folder of a virtual environment, from ``home =`` of its ``pyvenv.cfg``: granted only when it is one of the closed
+    list (`interpreter_roots`) that holds a Python; a folder already in the system toolchain names nothing new; anything else is refused with
+    the reason, and the launch goes on without it."""
     config = project / ".venv" / "pyvenv.cfg"
     try:
         lines = config.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return []
     named = next((line.split("=", 1)[1].strip() for line in lines if line.partition("=")[0].strip() == "home" and "=" in line), "")
-    where = Path(named)
-    prefix = where.parent if where.name == "bin" else where
-    return [prefix] if named and where.is_absolute() and _holds_program(prefix, "python") else []
+    if not named:
+        return []
+    if not Path(named).is_absolute():
+        return [Declaration(named, NOT_INSTALLED)]
+    real = Path(os.path.realpath(named))
+    prefix = real.parent if real.name == "bin" else real
+    if _system(prefix):
+        return []
+    if str(prefix) not in interpreter_roots() or not _holds_program(prefix, "python"):
+        return [Declaration(str(prefix), NOT_INSTALLED)]
+    return [Declaration(str(prefix))]
 
 
 def _managed(project: Path) -> list[Path]:
@@ -134,9 +205,16 @@ def _managed(project: Path) -> list[Path]:
     return found
 
 
-def declared(project: str | os.PathLike[str]) -> list[str]:
-    """The real paths of the toolchain directories the project declares by its own files (``.python-version``, ``.venv/pyvenv.cfg``,
-    ``rust-toolchain``, ``.nvmrc``): each the version directory of the person's own version manager, never its parent. A declaration
-    that names a directory with no program of the declared kind, or anything that is not a plain version name, names nothing."""
+def declarations(project: str | os.PathLike[str]) -> list[Declaration]:
+    """Every toolchain folder the project declares by its own files (``.python-version``, ``.venv/pyvenv.cfg``, ``rust-toolchain``,
+    ``.nvmrc``), each the version folder of a version manager or of the system and never its parent, and each declaration the closed list
+    refuses with the reason. A declaration that names a folder with no program of the declared kind, or anything that is not a plain version
+    name, names nothing."""
     root = Path(project)
-    return list(dict.fromkeys(os.path.realpath(each) for each in (*_venv_prefix(root), *_managed(root))))
+    found = [*_venv(root), *(Declaration(os.path.realpath(each)) for each in _managed(root))]
+    return list({each.subject: each for each in found}.values())
+
+
+def declared(project: str | os.PathLike[str]) -> list[str]:
+    """The real paths of the toolchain folders the project declares that are granted: the declarations the closed list did not refuse."""
+    return [each.subject for each in declarations(project) if not each.refused]

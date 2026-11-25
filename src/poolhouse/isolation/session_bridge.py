@@ -20,7 +20,8 @@ import secrets
 import socket
 import stat
 import threading
-from collections import Counter
+import time
+from collections import Counter, deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -40,7 +41,17 @@ GRANT_REFUSAL = "Grants are launch arguments; none is decided here."
 KINDS = ("read", "toolchain", "net", "publish", "in-place")
 EVENTS = ("pre", "post", "stop")
 FRAMES = {"hook": {"verb", "event", "payload"}, "workspace": {"verb", "name", "arguments"}, "tools": {"verb"}}
-FAILURES = (Error, OSError, ValueError, LookupError, RuntimeError, TypeError, EOFError, AttributeError, ImportError)
+FAILURES = (Error, OSError, ValueError, LookupError, RuntimeError, TypeError, EOFError, AttributeError, ImportError, ArithmeticError)
+FRAME_TOKENS = 512
+"""A session may send one frame a minute for each this many tokens of its window, and never fewer than `MOST_FRAMES`. A frame is a hook event or a
+workspace verb, that is a tool call the model wrote, so what bounds them is the model's own output; this is a ceiling that no harness comes
+near (256k tokens of window give 500 a minute) and that a loop made to flood the parent's processes, log and sentinel meets in a minute."""
+MOST_FRAMES = 60
+MINUTE = 60.0
+BUSY = "That is more frames than a session sends in a minute."
+HOOK_FAILED = "The hook could not decide, so the call is blocked."
+VERB_FAILED = "The workspace could not run {verb} ({kind})."
+"""The fixed sentences of a failure: what failed and its kind, never a path, a name or a word the parent holds (the detail goes to the log)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +73,8 @@ class Terms:
 
     writable: bool
     window: int
+    claim_ttl_s: float = session_verbs.TTL_CAP
+    """The longest a claim or a heartbeat of the session may last: the workspace's configured `claim_ttl_s`, which the launcher passes in."""
 
 
 @dataclass(slots=True)
@@ -79,19 +92,29 @@ def digest(value: object) -> str:
 
 class SessionBridge:
     """The bridge of one session. ``terms`` are what the launcher fixed about it, and ``root`` is a short path whose directory the socket's
-    directory is made in. ``admit`` is told the process id of each connecting process and may refuse it, for example when it is not in the session's tree."""
+    directory is made in. ``admit`` is told the process id of each connecting process and may refuse it (it is in the session's tree). A bridge
+    is made with one, or with ``unadmitted``, the reason it has none, which is logged when it starts: no bridge admits every process of the user
+    by default."""
 
-    def __init__(self, handlers: Handlers, terms: Terms, *, root: str, admit: Callable[[int], bool] | None = None,
+    def __init__(self, handlers: Handlers, terms: Terms, *, root: str, admit: Callable[[int], bool] | None = None, unadmitted: str = "",  # noqa: PLR0913
                  idle: float = IDLE_SECONDS) -> None:
         if os.name != "posix":
             raise IsolationRefused(sentence("windows_network"))
+        if admit is None and not unadmitted.strip():
+            raise ValueError("a session bridge is made with an admit predicate, or with the reason it has none")
         self.handlers, self.writable, self.limit, self.idle, self._admit = handlers, terms.writable, int(terms.window) * 4, idle, admit
+        self.unadmitted, self.claim_ttl_s = unadmitted.strip()[:200], float(terms.claim_ttl_s)
+        self.budget = max(MOST_FRAMES, int(terms.window) // FRAME_TOKENS)
+        self._times: deque[float] = deque()
+        self._post = threading.Lock()
+        self._last_post: dict[str, Any] = {}
         self.directory = str(Path(os.path.realpath(root)) / ("ph-" + secrets.token_hex(8)))
         self.path = str(Path(self.directory) / "s")
         self.pid = os.getpid()
         self.counts = Counts()
         self._lock = threading.Lock()
-        self._server = Server(socket.AF_UNIX, self.path, self._connection, admit=self._admitted_here)
+        self._server = Server(socket.AF_UNIX, self.path, self._connection, admit=self._admitted_here,
+                              stopped=lambda: tell(self.handlers.events, "session-bridge", "isolation.service_stopped"))
 
     def __repr__(self) -> str:
         return f"SessionBridge(path={self.path!r})"
@@ -109,6 +132,9 @@ class SessionBridge:
             with contextlib.suppress(OSError):
                 Path(self.directory).rmdir()
             raise
+        if self.unadmitted:
+            with contextlib.suppress(*FAILURES):
+                self.handlers.log("isolation.session_bridge_unadmitted", subject="session-bridge", outcome="started", meta={"reason": self.unadmitted})
         return self.path
 
     def stop(self) -> None:
@@ -167,11 +193,27 @@ class SessionBridge:
         tell(self.handlers.events, "session-bridge", "isolation.refused_frame", kind=kind)
         return {"refused": why, **extra}
 
+    def _within_budget(self) -> bool:
+        """Whether one more frame is within what a session sends in a minute; the frames of the last minute are what is counted."""
+        now = time.monotonic()
+        with self._lock:
+            while self._times and now - self._times[0] > MINUTE:
+                self._times.popleft()
+            if len(self._times) >= self.budget:
+                return False
+            self._times.append(now)
+            return True
+
     def _answer(self, line: bytes) -> dict[str, Any]:
+        def reject(constant: str) -> None:
+            raise ValueError(constant)
+
         try:
-            frame = json.loads(line.decode("utf-8"), object_pairs_hook=unique_object)
+            frame = json.loads(line.decode("utf-8"), object_pairs_hook=unique_object, parse_constant=reject)
         except (ValueError, RecursionError):
             return self._refuse("malformed", "That is not a frame.", close=True)
+        if not self._within_budget():
+            return self._refuse("busy", BUSY)
         verb = frame.get("verb") if isinstance(frame, dict) else None
         if verb == "grant":
             return self._grant(frame)
@@ -196,17 +238,25 @@ class SessionBridge:
         event, payload = frame.get("event"), frame.get("payload")
         if event not in EVENTS or not isinstance(payload, dict):
             return self._refuse("hook", "That is not a hook event.")
+        if event == "post" and not self._post.acquire(blocking=False):   # one notification runs at a time; the rest are answered as the last was
+            self._count("hook")
+            return {"answer": self._last_post}
         try:
             answer = self.handlers.hook(str(event), payload)
         except FAILURES:
-            return self._refuse("hook", "The hook could not decide, so the call is blocked.")
+            return self._refuse("hook", HOOK_FAILED)
+        finally:
+            if event == "post":
+                self._post.release()
+        if event == "post":
+            self._last_post = answer if isinstance(answer, dict) else {}
         self._count("hook")
         return {"answer": answer}
 
     def _workspace(self, frame: Mapping[str, Any]) -> dict[str, Any]:
         name = frame.get("name")
         try:
-            verb, arguments = session_verbs.check(str(name), frame.get("arguments"))
+            verb, arguments = session_verbs.check(str(name), frame.get("arguments"), ttl_cap=self.claim_ttl_s)
         except ValueError as why:
             return self._refuse("workspace", f"Refused: {why}.")
         if verb.acts and not self.writable:
@@ -215,6 +265,9 @@ class SessionBridge:
             result = self.handlers.workspace(verb.tool, arguments)
         except FAILURES as error:
             self._count("workspace_failed", refused=True)
-            return {"error": f"{type(error).__name__}: {error}"[:self.limit]}
+            with contextlib.suppress(*FAILURES):   # the detail is the parent's to read, in its log
+                self.handlers.log("isolation.workspace_failed", subject=f"workspace:{verb.tool}", outcome="failed",
+                                  meta={"kind": type(error).__name__, "detail": str(error)[:400]})
+            return {"error": VERB_FAILED.format(verb=str(name)[:40], kind=type(error).__name__)}
         self._count("workspace")
         return {"result": result}

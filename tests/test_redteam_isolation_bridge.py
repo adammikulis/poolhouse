@@ -10,6 +10,7 @@ address the resolver names is dialled as a listener of this test, and a listener
 from __future__ import annotations
 
 import ast
+import base64
 import contextlib
 import dataclasses
 import http.client
@@ -158,7 +159,7 @@ def test_the_model_bridge_serves_only_its_routes_and_pins_the_model(bridge, upst
         assert status_of(talk(bridge.port, asked(method, target, bridge.token, body))) == 200, (method, target)
     assert [first.split(b" ")[:2] for first in (each.split(b"\r\n")[0] for each in upstream.requests)] == [
         [b"POST", b"/v1/messages"], [b"POST", b"/v1/messages"], [b"POST", b"/v1/messages/count_tokens"], [b"POST", b"/v1/chat/completions"],
-        [b"POST", b"/v1/responses"], [b"GET", b"/v1/models"]], "the table's routes reach the server, and a query does not"
+        [b"POST", b"/v1/responses"]], "the table's routes reach the server (the model list is the bridge's own), and a query does not"
 
 
 @pytest.mark.parametrize("method,target", [
@@ -558,12 +559,26 @@ def proxied(sink: Sink | None, table: dict[str, list[str]], allowed: tuple[str, 
         return socket.create_connection(("127.0.0.1", sink.port), timeout=timeout)
     made = EgressProxy(allowed, registry=REGISTRY, wiring=Wiring(resolve, dial), idle=2.0, **kw)
     made.start()
+    TOKENS[made.port] = made.token
     made.resolved, made.dialled = asked_of, dialled
     return made
 
 
-def connect(port: int, target: str, *, version: str = "1.1", extra: str = "") -> bytes:
-    return talk(port, f"CONNECT {target} HTTP/{version}\r\nHost: {target}\r\n{extra}\r\n".encode())
+TOKENS: dict[int, str] = {}
+
+
+def basic(token: str) -> str:
+    return "Basic " + base64.b64encode(f"poolhouse:{token}".encode()).decode()
+
+
+def opening(made, target: str = "pypi.org:443") -> bytes:
+    """The CONNECT a session's client writes: with the credential the launcher put in its `HTTPS_PROXY`."""
+    return f"CONNECT {target} HTTP/1.1\r\nHost: {target}\r\nProxy-Authorization: {basic(made.token)}\r\n\r\n".encode()
+
+
+def connect(port: int, target: str, *, version: str = "1.1", extra: str = "", auth: bool = True) -> bytes:
+    held = f"Proxy-Authorization: {basic(TOKENS[port])}\r\n" if auth else ""
+    return talk(port, f"CONNECT {target} HTTP/{version}\r\nHost: {target}\r\n{held}{extra}\r\n".encode())
 
 
 @pytest.mark.parametrize("target", ["pypi.org:80", "pypi.org:8443", "pypi.org:22", "pypi.org:0443", "pypi.org", "pypi.org:", "93.184.216.34:443",
@@ -588,7 +603,7 @@ def test_the_egress_proxy_serves_connect_only_and_never_plain_http_so_there_is_n
     made = proxied(sink, {"pypi.org": [PUBLIC]})
     try:
         for line in ("GET http://pypi.org/ HTTP/1.1", "GET / HTTP/1.1", "POST http://pypi.org/ HTTP/1.1", "OPTIONS * HTTP/1.1", "HEAD http://pypi.org/ HTTP/1.1"):
-            assert status_of(talk(made.port, f"{line}\r\nHost: pypi.org\r\n\r\n".encode())) in (400, 405), line
+            assert status_of(talk(made.port, f"{line}\r\nHost: pypi.org\r\nProxy-Authorization: {basic(made.token)}\r\n\r\n".encode())) in (400, 405), line
         assert not made.dialled and sink.accepted == 0
     finally:
         made.stop()
@@ -644,7 +659,7 @@ def test_a_connect_tunnel_is_counted_per_direction_and_cut_when_bytes_out_pass_t
     made = proxied(big, {"pypi.org": [PUBLIC]})
     try:
         with socket.create_connection(("127.0.0.1", made.port), timeout=10) as sock:
-            sock.sendall(b"CONNECT pypi.org:443 HTTP/1.1\r\nHost: pypi.org:443\r\n\r\n")
+            sock.sendall(opening(made))
             got = b""
             while b"\r\n\r\n" not in got:
                 got += sock.recv(4096)
@@ -664,7 +679,7 @@ def test_a_connect_tunnel_is_counted_per_direction_and_cut_when_bytes_out_pass_t
     made.events = lambda name, fields: cuts.append((name, fields))
     try:
         with socket.create_connection(("127.0.0.1", made.port), timeout=10) as sock:
-            sock.sendall(b"CONNECT pypi.org:443 HTTP/1.1\r\nHost: pypi.org:443\r\n\r\n")
+            sock.sendall(opening(made))
             assert sock.recv(4096).startswith(b"HTTP/1.1 200")
             stage = b"s" * (30 * bound)
             try:
@@ -679,24 +694,24 @@ def test_a_connect_tunnel_is_counted_per_direction_and_cut_when_bytes_out_pass_t
         assert held["out"] == bound and held["cut"] == 1, held
         assert sink.received <= bound, f"the host was sent {sink.received} bytes of a {30 * bound} byte upload"
         assert any(name == "isolation.egress_cut" for name, _ in cuts)
-        assert status_of(connect(made.port, "pypi.org:443")) == 403, "the bound is spent for the session: no second tunnel"
-        assert sink.accepted == 1
+        assert status_of(connect(made.port, "pypi.org:443")) == 200, "the bound is one tunnel's: a second normal install is not cut"
+        assert sink.accepted == 2
     finally:
         made.stop()
         sink.close()
 
 
-def test_many_small_tunnels_do_not_get_round_the_bound():
-    bound = REGISTRY["pypi.org"].bytes_out
+def test_many_small_tunnels_do_not_get_round_the_budget_of_the_session():
+    bound = REGISTRY["pypi.org"].session_bytes
     sink = Sink()
     made = proxied(sink, {"pypi.org": [PUBLIC]})
     try:
         for _ in range(8):
             with socket.create_connection(("127.0.0.1", made.port), timeout=5) as sock:
-                sock.sendall(b"CONNECT pypi.org:443 HTTP/1.1\r\nHost: pypi.org:443\r\n\r\n")
+                sock.sendall(opening(made))
                 if not sock.recv(4096).startswith(b"HTTP/1.1 200"):
                     break
-                sock.sendall(b"y" * (bound // 3))
+                sock.sendall(b"y" * (bound // 5))
                 time.sleep(0.15)
         time.sleep(0.3)
         assert made.counts()["pypi.org"]["out"] <= bound and sink.received <= bound
@@ -713,7 +728,7 @@ def test_a_confined_process_can_use_the_proxy_for_a_granted_host_only_and_reache
 import json, socket
 def tunnel(target):
     s = socket.create_connection(('127.0.0.1', {made.port}), timeout=5)
-    s.sendall(('CONNECT %s HTTP/1.1\\r\\nHost: %s\\r\\n\\r\\n' % (target, target)).encode())
+    s.sendall(('CONNECT %s HTTP/1.1\\r\\nHost: %s\\r\\nProxy-Authorization: {basic(made.token)}\\r\\n\\r\\n' % (target, target)).encode())
     return s.recv(4096).split(b'\\r\\n')[0].decode()
 out = [tunnel('pypi.org:443'), tunnel('evil.example:443'), tunnel('pypi.org:80')]
 try:

@@ -23,7 +23,7 @@ from typing import Any
 from poolhouse import home
 from poolhouse.sandbox.confinement import confined
 
-__all__ = ["AGENT_MARKERS", "AgentRefused", "audit_rows", "is_terminal", "marked", "record", "refuse_agent", "who"]
+__all__ = ["AGENT_MARKERS", "AgentRefused", "audit_rows", "is_terminal", "marked", "named", "record", "refuse_agent", "subagent_marked", "who"]
 
 _MSVCRT = importlib.import_module("msvcrt") if sys.platform == "win32" else None
 
@@ -32,6 +32,8 @@ AGENT_MARKERS = ("CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE", "C
 """Environment variables whose presence means an agent started this process."""
 SESSION_VARS = ("POOLHOUSE_SESSION_ID", "CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID", "POOLHOUSE_WORKSPACE_AGENT")
 """Where the session an agent runs in names itself, first found wins."""
+SUBAGENT = "POOLHOUSE_SUBAGENT"
+NAMED = "POOLHOUSE_WORKSPACE_AGENT"
 OUTSIDE = "run it from a terminal outside the agent (no CLAUDECODE or POOLHOUSE_AGENT in its environment)"
 
 
@@ -43,6 +45,18 @@ def marked(env: Mapping[str, str] | None = None) -> str:
     """The first agent marker in the process or supplied context; supplied data cannot hide the process."""
     found = os.environ if env is None else env
     return next((name for name in AGENT_MARKERS if found.get(name) or os.environ.get(name)), "")
+
+
+def subagent_marked(env: Mapping[str, str] | None = None) -> bool:
+    """Whether the command carries the marker a harness's hook puts in a subagent's command: it can only say helper, never lead."""
+    found = os.environ if env is None else env
+    return bool(found.get(SUBAGENT) or os.environ.get(SUBAGENT))
+
+
+def named(env: Mapping[str, str] | None = None) -> str:
+    """The workspace agent the environment names as the caller (`POOLHOUSE_WORKSPACE_AGENT`); a name is a claim, which only narrows."""
+    found = os.environ if env is None else env
+    return found.get(NAMED) or os.environ.get(NAMED, "")
 
 
 def who(env: Mapping[str, str] | None = None) -> str:
@@ -70,7 +84,7 @@ def is_terminal(stream) -> bool:
 
 
 def _log(entry: Mapping[str, Any]) -> None:
-    path = home.state("authority-audit.jsonl")
+    path = home.guarded("authority-audit.jsonl")
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({"at": time.time(), **entry}) + "\n")
@@ -83,13 +97,13 @@ def record(event: str, **fields: Any) -> None:
 
 def audit_rows() -> list[dict[str, Any]]:
     """Every recorded event, oldest first."""
-    path = home.state("authority-audit.jsonl")
+    path = home.guarded("authority-audit.jsonl")
     return [json.loads(line) for line in path.read_text("utf-8").splitlines() if line] if path.exists() else []
 
 
-def refuse_agent(action: str, why: str, env: Mapping[str, str] | None = None) -> None:
+def refuse_agent(action: str, why: str, env: Mapping[str, str] | None = None, *, attested: str = "") -> None:
     """Raise `AgentRefused` at once, with ``why``, when an agent runs ``action`` or when this process runs inside a confinement; the refusal
-    is audited. Otherwise record that it ran. What the operating system says of the process decides the second case (`sandbox.confined`):
+    is audited. ``attested`` names an agent the node found in this process's ancestry, which an environment without a marker does not hide. Otherwise record that it ran. What the operating system says of the process decides the second case (`sandbox.confined`):
     a confined process is never a person, whatever its markers, its descriptors or its terminal say (docs/design-isolated-launcher.md, I17)."""
     if confined():
         with contextlib.suppress(OSError):  # a confinement may hold no write to the state root: the refusal still stands
@@ -97,7 +111,8 @@ def refuse_agent(action: str, why: str, env: Mapping[str, str] | None = None) ->
         raise AgentRefused(f"{action} is refused: this process runs inside a confinement, and nothing inside one is ever treated as a person "
                            f"or as the session that launched it ({why}).")
     found = marked(env)
-    if found:
+    if found or attested:
         _log({"event": "refused", "who": who(env), "action": action, "why": why})
-        raise AgentRefused(f"{action} is refused to an agent ({found} is set): {why}. To do it, {OUTSIDE}.")
+        raise AgentRefused(f"{action} is refused to an agent ({found + ' is set' if found else attested}): {why}. To do it, "
+                           f"{OUTSIDE if found else 'run it from a terminal outside the agent'}.")
     record("ran", action=action)

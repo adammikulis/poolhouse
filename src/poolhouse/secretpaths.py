@@ -247,9 +247,11 @@ def inside_home(path: Path) -> bool:
     return path == user or path in user.parents
 
 
-def tree_hit(path: Path) -> Hit | None:
+def tree_hit(path: Path, *, suffixes: bool = True) -> Hit | None:
     """The first credential file or folder under the folder ``path``, `TOO_LARGE` when the folder is too big
-    to look through, nothing when it holds none; links are not followed and build caches are skipped."""
+    to look through, nothing when it holds none; links are not followed and build caches are skipped. With ``suffixes`` off the
+    key and certificate extensions (`SUFFIXES`) are not credentials: a program tree holds certificate bundles and test data under them, and
+    what marks a stolen folder is a credential's name or location."""
     stack, seen, stop = [path], 0, time.monotonic() + WALK_SECONDS
     while stack:
         try:
@@ -260,7 +262,7 @@ def tree_hit(path: Path) -> Hit | None:
                         return Hit(TOO_LARGE, path)
                     here = Path(entry.path)
                     directory = entry.is_dir(follow_symlinks=False)
-                    if rule := _rule(here, directory):
+                    if (rule := _rule(here, directory)) and (suffixes or rule not in SUFFIXES):
                         return Hit(rule, here)
                     if directory and entry.name not in SKIP_DIRS:
                         stack.append(here)

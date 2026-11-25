@@ -1,7 +1,7 @@
 {
- "surfaces": 895,
+ "surfaces": 896,
  "by_status": {
-  "covered": 571,
+  "covered": 572,
   "partial": 182,
   "uncovered": 51,
   "n/a": 91,
@@ -51,7 +51,7 @@
    "unmapped": 0
   },
   "human": {
-   "covered": 57,
+   "covered": 58,
    "partial": 0,
    "uncovered": 0,
    "n/a": 1,
@@ -3797,6 +3797,21 @@
    "id": "human:gym/decision_process.py:DecisionProcess.__init__",
    "kind": "human",
    "source": "gym/decision_process.py:DecisionProcess.__init__",
+   "trust": "an agent process or a member",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
+    "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
+    "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
+    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
+   ],
+   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:isolation/gate.py:_attest",
+   "kind": "human",
+   "source": "isolation/gate.py:_attest",
    "trust": "an agent process or a member",
    "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",

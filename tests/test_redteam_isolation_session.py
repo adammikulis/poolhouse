@@ -61,6 +61,7 @@ class Room:
         self.heard: list[tuple[str, dict]] = []
         handlers = Handlers(hook=self.decide, workspace=tools.as_session(node.session(self.confined)),
                             log=lambda kind, **fields: self.logged.append((kind, fields)), events=lambda name, fields: self.heard.append((name, fields)))
+        kw.setdefault("unadmitted", "a test of the bridge's own frames, which every process of this test may send")
         self.bridge = SessionBridge(handlers, Terms(writable, 4096), root="/tmp", idle=kw.pop("idle", 2.0), **kw)
         self.bridge.start()
         self.path = self.bridge.path
@@ -137,9 +138,12 @@ def test_a_forged_replayed_or_flooded_hook_event_changes_nothing(room):
     threads = [threading.Thread(target=flood, args=(25,)) for _ in range(6)]
     [each.start() for each in threads]
     [each.join(60) for each in threads]
-    assert len(done) == 150 and {json.loads(each)["answer"]["hookSpecificOutput"]["permissionDecision"] for each in done} == {"deny"}
+    answered = [json.loads(each) for each in done]
+    decided = [each["answer"]["hookSpecificOutput"]["permissionDecision"] for each in answered if "answer" in each]
+    assert len(done) == 150 and set(decided) == {"deny"} and all("answer" in each or "refused" in each for each in answered), "no frame of a flood is ever allowed"
+    assert len(decided) <= room.bridge.budget and len(decided) < 150, "and a session sends no more frames in a minute than its budget"
     assert room.board() == before and not room.inbox() and not room.node.session(room.confined).claims(), "no message, claim or entry came of it"
-    assert room.bridge.summary()["frames"]["hook"] >= 150
+    assert room.bridge.summary()["frames"]["hook"] + room.bridge.summary()["frames"]["busy"] >= 150
 
 
 def test_a_frame_is_one_bounded_line_of_json_with_each_field_once(room):
@@ -198,7 +202,7 @@ def test_a_session_cannot_act_as_another(workspace_node, tmp_path, monkeypatch):
     first = Room(workspace_node, tmp_path)
     other = workspace_node.member("other")
     handlers = Handlers(hook=first.decide, workspace=tools.as_session(workspace_node.session(other)))
-    second_bridge = SessionBridge(handlers, Terms(True, 4096), root="/tmp", idle=2.0)
+    second_bridge = SessionBridge(handlers, Terms(True, 4096), root="/tmp", idle=2.0, unadmitted="a test of a second bridge")
     second_bridge.start()
     try:
         assert first.path != second_bridge.path and Path(first.path).parent != Path(second_bridge.path).parent
@@ -235,7 +239,7 @@ def test_the_channel_is_a_private_directory_with_a_random_name_and_a_path_that_e
     directory = Path(room.bridge.directory)
     assert stat.S_IMODE(directory.stat().st_mode) == 0o700 and directory.stat().st_uid == os.getuid()
     assert stat.S_IMODE(Path(room.path).stat().st_mode) == 0o600 and stat.S_ISSOCK(Path(room.path).stat().st_mode)
-    squatted = SessionBridge(room.bridge.handlers, Terms(True, 1), root="/tmp")
+    squatted = SessionBridge(room.bridge.handlers, Terms(True, 1), root="/tmp", unadmitted="a test of a squatted directory")
     assert len(directory.name) == len("ph-") + 16 and directory.name != Path(squatted.directory).name, "the name is random"
     Path(squatted.directory).mkdir(mode=0o755)
     Path(squatted.directory).chmod(0o755)
@@ -408,7 +412,8 @@ def test_a_hook_that_cannot_decide_blocks_the_call_and_never_allows_it():
     def broken(event: str, payload: dict) -> dict:
         raise RuntimeError("the classifier fell over")
 
-    made = SessionBridge(Handlers(hook=broken, workspace=lambda name, arguments: None), Terms(True, 4096), root="/tmp", idle=2.0)
+    made = SessionBridge(Handlers(hook=broken, workspace=lambda name, arguments: None), Terms(True, 4096), root="/tmp", idle=2.0,
+                         unadmitted="a test of a hook that fails")
     made.start()
     try:
         answered = said(made.path, {"verb": "hook", "event": "pre", "payload": {"tool_name": "Bash"}})

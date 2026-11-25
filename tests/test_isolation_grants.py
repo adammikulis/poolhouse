@@ -18,8 +18,9 @@ from poolhouse.isolation import Decision, Request, Rule, decide, egress, publish
 from poolhouse.isolation.egress import Host
 from poolhouse.isolation.policy import ProjectPolicy
 from poolhouse.isolation.refusals import refusal_line
-from tests.isolation_kit import REGISTRY, hostile_project, person_home
+from tests.isolation_kit import REGISTRY, person_home, registered_project
 
+pytest_plugins = ["node_kit"]
 ISSUER = "user test pid 1"
 
 
@@ -28,9 +29,10 @@ def ask(kind: str, subject: str, rule: Rule, source: str = "task") -> Decision:
 
 
 @pytest.fixture
-def rule(tmp_path, monkeypatch):
+def rule(tmp_path, monkeypatch, workspace_node):
     person_home(tmp_path, monkeypatch)
-    return Rule(hostile_project(tmp_path), registry=REGISTRY, scope="session-1")
+    monkeypatch.setenv("POOLHOUSE_HOME", str(workspace_node.state.parent))
+    return Rule(registered_project(tmp_path, workspace_node), registry=REGISTRY, scope="session-1")
 
 
 def test_a_decision_is_granted_or_refused_and_nothing_else(rule):
@@ -159,7 +161,7 @@ def test_a_toolchain_folder_must_hold_a_program_and_is_granted_by_the_object_tha
 
 
 def test_a_toolchain_declaration_is_resolved_once_and_granted_by_the_same_object(rule, tmp_path):
-    version = tmp_path / "prefix"
+    version = Path(os.environ["HOME"]) / ".pyenv" / "versions" / "3.99"
     (version / "bin").mkdir(parents=True)
     (version / "bin" / "python3").write_text("#!/bin/sh\nexit 0\n")
     (version / "bin" / "python3").chmod(0o755)
@@ -199,11 +201,12 @@ def test_a_widening_argument_outside_a_present_project_policy_is_refused_and_a_p
     assert policies.load(project) is None
     policies.save(project, ProjectPolicy(net=("pypi.org",), publish=("docs/Notes.md",)), {})
     bounded = replace(rule, policy=policies.load(project))
+    assert policies.load(project / "src") == bounded.policy, "a folder inside the registered project is the project"
     assert ask("net", "pypi.org", bounded).granted and ask("net", "pypi.org", bounded, "policy").granted
     assert ask("publish", "docs/Notes.md", bounded, "policy").granted
     assert not ask("publish", "src/app.py", bounded).granted, "a present policy bounds a task that names more"
     assert not ask("in-place", rule.project, bounded).granted and not ask("read", str(tmp_path), bounded).granted
-    path = policies.path_of(project)
+    path = policies.path_of(policies.key_of(project))
     path.write_text("not json")
     assert policies.load(project) == ProjectPolicy(), "a damaged policy names nothing, so it narrows"
     assert not ask("net", "pypi.org", replace(rule, policy=policies.load(project))).granted
@@ -220,13 +223,15 @@ def test_a_policy_is_written_only_by_a_process_that_is_neither_an_agent_nor_insi
 
 def entry(**changes):
     base = {"host": "pypi.org", "ecosystem": "python", "source": "https://pypi.org/help/", "bytes_out_bound": 5000,
-            "measured": {"bytes_out": 4000, "command": "pip download", "date": "2026-11-24"}}
+            "measured": {"bytes_out": 4000, "max_tunnel_out": 5000, "command": "pip download", "date": "2026-11-24"},
+            "session_bytes_out_bound": 12000, "measured_session": {"bytes_out": 8000, "command": "pip download many", "date": "2026-11-24"}}
     return {**base, **changes}
 
 
 @pytest.mark.parametrize("damage", [{"source": ""}, {"source": "http://pypi.org/"}, {"measured": {}}, {"measured": {"bytes_out": 1}},
-                                    {"bytes_out_bound": 3999}, {"bytes_out_bound": True}, {"host": "10.0.0.1"}, {"host": "*.org"}, {"ecosystem": ""}])
+                                    {"bytes_out_bound": 4999}, {"bytes_out_bound": True}, {"host": "10.0.0.1"}, {"host": "*.org"}, {"ecosystem": ""},
+                                    {"measured_session": {}}, {"session_bytes_out_bound": 11999}, {"session_bytes_out_bound": True}])
 def test_an_entry_of_the_host_list_without_its_source_or_its_measured_bound_is_not_a_host(damage):
     with pytest.raises(ContractError):
         egress._entry(entry(**damage))
-    assert egress._entry(entry()) == Host("pypi.org", "python", "https://pypi.org/help/", 5000, "pip download", "2026-11-24")
+    assert egress._entry(entry()) == Host("pypi.org", "python", "https://pypi.org/help/", 5000, "pip download", "2026-11-24", 12000)

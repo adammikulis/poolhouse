@@ -28,7 +28,7 @@ from pathlib import Path
 from poolhouse import activity, home, procscan
 from poolhouse.coding_workspace_state import CONTROL_PREFIXES
 from poolhouse.isolation import probe
-from poolhouse.isolation.capability import capability, drop_cache
+from poolhouse.isolation.capability import capability, drop_cache, lan_address
 from poolhouse.isolation.environment import allowed
 from poolhouse.isolation.profile import Profile
 from poolhouse.isolation.refusals import IsolationFailed
@@ -85,6 +85,8 @@ class Proof:
     os_build: str
     at: float
     seconds: float
+    unchecked: tuple[str, ...] = ()
+    """The attempts that could not be made on this computer (P08 where it has no address on a network): their lines say so and are no pass."""
 
 
 @dataclass(slots=True)
@@ -112,14 +114,6 @@ def _listen(family: int, kind: int, where: object) -> socket.socket:
     if kind == socket.SOCK_STREAM:
         sock.listen(4)
     return sock
-
-
-def _lan_address() -> str:
-    """This machine's address on a real interface, or empty when it has none (a documentation-range address is tried instead)."""
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp, contextlib.suppress(OSError):
-        udp.connect(("192.0.2.1", 9))
-        return udp.getsockname()[0]
-    return ""
 
 
 def _said(argv: list[str]) -> str:
@@ -181,7 +175,7 @@ def _canaries(lan: bool) -> Iterator[Canaries]:
     secret, working = secrets.token_hex(16), str(Path(root) / "work")
     Path(working).mkdir()
     Path(root, "canary").write_text(secret)
-    address = _lan_address() if lan else ""
+    address = lan_address() if lan else ""
     made = [_listen(socket.AF_INET, socket.SOCK_STREAM, ("127.0.0.1", 0)), _listen(socket.AF_INET, socket.SOCK_DGRAM, ("127.0.0.1", 0)),
             _listen(socket.AF_UNIX, socket.SOCK_STREAM, str(Path(root) / "unix")),
             _listen(socket.AF_INET, socket.SOCK_STREAM, (address, 0)) if address else None]
@@ -279,6 +273,8 @@ def _judge(name: str, record: Mapping[str, object], profile: Profile, held: Cana
     state = str(record.get("outcome", ""))
     if name in ("P01", "P05"):
         return state == "denied" and held.secret not in str(record.get("data", "")), state
+    if name == "P08" and held.lan is None:
+        return True, "not checked: this computer has no address on a network to listen on"
     if name in ("P07", "P08", "P09", "P10"):
         return _heard(name, record, held)
     if name == "P03":
@@ -357,4 +353,5 @@ def run(profile: Profile, services: Services, *, via: Backend | None = None, bud
         first = Line("digest", "profile", "the digest the parent computed", "another profile", False)
     if first is not None:
         raise _fail(profile, first)
-    return Proof(tuple(lines), profile.digest, capability().os_build, time.time(), round(time.monotonic() - began, 3))
+    return Proof(tuple(lines), profile.digest, capability().os_build, time.time(), round(time.monotonic() - began, 3),
+                 tuple(each.id for each in lines if each.observed.startswith("not checked")))

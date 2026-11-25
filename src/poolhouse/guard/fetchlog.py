@@ -6,6 +6,7 @@ keep them per session under the state root; `uses` finds the word of a line that
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 from collections.abc import Iterable, Sequence
@@ -19,6 +20,8 @@ __all__ = ["note", "read", "targets", "uses"]
 
 MOST = 400
 PER_CALL = 50
+MOST_BYTES = 262144
+"""The most a log may hold before it is cut to its newest `MOST` lines: a session that downloads without end does not grow a file without end."""
 FOLDER = "harness-fetched"
 SHELLS = frozenset({"sh", "bash", "zsh", "dash", "ksh", "fish", "ash"})
 WRAPPERS = frozenset({"env", "sudo", "doas", "nohup", "time", "nice", "ionice", "timeout", "command", "exec", "stdbuf", "setsid", "xargs", "watch"})
@@ -28,7 +31,9 @@ MAX_DEPTH = 3
 
 
 def _file(agent: str) -> Path:
-    return home.state(FOLDER, re.sub(r"[^A-Za-z0-9_.-]", "_", agent)[:64] + ".log")
+    """The log of ``agent``: a readable form of its name and a digest of the whole name, so two names that fold to the same readable form (`a/b`
+    and `a_b`) have two files."""
+    return home.state(FOLDER, re.sub(r"[^A-Za-z0-9_.-]", "_", agent)[:48] + "-" + hashlib.sha256(agent.encode()).hexdigest()[:16] + ".log")
 
 
 def read(agent: str) -> list[str]:
@@ -50,8 +55,11 @@ def note(agent: str, paths: Iterable[str]) -> None:
     fd = os.open(target, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
     try:
         os.write(fd, ("\n".join(fresh) + "\n").encode("utf-8"))
+        grown = os.fstat(fd).st_size > MOST_BYTES
     finally:
         os.close(fd)
+    if grown:
+        target.write_text("\n".join(read(agent)) + "\n", encoding="utf-8")
 
 
 def _inner(argv: list[str]) -> list[str]:

@@ -1,41 +1,51 @@
 {
-  "version": 1,
-  "about": "The only hosts a coding session may be granted a route to: package registries. Each entry names the document that publishes the host and the most bytes a real client sent to it while it installed a small real project (bytes_out_bound). A download counts nothing against the bound. Regenerate the measurements with scripts/measure_egress_hosts.py.",
+  "version": 2,
+  "about": "The only hosts a coding session may be granted a route to: package registries. Each entry names the document that publishes the host and what a real client was measured to send to it. bytes_out_bound is what one tunnel may send: the most one tunnel sent in either install below. session_bytes_out_bound is what a session may send over all its tunnels: the larger install and one more of the small one. Both installs are real (pip, npm, cargo against the real registries); a download counts nothing against either bound. Regenerate the measurements with scripts/measure_egress_hosts.py.",
   "hosts": [
     {
       "host": "pypi.org",
       "ecosystem": "python",
       "source": "https://docs.pypi.org/",
-      "bytes_out_bound": 4571,
-      "measured": {"bytes_out": 4571, "command": "scripts/measure_egress_hosts.py (pip download requests)", "date": "2026-11-24"}
+      "bytes_out_bound": 18852,
+      "measured": {"bytes_out": 4571, "max_tunnel_out": 18852, "command": "scripts/measure_egress_hosts.py (pip download requests)", "date": "2026-11-25"},
+      "session_bytes_out_bound": 23423,
+      "measured_session": {"bytes_out": 18852, "command": "scripts/measure_egress_hosts.py (pip download flask sqlalchemy httpx pydantic rich pytest pyyaml jinja2 click attrs)", "date": "2026-11-25"}
     },
     {
       "host": "files.pythonhosted.org",
       "ecosystem": "python",
       "source": "https://docs.pypi.org/",
-      "bytes_out_bound": 7715,
-      "measured": {"bytes_out": 7715, "command": "scripts/measure_egress_hosts.py (pip download requests)", "date": "2026-11-24"}
+      "bytes_out_bound": 36837,
+      "measured": {"bytes_out": 7715, "max_tunnel_out": 36837, "command": "scripts/measure_egress_hosts.py (pip download requests)", "date": "2026-11-25"},
+      "session_bytes_out_bound": 44552,
+      "measured_session": {"bytes_out": 36837, "command": "scripts/measure_egress_hosts.py (pip download flask sqlalchemy httpx pydantic rich pytest pyyaml jinja2 click attrs)", "date": "2026-11-25"}
     },
     {
       "host": "registry.npmjs.org",
       "ecosystem": "javascript",
       "source": "https://docs.npmjs.com/cli/v10/using-npm/registry",
-      "bytes_out_bound": 86203,
-      "measured": {"bytes_out": 86203, "command": "scripts/measure_egress_hosts.py (npm install express)", "date": "2026-11-24"}
+      "bytes_out_bound": 10188,
+      "measured": {"bytes_out": 86203, "max_tunnel_out": 10188, "command": "scripts/measure_egress_hosts.py (npm install express)", "date": "2026-11-25"},
+      "session_bytes_out_bound": 201532,
+      "measured_session": {"bytes_out": 115329, "command": "scripts/measure_egress_hosts.py (npm install express lodash axios moment chalk commander yargs uuid debug async)", "date": "2026-11-25"}
     },
     {
       "host": "index.crates.io",
       "ecosystem": "rust",
       "source": "https://doc.rust-lang.org/cargo/reference/registry-index.html",
-      "bytes_out_bound": 1215,
-      "measured": {"bytes_out": 1215, "command": "scripts/measure_egress_hosts.py (cargo fetch)", "date": "2026-11-24"}
+      "bytes_out_bound": 10649,
+      "measured": {"bytes_out": 1215, "max_tunnel_out": 10649, "command": "scripts/measure_egress_hosts.py (cargo fetch, two dependencies)", "date": "2026-11-25"},
+      "session_bytes_out_bound": 11864,
+      "measured_session": {"bytes_out": 10649, "command": "scripts/measure_egress_hosts.py (cargo fetch, eight dependencies)", "date": "2026-11-25"}
     },
     {
       "host": "static.crates.io",
       "ecosystem": "rust",
       "source": "https://doc.rust-lang.org/cargo/reference/registries.html",
-      "bytes_out_bound": 1263,
-      "measured": {"bytes_out": 1263, "command": "scripts/measure_egress_hosts.py (cargo fetch)", "date": "2026-11-24"}
+      "bytes_out_bound": 6934,
+      "measured": {"bytes_out": 1263, "max_tunnel_out": 6934, "command": "scripts/measure_egress_hosts.py (cargo fetch, two dependencies)", "date": "2026-11-25"},
+      "session_bytes_out_bound": 14747,
+      "measured_session": {"bytes_out": 13484, "command": "scripts/measure_egress_hosts.py (cargo fetch, eight dependencies)", "date": "2026-11-25"}
     }
   ]
 }

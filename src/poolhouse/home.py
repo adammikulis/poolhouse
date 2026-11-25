@@ -8,8 +8,11 @@ under wherever its name would not tell two machines apart.
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import os
 import secrets
+import sys
 from importlib import import_module
 from pathlib import Path
 
@@ -18,8 +21,8 @@ from poolhouse.files import promote
 if os.name == "posix":
     import pwd
 
-__all__ = ["CACHE_ENV", "OVERRIDES", "ROOT_ENV", "account_roots", "cache", "device_id", "expand", "home", "machine_id",
-           "moved", "state", "user_home"]
+__all__ = ["CACHE_ENV", "OVERRIDES", "ROOT_ENV", "account_roots", "cache", "device_id", "expand", "guarded", "home", "machine_id",
+           "moved", "real_roots", "state", "under_test", "user_home", "using_real_roots"]
 
 ROOT_ENV = "POOLHOUSE_HOME"
 """Moves the state root."""
@@ -61,6 +64,43 @@ def expand(path: str | Path) -> Path:
         return Path(path).expanduser()
     except RuntimeError:
         return Path(path)
+
+
+def under_test() -> bool:
+    """Whether this process is a test run: the one place a root may be redirected for what a person owns (`guarded`)."""
+    return "pytest" in sys.modules or "_pytest" in sys.modules
+
+
+_REAL: contextvars.ContextVar[bool] = contextvars.ContextVar("poolhouse_real_roots", default=False)
+
+
+class _RealRoots(contextlib.ContextDecorator):
+    """Within the block or the decorated function, `guarded` names the account's own roots and not the ones the environment moves (a test run
+    keeps its own). The launch gate, the project policy and the node's attestation of who is asking run inside it."""
+
+    def _recreate_cm(self) -> _RealRoots:
+        return _RealRoots()
+
+    def __enter__(self) -> _RealRoots:
+        self._token = _REAL.set(True)
+        return self
+
+    def __exit__(self, *_ignored: object) -> None:
+        _REAL.reset(self._token)
+
+
+using_real_roots = _RealRoots
+real_roots = _RealRoots()
+
+
+def guarded(*parts: str) -> Path:
+    """A path under the root of what a person owns and an agent must not redirect: the authority registry, its audit log, the project policies
+    and the node's state. Everything else asks `state`, which the environment may move. Within `using_real_roots` (the launch gate and what it
+    reads) it is the account's own state root (the account's home from the password database, whatever ``HOME`` or ``POOLHOUSE_HOME`` say),
+    and the state root of the environment only in a test run, so a test keeps its own isolated state."""
+    if _REAL.get() and not under_test():
+        return account_roots()[0].joinpath(*parts)
+    return state(*parts)
 
 
 def home() -> Path:

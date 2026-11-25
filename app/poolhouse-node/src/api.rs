@@ -220,7 +220,11 @@ fn dispatch(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
         "read" => read(node, token, board, p),
         "link" | "unlink" => link(node, token, board, p, method == "link"),
         "project_add" | "source_add" => project(node, method, token, p),
-        "lineage" => Ok(json!({"lineage": peer.lineage()})),
+        "lineage" => {
+            let here = peer.lineage();
+            let sessions = crate::sessions::running_in(node, &here)?;
+            Ok(json!({"lineage": here, "sessions": sessions}))
+        }
         "project_list" => Ok(json!(node.projects.all())),
         "project_resolve" => node.projects.resolve(str_of(p, "path")?).map(|p| json!({"board": p.id})),
         m if crate::poolapi::handles(m) => crate::poolapi::dispatch(node, m, token, p),
