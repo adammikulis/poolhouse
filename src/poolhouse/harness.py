@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 import time
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
@@ -28,14 +29,32 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from poolhouse import harnessing, hub
-from poolhouse.claude import DEFAULT_PORT, DEFAULT_SLOTS, alias_of, environment
+from poolhouse import harnessing, hub, serverkeys
+from poolhouse.claude import DEFAULT_PORT, DEFAULT_SLOTS, alias_of
 from poolhouse.guard import start
 from poolhouse.guard.hooks import sdk_guard, sdk_hooks
+from poolhouse.isolation.environment import MIN_COMPACT_WINDOW, MODEL_VARS, OFFLINE
 from poolhouse.log import say
 from poolhouse.workspace.localprofile import parse_ctx
 
 __all__ = ["Answer", "Harness", "Usage", "main", "session"]
+
+
+def environment(base_url: str, alias: str, *, offline: bool = True, context: int = 0, base: Mapping[str, str] | None = None) -> dict[str, str]:
+    """The process environment the SDK's Claude Code runs with, over ``base`` (the caller's own): every model call goes to ``base_url``. The harnesses
+    that edit run in a confinement and take `poolhouse.isolation.environment`'s allow-list instead."""
+    env = dict(os.environ if base is None else base)
+    env.pop("ANTHROPIC_API_KEY", None)
+    env["ANTHROPIC_BASE_URL"] = base_url.rstrip("/")
+    env["ANTHROPIC_AUTH_TOKEN"] = serverkeys.for_url(base_url) or "local"
+    if context:
+        env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] = str(int(context))
+        if context >= MIN_COMPACT_WINDOW:
+            env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = str(int(context))
+    env.update(dict.fromkeys(MODEL_VARS, alias))
+    if offline:
+        env.update(OFFLINE)
+    return env
 
 
 def confined_bash() -> dict[str, Any]:

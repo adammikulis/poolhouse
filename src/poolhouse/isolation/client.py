@@ -155,7 +155,9 @@ def _mcp_tools(sock: socket.socket) -> list[dict[str, Any]]:
             for name, each in call(sock, {"verb": "tools"}).get("tools", {}).items()]
 
 
-def _mcp_reply(sock: socket.socket, message: dict[str, Any]) -> dict[str, Any] | None:
+def _mcp_reply(path: str, pid: int, message: dict[str, Any]) -> dict[str, Any] | None:
+    """The answer to one message. Each request that reaches the bridge has a connection of its own (the bridge ends a connection that is silent
+    for its idle time, and a model is silent far longer than that between two calls)."""
     method, ident, params = message.get("method", ""), message.get("id"), message.get("params") or {}
     if ident is None:
         return None
@@ -165,10 +167,12 @@ def _mcp_reply(sock: socket.socket, message: dict[str, Any]) -> dict[str, Any] |
     elif method == "ping":
         result = {}
     elif method == "tools/list":
-        result = {"tools": _mcp_tools(sock)}
+        with connect(path, pid) as sock:
+            result = {"tools": _mcp_tools(sock)}
     elif method == "tools/call":
         name = str(params.get("name", "")).removeprefix("workspace_")
-        answer = call(sock, {"verb": "workspace", "name": name, "arguments": params.get("arguments") or {}})
+        with connect(path, pid) as sock:
+            answer = call(sock, {"verb": "workspace", "name": name, "arguments": params.get("arguments") or {}})
         said = answer["result"] if "result" in answer else answer.get("refused") or answer.get("error", "Refused.")
         result = {"content": [{"type": "text", "text": json.dumps(said, indent=1, default=str)}], "isError": "result" not in answer}
     else:
@@ -176,7 +180,7 @@ def _mcp_reply(sock: socket.socket, message: dict[str, Any]) -> dict[str, Any] |
     return {"jsonrpc": "2.0", "id": ident, "result": result}
 
 
-def _mcp(sock: socket.socket, streams: Streams) -> int:
+def _mcp(path: str, pid: int, streams: Streams) -> int:
     """The stdio MCP server: one JSON-RPC message per line in, one per line out, until standard input ends."""
     if streams.inp.isatty():
         raise ValueError("standard input is a terminal, and no command here reads one")
@@ -185,9 +189,12 @@ def _mcp(sock: socket.socket, streams: Streams) -> int:
             continue
         try:
             message = json.loads(line)
-            reply = _mcp_reply(sock, message if isinstance(message, dict) else {})
+            reply = _mcp_reply(path, pid, message if isinstance(message, dict) else {})
         except ValueError:
             reply = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "parse error"}}
+        except OSError as failure:
+            reply = {"jsonrpc": "2.0", "id": message.get("id") if isinstance(message, dict) else None,
+                     "result": {"content": [{"type": "text", "text": f"The session bridge did not answer: {type(failure).__name__}."}], "isError": True}}
         if reply is not None:
             streams.out.write(json.dumps(reply) + "\n")
             streams.out.flush()
@@ -201,6 +208,8 @@ def run(argv: list[str] | None = None, stdin: TextIO | None = None, stdout: Text
     event = words[words.index("hook") + 1] if "hook" in words and words.index("hook") + 1 < len(words) else "pre"
     try:
         path, pid, rest = _options(words)
+        if rest == ["mcp"]:
+            return _mcp(path, pid, streams)   # each of its requests connects on its own
         sock = connect(path, pid)
         with sock:
             if rest[0] == "hook" and len(rest) == 2 and rest[1] in ("pre", "post", "stop"):
@@ -211,8 +220,6 @@ def run(argv: list[str] | None = None, stdin: TextIO | None = None, stdout: Text
                 answer = call(sock, {"verb": "grant", "kind": rest[1] if len(rest) > 1 else "", "subject": " ".join(rest[2:])})
                 streams.err.write(f"{answer.get('refused', 'Refused.')}\n")
                 return REFUSED
-            if rest[0] == "mcp" and len(rest) == 1:
-                return _mcp(sock, streams)
             raise ValueError(USAGE)
     except (OSError, ValueError) as failure:
         streams.err.write(f"poolhouse: {type(failure).__name__}: {failure}\n")

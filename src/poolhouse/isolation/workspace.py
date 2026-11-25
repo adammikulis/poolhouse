@@ -259,6 +259,15 @@ class Session:
         self._settle(keep=bool(self.decided) or bool(turn.deferred))
         return turn
 
+    def discard(self, tree: process_tree.Tree | None, *, stalled: float) -> Turn:
+        """End every process of the session and drop the stage without publishing it: what the session of a stopped launch had made and not yet
+        published is not applied, and nothing of it is kept for a re-launch. The patches already kept for the session stay, with their reports."""
+        if tree is not None:
+            process_tree.end(tree, stalled=stalled)
+            process_tree.release(tree)
+        self._settle(keep=False)
+        return Turn()
+
     def _settle(self, *, keep: bool) -> None:
         """Close the session's directories. A stage with refused or unpublished work is kept, with its base, for a re-launch of the same
         conversation; any other stage is removed."""

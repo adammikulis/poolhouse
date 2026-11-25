@@ -54,3 +54,4 @@ test_harness_rails.py
 test_coding_routes.py
 test_coding_admission.py
 test_pi_harness.py
+test_delegate_confined.py
