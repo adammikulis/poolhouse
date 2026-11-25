@@ -211,3 +211,22 @@ def test_a_descendant_that_left_the_process_group_outlives_the_run_and_the_end_o
         process_tree.release(backend.trees[0])
         if running(survivor):
             os.kill(survivor, 9)
+
+
+GROW = """
+import json, resource
+try:
+    resource.setrlimit(resource.RLIMIT_AS, (100 << 20, resource.RLIM_INFINITY))
+    limit = "set"
+except (ValueError, OSError):
+    limit = "refused"
+block = bytearray(500 << 20)
+for at in range(0, len(block), 4096):
+    block[at] = 1
+print(json.dumps({"limit": limit, "grew_to_mib": len(block) >> 20}))
+"""
+
+
+def test_a_process_grows_past_an_address_space_limit_so_memory_is_watched_by_the_parent_and_not_enforced_here(tmp_path, seatbelt):
+    seen = json.loads(python(GROW, tmp_path).stdout)
+    assert seen["grew_to_mib"] == 500, "an address space limit now holds on macOS: the design (5.2) may enforce memory in the engine"
