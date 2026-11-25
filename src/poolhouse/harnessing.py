@@ -175,15 +175,16 @@ def adopted(found: str, want: Want, patched: Path | None, say: Callable[[str], N
     asked = want.ctx // max(1, want.slots) if want.ctx else 0
     for port in sorted(records, key=lambda p: (p != want.port, p)):
         entry = records[port]
-        if (entry.get("pending") or entry.get("embedding") or not admission.live(entry)
+        if (entry.get("embedding") or not admission.live(entry)
                 or not model_matches(str(entry.get("model") or ""), found)):
             continue
+        up = f"the server already up on port {port}"
         url = f"http://{DEFAULT_HOST}:{port}"
-        params = serving_params(url, timeout=5.0) if is_healthy(url, timeout=1.0) else None
+        params = None if entry.get("pending") or not is_healthy(url, timeout=1.0) else serving_params(url, timeout=5.0)
         if params is None or not params.n_ctx:
+            declined.append(f"{up} is still loading or does not report its settings; leasing its own")
             continue
         each, held = int(params.n_ctx), max(1, int(params.total_slots or 1))
-        up = f"the server already up on port {port}"
         if each < MIN_WINDOW:
             why = f"holds {each:,} tokens a slot, under the {MIN_WINDOW:,} a coding session needs"
         elif asked > each:
@@ -192,16 +193,20 @@ def adopted(found: str, want: Want, patched: Path | None, say: Callable[[str], N
             why = f"serves {held} slot(s) and {want.slots} were asked for"
         elif patched is not None and not _same_file(entry.get("chat_template_file"), patched):
             why = "renders the model's own chat template, which refuses a system message after the first"
-        elif want.draft.lower() not in ("auto", "none"):
-            why = f"runs without the draft head {want.draft} that was named"
+        elif want.draft.lower() not in ("auto", "none") and Path(want.draft).name != Path(str(entry.get("draft") or "-")).name:
+            why = f"does not run the draft head {want.draft} that was named"
         else:
             cache = said_cache(str(entry.get("cache_type_k") or ""), str(entry.get("cache_type_v") or ""))
-            # asked on that server's own port: the broker shares a `serve:` lease only with an ask for the same port
+            head, kind = str(entry.get("draft") or ""), str(entry.get("spec_type") or "")
+            # asked on that server's own port: the broker shares a `serve:` lease only with an ask for the same port;
+            # the head it runs is asked for by name, and no say on `mtp` is made over a server that drafts, or the
+            # lease would claim no head over one that has one
             return Config(serving=Serving(model=found, port=port, slots=held, slot_context=each,
-                                          cache_type=cache or KV, mtp=None if entry.get("mtp") else False))
+                                          cache_type=cache or KV, draft=head, spec_type=kind,
+                                          mtp=None if entry.get("mtp") or head or kind else False))
         declined.append(f"{up} {why}; leasing its own")
-    if declined:
-        say(declined[0])
+    for line in declined:
+        say(line)
     return None
 
 
@@ -267,6 +272,7 @@ def serving(model: str, want: Want, say: Callable[[str], None], by: str) -> Iter
     note(found, by=by)
     patched = chat_template.written_beside(found)
     config = adopted(found, want, patched, say)
+    taking = config is not None  # the server up is the one asked for; a second copy beside it is never started for the session
     if config is None:
         leasing = say if leases.already_up(found, want.port) is None else (lambda _line: None)
         config = config_for(found, want, leasing)
@@ -276,7 +282,7 @@ def serving(model: str, want: Want, say: Callable[[str], None], by: str) -> Iter
             leasing("this model's template refuses a system message after the first; serving "
                     f"with one that renders it instead ({patched.name})")
     with served(config, say=say, timeout=900.0, cache_reuse=256, warmup=False, escalate=True,
-                chat_template_file=patched, reason=f"{by} session on {Path(found).name}",
+                chat_template_file=patched, roam=not taking, reason=f"{by} session on {Path(found).name}",
                 on_event=lambda e: say(f"  {e.get('event')}: " + ", ".join(
                     f"{k}={v}" for k, v in e.items() if k != "event"))) as base_url:
         yield base_url, config, found

@@ -169,6 +169,7 @@ def session(model: str, *, want: harnessing.Want | None = None, offline: bool = 
     note(found, by="agent")
     patched = chat_template.written_beside(found)
     config = harnessing.adopted(found, want, patched, say)
+    taking = config is not None  # the server up is the one asked for; a second copy beside it is never started for the session
     if config is None:
         leasing = say if leases.already_up(found, want.port) is None else (lambda _line: None)
         config = harnessing.config_for(found, want, leasing)
@@ -178,7 +179,7 @@ def session(model: str, *, want: harnessing.Want | None = None, offline: bool = 
             leasing("this model's template refuses a system message after the first; serving "
                     f"with one that renders it instead ({patched.name})")
     with served(config, say=say, timeout=900.0, cache_reuse=256, warmup=False,
-                        chat_template_file=patched,
+                        chat_template_file=patched, roam=not taking,
                         reason=f"the harness on {Path(found).name}") as base_url:
         alias = alias_of(base_url, found)
         say(f"the harness on {base_url} as {alias!r}")

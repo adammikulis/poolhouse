@@ -343,7 +343,7 @@ def test_reuse_requires_recorded_semantic_settings(field, asked):
     # a server records the cache it serves, which a spec naming none gets as q8_0
     served = {"cache_type_k": "q8_0", "cache_type_v": "q8_0"}
     assert not admission.compatible(spec, {}, [])
-    assert not admission.compatible(spec, {**served, field: "wrong"}, [])
+    assert not admission.compatible(spec, {**served, field: "" if field == "mtp" else "wrong"}, [])  # `mtp` is the head's name, "" for none
     assert admission.compatible(spec, {**served, field: asked}, [])
 
 

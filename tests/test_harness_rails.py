@@ -536,7 +536,7 @@ def test_explicit_head_and_none_override_measured_profile(monkeypatch):
     from poolhouse.serve.serving import Config, Serving
 
     measured = Config(serving=Serving(model="qwen.gguf", draft="old-head.gguf", spec_type="draft-mtp"))
-    monkeypatch.setattr(harnessing.profile, "profile_for", lambda _: SimpleNamespace(config=lambda **_: measured))
+    monkeypatch.setattr(harnessing.profile, "profile_for", lambda _, **__: SimpleNamespace(config=lambda **_: measured))
     monkeypatch.setattr(harnessing.profile, "said", lambda _: "measured profile")
     monkeypatch.setattr(harnessing.chat_template, "trained_context", lambda _: 262144)
     monkeypatch.setattr(hub, "head_choice", lambda model, asked: None if asked == "none" else SimpleNamespace(
@@ -558,7 +558,7 @@ def test_automatic_context_comes_from_the_device_model_fit(monkeypatch):
     monkeypatch.setattr(harnessing.chat_template, "trained_context", lambda _: 200000)
     monkeypatch.setattr(harnessing.suggest, "largest_fit", lambda *a, **k: SimpleNamespace(context=98304, verdict="yellow", n_gpu_layers="auto",
                             kv_cache_type="q8_0", flash_attn=True, batch=512))
-    monkeypatch.setattr(harnessing.profile, "profile_for", lambda _: None)
+    monkeypatch.setattr(harnessing.profile, "profile_for", lambda _, **__: None)
     monkeypatch.setattr(hub, "head_choice", lambda *_: None)
     said = []
     config = harnessing.config_for("qwen.gguf", harnessing.Want(ctx=0), said.append)
