@@ -1,0 +1,100 @@
+"""The profile of one confinement: the engine policy a launch runs under, and a digest of everything in it.
+
+`build` turns a `Spec` and the grants in force into one `sandbox.Policy`: the stage and the agent home are the only writable trees (the stage
+is read-only for `read-only` and for plan mode), the harness's install tree, the interpreter, the system toolchain, the derived toolchain
+folders and the granted reads are readable, the control names are frozen in the stage, the network is the model bridge's port and the
+egress proxy's, and the one unix socket is the session bridge's. The same object runs the harness and the probe of the proof, so what the
+proof shows is what the harness gets (docs/design-isolated-launcher.md, 3.2, 5.2 and 8.1).
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import shutil
+import sys
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+
+from poolhouse.coding_workspace_state import CONTROL_PREFIXES
+from poolhouse.isolation.grants import Grant
+from poolhouse.isolation.spec import Spec
+from poolhouse.sandbox import Limits, Net, Policy
+from poolhouse.sandbox.policies import SYSTEM_EXEC
+from poolhouse.sandbox.run import fair_share
+
+__all__ = ["Profile", "build", "interpreter_reads", "system_toolchain"]
+
+HOMEBREW = ("bin", "lib", "opt", "Cellar", "share", "include", "Frameworks")
+"""What of `/opt/homebrew` and `/usr/local` is the system toolchain: not their `etc` or `var` (8.2)."""
+COMMAND_LINE_TOOLS = "/Library/Developer/CommandLineTools"
+
+
+@dataclass(frozen=True, slots=True)
+class Profile:
+    """The policy, the directories it names, the grants it holds and the digest the probe echoes."""
+
+    policy: Policy
+    stage: str
+    home: str
+    path: tuple[str, ...]
+    grants: tuple[Grant, ...]
+    digest: str
+    harness: str = ""
+    interactive: bool = False
+    read_only: bool = False
+
+
+def system_toolchain() -> tuple[str, ...]:
+    """The system toolchain every session may read and run, as the directories this machine has (5.2 and 8.2): the command-line developer
+    tools, and the program and library trees of Homebrew and `/usr/local`."""
+    found = [COMMAND_LINE_TOOLS] if sys.platform == "darwin" else []
+    for prefix in ("/opt/homebrew", "/usr/local"):
+        found += [f"{prefix}/{name}" for name in HOMEBREW]
+    return tuple(os.path.realpath(path) for path in found if Path(path).is_dir() and os.path.realpath(path) == path)
+
+
+def interpreter_reads() -> tuple[str, ...]:
+    """The trees the interpreter that runs the bridge client and the probe reads: its own prefixes, and no more of Homebrew than the
+    system toolchain already grants."""
+    return tuple(sorted({os.path.realpath(sys.prefix), os.path.realpath(sys.base_prefix)}))
+
+
+def _git_directory() -> tuple[str, ...]:
+    """The directory of a git a confined shell can run: not Apple's `/usr/bin/git`, a shim that asks a service the profile refuses."""
+    found = shutil.which("git")
+    real = os.path.realpath(found) if found else ""
+    return (str(Path(real).parent),) if real and real != "/usr/bin/git" else ()
+
+
+def _digest(policy: Policy, grants: Sequence[Grant], spec: Spec) -> str:
+    """A digest of what the policy grants and of the grants in force. The environment contributes the names it sets and never a value,
+    so a token the launcher minted is never in a digest."""
+    body = {"harness": spec.harness, "name": policy.name, "read": policy.read, "write": policy.write, "exec": policy.exec,
+            "net": [policy.net.mode.value, policy.net.ports], "env": sorted(policy.env), "strict": policy.strict,
+            "deny_write": policy.deny_write, "unix_sockets": policy.unix_sockets, "signal_children": policy.signal_children,
+            "limits": [policy.limits.processes, policy.limits.wall_seconds], "gpu": policy.gpu,
+            "grants": sorted(f"{grant.kind}:{grant.subject}:{grant.fingerprint}" for grant in grants)}
+    return hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def build(spec: Spec, grants: Sequence[Grant] = (), env: Mapping[str, str] | None = None, limits: Limits | None = None) -> Profile:
+    """The profile of ``spec`` with ``grants`` in force and ``env`` the whole environment the harness gets (`isolation.environment`)."""
+    reads = [grant.subject for grant in grants if grant.kind in ("read", "toolchain")]
+    runs = [grant.subject for grant in grants if grant.kind == "toolchain"]
+    writable = [spec.home] if spec.read_only_stage else [spec.stage, spec.home]
+    readable = [spec.stage, spec.install, *interpreter_reads(), *system_toolchain(), *_git_directory(), *reads,
+                *([spec.patches] if spec.patches else [])]
+    ports = (spec.model_port, *([spec.proxy_port] if spec.proxy_port else []))
+    policy = Policy(f"coding-{spec.harness}", read=tuple(dict.fromkeys(readable)), write=tuple(writable),
+                    exec=tuple(dict.fromkeys([*SYSTEM_EXEC, os.path.realpath(sys.executable), spec.install, *system_toolchain(), *runs,
+                                              *_git_directory()])),
+                    net=Net.only(*ports), env=dict(env or {}), strict=True, signal_children=True,
+                    unix_sockets=(spec.session_socket,) if spec.session_socket else (),
+                    deny_write=tuple(str(Path(spec.stage) / name) for name in CONTROL_PREFIXES),
+                    limits=limits or Limits(wall_seconds=None, output_bytes=None, processes=fair_share()))
+    path = (str(Path(spec.home) / "bin"), *_git_directory(), *SYSTEM_EXEC, *(str(Path(each) / "bin") for each in runs))
+    return Profile(policy, spec.stage, spec.home, path, tuple(grants), _digest(policy, grants, spec), spec.harness, spec.interactive,
+                   spec.read_only_stage)

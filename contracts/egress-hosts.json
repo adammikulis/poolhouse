@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "about": "The only hosts a coding session may be granted a route to: package registries. Each entry names the document that publishes the host and the most bytes a real client sent to it while it installed a small real project (bytes_out_bound). A download counts nothing against the bound. Regenerate the measurements with scripts/measure_egress_hosts.py.",
+  "hosts": [
+    {
+      "host": "pypi.org",
+      "ecosystem": "python",
+      "source": "https://docs.pypi.org/",
+      "bytes_out_bound": 4571,
+      "measured": {"bytes_out": 4571, "command": "scripts/measure_egress_hosts.py (pip download requests)", "date": "2026-11-24"}
+    },
+    {
+      "host": "files.pythonhosted.org",
+      "ecosystem": "python",
+      "source": "https://docs.pypi.org/",
+      "bytes_out_bound": 7715,
+      "measured": {"bytes_out": 7715, "command": "scripts/measure_egress_hosts.py (pip download requests)", "date": "2026-11-24"}
+    },
+    {
+      "host": "registry.npmjs.org",
+      "ecosystem": "javascript",
+      "source": "https://docs.npmjs.com/cli/v10/using-npm/registry",
+      "bytes_out_bound": 86203,
+      "measured": {"bytes_out": 86203, "command": "scripts/measure_egress_hosts.py (npm install express)", "date": "2026-11-24"}
+    },
+    {
+      "host": "index.crates.io",
+      "ecosystem": "rust",
+      "source": "https://doc.rust-lang.org/cargo/reference/registry-index.html",
+      "bytes_out_bound": 1215,
+      "measured": {"bytes_out": 1215, "command": "scripts/measure_egress_hosts.py (cargo fetch)", "date": "2026-11-24"}
+    },
+    {
+      "host": "static.crates.io",
+      "ecosystem": "rust",
+      "source": "https://doc.rust-lang.org/cargo/reference/registries.html",
+      "bytes_out_bound": 1263,
+      "measured": {"bytes_out": 1263, "command": "scripts/measure_egress_hosts.py (cargo fetch)", "date": "2026-11-24"}
+    }
+  ]
+}

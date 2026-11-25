@@ -9,6 +9,7 @@ agent rules apply to that command too and the refusal says to run it from a term
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import getpass
 import importlib
@@ -20,6 +21,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from poolhouse import home
+from poolhouse.sandbox.confinement import confined
 
 __all__ = ["AGENT_MARKERS", "AgentRefused", "audit_rows", "is_terminal", "marked", "record", "refuse_agent", "who"]
 
@@ -86,7 +88,14 @@ def audit_rows() -> list[dict[str, Any]]:
 
 
 def refuse_agent(action: str, why: str, env: Mapping[str, str] | None = None) -> None:
-    """Raise `AgentRefused` at once, with ``why``, when an agent runs ``action``; the refusal is audited. Otherwise record that it ran."""
+    """Raise `AgentRefused` at once, with ``why``, when an agent runs ``action`` or when this process runs inside a confinement; the refusal
+    is audited. Otherwise record that it ran. What the operating system says of the process decides the second case (`sandbox.confined`):
+    a confined process is never a person, whatever its markers, its descriptors or its terminal say (docs/design-isolated-launcher.md, I17)."""
+    if confined():
+        with contextlib.suppress(OSError):  # a confinement may hold no write to the state root: the refusal still stands
+            _log({"event": "refused", "who": who(env), "action": action, "why": why, "confined": True})
+        raise AgentRefused(f"{action} is refused: this process runs inside a confinement, and nothing inside one is ever treated as a person "
+                           f"or as the session that launched it ({why}).")
     found = marked(env)
     if found:
         _log({"event": "refused", "who": who(env), "action": action, "why": why})

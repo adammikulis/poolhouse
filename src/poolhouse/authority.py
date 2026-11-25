@@ -57,6 +57,7 @@ GATES: dict[str, str] = {
     "runtime.deploy": "runtime",
     "github.release": "github",
     "runtime.deploy-unmerged": "runtime",
+    "isolation.grant": "isolation",
 }
 """Each delegable gate and its group."""
 
@@ -75,6 +76,7 @@ MEANS: dict[str, str] = {
     "runtime.deploy": "deploy a new runtime build on this device",
     "github.release": "publish a reviewed development tip or prerelease through the repository App",
     "runtime.deploy-unmerged": "deploy an independently reviewed exact source commit on this device",
+    "isolation.grant": "launch a coding agent with a wider reach than the default (a folder, a toolchain, a host, a file to publish, in place)",
 }
 """What a lead agent may do without asking the person while a gate is delegated."""
 
