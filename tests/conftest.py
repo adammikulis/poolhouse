@@ -55,11 +55,9 @@ sys.path.insert(0, str(REPO / "scripts"))
 
 
 def _no_desktop_notifications() -> None:
-    """A test never raises a real desktop notification or dialog. ``POOLHOUSE_NOTIFY=console``
-    makes the code under test choose the console, and shims named like the desktop's tools sit
-    first on PATH (so child processes inherit them): a shim records the attempt in
-    ``POOLHOUSE_SHIM_LOG`` and fails, and the session fails if anything was recorded."""
-    os.environ["POOLHOUSE_NOTIFY"] = "console"
+    """A test never raises a real desktop notification or dialog. Shims named like the
+    desktop's tools sit first on PATH (so child processes inherit them): a shim records the
+    attempt in ``POOLHOUSE_SHIM_LOG`` and fails, and the session fails if anything was recorded."""
     if os.name == "nt":
         return
     import tempfile

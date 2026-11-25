@@ -37,7 +37,7 @@ Each file has a lookup key and a manifest. The lookup key is a sha256 over:
    values of `-c`, `--rootdir`, `--confcutdir` and `--ignore` stay);
 5. the values of the environment variables named in the test file or its conftests, plus a fixed list
    (`PATH` without temporary entries and with the checkout root masked, `CI`, `TZ`, `LANG`, `LC_ALL`,
-   `CLAUDECODE`, `POOLHOUSE_NOTIFY`, `POOLHOUSE_LIVE_API`, `POOLHOUSE_LIVE_NET`, `DEV_TEST_SLOTS`);
+   `CLAUDECODE`, `POOLHOUSE_LIVE_API`, `POOLHOUSE_LIVE_NET`, `DEV_TEST_SLOTS`);
 6. the installed `poolhouse` distribution and how it was installed.
 
 The manifest is what the run depended on: the first-party files in the static import closure of the

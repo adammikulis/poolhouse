@@ -70,15 +70,3 @@ def test_the_daemon_binds_loopback_under_a_test_even_told_to_use_the_lan(clean):
     real_home(clean)
     assert bind_address(None, lan=True) == ALL_INTERFACES
     assert bind_address("192.0.2.7", lan=False) == "192.0.2.7", "an address a person typed is theirs"
-
-
-def test_a_desktop_dialog_is_shown_only_on_the_persons_machine_whatever_is_set(clean):
-    from poolhouse import desktop
-
-    clean.delenv(desktop.ENV)  # the suite sets it to console; this is about what happens with it unset
-    assert desktop.which_way("Darwin", which=lambda name: "/usr/bin/" + name) == "none", "unset, under a test: nothing on a screen"
-    assert desktop.which_way("Darwin", env={}, which=lambda name: "/usr/bin/" + name) == "macos", "an explicit environment is judged as given"
-    real_home(clean)
-    assert desktop.which_way("Darwin", which=lambda name: "/usr/bin/" + name) == "macos"
-    clean.setenv(desktop.ENV, "console")
-    assert desktop.which_way("Darwin", which=lambda name: "/usr/bin/" + name) == "none"

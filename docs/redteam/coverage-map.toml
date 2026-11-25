@@ -12,7 +12,7 @@
 
 [ratchet]
 uncovered = 51
-partial = 183
+partial = 182
 
 [[group]]
 match = ["parser:fleet/producer_devices.py", "handler:fleet/producer_devices.py:Devices.discover", "handler:fleet/producer_devices.py:Devices.inspect", "handler:fleet/producer_devices.py:Devices.control", "egress:fleet/producer_devices.py:Devices.request"]
@@ -1546,12 +1546,6 @@ tests = ["tests/test_net_no_bypass.py"]
 note = "loopback and LAN calls to servers the person configured; the net-no-bypass scan keeps public hosts out, answers from a hostile server (oversized, slow, malformed JSON) are not sent"
 
 # -- desktop and key stores ----------------------------------------------------------------
-[[group]]
-match = ["desktop:desktop.py:*"]
-status = "covered"
-tests = ["tests/test_lan.py", "tests/test_sentinel_automatic_holds.py"]
-note = "nothing raises a dialog any more (a sentinel hold ends by itself): test_sentinel_automatic_holds fails if one opens, test_lan covers where the helper may show anything"
-
 [[group]]
 match = ["desktop:*"]
 status = "n/a"

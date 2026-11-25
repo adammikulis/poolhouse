@@ -8,9 +8,9 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from poolhouse.desktop import clean
 from poolhouse.files import read_json, write_json
 from poolhouse.lock import only_one
+from poolhouse.markup import clean
 from poolhouse.platform import private_file
 
 from .events import BUS, Bus
