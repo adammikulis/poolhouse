@@ -364,7 +364,9 @@ stdout. Two rules follow, and the second is the one that holds.
    caller of a launcher control is refused at once with a plain reason, before any terminal is opened and whatever its markers.
    `sandbox.confined()` reads a fact of the
    process that its descendants inherit and none can change: on macOS `sandbox_check(getpid(), NULL, 0)` is 1 (the call 5.2
-   already uses to detect a nested sandbox, VERIFIED); on Linux and WSL a marker file the launcher binds read-only into the
+   already uses to detect a nested sandbox, VERIFIED) and `sandbox_check(getpid(), "default", 0)` is 1, which holds for a profile
+   that starts `(deny default)`, as every profile the engine builds does, and not for one that allows by default and names what
+   to refuse, such as the write denial the test runner puts around the whole suite (VERIFIED on 26.6); on Linux and WSL a marker file the launcher binds read-only into the
    namespace at a fixed path is present, and a process inside cannot remove it; on Windows the process token is an AppContainer
    token or the process is in the launcher's job. A dropped marker variable, a duplicated pty descriptor, `setsid`, a new pty and
    a terminal opened by name all leave it true. The check sits in `caller.refuse_agent` itself, so every caller (the authority

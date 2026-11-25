@@ -5,7 +5,8 @@ widens what a session may reach, refuses when this says yes, whatever the proces
 answer comes from the operating system and not from anything the process holds, so the confined process cannot change it. Where the
 check cannot be made the answer is yes: a refusal is the safe side.
 
-macOS asks the kernel whether a sandbox applies to this process (``sandbox_check``, VERIFIED on 26.6). Linux looks for the marker file
+macOS asks the kernel whether a sandbox applies to this process and refuses everything by default (``sandbox_check`` of the process and
+of the operation ``default``, VERIFIED on 26.6). Linux looks for the marker file
 the backend binds into the namespace read-only: the null device at a fixed path, which no unprivileged process can make (PREDICTED
 until a Linux device runs the probe, P-wsl). Windows asks for an AppContainer token and a job object, both of which the launcher builds
 (PREDICTED; the backend is not built, docs/design-isolated-launcher.md 5.4).
@@ -41,11 +42,16 @@ def confined() -> bool:
 
 
 def _seatbelt() -> bool:
+    """A sandbox applies and its default is to refuse. The engine's every profile starts `(deny default ...)`, so a process it confines
+    answers yes to both; a profile that allows by default and names what to refuse (the one the test runner puts around the whole
+    suite to deny writes under the real state root) holds no harness and is not the engine's confinement. Any answer other than a plain
+    no counts as yes, so a failed call is the safe side."""
     try:
         library = ctypes.CDLL("/usr/lib/system/libsystem_sandbox.dylib")
         library.sandbox_check.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
         library.sandbox_check.restype = ctypes.c_int
-        return library.sandbox_check(os.getpid(), None, 0) != 0
+        pid = os.getpid()
+        return library.sandbox_check(pid, None, 0) != 0 and library.sandbox_check(pid, b"default", 0) != 0
     except (OSError, AttributeError):
         return True
 

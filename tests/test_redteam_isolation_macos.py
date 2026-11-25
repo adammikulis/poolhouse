@@ -42,6 +42,26 @@ def test_a_confined_process_knows_it_is_confined_and_an_ordinary_one_does_not(tm
     assert (inside.returncode, inside.stdout.strip()) == (0, "True"), inside.stderr
 
 
+REFUSED = ("from poolhouse import caller\n"
+           "try:\n    caller.refuse_agent('grant', 'a probe')\nexcept caller.AgentRefused:\n    print('refused')\nelse:\n    print('ran')")
+
+
+def test_a_process_the_engine_confines_is_refused_as_a_caller_whatever_its_markers_say(tmp_path, seatbelt):
+    inside = python(REFUSED, tmp_path)
+    assert (inside.returncode, inside.stdout.strip()) == (0, "refused"), inside.stderr
+
+
+def test_a_process_under_a_profile_that_allows_by_default_is_not_taken_for_a_confinement(tmp_path, seatbelt):
+    """The test suite itself runs under such a profile (it denies writes under the real state root and nothing else): a profile that
+    names what to refuse is not the engine's, whose every profile starts by refusing everything (seatbelt.py)."""
+    profile = f'(version 1)(allow default)(deny file-write* (subpath "{tmp_path / "denied"}"))'
+    done = subprocess.run(["/usr/bin/sandbox-exec", "-p", profile, os.path.realpath(sys.executable), "-I", "-c",
+                           "import sys; sys.path.insert(0, " + repr(SOURCE) + ")\nfrom poolhouse import sandbox\n"
+                           "print(sandbox.confined())\n" + REFUSED], capture_output=True, text=True, check=False,
+                          env={"PYTHONDONTWRITEBYTECODE": "1", "HOME": str(tmp_path), "POOLHOUSE_HOME": str(tmp_path / "state")})
+    assert (done.returncode, done.stdout.split()) == (0, ["False", "ran"]), done.stderr
+
+
 def test_a_confined_shell_signals_its_own_children_and_no_process_beside_the_session(tmp_path, seatbelt):
     bystander = subprocess.Popen(["/bin/sleep", "60"], start_new_session=True)
     script = ("sleep 8 & child=$!; kill $child; wait $child; echo child=$?; "

@@ -43,5 +43,3 @@ test_isolation_gate.py
 test_isolation_env.py
 test_redteam_isolation_proof.py
 test_activity_isolation.py
-test_redteam_automatic_floor.py
-test_onboard_human.py
