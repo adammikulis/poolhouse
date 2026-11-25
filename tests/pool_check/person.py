@@ -76,16 +76,16 @@ class RigPerson:
         if grants.fingerprint(carried.public) in held:
             return {"fingerprint": grants.fingerprint(carried.public)}
         if not held:
-            secret = self.asks_first(device, "key", carried.public.hex())["secret"]
+            secret = self.asks_first(device, carried.public.hex())["secret"]
             return device.call("person_enroll", "", holder.token, **grants.enrolment(carried, ABOUT), secret=secret)
         return device.call("person_enroll", "", holder.token, **grants.approve(grants.enrolment(carried, ABOUT), self.key, self.where(device)))
 
-    def asks_first(self, device: Device, purpose: str, public: str = "") -> dict:
-        """The rig's person asks, as the device's own session, for the first ``purpose`` (`key` or `phone`): the node's reply, which carries the one-time
+    def asks_first(self, device: Device, public: str) -> dict:
+        """The rig's person asks, as the device's own session, for the first key ``public`` (hex): the node's reply, which carries the one-time
         secret once, to the session that asked. The node asks nobody, so it is confirmed as it is asked."""
-        out = device.wire("presence", "--state", device.state_text, "--purpose", purpose, "--public", public, check=False)
+        out = device.wire("presence", "--state", device.state_text, "--public", public, check=False)
         if not out["ok"] or out["result"]["state"] != "confirmed":
-            raise RuntimeError(f"{device.name}: the node made no secret for the first {purpose}: {out}")
+            raise RuntimeError(f"{device.name}: the node made no secret for the first key: {out}")
         return dict(out["result"])
 
     def where(self, device: Device) -> grants.Where:

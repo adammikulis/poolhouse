@@ -1,60 +1,35 @@
-"""The public side of raising a request for grants that a key answers: `ph.board.Board.request_approval`, `ph.board.Ask` and `ph.board.Approval`,
-against a real node and a phone that is only keys and requests (docs/api.md, docs/phone-approval.md). The request is raised and left: policy
-answers one at once through `poolhouse-workspace approval request` (tests/test_board_approval.py); here a linked phone's key answers."""
+"""The public side of asking for grants: `ph.board.Board.request_approval`, `ph.board.Ask` and `ph.board.Approval`, against a real node (docs/api.md).
+The request is decided before it is returned, as `poolhouse-workspace approval request` decides it (tests/test_board_approval.py): this device's key signs what
+the caller may have and the rest is refused with the reason, so there is no handle to wait on."""
 
 from __future__ import annotations
 
 import pytest
-from phone_kit import add_phone, endpoint_of
+from test_computer_key import KS
 
 import poolhouse as ph
-from poolhouse.board import grants
+from poolhouse import caller, keystore
+from poolhouse.board import founding, grants
 
-pytest_plugins = ["node_kit", "phone_kit"]
+pytest_plugins = ["node_kit"]
 
 
-def test_an_agent_asks_waits_and_is_told_when_the_phone_approved(phone_node):
-    team = phone_node
-    phone = add_phone(team)
+def test_an_agent_asks_and_has_the_decision_at_once_with_nothing_to_wait_for(workspace_node):
+    team = workspace_node
     board = ph.board.Board(team.session(team.member("lead")))
     ask = board.request_approval([ph.board.Ask("add_device", lasts="10m", uses=1)], note="adding the Linux box")
     assert isinstance(ask, ph.board.Approval)
-    assert (ask.state, ask.risk) == ("pending", "sensitive") and "adding the Linux box" in ask.text and ask.title.endswith("asks to add a device")
-    assert ask.wait(0.6) == "pending", "time running out is not a failure"
-    assert len(ask.code) == 2 and not ask.deduplicated, "a request that is not routine comes with the number a phone's holder matches"
-    assert board.request_approval([ph.board.Ask("add_device", lasts="10m", uses=1)], note="again").deduplicated, "the same request made again is the same item"
-    assert ask.message() == "Waiting for a key to answer it."
-    endpoint = endpoint_of(team)
-    seen = endpoint.ok("list", token=phone.token)["approvals"][0]
-    assert seen["id"] == ask.id and seen["text"] == ask.text, "the phone shows the text the agent has"
-    assert endpoint.ok("decide", phone.decision(seen, "approve", pick=ask.code))["state"] == "approved"
-    assert ask.wait(10) == "approved" and len(ask.grants) == 1
-    assert ask.message() == "It was approved, so the grants exist."
+    assert (ask.state, ask.risk) == ("approved", "sensitive") and "adding the Linux box" in ask.text and ask.title.endswith("asks to add a device")
+    assert len(ask.grants) == 1 and ask.message() == "It was approved, so the grants exist."
     held = grants.listing(team.session(team.members["lead"]))
     assert [(g.action, g.status, g.carried_by) for g in held.grants] == [("add_device", "live", "node")]
-    assert board.approval(ask.id).state == "approved" and [a.id for a in board.approvals()] == [ask.id]
-    assert [a.id for a in board.approvals("denied")] == []
+    assert not {"wait", "cancel", "refresh", "code", "deduplicated", "expires_ms"} & set(dir(ask)), "a decided request has no handle to wait on, withdraw or read again"
+    assert not {"approval", "approvals", "blocked_sessions", "lift_block", "offer_phone"} & set(dir(board)), "and the board has nothing to read it back with"
+    assert team.session(team.members["lead"]).call("approval_pending")["approvals"] == []
 
 
-def test_a_denied_request_changes_nothing_and_a_withdrawn_one_ends(phone_node):
-    team = phone_node
-    phone = add_phone(team)
-    board = ph.board.Board(team.session(team.member("lead")))
-    endpoint = endpoint_of(team)
-    first = board.request_approval([ph.board.Ask("sync_now", uses=1)])
-    assert endpoint.ok("decide", phone.decision(endpoint.ok("get", {"id": first.id}, token=phone.token), "deny"))["state"] == "denied"
-    assert first.wait(5) == "denied" and first.message() == "It was declined; nothing changed."
-    retry = board.request_approval([ph.board.Ask("sync_now", uses=1)])
-    assert retry.state == "pending"
-    assert retry.cancel() == "cancelled"
-    second = board.request_approval([ph.board.Ask("link_read", "a>b", uses=1)])
-    assert second.cancel() == "cancelled" and second.message() == "The request was withdrawn."
-    assert grants.listing(team.session(team.members["lead"])).grants == []
-
-
-def test_an_ask_for_what_no_one_may_grant_and_a_policy_the_pool_does_not_have_are_refused_with_a_sentence(phone_node):
-    team = phone_node
-    add_phone(team)
+def test_an_ask_for_what_no_one_may_grant_and_a_policy_the_pool_does_not_have_are_refused_with_a_sentence(workspace_node):
+    team = workspace_node
     board = ph.board.Board(team.session(team.member("lead")))
     with pytest.raises(ph.Denied, match="grant_issue is a floor: no grant, from anyone, covers it"):
         board.request_approval([ph.board.Ask("grant_issue")])
@@ -62,15 +37,26 @@ def test_an_ask_for_what_no_one_may_grant_and_a_policy_the_pool_does_not_have_ar
         board.request_approval([ph.board.Ask("add_device")], expect_policy="open")
     with pytest.raises(ValueError, match="a time is a whole number"):
         board.request_approval([ph.board.Ask("add_device", lasts="soon")])
+    assert team.session(team.members["lead"]).call("approval_pending")["approvals"] == [], "a refused ask left nothing waiting, so the next one is not blocked by it"
+    assert board.request_approval([ph.board.Ask("sync_now", uses=1)]).state == "approved"
 
 
-def test_a_link_for_one_more_phone_needs_a_phone_added_first_and_never_adds_one_alone(phone_node):
-    team = phone_node
+def test_an_agent_is_refused_at_once_the_grants_only_a_person_may_have_and_no_request_is_made(workspace_node, monkeypatch):
+    monkeypatch.setenv("CLAUDECODE", "1")
+    team = workspace_node
     board = ph.board.Board(team.session(team.member("lead")))
-    with pytest.raises(ph.Denied, match="The first phone is added with `poolhouse-workspace phone add`"):
-        board.offer_phone()
-    first = add_phone(team)
-    link = board.offer_phone()
-    assert link.startswith("poolhouse://add-phone?data=") and len(link) < 1500
-    second = add_phone(team, "Tablet", by=first, link=link)
-    assert second.token and len(team.client.call("person_keys")["keys"]) == 2
+    assert caller.marked()
+    with pytest.raises(ph.Denied, match="member_remove is refused to an agent"):
+        board.request_approval([ph.board.Ask("member_remove")])
+    assert team.session(team.members["lead"]).call("approval_pending")["approvals"] == []
+
+
+def test_in_a_pool_the_board_refuses_at_once_what_reaches_beyond_the_device_and_names_no_phone(workspace_node, monkeypatch):
+    monkeypatch.setattr(keystore, "default", lambda: KS)
+    team = workspace_node
+    board = ph.board.Board(team.session(team.member("lead")))
+    founding.found_here(team.client, "home", "secure")
+    with pytest.raises(ph.Denied) as refused:
+        board.request_approval([ph.board.Ask("note_verify", lasts="10m", uses=1)])
+    assert grants.POOL_GRANTS in str(refused.value) and "phone" not in str(refused.value).lower()
+    assert team.session(team.members["lead"]).call("approval_pending")["approvals"] == [], "no request was made to wait on"

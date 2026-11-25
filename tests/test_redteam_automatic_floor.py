@@ -71,10 +71,6 @@ def protected(tmp_path: Path) -> list[tuple[str, str, str, list[str]]]:
         ("workspace person-proof", "poolhouse.workspace.cli", "main", ["person-proof"]),
         ("workspace person-enroll", "poolhouse.workspace.cli", "main", ["person-enroll", "--proof", "{}"]),
         ("workspace person-unenroll", "poolhouse.workspace.cli", "main", ["person-unenroll", "--key", "abc"]),
-        ("workspace approval decide", "poolhouse.workspace.cli", "main", ["approval", "decide", "ap-0123456789abcdef", "approve"]),
-        ("workspace approval pending --all", "poolhouse.workspace.cli", "main", ["approval", "pending", "--all"]),
-        ("workspace phone add", "poolhouse.workspace.cli", "main", ["phone", "add"]),
-        ("workspace phone remove", "poolhouse.workspace.cli", "main", ["phone", "remove", "Pixel"]),
         ("workspace chat", "poolhouse.workspace.cli", "main", ["chat"]),
         ("open", "poolhouse.fleet.launch_open", "main", ["--print"]),
     ]
@@ -123,7 +119,7 @@ def said(done: subprocess.CompletedProcess) -> str:
 
 
 GATED = 6
-PROTECTED = 14
+PROTECTED = 10
 
 
 @pytest.mark.parametrize("index", range(GATED))

@@ -1,4 +1,4 @@
-"""`ph.pool.found`, `ph.pool.status` and `ph.pool.join` as an agent calls them: a node of the test's own, a key this computer makes, or a phone's key the test made.
+"""`ph.pool.found`, `ph.pool.status` and `ph.pool.join` as an agent calls them: a node of the test's own, a key this computer makes, or a key another computer holds that the test made.
 
 Nobody is asked and nothing waits. The sentences are what an agent passes on to its owner, so they are checked for what they name and for their length.
 """
@@ -7,14 +7,13 @@ from __future__ import annotations
 
 import pytest
 from node_kit import NoKeystore, enrol_as_phone_key
-from phone_kit import add_phone, endpoint_of
 
 import poolhouse as ph
 from poolhouse import keystore
 from poolhouse.board import founding
 from poolhouse.fleet.onboard.manifest import Signer
 
-pytest_plugins = ["node_kit", "phone_kit"]
+pytest_plugins = ["node_kit"]
 
 
 def test_status_of_a_fresh_device_says_it_is_unfounded_and_what_to_do(workspace_node):
@@ -28,7 +27,6 @@ def test_found_makes_the_pool_at_once_with_a_key_this_computer_makes_and_a_secon
     assert "now in the pool home" in made.say and "phone" not in made.say.lower() and "terminal" not in made.say.lower() and len(made.say) <= 260
     assert len(workspace_node.client.call("person_keys")["keys"]) == 1, "the node enrolled the key it made"
     assert (workspace_node.state / "person" / "pools").is_dir(), "and this computer kept it"
-    assert ph.pool.status().waiting == (), "nothing waits for anybody"
     again = ph.pool.found("other")
     assert again.already and "already in the pool home" in again.say and again.pool.id == made.pool.id
 
@@ -45,7 +43,7 @@ def test_found_says_in_one_sentence_what_is_missing_when_this_computer_cannot_ke
     assert not (workspace_node.state / "person" / "pools").exists(), "and kept none"
 
 
-def test_found_with_a_phones_key_as_admin_makes_the_pool_at_once_and_a_second_call_says_it_is_there(workspace_node):
+def test_found_with_another_computers_key_as_admin_makes_the_pool_at_once_and_a_second_call_says_it_is_there(workspace_node):
     admin = founding.Admin(Signer.generate())
     enrol_as_phone_key(workspace_node, admin.key)
     made = ph.pool.found("home", "open", admin=admin)
@@ -55,13 +53,6 @@ def test_found_with_a_phones_key_as_admin_makes_the_pool_at_once_and_a_second_ca
     again = ph.pool.found("other", admin=admin)
     assert again.already and "already in the pool home" in again.say and again.pool.id == made.pool.id
     assert ph.pool.status().missing == "", "a governed pool with a strong key needs nothing from its person"
-
-
-def test_a_linked_phone_is_not_asked_for_the_key_this_computer_makes(phone_node):
-    phone = add_phone(phone_node)
-    made = ph.pool.found("home")
-    assert made.pool.governance == "governed" and not made.already
-    assert endpoint_of(phone_node).ok("list", {}, token=phone.token)["approvals"] == [], "the phone has nothing to answer"
 
 
 def test_join_without_a_code_or_a_fingerprint_says_what_is_needed(workspace_node):

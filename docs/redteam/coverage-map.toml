@@ -853,19 +853,6 @@ note = "hostile pytest text remains literal argv; source mount is read-only, no 
 
 # -- the human-only floor ------------------------------------------------------------------
 [[group]]
-match = ["human:workspace/approval_cli.py:*", "human:workspace/phone_cli.py:*"]
-status = "covered"
-tests = ["tests/test_board_approval.py::test_an_agent_cannot_answer_a_request_read_what_waits_or_add_or_remove_a_phone_and_the_refusal_says_why_at_once",
-         "tests/test_board_approval.py::test_the_device_answers_a_request_with_its_own_key_at_once_and_what_waits_is_read_with_that_key",
-         "tests/test_board_approval.py::test_the_first_phone_is_added_from_a_code_drawn_at_once_and_never_an_image_file",
-         "tests/test_board_approval.py::test_a_further_phone_is_added_by_an_image_and_waits_for_a_phone_you_hold_to_approve_it",
-         "tests/test_board_approval.py::test_a_request_that_is_not_routine_is_answered_with_the_number_the_asker_was_shown_and_a_wrong_number_is_a_decline",
-         "tests/test_board_approval.py::test_a_code_that_was_made_for_nobody_else_adds_nothing_twice_and_a_wrong_one_adds_nothing",
-         "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
-         "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else"]
-note = "approval decide, phone add and phone remove refuse a process an agent started and one with no terminal; the node accepts a decision only from the signature of a key it holds over the text it wrote, once, and a session never decides (app/poolhouse-node/tests/approvals.rs, phone_endpoint.rs, push_out.rs)"
-
-[[group]]
 match = ["human:workspace/grants_cli.py:*"]
 status = "covered"
 count = 2

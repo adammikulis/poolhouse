@@ -223,10 +223,9 @@ accept the production supervisor and the app-bundle node, and why the verified p
 | `node_launch stop` (node_launch.py:303) | a person or an agent at the command line |
 | `node_permission` (node_permission.py:126) | after the device key moves, then `ensure_node` |
 | `node_join.start` (node_join.py:107) | restarting a node that ran without its network |
-| `workspace/phone_cli` (workspace/phone_cli.py:53) | turning the phone listener on, then `ensure_node` |
-| `tests/node_kit.py:244` (`WorkspaceNode.stop`) and the other fixtures (`tests/phone_kit.py`, `tests/serve_node.py`, `tests/testfarm_kit.py`, `tests/pool_check/wire.py`, `tests/pool_check/updater.py`) | the finalizer of a test |
+| `tests/node_kit.py:244` (`WorkspaceNode.stop`) and the other fixtures (`tests/serve_node.py`, `tests/testfarm_kit.py`, `tests/pool_check/wire.py`, `tests/pool_check/updater.py`) | the finalizer of a test |
 
-A caller that ignores the result (`swap`, `_rolled_back`, `node_permission`, `phone_cli`, `node_join`) now sees the old node keep
+A caller that ignores the result (`swap`, `_rolled_back`, `node_permission`, `node_join`) now sees the old node keep
 running when `stop` verified nothing and the node still answers; each is followed by a health check or by `ensure_node`, which returns the node that is
 running, and the build reads each one and adds a test that it says so. Tests: `test_stop_stops_the_production_shaped_supervisor`
 (a decoy with the production argv and a held lock: R2 and R4 pass, so `stop` signals it), `test_stop_stops_an_app_bundle_shaped_node`.

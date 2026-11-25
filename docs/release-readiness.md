@@ -87,7 +87,7 @@ terminal.
 | --- | --- | --- | --- |
 | 1 | Installs Poolhouse on the computer; allows network discovery once | install, os-prompt | The installer is a one-line command typed in a terminal (README, "Install"); not driven by a person |
 | 2 | Installs the Poolhouse app on the phone; allows camera and notifications once | install, os-prompt x2 | The app is a sideloaded APK, not on a store (`app/android/README.md`); never run on a phone |
-| 3 | The computer's app shows "Link your phone" with a code; scans it and confirms the same three words on both screens | link-phone x2 | No such screen. The first phone is added by `poolhouse-workspace phone add` at a terminal, then the computer's own prompt, a scan and a fingerprint (4 steps, `first_run` in `contracts/phone-friction.json`). Check words are not built (slices 5 and 8) |
+| 3 | The computer's app shows "Link your phone" with a code; scans it and confirms the same three words on both screens | link-phone x2 | No such screen, and no command: `poolhouse-workspace phone add` and the QR code are removed, so nothing adds a phone and no step of the person's waits for one (`first_run` in `contracts/phone-friction.json` counts the removed steps). Check words are not built (slices 5 and 8) |
 | 4 | Says "Make a pool called home" | say | `ph.pool.found` exists; it refuses a weak key, and no strong key can sign a charter yet |
 | 5 | Taps once on the phone to create the pool | tap | Not built (phone-signed charters, F2 to F10) |
 | 6 | Says "Serve a small model for my pool" | say | The agent runs `poolhouse-serve up` under the broker lease. `serve_offer` does not exist |
@@ -420,7 +420,7 @@ writes it. Its eight residual risks (section 13) are "named and not accepted".
 | The person record's key is a same-user file no hook covers; the release question shows agent-written subjects | same | closed for the forms CRD-4 lists; the question's facts come from git, and the subject is the one line an agent wrote and is labelled so |
 | Hooks cover Bash and the edit tools only | same | closed for the tools of HAR-5 |
 | Server rulesets are not applied; the Bash guard passed 14 bypasses; `pre-push` exits 0 once `CLAUDECODE` is unset in a re-parented process | same | OW-1 to OW-4 |
-| Phone approval left items: the Keystore attestation chain is not recorded (item 8); the wake-up is not signed, pushes are not padded, the unauthenticated `hello` returns the device name, policy and version, `phone add` restarts the node and binds `0.0.0.0` (item 9) | HANDOFF "Phone approval" | not built |
+| Phone approval left items: the Keystore attestation chain is not recorded (item 8); the wake-up is not signed, pushes are not padded, the unauthenticated `hello` returns the device name, policy and version (item 9); `phone add`, which restarted the node and bound `0.0.0.0`, is removed | HANDOFF "Phone approval" | not built |
 | Red-team findings F1 (guards on calls, not re-measured on a model), F2 (hidden text reaches the model) and F5 (an oversized body is read) of `docs/redteam/findings.md` | the red-team record | open |
 
 ### 4.4 Accepted risks the owner must name

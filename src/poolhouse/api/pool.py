@@ -66,9 +66,6 @@ class Pool:
     """The founded pool's name; empty while unfounded."""
     missing: str = ""
     """One sentence for the person on what this pool still needs from them (a pool, a strong key, a signature); empty when nothing."""
-    waiting: tuple[str, ...] = ()
-    """One ``waiting for you: <the sentence>`` for every request a node that asks its user (`--presence os` or `terminal`, started by hand) has put
-    and nobody has answered yet; empty for a node that asks nobody, which is every node the launcher starts."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,7 +122,7 @@ def status() -> Pool:
     return Pool(str(raw["pool"]), str(raw.get("project") or ""), str(raw["policy"]), str(raw["fingerprint"]),
                 str(raw.get("listen") or ""), bool(raw.get("join_code_open")),
                 tuple(_member(m) for m in raw.get("members", [])), "governed" if gov.get("mode") == "governed" else "unfounded",
-                str(gov.get("name") or ""), _missing(gov), tuple(str(w["say"]) for w in raw.get("waiting", [])))
+                str(gov.get("name") or ""), _missing(gov))
 
 
 def members(*, include_removed: bool = False) -> list[Member]:
@@ -173,8 +170,8 @@ def join(host: str, code: str = "", *, port: int = DEFAULT_PORT, fingerprint: st
     """Join the pool of the device at ``host``; this device becomes a member.
 
     A ``secure`` pool takes the ``code`` its `add_device` made. An ``open`` pool on this device's own network takes no code, only the
-    ``fingerprint`` of the device at ``host`` (64 hex digits, from its beacon). A device already in a pool does not change pool; if a
-    phone is linked, the grant to join is asked of it. Raises `Refusal`, whose message is one sentence for the person.
+    ``fingerprint`` of the device at ``host`` (64 hex digits, from its beacon). A device already in a pool does not change pool; the grant
+    to join is signed at once by this device's key when policy allows it. Raises `Refusal`, whose message is one sentence for the person.
     """
     if not code and not fingerprint:
         raise errors.Error("give the code the other device showed, or for an open pool the fingerprint of the device that answers")
@@ -200,7 +197,7 @@ def found(name: str | None = None, policy: str = "secure", *, admin: founding.Ad
     """Make this device's pool, governed by the person's key: the one step that turns a pool of one into a pool others can join.
 
     ``policy`` is ``secure`` (devices join with a code, the default) or ``open`` (devices on this network join by themselves). Nobody is asked
-    and nothing waits: this computer makes its own key for the pool and signs the charter with it (``admin`` names another key, a phone's, that
+    and nothing waits: this computer makes its own key for the pool and signs the charter with it (``admin`` names another key, another computer's, that
     signs instead). A device that is in a founded pool says so and changes nothing. Raises `Refusal` (an `ph.Denied`) whose message is one
     sentence an agent passes on, with ``needs``, ``where`` and ``then`` for what to do next.
     """

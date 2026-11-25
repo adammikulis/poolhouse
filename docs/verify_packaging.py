@@ -10,7 +10,7 @@ from packaging.utils import canonicalize_name
 
 CORE = {
     'cryptography': '>=50', 'ladybug': '>=0.20.4,<0.21', 'packaging': '>=24.2',
-    'psutil': '>=7.2.2', 'qrcode': '>=8.2', 'pywin32': '',
+    'psutil': '>=7.2.2', 'pywin32': '',
 }
 ALL = {
     'agents', 'train', 'gguf', 'graph', 'store', 'scrape', 'vision', 'pdf',

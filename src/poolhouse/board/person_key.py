@@ -61,8 +61,8 @@ def kept(state: Path) -> bool:
 
 
 def enrolled(client: Client, carrier: Session) -> SigningKeys:
-    """This device's key, made on first use and enrolled on the node when the node holds no key of this computer (a phone's, enrolled first, does
-    not count: the node enrols this computer's own key by its own prompt, so nothing waits for a phone). ``carrier`` is the device's own session,
+    """This device's key, made on first use and enrolled on the node when the node holds no key of this computer (a key made elsewhere, enrolled
+    first, does not count: the node enrols this computer's own key as it is asked, so nothing waits). ``carrier`` is the device's own session,
     the only one the node lets make that key. `Denied` when the node holds another key made on this computer."""
     key = keys(client.state)
     if grants.fingerprint(key.public) not in grants.listing(carrier).persons:
@@ -88,8 +88,8 @@ def provider(state: Path, *, acting: Callable[[str], tuple[str, str]] | None = N
         try:
             name, carrier = acting(hint["board"]) if acting is not None else (hint["name"], token)
             held = Session(Client(state), hint["board"], carrier, name)
-            if grants.listing(held).pool_wide(action):
-                warn(f"grant: {grants.POOL_GRANTS}")
+            if why := grants.listing(held).pool_refusal([action]):
+                warn(f"grant: {why}")
                 return ""
             key = enrolled(held.client, held) if acting is not None else keys(state)
             want = grants.Want(action, {"kind": "session", "name": name}, hint["resource"], hint["device"], LASTS_MS, 1)

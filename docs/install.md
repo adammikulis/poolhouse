@@ -165,7 +165,7 @@ pip install "poolhouse[all] @ git+https://github.com/adammikulis/poolhouse"
 ```
 
 The base install includes cryptography, Ladybug (the native graph engine), packaging,
-psutil and qrcode, plus pywin32 on Windows. `[train]` adds numpy and safetensors.
+and psutil, plus pywin32 on Windows. `[train]` adds numpy and safetensors.
 `[all]` installs a curated set of features; it does not include every optional extra.
 See [the dependency list](../pyproject.toml) for the extras each feature needs. Every
 [release](https://github.com/adammikulis/poolhouse/releases/latest) carries the same wheel,
