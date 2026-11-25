@@ -14,6 +14,7 @@ from functools import cache
 __all__ = [
     "BUILD",
     "CI",
+    "DOCUMENTS",
     "ECOSYSTEMS",
     "HOOKS",
     "INSTALL",
@@ -42,6 +43,9 @@ LOGIN = "can start a program for the person"
 GIT = "sets commands git runs on its own"
 ENVIRONMENT = "runs when a shell enters the folder"
 PROGRAM = "is a program in a folder of programs"
+DOCUMENTS = frozenset({".md", ".markdown", ".rst", ".adoc", ".txt"})
+"""Extensions a tool reads as prose and never runs, though a registry claimant types them as a programming language (`.md` is also a machine
+description language): a file with one that a runner names is named and taints nothing it names in turn."""
 PROGRAM_FOLDERS = frozenset({"scripts", "bin", "sbin", "libexec", "hooks"})
 """Folders whose files without an extension are programs: the layout of the filesystem hierarchy and of every project that keeps scripts."""
 

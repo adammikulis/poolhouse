@@ -3,7 +3,7 @@
 A change is plain source when four tests hold (docs/design-isolated-launcher.md, 4.4.1): its shape (a regular text file with one link, no
 executable bit, no shebang, no program format), its position (no path component starts with a dot), its kind (the language registry
 snapshot types its extension as a programming language, markup or prose, and no record assigns its name to a role) and its wiring (no
-non-plain file of the result tree names it). A fact the caller cannot read is a failed test. `classify` is shared by publication, by the
+file of the result tree that runs or configures a tool names it; a data or documentation file names files and taints none). A fact the caller cannot read is a failed test. `classify` is shared by publication, by the
 in-place capture and by the hooks; the hooks read `Verdict.runs`, the part of the answer that path facts alone give.
 """
 
@@ -20,7 +20,7 @@ from functools import cache
 from poolhouse.contracts.loader import ContractError, load
 from poolhouse.guard import ecosystems, harnesses
 
-__all__ = ["CLASSES", "PLAIN", "Verdict", "classify", "harness_names", "registry", "tree", "wired"]
+__all__ = ["CLASSES", "PLAIN", "Verdict", "classify", "follows", "harness_names", "registry", "tree", "wired"]
 
 PLAIN = "plain"
 CLASSES = {
@@ -33,6 +33,9 @@ CLASSES = {
 }
 """The one sentence the parent writes for each class of refusal."""
 GOVERNING = frozenset({"hidden", "instruction", "named", "governing"})
+ACTS = frozenset({"program", "hidden", "instruction", "governing"})
+"""The classes of a file that runs or configures a tool (a program, a hidden configuration file, an instruction file, a build, test, CI, hook,
+package-manager or wrapper file): the only files whose names make other files non-plain. A data file or a document names files and runs none."""
 HIDDEN_FOLDER = "is in a hidden folder, which tools run or read without being asked"
 HIDDEN_FILE = "is a hidden file no language registry entry types, so whatever reads it decides what it means"
 AGENT = "changes what the coding agent may run or is told to do"
@@ -58,6 +61,11 @@ class Verdict:
     def governing(self) -> bool:
         """Never applied, whatever rule and whoever asks: it runs by itself later or decides what runs or who reviews."""
         return self.klass in GOVERNING
+
+    @property
+    def acts(self) -> bool:
+        """It runs or configures a tool, so the files it names are non-plain (test 4). A data or documentation file taints nothing it names."""
+        return self.klass in ACTS
 
     @property
     def sentence(self) -> str:
@@ -142,13 +150,15 @@ def classify(path: str, data: bytes | None = None, mode: int | None = None, link
     return Verdict(_structure(data, mode, links) or _kind(name, extension) or PLAIN, runs)
 
 
-def wired(paths: Collection[str], non_plain: Collection[str], read: Callable[[str], bytes | None]) -> dict[str, str]:
-    """Test 4: the files of the result tree that a non-plain text file names, directly or through the files it names in turn.
+def wired(paths: Collection[str], seeds: Collection[str], read: Callable[[str], bytes | None],
+          follow: Callable[[str], bool] = lambda path: True) -> dict[str, str]:
+    """Test 4: the files of the result tree that a file which runs or configures a tool names, directly or through the files it names in turn.
 
-    ``paths`` is every file of the result tree, ``non_plain`` the ones that fail tests 1 to 3 and ``read`` gives the bytes of a file (or
-    ``None``). A path is a maximal run of path characters that resolves, from the project root or from the naming file's directory, to a
-    file of the tree. Each file reached maps to the file that named it; the files reached are non-plain too."""
-    held, reached, queue = set(paths), {}, list(non_plain)
+    ``paths`` is every file of the result tree, ``seeds`` the files that run or configure a tool (`Verdict.acts`; a data or documentation file is
+    never a seed), ``read`` gives the bytes of a file (or ``None``) and ``follow`` says whether a file that was reached runs what it names in turn.
+    A path is a maximal run of path characters that resolves, from the project root or from the naming file's directory, to a file of the
+    tree. Each file reached maps to the file that named it; the files reached are non-plain too."""
+    held, reached, queue = set(paths), {}, list(seeds)
     seen, basenames = set(queue), {posixpath.basename(path) for path in held}
     while queue:
         current = queue.pop()
@@ -161,8 +171,17 @@ def wired(paths: Collection[str], non_plain: Collection[str], read: Callable[[st
                 if found in held and found not in seen:
                     seen.add(found)
                     reached[found] = current
-                    queue.append(found)
+                    if follow(found):
+                        queue.append(found)
     return reached
+
+
+def follows(path: str, verdict: Verdict) -> bool:
+    """Whether a file a runner reached runs what it names in turn: it acts itself, or its extension is source (the registry types it as a
+    programming language, or an ecosystem reads it as source) and not one a tool reads as prose."""
+    extension = posixpath.splitext(path)[1].casefold()
+    source = extension in ecosystems.source_extensions() or registry()["extensions"].get(extension) == "programming"
+    return verdict.acts or (source and extension not in ecosystems.DOCUMENTS)
 
 
 def tree(paths: Collection[str], facts: Callable[[str], tuple[bytes, int, int] | None]) -> dict[str, Verdict]:
@@ -177,5 +196,6 @@ def tree(paths: Collection[str], facts: Callable[[str], tuple[bytes, int, int] |
         return known[path]
 
     verdicts = {path: classify(path, *(got(path) or (None, None, None))) for path in paths}
-    named = wired(paths, [path for path, verdict in verdicts.items() if not verdict.plain], lambda path: (got(path) or (b"",))[0])
+    named = wired(paths, [path for path, verdict in verdicts.items() if verdict.acts], lambda path: (got(path) or (b"",))[0],
+                  lambda path: follows(path, verdicts[path]))
     return {**verdicts, **{path: Verdict("named", ecosystems.BUILD) for path in named if verdicts[path].plain}}
