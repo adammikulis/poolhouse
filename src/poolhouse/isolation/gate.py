@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
-from poolhouse import activity, authority, caller
+from poolhouse import activity, authority, caller, home
 from poolhouse.board import client as board_client, place
 from poolhouse.contracts.loader import ContractError
 from poolhouse.isolation import ancestry, egress, policy, toolchain
@@ -131,6 +131,7 @@ def _attest() -> ancestry.Ancestry:
         raise caller.AgentRefused(str(why)) from why
 
 
+@home.real_roots
 def require_widening(action: str, env: Mapping[str, str] | None = None, project: str = "") -> ancestry.Ancestry:
     """The `isolation.grant` gate, decided at once. A process inside a confinement is refused whatever its markers say. Whether the caller is an
     agent, the lead or a terminal is read from its process tree by the node (`ancestry`), and the environment only narrows that. With the gate
@@ -184,6 +185,7 @@ def _signal(grants: tuple[Grant, ...], unusual: bool, on_event: Events | None) -
                 call("isolation.widened", dict(fields))
 
 
+@home.real_roots
 def decide_launch(arguments: Arguments, *, project: str, env: Mapping[str, str] | None = None, on_event: Events | None = None,
                   registered: Callable[[str], bool] | None = None) -> Launch:
     """Decide every widening of one launch at once, or refuse the launch with the reason.

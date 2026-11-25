@@ -47,6 +47,7 @@ class Unregistered(ValueError):
     """The node holds no project that contains the folder, so there is no project to keep a policy for."""
 
 
+@home.real_roots
 def key_of(project: str | os.PathLike[str]) -> str:
     """The id of the project the node has registered that contains ``project`` (a worktree and any other place of it give the same id), or an
     empty string when the node holds none or cannot answer."""
@@ -57,6 +58,7 @@ def key_of(project: str | os.PathLike[str]) -> str:
     return found if isinstance(found, str) else ""
 
 
+@home.real_roots
 def path_of(key: str) -> Path:
     """Where the policy of the registered project ``key`` is kept: under the account's state root, by a digest of the project's id."""
     return home.guarded("isolation", "projects", f"{hashlib.sha256(key.encode()).hexdigest()}.json")
@@ -66,6 +68,7 @@ def _plain(value: Any) -> tuple[str, ...]:
     return tuple(item for item in value if isinstance(item, str)) if isinstance(value, list) else ()
 
 
+@home.real_roots
 def load(project: str | os.PathLike[str]) -> ProjectPolicy | None:
     """The policy of the project the node has registered around ``project``, or None when it holds none or the person never wrote one. A file that cannot be read as a policy is a policy that names
     nothing, so a damaged record narrows and never widens."""
@@ -78,6 +81,7 @@ def load(project: str | os.PathLike[str]) -> ProjectPolicy | None:
     return ProjectPolicy(*(_plain(data.get(kind)) for kind in KINDS), in_place=data.get("in-place") is True)
 
 
+@home.real_roots
 def save(project: str | os.PathLike[str], policy: ProjectPolicy, env: Mapping[str, str] | None = None) -> None:
     """Write the policy of the project the node has registered around ``project``. An agent and a process inside a confinement are refused at
     once, with the reason; a folder the node holds no project for has none to write (`Unregistered`)."""

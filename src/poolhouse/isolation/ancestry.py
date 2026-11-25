@@ -12,19 +12,15 @@ to widen. The node's state is the account's own (`home.guarded`), so a caller ca
 
 from __future__ import annotations
 
-import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from poolhouse import home, node_health, session_identity
+from poolhouse import caller, home, node_health, session_identity
 from poolhouse.board.place import PLACER
 
 __all__ = ["Ancestry", "Session", "Unattested", "attest", "node_state"]
 
-SUBAGENT_MARKER = "POOLHOUSE_SUBAGENT"
-"""What a harness's hook puts in the command of a subagent; it can only say "helper", never "lead"."""
-NAMED = "POOLHOUSE_WORKSPACE_AGENT"
 MOST = 64
 """The most sessions one answer is read for; a tree holds a lead and its helpers."""
 
@@ -63,13 +59,13 @@ class Ancestry:
     def helper(self, env: Mapping[str, str] | None = None) -> bool:
         """Whether the caller says it is a helper: its command carries a subagent's marker, or it names a helper of the tree as its own. The
         environment is read only to narrow."""
-        found = os.environ if env is None else env
-        claimed = found.get(NAMED) or os.environ.get(NAMED, "")
-        if found.get(SUBAGENT_MARKER) or os.environ.get(SUBAGENT_MARKER):
+        if caller.subagent_marked(env):
             return True
+        claimed = caller.named(env)
         return any(each.name == claimed and each.parent for each in self.sessions)
 
 
+@home.real_roots
 def node_state() -> Path:
     """The state of the node this account runs: the account's own, never one the environment names (`home.guarded`)."""
     return home.guarded("node")
@@ -82,6 +78,7 @@ def _session(raw: object) -> Session:
     return Session(raw["board"], raw["name"], raw["parent"], raw["harness"], raw["person"])
 
 
+@home.real_roots
 def attest(state: Path | None = None) -> Ancestry:
     """The sessions the caller runs in, as the node of ``state`` (default: the account's) reads them from the caller's own process.
 

@@ -37,8 +37,11 @@ PATHS = """
 import json
 from poolhouse import authority, home
 from poolhouse.isolation import ancestry, policy
-print("PATHS" + json.dumps([str(authority._file()), str(policy.path_of("project")), str(home.guarded("authority-audit.jsonl")),
-                            str(ancestry.node_state()), str(home.under_test())]))
+outside = [str(authority._file()), str(home.state("node"))]
+with home.using_real_roots():
+    inside = [str(authority._file()), str(policy.path_of("project")), str(home.guarded("authority-audit.jsonl")), str(ancestry.node_state()),
+              str(home.under_test())]
+print("PATHS" + json.dumps(inside + outside))
 """
 
 
@@ -126,6 +129,7 @@ def test_the_roots_of_the_gate_the_audit_the_policy_and_the_node_are_the_account
     real = json.loads(said(descendant(PATHS, env), "PATHS"))
     assert real[0] == str(account / "authority.json") and real[2] == str(account / "authority-audit.jsonl") and real[3] == str(account / "node"), real
     assert Path(real[1]).parent == account / "isolation" / "projects" and real[4] == "False"
+    assert real[5] == str(redirect / "authority.json") and real[6] == str(redirect / "node"), "everything outside the launch gate follows the environment, as before"
     testing = json.loads(said(descendant("import pytest\n" + PATHS, env), "PATHS"))
     assert testing[0] == str(redirect / "authority.json") and testing[3] == str(redirect / "node") and testing[4] == "True", "a test run keeps its isolation"
 
