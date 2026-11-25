@@ -7,7 +7,7 @@ the default coding harness (a lighter system prompt and tool list); Claude Code 
 its richer hook gate matters.
 
 ```
-poolhouse-codex                                  # Qwen3.8-27B-UD-Q4_K_XL, permissions guarded, this directory
+poolhouse-codex                                  # Qwen3.8-Flash-Next-UD-IQ2_XS if installed and it fits, else Qwen3.8-27B-UD-Q4_K_XL; permissions guarded, this directory
 poolhouse-codex Qwen3.5-2B --permissions yolo --project ~/work/repo -- exec "fix the failing test"
 poolhouse-claude --on http://127.0.0.1:8080 --permissions read-only -- -p "explain this repo"
 ```
@@ -29,7 +29,10 @@ needs no install step; a missing SDK is reported as a defective install, never a
    the wired-memory limit cannot hold it at that window, the launcher prints
    `poolhouse-serve memory --for MODEL --ctx 262144 --kv q8_0 --apply` and stops. Raising the limit is
    for a person at their own terminal. `poolhouse-serve memory --for Qwen3.8-27B-UD-Q4_K_XL.gguf --ctx
-   262144 --kv q8_0` says what the default needs (29.2 GiB on the measured machine, 2026-10-03).
+   262144 --kv q8_0` says what the 27B needs (29.2 GiB on the measured machine, 2026-10-03). The default model is
+   `Qwen3.8-Flash-Next-UD-IQ2_XS` when it is installed and `suggest.largest_fit` rates it green at 262,144 tokens
+   (`harnessing.default_model()`; measured 2026-11-25 on the 128 GB machine: 56.8 GiB wired, 48 GiB resident, n-gram
+   table on SSD), else the 27B. The larger Flash-Next quants still do not fit this machine and are never the default.
    `--ctx N` is the total across `--slots` (default 1); `--on URL` uses a server already up.
    A server already up on the same weights is taken as it serves them, whatever its port, window,
    draft head or cache settings (`harnessing.adopted`), when it holds at least 65,536 tokens a slot,

@@ -147,7 +147,7 @@ def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = sa
         return _run(args, [binary, *extra], (base_url, alias, harnessing.window_of(base_url)), say, runner)
     began = time.time()
     try:
-        with harnessing.serving(args.model or harnessing.DEFAULT_MODEL,
+        with harnessing.serving(args.model or harnessing.default_model(),
                 harnessing.Want(args.port,args.slots,args.ctx,args.no_profile,args.draft),say,"pi") as (base_url,config,found):
             alias = alias_of(base_url, found)
             say(f"pi on {base_url} as {alias!r}, up in {time.time()-began:.0f}s")
