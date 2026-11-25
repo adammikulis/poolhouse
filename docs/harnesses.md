@@ -193,9 +193,10 @@ poolhouse-delegate stop NAME
   lead. It has no shell. A read-only delegate passes the classifier of the launched harnesses (`harnesshook`) and the SDK guard
   rails, and is not confined by the operating system: a read reaches any file the account can read that the classifier does not
   name as a credential.
-- **Editing (`--edit`).** The project must be named (`--project DIR`) and be a git project this lead may name (a refusal,
-  `--edit` without a project, a folder that is not a registered project and a computer that cannot confine included, is
-  immediate, starts nothing and says why). The agent is Claude Code with Read, Grep, Glob, Edit and Write, started only through
+- **Editing (`--edit`).** The project is `--project DIR`, by default the git project the command runs in (which is the launcher's
+  default reach: no widening is asked, so no gate applies); a folder named with `--project` must be one this lead may name. A
+  refusal (a folder that is not a registered project, a folder that is not a git project, a computer that cannot confine) is
+  immediate, starts nothing and says why. The agent is Claude Code with Read, Grep, Glob, Edit and Write, started only through
   the isolated launcher: it works in a confined stage of the project, behind a Seatbelt profile proved before it starts and
   attested on the live process, with a closed environment and the model reached only through the parent's bridge (the
   launcher's own words and limits: "What is not covered" below and docs/design-isolated-launcher.md). When each turn ends, and

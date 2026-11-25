@@ -74,7 +74,7 @@ def _running(asked: store.Delegate) -> str:
 
 @COMMANDS.command("start", help="start a local agent on a task and print its name", options=[
     flag("--task", required=True, help="what the agent is to do"),
-    flag("--project", default="", metavar="DIR", help="the folder it reads, and with --edit changes (default: an empty scratch folder of its own)"),
+    flag("--project", default="", metavar="DIR", help="the folder it reads, and with --edit changes (default: an empty scratch folder of its own; with --edit, the project this command runs in)"),
     flag("--name", default="", help="a label for the agent; two agents on one task need two labels"),
     flag("--as", dest="parent", default="", metavar="AGENT", help="the session it is a subagent of (default: the session this command runs in)"),
     option("model", help="the model (default: the one served on this machine now)"),
@@ -85,9 +85,7 @@ def start(args: argparse.Namespace) -> int:
     authority.require("workspace.agents", "start a delegate")
     if not args.task.strip():
         raise ValueError("give the task as text: --task TEXT")
-    if args.edit and not args.project:
-        raise ValueError("give --edit the project it changes: --project DIR")
-    source = str(harnessing.check_project(args.project)) if args.project else ""
+    source = str(harnessing.check_project(args.project)) if args.project or args.edit else ""   # an editing delegate works on the project this runs in by default
     client = Client(node_launch.default_state())
     board = place.at_path(client, Path.cwd())
     lead = harnessid.launcher(client, board, args.parent).name
@@ -97,7 +95,7 @@ def start(args: argparse.Namespace) -> int:
         say(f"{same} is already running that task; `poolhouse-delegate status {same}`")
         return 0
     if args.edit:
-        delegate_confined.admit(asked)   # the project, the gate and this computer's confinement, decided now: a refusal is at once and starts nothing
+        delegate_confined.admit(asked, args.project)   # the project, the gate and this computer's confinement, decided now: a refusal is at once and starts nothing
     made = harnessid.invite(harnessid.agent_name(model, "delegate", args.name), Path.cwd(), lead, say, claim=("", "poolhouse-agent"))
     if made.native is None:
         raise ValueError("the agent's session carries no native identity to run under")

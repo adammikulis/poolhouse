@@ -28,6 +28,7 @@ from poolhouse import (
     delegate_store as store,
     harnessing,
     home,
+    isolation,
 )
 from poolhouse.isolation import session_verbs
 from poolhouse.isolation.refusals import SENTENCES, IsolationRefused
@@ -192,9 +193,13 @@ def test_a_stopped_edit_delegate_ends_its_confined_processes_publishes_nothing_m
     assert project.exists()
 
 
-def test_start_edit_without_a_project_is_refused_at_once_and_starts_nothing(lead_node, detached, capsys):
-    assert started("--task", "edit things", "--edit") == 2
-    assert "--project" in said(capsys) and detached == []
+def test_start_edit_without_a_project_edits_the_project_the_command_runs_in_and_names_no_widening(lead_node, detached, monkeypatch):
+    node, lead, project = lead_node
+    asked = []
+    monkeypatch.setattr(harnessing, "decided", lambda args, folder: asked.append(folder) or isolation.Launch((), (), False, False))
+    assert started("--task", "edit things", "--edit") == 0
+    [name] = agent_names(node, lead)
+    assert store.load(name).source == str(project.resolve()) and asked == [""], "the default reach asks for no widening"
 
 
 def test_start_edit_on_a_computer_that_cannot_confine_is_refused_at_once_with_the_sentence(lead_node, detached, from_a_terminal, monkeypatch, capsys):

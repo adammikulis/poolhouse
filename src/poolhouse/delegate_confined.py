@@ -52,10 +52,11 @@ def arguments(rec: store.Delegate) -> argparse.Namespace:
     return claude.parser().parse_args(["--project", rec.source, "--as", rec.lead, "--name", rec.label])
 
 
-def admit(rec: store.Delegate) -> None:
-    """The early refusal of an editing delegate, at once and before anything is made: the project must be one this lead may name, and this computer
-    must be able to confine (the sentence of the first guarantee it cannot hold). It raises the launcher's own refusal, which says why."""
-    harnessing.admit(arguments(rec), "claude", rec.source, interactive=False)
+def admit(rec: store.Delegate, asked: str) -> None:
+    """The early refusal of an editing delegate, at once and before anything is made: the project must be one this lead may name (``asked`` is the
+    folder the lead typed, empty when the delegate works on the project the command runs in, which is the default reach), and this computer must be
+    able to confine (the sentence of the first guarantee it cannot hold). It raises the launcher's own refusal, which says why."""
+    harnessing.admit(arguments(rec), "claude", asked, interactive=False)
 
 
 def lead_only(lead: str, ask: Callable[[str], str], note: Callable[[str], str]) -> Callable[[str, Mapping[str, Any]], Any]:
