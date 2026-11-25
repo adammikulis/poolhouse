@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import sys
 from importlib import import_module
 from pathlib import Path
 
@@ -18,8 +19,8 @@ from poolhouse.files import promote
 if os.name == "posix":
     import pwd
 
-__all__ = ["CACHE_ENV", "OVERRIDES", "ROOT_ENV", "account_roots", "cache", "device_id", "expand", "home", "machine_id",
-           "moved", "state", "user_home"]
+__all__ = ["CACHE_ENV", "OVERRIDES", "ROOT_ENV", "account_roots", "cache", "device_id", "expand", "guarded", "home", "machine_id",
+           "moved", "state", "under_test", "user_home"]
 
 ROOT_ENV = "POOLHOUSE_HOME"
 """Moves the state root."""
@@ -61,6 +62,20 @@ def expand(path: str | Path) -> Path:
         return Path(path).expanduser()
     except RuntimeError:
         return Path(path)
+
+
+def under_test() -> bool:
+    """Whether this process is a test run: the one place a root may be redirected for what a person owns (`guarded`)."""
+    return "pytest" in sys.modules or "_pytest" in sys.modules
+
+
+def guarded(*parts: str) -> Path:
+    """A path under the root of what a person owns and an agent must not redirect: the authority registry, its audit log and the project
+    policies. It is the account's own state root (the account's home from the password database, whatever ``HOME`` or ``POOLHOUSE_HOME``
+    say), and the state root of the environment only in a test run, so a test keeps its own isolated state."""
+    if under_test():
+        return state(*parts)
+    return account_roots()[0].joinpath(*parts)
 
 
 def home() -> Path:

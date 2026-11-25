@@ -99,10 +99,11 @@ def _granted(request: Request, rule: Rule, subject: str, held: toolchain.Resolve
 def _beyond(real: str) -> str:
     """Why a folder can never be a grant: a credential location, the person's home or a folder above it, or the state root, a folder above
     it or one inside it."""
-    path, state = Path(real), home.home().resolve()
+    path = Path(real)
     if secretpaths.path_hit(real) is not None:
         return "credential location"
-    if secretpaths.inside_home(path) or path == state or path in state.parents or state in path.parents:
+    states = {home.home().resolve(), home.account_roots()[0].resolve()}
+    if secretpaths.inside_home(path) or any(path == state or path in state.parents or state in path.parents for state in states):
         return "ancestor of the state root or of the home folder"
     return ""
 

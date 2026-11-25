@@ -1,6 +1,7 @@
 """The project policy a person owns: which widenings a project may ever be launched with.
 
-It lives in the state root, keyed by the project's real path, and never in a file or under a control name inside the project: whatever
+It lives in the account's own state root, keyed by the id of the project the node has registered (never by the exact path a launch names, so a
+worktree or another place of the project has the project's policy), and never in a file or under a control name inside the project: whatever
 the repository says about itself is read as data and is never a source of a widening (docs/design-isolated-launcher.md, 8.3). It is
 written by the person who registers the project, from a terminal outside any agent, and is never a prompt. The default is no policy,
 which restricts nothing beyond the caps; when one is present it names every widening the project may be launched with, so an agent that
@@ -16,10 +17,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from poolhouse import caller, home
+from poolhouse import caller, home, node_health, session_identity
 from poolhouse.files import read_json, write_json
+from poolhouse.isolation import ancestry
 
-__all__ = ["ProjectPolicy", "load", "path_of", "save"]
+__all__ = ["ProjectPolicy", "Unregistered", "key_of", "load", "path_of", "save"]
 
 KINDS = ("read", "toolchain", "net", "publish")
 
@@ -41,10 +43,23 @@ class ProjectPolicy:
         return subject in getattr(self, kind, ())
 
 
-def path_of(project: str | os.PathLike[str]) -> Path:
-    """Where the policy of ``project`` is kept: under the state root, by a digest of the project's real path."""
-    digest = hashlib.sha256(os.path.realpath(project).encode()).hexdigest()
-    return home.state("isolation", "projects", f"{digest}.json")
+class Unregistered(ValueError):
+    """The node holds no project that contains the folder, so there is no project to keep a policy for."""
+
+
+def key_of(project: str | os.PathLike[str]) -> str:
+    """The id of the project the node has registered that contains ``project`` (a worktree and any other place of it give the same id), or an
+    empty string when the node holds none or cannot answer."""
+    try:
+        found = session_identity.ReadConnection(ancestry.node_state()).query("project_resolve", path=os.path.realpath(project))["board"]
+    except (OSError, ValueError, KeyError, node_health.Refused):
+        return ""
+    return found if isinstance(found, str) else ""
+
+
+def path_of(key: str) -> Path:
+    """Where the policy of the registered project ``key`` is kept: under the account's state root, by a digest of the project's id."""
+    return home.guarded("isolation", "projects", f"{hashlib.sha256(key.encode()).hexdigest()}.json")
 
 
 def _plain(value: Any) -> tuple[str, ...]:
@@ -52,10 +67,11 @@ def _plain(value: Any) -> tuple[str, ...]:
 
 
 def load(project: str | os.PathLike[str]) -> ProjectPolicy | None:
-    """The policy of ``project``, or None when the person never wrote one. A file that cannot be read as a policy is a policy that names
+    """The policy of the project the node has registered around ``project``, or None when it holds none or the person never wrote one. A file that cannot be read as a policy is a policy that names
     nothing, so a damaged record narrows and never widens."""
-    where = path_of(project)
-    if not where.exists():
+    key = key_of(project)
+    where = path_of(key) if key else None
+    if where is None or not where.exists():
         return None
     data = read_json(where, {})
     data = data if isinstance(data, dict) else {}
@@ -63,8 +79,16 @@ def load(project: str | os.PathLike[str]) -> ProjectPolicy | None:
 
 
 def save(project: str | os.PathLike[str], policy: ProjectPolicy, env: Mapping[str, str] | None = None) -> None:
-    """Write the policy of ``project``. An agent and a process inside a confinement are refused at once, with the reason."""
+    """Write the policy of the project the node has registered around ``project``. An agent and a process inside a confinement are refused at
+    once, with the reason; a folder the node holds no project for has none to write (`Unregistered`)."""
+    try:
+        where = ancestry.attest()
+    except ancestry.Unattested as why:
+        raise caller.AgentRefused(str(why)) from why
     caller.refuse_agent("writing the widenings a project may be launched with",
-                        "that is the person's own record of the project, kept outside the repository", env)
-    write_json(path_of(project), {**{kind: list(getattr(policy, kind)) for kind in KINDS}, "in-place": policy.in_place,
-                                  "project": os.path.realpath(project)})
+                        "that is the person's own record of the project, kept outside the repository", env,
+                        attested="an agent's process tree runs it" if where.agent else "")
+    key = key_of(project)
+    if not key:
+        raise Unregistered("the node holds no project that contains this folder, so there is no project to keep a policy for")
+    write_json(path_of(key), {**{kind: list(getattr(policy, kind)) for kind in KINDS}, "in-place": policy.in_place, "project": key})

@@ -18,8 +18,9 @@ from poolhouse.isolation import Decision, Request, Rule, decide, egress, publish
 from poolhouse.isolation.egress import Host
 from poolhouse.isolation.policy import ProjectPolicy
 from poolhouse.isolation.refusals import refusal_line
-from tests.isolation_kit import REGISTRY, hostile_project, person_home
+from tests.isolation_kit import REGISTRY, person_home, registered_project
 
+pytest_plugins = ["node_kit"]
 ISSUER = "user test pid 1"
 
 
@@ -28,9 +29,10 @@ def ask(kind: str, subject: str, rule: Rule, source: str = "task") -> Decision:
 
 
 @pytest.fixture
-def rule(tmp_path, monkeypatch):
+def rule(tmp_path, monkeypatch, workspace_node):
     person_home(tmp_path, monkeypatch)
-    return Rule(hostile_project(tmp_path), registry=REGISTRY, scope="session-1")
+    monkeypatch.setenv("POOLHOUSE_HOME", str(workspace_node.state.parent))
+    return Rule(registered_project(tmp_path, workspace_node), registry=REGISTRY, scope="session-1")
 
 
 def test_a_decision_is_granted_or_refused_and_nothing_else(rule):
@@ -199,11 +201,12 @@ def test_a_widening_argument_outside_a_present_project_policy_is_refused_and_a_p
     assert policies.load(project) is None
     policies.save(project, ProjectPolicy(net=("pypi.org",), publish=("docs/Notes.md",)), {})
     bounded = replace(rule, policy=policies.load(project))
+    assert policies.load(project / "src") == bounded.policy, "a folder inside the registered project is the project"
     assert ask("net", "pypi.org", bounded).granted and ask("net", "pypi.org", bounded, "policy").granted
     assert ask("publish", "docs/Notes.md", bounded, "policy").granted
     assert not ask("publish", "src/app.py", bounded).granted, "a present policy bounds a task that names more"
     assert not ask("in-place", rule.project, bounded).granted and not ask("read", str(tmp_path), bounded).granted
-    path = policies.path_of(project)
+    path = policies.path_of(policies.key_of(project))
     path.write_text("not json")
     assert policies.load(project) == ProjectPolicy(), "a damaged policy names nothing, so it narrows"
     assert not ask("net", "pypi.org", replace(rule, policy=policies.load(project))).granted

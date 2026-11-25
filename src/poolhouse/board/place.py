@@ -12,7 +12,7 @@ from pathlib import Path
 from poolhouse.board.client import Client, Denied, Invalid
 from poolhouse.board.terminal import terminal_id
 
-__all__ = ["BOARD_ENV", "PLACER", "at_path", "board_id", "existing", "resolve"]
+__all__ = ["BOARD_ENV", "PLACER", "add", "at_path", "board_id", "existing", "resolve"]
 
 BOARD_ENV = "POOLHOUSE_BOARD"
 PLACER = "poolhouse-place"
@@ -65,9 +65,17 @@ def resolve(client: Client, path: Path | None = None, named: str = "") -> str:
     try:
         return str(client.call("project_resolve", path=str(where))["board"])
     except Denied:
-        found = board_id(where)
-        if found is None:
+        if board_id(where) is None:
             raise
+    return add(client, where)
+
+
+def add(client: Client, where: Path) -> str:
+    """Add the git repository ``where`` is in as a project of the node (a worktree of one the node knows resolves to it already) and return its
+    board, whatever the environment names: the node takes a project from a session of its own board and asks nobody."""
+    found = board_id(where)
+    if found is None:
+        raise Denied("this directory is not in a git repository")
     board, tree = found
     placer = client.call("register", board, "", model="", harness=PLACER, session=f"place-{terminal_id()}")["token"]
     with contextlib.suppress(Invalid):

@@ -42,6 +42,31 @@ fn idle_now(node: &mut Node, board: &str, name: &str, i: &Ident) -> Result<bool>
     Ok(!i.retired && !crate::writes::is_live(node, board, name, i, now))
 }
 
+/// The sessions of every hosted board that run in the process tree ``here`` (the lineage of a request, read by the peer id of its
+/// socket): the registered, not retired sessions that have a process in common with ``here`` that still runs. The process at the top of a
+/// session's own lineage is the shell of the terminal it was started in, which stays after the agent has gone, so a session counts for that
+/// one process alone only while the session is live. A caller that none of them runs in is a process of no agent the node knows: a
+/// terminal, or a process that left its tree. Each is its board, name, parent (empty for a main session), harness and whether it is a person's session; nothing else.
+pub fn running_in(node: &mut Node, here: &[Anchor]) -> Result<Vec<Value>> {
+    if !ENFORCED || here.is_empty() {
+        return Ok(Vec::new());
+    }
+    let boards: Vec<String> = node.boards.keys().cloned().collect();
+    let mut found = Vec::new();
+    for board in boards {
+        let kept: Vec<(String, Ident)> = node.host(&board)?.names.all().iter().filter(|(_, i)| !i.retired).map(|(n, i)| (n.clone(), i.clone())).collect();
+        for (name, ident) in kept {
+            let top = ident.lineage.last().copied();
+            let shared: Vec<&Anchor> = ident.lineage.iter().filter(|a| here.contains(a) && crate::lease::live::is_alive(a.pid, Some(a.start))).collect();
+            let beyond_top = shared.iter().any(|a| Some(**a) != top);
+            if beyond_top || (!shared.is_empty() && !idle_now(node, &board, &name, &ident)?) {
+                found.push(json!({"board": board, "name": name, "parent": ident.parent, "harness": ident.harness, "person": ident.person}));
+            }
+        }
+    }
+    Ok(found)
+}
+
 pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<String, Value>, peer: &Peer) -> Result<Value> {
     match method {
         "session_lookup" => lookup(node, board, p),
