@@ -190,15 +190,18 @@ def test_a_file_git_does_not_hold_is_not_overwritten_or_deleted_without_a_rule_t
 
 
 def test_a_publish_rule_lifts_a_data_file_but_never_a_governing_class_whatever_the_staged_bytes_make_of_a_file_it_names(project, tmp_path):
-    rules = (publish.bind(project, "data/table.json"), publish.bind(project, "src/lib.py"), publish.bind(project, "src/app.py"))
-    session = begin(project, tmp_path, Sink(), rules=rules)
+    names = ("data/table.json", "src/lib.py", "src/app.py", "scripts/build.sh", "tests/test_app.py")
+    session = begin(project, tmp_path, Sink(), rules=tuple(publish.bind(project, name) for name in names))
     write(session, "data/table.json", '{"rows": [2]}\n')
     write(session, "src/app.py", "#!/bin/sh\necho hi\n", 0o755)
+    write(session, "scripts/build.sh", "#!/bin/sh\necho rebuilt\n", 0o755)
+    write(session, "tests/test_app.py", b"\x7fELF\x02\x01\x01" + b"\0" * 16)
     write(session, "Makefile", "all:\n\tsh scripts/build.sh\n\tpython src/lib.py\n")
     write(session, "src/lib.py", "y = 5\n")
     turn = session.publish_turn()
     classes = {each.path: each.klass for each in turn.refused}
-    assert sorted(turn.applied) == ["data/table.json", "src/app.py"], "a rule lifts data and a program it names, as the agent made them"
+    assert sorted(turn.applied) == ["data/table.json", "scripts/build.sh"], "a rule lifts the data file and the program it was decided for, as the agent made them"
+    assert classes["src/app.py"] == "program" and classes["tests/test_app.py"] == "program", "plain source the stage turned into a program is not lifted by the identity match"
     assert classes["src/lib.py"] == "named", "bound while plain, governing in the staged tree: the staged bytes decide, not the name"
     assert classes["Makefile"] == "governing" and (project / "src" / "lib.py").read_bytes() == b"y = 2\n"
 

@@ -137,8 +137,13 @@ def _reader(basis: Basis, entries: dict[str, CaptureEntry]) -> Callable[[str], t
     return read
 
 
-def _ruled(basis: Basis, path: str) -> bool:
-    return any(rule.relpath == path and publish.matches(rule, basis.project, path) for rule in basis.rules)
+def _ruled(basis: Basis, path: str, klass: str) -> bool:
+    """Whether a rule names this exact file, and the stage has not turned plain source into a program or data: a rule decided for a file the person
+    keeps as plain source does not lift a shebang, an executable bit or a binary the stage made of it (the identity match alone passes)."""
+    if not any(rule.relpath == path and publish.matches(rule, basis.project, path) for rule in basis.rules):
+        return False
+    live = publish.readable(basis.project)(path) if klass in ("program", "data") else None
+    return live is None or not runs_later.classify(path, *live).plain
 
 
 def _edit(basis: Basis, change: Change, path: str, entry: CaptureEntry | None) -> Edit | None:
@@ -184,7 +189,7 @@ def _one(basis: Basis, change: Change, entries: dict[str, CaptureEntry], verdict
     klass = verdicts[path].klass
     if klass == runs_later.PLAIN and change.before is not None and path not in basis.tracked:
         klass = "untracked"
-    if klass != runs_later.PLAIN and not (klass in RULED and _ruled(basis, path)):
+    if klass != runs_later.PLAIN and not (klass in RULED and _ruled(basis, path, klass)):
         return Refusal(path, klass, size)
     return _edit(basis, change, path, entry) or Refusal(path, "data", size)
 
