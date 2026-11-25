@@ -15,17 +15,23 @@ from pathlib import Path
 
 from poolhouse.platform import start_process, terminate_process_group
 from poolhouse.sandbox import netforward, netrelay
-from poolhouse.sandbox.backend import NO_REFUSAL_LOG, Availability, Wrapped, program_of
+from poolhouse.sandbox.backend import NO_REFUSAL_LOG, Availability, Exposure, Wrapped, program_of
+from poolhouse.sandbox.confinement import MARKER
 from poolhouse.sandbox.policy import NetMode, Policy, PolicyError, checked_path
 
-__all__ = ["FORWARDER", "SOCKETS", "Bubblewrap", "arguments", "forwarding"]
+__all__ = ["ACCOUNT_AND_HOST_FILES", "EXPOSURES", "FORWARDER", "SOCKETS", "Bubblewrap", "arguments", "forwarding"]
 
 FORWARDER = "/run/poolhouse/netforward.py"
 SOCKETS = "/run/poolhouse/net"
 """Where the confined process finds the forwarder of `poolhouse.sandbox.netforward` and the sockets of the parent's relay."""
 
-SYSTEM_READ = ("/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc/ssl", "/etc/ld.so.cache",
-               "/etc/resolv.conf", "/etc/hosts", "/etc/localtime", "/etc/passwd", "/etc/group")
+ACCOUNT_AND_HOST_FILES = Exposure(
+    "X3", "Linux", "the account and host files the namespace binds read-only, which the toolchain reads",
+    paths=("/etc/ssl", "/etc/ld.so.cache", "/etc/resolv.conf", "/etc/hosts", "/etc/localtime", "/etc/passwd", "/etc/group"))
+EXPOSURES = (ACCOUNT_AND_HOST_FILES,)
+"""What a confined process learns that the namespace cannot hide: the profile binds exactly these files from the host's /etc and no
+other, so one readable outside them is a deviation. The machine id, the DMI identifiers and the host's network interfaces are not among them (G13)."""
+SYSTEM_READ = ("/usr", "/bin", "/sbin", "/lib", "/lib64", *ACCOUNT_AND_HOST_FILES.paths)
 NAME_LOOKUP = ("/etc/resolv.conf", "/etc/hosts")
 """The host's files for resolving names; a policy with no network resolves nothing and does not get them."""
 
@@ -50,12 +56,35 @@ def forwarding(policy: Policy) -> list[str]:
     return [_interpreter()[0], "-I", "-S", FORWARDER, SOCKETS, ",".join(map(str, policy.net.ports)), "--"]
 
 
+def _protected(policy: Policy) -> list[str]:
+    """The binds that freeze the policy's protected paths, which come after the binds of the trees that hold them. A path directly
+    under a writable tree is bound read-only over itself (a name that does not exist over the null device, which makes an empty
+    read-only placeholder in the tree, so the name cannot be created); a path to hide is covered by an empty read-only tree or by the
+    null device. Nothing below such a path can be written, created, renamed or removed, and the path cannot be renamed. A path
+    deeper in a writable tree is refused: the directories above it could be renamed and the name made again beside the frozen one."""
+    writable = (*policy.write, *([policy.cache] if policy.cache else []))
+    hidden, out = set(policy.deny_read), []
+    for path in dict.fromkeys((*policy.deny_read, *policy.deny_write)):
+        holder = next((root for root in writable if path == root or path.startswith(root + "/")), None)
+        if holder and path != holder and str(Path(path).parent) != holder:
+            raise PolicyError(f"protected path {path}: bubblewrap holds a protected path only directly under a writable tree; the "
+                              f"directories above a deeper one could be renamed and the name made again; command was not run")
+        if holder is None and not (path in hidden and os.path.lexists(path)):
+            continue  # not writable here, and nothing of it to hide
+        if not os.path.lexists(path):
+            out += ["--ro-bind", os.devnull, path]
+        elif path in hidden and Path(path).is_dir():
+            out += ["--tmpfs", path, "--remount-ro", path]
+        else:
+            out += ["--ro-bind", os.devnull if path in hidden else path, path]
+    return out
+
+
 def arguments(policy: Policy, program: str, relay: str = "") -> list[str]:
     """The bwrap options for ``policy``: a new namespace for everything, the network included (only the namespace's own loopback
     exists, and the ports a policy names are carried in from ``relay``, the parent's directory of sockets), no further user
-    namespace and no capability, the allow-listed trees bound read-only or read-write, and a fresh /proc, /dev and /tmp."""
-    if policy.deny_read or policy.deny_write:
-        raise PolicyError("bubblewrap cannot enforce protected path exclusions; command was not run")
+    namespace and no capability, the allow-listed trees bound read-only or read-write, the protected paths frozen, the marker
+    `sandbox.confined` reads, and a fresh /proc, /dev and /tmp."""
     if policy.net.mode == NetMode.LOOPBACK:
         raise PolicyError("net: bubblewrap cannot give a process the host's whole loopback without giving it the host's network; "
                           "name the ports with Net.only")
@@ -63,7 +92,7 @@ def arguments(policy: Policy, program: str, relay: str = "") -> list[str]:
         raise PolicyError("net: the ports of a policy are carried in from the parent's socket directory, and none was made")
     out = ["--unshare-all", "--die-with-parent", "--new-session", "--clearenv",
            "--unshare-user", "--disable-userns", "--cap-drop", "ALL"]
-    out += ["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"]  # noqa: S108 - a mount point
+    out += ["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--ro-bind", os.devnull, MARKER]  # noqa: S108 - a mount point
     system = [p for p in SYSTEM_READ if os.path.lexists(p) and not (policy.net.mode == NetMode.DENY and p in NAME_LOOKUP)]
     trees, hidden = [*system, *policy.read, *policy.exec, program], []
     if policy.net.mode == NetMode.PORTS:
@@ -82,6 +111,7 @@ def arguments(policy: Policy, program: str, relay: str = "") -> list[str]:
         out += ["--bind", path, path]
     if policy.cache:
         out += ["--bind", policy.cache, policy.cache]
+    out += _protected(policy)
     if policy.gpu:
         for path in ("/dev/dxg", "/dev/nvidiactl", "/dev/nvidia0", "/dev/nvidia-uvm",
                      "/dev/nvidia-uvm-tools", "/dev/dri"):

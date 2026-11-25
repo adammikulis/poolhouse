@@ -36,7 +36,7 @@ def desk(tmp_path):
         (shims / name).chmod(0o755)
     env = {k: v for k, v in os.environ.items()
            if k not in ("CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE")}
-    env.update(PATH=f"{shims}{os.pathsep}{env['PATH']}", DESK_LOG=str(log), POOLHOUSE_NOTIFY="system",
+    env.update(PATH=f"{shims}{os.pathsep}{env['PATH']}", DESK_LOG=str(log),
                PYTHONPATH=os.pathsep.join([SRC, str(Path(__file__).parent)]),
                POOLHOUSE_HOME=os.environ["POOLHOUSE_HOME"],
                PYTHON_KEYRING_BACKEND="onboard_support.FileKeyring",

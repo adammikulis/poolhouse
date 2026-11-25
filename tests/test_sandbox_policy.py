@@ -118,7 +118,7 @@ def test_the_profile_denies_by_default_and_grants_only_what_the_policy_names(tre
     assert forms(text)[1].startswith("(deny default")
     assert f'(subpath "{tree}/a")' in text and f'(subpath "{tree}/b")' in text
     assert str(tree / "c") not in text
-    assert "network" not in text and "iokit" not in text
+    assert "network" not in text and "(allow iokit" not in text
     writes = [f for f in forms(text) if f.startswith("(allow file-write*")]
     assert any(f'"{tree}/b"' in f for f in writes)
     assert all(f'"{tree}/a"' not in f for f in writes)
@@ -137,7 +137,7 @@ def test_network_rules_follow_the_mode(tree):
 def test_the_gpu_rules_are_added_only_when_asked(tree):
     off = profile(Policy("p").validated(), "/bin/echo", "t")
     on = profile(Policy("p", gpu=True).validated(), "/bin/echo", "t")
-    assert "iokit" not in off and "MTLCompilerService" not in off
+    assert "(allow iokit" not in off and "MTLCompilerService" not in off
     assert '(iokit-user-client-class "IOGPUDeviceUserClient")' in on
     assert "(allow iokit-open (iokit-user-client-class" in on and "iokit-get-properties" not in on
 

@@ -1,8 +1,8 @@
 {
- "surfaces": 885,
+ "surfaces": 880,
  "by_status": {
-  "covered": 566,
-  "partial": 183,
+  "covered": 562,
+  "partial": 182,
   "uncovered": 51,
   "n/a": 85,
   "unmapped": 0
@@ -30,7 +30,7 @@
    "unmapped": 0
   },
   "desktop": {
-   "covered": 5,
+   "covered": 1,
    "partial": 0,
    "uncovered": 0,
    "n/a": 12,
@@ -101,7 +101,7 @@
   },
   "spawn": {
    "covered": 104,
-   "partial": 64,
+   "partial": 63,
    "uncovered": 0,
    "n/a": 4,
    "unmapped": 0
@@ -1241,58 +1241,6 @@
     "tests/test_studio_native_picker.py"
    ],
    "note": "compiled Tauri authority grants only the daemon's own origin and port, rejects foreign origins, ports and windows, shell execution and filesystem reads; the window stays on its own origin; the daemon is recognised only by a proof from a secret its user alone can read"
-  },
-  {
-   "id": "desktop:desktop.py:_mac",
-   "kind": "desktop",
-   "source": "desktop.py:_mac",
-   "trust": "names of members, sessions, files",
-   "attacker": "attacker text reaches a dialog, notification or shell command",
-   "status": "covered",
-   "tests": [
-    "tests/test_lan.py",
-    "tests/test_sentinel_automatic_holds.py"
-   ],
-   "note": "nothing raises a dialog any more (a sentinel hold ends by itself): test_sentinel_automatic_holds fails if one opens, test_lan covers where the helper may show anything"
-  },
-  {
-   "id": "desktop:desktop.py:_notify_send",
-   "kind": "desktop",
-   "source": "desktop.py:_notify_send",
-   "trust": "names of members, sessions, files",
-   "attacker": "attacker text reaches a dialog, notification or shell command",
-   "status": "covered",
-   "tests": [
-    "tests/test_lan.py",
-    "tests/test_sentinel_automatic_holds.py"
-   ],
-   "note": "nothing raises a dialog any more (a sentinel hold ends by itself): test_sentinel_automatic_holds fails if one opens, test_lan covers where the helper may show anything"
-  },
-  {
-   "id": "desktop:desktop.py:choose",
-   "kind": "desktop",
-   "source": "desktop.py:choose",
-   "trust": "names of members, sessions, files",
-   "attacker": "attacker text reaches a dialog, notification or shell command",
-   "status": "covered",
-   "tests": [
-    "tests/test_lan.py",
-    "tests/test_sentinel_automatic_holds.py"
-   ],
-   "note": "nothing raises a dialog any more (a sentinel hold ends by itself): test_sentinel_automatic_holds fails if one opens, test_lan covers where the helper may show anything"
-  },
-  {
-   "id": "desktop:desktop.py:which_way",
-   "kind": "desktop",
-   "source": "desktop.py:which_way",
-   "trust": "names of members, sessions, files",
-   "attacker": "attacker text reaches a dialog, notification or shell command",
-   "status": "covered",
-   "tests": [
-    "tests/test_lan.py",
-    "tests/test_sentinel_automatic_holds.py"
-   ],
-   "note": "nothing raises a dialog any more (a sentinel hold ends by itself): test_sentinel_automatic_holds fails if one opens, test_lan covers where the helper may show anything"
   },
   {
    "id": "desktop:fleet/autostart.py:_windows_install",
@@ -10538,18 +10486,6 @@
    "id": "spawn:credentials/writing.py:_owner_only_windows",
    "kind": "spawn",
    "source": "credentials/writing.py:_owner_only_windows",
-   "trust": "arguments built from model output, member messages or file names",
-   "attacker": "attacker text becomes a command line, environment or working directory",
-   "status": "partial",
-   "tests": [
-    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
-   ],
-   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
-  },
-  {
-   "id": "spawn:desktop.py:run",
-   "kind": "spawn",
-   "source": "desktop.py:run",
    "trust": "arguments built from model output, member messages or file names",
    "attacker": "attacker text becomes a command line, environment or working directory",
    "status": "partial",

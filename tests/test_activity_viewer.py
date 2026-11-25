@@ -26,8 +26,8 @@ def put(kind, *, ago=0.0, actor="agent:scout", session="s1", **kw):
 def seeded():
     writer.bind_session("s1")
     put("agent.tool_call", ago=10800, subject="serve_up", outcome="ok")
-    put("approval.asked", ago=3000, subject="serve_up", actor="system", refs={"role": "approve-first"})
-    put("approval.answered", ago=2990, subject="serve_up", actor="person", outcome="allow_once")
+    put("approval.rule_fired", ago=3000, subject="serve_up", actor="system", outcome="never", refs={"role": "approve-first"})
+    put("role.changed", ago=2990, subject="approve-first", actor="person")
     writer.bind_session("s2")
     put("model.lease", ago=2980, subject="model:q.gguf", outcome="granted", actor="system",
         session="s2", refs={"purpose": "chat"})
@@ -50,7 +50,7 @@ def test_with_no_command_it_shows_the_latest_records_in_the_order_written(person
     seeded()
     code, out = run(capsys)
     kinds = [ln.split()[4] for ln in out.splitlines()]
-    assert code == 0 and kinds == ["agent.tool_call", "approval.asked", "approval.answered",
+    assert code == 0 and kinds == ["agent.tool_call", "approval.rule_fired", "role.changed",
                                    "model.lease", "workspace.claim", "workspace.message"]
 
 
@@ -67,9 +67,11 @@ def test_agent_kind_session_and_grep_filters(person, capsys):
     _, out = run(capsys, "tail", "--agent", "beta")
     assert out.count("\n") == 2 and "workspace.claim" in out and "workspace.message" in out
     _, out = run(capsys, "tail", "--kind", "approval")
-    assert out.count("\n") == 2
-    _, out = run(capsys, "tail", "--kind", "approval.answered")
     assert out.count("\n") == 1
+    _, out = run(capsys, "tail", "--kind", "approval.rule_fired")
+    assert out.count("\n") == 1
+    _, out = run(capsys, "tail", "--kind", "approval.asked")
+    assert out == "(no records)\n", "no question is ever put to the person, so there is no such kind"
     _, out = run(capsys, "tail", "--session", "s2")
     assert out.count("\n") == 3
     _, out = run(capsys, "tail", "--grep", "A.PY")
@@ -126,7 +128,7 @@ def test_the_timeline_reads_as_one_story_per_session(person, capsys):
     _, out = run(capsys, "tail", "--timeline")
     first, second = out.split("\n\n")
     assert first.startswith("session s1: 3 events")
-    assert "was asked: serve_up" in first and "-> you answered allow_once" in first
+    assert "a saved rule decided serve_up: never" in first and "-> you moved the session to approve-first" in first
     assert "model lease granted for model:q.gguf" in second and "agent:alpha sent handoff to agent:beta" in second
 
 

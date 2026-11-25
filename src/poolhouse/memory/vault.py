@@ -8,7 +8,6 @@ import hashlib
 import hmac
 import os
 import re
-import sys
 from collections.abc import Callable
 from typing import Any, Protocol
 
@@ -154,9 +153,8 @@ def _ask(prompt: str) -> str:
     told = os.environ.get(PASSPHRASE_ENV, "")
     if told:
         return told
-    if sys.stdin.isatty():
-        return getpass.getpass(prompt)
-    raise KeyUnavailable(f"the memory store is under a passphrase: set {PASSPHRASE_ENV} or run in a terminal")
+    raise KeyUnavailable(f"the memory store is under a passphrase ({prompt.rstrip(': ')}): set {PASSPHRASE_ENV}; "
+                         "nothing is asked at a terminal")
 
 
 def default_keys(user: str, profile: str, directory: str, *, purpose: str = PURPOSE) -> Keys:

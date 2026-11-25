@@ -153,7 +153,6 @@ ASKS_FIRST = {
 NO_PROMPT = {
     "serve/wired_cli.py": "names the way (sudo or osascript); wired_apply runs it",
     "fleet/room_routes.py": "names the way (osascript); wired_apply runs it",
-    "desktop.py": "osascript display dialog (shimmed in tests)",
     "fleet/shard_split.py": "a pattern that keeps macOS-only code off other devices",
     "guard/shellcmds.py": "a list of commands the guard refuses",
     "keystore_guard.py": "tells macOS to fail an access that needs a dialog (SecKeychainSetUserInteractionAllowed)",

@@ -17,11 +17,11 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from poolhouse.sandbox import denial_log
-from poolhouse.sandbox.backend import LOST_REFUSAL_LOG, Availability, Wrapped, program_of
+from poolhouse.sandbox.backend import LOST_REFUSAL_LOG, Availability, Exposure, Wrapped, program_of
 from poolhouse.sandbox.path_language import expressions
 from poolhouse.sandbox.policy import NetMode, Policy, PolicyError, checked_path
 
-__all__ = ["BINARY", "DEPRECATION", "ProfileError", "Seatbelt", "profile", "quote"]
+__all__ = ["BINARY", "DEPRECATION", "EXPOSURES", "MACHINE_CLASS", "PROCESS_LIST", "ProfileError", "Seatbelt", "profile", "quote"]
 
 logger = logging.getLogger("poolhouse.sandbox")
 
@@ -43,21 +43,37 @@ DEVICES_READ = ("/dev/null", "/dev/zero", "/dev/random", "/dev/urandom", "/dev/d
                 "/dev/tty", "/dev/autofs_nowait")
 DEVICES_WRITE = ("/dev/null", "/dev/dtracehelper", "/dev/tty")
 
-SYSCTLS = ("hw.ncpu", "hw.activecpu", "hw.logicalcpu", "hw.logicalcpu_max", "hw.physicalcpu",
-           "hw.physicalcpu_max", "hw.memsize", "hw.pagesize", "hw.pagesize_compat", "hw.machine", "hw.cputype",
-           "hw.cpufamily", "hw.byteorder", "hw.cachelinesize", "hw.l1dcachesize",
-           "hw.l2cachesize", "hw.nperflevels", "hw.packages", "hw.tbfrequency",
-           "hw.vectorunit", "kern.argmax", "kern.hostname", "kern.maxfilesperproc",
-           "kern.ostype", "kern.osrelease", "kern.osversion", "kern.osproductversion",
-           "kern.version", "kern.usrstack64", "kern.secure_kernel", "kern.osvariant_status",
-           "kern.bootargs", "kern.willshutdown", "kern.tcsm_available", "kern.tcsm_enable",
-           "kern.ngroups", "kern.iossupportversion", "kern.maxfiles", "kern.maxproc", "vm.loadavg", "machdep.ptrauth_enabled",
-           "security.mac.lockdown_mode_state", "sysctl.proc_cputype")
-SYSCTL_PREFIXES = ("hw.optional.", "hw.perflevel", "machdep.cpu.", "kern.proc.pid.")
+PROCESS_LIST = Exposure(
+    "X1", "macOS", "the name, pid, parent pid and user id of every process of the user", sysctl_prefixes=("kern.proc.pid.",))
+"""The per-pid sysctl a process asks about itself with (`psutil`, the tools of a harness) serves every pid: the profile is written before the
+process exists, so its pid cannot be named in it. The arguments, environment, working directory, open files and memory of the others stay refused."""
+MACHINE_CLASS = Exposure(
+    "X2", "macOS", "the machine class, the host name and the limits and load the tools size themselves from",
+    sysctls=("hw.ncpu", "hw.activecpu", "hw.logicalcpu", "hw.logicalcpu_max", "hw.physicalcpu",
+             "hw.physicalcpu_max", "hw.memsize", "hw.pagesize", "hw.pagesize_compat", "hw.machine", "hw.cputype",
+             "hw.cpufamily", "hw.byteorder", "hw.cachelinesize", "hw.l1dcachesize",
+             "hw.l2cachesize", "hw.nperflevels", "hw.packages", "hw.tbfrequency",
+             "hw.vectorunit", "kern.argmax", "kern.hostname", "kern.maxfilesperproc",
+             "kern.ostype", "kern.osrelease", "kern.osversion", "kern.osproductversion",
+             "kern.version", "kern.usrstack64", "kern.secure_kernel", "kern.osvariant_status",
+             "kern.bootargs", "kern.willshutdown", "kern.tcsm_available", "kern.tcsm_enable",
+             "kern.ngroups", "kern.iossupportversion", "kern.maxfiles", "kern.maxproc", "vm.loadavg", "machdep.ptrauth_enabled",
+             "security.mac.lockdown_mode_state", "sysctl.proc_cputype"),
+    sysctl_prefixes=("hw.optional.", "hw.perflevel", "machdep.cpu."))
+EXPOSURES = (PROCESS_LIST, MACHINE_CLASS)
+"""What a confined process learns that the engine cannot hide: the profile grants exactly these system names and no other, so a name
+readable outside them is a deviation (docs/design-isolated-launcher.md, 5.7). The serial number, hardware UUID and provisioning UDID are not
+among them (G13)."""
 
 MACH_SERVICES = ("com.apple.system.opendirectoryd.libinfo", "com.apple.logd",
                  "com.apple.system.logger", "com.apple.system.notification_center",
                  "com.apple.distributed_notifications@Uv3", "com.apple.bsd.dirhelper")
+
+IDENTIFIER_CHANNELS = ("(deny iokit-get-properties)", "(deny syscall-unix (syscall-number SYS_gethostuuid))")
+"""The two operations that carry the serial number, the hardware UUID and the provisioning UDID to a process: the property reads of the
+registry (`ioreg`, `system_profiler`) and the system call of the hardware UUID. Seatbelt lets both through whatever the default says
+(VERIFIED on 26.6: the identifiers print under a deny-default profile with every other operation refused). A policy with a GPU keeps them,
+since Metal's property reads were not shown to work without them; G13 is not claimed for it."""
 
 GPU_IOKIT_CLASSES = ("IOGPUDeviceUserClient",)
 GPU_MACH_SERVICES = ("com.apple.MTLCompilerService",)
@@ -131,6 +147,7 @@ def profile(policy: Policy, program: str, tag: str) -> str:
         f'(deny default (with message {quote("poolhouse-sandbox:" + tag)}))',
         "(allow process-fork)",
         "(allow signal (target self))",
+        *(["(allow signal (target children))"] if policy.signal_children else []),
         "(allow process-info* (target self))",
         "(allow process-info-pidinfo (target self))",
         "(deny process-info-pidinfo)",
@@ -145,8 +162,8 @@ def profile(policy: Policy, program: str, tag: str) -> str:
 
         *([] if policy.strict else ['(allow ipc-posix-shm-read-data (ipc-posix-name "apple.shm.notification_center"))']),
         "(allow sysctl-read " + " ".join(
-            [f"(sysctl-name {quote(s)})" for s in SYSCTLS]
-            + [f"(sysctl-name-prefix {quote(s)})" for s in SYSCTL_PREFIXES]) + ")",
+            [f"(sysctl-name {quote(s)})" for each in EXPOSURES for s in each.sysctls]
+            + [f"(sysctl-name-prefix {quote(s)})" for each in EXPOSURES for s in each.sysctl_prefixes]) + ")",
         *([] if policy.strict else ["(allow mach-lookup " + " ".join(f"(global-name {quote(s)})" for s in MACH_SERVICES) + ")"]),
     ]
     if policy.read_files:
@@ -170,8 +187,7 @@ def profile(policy: Policy, program: str, tag: str) -> str:
                 f"(allow network-inbound (local unix-socket (subpath {quote(namespace)})))",
                 f"(allow network-outbound (remote unix-socket (subpath {quote(namespace)})))"]
     out += _network(policy)
-    if policy.gpu:
-        out += _gpu()
+    out += _gpu() if policy.gpu else list(IDENTIFIER_CHANNELS)
     if policy.deny_read or policy.deny_write:
         policy = policy.validated()
         protected = tuple(dict.fromkeys((*policy.deny_read, *policy.deny_write)))

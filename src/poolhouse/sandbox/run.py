@@ -39,6 +39,7 @@ from poolhouse.sandbox.hold import Hold
 from poolhouse.sandbox.io import CHUNK, IO, Control
 from poolhouse.sandbox.policy import AllowUnsandboxed, Limits, Policy, PolicyError
 from poolhouse.sandbox.seatbelt import Seatbelt
+from poolhouse.sandbox.windows import Windows
 
 __all__ = ["Events", "Result", "SandboxViolation", "backend", "fair_share", "run", "wrapped"]
 
@@ -98,8 +99,10 @@ class Result:
 
 
 def backend() -> Backend:
-    """The backend this platform uses; one that reports unavailable when there is none."""
-    return Seatbelt() if sys.platform == "darwin" else Bubblewrap()
+    """The backend this platform uses; one that reports unavailable when there is none (native Windows has none yet)."""
+    if sys.platform == "darwin":
+        return Seatbelt()
+    return Windows() if sys.platform == "win32" else Bubblewrap()
 
 
 def wrapped(argv: Sequence[str], policy: Policy, *, via: Backend | None = None,

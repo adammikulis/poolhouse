@@ -46,7 +46,7 @@ RUNNER_FILES = ("scripts/testreuse_facts.py", "scripts/testreuse_plugin.py", "sc
                 "scripts/testslots_pytest.py", "scripts/testslots_rpc.py")
 ENV_NAME = re.compile(r"""["']([A-Z][A-Z0-9_]{3,})["']""")
 ENV_FIXED = ("PATH", "CI", "TZ", "LANG", "LC_ALL", "CLAUDECODE", "POOLHOUSE_NONINTERACTIVE",
-             "POOLHOUSE_LIVE_API", "POOLHOUSE_LIVE_NET", "POOLHOUSE_NOTIFY", "DEV_TEST_SLOTS", "PYTEST_ADDOPTS")
+             "POOLHOUSE_LIVE_API", "POOLHOUSE_LIVE_NET", "DEV_TEST_SLOTS", "PYTEST_ADDOPTS")
 ENV_SKIP = frozenset({"PYTHONPATH", "DEV_TEST_PYTEST_TOKEN", "DEV_TEST_PYTEST_ENDPOINT",
                       "DEV_TEST_WORKERS", "DEV_TEST_SLOTS_DIR", "DEV_TEST_REMOTE_BROKER",
                       "DEV_TEST_LEASE", "DEV_TEST_REMOTE_LEASE", "DEV_TEST_REUSE_DIR",

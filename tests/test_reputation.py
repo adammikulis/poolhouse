@@ -201,7 +201,7 @@ person = memory_keys.person
 held_from_agents = memory_keys.held_from_agents
 
 COMMANDS = [["list"], ["show", "host:a.example"], ["forget", "host:a.example"],
-            ["forget", "--all", "--yes"], ["export"], ["stats"]]
+            ["forget", "--all"], ["export"], ["stats"]]
 
 
 def audit(event: str) -> list[dict]:
@@ -239,7 +239,7 @@ def test_a_process_no_agent_started_lists_shows_exports_forgets_and_deletes_all_
     assert cli.main(["show", "host:a.example"]) == 2
     path = Ledger().path
     assert path.exists()
-    assert cli.main(["forget", "--all", "--yes"]) == 0
+    assert cli.main(["forget", "--all"]) == 0
     cleared = Ledger()
     try:
         assert cleared.sources() == [] and not (path.parent / "summary.json").exists()

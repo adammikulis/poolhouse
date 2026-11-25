@@ -27,7 +27,7 @@ else:
     resource = None
 
 from poolhouse.credentials.environment import child_environment
-from poolhouse.desktop import clean
+from poolhouse.markup import clean
 
 from .onboard.lan import in_tailnet
 

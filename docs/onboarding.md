@@ -83,9 +83,10 @@ Nobody pushes software to them. Opt-in paths, ranked by ease and then by safety:
      `-oProxyCommand=...` and `host;rm`), and passed as one argv element after `--`;
      no shell string is built from input: both remote commands are constants;
    * the host key must already be in the owner's `known_hosts`, or `ssh-keyscan` fetches it, its
-     SHA-256 fingerprint is shown, and the owner types it in full (or passes it with
-     `--host-key-fingerprint` after reading it off that machine); only that key is then trusted,
-     through a temporary `known_hosts` that is removed afterwards;
+     SHA-256 fingerprints are compared with the one passed as `--host-key-fingerprint` (read off
+     that machine); with none passed, or a different one, the command is refused at once, naming
+     what the host presents, and nothing is asked at a terminal; only the matching key is then
+     trusted, through a temporary `known_hosts` that is removed afterwards;
    * `--dry-run` prints the commands, the remote script in full (145 lines) with its SHA-256 and
      the files with theirs, and runs and contacts nothing and touches no key;
    * the payload goes over the SSH connection on stdin as a tar of plain files; the remote

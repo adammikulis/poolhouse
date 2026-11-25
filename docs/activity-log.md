@@ -17,12 +17,11 @@ at most 4 KB. Bodies are never stored: a metadata name such as `body`, `text`, `
 | Kind | Written when | Metadata |
 |---|---|---|
 | `agent.tool_call` | a chat tool call ends | tool, outcome (`ok`, `error`, `blocked`, `no_such_tool`), role, rail that blocked it, argument names, size of the result |
-| `approval.asked`, `approval.answered` | a call asks the person | tool, role, answer (`allow_once`, `always`, `never`, `no`) |
-| `approval.rule_fired` | a saved rule decided a call | tool, verdict, the rule in words |
+| `approval.rule_fired` | a saved rule decided a call at once | tool, verdict, the rule in words |
 | `role.changed` | the person types `/role` | new role, old role |
 | `rule.added`, `rule.removed`, `rule.flipped`, `rule.tainted_setting` | the person edits the rules | tool, verdict, the rule in words |
 | `workspace.message`, `workspace.claim`, `workspace.event` | the workspace audit trail grows | from, to, type, thread, size; claim name; never the body |
-| `security.*` | any sentinel event: keystore operations, quarantine and release, dialog outcomes | kind, severity, source, outcome |
+| `security.*` | any sentinel event: keystore operations, quarantine and release | kind, severity, source, outcome |
 | `reputation.observed` | a source misbehaves | source, event, resulting state |
 | `model.lease` | the broker grants, shares or refuses a lease | model, quant, who asked, purpose, port, context, parallel, MTP and draft flags, weight |
 | `net.download` | a download is kept or held | host, size, SHA-256, kind, scan result |

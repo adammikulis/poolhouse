@@ -17,6 +17,8 @@ A `Policy` names everything a process may touch. Anything not named is refused.
 | `env` | the whole environment; nothing is inherited |
 | `limits` | wall clock (kills the process group), CPU seconds, file size, open files, output bytes, processes the run may add |
 | `gpu` | what Metal needs (below) and nothing else |
+| `signal_children` | macOS: the process may signal the processes it started, and no other (a Linux process has no other to signal) |
+| `deny_read`, `deny_write` | protected paths, frozen and (`deny_read`) hidden, whether or not they exist yet: Seatbelt denies the operations on them, bubblewrap binds them read-only (below) |
 
 Every path is validated before it reaches a profile: absolute, existing, no control character,
 no `..`, `.`, empty or trailing-slash segment, and no symlink on the way (`name the resolved
@@ -30,6 +32,7 @@ Backends sit behind one `Backend` protocol (`available`, `wrap`, `denials`):
 |---|---|---|
 | `seatbelt` | macOS, `sandbox-exec -p <profile> -- argv` | implemented, tested against the real tool |
 | `bubblewrap` | Linux, `bwrap --unshare-all --unshare-user --disable-userns --cap-drop ALL --die-with-parent --new-session --clearenv ...` | read grants, network denial, the relay for named ports, nested namespaces, capabilities and the process allowance tested on Ubuntu 24.04 (bubblewrap 0.9.0); model relay and GPU discovery tested on WSL |
+| `windows` | native Windows | unavailable, with the reason (a container's loopback exemption opens every port, not one) and, when WSL2 is installed, the route that works; it starts nothing |
 | none | | `run` raises `SandboxUnavailable` and does not start the command |
 
 Untrusted execution fails closed. Running without a sandbox takes an explicit
@@ -89,6 +92,14 @@ macOS (Seatbelt), checked by `tests/test_sandbox_seatbelt.py` against the real `
   process-information channels or of the separate agent harness sandboxes;
 - the wall-clock limit kills the command's process group and no other process; CPU, file-size
   and output limits stop the command;
+- the serial number, the hardware UUID and the provisioning UDID cannot be read: a profile with no GPU denies the registry's property
+  reads (`iokit-get-properties`, which `(deny iokit*)` does not cover) and the `gethostuuid` system call (`IDENTIFIER_CHANNELS`), and
+  `ioreg`, `system_profiler` and `gethostuuid` print or return none (`tests/test_redteam_isolation_macos.py`); a policy with a GPU keeps both;
+- what stays readable is declared beside the rule that grants it (`seatbelt.EXPOSURES`): the name, pid, parent pid and user id of the
+  user's processes (X1) and the machine class, host name, limits and load (X2); a test lists every system name of the machine and fails
+  on one readable outside them;
+- `Policy.signal_children` lets the command signal its own children and no other process;
+- `sandbox.confined()` tells a process whether the operating system confines it (`sandbox_check` of the process itself);
 - a refusal is read from the system log (each run's profile carries a unique tag), becomes an
   `Result.denials` entry, a `sandbox.denied` event and a `SandboxViolation` naming the operation
   and path.
@@ -97,8 +108,13 @@ Known limits:
 
 - Metadata (existence, size) is readable only for the allow-listed trees and their ancestor
   directories; contents outside the allow-list cannot be read.
-- A process that calls `setsid` leaves the group the runner kills. It stays inside the sandbox.
-- macOS does not enforce `RLIMIT_AS`, so there is no memory ceiling. `Limits.processes` is a process-count ceiling the kernel enforces:
+- A process that calls `setsid` leaves the group the runner kills. It stays inside the sandbox. `process_tree.end(tree, stalled=...)` ends it
+  and every other process of the run: it stops each member (listing again until a pass finds none new, so none forks meanwhile), kills
+  each, and waits until none is alive; a member is signalled only while its pid and start time are the ones the tree noted, and a member
+  that cannot be ended, or whose start time was never read, is reported as a survivor after `stalled` seconds with none ending. The run
+  itself still ends with the group kill.
+- macOS does not enforce `RLIMIT_AS`, and neither does the Mach footprint limit (a 500 MB allocation succeeds under both), so there is no memory
+  ceiling: memory is watched by the parent, not enforced here. `Limits.processes` is a process-count ceiling the kernel enforces:
   `RLIMIT_NPROC` counts every process of the user, so the ceiling is what the user has when the run starts plus the allowance, and the
   kernel refuses the fork that crosses it (`EAGAIN`; `tests/test_sandbox_linux.py`).
   The allowance covers the run's own helpers as well as the command's processes, and other processes of the user that start meanwhile use
@@ -258,6 +274,15 @@ trees are hidden. Neither end copies a destination from the bytes it carries, ea
 over is closed), and the sockets and the directory end with the run (`Bubblewrap.finish`); a directory a killed parent left is removed when the
 next relay is made. A command can connect to the named ports and, through the sockets it finds, to the same ports; to no other port, to
 no address beyond the machine, to no Unix socket of the host and to no abstract socket of the host.
+
+A path in `deny_write` or `deny_read` is frozen with a read-only bind over itself, after the bind of the tree that holds it: nothing below it can be
+written, created, renamed or removed, and it cannot itself be renamed. A name that does not exist is bound to the null device, which makes an empty
+read-only placeholder in the writable tree, so the name cannot be created; a path to hide is covered by an empty read-only tree, or by the null device.
+Only a path directly under a writable tree (or that tree itself) is held: a deeper one is refused, because the directories above it could be renamed and
+the name made again beside the frozen one. The namespace also binds the null device read-only at `/run/poolhouse/confined`, which
+`sandbox.confined()` reads (a character device no unprivileged process can make). These are VERIFIED only as the bubblewrap behaviour the design measured
+(docs/design-isolated-launcher.md, 5.6 B-ns, B-placeholder); `tests/test_sandbox_linux.py` runs them on a host that can make the namespaces.
+What a namespace leaves visible is declared as X3 (`bubblewrap.ACCOUNT_AND_HOST_FILES`): the `/etc` files it binds.
 
 A bubblewrap older than 0.8.0 has no `--disable-userns`: the backend reports itself unavailable and says so, and no command runs more
 loosely. `wrap` runs the binary `available` probed. The Linux boundary is tested by `tests/test_sandbox_linux.py` on a host that can make

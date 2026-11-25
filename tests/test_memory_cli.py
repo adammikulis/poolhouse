@@ -25,7 +25,7 @@ def delegated(monkeypatch):
 
 
 COMMANDS = [["list"], ["show", "m0001"], ["add", "prefers short answers", "--scope", "user"],
-            ["confirm", "m0001"], ["forget", "m0001"], ["forget", "--all", "--yes", "--scope", "user"],
+            ["confirm", "m0001"], ["forget", "m0001"], ["forget", "--all", "--scope", "user"],
             ["export"], ["stats"]]
 
 
@@ -99,13 +99,15 @@ def test_the_person_cannot_store_a_credential_or_a_permission_either(person, cap
     assert Store().facts() == []
 
 
-def test_forget_all_needs_the_yes_flag_and_asks_nobody_and_stats_reports_tampering(person, monkeypatch, capsys):
+def test_forget_all_runs_at_once_with_no_confirmation_flag_and_stats_reports_tampering(person, monkeypatch, capsys):
     store = Store()
     store.add("a fact")
     monkeypatch.setattr("builtins.input", lambda _: pytest.fail("nothing is asked"))
-    assert cli.main(["forget", "--all", "--scope", "user"]) == 1 and len(store.facts()) == 1
-    assert "pass --yes" in capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        cli.main(["forget", "--all", "--scope", "user", "--yes"])
+    assert len(store.facts()) == 1, "--yes is not a flag any more: the refusal changed nothing"
+    capsys.readouterr()
     store.path.write_bytes(b"{}")
     store.prev.unlink(missing_ok=True)
     assert cli.main(["stats"]) == 1
-    assert cli.main(["forget", "--all", "--scope", "user", "--yes"]) == 0 and Store().status == "fresh"
+    assert cli.main(["forget", "--all", "--scope", "user"]) == 0 and Store().status == "fresh"

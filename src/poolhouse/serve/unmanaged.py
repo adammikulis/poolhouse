@@ -2,10 +2,11 @@
 
 They cannot be prevented, so they are found, counted against the memory budget and shown as
 unmanaged. They are never leased from. ``POOLHOUSE_ADOPT_UNMANAGED`` (or the ``adopt_unmanaged``
-limit) set to ``auto`` or ``ask`` lets the broker take one into the registry when the process
-listening on its port passes `examine`: a loopback listener, owned by this user, running a
-recognised server binary, whose ``/props`` and ``/health`` look like llama-server's. An adopted
-server is queued and counted like any other and is never stopped by poolhouse.
+limit) set to ``auto`` lets the broker take one into the registry when the process listening on
+its port passes `examine`: a loopback listener, owned by this user, running a recognised server
+binary, whose ``/props`` and ``/health`` look like llama-server's. The rule decides at once,
+adopting it or refusing it with the reason; nobody is asked. An adopted server is queued and
+counted like any other and is never stopped by poolhouse.
 """
 
 from __future__ import annotations
@@ -27,12 +28,12 @@ __all__ = ["ENV", "MODES", "Examined", "adopt_entry", "examine", "listener", "mo
            "unmanaged_servers"]
 
 ENV = "POOLHOUSE_ADOPT_UNMANAGED"
-MODES = ("off", "ask", "auto")
+MODES = ("off", "auto")
 LOOPBACK = frozenset({"127.0.0.1", "::1", "::ffff:127.0.0.1"})
 
 
 def mode() -> str:
-    """``off``, ``ask`` or ``auto``: the environment first, then the limits file."""
+    """``off`` or ``auto``: the environment first, then the limits file."""
     for named in (os.environ.get(ENV, ""), limits.read().adopt_unmanaged):
         if str(named).strip().lower() in MODES:
             return str(named).strip().lower()

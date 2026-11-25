@@ -228,12 +228,13 @@ def test_a_passphrase_is_an_explicit_fallback_and_never_a_key_file(tmp_path, mon
     assert make(tmp_path).status == "locked"
 
 
-def test_a_passphrase_store_without_a_terminal_or_variable_is_locked(tmp_path, monkeypatch):
+def test_a_passphrase_store_without_the_variable_is_locked_at_once_even_at_a_terminal(tmp_path, monkeypatch):
     monkeypatch.setenv(vault.KEYS_ENV, "passphrase")
     monkeypatch.setenv(vault.PASSPHRASE_ENV, "pw")
     fill(make(tmp_path))
     monkeypatch.delenv(vault.PASSPHRASE_ENV)
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: False, raising=False)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr("getpass.getpass", lambda *_: pytest.fail("a passphrase was asked at a terminal"))
     locked = make(tmp_path)
     assert locked.status == "locked" and vault.PASSPHRASE_ENV in locked.why
 
