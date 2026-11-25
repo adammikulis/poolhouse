@@ -23,6 +23,7 @@ from poolhouse.hub.probe import MachineMemory, machine_memory
 from poolhouse.platform import is_apple_silicon
 from poolhouse.serve import estimate as est
 from poolhouse.serve.largest import PAD, capacity, contexts, largest_context, trained_window
+from poolhouse.serve.weights import resident_of
 from poolhouse.units import human_bytes
 
 __all__ = ["Candidate", "Choice", "Option", "Recommendation", "Suggestion", "Want",
@@ -296,7 +297,7 @@ def fit_model(model: str | Path, machine: MachineMemory | None, want: Want) -> S
     path = est._locate(model)
     shown = [m for m in hub.discover(formats=("gguf",)) if m.path == path]
     mm = shown[0].mmproj if shown and shown[0].mmproj else None
-    return suggest_meta(est.read_meta(path), est._resident_of(path), machine,
+    return suggest_meta(est.read_meta(path), resident_of(path), machine,
                         replace(want, mmproj_bytes=want.mmproj_bytes or (est._bytes_of(mm) if mm else 0)))
 
 
@@ -336,7 +337,7 @@ def slots_that_fit(model: str | Path, context: int, machine: MachineMemory | Non
     """How many slots of ``context`` tokens each ``machine`` holds within ``max_verdict``;
     0 when not even one does."""
     path = est._locate(model)
-    found, weights = est.read_meta(path), est._resident_of(path)
+    found, weights = est.read_meta(path), resident_of(path)
     ask = _Ask(found, weights, _empty(machine), Want(max_verdict=max_verdict, kv=kv),
                est.flash_attention_likely(found))
     use = est.Setup(context=max(int(context), 1), kv_cache_type=ask.kv(kv), flash_attn=ask.flash,
@@ -440,7 +441,8 @@ def suggest_model(candidates: Iterable[Candidate | ModelInfo],
         one = candidate_of(item) if isinstance(item, ModelInfo) else item
         if not _chat(one) or one.size_bytes <= 0:
             continue
-        probe = est.estimate_meta(_found_for(one), one.size_bytes, est.Setup(context=0))
+        held = resident_of(one.path) if one.path else one.size_bytes  # a table is paged, not held
+        probe = est.estimate_meta(_found_for(one), held or one.size_bytes, est.Setup(context=0))
         rated = est.verdict(probe, machine, reserve_bytes)
         score = _effective(one)
         if goal == "fast":

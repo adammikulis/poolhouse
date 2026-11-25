@@ -26,6 +26,10 @@ licences; none is bundled in the wheel or in the release bundles. The bundles ar
 (GPL-2.0 with the bootloader exception, which permits distributing the frozen application under any licence)
 and Tauri (MIT or Apache-2.0).
 
+The `claude` extra, which every installed runtime and installer asks for, installs `claude-agent-sdk` (MIT). Its
+platform wheels bundle the Claude Code binary, which is Anthropic's software under Anthropic's terms, not under this
+project's licence; it is fetched from PyPI at install time and is not bundled in the wheel or the release bundles.
+
 ## Python packages in a bundle
 
 Closure of the base requirements and the `store`, `hub`, `web`, `plot`, `graph`, `serve` extras at generation time.

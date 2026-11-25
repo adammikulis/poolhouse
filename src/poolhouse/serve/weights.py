@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-__all__ = ["DEFAULT_TIMEOUT_S", "scaled_timeout", "weight_of"]
+from poolhouse.serve.tensors import resident_bytes
+
+__all__ = ["DEFAULT_TIMEOUT_S", "resident_of", "scaled_timeout", "weight_of"]
 
 # The flat timeout this used to be, kept as the floor: a small model that always loaded in
 # ten seconds must not suddenly wait less than 300 just because it is small.
@@ -34,3 +36,15 @@ def weight_of(model: str | Path) -> int:
     # a sharded model names its first file; the others sit beside it
     shards = sorted(where.parent.glob(where.name.replace("00001", "*"))) or [where]
     return sum(s.stat().st_size for s in shards if s.is_file())
+
+
+def resident_of(model: str | Path) -> int:
+    """What a server must hold in memory for a model's weights: `weight_of` less the gathered
+    lookup table its file carries. 0 when the weights are not here.
+
+    The figure every memory admission and fit check counts -- the lease, the wired limit, the
+    largest context, the preflight -- where `weight_of` is the file on disk, which is what a
+    download, a copy and a load timeout are about.
+    """
+    on_disk = weight_of(model)
+    return resident_bytes(on_disk, model) if on_disk else 0

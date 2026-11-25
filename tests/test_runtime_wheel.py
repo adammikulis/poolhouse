@@ -9,6 +9,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -22,7 +23,7 @@ from packaging.tags import parse_tag, sys_tags
 from packaging.version import Version
 from wheel_support import fresh_wheel
 
-from poolhouse import runtime
+from poolhouse import installed, runtime
 from poolhouse.fleet import compute_artifact, runtime_wheel
 from poolhouse.net import packages
 
@@ -97,6 +98,23 @@ def test_a_failed_prepare_leaves_no_prefix_behind(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="missing dependency"):
         runtime_wheel.prepare(wheel, COMMIT, timeout=7)
     assert not list((runtime.directory() / COMMIT).iterdir())
+
+
+def test_the_runtime_is_installed_with_the_extras_of_a_full_install_the_agent_sdk_among_them(tmp_path, monkeypatch):
+    monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "state"))
+    wheel = _wheel(tmp_path / "poolhouse-0.1.0-py3-none-any.whl")
+    with zipfile.ZipFile(wheel, "a") as archive:
+        archive.writestr("poolhouse-0.1.0.dist-info/METADATA", "Name: poolhouse\nVersion: 0.1.0\n")
+    runtime_wheel.stamp(wheel, COMMIT, tmp_path)
+    specs = []
+    monkeypatch.setattr(runtime_wheel, "_run", lambda argv, timeout, **kw: "")
+    monkeypatch.setattr(runtime_wheel, "_install", lambda python, spec, timeout: specs.append(spec))
+    monkeypatch.setattr(runtime, "verify", lambda chosen: chosen)
+    runtime_wheel.prepare(wheel, COMMIT, timeout=7)
+    (spec,) = specs
+    asked = re.fullmatch(r"poolhouse\[([^\]]+)\] @ file://.+", spec)
+    assert asked, spec
+    assert asked.group(1) == installed.extras() and "claude" in asked.group(1).split(",")
 
 
 def _dependency_wheels(wheel, target):

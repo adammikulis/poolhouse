@@ -77,7 +77,7 @@ from poolhouse.serve.process import (
 )
 from poolhouse.serve.python_engines import ENGINES
 from poolhouse.serve.slotdump import default_slot_save_path
-from poolhouse.serve.weights import scaled_timeout, weight_of
+from poolhouse.serve.weights import resident_of, scaled_timeout, weight_of
 
 logger = logging.getLogger(__name__)
 
@@ -491,12 +491,13 @@ class ServerManager(Admitting):
                 anyway: bool = False, **starting: Any) -> ServerInfo | None:
         """Serve it next to whatever holds the port, when there is room. None when there is not.
 
-        Room is judged against the weights on disk: a model is roughly its file size in
-        memory, and a machine that cannot hold one more should say so rather than start a
-        load that will be killed halfway or swap the other server to a crawl.
+        Room is judged against the weights a server holds: a model is roughly its file size in
+        memory less any gathered table it pages, and a machine that cannot hold one more should
+        say so rather than start a load that will be killed halfway or swap the other server to
+        a crawl.
         """
         room = free_memory()
-        wanted = weight_of(spec.model)
+        wanted = resident_of(spec.model)
         if room is not None and wanted and wanted > room * BESIDE_HEADROOM:
             return None
         moved = replace(spec, port=free_port())
@@ -696,10 +697,12 @@ class ServerManager(Admitting):
                 iq: quant_guard.IqQuant | None = None) -> None:
         kept = kvcache.effective(spec)
         pending = self._mine.get(str(spec.port)) or {}
+        drafting = not (spec.mtp is True and not info.mtp)  # a head the server refused is not one it runs with
         self._mine[str(spec.port)] = ledger.entry(
             spec, backend=info.backend, lease=pending.get("lease", ""), est_mb=pending.get("est_mb", 0), info=info,
             extra={"mtp": info.mtp, "cache_type_k": kept.k, "cache_type_v": kept.v, "kv_cache": kept.said,
-                   "kv_notes": list(kept.notes), "draft": str(spec.draft or ""), "spec_type": spec.spec_type,
+                   "kv_notes": list(kept.notes), "draft": str(spec.draft or "") if drafting else "",
+                   "spec_type": spec.spec_type if drafting else "",
                    "chat_template_file": str(spec.chat_template_file or ""), "mtp_note": info.mtp_note,
                    **({"iq_warning": iq.name} if iq is not None else {})})
         forget_server(info.base_url)

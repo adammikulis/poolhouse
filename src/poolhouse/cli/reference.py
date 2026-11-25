@@ -93,7 +93,7 @@ TABLE: tuple[Row, ...] = (
     Row("poolhouse-codex [MODEL] [--permissions P] [--execution-mode M] [-- codex args]",
         "Codex on a model this machine serves, the default coding harness: the same lease, window, permission hook and workspace session as `poolhouse-claude`, with a private `CODEX_HOME` holding the provider (`/v1/responses`), the context window, the selected permissions and Plan or Execute mode and the hook. `launch_coding_agent(model, policy, project, harness)` in `poolhouse.coding` is the same for a program"),
     Row("poolhouse-agent \"task\" --model MODEL",
-        "one agentic task through the Claude Agent SDK (the `claude` extra) on the same lease; prints what it said and what it spent. `poolhouse.harness.session()` is the same for a program"),
+        "one agentic task through the Claude Agent SDK every install carries, on the same lease; prints what it said and what it spent. `poolhouse.harness.session()` is the same for a program"),
     Row("poolhouse features list\\|enable NAME\\|disable NAME",
         "the experimental features, each off until turned on for this machine: `list` shows every one with its stage (`experimental`, `beta` or `stable`), what it does and what it risks (`--json` for a program); `enable` and `disable` change one by name and record who did it in the authority audit log. The state is the `features` map in the daemon's `settings.json`, so the settings screen shows the same list. A safety floor (pushing to main, an agent posing as a person, the keystore, sharing the GPU) is never a feature and is refused. `--root DIR` names a daemon kept elsewhere"),
     Row("poolhouse-store check\\|docs\\|doc\\|embed\\|tidy",

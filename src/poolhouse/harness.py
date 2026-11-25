@@ -1,7 +1,7 @@
 """The Claude Agent SDK on a model this machine serves -- the harness, inside poolhouse.
 
 Adam: "do we just include the harness library itself? ... in poolhouse I mean, integrate
-it." The SDK (`claude-agent-sdk`, the ``claude`` extra) drives the same Claude Code binary
+it." The SDK (`claude-agent-sdk`, in every full install through the ``claude`` extra) drives the same Claude Code binary
 `poolhouse.claude` launches, and reads the same environment, so this is the same lease and
 the same wiring with a Python face: :func:`session` leases the model in the settings it scored best with
 and yields a :class:`Harness` whose :meth:`Harness.ask` runs one agentic task and returns
@@ -46,13 +46,13 @@ def confined_bash() -> dict[str, Any]:
 
 
 def sdk() -> Any:
-    """The SDK module, or a plain sentence about the extra that installs it."""
+    """The SDK module. Every full install carries it, so its absence is a defect of this install."""
     try:
         import claude_agent_sdk
-    except ImportError as why:  # pragma: no cover - depends on the extra
+    except ImportError as why:
         raise ImportError(
-            "the Claude Agent SDK is not installed: `pip install \"poolhouse[claude]\"` "
-            "(claude-agent-sdk, which bundles the Claude Code binary)") from why
+            "this poolhouse install is defective: it lacks the Claude Agent SDK (claude-agent-sdk, "
+            "which bundles the Claude Code binary) that every full install carries") from why
     return claude_agent_sdk
 
 
@@ -167,21 +167,26 @@ def session(model: str, *, want: harnessing.Want | None = None, offline: bool = 
     want = want or harnessing.Want()
     found = str(hub.located(model, loose=True) or model)
     note(found, by="agent")
-    leasing = say if leases.already_up(found, want.port) is None else (lambda _line: None)
-    config = harnessing.config_for(found, want, leasing)
-    if not harnessing.admitted(found, config.serving.context, say, kv=config.serving.cache_type):
-        raise ValueError("the model configuration exceeds this device's wired-memory limit")
     patched = chat_template.written_beside(found)
-    if patched is not None:
-        leasing("this model's template refuses a system message after the first; serving "
-                f"with one that renders it instead ({patched.name})")
+    config = harnessing.adopted(found, want, patched, say)
+    if config is None:
+        leasing = say if leases.already_up(found, want.port) is None else (lambda _line: None)
+        config = harnessing.config_for(found, want, leasing)
+        if not harnessing.admitted(found, config.serving.context, say, kv=config.serving.cache_type):
+            raise ValueError("the model configuration exceeds this device's wired-memory limit")
+        if patched is not None:
+            leasing("this model's template refuses a system message after the first; serving "
+                    f"with one that renders it instead ({patched.name})")
     with served(config, say=say, timeout=900.0, cache_reuse=256, warmup=False,
                         chat_template_file=patched,
                         reason=f"the harness on {Path(found).name}") as base_url:
         alias = alias_of(base_url, found)
         say(f"the harness on {base_url} as {alias!r}")
         guard = options.pop("guard", None)
-        yield Harness(base_url, alias, offline=offline, options=options, guard=guard)
+        agent = Harness(base_url, alias, offline=offline, options=options, guard=guard)
+        agent.env = environment(base_url, alias, offline=offline, base={},
+                                context=harnessing.window_of(base_url))  # the window the server gives, not Claude Code's guess
+        yield agent
 
 
 def parser() -> argparse.ArgumentParser:

@@ -167,6 +167,12 @@ pip install "poolhouse[all] @ git+https://github.com/adammikulis/poolhouse"
 The base install includes cryptography, Ladybug (the native graph engine), packaging,
 and psutil, plus pywin32 on Windows. `[train]` adds numpy and safetensors.
 `[all]` installs a curated set of features; it does not include every optional extra.
+The installers and every installed runtime ask for the full-install extras in
+`poolhouse.installed.STANDARD`, among them `claude`: the Claude Agent SDK, which bundles the
+Claude Code binary (about 170 MB per platform wheel, MIT for the SDK, the binary under
+Anthropic's terms) that `poolhouse-agent` and `poolhouse.harness.session` drive, so a
+local agent task needs no install step. If an install lacks it, the command reports a
+defective install and names no `pip install` to run.
 See [the dependency list](../pyproject.toml) for the extras each feature needs. Every
 [release](https://github.com/adammikulis/poolhouse/releases/latest) carries the same wheel,
 for a machine with no git: `pip install ./poolhouse-<version>-py3-none-any.whl`.

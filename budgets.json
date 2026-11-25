@@ -10,7 +10,7 @@
   "home-paths": 0,
   "http-servers": 2,
   "local-imports": 371,
-  "long-docstrings": 74,
+  "long-docstrings": 72,
   "long-functions": 7,
   "module-skips": 10,
   "mutation-survivors": 0,

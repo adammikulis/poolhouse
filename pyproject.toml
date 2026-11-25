@@ -52,7 +52,9 @@ test = [
     "pytest-xdist>=3.8.0", "pytest-timeout>=2.3", "pytest-testmon>=2.2", "pyyaml>=6.0", "defusedxml>=0.7",
 ]
 
-claude = ["claude-agent-sdk>=0.1"]
+# `poolhouse.harness` (`poolhouse-agent`): the SDK bundles the Claude Code binary it drives, about 170 MB
+# per platform wheel. It is in `installed.STANDARD`, so every runtime and installer carries it.
+claude = ["claude-agent-sdk>=0.2.152"]
 arrays = ["numpy>=1.24"]
 torch = ["torch>=2.14"]
 transformers = ["transformers>=5.17"]

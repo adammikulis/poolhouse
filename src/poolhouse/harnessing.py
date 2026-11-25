@@ -24,10 +24,13 @@ from pathlib import Path
 from poolhouse import coding_policy, harnessid, home, hub, runtime
 from poolhouse.activity.source_snapshot import protected_roots, validate_storage
 from poolhouse.briefing import REQUIRED_BRIEFING
+from poolhouse.client import is_healthy
 from poolhouse.errors import Denied
-from poolhouse.serve import chat_template, leases, profile, suggest, wired
+from poolhouse.serve import admission, chat_template, leases, profile, suggest, wired
+from poolhouse.serve.matching import model_matches
+from poolhouse.serve.ports import DEFAULT_HOST
 from poolhouse.serve.recent import note
-from poolhouse.serve.serving import Config, Serving, drafted, served, serving_params
+from poolhouse.serve.serving import Config, Serving, drafted, said_cache, served, serving_params
 from poolhouse.windows_private import restrict as restrict_windows
 
 WAIT_S = 0.0
@@ -36,12 +39,14 @@ WAIT_S = 0.0
 __all__ = [
     "DEFAULT_CTX",
     "DEFAULT_MODEL",
+    "MIN_WINDOW",
     "PARENT",
     "WAIT_S",
     "Session",
     "SessionFiles",
     "Want",
     "admitted",
+    "adopted",
     "agent_name_for",
     "binary_for",
     "check_project",
@@ -159,9 +164,57 @@ class Want:
     draft: str = "auto"
 
 
+MIN_WINDOW = 65_536
+"""Tokens a slot must hold for a coding session to take a server already up: the harness's own prompt and tool list are tens of thousands."""
+
+
+def adopted(found: str, want: Want, patched: Path | None, say: Callable[[str], None]) -> Config | None:
+    """The `Config` that asks for exactly what the server already up on ``found`` serves, or None with one sentence said why that one cannot carry the session."""
+    records = leases.recorded_servers()
+    declined: list[str] = []
+    asked = want.ctx // max(1, want.slots) if want.ctx else 0
+    for port in sorted(records, key=lambda p: (p != want.port, p)):
+        entry = records[port]
+        if (entry.get("pending") or entry.get("embedding") or not admission.live(entry)
+                or not model_matches(str(entry.get("model") or ""), found)):
+            continue
+        url = f"http://{DEFAULT_HOST}:{port}"
+        params = serving_params(url, timeout=5.0) if is_healthy(url, timeout=1.0) else None
+        if params is None or not params.n_ctx:
+            continue
+        each, held = int(params.n_ctx), max(1, int(params.total_slots or 1))
+        up = f"the server already up on port {port}"
+        if each < MIN_WINDOW:
+            why = f"holds {each:,} tokens a slot, under the {MIN_WINDOW:,} a coding session needs"
+        elif asked > each:
+            why = f"holds {each:,} tokens a slot and {asked:,} were asked for"
+        elif held < want.slots:
+            why = f"serves {held} slot(s) and {want.slots} were asked for"
+        elif patched is not None and not _same_file(entry.get("chat_template_file"), patched):
+            why = "renders the model's own chat template, which refuses a system message after the first"
+        elif want.draft.lower() not in ("auto", "none"):
+            why = f"runs without the draft head {want.draft} that was named"
+        else:
+            cache = said_cache(str(entry.get("cache_type_k") or ""), str(entry.get("cache_type_v") or ""))
+            # asked on that server's own port: the broker shares a `serve:` lease only with an ask for the same port
+            return Config(serving=Serving(model=found, port=port, slots=held, slot_context=each,
+                                          cache_type=cache or KV, mtp=None if entry.get("mtp") else False))
+        declined.append(f"{up} {why}; leasing its own")
+    if declined:
+        say(declined[0])
+    return None
+
+
+def _same_file(recorded: object, patched: Path) -> bool:
+    """Whether the template file a server was started with is ``patched``."""
+    try:
+        return bool(recorded) and Path(str(recorded)).resolve() == Path(patched).resolve()
+    except OSError:
+        return False
+
+
 def config_for(found: str, want: Want, say: Callable[[str], None]):
-    """The `Config` a session serves: the model's measured settings (or bare), ``ctx`` tokens
-    over ``slots`` slots, with the admitted automatic cache profile."""
+    """The `Config` a session serves: measured settings on these very weights (else bare), ``ctx`` tokens over ``slots`` slots."""
     port, slots, draft = want.port, want.slots, want.draft
     if isinstance(slots, bool) or not isinstance(slots, int) or slots <= 0:
         raise ValueError("slots must be a positive integer")
@@ -185,13 +238,13 @@ def config_for(found: str, want: Want, say: Callable[[str], None]):
         each = requested // slots
     if each <= 0:
         raise ValueError("context must provide at least one token per slot")
-    measured = None if want.no_profile else profile.profile_for(found)
+    measured = None if want.no_profile else profile.profile_for(found, same_quant=True)
     if measured is not None:
         config = measured.config(port=port, slots=slots, model=found)
         say(f"serving in the settings it scored best with: {profile.said(measured)}")
     else:
         config = Config(serving=Serving(model=found, port=port, slots=slots, slot_context=each))
-        say(f"serving bare: nothing measured for this model, {each:,} tokens a slot")
+        say(f"serving bare: nothing measured on these very weights, {each:,} tokens a slot")
     if draft.lower() != "auto":
         config = config.over(draft="", spec_type="", mtp=False if draft.lower() == "none" else None)
     config = drafted(config, draft, say=say)
@@ -212,14 +265,16 @@ def serving(model: str, want: Want, say: Callable[[str], None], by: str) -> Iter
     the block ends unless one was already up."""
     found = str(hub.located(model, loose=True) or model)
     note(found, by=by)
-    leasing = say if leases.already_up(found, want.port) is None else (lambda _line: None)
-    config = config_for(found, want, leasing)
-    if not admitted(found, config.serving.context, say, kv=config.serving.cache_type):
-        raise SystemExit(2)
     patched = chat_template.written_beside(found)
-    if patched is not None:
-        leasing("this model's template refuses a system message after the first; serving "
-                f"with one that renders it instead ({patched.name})")
+    config = adopted(found, want, patched, say)
+    if config is None:
+        leasing = say if leases.already_up(found, want.port) is None else (lambda _line: None)
+        config = config_for(found, want, leasing)
+        if not admitted(found, config.serving.context, say, kv=config.serving.cache_type):
+            raise SystemExit(2)
+        if patched is not None:
+            leasing("this model's template refuses a system message after the first; serving "
+                    f"with one that renders it instead ({patched.name})")
     with served(config, say=say, timeout=900.0, cache_reuse=256, warmup=False, escalate=True,
                 chat_template_file=patched, reason=f"{by} session on {Path(found).name}",
                 on_event=lambda e: say(f"  {e.get('event')}: " + ", ".join(

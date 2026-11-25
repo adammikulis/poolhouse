@@ -131,6 +131,20 @@ def _call(hook, tool, args):
     return asyncio.run(hook({"tool_name": tool, "tool_input": args, "tool_response": args}, None, None))
 
 
+def test_the_sdk_a_full_install_carries_is_the_one_the_session_imports():
+    import importlib
+
+    assert harness.sdk() is importlib.import_module("claude_agent_sdk")
+
+
+def test_an_install_that_lacks_the_sdk_is_called_defective_and_told_to_install_nothing(monkeypatch):
+    monkeypatch.setitem(sys.modules, "claude_agent_sdk", None)       # an import that finds nothing
+    with pytest.raises(ImportError) as raised:
+        harness.sdk()
+    said = str(raised.value)
+    assert "pip" not in said and "defect" in said and "claude-agent-sdk" in said
+
+
 def test_default_options_preserve_unlimited_turns_and_guard_hooks():
     pytest.importorskip("claude_agent_sdk")
     agent = harness.Harness("http://127.0.0.1:8899", "kestrel-8B")

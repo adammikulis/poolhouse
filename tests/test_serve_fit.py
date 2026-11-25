@@ -1385,21 +1385,22 @@ class TestWhatTheFileIsMadeOf:
         weights, and `poolhouse-serve memory --for` asks for the 26.8G table to be wired.
         """
         from poolhouse.serve import estimate as est_mod
+        from poolhouse.serve.weights import resident_of
         path = self.model(tmp_path)
         table = 160 * 4096 // 32 * 18
         with path.open("ab") as f:  # the tensor data the header declares, so the file is as big as it says
             f.write(bytes(table + 4096))
         assert tensors_mod.table_bytes(path) == table
-        assert est_mod._resident_of(path) == path.stat().st_size - table > 0
+        assert resident_of(path) == path.stat().st_size - table > 0
         weights = est_mod.estimate(path, context=4096).weights_bytes
         assert weights == path.stat().st_size - table
 
     def test_a_model_with_no_table_is_estimated_at_its_file_size(self, tmp_path):
-        from poolhouse.serve import estimate as est_mod
+        from poolhouse.serve.weights import resident_of
         plain = with_tensors(tmp_path / "plain-8B-Q4_K_M.gguf",
                              {"general.architecture": "llama", "llama.block_count": 4},
                              [("blk.0.attn_q.weight", Q4_K, (256, 256))])
-        assert est_mod._resident_of(plain) == plain.stat().st_size
+        assert resident_of(plain) == plain.stat().st_size
 
     def test_a_file_that_is_not_a_gguf_costs_a_record_nothing(self, tmp_path):
         """A record is worth writing without this number. Mutation: raise, and `--measure`
@@ -1428,6 +1429,166 @@ class TestWhatTheFileIsMadeOf:
         assert "iq4_nl" in text and "q8_0" in text
         assert "experts" in text and "attention" in text
         assert "(160, 4,096)" in text
+
+
+def lookup_model(tmp_path: Path, name: str, *, table_rows: int, other: int) -> tuple[Path, int]:
+    """A real GGUF header naming one gathered table of ``table_rows`` rows and a small
+    attention tensor, its file extended (sparse, so nothing is written) to the size the
+    header says plus ``other`` bytes of the rest of the weights. ``(path, table bytes)``."""
+    import os
+
+    path = with_tensors(tmp_path / name,
+                        {"general.architecture": "llama", "llama.block_count": 4},
+                        [("per_layer_token_embd.weight", IQ4_NL, (160, table_rows)),
+                         ("blk.0.attn_q.weight", Q4_K, (256, 256))])
+    table = 160 * table_rows // 32 * 18
+    os.truncate(path, path.stat().st_size + table + other)
+    return path, table
+
+
+class TestAdmissionHoldsWhatTheServerHolds:
+    """Every check that asks "does it fit" counts the file less its gathered table.
+
+    The model is a real GGUF header with a table that is most of the file, so a file that
+    is bigger than the room can still be one the machine holds. Nothing is served.
+    """
+
+    ROOM = 2 * GIB
+    ROWS = 40_000_000  # 3.35 GiB of IQ4_NL table, against a 2 GiB room
+
+    @pytest.fixture(autouse=True)
+    def _a_build_that_reads_llama(self, monkeypatch):
+        import poolhouse.setup as setup_module
+
+        monkeypatch.setattr(setup_module, "_arches", lambda binary: {"llama"})
+
+    def asked(self, tmp_path: Path, name: str = "marrowgate-A3B-UD-IQ2_XS.gguf") -> tuple[Path, int]:
+        return lookup_model(tmp_path, name, table_rows=self.ROWS, other=64 * MIB)
+
+    def preflight(self, tmp_path: Path, path: Path, fits: list[Fit]):
+        from conftest import LLAMA_SERVER_HELP, fake_binary
+
+        from poolhouse.serve.backend import ServerSpec
+        from poolhouse.serve.preflight import Preflight
+
+        binary = fake_binary(tmp_path, help_text=LLAMA_SERVER_HELP)
+        return Preflight(ServerSpec(model=path, context=4096), binary=binary,
+                         limit_bytes=self.ROOM, fits=lambda: fits)
+
+    def test_a_file_bigger_than_the_room_is_admitted_when_its_table_is_what_overflows(self, tmp_path):
+        """Mutation: count the whole file as weights, and `up` refuses a model whose
+        26.8G table is paged from the SSD and never wired."""
+        path, table = self.asked(tmp_path)
+        assert path.stat().st_size > self.ROOM > path.stat().st_size - table
+        report = self.preflight(tmp_path, path, [])
+        fit = next(c for c in report.checks if c.name == "fit")
+        assert fit.ok, fit.detail
+        assert report.weights_bytes == path.stat().st_size - table
+        assert "lookup table paged from disk" in next(c for c in report.checks
+                                                     if c.name == "shards").detail
+
+    def test_a_measurement_of_another_quantisation_is_not_charged_at_its_size(self, tmp_path):
+        """The IQ4_XS record loaded 90G and the IQ2_XS file is 44G less a table: the cache
+        costs come across and the weights are read off the file asked about. Mutation:
+        transfer the record unscaled, and the smaller file is charged the larger one's 90G.
+        """
+        from poolhouse.units import human_bytes
+
+        path, table = self.asked(tmp_path)
+        donor = Fit(model="marrowgate-A3B-UD-IQ4_XS-00001-of-00003.gguf", weights=90 * GIB,
+                    per_token=26_112, per_seq=64 * MIB, compute=512 * MIB, cache_type="q8_0")
+        report = self.preflight(tmp_path, path, [donor])
+        found = next(c for c in report.checks if c.name == "fit (measured)")
+        held = path.stat().st_size - table + 512 * MIB
+        assert found.ok, found.detail
+        assert f"loaded {human_bytes(held)}" in found.detail
+
+    def test_the_cache_costs_come_across_and_the_weights_are_the_files_asked_about(self, tmp_path):
+        from poolhouse.fleet.plan import fit_for
+
+        path, table = self.asked(tmp_path)
+        donor = Fit(model="marrowgate-A3B-UD-IQ4_XS-00001-of-00003.gguf", weights=90 * GIB,
+                    weights_gpu=80 * GIB, weights_resident=81 * GIB, per_token=26_112,
+                    per_seq=64 * MIB, compute=512 * MIB, cache_type="q8_0")
+        got = fit_for(str(path), [donor], cache_type="q8_0")
+        assert got is not None
+        assert (got.per_token, got.per_seq, got.compute) == (26_112, 64 * MIB, 512 * MIB)
+        assert got.weights == path.stat().st_size and got.table_bytes == table
+        assert got.loaded() == path.stat().st_size - table + 512 * MIB
+
+    def test_a_smaller_quantisation_is_not_trusted_for_a_larger_file(self, tmp_path):
+        """The direction that admits what does not fit. Mutation: transfer unscaled, and a
+        3 GiB file is charged the 1 GiB the smaller one loaded."""
+        import os
+
+        from poolhouse.fleet.plan import fit_for
+
+        big = with_tensors(tmp_path / "marrowgate-A3B-UD-Q8_0.gguf",
+                           {"general.architecture": "llama"},
+                           [("blk.0.attn_q.weight", Q4_K, (256, 256))])
+        os.truncate(big, 3 * GIB)
+        donor = Fit(model="marrowgate-A3B-UD-IQ2_XS.gguf", weights=GIB, weights_resident=GIB,
+                    per_token=1024, compute=0, cache_type="q8_0")
+        assert fit_for(str(big), [donor], cache_type="q8_0").loaded() == 3 * GIB
+
+    def test_a_record_for_the_same_file_is_taken_as_measured(self, tmp_path):
+        from poolhouse.fleet.plan import fit_for
+
+        path, _ = self.asked(tmp_path)
+        own = Fit(model=path.name, weights=path.stat().st_size, weights_resident=GIB,
+                  compute=0, cache_type="q8_0")
+        assert fit_for(str(path), [own], cache_type="q8_0") is own
+
+    def test_a_quantisation_that_is_not_on_this_machine_is_planned_from_the_record_as_it_is(self):
+        """A planner places a model on a machine that is not this one, and nothing here can
+        size that file to correct the record by."""
+        from poolhouse.fleet.plan import fit_for
+
+        donor = Fit(model="marrowgate-A3B-UD-IQ4_XS-00001-of-00003.gguf", weights=90 * GIB,
+                    per_token=26_112, cache_type="q8_0")
+        assert fit_for("marrowgate-A3B-UD-Q2_K_L.gguf", [donor], cache_type="q8_0") is donor
+
+    def test_a_record_with_no_resident_figure_leaves_the_table_out_of_the_files(self):
+        """A table is an upper bound on drift, not a load cost. Mutation: fall back to the
+        file size, and a record measured before `weights_resident` charges the table."""
+        from dataclasses import replace
+
+        fit = Fit(model="m", weights=10 * GIB, draft=GIB, table_bytes=4 * GIB, compute=GIB)
+        assert fit.loaded() == 8 * GIB
+        assert replace(fit, weights_gpu=6 * GIB).loaded() == 7 * GIB
+        assert replace(fit, weights_gpu=6 * GIB, weights_resident=5 * GIB).loaded() == 6 * GIB
+
+    def test_the_lease_is_for_what_is_held(self, tmp_path):
+        """The broker's memory lease, and so the wait for room. Mutation: size it by the
+        file, and a model whose table is paged waits on memory it never takes."""
+        from poolhouse.serve import admission
+        from poolhouse.serve.backend import ServerSpec
+
+        path, table = self.asked(tmp_path)
+        need = admission.estimate_bytes(ServerSpec(model=path, context=4096))
+        assert path.stat().st_size - table <= need < table
+
+    def test_a_fleet_estimate_is_for_what_is_held(self, tmp_path):
+        from conftest import LLAMA_SERVER_HELP, fake_binary
+
+        from poolhouse.fleet.sizing import estimate
+
+        path, table = self.asked(tmp_path)
+        binary = fake_binary(tmp_path, help_text=LLAMA_SERVER_HELP)
+        assert estimate(str(path), context=4096, draft="", binary=str(binary)) < table
+
+    def test_a_candidate_is_rated_by_what_it_holds(self, tmp_path):
+        """Mutation: rate the file, and a 13G model that holds 1G is red on a 12G machine."""
+        from poolhouse.hub.probe import MachineMemory
+        from poolhouse.serve.suggest import Candidate, suggest_model
+
+        path, _ = lookup_model(tmp_path, "marrowgate-A3B-UD-IQ2_XS.gguf",
+                               table_rows=143_165_576, other=GIB)
+        machine = MachineMemory(16 * GIB, 11 * GIB, True, 12 * GIB, (), "Darwin")
+        assert path.stat().st_size > 12 * GIB
+        [row] = suggest_model([Candidate(path.name, path.stat().st_size, 0, "IQ2_XS", "llama",
+                                         8192, "", path)], machine)
+        assert row.verdict == "green"
 
 
 class TestTheTensorsFlag:

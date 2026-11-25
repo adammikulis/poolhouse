@@ -15,6 +15,7 @@ from poolhouse.serve import estimate as est_mod, mtp as mtp_mod
 from poolhouse.serve.largest import PAD, contexts, largest_context, trained_window
 from poolhouse.serve.preflight import _recurrent_layers
 from poolhouse.serve.process import machine_memory
+from poolhouse.serve.weights import resident_of
 
 __all__ = ["CONTEXTS", "KV_TYPES", "MIN_MB", "Ask", "Hooks", "Plan", "current_mb", "max_mb",
            "plan", "reserve_bytes", "warn_below_bytes"]
@@ -236,7 +237,7 @@ def plan(model: str, ask: Ask | None = None, hooks: Hooks | None = None) -> Plan
     default_mb = int(total * 0.75) // MIB
     effective = now or default_mb
     path = est_mod._locate(model)
-    found, weights = est_mod.read_meta(path), est_mod._resident_of(path)
+    found, weights = est_mod.read_meta(path), resident_of(path)
     context = ask.context or trained_window(found)
     setup = est_mod.Setup(context=context, kv_cache_type=ask.kv)
 

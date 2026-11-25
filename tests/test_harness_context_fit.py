@@ -17,7 +17,7 @@ def fit(**over):
 @pytest.fixture
 def configured(monkeypatch):
     monkeypatch.setattr(harnessing.chat_template, "trained_context", lambda _: 32768)
-    monkeypatch.setattr(harnessing.profile, "profile_for", lambda _: None)
+    monkeypatch.setattr(harnessing.profile, "profile_for", lambda _, **k: None)
     monkeypatch.setattr(harnessing, "drafted", lambda config, *a, **k: config)
     return lambda: harnessing.config_for("fixture.gguf", harnessing.Want(ctx=0), lambda _: None)
 
@@ -69,7 +69,7 @@ def test_explicit_context_cannot_be_silently_rounded(monkeypatch, configured, co
 def test_measured_memory_settings_are_replaced_by_the_fit(monkeypatch, configured):
     measured = Config(serving=Serving(model="fixture.gguf", cache_type="f16", flash_attn=False,
                                      extra_args=("-ub", "4096")))
-    monkeypatch.setattr(harnessing.profile, "profile_for", lambda _: SimpleNamespace(config=lambda **k: measured))
+    monkeypatch.setattr(harnessing.profile, "profile_for", lambda _, **k: SimpleNamespace(config=lambda **k: measured))
     monkeypatch.setattr(harnessing.profile, "said", lambda _: "fixture")
     monkeypatch.setattr(harnessing.suggest, "largest_fit", lambda *a, **k: fit())
     selected = configured().serving
@@ -87,7 +87,7 @@ def test_automatic_fit_serves_the_slots_it_was_fitted_for(monkeypatch, configure
 
 def test_automatic_fit_refuses_unestimated_profile_flags(monkeypatch, configured):
     measured = Config(serving=Serving(model="fixture.gguf", extra_args=("-b", "8192")))
-    monkeypatch.setattr(harnessing.profile, "profile_for", lambda _: SimpleNamespace(config=lambda **k: measured))
+    monkeypatch.setattr(harnessing.profile, "profile_for", lambda _, **k: SimpleNamespace(config=lambda **k: measured))
     monkeypatch.setattr(harnessing.profile, "said", lambda _: "fixture")
     monkeypatch.setattr(harnessing.suggest, "largest_fit", lambda *a, **k: fit())
     with pytest.raises(ValueError, match="cannot estimate measured server flags"):

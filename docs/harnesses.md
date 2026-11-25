@@ -16,6 +16,11 @@ A program starts the same thing with `poolhouse.coding.launch_coding_agent(model
 harness="codex", **options)` (options: `name`, `orders_from`, `harness_args`, `say`,
 `run_codex` / `run_claude`, `context`); it returns the harness's exit code.
 
+`poolhouse-agent "task" --model MODEL` (`poolhouse.harness.session`) runs one agentic task through the
+Claude Agent SDK on the same lease. Every full install and installed runtime carries the SDK (the `claude`
+extra in `poolhouse.installed.STANDARD`) and, with it, the Claude Code binary it bundles, so the command
+needs no install step; a missing SDK is reported as a defective install, never as a `pip install` to run.
+
 ## What a launch does
 
 1. **Serves the model through the broker lease** (never a hand-started server): 262,144 tokens on
@@ -26,6 +31,12 @@ harness="codex", **options)` (options: `name`, `orders_from`, `harness_args`, `s
    for a person at their own terminal. `poolhouse-serve memory --for Qwen3.8-27B-UD-Q4_K_XL.gguf --ctx
    262144 --kv q8_0` says what the default needs (29.2 GiB on the measured machine, 2026-10-03).
    `--ctx N` is the total across `--slots` (default 1); `--on URL` uses a server already up.
+   A server already up on the same weights is taken as it serves them, whatever its port, window,
+   draft head or cache settings (`harnessing.adopted`), when it holds at least 65,536 tokens a slot,
+   what `--ctx` and `--slots` asked for, and a chat template that renders a late system message; the
+   session then asks the broker for exactly what that server serves, so nothing loads and nothing
+   waits. When it cannot carry the session, one sentence says why and the session leases its own.
+   A record measured on another quantisation of the model is never applied to a session.
 2. **Tells the harness the window it was given**, so it neither compacts at a small default nor
    assumes a larger one. Claude Code: `CLAUDE_CODE_MAX_CONTEXT_TOKENS` and
    `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (accepted from 100,000, capped at the model's window) are set to

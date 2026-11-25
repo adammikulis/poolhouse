@@ -27,7 +27,7 @@ from poolhouse.serve.preflight import (
     recurrent_state_bytes,
 )
 from poolhouse.serve.process import pid_exists
-from poolhouse.serve.weights import weight_of
+from poolhouse.serve.weights import resident_of
 from poolhouse.ui.verdict import THRESHOLDS
 
 __all__ = [
@@ -88,7 +88,7 @@ def device_of(settings: ServerSpec | Mapping[str, Any]) -> str:
 
 
 def _size(ref: str | Path | None) -> int:
-    return weight_of(ref) if ref else 0
+    return resident_of(ref) if ref else 0
 
 
 def estimate_bytes(spec: ServerSpec) -> int:
@@ -138,7 +138,7 @@ def compatible(spec: ServerSpec, entry: Mapping[str, Any], mismatches: list[str]
         return False
     if bool(entry.get("reranking")) != bool(spec.reranking):
         return False
-    if spec.mtp is not None and entry.get("mtp") is not spec.mtp:
+    if spec.mtp is not None and bool(entry.get("mtp")) is not bool(spec.mtp):
         return False
     kept = kvcache.effective(spec)
     for field, asked in (("cache_type_k", kept.k), ("cache_type_v", kept.v),

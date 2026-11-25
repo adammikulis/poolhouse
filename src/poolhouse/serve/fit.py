@@ -72,10 +72,17 @@ touches it -- but none of it is counted in Activity Monitor's "Real Mem" either,
 why a model appears to shrink. So the file size is never the intercept. `Fit.loaded()`
 takes, in order of preference: a **measured resident** total (`weights_resident`, from a
 peak RSS after a real run, with that run's own caches taken back off), else the
-**GPU-resident** total off the load log (`weights_gpu`), else the old file-size sum. The
-first two are the part that has to fit under `iogpu.wired_limit_mb` beside the KV cache; a
-paged lookup table competes for ordinary page cache instead, and `table_bytes` records how
-much of it is out there as an upper bound on the drift.
+**GPU-resident** total off the load log (`weights_gpu`), else the files less the table
+(`held_file`). The first two are the part that has to fit under `iogpu.wired_limit_mb`
+beside the KV cache; a paged lookup table competes for ordinary page cache instead, and
+`table_bytes` records how much of it is out there as an upper bound on the drift -- never a
+load cost, and subtracted from the file-size fallback for that reason.
+
+A record measured on one quantisation is carried to another of the same model by
+`Fit.for_file`: the cache costs (a property of the architecture and the cache type, and
+what the header formula cannot give) come across, and the weights do not -- they are the
+other file's, so they are read again off the file asked about (its size less its table, from
+its own header), never charged at the measured file's size.
 
 For a specific model, ``poolhouse-serve fit MODEL --tensors`` (`poolhouse.serve.tensors`)
 totals the GGUF header's own per-tensor sizes -- the largest tensors with their type and
@@ -206,24 +213,18 @@ class Fit:
         return self.draft_per_token * max(0, int(per_user_context)) + self.draft_per_seq
 
     def loaded(self) -> int:
-        """What the model costs with nobody on it: the weights that are actually resident,
-        plus the compute buffers. The number a person means by "how big is it", and the one
-        that does *not* grow -- which is why a large model with a cheap cache overtakes a
-        small one with an expensive cache somewhere, rather than never.
+        """What it costs with nobody on it: resident weights (measured, else on a device, else the files less the table) plus compute."""
+        return (self.weights_resident or self.weights_gpu or self.held_file) + self.compute
 
-        Which weights count, in order of what has been measured:
+    @property
+    def held_file(self) -> int:
+        """What the files hold that a server must keep: `weights_file` less the gathered table, which is paged."""
+        return max(self.weights_file - self.table_bytes, 0)
 
-        1. ``weights_resident`` -- a peak RSS after a real run, less that run's caches.
-        2. ``weights_gpu`` -- what the load log says landed in a device buffer.
-        3. ``weights_file`` -- the file size, for a record measured before either existed.
-
-        The file size is the fallback and not the answer: with mmap, a tensor the backend
-        declines stays in the mapped file and is paged, so a 103.7G Flash-Next settles
-        around 90G resident and the file size overstates the intercept by the part of the
-        n-gram table nobody has walked yet. The module docstring has the whole story.
-        """
-        return (self.weights_resident or self.weights_gpu or self.weights_file
-                ) + self.compute
+    def for_file(self, *, weights: int, table: int) -> Fit:
+        """This measurement carried to another file of the same model: its cache costs, none of its weights."""
+        return replace(self, weights=weights, table_bytes=table, weights_gpu=0, weights_cpu=0,
+                       cpu_tensors="", weights_resident=0, resident_after=0)
 
     def line(self, per_user_context: int) -> tuple[int, int]:
         """``(bytes with nobody on it, bytes each user adds)`` at that context.
