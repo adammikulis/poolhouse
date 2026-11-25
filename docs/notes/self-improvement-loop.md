@@ -35,8 +35,8 @@ meet, so that the loop can be started later without removing a safety rail to do
    leaves every ratchet equal or lower, passes the judge, its own mutation check and the
    second model's review merges by itself
    into a staging branch (`loop/integration`), never into `0.2dev`, never pushed. A change that
-   touches a protected path, or that the judge cannot fully measure, is not merged: it waits as a
-   request in the Requests inbox with the diff summary and the judge's numbers. The person later
+   touches a protected path, or that the judge cannot fully measure, is not merged: it waits on
+   the staging branch with the diff summary and the judge's numbers. The person later
    reviews the staging branch as one batch and moves the dev branch, or sends rounds back; the
    loop keeps working meanwhile and never blocks on an answer.
 8. **Record what was learned** in project memory (encrypted graph, project scope) so the next
@@ -49,7 +49,7 @@ meet, so that the loop can be started later without removing a safety rail to do
   loop's worktrees (a path list the loop's tools refuse; changes to them are human-only, like a
   role or a saved rule).
 * **The human-only floor is untouched**: no change to `sentinel/`, `keystore.py`, `person.py`,
-  `roles`/`rules`, `requests/`, the destructive-action classifier or the human-only tables lands
+  `roles`/`rules`, the destructive-action classifier or the human-only tables lands
   without a person reading the diff; the loop may propose, never merge, those.
 * **Tighten-only for safety code**: a change that loosens a guard, raises a budget or removes a
   test is refused by the judge, not argued about.
@@ -67,7 +67,7 @@ meet, so that the loop can be started later without removing a safety rail to do
 ## Pieces that exist, and what is missing
 
 Exist: worktrees and the workspace board; roles and rules; the destructive-action classifier;
-the Requests inbox; the activity log; reputation; the red-team coverage ratchet and budgets;
+the activity log; reputation; the red-team coverage ratchet and budgets;
 decision models and JevBench; project memory.
 
 Missing, in order: the local-model agent loop (`feat/runner`); the write-protected path list for

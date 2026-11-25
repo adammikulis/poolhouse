@@ -31,7 +31,7 @@ from testkit.kernel_holder import (
 from testkit.kernel_selectors import admitted_node
 
 GATE = frozenset({"test_layers.py", "test_budgets.py", "test_budget_floors.py",
-                  "test_budget_ratchet.py", "test_redteam_human_floor.py", "test_requests_floor.py",
+                  "test_budget_ratchet.py", "test_redteam_human_floor.py",
                   "test_onboard_human.py", "test_cli_reference.py", "test_test_kernel_isolation.py"})
 PUBLIC_ENV = frozenset({"PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "CI", "CLAUDECODE",
                         "DEV_TEST_BUDGET", "DEV_TEST_HEAVY_LANES", "DEV_TEST_LANE_WAIT_S",

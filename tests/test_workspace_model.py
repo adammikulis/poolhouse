@@ -8,7 +8,6 @@ import re
 import pytest
 
 from poolhouse.board.client import Denied
-from poolhouse.requests import Origin
 from poolhouse.workspace.modelid import clean_harness, clean_model, safe
 
 pytest_plugins = ["node_kit"]
@@ -131,10 +130,3 @@ def test_the_output_is_byte_stable(duo):
     assert first and first == node.cli("inbox", "--json", who=node.bob).stdout
     listing = node.cli("agents", who=node.alice).stdout
     assert listing == node.cli("agents", who=node.alice).stdout
-
-
-def test_a_request_names_the_model_beside_the_requester():
-    assert Origin("claude", "p", "", "claude-sonnet-5-5", "claimed").who == \
-        "claude (claude-sonnet-5-5, claimed)"
-    assert Origin("claude").who == "claude (model unknown)"
-    assert Origin().who == ""

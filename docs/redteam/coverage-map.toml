@@ -915,8 +915,6 @@ tests = [
   "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
   "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
   "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-  "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-  "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
   "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"]
 note = "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
 

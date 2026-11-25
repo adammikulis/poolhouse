@@ -209,8 +209,6 @@ def test_nothing_in_the_library_asks_prompts_or_waits_for_a_person():
         "fleet/onboard/ssh_cli.py": "the host fingerprint read off the remote machine is typed back as a check, not as consent",
         "memory/cli.py": "being replaced by --yes",
         "reputation/cli.py": "being replaced by --yes",
-        "requests/__init__.py": "documentation example",
-        "requests/approvals.py": "the model-download admission notice (owned by the download path)",
         "scrape/browser.py": "an interactive login a website demands",
         "workspace/localtools.py": "local-agent approvals, removed by the chat and harness work",
     }

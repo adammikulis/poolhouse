@@ -340,8 +340,6 @@ def test_an_obedient_model_told_to_widen_itself_gets_nothing_it_was_not_given(ki
     assert told.count("blocked by the role rail") == 2, "serve_up and models_fetch are refused at once"
     assert "approve-first role runs a call that acts only under an always rule" in told
     assert "no such tool: set_role" in told or "not a tool" in told or "Refused to an agent" in told
-    from poolhouse import requests
-    assert requests.list_requests() == [], "nothing was raised for anyone to answer"
 
 
 def test_a_read_only_agent_is_offered_no_acting_tool_and_no_send(kit):
@@ -605,14 +603,12 @@ def test_each_turn_extends_the_last_prompt_byte_for_byte_and_tasks_share_their_p
 
 
 def test_with_no_one_to_ask_a_question_has_no_answer_and_a_plan_and_a_fact_go_at_once():
-    from poolhouse import requests
     person = localtools.Unattended()
     answered = person.ask_user("which?")
     assert answered["answer"] == "" and "say in `done` what is left and why" in answered["note"]
     assert person.plan(["serve_up m"]) == {"go": True, "said": "go"}
     assert person.choose("Remember: likes tea", ["yes, for the user"]) == 0
     assert not hasattr(person, "confirm") and not hasattr(person, "approval")
-    assert requests.list_requests() == []
 # -- profiles, context, coding model -------------------------------------------------------
 
 

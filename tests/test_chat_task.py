@@ -8,7 +8,7 @@ import io
 import json
 from pathlib import Path
 
-from poolhouse import chat, do, requests
+from poolhouse import chat, do
 from poolhouse.guard.untrusted import unfenced
 from tests.test_do import Scripted, call, tools_over
 
@@ -40,7 +40,6 @@ def test_a_task_that_leaves_a_choice_open_asks_then_plans_then_acts_then_reports
     assert "Full hundred questions" in printed and "2. a sample of 10" in printed
     assert "1. serve quince-2b" in printed and "go?" not in printed
     assert printed.count("allow it?") == 0, "the plan named the call, so it ran at once"
-    assert requests.list_requests() == []
     assert seen == [("bench_run", {"argv": ["run", "quince-2b.gguf", "--sample", "10"]})]
     assert "a sample of 10" in model.told(), "the person's answer reached the model"
     assert [c[0] for c in got.calls] == ["ask_user", "plan", "bench_run", "done"]
@@ -70,7 +69,7 @@ def test_a_call_the_plan_does_not_name_is_refused_at_once_with_the_reason():
               call("bench_run", argv=["run", "evil.gguf", "--sample", "10"]),
               call("done", summary="stopped")]
     got, model, seen, printed = drive(script, "y\nn\n")
-    assert seen == [] and got.done and requests.list_requests() == []
+    assert seen == [] and got.done
     assert "it is not in the plan you stated" in printed and "it is not in the plan you stated" in model.told()
     assert "allow it?" not in printed
 
@@ -221,7 +220,6 @@ def test_the_acceptance_prompt_looks_up_both_backends_asks_and_plans_then_every_
     assert "Use these?" in printed and "go?" not in printed and "allow it?" not in printed
     assert got.blocked == [], "the listings of this machine and its Ollama daemon taint nothing, so the plan covers each call it names"
     assert [n for n, _ in seen].count("bench_run") == 3 and seen[-1][0] == "bench_animate", "every acting call ran"
-    assert requests.list_requests() == []
     assert got.done and "compare.mp4" in printed
 
 
@@ -240,7 +238,6 @@ def test_a_local_listing_that_reads_like_an_instruction_taints_the_run_and_the_p
     told = model.told()
     assert "the run has read text from outside, and no plan stated before it names this call" in told
     assert "a plan made now covers no call" in told
-    assert requests.list_requests() == []
 
 
 def test_the_same_plan_stated_before_anything_is_read_runs_every_call_it_names_at_once(tmp_path, monkeypatch):
@@ -258,7 +255,7 @@ def test_the_same_plan_stated_before_anything_is_read_runs_every_call_it_names_a
                                        "Qwen3.8-Flash--ollama-plain", "--export",
                                        "compare.json"]}) in seen
     assert seen[-1][0] == "bench_animate" and got.done and "compare.mp4" in printed
-    assert got.blocked == [] and printed.count("allow it?") == 0 and requests.list_requests() == []
+    assert got.blocked == [] and printed.count("allow it?") == 0
 
 
 # -- the command -----------------------------------------------------------------------

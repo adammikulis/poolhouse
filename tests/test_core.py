@@ -79,7 +79,7 @@ def test_importing_the_core_loads_no_session_token_board_workspace_approval_or_a
     code = ("import sys, poolhouse.core\n"
             "print('\\n'.join(sorted(m for m in sys.modules if m.startswith('poolhouse'))))")
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True).stdout.split()
-    banned = ("board", "authority", "session_identity", "person", "requests", "workspace", "node_app", "node_health",
+    banned = ("board", "authority", "session_identity", "person", "workspace", "node_app", "node_health",
               "leasetable", "sentinel", "keystore", "fleet", "desktop", "lan", "graph", "decide", "activity",
               "net", "serve.broker", "serve.manager", "serve.guarded", "hub.admission", "hub.remote", "mcp",
               "chat", "agent", "gate", "node_pool", "pool_cli")

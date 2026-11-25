@@ -17,7 +17,7 @@ SCANNED = ["src/poolhouse/roles.py", "src/poolhouse/rules.py", "src/poolhouse/ch
            "docs/memory.md", "docs/commands.md", "src/poolhouse/cli/reference.py",
            "docs/notes/agent-control-plane.md", "docs/notes/undo-mode.md"]
 SCANNED += [str(p.relative_to(ROOT)) for pat in ("tests/test_roles.py", "tests/test_redteam_*.py",
-                                                 "tests/test_requests*.py", "tests/test_chat*.py")
+                                                 "tests/test_chat*.py")
             for p in ROOT.glob(pat)]
 ROLE_USE = re.compile(
     r"`(?:reader|operator|runner)`|[\"'](?:reader|operator|runner)[\"']|roles?\W+(?:reader|operator|runner)\b"

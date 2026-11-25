@@ -33,7 +33,7 @@ STATE_DENY_READ = (
 """`node/client` holds a token file and a `.parent` file for each session and its read cursors; `node/person` is the person key's custody."""
 STATE_ALLOW_READ: tuple[str, ...] = ()
 STATE_ALLOW_WRITE = (
-    "workspace", "logs", "activity", "requests", "holds", "hook-diagnostics",
+    "workspace", "logs", "activity", "holds", "hook-diagnostics",
     "broker.lock", "broker-leases.json", "servers.json", "servers.lock", "servers.admission.lock",
 )
 STATE_DENY_WRITE = (

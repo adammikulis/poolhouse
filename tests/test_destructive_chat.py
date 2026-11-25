@@ -13,7 +13,7 @@ import time
 import pytest
 from decide_fakes import logprob_handler
 
-from poolhouse import chatpolicy as policy, do, requests, roles, rules as saved
+from poolhouse import chatpolicy as policy, do, roles, rules as saved
 from poolhouse.decide import router
 from poolhouse.guard import destructive_rail
 from poolhouse.guard.destructive_model import ModelLayer, from_environment
@@ -50,7 +50,7 @@ def test_a_destructive_command_is_refused_at_once_with_the_reason_whatever_is_ty
     for typed in ("", "y\n", "n\n"):
         sess, model, _, out = shell_session("rm -rf build", typed)
         sess.turn("clean")
-        assert RAN == [] and requests.list_requests() == []
+        assert RAN == []
         assert "Refused because it is destructive: deletes files (rm -r)" in model.told()
         assert "allow it?" not in out.getvalue()
 
@@ -254,4 +254,4 @@ def test_a_model_only_verdict_for_a_tool_the_chat_offers_is_refused_through_the_
                                         catalog={"models_find": "safe"}), *sess.watch.items]
     sess.turn("find")
     assert "blocked by the destructive rail" in model.told() and seen == []
-    assert "Refused because it is destructive" in model.told() and requests.list_requests() == []
+    assert "Refused because it is destructive" in model.told()

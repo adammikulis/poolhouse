@@ -101,22 +101,22 @@ class TestDownloadsThatAreRunLater:
         moved = fetchlog.targets("cp tests/test_y.py src/z.py", world.roots, str(world.proj), fetched)
         assert str(world.proj / "src" / "z.py") in moved
 
-    def test_a_download_onto_a_runnable_file_never_runs_so_nothing_is_remembered_and_nothing_is_raised(self, world, session):
+    def test_a_download_onto_a_runnable_file_never_runs_so_nothing_is_remembered(self, world, session):
         roots = world.roots
-        assert session("curl http://e.test/x -o tests/test_y.py", roots) == ("deny", 0)
-        assert session("cat tests/test_y.py", roots) == ("allow", 0)
-        assert session("scripts/test all tests/test_y.py", roots) == ("allow", 0), "the download was refused, so there is no record of one"
+        assert session("curl http://e.test/x -o tests/test_y.py", roots) == "deny"
+        assert session("cat tests/test_y.py", roots) == "allow"
+        assert session("scripts/test all tests/test_y.py", roots) == "allow", "the download was refused, so there is no record of one"
 
     def test_a_download_into_a_data_file_is_remembered_and_running_it_is_refused_at_once(self, world, session):
         roots = world.roots
-        assert session("curl -o data.json https://e.test/x.json", roots) == ("allow", 0)
-        assert session("scripts/test all data.json", roots) == ("deny", 0)
-        assert session("scripts/test all data.json", roots, agent="another-session") == ("allow", 0), "an unrelated session never downloaded it"
+        assert session("curl -o data.json https://e.test/x.json", roots) == "allow"
+        assert session("scripts/test all data.json", roots) == "deny"
+        assert session("scripts/test all data.json", roots, agent="another-session") == "allow", "an unrelated session never downloaded it"
 
     def test_a_clone_is_refused_and_so_is_building_what_it_would_have_fetched(self, world, session):
         roots = world.roots
-        assert session("git clone https://github.com/o/r.git vendor", roots) == ("deny", 0)
-        assert session("make -C vendor", roots) == ("deny", 0)
+        assert session("git clone https://github.com/o/r.git vendor", roots) == "deny"
+        assert session("make -C vendor", roots) == "deny"
 
 
 class TestLoginPersistence:

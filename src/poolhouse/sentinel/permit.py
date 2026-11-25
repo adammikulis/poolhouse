@@ -26,7 +26,6 @@ _MINT = object()
 _FORBIDDEN = (
     "poolhouse security", "poolhouse-security", "poolhouse.sentinel", "poolhouse/sentinel",
     "poolhouse_sentinel", "sentinel.release", "sentinel.purge", "sentinel/state",
-    "poolhouse-requests", "poolhouse.requests", "poolhouse/requests", "poolhouse/requests", "poolhouse_requests", "poolhouse.inbox", "poolhouse/inbox",
     "authority.json", "authority-audit", "poolhouse.authority",
     "poolhouse-log", "poolhouse.activity", "poolhouse/activity", "poolhouse/activity", "poolhouse_activity", "activity.log",
 )

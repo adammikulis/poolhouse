@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from exec_chain_kit import BODY, ROLES, bash, refuses, stops
 
-from poolhouse import coding_policy, harnesshook, requests, secretpaths
+from poolhouse import coding_policy, harnesshook, secretpaths
 from poolhouse.guard import harm, policy
 from poolhouse.harnesspolicy import decide
 from poolhouse.interventions import Call
@@ -498,7 +498,6 @@ class TestWhatTheDenialSays:
         payload = {"tool_name": "Read", "tool_input": {"file_path": str(world.home / ".ssh" / "id_ed25519")}}
         out = harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy("guarded"), "local-test", world.roots, ()))
         assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
-        assert requests.list_requests() == []
 
 
 class TestWritesThatHideInOtherArguments:

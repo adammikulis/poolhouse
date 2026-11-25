@@ -1,10 +1,10 @@
 {
- "surfaces": 892,
+ "surfaces": 889,
  "by_status": {
-  "covered": 572,
+  "covered": 570,
   "partial": 183,
   "uncovered": 51,
-  "n/a": 86,
+  "n/a": 85,
   "unmapped": 0
  },
  "by_kind": {
@@ -19,7 +19,7 @@
    "covered": 7,
    "partial": 4,
    "uncovered": 0,
-   "n/a": 23,
+   "n/a": 22,
    "unmapped": 0
   },
   "context": {
@@ -51,7 +51,7 @@
    "unmapped": 0
   },
   "human": {
-   "covered": 60,
+   "covered": 58,
    "partial": 0,
    "uncovered": 0,
    "n/a": 1,
@@ -746,16 +746,6 @@
    "id": "cli:poolhouse-reputation",
    "kind": "cli",
    "source": "poolhouse.reputation.cli:main",
-   "trust": "the person at a terminal; arguments may carry text from outside",
-   "attacker": "hostile argument text or path reaches the command",
-   "status": "n/a",
-   "tests": [],
-   "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
-  },
-  {
-   "id": "cli:poolhouse-requests",
-   "kind": "cli",
-   "source": "poolhouse.inbox.cli:main",
    "trust": "the person at a terminal; arguments may carry text from outside",
    "attacker": "hostile argument text or path reaches the command",
    "status": "n/a",
@@ -3564,8 +3554,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3581,8 +3569,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3598,8 +3584,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3615,8 +3599,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3632,8 +3614,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3649,8 +3629,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3666,8 +3644,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3747,8 +3723,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3764,8 +3738,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3781,8 +3753,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3798,8 +3768,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3815,25 +3783,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:inbox/cli.py:answer",
-   "kind": "human",
-   "source": "inbox/cli.py:answer",
-   "trust": "an agent process or a member",
-   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
-    "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
-    "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3849,8 +3798,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3866,8 +3813,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3883,8 +3828,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3900,8 +3843,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3917,8 +3858,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3934,8 +3873,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3951,8 +3888,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3968,25 +3903,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:requests/inbox.py:answer",
-   "kind": "human",
-   "source": "requests/inbox.py:answer",
-   "trust": "an agent process or a member",
-   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
-    "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
-    "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4002,8 +3918,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4019,8 +3933,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4036,8 +3948,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4053,8 +3963,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4070,8 +3978,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4087,8 +3993,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4120,8 +4024,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4137,8 +4039,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4154,8 +4054,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4171,8 +4069,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4188,8 +4084,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4205,8 +4099,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4222,8 +4114,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4239,8 +4129,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4256,8 +4144,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4273,8 +4159,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4290,8 +4174,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4307,8 +4189,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4376,8 +4256,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4441,8 +4319,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4458,8 +4334,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4475,8 +4349,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4550,8 +4422,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4567,8 +4437,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4584,8 +4452,6 @@
     "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
     "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
     "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_requests_floor.py::test_the_request_commands_let_an_agent_read_and_refuse_its_answer_at_once_while_the_gate_is_held_back",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"

@@ -30,5 +30,5 @@ sharing across labelled subagents. Every post, subscription and view by the pers
 record (metadata only).
 
 ## Order
-Starts when the quickstart merges (both change the workspace command file). Then the Requests
-module and panel (docs/notes/requests-inbox.md), then the agent runner (docs/notes/agent-control-plane.md).
+Starts when the quickstart merges (both change the workspace command file). Then the agent runner
+(docs/notes/agent-control-plane.md).

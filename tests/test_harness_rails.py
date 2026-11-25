@@ -24,7 +24,6 @@ from poolhouse import (
     harnessid,
     harnessing,
     private_path,
-    requests,
     runtime,
 )
 from poolhouse.board import credentials, person, session as board_session
@@ -86,8 +85,8 @@ class TestPolicy:
             hit = decide(coding_policy.Policy(role), Call("Edit", {"file_path": "/state/harness/ab/settings.json", "old_string": "a",
                                         "new_string": "b"}), roots=("/state",), protected=("/state/harness/ab",))
             assert hit.action == "deny"
-            answer = decide(coding_policy.Policy(role), Call("Bash", {"command": "poolhouse-requests answer rq_1 allow-once"}))
-            assert answer.action == "deny" and "poolhouse-requests answer" in answer.reason
+            answer = decide(coding_policy.Policy(role), Call("Bash", {"command": "poolhouse-security approve-host evil.example"}))
+            assert answer.action == "deny" and "poolhouse-security approve-host" in answer.reason
 
     def test_nothing_in_the_call_or_the_environment_changes_the_role(self, monkeypatch):
         for name in ("POOLHOUSE_ROLE", "POOLHOUSE_GUARD", "CLAUDE_ROLE"):
@@ -102,12 +101,11 @@ class TestHook:
     def _rail(self, **over):
         return harnesshook.Rail(**{"policy": coding_policy.Policy("guarded"), "agent": "local-test", "roots": ("/w",), **over})
 
-    def test_a_safe_call_is_allowed_and_nothing_is_raised(self):
+    def test_a_safe_call_is_allowed(self):
         out = harnesshook.pre({"tool_name": "Read", "tool_input": {"file_path": "/w/a"}}, self._rail())
         assert out["hookSpecificOutput"]["permissionDecision"] == "allow"
-        assert requests.list_requests() == []
 
-    def test_a_destructive_call_is_denied_at_once_with_the_reason_and_no_request_is_raised(self, tmp_path):
+    def test_a_destructive_call_is_denied_at_once_with_the_reason(self, tmp_path):
         payload = {"tool_name": "Bash", "tool_input": {"command": f"rm -rf {tmp_path}/x"}, "cwd": str(tmp_path),
                    "session_id": "s1"}
         began = time.time()
@@ -115,7 +113,6 @@ class TestHook:
         answer = out["hookSpecificOutput"]
         assert answer["permissionDecision"] == "deny" and time.time() - began < 30
         assert "the guarded profile runs no destructive call" in answer["permissionDecisionReason"]
-        assert requests.list_requests() == []
 
     def test_as_a_child_process_a_denied_call_is_denied_and_a_safe_one_allowed(self):
         deny = _verdict(_hook("pre", {"tool_name": "Bash", "tool_input": {"command": "rm -rf /tmp/x"}},

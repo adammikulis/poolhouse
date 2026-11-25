@@ -53,7 +53,7 @@ Under its role the agent has Poolhouse's own tools (`poolhouse-chat`'s) plus `wo
 `workspace_thread`, `workspace_reputation`, `workspace_send` (kind `task`, `question` or `status`, up to five a task, no `task`
 after reading an agent it does not obey; not offered in the role that only reads) and `set_effort`.
 Anything the role says needs a person goes to `localtools.ask_a_person`, which answers no: nobody can
-answer in a detached process. That function is the one seam the Requests inbox replaces. The agent
+answer in a detached process. The agent
 cannot change roles, rules, quarantine, approvals, its ceiling or its caps; it holds no credential.
 
 A task has no cap unless the person sets one: `--max-rounds`, `--max-tool-calls`, `--max-model-calls` and

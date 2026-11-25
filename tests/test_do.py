@@ -191,24 +191,19 @@ def test_ollama_that_is_not_running_is_an_empty_list_that_says_so():
 # -- the person's own tools: nothing waits for a yes ---------------------------------------
 
 def test_a_plan_is_shown_and_goes_at_once_without_reading_the_person():
-    from poolhouse import requests
-
     typed, out = io.StringIO("no\n"), io.StringIO()
     person = do.Person(typed, out)
     assert person.plan(["serve_up m", "bench_run x"]) == {"go": True, "said": "go"}
     assert typed.read() == "no\n", "the plan read nothing from the person"
     assert "1. serve_up m" in out.getvalue() and "go?" not in out.getvalue()
-    assert requests.list_requests() == []
 
 
 def test_a_fact_the_agent_offers_is_taken_by_the_first_option_at_once_and_raises_no_request():
-    from poolhouse import requests
-
     typed, out = io.StringIO("2\n"), io.StringIO()
     person = do.Person(typed, out)
     assert person.choose("Remember: likes tea", ["yes, for the user", "yes, for the project"]) == 0
     assert person.choose("Remember: nothing to choose", []) is None
-    assert typed.read() == "2\n" and person.asked == 2 and requests.list_requests() == []
+    assert typed.read() == "2\n" and person.asked == 2
 
 
 def test_a_question_to_the_conversation_still_reads_one_line_and_says_when_input_ended():

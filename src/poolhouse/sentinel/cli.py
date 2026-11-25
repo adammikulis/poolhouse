@@ -8,7 +8,7 @@ import json
 from collections.abc import Callable
 from typing import Any
 
-from poolhouse import requests, sentinel
+from poolhouse import sentinel
 from poolhouse.caller import AgentRefused, refuse_agent
 from poolhouse.command import Group, flag, option
 from poolhouse.log import say, warn
@@ -56,9 +56,7 @@ def _held() -> list[review.Item]:
 def status(args: argparse.Namespace) -> int:
     """Print the sentinel's state, and what is held by name with the command that reviews it."""
     held = _held()
-    waiting = requests.pending_count()
     info = {**sentinel.default().status(), "sandbox": sandbox_cli.summary(),
-            "requests": f"{waiting} waiting for a person (poolhouse-requests list)" if waiting else "none waiting",
             "reputation": observers.line() or "no sources recorded",
             "held": [i.to_json() for i in held]}
     return _out(args, info, lambda: [
@@ -84,9 +82,6 @@ def sandbox(args: argparse.Namespace) -> int:
 def chip(args: argparse.Namespace) -> int:
     """Print the status mark, and what to run when something is held."""
     mark = sentinel.default().chip()
-    waiting = requests.pending_count()
-    mark = {**mark, "requests": waiting, "label": f"{mark['label']}; {waiting} request{'s' * (waiting != 1)} waiting"} \
-        if waiting else {**mark, "requests": 0}
     hint = review.hint(_held())
     mark = {**mark, "review": hint} if hint else mark
     return _out(args, mark, lambda: [f"{mark['verdict']}  {mark['label']}",

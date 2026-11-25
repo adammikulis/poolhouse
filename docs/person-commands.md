@@ -1,6 +1,6 @@
 # Commands an agent is refused, and why
 
-Nothing in Poolhouse waits for a person. There is no typed yes, no phone tap, no "needs a terminal on stdin", no Requests-inbox answer
+Nothing in Poolhouse waits for a person. There is no typed yes, no phone tap, no "needs a terminal on stdin", no inbox answer
 that a command parks on. Every action is decided at once by one of three rules, and every decision is audited with who ran it
 (`authority-audit.jsonl` under the state root: `poolhouse.caller.audit_rows()`; `who` is the process or session, for example
 `agent CLAUDECODE session s-1 pid 4242` or `user alice pid 77`).
@@ -36,7 +36,7 @@ Refusal shape: `X is refused to an agent (CLAUDECODE is set): <why>. To do it, r
 
 ## Gates (delegated in `dev`, held back from agents in `prod`)
 
-`sentinel.quarantine`, `sentinel.policy`, `requests.answer`, `memory.admin`, `reputation.admin`, `activity.export`, `serve.wired-limit`,
+`sentinel.quarantine`, `sentinel.policy`, `memory.admin`, `reputation.admin`, `activity.export`, `serve.wired-limit`,
 `autostart.install`, `chat.policy`, `runtime.deploy`, `runtime.deploy-unmerged`, `github.release`, `workspace.setup`, `workspace.model`,
 `workspace.agents`. `prod` keeps only `workspace.setup`, `workspace.model` and `workspace.agents` delegated.
 

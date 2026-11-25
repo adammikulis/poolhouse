@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from poolhouse import desktop, requests
+from poolhouse import desktop
 from poolhouse.sentinel import Sentinel, State
 from poolhouse.sentinel.core import HOLD_S
 
@@ -36,10 +36,8 @@ def test_a_changed_model_is_refused_and_held_and_nobody_is_asked(world):
     assert node.verify_before_load(path) is False
     [record] = held(node, path)
     assert record.state == State.QUARANTINED and not path.exists(), "the changed file is moved aside, never loaded"
-    assert requests.list_requests() == [], "no request is raised"
     node.scan(deep=True)
     assert node.verify_before_load(path) is False, "still refused while the file is not what was pinned"
-    assert requests.list_requests() == []
 
 
 def test_a_model_fetched_again_is_released_at_the_next_scan_and_the_held_copy_is_deleted(world):
@@ -54,7 +52,6 @@ def test_a_model_fetched_again_is_released_at_the_next_scan_and_the_held_copy_is
     assert again.state == State.RELEASED and again.purged, "the bad copy was deleted, not put back over the good file"
     assert path.read_bytes() == GOOD and moved
     assert node.verify_before_load(path) is True
-    assert requests.list_requests() == []
 
 
 def test_a_hold_on_a_changed_file_lapses_by_itself_after_the_week(world):
@@ -80,7 +77,6 @@ def test_a_hold_on_a_member_lapses_after_an_hour_and_is_held_again_if_it_misbeha
     node.scan()
     assert node.store.get(record.id).state == State.RELEASED
     assert [e.kind for e in node.bus.recent(kind="sentinel.hold_ended")] == ["sentinel.hold_ended"]
-    assert requests.list_requests() == []
 
 
 def test_a_hold_starts_no_background_thread_so_nothing_can_raise_a_request_in_a_later_tests_home(world):
@@ -94,4 +90,3 @@ def test_a_hold_starts_no_background_thread_so_nothing_can_raise_a_request_in_a_
     node.scan(deep=True)
     started = [t.name for t in threading.enumerate() if t.ident not in before]
     assert started == [], "a hold works inline and ends by itself"
-    assert requests.list_requests() == []

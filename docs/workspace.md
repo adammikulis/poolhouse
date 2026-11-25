@@ -497,7 +497,7 @@ quota, trust level or person-only action reads it.
 
 It shows in the fenced message header (`[44] question from codex (gpt-5.1, claimed)`, the model the sender had when it
 sent), `status`, `agents`, `whoami`, the `poolhouse-board` page (plain text), the activity log (`model` and `model_verified`
-fields on messages and request records, never message text) and the requester line of the Requests inbox. Each change
+fields on messages, never message text). Each change
 is an identity entry on the board, so the history is kept and a reputation judgement can be attributed to the model at
 the time. The reputation ledger stays keyed by name.
 
