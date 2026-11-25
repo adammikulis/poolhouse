@@ -38,6 +38,14 @@ pytest_plugins = ["tests.confined_kit"]
 CLIENT = str(Path(__file__).resolve().parent.parent / "src" / "poolhouse" / "isolation" / "client.py")
 
 
+@pytest.fixture
+def from_a_terminal(monkeypatch):
+    """The launch is made from a terminal outside any agent, as a person's or the daemon's is. These tests are about the launcher's plumbing, and a
+    suite an agent runs has an agent for an ancestor, which the widening gate refuses for `--project` (tests/test_isolation_gate.py holds the gate's
+    own cases), so the decision of the widenings is the empty one here."""
+    monkeypatch.setattr(harnessing, "decided", lambda args, asked: isolation.Launch((), (), False, False))
+
+
 def context(tmp_path, socket="/tmp/ph-x/s", client=CLIENT, pid=4242):
     """What a harness's files are made from, for a launch that has not started: the places and the one client a hook runs."""
     return isolation.Context(tmp_path, tmp_path / ".claude-config", str(tmp_path), os.path.realpath(sys.executable), client, socket, pid,
@@ -206,7 +214,7 @@ class TestSessionFiles:
         odd.mkdir()
         rail = harnesshook.Rail(coding_policy.Policy("read-only"), "x y", (str(odd),), ())
         bridge = isolation.SessionBridge(isolation.Handlers(lambda event, payload: harnesshook.pre(payload, rail), lambda *_: {}),
-                                         isolation.Terms(False, 4096), root=str(Path("/tmp")))
+                                         isolation.Terms(False, 4096), root=str(Path("/tmp")), unadmitted="a test rig: the only client is the hook command the test runs")
         socket_path = bridge.start()
         try:
             cmd = context(tmp_path, socket=socket_path, pid=os.getpid()).hook("pre")
@@ -443,7 +451,7 @@ class TestHarnessSession:
         assert self.agents(kit)[session.name].model == "other"
         assert harnessid.HarnessSession("x").record_model("m", "codex") is False
 
-    @pytest.mark.usefixtures("confinable")
+    @pytest.mark.usefixtures("confinable", "from_a_terminal")
     def test_ending_the_session_retires_it_and_removes_harness_files(self, kit, monkeypatch, tmp_path):
         seen = {}
         monkeypatch.setattr(harnessing, "serving", _fake_serving(seen))
@@ -508,7 +516,7 @@ class TestHarnessSession:
         assert "--agent n" in text and "the lead (claude), reviewer" in text and "data written by" in text
 
 
-@pytest.mark.usefixtures("confinable")
+@pytest.mark.usefixtures("confinable", "from_a_terminal")
 class TestCodingAgent:
     def test_launch_coding_agent_runs_codex_with_the_project_and_the_orders(self, monkeypatch, tmp_path):
         seen = {}

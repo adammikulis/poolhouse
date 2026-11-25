@@ -22,7 +22,7 @@ def manager_of(**fields):
 
 
 @pytest.mark.redteam
-def test_native_turn_and_tool_limits_are_arguments_of_the_launch_and_never_a_change_of_its_settings():
+def test_native_turn_and_output_limits_preserve_authority():
     manager = manager_of(profile='coding', harness='claude', effort='high', max_effort='low')
     args = manager._arguments('claude', ['--print'])
     assert args[0] == '--print' and '--system-prompt' in args and args[args.index('--tools') + 1] == 'Read,Edit,Write,Bash,Glob,Grep,Agent'
@@ -101,6 +101,8 @@ def test_saved_task_settings_keep_independent_budget_without_opening_dispatch(tm
     from poolhouse.workspace import coding_turns
     monkeypatch.setattr(coding_turns.person, 'session', lambda project: SimpleNamespace(name='bound-worker'))
     without_a_sandbox(monkeypatch, AbsentBackend)
+    # the task runs from the daemon, outside any agent; a suite an agent runs has an agent for an ancestor, which the widening gate refuses for --project
+    monkeypatch.setattr(pi.harnessing, 'decided', lambda args, asked: isolation.Launch((), (), False, False))
     monkeypatch.setattr(pi.harnessing, 'binary_for', lambda _name: '/usr/bin/true')
     agent = localagent.Agent('worker', 'qwen', identity='bound-worker', profile='coding', harness='pi', max_output_tokens=32000)
     manager = task_coding.TaskManager(store, owning_session(), None, agent)

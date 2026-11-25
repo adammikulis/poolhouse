@@ -131,6 +131,17 @@ class Admission:
 
 
 @dataclass(slots=True)
+class Parts:
+    """What a launch has made so far, so that an abandoned one can undo it: the services started, the directories to remove, who the session bridge
+    answers and what each publication said."""
+
+    stack: list[Any] = field(default_factory=list)
+    scratch: list[str] = field(default_factory=list)
+    admission: Admission = field(default_factory=Admission)
+    turns: list[Turn] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class Made:
     """What `prepare` made for one confinement: its profile and proof, the staged project, the services it started, the directories it must remove,
     and what each step took."""
@@ -145,6 +156,8 @@ class Made:
     config: Path
     argv: tuple[str, ...]
     timing: dict[str, float] = field(default_factory=dict)
+    turns: list[Turn] = field(default_factory=list)
+    """What each publication did, in order: one at every `Stop` event of the harness, and the last at the end of the session."""
 
 
 def install_tree(binary: str) -> str:
@@ -256,6 +269,11 @@ class Confinement:
             pump.join(timeout=self.stall)
         return status
 
+    def said(self) -> list[str]:
+        """The words of every publication of this session that had something to say (what was applied, what was refused and where the patch is),
+        in order: the line a terminal launch ends with."""
+        return [turn.text for turn in self.made.turns if turn.text]
+
     def _end(self) -> process_tree.Ended:
         started = self._started
         if started is None:
@@ -271,6 +289,7 @@ class Confinement:
         started = self._started
         try:
             self.turn = self.session.finish(started.tree if started else None, stalled=self.stall, ended=None if started else process_tree.Ended())
+            self.made.turns.append(self.turn)
         finally:
             if started is not None:
                 started.release()
@@ -285,24 +304,24 @@ class Confinement:
         return self.turn
 
 
-def _services(plan: Plan, session: Session, stack: list[Any], scratch: list[str], admission: Admission) -> tuple[ModelBridge, SessionBridge]:
+def _services(plan: Plan, session: Session, parts: Parts) -> tuple[ModelBridge, SessionBridge]:
     """Start the model bridge and the session bridge. A service that cannot start refuses the launch."""
     model = ModelBridge(plan.upstream, plan.lease, key=plan.key, events=_events)
     model.start()
-    stack.append(model)
+    parts.stack.append(model)
 
     def decide(event: str, payload: dict[str, Any]) -> dict[str, Any]:
         """A `stop` event is the end of a turn: the parent publishes what verified before the hook answers."""
         if event == "stop":
-            session.publish_turn()
+            parts.turns.append(session.publish_turn())
         return answer(event, payload)
 
     answer = plan.decide(str(session.stage.physical))
     root = tempfile.mkdtemp(prefix="pp-", dir="/tmp")
-    scratch.append(root)
-    bridge = SessionBridge(Handlers(decide, plan.workspace, activity.record, _events), Terms(plan.policy.writable, plan.lease.window), root=root, admit=admission)
+    parts.scratch.append(root)
+    bridge = SessionBridge(Handlers(decide, plan.workspace, activity.record, _events), Terms(plan.policy.writable, plan.lease.window), root=root, admit=parts.admission)
     bridge.start()
-    stack.append(bridge)
+    parts.stack.append(bridge)
     return model, bridge
 
 
@@ -325,8 +344,8 @@ def prepare(plan: Plan) -> Confinement:
     require_capable(Spec(plan.harness, "", "", "", 0, project=plan.project, interactive=plan.interactive))
     rules = tuple(bind(plan.project, grant.subject) for grant in plan.grants if grant.kind == "publish")
     session = Session.begin(Launch(plan.project, str(state_home.state("isolation")), plan.agent, plan.notice, plan.conversation, rules))
-    stack: list[Any] = []
-    scratch: list[str] = []
+    parts = Parts()
+    stack, scratch = parts.stack, parts.scratch
     staged = time.monotonic()
     proved: Proof | None = None
     try:
@@ -334,8 +353,7 @@ def prepare(plan: Plan) -> Confinement:
         scratch.append(str(agent_home))
         for name in ("bin", "tmp", HARNESS_DIRECTORIES[plan.harness]):
             _private(agent_home / name, 0o700)
-        admission = Admission()
-        model, bridge = _services(plan, session, stack, scratch, admission)
+        model, bridge = _services(plan, session, parts)
         client = agent_home / "bin" / CLIENT
         _write(client, Path(client_module.__file__).read_text(encoding="utf-8"))
         stage = str(session.stage.physical)
@@ -359,4 +377,4 @@ def prepare(plan: Plan) -> Confinement:
     activity.record("isolation.launch", subject=plan.agent, outcome="proved",
                     meta={"digest": profile.digest, "proof_seconds": proved.seconds, "grants": [grant.fingerprint for grant in plan.grants]})
     timing = {"stage": round(staged - began, 3), "proof": proved.seconds, "prepare": round(time.monotonic() - began, 3)}
-    return Confinement(plan, Made(profile, proved, session, stack, scratch, admission, agent_home, context.config, argv, timing), stage)
+    return Confinement(plan, Made(profile, proved, session, stack, scratch, parts.admission, agent_home, context.config, argv, timing, parts.turns), stage)

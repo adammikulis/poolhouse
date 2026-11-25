@@ -494,9 +494,9 @@ def confined(args: argparse.Namespace, run: Session, how: Harness,
     try:
         yield confinement
     finally:
-        turn = confinement.close()
-        if turn.text:
-            how.say(turn.text)
+        confinement.close()
+        for text in confinement.said():
+            how.say(text)
 
 
 def terminal_runner(confinement: isolation.Confinement) -> int:
