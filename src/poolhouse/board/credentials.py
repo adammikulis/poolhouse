@@ -18,7 +18,7 @@ from poolhouse.private_path import problem, redirected, windows_mount
 from poolhouse.sentinel import permit
 from poolhouse.windows_private import restrict, validate
 
-__all__ = ["cursors", "forget", "load", "prepare", "private", "remember", "store"]
+__all__ = ["boards", "cursors", "forget", "load", "prepare", "private", "remember", "store"]
 
 
 def _directory(path: Path) -> Path:
@@ -119,6 +119,14 @@ def load(state: Path, board: str, name: str) -> str:
     if why:
         raise Denied("denied", f"no usable token for {name} on {board}: {path} {why}")
     return path.read_text(encoding="utf-8").strip()
+
+
+def boards(state: Path, name: str) -> list[str]:
+    """The boards on which this client keeps a token for ``name``, in the order of their ids."""
+    try:
+        return sorted(each.name for each in (state / "client").iterdir() if not problem(each / f"{name}.token"))
+    except OSError:
+        return []
 
 
 def cursors(state: Path, board: str, name: str) -> dict[str, dict[str, int]]:
