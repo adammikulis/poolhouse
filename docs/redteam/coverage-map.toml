@@ -15,6 +15,13 @@ uncovered = 51
 partial = 182
 
 [[group]]
+match = ["egress:isolation/model_bridge.py:ModelBridge._relay", "egress:isolation/egress_proxy.py:_dial"]
+status = "covered"
+count = 2
+tests = ["tests/test_redteam_isolation_bridge.py::test_the_model_bridge_serves_only_its_routes_and_pins_the_model", "tests/test_redteam_isolation_bridge.py::test_a_hostile_upstream_answer_is_framed_by_the_bridge_or_refused_and_never_passed_as_it_came", "tests/test_redteam_isolation_bridge.py::test_the_servers_key_is_added_and_the_sessions_token_never_reaches_the_server", "tests/test_redteam_isolation_bridge.py::test_a_connect_tunnel_is_counted_per_direction_and_cut_when_bytes_out_pass_the_registry_bound_while_a_download_is_not", "tests/test_redteam_isolation_bridge.py::test_the_egress_proxy_refuses_a_name_that_resolves_into_a_range_it_may_never_reach", "tests/test_redteam_isolation_bridge.py::test_the_default_dial_connects_to_the_address_it_is_given_and_to_nothing_else"]
+note = "The bridge writes each request itself (the strict reader, a fixed field list, the pinned body) and frames the server's answer, which a hostile upstream cannot widen: a malformed status, two framings, an oversize head and a cookie are each refused or dropped. The proxy dials only an address it checked, after a name that resolves anywhere but the public internet is refused; the default dial is one `create_connection` and tests replace it so no packet leaves the machine."
+
+[[group]]
 match = ["egress:isolation/probe.py:request", "spawn:isolation/probe.py:said_by", "spawn:isolation/probe.py:tool", "spawn:isolation/proof.py:_said"]
 status = "covered"
 count = 4
