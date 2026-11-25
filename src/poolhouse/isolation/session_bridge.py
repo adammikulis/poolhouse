@@ -75,6 +75,8 @@ class Terms:
     window: int
     claim_ttl_s: float = session_verbs.TTL_CAP
     """The longest a claim or a heartbeat of the session may last: the workspace's configured `claim_ttl_s`, which the launcher passes in."""
+    verbs: Mapping[str, session_verbs.Verb] = field(default_factory=lambda: session_verbs.VERBS)
+    """The one closed table of the session: the workspace's (`VERBS`) or a delegate's two ways to its lead (`LEAD`)."""
 
 
 @dataclass(slots=True)
@@ -103,7 +105,7 @@ class SessionBridge:
         if admit is None and not unadmitted.strip():
             raise ValueError("a session bridge is made with an admit predicate, or with the reason it has none")
         self.handlers, self.writable, self.limit, self.idle, self._admit = handlers, terms.writable, int(terms.window) * 4, idle, admit
-        self.unadmitted, self.claim_ttl_s = unadmitted.strip()[:200], float(terms.claim_ttl_s)
+        self.unadmitted, self.claim_ttl_s, self.verbs = unadmitted.strip()[:200], float(terms.claim_ttl_s), terms.verbs
         self.budget = max(MOST_FRAMES, int(terms.window) // FRAME_TOKENS)
         self._times: deque[float] = deque()
         self._post = threading.Lock()
@@ -221,7 +223,7 @@ class SessionBridge:
             return self._refuse("unknown", "That is not a frame this bridge answers.")
         if verb == "tools":
             self._count("tools")
-            return {"tools": session_verbs.describe()}
+            return {"tools": session_verbs.describe(self.verbs)}
         return self._hook(frame) if verb == "hook" else self._workspace(frame)
 
     def _grant(self, frame: Mapping[str, Any]) -> dict[str, Any]:
@@ -256,7 +258,7 @@ class SessionBridge:
     def _workspace(self, frame: Mapping[str, Any]) -> dict[str, Any]:
         name = frame.get("name")
         try:
-            verb, arguments = session_verbs.check(str(name), frame.get("arguments"), ttl_cap=self.claim_ttl_s)
+            verb, arguments = session_verbs.check(str(name), frame.get("arguments"), ttl_cap=self.claim_ttl_s, table=self.verbs)
         except ValueError as why:
             return self._refuse("workspace", f"Refused: {why}.")
         if verb.acts and not self.writable:

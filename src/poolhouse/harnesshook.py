@@ -116,12 +116,13 @@ def _reader_run(command, **kwargs):
     return subprocess.CompletedProcess(command, process.returncode, output, errors)
 
 
-def nudge(agent: str, rail: Rail | None = None, *, board=None) -> str:
-    """Return unread metadata and redacted advisory failure references."""
+def nudge(agent: str, rail: Rail | None = None, *, board: str = "") -> str:
+    """Return unread metadata and redacted advisory failure references. ``board`` is the board the agent's session is on, when that is not the
+    board of the project the rail names (a delegate's helper is made on the lead's board, whatever project it works on)."""
     try:
         timeout = min(NUDGE_S, max(0.05, hook_bootstrap.remaining() - CLEANUP_RESERVE_S))
         done = _reader_run(runtime.module_argv(NOTIFIER, Path(rail.roots[0]) if rail and rail.roots else Path.cwd(), agent,
-                            str(rail.roots[0] if rail and rail.roots else Path.cwd())), capture_output=True, text=True,
+                            str(rail.roots[0] if rail and rail.roots else Path.cwd()), *([board] if board else [])), capture_output=True, text=True,
                            timeout=timeout, check=False, stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired as error:
         partial = error.stdout or ""
@@ -143,10 +144,10 @@ def nudge(agent: str, rail: Rail | None = None, *, board=None) -> str:
     return text
 
 
-def post(agent: str, rail: Rail | None = None) -> dict[str, Any]:
+def post(agent: str, rail: Rail | None = None, *, board: str = "") -> dict[str, Any]:
     """Return bounded unread-message metadata and checkpoint diagnostics."""
     hook_bootstrap.stage("notification-reader")
-    text = nudge(agent, rail)
+    text = nudge(agent, rail, board=board)
     if not text:
         return {}
     return {"hookSpecificOutput": {"hookEventName": HOOK_EVENTS["post"],

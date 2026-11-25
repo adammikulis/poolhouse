@@ -99,7 +99,7 @@ def test_unhandled_post_failure_is_nonblocking(monkeypatch, capsys):
 def test_post_checkpoint_outage_preserves_pending_message_alert(monkeypatch):
     seen = []
 
-    def pending(label, rail=None):
+    def pending(label, rail=None, board=''):
         seen.append(label)
         return '1 waiting for you; run inbox\nworkspace notification unavailable: connection refused'
 

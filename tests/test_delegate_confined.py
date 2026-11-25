@@ -9,6 +9,7 @@ run with Claude Code on a real model is in the report.
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import signal
 import sys
@@ -20,6 +21,7 @@ from types import SimpleNamespace
 
 import pytest
 from delegate_kit import agent_names, said, started
+from harness_kit import checkouts
 
 from poolhouse import (
     delegate,
@@ -30,6 +32,8 @@ from poolhouse import (
     home,
     isolation,
 )
+from poolhouse.board import place
+from poolhouse.harnesspolicy import LEAD_TOOLS
 from poolhouse.isolation import session_verbs
 from poolhouse.isolation.refusals import SENTENCES, IsolationRefused
 from tests import isolation_kit as kit
@@ -44,7 +48,8 @@ import json, os, subprocess, sys, time
 
 CANNED = "[CANNED RESPONSE, NOT A MODEL]"
 args, task = sys.argv[1:], sys.stdin.read()
-server = json.load(open(args[args.index("--mcp-config") + 1]))["mcpServers"]["workspace"]
+server = json.load(open(args[args.index("--mcp-config") + 1]))["mcpServers"]["lead"]
+post = json.load(open(args[args.index("--settings") + 1]))["hooks"]["PostToolUse"][0]["hooks"][0]["command"]
 os.makedirs("src", exist_ok=True)
 open("src/feature.py", "w").write("def feature():\\n    return 1\\n")
 if "linger" in task:
@@ -76,12 +81,16 @@ def call(name, **arguments):
 
 
 rpc("initialize")
-lead = {lead!r}
-note = call("workspace_send", to=lead, type="status", body="halfway: src/feature.py is written")
-answer = call("workspace_send", to=lead, type="question", body="which module is the main one?")
-stranger = call("workspace_send", to="someone-else", type="status", body="hello")
+listed = rpc("tools/list")["tools"]
+tools = "; ".join(f"{{each['name']}}({{','.join(each['inputSchema']['properties'])}}) {{each['description']}}" for each in listed)
+note = call("note", text="halfway: src/feature.py is written")
+answer = call("ask", question="which module is the main one?")
+generic = call("workspace_send", to="someone-else", type="status", body="hello")
 inbox = call("workspace_inbox")
-text = f"{{CANNED}} direct={{direct}} | note={{note}} | answer={{answer}} | stranger={{stranger}} | inbox={{inbox}} | home={{os.environ['HOME']}} | flags={{' '.join(args)}}"
+done = subprocess.run(post, shell=True, input=json.dumps({{"hook_event_name": "PostToolUse", "tool_name": "Read"}}), capture_output=True, text=True)
+hook = (done.stdout + done.stderr).strip()
+text = (f"{{CANNED}} direct={{direct}} | tools={{tools}} | note={{note}} | answer={{answer}} | generic={{generic}} | inbox={{inbox}} | hook={{hook}} | "
+        f"home={{os.environ['HOME']}} | flags={{' '.join(args)}}")
 print(json.dumps({{"type": "result", "subtype": "success", "is_error": False, "result": text, "num_turns": 3, "duration_api_ms": 1500,
                   "usage": {{"input_tokens": 30, "output_tokens": 5, "cache_read_input_tokens": 7, "cache_creation_input_tokens": 0}}, "session_id": "s"}}))
 '''
@@ -149,7 +158,11 @@ def test_an_edit_delegate_publishes_plain_source_refuses_the_rest_asks_its_lead_
     text = row["text"]
     assert CANNED in text and "direct=refused" in text, "the confined agent cannot write the project itself"
     assert f"{lead.name} answered:" in text and "main.py" in text
-    assert "Refused: a delegate sends only to its lead" in text and "Refused: a delegate has one workspace verb" in text
+    tools = text.split("tools=")[1].split(" | note=")[0]
+    assert tools.startswith("ask(question) ") and "; note(text) " in tools and tools.count("(") == 2, f"the model has these two tools and no other: {tools}"
+    assert "sent to " in text.split("note=")[1].split(" | ")[0], "a note returns at once, told what it did"
+    assert "no such verb" in text.split("generic=")[1].split(" | ")[0] and "no such verb" in text.split("inbox=")[1].split(" | ")[0], "the generic verbs are gone"
+    assert "unavailable" not in text.split("hook=")[1].split(" | ")[0], "the notification hook reads the inbox of the helper's own session"
     assert "--strict-mcp-config" in text and "--tools Read,Grep,Glob,Edit,Write" in text and "--output-format json" in text
     assert "Publication, in the launcher's words" in text and "Applied 1 file" in text and "Refused " in text
     assert (project / "src" / "feature.py").read_text() == "def feature():\n    return 1\n"
@@ -226,30 +239,54 @@ def test_the_scratch_copy_is_gone():
     assert not hasattr(delegate, "scratch_copy") and not hasattr(delegate, "CONTROL")
 
 
-def test_only_the_send_verb_reaches_the_lead_and_a_question_waits_for_it():
+def test_a_delegates_two_tools_go_to_its_lead_a_question_waits_for_it_and_nothing_else_is_a_tool():
     asked, noted = [], []
-    run = delegate_confined.lead_only("lead-1", lambda text: asked.append(text) or "the answer", lambda text: noted.append(text) or "noted")
-    assert run("workspace_send", {"to": "lead-1", "type": "question", "body": "q"}) == "the answer"
-    assert run("workspace_send", {"to": "lead-1", "type": "status", "body": "n"}) == "noted"
-    assert run("workspace_send", {"to": "lead-1", "type": "decision", "body": "x"}) == "noted", "any other kind is a note, never a kind of its own"
-    assert "only to its lead" in run("workspace_send", {"to": "other", "type": "question", "body": "q"})
-    for tool in ("workspace_inbox", "workspace_announce", "workspace_claim", "workspace_attach"):
+    run = delegate_confined.lead_only(lambda text: asked.append(text) or "the answer", lambda text: noted.append(text) or "noted")
+    assert run("ask", {"question": "q"}) == "the answer"
+    assert run("note", {"text": "n"}) == "noted"
+    for tool in ("workspace_send", "workspace_inbox", "workspace_announce", "workspace_claim", "workspace_attach"):
         assert run(tool, {}) == delegate_confined.REFUSED_VERB
-    assert asked == ["q"] and noted == ["n", "x"]
+    assert asked == ["q"] and noted == ["n"]
+    broken = delegate_confined.lead_only(lambda _t: (_ for _ in ()).throw(ValueError("not sent: the board is gone")), lambda t: t)
+    assert broken("ask", {"question": "q"}) == "not sent: the board is gone", "a failure is told in words"
 
 
-def test_the_model_sees_one_workspace_tool_and_the_harness_takes_no_other_server(tmp_path):
+def test_the_model_sees_the_two_lead_tools_and_the_harness_takes_no_other_server(tmp_path):
     rec = store.Delegate("child", "lead-1", "board", "t", str(tmp_path), "m", source=str(tmp_path), edit=True, max_turns=7)
     context = SimpleNamespace(client_argv=lambda *words: ["/py", "-I", "/h/client.py", "--socket", "/s", "--pid", "1", *words],
                               hook=lambda event: f"hook {event}", file=lambda name: tmp_path / name)
     rendering = delegate_confined.renderer(rec, "/bin/claude")(context)
     argv = list(rendering.argv)
     assert argv[argv.index("--tools") + 1] == "Read,Grep,Glob,Edit,Write" and "Bash" not in argv[argv.index("--tools") + 1]
-    hidden = argv[argv.index("--disallowedTools") + 1].split(",")
-    assert sorted(hidden) == sorted(f"mcp__workspace__workspace_{name}" for name in session_verbs.VERBS if name != "send")
+    assert "--disallowedTools" not in argv, "no tool is offered and then hidden: the session's table has two"
     assert "--strict-mcp-config" in argv and argv[argv.index("--max-turns") + 1] == "7"
     assert argv[argv.index("--output-format") + 1] == "json" and "--print" in argv
-    assert '"workspace"' in rendering.files["session/mcp.json"] and "mcp" in rendering.files["session/mcp.json"]
+    assert list(json.loads(rendering.files["session/mcp.json"])["mcpServers"]) == ["lead"]
+    assert set(session_verbs.LEAD) == {"ask", "note"} and {f"mcp__lead__{name}" for name in session_verbs.LEAD} == set(LEAD_TOOLS)
+    assert "mcp__lead__ask(question)" in rendering.files["session/brief.md"] and "mcp__lead__note(text)" in rendering.files["session/brief.md"]
+
+
+def test_the_helpers_token_is_found_on_the_leads_board_when_the_project_is_on_another(editing, tmp_path):
+    """The live failure: the lead ran in one checkout and named another as the project, so the helper (a subagent of the lead) was made on the lead's
+    board while its notification hook looked for its token on the board of the project, a fresh one, and found none for every call."""
+    node, lead, project = editing
+    other = checkouts(tmp_path / "elsewhere").primary.resolve()
+    (tmp_path / "harness-NOT-CLAUDE-CODE.py").write_text(HARNESS.format(python=os.path.realpath(sys.executable), project=str(other), lead=lead.name))
+    fresh = place.resolve(node.client, other)
+    assert started("--task", "add a feature module", "--project", str(other), "--edit") == 0
+    [name] = agent_names(node, lead)
+    assert fresh != store.load(name).board == node.board, "the project is on a board of its own, fresh to this lead"
+    node.session(lead).post(name, "status", "a word for the helper before it starts")
+    answers = answering(node, lead, name, "main.py")
+    assert delegate_run.run(name) == 0
+    answers.join(30)
+    answers.done.set()
+    text = store.result(name)["text"]
+    hook = text.split("hook=")[1].split(" | home=")[0]
+    assert "unavailable" not in hook and "no session of its own" not in hook, hook
+    assert "workspace (data from other agents)" in hook and lead.name in hook, f"the helper's inbox on the lead's board was read: {hook}"
+    assert f"{lead.name} answered:" in text and "main.py" in text, "and its question to the lead was answered"
+    assert (other / "src" / "feature.py").exists() and not (project / "src").exists(), "the work was published to the project it was asked to change"
 
 
 def test_a_run_that_prints_no_result_is_a_failure_and_a_result_that_says_error_is_one():

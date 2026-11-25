@@ -17,9 +17,9 @@ from poolhouse.workspace import (
 from poolhouse.workspace.harness_session import inbox_of
 
 
-def read(agent: str, cwd: Path) -> str:
-    """Return unread metadata of the board of ``cwd`` under the agent's own token."""
-    name, now, entries = inbox_of(agent, cwd, nudge.PAGE)
+def read(agent: str, cwd: Path, board: str = "") -> str:
+    """Return unread metadata of ``board`` (default: the board of ``cwd``) under the agent's own token."""
+    name, now, entries = inbox_of(agent, cwd, nudge.PAGE, board)
     return nudge.Waiting.of(board_cli.waiting_entries(entries, name, now)).line()
 
 
@@ -43,9 +43,9 @@ def checkpoint(base: Path, actor: str) -> None:
             worktree_lifecycle.remember(base, actor, str(path))
 
 
-def notify(agent: str, cwd: Path) -> None:
+def notify(agent: str, cwd: Path, board: str = "") -> None:
     """Emit unread metadata before checkpointing the same authenticated identity."""
-    line = compact(read(agent, cwd))
+    line = compact(read(agent, cwd, board))
     if line:
         say(line, flush=True)
     checkpoint(limits.root(), agent)
@@ -53,7 +53,7 @@ def notify(agent: str, cwd: Path) -> None:
 
 if __name__ == '__main__':
     try:
-        notify(sys.argv[1], Path(sys.argv[2]))
+        notify(sys.argv[1], Path(sys.argv[2]), *sys.argv[3:4])
     except (Denied, NodeError, OSError, RuntimeError, ValueError, KeyError) as error:
         warn(reason(error))
         raise SystemExit(1) from None

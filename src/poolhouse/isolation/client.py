@@ -149,10 +149,16 @@ def _workspace(sock: socket.socket, verb: str, words: list[str], streams: Stream
 
 def _mcp_tools(sock: socket.socket) -> list[dict[str, Any]]:
     kinds = {"text": "string", "whole": "integer", "number": "number", "flag": "boolean"}
-    return [{"name": f"workspace_{name}", "description": f"Run the workspace verb {name} through the session bridge.",
+    return [{"name": each["tool"], "description": each["help"] or f"Run the workspace verb {name} through the session bridge.",
              "inputSchema": {"type": "object", "additionalProperties": False, "required": each["needs"],
-                             "properties": {key: {"type": kinds[kind]} for key, kind in each["takes"].items()}}}
+                             "properties": {key: {"type": kinds[kind], **({"description": each["hints"][key]} if key in each["hints"] else {})}
+                                            for key, kind in each["takes"].items()}}}
             for name, each in call(sock, {"verb": "tools"}).get("tools", {}).items()]
+
+
+def _verb_of(sock: socket.socket, tool: str) -> str:
+    """The verb of the session's table whose tool is named ``tool`` (empty when there is none)."""
+    return next((name for name, each in call(sock, {"verb": "tools"}).get("tools", {}).items() if each["tool"] == tool), "")
 
 
 def _mcp_reply(path: str, pid: int, message: dict[str, Any]) -> dict[str, Any] | None:
@@ -170,9 +176,8 @@ def _mcp_reply(path: str, pid: int, message: dict[str, Any]) -> dict[str, Any] |
         with connect(path, pid) as sock:
             result = {"tools": _mcp_tools(sock)}
     elif method == "tools/call":
-        name = str(params.get("name", "")).removeprefix("workspace_")
         with connect(path, pid) as sock:
-            answer = call(sock, {"verb": "workspace", "name": name, "arguments": params.get("arguments") or {}})
+            answer = call(sock, {"verb": "workspace", "name": _verb_of(sock, str(params.get("name", ""))), "arguments": params.get("arguments") or {}})
         said = answer["result"] if "result" in answer else answer.get("refused") or answer.get("error", "Refused.")
         result = {"content": [{"type": "text", "text": json.dumps(said, indent=1, default=str)}], "isError": "result" not in answer}
     else:
