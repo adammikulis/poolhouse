@@ -24,6 +24,7 @@ from poolhouse.hub.probe import MachineMemory
 from poolhouse.serve.kvcache import DEFAULT_KV_CACHE, flash_attention_likely
 from poolhouse.serve.largest import contexts, largest_context, trained_window
 from poolhouse.serve.preflight import _head_kv_per_token, _kv_estimate_bytes, recurrent_state_bytes
+from poolhouse.serve.tensors import table_bytes
 from poolhouse.ui.verdict import THRESHOLDS, verdict_of
 
 __all__ = ["DEFAULT_KV", "Estimate", "Meter", "Setup", "estimate", "estimate_meta", "max_context", "meters", "rating", "verdict"]
@@ -219,6 +220,16 @@ def _bytes_of(path: Path) -> int:
     return total
 
 
+def _resident_of(path: Path) -> int:
+    """The weights a server must hold in memory: the file less its gathered lookup table.
+
+    An n-gram table (Flash-Next's is 26.8G of 103.7G) is gathered a few rows a token, and with
+    mmap its other pages never become resident or wired, so it is paged from SSD and costs
+    page cache, not the wired limit (`poolhouse.serve.fit`, "Why a model is smaller in memory").
+    """
+    return max(_bytes_of(path) - table_bytes(path), 0)
+
+
 def _locate(model: str | Path) -> Path:
     path = hub.located(model, loose=True)
     if path is None and str(model).startswith("hf:"):
@@ -262,7 +273,7 @@ def estimate(model: str | Path, setup: Setup | None = None, **changes: object) -
     """
     path = _locate(model)
     use = _sizes(path, replace(setup or Setup(), **changes))  # type: ignore[arg-type]
-    return estimate_meta(read_meta(path), _bytes_of(path), use)
+    return estimate_meta(read_meta(path), _resident_of(path), use)
 
 
 def reserve_default(machine: MachineMemory) -> int:
@@ -359,7 +370,7 @@ def max_context(model: str | Path, machine: MachineMemory, setup: Setup | None =
     the trained context. The search every default shares (`largest.largest_context`)."""
     path = _locate(model)
     use = _sizes(path, setup or Setup())
-    found, weights = read_meta(path), _bytes_of(path)
+    found, weights = read_meta(path), _resident_of(path)
     cap = trained_window(found)
     return largest_context(
         lambda ctx: ORDER[verdict(estimate_meta(found, weights, use, context=ctx), machine,

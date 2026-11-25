@@ -296,7 +296,7 @@ def fit_model(model: str | Path, machine: MachineMemory | None, want: Want) -> S
     path = est._locate(model)
     shown = [m for m in hub.discover(formats=("gguf",)) if m.path == path]
     mm = shown[0].mmproj if shown and shown[0].mmproj else None
-    return suggest_meta(est.read_meta(path), est._bytes_of(path), machine,
+    return suggest_meta(est.read_meta(path), est._resident_of(path), machine,
                         replace(want, mmproj_bytes=want.mmproj_bytes or (est._bytes_of(mm) if mm else 0)))
 
 
@@ -336,7 +336,7 @@ def slots_that_fit(model: str | Path, context: int, machine: MachineMemory | Non
     """How many slots of ``context`` tokens each ``machine`` holds within ``max_verdict``;
     0 when not even one does."""
     path = est._locate(model)
-    found, weights = est.read_meta(path), est._bytes_of(path)
+    found, weights = est.read_meta(path), est._resident_of(path)
     ask = _Ask(found, weights, _empty(machine), Want(max_verdict=max_verdict, kv=kv),
                est.flash_attention_likely(found))
     use = est.Setup(context=max(int(context), 1), kv_cache_type=ask.kv(kv), flash_attn=ask.flash,

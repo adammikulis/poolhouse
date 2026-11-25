@@ -1379,6 +1379,28 @@ class TestWhatTheFileIsMadeOf:
         the direction that matters."""
         assert tensors_mod.table_bytes(self.model(tmp_path)) == 160 * 4096 // 32 * 18
 
+    def test_the_memory_estimate_leaves_the_gathered_table_on_the_ssd(self, tmp_path):
+        """What must fit under the wired limit is the file less its n-gram table, which is
+        mmapped and paged a row at a time. Mutation: pass the whole file size as the
+        weights, and `poolhouse-serve memory --for` asks for the 26.8G table to be wired.
+        """
+        from poolhouse.serve import estimate as est_mod
+        path = self.model(tmp_path)
+        table = 160 * 4096 // 32 * 18
+        with path.open("ab") as f:  # the tensor data the header declares, so the file is as big as it says
+            f.write(bytes(table + 4096))
+        assert tensors_mod.table_bytes(path) == table
+        assert est_mod._resident_of(path) == path.stat().st_size - table > 0
+        weights = est_mod.estimate(path, context=4096).weights_bytes
+        assert weights == path.stat().st_size - table
+
+    def test_a_model_with_no_table_is_estimated_at_its_file_size(self, tmp_path):
+        from poolhouse.serve import estimate as est_mod
+        plain = with_tensors(tmp_path / "plain-8B-Q4_K_M.gguf",
+                             {"general.architecture": "llama", "llama.block_count": 4},
+                             [("blk.0.attn_q.weight", Q4_K, (256, 256))])
+        assert est_mod._resident_of(plain) == plain.stat().st_size
+
     def test_a_file_that_is_not_a_gguf_costs_a_record_nothing(self, tmp_path):
         """A record is worth writing without this number. Mutation: raise, and `--measure`
         dies on a model whose header this cannot read."""

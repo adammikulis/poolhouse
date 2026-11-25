@@ -236,7 +236,7 @@ def plan(model: str, ask: Ask | None = None, hooks: Hooks | None = None) -> Plan
     default_mb = int(total * 0.75) // MIB
     effective = now or default_mb
     path = est_mod._locate(model)
-    found, weights = est_mod.read_meta(path), est_mod._bytes_of(path)
+    found, weights = est_mod.read_meta(path), est_mod._resident_of(path)
     context = ask.context or trained_window(found)
     setup = est_mod.Setup(context=context, kv_cache_type=ask.kv)
 
