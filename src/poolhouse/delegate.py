@@ -52,16 +52,16 @@ main = COMMANDS.run
 
 
 def standing_model(requested: str = "") -> str:
-    """``requested``, else the model of the server already up that holds the most tokens a slot (at least a coding session's minimum), else the default."""
+    """``requested``, else the model of the server already up that holds the most tokens a slot (at least a coding session's minimum), else `harnessing.default_model()` (Flash-Next IQ2_XS when installed and it fits, else the 27B)."""
     if requested:
         return requested
-    best, window = harnessing.DEFAULT_MODEL, 0
+    best, window = "", 0
     for entry in leases.recorded_servers().values():
         each = int(entry.get("context") or 0) // max(1, int(entry.get("parallel") or 1))
         if entry.get("embedding") or not admission.live(entry) or each < max(window + 1, harnessing.MIN_WINDOW):
             continue
         best, window = str(entry.get("model") or best), each
-    return best
+    return best or harnessing.default_model()
 
 
 def scratch_copy(source: Path) -> Path:

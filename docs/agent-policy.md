@@ -868,8 +868,14 @@ Owner's standing choices; do not ask again.
 
 - **Live tests and demos use the newest Qwen family** (Qwen3.8; look at what
   `poolhouse-models list` and the Hugging Face cache hold and name the exact id in the report). Large-model tests use
-  the dense Qwen3.8-27B (the owner's default quant is `Qwen3.8-27B-UD-Q4_K_XL.gguf`, 16.7 GB, not Q4_K_M): Flash-Next
-  holds too much memory on this machine. Small and day-to-day tests prefer a smaller Qwen3.8 model. Do not use gpt-oss:
+  the owner's coding model, `Qwen3.8-Flash-Next-UD-IQ2_XS` at 256k context with its n-gram table on SSD (2026-11-25, on
+  the 128 GB machine: wired need 56.8 GiB, resident set 48 GiB; `poolhouse-delegate start --model
+  Qwen3.8-Flash-Next-UD-IQ2_XS` solved a read-only review task correctly in 104 s, 49 s of it on the model, where the
+  27B took 91 s and was also correct). It is the default of `poolhouse-delegate`, `poolhouse-codex`, `poolhouse-claude`
+  and the pi harness whenever it is installed and `suggest.largest_fit` rates it green at 262,144 tokens on the
+  machine (`harnessing.default_model()`); otherwise the default is the dense Qwen3.8-27B (`Qwen3.8-27B-UD-Q4_K_XL.gguf`,
+  16.7 GB, not Q4_K_M). The larger Flash-Next quants (IQ4_XS, Q4_K_XL) still hold too much memory on this machine and
+  are never the default. Small and day-to-day tests prefer a smaller Qwen3.8 model. Do not use gpt-oss:
   it is too old. Old results stay as history, not as a matrix row.
 - MTP (multi-token prediction) draft heads are on by default when the model has a matching trusted head and the managed
   llama.cpp build supports it; llama.cpp tracks the bleeding edge through the managed head builds, not a pinned stable

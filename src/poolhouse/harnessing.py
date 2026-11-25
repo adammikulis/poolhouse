@@ -26,6 +26,7 @@ from poolhouse.activity.source_snapshot import protected_roots, validate_storage
 from poolhouse.briefing import REQUIRED_BRIEFING
 from poolhouse.client import is_healthy
 from poolhouse.errors import Denied
+from poolhouse.hub.probe import MachineMemory
 from poolhouse.serve import admission, chat_template, leases, profile, suggest, wired
 from poolhouse.serve.matching import model_matches
 from poolhouse.serve.ports import DEFAULT_HOST
@@ -41,6 +42,8 @@ __all__ = [
     "DEFAULT_MODEL",
     "MIN_WINDOW",
     "PARENT",
+    "PREFERRED_MODEL",
+    "PREFERRED_WINDOW",
     "WAIT_S",
     "Session",
     "SessionFiles",
@@ -51,6 +54,7 @@ __all__ = [
     "binary_for",
     "check_project",
     "config_for",
+    "default_model",
     "hook_command",
     "parser",
     "protected_paths",
@@ -62,8 +66,25 @@ __all__ = [
 
 DEFAULT_CTX = 0
 DEFAULT_MODEL = "Qwen3.8-27B-UD-Q4_K_XL.gguf"
+"""The model a session gets when the preferred one is not installed or does not fit: the dense 27B."""
+PREFERRED_MODEL = "Qwen3.8-Flash-Next-UD-IQ2_XS"
+"""The owner's coding model: used when it is installed and this machine holds it at `PREFERRED_WINDOW` (the larger Flash-Next quants are not named, so they are never the default)."""
+PREFERRED_WINDOW = 262_144
 PARENT = ""
 KV = "q8_0"
+
+
+def default_model(machine: MachineMemory | None = None) -> str:
+    """The model a coding session or delegate takes when none is named: `PREFERRED_MODEL` when it is installed and
+    ``suggest.largest_fit`` rates it green at its full `PREFERRED_WINDOW` on ``machine`` (this one by default), else `DEFAULT_MODEL`."""
+    for one in hub.installed_find(PREFERRED_MODEL, hub.discover(formats=("gguf",))):
+        try:
+            fit = suggest.largest_fit(one.path, machine)
+        except (OSError, ValueError):
+            continue
+        if fit.verdict == "green" and fit.context >= PREFERRED_WINDOW:
+            return one.filename
+    return DEFAULT_MODEL
 
 
 def require_isolated_execution() -> None:
@@ -80,7 +101,8 @@ def parser(name: str, what: str, port: int, slots: int) -> argparse.ArgumentPars
         usage=f"poolhouse-{name} {{MODEL | --on URL}} [--port N] [--slots N] [--ctx N] [--permissions PROFILE] [--execution-mode MODE] [--name L] "
               f"[--as AGENT] [--project DIR] [--orders-from AGENT] [--no-profile] [--draft HEAD] [--{name} PATH] [-- {name} arguments]")
     ap.add_argument("model", nargs="?", default="",
-                    help=f"the model file or a name poolhouse-models finds (default: {DEFAULT_MODEL})")
+                    help=f"the model file or a name poolhouse-models finds (default: {PREFERRED_MODEL} when installed and it fits at "
+                         f"{PREFERRED_WINDOW:,} tokens, else {DEFAULT_MODEL})")
     ap.add_argument("--on", metavar="URL", default="",
                     help="a server already running, e.g. http://127.0.0.1:8080; it is left running "
                          "and no model is named")
