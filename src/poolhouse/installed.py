@@ -50,6 +50,9 @@ class Capability:
 STANDARD: tuple[Capability, ...] = (
     Capability("coordinator", "device identity", "identifies devices on the network", "machineid"),
     Capability("agents", "agent runtime", "runs chat and tools through the Agents SDK", "agents"),
+    Capability("claude", "local coding agent",
+               "runs a served model as a coding agent: `poolhouse-agent` and `harness.session` drive the "
+               "Claude Code binary this SDK bundles", "claude_agent_sdk"),
     Capability("store", "the graph store",
                "keeps a graph, and the bench's runs, in one file on disk", "ladybug"),
     Capability("hub", "model downloads",

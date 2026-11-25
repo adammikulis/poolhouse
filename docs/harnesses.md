@@ -16,6 +16,11 @@ A program starts the same thing with `poolhouse.coding.launch_coding_agent(model
 harness="codex", **options)` (options: `name`, `orders_from`, `harness_args`, `say`,
 `run_codex` / `run_claude`, `context`); it returns the harness's exit code.
 
+`poolhouse-agent "task" --model MODEL` (`poolhouse.harness.session`) runs one agentic task through the
+Claude Agent SDK on the same lease. Every full install and installed runtime carries the SDK (the `claude`
+extra in `poolhouse.installed.STANDARD`) and, with it, the Claude Code binary it bundles, so the command
+needs no install step; a missing SDK is reported as a defective install, never as a `pip install` to run.
+
 ## What a launch does
 
 1. **Serves the model through the broker lease** (never a hand-started server): 262,144 tokens on

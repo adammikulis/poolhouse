@@ -48,6 +48,14 @@ def test_a_full_install_holds_what_the_scripts_that_keep_a_key_in_the_keystore_i
     assert {"keyring", "jwt"} <= {one.module for one in STANDARD}
 
 
+def test_a_full_install_holds_the_agent_sdk_that_poolhouse_agent_drives():
+    """The installed runtime is built from STANDARD. The SDK left out of it was a first-use
+    ImportError on `poolhouse-agent`, which asked a person to pip install it (2026-11-24)."""
+    assert "claude" in extras().split(",")
+    assert "claude_agent_sdk" in {one.module for one in STANDARD}
+    assert [canonicalize_name(Requirement(req).name) for req in offered()["claude"]] == ["claude-agent-sdk"]
+
+
 def test_a_module_that_is_here_reads_as_present():
     assert Capability("core", "the standard library", "reads JSON", "json").present()
 

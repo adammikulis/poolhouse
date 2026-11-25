@@ -1,7 +1,7 @@
 """The Claude Agent SDK on a model this machine serves -- the harness, inside poolhouse.
 
 Adam: "do we just include the harness library itself? ... in poolhouse I mean, integrate
-it." The SDK (`claude-agent-sdk`, the ``claude`` extra) drives the same Claude Code binary
+it." The SDK (`claude-agent-sdk`, in every full install through the ``claude`` extra) drives the same Claude Code binary
 `poolhouse.claude` launches, and reads the same environment, so this is the same lease and
 the same wiring with a Python face: :func:`session` leases the model in the settings it scored best with
 and yields a :class:`Harness` whose :meth:`Harness.ask` runs one agentic task and returns
@@ -46,13 +46,13 @@ def confined_bash() -> dict[str, Any]:
 
 
 def sdk() -> Any:
-    """The SDK module, or a plain sentence about the extra that installs it."""
+    """The SDK module. Every full install carries it, so its absence is a defect of this install."""
     try:
         import claude_agent_sdk
-    except ImportError as why:  # pragma: no cover - depends on the extra
+    except ImportError as why:
         raise ImportError(
-            "the Claude Agent SDK is not installed: `pip install \"poolhouse[claude]\"` "
-            "(claude-agent-sdk, which bundles the Claude Code binary)") from why
+            "this poolhouse install is defective: it lacks the Claude Agent SDK (claude-agent-sdk, "
+            "which bundles the Claude Code binary) that every full install carries") from why
     return claude_agent_sdk
 
 
