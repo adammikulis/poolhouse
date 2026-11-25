@@ -128,7 +128,7 @@ def interpreter() -> str:
     return os.path.realpath(sys.executable)
 
 
-REGISTRY = {"pypi.org": Host("pypi.org", "python", "https://pypi.org/help/", 5000, "pip download, measured by the test kit", "2026-11-24")}
+REGISTRY = {"pypi.org": Host("pypi.org", "python", "https://pypi.org/help/", 5000, "pip download, measured by the test kit", "2026-11-24", 12000)}
 """One host with every field a registry entry must carry, for the tests of the decisions; the file of the list has its own test."""
 
 

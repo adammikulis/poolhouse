@@ -223,13 +223,15 @@ def test_a_policy_is_written_only_by_a_process_that_is_neither_an_agent_nor_insi
 
 def entry(**changes):
     base = {"host": "pypi.org", "ecosystem": "python", "source": "https://pypi.org/help/", "bytes_out_bound": 5000,
-            "measured": {"bytes_out": 4000, "command": "pip download", "date": "2026-11-24"}}
+            "measured": {"bytes_out": 4000, "max_tunnel_out": 5000, "command": "pip download", "date": "2026-11-24"},
+            "session_bytes_out_bound": 12000, "measured_session": {"bytes_out": 8000, "command": "pip download many", "date": "2026-11-24"}}
     return {**base, **changes}
 
 
 @pytest.mark.parametrize("damage", [{"source": ""}, {"source": "http://pypi.org/"}, {"measured": {}}, {"measured": {"bytes_out": 1}},
-                                    {"bytes_out_bound": 3999}, {"bytes_out_bound": True}, {"host": "10.0.0.1"}, {"host": "*.org"}, {"ecosystem": ""}])
+                                    {"bytes_out_bound": 4999}, {"bytes_out_bound": True}, {"host": "10.0.0.1"}, {"host": "*.org"}, {"ecosystem": ""},
+                                    {"measured_session": {}}, {"session_bytes_out_bound": 11999}, {"session_bytes_out_bound": True}])
 def test_an_entry_of_the_host_list_without_its_source_or_its_measured_bound_is_not_a_host(damage):
     with pytest.raises(ContractError):
         egress._entry(entry(**damage))
-    assert egress._entry(entry()) == Host("pypi.org", "python", "https://pypi.org/help/", 5000, "pip download", "2026-11-24")
+    assert egress._entry(entry()) == Host("pypi.org", "python", "https://pypi.org/help/", 5000, "pip download", "2026-11-24", 12000)

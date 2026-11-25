@@ -9,9 +9,11 @@ that platform, PREDICTED where it is derived from documentation and code and no 
 
 from __future__ import annotations
 
+import contextlib
 import os
 import platform
 import shutil
+import socket
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -25,7 +27,7 @@ from poolhouse.sandbox.backend import Backend
 from poolhouse.sandbox.confinement import confined
 from poolhouse.sandbox.run import backend as platform_backend
 
-__all__ = ["GUARANTEES", "WATCHABLE", "Entry", "Report", "Seen", "capability", "cause_of", "drop_cache", "require_capable"]
+__all__ = ["GUARANTEES", "WATCHABLE", "Entry", "Report", "Seen", "capability", "cause_of", "drop_cache", "lan_address", "require_capable"]
 
 GUARANTEES = {
     "G1": "Nothing is readable outside the stage, the agent home, the harness's install tree, the interpreter, the system toolchain and the grants.",
@@ -104,6 +106,9 @@ class Report:
     guarantees: tuple[Entry, ...]
     exposures: tuple[Seen, ...]
     launch: tuple[str, ...] = ()
+    unchecked: tuple[str, ...] = ()
+    """The attempts of the proof that this computer cannot make, so that the proof shows nothing of them: P08 on a computer with no address on a
+    network (nothing there to listen on). It is never reported as passed."""
 
     @property
     def can_start(self) -> bool:
@@ -122,12 +127,22 @@ class Report:
         """The whole report as JSON-ready data, for the catalogue and the details view."""
         return {"platform": self.platform, "backend": self.backend, "backend_version": self.backend_version, "os_build": self.os_build,
                 "can_start": self.can_start, "enforcement_error": self.enforcement_error, "launch": list(self.launch),
+                "unchecked": list(self.unchecked),
                 "guarantees": [{"id": e.id, "state": e.state, "how": e.how, "reason": e.reason, "remedy": e.remedy,
                                 "evidence": e.evidence, "resources": dict(e.resources)} for e in self.guarantees],
                 "exposures": [{"id": x.id, "platform": x.platform, "what": x.what, "visible": x.visible} for x in self.exposures]}
 
 
 _CACHE: dict[tuple[str, ...], Report] = {}
+
+
+def lan_address() -> str:
+    """This computer's address on a real interface, or empty when it has none: the proof listens there for P08, and where there is nothing to
+    listen on it says so (`Report.unchecked`) and never says the attempt was denied."""
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp, contextlib.suppress(OSError):
+        udp.connect(("192.0.2.1", 9))
+        return udp.getsockname()[0]
+    return ""
 
 
 def drop_cache() -> None:
@@ -241,7 +256,7 @@ def _computed(via: Backend | None) -> Report:
     blocked = sentence(key) if key else ""
     build = f"{platform.mac_ver()[0] or platform.release()} {platform.version()}"
     return Report(family, chosen.name, " ".join(_identity(chosen.name)[1:]) or chosen.name, build, _entries(family, blocked, remedy),
-                  _exposures(family))
+                  _exposures(family), unchecked=() if lan_address() else ("P08",))
 
 
 def capability(spec: Spec | None = None, *, via: Backend | None = None, stage_free: int = 0, need: int = 0) -> Report:
@@ -254,7 +269,7 @@ def capability(spec: Spec | None = None, *, via: Backend | None = None, stage_fr
     if spec is None:
         return base
     return Report(base.platform, base.backend, base.backend_version, base.os_build, base.guarantees, base.exposures,
-                  _launch_facts(spec, stage_free, need))
+                  _launch_facts(spec, stage_free, need), base.unchecked)
 
 
 def require_capable(spec: Spec | None = None, *, via: Backend | None = None) -> Report:

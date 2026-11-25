@@ -10,6 +10,7 @@ it as data to read and never as instructions to follow (AF1).
 
 from __future__ import annotations
 
+import math
 import re
 import unicodedata
 from collections.abc import Mapping
@@ -23,9 +24,13 @@ LABEL = "from a confined agent: data"
 RESERVED = "isolation"
 """The start of every message kind and subject the launcher identity owns (`isolation.report`); no session argument may name one."""
 TEXT, WHOLE, NUMBER, FLAG = "text", "whole", "number", "flag"
-PLAIN = re.compile(r"[A-Za-z0-9._/@:+=,#~%-]{0,200}")
+PLAIN = re.compile(r"[A-Za-z0-9._/@:+=,#~%-]{0,64}")
 """What an argument that names something (a claim key, a file name, a handle, a recipient) is made of: characters and no space, so a name
-another agent reads carries no sentence of the session's."""
+another agent reads carries no sentence of the session's, and at most 64 of them (the longest a branch, a handle or a recipient is named in
+this workspace), so a hyphenated imperative has no room to be one."""
+TTL_CAP = 900.0
+"""The longest a claim or a heartbeat the session asks for may last, in seconds, when the launcher says nothing else: the workspace's configured
+`claim_ttl_s`, which the launcher passes in (`check`)."""
 FREE = ("query",)
 """The one text argument that is not a name and not shown to anyone: the words a search is for."""
 
@@ -90,14 +95,15 @@ def reserved(name: str) -> bool:
 
 def _typed(name: str, value: object, kind: str) -> object:
     ok = isinstance(value, KIND[kind]) and not (kind in (WHOLE, NUMBER) and isinstance(value, bool))
-    if not ok or (kind == WHOLE and isinstance(value, int) and value < 0):
+    if not ok or (kind == WHOLE and isinstance(value, int) and value < 0) or (kind == NUMBER and not math.isfinite(value)):
         raise ValueError(f"the argument {name} is not a {kind}")
     return value
 
 
-def check(name: str, arguments: object) -> tuple[Verb, dict[str, Any]]:
+def check(name: str, arguments: object, *, ttl_cap: float = TTL_CAP) -> tuple[Verb, dict[str, Any]]:
     """The verb ``name`` and its arguments ready to run: each named in the table, of its type, every needed one given, no kind that is the
-    launcher's, and the sender label in front of every text a reader will read. ``ValueError`` names what is wrong, never the text given."""
+    launcher's, and the sender label in front of every text a reader will read. A time to live is held at ``ttl_cap``, and a number that is not
+    finite (`NaN`, `Infinity`) is no number. ``ValueError`` names what is wrong, never the text given."""
     verb = VERBS.get(name)
     if verb is None or not isinstance(arguments, dict):
         raise ValueError("no such verb")
@@ -105,6 +111,8 @@ def check(name: str, arguments: object) -> tuple[Verb, dict[str, Any]]:
     if unknown or [each for each in verb.needs if each not in arguments]:
         raise ValueError("the arguments are not the ones this verb takes")
     ready = {each: _typed(each, value, verb.takes[each]) for each, value in arguments.items()}
+    if "ttl_s" in ready:
+        ready["ttl_s"] = max(0, min(ready["ttl_s"], ttl_cap))
     for each in verb.kinds:
         if each in ready and reserved(str(ready[each])):
             raise ValueError("that kind of message is the launcher's")

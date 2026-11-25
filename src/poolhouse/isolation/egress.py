@@ -1,9 +1,10 @@
 """The hosts a coding session may be granted a route to: package registries, each with its source and its measured bound.
 
 `contracts/egress-hosts.json` is the only list. A host the file does not name is refused for every caller, and an entry that names no
-source or no measured bound is a damaged list, not a host (docs/design-isolated-launcher.md, 6.3 and 8.3, AF5). The bound is the most
-bytes a real client sent to the host while it installed a package, measured on the date and with the command the entry records; a
-download counts nothing against it.
+source or no measured bound is a damaged list, not a host (docs/design-isolated-launcher.md, 6.3 and 8.3, AF5). Two bounds are recorded
+with the measurement of each, on the date and with the command the entry records: what one tunnel may send (the most one tunnel sent while a real
+client installed packages) and what a session may send over all its tunnels (the larger install and one more of the small one); a download
+counts nothing against either.
 """
 
 from __future__ import annotations
@@ -24,7 +25,8 @@ FILE = "egress-hosts.json"
 
 @dataclass(frozen=True, slots=True)
 class Host:
-    """One registry host: what it is for, the document that names it, and the bytes a client was measured to send to it."""
+    """One registry host: what it is for, the document that names it, the bytes one tunnel may send to it (``bytes_out``), the bytes a session
+    may send over all its tunnels (``session_bytes``) and the measurement of both."""
 
     name: str
     ecosystem: str
@@ -32,6 +34,7 @@ class Host:
     bytes_out: int
     command: str
     date: str
+    session_bytes: int = 0
 
 
 def valid_name(text: str) -> bool:
@@ -50,10 +53,16 @@ def _entry(raw: Any) -> Host:
         raise ContractError(f"{FILE}: {name} names no source document or no ecosystem")
     if not isinstance(measured, Mapping) or not all(measured.get(key) for key in ("bytes_out", "command", "date")):
         raise ContractError(f"{FILE}: {name} names no measured bound")
-    bound = raw.get("bytes_out_bound")
-    if not isinstance(bound, int) or isinstance(bound, bool) or bound < int(measured["bytes_out"]):
-        raise ContractError(f"{FILE}: the bound of {name} is not a number of bytes at least the measured one")
-    return Host(name, str(raw["ecosystem"]), str(raw["source"]), bound, str(measured["command"]), str(measured["date"]))
+    bound, session = raw.get("bytes_out_bound"), raw.get("session_bytes_out_bound")
+    largest = int(measured.get("max_tunnel_out") or measured["bytes_out"])
+    if not isinstance(bound, int) or isinstance(bound, bool) or bound < largest:
+        raise ContractError(f"{FILE}: the bound of {name} is not a number of bytes at least the most one measured tunnel sent")
+    wide = raw.get("measured_session")
+    if (not isinstance(wide, Mapping) or not all(wide.get(key) for key in ("bytes_out", "command", "date"))
+            or not isinstance(session, int) or isinstance(session, bool) or session < int(wide["bytes_out"]) + int(measured["bytes_out"])
+            or session < bound):
+        raise ContractError(f"{FILE}: {name} names no measured budget for a session of the larger install and one more of the small one")
+    return Host(name, str(raw["ecosystem"]), str(raw["source"]), bound, str(measured["command"]), str(measured["date"]), session)
 
 
 def hosts() -> dict[str, Host]:

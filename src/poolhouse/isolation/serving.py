@@ -8,6 +8,7 @@ queued, and `stop` closes every live connection. Nothing here waits for anyone b
 from __future__ import annotations
 
 import contextlib
+import errno
 import socket
 import struct
 import threading
@@ -25,6 +26,9 @@ SOL_LOCAL = 0
 LOCAL_PEERCRED = 0x001
 LOCAL_PEERPID = 0x002
 """The macOS options of `getsockopt` that name the other end of a unix socket (`<sys/un.h>`); Linux has `SO_PEERCRED`."""
+RETRY = (errno.EMFILE, errno.ENFILE, errno.ECONNABORTED, errno.ENOBUFS, errno.ENOMEM, errno.EINTR)
+"""What `accept` fails with while the service is sound: out of descriptors or memory for now, or a connection that reset before it was taken."""
+PAUSE_SECONDS = 0.05
 XUCRED_UID_AT = 4
 """The offset of `cr_uid` in macOS's `struct xucred` (a four-byte version comes first)."""
 
@@ -62,15 +66,16 @@ def credentials(sock: socket.socket) -> tuple[int, int]:
 class Server:
     """A listener on ``address`` whose connections are each handed once to ``handler(connection)`` on a thread of its own."""
 
-    def __init__(self, family: int, address: str | tuple[str, int], handler: Callable[[socket.socket], None], *, limit: int | None = None,
-                 admit: Callable[[socket.socket], bool] | None = None) -> None:
-        self.family, self.address, self.handler = family, address, handler
+    def __init__(self, family: int, address: str | tuple[str, int], handler: Callable[[socket.socket], None], *, limit: int | None = None,  # noqa: PLR0913
+                 admit: Callable[[socket.socket], bool] | None = None, stopped: Callable[[], None] | None = None) -> None:
+        self.family, self.address, self.handler, self.stopped = family, address, handler, stopped
         self.limit = limit or connection_bound()
         self.admit = admit
         self._listener: socket.socket | None = None
         self._live: set[socket.socket] = set()
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
+        self._pause = threading.Event()
         self.refused = 0
         """How many connections were closed at once: past the bound, or not admitted."""
 
@@ -94,7 +99,13 @@ class Server:
         while True:
             try:
                 connection, _ = listener.accept()
-            except OSError:
+            except OSError as why:
+                if why.errno in RETRY and self._listener is listener:
+                    self._pause.wait(PAUSE_SECONDS)   # no descriptor for it now, or it reset before it was taken: serving goes on
+                    continue
+                if self._listener is listener and self.stopped is not None:   # the listener failed; it was not stopped
+                    with contextlib.suppress(OSError, ValueError, RuntimeError):
+                        self.stopped()
                 return
             with self._lock:
                 full = len(self._live) >= self.limit
@@ -114,7 +125,7 @@ class Server:
 
     def _serve(self, connection: socket.socket) -> None:
         try:
-            with contextlib.suppress(OSError):
+            with contextlib.suppress(OSError, ValueError):
                 self.handler(connection)
         finally:
             self._drop(connection)
@@ -136,6 +147,7 @@ class Server:
 
     def stop(self) -> None:
         """Stop listening and close every live connection."""
+        self._pause.set()
         listener, self._listener = self._listener, None
         if listener is not None:
             with contextlib.suppress(OSError):

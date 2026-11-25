@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 import socket
+import time
 from dataclasses import dataclass
 from http import HTTPStatus
 
@@ -37,11 +38,12 @@ has a second way to state its length (the bridge accepts a body only by `Content
 
 
 class Refusal(Exception):
-    """A request that is refused: the status to answer with, and the fixed sentence that says why (never a word the session chose)."""
+    """A request that is refused: the status to answer with, the fixed sentence that says why (never a word the session chose) and the fixed
+    fields to answer with (a `Retry-After`, say)."""
 
-    def __init__(self, status: int, why: str) -> None:
+    def __init__(self, status: int, why: str, extra: tuple[tuple[str, str], ...] = ()) -> None:
         super().__init__(why)
-        self.status, self.why = status, why
+        self.status, self.why, self.extra = status, why, extra
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,7 +99,12 @@ def origin_form(target: str) -> tuple[str, str]:
     return path, query
 
 
-def _receive(sock: socket.socket, buffer: bytearray) -> None:
+def _receive(sock: socket.socket, buffer: bytearray, deadline: float | None = None) -> None:
+    if deadline is not None:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            raise Refusal(408, "the request was not finished in time")
+        sock.settimeout(left)
     try:
         data = sock.recv(65536)
     except TimeoutError:
@@ -107,16 +114,24 @@ def _receive(sock: socket.socket, buffer: bytearray) -> None:
     buffer.extend(data)
 
 
-def read_head(sock: socket.socket, buffer: bytearray, *, tunnel: bool = False) -> Head:
-    """Read until the end of a head and return it parsed; what follows it stays in ``buffer``. A socket with a timeout set gives a 408."""
+def read_head(sock: socket.socket, buffer: bytearray, *, tunnel: bool = False, within: float | None = None) -> Head:
+    """Read until the end of a head and return it parsed; what follows it stays in ``buffer``. A socket with a timeout set gives a 408, and with
+    ``within`` the whole head must arrive in that many seconds (a head that drips a byte at a time is not held open); the socket's own timeout is
+    then put back."""
     end = buffer.find(b"\r\n\r\n")
-    while end < 0:
-        if len(buffer) > MAX_HEAD:
-            raise Refusal(431, "the request head is too long")
-        if b"\n\n" in buffer:
-            raise Refusal(400, "a request ends each line with a carriage return and a line feed")
-        _receive(sock, buffer)
-        end = buffer.find(b"\r\n\r\n")
+    deadline = None if within is None else time.monotonic() + within
+    kept = sock.gettimeout()
+    try:
+        while end < 0:
+            if len(buffer) > MAX_HEAD:
+                raise Refusal(431, "the request head is too long")
+            if b"\n\n" in buffer:
+                raise Refusal(400, "a request ends each line with a carriage return and a line feed")
+            _receive(sock, buffer, deadline)
+            end = buffer.find(b"\r\n\r\n")
+    finally:
+        if deadline is not None:
+            sock.settimeout(kept)
     if end > MAX_HEAD:
         raise Refusal(431, "the request head is too long")
     raw = bytes(buffer[:end])
