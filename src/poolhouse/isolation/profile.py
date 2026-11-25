@@ -19,18 +19,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from poolhouse.coding_workspace_state import CONTROL_PREFIXES
+from poolhouse.isolation import toolchain
 from poolhouse.isolation.grants import Grant
 from poolhouse.isolation.spec import Spec
+from poolhouse.isolation.toolchain import system_toolchain
 from poolhouse.sandbox import Limits, Net, Policy
 from poolhouse.sandbox.policies import SYSTEM_EXEC
 from poolhouse.sandbox.run import fair_share
 
-__all__ = ["Profile", "build", "interpreter_reads", "system_toolchain"]
-
-HOMEBREW = ("bin", "lib", "opt", "Cellar", "share", "include", "Frameworks")
-"""What of `/opt/homebrew` and `/usr/local` is the system toolchain: not their `etc` or `var` (8.2)."""
-COMMAND_LINE_TOOLS = "/Library/Developer/CommandLineTools"
-
+__all__ = ["Profile", "build", "interpreter_reads"]
 
 @dataclass(frozen=True, slots=True)
 class Profile:
@@ -45,15 +42,6 @@ class Profile:
     harness: str = ""
     interactive: bool = False
     read_only: bool = False
-
-
-def system_toolchain() -> tuple[str, ...]:
-    """The system toolchain every session may read and run, as the directories this machine has (5.2 and 8.2): the command-line developer
-    tools, and the program and library trees of Homebrew and `/usr/local`."""
-    found = [COMMAND_LINE_TOOLS] if sys.platform == "darwin" else []
-    for prefix in ("/opt/homebrew", "/usr/local"):
-        found += [f"{prefix}/{name}" for name in HOMEBREW]
-    return tuple(os.path.realpath(path) for path in found if Path(path).is_dir() and os.path.realpath(path) == path)
 
 
 def interpreter_reads() -> tuple[str, ...]:
@@ -82,8 +70,8 @@ def _digest(policy: Policy, grants: Sequence[Grant], spec: Spec) -> str:
 
 def build(spec: Spec, grants: Sequence[Grant] = (), env: Mapping[str, str] | None = None, limits: Limits | None = None) -> Profile:
     """The profile of ``spec`` with ``grants`` in force and ``env`` the whole environment the harness gets (`isolation.environment`)."""
-    reads = [grant.subject for grant in grants if grant.kind in ("read", "toolchain")]
-    runs = [grant.subject for grant in grants if grant.kind == "toolchain"]
+    reads = [each for grant in grants if grant.kind in ("read", "toolchain") for each in (toolchain.reach(grant.subject) if grant.kind == "toolchain" else (grant.subject,))]
+    runs = [each for grant in grants if grant.kind == "toolchain" for each in toolchain.reach(grant.subject)]
     writable = [spec.home] if spec.read_only_stage else [spec.stage, spec.home]
     readable = [spec.stage, spec.install, *interpreter_reads(), *system_toolchain(), *_git_directory(), *reads,
                 *([spec.patches] if spec.patches else [])]
@@ -95,6 +83,7 @@ def build(spec: Spec, grants: Sequence[Grant] = (), env: Mapping[str, str] | Non
                     unix_sockets=(spec.session_socket,) if spec.session_socket else (),
                     deny_write=tuple(str(Path(spec.stage) / name) for name in CONTROL_PREFIXES),
                     limits=limits or Limits(wall_seconds=None, output_bytes=None, processes=fair_share()))
-    path = (str(Path(spec.home) / "bin"), *_git_directory(), *SYSTEM_EXEC, *(str(Path(each) / "bin") for each in runs))
+    path = (str(Path(spec.home) / "bin"), *_git_directory(), *SYSTEM_EXEC,
+            *(str(Path(grant.subject) / "bin") for grant in grants if grant.kind == "toolchain"))
     return Profile(policy, spec.stage, spec.home, path, tuple(grants), _digest(policy, grants, spec), spec.harness, spec.interactive,
                    spec.read_only_stage)

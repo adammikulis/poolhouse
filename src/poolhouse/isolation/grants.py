@@ -19,7 +19,7 @@ from poolhouse import home, secretpaths
 from poolhouse.contracts.loader import ContractError
 from poolhouse.isolation import egress, publish, toolchain
 from poolhouse.isolation.policy import ProjectPolicy
-from poolhouse.isolation.refusals import DECISION_LINES, KIND_PHRASES, refusal_line
+from poolhouse.isolation.refusals import DECISION_LINES, KIND_PHRASES, refusal_line, sentence
 
 __all__ = ["KINDS", "SOURCES", "Decision", "Grant", "Request", "Rule", "decide", "fingerprint"]
 
@@ -84,6 +84,8 @@ def fingerprint(request: Request) -> str:
 
 
 def _refused(request: Request, cause: str) -> Decision:
+    if request.source == "declaration" and cause == toolchain.NOT_INSTALLED:
+        return Decision(False, sentence("declared_elsewhere"), cause)
     return Decision(False, refusal_line(request.kind) if request.kind in KIND_PHRASES else "Refused: that is not allowed for this coding session.",
                     cause)
 
@@ -116,7 +118,8 @@ def _folder(request: Request, rule: Rule, *, program: bool) -> Decision:
     if program and not any(os.access(each, os.X_OK) for each in Path(held.path).glob("bin/*") if each.is_file()):
         held.close()
         return _refused(request, "holds no program")
-    if not program and (hit := secretpaths.tree_hit(Path(held.path))) is not None:
+    walked = toolchain.reach(held.path) if program else (held.path,)
+    if (hit := next(filter(None, (secretpaths.tree_hit(Path(each), suffixes=not program) for each in walked)), None)) is not None:
         held.close()
         return _refused(request, "holds a credential or is too large to check: " + hit.rule)
     return _granted(request, rule, held.path, held)
@@ -152,8 +155,8 @@ def _sourced(request: Request, rule: Rule) -> str:
     """Why the claimed source of ``request`` does not hold, or empty. A toolchain the project declares is granted by the declaration; every
     other request names the task or a project policy, and a policy that is present bounds both."""
     if request.source == "declaration":
-        declared = request.kind == "toolchain" and request.subject in toolchain.declared(rule.project)
-        return "" if declared else "not a source of a widening"
+        found = [each for each in toolchain.declarations(rule.project) if each.subject == request.subject] if request.kind == "toolchain" else []
+        return (found[0].refused or "") if found else "not a source of a widening"
     if request.source not in SOURCES:
         return "not a source of a widening"
     named = rule.policy is not None and rule.policy.names(request.kind, request.subject)

@@ -51,6 +51,8 @@ SENTENCES: dict[str, str] = {
     "confined_caller": "Refused: a coding session cannot change what another coding session may reach; this process runs inside one.",
     "not_the_lead": "Refused: only the session that launches coding agents for the person can widen what one may reach.",
     "held_back": "Refused: widening a coding session is held back from agents on this computer.",
+    "declared_elsewhere": ("Refused: the interpreter folder this project's virtual environment names is not one a version manager or the "
+                           "system installed, so the coding session runs without it."),
 }
 """The refusal sentences of section 9, one per condition, and the refusals of the launch gate (8.3). A brace names a fact of the launch."""
 

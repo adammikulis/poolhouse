@@ -159,7 +159,7 @@ def test_a_toolchain_folder_must_hold_a_program_and_is_granted_by_the_object_tha
 
 
 def test_a_toolchain_declaration_is_resolved_once_and_granted_by_the_same_object(rule, tmp_path):
-    version = tmp_path / "prefix"
+    version = Path(os.environ["HOME"]) / ".pyenv" / "versions" / "3.99"
     (version / "bin").mkdir(parents=True)
     (version / "bin" / "python3").write_text("#!/bin/sh\nexit 0\n")
     (version / "bin" / "python3").chmod(0o755)

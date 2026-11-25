@@ -8,11 +8,12 @@ AppContainer token and a job, and is not built (the backend refuses to start any
 
 from __future__ import annotations
 
-import ctypes
 import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+from poolhouse.sandbox.confinement import seatbelt_state
 
 __all__ = ["Attestation", "attest"]
 
@@ -36,13 +37,13 @@ def _seatbelt(pid: int) -> Attestation:
     except PermissionError:
         pass
     try:
-        library = ctypes.CDLL("/usr/lib/system/libsystem_sandbox.dylib")
-        library.sandbox_check.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
-        library.sandbox_check.restype = ctypes.c_int
-        held = library.sandbox_check(pid, None, 0) == 1
+        state = seatbelt_state(pid)
     except (OSError, AttributeError):
         return Attestation(pid, False, "the kernel could not be asked")
-    return Attestation(pid, held, "a sandbox applies to the process" if held else "no sandbox applies to the process")
+    facts = {"refuses": "a sandbox applies to the process", "none": "no sandbox applies to the process",
+             "allows": "a sandbox applies to the process but allows everything it does not name, which confines nothing",
+             "unknown": "the kernel could not be asked"}
+    return Attestation(pid, state == "refuses", facts[state])
 
 
 def _status(pid: int) -> dict[str, str]:

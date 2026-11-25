@@ -179,7 +179,7 @@ def decide_launch(arguments: Arguments, *, project: str, env: Mapping[str, str] 
     _deputy(arguments, registered, bool(caller.marked(env)))
     issuer = caller.who(env)
     requests = (*arguments.requests(issuer, project),
-                *(Request("toolchain", each, issuer, "declaration", project) for each in toolchain.declared(project)))
+                *(Request("toolchain", each.subject, issuer, "declaration", project) for each in toolchain.declarations(project)))
     try:
         listed = egress.hosts()
     except ContractError:
@@ -189,9 +189,8 @@ def decide_launch(arguments: Arguments, *, project: str, env: Mapping[str, str] 
     for each, request in zip(decisions, requests, strict=True):
         _log(each, request)
     grants = tuple(each.grant for each in decisions if each.grant is not None)
-    named = tuple(each for each in grants if each.source != "declaration")
-    kinds = {each.kind for each in named}
+    kinds = {each.kind for each in grants}
     unusual = "in-place" in kinds or {"net", "publish"} <= kinds
-    if named:
-        _signal(named, unusual, on_event)
-    return Launch(decisions, grants, bool(named), unusual)
+    if grants:
+        _signal(grants, unusual, on_event)
+    return Launch(decisions, grants, bool(grants), unusual)

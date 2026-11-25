@@ -20,7 +20,7 @@ import stat
 import sys
 from pathlib import Path
 
-__all__ = ["MARKER", "confined"]
+__all__ = ["MARKER", "confined", "seatbelt_state"]
 
 MARKER = "/run/poolhouse/confined"
 """Where the Linux backend binds the null device, read-only, inside the namespace."""
@@ -41,17 +41,29 @@ def confined() -> bool:
     return True
 
 
+def seatbelt_state(pid: int) -> str:
+    """What the kernel says of the sandbox of process ``pid``: ``none`` (no sandbox applies), ``refuses`` (one applies and its default is to
+    refuse: every profile the engine builds starts `(deny default ...)`), ``allows`` (one applies and its default is to allow, a deny-list
+    such as the one the test runner puts around the whole suite or a harness puts around its own tools) or ``unknown`` (the call failed).
+    The one answer behind `confined` and behind the attestation of the launcher's proof (docs/design-isolated-launcher.md, 10.3): a process
+    is confined, here and there, exactly when it is ``refuses``. Raises `OSError` or `AttributeError` where the library is missing."""
+    library = ctypes.CDLL("/usr/lib/system/libsystem_sandbox.dylib")
+    library.sandbox_check.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
+    library.sandbox_check.restype = ctypes.c_int
+    applies = library.sandbox_check(pid, None, 0)
+    if applies == 0:
+        return "none"
+    if applies != 1:
+        return "unknown"
+    return "refuses" if library.sandbox_check(pid, b"default", 0) != 0 else "allows"
+
+
 def _seatbelt() -> bool:
-    """A sandbox applies and its default is to refuse. The engine's every profile starts `(deny default ...)`, so a process it confines
-    answers yes to both; a profile that allows by default and names what to refuse (the one the test runner puts around the whole
-    suite to deny writes under the real state root) holds no harness and is not the engine's confinement. Any answer other than a plain
-    no counts as yes, so a failed call is the safe side."""
+    """A sandbox applies and its default is to refuse (`seatbelt_state`). A deny-list profile, which holds no harness and is not the engine's
+    confinement, is not one (a process in it is judged by what the node attests of its ancestry, not by this); a failed call counts as
+    yes, the safe side."""
     try:
-        library = ctypes.CDLL("/usr/lib/system/libsystem_sandbox.dylib")
-        library.sandbox_check.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
-        library.sandbox_check.restype = ctypes.c_int
-        pid = os.getpid()
-        return library.sandbox_check(pid, None, 0) != 0 and library.sandbox_check(pid, b"default", 0) != 0
+        return seatbelt_state(os.getpid()) in ("refuses", "unknown")
     except (OSError, AttributeError):
         return True
 
