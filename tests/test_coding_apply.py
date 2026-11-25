@@ -252,6 +252,14 @@ def test_a_version_an_overwrite_or_a_deletion_displaces_is_kept_first_read_only_
     assert restored(keep) == {name: BASE, digest(PERSON): PERSON}
 
 
+def test_a_new_file_never_replaces_a_file_the_person_already_has_at_that_name(world):
+    project, log, keep = world
+    (project / "src" / "late.py").write_bytes(PERSON)
+    [done] = apply(project, [edit(base=None, path="src/late.py", first=True)], log=log, keep=keep)
+    assert done.state == "conflict" and (project / "src" / "late.py").read_bytes() == PERSON and done.kept.read_bytes() == RESULT
+    assert restored(keep) == {} and left_over(project) == [], "a file the session never saw is not read into a copy either"
+
+
 def test_a_file_git_holds_is_not_copied_and_a_new_file_displaces_nothing(world):
     project, log, keep = world
     [held] = apply(project, [edit()], log=log, keep=keep)
