@@ -13,7 +13,9 @@ profile) and are marked as design-level, not run.
 Where a finding or a verdict below is worded around a person's step (a question asked at publication, a grant typed at a
 terminal, an ask that fatigues the person), the design decides it by an automatic rule or an immediate refusal and keeps the
 property the finding names (`docs/design-isolated-launcher.md`, "Zero friction" and 14.3). The red tests assert the property,
-never a step by a person.
+never a step by a person. The pass that read that design, `docs/notes/attack-verdict-launcher-no-waiting.md`, has its findings
+decided in 14.3 of the design as AF1 to AF11 (a publish rule takes exact files and never a governing file, so N3 to N5 hold
+under any rule; the AppArmor profile of N6 is loaded by the package install and setup, never by a launch).
 
 **Environment**: this Mac (macOS 26.6, build 25G70, Apple M4 Max, `/usr/bin/sandbox-exec` present), same device
 the design itself used. No Linux or Windows device was reachable (same gap the design records), so every Linux
