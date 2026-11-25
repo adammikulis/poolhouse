@@ -697,10 +697,12 @@ class ServerManager(Admitting):
                 iq: quant_guard.IqQuant | None = None) -> None:
         kept = kvcache.effective(spec)
         pending = self._mine.get(str(spec.port)) or {}
+        drafting = not (spec.mtp is True and not info.mtp)  # a head the server refused is not one it runs with
         self._mine[str(spec.port)] = ledger.entry(
             spec, backend=info.backend, lease=pending.get("lease", ""), est_mb=pending.get("est_mb", 0), info=info,
             extra={"mtp": info.mtp, "cache_type_k": kept.k, "cache_type_v": kept.v, "kv_cache": kept.said,
-                   "kv_notes": list(kept.notes), "draft": str(spec.draft or ""), "spec_type": spec.spec_type,
+                   "kv_notes": list(kept.notes), "draft": str(spec.draft or "") if drafting else "",
+                   "spec_type": spec.spec_type if drafting else "",
                    "chat_template_file": str(spec.chat_template_file or ""), "mtp_note": info.mtp_note,
                    **({"iq_warning": iq.name} if iq is not None else {})})
         forget_server(info.base_url)

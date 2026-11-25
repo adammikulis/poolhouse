@@ -347,10 +347,8 @@ def quant_of(name: str) -> str:
     return pretty.split(" (", 1)[1].rstrip(")") if " (" in pretty else ""
 
 
-def _matched(every: Sequence[Profile], model: str) -> Profile | None:
-    """The record for this model among ``every``, by file name, then family and
-    quantisation, then family alone -- the last with ``note`` saying it is a different
-    quantisation of the same model."""
+def _matched(every: Sequence[Profile], model: str, *, same_quant: bool = False) -> Profile | None:
+    """The record for this model among ``every``, by file name, then family and quantisation, then (unless ``same_quant``) family alone."""
     asked = _plain(model)
     for one in every:
         if _plain(one.model) == asked:
@@ -361,7 +359,7 @@ def _matched(every: Sequence[Profile], model: str) -> Profile | None:
     for one in every:
         if one.family.lower() == family and one.quant.lower() == quant:
             return replace(one, served=str(model))
-    for one in every:
+    for one in [] if same_quant else every:
         if one.family.lower() == family:
             return replace(one, served=str(model),
                            note=_and(one.note, f"measured on {one.model}, not on "
@@ -375,23 +373,17 @@ def _and(note: str, said: str) -> str:
     return f"{note}; {said}" if note else said
 
 
-def profile_for(model: str, *, workload: str = ASK,
-                records: Sequence[Profile] | None = None) -> Profile | None:
-    """The settings this model scored best with at this workload, or None when nothing
-    measured it.
-
-    A model with no record for the workload asked falls back to its graph-asking record,
-    returned with ``note`` saying which workload measured it and which one it was asked
-    for, so no caller serves settings measured for something else without being told.
-    """
+def profile_for(model: str, *, workload: str = ASK, records: Sequence[Profile] | None = None,
+                same_quant: bool = False) -> Profile | None:
+    """The settings this model scored best with at this workload (``same_quant``: measured on these very weights), or None; another workload's record comes with a note saying so."""
     named = workload_named(workload)
     every = list(records if records is not None else profiles())
-    found = _matched([one for one in every if one.workload == named], model)
+    found = _matched([one for one in every if one.workload == named], model, same_quant=same_quant)
     if found is not None:
         return found
     if named == ASK:
         return None
-    general = _matched([one for one in every if one.workload == ASK], model)
+    general = _matched([one for one in every if one.workload == ASK], model, same_quant=same_quant)
     if general is None:
         return None
     return replace(general, note=_and(

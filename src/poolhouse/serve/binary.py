@@ -245,20 +245,7 @@ def manifest_of(binary: str | Path | None) -> dict:
 
 
 def borrows(binary: str | Path | None) -> bool:
-    """Whether ``binary`` is a fork build -- one that can load a draft head that borrows.
-
-    Measured for real (2026-09-01): every `mtp-` head under
-    `unsloth/Qwen3.8-Flash-Next-GGUF/MTP/` fails on mainline llama.cpp master with
-    `check_tensor_dims: tensor 'output_hc_norm.weight' not found`, because mainline loads a
-    draft as a whole model and those heads carry only the head, borrowing the trunk's
-    embeddings and output layer from the target. Only a fork's loader accepts that, so which
-    binary is serving decides which head may be offered -- and this is the one place that
-    decision is read off a binary.
-
-    A fork is a build kept under ``managed_named()`` (`poolhouse-serve build --name NAME`), or
-    one whose ``BUILD.json`` names a ``repo`` other than ``ggml-org/llama.cpp``. `current`,
-    a brew bottle, a release, anything on PATH, and ``None`` are mainline.
-    """
+    """Whether ``binary`` is a fork build (named, or from another repository), which alone loads a head that borrows the target's embeddings."""
     if not binary:
         return False
     path = home.expand(binary)
@@ -269,7 +256,7 @@ def borrows(binary: str | Path | None) -> bool:
         pass
     info = manifest_of(path)
     repo = str(info.get("repo") or MAINLINE).strip().lower()
-    return bool(info.get("name")) or repo != MAINLINE
+    return (bool(info.get("name")) and not info.get("track")) or repo != MAINLINE
 
 
 def named_builds(name: str = "llama-server") -> list[tuple[str, Path]]:
