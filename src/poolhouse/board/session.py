@@ -12,7 +12,7 @@ from typing import Any
 
 from poolhouse import home
 from poolhouse.board import credentials, place
-from poolhouse.board.client import Client, Conflict, Denied
+from poolhouse.board.client import Client, Conflict, Denied, NodeError
 from poolhouse.log import warn
 
 __all__ = ["AGENT_ENV", "SUBAGENT_ENV", "TOKEN_ENV", "UNKNOWN_TOKEN", "Agent", "Claim", "Entry", "Native", "Note", "Page", "Registration",
@@ -472,7 +472,7 @@ def _named(node: Client, where: str, agent: str) -> Session:
     try:
         return Session(node, where, credentials.load(node.state, where, agent or own), agent or own, renew=_renewer(node, where, agent or own))
     except Denied:
-        if (revived := revive(node, where)) is not None and revived.name == (agent or own):
+        if (revived := revive(node, where, named=agent or own)) is not None and revived.name == (agent or own):
             return revived
         if not (agent and own and agent != own):
             raise
@@ -512,23 +512,37 @@ def _renewer(node: Client, where: str, name: str = "") -> Callable[[], str]:
     return renew
 
 
-def revive(node: Client, where: str, *, strict: bool = False) -> Session | None:
+def _kept_model(node: Client, name: str) -> str:
+    """The model the node recorded for the session ``name`` on a board where this client keeps its token, or an empty string: a board that has
+    not seen the session names it after the model it claims, so it is registered there with the model it has everywhere else."""
+    for board in credentials.boards(node.state, name):
+        try:
+            return Session(node, board, credentials.load(node.state, board, name), name).whoami().model
+        except (Denied, NodeError, OSError):
+            continue
+    return ""
+
+
+def revive(node: Client, where: str, *, strict: bool = False, named: str = "") -> Session | None:
     """The main session this process runs in, registered on ``where`` again from the native session id its harness set, or None when it runs in
     none (a subagent, a Codex thread and a process of no harness have no native main session to register).
 
     The node registers a main session from any process: a live session keeps its name and gets a token, one that ended or was retired idle comes
     back under its name, one whose process tree ended moves to this one and a live sibling gets a token of its own. What it refuses is a
-    block placed on purpose (a session its parent ended for cause); ``strict`` raises that refusal, otherwise it is None here.
+    block placed on purpose (a session its parent ended for cause); ``strict`` raises that refusal, otherwise it is None here. On a board that
+    has never seen the session the node names it after the model it claims: ``named`` is the name the caller expects, and the session is then
+    registered with the model the node recorded for that name on another board, so it comes back under that name.
     """
     if os.environ.get(SUBAGENT_ENV, "").strip() or os.environ.get("CODEX_THREAD_ID", "").strip():
         return None
     refused: Denied | None = None
+    model = _kept_model(node, named) if named else ""
     for harness_env, id_env in NATIVE_SESSIONS:
         native = os.environ.get(id_env, "").strip()
         if not native:
             continue
         try:
-            made = register(node, where, Native("", os.environ.get(harness_env, "") or SUBAGENT_HARNESS, native))
+            made = register(node, where, Native(model, os.environ.get(harness_env, "") or SUBAGENT_HARNESS, native))
         except Denied as err:
             refused = err
             continue
