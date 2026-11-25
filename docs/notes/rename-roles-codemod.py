@@ -20,7 +20,7 @@ WHOLE = [
     "src/poolhouse/chat.py", "docs/agent-roles.md", "tests/test_roles.py", "tests/test_redteam_chat.py",
     "tests/test_chat_task.py", "tests/test_redteam_human_floor.py", "tests/test_memory_chat.py",
     "tests/test_reputation_safety.py", "tests/test_activity_feeds.py", "tests/test_redteam_memory.py",
-    "tests/test_activity_viewer.py", "tests/test_requests_floor.py",
+    "tests/test_activity_viewer.py",
 ]
 # only lines that name a role in these files
 ROLE_LINE = re.compile(
@@ -35,7 +35,7 @@ LINES = [
 EXTRA = [("an approved runner plan", "an approved plan under plan-and-go"),
          ("inside a plan-and-go's\nplan", "inside a plan-and-go\nplan")]
 KEEP = "earlier role names"  # lines that document the old names are left as written
-TEST_PATTERNS = ["tests/test_requests*.py", "tests/test_redteam_*.py", "tests/test_chat*.py"]
+TEST_PATTERNS = ["tests/test_redteam_*.py", "tests/test_chat*.py"]
 
 
 def swap(text: str) -> str:

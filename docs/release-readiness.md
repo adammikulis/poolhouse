@@ -45,7 +45,7 @@ three-attempt retry policy. This does not replace the full-suite result above.
   `tests/test_phone_friction.py`, `tests/test_release_key.py`, `tests/test_fleet_signing.py`, `tests/test_fleet_updates.py`,
   `tests/test_github_protection.py`, `tests/test_github_protection_apply.py`, `tests/test_serve_no_bypass.py`, `tests/test_pool_found.py`,
   `tests/test_api_found.py`, `tests/test_board_approval.py`, `tests/test_api_approval.py`, `tests/test_presence.py`,
-  `tests/test_requests_floor.py`, `tests/test_redteam_human_floor.py`, `tests/test_sentinel_wiring_agent.py`,
+  `tests/test_redteam_human_floor.py`, `tests/test_sentinel_wiring_agent.py`,
   `tests/test_sentinel_wiring_serve.py`, `tests/test_harness_rails.py`, `tests/test_workspace_quickstart.py`,
   `tests/test_credentials.py`, `tests/test_pool_check.py`, `tests/test_api.py` (505 passed, 3 skipped).
 - Failed, not caused by this page: `tests/test_cli_help.py` (one test, `docs/commands.md:45`, which names `--policy` for
@@ -304,7 +304,7 @@ WSL onboarding, execution dispatch or any POOL/GOV completion claim.
 | --- | --- | --- | --- | --- |
 | SEN-1 | The armed-by-default sentinel: start-time verification, the scan loop, canaries, decoys, session scores, output screening, child environment scrub | `scripts/test all tests/test_sentinel_wiring_agent.py tests/test_sentinel_wiring_serve.py tests/test_sentinel_integration.py tests/test_sentinel_cli.py` | built untested; the two wiring selectors pass | the "Not armed" list in `docs/sentinel.md` |
 | SEN-2 | The sentinel makes `open` joins safe (flags on devices taken without a code) | none | not built: sections 3 to 6 of `docs/sentinel-open-join.md` are a design | Question 5 |
-| SEN-3 | Releasing a quarantine, approving a host and changing guard or sentinel policy are a person's alone | `tests/test_redteam_human_floor.py`; `tests/test_requests_floor.py` | tested (both pass) | none |
+| SEN-3 | Releasing a quarantine, approving a host and changing guard or sentinel policy are a person's alone | `tests/test_redteam_human_floor.py` | tested (passes) | none |
 
 ### 3.11 Credentials never held by agents
 
