@@ -166,10 +166,15 @@ fragment can register as the person, and on a computer with no prompt of the sys
 approve it" (a computer with such a prompt asks for a password or a fingerprint, which the file does not give). The fragment's `[shell_environment_policy.set]` table carries the same
 `DEV_TEST_REUSE_DIR` and `DEV_TEST_CARGO_DIR`.
 
-## Local-model harness: sandbox-runtime
+## Local-model harness
 
-`poolhouse-agent` and `poolhouse-chat` run as one process that also reads files and starts
-commands. Wrap the whole process:
+`poolhouse-claude`, `poolhouse-codex`, `poolhouse-pi`, the chat coding dialog and native tasks need no wrapper and no setting of yours: each
+launch builds its own confinement (`docs/design-isolated-launcher.md`) and refuses with one sentence where the computer cannot. What follows is for
+`poolhouse-agent` and `poolhouse-chat`, which run as one process that also reads files and starts commands, and for your own sessions.
+
+### sandbox-runtime for `poolhouse-agent` and `poolhouse-chat`
+
+Wrap the whole process:
 
 ```
 srt --settings "/Library/Application Support/ClaudeCode/srt-settings.json" -- poolhouse-agent ...

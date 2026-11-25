@@ -206,15 +206,20 @@ poolhouse-delegate stop NAME
 
 ## What is not covered
 
-- The hook is a gate inside the harness's own process tree. Neither harness is a sandbox against
-  its own model: a Claude Code session has no sandbox here, so a call the classifier labels safe or
-  that the person allowed can still do what that call does, and a command built to hide what it
-  touches (an `eval` of a computed string) is `unsure` and is denied at once rather than being read. The session's
-  files are read-only and outside the tree, but the same operating-system user owns them. Codex's
-  own sandbox is the stronger boundary for shell commands.
+- A launch runs the harness in a confinement the operating system holds (`poolhouse.isolation`, `docs/design-isolated-launcher.md`): on macOS
+  the Seatbelt profile of the launch, proved before the harness starts and attested on the live process. The harness works on a copy of the
+  project (the stage) and a private home; it reaches the model only through the parent's bridge and the hook only through the session bridge. Its
+  environment is a closed list; nothing of the person's home, keystore, other repositories, network or other processes is reachable. After each
+  turn the parent applies the plain source the stage holds and refuses everything else at once (a workflow, a hook, a build or package file, a
+  program): it keeps the refusal as a patch, tells the launching session in the parent's own words, and the stage keeps the file as the agent made
+  it. A computer that cannot confine refuses the launch with one sentence and starts nothing: Linux, WSL and Windows refuse until their slices land,
+  and an interactive launch refuses until the pty relay of slice L6 (use the harness's print mode: `-- --print TEXT` for Claude Code, `-- exec TEXT`
+  for Codex). The hook is a gate on top of the boundary, not the boundary: it denies at once what the profile's role does not run, and a command
+  built to hide what it touches (an `eval` of a computed string) is `unsure` and is denied at once rather than being read.
 - A hook that cannot start (a missing interpreter) is a non-blocking error in both harnesses. The
   launcher writes the absolute interpreter that started it.
-- Codex runs hooks it has reviewed; the launcher passes `--dangerously-bypass-hook-trust` because it
+- Codex's own sandbox is off inside the confinement (a sandbox cannot start inside another; the mount enforces what each role means) and it never asks.
+  Codex runs hooks it has reviewed; the launcher passes `--dangerously-bypass-hook-trust` because it
   wrote the hook into a home that holds nothing else. Codex has no pre-tool hook for its web search
   tool or for model-side reasoning; those are outside the gate.
 - Every decision is made at once: a call the profile does not run is denied with the reason shown to the model, and nothing waits.

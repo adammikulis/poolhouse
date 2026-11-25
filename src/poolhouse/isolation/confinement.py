@@ -119,6 +119,17 @@ class Plan:
     interactive: bool = False
 
 
+class Admission:
+    """Which processes the session bridge answers: before the harness exists, the proof's own probe is the only client; once it runs, a process
+    that is in the harness's tree (`sandbox.process_tree`, which follows every fork from the first instruction) and no other."""
+
+    def __init__(self) -> None:
+        self.tree: process_tree.Tree | None = None
+
+    def __call__(self, pid: int) -> bool:
+        return self.tree is None or pid in self.tree
+
+
 @dataclass(slots=True)
 class Made:
     """What `prepare` made for one confinement: its profile and proof, the staged project, the services it started, the directories it must remove,
@@ -129,6 +140,7 @@ class Made:
     session: Session
     services: list[Any]
     scratch: list[str]
+    admission: Admission
     home: Path
     config: Path
     argv: tuple[str, ...]
@@ -195,10 +207,12 @@ class Confinement:
         if self._started is not None or self.closed:
             raise RuntimeError("a confinement starts its harness once")
         self._started = spawn(self.argv, self.profile.policy, cwd=self.cwd, stdin=stdin, stdout=stdout, stderr=stderr)
+        self.made.admission.tree = self._started.tree
         process = self._started.process
         deadline, seen = time.monotonic() + self.stall, attest(process.pid)
         while not seen.confined and process.poll() is None and time.monotonic() < deadline:
-            time.sleep(0.005)
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                process.wait(timeout=0.005)   # the harness may still be applying its profile: a look at the operating system again, not a wait for anyone
             seen = attest(process.pid)
         if not seen.confined and process.poll() is None:
             self._end()
@@ -271,7 +285,7 @@ class Confinement:
         return self.turn
 
 
-def _services(plan: Plan, session: Session, stack: list[Any], scratch: list[str]) -> tuple[ModelBridge, SessionBridge]:
+def _services(plan: Plan, session: Session, stack: list[Any], scratch: list[str], admission: Admission) -> tuple[ModelBridge, SessionBridge]:
     """Start the model bridge and the session bridge. A service that cannot start refuses the launch."""
     model = ModelBridge(plan.upstream, plan.lease, key=plan.key, events=_events)
     model.start()
@@ -286,7 +300,7 @@ def _services(plan: Plan, session: Session, stack: list[Any], scratch: list[str]
     answer = plan.decide(str(session.stage.physical))
     root = tempfile.mkdtemp(prefix="pp-", dir="/tmp")
     scratch.append(root)
-    bridge = SessionBridge(Handlers(decide, plan.workspace, activity.record, _events), Terms(plan.policy.writable, plan.lease.window), root=root)
+    bridge = SessionBridge(Handlers(decide, plan.workspace, activity.record, _events), Terms(plan.policy.writable, plan.lease.window), root=root, admit=admission)
     bridge.start()
     stack.append(bridge)
     return model, bridge
@@ -320,7 +334,8 @@ def prepare(plan: Plan) -> Confinement:
         scratch.append(str(agent_home))
         for name in ("bin", "tmp", HARNESS_DIRECTORIES[plan.harness]):
             _private(agent_home / name, 0o700)
-        model, bridge = _services(plan, session, stack, scratch)
+        admission = Admission()
+        model, bridge = _services(plan, session, stack, scratch, admission)
         client = agent_home / "bin" / CLIENT
         _write(client, Path(client_module.__file__).read_text(encoding="utf-8"))
         stage = str(session.stage.physical)
@@ -344,4 +359,4 @@ def prepare(plan: Plan) -> Confinement:
     activity.record("isolation.launch", subject=plan.agent, outcome="proved",
                     meta={"digest": profile.digest, "proof_seconds": proved.seconds, "grants": [grant.fingerprint for grant in plan.grants]})
     timing = {"stage": round(staged - began, 3), "proof": proved.seconds, "prepare": round(time.monotonic() - began, 3)}
-    return Confinement(plan, Made(profile, proved, session, stack, scratch, agent_home, context.config, argv, timing), stage)
+    return Confinement(plan, Made(profile, proved, session, stack, scratch, admission, agent_home, context.config, argv, timing), stage)
