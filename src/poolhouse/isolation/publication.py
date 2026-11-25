@@ -33,7 +33,7 @@ __all__ = ["REASONS", "Basis", "Decision", "Refusal", "colliding", "decide", "fo
 
 REASONS = {
     **runs_later.CLASSES,
-    "untracked": "a file git does not hold, so what an overwrite or a deletion destroys could not be restored",
+    "restore": "a file git does not hold whose previous version the launcher could not keep first, so it was not replaced or deleted",
     "control": "a control path of a coding tool, which no change applies",
     "credential": "a file named like a credential, which no change applies",
     "special": "a file the working copy cannot carry: a special file, a link out of the tree, a submodule or a hard-linked file",
@@ -43,7 +43,7 @@ REASONS = {
     "unread": "a project too large to read what names what, so nothing of it is applied",
 }
 """One sentence the parent writes for each cause of a refusal: the classes of the classifier, and the causes that are not about a file's class."""
-RULED = frozenset({"program", "data", "untracked"})
+RULED = frozenset({"program", "data"})
 """The only causes a `publish` rule can lift: a file that is not governing and is not a link, a control name or a credential."""
 NO_CONTENT = frozenset({"control", "credential", "special", "unread"})
 """Causes whose file is never read into a patch."""
@@ -70,7 +70,8 @@ class Decision:
 
 @dataclass(frozen=True, slots=True)
 class Basis:
-    """What a decision reads: the person's checkout, the stage as captured now, the paths git holds and the `publish` rules in force."""
+    """What a decision reads: the person's checkout, the stage as captured now, the paths git holds (the version an edit displaces of any other path
+    is kept first, so the launcher itself can give it back) and the `publish` rules in force."""
 
     project: Path
     result: Capture
@@ -147,14 +148,17 @@ def _ruled(basis: Basis, path: str, klass: str) -> bool:
 
 
 def _edit(basis: Basis, change: Change, path: str, entry: CaptureEntry | None) -> Edit | None:
-    """The edit for a change whose bytes are read once more and must still be the ones the capture recorded, or ``None``."""
+    """The edit for a change whose bytes are read once more and must still be the ones the capture recorded, or ``None``. An overwrite or a deletion
+    of a path git does not hold keeps the version it displaces first; the base digest is the one the master (or the last publication) holds, and
+    the apply refuses the path unless the live file is still byte for byte that version."""
     base = None if change.before is None else change.before.hex()
+    first = change.before is not None and path not in basis.tracked
     if change.after is None or entry is None:
-        return Edit(path, base, None)
+        return Edit(path, base, None, kept_first=first)
     found = _open(basis.result.directory, path, None)
     if found is None or hashlib.sha256(found[0]).digest() != entry.sha256:
         return None
-    return Edit(path, base, found[0], 0o755 if entry.mode == b"100755" else 0o644)
+    return Edit(path, base, found[0], 0o755 if entry.mode == b"100755" else 0o644, kept_first=first)
 
 
 def _link(basis: Basis, change: Change, path: str, entries: dict[str, CaptureEntry], verdicts: dict[str, runs_later.Verdict]) -> Edit | None:
@@ -187,8 +191,6 @@ def _one(basis: Basis, change: Change, entries: dict[str, CaptureEntry], verdict
     if LINK in (change.before_mode, change.after_mode):
         return _link(basis, change, path, entries, verdicts) or Refusal(path, "link", size)
     klass = verdicts[path].klass
-    if klass == runs_later.PLAIN and change.before is not None and path not in basis.tracked:
-        klass = "untracked"
     if klass != runs_later.PLAIN and not (klass in RULED and _ruled(basis, path, klass)):
         return Refusal(path, klass, size)
     return _edit(basis, change, path, entry) or Refusal(path, "data", size)

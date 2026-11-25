@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from poolhouse import coding_apply as apply_module, files
-from poolhouse.coding_apply import Edit, apply, digest, recover
+from poolhouse.coding_apply import Edit, digest, recover
 
 BASE, RESULT, PERSON = b"base = 1\n", b"result = 2\n", b"person = 3\n"
 
@@ -22,8 +22,24 @@ def world(tmp_path):
     return project, tmp_path / "state" / "log", tmp_path / "state" / "kept"
 
 
-def edit(data: bytes | None = RESULT, base: bytes | None = BASE, path: str = "src/app.py", mode: int = 0o644) -> Edit:
-    return Edit(path, digest(base), data, mode)
+def edit(data: bytes | None = RESULT, base: bytes | None = BASE, path: str = "src/app.py", mode: int = 0o644, first: bool = False) -> Edit:
+    return Edit(path, digest(base), data, mode, kept_first=first)
+
+
+def apply(project: Path, edits: list[Edit], *, log: Path, keep: Path, **options) -> list[apply_module.Outcome]:
+    """`coding_apply.apply` with the directory of the displaced versions beside the kept one, opened as the launcher opens it."""
+    directory = keep.parent / "restored"
+    directory.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        return apply_module.apply(project, edits, apply_module.Places(log, keep, descriptor, **options))
+    finally:
+        os.close(descriptor)
+
+
+def restored(keep: Path) -> dict[str, bytes]:
+    """The versions kept first: the name each is kept under, and its bytes."""
+    return {each.name: each.read_bytes() for each in (keep.parent / "restored").iterdir()}
 
 
 def left_over(project: Path) -> list[str]:
@@ -214,3 +230,73 @@ def test_a_crash_after_the_exchange_is_completed_by_the_next_launch_or_undone_wh
         apply(project, [edit()], log=log, keep=keep, after=saved_then_crashed)
     [undone] = recover(project, log)
     assert undone.state == "conflict" and (project / "src" / "app.py").read_bytes() == PERSON and left_over(project) == []
+
+
+def test_a_version_an_overwrite_or_a_deletion_displaces_is_kept_first_read_only_and_named_by_its_digest_when_git_does_not_hold_it(world):
+    project, log, keep = world
+    seen = {}
+
+    def after(path: str, step: str) -> None:
+        if step == "restored":
+            seen["copies"], seen["live"] = restored(keep), (project / path).read_bytes()
+
+    [done] = apply(project, [edit(first=True)], log=log, keep=keep, after=after)
+    name = digest(BASE)
+    assert (done.state, done.restored) == ("applied", name) and (project / "src" / "app.py").read_bytes() == RESULT
+    assert seen == {"copies": {name: BASE}, "live": BASE}, "the copy is on disk before anything is displaced"
+    assert restored(keep) == {name: BASE} and (keep.parent / "restored" / name).stat().st_mode & 0o777 == 0o400
+    assert not [each for each in (keep.parent / "restored").iterdir() if each.name.startswith(apply_module.TEMP)], "no half-written copy is left"
+    (project / "src" / "app.py").write_bytes(PERSON)
+    [gone] = apply(project, [edit(data=None, base=PERSON, first=True)], log=log, keep=keep)
+    assert (gone.state, gone.restored) == ("applied", digest(PERSON)) and not (project / "src" / "app.py").exists()
+    assert restored(keep) == {name: BASE, digest(PERSON): PERSON}
+
+
+def test_a_file_git_holds_is_not_copied_and_a_new_file_displaces_nothing(world):
+    project, log, keep = world
+    [held] = apply(project, [edit()], log=log, keep=keep)
+    [made] = apply(project, [edit(base=None, path="src/new.py", first=True)], log=log, keep=keep)
+    assert (held.state, held.restored, made.state, made.restored) == ("applied", "", "applied", "") and restored(keep) == {}
+
+
+def test_two_displaced_files_with_the_same_bytes_share_one_copy(world):
+    project, log, keep = world
+    (project / "src" / "twin.py").write_bytes(BASE)
+    done = apply(project, [edit(first=True), edit(path="src/twin.py", first=True)], log=log, keep=keep)
+    assert [each.state for each in done] == ["applied", "applied"] and {each.restored for each in done} == {digest(BASE)}
+    assert restored(keep) == {digest(BASE): BASE}
+
+
+def test_a_displaced_version_that_cannot_be_kept_stops_the_change_and_changes_nothing(world):
+    project, log, keep = world
+    (keep.parent / "restored").mkdir(parents=True)
+    (keep.parent / "restored").chmod(0o500)
+    try:
+        [done] = apply(project, [edit(first=True)], log=log, keep=keep)
+    finally:
+        (keep.parent / "restored").chmod(0o700)
+    assert done.state == "unkept" and (project / "src" / "app.py").read_bytes() == BASE and left_over(project) == [] and restored(keep) == {}
+
+
+def test_a_save_between_the_hold_and_the_copy_is_a_conflict_and_keeps_nothing(world):
+    project, log, keep = world
+    [done] = apply(project, [edit(first=True)], log=log, keep=keep, after=person_saves(project, "in place", "held"))
+    assert done.state == "conflict" and done.restored == "" and (project / "src" / "app.py").read_bytes() == PERSON and done.kept.read_bytes() == RESULT
+    assert restored(keep) == {} and left_over(project) == []
+
+
+@pytest.mark.parametrize("how", ["in place", "rename", "delete and re-create"])
+def test_a_save_after_the_copy_is_found_by_the_verification_and_what_is_displaced_is_the_persons_version(world, how):
+    project, log, keep = world
+    [done] = apply(project, [edit(first=True)], log=log, keep=keep, after=person_saves(project, how, "restored"))
+    assert done.state == "conflict" and done.restored == "" and (project / "src" / "app.py").read_bytes() == PERSON, "the person's newest version is live again"
+    assert left_over(project) == []
+
+
+def test_a_crash_after_the_swap_leaves_the_copy_the_completed_swap_depends_on(world):
+    project, log, keep = world
+    with pytest.raises(Crash):
+        apply(project, [edit(first=True)], log=log, keep=keep, after=crash_at("swapped"))
+    assert restored(keep) == {digest(BASE): BASE}, "the copy was made before the swap, so a crash at any later step loses nothing"
+    [done] = recover(project, log)
+    assert done.state == "applied" and (project / "src" / "app.py").read_bytes() == RESULT and left_over(project) == []

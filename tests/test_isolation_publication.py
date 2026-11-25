@@ -3,8 +3,10 @@ at once, the patch the session can read, and the report that holds only the pare
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -14,7 +16,7 @@ from poolhouse.coding_workspace_state import CONTROL_PREFIXES
 from poolhouse.isolation import publication, publish
 from poolhouse.isolation.notices import HEAD
 from poolhouse.isolation.workspace import Session
-from tests.isolation_world import Sink, begin, make_project, private_storage, write
+from tests.isolation_world import Sink, begin, copies, holds, make_project, private_storage, write
 
 
 @pytest.fixture(autouse=True)
@@ -191,17 +193,93 @@ def test_special_files_in_the_stage_are_left_out_and_named_and_never_applied(pro
     assert not (project / "pipe").exists()
 
 
-def test_a_file_git_does_not_hold_is_not_overwritten_or_deleted_without_a_rule_that_names_that_exact_file(project, tmp_path):
+def sha(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def test_a_file_git_does_not_hold_is_overwritten_only_after_the_launcher_keeps_its_exact_bytes_under_the_state_root(project, tmp_path):
     session = begin(project, tmp_path, Sink())
     write(session, "notes/todo.md", "changed\n")
     write(session, "notes/new.md", "brand new\n")
+    write(session, "src/app.py", "x = 2\n")
     turn = session.publish_turn()
-    assert turn.applied == ("notes/new.md",) and [(each.path, each.klass) for each in turn.refused] == [("notes/todo.md", "untracked")]
-    assert (project / "notes" / "todo.md").read_bytes() == b"todo\n"
-    rule = publish.bind(project, "notes/todo.md")
-    again = begin(project, tmp_path, Sink(), session="s2", rules=(rule,))
-    write(again, "notes/todo.md", "changed\n")
-    assert again.publish_turn().applied == ("notes/todo.md",) and (project / "notes" / "todo.md").read_bytes() == b"changed\n"
+    assert sorted(turn.applied) == ["notes/new.md", "notes/todo.md", "src/app.py"] and not turn.refused and not turn.conflicts
+    assert (project / "notes" / "todo.md").read_bytes() == b"changed\n" and (project / "notes" / "new.md").read_bytes() == b"brand new\n"
+    name = sha(b"todo\n")
+    assert turn.restored == (("notes/todo.md", name),) and copies(session) == {name: b"todo\n"}, "the displaced bytes are kept once, named by their digest; a new file displaces none, and git is the copy of a file it holds"
+    assert (session.restores.directory / name).stat().st_mode & 0o777 == 0o400, "a restore copy is read-only"
+    assert session.restores.directory.is_relative_to(tmp_path / "state") and not session.restores.directory.is_relative_to(project)
+    assert not session.restores.directory.is_relative_to(session.kept.directory), "the session's patch grant does not reach the restore copies"
+    assert str(session.restores.directory) in turn.text and name[:16] in turn.text and 'file "notes/todo.md"' in turn.text, "the report says where the file is"
+    assert turn.report == "" and not [name for name in checkout_names(session.stage.physical) if "restored" in name], "a restore copy is no refusal and adds no name to the stage"
+
+
+def test_the_deletion_of_a_file_git_does_not_hold_is_restorable_from_the_report_alone(project, tmp_path):
+    session = begin(project, tmp_path, Sink())
+    (session.stage.physical / "notes" / "todo.md").unlink()
+    turn = session.publish_turn()
+    assert turn.applied == ("notes/todo.md",) and not (project / "notes" / "todo.md").exists()
+    [(path, name)] = turn.restored
+    shutil.copyfile(session.restores.directory / name, project / path)
+    assert (project / "notes" / "todo.md").read_bytes() == b"todo\n", "the person gets the file back from the directory the report names"
+
+
+def test_a_follow_up_edit_of_a_file_an_earlier_launch_created_and_left_untracked_is_applied_with_a_restore_copy(project, tmp_path):
+    first = begin(project, tmp_path, Sink())
+    write(first, "hello.py", "print('hello')\n")
+    assert first.publish_turn().applied == ("hello.py",)
+    first.finish(None, stalled=1.0, ended=publication_clean())
+    assert (project / "hello.py").read_bytes() == b"print('hello')\n" and not holds(project, "hello.py"), "published, and never committed"
+    second = begin(project, tmp_path, Sink(), session="s2")
+    write(second, "hello.py", "print('hello')\n\n\ndef bye():\n    print('bye')\n")
+    turn = second.publish_turn()
+    assert turn.applied == ("hello.py",) and not turn.refused, "the edit is correct and is applied"
+    assert (project / "hello.py").read_bytes().endswith(b"print('bye')\n") and copies(second) == {sha(b"print('hello')\n"): b"print('hello')\n"}
+
+
+def test_a_file_the_session_published_itself_is_edited_again_in_a_later_turn_with_a_restore_copy(project, tmp_path):
+    session = begin(project, tmp_path, Sink())
+    write(session, "notes/draft.md", "one\n")
+    assert session.publish_turn().applied == ("notes/draft.md",)
+    write(session, "notes/draft.md", "two\n")
+    turn = session.publish_turn()
+    assert turn.applied == ("notes/draft.md",) and (project / "notes" / "draft.md").read_bytes() == b"two\n"
+    assert copies(session) == {sha(b"one\n"): b"one\n"}
+
+
+def test_an_untracked_file_changed_in_the_checkout_since_launch_is_a_conflict_that_is_never_overwritten_or_deleted(project, tmp_path):
+    session = begin(project, tmp_path, Sink())
+    (project / "notes" / "todo.md").write_bytes(b"the person's own line\n")
+    write(session, "notes/todo.md", "the session's line\n")
+    turn = session.publish_turn()
+    assert turn.conflicts == ("notes/todo.md",) and not turn.applied and not turn.restored
+    assert (project / "notes" / "todo.md").read_bytes() == b"the person's own line\n"
+    assert [path.read_bytes() for path in (session.kept.directory / "kept").glob("*.kept")] == [b"the session's line\n"], "the session's version is kept for it to read"
+    assert copies(session) == {} and "stays" in turn.text and 'file "notes/todo.md"' in turn.text and "?" not in turn.text, "a plain reason, no question"
+    (session.stage.physical / "notes" / "todo.md").unlink()
+    gone = session.publish_turn()
+    assert gone.conflicts == ("notes/todo.md",) and (project / "notes" / "todo.md").read_bytes() == b"the person's own line\n", "a deletion of a changed file is a conflict too"
+    assert copies(session) == {}
+
+
+def test_an_untracked_file_the_session_never_saw_is_never_overwritten_and_the_bytes_of_an_ignored_file_are_copied_nowhere(project, tmp_path):
+    (project / "cache").mkdir()
+    (project / "cache" / "gen.py").write_text("SECRET = 'PRIVATE-LIVE-BYTES'\n")
+    (project / ".gitignore").write_text("cache/\nscratch.log\n")
+    session = begin(project, tmp_path, Sink())
+    assert not (session.stage.physical / "cache").exists(), "a folder the checkout ignores is not in the stage"
+    (project / "notes" / "late.md").write_bytes(b"the person made this after the launch\n")
+    write(session, "notes/late.md", "the session made one too\n")
+    write(session, ".gitignore", "")
+    write(session, "cache/gen.py", "SECRET = 'the session wrote this'\n")
+    turn = session.publish_turn()
+    assert sorted(turn.conflicts) == ["cache/gen.py", "notes/late.md"] and not turn.restored
+    assert (project / "notes" / "late.md").read_bytes() == b"the person made this after the launch\n"
+    assert (project / "cache" / "gen.py").read_text() == "SECRET = 'PRIVATE-LIVE-BYTES'\n"
+    assert copies(session) == {}
+    everything = [path.read_bytes() for path in (tmp_path / "state").rglob("*") if path.is_file()]
+    assert everything and not [data for data in everything if b"PRIVATE-LIVE-BYTES" in data or b"person made this" in data], "no byte of the checkout's own is copied anywhere"
+    assert "PRIVATE" not in turn.text
 
 
 def test_a_publish_rule_lifts_a_data_file_but_never_a_governing_class_whatever_the_staged_bytes_make_of_a_file_it_names(project, tmp_path):

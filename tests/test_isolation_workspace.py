@@ -130,20 +130,38 @@ def test_the_environment_folders_are_linked_into_the_stage_and_read_only_by_exac
     assert session.first_line() == ""
 
 
+def test_the_restore_directory_is_in_no_grant_of_the_launchers_profile(project, tmp_path):
+    from poolhouse.isolation.profile import build
+    from poolhouse.isolation.spec import Spec
+
+    session = begin(project, tmp_path, Sink())
+    write(session, "notes/todo.md", "changed\n")
+    assert session.publish_turn().restored, "a restore copy exists"
+    profile = build(Spec("claude", str(session.stage.physical), str(tmp_path / "home"), str(tmp_path / "install"), 1, patches=session.patches))
+    granted = (*profile.policy.read, *profile.policy.write)
+    restored = str(session.restores.directory)
+    assert session.patches in granted, "the session reads its refused patches"
+    assert not [path for path in granted if restored == path or restored.startswith(path.rstrip("/") + "/") or path.startswith(restored)], "and never the kept versions"
+
+
 def test_the_refused_patch_directory_and_the_environment_links_are_read_only_to_the_session_in_the_stage_mode_and_across_epoch_rotation_under_the_real_seatbelt(project, tmp_path, seatbelt):  # noqa: F811
     (project / ".venv").mkdir()
     (project / ".venv" / "pyvenv.cfg").write_text("home = /usr/bin\n")
     session = begin(project, tmp_path, Sink())
     write(session, "evil.json", "{}\n")
+    write(session, "notes/todo.md", "changed\n")
     turn = session.publish_turn()
-    stage, patches = session.stage.physical, session.patches
+    [(_, name)] = turn.restored
+    stage, patches, restored = session.stage.physical, session.patches, session.restores.directory
     confined = sandbox_policy(read=[patches, *session.reads], write=[stage])
     script = (f"cat {patches}/{turn.patch.name} > /dev/null && echo READ_PATCH; echo x > {patches}/forged.patch || echo CANNOT_FORGE; "
               f"echo x > {patches}/{turn.patch.name} || echo CANNOT_REPLACE; cat {stage}/.venv/pyvenv.cfg > /dev/null && echo READ_ENV; "
-              f"echo x > {stage}/.venv/planted || echo CANNOT_PLANT; echo y > {stage}/made.txt && echo WROTE_STAGE; ls {project} > /dev/null || echo NO_PROJECT")
+              f"echo x > {stage}/.venv/planted || echo CANNOT_PLANT; echo y > {stage}/made.txt && echo WROTE_STAGE; ls {project} > /dev/null || echo NO_PROJECT; "
+              f"cat {restored}/{name} > /dev/null || echo CANNOT_READ_RESTORED; echo x > {restored}/{name} || echo CANNOT_REPLACE_RESTORED")
     result = sandbox.run(["/bin/sh", "-c", script], confined, via=seatbelt)
-    for expected in ("READ_PATCH", "CANNOT_FORGE", "CANNOT_REPLACE", "READ_ENV", "CANNOT_PLANT", "WROTE_STAGE", "NO_PROJECT"):
+    for expected in ("READ_PATCH", "CANNOT_FORGE", "CANNOT_REPLACE", "READ_ENV", "CANNOT_PLANT", "WROTE_STAGE", "NO_PROJECT", "CANNOT_READ_RESTORED", "CANNOT_REPLACE_RESTORED"):
         assert expected in result.stdout, (expected, result.stdout, result.stderr)
+    assert (restored / name).read_bytes() == b"todo\n"
     assert not (project / ".venv" / "planted").exists() and sorted(path.name for path in session.kept.directory.iterdir()) == [turn.patch.name]
     rotated = session.workspace.begin()
     assert rotated.alias.resolve() != stage.resolve() and os.path.realpath(session.patches) == patches, "the patch directory does not depend on the stage"

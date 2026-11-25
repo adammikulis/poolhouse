@@ -59,6 +59,16 @@ def make_project(tmp_path: Path) -> Path:
     return root
 
 
+def holds(root: Path, name: str) -> bool:
+    """Whether the project's own git index holds ``name`` (the test of a file git can give back)."""
+    return bool(source.git_output(["ls-files", "-z", "--", name], cwd=root))
+
+
+def copies(session: Session) -> dict[str, bytes]:
+    """The versions the session's publications displaced and kept first: the name each is kept under, and its bytes."""
+    return {path.name: path.read_bytes() for path in session.restores.directory.iterdir()}
+
+
 def launch(project: Path, tmp_path: Path, sink: Sink, **options) -> Launch:
     notice = Notice(Reporter(sink.post), "lead", options.pop("cap", 8), lambda name, fields: sink.events.append((name, fields)))
     return Launch(str(project), str(tmp_path / "state"), options.pop("session", "s1"), notice, log=lambda kind, **fields: sink.log.append((kind, fields)), **options)

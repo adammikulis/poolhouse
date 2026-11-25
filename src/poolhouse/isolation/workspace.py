@@ -2,8 +2,9 @@
 
 `Session.begin` stages the person's project (or takes the stage an earlier launch of the same conversation kept), links the person's environment
 folders into it, and opens the directory of this session's refused patches. `publish_turn` captures the stage, decides every change with
-`isolation.publication`, applies the plain ones with `coding_apply` and refuses the rest at once: a patch kept for the session to read, and one
-report to the launching session in the parent's words. The base advances to what was published, so each turn compares against the last one.
+`isolation.publication`, applies the plain ones with `coding_apply` (which keeps first, under the state root and out of the session's reach, the
+version of a file git does not hold that an edit displaces) and refuses the rest at once: a patch kept for the session to read, and one report to
+the launching session in the parent's words. The base advances to what was published, so each turn compares against the last one.
 `finish` ends every process of the session first (`sandbox.process_tree.end`), and publishes only when none is left. Nothing here asks a question,
 holds a change for an answer or waits for a person.
 """
@@ -24,7 +25,7 @@ from poolhouse.activity.source_snapshot import Capture, CaptureEntry
 from poolhouse.coding_workspace import Stage, Workspace, between
 from poolhouse.coding_workspace_state import CONTROL_PREFIXES
 from poolhouse.isolation import places, publication, toolchain
-from poolhouse.isolation.notices import HEAD, Kept, Notice, Patch, Reports, words
+from poolhouse.isolation.notices import HEAD, Directory, Kept, Notice, Patch, Reports, Result, words
 from poolhouse.isolation.publication import Refusal, fold
 from poolhouse.isolation.publish import PublishRule
 from poolhouse.sandbox import process_tree
@@ -59,8 +60,9 @@ class Launch:
 
 @dataclass(frozen=True, slots=True)
 class Turn:
-    """What one publication did: the paths applied, the refusals, the paths the person saved meanwhile, the patch, the words and what became of the
-    report (``posted``, ``folded``, ``capped`` or ``line``); ``deferred`` says why nothing was published."""
+    """What one publication did: the paths applied, the refusals, the paths the person changed meanwhile, the patch, the words and what became of the
+    report (``posted``, ``folded``, ``capped`` or ``line``); ``deferred`` says why nothing was published; ``restored`` gives, for each applied path whose
+    previous version was kept first, the name that copy has in the session's restore directory."""
 
     applied: tuple[str, ...] = ()
     refused: tuple[Refusal, ...] = ()
@@ -69,6 +71,7 @@ class Turn:
     text: str = ""
     report: str = ""
     deferred: str = ""
+    restored: tuple[tuple[str, str], ...] = ()
 
 
 def _digest(value: str | bytes) -> str:
@@ -107,13 +110,14 @@ def _tracked(root: Path) -> frozenset[str]:
 
 class Session:
     """One launch's workspace. Build it with `Session.begin`; `stage` is the directory the agent works in and `patches` the one directory of
-    refused patches it may read."""
+    refused patches it may read. `restores` is the directory of the versions a publication displaced and kept first: the session has no grant there."""
 
     def __init__(self, launch: Launch, workspace: Workspace, stage: Stage, base: Capture) -> None:
         self.launch, self.workspace, self.stage, self.base = launch, workspace, stage, base
         self.root = Path(os.path.realpath(launch.project))
         self.state = Path(launch.state)
         self.kept = Kept(self.state / "refused" / launch.session)
+        self.restores = Directory(self.state / "restored" / launch.session)
         self.reports = Reports(launch.notice)
         self.tracked = _tracked(self.root)
         self.held = frozenset(os.fsdecode(each.path) for each in workspace.initial.entries)
@@ -209,10 +213,12 @@ class Session:
         changes = tuple(each for each in between(self.base, captured) if self.decided.get(each.path) != (each.after, each.after_mode))
         basis = publication.Basis(self.root, captured, self.tracked, self.launch.rules)
         decision = publication.decide(basis, changes, self._news(captured, made))
-        done = coding_apply.apply(self.root, decision.edits, log=self.state / "applying" / f"{_digest(str(self.root))}.log",
-                                  keep=self.kept.directory / "kept") if decision.edits else []
-        refused = [*decision.refused, *(Refusal(each.path, "path") for each in done if each.state == "refused")]
+        places = coding_apply.Places(self.state / "applying" / f"{_digest(str(self.root))}.log", self.kept.directory / "kept", self.restores.descriptor)
+        done = coding_apply.apply(self.root, decision.edits, places) if decision.edits else []
+        refused = [*decision.refused, *(Refusal(each.path, "path") for each in done if each.state == "refused"),
+                   *(Refusal(each.path, "restore") for each in done if each.state == "unkept")]
         conflicts = [each.path for each in done if each.state == "conflict"]
+        restored = [(Refusal(each.path, "restored", os.stat(each.restored, dir_fd=self.restores.descriptor).st_size), each.restored) for each in done if each.restored]
         settled = {os.fsencode(each.path) for each in done if each.state in ("applied", "unchanged")}
         by_path = {each.path: each for each in changes}
         self.decided.update({os.fsencode(each.path): (by_path[os.fsencode(each.path)].after, by_path[os.fsencode(each.path)].after_mode)
@@ -220,13 +226,14 @@ class Session:
         self._advance(captured, settled)
         patch = self.kept.write(publication.patch_text(basis, refused)) if refused else None
         applied = tuple(each.path for each in done if each.state == "applied")
-        text = words(len(applied), refused, self.held, patch, conflicts) if applied or refused or conflicts else ""
+        text = words(Result(len(applied), refused, patch, conflicts, restored, str(self.restores.directory)), self.held) if applied or refused or conflicts else ""
         pending = [*refused, *(Refusal(path, "conflict") for path in conflicts)]
         status = self.reports.send(pending, text) if pending else ""
         self.launch.log("isolation.publication", subject=self.launch.session, outcome="refused" if pending else "applied" if applied else "unchanged",
                         meta={"applied": [_digest(path) for path in applied], "refused": [_digest(each.path) for each in refused],
-                              "conflicts": [_digest(path) for path in conflicts], "patch": patch.digest if patch else "", "report": status})
-        return Turn(applied, tuple(refused), tuple(conflicts), patch, text, status)
+                              "conflicts": [_digest(path) for path in conflicts], "restored": [name for _, name in restored],
+                              "patch": patch.digest if patch else "", "report": status})
+        return Turn(applied, tuple(refused), tuple(conflicts), patch, text, status, restored=tuple((each.path, name) for each, name in restored))
 
     def _advance(self, captured: Capture, settled: set[bytes]) -> None:
         """The base moves to what was published: the settled paths take the stage's entry (or leave the base when the stage deleted them), and the
@@ -273,6 +280,7 @@ class Session:
         conversation; any other stage is removed."""
         self.closed = True
         self.kept.close()
+        self.restores.close()
         for _, found in self.links:
             found.close()
         namespace = self.workspace.directory
@@ -285,5 +293,6 @@ class Session:
             record.chmod(0o600)
         else:
             shutil.rmtree(namespace, ignore_errors=True)
-        with contextlib.suppress(OSError):
-            self.kept.directory.rmdir()
+        for each in (self.kept.directory, self.restores.directory):
+            with contextlib.suppress(OSError):
+                each.rmdir()

@@ -3,9 +3,10 @@
 The parent acts with the person's authority on paths the agent chose, and the person's editors write the same files meanwhile, so each path
 is applied in five steps that pin the read of the live file to the write (docs/design-isolated-launcher.md, 4.4.3): hold the live file and
 record it, prepare the result beside it, exchange the two names in one operation, verify that the displaced version is the one held, and
-either unlink it (it equals the base) or exchange back and keep the agent's version. A record of the intended writes is written first, so a
-crash leaves a state `recover` completes or rolls back by the same verification. Nothing here classifies a file: what may be applied is
-decided before, by `guard.runs_later`, and arrives as `Edit`s.
+either unlink it (it equals the base) or exchange back and keep the agent's version. A file that nothing else can give back (an `Edit` with
+`kept_first`) has the bytes it displaces copied, through the held descriptor, into a read-only file named by their digest before anything is
+changed. A record of the intended writes is written first, so a crash leaves a state `recover` completes or rolls back by the same
+verification. Nothing here classifies a file: what may be applied is decided before, by `guard.runs_later`, and arrives as `Edit`s.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from pathlib import Path
 
 from poolhouse import files
 
-__all__ = ["Edit", "Outcome", "apply", "recover"]
+__all__ = ["Edit", "Outcome", "Places", "apply", "recover"]
 
 TEMP = ".poolhouse-apply-"
 CONFLICT = ".poolhouse-conflict-"
@@ -33,26 +34,43 @@ NO_EXCHANGE = (errno.ENOTSUP, errno.EINVAL, errno.ENOSYS)
 @dataclass(frozen=True, slots=True)
 class Edit:
     """One path of the change set: the digest of the base (``None`` when the path was absent), the result bytes (``None`` to delete) and its mode.
-    ``link`` makes the edit a new relative symbolic link to that target, which is only ever installed where nothing is."""
+    ``link`` makes the edit a new relative symbolic link to that target, which is only ever installed where nothing is. ``kept_first`` says that
+    nothing but this call can give back the version an overwrite or a deletion displaces, so it is kept first, and the change stops where it cannot be."""
 
     path: str
     base: str | None
     data: bytes | None
     mode: int = 0o644
     link: str | None = None
+    kept_first: bool = False
 
 
 @dataclass(frozen=True, slots=True)
 class Outcome:
     """What became of one path: ``applied``, ``unchanged`` (the live file already equalled the result), ``conflict`` (the person's version stays
-    and the agent's is kept at ``kept``, and ``beside`` names the person's displaced version when two saves raced) or ``refused`` (a link in the
-    live path); ``method`` says which of the exchange, the claim, the creation or the deletion was used."""
+    and the agent's is kept at ``kept``, and ``beside`` names the person's displaced version when two saves raced), ``refused`` (a link in the
+    live path) or ``unkept`` (the displaced version could not be kept first, so nothing was changed); ``method`` says which of the exchange, the
+    claim, the creation or the deletion was used, and ``restored`` the name an applied path's displaced version was kept under."""
 
     path: str
     state: str
     method: str = ""
     kept: Path | None = None
     beside: Path | None = None
+    restored: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class Places:
+    """Where an application writes besides the project: ``log`` receives the intent record and a line for each step; ``keep`` receives the agent's
+    version of every path that was not applied; ``restore`` is the descriptor of the directory that receives the version every `kept_first` path
+    displaces, before it is displaced; ``after`` is called with the path and the step reached after each step (a seam for a test to be the person
+    saving at that moment)."""
+
+    log: Path
+    keep: Path
+    restore: int
+    after: Callable[[str, str], None] = lambda path, step: None
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +82,7 @@ class Target:
     edit: Edit
     log: Path
     keep: Path
+    restore: int
     after: Callable[[str, str], None]
 
 
@@ -80,14 +99,16 @@ def digest(data: bytes | None) -> str | None:
     return None if data is None else hashlib.sha256(data).hexdigest()
 
 
-def _read(descriptor: int) -> tuple[str, tuple[int, ...]]:
+def _read(descriptor: int, sink: Callable[[bytes], object] | None = None) -> tuple[str, tuple[int, ...]]:
     """The digest of what the descriptor holds from its start and the identity of the file: device, inode, size, modification time and mode. The
     change time is not in it: the exchange itself renames the held file, which moves its change time, and the digest read again through the
-    held descriptor is what shows a write that came after step 1."""
+    held descriptor is what shows a write that came after step 1. ``sink`` is given every block read."""
     os.lseek(descriptor, 0, os.SEEK_SET)
     hasher = hashlib.sha256()
     while block := os.read(descriptor, 1 << 20):
         hasher.update(block)
+        if sink is not None:
+            sink(block)
     info = os.fstat(descriptor)
     return hasher.hexdigest(), (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_mode)
 
@@ -158,14 +179,39 @@ def _exchange(parent: int, one: str, other: str) -> str:
     return "claim"
 
 
-def _one(project: Path, edit: Edit, log: Path, keep: Path, after: Callable[[str, str], None]) -> Outcome:
+def _save(target: Target, held: Held) -> Outcome | None:
+    """Keep the bytes the held file holds before anything displaces them, as a read-only file named by their digest in the restore directory,
+    written through the held descriptor and made durable. ``None`` when they are kept; ``unkept`` when that cannot be written; a conflict when the
+    file was saved while it was read, so what was read is not the version held."""
+    directory, temp = target.restore, f"{TEMP}{uuid.uuid4().hex}"
+    try:
+        with os.fdopen(os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400, dir_fd=directory), "wb") as stream:
+            same = _read(held.descriptor, stream.write) == (held.digest, held.identity)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if same:
+            with contextlib.suppress(FileExistsError):
+                files.promote_new(temp, held.digest, source_fd=directory, target_fd=directory)
+            os.fsync(directory)
+    except OSError:
+        return Outcome(target.edit.path, "unkept")
+    finally:
+        with contextlib.suppress(OSError):
+            os.unlink(temp, dir_fd=directory)
+    if not same:
+        return Outcome(target.edit.path, "conflict", kept=_keep(target))
+    target.after(target.edit.path, "restored")
+    return None
+
+
+def _one(project: Path, edit: Edit, places: Places) -> Outcome:
     parts = Path(edit.path).parts
     try:
         parent = _directory(project, parts[:-1], create=edit.base is None and (edit.data is not None or edit.link is not None))
     except OSError:
         return Outcome(edit.path, "refused")
     try:
-        return _apply(Target(parent, parts[-1], edit, log, keep, after))
+        return _apply(Target(parent, parts[-1], edit, places.log, places.keep, places.restore, places.after))
     finally:
         os.close(parent)
 
@@ -188,6 +234,8 @@ def _apply(target: Target) -> Outcome:
             return Outcome(edit.path, "unchanged")
         if live != edit.base or (held and not stat.S_ISREG(held.identity[4])):
             return Outcome(edit.path, "conflict", kept=_keep(target))
+        if held is not None and edit.kept_first and (stopped := _save(target, held)):
+            return stopped
         if edit.data is None:
             return _delete(target, held)
         temp, ours = _prepare(target)
@@ -216,7 +264,7 @@ def _finish(target: Target, held: Held, temp: str, ours: tuple[int, int], method
     if now == (held.digest, held.identity) and (at_temp.st_dev, at_temp.st_ino) == held.identity[:2]:
         os.unlink(temp, dir_fd=parent)
         _note(target.log, {"path": edit.path, "step": "done"})
-        return Outcome(edit.path, "applied", method)
+        return Outcome(edit.path, "applied", method, restored=held.digest if edit.kept_first else "")
     here = os.stat(target.name, dir_fd=parent, follow_symlinks=False)
     if (here.st_dev, here.st_ino) == ours:
         _exchange(parent, temp, target.name)
@@ -268,7 +316,7 @@ def _delete(target: Target, held: Held | None) -> Outcome:
     if _read(held.descriptor) == (held.digest, held.identity):
         os.unlink(claimed, dir_fd=parent)
         _note(target.log, {"path": edit.path, "step": "done"})
-        return Outcome(edit.path, "applied", "delete")
+        return Outcome(edit.path, "applied", "delete", restored=held.digest if edit.kept_first else "")
     try:
         files.promote_new(claimed, target.name, source_fd=parent, target_fd=parent)
         return Outcome(edit.path, "conflict", "delete", kept=_keep(target))
@@ -278,15 +326,12 @@ def _delete(target: Target, held: Held | None) -> Outcome:
         return Outcome(edit.path, "conflict", "delete", kept=_keep(target), beside=Path(aside))
 
 
-def apply(project: str | os.PathLike[str], edits: Sequence[Edit], *, log: Path, keep: Path,
-          after: Callable[[str, str], None] = lambda path, step: None) -> list[Outcome]:
-    """Apply ``edits`` to ``project`` one path at a time and say what became of each. ``log`` receives the intent record before the first write
-    and a line for each step; ``keep`` receives the agent's version of every path that was not applied; ``after`` is called with the path and
-    the step reached after each step (a seam for a test to be the person saving at that moment)."""
-    root = Path(os.path.realpath(project))
+def apply(project: str | os.PathLike[str], edits: Sequence[Edit], places: Places) -> list[Outcome]:
+    """Apply ``edits`` to ``project`` one path at a time and say what became of each; the intent record is written before the first write."""
+    root, log = Path(os.path.realpath(project)), places.log
     log.parent.mkdir(parents=True, exist_ok=True)
     _note(log, {"step": "intent", "paths": [{"path": e.path, "base": e.base, "result": digest(e.data)} for e in edits]})
-    outcomes = [_one(root, edit, log, keep, after) for edit in edits]
+    outcomes = [_one(root, edit, places) for edit in edits]
     _note(log, {"step": "finished"})
     return outcomes
 
