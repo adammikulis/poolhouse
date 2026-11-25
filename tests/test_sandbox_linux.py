@@ -17,6 +17,7 @@ import subprocess
 import sys
 import sysconfig
 import threading
+from dataclasses import replace
 from itertools import pairwise
 from pathlib import Path
 
@@ -24,8 +25,18 @@ import psutil
 import pytest
 
 from poolhouse import sandbox
-from poolhouse.sandbox import Limits, Net, Policy, PolicyError, bubblewrap, netforward, netrelay
+from poolhouse.sandbox import (
+    Limits,
+    Net,
+    Policy,
+    PolicyError,
+    bubblewrap,
+    confinement,
+    netforward,
+    netrelay,
+)
 from poolhouse.sandbox.bubblewrap import Bubblewrap, arguments
+from poolhouse.sandbox.confinement import MARKER
 from poolhouse.sandbox.policies import SYSTEM_EXEC, runtime_reads
 from tests.process_kit import FORKS, THREADS
 
@@ -400,3 +411,102 @@ def test_a_policy_with_no_network_is_not_given_the_hosts_name_lookup_files(tmp_p
     ports = arguments(held(Net.only(80)), "/usr/bin/true", relay=str(tmp_path))
     assert not lookups & set(none)
     assert {each for each in lookups if os.path.lexists(each)} <= set(ports)
+
+
+def stage(tmp_path: Path) -> Path:
+    """A writable tree with a directory ``ctl`` and a file ``notes`` in it, as a policy's one write root."""
+    root = tmp_path / "stage"
+    (root / "ctl").mkdir(parents=True)
+    (root / "ctl" / "config").write_text("kept")
+    (root / "notes").write_text("kept")
+    return root
+
+
+def protecting(root: Path, **names: tuple[str, ...]) -> list[str]:
+    """The bwrap options of a policy that writes ``root`` and protects the paths ``names`` gives (``deny_read``, ``deny_write``)."""
+    chosen = replace(held(Net.deny()), write=(str(root),), **{key: tuple(str(root / each) for each in value) for key, value in names.items()})
+    return arguments(chosen.validated(), "/usr/bin/true")
+
+
+def test_a_protected_name_directly_under_a_writable_tree_is_frozen_after_the_tree_is_bound_and_a_missing_one_is_held_by_the_null_device(tmp_path):
+    root = stage(tmp_path)
+    args = protecting(root, deny_write=("ctl", ".claude"))
+    triples = [tuple(args[at:at + 3]) for at in range(len(args) - 2)]
+    writable = triples.index(("--bind", str(root), str(root)))
+    assert triples.index(("--ro-bind", str(root / "ctl"), str(root / "ctl"))) > writable
+    assert triples.index(("--ro-bind", os.devnull, str(root / ".claude"))) > writable
+
+
+def test_a_path_to_hide_is_covered_by_an_empty_read_only_tree_or_by_the_null_device(tmp_path):
+    root = stage(tmp_path)
+    args = protecting(root, deny_read=("ctl", "notes"))
+    adjacent = list(pairwise(args))
+    assert ("--tmpfs", str(root / "ctl")) in adjacent and ("--remount-ro", str(root / "ctl")) in adjacent
+    assert ["--ro-bind", os.devnull, str(root / "notes")] == args[args.index(str(root / "notes")) - 2:][:3]
+    assert str(root / "ctl" / "config") not in args
+
+
+def test_a_protected_path_deeper_in_a_writable_tree_is_refused_because_the_directory_above_it_could_be_renamed(tmp_path):
+    root = stage(tmp_path)
+    with pytest.raises(PolicyError, match="directly under a writable tree"):
+        protecting(root, deny_write=("ctl/config",))
+
+
+def test_a_protected_path_in_no_writable_tree_adds_nothing(tmp_path):
+    root = stage(tmp_path)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    chosen = replace(held(Net.deny()), write=(str(root),), deny_write=(str(elsewhere),)).validated()
+    assert arguments(chosen, "/usr/bin/true") == arguments(replace(chosen, deny_write=()), "/usr/bin/true")
+
+
+def test_the_files_of_the_hosts_etc_that_a_namespace_binds_are_exactly_the_declared_exposure(tmp_path):
+    binds = {args[at + 1] for args in (arguments(held(net), "/usr/bin/true", relay=str(tmp_path)) for net in (Net.deny(), Net.only(80)))
+             for at, word in enumerate(args) if word == "--ro-bind" and args[at + 1].startswith("/etc/")}
+    assert binds <= set(bubblewrap.ACCOUNT_AND_HOST_FILES.paths)
+    assert {each for each in ("/etc/passwd", "/etc/group", "/etc/localtime") if os.path.lexists(each)} <= binds
+    assert not {"/etc/machine-id", "/var/lib/dbus/machine-id", "/sys/class/dmi/id"} & set(bubblewrap.SYSTEM_READ)
+
+
+def test_the_marker_that_says_a_process_is_confined_is_bound_read_only():
+    args = arguments(held(Net.deny()), "/usr/bin/true")
+    assert ["--ro-bind", os.devnull, MARKER] == args[args.index(MARKER) - 2:][:3]
+
+
+ATTEMPTS = r'''
+import errno, json, os, sys
+root = sys.argv[1]
+def tried(call):
+    try:
+        call()
+        return "done"
+    except OSError as error:
+        return errno.errorcode[error.errno]
+def append(path):
+    with open(path, "a") as out:
+        out.write("x")
+print(json.dumps({"append": tried(lambda: append(root + "/ctl/config")), "create": tried(lambda: append(root + "/ctl/new")),
+                  "rename": tried(lambda: os.rename(root + "/ctl", root + "/other")), "remove": tried(lambda: os.remove(root + "/ctl/config")),
+                  "claude": tried(lambda: os.mkdir(root + "/.claude")), "notes": tried(lambda: append(root + "/notes")),
+                  "read": tried(lambda: open(root + "/ctl/config").read())}))
+'''
+
+
+def test_a_process_cannot_write_create_rename_or_remove_under_a_protected_name_and_works_in_the_rest_of_the_tree(bwrap, tmp_path):
+    root = stage(tmp_path)
+    chosen = replace(held(Net.deny()), write=(str(root),), deny_write=(str(root / "ctl"), str(root / ".claude")))
+    done = sandbox.run([os.path.realpath(sys.executable), "-c", ATTEMPTS, str(root)], chosen, via=bwrap, diagnose="never")
+    seen = json.loads(done.stdout)
+    assert all(seen[key] != "done" for key in ("append", "create", "rename", "remove", "claude")), seen
+    assert seen["notes"] == "done" and seen["read"] == "done"
+    assert (root / "ctl" / "config").read_text() == "kept" and (root / "other").exists() is False
+
+
+def test_a_process_in_the_namespace_knows_it_is_confined_and_the_parent_does_not(bwrap):
+    module = Path(confinement.__file__).resolve()
+    code = ("import importlib.util, json, sys; spec = importlib.util.spec_from_file_location('marker', sys.argv[1]); "
+            "mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod); print(json.dumps(mod.confined()))")
+    chosen = replace(held(Net.deny()), read=(*runtime_reads(), str(module.parent)))
+    done = sandbox.run([os.path.realpath(sys.executable), "-c", code, str(module)], chosen, via=bwrap, diagnose="never")
+    assert sandbox.confined() is False
+    assert json.loads(done.stdout) is True, done.stderr

@@ -36,3 +36,4 @@ test_testfarm_config.py
 test_testfarm_list.py
 test_testfarm_cli.py
 test_api_project.py
+test_redteam_isolation_macos.py

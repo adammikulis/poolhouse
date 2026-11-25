@@ -13,6 +13,7 @@ explicit `AllowUnsandboxed(reason)`.
 from __future__ import annotations
 
 from poolhouse.sandbox.backend import Availability, Backend, SandboxUnavailable
+from poolhouse.sandbox.confinement import confined
 from poolhouse.sandbox.policy import (
                                      AllowUnsandboxed,
                                      Limits,
@@ -26,4 +27,4 @@ from poolhouse.sandbox.run import Result, SandboxViolation, backend, run, wrappe
 
 __all__ = ["AllowUnsandboxed", "Availability", "Backend", "Limits", "Net", "NetMode", "Policy",
            "PolicyError", "Result", "SandboxUnavailable", "SandboxViolation", "backend",
-           "checked_path", "run", "wrapped"]
+           "checked_path", "confined", "run", "wrapped"]

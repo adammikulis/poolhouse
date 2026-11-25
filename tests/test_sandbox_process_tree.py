@@ -13,7 +13,7 @@ from collections.abc import Callable, Iterator
 import pytest
 
 from poolhouse.sandbox import process_tree
-from tests.sandbox_kit import UnreadFollower
+from tests.sandbox_kit import UnreadFollower, running
 
 
 @pytest.fixture(autouse=True)
@@ -221,3 +221,78 @@ def test_a_process_that_took_the_pid_of_one_that_ended_is_followed_with_its_chil
         os.killpg(reused.pid, signal.SIGKILL)
         reused.wait()
         reused.stdout.close()
+
+
+def test_ending_a_tree_reaches_a_member_that_left_the_process_group_and_the_group_kill_does_not(shell):
+    leaves = f"{sys.executable} -c 'import os; os.setsid(); print(\"leaver\", os.getpid(), flush=True); os.execvp(\"sleep\", [\"sleep\", \"600\"])'"
+    proc, tree = shell(f"{leaves} & sleep 600 & echo stayer $!; wait")
+    said = dict(proc.stdout.readline().split() for _ in range(2))
+    leaver, stayer = int(said["leaver"]), int(said["stayer"])
+    assert followed(tree, [leaver, stayer])
+    os.killpg(proc.pid, signal.SIGKILL)
+    proc.wait()
+    deadline = time.monotonic() + 5
+    while running(stayer) and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert not running(stayer) and running(leaver)
+    ended = process_tree.end(tree, stalled=5.0)
+    assert ended.clean and ended.survivors == ()
+    assert not running(leaver)
+
+
+def test_ending_a_tree_that_is_still_forking_leaves_no_member_alive(shell):
+    marker = f"600.{os.getpid()}"
+    proc, tree = shell(f"i=0; while [ $i -lt 300 ]; do sleep {marker} & i=$((i+1)); done; echo done; wait")
+    time.sleep(0.05)
+    ended = process_tree.end(tree, stalled=5.0)
+    assert ended.survivors == ()
+    time.sleep(0.5)
+    named = subprocess.run(["/usr/bin/pgrep", "-f", f"sleep {marker}"], capture_output=True, text=True, check=False).stdout.split()
+    left = [pid for pid in named if running(int(pid))]
+    assert left == [], f"{len(left)} members of the ended tree are alive"
+    proc.wait()
+
+
+def test_a_process_that_took_the_pid_of_a_member_is_never_signalled():
+    outsider = subprocess.Popen(["/bin/sleep", "600"])
+    try:
+        tree = process_tree.Tree(outsider.pid)
+        tree.begin(outsider.pid, time.time() - 3600)
+        ended = process_tree.end(tree, stalled=5.0)
+        assert ended.survivors == () and running(outsider.pid)
+    finally:
+        outsider.kill()
+        outsider.wait()
+
+
+def test_a_live_member_whose_start_time_is_unknown_is_a_survivor_and_is_not_signalled():
+    outsider = subprocess.Popen(["/bin/sleep", "600"])
+    try:
+        ended = process_tree.end(process_tree.Tree(outsider.pid), stalled=5.0)
+        assert ended.survivors == (outsider.pid,) and not ended.clean and running(outsider.pid)
+    finally:
+        outsider.kill()
+        outsider.wait()
+
+
+def test_a_member_the_kernel_refuses_to_signal_is_a_survivor_once_none_has_ended_for_the_stretch(monkeypatch):
+    stubborn = subprocess.Popen(["/bin/sleep", "600"])
+    try:
+        tree = process_tree.follow(stubborn.pid)
+        monkeypatch.setattr(process_tree.os, "kill", lambda pid, which: (_ for _ in ()).throw(PermissionError(1, "refused")))
+        began = time.monotonic()
+        ended = process_tree.end(tree, stalled=0.3)
+        assert ended.survivors == (stubborn.pid,) and not ended.clean
+        assert time.monotonic() - began < 5
+        monkeypatch.undo()
+        assert running(stubborn.pid)
+    finally:
+        stubborn.kill()
+        stubborn.wait()
+
+
+def test_a_tree_that_was_not_followed_from_the_start_is_not_clean_though_every_member_ended():
+    proc = subprocess.Popen(["/usr/bin/true"])
+    proc.wait()
+    ended = process_tree.end(process_tree.follow(proc.pid), stalled=1.0)
+    assert ended.survivors == () and ended.unseen and not ended.clean
