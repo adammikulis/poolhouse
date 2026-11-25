@@ -130,7 +130,7 @@ def test_the_environment_folders_are_linked_into_the_stage_and_read_only_by_exac
     assert session.first_line() == ""
 
 
-def test_the_patch_directory_and_the_environment_links_are_read_only_to_a_session_under_the_real_seatbelt(project, tmp_path, seatbelt):  # noqa: F811
+def test_the_refused_patch_directory_and_the_environment_links_are_read_only_to_the_session_in_the_stage_mode_and_across_epoch_rotation_under_the_real_seatbelt(project, tmp_path, seatbelt):  # noqa: F811
     (project / ".venv").mkdir()
     (project / ".venv" / "pyvenv.cfg").write_text("home = /usr/bin\n")
     session = begin(project, tmp_path, Sink())
