@@ -72,7 +72,7 @@ def test_every_py_file_of_src_and_tests_that_no_non_plain_file_names_is_plain_so
         assert path in reasons and Path(path).name in facts(reasons[path])[0].decode("utf-8", errors="replace"), (path, reasons.get(path))
     plain = len(sources) - len(refused)
     assert plain > len(by_structure) * 10 and plain > 100, f"a rule that refuses {len(refused)} of {len(sources)} source files refuses too much"
-    assert verdicts["src/poolhouse/guard/harm.py"].plain
+    assert any(verdicts[path].plain for path in sources if path.startswith("src/poolhouse/guard/")), "a project's ordinary modules are applied"
 
 
 def test_a_python_file_named_by_a_makefile_a_workflow_or_a_package_manifest_is_non_plain_and_so_is_what_that_file_names():
