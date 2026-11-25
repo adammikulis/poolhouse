@@ -440,6 +440,35 @@ def test_the_stdio_mcp_client_lists_the_table_and_runs_a_verb_through_the_bridge
     assert [each.fields["body"] for each in room.inbox()] == [f"{session_verbs.LABEL}\n\nthrough mcp"]
 
 
+class Slow(io.StringIO):
+    """A standard input whose lines come far apart: a model that thinks between two tool calls for longer than the bridge keeps a silent connection."""
+
+    def __init__(self, lines: list[str], pause: float) -> None:
+        super().__init__("".join(lines))
+        self.lines, self.pause = lines, pause
+
+    def __iter__(self):
+        for index, line in enumerate(self.lines):
+            if index:
+                time.sleep(self.pause)
+            yield line
+
+
+def test_the_stdio_mcp_client_still_reaches_the_bridge_after_the_bridge_ended_its_silent_connection(workspace_node, tmp_path):
+    held = Room(workspace_node, tmp_path, idle=0.3)
+    try:
+        messages = [{"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+                    {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "workspace_send", "arguments": {
+                        "to": held.lead.name, "type": "note", "body": "after the bridge's idle time"}}}]
+        out = io.StringIO()
+        assert client.run(["--socket", held.path, "--pid", str(os.getpid()), "mcp"], Slow([json.dumps(each) + "\n" for each in messages], 1.0), out) == 0
+        answers = {each["id"]: each for each in map(json.loads, out.getvalue().splitlines())}
+        assert answers[2]["result"]["isError"] is False, answers[2]
+        assert [each.fields["body"] for each in held.inbox()] == [f"{session_verbs.LABEL}\n\nafter the bridge's idle time"]
+    finally:
+        held.bridge.stop()
+
+
 class Terminal(io.StringIO):
     """A standard input that is a terminal: reading it would wait for whoever types, so the client must never read it."""
 

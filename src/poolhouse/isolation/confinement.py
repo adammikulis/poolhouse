@@ -280,15 +280,18 @@ class Confinement:
             return process_tree.Ended()
         return process_tree.end(started.tree, stalled=self.stall)
 
-    def close(self) -> Turn:
+    def close(self, *, publish: bool = True) -> Turn:
         """End every process of the session, publish the last turn (the checks decide, not the exit status), stop the services and remove what the
-        launch made. Safe to call twice."""
+        launch made. With ``publish`` false (the session is stopped by the one that started it) nothing more is published: the stage's unpublished
+        work is dropped with the stage. Safe to call twice; the first call decides."""
         if self.closed:
             return self.turn or Turn()
         self.closed = True
         started = self._started
         try:
-            self.turn = self.session.finish(started.tree if started else None, stalled=self.stall, ended=None if started else process_tree.Ended())
+            tree = started.tree if started else None
+            self.turn = (self.session.finish(tree, stalled=self.stall, ended=None if started else process_tree.Ended()) if publish
+                         else self.session.discard(tree, stalled=self.stall))
             self.made.turns.append(self.turn)
         finally:
             if started is not None:

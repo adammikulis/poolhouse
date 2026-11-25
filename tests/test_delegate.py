@@ -3,6 +3,7 @@
 The board is a real node on a temporary root. The model side is never faked as a model: `converse` is the one function that
 talks to a served model, and the tests that run a delegate to its end replace it with a function that exercises the bridge
 and says in every word it returns that it is `[CANNED RESPONSE, NOT A MODEL]` (the run with a real model is in the report).
+A delegate that edits is tested in tests/test_delegate_confined.py.
 """
 
 from __future__ import annotations
@@ -15,10 +16,10 @@ import time
 from pathlib import Path
 
 import pytest
-from harness_kit import checkouts, hook, verdict
+from delegate_kit import agent_names, said, started
+from harness_kit import hook, verdict
 
 from poolhouse import (
-    caller,
     delegate,
     delegate_run,
     delegate_store as store,
@@ -26,9 +27,7 @@ from poolhouse import (
     harnessid,
     harnesspolicy,
     jobs,
-    node_launch,
 )
-from poolhouse.board import place, session
 from poolhouse.guard import start as run_of
 from poolhouse.guard.hooks import sdk_guard
 from poolhouse.interventions import Call, Deny
@@ -37,60 +36,10 @@ from poolhouse.taint import Arg, Capability, Sink, claude_code
 from poolhouse.testing.canned import Canned, CannedServer
 from poolhouse.testing.registry import record_server
 
-pytest_plugins = ["node_kit"]
+pytest_plugins = ["node_kit", "delegate_kit"]
 
 CANNED = "[CANNED RESPONSE, NOT A MODEL]"
-BODY = "def main():\n    print(\"hello from the copy\")\n\n\nmain()\n"
 STANDING = "/models/Qwen3.8-Flash-Next-UD-IQ2_XS-00001-of-00003.gguf"
-
-
-@pytest.fixture
-def lead_node(workspace_node, tmp_path, monkeypatch):
-    """A node, a project checkout it knows, and a lead session whose native id the command's environment names."""
-    for key in (*caller.AGENT_MARKERS, session.AGENT_ENV, session.TOKEN_ENV, session.SUBAGENT_ENV, "POOLHOUSE_SESSION_ID",
-                "POOLHOUSE_SESSION_HARNESS", "CODEX_THREAD_ID", place.BOARD_ENV):
-        monkeypatch.delenv(key, raising=False)
-    project = checkouts(tmp_path / "work").primary
-    workspace_node.board = place.resolve(workspace_node.client, project)
-    lead = workspace_node.member("lead-main")
-    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", lead.session)
-    monkeypatch.setattr(node_launch, "default_state", lambda: workspace_node.state)
-    monkeypatch.delenv("POOLHOUSE_AUTHORITY_FLOOR", raising=False)
-    monkeypatch.chdir(project)
-    return workspace_node, lead, project
-
-
-@pytest.fixture
-def detached(monkeypatch):
-    """`jobs.detach` as a record of what it was asked to run: the "process" is a sleeping child, no module runs and nothing leases a model."""
-    asked: list[dict] = []
-    children: list[subprocess.Popen] = []
-
-    def fake(module, argv, **more):
-        asked.append({"module": module, "argv": list(argv), "same_interpreter": more["same_interpreter"]})
-        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(300)"])
-        children.append(child)
-        jobs.record(more["kind"], pid=child.pid, argv=argv, log=str(more["log"]), home=more["home"])
-        return jobs.Detached(pid=child.pid, log=more["log"], command=(module, *argv), started="now")
-
-    monkeypatch.setattr(delegate.jobs, "detach", fake)
-    yield asked
-    for child in children:
-        child.kill()
-        child.wait()
-
-
-def said(capsys) -> str:
-    seen = capsys.readouterr()
-    return seen.out + seen.err
-
-
-def started(*words: str) -> int:
-    return delegate.main(["start", *words])
-
-
-def agent_names(node, lead):
-    return [a.name for a in node.session(lead).agents() if a.parent == lead.name]
 
 
 def test_the_command_runs_as_the_session_it_is_run_in_when_no_agent_is_named(lead_node):
@@ -130,29 +79,6 @@ def test_a_start_that_is_still_running_is_returned_not_repeated(lead_node, detac
     assert len(detached) == 1 and len(agent_names(node, lead)) == 1
     assert started("--task", "same task", "--name", "second") == 0
     assert len(agent_names(node, lead)) == 2
-
-
-def test_a_project_is_read_where_it_is_and_an_edit_run_gets_a_copy_without_history_or_credentials(lead_node, detached, tmp_path):
-    node, lead, project = lead_node
-    (project / ".env").write_text("TOKEN=x\n")
-    assert started("--task", "read", "--project", str(project)) == 0
-    assert started("--task", "edit", "--project", str(project), "--edit") == 0
-    reading, editing = sorted((store.load(n) for n in agent_names(node, lead)), key=lambda r: r.edit)
-    assert reading.workdir == str(project.resolve()) and not reading.edit
-    copy = Path(editing.workdir)
-    assert editing.edit and copy != project.resolve() and (copy / "source.py").read_text() == "value = 1\n"
-    assert not (copy / ".git").exists() and not (copy / ".env").exists()
-    assert (project / ".env").exists()
-
-
-def test_a_copy_over_the_snapshot_limit_is_refused_and_leaves_nothing_behind(tmp_path, monkeypatch):
-    (tmp_path / "big").mkdir()
-    (tmp_path / "big" / "a.txt").write_text("x" * 100)
-    monkeypatch.setattr(delegate.source_snapshot, "TOTAL_LIMIT", 10)
-    before = set(Path(delegate.tempfile.gettempdir()).glob("poolhouse-delegate-*"))
-    with pytest.raises(ValueError, match="smaller folder"):
-        delegate.scratch_copy(tmp_path / "big")
-    assert set(Path(delegate.tempfile.gettempdir()).glob("poolhouse-delegate-*")) == before
 
 
 def test_an_agent_marked_process_is_refused_at_once_when_local_agents_are_held_back(lead_node, detached, monkeypatch, capsys):
@@ -317,21 +243,6 @@ def test_a_delegate_whose_process_is_gone_with_no_end_written_reads_as_failed_wi
     assert " failed " in text and "ended without a result" in text and str(store.log_file(name)) in text
 
 
-def test_stop_ends_the_process_the_session_and_the_scratch_copy(lead_node, detached, tmp_path, capsys):
-    node, lead, project = lead_node
-    started("--task", "edit things", "--project", str(project), "--edit")
-    [name] = agent_names(node, lead)
-    rec = store.load(name)
-    sleeper = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
-    jobs.record(delegate.JOB, pid=sleeper.pid, home=store.folder(name), refuse_if_alive=False)
-    store.set_status(name, "working", "")
-    assert delegate.main(["stop", name]) == 0
-    assert sleeper.wait(30) is not None
-    assert store.status(name)["state"] == "stopped"
-    assert [a.retired for a in node.session(lead).agents(True) if a.name == name] == [True]
-    assert not Path(rec.workdir).exists() and project.exists()
-
-
 def test_stopping_a_delegate_that_reads_a_project_never_removes_the_project(lead_node, detached):
     node, lead, project = lead_node
     started("--task", "read", "--project", str(project))
@@ -369,16 +280,15 @@ def test_the_model_is_the_one_already_served_with_room_for_a_coding_session(stan
     assert delegate.standing_model("named-by-the-lead.gguf") == "named-by-the-lead.gguf"
 
 
-def rec_of(tmp_path, edit=False):
-    return store.Delegate("child", "lead", "board", "t", str(tmp_path), "m", edit=edit, source=str(tmp_path) if edit else "")
+def rec_of(tmp_path):
+    return store.Delegate("child", "lead", "board", "t", str(tmp_path), "m")
 
 
-def test_a_read_only_delegate_has_no_shell_and_no_edit_tool_and_an_edit_one_has_no_shell(tmp_path):
-    for edit, expected in ((False, ["Read", "Grep", "Glob"]), (True, ["Read", "Grep", "Glob", "Edit", "Write"])):
-        found = delegate_run.options(rec_of(tmp_path, edit), bridge=None)
-        assert found["tools"] == expected and "Bash" not in found["allowed_tools"]
-        assert set(harnesspolicy.LEAD_TOOLS) <= set(found["allowed_tools"])
-        assert found["setting_sources"] == [] and found["cwd"] == str(tmp_path)
+def test_a_read_only_delegate_has_no_shell_and_no_edit_tool(tmp_path):
+    found = delegate_run.options(rec_of(tmp_path), bridge=None)
+    assert found["tools"] == ["Read", "Grep", "Glob"] and "Bash" not in found["allowed_tools"]
+    assert set(harnesspolicy.LEAD_TOOLS) <= set(found["allowed_tools"])
+    assert found["setting_sources"] == [] and found["cwd"] == str(tmp_path)
 
 
 def classified(rec, tool, **arguments):
@@ -396,15 +306,6 @@ def test_the_classifier_lets_a_read_only_delegate_read_and_reach_its_lead_and_no
     assert classified(rec, "Edit", file_path=str(tmp_path / "a.py"), old_string="1", new_string="2") == "deny"
     assert classified(rec, "Bash", command="touch changed.txt") == "deny"
     assert classified(rec, "mcp__workspace__workspace_send", to="x", type="note", body="y") == "deny"
-
-
-def test_an_edit_delegate_changes_its_copy_and_nothing_outside_it(tmp_path):
-    copy = tmp_path / "copy"
-    copy.mkdir()
-    rec = store.Delegate("child", "lead", "board", "t", str(copy), "m", edit=True, source=str(tmp_path / "project"))
-    assert classified(rec, "Write", file_path=str(copy / "new.py"), content=BODY) == "allow"
-    assert classified(rec, "Write", file_path=str(tmp_path / "project" / "new.py"), content=BODY) == "deny"
-    assert classified(rec, "Write", file_path=str(copy / "CLAUDE.md"), content="x") == "deny"
 
 
 def test_the_leads_two_tools_pass_the_taint_rail_after_files_were_read_and_an_unknown_tool_does_not():
