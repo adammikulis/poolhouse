@@ -45,15 +45,13 @@ def snapshot(saved: dict) -> dict:
     entries = value["entries"]
     if (not isinstance(value["tree_hash"], str) or re.fullmatch(r"[a-f0-9]{40}", value["tree_hash"]) is None
             or not isinstance(entries, list) or any(not isinstance(row, list) or len(row) != 4
-                or row[1] not in ("100644", "100755") or not isinstance(row[2], str)
+                or row[1] not in ("100644", "100755", "120000") or not isinstance(row[2], str)
                 or re.fullmatch(r"[a-f0-9]{64}", row[2]) is None or type(row[3]) is not int
-                or not 0 <= row[3] <= source_snapshot.FILE_LIMIT for row in entries)):
+                or row[3] < 0 for row in entries)):
         raise ValueError("Invalid coding snapshot manifest")
     paths([row[0] for row in entries])
     paths(value["missing"])
     paths(value["excluded"])
-    if sum(row[3] for row in entries) > source_snapshot.TOTAL_LIMIT:
-        raise ValueError("The coding snapshot manifest exceeds its source limit")
     return saved
 
 
