@@ -31,7 +31,6 @@ from poolhouse.workspace import (
     mail_cli,
     notes_cli,
     nudge,
-    phone_cli,
     pool_cli,
     rooms_cli,
     scratch_cli,
@@ -105,11 +104,9 @@ for _name, _help, _options, _handler in grants_cli.PERSON:
     COMMANDS.add(_name, grants_cli.person_runner(_handler), help=_help, options=[*NODE_COMMON, *_options])
 COMMANDS.add(grants_cli.REBIND[0], grants_cli.REBIND[3], help=grants_cli.REBIND[1], options=[*NODE_COMMON, *grants_cli.REBIND[2]])
 COMMANDS.add("approval", approval_cli.COMMAND, options=[*NODE_COMMON, *approval_cli.OPTIONS],
-             help="ask for grants (request; decided at once by policy), read what became of it; a linked phone is only notified")
+             help="ask for grants (request): decided at once by policy, this device's key signs what the caller may have and the rest is refused with the reason")
 COMMANDS.add("pool", pool_cli.COMMAND, options=[*NODE_COMMON, *pool_cli.OPTIONS],
              help="found this device's pool (found): this computer's own key governs it, made automatically")
-COMMANDS.add("phone", phone_cli.COMMAND, options=[*NODE_COMMON, *phone_cli.OPTIONS],
-             help="add an optional phone that is notified (add: shows a code to scan), list the phones, remove one; add and remove are refused to an agent")
 COMMANDS.add("nudge", board_cli.guarded(board_cli.nudging),
              help="print one line summarising what waits for you (nothing when nothing does); for hooks",
              options=[*NODE_COMMON, flag("--hook", default="", choices=("", *nudge.EVENTS),

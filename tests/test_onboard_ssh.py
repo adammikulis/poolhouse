@@ -193,6 +193,29 @@ def test_a_fingerprint_that_is_not_the_one_presented_runs_nothing(
     assert tools.ssh_calls() == []
 
 
+def test_a_host_with_no_fingerprint_given_is_refused_at_once_naming_what_it_presented(
+        tmp_path, monkeypatch, keystore, share):
+    tools = Tools(tmp_path, monkeypatch, known=False)
+    with pytest.raises(ssh.SshRefused, match=r"--host-key-fingerprint.*presents SHA256:") as refused:
+        run_ssh(tmp_path, share, tools, typed="")
+    assert "kitchen.local" in str(refused.value) and "nothing was run" in str(refused.value)
+    assert tools.ssh_calls() == []
+
+
+def test_the_ssh_command_never_reads_a_terminal_for_the_fingerprint(tmp_path, monkeypatch, keystore, share):
+    import argparse
+
+    from poolhouse.fleet.onboard import ssh_cli
+    tools = Tools(tmp_path, monkeypatch, known=False)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", lambda _p="": pytest.fail("the fingerprint was asked at a terminal"))
+    args = argparse.Namespace(ssh="pi@kitchen.local", ssh_port=22, state=str(tmp_path / "state"), share=str(share),
+                              dry_run=False, host_key_fingerprint="", json=True)
+    assert ssh_cli.cmd_ssh(args) == 2
+    assert tools.ssh_calls() == []
+
+
 def test_no_argv_ever_turns_checking_off_or_asks_for_a_password(
         tmp_path, monkeypatch, keystore, share):
     for known in (True, False):

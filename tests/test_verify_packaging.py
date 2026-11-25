@@ -32,7 +32,7 @@ def test_current_package_contract():
     ('"cryptography>=50",', '"cryptography>=49",'),
     ('"ladybug>=0.20.4,<0.21",', '"ladybug>=0.20.4",'),
     ("sys_platform == 'win32'", "sys_platform != 'darwin'"),
-    ('"qrcode>=8.2",', '"qrcode>=8.2; python_version < \'3.14\'",'),
+    ('"psutil>=7.2.2",', '"psutil>=7.2.2; python_version < \'3.14\'",'),
     ('"cryptography>=50",', '"cryptography>=50", "cryptography>=50",'),
     ('"cryptography>=50",', '"cryptography @ https://invalid.example/archive",'),
     ('"cryptography>=50",', '"cryptography[extra]>=50",'),

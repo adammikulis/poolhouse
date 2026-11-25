@@ -1,4 +1,4 @@
-"""In a pool this device's key signs no grant that reaches beyond the device (only an admin phone's approval counts), and the command says so before anything is signed."""
+"""In a pool this device's key signs no grant that reaches beyond the device (only an admin key of the pool counts), and the command says so before anything is signed."""
 from __future__ import annotations
 
 import argparse
@@ -52,13 +52,13 @@ def asked(action: str) -> argparse.Namespace:
 
 @pytest.mark.parametrize("action", ["file_delete", "shard_consent", "task_authority", "sync_now"])
 def test_a_grant_that_reaches_beyond_the_device_is_refused_in_a_pool_before_anything_is_signed(action):
-    with pytest.raises(Denied, match="your phone gives standing grants"):
+    with pytest.raises(Denied, match="only when an admin key of the pool signed it"):
         grants_cli.grant(asked(action), ctx("governed"))
 
 
 def test_grants_setup_in_a_pool_is_refused_before_it_asks_which_session_or_signs_anything(monkeypatch):
     monkeypatch.setattr("builtins.input", lambda *_: pytest.fail("a question was asked"))
-    with pytest.raises(Denied, match="your phone gives standing grants"):
+    with pytest.raises(Denied, match="only when an admin key of the pool signed it"):
         grants_cli.setup(argparse.Namespace(session=None, family="", days=30, open_registration=False), ctx("governed"))
 
 

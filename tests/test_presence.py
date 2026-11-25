@@ -1,8 +1,8 @@
-"""The first person key and the first phone are made by the node at once, with nobody asked: the node as shipped (`--presence auto`) hands the
+"""The first person key is made by the node at once, with nobody asked: the node as shipped (`--presence auto`) hands the
 one-time secret to the device's own session as it is asked for. What stays is who may ask and what a secret is: only the device's own session
-(registered with the secret the node keeps for it) asks for the first key and the first phone; a secret is the node's own, kept in its memory,
+(registered with the secret the node keeps for it) asks for the first key; a secret is the node's own, kept in its memory,
 bound to the key it was made for and spent by one wrong guess; and an agent that writes the old files, guesses a secret or asks as its own
-session becomes no key and no phone.
+session becomes no key.
 
 Nothing here types, taps or waits: no test raises a dialog or puts a question on a terminal.
 """
@@ -31,7 +31,7 @@ pytest_plugins = ["node_kit"]
 
 
 def register(node) -> str:
-    """The device's own session of the demo board, registered with the secret the node keeps for it: the only session that asks for a first key or phone."""
+    """The device's own session of the demo board, registered with the secret the node keeps for it: the only session that asks for a first key."""
     return board_session.register(node.client, node.board, board_session.Native("person", "poolhouse-ui", "the-person"), "", person=True).token
 
 
@@ -47,7 +47,7 @@ def held(node) -> list[str]:
 def test_the_device_asks_for_the_first_key_and_has_it_at_once_with_no_terminal_and_no_waiting(workspace_node):
     token, key = register(workspace_node), Signer.generate()
     began = time.monotonic()
-    said = presence.ask(workspace_node.client, token, "key", key.public.hex())
+    said = presence.ask(workspace_node.client, token, key.public.hex())
     assert time.monotonic() - began < 5, "the answer was there as the question was asked"
     assert said["state"] == "confirmed" and said["presence"] == "auto" and isinstance(said["secret"], str) and said["secret"]
     assert held(workspace_node) == [], "the secret is not the key: nothing is enrolled until the key is sent with it"
@@ -68,7 +68,7 @@ def test_a_guessed_secret_and_the_files_an_agent_can_write_enrol_no_first_key(wo
 
 def test_a_secret_is_the_nodes_own_and_one_wrong_guess_spends_it(workspace_node):
     token, person = register(workspace_node), Signer.generate()
-    said = wire.answer_presence(workspace_node.state, "key", person.public.hex())["result"]
+    said = wire.answer_presence(workspace_node.state, person.public.hex())["result"]
     assert said["state"] == "confirmed" and said["presence"] == "auto"
     with pytest.raises(Denied):
         grants.enrol(workspace_node.client, token, {**grants.enrolment(person, "a test device"), "secret": "guess"})
@@ -81,21 +81,21 @@ def test_the_first_key_is_enrolled_by_that_ask_and_a_second_secret_is_not_made_f
     token, person = register(workspace_node), Signer.generate()
     assert enrol_first(workspace_node.client, token, person)["fingerprint"] == grants.fingerprint(person.public)
     assert held(workspace_node) == [grants.fingerprint(person.public)]
-    again = wire.answer_presence(workspace_node.state, "key", Signer.generate().public.hex())
+    again = wire.answer_presence(workspace_node.state, Signer.generate().public.hex())
     assert not again["ok"] and again["code"] == "denied", "a key is enrolled already: a further one is approved by it, not by this ask"
 
 
 def test_the_secret_is_for_the_key_it_was_asked_about_and_no_other_key(workspace_node):
     token, person, agent = register(workspace_node), Signer.generate(), Signer.generate()
-    said = wire.answer_presence(workspace_node.state, "key", person.public.hex())["result"]
+    said = wire.answer_presence(workspace_node.state, person.public.hex())["result"]
     with pytest.raises(Denied):
         grants.enrol(workspace_node.client, token, {**grants.enrolment(agent, "an agent"), "secret": said["secret"]})
     assert held(workspace_node) == [], "a secret made for one key enrolled another"
-    asked = wire.answer_presence(workspace_node.state, "key", "")
+    asked = wire.answer_presence(workspace_node.state, "")
     assert not asked["ok"] and asked["code"] == "invalid", "a first key is asked for with its key"
 
 
-def test_a_node_started_with_no_presence_flag_asks_nobody_either(node_binary):  # the first phone's code is made at once too: test_the_rigs_person_asks_as_the_devices_own_session_and_is_answered_at_once
+def test_a_node_started_with_no_presence_flag_asks_nobody_either(node_binary):
     root = Path(tempfile.mkdtemp(prefix="ml", dir="/tmp"))
     state = root / "node"
     state.mkdir(mode=0o700)
@@ -131,19 +131,18 @@ def test_no_build_flag_of_the_shipped_node_changes_who_is_asked():
         assert "cfg(feature" not in text and "AlwaysYes" not in text, f"{source} compiles a way to answer only in some builds"
 
 
-def test_a_session_an_agent_started_cannot_make_the_first_key_or_the_first_phone_and_a_forged_proof_registers_nothing(workspace_node):
+def test_a_session_an_agent_started_cannot_make_the_first_key_and_a_forged_proof_registers_nothing(workspace_node):
     token = agent(workspace_node)
-    for purpose in ("key", "phone"):
-        with pytest.raises(Denied, match="person's own session"):
-            presence.ask(workspace_node.client, token, purpose, Signer.generate().public.hex() if purpose == "key" else "")
+    with pytest.raises(Denied, match="person's own session"):
+        presence.ask(workspace_node.client, token, Signer.generate().public.hex())
     assert held(workspace_node) == []
     with pytest.raises(board_client.Denied):
         workspace_node.client.call("register_person", workspace_node.board, "", session="forged", proof="a" * 64)
 
 
 def test_the_rigs_person_asks_as_the_devices_own_session_and_is_answered_at_once(workspace_node):
-    said = wire.answer_presence(workspace_node.state, "phone")
-    assert said["ok"] and said["result"]["state"] == "confirmed" and said["result"]["presence"] == "auto" and "link" in said["result"], said
+    said = wire.answer_presence(workspace_node.state, Signer.generate().public.hex())
+    assert said["ok"] and said["result"]["state"] == "confirmed" and said["result"]["presence"] == "auto" and said["result"]["secret"], said
     forged = wire.call(workspace_node.state, "register_person", "pool", "", {"session": "the-rig-person", "proof": "a" * 64})
     assert not forged["ok"] and forged["code"] == "denied", "the rig's person is the node's own person: a wrong secret is nobody"
 

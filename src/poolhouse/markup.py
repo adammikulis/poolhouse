@@ -1,15 +1,16 @@
-"""A page's text, out of its markup: readable words with the tags gone, and a cut that
-ends on a sentence rather than mid-word."""
+"""A page's text, out of its markup: readable words with the tags gone, a cut that
+ends on a sentence rather than mid-word, and text from outside made into one short printable line."""
 
 from __future__ import annotations
 
 import contextlib
 import re
+import unicodedata
 from html import unescape
 from html.parser import HTMLParser
 from typing import Any
 
-__all__ = ["cut", "extract"]
+__all__ = ["clean", "cut", "extract"]
 
 
 class _Stripper(HTMLParser):
@@ -107,3 +108,13 @@ def cut(text: str, limit: int) -> tuple[str, bool]:
         space = window.rfind(" ")
         at = space if space >= limit // 2 else limit
     return window[:at].rstrip(), True
+
+
+def clean(text: object, most: int = 64) -> str:
+    """Text as one short printable line: control characters and bidi overrides dropped,
+    spaces collapsed, cut at ``most``."""
+    if not isinstance(text, str):
+        return ""
+    text = re.sub(r"[\r\n\t\v\f]+", " ", text)
+    kept = "".join(ch for ch in text if ch == " " or unicodedata.category(ch)[0] not in "CZ")
+    return " ".join(kept.split())[:most]

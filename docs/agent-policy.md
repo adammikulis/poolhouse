@@ -154,8 +154,7 @@ automatically and at once: nothing prompts, asks a phone or waits.
   recording and local agent verbs delegated, makes every other gate `person`, enforcement `strict`.
   `POOLHOUSE_AUTHORITY_FLOOR=person` reads every gate as `person`; it only tightens, and the test suite sets it.
 - Refused to an agent whatever the registry says, and not in it: speaking on the board as the owner (`workspace chat`),
-  signing as this device's key (`grant`, `revoke-grant`, `distrust`, `grants-setup`, `person-*`, `approval decide`, `phone
-  add|remove`), the keystore and secrets (`keystore-reset`, signing key export/rotate/revoke, the daemon token), the owner's page
+  signing as this device's key (`grant`, `revoke-grant`, `distrust`, `grants-setup`, `person-*`), the keystore and secrets (`keystore-reset`, signing key export/rotate/revoke, the daemon token), the owner's page
   (`poolhouse open`), the release key and the repository's protection settings, and the grants that end another device's place in
   the pool, change who governs it, widen which devices it counts or release what a scan failed (`person_key.AGENT_REFUSED`).
   Grants an agent may have are issued automatically by policy when it asks (`approval request`), signed with this device's own

@@ -58,7 +58,7 @@ print(sorted(outside - allowed - {'poolhouse'}))
 def test_base_install_declares_device_security_and_board_dependencies():
     meta = tomllib.load((REPO / "pyproject.toml").open("rb"))["project"]
     dependencies = {Requirement(d).name for d in meta["dependencies"]}
-    assert dependencies == {"cryptography", "ladybug", "packaging", "psutil", "pywin32", "qrcode"}
+    assert dependencies == {"cryptography", "ladybug", "packaging", "psutil", "pywin32"}
     assert set(meta["optional-dependencies"]) >= {"train", "all"}
     assert "serve" not in meta["optional-dependencies"]
 

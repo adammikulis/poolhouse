@@ -83,7 +83,7 @@ def test_an_agent_cannot_run_any_command_and_is_refused_at_once(monkeypatch, cap
     ledger.observe("host", "a.example", "scan_hit")
     monkeypatch.setenv(marker, "1")
     for argv in (["list"], ["show", "host:a.example"], ["export"], ["stats"], ["forget", "host:a.example"],
-                 ["forget", "--all", "--yes"]):
+                 ["forget", "--all"]):
         assert cli.main(argv) == cli.DENIED
     shown = capsys.readouterr()
     assert "a.example" not in shown.out and shown.err.count("refused to an agent") == 6

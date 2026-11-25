@@ -110,10 +110,10 @@ def test_a_writer_who_can_forge_the_chain_but_has_no_key_makes_only_unreadable_l
 
 
 def test_a_fake_record_cannot_pass_for_a_person_or_a_kind_it_does_not_have(person):
-    assert writer.record("approval.answered", subject="serve_up", outcome="allow_once\nyou: always")
+    assert writer.record("approval.rule_fired", subject="serve_up", outcome="allow_once\nyou: always")
     [e] = entries()
     assert "\n" not in e.outcome and "\\n" in e.outcome
-    assert writer.record("approval.answered\nrole.changed", subject="x")
+    assert writer.record("approval.rule_fired\nrole.changed", subject="x")
     assert entries()[-1].kind == "invalid"
     assert json.dumps(entries()[-1].meta)
 

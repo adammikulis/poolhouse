@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import pytest
 
-from poolhouse import desktop
 from poolhouse.sentinel import Sentinel, State
 from poolhouse.sentinel.core import HOLD_S
 
@@ -14,12 +13,11 @@ BAD = b"GGUF" + b"b" * 4096
 
 
 @pytest.fixture
-def world(tmp_path, monkeypatch):
+def world(tmp_path):
     models = tmp_path / "models"
     models.mkdir()
     now = [1_000_000.0]
     node = Sentinel(tmp_path / "s", roots=[models], clock=lambda: now[0])
-    monkeypatch.setattr(desktop, "choose", lambda *a, **k: pytest.fail("a dialog was opened"))
     path = models / "m.gguf"
     path.write_bytes(GOOD)
     node.manifest.pin(path, "model", source="hf://owner/repo/m.gguf")

@@ -5,9 +5,14 @@
 > is decided at once, signed with this device's own key, which is made and enrolled the first time it is needed. A process
 > with no agent marker may have every grant the node's floors allow; an agent is refused at once, with the reason, the few that
 > end another device's place in the pool, change who governs it or release what a scan failed. Nothing waits for a tap, a typed
-> `yes` or an inbox answer, and each decision is audited with who asked (`poolhouse.caller`). The protocol below still describes
-> what a linked phone is shown and what it signs; read "ask the person" as "tell the phone", and read every typed `yes` as the
-> automatic decision above.
+> `yes` or an inbox answer, and each decision is audited with who asked (`poolhouse.caller`).
+>
+> **No command or client reaches the phone side of the node any more.** `poolhouse-workspace phone`, `Board.offer_phone`, the QR code,
+> the pending request handle (`wait`, `cancel`, `approval status`) and the approval blocks a phone could put on a session are removed, and
+> nothing writes `phone.json`, which is what turns the node's phone listener on. A device in a pool refuses at once, with the reason, a
+> grant that reaches beyond the device, since a pool counts it only from an admin key and this device's own key is not one. What follows is
+> the protocol of the node's `phone/` and `approvals/` code and of `app/android`, which have no caller left; read every Python or command
+> line step below as removed.
 
 A person's phone is the second way a person signs. Today a person's signature on a node is a typed `yes` at `/dev/tty`
 (docs/node.md, "Key custody"). With the phone, an agent asks, the phone shows what is asked in plain words, the person
@@ -115,19 +120,17 @@ before approving. The terminal says what was added, and "Removing a phone" ends 
 ```python
 board = ph.board.connect()
 ask = board.request_approval([ph.board.Ask("add_device", "*", lasts="10m", uses=1)], note="adding the Linux box")
-ask.wait(timeout_s=60)     # "waiting" is not a failure: the same request is on the phone until it expires
+ask.state                  # "approved": decided before it was returned, with this device's key
 ```
 
-`poolhouse-workspace approval request ACTION[:RESOURCE] [ACTION[:RESOURCE] ...] [--for 10m] [--uses N] [--note TEXT] [--wait 60]`
-prints a handle (`ap-` and 16 hex digits) and the plain-words text, and with `--wait` waits that long. `approval status ID`
-and `approval wait ID` read it later; `approval cancel ID` withdraws it.
+`poolhouse-workspace approval request ACTION[:RESOURCE] [ACTION[:RESOURCE] ...] [--for 10m] [--uses N] [--note TEXT]`
+prints the request's id (`ap-` and 16 hex digits) and the plain-words text; it is decided before it returns.
 
 A request is one to eight **asks**, each a grant the requesting session would receive: an action of the registry
 (docs/node.md, "Standing grants"), a resource (an exact name, `*`, or a prefix before a final `*`), how long it lasts (a
 minute to thirty days), how often it may be used, and `review` where each use needs an independent review. They go to the person
 as one list, one tap and one fingerprint, and each becomes its own grant entry on approval. The grantee is always the
-requesting session: an ask names no other. A request lives for `--ttl` (default 30 minutes, at most 24 hours) and is
-refused past the node's limits: eight asks, sixty-four requests pending on the node, six requests a session in ten minutes.
+requesting session: an ask names no other. A request is refused past the node's limits: eight asks, sixty-four requests pending on the node, six requests a session in ten minutes.
 Asking the same thing again (the same session, the same actions on the same resources, whatever the note, the time or the count) is
 the same request: the reply says `deduplicated` and no new notification is made ("A request is never held back"). A request that is not routine
 comes back with a `code`, a two-digit number the agent shows its person in its own chat or screen; the phone offers three numbers

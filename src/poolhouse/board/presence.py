@@ -1,9 +1,8 @@
-"""How the first person key, the first phone or a change to the pool is made by the node (docs/phone-approval.md, "The first phone";
-docs/node.md, "Standing grants").
+"""How the first person key or a change to the pool is made by the node (docs/node.md, "Standing grants").
 
 The node makes it, never the client. A node started as the launcher starts it (`--presence auto`, the default) asks nobody: the one-time secret
 or ticket is made as it is asked for, kept in the node's memory and handed once to the session that asked, so neither a file in the state
-directory nor a request can make one; who may ask is the node's rule (the device's own session for the first key and phone, a live main session
+directory nor a request can make one; who may ask is the node's rule (the device's own session for the first key, a live main session
 also for a pool's card), and a secret is bound to the key it was made for. Nothing here waits for anybody: a node somebody started by hand with
 `--presence os` or `terminal` answers that it is asking its user, and `ask` refuses at once with that reason, since an answer would need a person.
 """
@@ -26,14 +25,14 @@ class Card(NamedTuple):
     id: str
 
 
-def ask(client: Client, token: str, purpose: str, public: str = "") -> dict[str, Any]:
-    """Ask the node for the one-time secret that lets the session ``token`` add the first person key (``purpose`` `key`) or the first phone
-    (`phone`): the node's reply, with the `secret` (and, for a phone, its `link`). The device's own session asks; the node refuses any other.
+def ask(client: Client, token: str, public: str) -> dict[str, Any]:
+    """Ask the node for the one-time secret that lets the session ``token`` add the first person key: the node's reply, with the `secret`.
+    The device's own session asks; the node refuses any other.
 
-    ``public`` is the public key (hex) of the first key: the secret is for that key and no other; a phone has none. Raises `Denied` when the
-    node refuses the asker, a key is enrolled already, or the node asks its user instead of making the secret.
+    ``public`` is the public key (hex) of the first key: the secret is for that key and no other. Raises `Denied` when the node refuses the asker,
+    a key is enrolled already, or the node asks its user instead of making the secret.
     """
-    return _asked(client, token, purpose=purpose, public=public, card="")
+    return _asked(client, token, purpose="key", public=public, card="")
 
 
 def ask_card(client: Client, token: str, purpose: str, card: Card) -> dict[str, Any]:

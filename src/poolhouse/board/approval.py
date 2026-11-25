@@ -1,44 +1,36 @@
-"""Asking for grants, as an agent does it: one request of up to eight asks, a handle to wait on, and the sentence to pass on when it ends
-(docs/phone-approval.md).
+"""Asking for grants, as an agent does it: one request of up to eight asks, and what became of it (docs/node.md, "Standing grants").
 
-The node writes the text a key's holder reads and keeps the request until a key answers it. Nothing here answers one: policy does
-(`poolhouse.board.autoapprove`: this device's key signs at once what the caller may have), and a linked phone's key may answer too.
+A request is decided before it is returned: `poolhouse.board.autoapprove` has this device's key sign at once what the caller may have and refuses
+the rest with the reason. Nothing here waits for an answer, so there is no handle to poll and no pending state to read.
 """
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass
 from typing import Any
 
-from poolhouse.board import grants, presence
-from poolhouse.board.session import Session
+from poolhouse.board import grants
 
-__all__ = ["ENDED", "PENDING", "Approval", "Ask", "blocks", "lift_at_computer", "request", "wire"]
+__all__ = ["Approval", "Ask", "wire"]
 
-PENDING = "pending"
-ENDED = ("approved", "denied", "expired", "cancelled", "failed")
-POLL_START_S = 0.4
-POLL_MOST_S = 2.0
 SAYS = {
-    "pending": "Waiting for a key to answer it.",
     "approved": "It was approved, so the grants exist.",
     "denied": "It was declined; nothing changed.",
     "expired": "The request ended before it was answered; ask again if it is still needed.",
     "cancelled": "The request was withdrawn.",
     "failed": "It was approved, but it could not be carried out",
 }
-"""What an agent says of a request in each state, one sentence."""
+"""What an agent says of a request in each state it can end in, one sentence."""
 
 
 @dataclass(frozen=True, slots=True)
 class Ask:
-    """One grant a session asks a person for: an action of the registry, where it applies, for how long, how often."""
+    """One grant a session asks for: an action of the registry, where it applies, for how long, how often."""
 
     action: str
     resource: str = "*"
     lasts: str = "1h"
-    """How long it lasts once approved: 90m, 12h, 30d (at most 30 days)."""
+    """How long it lasts once approved: 90m, 12h, 30d (at most a year)."""
     uses: int | None = None
     """How often it may be used; None is as often as it is needed."""
     review: bool = False
@@ -51,93 +43,36 @@ class Ask:
         return out
 
 
+@dataclass(frozen=True, slots=True)
 class Approval:
-    """A request a session made, and what became of it.
+    """A request a session made, as the node holds it once it was decided."""
 
-    `wait` returns ``pending`` when its time runs out: the request is still open, and the same handle goes on
-    being good until the request ends, so waiting is never a failure.
-    """
+    id: str
+    """`ap-` and 16 hex digits."""
+    state: str
+    """approved, denied, expired, cancelled or failed."""
+    text: str
+    """The plain words the node wrote for the request."""
+    title: str
+    """The one line the request is known by."""
+    risk: str
+    """routine, sensitive or irreversible."""
+    grants: tuple[str, ...]
+    """The ids of the grants an approval wrote."""
+    reason: str = ""
 
-    __slots__ = ("_raw", "_session")
-
-    def __init__(self, session: Session, raw: dict[str, Any]) -> None:
-        self._session = session
-        self._raw = raw
-
-    @property
-    def id(self) -> str:
-        """The handle: `ap-` and 16 hex digits."""
-        return str(self._raw["id"])
-
-    @property
-    def state(self) -> str:
-        """pending, approved, denied, expired, cancelled or failed, as of the last time it was read."""
-        return str(self._raw["state"])
-
-    @property
-    def text(self) -> str:
-        """The plain-words text the node wrote for whoever answers."""
-        return str(self._raw["text"])
-
-    @property
-    def title(self) -> str:
-        """The one line a notification carries."""
-        return str(self._raw["title"])
-
-    @property
-    def risk(self) -> str:
-        """routine, sensitive or irreversible."""
-        return str(self._raw["risk"])
-
-    @property
-    def code(self) -> str:
-        """The number to show a phone's holder when the request is not routine: they choose it among three after their fingerprint.
-
-        Empty for a routine request, and once the request has ended.
-        """
-        return str(self._raw.get("code", ""))
-
-    @property
-    def deduplicated(self) -> bool:
-        """Whether this was already waiting: the same request made again is the same item, never a new notification."""
-        return bool(self._raw.get("deduplicated", False))
-
-    @property
-    def expires_ms(self) -> int:
-        """When the request ends, in milliseconds since the epoch by the node's clock."""
-        return int(self._raw["expires_ms"])
-
-    @property
-    def grants(self) -> tuple[str, ...]:
-        """The ids of the grants an approval wrote."""
-        return tuple(self._raw["grants"])
+    @classmethod
+    def of(cls, raw: dict[str, Any]) -> Approval:
+        """The request as the node returned it."""
+        return cls(str(raw["id"]), str(raw["state"]), str(raw["text"]), str(raw["title"]), str(raw["risk"]), tuple(raw["grants"]), str(raw.get("reason", "")))
 
     def message(self) -> str:
         """One sentence to pass on for the state this is in."""
         base = SAYS.get(self.state, self.state)
-        return f"{base}: {self._raw['reason']}" if self.state == "failed" and self._raw.get("reason") else base
-
-    def refresh(self) -> str:
-        """Read the request again from the node; its state."""
-        self._raw = dict(self._session.call("approval_status", id=self.id))
-        return self.state
-
-    def wait(self, timeout_s: float = 30.0) -> str:
-        """Wait up to ``timeout_s`` seconds for an answer; the state, which is `pending` when none came."""
-        end = time.monotonic() + timeout_s
-        pause = POLL_START_S
-        while self.refresh() == PENDING and time.monotonic() < end:
-            time.sleep(min(pause, max(0.0, end - time.monotonic())))
-            pause = min(pause * 1.5, POLL_MOST_S)
-        return self.state
-
-    def cancel(self) -> str:
-        """Withdraw the request; its state."""
-        self._raw = dict(self._session.call("approval_cancel", id=self.id))
-        return self.state
+        return f"{base}: {self.reason}" if self.state == "failed" and self.reason else base
 
 
-def wire(asks: list[Ask] | tuple[Ask, ...], *, note: str = "", task: str = "", ttl_s: int = 0, expect_policy: str = "") -> dict[str, Any]:
+def wire(asks: list[Ask] | tuple[Ask, ...], *, note: str = "", task: str = "", expect_policy: str = "") -> dict[str, Any]:
     """The params of `approval_request` for ``asks``.
 
     ``note`` is the agent's own words (up to 160 plain characters), shown as the agent's and checked by nobody; ``task`` names
@@ -145,24 +80,7 @@ def wire(asks: list[Ask] | tuple[Ask, ...], *, note: str = "", task: str = "", t
     refuses the request if it is not.
     """
     params: dict[str, Any] = {"asks": [a.wire() for a in asks]}
-    for key, value in (("note", note), ("task", task), ("ttl_s", ttl_s), ("expect_policy", expect_policy)):
+    for key, value in (("note", note), ("task", task), ("expect_policy", expect_policy)):
         if value:
             params[key] = value
     return params
-
-
-def request(session: Session, params: dict[str, Any]) -> Approval:
-    """Make the request ``params`` (from `wire`); the handle to wait on. It is left for a key to answer: `autoapprove.request` answers it at once."""
-    return Approval(session, dict(session.call("approval_request", **params)))
-
-
-def blocks(session: Session) -> dict[str, int]:
-    """The blocked sessions, or only this session's block for an agent."""
-    return {str(who): int(until) for who, until in session.call("approval_blocks")["blocks"].items()}
-
-
-def lift_at_computer(session: Session, who: str) -> None:
-    """Lift exactly ``who``'s block: the device's own session may lift any, another main session only its own, and the node refuses anyone else."""
-    draft = session.call("approval_lift_draft", who=who)
-    answer = presence.ask_card(session.client, session.token, "card", presence.Card(str(draft["card"])))
-    session.call("approval_lift_commit", nonce=str(draft["nonce"]), ticket=str(answer["secret"]))

@@ -167,8 +167,8 @@ def build_payload(share: Path, signed: Signed) -> bytes:
 def host_key_pin(target: Target, run: Runner, offered: Callable[[list[str]], str],
                  bus: Bus) -> tuple[list[str], Path | None]:
     """The ssh options that make the host key checked, and the temporary known_hosts holding it
-    when the owner's own file does not know the host. `SshRefused` unless the owner types the
-    fingerprint in full."""
+    when the owner's own file does not know the host. `SshRefused` at once, naming the fingerprints the host
+    presents, unless ``offered`` returns one of them in full (nothing is asked of anyone)."""
     if run(["ssh-keygen", "-F", target.known_name], None, 15)[0] == 0:
         return [], None
     code, found, _ = run(["ssh-keyscan", "-T", "10", "-p", str(target.port), "-t",
@@ -189,7 +189,10 @@ def host_key_pin(target: Target, run: Runner, offered: Callable[[list[str]], str
     typed = offered(sorted(prints))
     if typed not in prints:
         bus.emit("onboard.ssh.hostkey_refused", "warning", f"host:{target.host}")
-        raise SshRefused("the fingerprint typed is not one that host presented; nothing was run")
+        if not typed:
+            raise SshRefused(f"{target.host}'s host key is not in known_hosts and no --host-key-fingerprint was given; "
+                             f"it presents {', '.join(sorted(prints))}; nothing was run")
+        raise SshRefused("the fingerprint given is not one that host presented; nothing was run")
     pin = Path(tempfile.mkdtemp(prefix="poolhouse-hostkey-")) / "known_hosts"
     pin.write_text(f"{target.known_name} " + " ".join(prints[typed].split()[1:]) + "\n")
     bus.emit("onboard.ssh.hostkey_confirmed", "notice", f"host:{target.host}", fingerprint=typed)

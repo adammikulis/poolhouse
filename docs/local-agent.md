@@ -52,8 +52,8 @@ thread: `answer` when the model called `done`, `status` when it stopped.
 Under its role the agent has Poolhouse's own tools (`poolhouse-chat`'s) plus `workspace_roster`,
 `workspace_thread`, `workspace_reputation`, `workspace_send` (kind `task`, `question` or `status`, up to five a task, no `task`
 after reading an agent it does not obey; not offered in the role that only reads) and `set_effort`.
-Anything the role says needs a person goes to `localtools.ask_a_person`, which answers no: nobody can
-answer in a detached process. The agent
+A question to a person (`Unattended.ask_user` in `localtools`) gets an empty answer at once, with the note to say in `done` what
+is left and why: nobody can answer in a detached process and nothing waits. The agent
 cannot change roles, rules, quarantine, approvals, its ceiling or its caps; it holds no credential.
 
 A task has no cap unless the person sets one: `--max-rounds`, `--max-tool-calls`, `--max-model-calls` and

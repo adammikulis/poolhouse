@@ -661,7 +661,7 @@ def write_plist(where: Path, mb: int) -> Path:
 
 
 def adopt_unmanaged(mode: str) -> None:
-    """Set whether the broker adopts llama-servers it did not start: off, ask or auto."""
+    """Set whether the broker adopts llama-servers it did not start: off or auto."""
     limits_mod.changed(adopt_unmanaged=mode)
 
 

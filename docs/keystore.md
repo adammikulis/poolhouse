@@ -96,7 +96,7 @@ never falls back to it by itself.
 
 ### Passphrases in the environment
 
-`POOLHOUSE_SIGNING_PASSPHRASE` (unlocks `signing.key.enc`) and `POOLHOUSE_MEMORY_PASSPHRASE` (with
+`POOLHOUSE_SIGNING_PASSPHRASE` (unlocks `signing.key.enc` and encrypts `poolhouse pool signing export`; unset, the export is refused at once) and `POOLHOUSE_MEMORY_PASSPHRASE` (with
 `POOLHOUSE_MEMORY_KEYS=passphrase`) exist for a machine with no keystore, such as a headless box or a
 container. They stay, as an explicit choice, and the exposure is this: an environment variable is
 readable by every process of the same user (`/proc/<pid>/environ` on Linux, `ps eww` or process

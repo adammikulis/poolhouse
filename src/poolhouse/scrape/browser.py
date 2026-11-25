@@ -138,19 +138,19 @@ def browser(window: Window, play: Any = None) -> Iterator[Any]:
         yield page
 
 
-def sign_in(window: Window, url: str, *, done: str = "", patience_s: float = 600.0) -> bool:
-    """Open a window and wait while a person signs in.
+def sign_in(window: Window, url: str, *, done: str, patience_s: float = 600.0) -> bool:
+    """Open a window and wait while the site's own sign-in page is completed in it.
 
-    Headed on purpose: this is the one step a person does, and doing it invisibly is how an
+    Headed on purpose: the site asks for its own login, and doing it invisibly is how an
     hour goes missing. Returns whether ``done`` — a selector that only exists once signed in —
-    turned up before patience ran out.
+    turned up before patience ran out. Nothing is read from a terminal, so ``done`` is required
+    and an empty one is refused at once.
     """
+    if not done:
+        raise ValueError("sign_in needs `done`, the selector that only exists once signed in; nothing is read from a terminal")
     headed = Window(**{**window.__dict__, "headless": False})
     with browser(headed) as page:
         page.goto(url, wait_until="domcontentloaded")
-        if not done:
-            input("sign in, then press enter here: ")
-            return True
         deadline = time.monotonic() + patience_s
         while time.monotonic() < deadline:
             with contextlib.suppress(Exception):

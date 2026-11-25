@@ -75,26 +75,26 @@ A tampered model, or text it takes for an order, can write a script that downloa
 run it through a tool that looks harmless. The hook reads these in every profile, by fixed rules and
 with no model, and each one is `unsure` or denied, and both are refused at once with the reason:
 
-- **A write to a file that runs by itself later** asks even when its content looks harmless: a git
+- **A write to a file that runs by itself later** is refused at once even when its content looks harmless: a git
   hook, `.git/config`, the agent folders (`.claude`, `.codex`, `.cursor`, `.agents`), `conftest.py`,
   `setup.py`, `pyproject.toml`, `package.json`, `Makefile`, a CI workflow, `.envrc`, an editor task
   file, `sitecustomize.py`, a `.pth` file, a shell startup file, an agent instruction file (`CLAUDE.md`,
   `AGENTS.md`, `.mcp.json`, `.cursorrules`), `.gitattributes`, `.git/info/`, `scripts/test`,
-  `scripts/hooks/*`, a `.plist`, `.service` or `.timer` file. The ask names the file, says when it
+  `scripts/hooks/*`, a `.plist`, `.service` or `.timer` file. The refusal names the file, says when it
   runs and quotes what the write starts with. Paths are read relative to the project folder, case-folded and through links,
   so `.git/Hooks/x`, `src/../.git/hooks/x` and a link to the hooks folder are the same file.
-  A shell redirect, `tee`, `cp`, `mv`, `ln`, `install`, `dd`, `sed -i` and `curl -o` onto such a file ask the same way.
+  A shell redirect, `tee`, `cp`, `mv`, `ln`, `install`, `dd`, `sed -i` and `curl -o` onto such a file are refused the same way.
   A write whose target, once links are followed, is a credential file outside the project (`~/.ssh/authorized_keys`,
   `~/.aws/config`, `~/.gnupg`, `~/.config/gh`, a link in the project that leads to one) is denied; a write through a
-  link that leads out of the project to anything else asks.
-- **A download that can be run** asks: `curl -o`, `curl -O`, `wget`, `aria2c`, a redirect or `tee` of a download, onto a file
+  link that leads out of the project to anything else is refused.
+- **A download that can be run** is refused: `curl -o`, `curl -O`, `wget`, `aria2c`, a redirect or `tee` of a download, onto a file
   that is not plainly data (a `.json`, `.csv`, `.html`, an archive or an image is data; anything under `tests`, `scripts` or `bin`,
   a source file, a program with no suffix or an executable is not), and `wget -r`, `wget -i` and `curl -K`, which name their files elsewhere.
   Every path a session's shell calls download, clone or copy from a download is kept in the state root (`harness-fetched/<session>.log`,
   closed to the model like the keystore), and a later command that runs files (an interpreter, `scripts/test`, `make -f`, `source`, `./file`,
-  `cd` into the folder and run) and names one of them, or a folder that holds one, asks "which this session downloaded";
+  `cd` into the folder and run) and names one of them, or a folder that holds one, is refused as "which this session downloaded";
   a download renamed or copied in the same line counts too. Reading, listing, deleting and `git add` are not questions.
-- **Login and schedule persistence** asks: `launchctl` with any verb that is not a listing, `systemctl enable` and `--user start`,
+- **Login and schedule persistence** is refused: `launchctl` with any verb that is not a listing, `systemctl enable` and `--user start`,
   `crontab`, `at`, `batch`, `open x.plist`, `sudo`, `doas`, `su` and `pkexec`.
 - **Text written to any file** is read for a download piped to a shell (`curl ... | sh`,
   `bash <(curl ...)`, `eval "$(curl ...)"`), text decoded and run, a shell opened to another machine
@@ -102,30 +102,30 @@ with no model, and each one is `unsure` or denied, and both are refused at once 
   `Edit` or `MultiEdit` is read together with the file it changes, so a download split over two edits is caught. A name is
   followed from the statement that assigns it a download (or a copy of the environment) to a later statement that runs it (or sends it
   out), a file from the statement that downloads it to the one that makes it executable or runs it, and a remote shell built
-  from a socket and `dup2` or `pty.spawn` in separate statements is read as a whole. The ask
+  from a socket and `dup2` or `pty.spawn` in separate statements is read as a whole. The refusal
   quotes the flagged statement with its line number (the part around the match when it is long),
   every character outside ASCII written as a visible escape, so a direction mark, a zero-width
-  character or a lookalike letter cannot hide it. A direction mark in written code asks on its own.
-- **Commands that bring code in** ask: `git clone`, `git submodule update`, `pip install`, `npm install`
+  character or a lookalike letter cannot hide it. A direction mark in written code is refused on its own.
+- **Commands that bring code in** are refused: `git clone`, `git submodule update`, `pip install`, `npm install`
   and the other package managers' installs, `pipx run`, `npx`, `cargo run`, `go run`, unpacking an
   archive, `git apply`, a `git config` or `git -c` that sets a command git runs (hooks path, alias,
   pager, ssh command, filters, credential helper), a server or tunnel, and a command left running in the background.
 - **Credential files** are listed once, in `poolhouse.secretpaths` (folders such as `.ssh` and `.aws`,
   names such as `.env` and `id_ed25519`, key suffixes, the state root's keys). A read of one outside the
   project folder is denied in every profile, whichever tool or command reads it (`Read`, `Grep`, `cat`, `cp`, `curl -d @file`,
-  `xargs -a`, a `python -c` that opens it, a link to it); inside the project folder it asks. A wildcard that could expand to one (`cat .e*`),
+  `xargs -a`, a `python -c` that opens it, a link to it); inside the project folder it is refused. A wildcard that could expand to one (`cat .e*`),
   a variable that builds a path, a search of a folder that holds one (`grep -r KEY .`, `rg --hidden`, `tar` of the folder) and files another
-  command picks (`find ... | xargs cat`) ask; a search of the home folder is denied. A command that prints the environment, a
+  command picks (`find ... | xargs cat`) are refused; a search of the home folder is denied. A command that prints the environment, a
   variable named like a key, a process listing that shows environments (`ps eww`, `ps -E`, `ps -o command,env`), `git config --list` or a
   `--get-regexp` that could match a credential or an address, `git remote -v`, `git remote show` or `git config --get remote.*.url` when a
   remote address holds a password, a repository fetched or added from a host the project does not list (github.com, gitlab.com,
   bitbucket.org, codeberg.org, sr.ht, dev.azure.com, huggingface.co and the hosts in the project's own remotes are listed), a shell string
-  that a variable or command builds (`bash -c 'echo $X'`), and opening an address in the person's browser ask. A key or token from a cloud or package CLI asks.
-- **An address** (`WebFetch`, `curl`, `wget`) asks when it carries data after `?` or `#`, has a user
+  that a variable or command builds (`bash -c 'echo $X'`), and opening an address in the person's browser are refused. A key or token from a cloud or package CLI is refused.
+- **An address** (`WebFetch`, `curl`, `wget`) is refused when it carries data after `?` or `#`, has a user
   name or password, names an internal host, uses a scheme other than http or https, or has a long encoded
   host name or path segment; `file:` of a credential file is denied.
 
-What the person sees is the command, or the file or address first and then the names of the other
+What the refusal shows is the command, or the file or address first and then the names of the other
 arguments, as one ASCII line of at most 250 characters that keeps both its start and its end, with the
 classifier's reasons (up to 700 characters) beside it. Code: `poolhouse.guard.execchain` (commands),
 `gitcmds`, `toolreview` and `autoexec` (tool arguments and written files), `fetchexec` and `flowscan` (written text),
@@ -162,7 +162,7 @@ says the model is not recorded.
 - The hook is a gate inside the harness's own process tree. Neither harness is a sandbox against
   its own model: a Claude Code session has no sandbox here, so a call the classifier labels safe or
   that the person allowed can still do what that call does, and a command built to hide what it
-  touches (an `eval` of a computed string) is `unsure` and asks rather than being read. The session's
+  touches (an `eval` of a computed string) is `unsure` and is denied at once rather than being read. The session's
   files are read-only and outside the tree, but the same operating-system user owns them. Codex's
   own sandbox is the stronger boundary for shell commands.
 - A hook that cannot start (a missing interpreter) is a non-blocking error in both harnesses. The
@@ -177,12 +177,12 @@ says the model is not recorded.
   `make`, `npm test` or `cargo test`; files that a `git pull`, `merge` or `rebase` brings in and a
   later command runs; a plain GET to a host the model chooses, which can carry a few bytes in a short
   path or sub-domain on each call (the hook holds no list of allowed hosts); instruction files such as
-  `AGENTS.md`, which are read, not run (their writes ask, but what an injected line in one says is not judged); a download that a
+  `AGENTS.md`, which are read, not run (their writes are refused, but what an injected line in one says is not judged); a download that a
   later `make`, `npm test` or `cargo test` runs without naming the file; the written-text scan follows a name through assignments
   in one file, not through a function, an import or a name built from pieces; `sh -c` with a body the classifier reads and finds
   harmless (`sh -c id`); a file replaced by a link between the check and the call;
   the folder after a `cd` (a relative name is read against the project folder); and a project folder
-  with more than 20,000 entries, which asks instead of being searched for credential files.
+  with more than 20,000 entries, which is refused instead of being searched for credential files.
 - The harness talks to the server directly, not through `poolhouse.http`, so the per-pool request queue (`poolhouse.gate`) does not order its calls. One slot per session keeps two sessions from sharing a cache.
 
 ## Local models and large harness prompts
@@ -194,7 +194,7 @@ says the model is not recorded.
   session so the long prefix is not evicted by a second conversation.
 - A small model with a large tool list loops: it reads, retries a command a hook denied, and does
   not finish. A 2B model run through Codex for about fifteen minutes made 34 tool calls and tried to
-  rewrite the file through `sed`, `python -c` and heredocs, which the classifier asked about, and
+  rewrite the file through `sed`, `python -c` and heredocs, which the classifier denied, and
   never ran the edit. Use a model sized for the harness (the 27B) for real work.
 - Codex needs the Responses API (`wire_api = "responses"`, the only value it accepts); llama-server
   serves `/v1/responses` and `/v1/messages` in the managed build. Claude Code needs `/v1/messages`.

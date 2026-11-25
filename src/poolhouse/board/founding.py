@@ -1,9 +1,8 @@
 """A pool is founded on this device at once: the node drafts the charter, this computer's own key signs it, the node takes it back (docs/pools-and-serving.md, 2 and 3).
 
 Nobody is asked and nothing waits. The signature that makes the pool true is this computer's own admin key (`computer_key`: the node makes it,
-enrols it and hands it to the local user's session once, and it is kept in the keystore). A phone is optional (docs/phone-approval.md,
-docs/design-phone-free-pools.md): `Admin` is a phone's or another device's key when one governs the pool. How a key counts, the node says: the
-draft of the charter carries the claim the node derives for it. Every refusal is a `Refusal`: one sentence an agent passes on and what is missing.
+enrols it and hands it to the local user's session once, and it is kept in the keystore). `Admin` is another computer's key, when that key governs
+the pool (docs/design-phone-free-pools.md). How a key counts, the node says: the draft of the charter carries the claim the node derives for it. Every refusal is a `Refusal`: one sentence an agent passes on and what is missing.
 """
 
 from __future__ import annotations
@@ -20,7 +19,6 @@ from poolhouse.board import (
     computer_key,
     credentials,
     grants,
-    phone,
     presence,
 )
 from poolhouse.board.client import Client, Denied, NodeError
@@ -46,12 +44,12 @@ class Refusal(errors.Denied):
 
 
 class NoComputerKey(Refusal):
-    """No key of this computer governs the pool: a phone does, and its card is the way."""
+    """No key of this computer governs the pool: another computer's key does, and the change is made there."""
 
 
 @dataclass(frozen=True, slots=True)
 class Admin:
-    """A key that is not this computer's and governs the pool (a phone's): it signs each act itself, where it is kept."""
+    """A key that is not this computer's and governs the pool (another computer's): it signs each act itself, where it is kept."""
 
     key: grants.Signs
     person: str = "owner"
@@ -128,16 +126,9 @@ def with_card[T](session: Session, send: Callable[[], T]) -> T:
         return send()
 
 
-def _phone_linked(session: Session) -> bool:
-    return any(p["state"] != "removed" for p in phone.phones(session))
-
-
 def _allowed(session: Session, admin: Admin, name: str) -> None:
-    """The session holds the grant to make this pool: from policy when a phone is linked, else signed by the admin key."""
+    """The session holds the grant to make this pool, signed by the admin key."""
     if _live(session, name):
-        return
-    if _phone_linked(session):
-        _card(session, approval.Ask("pool_create", name, lasts=POOL_GRANT_LASTS, uses=1), f"making the pool {name}")
         return
     _enrolled(session, admin)
     want = grants.Want("pool_create", {"kind": "session", "name": session.name}, name, grants.listing(session).device, 600_000, 1)
@@ -197,11 +188,11 @@ def _checked(session: Session, policy: str) -> Founded | None:
 
 
 def found(session: Session, admin: Admin, name: str, policy: str = "secure") -> Founded:
-    """Found the pool ``name`` of ``policy`` on this device, governed by a key that is not this computer's (a phone's): the charter the key
+    """Found the pool ``name`` of ``policy`` on this device, governed by a key that is not this computer's (another computer's): the charter the key
     accepts names this device as the pool's first member, so accepting it is the whole of founding.
 
     A device that is already in a founded pool answers with that pool and changes nothing.
-    Raises `Refusal`: a key that counts for nothing, a no, a question nobody answered.
+    Raises `Refusal`: a key that counts for nothing, or a refusal of the node.
     """
     if (done := _checked(session, policy)) is not None:
         return done
@@ -273,7 +264,7 @@ def _pool_key(session: Session, ks: keystore.Keystore | None) -> computer_key.Co
 def pool_session(client: Client, *, person_session: bool = False) -> Session:
     """A session of the pool board of this device (the one that may change the pool), as the node knows the caller. The device's own
     session (``person_session``) is registered with the secret the node keeps for the local user (`credentials.person_secret`), and it is the
-    one the node lets make the first key and the first phone."""
+    one the node lets make the first key."""
     native = f"python-api-{terminal_id()}"
     if person_session:
         try:
@@ -301,7 +292,7 @@ def device_name() -> str:
 
 
 def found_here(client: Client, name: str | None, policy: str, *, admin: Admin | None = None) -> Founded:
-    """What an agent does when asked to "make a pool": found it on the device ``client`` reaches, with ``admin`` (a phone's key) or, by
+    """What an agent does when asked to "make a pool": found it on the device ``client`` reaches, with ``admin`` (another computer's key) or, by
     default, a key this computer makes. Nobody is asked: the node confirms at once for the local user's session (`pool_session`)."""
     if admin is not None:
         return found(pool_session(client), admin, name or device_name(), policy)

@@ -22,8 +22,7 @@ Refusal shape: `X is refused to an agent (CLAUDECODE is set): <why>. To do it, r
 
 | Command | Enforced | Protects |
 | --- | --- | --- |
-| `poolhouse-workspace phone add`, `phone remove` | `workspace/phone_cli.py` | who can answer for this device |
-| `grant`, `revoke-grant`, `distrust`, `grants-setup`, `person-enroll`, `person-unenroll`, `person-proof`, `approval decide`, `approval pending --all`, `approval blocks`, `lift` | `workspace/grants_cli.py`, `approval_cli.py` | an agent minting or widening its own standing grants (it asks with `approval request`, which policy decides) |
+| `grant`, `revoke-grant`, `distrust`, `grants-setup`, `person-enroll`, `person-unenroll`, `person-proof` | `workspace/grants_cli.py` | an agent minting or widening its own standing grants (it asks with `approval request`, which policy decides) |
 | `poolhouse-workspace chat` | `workspace/cli.py` | speaking on the board as the owner |
 | `poolhouse-workspace quarantine-release` | `workspace/mail_cli.py` | an agent releasing the message that was held for it |
 | `poolhouse-security keystore-reset`, `baseline --kind model --pin` | `net/cli.py`, `sentinel/cli.py` | the key that wraps every secret; what lets a model file load |

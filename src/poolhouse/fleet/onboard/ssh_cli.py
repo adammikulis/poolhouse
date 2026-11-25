@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 from pathlib import Path
 from typing import Any
 
 from poolhouse import home
 from poolhouse.caller import AgentRefused
-from poolhouse.log import say, warn
+from poolhouse.log import say
 
 from ..tailnet import detect
 from .devices import Devices
@@ -44,15 +43,9 @@ def _emit(args: argparse.Namespace, document: dict[str, Any], text: str) -> None
     say(json.dumps(document, indent=1, default=str) if args.json else text)
 
 
-def _typed_fingerprint(args: argparse.Namespace):
-    def offered(prints: list[str]) -> str:
-        if args.host_key_fingerprint:
-            return args.host_key_fingerprint.strip()
-        if not (sys.stdin.isatty() and sys.stdout.isatty()):
-            return ""
-        warn("this host's key is not in your known_hosts. It presents: " + ", ".join(prints))
-        return input("type the fingerprint you read on that machine, in full: ").strip()
-    return offered
+def _given_fingerprint(args: argparse.Namespace):
+    """The fingerprint the command line gives for a host not in known_hosts; empty when none was, and nothing is asked."""
+    return lambda prints: args.host_key_fingerprint.strip()
 
 
 def cmd_ssh(args: argparse.Namespace) -> int:
@@ -81,7 +74,7 @@ def cmd_ssh(args: argparse.Namespace) -> int:
         made = keys.attest(program_entries(share), serial=int(time.time()), namespace=NAMESPACE)
         done = bootstrap_over_ssh(
             target, share, Signed(made["manifest"], made["sshsig"], made["allowed_signers"],
-                                  made["key_id"]), _typed_fingerprint(args))
+                                  made["key_id"]), _given_fingerprint(args))
     except (SshRefused, KeyStoreError, AgentRefused) as exc:
         _emit(args, {"error": str(exc)}, f"error: {exc}")
         return 2

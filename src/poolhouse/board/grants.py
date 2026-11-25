@@ -3,7 +3,7 @@ does to issue or revoke one (docs/node.md, "Standing grants").
 
 The node counts a grant only when a person key enrolled on it signed the grant, so nothing here can make one for a
 caller that does not hold that key. On a device in a pool that holds for the actions that stay on the device; a grant that reaches
-beyond it counts only from an approval an admin key of the pool signed on a phone, so this device's own key signs none. The key is passed in as an object with ``public`` (32 bytes) and ``sign_bytes``.
+beyond it counts only from an approval an admin key of the pool signed, so this device's own key signs none. The key is passed in as an object with ``public`` (32 bytes) and ``sign_bytes``.
 """
 
 from __future__ import annotations
@@ -35,8 +35,8 @@ FRESH_MS = 5 * 60 * 1000
 """How long the node takes a person's signature as fresh."""
 SPANS = {"s": 1000, "m": 60_000, "h": 3_600_000, "d": 86_400_000}
 MOST_DAYS = 366
-POOL_GRANTS = "In a pool your phone gives standing grants: ask for one and tap approve."
-"""What the node says to a grant of a pool that this device's own key signed."""
+POOL_GRANTS = "a device in a pool counts a grant that reaches beyond the device only when an admin key of the pool signed it, and this device's own key is not one."
+"""Why a grant of a pool is refused at once, before anything is signed: the node would not count one this device's own key signed."""
 
 
 class Signs(Protocol):
@@ -205,7 +205,7 @@ def enrol(client: Client, token: str, params: dict[str, Any]) -> dict[str, Any]:
 def enrol_first(client: Client, token: str, key: Signs, about: str) -> dict[str, Any]:
     """Put the first person key on the node with the secret the node makes when the device's own session asks for it (`presence.ask`): the secret is
     the node's, bound to this key, and nothing this process writes can make one."""
-    secret = str(presence.ask(client, token, "key", key.public.hex())["secret"])
+    secret = str(presence.ask(client, token, key.public.hex())["secret"])
     return enrol(client, token, {**enrolment(key, about), "secret": secret})
 
 
@@ -269,6 +269,11 @@ class Listing:
     def pool_wide(self, action: str) -> bool:
         """Whether a device in a pool counts a grant of ``action`` only from an admin key's approval: every action but the device-local ones."""
         return self.governance == "governed" and action not in self.registry.get("device_local", ())
+
+    def pool_refusal(self, actions: Sequence[str]) -> str:
+        """Why this device's key signs none of ``actions`` in the pool it is in, or an empty string when it may sign them all."""
+        beyond = [a for a in dict.fromkeys(actions) if self.pool_wide(a)]
+        return f"{', '.join(beyond)}: {POOL_GRANTS}" if beyond else ""
 
 
 def listing(session: Session) -> Listing:
@@ -401,7 +406,7 @@ def describe(data: bytes) -> str:
                     f"once, until {when(body['approved_ms'] + FRESH_MS)}, in the terminal whose shell is process {body['anchor']['pid']}")
         if domain + b"\n" == APPROVAL_DOMAIN and body["op"] == "approval":
             shown = "\n".join(f"      {line}" for line in str(body["text"]).split("\n"))
-            return f"{DECISION_WORDS.get(str(body['decision']), str(body['decision']).upper())} the request {body['id']} of {body['session'] or 'a phone'} on board {body['board']}, which reads:\n{shown}"
+            return f"{DECISION_WORDS.get(str(body['decision']), str(body['decision']).upper())} the request {body['id']} of {body['session'] or 'a session'} on board {body['board']}, which reads:\n{shown}"
         if domain + b"\n" == LIST_DOMAIN and body["op"] == "approval_list":
             return f"READ every request that waits for you on the node {body['node']}, with the words each one carries, so that you can answer one; good for thirty seconds"
         if domain + b"\n" == UNENROLL_DOMAIN and body["op"] == "unenroll":

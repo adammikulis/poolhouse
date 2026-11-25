@@ -1,4 +1,4 @@
-"""What an asker is told when the node does not make the secret or the ticket at once, and what the pool's status lists of a node that asks its user.
+"""What an asker is told when the node does not make the secret or the ticket at once.
 
 The launcher starts a node that asks nobody (`--presence auto`), so every ask is confirmed as it is made and these words are never read in a run
 of the product. A node somebody started by hand to ask its user (`--presence os` or `terminal`) answers `asking`, `refused`, `expired` or `failed`:
@@ -14,7 +14,6 @@ import time
 
 import pytest
 
-from poolhouse.api import _node, pool
 from poolhouse.board import presence
 from poolhouse.board.client import Denied
 
@@ -47,15 +46,6 @@ def test_a_node_that_does_not_confirm_is_refused_at_once_with_the_way_out_and_no
 
 def test_a_confirmed_reply_without_a_secret_is_no_secret():
     with pytest.raises(Denied, match="confirmed"):
-        presence.ask(Node({"state": "confirmed", "presence": "auto"}), "token", "phone")
-    said = presence.ask(Node({"state": "confirmed", "presence": "auto", "secret": "ticket"}), "token", "phone")
+        presence.ask(Node({"state": "confirmed", "presence": "auto"}), "token", "ab" * 32)
+    said = presence.ask(Node({"state": "confirmed", "presence": "auto", "secret": "ticket"}), "token", "ab" * 32)
     assert said["secret"] == "ticket"
-
-
-def test_the_pools_status_lists_every_request_that_waits_for_a_user_word_for_word(monkeypatch):
-    raw = {"pool": "p", "policy": "secure", "fingerprint": "f" * 64, "members": [], "governance": {"mode": "unfounded", "say": "This device is in no pool yet."},
-           "waiting": [{"by": "pool/claude-a", "say": f"waiting for you: {SENTENCE}", "sentence": SENTENCE, "via": "os", "left_ms": 90_000}]}
-    monkeypatch.setattr(_node, "call", lambda *_a, **_k: raw)
-    assert pool.status().waiting == (f"waiting for you: {SENTENCE}",)
-    monkeypatch.setattr(_node, "call", lambda *_a, **_k: {k: v for k, v in raw.items() if k != "waiting"})
-    assert pool.status().waiting == ()

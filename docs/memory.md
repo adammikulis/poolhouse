@@ -135,7 +135,7 @@ runs hostile text through every path).
   open and that item is deleted once every file reads back. With no usable keystore the
   store fails closed: reads see an empty, `locked` store, writes raise `KeyUnavailable` naming
   the fallback. The fallback is explicit: `POOLHOUSE_MEMORY_KEYS=passphrase` derives the key with
-  scrypt from `$POOLHOUSE_MEMORY_PASSPHRASE` or a prompt on a terminal. A file records which mode
+  scrypt from `$POOLHOUSE_MEMORY_PASSPHRASE` (with it unset the store is locked at once, with that reason; nothing is asked at a terminal). A file records which mode
   it was written in and is never opened by the other.
 - **Integrity.** The AES-GCM tag covers the ciphertext and header. A file that fails it falls
   back to the previous copy (`recovered`), otherwise the store reads empty and refuses writes
@@ -262,7 +262,7 @@ poolhouse-memory add TEXT --scope user|project [--kind K --source S --model M --
 poolhouse-memory edit ID TEXT
 poolhouse-memory confirm ID
 poolhouse-memory forget ID
-poolhouse-memory forget --all [--yes]
+poolhouse-memory forget --all --scope user|project|both
 poolhouse-memory link ID supersedes|contradicts|related OTHER
 poolhouse-memory unlink ID REL OTHER
 poolhouse-memory rekey
@@ -275,8 +275,8 @@ every command: [--scope user|project] [--project PATH]
 
 `list`, `export` and `stats` cover both scopes unless `--scope` is given; `add` requires it. A
 command naming a fact id (`show`, `edit`, `confirm`, `forget`, `link`) finds it in whichever scope
-holds it and asks for `--scope` when both do. `forget --all` asks which scope (`user`, `project`
-or `both`); with `--yes` it needs `--scope`.
+holds it and is refused at once, with the reason, when both do and no `--scope` is given.
+`forget --all` needs `--scope` (`user`, `project` or `both`) and forgets at once, with no confirmation.
 
 ## Not yet
 

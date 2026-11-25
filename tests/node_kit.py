@@ -83,7 +83,7 @@ def person_keys(directory: Path) -> SigningKeys:
 def enrol_first(client: board_client.Client, token: str, key: Signer | SigningKeys) -> dict:
     """The first person key on the node: the device's own session asks for the secret (`wire.answer_presence`), which the node makes at
     once (`--presence auto`), and the key is enrolled with it: the same steps a command takes, against the node as shipped."""
-    said = wire.answer_presence(client.state, "key", key.public.hex())
+    said = wire.answer_presence(client.state, key.public.hex())
     assert said["ok"] and said["result"]["state"] == "confirmed", f"the node made no secret: {said}"
     return board_grants.enrol(client, token, {**board_grants.enrolment(key, "a test person"), "secret": said["result"]["secret"]})
 

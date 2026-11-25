@@ -143,9 +143,9 @@ def _device(asked: str, this: str) -> str:
 
 
 def _pool_refuses(held: grants.Listing, *actions: str) -> None:
-    """Refuse, before anything is signed, a grant that a pool counts only from an admin key's approval on a phone."""
-    if any(held.pool_wide(a) for a in actions):
-        raise Denied("denied", grants.POOL_GRANTS)
+    """Refuse, before anything is signed, a grant that a pool counts only from an admin key of the pool."""
+    if why := held.pool_refusal(actions):
+        raise Denied("denied", why)
 
 
 def grant(args: argparse.Namespace, ctx: Ctx) -> Any:

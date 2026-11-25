@@ -77,7 +77,7 @@ PRESENCE_FLAG = "--presence"
 
 
 def _presence(extra: list[str] | None) -> list[str]:
-    """``extra`` for the node: nobody is asked for the first key or phone, so the node's default (`--presence auto`) stands and an
+    """``extra`` for the node: nobody is asked for the first key, so the node's default (`--presence auto`) stands and an
     operating-system prompt (`--presence os`), which would wait for a person, is dropped everywhere; any other `--presence` is the caller's own word."""
     words, out, i = list(extra or []), [], 0
     while i < len(words):
