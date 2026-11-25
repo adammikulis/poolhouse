@@ -21,9 +21,13 @@ from poolhouse.guard.destructive import classify, reason_text
 from poolhouse.guard.shellscan import segments
 from poolhouse.interventions import Call
 
-__all__ = ["CATALOG", "SHELL_TOOLS", "Decision", "decide", "workspace_authority"]
+__all__ = ["CATALOG", "LEAD_TOOLS", "SHELL_TOOLS", "Decision", "decide", "workspace_authority"]
+
+LEAD_TOOLS = ("mcp__lead__ask", "mcp__lead__note")
+"""A delegate's two tools (`poolhouse.delegate_run`): a message to the one session that started it, and the wait for its reply."""
 
 CATALOG: dict[str, str] = {
+    **dict.fromkeys(LEAD_TOOLS, "safe"),
     **dict.fromkeys(("Read", "Glob", "Grep", "LS", "NotebookRead", "TodoWrite", "TaskList", "TaskGet",
                      "ToolSearch", "BashOutput", "read_file", "list_dir", "grep_files", "update_plan"), "safe"),
     **dict.fromkeys(("mcp__workspace__workspace_inbox", "mcp__workspace__workspace_thread",

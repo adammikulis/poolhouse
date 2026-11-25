@@ -15,10 +15,14 @@ from typing import Any
 from poolhouse import coding_policy, harnessing, pi_tools, runtime
 from poolhouse.claude import DEFAULT_PORT, DEFAULT_SLOTS, alias_of
 from poolhouse.client import families
+from poolhouse.guard import harnesses
 from poolhouse.log import say
 from poolhouse.serve import provenance
 
-__all__ = ["extension", "launch", "models"]
+__all__ = ["INSTRUCTIONS", "extension", "launch", "models"]
+
+INSTRUCTIONS = harnesses.RECORDS["pi"]
+"""The instruction and settings names Pi reads from a project; `guard.runs_later` refuses a change to one at any depth."""
 
 
 def models(base_url: str, alias: str, window: int, max_output_tokens: int | None = None) -> str:

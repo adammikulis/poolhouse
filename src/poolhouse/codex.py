@@ -25,11 +25,14 @@ from typing import Any
 
 from poolhouse import agent_hooks, coding_policy, harnessing, serverkeys
 from poolhouse.claude import DEFAULT_PORT, DEFAULT_SLOTS, alias_of
+from poolhouse.guard import harnesses
 from poolhouse.log import say
 from poolhouse.serve import provenance
 
-__all__ = ["config_toml", "environment", "launch", "policy_flags"]
+__all__ = ["INSTRUCTIONS", "config_toml", "environment", "launch", "policy_flags"]
 
+INSTRUCTIONS = harnesses.RECORDS["codex"]
+"""The instruction and settings names Codex reads from a project; `guard.runs_later` refuses a change to one at any depth."""
 PROVIDER = "poolhouse"
 KEY_ENV = "POOLHOUSE_API_KEY"
 COMPACT_SHARE = 0.9
