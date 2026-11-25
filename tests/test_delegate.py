@@ -98,6 +98,13 @@ def test_the_command_runs_as_the_session_it_is_run_in_when_no_agent_is_named(lea
     assert harnessid.launcher(node.client, node.board, "").name == lead.name
 
 
+def test_a_harness_started_from_a_session_with_no_agent_variable_is_its_subagent(lead_node):
+    node, lead, project = lead_node
+    made = harnessid.invite("local-child", project, "", lambda _line: None)
+    assert made.parent.name == lead.name
+    assert [a.parent for a in node.session(lead).agents() if a.name == made.name] == [lead.name]
+
+
 def test_a_command_run_in_no_session_is_refused_at_once_and_names_the_flag(lead_node, monkeypatch):
     node, _lead, _project = lead_node
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID")
