@@ -839,6 +839,10 @@ no shape this repository has decided to live with. Budgets and red-team debt onl
   finding; a file over the limit is a file to split, never an allowance to record. `mutation-survivors: 0`
   means no recorded survivor is left, not that the tests catch everything. The metrics, floors, ratchet, duplicates,
   mutation, ruff and pyright checks: docs/gates.md.
+- **No stubs that switch a feature off.** A function with no parameters whose whole body raises a fixed message
+  (`scripts/gates/refusal_stubs.py`, metric `refusal-stubs`) is a feature nobody built, refusing every caller for ever; it
+  blocked every local coding harness until the isolated launcher replaces it. A feature that cannot be built yet is not
+  merged behind a refusal: either its entry points do not exist, or it works. The metric only falls.
 - Writes are refused when they add a function whose body already exists elsewhere, a raw HTTP call, a docstring over
   twelve lines, a signature over eight parameters, or a write that takes a file over its line limit or makes an
   already-over file longer (`scripts/install-hooks.sh` installs the pre-commit chain).
