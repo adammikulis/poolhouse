@@ -18,6 +18,7 @@ import selectors
 import socket
 import threading
 import time
+import traceback
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -71,6 +72,7 @@ MESSAGES = {
     "down": "The model server did not answer.",
     "length": "A request with a body states its length.",
     "empty": "This route takes no body.",
+    "fault": "The bridge could not read this request; it is not forwarded.",
 }
 
 
@@ -80,7 +82,8 @@ def _media(value: object, depth: int = 0) -> list[dict]:
         raise wire.Refusal(400, MESSAGES["json"])
     found: list[dict] = []
     if isinstance(value, dict):
-        if value.get("type") in MEDIA:
+        kind = value.get("type")
+        if isinstance(kind, str) and kind in MEDIA:   # a tool's schema has a property named `type` whose value is a dict, a list unhashable here
             found.append(value)
         found += [part for each in value.values() if isinstance(each, (dict, list)) for part in _media(each, depth + 1)]
     elif isinstance(value, list):
@@ -210,6 +213,9 @@ class ModelBridge:
             status, size = self._handle(sock, buffer, head, path)
         except wire.Refusal as why:
             status, size = why.status, self._refuse(sock, why)
+        except (TypeError, ValueError, KeyError, AttributeError, IndexError, RecursionError):   # a fault in reading a request: answered, never a bare reset
+            traceback.print_exc()
+            status, size = 500, self._refuse(sock, wire.Refusal(500, MESSAGES["fault"]))
         self._count(route, status, size, began, refused=route == "refused")
 
     def _refuse(self, sock: socket.socket, why: wire.Refusal) -> int:

@@ -357,6 +357,75 @@ def test_a_body_that_stalls_ends_the_request_and_never_reaches_the_server(bridge
     assert not upstream.requests
 
 
+def tool_named(kind: object) -> dict:
+    """A tool as a harness lists it: an input schema with one property called `type` (the `workspace_send` verb has one), whose schema is a dict."""
+    return {"name": "workspace_send", "description": "send", "input_schema": {"type": "object", "required": ["type"], "properties": {"type": kind}}}
+
+
+@pytest.mark.parametrize("kind", [{"type": "string", "enum": ["status", "question"]}, {"type": ["string", "null"]}, {"type": {"type": "string"}}, {"type": None},
+                                  {"type": 7}, {"type": True}, {"enum": [{"type": "x"}]}])
+def test_a_tool_whose_schema_has_a_property_named_type_is_served_and_the_connection_is_never_dropped(bridge, upstream, kind):
+    """The 2026-11-25 live failure: a dict (or a list) where a content part's `type` is read raised `TypeError` in the connection's thread, nothing was
+    answered, and the harness saw `ECONNRESET` on each of its eleven attempts."""
+    body = json.dumps({"model": ALIAS, "messages": [{"role": "user", "content": "hello"}], "tools": [tool_named(kind)], "max_tokens": 8}).encode()
+    answer = talk(bridge.port, asked("POST", "/v1/messages", bridge.token, body))
+    assert status_of(answer) == 200, answer[:200]
+    assert upstream.body()["tools"] == [tool_named(kind)], "the tool reaches the server as the session wrote it"
+
+
+def test_a_picture_named_by_an_address_is_still_refused_beside_a_tool_with_a_type_property(bridge, upstream):
+    part = {"type": "image", "source": {"type": "url", "url": "http://127.0.0.1:9/x.png"}}
+    body = json.dumps({"model": ALIAS, "messages": [{"role": "user", "content": [part]}], "tools": [tool_named({"type": "string"})]}).encode()
+    assert status_of(talk(bridge.port, asked("POST", "/v1/messages", bridge.token, body))) == 400
+    assert not upstream.requests
+
+
+def test_a_fault_in_reading_a_request_is_answered_500_and_never_ends_in_a_reset(bridge, upstream, monkeypatch):
+    def broken(body: bytes, alias: str, route: str) -> bytes:
+        raise TypeError("injected")
+
+    monkeypatch.setattr(model_bridge, "pin", broken)
+    answer = talk(bridge.port, asked("POST", "/v1/messages", bridge.token, BODY))
+    assert status_of(answer) == 500 and b"injected" not in answer, "the sentence is the bridge's own"
+    assert not upstream.requests
+    assert bridge.summary()["statuses"] == {"500": 1}
+
+
+def test_an_upstream_that_is_silent_for_longer_than_the_idle_limit_is_waited_for_and_the_client_is_served():
+    """A cold prompt is read by the model for minutes before its first byte: the model thinking is not the client being idle. The upstream here is a
+    plumbing server that is NOT a model; it answers 2.5 s after the request, the bridge's idle limit is 1 s, and the body is a stage-sized one."""
+    hold = threading.Event()
+    server = Upstream(hold)
+    made = ModelBridge(server.base_url, Lease(ALIAS, 100000, 1), key=KEY, idle=1.0)
+    made.start()
+    releaser = threading.Timer(2.5, hold.set)
+    try:
+        body = json.dumps({"model": ALIAS, "messages": [{"role": "user", "content": "word " * 30000}]}).encode()
+        assert len(body) > 150000
+        releaser.start()
+        started = time.monotonic()
+        answer = talk(made.port, asked("POST", "/v1/messages", made.token, body), patience=20)
+        assert status_of(answer) == 200 and CANNED_MARKER.encode() in answer, answer[:200]
+        assert time.monotonic() - started >= 2.4, "the answer came after the upstream's silence, which was longer than the idle limit"
+    finally:
+        releaser.cancel()
+        hold.set()
+        made.stop()
+        server.close()
+
+
+def test_a_client_that_sends_nothing_is_cut_at_the_idle_limit_and_never_reaches_the_server(bridge, upstream):
+    started = time.monotonic()
+    with socket.create_connection(("127.0.0.1", bridge.port), timeout=10) as sock:
+        got = b""
+        with contextlib.suppress(TimeoutError, ConnectionResetError):
+            while more := sock.recv(65536):
+                got += more
+    assert time.monotonic() - started < 5, "the idle limit (1 s here) ended it"
+    assert status_of(got) == 408, got[:100]
+    assert not upstream.requests
+
+
 def test_a_streamed_answer_passes_as_it_comes_and_not_when_it_is_over():
     server = CannedServer(Canned(pieces=("one", "two", "three"), gap=0.5))
     made = ModelBridge(server.base_url, LEASE, idle=5.0)
