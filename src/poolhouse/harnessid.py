@@ -10,13 +10,13 @@ from pathlib import Path
 
 from poolhouse import node_launch
 from poolhouse.board import place, session as sessions
-from poolhouse.board.client import Client, NodeError
+from poolhouse.board.client import Client, Denied, NodeError
 from poolhouse.board.names import valid_name
 from poolhouse.briefing import REQUIRED_BRIEFING
 from poolhouse.workspace import limits
 from poolhouse.workspace.harness_session import HarnessSession
 
-__all__ = ["HarnessSession", "agent_name", "brief", "invite"]
+__all__ = ["HarnessSession", "agent_name", "brief", "invite", "launcher"]
 
 LONGEST = 48
 AGENT_ENV = sessions.AGENT_ENV
@@ -46,13 +46,14 @@ def brief(name: str, alias: str, harness: str, parent: str, orders_from: Sequenc
     return REQUIRED_BRIEFING.format(owner=parent) + BRIEF.format(name=name, alias=alias, harness=harness, orders=obey)
 
 
-def _launcher(client: Client, board: str, parent: str) -> sessions.Session:
-    """The session that starts the harness: the agent named by ``parent`` or the environment; ValueError when there is none."""
+def launcher(client: Client, board: str, parent: str) -> sessions.Session:
+    """The session that starts the harness: the agent named by ``parent`` or the environment, else the session the command runs in; ValueError when there is none."""
     named = parent if parent and parent != "workspace" else os.environ.get(AGENT_ENV, "")
-    if not named:
-        raise ValueError(f"a coding agent is started by a session: name it with --parent or run as one (${AGENT_ENV}); "
-                         "no session is made for it under the person")
-    return sessions.connect(agent=named, board=board, client=client)
+    try:
+        return sessions.connect(agent=named, board=board, client=client)
+    except Denied as why:
+        raise ValueError(f"a coding agent is started by a session: name it with --as or run as one (${AGENT_ENV}); "
+                         f"no session is made for it under the person ({why})") from why
 
 
 def invite(name: str, project_dir: Path, parent: str, say: Callable[[str], None],
@@ -64,10 +65,10 @@ def invite(name: str, project_dir: Path, parent: str, say: Callable[[str], None]
     try:
         client = Client(node_launch.default_state())
         board = place.at_path(client, Path(project_dir))
-        launcher = _launcher(client, board, parent)
+        lead = launcher(client, board, parent)
         native = sessions.Native("", claim[1] or "harness", f"{name}-{uuid.uuid4().hex[:8]}")
-        made = launcher.register(native)
+        made = lead.register(native)
     except (NodeError, OSError, ValueError) as why:
         say(f"workspace connection refused: {why}")
         raise ValueError(f"a workspace session could not be made for {name}: {why}") from why
-    return HarnessSession(made.name, board=board, minted=True, base=limits.root(), parent=launcher, state=client.state, native=native)
+    return HarnessSession(made.name, board=board, minted=True, base=limits.root(), parent=lead, state=client.state, native=native)
