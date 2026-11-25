@@ -5,7 +5,8 @@ and `poolhouse.coding.launch_coding_agent` start again, with isolation the opera
 Windows; a platform that cannot enforce what is claimed refuses to start, with the exact reason, and never starts unisolated. The
 unconditional refusal `harnessing.require_isolated_execution` is replaced by a capability report and by the launch itself. The
 non-author attack pass of AGENTS.md section 1 is `docs/design-isolated-launcher-breakit.md`; section 14.3 names the section that
-decides each of its findings, and the slices of section 15.1 carry them with their first red tests. Every question the design
+decides each of its findings, and the slices of section 15.1 carry them with their first red tests; the second pass, `docs/notes/attack-verdict-launcher-no-waiting.md`
+(AF1 to AF11), is decided in 14.3 the same way. Every question the design
 raised is decided in section 18; nothing remains open. Nothing in a launch or in a session waits for a person: the rule is "Zero
 friction", after section 0.
 
@@ -26,13 +27,16 @@ redesign, not patch), `docs/agent-sandbox.md`, `docs/sandbox.md`, `docs/harnesse
 services the parent runs for it. The **stage** is the directory the agent sees as its project: a parent-owned copy of the person's
 project (`coding_workspace.Workspace`). The **master** is the parent's verified copy the stage starts from. **Publication** is the
 parent applying verified stage changes to the person's checkout. A **bridge** is a service the parent runs and the confined session
-reaches over the one channel its profile allows. A **grant** is one explicit, logged widening of a session's reach, decided at once by a rule of the launching session. The **proof** is
+reaches over the one channel its profile allows. A **grant** is one explicit, logged widening of a session's reach, decided at once by a rule of the launching session (8.3). The **report** is the one message of kind `isolation.report` the launcher posts under its own identity when a publication refused something (4.4). The **proof** is
 the escape run of section 10. The **capability report** is the per-guarantee statement of section 9. A **guarantee** is something a
 confined process cannot do (5.1). An **exposure** is a fact it can still learn on a platform whose mechanism does not hide it,
 named in the report and pinned by a probe (5.7). The **launching session** is the process that starts a launch outside any
-confinement: the lead agent acting as the person's delegate, or a terminal. **Plain source** is the one class of change
-publication applies; every other change is **refused** at once, with a plain reason naming each file, and kept as a patch the
-session can read (4.4). A **non-plain** file is one that fails a test of 4.4.1.
+confinement: the **lead**, the one agent identity the authority registry names as the person's delegate, or a terminal. **Plain
+source** is the one class of change publication applies; every other change is **refused** at once, with a plain reason written by
+the parent, kept as a patch under the state root that the session can read, and reported to the launching session (4.4). A
+**non-plain** file is one that fails a test of 4.4.1. A **governing** file is one that runs by itself later or decides what runs or
+who reviews (4.4.2); no rule applies it (8.2). The findings of `docs/notes/attack-verdict-launcher-no-waiting.md` are cited as AF1
+to AF11 (its F1 to F11), because F1 to F18 of 1.4 are defects found while reading.
 
 **In short.** A launch builds one confinement, proves it, and only then starts the harness inside it. The confinement holds the
 agent's copy of the project and a private home; it reaches the model only through a parent-run bridge, and the person's state
@@ -47,50 +51,67 @@ the launching session. A platform that cannot do this refuses to start, in one s
 |---|---|---|
 | I1 | The harness process and everything it starts run inside one confinement the launcher builds; no code path starts a coding harness outside it. | The harness vendors' own sandboxes cover less (Claude Code's covers shell commands only; its file tools, MCP servers and hooks run outside it, and it does not run on native Windows: `code.claude.com/docs/en/sandboxing`) and cannot nest (VERIFIED: `sandbox_apply: Operation not permitted` inside a Seatbelt run). |
 | I2 | One choke point: `isolation.prepare(spec)` returns a `Confinement`; a launcher's runner starts the harness only through `Confinement.popen`. `harnessing.require_isolated_execution` and its 14 call sites are deleted. | A refusal at 14 places is a policy nobody can prove complete; one place that builds the only argv that exists is. |
-| I3 | Default reach: the stage (read, write), a private agent home (read, write), the harness's own install tree and the system toolchain (read, execute), and one model bridge. Nothing else: no home directory, keystore, other repository, other loopback service, LAN, internet, unix socket, GPU, other process or machine identifier. | The owner's decision. |
-| I4 | The parent-owned workspace is the project the agent sees. The agent never writes the person's checkout; the parent publishes verified changes after each completed assistant turn. Publication is deny by default: only plain source is applied, and every other change (build, CI, hook, package-manager, wrapper, lockfile, configuration, agent-instruction and review-governance files, programs, binaries, anything unrecognized) is not applied: it is refused at once with a plain reason naming each file, kept as a patch the session can read in its stage and reported to the launching session by a board message, whichever tool wrote it. Nothing waits and nothing is asked; the lead agent can re-launch with a wider rule (`publish`, 8.2). Carries N3, N4, N5 (A11); the red tests assert the property (a non-plain change never reaches the checkout without a rule naming its path), not any step by a person. | A confinement bounds what the agent can reach; it cannot bound what the agent leaves behind for the person's tools to run. Only the parent, comparing bytes, can, and a list of names that run later is always behind the tools that read them. |
-| I5 | Writing the person's checkout in place is a named grant, a launch argument of the launching session decided and logged at launch (8.3), never a fallback and never reachable from inside a confinement. Staging has no project size ceiling; the one reason a project cannot be staged is that the stage volume lacks the free bytes, and the launch then refuses with the figures and names that grant. | No silent fallbacks. |
+| I3 | Default reach: the stage (read, write), a private agent home (read, write), the harness's own install tree and the system toolchain (read, execute), one directory of its own refused patches (read only, 4.2 item 2), and one model bridge. Nothing else: no home directory, keystore, other repository, other loopback service, LAN, internet, unix socket, GPU, other process or machine identifier. | The owner's decision. |
+| I4 | The parent-owned workspace is the project the agent sees. The agent never writes the person's checkout; the parent publishes verified changes after each completed assistant turn. Publication is deny by default: only plain source is applied, and every other change (build, CI, hook, package-manager, wrapper, lockfile, configuration, agent-instruction and review-governance files, programs, binaries, anything unrecognized) is not applied: it is refused at once with a reason the parent writes, kept as a patch under the state root that the session can read, and reported to the launching session by an `isolation.report` message the launcher posts under its own identity, whichever tool wrote it. Nothing waits and nothing is asked. A `publish` rule names exact files and never a governing file (8.2). Carries N3, N4, N5 (A11), AF1, AF2, AF4, AF6, AF8; the red tests assert the property (a non-plain change never reaches the checkout without a rule naming that exact file, and a governing file never reaches it by any rule), not any step by a person. | A confinement bounds what the agent can reach; it cannot bound what the agent leaves behind for the person's tools to run. Only the parent, comparing bytes, can, and a list of names that run later is always behind the tools that read them. |
+| I5 | Writing the person's checkout in place is a named grant, a launch argument decided and logged at launch under the source rule of 8.3, never a fallback, never reachable from inside a confinement and never together with a network host (8.3 caps). Staging has no project size ceiling; the one reason a project cannot be staged is that the stage volume lacks the free bytes, and the launch then refuses with the figures. | No silent fallbacks. |
 | I6 | The model is reached through a parent-owned bridge that allows a fixed set of routes, pins the model, and swaps a per-session token for the server's key. The model server's own port is in no profile. | `--on URL` servers carry whatever flags the person started them with; llama-server's slot, props and tool routes are not a coding agent's to call. |
-| I7 | Hooks and workspace verbs run in the parent. The command inside the confinement is a client of one session bridge; the confinement never sees the state root, the node socket, a bridge token minted for another session or any credential; the launcher mints and holds every token and none is pasted. An unsure call is denied at once with the reason (the rule of `harnesshook`). Carries A33, A35. | A hook inside the boundary it polices is not a gate. |
+| I7 | Hooks and workspace verbs run in the parent. The command inside the confinement is a client of one session bridge; the confinement never sees the state root (its one read-only directory of its own refused patches, 4.2 item 2, is the only entry it can read), the node socket, a bridge token minted for another session or any credential; the launcher mints and holds every token and none is pasted. An unsure call is denied at once with the reason (the rule of `harnesshook`). Carries A33, A35. | A hook inside the boundary it polices is not a gate. |
 | I8 | Guarantees are a typed report per platform. A launch needs every guarantee of the default reach; any that is not enforced refuses with its own sentence. What a confined process can still learn on a platform is listed beside them as exposures, each pinned by a probe so the list cannot grow unnoticed (5.7). | The owner's decision. A report that says "enforced" while a fact leaks is false; a fact that cannot be hidden is named. |
 | I9 | Every launch proves its confinement: a probe program runs inside the same profile, tries to escape and must fail, and positive controls must pass; the live harness process is then attested. A deviation stops the launch. | Enforcement is the claim; the proof is the evidence, on this machine, now. |
-| I10 | Linux and WSL need bubblewrap namespaces (user, mount, pid, net, ipc, uts, with nested user namespaces disabled and no capabilities). Landlock and seccomp are added inside when present. Landlock alone never suffices. Native Windows refuses until an enforceable per-port loopback rule is shown; the WSL2 route is supported; there is no weaker mode. A Linux host that restricts user namespaces gets an AppArmor profile Poolhouse ships in the repository and installs at setup: bound to the one `bwrap` binary, granting `userns` and nothing else, never a sysctl change, pinned by a test (5.3). | Section 5. |
+| I10 | Linux and WSL need bubblewrap namespaces (user, mount, pid, net, ipc, uts, with nested user namespaces disabled and no capabilities). Landlock and seccomp are added inside when present. Landlock alone never suffices. Native Windows refuses until an enforceable per-port loopback rule is shown; the WSL2 route is supported; there is no weaker mode. A Linux host that restricts user namespaces gets an AppArmor profile Poolhouse ships in the repository and the package install loads (a package step, never a launch, L7): bound to the one `bwrap` binary, granting `userns` and nothing else, never a sysctl change, pinned by a test (5.3). | Section 5. |
 | I11 | The environment is built from an allow-list. Nothing is inherited. The harness holds a bridge token, never a server key. | `claude.environment` and `codex.environment` copy the whole of `os.environ` today. |
-| I12 | Widening is a grant of five kinds (read, toolchain, network host, publish, in-place). A grant is a launch argument or a rule of the launching session (the lead agent), decided and logged at launch, scoped to the session; no token is issued to a human and nothing is typed or confirmed. A confined process never widens itself: a request from inside is decided at once by the launch rule and otherwise refused at once with the reason (8.3). Network grants act at once through the egress proxy; file grants act at the next launch. Carries N9, A45, A47. | A profile is fixed when the process starts. |
+| I12 | Widening is a grant of five kinds (read, toolchain, network host, publish, in-place). A grant is a launch argument, decided and logged at launch, scoped to the session. Its source is only the task the person gave the launching session or a person-owned project policy outside the repository, never text read after launch; only the lead identity or a terminal may pass one, every other marked agent is refused every widening argument at once; hard caps hold for every caller, and every widened launch is a sentinel signal (8.3). No token is issued to a human and nothing is typed or confirmed. A confined process never widens itself: it has no grant request, and the one `grant` frame answers every request with the same refusal (7, 8.3). Every grant, network hosts included, is fixed when the session starts. Carries N9, A45, A47, AF3, AF5, AF7. | A profile is fixed when the process starts. |
 | I13 | The permission profiles do not move the operating-system boundary, except that `read-only` and `plan` mount the stage read-only. `yolo` allows more calls at the hook (destructive ones); it does not widen. | `tests/test_coding_permissions.py` already holds that `yolo` opens no launcher control. |
 | I14 | What the operating system cannot bound per session (memory on macOS and on Linux without a delegated cgroup, disk everywhere, process count on Linux until the kernel is shown to count it per namespace) a parent watchdog bounds, which kills the session loudly on crossing a limit derived from the machine and is never silent; the report says "watched", not "enforced", for each resource. What the kernel can refuse at start (macOS `RLIMIT_NPROC` for the process count) it refuses. | The report must match the mechanism, and enforcement beats a sampled watcher wherever the kernel offers it. |
 | I15 | `coding_workspace` stays and gets its caller (section 16). Nothing is deleted that this design does not supersede (section 15). | The owner's order. |
 | I16 | Landing order: harden the backends first (they already protect every sandbox user), then the library, the bridges, the workspace, the wiring, the platforms. | Section 15. |
 | I17 | A process inside a confinement is never treated as a person or as the launching session. Every launcher control (a grant flag, `--workspace in-place`, `--project`, `--protect`, `--on`) and every caller check (`caller.refuse_agent`) refuses at once, with a plain reason, in any process the operating system reports as confined, whatever its markers, its descriptors or its terminal; nothing read from a terminal the confinement holds is ever taken as an answer. | The confined harness holds the relay's pty as both ends of its stdio and can type into its own input (3.5); a check that reads descriptors and an environment variable is answered by the attacker. Carries N9, A47; the red tests assert the immediate refusal, not a person step. |
-| I19 | Nothing in a launch or a session waits for a person: no prompt, no typed confirmation, no pasted token, no administrator prompt, no phone, no inbox. Every step is decided at once by a rule, or refused at once with the reason, and a refusal is reported to the launching session. | The owner's order; the section "Zero friction". |
+| I19 | Nothing in a launch or a session waits for a person: no prompt, no typed confirmation, no pasted token, no administrator prompt, no phone, no inbox. Every step is decided at once by a rule, or refused at once with the reason, and a refused publication is reported to the launching session. The one host fact that needs a privilege (the AppArmor profile, a missing bubblewrap) is a step of the package install and setup, never of a launch, and is recorded as an exception in "Zero friction". | The owner's order; the section "Zero friction". |
 
 ## Zero friction
 
 **The rule.** Using a local coding harness costs a person nothing: no "that is a person command" refusal, no pasted token, no
 typed yes, no administrator prompt, no phone, no wait on an inbox. A decision that would put a question to a person is made at
 once, in one of two ways: a rule allows it and the decision is logged, or it is refused at once with a plain reason that names
-what was refused and what the launching session can change. A refusal is reported to the launching session by a board message
-(by the line at the end of the turn and the activity record when a terminal launched the session). The lead agent, acting as
-the person's delegate, can re-launch with a wider rule. Credentials (the bridge token, the session token) are minted and held by
+what was refused and what kind of widening would allow it. A refused publication is reported to the launching session by an
+`isolation.report` message the launcher posts under its own identity, which no session verb can send (4.4, 7); a terminal
+launch gets the line at the end of the turn and the activity record. Where the launch has no lead and no terminal (the chat
+coding dialog, a native task), the recipient is the launching session of the task (the session that proposed or started it) and
+the report is also written to the conversation record and the task proposal, so a refusal never vanishes. The lead agent, acting
+as the person's delegate, can re-launch with a wider rule only from the sources of 8.3 (the task the person gave it, or a
+person-owned project policy outside the repository). Credentials (the bridge token, the session token) are minted and held by
 the launcher and are never pasted, typed or printed.
+
+**The `prod` preset.** `isolation.grant` is `person` in the `prod` preset (`POOLHOUSE_AUTHORITY_FLOOR=person`): the lead is
+refused every widening argument at once, with the reason, and only a terminal outside any agent can widen. That is a decision
+made at once, not a wait: nothing is held open and nobody is asked.
+
+**The one exception.** A Linux host that restricts unprivileged user namespaces needs the AppArmor profile of 5.3 loaded by
+root, and a host with no bubblewrap needs it installed. Neither is a step of a launch or a session, and no launch prompts for a
+password, runs `sudo` or installs anything. Both are steps of the package install and of setup (L7), which already run with the
+privilege the person gave to install the package; until the package route exists on a host, the launch refuses at once with the
+sentence of section 9, which names the missing fact and no command, and nothing starts unisolated. This is the one place where
+zero friction is met by the package and not by a decision of the launcher; it is recorded here for the owner's acceptance and
+this document does not grant it.
 
 **What does not change.** Every guarantee, probe and refusal of this design holds. The findings of the non-author pass keep an
 owner in this document: each row that replaced a person step names the finding it carries, and the red test asserts the
 property (a non-plain change never reaches the checkout, a confined process never widens itself, a credential never enters the
 confinement), never a step by a person. A confined process is never treated as the launching session (I17), and its refusals are
-immediate and plain.
+immediate and plain. The lead is a reader of text the attacker writes, so every message from a session is data to its reader
+and the report holds only words the parent wrote (AF1, AF2).
 
 **What each slice must not do.**
 
 | Slice | Must not |
 |---|---|
 | L1 the engine | wait on a person or on a dialog: no `sudo`, no keychain or system prompt, no operator pause in the barrier (a step with no progress ends in a survivor by its hang guard); install a missing backend; answer `sandbox.confined()` with anything but an immediate yes or no |
-| L2 the library | build `confirm`, `typed` or a typed flag into a grant; take a token as an argument or an environment variable; let `capability()` run an installer or elevate; phrase a refusal as "ask a person" (it names the launch argument that would allow it); let `grants.decide` return anything but granted or refused |
-| L3 the bridges | print, store or accept a pasted token (the launcher mints it and the profile hands it over); hold a `grant` frame open (it is answered in the same round trip); queue a `hook` frame for an answer (unsure is a denial at once, with the reason); create an inbox item or any other waiting record |
-| L4 the workspace | hold a change for an answer; open a question, a card or an item; retry a refused change; word the end-of-turn message as a question (it reports what was applied, what was refused and where the patch is) |
-| L5 turn it on | add a prompt, an `input()` or a confirmation flag to a launcher; refuse the launching lead agent a wider rule that the launch argument names (8.3 refuses only a confined caller); print a command a person must run; add a step beyond the arguments `poolhouse-claude` and `poolhouse-codex` take today |
+| L2 the library | build `confirm`, `typed` or a typed flag into a grant; take a token as an argument or an environment variable; let `capability()` run an installer or elevate; phrase a refusal as "ask a person" (it names the kind of widening that would allow it and never an argument string to run); let `grants.decide` return anything but granted or refused; let any non-lead marked agent pass a widening argument |
+| L3 the bridges | print, store or accept a pasted token (the launcher mints it and the profile hands it over); hold a `grant` frame open (it is answered in the same round trip, with one fixed refusal for every kind and subject, and never reported to the lead); queue a `hook` frame for an answer (unsure is a denial at once, with the reason); let a session verb send message kind `isolation.report`; create an inbox item or any other waiting record |
+| L4 the workspace | hold a change for an answer; open a question, a card or an item; retry a refused change; word the end-of-turn message as a question (it reports what was applied, what was refused and where the patch is); put a file name the master does not hold, patch text or a command to run into a report; write a name into the stage or the checkout for a patch |
+| L5 turn it on | add a prompt, an `input()` or a confirmation flag to a launcher; refuse the lead identity a widening its task or the person's project policy names and the caps of 8.3 allow (8.3 refuses a confined caller and every marked agent that is not the lead); print a command a person must run; add a step beyond the arguments `poolhouse-claude` and `poolhouse-codex` take today |
 | L6 interactive | let the parent write a question to the relay or read an answer from it: the relay carries the harness's screen and keys and nothing else, and nothing typed there is an answer |
-| L7 Linux and WSL | let a launch run an installer or ask for a password: the AppArmor profile belongs to setup (5.3), a missing one refuses at once with the sentence of section 9 |
+| L7 Linux and WSL | let a launch run an installer or ask for a password: the AppArmor profile and bubblewrap belong to the package install and setup (5.3), a missing one refuses at once with a sentence of section 9 that names the fact and no command |
 | L8 Windows | make setup of route B a step of a launch: it refuses at once until the setup exists |
 | I18 | Ending a session ends every process it started, found by walking the backend's record of the session (macOS: the follower's tree; Linux: the pid namespace; Windows: the job), never by signalling a process group. | A descendant that calls `setsid()` leaves its group and still writes the stage (4.2 item 3). |
 
@@ -180,8 +201,10 @@ F1, F2 (which holds two defects: the shared host network and the open nested use
 
 ## 2. Threat model
 
-**The attacker** is the model's output. It is prompt-injectable by anything the session reads (a file, a page, a tool result, a
-commit message, another agent's message) and may be hostile outright. It chooses every tool call: any shell command, any file edit,
+**The attacker** is the model's output, and anyone who writes text the lead agent reads (a board message, a patch, a file name).
+It is prompt-injectable by anything the session reads (a file, a page, a tool result, a
+commit message, another agent's message) and may be hostile outright. The lead agent is a model that reads what the session
+wrote, so it is a reader to defend as well as a deputy (T22). It chooses every tool call: any shell command, any file edit,
 any program it writes and runs, with the session's user id, inside the confinement. It sees the harness's environment and its
 command line. It does not choose the harness binary, the launcher, the hook, the bridges or the profile. The harness is trusted
 code but not trusted to be bug-free: the confinement holds with the harness itself as the attacker.
@@ -191,8 +214,9 @@ processes and terminal, the state root (tokens, node socket, keys), the model se
 person's checkout (what the agent leaves in it), and the person's attention (what is reported to the launching session).
 
 **Not defended**, and said so: a kernel or sandbox-engine bug (Seatbelt, bubblewrap, Landlock, AppContainer); side channels; a
-launching session that is itself prompt-injected into launching a wider session (R9: the grant it passes is logged, scoped to
-one session, and never reaches a credential location, the state root or a confined caller); a change to plain source that
+lead that is itself prompt-injected into inventing a task that names a widening inside the caps (R9: the source rule, the
+caps and the sentinel signal of 8.3 bound it; no rule reaches a credential location, the state root, a governing file or a
+confined or non-lead caller); a change to plain source that
 the person runs without reading the diff (4.4 applies plain source); bytes smuggled in the path or sub-domain of
 a granted host; the exposures of 5.7, which are named and pinned and which no mechanism the platform offers hides.
 
@@ -219,6 +243,7 @@ a granted host; the exposures of 5.7, which are named and pinned and which no me
 | T19 | Machine identity | read the serial number, hardware UUID, provisioning UDID, machine id or network hardware addresses | 5, G13 |
 | T20 | The person's own edits | time publication, or hold a descriptor, so that the parent overwrites or deletes a version the person saved after the parent read the file | 4.4.3 |
 | T21 | The host's setting | make the installer turn off a host-wide restriction (the AppArmor user-namespace sysctl) instead of allowing one binary | 5.3 |
+| T22 | The lead as reader | post a message that looks like the launcher's report; put instructions in a file name, a patch, a grant request or a refusal sentence; talk the lead into a wider launch; reach the launcher from an agent outside the lead identity or from an outer sandbox | 4.4, 7, 8.3 |
 
 ## 3. The launcher
 
@@ -270,7 +295,8 @@ spawn sites.
    bridge, and after each completed assistant turn (the harness's `Stop` event in an interactive session, the end of a headless
    run) the parent publishes what verified (4.2 item 1).
 10. At exit (or cancel): the harness's tree is ended and the barrier of 4.2 item 3 is passed, `Workspace.finish` publishes the rest under the
-    policy guard, the services stop, the stage's physical directory is removed. The activity log records the launch (profile
+    policy guard, the services stop, the stage's physical directory is removed (when a change was refused, the stage is kept for a
+re-launch of the same conversation, 4.4 step 6). The activity log records the launch (profile
     digest, grants, proof digest) and the end (exit status, what was published, what was refused).
 
 The proof runs after the lease and immediately before the start, so the interval it covers is seconds, not the minutes a model
@@ -328,8 +354,9 @@ text that looks like an answer; a descriptor duplicated from its stdio, or a pty
 stdout. Two rules follow, and the second is the one that holds.
 
 1. **Nothing read from a terminal the confinement holds is an answer, and the parent asks nothing on it.** A hook's unsure call
-   is a denial at once with the reason (section 7); a refused grant or publication is a line the harness's own screen shows and
-   a board message to the launching session. The relay carries the harness's screen and keys and nothing the parent asks. Where
+   is a denial at once with the reason (section 7); a refused publication is a line the harness's own screen shows and an
+   `isolation.report` message to the launching session; a refused grant frame is a fixed sentence on the harness's screen,
+   logged and counted for the sentinel, and told to no one. The relay carries the harness's screen and keys and nothing the parent asks. Where
    the profile language can name an ioctl command, the relay's slave is allowed the terminal-attribute and window-size commands
    and refused `TIOCSTI`; where it cannot, rule 2 alone carries the guarantee and the report says so.
 2. **A process the operating system reports as confined is never treated as a person or as the launching session (I17).** The
@@ -370,9 +397,15 @@ with a sentence that names print mode.
    tree, so the unit becomes one launch with a publication after each completed assistant turn, in interactive sessions too: `begin()` at step 4 of 3.3, a verified `publish_turn()` at each `Stop` event that reaches the session bridge, and `finish()` at step 10. A turn-end capture does not end the tree, so it is race-checked as `finish` is: a path whose identity changed between the two reads of the capture is held back and reconsidered at the next turn or at exit, never applied unverified, so a background process that still writes delays a path and never corrupts a publication. The base advances to the published state after each turn, so the three-way check of 4.4 compares against the last publication. The `workspace` alias path is the
    harness's working directory, so it is stable across the turns of one conversation (a resumed Claude Code session keys its
    transcript by working directory) when the workspace is reopened and not rebuilt.
-2. **The profile gets the stage.** The stage and the agent home are the only write grants. The parent also keeps a read-only
-   directory `.poolhouse-refused/` in the stage, where it writes the patches of the changes it refused (4.4); it is a control
-   name for the confinement (the session reads it and cannot write it) and no capture carries it. The five control names are
+2. **The profile gets the stage.** The stage and the agent home are the only write grants. The patches of the changes the parent
+   refused (4.4) are kept in one directory under the state root, `refused/<session>/`, which the parent creates before the
+   launch, owns and writes with `openat` relative to a descriptor it holds, under names it chooses (`p<k>.patch`, `k` a counter).
+   The session gets a read-only grant to that one directory and to no other entry of the state root: a read-only bind at a
+   fixed path inside the namespace on Linux and WSL (a bind of one directory, so it does not depend on the stage and survives
+   the epoch rotation of `begin()`), the real path of that directory in the profile on macOS, an ACE for the container on
+   Windows. The session has no write grant there, so it cannot replace, rename or fill it. No name is added to the project: the
+   stage and the checkout hold no patch, the control names stay exactly five, and an in-place session (4.5) reads its patches
+   the same way. What the session reads there is what it wrote itself. The five control names are
    `deny_write` inside the stage even though they are absent, so a harness that tries to create `.claude/settings.local.json` gets
    an error at the write (VERIFIED on Seatbelt: creating `.claude`, `.Claude` and `CTL/hooks/x` all fail, and so do renaming an
    ancestor of a protected path and hard-linking a protected file into the project), not a rejected session at the end.
@@ -429,37 +462,59 @@ with a sentence that names print mode.
 
 `Workspace.finish` yields `changes` (path, before and after digests, before and after modes). Publication (`Workspace.apply`)
 classifies each from bytes, modes and names only, never from what produced them, and it is **deny by default**: a change is
-applied only when it is plain source (4.4.1) or a `publish` rule of the launching session names its path (8.2); every other
-change is refused at once. Nothing waits for an answer and nothing is asked.
+applied only when it is plain source (4.4.1) or a `publish` rule of the launching session names that exact file and it is not a
+governing file (8.2); every other change is refused at once. Nothing waits for an answer and nothing is asked.
 
 | Class | Rule | Action |
 |---|---|---|
 | Plain source, added, changed or deleted | passes all four tests of 4.4.1 | applied (4.4.3) |
-| Non-plain | fails any test of 4.4.1: build, CI, hook, package-manager, wrapper, lockfile, configuration, data, agent-instruction and review-governance files, programs, binaries, anything unrecognized, anything whose facts cannot be read | not applied: refused at once, kept as a patch, reported (below); applied only when a `publish` rule of the launching session names the path (8.2), and then by 4.4.3 like any file |
-| A file git does not hold, overwritten or deleted | the checkout is a git repository and the path is untracked | refused with the non-plain files, with the reason that it cannot be restored; a `publish` rule that names it applies it |
+| Non-plain | fails any test of 4.4.1: build, CI, hook, package-manager, wrapper, lockfile, configuration, data, agent-instruction and review-governance files, programs, binaries, anything unrecognized, anything whose facts cannot be read | not applied: refused at once, kept as a patch, reported (below); applied only when a `publish` rule of the launching session names that exact file (8.2) and the file is not governing (next row), and then by 4.4.3 like any file |
+| Governing file | a non-plain file that runs by itself later or decides what runs or who reviews: any path with a dot component, a name a harness record, an ecosystem record or the registry assigns to a build, CI, hook, wrapper, package-manifest, lockfile or configuration role, an instruction file for a coding tool, `CODEOWNERS`, a wrapper script or jar, and every file a non-plain file names (test 4 of 4.4.1) | never applied, whatever rule and whoever asks, like a control name; reported |
+| A file git does not hold, overwritten or deleted | the checkout is a git repository and the path is untracked | refused with the non-plain files, with the reason that it cannot be restored; a `publish` rule that names that exact file applies it |
 | Control path, credential name | `CONTROL_PREFIXES`, `secretpaths` | never applied, whatever rule; reported |
 | Special file | FIFO, socket, device, set-uid or set-gid mode | never applied, whatever rule; reported by name |
-| New symlink | relative, target inside the tree | applied and listed; any other: never applied, reported |
+| New symlink | relative; its target in the result tree is plain source (4.4.1) and neither the link nor the target has a dot component | applied and listed; any other: never applied, reported |
 | Name collision | two paths equal under case or Unicode folding (APFS and NTFS fold) | never applied; reported |
 
 **What a refusal is.** Each publication makes one decision for the whole change set and records it at once:
 
 1. The plain changes are applied. The refused changes are not applied and the rest is.
-2. The reason is plain and names each file: one sentence per file, the sentence of the test that failed ("a hidden configuration
-   file", "a program", "data or configuration: the tool that reads it decides what it means", "an instruction file for a coding
-   tool", "named by `Makefile`, which runs it"), and what the launching session can change ("re-launch with `--publish PATH`").
-3. The refused changes are kept as one patch per publication in `.poolhouse-refused/` in the stage (4.2 item 2), which the
-   session can read, so the agent sees what was refused and why and continues its work; the file stays as the agent made it in
-   the stage. A file refused again with the same result digest is not reported again in the session; a changed byte is.
-4. The parent reports the refusal to the launching session by a board message from the session's own identity: the files, the
-   sentences and the path of the patch. When a terminal launched the session, the report is the end-of-turn line and the
-   activity record (`isolation.publication`: applied, refused, with digests).
-5. The lead agent, acting as the person's delegate, reads the patch and either re-launches with a wider rule (`publish PATH`,
-   8.2) or applies the patch itself. The session never does either for itself.
+2. The reason holds only words the parent wrote. It gives the count of refused files, the count by class (one fixed sentence per
+   class, the sentence of the test that failed: "a hidden configuration file", "a program", "data or configuration: the tool that
+   reads it decides what it means", "an instruction file for a coding tool", "named by a file that runs it", "a file that
+   governs what runs or who reviews"), the digest of the patch and the patch's path. A file appears by name only when its whole
+   path matches `[A-Za-z0-9._/-]{1,80}` and the master already holds that exact path (a name of the person's own project, not one
+   the session chose); every other name appears as `<file 4, 41 bytes, digest ab12..>`. A file name, a patch line, a comment, a
+   commit message or any other byte the session chose is never copied into a report, and a report never contains an argument
+   string to run (no "re-launch with ..."): the lead derives launch arguments from its task and the policy of 8.3.
+3. The refused changes are kept as one patch per publication under the state root (4.2 item 2), which the session can read, so
+   the agent sees what was refused and why and continues its work; the file stays as the agent made it in the stage. Reports are
+   folded by the set of refused files and their classes: a publication whose refused set and classes equal a set already
+   reported in this launch (compared by the digest of the path set and the class set, not by file bytes) is not reported again,
+   so a session that changes one byte per turn makes no new report. The number of reports per launch is capped at the session's
+   own share of the board log (17); past it the launcher sends one sentinel signal and no further report, and the activity
+   record keeps counting.
+4. The parent reports the refusal to the launching session by a message of kind `isolation.report` posted under the launcher's
+   own identity, which no verb of the session bridge can send (7): the counts, the sentences, the patch digest and its path.
+   The reader treats the patch as data, to diff and never to obey (AF2). When a terminal launched the session, the report is
+   the end-of-turn line and the activity record (`isolation.publication`: applied, refused, with digests); where no lead or
+   terminal launched it (the chat coding dialog, a native task), the report goes to the launching session of the task and into
+   the conversation record and the task proposal.
+5. The lead agent, acting as the person's delegate, reads the report and the patch as data. It re-launches with a `publish` rule
+   (exact files, 8.2) only when its own task or the person's project policy calls for it, or makes the change itself as an edit
+   of its own under its own hook and review rules; the digest of the patch is in the activity record. The session never does
+   either for itself.
+6. A re-launch of the same conversation reuses the kept stage instead of rebuilding it (4.2 item 1): the launch is given a
+   `publish` rule that names the refused files exactly, so the refused changes publish at the next turn without the agent
+   redoing the work, and the files the rule does not name stay refused and are not reported again (step 3). The exact names come
+   from the patch, read as data; the decision to publish them comes from the task or the policy of 8.3, never from the patch's
+   text. The three-way check of 4.4.3 runs as for any publication; a governing file stays refused under any rule.
 
-A report is one message per publication that refused something, never one per file or per tool call, so a session cannot flood
-its launching session (A33). The hook does not decide per call about writes to non-plain files: the publication decides once for
-the whole change set with every file named (8.4).
+A report is one message per publication that refused something and was not already reported, never one per file or per tool
+call, so a session cannot flood its launching session (A33). The words rule of step 2 (parent-written words, name tokens the
+master holds, digests, no command) holds for every message the launcher posts about a session: a conflict, a survivor, a guard
+refusal and the end-of-session record. The hook does not decide per call about writes to non-plain files: the publication
+decides once for the whole change set (8.4).
 
 #### 4.4.1 Plain source
 
@@ -521,8 +576,10 @@ publication, by the in-place capture (4.5) and by the hook.
 
 Review governance has no name of its own in the rule. `CODEOWNERS` has no extension (test 3) or sits in `.github/` (test 2), so
 a session cannot remove itself or a reviewer from the file that decides who reviews a later change in the batch that lands the
-change it wants unreviewed: the refusal names it with the rest, and it stays as it was in the checkout unless a `publish` rule
-of the launching session names that exact path (N5, A11).
+change it wants unreviewed: the refusal reports it with the rest, and it stays as it was in the checkout, because it is a
+governing file and no `publish` rule applies one (N5, A11, AF4). The set of governing files is computed like the rest of the
+non-plain set: by test 2 (a dot component), the harness and ecosystem records, the registry's names by role, and the files a
+non-plain file names (test 4).
 
 #### 4.4.3 Applying one path
 
@@ -568,14 +625,17 @@ that **the parent never deletes or overwrites a version of a file it has not ver
 
 ### 4.5 In place
 
-`--workspace in-place` (a launch argument of the launching session, decided and logged at launch; refused at once when the launcher runs inside a confinement, 8.3) gives the session the person's
+`--workspace in-place` (a launch argument decided and logged at launch under the source rule and the caps of 8.3; refused at once for a caller inside a confinement and for any marked agent that is not the lead, and refused for every caller together with a network host) gives the session the person's
 checkout itself, with the same control names `deny_write` (Seatbelt: VERIFIED; Linux: a read-only bind over each existing control
 path and no way to protect a name that does not exist without leaving a placeholder file in the checkout, VERIFIED, so on Linux the
 five names are created empty and read-only by the launcher and removed at the end if they were absent; Windows: a deny ACE for the
 container). Credentials in the project (`.env`) are readable, and the grant's sentence says so. There is no publication step; the
-parent captures the checkout before and after and reports to the launching session, by a board message, every change that 4.4.1 would
+parent captures the checkout before and after and reports to the launching session, by an `isolation.report` message with the
+words, folding and cap of 4.4 step 2 to 4, every change that 4.4.1 would
 refuse afterwards (the same `guard.runs_later.classify`, 4.4.2), which is detection and not prevention, and the decision line says
-so. Nothing waits for an answer. The grant is logged (8.2). It covers one project, and a session never has a second writable
+so; the patch of such a change is kept under the state root and read by the session as in 4.2 item 2, so in-place needs no name
+in the checkout. Because `.env` is readable there, a session with a network host is refused (8.3): readable credentials and a
+way out never go together. Nothing waits for an answer. The grant is logged (8.2). It covers one project, and a session never has a second writable
 project (8.2). It is never chosen by the launcher and never a fallback for size.
 
 ## 5. Enforcement per platform
@@ -587,9 +647,9 @@ enforces by watching, and the report says so, resource by resource for G11); no 
 
 | Id | Guarantee |
 |---|---|
-| G1 | Nothing is readable outside the stage, the agent home, the harness's install tree, the runtime interpreter that runs the bridge client, the system toolchain, the derived toolchain directories and the granted reads. |
+| G1 | Nothing is readable outside the stage, the agent home, the harness's install tree, the runtime interpreter that runs the bridge client, the system toolchain, the derived toolchain directories, the granted reads and the session's own directory of refused patches (read only, 4.2 item 2). |
 | G2 | Nothing is writable outside the stage and the agent home. |
-| G3 | A control name (`.claude`, `.codex`, `.pi`, `.mcp.json`, `.poolhouse-project.json`) cannot be created or changed in the stage; and independently of any platform, nothing that is not plain source reaches the checkout unless a `publish` rule of the launching session names its path (4.4, 8.2). |
+| G3 | A control name (`.claude`, `.codex`, `.pi`, `.mcp.json`, `.poolhouse-project.json`) cannot be created or changed in the stage; and independently of any platform, nothing that is not plain source reaches the checkout unless a `publish` rule of the launching session names that exact file, and a governing file reaches it under no rule (4.4, 8.2). |
 | G4 | The only network reachable is the model bridge, and the egress proxy for granted hosts. |
 | G5 | No unix, abstract or other socket is reachable except the session bridge. |
 | G6 | No process outside the session can be signalled or traced, or have its arguments, environment, memory, working directory or open files read. That a process exists (its name, pid, parent pid and user id) is an exposure on macOS (X1, 5.7) and is hidden by the pid namespace on Linux and Windows route A. |
@@ -651,7 +711,13 @@ same call is `sandbox.confined()` on macOS, which `caller.refuse_agent` and the 
 confinement is treated as a person or as the launching session (3.5).
 `scripts/agent_sandbox_profile.py` adds `poolhouse-claude` and `poolhouse-codex` to the managed `sandbox.excludedCommands`, so an
 agent in the owner's sandbox can run them. They run unsandboxed as the person only until they confine themselves at their first
-step; their arguments come from the agent, so 8.3 applies to every flag (T17).
+step, so `sandbox.confined()` is false for them and says nothing about who called. Their arguments come from the agent, so the
+caller is resolved by the authority registry (8.3), not by the confinement test: every agent that is not the lead gets the
+default reach and no widening argument (`--read`, `--toolchain`, `--allow-net`, `--publish`, `--workspace in-place`,
+`--project`, `--protect`). The registry resolves the caller by walking its process ancestry to a registered session (the pid
+walk of `docs/design-session-capabilities.md`), so dropping a marker variable changes nothing, and a caller it cannot resolve
+as the lead or as a terminal outside every agent is refused as a non-lead (T17, AF3). The exclusion is therefore a way to start
+a default-reach session and never a way to a wider one.
 
 ### 5.3 Linux and WSL
 
@@ -689,9 +755,9 @@ plus the share of 17 where the kernel counts it per user namespace (PROBE P-npro
 
 | Need | Check | Status |
 |---|---|---|
-| bubblewrap with `--disable-userns` and `--cap-drop` | `bwrap --version` and a probe run; 0.9.0 has both (VERIFIED); 0.9.0 has no `--overlay` | Ubuntu 24.04 ships 0.9.0 |
+| bubblewrap with `--disable-userns` and `--cap-drop` | `bwrap --version` and a probe run; 0.9.0 has both (VERIFIED); 0.9.0 has no `--overlay` | Ubuntu 24.04 ships 0.9.0; the package install and setup bring it in (L7), a launch never installs it |
 | unprivileged user namespaces allowed | the namespace probe the backend already runs (3 s, cached by binary identity and user namespace) | WSL: the launcher already checks it (`docs/windows-runtime.md`) |
-| Ubuntu desktop (not WSL): `kernel.apparmor_restrict_unprivileged_userns` | read it; when 1, `bwrap` fails with `setting up uid map: Permission denied` | Poolhouse ships an AppArmor profile for the one `bwrap` binary that allows it `userns`, and Poolhouse's setup installs it (the profile and its scope are below); a launch never installs it, never prompts and never runs `sudo`: without it the launch refuses at once with the sentence of section 9. PREDICTED; PROBE P-ubuntu |
+| Ubuntu desktop (not WSL): `kernel.apparmor_restrict_unprivileged_userns` | read it; when 1, `bwrap` fails with `setting up uid map: Permission denied` | Poolhouse ships an AppArmor profile for the one `bwrap` binary that allows it `userns`, and the package install loads it (the profile and its scope are below); a launch never installs it, never prompts and never runs `sudo`: without it the launch refuses at once with the sentence of section 9, which names the fact and no command. PREDICTED; PROBE P-ubuntu |
 | WSL2 virtual-machine architecture, project inside the WSL filesystem | the kernel string; the project's mount type; a project under `/mnt/c` is refused: DrvFs has no owner or mode, so G2 and the capture cannot hold | PREDICTED; PROBE P-drvfs |
 | Landlock ABI, seccomp | `landlock_create_ruleset(NULL, 0, VERSION)` (VERIFIED returns 8 here); WSL's kernel enabled Landlock in release 5.15.57.1 (Microsoft's kernel release notes) | PROBE P-wsl reads the WSL device's ABI |
 
@@ -720,12 +786,14 @@ profile poolhouse-bwrap @BWRAP@ flags=(unconfined) {
   `kernel.apparmor_restrict_unprivileged_userns` or any other sysctl, nor a file under `/etc/sysctl.d`. Turning the restriction
   off hands unprivileged user-namespace creation back to every unconfined program of the host, which is what the restriction is
   there to stop.
-- **Installed by setup, never by a launch.** `poolhouse security sandbox install` writes the profile to
-  `/etc/apparmor.d/poolhouse-bwrap` and loads it with `apparmor_parser`. It is a gate of the authority registry decided at once
-  (`docs/agent-policy.md`, "System settings and the authority registry"), as `autostart.install` is: a confined process is
-  refused at once with the reason, and the one privileged step the host needs is the operating system's own, run by Poolhouse's
-  setup with the privilege the machine already gave it, in the class of the wired memory limit. No launch, harness start or
-  capability check calls it, prompts for a password or waits. `poolhouse security sandbox uninstall` unloads and removes it.
+- **Installed by the package and setup, never by a launch.** The install step (`poolhouse security sandbox install`, run by the
+  package's own install script or by setup, which already hold the privilege the person gave to install the package) writes the
+  profile to `/etc/apparmor.d/poolhouse-bwrap` and loads it with `apparmor_parser`. It is a gate of the authority registry
+  decided at once (`docs/agent-policy.md`, "System settings and the authority registry"), as `autostart.install` is: a confined
+  process is refused at once with the reason, and the one privileged step the host needs is the operating system's own. No
+  launch, harness start or capability check calls it, prompts for a password or waits, and no message to a person names it as a
+  command to run. A host where the package route does not exist yet is the exception recorded in "Zero friction" (AF9).
+  `poolhouse security sandbox uninstall` unloads and removes it.
 - **Checked at each capability check.** The profile is loaded, its attachment is the resolved `bwrap`, and the installed file
   equals the shipped file with the path substituted. A file that differs, or a profile that attaches to anything else, is the
   refusal sentence of section 9 for a changed permission; the launch never starts on it.
@@ -904,17 +972,26 @@ sharing the network and is refused there; the callers that use it (the `mcp_serv
 
 ### 6.3 The egress proxy (granted hosts only)
 
-A `net` grant adds an exact host to the proxy's allow list at once. The proxy is a CONNECT-only HTTP proxy beside the bridge.
-It tunnels TLS end to end on port 443 only (never plain HTTP, so there is no redirect to follow), resolves the name itself, refuses
-a result in a loopback, link-local, private, multicast, shared-address or documentation range, and connects to the address it
-resolved (no second resolution). It refuses wildcards and an IP literal. It counts bytes per host. The env var `HTTPS_PROXY`
-names it from the first launch, with an empty allow list, so that a grant needs no restart. A tool that ignores proxy variables
-has no route and fails, which is the safe failure.
+A `net` grant puts an exact host on the proxy's allow list when the session starts; the list is fixed for the session and no
+request changes it. A host is allowed only when it is on the registry list, a data file (`contracts/egress-hosts.json`) whose
+every entry carries its source (the ecosystem record of 4.4.2: the index host the tool's own documentation names as its default)
+and the bytes bound below; a launch rule that names any other host is refused for every caller (8.3 caps). The proxy is a
+CONNECT-only HTTP proxy beside the bridge. It tunnels TLS end to end on port 443 only (never plain HTTP, so there is no redirect
+to follow), resolves the name itself, refuses a result in a loopback, link-local, private, multicast, shared-address or
+documentation range, and connects to the address it resolved (no second resolution). It refuses wildcards and an IP literal.
+A tunnel carries bytes in both directions, so an allowed host can be sent to as well as received from (a `twine upload` or an
+`npm publish` with a token the prompt supplied is such a send). The proxy counts bytes per host and per direction and cuts the
+tunnel when the bytes out pass the bound recorded for that host in the registry list: the largest bytes-out of a real install
+from that host, measured by the slice with its command and recorded beside the entry (17). A download costs nothing against
+the bound; an upload the size of a stage is cut. The env var `HTTPS_PROXY` names the proxy; with no host in the launch rule the
+list is empty. A tool that ignores proxy variables has no route and fails, which is the safe failure. The bytes counted per
+host and direction are part of the end-of-session record, with the host names.
 
 ### 6.4 What stays open
 
-A granted host carries bytes in its path, its sub-domain, its request headers and its timing; the proxy sees the hostname and
-sizes only (`docs/harnesses.md` lists the same residual for a plain GET). Pool offers reached through the bridge's upstream carry
+A granted host carries bytes in the body a tunnel sends (up to the bound of 6.3), its path, its sub-domain, its request headers
+and its timing; the proxy sees the hostname and sizes only, so it cannot see a TLS name that differs from the CONNECT name on a
+shared CDN host (`docs/harnesses.md` lists the same residual for a plain GET). Pool offers reached through the bridge's upstream carry
 whatever the offered model sees. The model's own output reaches the person unreviewed.
 
 ## 7. The session bridge: hooks and workspace verbs in the parent
@@ -930,8 +1007,8 @@ endpoint in the profile besides the model bridge.
 | Rail | the permissions, the execution mode, the agent name, the roots and the protected paths are fields of the bridge object the launcher built. No frame carries or changes them (`harnesshook`'s rule, kept: "never read from the environment or from the call"). |
 | Frames | length-prefixed JSON, at most the served window times 4 bytes (a tool input is model output, which the window bounds; 17), unique keys (`json_objects.unique_object`), one outstanding frame per connection; each connection is a process of the confinement, so the process bound is the bound on connections. |
 | `hook` | `pre`, `post`, `stop` with the harness's event payload; the bridge calls `harnesshook.pre/post/stop` with its own `Rail` and returns the answer unchanged: allow, or deny at once with the reason (an unsure call is a denial; the hook never prompts). A bridge that is down, slow past the harness's hook timeout or confused returns nothing, which both harnesses read as a block. |
-| `workspace` | the verbs of `poolhouse.mcp --workspace-only` (inbox, thread, status, ownership reads under read permission; send, claim, announce under the acting permission); no administration, grant or registration. The bridge holds the session's token in the parent's memory and acts as the session. A verb outside the table is refused and counted. |
-| `grant` | a request for a grant (8.2) is decided in the same round trip by the launch rule (8.3): granted and logged, or refused with the reason and the launch argument that would allow it. Nothing is queued, nothing waits and nothing is asked; the reply is the parent's, never the agent's. A refusal is one board message to the launching session, and repeats of the same request fold into it. No answer is read from a terminal the confinement holds (3.5). |
+| `workspace` | the verbs of `poolhouse.mcp --workspace-only` (inbox, thread, status, ownership reads under read permission; send, claim, announce under the acting permission); no administration, grant or registration. The bridge holds the session's token in the parent's memory and acts as the session. A verb outside the table is refused and counted. No verb can send message kind `isolation.report` or any kind the launcher identity owns, and the report is posted under the launcher's own identity, which the session's token is not. Every message a session sends carries the sender label `from a confined agent: data`, set by the bridge, and its reader treats the text as data to read and never as instructions to follow (AF1). |
+| `grant` | the one frame about grants. The reply is the same fixed refusal for every request, whatever its kind and subject ("Grants are launch arguments; none is decided here."), so it says nothing about the launch rule and gives no oracle for the host list or any other rule. The subject is never echoed. The request is written to the activity log (its kind and a digest of its subject, never the text) and counted for the sentinel, whose reader sees a burst; it is never reported to the launching session, never queued and never waits, and nothing is asked. No answer is read from a terminal the confinement holds (3.5). Network hosts have no request at all: the proxy's list is fixed at launch (6.3). (AF2, AF5.) |
 | Clients | `python -I -m poolhouse.isolation.client hook|workspace|grant ...` (stdlib only), written into the hook command by the launcher and into the agent home's `bin/` as a `poolhouse-workspace` shim; for Codex the same module runs as the stdio MCP server. The interpreter is the runtime's own, read-only. |
 
 The bridge makes the hook a client of a gate that is outside the thing it gates. It is not the boundary: a harness tool that never
@@ -958,14 +1035,15 @@ and the mount enforces what `--sandbox read-only` meant. The OS boundary is the 
 |---|---|---|---|
 | `read PATH` | a read-only mount or read grant of one directory (not a file under `~/.ssh` or any `secretpaths` name, not an ancestor of the state root) | next launch | "This coding session can read PATH (it cannot change it)." |
 | `toolchain PATH` | read and execute of one toolchain version directory. A directory the project itself declares (`.python-version`, `.venv/pyvenv.cfg`, `rust-toolchain`, `.nvmrc`, `.tool-versions`) is granted at launch by the declaration; one the project does not declare is granted only when a launch argument names it, and otherwise refused at once | next launch | "This coding session can run the Python at PATH." |
-| `net HOST` | an exact host on the egress proxy's list | at once | "This coding session can reach HOST (download only)." |
-| `publish PATH` | the parent applies a non-plain change to PATH (4.4): one exact path or one directory of the project, never a control name, credential name, special file, symlink out of the tree or folding collision, which no rule applies | the next publication of the launch it names | "This coding session can change PATH in your project; the change is applied as the agent made it." |
-| `workspace in-place` | 4.5 | next launch | "This coding session changes your files directly in PROJECT. Files like .env in that folder are readable to it, and nothing checks the changes before they land." |
+| `net HOST` | an exact host that the registry list of 6.3 holds, on the egress proxy's list for the session | at launch (the list is fixed for the session) | "This coding session can reach HOST, and can send to it as well as receive from it; bytes sent are cut at a bound." |
+| `publish FILE` | the parent applies a non-plain change to that one file of the project (4.4). The rule names an exact file and never a directory, a glob, the project root, a path with a dot component, a governing file (4.4 table: CI, hook managers, instruction files, review governance, wrappers, build and package configuration, and every file a non-plain file names), a control name, a credential name, a special file, a symlink out of the tree or a folding collision: no caller can have any of those applied. The rule is bound to the file's identity, not to a string: the launcher opens the file and keeps the descriptor (for a file not yet in the checkout, its parent directory and the exact final name), records the device and inode, and publication applies the rule only to the object with that identity, so a replaced file, a case-folded name or a directory the person swapped matches nothing | the next publication of the launch it names | "This coding session can change the file FILE in your project; the change is applied as the agent made it." |
+| `workspace in-place` | 4.5; never together with a `net` host | next launch | "This coding session changes your files directly in PROJECT. Files like .env in that folder are readable to it, and nothing checks the changes before they land." |
 
-A refusal has one form: "Refused: HOST is not allowed for this coding session; re-launch with `--allow-net HOST` to allow it." The
-sentence names the launch argument, never a person. The launch arguments are `--read PATH`, `--toolchain PATH`,
-`--allow-net HOST`, `--publish PATH` and `--workspace in-place`; they are the launching session's vocabulary, and a confined
-process has none of them (8.3).
+A refusal has one form: "Refused: a network host is not allowed for this coding session." The sentence names the kind of
+widening and never a person, and it never contains an argument string to run, a subject the session chose or a command: the
+launching session derives its launch arguments from its task and the policy of 8.3. The launch arguments are `--read PATH`,
+`--toolchain PATH`, `--allow-net HOST`, `--publish FILE` and `--workspace in-place`; they are the launching session's
+vocabulary, a confined process has none of them (8.3), and an agent that is not the lead has none of them either.
 
 The **system toolchain** is the default and needs no grant: macOS `/usr`, `/bin`, `/sbin`, `/System/Library` and the other system
 trees `sandbox/seatbelt.py` already lists, `/Library/Developer/CommandLineTools`, and the `bin`, `lib`, `opt`, `Cellar`, `share`,
@@ -989,43 +1067,65 @@ toolchain directory (3.4).
 **Logging.** Every grant is an activity record of kind `isolation.grant` (`docs/activity-log.md`): session, conversation, kind,
 subject, scope, issuer (the launching session's identity and the argument or rule that named the grant, with its request
 fingerprint), the profile digest it widened, and the decision line. A refusal is a record of the same kind with the reason. The
-launch banner and the coding dialog list the grants in force, and the end-of-session record lists the grants used.
+launch banner and the coding dialog list the grants in force, and the end-of-session record lists the grants used. Every launch
+with a widening also sends the sentinel one `isolation.widened` signal (the kinds, the digests of the subjects, the source of 8.3
+and the issuer), because a log has no reader and the sentinel is the one reader that exists; in-place, and a network host with a
+`publish` rule, are marked unusual (AF7).
 
 ### 8.3 Who may widen a session, and the launcher as a deputy
 
 **The rule.** A grant is decided at once, by `isolation.grants.decide(request, rule)`, which returns granted or refused and
-nothing else. The rule is the launching session's: the launch arguments of 8.2, and the declarations of the project (8.2,
-toolchain). The launching session is a process outside every confinement: the lead agent acting as the person's delegate, or a
+nothing else. The rule is the launch arguments of 8.2 and the declarations of the project (8.2, toolchain), and a widening
+argument has two sources only: **the task the person gave the launching session** (the person's own words for this launch) or
+**a project policy the person owns, kept outside the repository** (the registered-project record under the state root, never a
+file or control name inside the project, written by the person at registration and never as a prompt; default empty, and when
+present it names the widenings the project may ever be launched with, so an agent that holds it cannot pass a widening it does
+not name). It is never a board message, a patch, a project file, a refusal sentence, a tool result or anything else read after
+launch. The launcher cannot see where an argument came from, so the property is made checkable in three ways: the issuer and the
+claimed source are recorded with each grant (8.2); the caps below hold whoever asks and whatever the source; and the sentinel
+sees every widened launch (8.2). The launching session is a process outside every confinement, the lead (8.3, gate) or a
 terminal. The decision is made and logged at launch, scoped to the one session it names, and issues no token to anyone: nothing
-is typed, confirmed or pasted. A request outside the rule is refused at once with the reason and the argument that would allow
-it, and the refusal is reported to the launching session by a board message; the launching session re-launches with a wider
-rule. A subject that no rule can name is refused for every caller: a credential location, an ancestor of the state root or of the
-person's home, a control name, a special file (8.2).
+is typed, confirmed or pasted. A request outside the rule is refused at once with the reason and the kind of widening, and it is
+reported to no one: only a refused publication is reported to the launching session (4.4). A subject that no rule can name is
+refused for every caller: a credential location, an ancestor of the state root or of the person's home, a control name, a
+special file, a governing file (8.2).
+
+**The caps.** Each widening has a cap that holds for every caller, the lead and a terminal included, and for every source:
+no `publish` of a governing file, and only of exact files (8.2); never `workspace in-place` together with any `net` host (a
+readable `.env` and a way out are the exfiltration this design stops, AF5, AF7); `net` hosts only from the registry list of 6.3;
+and one sentinel signal on every widened launch (8.2). The launcher enforces them at the choke point before any argument is
+decided.
 
 **A confined process never widens itself (I17).** A process the operating system reports as confined (`sandbox.confined()`,
 3.5) is refused at once, with a plain reason, for every grant argument, `--workspace in-place`, `--project`, `--protect`, `--on`
 and `--as`, whatever markers, descriptors or terminal it holds; it is audited (`caller.record`) and nothing it types or writes
-counts as an answer. A `grant` frame from the confined session over the session bridge (7) is decided by the same rule in the
-same round trip: a `net HOST` the launch rule names is granted at once; anything else is refused at once, and a request for a
-file grant (`read`, `toolchain`, `publish`, `workspace in-place`) is always refused, because those take effect at a launch.
+counts as an answer. A `grant` frame from the confined session over the session bridge (7) is answered in the same round trip
+with one fixed refusal for every kind and subject, logged and counted, and never reported to the launching session: it widens
+nothing, because every grant is fixed when the session starts, and it tells the session nothing about the rule.
 
 **The gate.** `isolation.grant` is a gate of the authority registry, decided at once (`docs/agent-policy.md`, "System settings
-and the authority registry"): `delegated` in every preset, so the lead agent's launch arguments pass and are audited with who
-ran them; `POOLHOUSE_AUTHORITY_FLOOR=person` reads it as `person`, which refuses a marked caller at once with the reason and
-passes a terminal outside any agent. Nothing prompts and nothing waits in either reading.
+and the authority registry"): `delegated` only to the lead identity, which the registry resolves by walking the caller's process
+ancestry to a registered session (the pid walk of `docs/design-session-capabilities.md`), never by a marker the caller can
+drop; its arguments pass the caps and are audited with who ran them. Every other marked agent (a subagent, a tool, an agent in
+the owner's sandbox that runs the launcher outside it, 5.2) and every caller the registry cannot resolve as the lead or as a
+terminal outside every agent is refused at once, for every widening argument together: `--read`, `--toolchain`, `--allow-net`,
+`--publish`, `--workspace in-place`, `--project` and `--protect`. It gets the default reach for the registered project of its
+working directory and nothing else. `POOLHOUSE_AUTHORITY_FLOOR=person` (the `prod` preset) reads the gate as `person`, which
+refuses the lead too and passes only a terminal outside any agent. Nothing prompts and nothing waits in either reading.
 
 **The deputy checks.** A launcher run by an agent takes `--project` only for a directory the project registry holds or one under
 the system temporary root, and refuses `--protect` and `--on` values that name anything outside loopback. These checks sit at
 the choke point, in `launch_coding_agent` and `isolation.prepare`, before an argument reaches a launcher's parser, and not in
 each launcher (`claude.launch` and `codex.launch` read them from `argv` unchecked, F17). `--on` is checked for a numeric loopback
 address for every caller. A widening is therefore never reachable by the model, by an injected instruction inside a
-confinement, or by a process the confinement holds; it is reachable by the launching session, and R9 names what that costs.
+confinement, by a process the confinement holds or by an agent that is not the lead; it is reachable by the lead from the two
+sources above and inside the caps, and R9 names what that costs.
 
 ### 8.4 What the hook keeps doing
 
 The OS now refuses what the classifier used to ask about (a download has no route; a write outside the stage has no path). The
-hook keeps: denying at once what the session's rule does not allow (`pip install` is refused at once and names the `--allow-net`
-argument that would let the session reach the registry), `git`/`gh` calls that cannot work offline (they fail), and unsure calls
+hook keeps: denying at once what the session's rule does not allow (`pip install` is refused at once with the reason that this
+session has no route to the registry, naming no argument to run), `git`/`gh` calls that cannot work offline (they fail), and unsure calls
 (denied at once with the reason). It does not decide per call about writes to non-plain files (4.4.1), which publication
 decides once for the whole change set with every file named.
 
@@ -1043,22 +1143,25 @@ Surfaces: `poolhouse security sandbox status` and `poolhouse-doctor` print one l
 `can_start`, `enforcement_error` (the first unenforceable guarantee's sentence) and the whole report for a details view; every
 site that refused before calls `capability()` for an early plain refusal, and the launch is what enforces.
 
-The sentences are what an agent relays to a person (AGENTS.md section 2, "Onboarding is the product"):
+The sentences are what an agent relays to a person (AGENTS.md section 2, "Onboarding is the product"). No sentence names a command
+for a person to run, an argument that widens a session, or a step that waits: it states the fact, and where the remedy is a step
+of the package install or setup it says Poolhouse's installation does it (AF9, AF11). The missing-bubblewrap and AppArmor
+sentences are the host facts of the exception recorded in "Zero friction":
 
 | Condition | Sentence |
 |---|---|
 | macOS, `sandbox-exec` missing | "This Mac cannot confine coding agents: its built-in sandbox tool is missing." |
 | The launcher is itself sandboxed | "This command is already inside a sandbox, and a sandbox cannot start inside another; start it from a terminal or from a session that is not sandboxed." |
-| Linux, no bubblewrap | "This computer cannot confine coding agents until bubblewrap is installed." |
+| Linux, no bubblewrap | "This computer cannot confine coding agents until Poolhouse's installation has added bubblewrap." |
 | Linux, bubblewrap without `--disable-userns` | "The installed bubblewrap cannot stop a coding agent from starting its own sandboxes (it lacks the option that turns that off)." |
 | User namespaces off | "This computer's security settings stop coding agents from being confined (unprivileged user namespaces are off)." |
-| AppArmor restriction | "This computer's security rules block the sandbox tool until Poolhouse's setup installs its permission (`poolhouse security sandbox install`), so the coding agent was not started." |
-| AppArmor permission changed | "The permission installed for the sandbox tool is not the one Poolhouse ships; Poolhouse's setup restores it (`poolhouse security sandbox install`), so the coding agent was not started." |
+| AppArmor restriction | "This computer's security rules block the sandbox tool until Poolhouse's installation has added its permission, so the coding agent was not started." |
+| AppArmor permission changed | "The permission installed for the sandbox tool is not the one Poolhouse ships; Poolhouse's installation restores it, so the coding agent was not started." |
 | macOS, the machine's serial number or hardware identifiers are readable inside the box | "This Mac's serial number and hardware identifiers are readable from inside the safety box, so the coding agent was not started." |
 | WSL 1 | "Coding agents need WSL 2; this is WSL 1." |
 | Project on a Windows drive under WSL | "This folder is on a Windows drive; coding agents can only be confined for folders inside WSL." |
 | Native Windows network | "This Windows computer cannot keep a coding agent's network to the model alone; run it in WSL 2." |
-| The stage volume is too small | "This computer has `M` MB free for the working copy and this project needs `N` MB; free some space, or re-launch with `--workspace in-place`, which lets the agent change your files directly." |
+| The stage volume is too small | "This computer has `M` MB free for the working copy and this project needs `N` MB; free some space and the agent will start." |
 | No trusted git | "Coding agents need git, and none was found that Poolhouse can trust." |
 | `--on` names a non-loopback server | "A coding agent can only use a model server on this computer; `URL` is not." |
 | Interactive mode before L6 | "Interactive mode is not available yet; run it with its print option, for example `poolhouse-claude -- -p 'your request'`." |
@@ -1148,12 +1251,12 @@ owner listed, here, now, and that the services it needs are up.
 | A bridge sees a forbidden route, field or verb | refused locally and counted; a burst reports to the sentinel as probing | the sentinel | session continues |
 | Watchdog bound passed (G10, G11) | the session is ended by the barrier's tree walk, loudly | the turn ends `failed` naming the bound | nothing of the turn in progress published |
 | The kernel refuses a fork past the process limit (D5) | the fork fails with `EAGAIN` in the harness; a harness that does not recover ends, and the follower names the processes in the failure | the turn ends `failed` naming the process limit | as for any exit |
-| A change is not plain source and no `publish` rule names it (4.4) | at once: the change is not applied and the rest is; it is refused with a plain reason naming each file, kept as a patch in the stage, and reported; nothing waits and nothing is asked | the launching session, by a board message | the stage and the patch in `.poolhouse-refused/` |
+| A change is not plain source and no `publish` rule names that exact file, or it is a governing file (4.4) | at once: the change is not applied and the rest is; it is refused with a reason the parent wrote (counts, class sentences, digests), kept as a patch under the state root, and reported; nothing waits and nothing is asked | the launching session, by an `isolation.report` message from the launcher identity, folded by file set and class and capped per launch | the stage (kept for a re-launch of the conversation) and the patch under the state root |
 | The displaced version changed between the read and the swap (4.4.3) | the swap is undone, the person's version stays under the name, the agent's is kept under the state root, the path is named | the launching session | per 4.4.3 |
 | The harness exits non-zero or is cancelled | the tree is ended, the barrier passed; **publication still runs** on what verified: the stage is the person's work in progress, and the checks decide, not the exit status | the launching session reads what was applied and what was refused | per 4.4 |
 | A process survives the barrier (macOS orphan) | publication is skipped, the survivor's pid is reported, the stage is kept until the survivor is gone or the conversation ends | the launching session | the stage |
 | Publication refused by the policy guard (permissions changed, project withdrawn, revision moved) | nothing applied; the previous receipt stands | the launching session | `test_revocation_after_child_returns_rejects_its_captured_edits` |
-| A confined process asks for a grant or a launcher control | refused in the same round trip with the reason (8.3); the grant is never queued | the launching session, by a board message | nothing widened |
+| A confined process asks for a grant or a launcher control | refused in the same round trip: a `grant` frame by one fixed sentence for every request, a launcher control with the reason (8.3); nothing is queued | the activity log and the sentinel counter; the launching session is not told | nothing widened |
 | Crash of the launcher | the harness is a child in a pid namespace or a job, both of which end with the launcher; on macOS its processes stay confined and have lost the bridges, and the next launch of the project ends them with the sweep of 4.2 item 3 before it recovers; the intent log of 4.4.3 lets that launch finish or undo a half-applied publication, and it removes the leftover namespace directory | the next launch says what it recovered | recovered |
 | Backend disappears between check and start | the start fails closed (the wrapped argv does not exist); the capability cache is dropped | the caller | nothing |
 | The operating system is updated | the cache key changes; the next launch recomputes and proves again | nobody unless it now fails | |
@@ -1166,18 +1269,20 @@ section "Zero friction").
 - A Mac user starts a coding conversation: the capability check is a cache read; the stage is built in under the 5 s budget (W1);
   the proof adds a fraction of a second; the first line says "Working on a copy of PROJECT; changes arrive when the turn ends."
   Nothing is typed.
-- The turn ends: "Applied N changes. Refused one: `Makefile` (named by no rule of this session; the patch is in
-  `.poolhouse-refused/`)." The same text goes to the launching session as a board message. If the person edited the same file
+- The turn ends: "Applied N changes. Refused 1 file, named by a file that runs it: `Makefile` (no rule of this session
+  names it; the patch is kept with this conversation)." A name the master does not hold appears as `<file 4, 41 bytes, digest
+  ab12..>`. The same text goes to the launching session as an `isolation.report` message. If the person edited the same file
   meanwhile: "Kept your version of `src/x.py`; the agent's is saved with this conversation."
-- A Linux user whose system restricts user namespaces has the shipped AppArmor profile installed by Poolhouse's setup (5.3);
+- A Linux user whose system restricts user namespaces has the shipped AppArmor profile installed by the package install (5.3);
   a launch never prompts for it. Everyone else meets nothing.
 - A Windows user with WSL 2 runs route A with no new step. Without it, the sentence of section 9 and nothing else.
-- The agent needs the network to install a package: a host named by `--allow-net` at launch is reachable at once; any other is
-  refused at once with the argument that would allow it, once for the session, and the launching session is told.
-- Source files, tests and documents are applied with nothing asked; non-plain files are refused once per publication with every
-  file named, not once per tool call.
+- The agent needs the network to install a package: a registry host named by `--allow-net` at launch is reachable from the
+  start of the session; any other has no route and fails at once, counted for the sentinel, and the launching session is not
+  told per request (it knows the task).
+- Source files, tests and documents are applied with nothing asked; non-plain files are refused once per publication, counted by
+  class, not once per tool call and not again for the same set.
 - Refusals are one sentence an agent relays. No refusal asks anyone to open a terminal, type a confirmation or edit a file; it
-  names the launch argument that would change the decision.
+  names the kind of widening that would change the decision and no command.
 
 Added visible cost, with its reason: a project gets a working copy, so edits reach the checkout after each completed turn and not
 as they happen (the person's editor does not show them mid-turn). That is the price of I4; the working copy is made by clone or
@@ -1255,7 +1360,24 @@ each answers. Each is run on the parent commit and seen to fail before the chang
 | `a_proof_with_a_weakened_profile_stops_the_launch` (one mutant per rule) | all | A41, A43 |
 | `project_content_cannot_change_the_probe` (`json.py`, `sitecustomize.py`, `.pth` and a canary-named file in the stage) | all | A42 |
 | `no_flag_variable_or_argument_skips_the_proof` | all | A43, A44 |
-| `a_launcher_under_an_agent_marker_or_inside_a_confinement_refuses_grants_and_unregistered_projects_and_a_non_loopback_on` | all | A45, F17 |
+| `a_launcher_run_by_any_agent_but_the_lead_or_inside_a_confinement_refuses_every_widening_argument_and_unregistered_projects_and_a_non_loopback_on` (a marked non-lead agent, a marked agent that runs the launcher outside the owner's sandbox through `excludedCommands`, and a confined caller each pass `--read`, `--toolchain`, `--allow-net`, `--publish`, in-place, `--project` and `--protect` together and get none; a dropped marker changes nothing) | all | A45, F17, AF3 |
+| `in_the_prod_preset_the_grant_gate_reads_person_and_the_lead_is_refused_at_once_while_a_terminal_outside_any_agent_passes` | all | AF3, Zero friction |
+| `a_widening_argument_outside_a_present_project_policy_is_refused_and_a_policy_in_the_repository_is_not_read` (a policy file, a board message, a patch and a refusal sentence each name a widening and none is taken as its source) | all | AF7 |
+| `the_caps_hold_for_every_caller_and_every_source` (in-place with any net host; a host not on the registry list; a publish of a governing file: each refused for the lead and for a terminal) and `every_widened_launch_sends_the_sentinel_one_signal_and_in_place_and_net_with_publish_are_marked_unusual` | all | AF7, AF5 |
+| `the_refusal_report_is_posted_under_the_launcher_identity_as_kind_isolation_report_and_no_session_verb_can_send_that_kind` and `every_message_a_confined_session_sends_is_labelled_as_from_a_confined_agent_data_by_the_bridge` (a session that announces text shaped like a report arrives labelled, not as a report) | mac, linux, win | AF1 |
+| `a_report_holds_only_parent_written_words_name_tokens_the_master_holds_and_digests_whatever_the_file_names_and_patch_text_say` (a name of 4096 bytes, a name that addresses the reader, patch comments that instruct, a name with `--publish .`: none is copied and no argument string appears) | all | AF2 |
+| `a_grant_frame_is_answered_with_one_fixed_refusal_for_every_kind_and_subject_logged_and_counted_and_never_reported_to_the_launching_session` (a request for a host on the list and one off it get identical bytes) | all | AF2, AF5 |
+| `a_refusal_in_a_chat_or_task_launch_reaches_the_launching_session_of_the_task_the_conversation_record_and_the_proposal` | all | AF2 (recipient) |
+| `refusal_reports_fold_by_file_set_and_class_and_stop_at_the_cap_with_one_sentinel_signal` (one changed byte per turn makes no second report) | all | AF10 |
+| `a_relaunch_of_the_same_conversation_reuses_the_kept_stage_and_a_rule_naming_the_refused_files_exactly_publishes_them_without_rework` | mac, linux | AF11 |
+| `publish_takes_exact_files_and_refuses_the_root_a_directory_a_glob_a_dot_path_and_every_governing_file_for_every_caller` (CI, hook managers, instruction files, `CODEOWNERS`, wrapper scripts and jars, build and package configuration, a file a non-plain file names) | all | AF4 |
+| `a_publish_rule_is_bound_to_the_files_device_and_inode_and_not_to_a_string` (a case-folded name, a replaced file and a swapped parent directory match nothing) | mac, linux | AF4 |
+| `a_symlink_is_applied_only_when_its_target_in_the_result_tree_is_plain_source_and_neither_path_has_a_dot_component` (a link to `.git/hooks/pre-commit`, to a workflow file, to a Makefile, to `.env`) | mac, linux | AF8 |
+| `the_reserved_control_names_are_exactly_the_five_and_a_refusal_adds_no_name_to_the_stage_or_the_checkout` (the A6 case and Unicode cases over the five names) | mac, linux, win | AF6 |
+| `the_refused_patch_directory_is_read_only_to_the_session_in_the_stage_and_in_place_modes_and_across_epoch_rotation` (the session cannot write, rename or replace it or an ancestor; on Linux the bind survives `begin()`; no other entry of the state root is readable) | mac, linux | AF6 |
+| `a_connect_tunnel_is_counted_per_direction_and_cut_when_bytes_out_pass_the_registry_bound_while_a_download_is_not` (a stage-sized upload to an allowed host is cut) | all | AF5 |
+| `net_hosts_come_only_from_the_registry_list_and_every_entry_names_its_source_and_its_measured_bound` | all | AF5 |
+| `a_launch_on_a_host_without_the_apparmor_profile_or_bubblewrap_refuses_at_once_with_a_sentence_that_names_the_fact_and_no_command_to_run_and_never_prompts_or_installs` | linux | AF9 |
 | `a_toolchain_declaration_is_resolved_once_and_granted_by_the_same_object` (a symlink farm swapped between the refusal checks and the grant) | mac, linux | 8.2 |
 | `stage_and_begin_finish_stay_inside_the_launch_budget` (size of this repository) | mac, linux | W1 |
 | `the_launcher_is_the_only_path_that_starts_a_harness` (AST) | all | A44 |
@@ -1299,7 +1421,7 @@ claims in it are code reads, marked NOT RUN. Findings are fixed or named as acce
 | A8 | FIFOs, sockets, device nodes in the stage so the parent blocks on them | a FIFO can be created inside the confinement (VERIFIED); the capture opens with `O_NONBLOCK` and checks `S_ISREG`, and the node is left out and listed by name (W3, F18) | `special_files_in_the_stage_are_left_out_and_named` |
 | A9 | enormous, sparse or millions of files; deep trees; fill the disk | the disk bound derived in 17, the allocated-blocks check, stage builds judged by progress (W4), the watchdog | `a_sparse_file_larger_than_the_volume_and_a_tree_of_small_files_stage_by_progress`, `a_fork_flood_is_refused_by_the_kernel_and_a_disk_fill_and_memory_growth_end_the_session` |
 | A10 | set-uid, mode, xattr, ACL, quarantine bits that change what the person's tools do | modes copied from a whitelist (`0644`, `0755`), xattrs not carried, set-id files left out and listed | `test_isolation_workspace` |
-| A11 | plant a hook, config, wrapper, lockfile, instruction file or review-governance file that runs or decides later (hook managers, `.lfsconfig`, `action.yml`, `Tiltfile`, wrapper scripts and jars, MSBuild and Bazel files, `requirements.txt`, the instruction files of every coding tool, `CODEOWNERS`, and the rest of N3 to N5) | not writable at the OS level where the name is known (G3); at publication everything that is not plain source is refused at once, with a reason naming each file, kept as a patch and reported to the launching session, by structure, the language registry, the harness and ecosystem records and the project's own wiring, whichever tool wrote it (4.4); only a `publish` rule of the launching session names a path past it. The red tests assert that no such change reaches the checkout by default, not any step by a person | `every_change_that_is_not_plain_source_is_refused_with_a_patch_whichever_tool_wrote_it`, `the_corpus_of_auto_run_names_is_refused_and_ordinary_source_is_applied`, `every_name_an_ecosystem_tool_runs_is_non_plain`, `a_file_named_by_a_refused_change_is_refused_and_named` |
+| A11 | plant a hook, config, wrapper, lockfile, instruction file or review-governance file that runs or decides later (hook managers, `.lfsconfig`, `action.yml`, `Tiltfile`, wrapper scripts and jars, MSBuild and Bazel files, `requirements.txt`, the instruction files of every coding tool, `CODEOWNERS`, and the rest of N3 to N5) | not writable at the OS level where the name is known (G3); at publication everything that is not plain source is refused at once, with a reason naming each file, kept as a patch under the state root and reported to the launching session, by structure, the language registry, the harness and ecosystem records and the project's own wiring, whichever tool wrote it (4.4); only a `publish` rule of the launching session that names an exact file gets a non-governing one past it, and a governing file passes under no rule (8.2). The red tests assert that no such change reaches the checkout by default, not any step by a person | `every_change_that_is_not_plain_source_is_refused_with_a_patch_whichever_tool_wrote_it`, `the_corpus_of_auto_run_names_is_refused_and_ordinary_source_is_applied`, `every_name_an_ecosystem_tool_runs_is_non_plain`, `a_file_named_by_a_refused_change_is_refused_and_named` |
 | A12 | spread an exploit over ordinary source files the person later runs | not detectable by name or structure; the person sees the diff when the file is wired; accepted risks R1 and R8 | none |
 | A13 | persist injected instructions in the agent home across turns | the home is per conversation and dies with it; accepted risk R2 | none |
 | A14 | a surviving process changes the checkout or the stage after publication, including one that left the process group with `setsid()` | the checkout is not reachable from the confinement; the barrier walks the tree, never the group (4.2 item 3); the stage is removed; a survivor loses the bridges and publication is skipped | `a_setsid_descendant_is_ended_before_the_final_capture`, `a_process_that_outlives_the_session_loses_the_bridges_and_the_stage` |
@@ -1321,7 +1443,7 @@ claims in it are code reads, marked NOT RUN. Findings are fixed or named as acce
 | A30 | leaked tokens and variables: `GH_TOKEN`, `AWS_*`, `SSH_AUTH_SOCK`, `POOLHOUSE_*`, the launcher's marker | the environment is a closed table (3.4); a toolchain grant adds `PATH` entries and no variable; D1 | `the_environment_is_exactly_the_allow_list` |
 | A31 | keychain, credential manager, keyring, browser profiles | refused (VERIFIED macOS); absent by G1 elsewhere | `no_credential_store_is_reachable` |
 | A32 | the person's own harness login (`~/.claude`, `~/.codex/auth.json`) | G1; `CLAUDE_CONFIG_DIR` and `CODEX_HOME` are private and hold no login | `the_environment_is_exactly_the_allow_list` |
-| A33 | forge, replay or flood hook events; flood the launching session with refusal reports; inject text into a refusal message | the bridge fixes the rail; nothing is asked and nothing is queued; one board message per publication or per distinct grant refusal, folded when repeated; the message text is escaped and cut to a fixed length; a burst reaches the sentinel | `a_forged_replayed_or_flooded_hook_event_changes_nothing` |
+| A33 | forge, replay or flood hook events; flood the launching session with refusal reports; inject text into a refusal message | the bridge fixes the rail; nothing is asked and nothing is queued; one `isolation.report` per publication that refused a set not already reported, folded by file set and class and capped per launch (4.4); the report holds only words the parent wrote, name tokens the master holds and digests, so it carries no instruction of the attacker's; a `grant` frame is answered by one fixed refusal and counted, never reported; a burst reaches the sentinel | `a_forged_replayed_or_flooded_hook_event_changes_nothing` |
 | A34 | squat or leave the session socket path; connect to another session's bridge | random directory name, mode 0700, the connecting process's credentials, the client checks the server pid | `a_session_cannot_act_as_another` |
 | A35 | a tool call that never reaches the hook (subagent, MCP tool, background command) | the hook is not the boundary; the OS holds | `a_verb_outside_the_table_is_refused` |
 | A36 | hostile project content run by the parent's git (config, filters, attributes, `.git` as a pointer elsewhere, a hostile index) | private git directory, scrubbed environment, `core.hooksPath=/dev/null`, bounded index (exists) | `hostile_project_content_runs_nothing_in_the_parent` |
@@ -1333,25 +1455,36 @@ claims in it are code reads, marked NOT RUN. Findings are fixed or named as acce
 | A42 | interfere with the probe through project content or canary collisions | the probe runs isolated (`-I`) in an empty directory outside the stage, with fresh parent-made canaries | `project_content_cannot_change_the_probe` |
 | A43 | downgrade between check and start; remove the backend; a flag or variable that skips the proof | the start fails closed; no skip exists; `AllowUnsandboxed` is not accepted | `a_proof_with_a_weakened_profile_stops_the_launch`, `no_flag_variable_or_argument_skips_the_proof` |
 | A44 | start a harness by any path that does not go through `isolation` (a custom runner, an injected backend, a new harness module) | the AST test; `Confinement.popen` is the only constructor of the argv | `the_launcher_is_the_only_path_that_starts_a_harness` |
-| A45 | use the launcher as a deputy from a sandboxed agent: `--project`, `--protect`, grant flags, `--on` | 8.3: the checks sit at the choke point and key on the process being confined, not only on a marker | `a_launcher_under_an_agent_marker_or_inside_a_confinement_refuses_grants_and_unregistered_projects_and_a_non_loopback_on` |
+| A45 | use the launcher as a deputy from a sandboxed agent: `--project`, `--protect`, grant flags, `--on` | 8.3: the checks sit at the choke point; they refuse a confined process, and every marked agent that is not the lead, outside a confinement too (an agent in the owner's sandbox that runs the launcher through `excludedCommands`), resolved by the registry's pid walk and not by a marker | `a_launcher_run_by_any_agent_but_the_lead_or_inside_a_confinement_refuses_every_widening_argument_and_unregistered_projects_and_a_non_loopback_on` |
 | A46 | read the machine's serial number, hardware UUID, provisioning UDID or machine id (N2) | G13; the proof reads the identifiers in the parent and searches for them (P22) | `no_hardware_identifier_is_readable` |
 | A47 | pass for the launching session by typing into the harness's own pty, or satisfy the caller check with a duplicated pty descriptor or a dropped marker (N9) | a confined process is never the launching session or a person (3.5, I17): every launcher control refuses it at once; nothing read from a terminal the confinement holds is an answer | `a_pty_given_as_stdio_is_not_a_person` |
 | A48 | have the installer turn off the host's user-namespace restriction, or attach the AppArmor permission to more than one binary (N6) | one literal path, `userns` only, no sysctl, an installer that setup alone runs and that refuses a confined caller (5.3) | `the_shipped_apparmor_profile_is_scoped_to_bwrap_and_changes_no_sysctl` |
 | A49 | swap a toolchain declaration's target between the check and the grant (8.2) | resolved once; the checked descriptor is the granted object; identity re-read after the proof | `a_toolchain_declaration_is_resolved_once_and_granted_by_the_same_object` |
 | A50 | learn what the platform cannot hide: the process list, the machine class and host name, the `/etc` account files (5.7) | named exposures X1 to X3, pinned by P23, accepted risk R7 | `the_exposure_set_is_exactly_the_declared_set` |
+| A51 | forge the refusal report: post a message in the shape of the launcher's report, with a file name or a command the lead would run (AF1, AF2) | the report is a message kind the session's verbs cannot send, posted under the launcher's identity; every session message is labelled data by the bridge; the report holds parent-written words, name tokens the master holds and digests, and no argument string (4.4, 7) | `the_refusal_report_is_posted_under_the_launcher_identity_as_kind_isolation_report_and_no_session_verb_can_send_that_kind`, `a_report_holds_only_parent_written_words_name_tokens_the_master_holds_and_digests_whatever_the_file_names_and_patch_text_say` |
+| A52 | `--publish .`, a directory, a dot path, or a governing file so that CI, hooks, instruction files or `CODEOWNERS` land as the agent made them; a rule matched by string against a folded or replaced name (AF4) | exact files only; a governing file passes under no rule, for every caller; the rule is bound to the file's device and inode (8.2, 4.4) | `publish_takes_exact_files_and_refuses_the_root_a_directory_a_glob_a_dot_path_and_every_governing_file_for_every_caller`, `a_publish_rule_is_bound_to_the_files_device_and_inode_and_not_to_a_string` |
+| A53 | send bytes out through an allowed registry host (a CONNECT tunnel sends as well as receives); read `.env` with in-place and send it; learn the host list by probing grants (AF5) | hosts only from the sourced registry list; bytes counted per direction and the tunnel cut at the measured bound; in-place never with a host; the `grant` frame answers every request alike | `a_connect_tunnel_is_counted_per_direction_and_cut_when_bytes_out_pass_the_registry_bound_while_a_download_is_not`, `the_caps_hold_for_every_caller_and_every_source`, `a_grant_frame_is_answered_with_one_fixed_refusal_for_every_kind_and_subject_logged_and_counted_and_never_reported_to_the_launching_session` |
+| A54 | a symlink inside the tree to `.git/hooks/pre-commit`, a workflow file or any non-plain target, which the person's tools later open (AF8) | a symlink is applied only when its target in the result tree is plain source and neither path has a dot component (4.4) | `a_symlink_is_applied_only_when_its_target_in_the_result_tree_is_plain_source_and_neither_path_has_a_dot_component` |
+| A55 | talk the lead into a wider launch by a board message, a patch, a refusal sentence or a project file; use the launcher from an agent that is not the lead (AF3, AF7) | the source rule, the caps and the sentinel signal of 8.3; the gate is `delegated` to the lead only; the project policy lives outside the repository | `a_widening_argument_outside_a_present_project_policy_is_refused_and_a_policy_in_the_repository_is_not_read`, `the_caps_hold_for_every_caller_and_every_source`, `every_widened_launch_sends_the_sentinel_one_signal_and_in_place_and_net_with_publish_are_marked_unusual` |
 
 Accepted risks, named for the owner. **R1** A change to plain source that the person then runs is not judged. **R2** A
 conversation's agent home persists instructions between its own turns. **R3** On macOS a process that escapes the follower can
-outlive the session, confined and without reach; the barrier reports it and publication is skipped. **R4** Bytes can leave in the
-name or timing of a granted host. **R5** The profile language of Seatbelt is not a public interface and the tool is deprecated; the
+outlive the session, confined and without reach; the barrier reports it and publication is skipped. **R4** Bytes can leave through a granted host: a CONNECT tunnel sends as well as receives, so the body of a request (up to the
+bound of 6.3), its path, sub-domain, headers and timing carry bytes, and a TLS name that differs from the CONNECT name on a
+shared CDN host is invisible to the proxy. **R5** The profile language of Seatbelt is not a public interface and the tool is deprecated; the
 proof is the only notice of a change. **R6** Windows route B has no verified network rule and refuses. **R7** The exposures of 5.7
 stay visible: on macOS the name, pid, parent pid and user id of other processes and the machine class and host name, on Linux the
 `/etc` account and host files. **R8** A file that a non-plain file reaches only through a path it computes (string concatenation,
-an environment lookup) is named by no non-plain file and is plain source (4.4.1 test 4). **R9** The launching session can widen
-a session, because it is the person's delegate and no person answers for it (8.3): a launching session that is itself
-prompt-injected passes a wider rule. What bounds it: a rule is explicit at launch, logged with who passed it, scoped to one
-session and never reachable from inside a confinement; no rule names a credential location, the state root, a control name or a
-special file; nothing a rule adds carries a credential or an environment variable.
+an environment lookup) is named by no non-plain file and is plain source (4.4.1 test 4). **R9** (a rule with a residual) A widening argument comes only from the task the person gave the launching session or from a
+person-owned project policy outside the repository, and never from a board message, a patch, a project file, a refusal sentence
+or a tool result (8.3). It is reachable by a request nowhere; it is reachable by a message only through the lead's own
+judgment, and the launcher cannot see where an argument came from. What holds without a person: the gate is `delegated` to
+the lead identity alone and every other agent is refused every widening argument; the caps hold for every caller (no `publish`
+of a governing file, exact files only, never in-place with a network host, hosts only from the registry list); the project
+policy, when present, bounds what the lead may pass; each grant records its issuer and source; every widened launch is a
+sentinel signal, the one reader that exists; no rule names a credential location, the state root, a control name, a governing
+file or a special file, and nothing a rule adds carries a credential or an environment variable. What remains: an injected lead
+that invents a task inside the caps, which the signal makes visible and the caps make bounded.
 
 ### 14.2 The cases of AGENTS.md section 1
 
@@ -1359,14 +1492,14 @@ special file; nothing a rule adds carries a credential or an environment variabl
 |---|---|---|
 | copied or cloned pool or device | a cloned state root or a copied capability cache claims "enforced" | the cache is keyed by the boot, the operating-system build and the backend binary identity and recomputed; no verdict is read from state or a board; the proof runs on this device at this launch |
 | replay | replay a hook frame, a bridge token, a spent grant | the bridge token is per session and dies with it; a hook frame carries nothing the rail does not already fix; a grant is a record with a fingerprint, is decided once at launch and is single-session, so a replayed request grants nothing a second time |
-| forged or below-threshold signature | none is used; a grant carries no signature and no token | a grant is the launching session's rule, audited with who passed it; the gate `isolation.grant` is decided at once and refuses a confined caller (8.3) |
+| forged or below-threshold signature | none is used; a grant carries no signature and no token | a grant is a launch argument of the lead or of a terminal, audited with who passed it; the gate `isolation.grant` is decided at once and refuses a confined caller and every agent that is not the lead (8.3) |
 | compromised or malicious member | a pool member offers a model whose server abuses the bridge | the bridge treats the upstream as untrusted data; routes and fields are filtered in the other direction too (responses are passed as bytes, never parsed for instructions) |
 | stolen phone or key | approve a grant from a stolen phone | there is no approval path to steal: no grant is approved by a phone, a key or a token; a grant is a launch argument, and it widens one session only |
 | malicious agent | every row of 14.1 | 14.1 |
 | agent compromised without knowing it | an injected instruction to read a key, call the network, plant a hook | the OS refuses the first two; the third is refused at publication at once and reported, by structure and not by a name; a burst of refusals reaches the sentinel |
-| downgrade, secure to open | a profile that falls back to a weaker one when a mechanism is missing | there is no weaker profile: every missing guarantee refuses; `watched` is named in the report, and an exposure is named and pinned, never silent; in-place is a launch grant, refused to a confined caller |
-| approval fatigue | many grants or refused changes | nothing is asked, so there is nothing to fatigue; refused changes batch into one board message per publication and repeated refusals fold into one; a burst reaches the sentinel |
-| takeover by whoever is merely present | another local process connects to a bridge or squats a socket | random 0700 directory, the connecting process's credentials, bridge token, the client checks the server; a same-user process outside the confinement is the launching session, and a process inside one never is (I17) |
+| downgrade, secure to open | a profile that falls back to a weaker one when a mechanism is missing | there is no weaker profile: every missing guarantee refuses; `watched` is named in the report, and an exposure is named and pinned, never silent; in-place is a launch grant, refused to a confined caller, to every agent that is not the lead and to any launch with a network host |
+| approval fatigue | many grants or refused changes | nothing is asked, so there is nothing to fatigue; refused changes batch into one report per publication, folded by file set and class, capped per launch, and past the cap one sentinel signal replaces them (4.4); refused `grant` frames are never reported |
+| takeover by whoever is merely present | another local process connects to a bridge or squats a socket | random 0700 directory, the connecting process's credentials, bridge token, the client checks the server; a same-user process is the launching session only when the registry's pid walk resolves it as the lead or as a terminal outside every agent, and a process inside a confinement, or a marked agent that is not the lead and runs unconfined from an outer sandbox, never is (I17, 8.3) |
 
 ### 14.3 The non-author pass: where each finding is decided
 
@@ -1403,9 +1536,28 @@ fixes of F1, F2, F12, F13 and D5 are in `fix/sandbox-holes-and-harness-denial`, 
 | A37 race with the person's edits | N7 | L4 | as N7 |
 | A41, A42, A43 proof unbuilt | 10.1, 10.2 | L2 | `a_proof_with_a_weakened_profile_stops_the_launch`, `project_content_cannot_change_the_probe` |
 | A44 AST test unbuilt | 15.2 | L5 | `the_launcher_is_the_only_path_that_starts_a_harness` |
-| A45 launcher as deputy | 8.3, F17 | L2, L5 | `a_launcher_under_an_agent_marker_or_inside_a_confinement_refuses_grants_and_unregistered_projects_and_a_non_loopback_on` |
+| A45 launcher as deputy | 8.3, F17 | L2, L5 | `a_launcher_run_by_any_agent_but_the_lead_or_inside_a_confinement_refuses_every_widening_argument_and_unregistered_projects_and_a_non_loopback_on` |
 | Toolchain grant widened by a hostile declaration | 8.2 (resolved once, granted as checked) | L2 | `a_toolchain_declaration_is_resolved_once_and_granted_by_the_same_object` |
 | Memory ceiling | 5.2 (neither `RLIMIT_AS` nor the Mach footprint limit holds; watched) | L1 | `a_fork_flood_is_refused_by_the_kernel_and_a_disk_fill_and_memory_growth_end_the_session` |
+
+The second pass, `docs/notes/attack-verdict-launcher-no-waiting.md`, read the design with no person step in it. Its findings are
+cited as AF1 to AF11 (its F1 to F11). The lead agent replaced the person in the design, and the lead is a model that reads text
+the confined agent wrote, so each finding is a way to put text in front of the lead or to reach a widening without the lead.
+Each is decided in the section named, with the red test that asserts the property, never a step by a person.
+
+| Finding | Decided in | Slice | Fail-first test |
+|---|---|---|---|
+| AF1 the report is indistinguishable from the agent's own message | 4.4 step 4, 7 (`workspace`), A51 | L3, L4 | `the_refusal_report_is_posted_under_the_launcher_identity_as_kind_isolation_report_and_no_session_verb_can_send_that_kind`, `every_message_a_confined_session_sends_is_labelled_as_from_a_confined_agent_data_by_the_bridge` |
+| AF2 file names, grant subjects and a ready command reach the lead as instructions | 4.4 steps 2 and 4, 7 (`grant`), 8.2 refusal form, A33, A51 | L3, L4 | `a_report_holds_only_parent_written_words_name_tokens_the_master_holds_and_digests_whatever_the_file_names_and_patch_text_say`, `a_grant_frame_is_answered_with_one_fixed_refusal_for_every_kind_and_subject_logged_and_counted_and_never_reported_to_the_launching_session`, `a_refusal_in_a_chat_or_task_launch_reaches_the_launching_session_of_the_task_the_conversation_record_and_the_proposal` |
+| AF3 a marked agent outside any confinement passes every grant argument | 8.3 gate, 5.2 `excludedCommands`, A45, Zero friction (`prod`) | L2, L5 | `a_launcher_run_by_any_agent_but_the_lead_or_inside_a_confinement_refuses_every_widening_argument_and_unregistered_projects_and_a_non_loopback_on`, `in_the_prod_preset_the_grant_gate_reads_person_and_the_lead_is_refused_at_once_while_a_terminal_outside_any_agent_passes` |
+| AF4 `publish` takes a directory with no bound | 8.2 `publish`, 4.4 table (governing file), A52 | L2, L4 | `publish_takes_exact_files_and_refuses_the_root_a_directory_a_glob_a_dot_path_and_every_governing_file_for_every_caller`, `a_publish_rule_is_bound_to_the_files_device_and_inode_and_not_to_a_string` |
+| AF5 "download only" is untrue for a CONNECT tunnel; the `grant` frame for hosts is a no-op and an oracle | 6.3, 6.4, 7, 8.2 `net`, R4, A53 | L3 | `a_connect_tunnel_is_counted_per_direction_and_cut_when_bytes_out_pass_the_registry_bound_while_a_download_is_not`, `net_hosts_come_only_from_the_registry_list_and_every_entry_names_its_source_and_its_measured_bound`, `the_caps_hold_for_every_caller_and_every_source` |
+| AF6 `.poolhouse-refused/` as a sixth reserved name | 4.2 item 2, 4.5, G1, 13.2 | L1, L4 | `the_reserved_control_names_are_exactly_the_five_and_a_refusal_adds_no_name_to_the_stage_or_the_checkout`, `the_refused_patch_directory_is_read_only_to_the_session_in_the_stage_and_in_place_modes_and_across_epoch_rotation` |
+| AF7 R9 does not keep the lead from being talked into a wider launch | 8.3 (the rule, the caps), 8.2 logging, R9, A55 | L2, L5 | `a_widening_argument_outside_a_present_project_policy_is_refused_and_a_policy_in_the_repository_is_not_read`, `the_caps_hold_for_every_caller_and_every_source`, `every_widened_launch_sends_the_sentinel_one_signal_and_in_place_and_net_with_publish_are_marked_unusual` |
+| AF8 a symlink to a non-plain target inside the tree is applied | 4.4 table (new symlink), A54 | L4 | `a_symlink_is_applied_only_when_its_target_in_the_result_tree_is_plain_source_and_neither_path_has_a_dot_component` |
+| AF9 the AppArmor install and a missing bubblewrap still need root, and the refusal printed a command | Zero friction (the exception), 5.3, 9, L7, I19 | L7 | `a_launch_on_a_host_without_the_apparmor_profile_or_bubblewrap_refuses_at_once_with_a_sentence_that_names_the_fact_and_no_command_to_run_and_never_prompts_or_installs`, `the_shipped_apparmor_profile_is_scoped_to_bwrap_and_changes_no_sysctl` |
+| AF10 one report per turn is attacker-paced | 4.4 step 3, 14.2 "approval fatigue", 17 | L4 | `refusal_reports_fold_by_file_set_and_class_and_stop_at_the_cap_with_one_sentinel_signal` |
+| AF11 a refusal gives only "re-launch wider", so friction steers to in-place | 4.4 step 6, 3.3 step 10, 9 (stage sentence) | L4 | `a_relaunch_of_the_same_conversation_reuses_the_kept_stage_and_a_rule_naming_the_refused_files_exactly_publishes_them_without_rework` |
 
 ## 15. Migration: small landable steps
 
@@ -1425,12 +1577,12 @@ gone green.
 |---|---|---|---|
 | **L0** the hook rig (independent of isolation) | done: the suite clears the variables that name a session or a board (`board.session.IDENTITY_ENV`), so the 10 hook tests pass in an agent's shell; the hook still denies a session with no token file; the browser rig sets the daemon root | the 10 tests, in a shell that exports `POOLHOUSE_BOARD` | none |
 | **L1** the engine | **Landed on development.** Done: macOS D2 (`Policy.signal_children`); F13 closed by two operations (5.2), so G13 is enforced on macOS and no refusal of it is needed; the exposure constants X1 to X3; `sandbox.confined()` on macOS (VERIFIED), Linux (the marker, PREDICTED) and Windows (PREDICTED); `process_tree.end`; bubblewrap `deny_read` and `deny_write` by read-only binds for a path directly under a writable tree (a deeper path is refused, since the directories above it could be renamed: PREDICTED, no Linux device ran it), and the confinement marker bound read-only; `Windows`, a backend that reports unavailable with the reason of 5.4. Already in the tree before L1: D1, D5 and the net namespace with its relay (the engine branch), `--unshare-user --disable-userns --cap-drop ALL`, `Net.loopback` refused on Linux (`local_net` gives a Linux policy no network), `Pipes` refused outside macOS. Left: the memory and disk watcher (L2, I14: neither `RLIMIT_AS` nor the Mach limit holds, so memory stays watched). Planned text: starting from the result of `fix/sandbox-holes-and-harness-denial` (macOS D1 and D5, the net namespace instead of `--share-net`, `--unshare-user --disable-userns --cap-drop ALL`, which are not part of this build): macOS D2; the closure of the identifier channel F13 (a bisect of the profile's `file-read*` grants until `system_profiler` and `ioreg` print no identifier, if the branch has not closed it) or, when no operation closes it, the macOS refusal of G13; the declared exposure constants of 5.7 beside the grants they describe; `sandbox.confined()` (macOS `sandbox_check` of the process itself, Linux the read-only marker file bound into the namespace, Windows the token and job); `sandbox.process_tree` gains the tree end (stop every member, list again, kill, wait; pid and start time identity) the barrier calls; bubblewrap `deny_read` and `deny_write` by read-only binds, `Net.only` with a relay and forwarder for the bridge, `Net.loopback` refused on Linux (the `mcp_server` policy names its ports); `Pipes` outside darwin refuse clearly; a Windows backend that reports unavailable with the reason of 5.4. Closes the Linux half of F3. | the read-only-bind and `Net.only` relay tests; `no_hardware_identifier_is_readable` (macOS); `a_fork_flood_is_refused_by_the_kernel_and_a_disk_fill_and_memory_growth_end_the_session` (the process-count half); a `setsid` descendant is ended by the tree end and not by a group kill; the marker, host-port and nested-namespace tests of F1 and F2 are the other branch's and are only re-run here | N1 (the exposure declaration), N2, N8, N9 (the predicate), A14, A15, A21, A22 and the memory ceiling |
-| **L2** the library | `isolation` package: `capability` (guarantees and exposures), `profile`, `grants` (the model, not the bridge; the single resolution of 8.2), `proof` and the probe (P01 to P24, isolated interpreter, empty working directory), the closed environment table, the attestation, the refusal sentences, the launcher's choke-point checks of 8.3 and `grants.decide`; `caller.refuse_agent` reads `sandbox.confined()`; the package in the tools layer. No call site changes. The slice builds no wait, prompt, confirmation or pasted token (Zero friction). | the sentence tests with an unavailable backend; the weakened-profile mutants; `a_pty_given_as_stdio_is_not_a_person` (the caller check, with a real pty: a confined caller is refused at once); `project_content_cannot_change_the_probe`; `the_environment_is_exactly_the_allow_list`; `a_toolchain_declaration_is_resolved_once_and_granted_by_the_same_object`; `a_launcher_under_an_agent_marker_or_inside_a_confinement_refuses_grants_and_unregistered_projects_and_a_non_loopback_on` | N1 (P13, P23), N2 (P22), N9 (P24 and the person check), A30, A41 to A43, A45, the toolchain grant |
-| **L3** the bridges | model bridge, session bridge, egress proxy and the client module, each standalone | the route, smuggling, SSRF and forged-frame tests | A27, A28, A29, A33, A34 |
-| **L4** the workspace | W1 to W13 of 4.3: the launch budget, Apple's git, classification, the session API, the barrier of 4.2 item 3 (calls the tree end of L1), `apply` with the swap of 4.4.3 and its intent log, the refusal of 4.4 (the reasons, the patch in `.poolhouse-refused/`, the board message to the launching session) with no wait and no question, the environment links, the Linux bind hook; `guard.runs_later` with the language registry snapshot, `scripts/refresh_language_kinds.py`, the harness and ecosystem records, the corpus and the oracle; the nightly workflow step; the name tables of `guard.autoexec` deleted. `guard.runs_later` lands first within the slice, so the hooks use it at once. | the budget test, the symlink, umask and submodule fixtures, `special_files_in_the_stage_are_left_out_and_named`, `a_sparse_file_larger_than_the_volume_and_a_tree_of_small_files_stage_by_progress`, `publication_never_overwrites_a_concurrent_edit`, `the_corpus_of_auto_run_names_is_refused_and_ordinary_source_is_applied`, `every_name_an_ecosystem_tool_runs_is_non_plain`, `a_file_named_by_a_refused_change_is_refused_and_named`, `a_setsid_descendant_is_ended_before_the_final_capture` | N3, N4, N5, N7, A3, A6, A8, A9, A11, A14, A21, A37 |
-| **L5** turn it on, macOS | `claude.py`, `codex.py`, `pi.py`, `coding.py`, `Manager._process`, `TaskManager`, `harnessing.opened` use `isolation`; the environment allow-list; Codex flags; the catalogue; `require_isolated_execution` and its 14 sites are deleted; `coding_workspace` leaves `STANDALONE`; the refusal-asserting tests are rewritten; the real-model run on this Mac (Claude Code and Codex, one turn each through the lease on the one slot, writing a file in the stage, publication applying it, and a second file that is not plain source refused at once with a patch and a board message); no launcher asks for confirmation or a token (Zero friction); `subprocess-spawns` falls. Needs L1 to L4. | the 17 launcher and route tests; the 3 browser tests; `the_launcher_is_the_only_path_that_starts_a_harness` | A30, A44, A45 |
+| **L2** the library | `isolation` package: `capability` (guarantees and exposures), `profile`, `grants` (the model, not the bridge; the single resolution of 8.2), `proof` and the probe (P01 to P24, isolated interpreter, empty working directory), the closed environment table, the attestation, the refusal sentences, the launcher's choke-point checks of 8.3 and `grants.decide`; `caller.refuse_agent` reads `sandbox.confined()`; the package in the tools layer. No call site changes. The slice builds no wait, prompt, confirmation or pasted token (Zero friction). | the sentence tests with an unavailable backend; the weakened-profile mutants; `a_pty_given_as_stdio_is_not_a_person` (the caller check, with a real pty: a confined caller is refused at once); `project_content_cannot_change_the_probe`; `the_environment_is_exactly_the_allow_list`; `a_toolchain_declaration_is_resolved_once_and_granted_by_the_same_object`; `a_launcher_run_by_any_agent_but_the_lead_or_inside_a_confinement_refuses_every_widening_argument_and_unregistered_projects_and_a_non_loopback_on`; `in_the_prod_preset_the_grant_gate_reads_person_and_the_lead_is_refused_at_once_while_a_terminal_outside_any_agent_passes`; `a_widening_argument_outside_a_present_project_policy_is_refused_and_a_policy_in_the_repository_is_not_read`; `the_caps_hold_for_every_caller_and_every_source`; `every_widened_launch_sends_the_sentinel_one_signal_and_in_place_and_net_with_publish_are_marked_unusual`; `publish_takes_exact_files_and_refuses_the_root_a_directory_a_glob_a_dot_path_and_every_governing_file_for_every_caller`; `a_publish_rule_is_bound_to_the_files_device_and_inode_and_not_to_a_string` | N1 (P13, P23), N2 (P22), N9 (P24 and the person check), A30, A41 to A43, A45, the toolchain grant, AF3, AF4 (the rule), AF7 |
+| **L3** the bridges | model bridge, session bridge (the `workspace` verbs that cannot send `isolation.report`, the sender label, the one fixed `grant` answer, counted and logged), egress proxy with the registry host list `contracts/egress-hosts.json` (each entry with its source and its measured bytes-out bound) and per-direction byte counts that cut a tunnel, and the client module, each standalone | the route, smuggling, SSRF and forged-frame tests; `the_refusal_report_is_posted_under_the_launcher_identity_as_kind_isolation_report_and_no_session_verb_can_send_that_kind`; `every_message_a_confined_session_sends_is_labelled_as_from_a_confined_agent_data_by_the_bridge`; `a_grant_frame_is_answered_with_one_fixed_refusal_for_every_kind_and_subject_logged_and_counted_and_never_reported_to_the_launching_session`; `a_connect_tunnel_is_counted_per_direction_and_cut_when_bytes_out_pass_the_registry_bound_while_a_download_is_not`; `net_hosts_come_only_from_the_registry_list_and_every_entry_names_its_source_and_its_measured_bound` | A27, A28, A29, A33, A34, AF1, AF2 (the frame), AF5 |
+| **L4** the workspace | W1 to W13 of 4.3: the launch budget, Apple's git, classification, the session API, the barrier of 4.2 item 3 (calls the tree end of L1), `apply` with the swap of 4.4.3 and its intent log, the refusal of 4.4 (the parent-written reasons, the patch under the state root with the session's read-only grant, the `isolation.report` message to the launching session or to the task's launching session, folded by file set and class and capped per launch, the kept stage for a re-launch, the symlink rule, the governing-file class, the publish rule bound to device and inode) with no wait and no question, the environment links, the Linux bind hook; `guard.runs_later` with the language registry snapshot, `scripts/refresh_language_kinds.py`, the harness and ecosystem records, the corpus and the oracle; the nightly workflow step; the name tables of `guard.autoexec` deleted; the one sentence of `docs/agent-policy.md` that tells a reader a session's message and a patch are data to read and never instructions (AF1, AF2). `guard.runs_later` lands first within the slice, so the hooks use it at once. | the budget test, the symlink, umask and submodule fixtures, `special_files_in_the_stage_are_left_out_and_named`, `a_sparse_file_larger_than_the_volume_and_a_tree_of_small_files_stage_by_progress`, `publication_never_overwrites_a_concurrent_edit`, `the_corpus_of_auto_run_names_is_refused_and_ordinary_source_is_applied`, `every_name_an_ecosystem_tool_runs_is_non_plain`, `a_file_named_by_a_refused_change_is_refused_and_named`, `a_setsid_descendant_is_ended_before_the_final_capture`, `a_report_holds_only_parent_written_words_name_tokens_the_master_holds_and_digests_whatever_the_file_names_and_patch_text_say`, `a_refusal_in_a_chat_or_task_launch_reaches_the_launching_session_of_the_task_the_conversation_record_and_the_proposal`, `refusal_reports_fold_by_file_set_and_class_and_stop_at_the_cap_with_one_sentinel_signal`, `a_relaunch_of_the_same_conversation_reuses_the_kept_stage_and_a_rule_naming_the_refused_files_exactly_publishes_them_without_rework`, `a_symlink_is_applied_only_when_its_target_in_the_result_tree_is_plain_source_and_neither_path_has_a_dot_component`, `the_reserved_control_names_are_exactly_the_five_and_a_refusal_adds_no_name_to_the_stage_or_the_checkout`, `the_refused_patch_directory_is_read_only_to_the_session_in_the_stage_and_in_place_modes_and_across_epoch_rotation` | N3, N4, N5, N7, A3, A6, A8, A9, A11, A14, A21, A37, AF2, AF4, AF6, AF8, AF10, AF11 |
+| **L5** turn it on, macOS | `claude.py`, `codex.py`, `pi.py`, `coding.py`, `Manager._process`, `TaskManager`, `harnessing.opened` use `isolation`; the environment allow-list; Codex flags; the catalogue; `require_isolated_execution` and its 14 sites are deleted; `coding_workspace` leaves `STANDALONE`; the refusal-asserting tests are rewritten; the real-model run on this Mac (Claude Code and Codex, one turn each through the lease on the one slot, writing a file in the stage, publication applying it, and a second file that is not plain source refused at once with a patch and an `isolation.report` message); no launcher asks for confirmation or a token (Zero friction); `subprocess-spawns` falls. Needs L1 to L4. | the 17 launcher and route tests; the 3 browser tests; `the_launcher_is_the_only_path_that_starts_a_harness` | A30, A44, A45 |
 | **L6** interactive | the pty relay; P-tty | an interactive launch draws, reads keys, and cannot reach the person's terminal; `a_pty_given_as_stdio_is_not_a_person` with the real relay slave and `TIOCSTI` text | N9, A18 |
-| **L7** Linux and WSL | the tier proven on the WSL device; the CI step and the second CI job that keeps the AppArmor restriction on; the shipped AppArmor profile (`src/poolhouse/isolation/apparmor/poolhouse-bwrap`), `poolhouse security sandbox install` and `uninstall`; cgroup limits, `RLIMIT_NPROC` and seccomp where the probes pass (P-nproc, P-cgroup, P-seccomp) | the whole Linux suite, red until the step exists; `the_shipped_apparmor_profile_is_scoped_to_bwrap_and_changes_no_sysctl` | N6, N8 (Linux half), G13 on Linux (P-ident) |
+| **L7** Linux and WSL | the tier proven on the WSL device; the CI step and the second CI job that keeps the AppArmor restriction on; the shipped AppArmor profile (`src/poolhouse/isolation/apparmor/poolhouse-bwrap`), `poolhouse security sandbox install` and `uninstall` as steps of the package install and setup (a package maintainer script or setup that already holds the privilege the person gave to install the package) and bubblewrap brought in by the same route, with the sentences of section 9 that name the fact and no command; cgroup limits, `RLIMIT_NPROC` and seccomp where the probes pass (P-nproc, P-cgroup, P-seccomp) | the whole Linux suite, red until the step exists; `the_shipped_apparmor_profile_is_scoped_to_bwrap_and_changes_no_sysctl`; `a_launch_on_a_host_without_the_apparmor_profile_or_bubblewrap_refuses_at_once_with_a_sentence_that_names_the_fact_and_no_command_to_run_and_never_prompts_or_installs` | N6, N8 (Linux half), G13 on Linux (P-ident), AF9 |
 | **L8** Windows | route A check; route B by the probes P-win-* on the owner's PC, or the standing refusal of 5.4; the Windows names of A6 | `test_redteam_isolation_windows` | A6 |
 | **L9** close | `docs/harnesses.md` ("What is not covered") and `docs/agent-sandbox.md` ("Local-model harness") rewritten, `docs/limits.md` rows, `scripts/agent_sandbox_profile.py` exclusions, the red-team rows (T1 to T21), budgets lowered, `HANDOFF.md` pruned | | |
 
@@ -1522,6 +1674,8 @@ confinements" is the count the parent holds of confinements running now; the per
 | Bridge token | 32 random bytes (256 bits) | the session token of `docs/design-session-capabilities.md` 1.1 |
 | Stage build | progress-based: stalled when the files visited and the bytes advanced do not change | no clock; replaces the 30 s deadline |
 | Every wait this design adds (the barrier of 4.2 item 3, the flush and verification read of 4.4.3, the workspace, service and installer steps) | a no-progress guard, then a total guard: the no-progress stretch is the longest silence the step's own recorded runs showed times the project's margin, the total is the recorded typical duration times the project's margin | the hang guards of `docs/design-test-runner.md`, full text `git show ac0639291:docs/design-test-runner.md` ("Hang guards: no progress first, a total second"); both margins are the project's and there is no default number here; a step with no history is guarded by the gaps it produces itself and the report says so |
+| Reports per launch (4.4 step 3) | the session's share of the board log, the same share that bounds its other messages | the root's log share of `docs/design-session-capabilities.md` (the "Log starvation" row); no number here; past it one sentinel signal replaces the reports |
+| Bytes out through an allowed host (6.3) | per host, the largest bytes-out of a real install from that host, recorded in `contracts/egress-hosts.json` with the command and the date that measured it | a measurement the L3 slice makes and a test pins; a download counts nothing against it |
 | Namespace probe | `bubblewrap._probe` timeout | an existing constant, unchanged (no recorded reason) |
 | Harness event line | `coding_turns.MAX_EVENT` | an existing constant, unchanged (no recorded reason) |
 
@@ -1544,8 +1698,9 @@ Every question this design raised is decided. Each statement below is built in t
 5. **Native Windows.** It refuses loudly until an enforceable per-port loopback rule is shown; the WSL2 route is supported; there
    is no silent weaker mode (5.4).
 6. **Linux hosts that restrict user namespaces.** Poolhouse ships, in the repository, an AppArmor profile for the one `bwrap`
-   binary that grants `userns` and nothing else, installed by Poolhouse's setup, never by a launch and never by changing a sysctl;
-   a test pins its scope; without it the launch refuses at once with the sentence of section 9 (5.3, 9).
+   binary that grants `userns` and nothing else, installed by the package install and setup, never by a launch and never by
+   changing a sysctl; a test pins its scope; without it the launch refuses at once with the sentence of section 9, which names
+   the fact and no command (5.3, 9). A missing bubblewrap is the same (Zero friction, the exception).
 7. **Toolchains.** The project's declared toolchain version directories are readable and executable by the declaration alone; the list
    of roots is derived from the project's own files (8.2).
 8. **`watched` for G10 and G11.** Acceptable for G10, and for memory and disk, only when the watcher kills the session loudly on
@@ -1554,12 +1709,15 @@ Every question this design raised is decided. Each statement below is built in t
 9. **Task commits.** The parent commits the published change set; the task prompt stops saying "commit" (4.2 item 6).
 10. **The tool-proxy stack.** `coding_actions`, the ledger methods of `Conversations` and `pi_tools` are kept until the native path
     is proven; no caller is not dead; `HANDOFF.md` carries the entry (15.4, 16).
-11. **Excluded commands.** `poolhouse-claude` and `poolhouse-codex` are added to the managed `sandbox.excludedCommands` (5.2).
+11. **Excluded commands.** `poolhouse-claude` and `poolhouse-codex` are added to the managed `sandbox.excludedCommands` (5.2); a
+    caller the registry does not resolve as the lead or as a terminal gets the default reach and no widening argument (8.3).
 12. **A second writable project.** None: a session has one writable project (8.2).
-13. **Publication is deny by default.** Only plain source is applied; everything else is refused at once with a reason naming
-    each file, kept as a patch in the stage and reported to the launching session, with nothing asked and nothing waiting, and
-    the non-plain set is derived from structure, the language registry snapshot, the harness and ecosystem records and the
-    project's own wiring, with no hand-kept list of names (4.4).
+13. **Publication is deny by default.** Only plain source is applied; everything else is refused at once with a reason the
+    parent writes (counts, class sentences, name tokens the master holds, digests), kept as a patch under the state root and
+    reported to the launching session by an `isolation.report` message the session cannot send, with nothing asked and nothing
+    waiting, and the non-plain set is derived from structure, the language registry snapshot, the harness and ecosystem records
+    and the project's own wiring, with no hand-kept list of names (4.4). A `publish` rule names exact files and never a
+    governing file.
 14. **What the platform cannot hide is named.** A fact a confined process can still learn is an exposure, listed in the report and
     pinned by the proof (5.7); the machine's identifiers are a guarantee (G13), and a macOS build that leaves them readable
     refuses to start.
@@ -1568,6 +1726,12 @@ Every question this design raised is decided. Each statement below is built in t
     (3.5, 8.3).
 16. **Ending a session walks the backend's record of its processes**, never a process group (4.2 item 3).
 17. **Nothing waits for a person.** Every grant, publication and hook decision is made at once by a rule or refused at once with
-    the reason, and reported to the launching session; the credentials are minted and held by the launcher (Zero friction).
+    the reason, and a refused publication is reported to the launching session; the credentials are minted and held by the
+    launcher (Zero friction).
+18. **Who may widen, and from what.** A widening argument comes only from the task the person gave the launching session or from
+    a person-owned project policy outside the repository; only the lead identity or a terminal may pass one; hard caps hold for
+    every caller; every widened launch is a sentinel signal (8.3, R9).
+19. **The network is a sourced list.** Hosts come only from the registry list, a tunnel is cut at a measured bound on bytes
+    out, and a session has no request for a host (6.3, 7).
 
-Nothing remains open.
+Nothing remains open in the design. The exception recorded in "Zero friction" (the host facts of Linux) is the owner's to accept.
