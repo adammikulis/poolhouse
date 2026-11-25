@@ -460,6 +460,14 @@ def test_a_protected_path_in_no_writable_tree_adds_nothing(tmp_path):
     assert arguments(chosen, "/usr/bin/true") == arguments(replace(chosen, deny_write=()), "/usr/bin/true")
 
 
+def test_the_files_of_the_hosts_etc_that_a_namespace_binds_are_exactly_the_declared_exposure(tmp_path):
+    binds = {args[at + 1] for args in (arguments(held(net), "/usr/bin/true", relay=str(tmp_path)) for net in (Net.deny(), Net.only(80)))
+             for at, word in enumerate(args) if word == "--ro-bind" and args[at + 1].startswith("/etc/")}
+    assert binds <= set(bubblewrap.ACCOUNT_AND_HOST_FILES.paths)
+    assert {each for each in ("/etc/passwd", "/etc/group", "/etc/localtime") if os.path.lexists(each)} <= binds
+    assert not {"/etc/machine-id", "/var/lib/dbus/machine-id", "/sys/class/dmi/id"} & set(bubblewrap.SYSTEM_READ)
+
+
 def test_the_marker_that_says_a_process_is_confined_is_bound_read_only():
     args = arguments(held(Net.deny()), "/usr/bin/true")
     assert ["--ro-bind", os.devnull, MARKER] == args[args.index(MARKER) - 2:][:3]
