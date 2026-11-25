@@ -176,7 +176,9 @@ class Policy:
     and compile caches). ``unix_sockets`` grants outbound connections to exact endpoints;
     ``unix_namespaces`` separately grants bind/inbound/outbound in one private Darwin tree,
     without a process or listener count guarantee. ``deny_read`` freezes and hides protected
-    trees; ``deny_write`` freezes them, including paths that do not yet exist."""
+    trees; ``deny_write`` freezes them, including paths that do not yet exist. ``signal_children``
+    lets the process signal the processes it started (macOS only: the pid namespace of Linux has
+    no process outside the run to signal), and nothing else."""
 
     name: str = "policy"
     read: tuple[str, ...] = ()
@@ -195,6 +197,7 @@ class Policy:
     read_metadata: tuple[str, ...] = ()
     deny_read: tuple[str, ...] = ()
     deny_write: tuple[str, ...] = ()
+    signal_children: bool = False
 
     def validated(self) -> Policy:
         """This policy with every path checked, or `PolicyError`."""

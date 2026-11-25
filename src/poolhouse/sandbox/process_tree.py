@@ -7,6 +7,9 @@ not listed, so a tree counts the forks it was told of: a tree in which nothing f
 process it started and nothing else (`Tree.sealed`). Where there is no kqueue or libproc, and for a
 process that had already ended when it was first looked at, the tree is not complete. A tree also notes
 when each of its processes began, so that a pid a later process took is told from the one a report named.
+
+`end` ends every process of a tree, however its group or session changed since it started: a group kill reaches
+only the members still in the group (a member that called ``setsid`` is not), so the end of a session walks the tree.
 """
 
 from __future__ import annotations
@@ -14,13 +17,16 @@ from __future__ import annotations
 import contextlib
 import ctypes
 import logging
+import os
 import select
+import signal
 import threading
 import time
 from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import ClassVar
 
-__all__ = ["Tree", "flush", "follow", "release"]
+__all__ = ["Ended", "Tree", "end", "flush", "follow", "release"]
 
 logger = logging.getLogger("poolhouse.sandbox")
 
@@ -40,6 +46,11 @@ CHILD_WORDS = range(12, 18)
 PIDTBSDINFO = 3
 PID_WORD = 3
 """The word of ``proc_bsdinfo`` that holds the pid it describes (``pbi_pid``)."""
+STATUS_WORD = 1
+ZOMBIE = 5
+"""The word of ``proc_bsdinfo`` that holds the process state (``pbi_status``), and its value for a process that has ended and not been waited for."""
+POLL_S = 0.005
+"""How often `end` looks again at the members it is waiting for."""
 
 
 class _BsdInfo(ctypes.Structure):
@@ -47,6 +58,21 @@ class _BsdInfo(ctypes.Structure):
 
     _fields_: ClassVar = [("ids", ctypes.c_uint32 * 12), ("names", ctypes.c_char * 48), ("counts", ctypes.c_uint32 * 6),
                 ("start_s", ctypes.c_uint64), ("start_us", ctypes.c_uint64)]
+
+
+@dataclass(frozen=True, slots=True)
+class Ended:
+    """How the end of a tree went: ``survivors`` are the pids of members still alive that were not ended (the signal was refused, they
+    did not end while the others did, or their start time was never read so a reused pid could not be told from them), and ``unseen`` says
+    the tree was not complete, so a process the follower never saw may still be running."""
+
+    survivors: tuple[int, ...] = ()
+    unseen: bool = False
+
+    @property
+    def clean(self) -> bool:
+        """Whether every process of the run is known to be gone."""
+        return not self.survivors and not self.unseen
 
 
 class Tree:
@@ -70,6 +96,12 @@ class Tree:
     def __contains__(self, pid: object) -> bool:
         with self._lock:
             return self._held(pid, time.monotonic())
+
+    def pids(self) -> list[int]:
+        """Every pid the tree holds now: its members, and the ones that ended less than `GRACE_S` ago."""
+        now = time.monotonic()
+        with self._lock:
+            return [pid for pid in self._seen if self._held(pid, now)]
 
     def holds_any(self, pids: Iterable[int]) -> bool:
         """Whether any of ``pids`` is in the tree."""
@@ -221,12 +253,86 @@ class _Follower:
             return False
         return True
 
-    def _began(self, pid: int) -> float | None:
-        """When the process ``pid`` began; None when it has ended or cannot be read."""
+    def _info(self, pid: int) -> _BsdInfo | None:
+        """What libproc says of the process ``pid``; None when there is none."""
         info = _BsdInfo()
         if self._libproc.proc_pidinfo(pid, PIDTBSDINFO, 0, ctypes.byref(info), ctypes.sizeof(info)) != ctypes.sizeof(info):
             return None
-        return info.start_s + info.start_us / 1e6 if info.ids[PID_WORD] == pid else None
+        return info if info.ids[PID_WORD] == pid else None
+
+    def _began(self, pid: int) -> float | None:
+        """When the process ``pid`` began; None when it has ended or cannot be read."""
+        info = self._info(pid)
+        return None if info is None else info.start_s + info.start_us / 1e6
+
+    def _alive(self, pid: int, tree: Tree) -> bool | None:
+        """Whether ``pid`` is still the live process the tree noted: True for it, False when it has ended (a process that has ended
+        and not been waited for has) or a later process took the pid, None when it is alive and the tree never read when its process began."""
+        info = self._info(pid)
+        if info is None or info.ids[STATUS_WORD] == ZOMBIE:
+            return False
+        noted = tree.began(pid)
+        return None if noted is None else noted == info.start_s + info.start_us / 1e6
+
+    def end(self, tree: Tree, stalled: float) -> Ended:
+        """End every process of ``tree``: stop each member, and list again until a pass finds none that is new, so that none forks
+        while the others are ended; kill each; wait until none is alive. A member is signalled only while its pid and start time are
+        the ones the tree noted. The wait gives up on the members left once none has ended for ``stalled`` seconds."""
+        if not self._start():
+            return Ended(tuple(tree.pids()), True)
+        self.flush()
+        tried: set[int] = set()
+        while self._stop_pass(tree, tried):
+            pass
+        for pid in tried:
+            self._signal(pid, tree, signal.SIGKILL)
+        return Ended(tuple(self._wait(tree, stalled)), not tree.complete)
+
+    def _stop_pass(self, tree: Tree, tried: set[int]) -> bool:
+        """Stop the members not tried yet, after taking in the children of those that were; whether there were any."""
+        for pid in [*tried]:
+            self._adopt(pid, tree)
+        fresh = [pid for pid in tree.pids() if pid not in tried and self._alive(pid, tree)]
+        tried.update(fresh)
+        for pid in fresh:
+            self._signal(pid, tree, signal.SIGSTOP)
+            self._adopt(pid, tree)
+        return bool(fresh)
+
+    def _adopt(self, parent: int, tree: Tree) -> None:
+        """Put the children of ``parent`` the tree does not hold in it, with the time each began."""
+        children = self._children(parent)
+        if children is None:
+            tree.complete = False
+            return
+        for child in children:
+            began = self._began(child)
+            if began is not None and tree.began(child) != began and tree.add(child):
+                tree.begin(child, began)
+
+    def _signal(self, pid: int, tree: Tree, which: signal.Signals) -> bool:
+        """Send ``which`` to ``pid`` if it is still the process the tree noted; whether it was delivered."""
+        if not self._alive(pid, tree):
+            return False
+        try:
+            os.kill(pid, which)
+        except (ProcessLookupError, PermissionError):
+            return False
+        return True
+
+    def _wait(self, tree: Tree, stalled: float) -> list[int]:
+        """The members still alive once every one that can be has ended: those never identified, and those that did not end while
+        the others did for ``stalled`` seconds."""
+        left = [pid for pid in tree.pids() if self._alive(pid, tree)]
+        fewest, since = len(left), time.monotonic()
+        while left:
+            time.sleep(POLL_S)
+            left = [pid for pid in left if self._alive(pid, tree)]
+            if len(left) < fewest:
+                fewest, since = len(left), time.monotonic()
+            elif time.monotonic() - since > stalled:
+                break
+        return sorted({*left, *(pid for pid in tree.pids() if self._alive(pid, tree) is None)})
 
     def _reaped_children(self, pid: int) -> bool:
         """Whether ``pid`` has waited for a child already, or that cannot be told."""
@@ -316,3 +422,9 @@ def release(tree: Tree) -> None:
 def flush() -> None:
     """Take in every fork and exit the kernel has reported so far."""
     _FOLLOWER.flush()
+
+
+def end(tree: Tree, *, stalled: float) -> Ended:
+    """End every process of ``tree`` (see `_Follower.end`); ``stalled`` is the seconds without a member ending that make the wait
+    give up, which the caller derives from what it measured, and there is no default."""
+    return _FOLLOWER.end(tree, stalled)

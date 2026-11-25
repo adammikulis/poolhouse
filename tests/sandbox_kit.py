@@ -421,6 +421,12 @@ def processes():
         proc.wait()
 
 
+def running(pid: int) -> bool:
+    """Whether ``pid`` is a process that has not ended (one that has ended and not been waited for has)."""
+    state = subprocess.run(["/bin/ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True, check=False).stdout.strip()
+    return bool(state) and not state.startswith("Z")
+
+
 def gone_pid() -> int:
     """The pid of a process that has ended and been reaped."""
     proc = subprocess.Popen(["/usr/bin/true"])

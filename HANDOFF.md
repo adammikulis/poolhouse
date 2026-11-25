@@ -41,4 +41,4 @@ What is open and was checked against the tree on 2026-11-23 (`ac0639291`), plus 
 | Test shards between two real devices | Not driven: the Windows inbound-rule prompt, WSL in NAT against mirrored mode, a WSL device without `~/.venvs/poolhouse-dev` | `docs/test-farm.md` |
 | Design reviews open | Second attack notes: session capabilities N1 to N3, pool keys G1, G2, G4 and G10, signed ordering N2 to N8 (revise before building) | `docs/notes/attack-*.md` |
 | LiteRT on Android | No benchmark has run; the S26 Ultra was not given the app or a model | `docs/litert-lm-gemma4-pin-2026-10-16.md` |
-| Isolated launcher | Slices L1 to L9 pending, including the egress proxy and sandbox that close the access-widening residue | `docs/design-isolated-launcher.md` |
+| Isolated launcher | L1 (the engine) landed; slices L2 to L9 pending, including the egress proxy and sandbox that close the access-widening residue | `docs/design-isolated-launcher.md` |

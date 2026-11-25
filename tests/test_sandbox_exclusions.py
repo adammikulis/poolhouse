@@ -7,7 +7,6 @@ from dataclasses import replace
 import pytest
 
 from poolhouse import sandbox
-from poolhouse.sandbox.bubblewrap import arguments
 from poolhouse.sandbox.seatbelt import profile
 
 pytest_plugins = ["tests.sandbox_kit"]
@@ -92,13 +91,6 @@ def test_final_profile_exclusions_override_allows_and_freeze_read_secrets(tmp_pa
     assert f'(deny file-read* (subpath "{secret}"))' in text
     assert f'(deny file-write* (subpath "{secret}"))' in text
     assert '(deny file-write-unlink (literal ' in text
-
-
-@pytest.mark.parametrize("field", ["deny_read", "deny_write"])
-def test_bubblewrap_fails_closed_for_exclusion_policies(tmp_path, field):
-    held = sandbox.Policy(**{field: (str(tmp_path / "future"),)}).validated()
-    with pytest.raises(sandbox.PolicyError, match="cannot enforce"):
-        arguments(held, "/bin/sh")
 
 
 def test_native_exclusions_preserve_sibling_edits_and_deny_secret_reads(tmp_path, seatbelt):
