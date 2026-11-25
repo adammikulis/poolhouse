@@ -198,9 +198,17 @@ class Policy:
     deny_read: tuple[str, ...] = ()
     deny_write: tuple[str, ...] = ()
     signal_children: bool = False
+    binds: tuple[tuple[str, str, bool], ...] = ()
+    """Linux and WSL only: (source, target, writable), a directory bound at another path inside the namespace, such as the stage at the person's
+    own project path. Another platform refuses a policy that holds one."""
 
     def validated(self) -> Policy:
         """This policy with every path checked, or `PolicyError`."""
+        if self.binds and sys.platform != "linux":
+            raise PolicyError("binds: only the Linux and WSL backends can bind a directory at another path")
+        for source, target, _ in self.binds:
+            checked_path(source, what="bind source")
+            checked_path(target, what="bind target", future=True)
         env = dict(self.env)
         for key, value in env.items():
             if not isinstance(key, str) or not NAME.fullmatch(key):

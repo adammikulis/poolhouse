@@ -17,12 +17,8 @@ SRC = REPO / "src" / "poolhouse"
 STANDALONE = {
     "harnesshook": "the agent harnesses' hook command (`python -m poolhouse.harnesshook pre|post|stop`), named by module in the argv the "
                    "runtime builds for them (harnessing, pi, task_coding), so no module imports it",
-    "coding_workspace": "the parent-owned snapshot runner for isolated coding tools; the isolated launcher that calls it "
-                        "is what harnessing.require_isolated_execution refuses to start without",
-    "coding_apply": "the swap that applies a verified change set to the person's checkout (slice L4); the session wrapper that calls it lands in "
-                    "the rest of L4 and the launchers in L5, which remove this entry with the one of coding_workspace",
-    "isolation": "the isolated launcher's library (slice L2); the launchers that call it land in slice L5, which removes this entry "
-                 "together with harnessing.require_isolated_execution",
+    "isolation": "the isolated launcher's library (slices L2 to L4, with the workspace session that calls coding_workspace and coding_apply); the "
+                 "launchers that call it land in slice L5, which removes this entry together with harnessing.require_isolated_execution",
     "protectedwrites":"loaded by file through poolhouse.worktreerules, so the hook scripts need no package on the path",
 }
 

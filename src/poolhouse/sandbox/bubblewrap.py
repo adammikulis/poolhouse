@@ -109,6 +109,8 @@ def arguments(policy: Policy, program: str, relay: str = "") -> list[str]:
         out += ["--ro-bind", relay, SOCKETS, "--ro-bind", str(Path(netforward.__file__).resolve()), FORWARDER]
     for path in policy.write:
         out += ["--bind", path, path]
+    for source, target, writable in policy.binds:
+        out += ["--bind" if writable else "--ro-bind", source, target]
     if policy.cache:
         out += ["--bind", policy.cache, policy.cache]
     out += _protected(policy)

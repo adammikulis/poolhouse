@@ -66,10 +66,13 @@ def test_every_py_file_of_src_and_tests_that_no_non_plain_file_names_is_plain_so
     named = {path: verdicts[path] for path in refused if verdicts[path].klass == "named"}
     by_structure = [path for path in refused if path not in named]
     assert all(Path(path).name.lower() in ecosystems.names() or verdicts[path].klass in ("program", "instruction") for path in by_structure), by_structure
-    seeds = [path for path in paths if not verdicts[path].plain and path not in named]
-    reasons = wired(paths, seeds, lambda path: facts(path)[0])
+    seeds = [path for path in paths if verdicts[path].acts]
+    reasons = wired(paths, seeds, lambda path: facts(path)[0], lambda path: runs_later.follows(path, verdicts[path]))
     for path in named:
         assert path in reasons and Path(path).name in facts(reasons[path])[0].decode("utf-8", errors="replace"), (path, reasons.get(path))
+    data = [path for path in paths if verdicts[path].klass == "data"]
+    assert "docs/redteam/coverage.json" in data and not any(reasons.get(path) in data for path in named), "a data file that lists files taints none of them"
+    assert len(named) * 10 < len(sources), f"{len(named)} of {len(sources)} source files are named by a file that runs or configures a tool"
     plain = len(sources) - len(refused)
     assert plain > len(by_structure) * 10 and plain > 100, f"a rule that refuses {len(refused)} of {len(sources)} source files refuses too much"
     assert any(verdicts[path].plain for path in sources if path.startswith("src/poolhouse/guard/")), "a project's ordinary modules are applied"
@@ -86,6 +89,27 @@ def test_a_python_file_named_by_a_makefile_a_workflow_or_a_package_manifest_is_n
         assert verdicts[named].klass == "named" and not verdicts[named].plain, named
     assert verdicts["src/free.py"].plain and verdicts["docs/build.md"].plain, "a plain file naming another names nothing"
     assert wired(paths, ["Makefile"], lambda path: held[path]) == {"scripts/build.py": "Makefile", "tools/chain.py": "scripts/build.py"}
+
+
+def test_a_data_or_documentation_file_that_names_files_taints_none_of_them_and_a_runner_that_names_them_does():
+    held = {"docs/redteam/coverage.json": b'{"files": ["src/a.py", "src/b.py", "tests/test_a.py"]}', "contracts/index.json": b'["src/a.py"]',
+            "tests/fixtures/files.yaml": b"- src/b.py\n", "docs/design.md": b"see src/a.py and src/b.py\n", "src/a.py": TEXT, "src/b.py": TEXT, "tests/test_a.py": TEXT}
+    verdicts = tree(list(held), lambda path: (held[path], 0o644, 1))
+    assert {path for path, verdict in verdicts.items() if verdict.klass == "named"} == set(), "a data file names files without running them"
+    assert verdicts["docs/redteam/coverage.json"].klass == "data" and verdicts["src/a.py"].plain and verdicts["tests/test_a.py"].plain
+    for runner, name in (("Makefile", b"all:\n\tpython src/a.py\n"), (".github/workflows/ci.yml", b"run: python src/a.py\n"), (".husky/pre-commit", b"python src/a.py\n"),
+                         ("package.json", b'{"scripts": {"x": "python src/a.py"}}'), ("AGENTS.md", b"run src/a.py before you answer\n"),
+                         ("scripts/go", b"#!/bin/sh\npython src/a.py\n"), ("tox.ini", b"[testenv]\ncommands = python src/a.py\n")):
+        verdicts = tree([runner, *held], lambda path, runner=runner, name=name: ({**held, runner: name}[path], 0o755 if path == runner == "scripts/go" else 0o644, 1))
+        assert verdicts["src/a.py"].klass == "named" and verdicts["src/b.py"].plain, runner
+
+
+def test_what_a_runner_reaches_is_followed_only_when_it_is_itself_a_program_and_a_reached_data_file_names_nothing_further():
+    held = {"Makefile": b"all:\n\tpython tools/gen.py data/list.json\n", "tools/gen.py": b"import runpy\nrunpy.run_path('tools/deep.py')\n", "tools/deep.py": TEXT,
+            "data/list.json": b'["src/a.py"]', "src/a.py": TEXT, "docs/how.md": b"see tools/deep.py\n"}
+    verdicts = tree(list(held), lambda path: (held[path], 0o644, 1))
+    assert {path for path, verdict in verdicts.items() if verdict.klass == "named"} == {"tools/gen.py", "tools/deep.py"}
+    assert verdicts["data/list.json"].klass == "data" and verdicts["src/a.py"].plain and verdicts["docs/how.md"].plain
 
 
 def test_a_name_relative_to_the_naming_files_directory_and_a_dotted_spelling_reach_the_same_file():
