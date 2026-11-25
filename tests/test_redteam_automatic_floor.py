@@ -203,14 +203,10 @@ def test_nothing_in_the_library_asks_prompts_or_waits_for_a_person():
 
     src = Path(SRC) / "poolhouse"
     banned = re.compile(r"HumanRequired|require_person|person\.typed\(|person\.confirm|controlling_terminal|Type yes|type yes|termios\.tcflush")
-    asking = re.compile(r"\binput\(|\.raise_request\(")
+    asking = re.compile(r"\binput\(|\.raise_request\(|getpass\.getpass\(|from getpass import getpass")
     allowed_asking = {
         "do.py": "the chat's own ask_user and its line reader are the conversation itself",
-        "fleet/onboard/ssh_cli.py": "the host fingerprint read off the remote machine is typed back as a check, not as consent",
-        "memory/cli.py": "being replaced by --yes",
-        "reputation/cli.py": "being replaced by --yes",
-        "scrape/browser.py": "an interactive login a website demands",
-        "workspace/localtools.py": "local-agent approvals, removed by the chat and harness work",
+        "credentials/cli.py": "the hidden prompt of `credentials set`; a guarded path an agent cannot edit, to be made stdin-only",
     }
     optional_words = {"board/presence.py": "the sentence for a node started with --presence terminal, which the launcher never passes"}
     found: dict[str, list[str]] = {}
@@ -257,6 +253,27 @@ def test_every_signing_key_step_refuses_an_agent_at_once_even_at_a_terminal(
     assert cmd_signing(args) == 2
     assert snapshot(state) == before
     assert not (tmp_path / "out.key").exists()
+
+
+def test_exporting_the_signing_key_takes_its_passphrase_from_the_environment_and_never_asks_at_a_terminal(
+        tmp_path, monkeypatch, keystore):
+    import argparse
+
+    from poolhouse.fleet.onboard.signing import UNLOCK_ENV
+    from poolhouse.fleet.onboard.signing_cli import cmd_signing
+    state, out = tmp_path / "state", tmp_path / "out.key"
+    assert cmd_signing(argparse.Namespace(state=str(state), action="show", value="", json=True)) == 0
+    for marker in ("CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE", "POOLHOUSE_AUTHORITY_FLOOR"):
+        monkeypatch.delenv(marker, raising=False)
+    monkeypatch.delenv(UNLOCK_ENV, raising=False)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr("getpass.getpass", lambda *_: pytest.fail("a passphrase was asked at a terminal"))
+    monkeypatch.setattr("builtins.input", lambda _p="": pytest.fail("a question was asked at a terminal"))
+    args = argparse.Namespace(state=str(state), action="export", value=str(out), json=True)
+    assert cmd_signing(args) == 2 and not out.exists(), "no passphrase given: refused at once, nothing written"
+    monkeypatch.setenv(UNLOCK_ENV, "correct horse battery")
+    assert cmd_signing(args) == 0 and out.exists()
 
 
 def test_no_tool_an_agent_is_offered_is_a_human_only_action():

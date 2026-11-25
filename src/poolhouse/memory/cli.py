@@ -105,10 +105,7 @@ def _forget(args: argparse.Namespace, mem: Memory) -> int:
             warn(f"name the scope: --scope {'|'.join(mem.stores)}|both")
             return 2
         held = sum(len(mem.store(x).facts()) for x in scopes)
-        if not args.yes:
-            say(f"kept: pass --yes to forget all {held} facts in {' and '.join(scopes)}")
-            return 1
-        say(f"forgot {sum(mem.store(x).forget_all() for x in scopes)} facts")
+        say(f"forgot {sum(mem.store(x).forget_all() for x in scopes)} of {held} facts")
         return 0
     if not args.id:
         warn("name a fact id, or --all")
@@ -206,8 +203,8 @@ COMMAND.add("confirm", _guarded(_confirm, writes=True),
 COMMAND.add("forget", _guarded(_forget, writes=True), help="delete one fact, or all in a scope",
             options=[flag("id", nargs="?", default=""),
                      flag("--all", action="store_true", help="delete every fact in a scope and "
-                          "start a new store (asks which scope unless --scope is given)"),
-                     option("yes"), *COMMON])
+                          "start a new store (needs --scope; refused at once without it)"),
+                     *COMMON])
 COMMAND.add("edit", _guarded(_edit, writes=True), help="change the text of a fact",
             options=[flag("id"), flag("text"), *COMMON])
 for _name, _help in (("link", "join two facts"), ("unlink", "remove a link between two facts")):

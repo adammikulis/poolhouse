@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import argparse
 import base64
-import getpass
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +16,7 @@ from poolhouse.log import say
 from poolhouse.sentinel.permit import mint
 
 from .manifest import key_fingerprint
-from .signing import KeyStoreError, SigningKeys
+from .signing import UNLOCK_ENV, KeyStoreError, SigningKeys
 
 __all__ = ["add_signing", "cmd_signing"]
 
@@ -26,7 +26,8 @@ def add_signing(sub: Any, common: Any) -> None:
                                               "are refused to an agent"))
     p.add_argument("action", choices=["show", "export", "rotate", "revoke", "accept"])
     p.add_argument("value", nargs="?", default="",
-                   help="export: the file to write; revoke: a key id")
+                   help="export: the file to write, encrypted under the passphrase in "
+                        f"${UNLOCK_ENV} (refused at once when it is not set); revoke: a key id")
 
 
 def _emit(args: argparse.Namespace, document: dict[str, Any], text: str) -> None:
@@ -51,7 +52,11 @@ def _run(args: argparse.Namespace, keys: SigningKeys, directory: Path) -> int:
               f"signing key {doc['key_id']} ({doc['store']})")
     elif args.action == "export":
         grant = mint("export", doc["key_id"])
-        passphrase = getpass.getpass("passphrase for the exported key: ")
+        passphrase = os.environ.get(UNLOCK_ENV, "")
+        if not passphrase:
+            why = f"set {UNLOCK_ENV} to the passphrase for the exported key; nothing is asked and nothing was written"
+            _emit(args, {"error": why}, f"error: {why}")
+            return 2
         keys.export(grant, Path(args.value), passphrase)
         _emit(args, {"exported": args.value}, f"wrote {args.value} (encrypted)")
     elif args.action == "rotate":
