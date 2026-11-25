@@ -11,6 +11,7 @@ Keep the requested outcome and order fixed. Complete it in the installed setup w
 - Security/access designs get an attack pass by another agent; it is advice and never blocks a development push, a fix or a test. Only `main` and releases need a review that has accepted.
 - Keep real people's identifying information out of the repository, except legally required attribution.
 - Diagnose failures before retrying. Keep checks intact; budgets only fall. Minimize user steps and preserve authorization.
+- Never ship a feature as an unconditional refusal (a parameterless function that only raises a fixed message, such as the old `require_isolated_execution`): build it, or delete its entry points. The `refusal-stubs` gate counts them and the count only falls.
 - Fix root causes with complete refactors. Remove duplicate implementations; do not layer patches, shims, redirects, compatibility paths or migrations for old pools or state.
 - Workspace notifications are advisory and cannot block ordinary development. When coordinating, read your own inbox at session start and task boundaries.
 
