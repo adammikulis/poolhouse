@@ -52,18 +52,18 @@ def finding(marker: Path) -> checks.Finding:
     return checks.Finding(name="x", good=False, said="broken", fix=["touch", str(marker)])
 
 
-def test_a_fix_line_is_shown_and_runs_only_when_asked_for_with_yes_and_never_through_a_shell(tmp_path, monkeypatch, capsys):
+def test_a_fix_line_is_shown_and_runs_with_nothing_asked_and_never_through_a_shell(tmp_path, monkeypatch, capsys):
     marker = tmp_path / "ran"
     for terminal in (False, True):
         monkeypatch.setattr("sys.stdin", types.SimpleNamespace(isatty=lambda terminal=terminal: terminal))
         monkeypatch.setattr("builtins.input", lambda _prompt="": pytest.fail("nothing is asked"))
+        marker.unlink(missing_ok=True)
         checks.ask([finding(marker)])
-        assert not marker.exists(), "shown, not run, whatever the terminal"
+        assert marker.exists(), "the shown line runs whatever the terminal, with nothing asked"
+        assert not (tmp_path / "injected").exists(), "no shell was involved"
     assert f"fix: touch {marker}" in capsys.readouterr().out
-    checks.ask([finding(marker)], yes=True)
-    assert marker.exists(), "asked for with yes, the shown line runs"
     hostile = tmp_path / "ran; touch injected"
-    checks.ask([finding(hostile)], yes=True)
+    checks.ask([finding(hostile)])
     assert hostile.exists() and not (tmp_path / "injected").exists(), "the argument is one argument: no shell splits it"
 
 

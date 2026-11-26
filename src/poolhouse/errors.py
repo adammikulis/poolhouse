@@ -15,7 +15,7 @@ class Error(Exception):
 
 
 class NotRunning(Error):
-    """No node answers on this device; start it with `poolhouse` (or `python -m poolhouse.device_setup --yes`)."""
+    """No node answers on this device; start it with `poolhouse` (or `python -m poolhouse.device_setup`)."""
 
 
 class Denied(Error):

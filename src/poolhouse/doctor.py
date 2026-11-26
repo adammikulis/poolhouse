@@ -17,7 +17,7 @@ from pathlib import Path
 
 from poolhouse import agent_hooks, checks, hook_diagnostics, hookcheck, node_pool, optional
 from poolhouse.checks import Finding, ask
-from poolhouse.command import Group, flag, option
+from poolhouse.command import Group, flag
 from poolhouse.home import state
 from poolhouse.log import say
 from poolhouse.serve.binary import child_env, managed_current, managed_named
@@ -414,7 +414,7 @@ def _findings(args) -> int:
     findings = agent_hooks.findings() + node_pool.build_findings(pool) + node_pool.reach_findings(pool) + look_checkouts(
         repositories(args.repo) if args.repo else None,
         bench_home=Path(args.bench_home).expanduser() if args.bench_home else None)
-    ask(findings, yes=args.yes)
+    ask(findings)
     return 0 if all(f.good for f in findings) else 1
 
 
@@ -429,8 +429,7 @@ COMMAND = Group(
                   help="a checkout to look at; may repeat. Default: those "
                        f"${CHECKOUTS} lists, separated by {os.pathsep!r}"),
              flag("--bench-home", metavar="PATH",
-                  help="the bench's home (default: where python -m poolhouse.bench keeps its store)"),
-             option("yes", help="run every offered fix without asking")],
+                  help="the bench's home (default: where python -m poolhouse.bench keeps its store)")],
     run=_findings,
     epilog="poolhouse-doctor hooks [ID] inspects local hook failures, first occurrence, "
            "checkout branch and installed runtime revision.")

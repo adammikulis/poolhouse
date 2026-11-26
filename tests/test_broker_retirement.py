@@ -322,7 +322,7 @@ def test_background_missing_lease_reacquisition_is_inside_admission(broker, monk
     def acquire(*_args):
         entered.set()
         assert finish.wait(2)
-    monkeypatch.setattr(broker_holds.admission, "keep", acquire)
+    monkeypatch.setattr(broker_holds.node_memory, "keep", acquire)
     worker = threading.Thread(target=broker.keep_leases)
     worker.start()
     try:
@@ -334,6 +334,113 @@ def test_background_missing_lease_reacquisition_is_inside_admission(broker, monk
     assert not worker.is_alive() and retire(broker)
     with pytest.raises(RuntimeError, match="retiring"):
         broker.keep_leases()
+
+
+def _carried(broker, *, loading=False, holder=4242):
+    """A standing server on port 7443 with a holder, and the node's lease row for it."""
+    from poolhouse.serve.broker import Held
+
+    broker.servers[7443] = Held(port=7443, model="m.gguf", holders={"lease-1": (holder, "a delegate")}, loading=loading)
+    row = {"id": "node-lease", "state": "held", "tag": "server.7443",
+           "resources": [{"type": "memory_mb", "mb": 1}, {"type": "model_slot", "model": "m.gguf"}]}
+    broker.table.listing = lambda: {"leases": [row]}
+    return row
+
+
+def test_a_broker_handing_over_carries_the_servers_its_holders_use_and_writes_who_holds_them(broker):
+    _carried(broker)
+    assert not retire(broker) and not broker._retiring, "an idle retirement still keeps a broker that has a server"
+    assert retire(broker, carrying=True) and broker._retiring
+    assert broker._read_held()[7443]["holders"] == {"lease-1": [4242, "a delegate"]}
+
+
+@pytest.mark.parametrize("change", ["loading", "queue", "claims", "cores", "another board's compute", "a row for no server"])
+def test_a_broker_handing_over_still_keeps_work_it_cannot_hand_on(broker, change):
+    row = _carried(broker, loading=change == "loading")
+    if change in ("queue", "claims", "cores"):
+        setattr(broker, change, {"x": 1} if change != "queue" else ["x"])
+    if change == "another board's compute":
+        row["resources"].append({"type": "gpu"})
+    if change == "a row for no server":
+        row["tag"] = "server.9999"
+    assert not retire(broker, carrying=True) and not broker._retiring
+
+
+def test_wire_idle_retire_carries_servers_only_for_a_broker_older_than_the_selected_runtime(broker, monkeypatch):
+    monkeypatch.setattr(broker_wire.broker_runtime, "snapshot", lambda: {})
+    _carried(broker)
+    server = broker_wire._Server(broker)
+    monkeypatch.setattr(broker_wire.threading, "Thread", lambda **kwargs: SimpleNamespace(start=lambda: None))
+    request = {"token": server.token, "op": "idle-retire", "carrying": True}
+    try:
+        monkeypatch.setattr(broker_wire.runtime_age, "is_older", lambda *_: False)
+        assert server.answer(request, connected=lambda: True) == {"ok": True, "retiring": False}
+        assert not broker._retiring, "a broker on the selected runtime keeps its servers, whatever it is asked"
+        monkeypatch.setattr(broker_wire.runtime_age, "is_older", lambda *_: True)
+        broker.claims["busy"] = {"pid": 123}
+        assert server.answer(request, connected=lambda: True) == {"ok": True, "retiring": False}
+        broker.claims.clear()
+        assert server.answer({**request, "carrying": False}, connected=lambda: True) == {"ok": True, "retiring": False}
+        assert server.answer(request, connected=lambda: True) == {"ok": True, "retiring": True}
+        assert server.closing.is_set() and broker._retiring
+    finally:
+        server.server_close()
+
+
+def test_ensure_asks_the_broker_on_its_socket_to_hand_over_only_when_it_runs_older_code(broker, monkeypatch, tmp_path):
+    """`broker_wire.replace_stale` over a real socket, token and ownership check: the broker is this process, so it never
+    exits and the answer is busy; what is checked is that it was asked, and that it handed its server's holders over."""
+    import json
+    import threading
+
+    import psutil
+
+    from poolhouse import runtime
+    from poolhouse.files import write_json
+
+    root = tmp_path / "runtimes"
+    prefix = root / ("c" * 40) / "prefix"
+    prefix.mkdir(parents=True)
+    monkeypatch.setattr(runtime, "directory", lambda: root)
+    (root / "selected.json").write_text(json.dumps({"prefix": str(prefix)}), encoding="utf-8")
+    verified = prefix / "verified.json"
+    monkeypatch.setattr(broker_wire, "HANDOVER_WAIT_S", 0.3)
+    _carried(broker)
+    server = broker_wire._Server(broker)
+    write_json(broker_wire.record_path(), {"pid": os.getpid(), "port": server.server_address[1], "token": server.token,
+                                           "pid_started": psutil.Process().create_time(), "runtime": server.runtime})
+    serving = threading.Thread(target=server.serve_forever, daemon=True)
+    serving.start()
+    try:
+        verified.write_text(json.dumps({"verified_at": time.time() - 3600}), encoding="utf-8")
+        assert broker_wire.replace_stale() == "current" and not broker._retiring
+        verified.write_text(json.dumps({"verified_at": time.time() + 600}), encoding="utf-8")
+        assert broker_wire.replace_stale() == "busy" and broker._retiring and server.closing.is_set()
+        assert broker._read_held()[7443]["holders"] == {"lease-1": [4242, "a delegate"]}
+    finally:
+        server.closing.set()
+        server.server_close()
+
+
+def test_a_broker_older_than_the_selected_runtime_hands_over_by_itself_when_nothing_blocks_it(broker, monkeypatch):
+    monkeypatch.setattr(broker_wire.broker_runtime, "snapshot", lambda: {})
+    monkeypatch.setattr(broker_wire, "ADOPT_EVERY_S", 0.0)
+    monkeypatch.setattr(broker_wire, "REAP_EVERY_S", 0.01)
+    monkeypatch.setattr(broker_wire.runtime_age, "is_older", lambda *_: True)
+    _carried(broker)
+    broker.reap = lambda: []
+    broker.adopt = lambda: []
+    broker.keep_leases = lambda: None
+    server = broker_wire._Server(broker)
+    said = []
+    broker.say = said.append
+    monkeypatch.setattr(broker_wire.threading, "Thread", lambda **kwargs: SimpleNamespace(start=lambda: None))
+    try:
+        broker_wire._upkeep(broker, threading.Event(), server, quiet_s=3600.0)
+        assert broker._retiring and server.closing.is_set()
+        assert any("handing over" in line for line in said)
+    finally:
+        server.server_close()
 
 
 def test_wire_retirement_requires_connected_owner_and_never_closes_busy_broker(broker, monkeypatch):

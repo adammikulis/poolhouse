@@ -482,16 +482,14 @@ signature over the enrolment). The first key of this computer also takes `secret
 policy (`poolhouse.board.autoapprove`) makes this device's own key on first use and asks the node (`presence_ask`) to allow the session to add it. **Nobody is
 asked**: a node runs as the user of the computer, and `--presence auto` (the default, and what the launcher starts) confirms at once. On a yes the node makes the random secret in its memory (never a file), hands it
 once to the session that asked (`presence_status`), accepts it once and for ten minutes, and spends it on any guess, so a wrong secret ends the
-attempt; a node that holds a key never makes another this way. `--presence os` (the operating system's password prompt) and `--presence terminal` (a typed `yes` on a terminal the node reads itself)
-remain as options for a node whose user wants the stronger question; the launcher never passes them. **A change the node drafted is confirmed the same way**, and so is every operation the device's own session does without a grant. Who may ask is
+attempt; a node that holds a key never makes another this way. `--presence terminal` (a typed `yes` on a terminal the node reads itself)
+remains as an option for a rig that plays the person; the launcher never passes it, and the node raises no dialog of the operating system. **A change the node drafted is confirmed the same way**, and so is every operation the device's own session does without a grant. Who may ask is
 proven, and the node tells the sessions apart for each request: the device's own session (`register_person` with the secret the node keeps for the local user) asks for every purpose; a live main session of an agent (not a subagent, not retired)
-asks for a pool's card (`pool_key`, `card`: founding, a window, a join, a change) when the presence is `os` or `auto`; the first key and the first phone stay the device's own session's. A card is asked for with `presence_ask` (`purpose: pool_key` for a card that made a key for this computer, `card` for any other, and the `card` that `pool_draft_found`,
+asks for a pool's card (`pool_key`, `card`: founding, a window, a join, a change) while the presence is `auto`; the first key and the first phone stay the device's own session's. A card is asked for with `presence_ask` (`purpose: pool_key` for a card that made a key for this computer, `card` for any other, and the `card` that `pool_draft_found`,
 `pool_draft` or `op_draft` returned; it never takes a key from the request). **A request the person has not answered is never held back.** There is no quiet after a no, no count of prompts per
 ten minutes or per day, and no allowance shared by agents; nothing about asking is kept in a file, so a restart carries no suppression. The only refusal is one prompt open per asker (whatever it is for: a card, the first key, the first phone): asking for the
-same thing again returns the same open prompt, and asking for another thing while one is open is refused with the sentence that is open, and sixteen cards wait per asker. A no, a timeout and a dialog that failed are three different ends. Only the system's own cancel is a no
-(`User canceled` from `osascript`, exit 126 from `pkexec`, exit 3 from the Windows script); running out of time (two minutes) makes nothing and is `expired`; any other end (the dialog could not be shown, the session has no screen, an error) is `failed`
-with the system's own words in `presence_status` (`state: failed`, `error`), written to the node's log and announced by a system notification, and the same request is raised again by asking again. Every prompt the node raises is also announced by a system notification
-(`osascript display notification`, `notify-send`, a Windows toast), because the dialog can open behind other windows, and `pool_status` lists every open request in `waiting` (`waiting for you: <the sentence>`). The macOS dialog first makes the node the frontmost application (`activate`). The sentence the prompt shows is the node's, written from the pool's name, its policy, whether its first computer may admit devices for 30 days, the words of the key's fingerprint
+same thing again returns the same open prompt, and asking for another thing while one is open is refused with the sentence that is open, and sixteen cards wait per asker. A no, a timeout and a prompt that failed are three different ends. Running out of time (two minutes) makes nothing and is `expired`; a prompt that could not be shown is `failed`
+with the words of the failure in `presence_status` (`state: failed`, `error`), and the same request is raised again by asking again. `pool_status` lists every open request in `waiting` (`waiting for you: <the sentence>`). The sentence the prompt shows is the node's, written from the pool's name, its policy, whether its first computer may admit devices for 30 days, the words of the key's fingerprint
 and (for a removal) the words of the device's fingerprint, never a device's own name; it says that the yes adds a key and what it allows. A sentence the prompt would cut or change (over 240
 characters, or with a character outside letters, digits, spaces and `.,-/()`) gets no card, and a pool name is at most 40 letters, digits, spaces, dots and dashes, so a pool that cannot be
 administered is never made. A yes makes a **ticket**: a secret handed once to the session that asked, kept by the node only as a hash, good for two minutes from the yes (the moment the prompt
@@ -510,9 +508,7 @@ delivered later opens nothing (a member that was offline for longer than that do
 A joiner receives the window acts with the pool; a window names this device or is refused. `ph.pool.renew()` makes a `delegate` act (held seven days) that gives this device thirty days of admitting without asking again. The computer's key (`src/poolhouse/board/computer_key.py`)
 unseals only after the node accepts the payload. There is no cargo feature, argument or environment variable that answers for the person, in any
 binary: the crate's own tests put a stand-in on a library field that no binary sets, and the rig's person types `yes` at a pseudo-terminal
-(`tests/pool_check/wire.py`, `answer_presence`). On Windows the prompt is Windows Hello (a PIN, a fingerprint or a face) through the user consent verifier, and the system's credential dialog checked against the account's
-password where Hello is not set up (Windows PowerShell, started by its place under the directory `GetSystemDirectoryW` reports and never by an environment variable; `windows_dialog` in `presence/os.rs`;
-built, not yet run on a Windows device). Windows has the terminal presence for any other state
+(`tests/pool_check/wire.py`, `answer_presence`). Windows has the terminal presence for any other state
 directory (a server, a test, the pool check's rig): the asker names the console by the id of a process that runs in it (`terminal` is a decimal
 process id, which `poolhouse.board.presence.terminal_name` gives for the command window it runs in; where the node asks on the person's terminal for the real home, it uses the id of the process on the
 other end of the pipe, `GetNamedPipeClientProcessId`), the node attaches to that console (a node
@@ -536,9 +532,7 @@ removal is written to the pool board. The secret is in the node's memory, so a p
 and a session that asks gets a secret only when the person answers. What an agent can still do is ask repeatedly (the node asks one question at a
 time, refuses for a few minutes after a no, and the prompt names the session that asked), spend the secret of the person's yes with a wrong guess
 so that the person asks again. A node that asks on a terminal (never on the real home) can be answered by a program that opens a pseudo-terminal
-of its own, which is why the real home allows the operating system's prompt only. On Linux a polkit rule that lets the account authenticate
-without a password (or `pkexec` set up to allow the action to anyone) lets the prompt return yes with nobody answering: that is accepted, and
-the person who runs such a rule has already given that power to every program of the account.
+of its own, which is why the real home is never asked on a terminal.
 
 **Accepted residual: `persons.json` is a plain file.** The OS user can edit it with the node stopped (documented at `src/grants/person.rs`), so
 a program that can stop the node and write its state directory can plant a key, including one recorded with a computer's or a phone's claim, which a
@@ -894,7 +888,7 @@ a segment), each beacon advertising the address of the interface it leaves by. O
 to, an address inside a subnet of this machine only. `pool_status` adds `beacon_sent|heard|own|rejected`, the last send
 error and `last_join`: a node that sends but never hears its own beacon is blocked by the system (macOS Local Network,
 a firewall, WSL2 NAT). `poolhouse pool listen` starts it that way after showing what
-it does and getting a yes (`--yes` for a script), and `scripts/pool-join-check` walks every step on one device and prints
+it does (nothing is asked), and `scripts/pool-join-check` walks every step on one device and prints
 the fix for the first that fails.
 
 ## Who governs a pool

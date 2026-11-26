@@ -36,14 +36,12 @@ This turns on the node's network so this device can find and join another one on
 """
 
 
-def consent(port: int, beacon_port: int, *, yes: bool) -> None:
-    """Show what turning the network on does; PoolError unless the command said `--yes`. Nothing is asked and nothing waits.
+def consent(port: int, beacon_port: int) -> None:
+    """Show what turning the network on does. Nothing is asked and nothing waits.
 
     Nothing that runs by itself (a test, an install, a first run) calls this or turns the network on.
     """
     say(EXPLANATION.format(port=port, beacon_port=beacon_port))
-    if not yes:
-        raise PoolError("the network stays off: pass --yes (`poolhouse pool listen --yes`) to turn it on after reading the above")
 
 
 def network_args() -> list[str]:

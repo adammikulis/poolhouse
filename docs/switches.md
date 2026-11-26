@@ -61,7 +61,7 @@ Counts: A 32, B 34, C 116, D 6 (a variable name counts once, a row naming no var
 
 Not a variable but a switch: `CLAUDECODE`, `POOLHOUSE_AGENT` and `POOLHOUSE_NONINTERACTIVE` mark an agent (`caller.AGENT_MARKERS`); a command could run
 `env -u CLAUDECODE`: the marker is an input to automatic policy (`caller.marked`) and the audit log (`authority-audit.jsonl`) records who ran each action, so this is detected afterwards, not stopped.
-`poolhouse device-setup --yes`, `poolhouse pool listen --yes` and `poolhouse runtime ensure --force-build` are an ordered agent's on the owner's instruction, and are audited by the authority registry.
+`poolhouse device-setup`, `poolhouse pool listen` and `poolhouse runtime ensure --force-build` are an ordered agent's on the owner's instruction, and are audited by the authority registry.
 
 ## C: plain config
 

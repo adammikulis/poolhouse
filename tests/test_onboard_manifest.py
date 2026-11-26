@@ -117,7 +117,7 @@ def test_a_rotation_signed_by_the_old_key_is_announced_not_trusted(tmp_path, sig
     with pytest.raises(mf.RotationAnnounced) as moved:
         mf.verify(raw, signer.public)                # still pinned to the old key
     assert moved.value.new_public == new.public
-    assert mf.verify(raw, new.public).key_id == new.key_id      # after a person pins the new one
+    assert mf.verify(raw, new.public).key_id == new.key_id      # once the new one is pinned
 
 
 def test_a_rotation_not_signed_by_the_pinned_key_is_just_a_bad_signature(tmp_path, signer):

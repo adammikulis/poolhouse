@@ -26,7 +26,7 @@ from ..tls import TlsUnavailable, identity, pinned_context
 from .bootstrap import BootstrapServer, Terms
 from .devices import Devices, short
 from .lan import primary_ip
-from .manifest import ManifestError, RotationAnnounced, Signer, key_fingerprint, verify
+from .manifest import ManifestError, RotationAnnounced, Signer, verify
 from .routes import resolve
 from .share_cli import add_share, cmd_share
 from .signing import KeyStoreError, SigningKeys
@@ -144,21 +144,22 @@ def cmd_fetch(args: argparse.Namespace) -> int:
                       pinned_context(trust["certificate"]), name=host)
     try:
         raw = fetch_manifest(member)
-        manifest = verify(raw, base64.b64decode(trust["signing_key"]),
-                          min_serial=int(trust.get("serial", 0)),
-                          revoked_keys=trust.get("revoked", []))
+        try:
+            manifest = verify(raw, base64.b64decode(trust["signing_key"]),
+                              min_serial=int(trust.get("serial", 0)),
+                              revoked_keys=trust.get("revoked", []))
+        except RotationAnnounced as moved:
+            # the statement is signed by the pinned key itself, so the successor is adopted at once, nothing waits for a person
+            trust = {**trust, "signing_key": base64.b64encode(moved.new_public).decode()}
+            write_json(directory / "trust.json", trust)
+            manifest = verify(raw, moved.new_public, min_serial=int(trust.get("serial", 0)),
+                              revoked_keys=trust.get("revoked", []))
         remember(raw, base64.b64decode(trust["signing_key"]))
         staged = []
         for name in args.names:
             got = Downloader(manifest, [member], Path(args.into) if args.into
                              else directory / "staging").download(name)
             staged.append(str(got))
-    except RotationAnnounced as exc:
-        write_json(directory / "trust.json",
-                   {**trust, "pending_key": base64.b64encode(exc.new_public).decode()})
-        _emit(args, {"error": str(exc), "pending_key": key_fingerprint(exc.new_public)},
-              f"error: {exc}")
-        return 2
     except (ManifestError, TransferError, OSError) as exc:
         reason = exc.source if isinstance(exc, NotShareable) and exc.source else str(exc)
         _emit(args, {"error": str(exc), "source": getattr(exc, "source", "")},

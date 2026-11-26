@@ -77,7 +77,7 @@ def test_a_network_windows_calls_public_is_named_with_the_setting_to_change(caps
 @pytest.mark.parametrize("address", ["172.20.144.1", "172.16.0.9", "172.31.255.254"])
 def test_a_wsl_machine_on_the_hyper_v_network_is_told_how_to_be_reached(address):
     said = nat_notice(address)
-    assert address in said and "cannot find it or reach it" in said and "python -m poolhouse.device_setup --yes" in said
+    assert address in said and "cannot find it or reach it" in said and "python -m poolhouse.device_setup" in said
 
 
 @pytest.mark.parametrize("address", ["192.168.2.59", "10.0.0.4", "172.32.0.1", "", "not an address"])

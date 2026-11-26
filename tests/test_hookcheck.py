@@ -154,13 +154,13 @@ def test_the_doctor_finding_offers_only_the_installer_and_leaves_config_for_a_pe
     before = (repo / ".git" / "config").read_text()
     found = doctor.hooks_of(repo)
     assert not found.good and found.fix == [] and "--unset-all core.hookspath" in found.note
-    ask([found], yes=True)
+    ask([found])
     assert (repo / ".git" / "config").read_text() == before
     git(repo, "config", "--unset-all", "core.hooksPath")
     shutil.rmtree(repo / ".git" / "hooks")
     missing = doctor.hooks_of(repo)
     assert not missing.good and missing.fix == ["sh", "scripts/install-hooks.sh"] and missing.cwd == str(repo)
-    ask([missing], yes=True)
+    ask([missing])
     assert doctor.hooks_of(repo).good
 
 

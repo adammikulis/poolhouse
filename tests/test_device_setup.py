@@ -105,12 +105,16 @@ def test_a_dry_run_lists_the_changes_and_makes_none(monkeypatch, capsys):
     assert "inbound allow rules" in capsys.readouterr().out
 
 
-def test_without_a_yes_and_without_a_person_nothing_changes(monkeypatch, capsys):
+def test_no_flag_is_needed_to_make_the_changes_and_nothing_is_asked(monkeypatch, capsys):
     monkeypatch.setattr(device_setup, "survey", lambda repo: needs(kind="windows", firewall_missing=True))
-    monkeypatch.setattr(device_host, "add_firewall", lambda: pytest.fail("changed without a yes"))
-    monkeypatch.setattr(device_setup.sys.stdin, "isatty", lambda: False)
+    added = []
+    monkeypatch.setattr(device_host, "add_firewall", lambda: added.append(1))
+    monkeypatch.setattr(device_host, "firewall_missing", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _prompt="": pytest.fail("nothing is asked"))
     assert device_setup.main([]) == 1
-    assert "Nothing changed." in capsys.readouterr().out
+    assert added == [1], "the change was made with no yes given"
+    with pytest.raises(SystemExit):
+        device_setup.main(["--yes"])
 
 
 def test_wsl_that_needs_mirroring_writes_the_config_and_restarts_before_anything_else(monkeypatch, tmp_path):
@@ -121,7 +125,7 @@ def test_wsl_that_needs_mirroring_writes_the_config_and_restarts_before_anything
     monkeypatch.setattr(device_host, "wslconfig_path", lambda kind: config)
     monkeypatch.setattr(device_host, "restart_wsl", lambda: calls.append("restart"))
     monkeypatch.setattr(device_setup, "binary_of", lambda *a: pytest.fail("started the node before the restart"))
-    assert device_setup.main(["--yes"]) == 0
+    assert device_setup.main([]) == 0
     assert calls == ["restart"] and "networkingMode=mirrored" in config.read_text(encoding="utf-8")
     assert any(p.name.startswith(".wslconfig.poolhouse-backup") for p in tmp_path.iterdir())
 
@@ -130,7 +134,7 @@ def test_a_missing_firewall_rule_after_the_prompt_is_not_ready_with_the_fix(monk
     monkeypatch.setattr(device_setup, "survey", lambda repo: needs(kind="windows", firewall_missing=True))
     monkeypatch.setattr(device_host, "add_firewall", lambda: None)
     monkeypatch.setattr(device_host, "firewall_missing", lambda: True)
-    assert device_setup.main(["--yes"]) == 1
+    assert device_setup.main([]) == 1
     assert "NOT READY" in capsys.readouterr().err
 
 

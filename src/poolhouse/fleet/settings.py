@@ -5,13 +5,11 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
 from poolhouse import lock
-from poolhouse.files import write_json
 from poolhouse.json_objects import unique_object
 from poolhouse.records import Document
 
@@ -32,7 +30,6 @@ class Settings:
     """``stop`` gets the machine back now, at the cost of restarting the current job"""
     autostart: str = "manual"
     setup_done: bool = False
-    experimental_notice_accepted: bool = False
     """One local product acknowledgement, independent of pools, versions and authority."""
     gym_python: str = ""
     """The default interpreter for installed simulator libraries."""
@@ -80,21 +77,7 @@ class Settings:
         with lock.rewriting(path):
             held = _stored(path)
             self.features = _build(held).features
-            self.experimental_notice_accepted = (self.experimental_notice_accepted is True
-                                                 or held.get("experimental_notice_accepted") is True)
             return _DOC.write(self, path, atomic=True)
-
-    def accept_notice(self, path: Path | str, *, current: Callable[[], bool]) -> None:
-        """Persist an explicit authenticated acknowledgement without changing other preferences."""
-        with lock.rewriting(path):
-            if current() is not True:
-                raise PermissionError("Open Poolhouse from its own window to continue.")
-            held = _stored(path)
-            if current() is not True:
-                raise PermissionError("The local connection changed. Please try again.")
-            held["experimental_notice_accepted"] = True
-            write_json(path, held)
-        self.experimental_notice_accepted = True
 
     def public(self) -> dict[str, Any]:
         return asdict(self)
@@ -102,8 +85,6 @@ class Settings:
 
 def _build(raw: dict[str, Any]) -> Settings:
     values = {k: v for k, v in raw.items() if k in Settings.__dataclass_fields__}
-    if "experimental_notice_accepted" in values and type(values["experimental_notice_accepted"]) is not bool:
-        raise ValueError("The experimental notice acknowledgement must be a boolean.")
     if "studio_undo_steps" in values and (type(values["studio_undo_steps"]) is not int
                                           or not 1 <= values["studio_undo_steps"] <= 128):
         raise ValueError("Studio undo steps must be an integer from 1 to 128.")

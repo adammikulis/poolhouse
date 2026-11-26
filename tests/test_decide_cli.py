@@ -93,7 +93,12 @@ def test_a_calibration_file_is_applied_by_the_other_commands(url, tmp_path, caps
     assert json.loads(capsys.readouterr().out)["confidence"] < 0.5
 
 
-def test_fetch_without_yes_downloads_nothing(capsys):
+def test_fetch_downloads_with_no_flag_and_yes_is_not_a_flag(capsys, monkeypatch):
+    from poolhouse import decide_cli
+    fetched = []
+    monkeypatch.setattr(decide_cli, "locate", lambda pin, download=False: fetched.append((pin.filename, download)) or "here")
     assert main(["fetch"]) == 0
     out = capsys.readouterr().out
-    assert "Apache-2.0" in out and "nothing downloaded" in out
+    assert "Apache-2.0" in out and fetched and all(download for _, download in fetched)
+    with pytest.raises(SystemExit):
+        main(["fetch", "--yes"])

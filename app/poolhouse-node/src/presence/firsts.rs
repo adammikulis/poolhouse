@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde_json::{json, Value};
 
 use super::card::{self, Generated};
-use super::os::ASK_FOR_MS;
+use super::mode::ASK_FOR_MS;
 use super::{same, Asking, Presence, Purpose};
 use crate::error::{Error, Result};
 use crate::fsutil::sha256_hex;
@@ -100,7 +100,7 @@ impl Firsts {
         self.presence.kind()
     }
 
-    /// Whether a key made here can be above a typed yes: the person is asked at the operating system's own prompt. Where this is false the
+    /// Whether a key made here can be above a typed yes: nobody is asked. Where this is false the
     /// platform can make no such key, and a pool founded here is approved by a typed yes and says so.
     pub fn can_hold_counting_key(&self) -> bool {
         matches!(self.presence.kind(), "os" | "auto")

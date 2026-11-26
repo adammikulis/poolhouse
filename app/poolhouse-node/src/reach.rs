@@ -7,13 +7,13 @@
 use crate::facts::PeerFacts;
 
 /// The fix for a WSL2 device in NAT mode, which no other device can dial.
-pub const WSL_NAT_HINT: &str = "this device looks like WSL2 behind NAT: set networkingMode=mirrored in .wslconfig and run wsl --shutdown, or run `python -m poolhouse.device_setup --yes` on it";
+pub const WSL_NAT_HINT: &str = "this device looks like WSL2 behind NAT: set networkingMode=mirrored in .wslconfig and run wsl --shutdown, or run `python -m poolhouse.device_setup` on it";
 
 /// The fix for a member nothing can dial and that has not dialed in.
 pub const NONE_HINT: &str = "no member can dial it yet: have it dial a member, or give it an address";
 
 /// The fix for a member that is reached only over the connection it opened.
-pub const CHANNEL_HINT: &str = "it is reached only over the connection it opened to this device, so only for the members it dials: give it an address the others can dial (allow its node through its firewall), or run `python -m poolhouse.device_setup --yes` on it";
+pub const CHANNEL_HINT: &str = "it is reached only over the connection it opened to this device, so only for the members it dials: give it an address the others can dial (allow its node through its firewall), or run `python -m poolhouse.device_setup` on it";
 
 /// How a member is reached and, when that is not directly, the exact fix: `(reach, reach_hint)`.
 pub fn of(is_self: bool, facts: Option<&PeerFacts>) -> (&'static str, String) {

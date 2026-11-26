@@ -399,7 +399,7 @@ of anything irreversible.
 `poolhouse-decide jevbench --fetch` downloads the 231 public items of
 [JevBench](https://github.com/fstandhartinger/jevbench) (MIT, Benchmark Heaven; not affiliated
 with TypeSafe AI) into the cache through the net pipeline, pinned by commit and SHA-256;
-`poolhouse-decide jevbench --yes --backend rules --backend pointer --backend logprob --gguf M.gguf`
+`poolhouse-decide jevbench --backend rules --backend pointer --backend logprob --gguf M.gguf`
 scores the backends per question type and tier (accuracy with an unanswered item counted wrong,
 Brier and ECE over the answered ones). The held-out half and the sealed items are not public, and
 this is not the official JevBench Score (which also weighs cost, speed and a sealed set). It uses

@@ -143,7 +143,7 @@ depends on (HANDOFF entry, branch or land request). Land request numbers are the
 | INS-3 | Install on Linux | `packaging/install.sh`; `scripts/test-on-linux` | built untested | HANDOFF "Benchmarks, local review and landing": nothing from 2026-10-12 has run on Linux |
 | INS-4 | Upgrade in place by re-running the installer; the runtime stays current without a person | `poolhouse runtime ensure`; `docs/install.md` "Starting at login and keeping the runtime current" | built untested | HANDOFF "Autostart units": no unit has run under a real service manager |
 | INS-5 | Installers verify a signature from the release key, not only the release digest | `packaging/install.sh` and `packaging/install.ps1` compare the digest GitHub reports; `src/poolhouse/fleet/signing.py` | not built: `RELEASE_KEY` is empty | HANDOFF Priority 1 first item; OW-3 |
-| INS-6 | A new device is set up by one command that asks the person nothing but the operating system's own prompt | `python -m poolhouse.device_setup --dry-run` then `--yes`; `docs/windows-wsl.md` | built untested | CI `windows-and-wsl` job; no real Windows device driven |
+| INS-6 | A new device is set up by one command that asks the person nothing but the operating system's own prompt | `python -m poolhouse.device_setup --dry-run` then without it; `docs/windows-wsl.md` | built untested | CI `windows-and-wsl` job; no real Windows device driven |
 | INS-7 | `scripts/cold-start-check` ends with no BROKEN step on a clean clone | `scripts/cold-start-check` | built untested | none |
 
 ### 3.2 Founding and joining a pool

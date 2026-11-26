@@ -25,7 +25,6 @@ from .initial_setup_routes import InitialSetupRoutes
 from .knowledge_routes import KnowledgeRoutes
 from .launch_routes import LaunchRoutes
 from .member_rows import sweep_argv
-from .notice_routes import NoticeRoutes
 from .page import COMPONENTS, render
 from .page_security import PAGE_HEADERS
 from .pool_routes import PoolRoutes
@@ -597,7 +596,7 @@ class JobRoutes:
         return True
 
 
-class Router(NoticeRoutes, InitialSetupRoutes, RuntimeRepairRoutes, PageRoutes, SetupRoutes, SessionRoutes, MeasureRoutes, SettingsRoutes,
+class Router(InitialSetupRoutes, RuntimeRepairRoutes, PageRoutes, SetupRoutes, SessionRoutes, MeasureRoutes, SettingsRoutes,
              BoardRoutes, RoomRoutes, FeatureRoutes, ModelRoutes, ChatRoutes, UpdateRoutes, PoolRoutes, JobRoutes,
              KnowledgeRoutes, *experimental_routes.load(), NativePickRoutes, StudioRoutes, WorkspaceRoutes, LaunchRoutes, ExtensionRoutes, Base):
     """Every screen's routes, in the order a request meets them."""

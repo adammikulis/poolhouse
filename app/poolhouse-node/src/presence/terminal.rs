@@ -3,8 +3,8 @@
 //!
 //! A program that runs as the person and asks cannot answer with a line of its own, since the node reads the terminal, not the asker. It
 //! still can open a pseudo-terminal of its own and type `yes` into it: this is the custody of the typed `yes` in docs/node.md, "Key custody",
-//! and is why the operating system's own prompt (`Os`) is what a node uses wherever the system has one. The terminal is for a node that
-//! has no such prompt (a server, a container, the pool check's rig, which plays the person at a pseudo-terminal) and is chosen when the
+//! and is why a node asks nobody by default. The terminal is for a node on a state directory of its own (a server, a container, the pool
+//! check's rig, which plays the person at a pseudo-terminal) and is chosen when the
 //! node starts (`--presence terminal`), never by a request. On Windows the asker names a console by the id of a process that runs in it and the
 //! node attaches to it (`sys::Console`); there too the account's own node directory is refused, and the first key or phone on it is asked for
 //! with nothing a program of the person's could type into.
@@ -25,19 +25,12 @@ const MOST_LINE: usize = 256;
 /// Ask on the terminal device the request names.
 pub struct Terminal {
     real: bool,
-    own: bool,
 }
 
 impl Terminal {
     /// The terminal presence of the node of ``state``, which is refused outright when that is this account's own node.
     pub fn new(state: &std::path::Path) -> Terminal {
-        Terminal { real: super::on_real_home(state), own: false }
-    }
-
-    /// The terminal presence of a computer that has no prompt of its own (`os::can_prompt`): the account's own node directory is not refused,
-    /// because the person's terminal is the only way to ask there, and what it makes counts as a typed yes.
-    pub fn unprompted() -> Terminal {
-        Terminal { real: false, own: true }
+        Terminal { real: super::on_real_home(state) }
     }
 }
 
@@ -69,13 +62,9 @@ impl Presence for Terminal {
         "terminal"
     }
 
-    fn own_terminal(&self) -> bool {
-        self.own
-    }
-
     fn begin(&mut self, what: &str, terminal: &str) -> Result<Box<dyn Asking>> {
         if self.real {
-            return Err(crate::error::Error::Denied("On this computer's own node the first key and phone are asked for with the operating system's prompt only: a terminal can be answered by the program that asks.".into()));
+            return Err(crate::error::Error::Denied("On this computer's own node the first key and phone are not asked for at a terminal: a terminal can be answered by the program that asks.".into()));
         }
         #[cfg(unix)]
         {
@@ -260,8 +249,8 @@ mod tests {
 
     #[test]
     fn a_terminal_is_never_the_way_to_ask_on_the_accounts_own_node() {
-        let refused = Terminal { real: true, own: false }.begin("poolhouse: allow the session demo/a to add your first person key to this computer?", "/dev/tty");
-        assert!(refused.err().is_some_and(|e| e.to_string().contains("operating system's prompt only")), "the program that asks could open its own terminal and answer it");
+        let refused = Terminal { real: true }.begin("poolhouse: allow the session demo/a to add your first person key to this computer?", "/dev/tty");
+        assert!(refused.err().is_some_and(|e| e.to_string().contains("not asked for at a terminal")), "the program that asks could open its own terminal and answer it");
     }
 
     /// A console that is typed at by a script: what it was told to show, and the keys it gives one by one (then nothing, or it closes).

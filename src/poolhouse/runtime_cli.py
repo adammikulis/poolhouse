@@ -17,6 +17,7 @@ from poolhouse import (
     node_launch,
     node_pool,
     runtime,
+    runtime_age,
     runtime_await,
     runtime_board,
     runtime_coalesce,
@@ -41,6 +42,7 @@ from poolhouse.fleet.runtime_paths import default_root
 from poolhouse.home import expand
 from poolhouse.lock import Busy, held_by, only_one
 from poolhouse.log import say, warn
+from poolhouse.serve import broker_wire
 
 
 def _source(path: Path) -> Path:
@@ -274,6 +276,7 @@ def _run(args: argparse.Namespace, plan: runtime_deploy.Plan) -> runtime_deploy.
         allowed = (plan.allow_unmerged if isinstance(plan.allow_unmerged, runtime_unmerged.Approval) else plan.commit) \
             if plan.allow_unmerged and outcome.commit == plan.commit else ""
         outcome = _with_node(outcome, allowed, plan.boundary_wait_s)
+        outcome = _with_broker(outcome)
     _audited(args, "ensure", plan, outcome.action, outcome.detail)
     runtime_board.announce(outcome, previous, runtime_deploy.acting(plan), verb="ensure")
     say(f"{outcome.action} {outcome.commit[:7]} {outcome.detail}".strip())
@@ -286,6 +289,19 @@ def _with_node(outcome: runtime_deploy.Outcome, allow_unmerged_commit: str | run
     moved = node_launch.swap(allow_unmerged_commit=allow_unmerged_commit, boundary_wait_s=boundary_wait_s)
     detail = "; ".join(part for part in (outcome.detail, f"node {moved['action']}: {moved['detail']}") if part)
     return runtime_deploy.Outcome("failed" if moved["action"] == "failed" else outcome.action, outcome.commit, detail)
+
+
+def _with_broker(outcome: runtime_deploy.Outcome) -> runtime_deploy.Outcome:
+    """Have the machine's broker, which still runs the code it started with, hand over to one on the new runtime. Its servers and
+    their holders are taken in by the next one, which the next call starts; a broker with work it cannot hand over goes by itself
+    when that work ends."""
+    try:
+        said = {"gone": "broker replaced: the next call starts one on this runtime",
+                "busy": "broker runs older code and has work it cannot hand over yet; it is replaced when that work ends"
+                }.get(broker_wire.replace_stale(), "")
+    except (OSError, ValueError, broker_wire.BrokerError) as exc:
+        said = f"broker not asked to hand over: {exc}"
+    return runtime_deploy.Outcome(outcome.action, outcome.commit, "; ".join(part for part in (outcome.detail, said) if part))
 
 
 def _settled(args: argparse.Namespace) -> int:
@@ -361,7 +377,7 @@ def status_lines(plan: runtime_deploy.Plan) -> list[str]:
              f"launchers    {plan.launchers or 'none recorded'}"]
     for candidate in runtime_store.candidates(root):
         mark = "*" if str(candidate.prefix) == row.get("prefix") else " "
-        when = time.strftime("%F %T", time.localtime(runtime_store.verified_at(candidate.prefix)))
+        when = time.strftime("%F %T", time.localtime(runtime_age.verified_at(candidate.prefix)))
         lines.append(f"  {mark} {candidate.commit[:7]}  verified {when}  {candidate.prefix}")
     if record.get("held"):
         lines.append(f"held         {record['held'].get('commit', '')[:7]}: {record['held'].get('reason', '')}")
@@ -374,7 +390,7 @@ def status_lines(plan: runtime_deploy.Plan) -> list[str]:
     if _building():
         lines.append(f"building     {_building()}")
     if row.get("prefix"):
-        lines += runtime_stale.stale_lines(Path(row["prefix"]), runtime_store.verified_at(Path(row["prefix"])))
+        lines += runtime_stale.stale_lines(Path(row["prefix"]), runtime_age.verified_at(Path(row["prefix"])))
     foreign = runtime_store.unmanaged(root)
     for tree in foreign:
         lines.append(f"unmanaged    {tree['path']}  {tree['bytes']} bytes  {'process inside' if tree['in_use'] else 'idle'}")
@@ -388,7 +404,7 @@ def _older_pids(row: dict) -> list[int]:
     if not row.get("prefix"):
         return []
     prefix = Path(row["prefix"])
-    return [p.pid for p in runtime_stale.older_than(runtime_stale.running(), prefix, runtime_store.verified_at(prefix))]
+    return [p.pid for p in runtime_stale.older_than(runtime_stale.running(), prefix, runtime_age.verified_at(prefix))]
 
 
 def node_line() -> str:
@@ -406,7 +422,7 @@ def status_record(plan: runtime_deploy.Plan) -> dict:
     row = runtime_store.selection()
     return {"selected": row.get("commit", ""), "wanted": plan.commit, "current": runtime_deploy.current(plan), "settled": runtime_deploy.settled(plan),
             "healthy": runtime_deploy.healthy(plan) is not None, "floor": plan.floor,
-            "kept": [{"commit": c.commit, "prefix": str(c.prefix), "verified_at": runtime_store.verified_at(c.prefix)}
+            "kept": [{"commit": c.commit, "prefix": str(c.prefix), "verified_at": runtime_age.verified_at(c.prefix)}
                      for c in runtime_store.candidates()],
             "state": runtime_store.read_state(), "node": node_launch.status(), "building": _building(),
             "older_processes": _older_pids(row),

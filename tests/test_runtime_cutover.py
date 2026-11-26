@@ -13,6 +13,7 @@ from poolhouse import (
     node_launch,
     node_supervise,
     runtime,
+    runtime_age,
     runtime_deploy,
     runtime_source,
     runtime_store,
@@ -193,7 +194,7 @@ def test_busy_landing_keeps_the_prepared_runtime_and_current_selection(source, m
     finally:
         runner.release()
     assert len(prepared) == 1 and prepared[0].prefix.is_dir()
-    assert runtime_store.verified_at(prepared[0].prefix) > 0
+    assert runtime_age.verified_at(prepared[0].prefix) > 0
     assert selected.read_bytes() == b"existing-selection"
 
 
