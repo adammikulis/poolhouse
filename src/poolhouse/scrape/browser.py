@@ -14,8 +14,6 @@ from __future__ import annotations
 import contextlib
 import os
 import random
-import subprocess
-import sys
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -23,9 +21,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from poolhouse import real_machine
 from poolhouse.net import browserguard
-from poolhouse.platform import applescript_quote
 
 
 class BrowserUnavailable(RuntimeError):
@@ -66,47 +62,14 @@ def placed() -> tuple[int, int] | None:
 
 
 @contextlib.contextmanager
-def keeping_focus() -> Iterator[None]:
-    """Give the screen back to whichever application had it."""
-    if sys.platform != "darwin":
-        yield
-        return
-    front = _frontmost()
-    try:
-        yield
-    finally:
-        if front:
-            with contextlib.suppress(Exception):
-                subprocess.run(["osascript", "-e",
-                                f'tell application "{applescript_quote(front)}" to activate'],
-                               capture_output=True, timeout=10, check=False)
-
-
-def _frontmost() -> str:
-    """The application holding the screen, or "" (also when this is not the installed software: asking System Events raises
-    macOS's Automation permission prompt for whatever program asked)."""
-    if real_machine.refusal():
-        return ""
-    try:
-        done = subprocess.run(
-            ["osascript", "-e",
-             "tell application \"System Events\" to name of first process whose frontmost is true"],
-            capture_output=True, text=True, timeout=10, check=False)
-    except (OSError, subprocess.SubprocessError):
-        return ""
-    return done.stdout.strip()
-
-
-@contextlib.contextmanager
 def _paged(play: Any, window: Window) -> Iterator[Any]:
     """A page on that Playwright, over a profile directory that persists."""
     profile = Path(window.profile).expanduser()
     profile.mkdir(parents=True, exist_ok=True)
-    with keeping_focus():
-        context = play.chromium.launch_persistent_context(
-            str(profile), headless=window.headless, channel=window.channel,
-            args=window.args(), accept_downloads=not window.guarded,
-            viewport={"width": window.width, "height": window.height})
+    context = play.chromium.launch_persistent_context(
+        str(profile), headless=window.headless, channel=window.channel,
+        args=window.args(), accept_downloads=not window.guarded,
+        viewport={"width": window.width, "height": window.height})
     if window.guarded:
         browserguard.install(context)
     context.set_default_timeout(window.timeout_ms)

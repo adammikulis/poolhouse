@@ -100,18 +100,11 @@ def look() -> list[Finding]:
     limit = room()
     if total and limit:
         share = limit / total
-        kept = Path("/Library/LaunchDaemons/stack.ml.wired-limit.plist").exists()
-        raised = share > 0.78
         out.append(Finding(
             name="memory a model may use",
-            good=bool(raised and kept) or not raised,
+            good=True,
             said=f"{human_bytes(limit)} of {human_bytes(total)} installed ({share:.0%})",
-            note=("raised above the default, but nothing sets it at boot -- it goes back "
-                  "to about 75% on the next restart, and a model that fits today will not"
-                  if raised and not kept else
-                  "this is the default share; raising it lets a larger model fit"
-                  if not raised else "raised, and set at boot"),
-            fix=["poolhouse-serve", "memory", "--persist"],
+            note="every fit and every lease is sized by this limit; Poolhouse reads it and never changes it",
             root=False))
 
     from poolhouse.serve.binary import BinaryNotFound, find_binary

@@ -141,48 +141,22 @@ class TestChangingTheAnswer:
             auto.install("whenever", log_dir=tmp_path)
 
 
-class TestWhatRunsAsRoot:
-    """An install that asks for administrator rights hands the password dialog one command that
-    already holds the file's text, so nothing a user-level process can change is read as root."""
+class TestWhatNeedsRoot:
+    """Starting at boot, before anyone logs in, needs administrator rights. Nothing in Poolhouse asks for a password or
+    runs sudo, so that install is refused at once with the reason, and nothing is written or run."""
 
-    def test_the_boot_job_is_written_by_the_privileged_command_not_copied_from_a_staged_file(
-            self, monkeypatch, tmp_path):
+    @pytest.mark.parametrize("platform", ["darwin", "linux"])
+    def test_a_boot_install_is_refused_at_once_with_the_reason_and_runs_and_writes_nothing(self, monkeypatch, tmp_path, platform):
         from poolhouse.fleet import autostart
+        from poolhouse.fleet.autostart_backends import NEEDS_ROOT
 
-        asked = []
-        monkeypatch.setattr(sys, "platform", "darwin")
-        monkeypatch.setattr(autostart, "_ask_and_run",
-                            lambda command, prompt: asked.append(command) or (True, ""))
+        ran = []
+        monkeypatch.setattr(sys, "platform", platform)
         monkeypatch.setattr(autostart, "_mac_path", lambda mode: tmp_path / "boot.plist")
-        monkeypatch.setattr(subprocess, "run",
-                            lambda *a, **k: types.SimpleNamespace(returncode=0, stdout="",
-                                                                  stderr=""))
+        monkeypatch.setattr(subprocess, "run", lambda *a, **k: ran.append(a) or types.SimpleNamespace(returncode=0, stdout="", stderr=""))
 
-        autostart.install("boot", log_dir=tmp_path / "logs")
+        done = autostart.install("boot", log_dir=tmp_path / "logs")
 
-        assert asked and "cp " not in asked[0] and "<plist" in asked[0]
-        assert not list((tmp_path / "logs").glob("*.plist")), "no staged file to swap"
-
-    def test_a_path_with_quotes_stays_one_argument_in_the_privileged_command(
-            self, monkeypatch, tmp_path):
-        import shlex
-
-        from poolhouse.fleet import autostart
-
-        asked = []
-        evil = tmp_path / "it's \"here\"; rm -rf ~"
-        monkeypatch.setattr(sys, "platform", "darwin")
-        monkeypatch.setattr(autostart, "_runs", lambda argv: True)
-        monkeypatch.setattr(autostart, "_ask_and_run",
-                            lambda command, prompt: asked.append(command) or (True, ""))
-        monkeypatch.setattr(autostart, "_mac_path", lambda mode: evil / "boot.plist")
-        autostart.install("boot", log_dir=tmp_path / "logs")
-
-        words = shlex.split(asked[0])
-        assert str(evil / "boot.plist") in words and "rm" not in words
-
-    def test_the_text_of_an_applescript_string_cannot_end_it(self):
-        from poolhouse.platform import applescript_quote
-
-        assert applescript_quote('a"b\\c') == 'a\\"b\\\\c'
-        assert '"' not in applescript_quote('" & (do shell script "id") & "').replace('\\"', "")
+        assert not done.installed and done.note == NEEDS_ROOT and not done.command
+        assert not any(word in " ".join(call[0]) for call in ran for word in ("launchctl", "systemctl", "sudo"))
+        assert not (tmp_path / "boot.plist").exists()

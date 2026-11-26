@@ -15,7 +15,6 @@ from poolhouse.errors import Denied
 from poolhouse.files import write_json
 from poolhouse.net import cli as net_cli
 from poolhouse.sentinel import permit
-from poolhouse.serve import wired, wired_apply
 from poolhouse.workspace import authority_cli
 from tests import keystore_support
 
@@ -55,18 +54,18 @@ def events(name):
 
 
 def test_every_gate_names_a_group_and_is_delegated_until_set():
-    assert authority.GATES["serve.wired-limit"] == "serve"
+    assert authority.GATES["autostart.install"] == "autostart"
     assert {row["state"] for row in authority.show()["gates"]} == {authority.DELEGATED}
 
 
 def test_set_selects_all_a_group_or_a_gate_and_persists():
     authority.set_state(["sentinel"], authority.PERSON, by="lead")
     assert authority.state_of("sentinel.quarantine") == authority.state_of("sentinel.policy") == authority.PERSON
-    assert authority.state_of("serve.wired-limit") == authority.DELEGATED
+    assert authority.state_of("autostart.install") == authority.DELEGATED
     authority.set_state(["ALL"], authority.PERSON, by="lead")
-    authority.set_state(["serve.wired-limit", "chat.policy"], authority.DELEGATED, by="lead")
+    authority.set_state(["autostart.install", "chat.policy"], authority.DELEGATED, by="lead")
     held = {row["gate"]: row["state"] for row in authority.show()["gates"]}
-    assert held["serve.wired-limit"] == held["chat.policy"] == authority.DELEGATED
+    assert held["autostart.install"] == held["chat.policy"] == authority.DELEGATED
     assert held["sentinel.policy"] == authority.PERSON
 
 
@@ -84,10 +83,10 @@ def test_a_project_has_its_own_state_over_the_machine_s():
 
 def test_the_floor_variable_can_only_tighten(monkeypatch):
     monkeypatch.setenv(authority.FLOOR_ENV, "person")
-    assert authority.state_of("serve.wired-limit") == authority.PERSON
+    assert authority.state_of("autostart.install") == authority.PERSON
     monkeypatch.setenv(authority.FLOOR_ENV, "delegated")
     authority.set_state(["ALL"], authority.PERSON, by="lead")
-    assert authority.state_of("serve.wired-limit") == authority.PERSON
+    assert authority.state_of("autostart.install") == authority.PERSON
 
 
 def test_a_helper_identity_cannot_flip_and_a_flip_is_audited():
@@ -142,45 +141,6 @@ def test_a_delegated_quarantine_gate_permits_an_agent_and_a_person_gate_refuses_
     assert events("ran")[-1]["action"] == "release q1"
 
 
-def wired_call(env, via):
-    runs = []
-
-    def runner(argv, capture):
-        runs.append(argv)
-        return 0, "", ""
-
-    hooks = wired.Hooks(total=64 * 1024**3, current=0, others=0, env=env, runner=runner,
-                        system="Darwin", read=lambda: 40960)
-    return wired_apply.set_limit(40960, via=via, hooks=hooks), runs
-
-
-def test_the_wired_limit_runs_for_a_delegated_lead_by_either_route_and_is_refused_at_once_when_held_back(authenticated):
-    lead = {**LEAD, "POOLHOUSE_WORKSPACE_AGENT": authenticated.name}
-    done, runs = wired_call(lead, "osascript")
-    assert done.ok and runs[0][0] == "osascript" and "with administrator privileges" in runs[0][-1]
-    done, runs = wired_call(lead, "sudo")
-    assert done.ok and runs[0][:2] == ["sudo", "/bin/sh"]
-    assert [u["agent"] for u in uses()] == [authenticated.name] * 2
-    authority.set_state(["serve.wired-limit"], authority.PERSON, by="lead")
-    refused = []
-
-    def never(argv, capture):
-        refused.append(argv)
-        return 0, "", ""
-
-    hooks = wired.Hooks(total=64 * 1024**3, current=0, others=0, env=lead, runner=never, system="Darwin", read=lambda: 40960)
-    with pytest.raises(AgentRefused, match="held back from agents"):
-        wired_apply.set_limit(40960, via="osascript", hooks=hooks)
-    assert not refused
-
-
-def test_the_wired_limit_runs_without_a_terminal_for_a_process_with_no_agent_marker():
-    done, runs = wired_call({}, "sudo")
-    assert done.ok and runs[0][:2] == ["sudo", "/bin/sh"]
-    (row,) = uses()
-    assert row["gate"] == "serve.wired-limit" and row["who"].startswith("user ")
-
-
 def test_chat_policy_refuses_human_only_wording_only_while_it_is_a_person_s():
     text = "release the thing from quarantine"
     assert chatpolicy.refusal_for(text) is None
@@ -231,9 +191,9 @@ def flips():
 def test_show_set_and_preset_through_the_workspace_command(board):
     shown = authority_cli.run(args("show"), board.parent)
     assert {row["state"] for row in shown["gates"]} == {authority.DELEGATED}
-    done = authority_cli.run(args("set", "person", "sentinel", "serve.wired-limit"), board.parent)
-    assert {c["gate"] for c in done["changes"]} == {"sentinel.quarantine", "sentinel.policy", "serve.wired-limit"}
-    assert authority.state_of("serve.wired-limit") == authority.PERSON
+    done = authority_cli.run(args("set", "person", "sentinel", "autostart.install"), board.parent)
+    assert {c["gate"] for c in done["changes"]} == {"sentinel.quarantine", "sentinel.policy", "autostart.install"}
+    assert authority.state_of("autostart.install") == authority.PERSON
     flip = flips()[-1]
     assert (flip["by"], flip["from"], flip["to"]) == (board.lead.name, ["delegated"], "person")
 

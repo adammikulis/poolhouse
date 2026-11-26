@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import os
 import plistlib
-import shlex
 import shutil
 import subprocess
 import sys
@@ -27,7 +26,7 @@ from poolhouse import home, jobs, runtime, runtime_identity
 from poolhouse.log import say, warn
 
 from . import autostart_cli, autostart_keystore, wsl_startup
-from .autostart_backends import elevated as _ask_and_run
+from .autostart_backends import NEEDS_ROOT
 from .autostart_models import (
     ADOPTED,
     DEFAULT_MODEL,
@@ -129,14 +128,7 @@ def _mac_install(mode: str, argv: list[str], log_dir: Path) -> Autostart:
     body = plistlib.dumps(plist)
 
     if mode == "boot":
-        command = (f"printf %s {shlex.quote(body.decode())} > {shlex.quote(str(path))} && "
-                   f"launchctl load -w {shlex.quote(str(path))}")
-        ok, why = _ask_and_run(command, "Poolhouse needs permission to start at boot")
-        if ok:
-            return Autostart(mode, installed=True, path=path)
-        return Autostart(
-            mode, installed=False, path=path, command=f"sudo {command}",
-            note=why or "Permission was not given, so it will not start at boot yet.")
+        return Autostart(mode, installed=False, path=path, note=NEEDS_ROOT)
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(body)
@@ -173,15 +165,7 @@ def _unit(argv: list[str], mode: str) -> str:
 def _systemd_install(mode: str, argv: list[str], log_dir: Path) -> Autostart:
     body = _unit(argv, mode)
     if mode == "boot":
-        target = Path("/etc/systemd/system") / f"{SERVICE}.service"
-        command = (f"printf %s {shlex.quote(body)} > {shlex.quote(str(target))} && "
-                   f"systemctl daemon-reload && systemctl enable --now {SERVICE}")
-        ok, why = _ask_and_run(command, "Poolhouse needs permission to start at boot")
-        if ok:
-            return Autostart(mode, installed=True, path=target)
-        return Autostart(
-            mode, installed=False, path=target, command=f"sudo sh -c \"{command}\"",
-            note=why or "Permission was not given, so it will not start at boot yet.")
+        return Autostart(mode, installed=False, path=Path("/etc/systemd/system") / f"{SERVICE}.service", note=NEEDS_ROOT)
 
     path = home.user_home() / ".config" / "systemd" / "user" / f"{SERVICE}.service"
     path.parent.mkdir(parents=True, exist_ok=True)

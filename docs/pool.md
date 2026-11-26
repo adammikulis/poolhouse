@@ -17,7 +17,7 @@ performance are not claimed anywhere.
    (`app/android/README.md` [D]). It cannot command anything else.
 2. No person action can come from a phone today. Every person-session browser route requires the client
    address to be loopback and a Host header that is not a DNS name (`workspace/person_session.py:_validate`
-   [V], `fleet/room_routes.py:_person` [V], `fleet/ui.py:host_ok` [V]). That is a deliberate floor, so the
+   [V], `fleet/ui.py:host_ok` [V]). That is a deliberate floor, so the
    phone needs a new person credential kind, not a looser check (section 2.3).
 3. Tailscale is already half-built as a route: read-only detection, a learned tailnet address after the
    certificate matched, and no install or config (`fleet/tailnet.py`, `fleet/onboard/routes.py` [V]).

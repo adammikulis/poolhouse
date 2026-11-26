@@ -146,13 +146,8 @@ def test_a_test_that_resolves_the_real_keyring_fails_there():
 # a dialog or text, which the suite's PATH shims and the notifier shim check; none opens an administrator or Keychain prompt itself.
 ASKS_FIRST = {
     "node_signing.py": "security find-certificate / import / add-trusted-cert",
-    "serve/wired_apply.py": "osascript ... with administrator privileges",
-    "fleet/autostart_backends.py": "osascript ... with administrator privileges",
-    "scrape/browser.py": "osascript System Events (Automation prompt)",
 }
 NO_PROMPT = {
-    "serve/wired_cli.py": "names the way (sudo or osascript); wired_apply runs it",
-    "fleet/room_routes.py": "names the way (osascript); wired_apply runs it",
     "fleet/shard_split.py": "a pattern that keeps macOS-only code off other devices",
     "guard/shellcmds.py": "a list of commands the guard refuses",
     "keystore_guard.py": "tells macOS to fail an access that needs a dialog (SecKeychainSetUserInteractionAllowed)",
@@ -281,23 +276,14 @@ def test_the_node_never_touches_the_operating_systems_keystore():
     assert "--key-stdin" in (app / "src" / "main.rs").read_text(encoding="utf-8")
 
 
-NODE_ASKS_FIRST = {"presence/os.rs": "osascript ... with administrator privileges (the first key, the first phone and every card): the node asks only for a state directory under the account's own "
-                                     "~/.poolhouse (`on_real_home`), and the launcher passes `--presence os` only when `real_machine.allowed()` (`node_launch._presence`)",
-                   "presence/announce.rs": "osascript display notification, raised only beside the dialog or for its failure (`Os::begin`, after `on_real_home`), with the sentence as an argument"}
 NODE_CALL = re.compile(r"osascript|pkexec|administrator privileges|authtrampoline|SecKeychain|SecItem|Authorization(?:Execute|Create)")
 
 
-def test_the_node_raises_an_operating_system_prompt_only_from_the_reviewed_file_and_only_for_the_real_home():
+def test_the_node_raises_no_operating_system_prompt_anywhere():
+    """Nothing waits for a person: no file of the node starts a dialog, an administrator prompt or a keychain call."""
     app = Path(__file__).resolve().parents[1] / "app" / "poolhouse-node" / "src"
     found = {path.relative_to(app).as_posix() for path in app.rglob("*.rs") if not path.name.startswith("tests") and NODE_CALL.search(path.read_text(encoding="utf-8"))}
-    assert found == NODE_ASKS_FIRST.keys(), "a new place in the node that can raise a system prompt: review it, make it ask on_real_home first and list it here"
-    prompt = (app / "presence" / "os.rs").read_text(encoding="utf-8")
-    assert "if !on_real_home(&self.state)" in prompt and prompt.index("if !on_real_home") < prompt.index("= dialog(what)"), "the refusal comes before the dialog is built"
-    assert prompt.index("= dialog(what)") < prompt.index("(self.tell)(\"Poolhouse is waiting for you\""), "and before anything is announced"
-    assert all(path.read_text(encoding="utf-8").count("announce::notify") == 0 for path in app.rglob("*.rs") if path.name not in {"os.rs", "announce.rs"}), "only the dialog's own file announces"
-    from poolhouse import node_launch
-
-    assert node_launch._presence(["--presence", "os"]) == [], "the launcher never passes --presence os: nothing it starts raises a system prompt, on the real home or off it"
+    assert found == set(), "a place in the node can raise a system prompt: nothing in Poolhouse waits for a person"
 
 
 @pytest.fixture
@@ -309,16 +295,6 @@ def nothing_spawns(monkeypatch):
     monkeypatch.setattr("subprocess.run", spawn)
 
 
-def test_the_administrator_prompt_is_not_shown_to_a_test_or_a_checkout(nothing_spawns):
-    from poolhouse.fleet import autostart_backends
-    from poolhouse.serve import wired_apply
-
-    code, _out, why = wired_apply._run(["osascript", "-e", 'do shell script "true" with administrator privileges'], True)
-    assert code == 1 and "not shown here" in why
-    done, said = autostart_backends.elevated("true", "why")
-    assert done is False and "not shown here" in said
-
-
 def test_a_signing_certificate_is_never_made_or_read_outside_the_installed_software(nothing_spawns, tmp_path, monkeypatch):
     from poolhouse import node_signing
 
@@ -328,11 +304,3 @@ def test_a_signing_certificate_is_never_made_or_read_outside_the_installed_softw
     assert [argv[0] for argv in signed] == ["codesign"] and signed[0][3] == "-"
     with pytest.raises(real_machine.Refused):
         node_signing.certificate_sha1()
-
-
-def test_the_frontmost_application_is_not_asked_of_system_events_outside_the_installed_software(nothing_spawns):
-    import importlib
-
-    browser = importlib.import_module("poolhouse.scrape.browser")
-
-    assert browser._frontmost() == ""

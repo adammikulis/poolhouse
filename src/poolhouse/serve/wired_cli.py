@@ -1,15 +1,11 @@
-"""``poolhouse-serve memory --for MODEL``: the wiring limit a model needs, and changing it."""
+"""``poolhouse-serve memory --for MODEL``: the wiring limit a model needs, read and never changed here."""
 
 from __future__ import annotations
 
 import argparse
-import platform
-import re
-import sys
 
-from poolhouse.caller import AgentRefused
 from poolhouse.log import say, warn
-from poolhouse.serve import wired, wired_apply
+from poolhouse.serve import wired
 
 __all__ = ["run"]
 
@@ -75,96 +71,12 @@ def show(plan: wired.Plan) -> None:
             f"{_gib(r.left_bytes):<10} {mark}")
 
 
-def _how() -> str:
-    return "sudo" if sys.stdin.isatty() and sys.stdout.isatty() else "osascript"
-
-
-def _report(done: wired_apply.Applied, kept: str) -> int:
-    if not done.ok:
-        warn(f"not changed: {done.message}")
-        return 1
-    say(f"limit was {done.before_mb} MB, now {done.after_mb} MB. {kept}")
-    say("  undo:  poolhouse-serve memory --reset")
-    return 0
-
-
-def _kept_line(keep: bool | None) -> str:
-    if keep:
-        return "It is kept across restarts by a boot-time daemon (remove it: --unpersist)."
-    if keep is False:
-        return "The boot-time daemon is removed."
-    return "This resets on reboot unless it is persisted (--persist N)."
-
-
-def megabytes(given: object) -> int | None:
-    """The MB in ``given``: a plain number is MB, ``117G``, ``117GB`` or ``117GiB`` is that many GiB."""
-    text = str(given).strip().lower().replace(" ", "")
-    found = re.fullmatch(r"(\d+(?:\.\d+)?)(g|gb|gib)", text)
-    if found:
-        return int(float(found.group(1)) * 1024)
-    return int(text) if text.isdigit() else None
-
-
-def _number(args: argparse.Namespace, plan: wired.Plan | None) -> int | None:
-    """The MB asked for: a number or a size in GB after --apply/--persist, else the plan's proposal."""
-    for given in (args.apply, args.persist):
-        if given not in (None, "", True, False) and (mb := megabytes(given)):
-            return mb
-    return plan.proposed_mb if plan and plan.proposed_mb else None
-
-
-def _change(args: argparse.Namespace, plan: wired.Plan | None) -> int:
-    try:
-        wired_apply.require_gate()
-    except AgentRefused as no:
-        warn(f"refused: {no}")
-        return 3
-    if platform.system() != "Darwin":
-        warn("not changed: the wiring limit is a macOS setting")
-        return 2
-    keep = True if args.persist is not None else (False if args.unpersist else None)
-    mb = None if args.unpersist and args.apply is None else _number(args, plan)
-    if mb is None and not args.unpersist:
-        warn("not changed: say how many MB, or name a model with --for that fits")
-        return 1
-    how = _how()
-    say(f"\nchanging it{f' to {mb} MB' if mb is not None else ''}; "
-        + ("sudo will ask for your password" if how == "sudo"
-           else "macOS will ask for your password"))
-    try:
-        done = wired_apply.set_limit(mb, keep=keep, via=how)
-    except AgentRefused as no:
-        warn(f"refused: {no}")
-        return 3
-    except ValueError as no:
-        warn(f"error: {no}")
-        return 2
-    return _report(done, _kept_line(keep))
-
-
 def run(args: argparse.Namespace) -> int:
-    """Handle ``--for``, ``--apply``, ``--persist``, ``--unpersist`` and ``--reset``."""
-    plan = None
+    """Handle ``--for``: print the plan; 1 when the model does not fit at that context."""
     try:
-        if args.reset:
-            say("putting the wiring limit back")
-            return _report(wired_apply.reset(via=_how()), _kept_line(False))
-        if args.for_model:
-            plan = wired.plan(args.for_model, wired.Ask(args.ctx, args.kv, args.mtp,
-                                                        args.cache_ram))
+        plan = wired.plan(args.for_model, wired.Ask(args.ctx, args.kv, args.mtp, args.cache_ram))
     except (FileNotFoundError, ValueError) as no:
         warn(f"error: {no}")
         return 2
-    except AgentRefused as no:
-        warn(f"refused: {no}")
-        return 3
-    if plan is not None:
-        show(plan)
-    wants = args.apply is not None or args.persist is not None or args.unpersist
-    if not wants:
-        say("\n  poolhouse-serve memory --for MODEL --apply   to raise it for this boot")
-        return 0 if plan is None or plan.fits else 1
-    if plan is not None and not plan.fits and _number(args, None) is None:
-        warn("not changed: the model does not fit at this context")
-        return 1
-    return _change(args, plan)
+    show(plan)
+    return 0 if plan.fits else 1

@@ -1,10 +1,10 @@
 {
- "surfaces": 891,
+ "surfaces": 880,
  "by_status": {
-  "covered": 566,
-  "partial": 182,
+  "covered": 561,
+  "partial": 180,
   "uncovered": 51,
-  "n/a": 92,
+  "n/a": 88,
   "unmapped": 0
  },
  "by_kind": {
@@ -19,7 +19,7 @@
    "covered": 7,
    "partial": 4,
    "uncovered": 0,
-   "n/a": 23,
+   "n/a": 24,
    "unmapped": 0
   },
   "context": {
@@ -33,7 +33,7 @@
    "covered": 1,
    "partial": 0,
    "uncovered": 0,
-   "n/a": 12,
+   "n/a": 7,
    "unmapped": 0
   },
   "egress": {
@@ -51,7 +51,7 @@
    "unmapped": 0
   },
   "human": {
-   "covered": 58,
+   "covered": 57,
    "partial": 0,
    "uncovered": 0,
    "n/a": 1,
@@ -86,7 +86,7 @@
    "unmapped": 0
   },
   "route": {
-   "covered": 127,
+   "covered": 124,
    "partial": 46,
    "uncovered": 0,
    "n/a": 1,
@@ -100,8 +100,8 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 104,
-   "partial": 63,
+   "covered": 103,
+   "partial": 61,
    "uncovered": 0,
    "n/a": 4,
    "unmapped": 0
@@ -741,6 +741,16 @@
    "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
   },
   {
+   "id": "cli:poolhouse-opencode",
+   "kind": "cli",
+   "source": "poolhouse.opencode:launch",
+   "trust": "the person at a terminal; arguments may carry text from outside",
+   "attacker": "hostile argument text or path reaches the command",
+   "status": "n/a",
+   "tests": [],
+   "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
+  },
+  {
    "id": "cli:poolhouse-pool",
    "kind": "cli",
    "source": "poolhouse.pool_cli:main",
@@ -1263,26 +1273,6 @@
    "note": "fixed scripts that read the battery, focus or login item; no text from outside"
   },
   {
-   "id": "desktop:fleet/autostart_backends.py:elevated",
-   "kind": "desktop",
-   "source": "fleet/autostart_backends.py:elevated",
-   "trust": "names of members, sessions, files",
-   "attacker": "attacker text reaches a dialog, notification or shell command",
-   "status": "n/a",
-   "tests": [],
-   "note": "fixed scripts that read the battery, focus or login item; no text from outside"
-  },
-  {
-   "id": "desktop:fleet/room_routes.py:RoomRoutes._apply",
-   "kind": "desktop",
-   "source": "fleet/room_routes.py:RoomRoutes._apply",
-   "trust": "names of members, sessions, files",
-   "attacker": "attacker text reaches a dialog, notification or shell command",
-   "status": "n/a",
-   "tests": [],
-   "note": "fixed scripts that read the battery, focus or login item; no text from outside"
-  },
-  {
    "id": "desktop:fleet/settings.py:_has_battery",
    "kind": "desktop",
    "source": "fleet/settings.py:_has_battery",
@@ -1323,49 +1313,19 @@
    "note": "fixed scripts that read the battery, focus or login item; no text from outside"
   },
   {
+   "id": "desktop:harness_js.py:<module>",
+   "kind": "desktop",
+   "source": "harness_js.py:<module>",
+   "trust": "names of members, sessions, files",
+   "attacker": "attacker text reaches a dialog, notification or shell command",
+   "status": "n/a",
+   "tests": [],
+   "note": "fixed scripts that read the battery, focus or login item; no text from outside"
+  },
+  {
    "id": "desktop:protectedwrites.py:<module>",
    "kind": "desktop",
    "source": "protectedwrites.py:<module>",
-   "trust": "names of members, sessions, files",
-   "attacker": "attacker text reaches a dialog, notification or shell command",
-   "status": "n/a",
-   "tests": [],
-   "note": "fixed scripts that read the battery, focus or login item; no text from outside"
-  },
-  {
-   "id": "desktop:scrape/browser.py:_frontmost",
-   "kind": "desktop",
-   "source": "scrape/browser.py:_frontmost",
-   "trust": "names of members, sessions, files",
-   "attacker": "attacker text reaches a dialog, notification or shell command",
-   "status": "n/a",
-   "tests": [],
-   "note": "fixed scripts that read the battery, focus or login item; no text from outside"
-  },
-  {
-   "id": "desktop:scrape/browser.py:keeping_focus",
-   "kind": "desktop",
-   "source": "scrape/browser.py:keeping_focus",
-   "trust": "names of members, sessions, files",
-   "attacker": "attacker text reaches a dialog, notification or shell command",
-   "status": "n/a",
-   "tests": [],
-   "note": "fixed scripts that read the battery, focus or login item; no text from outside"
-  },
-  {
-   "id": "desktop:serve/wired_apply.py:argv_for",
-   "kind": "desktop",
-   "source": "serve/wired_apply.py:argv_for",
-   "trust": "names of members, sessions, files",
-   "attacker": "attacker text reaches a dialog, notification or shell command",
-   "status": "n/a",
-   "tests": [],
-   "note": "fixed scripts that read the battery, focus or login item; no text from outside"
-  },
-  {
-   "id": "desktop:serve/wired_cli.py:_how",
-   "kind": "desktop",
-   "source": "serve/wired_cli.py:_how",
    "trust": "names of members, sessions, files",
    "attacker": "attacker text reaches a dialog, notification or shell command",
    "status": "n/a",
@@ -4233,21 +4193,6 @@
    "id": "human:serve/backend.py:launch",
    "kind": "human",
    "source": "serve/backend.py:launch",
-   "trust": "an agent process or a member",
-   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
-    "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
-    "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:serve/wired_apply.py:_authorise",
-   "kind": "human",
-   "source": "serve/wired_apply.py:_authorise",
    "trust": "an agent process or a member",
    "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
@@ -8448,54 +8393,6 @@
    "note": "source publication and checkout require a browser session; hostile candidate paths, member schema, redirects and source archives are rejected before checkout"
   },
   {
-   "id": "route:fleet/room_routes.py:/ui/room",
-   "kind": "route",
-   "source": "fleet/room_routes.py:RoomRoutes.route",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_wired.py::test_no_model_tool_chat_tool_or_slash_command_touches_the_wiring_limit",
-    "tests/test_redteam_wired.py::test_a_command_run_by_an_agent_is_refused_before_anything_is_written",
-    "tests/test_redteam_wired.py::test_a_model_name_is_a_lookup_and_never_a_command",
-    "tests/test_redteam_wired.py::test_a_hostile_number_never_reaches_the_runner",
-    "tests/test_redteam_wired.py::test_a_token_or_a_foreign_page_cannot_reach_any_changing_route"
-   ],
-   "note": "raising the GPU wiring limit is person-only: agent processes, tokens, foreign pages, hostile numbers and model names are refused and the privileged call is never reached"
-  },
-  {
-   "id": "route:fleet/room_routes.py:/ui/room/keep",
-   "kind": "route",
-   "source": "fleet/room_routes.py:RoomRoutes._apply",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_wired.py::test_no_model_tool_chat_tool_or_slash_command_touches_the_wiring_limit",
-    "tests/test_redteam_wired.py::test_a_command_run_by_an_agent_is_refused_before_anything_is_written",
-    "tests/test_redteam_wired.py::test_a_model_name_is_a_lookup_and_never_a_command",
-    "tests/test_redteam_wired.py::test_a_hostile_number_never_reaches_the_runner",
-    "tests/test_redteam_wired.py::test_a_token_or_a_foreign_page_cannot_reach_any_changing_route"
-   ],
-   "note": "raising the GPU wiring limit is person-only: agent processes, tokens, foreign pages, hostile numbers and model names are refused and the privileged call is never reached"
-  },
-  {
-   "id": "route:fleet/room_routes.py:/ui/room/reset",
-   "kind": "route",
-   "source": "fleet/room_routes.py:RoomRoutes._apply",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_wired.py::test_no_model_tool_chat_tool_or_slash_command_touches_the_wiring_limit",
-    "tests/test_redteam_wired.py::test_a_command_run_by_an_agent_is_refused_before_anything_is_written",
-    "tests/test_redteam_wired.py::test_a_model_name_is_a_lookup_and_never_a_command",
-    "tests/test_redteam_wired.py::test_a_hostile_number_never_reaches_the_runner",
-    "tests/test_redteam_wired.py::test_a_token_or_a_foreign_page_cannot_reach_any_changing_route"
-   ],
-   "note": "raising the GPU wiring limit is person-only: agent processes, tokens, foreign pages, hostile numbers and model names are refused and the privileged call is never reached"
-  },
-  {
    "id": "route:fleet/routes.py:/ui",
    "kind": "route",
    "source": "fleet/routes.py:PageRoutes.open_route",
@@ -12125,30 +12022,6 @@
    "note": ""
   },
   {
-   "id": "spawn:scrape/browser.py:_frontmost",
-   "kind": "spawn",
-   "source": "scrape/browser.py:_frontmost",
-   "trust": "arguments built from model output, member messages or file names",
-   "attacker": "attacker text becomes a command line, environment or working directory",
-   "status": "partial",
-   "tests": [
-    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
-   ],
-   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
-  },
-  {
-   "id": "spawn:scrape/browser.py:keeping_focus",
-   "kind": "spawn",
-   "source": "scrape/browser.py:keeping_focus",
-   "trust": "arguments built from model output, member messages or file names",
-   "attacker": "attacker text becomes a command line, environment or working directory",
-   "status": "partial",
-   "tests": [
-    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
-   ],
-   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
-  },
-  {
    "id": "spawn:scripts/test-on-linux",
    "kind": "spawn",
    "source": "scripts/test-on-linux",
@@ -12353,28 +12226,12 @@
    "status": "covered",
    "tests": [
     "tests/test_redteam_wired.py::test_no_model_tool_chat_tool_or_slash_command_touches_the_wiring_limit",
-    "tests/test_redteam_wired.py::test_a_command_run_by_an_agent_is_refused_before_anything_is_written",
-    "tests/test_redteam_wired.py::test_a_model_name_is_a_lookup_and_never_a_command",
-    "tests/test_redteam_wired.py::test_a_hostile_number_never_reaches_the_runner",
-    "tests/test_redteam_wired.py::test_a_token_or_a_foreign_page_cannot_reach_any_changing_route"
+    "tests/test_room_routes.py::test_there_is_no_route_that_changes_the_limit",
+    "tests/test_room_routes.py::test_a_model_name_with_shell_text_is_only_ever_a_lookup",
+    "tests/test_wired.py::test_the_command_line_has_no_way_to_change_the_limit",
+    "tests/test_wired.py::test_nothing_in_the_source_asks_the_operating_system_for_an_administrator_password"
    ],
-   "note": "raising the GPU wiring limit is person-only: agent processes, tokens, foreign pages, hostile numbers and model names are refused and the privileged call is never reached"
-  },
-  {
-   "id": "spawn:serve/wired_apply.py:_run",
-   "kind": "spawn",
-   "source": "serve/wired_apply.py:_run",
-   "trust": "arguments built from model output, member messages or file names",
-   "attacker": "attacker text becomes a command line, environment or working directory",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_wired.py::test_no_model_tool_chat_tool_or_slash_command_touches_the_wiring_limit",
-    "tests/test_redteam_wired.py::test_a_command_run_by_an_agent_is_refused_before_anything_is_written",
-    "tests/test_redteam_wired.py::test_a_model_name_is_a_lookup_and_never_a_command",
-    "tests/test_redteam_wired.py::test_a_hostile_number_never_reaches_the_runner",
-    "tests/test_redteam_wired.py::test_a_token_or_a_foreign_page_cannot_reach_any_changing_route"
-   ],
-   "note": "raising the GPU wiring limit is person-only: agent processes, tokens, foreign pages, hostile numbers and model names are refused and the privileged call is never reached"
+   "note": "the wiring limit is read and never changed: no flag, no route, no administrator prompt; a model name is only a lookup among installed models"
   },
   {
    "id": "spawn:setup.py:_arches",

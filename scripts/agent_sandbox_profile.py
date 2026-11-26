@@ -38,7 +38,6 @@ STATE_ALLOW_WRITE = (
 )
 STATE_DENY_WRITE = (
     "node/client", "node/person", "node/hook-credentials", "workspace/local-agents", "keystore", "runtimes", "hooks", "gate", "guard", "machine-id",
-    "wired-limit.json",
 )
 HOME_DENY_READ = (".ssh", ".aws", ".gnupg", ".config/gh", ".netrc", ".git-credentials", ".docker/config.json",
                   ".npmrc", ".pypirc")

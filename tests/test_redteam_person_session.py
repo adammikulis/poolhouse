@@ -292,10 +292,3 @@ def test_credential_changes_need_a_credentialed_session(window):
         assert credentials.get("HF_TOKEN") is None
     status, _, _ = window.call("/ui/credentials", method="POST", body=body, cookie=sign_in(window), headers=browser(window))
     assert status == 200 and credentials.get("HF_TOKEN") == "isolated-secret"
-
-
-def test_the_wiring_limit_refuses_an_uncredentialed_session_before_asking_anyone(window):
-    bare = window.ui.sessions.open("setup")
-    cookie = window.ui.sessions.cookie_header(bare).split(";", 1)[0]
-    status, answer, _ = window.call("/ui/room/reset", method="POST", body={}, cookie=cookie, headers=browser(window))
-    assert status == 403 and "not opened with a credential" in answer["error"]

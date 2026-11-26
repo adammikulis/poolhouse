@@ -1,6 +1,6 @@
-"""``/ui/room``: the page's route for sizing the wiring limit and the change that the `serve.wired-limit` gate decides.
+"""``/ui/room``: the page's route for sizing the wiring limit. It reads and never changes the limit.
 
-A real daemon on a real socket; the privileged call is a recording stand-in.
+A real daemon on a real socket; the machine's facts are the ones the hooks name.
 """
 
 from __future__ import annotations
@@ -10,105 +10,48 @@ import platform
 import pytest
 from conftest import write_gguf
 from test_fleet_ui import Serving
-from test_fleet_ui_founded import gated, governed  # noqa: F401  (governed is a fixture)
-from test_wired import Recorder, dense
+from test_wired import dense
 
-from poolhouse.serve import wired, wired_apply as apply
-
-pytest_plugins = ("testfarm_kit",)  # the `node_binary` fixture the founded pool below uses
+from poolhouse.serve import wired
 
 
 @pytest.fixture(autouse=True)
 def an_isolated_home(monkeypatch, tmp_path):
     monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "home"))
     monkeypatch.setattr(platform, "system", lambda: "Darwin")
-    for name in apply.AGENT_MARKERS:
-        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture
 def room(tmp_path):
-    ran = Recorder(start=98304)
     s = Serving(tmp_path)
-    s.ui.room_hooks = wired.Hooks(total=128 * 1024**3, runner=ran, system="Darwin",
-                                  read=ran.read, daemon=tmp_path / "LaunchDaemons" / "d.plist")
-    s.ran = ran
+    s.ui.room_hooks = wired.Hooks(total=128 * 1024**3, system="Darwin",
+                                  read=lambda: 98304, daemon=tmp_path / "LaunchDaemons" / "d.plist")
     try:
         yield s
     finally:
         s.close()
 
 
-def test_the_page_carries_the_slider_on_the_models_and_settings_screens(room):
+def test_the_page_carries_the_memory_panel_on_the_models_and_settings_screens(room):
     from poolhouse.fleet.page import render
 
     page = render()
     assert page.count("<wired-memory>") == 2 and "Device memory controls" in page and "GPU memory" in page
     assert 'customElements.define("wired-memory"' in page
-    assert "Keep this after restart" in page
+    assert "Keep this after restart" not in page and "asks for your password" not in page
     assert room.call("/ui/")[0] == 200
 
 
-def test_a_click_raises_the_limit_through_the_one_stand_in_call(room):
-    status, body, _ = room.call("/ui/room/apply", method="POST", body={"mb": 65536})
-    assert status == 200 and body["ok"] and body["after_mb"] == 65536, body
-    assert body["machine"]["original_mb"] == 98304 and body["machine"]["kept"] is False
-    assert room.ran.calls == [["osascript", "-e",
-                               'do shell script "/usr/sbin/sysctl -w iogpu.wired_limit_mb=65536"'
-                               ' with administrator privileges']]
-    status, body, _ = room.call("/ui/room/reset", method="POST", body={})
-    assert status == 200 and room.ran.limit == 98304
-
-
-@pytest.mark.parametrize("bad", ["65536; reboot", -5, 0, 1.5, None, 10**9, True, [1]])
-def test_a_value_that_is_not_an_integer_in_range_is_refused_and_runs_nothing(room, bad):
-    status, body, _ = room.call("/ui/room/apply", method="POST", body={"mb": bad})
-    assert status == 400 and "error" in body
-    assert room.ran.calls == []
-
-
-def test_the_request_must_carry_the_ui_header(room):
-    status, _, _ = room.call("/ui/room/apply", method="POST", body={"mb": 65536},
-                             ui_header=False)
-    assert status == 403 and room.ran.calls == []
-
-
-def test_another_web_page_cannot_make_the_request(room):
-    status, body, _ = room.call("/ui/room/apply", method="POST", body={"mb": 65536},
-                                headers={"Origin": "https://evil.example"})
-    assert status == 403 and "another web page" in body["error"]
-    assert room.ran.calls == []
-
-
-def test_a_hostname_in_the_host_header_is_refused(room):
-    status, _, _ = room.call("/ui/room/apply", method="POST", body={"mb": 65536},
-                             headers={"Host": "rebind.example.com"})
-    assert status == 403 and room.ran.calls == []
-
-
-def test_an_access_token_header_cannot_make_the_request(room):
-    for header in ({"Authorization": "Bearer abc"}, {"X-Poolhouse-Token": "abc"}):
-        status, _, _ = room.call("/ui/room/apply", method="POST", body={"mb": 65536},
-                                 headers=header)
-        assert status == 403
-    assert room.ran.calls == []
-
-
-@pytest.mark.slow
-def test_a_founded_pool_asks_for_a_session_first(governed, room):  # noqa: F811
-    gated(room)
-    status, _, _ = room.call("/ui/room/apply", method="POST", body={"mb": 65536})
-    assert status == 401 and room.ran.calls == []
-    _, _, headers = room.ticket_session()
-    status, _, _ = room.call("/ui/room/apply", method="POST", body={"mb": 65536}, cookie=headers["Set-Cookie"].split(";")[0])
-    assert status == 200 or status == 502
-    assert len(room.ran.calls) == 1
+@pytest.mark.parametrize("path", ["/ui/room/apply", "/ui/room/reset", "/ui/room/keep"])
+def test_there_is_no_route_that_changes_the_limit(room, path):
+    status, _, _ = room.call(path, method="POST", body={"mb": 65536})
+    assert status == 404
+    assert room.call("/ui/room")[1]["machine"]["live_mb"] == 98304
 
 
 def test_a_model_name_with_shell_text_is_only_ever_a_lookup(room):
     status, body, _ = room.call("/ui/room?model=%24%28touch%20x%29%3B%20rm%20-rf%20~&ctx=8192")
     assert status == 400 and "not installed" in body["error"]
-    assert room.ran.calls == []
 
 
 def test_a_path_that_is_not_an_installed_model_is_never_read(room, tmp_path):
@@ -131,22 +74,3 @@ def test_the_plan_for_an_installed_model_comes_back_as_plain_numbers(room, tmp_p
     assert {g["where"] for g in plan["grows"]} == {"host RAM"}
     status, _, _ = room.call(f"/ui/room?model={path}&kv=q5_0")
     assert status == 400
-
-
-def test_an_agent_marker_in_the_daemons_environment_refuses_even_a_good_request(room, monkeypatch):
-    monkeypatch.setenv("CLAUDECODE", "1")
-    status, body, _ = room.call("/ui/room/apply", method="POST", body={"mb": 65536})
-    assert status == 403 and "agent" in body["error"]
-    assert room.ran.calls == []
-
-
-def test_another_machine_on_the_network_cannot_make_the_request_even_signed_in(room):
-    from tests.remote_client_support import REMOTE_ADDRESS
-
-    lan = REMOTE_ADDRESS
-    _, _, headers = room.ticket_session(host=lan)
-    cookie = headers["Set-Cookie"].split(";")[0]
-    status, body, _ = room.call("/ui/room/apply", method="POST", body={"mb": 65536},
-                                host=lan, cookie=cookie)
-    assert status == 403 and "its own browser" in body["error"], (status, body)
-    assert room.ran.calls == []

@@ -1,8 +1,5 @@
-"""The wiring limit: the plan for a model, the one privileged change, and who may ask for it.
-
-The privileged call is a recording stand-in: no test runs `sysctl -w` or a macOS password
-dialog. Models are real GGUF headers over a sparse file, so the estimator reads real bytes.
-"""
+"""The wiring limit: the plan for a model and the state it is read in. Models are real GGUF headers over a sparse file, so
+the estimator reads real bytes. Nothing changes the limit: that needs administrator rights."""
 
 from __future__ import annotations
 
@@ -16,9 +13,7 @@ from pathlib import Path
 import pytest
 from conftest import write_gguf
 
-from poolhouse import authority, caller
-from poolhouse.caller import AgentRefused
-from poolhouse.serve import wired, wired_apply as apply
+from poolhouse.serve import wired, wired_state as state
 
 GIB = 1024**3
 SRC = str(Path(__file__).resolve().parent.parent / "src")
@@ -42,31 +37,9 @@ def facts(total_gib, current=0, **more) -> wired.Hooks:
     return wired.Hooks(total=total_gib * GIB, current=current, others=0, **more)
 
 
-class Recorder:
-    """A stand-in for the privileged call that remembers what it was asked and moves a fake
-    limit the way sysctl would."""
-
-    def __init__(self, start=0, code=0, err=""):
-        self.calls: list[list[str]] = []
-        self.limit = start
-        self.code, self.err = code, err
-
-    def __call__(self, argv, capture):
-        self.calls.append(list(argv))
-        if self.code == 0:
-            sets = re.findall(r"sysctl -w iogpu.wired_limit_mb=(\d+)", " ".join(argv))
-            self.limit = int(sets[-1]) if sets else self.limit
-        return self.code, "", self.err
-
-    def read(self):
-        return self.limit
-
-
 @pytest.fixture(autouse=True)
 def state_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "home"))
-    for name in apply.AGENT_MARKERS:
-        monkeypatch.delenv(name, raising=False)
 
 
 # -- the plan --------------------------------------------------------------------------------
@@ -161,163 +134,37 @@ def test_a_model_that_is_not_installed_is_an_error_not_a_command(tmp_path):
         wired.plan("x; rm -rf ~ $(id)", None, facts(64))
 
 
-# -- the change ------------------------------------------------------------------------------
+# -- the state, and what is never done ------------------------------------------------------
 @pytest.fixture
 def daemon(tmp_path):
     return tmp_path / "LaunchDaemons" / "stack.ml.wired-limit.plist"
 
 
-def hooks(ran, daemon=None, **more):
-    return wired.Hooks(total=128 * GIB, runner=ran, system="Darwin", read=ran.read, daemon=daemon,
-                       **more)
-
-
-def test_apply_runs_one_command_built_from_the_integer_and_records_the_original():
-    ran = Recorder(start=98304)
-    done = apply.set_limit(116736, via="osascript", hooks=hooks(ran))
-    assert done.ok and (done.before_mb, done.after_mb) == (98304, 116736)
-    assert ran.calls == [["osascript", "-e",
-                          'do shell script "/usr/sbin/sysctl -w iogpu.wired_limit_mb=116736" '
-                          'with administrator privileges']]
-    apply.set_limit(120000, via="osascript", hooks=hooks(ran))
-    assert apply.original_mb() == 98304
-
-
-def test_sudo_runs_the_same_script_so_sudo_asks_for_the_password():
-    ran = Recorder()
-    apply.set_limit(65536, via="sudo", hooks=hooks(ran))
-    assert ran.calls == [["sudo", "/bin/sh", "-c", "/usr/sbin/sysctl -w iogpu.wired_limit_mb=65536"]]
-
-
-def test_keeping_it_installs_a_valid_root_owned_daemon_in_the_same_prompt(daemon):
-    ran = Recorder()
-    apply.set_limit(65536, keep=True, via="sudo", hooks=hooks(ran, daemon))
-    assert len(ran.calls) == 1
-    script = ran.calls[0][3]
-    assert f"chown root:wheel {daemon}" in script and "launchctl bootstrap system" in script
-    assert script.endswith("iogpu.wired_limit_mb=65536")
-    written = re.search(r"printf '%s\\n' '(.*?)' >", script).group(1)
-    loaded = plistlib.loads(written.encode())
-    assert loaded == {"Label": "stack.ml.wired-limit", "RunAtLoad": True,
-                      "ProgramArguments": ["/usr/sbin/sysctl", "-w", "iogpu.wired_limit_mb=65536"]}
-
-
-def test_unchecking_removes_the_daemon_without_touching_the_live_value(daemon):
-    ran = Recorder(start=65536)
-    apply.set_limit(None, keep=False, via="sudo", hooks=hooks(ran, daemon))
-    script = ran.calls[0][3]
-    assert "bootout system/stack.ml.wired-limit" in script and f"rm -f {daemon}" in script
-    assert "sysctl" not in script and ran.limit == 65536
-
-
 def test_the_state_reads_the_kept_value_and_flags_drift(daemon):
     daemon.parent.mkdir()
-    assert not apply.state(hooks(Recorder(start=1), daemon)).kept
+    assert not state.state(facts(128, current=1, daemon=daemon)).kept
     daemon.write_bytes(plistlib.dumps({"ProgramArguments": ["/usr/sbin/sysctl", "-w",
                                                            "iogpu.wired_limit_mb=65536"]}))
-    same = apply.state(hooks(Recorder(start=65536), daemon))
+    same = state.state(facts(128, current=65536, daemon=daemon))
     assert same.kept and same.kept_mb == 65536 and not same.drift
-    off = apply.state(hooks(Recorder(start=98304), daemon))
+    off = state.state(facts(128, current=98304, daemon=daemon))
     assert off.drift and off.live_mb == 98304
 
 
-def test_reset_puts_back_the_recorded_original_or_the_default_share_and_drops_the_daemon(daemon):
-    ran = Recorder(start=98304)
-    apply.set_limit(116736, keep=True, via="osascript", hooks=hooks(ran, daemon))
-    apply.reset(via="osascript", hooks=hooks(ran, daemon))
-    assert ran.limit == 98304 and "rm -f" in ran.calls[-1][-1]
-    fresh = Recorder(start=114688)
-    apply._record().unlink()
-    apply.reset(via="osascript", hooks=hooks(fresh, daemon))
-    assert fresh.limit == 0
+@pytest.mark.parametrize("flag", ["--apply", "--persist", "--unpersist", "--reset", "--write", "--print"])
+def test_the_command_line_has_no_way_to_change_the_limit(flag, tmp_path):
+    """Changing the limit needs administrator rights; nothing in Poolhouse asks for a password, so no flag does."""
+    env = {**os.environ, "PYTHONPATH": SRC, "POOLHOUSE_HOME": str(tmp_path / "home")}
+    code = ("import sys; from poolhouse.serve import cli; "
+            f"sys.exit(cli.COMMANDS.run(['memory', {flag!r}]))")
+    got = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True,
+                         stdin=subprocess.DEVNULL, timeout=60)
+    assert got.returncode != 0 and "unrecognized arguments" in got.stderr
 
 
-@pytest.mark.parametrize("bad", ["65536; reboot", "65536", -1, 0, 1.5, True, None, 10**9,
-                                 130 * 1024, [65536], {"mb": 1}])
-def test_a_value_that_is_not_an_integer_in_range_never_reaches_the_runner(bad, daemon):
-    ran = Recorder()
-    with pytest.raises(ValueError):
-        apply.set_limit(bad, keep=True, via="osascript", hooks=hooks(ran, daemon))
-    assert ran.calls == []
-
-
-def test_the_highest_limit_leaves_8_gib():
-    ran = Recorder()
-    apply.set_limit(120 * 1024, via="osascript", hooks=hooks(ran))
-    with pytest.raises(ValueError):
-        apply.set_limit(120 * 1024 + 1, via="osascript", hooks=hooks(ran))
-
-
-@pytest.mark.parametrize("marker", apply.AGENT_MARKERS)
-def test_a_process_an_agent_started_is_refused_at_once_for_keep_change_and_reset_and_runs_nothing(marker, daemon):
-    ran = Recorder()
-    env = {marker: "1"}
-    for call in (lambda h: apply.set_limit(65536, keep=True, via="osascript", hooks=h),
-                 lambda h: apply.set_limit(None, keep=False, via="osascript", hooks=h),
-                 lambda h: apply.reset(via="sudo", hooks=h)):
-        with pytest.raises(AgentRefused, match=r"serve\.wired-limit"):
-            call(hooks(ran, daemon, env=env))
-    assert ran.calls == [] and apply.original_mb() is None
-    refused = [r for r in caller.audit_rows() if r["event"] == "refused"]
-    assert len(refused) == 3 and all(r["who"].startswith(f"agent {marker}") for r in refused)
-    assert {r["action"] for r in refused} == {"change the wiring limit", "reset the wiring limit"}
-
-
-@pytest.mark.parametrize("via", ["sudo", "osascript"])
-def test_a_process_no_agent_started_changes_the_limit_with_no_terminal_and_the_audit_says_who(via):
-    ran = Recorder()
-    assert not caller.marked() and not caller.is_terminal(sys.stdin)
-    assert apply.set_limit(65536, via=via, hooks=hooks(ran)).ok
-    assert len(ran.calls) == 1 and ran.calls[0][0] == ("sudo" if via == "sudo" else "osascript")
-    rows = [r for r in caller.audit_rows() if r["event"] == "ran"]
-    assert [r["action"] for r in rows] == ["change the wiring limit"] and rows[0]["who"].startswith("user ")
-
-
-def test_an_agent_changes_the_limit_while_the_gate_is_delegated_and_the_audit_names_it(monkeypatch):
-    monkeypatch.delenv(authority.FLOOR_ENV)
-    authority.set_state(["serve.wired-limit"], authority.DELEGATED, by="test")
-    ran = Recorder()
-    monkeypatch.setenv("CLAUDECODE", "1")
-    assert apply.set_limit(65536, via="osascript", hooks=hooks(ran)).ok
-    assert len(ran.calls) == 1
-    used = [r for r in caller.audit_rows() if r["event"] == "authority.use" and r["gate"] == "serve.wired-limit"]
-    assert len(used) == 1 and used[0]["who"].startswith("agent CLAUDECODE")
-
-
-def test_a_second_prompt_is_refused_while_one_is_open():
-    ran = Recorder()
-
-    def during(argv, capture):
-        with pytest.raises(ValueError, match="already open"):
-            apply.set_limit(70000, via="osascript", hooks=hooks(Recorder()))
-        return ran(argv, capture)
-
-    apply.set_limit(65536, via="osascript", hooks=wired.Hooks(
-        total=128 * GIB, runner=during, system="Darwin", read=ran.read))
-    assert len(ran.calls) == 1
-
-
-def test_a_cancelled_password_dialog_changes_nothing_and_says_so():
-    ran = Recorder(code=1, err="execution error: User canceled. (-128)")
-    done = apply.set_limit(65536, via="osascript", hooks=hooks(ran))
-    assert not done.ok and done.message == "cancelled" and done.after_mb == 0
-
-
-def test_the_command_line_refuses_an_agent_process_before_anything_runs(tmp_path):
-    env = {**os.environ, "PYTHONPATH": SRC, "POOLHOUSE_HOME": str(tmp_path / "home"),
-           "CLAUDECODE": "1"}
-    for argv in (["--reset"], ["--apply", "65536"], ["--persist", "65536"], ["--unpersist"]):
-        code = ("import sys; from poolhouse.serve import cli; "
-                f"sys.exit(cli.COMMANDS.run(['memory', *{argv!r}]))")
-        got = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True,
-                             text=True, stdin=subprocess.DEVNULL, timeout=60)
-        assert got.returncode != 0 and "agent" in (got.stdout + got.stderr), argv
-    assert not (tmp_path / "home" / "wired-limit.json").exists()
-
-
-def test_only_the_command_and_the_ui_route_reach_the_privileged_change():
+def test_nothing_in_the_source_asks_the_operating_system_for_an_administrator_password():
     root = Path(SRC) / "poolhouse"
-    users = sorted(p.relative_to(root).as_posix() for p in root.rglob("*.py")
-                   if re.search(r"import .*wired_apply|wired_apply import",
-                                p.read_text(encoding="utf-8")))
-    assert users == ["fleet/room_routes.py", "serve/wired_cli.py"]
+    asking = sorted(p.relative_to(root).as_posix() for p in root.rglob("*.py")
+                    if p.relative_to(root).parts[0] != "guard"   # the guard's lists of what an agent may not run name them
+                    and re.search(r"with administrator privileges|\"pkexec\"|\[\"sudo\"", p.read_text(encoding="utf-8")))
+    assert asking == []

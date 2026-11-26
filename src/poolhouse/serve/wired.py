@@ -42,7 +42,6 @@ NGRAM_MOD = 16 * MIB
 CACHE_RAM_MB = 8192
 """The prompt cache llama-server holds in RAM (`cache_ram_mib`, common/common.h): its own default."""
 
-Runner = Callable[[Sequence[str], bool], tuple[int, str, str]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,14 +57,12 @@ class Ask:
 
 @dataclass(frozen=True, slots=True)
 class Hooks:
-    """What a caller may replace: the machine's facts and the privileged call. Everything
+    """What a caller may replace: the machine's facts. Everything
     left as None is read from this machine."""
 
     total: int | None = None
     current: int | None = None
     others: int | None = None
-    env: Mapping[str, str] | None = None
-    runner: Runner | None = None
     system: str | None = None
     daemon: Path | None = None
     read: Callable[[], int] | None = None

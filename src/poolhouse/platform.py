@@ -66,11 +66,6 @@ def name_process(name: str) -> bool:
         return False
 
 
-def applescript_quote(text: str) -> str:
-    """``text`` safe inside an AppleScript string literal."""
-    return text.replace("\\", "\\\\").replace('"', '\\"')
-
-
 # -- starting and stopping a child -----------------------------------------------------
 def launch(argv: Sequence[str], *, stdin: int | None = None) -> subprocess.Popen[bytes]:
     """Start an owned child process with the requested input handle."""

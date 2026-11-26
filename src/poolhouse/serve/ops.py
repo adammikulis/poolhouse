@@ -51,14 +51,14 @@ from poolhouse.serve.process import every_server, machine_memory, pid_exists
 from poolhouse.serve.slotdump import default_slot_save_path
 from poolhouse.units import human_bytes, parse_duration
 
-__all__ = ["FIT_HEAD", "PLIST", "PROBE_TIMEOUT", "Drafting", "Limits",
+__all__ = ["FIT_HEAD", "PROBE_TIMEOUT", "Drafting", "Limits",
            "Machine",
            "Processes", "Recorded", "Refused", "Resolved", "Snapshot", "Started",
            "Status", "Stopped", "alongside", "announce", "base_url_for", "beacon",
            "cache_of", "down", "drafted", "escalate", "fit_markdown", "fit_page", "judge",
            "limits", "look", "manager_for", "measure", "memory", "orphans", "preflight",
            "processes", "reclaim", "reclaim_once", "resolve_spec", "servings",
-           "status", "tensors", "up", "withdraw", "write_plist"]
+           "status", "tensors", "up", "withdraw"]
 
 PROBE_TIMEOUT = 2.0
 
@@ -628,36 +628,12 @@ def fit_page(name: str = "") -> Any:
     return serve_page(name=name or platform.node() or "this machine")
 
 
-PLIST = """<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>stack.ml.wired-limit</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/usr/sbin/sysctl</string>
-    <string>-w</string>
-    <string>iogpu.wired_limit_mb={mb}</string>
-  </array>
-  <key>RunAtLoad</key><true/>
-</dict>
-</plist>
-"""
-
-
 def memory() -> Machine:
     """What a model may use here, what is installed, and what is held right now."""
     from poolhouse.hub import room, total_memory
 
     now = room()
     return Machine(now, total_memory(), machine_memory() if now else None)
-
-
-def write_plist(where: Path, mb: int) -> Path:
-    """Write a boot-time setting for the wiring limit and return where it went."""
-    where.write_text(PLIST.format(mb=mb), encoding="utf-8")
-    return where
 
 
 def adopt_unmanaged(mode: str) -> None:

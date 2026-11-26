@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import getpass
 import json
-import shlex
 import sys
 from pathlib import Path
 
@@ -295,20 +294,17 @@ def test_a_system_manifest_needs_the_flag_and_only_then(tmp_path, user):
     assert not flagged.ok and "--system" in " ".join(flagged.lines)
 
 
-def test_a_system_install_asks_the_operating_system_and_builds_a_quoted_command(tmp_path, user):
+def test_a_system_install_is_refused_at_once_with_the_reason_and_places_nothing(tmp_path, user):
+    """Placing a unit in a system directory needs administrator rights, which nothing in Poolhouse asks for."""
     if sys.platform != "darwin":
         pytest.skip("the system directories are checked as they are on macOS")
+    from poolhouse.fleet.autostart_backends import NEEDS_ROOT
+
     done = staged(tmp_path, roles=("pool-daemon",), platform="darwin", scope="system")
-    asked = []
     recorder = Recorder()
-    outcome = install(done.path, system=True, seams=seams(
-        recorder, "darwin", "system", ask=lambda cmd, why: (asked.append(cmd) or (True, ""))))
-    assert not outcome.ok
-    command = asked[0]
-    words = shlex.split(command.replace("&&", " ").replace("{", " ").replace("}", " ").replace(";", " "))
-    assert "/Library/LaunchDaemons/com.poolhouse.traind.plist" in words
-    assert str(done.path.parent / "com.poolhouse.traind.plist") in words
-    assert "sudo" not in command and recorder.ran == []
+    outcome = install(done.path, system=True, seams=seams(recorder, "darwin", "system"))
+    assert not outcome.ok and NEEDS_ROOT in " ".join(outcome.lines)
+    assert recorder.ran == []
     assert not Path("/Library/LaunchDaemons/com.poolhouse.traind.plist").exists()
 
 

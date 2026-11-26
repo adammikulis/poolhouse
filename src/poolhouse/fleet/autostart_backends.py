@@ -3,19 +3,14 @@
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
-import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from poolhouse import real_machine
-from poolhouse.platform import applescript_quote
-
 from .autostart_manifest import ROLE_INFO, Role
 
-__all__ = ["Backend", "backend_for", "elevated", "run"]
+__all__ = ["NEEDS_ROOT", "Backend", "backend_for", "run"]
 
 
 def run(argv: list[str], timeout: float = 60) -> tuple[int, str]:
@@ -27,20 +22,9 @@ def run(argv: list[str], timeout: float = 60) -> tuple[int, str]:
     return done.returncode, (done.stdout + done.stderr).strip()
 
 
-def elevated(command: str, prompt: str) -> tuple[bool, str]:
-    """Run a privileged shell command through the OS's own password dialog."""
-    if why := real_machine.refusal():
-        return False, f"the administrator prompt is not shown here: {why}"
-    if sys.platform == "darwin":
-        script = (f'do shell script "{applescript_quote(command)}" with administrator '
-                  f'privileges with prompt "{applescript_quote(prompt)}"')
-        argv = ["osascript", "-e", script]
-    elif sys.platform.startswith("linux") and shutil.which("pkexec"):
-        argv = ["pkexec", "sh", "-c", command]
-    else:
-        return False, ""
-    code, out = run(argv, timeout=120)
-    return code == 0, out
+NEEDS_ROOT = ("starting at boot, before anyone logs in, needs administrator rights, and nothing in Poolhouse asks for a "
+              "password or runs sudo; it starts when you log in instead")
+"""Why a system-wide install is refused at once: the per-user install is the one that needs nothing."""
 
 
 def _sh(argv: list[str], timeout: float = 60) -> tuple[int, str]:

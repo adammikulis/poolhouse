@@ -18,7 +18,7 @@ from poolhouse.lock import Busy, only_one
 from poolhouse.log import say
 
 from . import autostart_ledger
-from .autostart_backends import Backend, backend_for, elevated
+from .autostart_backends import NEEDS_ROOT, Backend, backend_for
 from .autostart_manifest import Manifest, parse
 from .autostart_prepare import platform_of, read_manifest
 from .autostart_verify import Context, problems
@@ -66,10 +66,9 @@ class Work:
 
 @dataclass(frozen=True, slots=True)
 class Seams:
-    """What a test replaces: the service manager, the privilege prompt, the clock."""
+    """What a test replaces: the service manager, the clock."""
 
     backend: Backend | None = None
-    ask: Callable[[str, str], tuple[bool, str]] | None = None
     probe: Callable[[Mapping[str, Any]], bool] = healthy
     env: Mapping[str, str] | None = None
     now: float = 0.0
@@ -85,14 +84,7 @@ def _sha(data: bytes) -> str:
 def _execute(work: Work, system: bool, backend: Backend, seams: Seams) -> str:
     """Run the steps and place the files; the failure text, or an empty string."""
     if system:
-        parts = [("{ " + shlex.join(a) + "; true; }") for a, _ in work.pre]
-        for act, dest, src, _ in work.files:
-            parts += [shlex.join(["mkdir", "-p", str(dest.parent)]), shlex.join(["install", "-m", "0644", str(src), str(dest)])] \
-                if act == "write" else [shlex.join(["rm", "-f", str(dest)])]
-        parts += [shlex.join(a) for a, _ in work.post]
-        ask = seams.ask or elevated
-        done, why = ask(" && ".join(parts), "Poolhouse needs permission to install its units")
-        return "" if done else (why or "permission was not given")
+        return NEEDS_ROOT
     for argv, _ in work.pre:
         backend.runner(argv)
     for act, dest, src, digest in work.files:

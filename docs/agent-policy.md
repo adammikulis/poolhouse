@@ -897,9 +897,9 @@ Detail for each, with the reasons: docs/agent-rules.md, "Models".
 
 ### Driving a browser
 
-A headed browser opens where `POOLHOUSE_WINDOW_POSITION` says (`X,Y`; set in `.claude/settings.json`) and gives the
-screen back to whichever application had it; `poolhouse.scrape.browser.Window.args()` and `keeping_focus()` do both, so
-go through `browser(window)` rather than calling `chromium.launch` yourself. Never drive the person's own browser to
+A headed browser opens where `POOLHOUSE_WINDOW_POSITION` says (`X,Y`; set in `.claude/settings.json`);
+`poolhouse.scrape.browser.Window.args()` does it, so go through `browser(window)` rather than calling `chromium.launch`
+yourself. Never drive the person's own browser to
 test this project's pages: that window is on their primary display and every click takes their screen. Drive your own
 Chromium through playwright, or run headless and read screenshots.
 

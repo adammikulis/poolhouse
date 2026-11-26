@@ -112,15 +112,15 @@ def test_a_lead_agent_is_refused_at_once_when_it_loosens_a_gate_and_nothing_chan
 
 def test_a_process_with_no_agent_marker_loosens_a_gate_directly_with_no_terminal_and_no_question(strict):
     loosening(["runtime.deploy"])
-    assert states()["runtime.deploy"] == authority.DELEGATED and states()["serve.wired-limit"] == authority.PERSON
+    assert states()["runtime.deploy"] == authority.DELEGATED and states()["autostart.install"] == authority.PERSON
     assert not refusals()
 
 
 def test_the_refusal_names_every_gate_it_would_loosen_in_plain_words(strict):
     with pytest.raises(AgentRefused) as raised:
-        loosening(["runtime", "serve.wired-limit"], env=LEAD)
+        loosening(["runtime", "autostart.install"], env=LEAD)
     said = str(raised.value)
-    assert "runtime.deploy" in said and "serve.wired-limit" in said and "chat.policy" not in said
+    assert "runtime.deploy" in said and "autostart.install" in said and "chat.policy" not in said
     assert "deploy a new runtime build on this device" in said and "outside the agent" in said
 
 

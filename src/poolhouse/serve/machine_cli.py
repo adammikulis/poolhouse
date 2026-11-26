@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import time
-from pathlib import Path
 
 from poolhouse.command import flag
 from poolhouse.log import say, warn
@@ -18,12 +17,6 @@ __all__ = ["OPTIONS_LIMITS", "OPTIONS_MEMORY", "OPTIONS_RECLAIM", "cmd_limits",
            "cmd_memory", "cmd_reclaim"]
 
 OPTIONS_MEMORY = [
-    flag("--persist", nargs="?", const="", default=None, metavar="MB|NG",
-         help="keep the wiring limit across restarts: installs a boot-time daemon (one "
-              "administrator prompt); the megabytes default to what --for needs, else what "
-              "is set now. --print only prints the steps"),
-    flag("--write", default="", metavar="FILE",
-         help="where to write it (default: ./stack.ml.wired-limit.plist)"),
     flag("--for", dest="for_model", default="", metavar="MODEL",
          help="size the wiring limit for this model (id, name or path)"),
     flag("--ctx", type=int, default=0, metavar="N",
@@ -34,15 +27,6 @@ OPTIONS_MEMORY = [
          help="with --for: serve with the MTP head, sharing the model's weights (default: on)"),
     flag("--cache-ram", type=int, default=8192, metavar="MB",
          help="with --for: the server's prompt cache cap in host RAM (default: %(default)s)"),
-    flag("--apply", nargs="?", const="", default=None, metavar="MB|NG",
-         help="raise the limit for this boot to MB (default: what --for needs); sudo asks at "
-              "a terminal, macOS's own password dialog otherwise"),
-    flag("--unpersist", action="store_true",
-         help="remove the boot-time daemon (one administrator prompt)"),
-    flag("--print", dest="print_only", action="store_true",
-         help="with --persist: print the steps instead of installing the daemon"),
-    flag("--reset", action="store_true",
-         help="put the limit back to what it was before the first change and remove the daemon"),
     flag("--limit", type=int, default=0, metavar="MB",
          help="preview: what the rest of the machine would have under this wiring "
               "limit, against what it holds now"),
@@ -55,8 +39,7 @@ def cmd_memory(args: argparse.Namespace) -> int:
     On unified memory the ceiling that matters is `iogpu.wired_limit_mb`: a runtime setting
     that goes back to the default on every reboot.
     """
-    installing = args.persist is not None and not args.print_only
-    if args.for_model or args.reset or args.unpersist or args.apply is not None or installing:
+    if args.for_model:
         return wired_cli.run(args)
     machine = ops.memory()
     total, now = machine.total, machine.room
@@ -93,21 +76,7 @@ def cmd_memory(args: argparse.Namespace) -> int:
             left = int(total) - want_mb * 1024 * 1024
             say(f"  at {want_mb} MB the rest of the machine would have {human_bytes(left)}"
                 + (" -- less than it holds now" if left < others else ""))
-    want = args.persist
-    if want is None:
-        say("\n  poolhouse-serve memory --for MODEL   to size it for a model")
-        return 0
-
-    mb = int(want) if want else now // (1024 * 1024)
-    where = ops.write_plist(Path(args.write or "./stack.ml.wired-limit.plist"), mb)
-    say(f"\nwrote {where} -- it sets iogpu.wired_limit_mb={mb} at every boot.")
-    say("Installing it needs root, so it is left to you:")
-    say(f"  sudo cp {where} /Library/LaunchDaemons/stack.ml.wired-limit.plist")
-    say("  sudo chown root:wheel /Library/LaunchDaemons/stack.ml.wired-limit.plist")
-    say("  sudo launchctl load -w /Library/LaunchDaemons/stack.ml.wired-limit.plist")
-    say(f"\nOr for this boot only:  sudo sysctl -w iogpu.wired_limit_mb={mb}")
-    say("\nLeave headroom: everything else on the machine shares this memory, and a "
-        "machine that wires all of it stops being usable before it stops serving.")
+    say("\n  poolhouse-serve memory --for MODEL   to size it for a model")
     return 0
 
 

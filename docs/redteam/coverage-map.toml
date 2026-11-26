@@ -12,7 +12,7 @@
 
 [ratchet]
 uncovered = 51
-partial = 182
+partial = 180
 
 [[group]]
 match = ["egress:isolation/model_bridge.py:ModelBridge._relay", "egress:isolation/egress_proxy.py:_dial"]
@@ -906,16 +906,16 @@ note = "grant minting, release and purge, signing keys, host approval, vault rek
 
 # -- the wiring limit ---------------------------------------------------------------------
 [[group]]
-match = ["route:fleet/room_routes.py:*", "spawn:serve/wired.py:*", "spawn:serve/wired_apply.py:*"]
+match = ["route:fleet/room_routes.py:*", "spawn:serve/wired.py:*"]
 status = "covered"
 tests = [
   "tests/test_redteam_wired.py::test_no_model_tool_chat_tool_or_slash_command_touches_the_wiring_limit",
-  "tests/test_redteam_wired.py::test_a_command_run_by_an_agent_is_refused_before_anything_is_written",
-  "tests/test_redteam_wired.py::test_a_model_name_is_a_lookup_and_never_a_command",
-  "tests/test_redteam_wired.py::test_a_hostile_number_never_reaches_the_runner",
-  "tests/test_redteam_wired.py::test_a_token_or_a_foreign_page_cannot_reach_any_changing_route",
+  "tests/test_room_routes.py::test_there_is_no_route_that_changes_the_limit",
+  "tests/test_room_routes.py::test_a_model_name_with_shell_text_is_only_ever_a_lookup",
+  "tests/test_wired.py::test_the_command_line_has_no_way_to_change_the_limit",
+  "tests/test_wired.py::test_nothing_in_the_source_asks_the_operating_system_for_an_administrator_password",
 ]
-note = "raising the GPU wiring limit is person-only: agent processes, tokens, foreign pages, hostile numbers and model names are refused and the privileged call is never reached"
+note = "the wiring limit is read and never changed: no flag, no route, no administrator prompt; a model name is only a lookup among installed models"
 
 # -- experimental features ------------------------------------------------------------------
 [[group]]

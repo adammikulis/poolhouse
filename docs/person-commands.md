@@ -35,7 +35,7 @@ Refusal shape: `X is refused to an agent (CLAUDECODE is set): <why>. To do it, r
 
 ## Gates (delegated in `dev`, held back from agents in `prod`)
 
-`sentinel.quarantine`, `sentinel.policy`, `memory.admin`, `reputation.admin`, `activity.export`, `serve.wired-limit`,
+`sentinel.quarantine`, `sentinel.policy`, `memory.admin`, `reputation.admin`, `activity.export`,
 `autostart.install`, `chat.policy`, `runtime.deploy`, `runtime.deploy-unmerged`, `github.release`, `isolation.grant`, `workspace.setup`, `workspace.model`,
 `workspace.agents`. `prod` keeps only `workspace.setup`, `workspace.model` and `workspace.agents` delegated.
 

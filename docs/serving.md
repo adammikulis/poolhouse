@@ -278,19 +278,11 @@ poolhouse-serve memory --for Qwen3.8-Flash-Next-UD-Q4_K_XL --ctx 262144 --kv q8_
   prompt cache (`--cache-ram`, default 8192 MiB, capped), context checkpoints (32 per slot) and
   the ngram-mod table (fixed, 16 MiB). The `ngram-cache` dynamic file has no size option in
   llama.cpp. `--cache-ram MB` sets the prompt-cache cap used in the estimate.
-* `--apply [MB]` sets the limit for this boot (`sudo sysctl` at a terminal; macOS's own
-  administrator dialog otherwise). `--persist [MB]` also installs the boot-time
-  `stack.ml.wired-limit` LaunchDaemon in one administrator prompt (`--print` prints the old
-  manual steps instead); it runs at device startup before anyone logs in, so it covers login
-  too. `--unpersist` removes it. `--reset` puts the limit back to what it was before the first
-  change (recorded in the state directory) and removes the daemon. No sudoers rule is used.
-
-Changing the limit is a system setting, so it is for a person only: an agent's process, a
-role, a tool call, an access token and another machine are all refused, the number is checked
-as an integer within range and is the only variable part of the privileged command. The same
-control is a slider in Settings (and in the first-run setup, skippable), and a "Device memory
-controls" panel on the Models screen: choose the model, context and cache type, and the
-slider marks where it fits.
+* Poolhouse reads the limit and sizes every fit and lease by it; it never changes it. Changing
+  `iogpu.wired_limit_mb` needs administrator rights, and nothing in Poolhouse asks for a password,
+  shows a system dialog or runs `sudo`, so there is no `--apply`, `--persist` or `--reset`. The
+  Models screen shows the same plan (a "Device memory controls" panel): choose the model, context
+  and cache type, and it says what the model needs and whether it fits under the limit now.
 
 ### IQ quantisations on Apple silicon
 

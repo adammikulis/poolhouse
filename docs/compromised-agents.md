@@ -171,8 +171,8 @@ it and the person is never given a command. The helper (1) computes the profile 
 staged file, because a file an agent staged is the agent's text in a root-owned place; (2) reads the worktree list itself, from
 `git worktree list` of the recorded primary checkout, and refuses a path outside the person's home or inside a denied path (the one
 variable part of the privileged step, as the number is of the wired memory limit); (3) asks the operating system's own
-administrator dialog, with a one-sentence text the helper wrote, by the mechanism the wired memory limit already uses
-(`docs/serving.md`, `serve.wired-limit`): Poolhouse never sees or stores the password, installs no `sudoers` rule, and the agent
+administrator dialog, with a one-sentence text the helper wrote, by the operating system's own mechanism (the wired memory limit used it until it was
+removed, because nothing in Poolhouse waits for a person): Poolhouse never sees or stores the password, installs no `sudoers` rule, and the agent
 can neither answer the dialog nor choose its text; (4) writes the files root-owned, reads their digests back and records
 `sandbox: installed` with the digest. The dialog is the person's act (AGENTS.md, section 1, "System settings"). The `sudo` line
 that `scripts/agent-sandbox prepare` prints is not an owner step any more; it stays only as the helper's own test fixture.

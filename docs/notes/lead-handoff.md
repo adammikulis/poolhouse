@@ -6,5 +6,4 @@
 - Confirm held files create Requests items, file search uses embeddings, and invite policy observes external-agent reads.
 - Reproduce and resolve the notice-storm failure under load.
 - Verify the implementation status of the utilization measurement, 27B profile, usage-aware router, and idle worker described by the self-improvement and compute plans.
-- The owner must exercise the macOS administrator prompt for wired-memory changes at their own screen.
 - Linux testing is active: it runs on the WSL device through `scripts/test-on-linux`.
