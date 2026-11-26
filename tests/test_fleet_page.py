@@ -341,7 +341,7 @@ class TestTheChatView:
         pw.expect(page.locator("#chat-send")).to_be_hidden()
         assert not errors
 
-    def test_a_kept_conversation_is_listed_and_opens(self, joined, open_page):
+    def test_a_kept_conversation_is_listed_and_opens(self, governed, joined, open_page):  # noqa: F811
         joined.call("/ui/conversations", method="POST", cookie=joined.cookie,
                     headers={"Origin": f"http://127.0.0.1:{joined.port}", "Sec-Fetch-Site": "same-origin"},
                     body={"operation_id": "a" * 32, "model": "thornfield-8B", "title": "about the roof"})
@@ -353,7 +353,7 @@ class TestTheChatView:
         page.wait_for_selector("#chat-list .chatrow.on")
         assert not errors
 
-    def test_deleting_one_takes_it_off_the_list(self, joined, open_page):
+    def test_deleting_one_takes_it_off_the_list(self, governed, joined, open_page):  # noqa: F811
         joined.call("/ui/conversations", method="POST", cookie=joined.cookie,
                     headers={"Origin": f"http://127.0.0.1:{joined.port}", "Sec-Fetch-Site": "same-origin"},
                     body={"operation_id": "a" * 32, "model": "thornfield-8B", "title": "about the roof"})
