@@ -361,7 +361,7 @@ def _firewall_rule_present(name: str) -> bool:
 
 def _firewall_finding() -> Finding:
     """Windows only: the daemon is unreachable until the firewall lets TCP 8770 in. The fix is
-    one line for an administrator's prompt -- the one `poolhouse-setup --yes` cannot run for
+    one line for an administrator's prompt -- the one `poolhouse-setup` cannot run for
     you from an ordinary one."""
     from poolhouse.fleet import windows_firewall
 
@@ -503,9 +503,6 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--bench-home", metavar="PATH",
                     help="the bench's home to check with --checkouts (default: where "
                          "python -m poolhouse.bench keeps its store)")
-    ap.add_argument("--yes", action="store_true",
-                    help="run every offered fix without asking. A fix that needs root will "
-                         "still prompt for the password itself")
     args = ap.parse_args(argv)
     say("poolhouse: what this machine can do\n")
     findings = look()
@@ -515,7 +512,7 @@ def main(argv: list[str] | None = None) -> int:
         findings = findings + look_checkouts(
             repositories(args.repo) if args.repo else None,
             bench_home=Path(args.bench_home).expanduser() if args.bench_home else None)
-    ask(findings, yes=args.yes)
+    ask(findings)
     if not args.quiet:
         explain()
     return 0 if all(f.good for f in findings) else 1

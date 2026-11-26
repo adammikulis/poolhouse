@@ -490,7 +490,7 @@ def test_yes_runs_the_fixes_it_can_and_does_not_touch_the_build(everything, caps
         return real(cmd, *args, **kwargs)
 
     monkeypatch.setattr(subprocess, "run", run)
-    assert main(["--repo", str(repo), "--bench-home", str(home), "--yes"]) == 1
+    assert main(["--repo", str(repo), "--bench-home", str(home)]) == 1
     assert asked == [["poolhouse-serve", "build"]]
     assert (home / "measuring.json").exists(), "nothing deletes what says what ran last"
     assert hooks_of(repo).good

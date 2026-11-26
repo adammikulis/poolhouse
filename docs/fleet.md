@@ -157,7 +157,7 @@ following nothing, which is a machine somebody has to visit.
 2. Open Poolhouse there. On Windows, open it from Windows: it adds the inbound rule the first time (TCP 8770 for the daemon, on
    private networks) after one Windows prompt that says why, and says in one sentence what to do when the
    prompt was declined or the network is classed Public. Opened inside WSL on Windows' private network, it says that no other device
-   can reach it and the one command that fixes it (`python -m poolhouse.device_setup --yes`).
+   can reach it and the one command that fixes it (`python -m poolhouse.device_setup`).
 3. Join it with the code from the first device, as above. Then, from the first device:
 
 ```

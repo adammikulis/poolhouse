@@ -186,7 +186,7 @@ What this protects: the key leaking through a file copy, a backup or a repositor
 not: **code running as you can ask the keystore for the key** unless the operating system prompts
 for each use; the keystore protects against theft of files, not against execution as you. If the
 signing key is stolen anyway a thief can sign manifests members accept until the owner rotates
-and each member runs `signing accept`; that recovery is by hand. What a signature vouches for:
+and each member adopts the new key at its next fetch, because the old key signed the hand-over. What a signature vouches for:
 the controller lists a file only after checking it itself (a wheel against the digest the release
 or index publishes, through `httpguard`; a model through the guarded download and scan); it is
 "the controller vouches for these bytes", not "these bytes are safe".

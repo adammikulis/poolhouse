@@ -206,9 +206,6 @@ def _jevbench(args: Namespace) -> int:
             say(f"{part.path}  {jevbench.locate(part, download=True)}  sha256 {part.sha256[:16]}")
         say(f"{jevbench.REPO} at {jevbench.COMMIT}")
         return 0
-    if not args.yes:
-        say("nothing run: this uses the GPU for the model-backed backends; add --yes")
-        return 0
     cases = jevbench.load(args.tier)[:args.limit or None]
     say(f"{len(cases)} JevBench public items ({jevbench.REPO} at {jevbench.COMMIT[:12]})")
     results: dict[str, Any] = {"source": {"repo": jevbench.REPO, "commit": jevbench.COMMIT,
@@ -294,9 +291,6 @@ def _check(args: Namespace) -> int:
 def _fetch(args: Namespace) -> int:
     ck = STRANDS_V19
     say(f"{ck.name}: {len(ck.files)} files, {ck.total_bytes / 1e9:.2f} GB, licence {ck.licence}")
-    if not args.yes:
-        say("nothing downloaded; add --yes to fetch and verify them")
-        return 0
     for pin in ck.files:
         say(f"  {pin.repo}/{pin.filename}  {locate(pin, download=True)}")
     return 0
@@ -361,7 +355,7 @@ def bench_cmd(args: Namespace) -> int:
 
 @COMMANDS.command("jevbench", help="score backends on JevBench's public items (opt-in)", options=[
     flag("--fetch", action="store_true", help="download the pinned public files, nothing else"),
-    option("yes"), flag("--backend", action="append", default=None,
+    flag("--backend", action="append", default=None,
                         help="rules, pointer or logprob; repeat (default: rules)"),
     flag("--gguf", default="", help="the model logprob serves, leased through the Broker"),
     flag("--context", type=int, default=12288, help="context of the leased server"),
@@ -409,7 +403,7 @@ def check_cmd(args: Namespace) -> int:
 
 
 @COMMANDS.command("fetch", help="download the pinned pointer checkpoint",
-                  options=[option("yes")])
+                  options=[])
 def fetch_cmd(args: Namespace) -> int:
     """Download the pinned pointer checkpoint."""
     return _guarded(_fetch, args)

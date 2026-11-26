@@ -205,3 +205,28 @@ def test_rotating_a_key_held_in_an_encrypted_file_replaces_the_file(tmp_path, no
     assert fresh["key_id"] != old and fresh["store"] == "file"
     assert signing.open_file(keys.file_path, "a long passphrase")
     mf.verify(keys.sign([], serial=1), keys.public)
+
+
+def test_a_fetch_adopts_a_rotation_the_pinned_key_signed_at_once_and_nothing_waits(tmp_path, monkeypatch):
+    """A member still on the old key meets a manifest of the new one, handed over by a statement the old key signed: the new
+    key is pinned in the same fetch, with no `signing accept` and no person."""
+    import argparse
+
+    from poolhouse.fleet.onboard import cli
+    old, new = mf.Signer.generate(), mf.Signer.generate()
+    raw = new.sign([], serial=2, carried=mf.Carried((old.announce_rotation(new),)))
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "trust.json").write_text(json.dumps({
+        "certificate": "c", "signing_key": base64.b64encode(old.public).decode(),
+        "device_secret": base64.urlsafe_b64encode(b"s" * 32).decode()}), encoding="utf-8")
+    monkeypatch.setattr(cli, "resolve", lambda host, *a, **k: host)
+    monkeypatch.setattr(cli, "pinned_context", lambda cert: None)
+    monkeypatch.setattr(cli, "MemberSource", lambda *a, **k: object())
+    monkeypatch.setattr(cli, "fetch_manifest", lambda member: raw)
+    monkeypatch.setattr(cli, "remember", lambda *a, **k: None)
+    monkeypatch.setattr("builtins.input", lambda _prompt="": pytest.fail("a person was asked"))
+    args = argparse.Namespace(state=str(state), source="host:7447", names=[], into="", json=True)
+    assert cli.cmd_fetch(args) == 0
+    held = json.loads((state / "trust.json").read_text(encoding="utf-8"))
+    assert base64.b64decode(held["signing_key"]) == new.public and held["serial"] == 2 and "pending_key" not in held

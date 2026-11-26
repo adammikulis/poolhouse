@@ -190,7 +190,6 @@ class UI:
         founded = self.founded()
         done = bool(self.settings and self.settings.setup_done)
         return {"version": current_version(),
-                "experimental_notice_accepted": bool(self.settings and self.settings.experimental_notice_accepted is True),
                 "in_pool": founded, "name": self.name, "group": self.group(),
                 "needs_sign_in": founded,
                 "needs_setup": not done,

@@ -105,7 +105,7 @@ class Serving:
     def initial_settings():
         """Ordinary UI journeys start from an installation whose notice was acknowledged."""
         from poolhouse.fleet.settings import Settings
-        return Settings(experimental_notice_accepted=True)
+        return Settings()
 
     def ticket_session(self, **options):
         """Sign in the way the Poolhouse window does: spend a launch ticket this daemon minted."""

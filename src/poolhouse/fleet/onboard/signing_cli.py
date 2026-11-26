@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import os
 from pathlib import Path
@@ -11,11 +10,9 @@ from typing import Any
 
 from poolhouse import home
 from poolhouse.caller import AgentRefused
-from poolhouse.files import read_json, write_json
 from poolhouse.log import say
 from poolhouse.sentinel.permit import mint
 
-from .manifest import key_fingerprint
 from .signing import UNLOCK_ENV, KeyStoreError, SigningKeys
 
 __all__ = ["add_signing", "cmd_signing"]
@@ -24,7 +21,7 @@ __all__ = ["add_signing", "cmd_signing"]
 def add_signing(sub: Any, common: Any) -> None:
     p = common(sub.add_parser("signing", help="the signing key: show it; export, rotate and revoke "
                                               "are refused to an agent"))
-    p.add_argument("action", choices=["show", "export", "rotate", "revoke", "accept"])
+    p.add_argument("action", choices=["show", "export", "rotate", "revoke"])
     p.add_argument("value", nargs="?", default="",
                    help="export: the file to write, encrypted under the passphrase in "
                         f"${UNLOCK_ENV} (refused at once when it is not set); revoke: a key id")
@@ -62,18 +59,8 @@ def _run(args: argparse.Namespace, keys: SigningKeys, directory: Path) -> int:
     elif args.action == "rotate":
         fresh = keys.rotate(mint("rotate", doc["key_id"]))
         _emit(args, {"key_id": fresh["key_id"], "old": doc["key_id"]},
-              f"new signing key {fresh['key_id']}; members see it announced and accept it by hand")
+              f"new signing key {fresh['key_id']}; members see it announced and adopt it at their next fetch")
     elif args.action == "revoke":
         listed = keys.revoke(mint("revoke", args.value), args.value)
         _emit(args, {"revoked": listed}, f"revoked {args.value}")
-    else:
-        trust = read_json(directory / "trust.json", {})
-        pending = trust.get("pending_key")
-        if not pending:
-            _emit(args, {"error": "no key change is waiting"}, "error: no key change is waiting")
-            return 2
-        name = key_fingerprint(base64.b64decode(pending))
-        mint("accept", name)
-        write_json(directory / "trust.json", {**trust, "signing_key": pending, "pending_key": None})
-        _emit(args, {"pinned": name}, f"pinned signing key {name}")
     return 0

@@ -1230,7 +1230,7 @@ tests = ["tests/test_sandbox_redteam.py", "tests/test_pdf_engine.py", "tests/tes
 [[group]]
 match = ["spawn:checks.py:ask"]
 status = "covered"
-tests = ["tests/test_redteam_spawn.py::test_a_fix_line_is_shown_and_runs_only_when_asked_for_with_yes_and_never_through_a_shell"]
+tests = ["tests/test_redteam_spawn.py::test_a_fix_line_is_shown_and_runs_with_nothing_asked_and_never_through_a_shell"]
 
 [[group]]
 match = ["spawn:jobs.py:detach", "spawn:serve/backend.py:launch", "spawn:bench/queue.py:*",
@@ -1703,12 +1703,6 @@ match = ["route:fleet/knowledge_routes.py:*"]
 status = "covered"
 tests = ["tests/test_fleet_knowledge.py::test_inspector_authorization_path_bounds_and_read_only", "tests/test_fleet_knowledge.py::test_a_registered_project_coordination_graph_is_not_offered_or_readable", "tests/test_fleet_knowledge.py::test_large_fields_and_directory_discovery_are_bounded", "tests/test_fleet_knowledge.py::test_kind_identity_bounds_refuse_oversized_values"]
 note = "UI authorization, registered project scope, read-only access, traversal, symlinks and bounded graph fields are exercised"
-
-[[group]]
-match = ["route:fleet/notice_routes.py:/ui/notice/accept", "route:fleet/notice_routes.py:/ui/notice/issues"]
-status = "covered"
-tests = ["tests/test_experimental_notice.py::test_agents_and_foreign_origins_cannot_accept", "tests/test_experimental_notice.py::test_absent_revoked_weak_session_and_persistence_failure_remain_unaccepted", "tests/test_experimental_notice.py::test_bug_report_target_is_fixed_and_opens_only_on_explicit_authenticated_post", "tests/test_experimental_notice.py::test_duplicate_acceptance_fields_are_rejected_over_actual_http"]
-note = "Actual HTTP refuses foreign origins, agent credentials, revoked sessions and duplicate acceptance fields; bug reports use a fixed target and acknowledgement cannot grant authority."
 
 [[group]]
 match = ["route:fleet/setup_preparation_routes.py:/ui/setup/prepare", "route:fleet/setup_preparation_routes.py:/ui/setup/prepare/*"]

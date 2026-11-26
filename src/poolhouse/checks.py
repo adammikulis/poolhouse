@@ -51,8 +51,8 @@ def checkout() -> Path | None:
     return here if (here / "pyproject.toml").is_file() else None
 
 
-def ask(findings: list[Finding], *, yes: bool = False) -> int:
-    """Show what was found and offer each fix, one at a time."""
+def ask(findings: list[Finding]) -> int:
+    """Show what was found and run each fix, one at a time. Nothing is asked: a fix that needs `sudo` is refused at once with the reason."""
     worst = 0
     for one in findings:
         mark = "ok  " if one.good else "  ! "
@@ -63,8 +63,8 @@ def ask(findings: list[Finding], *, yes: bool = False) -> int:
             continue
         worst = 1
         say(f"      fix: {line(one.fix, one.cwd)}")
-        if not yes:
+        if "sudo" in one.fix:
+            say("      not run: it needs `sudo`, which would wait for a password; run it as an administrator yourself")
             continue
-        # a sudo in the command prompts on this terminal; nothing here reads the password
         subprocess.run(one.fix, cwd=one.cwd or None, check=False)
     return worst

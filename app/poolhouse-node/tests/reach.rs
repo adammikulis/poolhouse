@@ -83,7 +83,7 @@ fn a_wsl_device_behind_nat_gets_the_wsl_fix_whether_or_not_its_channel_is_open()
     b.net.sync_once(true).unwrap();
     eventually("a to see the channel b opened", 10, || reach(&a, &b).0 == "channel");
     assert_eq!(reach(&a, &b).1, WSL_NAT_HINT);
-    assert!(WSL_NAT_HINT.contains("set networkingMode=mirrored in .wslconfig and run wsl --shutdown") && WSL_NAT_HINT.contains("python -m poolhouse.device_setup --yes"));
+    assert!(WSL_NAT_HINT.contains("set networkingMode=mirrored in .wslconfig and run wsl --shutdown") && WSL_NAT_HINT.contains("python -m poolhouse.device_setup"));
 }
 
 #[test]

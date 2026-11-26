@@ -1,7 +1,7 @@
 {
- "surfaces": 893,
+ "surfaces": 891,
  "by_status": {
-  "covered": 568,
+  "covered": 566,
   "partial": 182,
   "uncovered": 51,
   "n/a": 92,
@@ -86,7 +86,7 @@
    "unmapped": 0
   },
   "route": {
-   "covered": 129,
+   "covered": 127,
    "partial": 46,
    "uncovered": 0,
    "n/a": 1,
@@ -8268,36 +8268,6 @@
    "note": "Actual Fleet sockets give a ticket only to a request carrying the daemon's launch secret with no browser Origin, or to a credentialed session; wrong secrets back off, tickets are capped, spent once, expire, and an uncredentialed session cannot hand one out"
   },
   {
-   "id": "route:fleet/notice_routes.py:/ui/notice/accept",
-   "kind": "route",
-   "source": "fleet/notice_routes.py:NoticeRoutes.public_route",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "covered",
-   "tests": [
-    "tests/test_experimental_notice.py::test_agents_and_foreign_origins_cannot_accept",
-    "tests/test_experimental_notice.py::test_absent_revoked_weak_session_and_persistence_failure_remain_unaccepted",
-    "tests/test_experimental_notice.py::test_bug_report_target_is_fixed_and_opens_only_on_explicit_authenticated_post",
-    "tests/test_experimental_notice.py::test_duplicate_acceptance_fields_are_rejected_over_actual_http"
-   ],
-   "note": "Actual HTTP refuses foreign origins, agent credentials, revoked sessions and duplicate acceptance fields; bug reports use a fixed target and acknowledgement cannot grant authority."
-  },
-  {
-   "id": "route:fleet/notice_routes.py:/ui/notice/issues",
-   "kind": "route",
-   "source": "fleet/notice_routes.py:NoticeRoutes.public_route",
-   "trust": "network member or local browser",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "covered",
-   "tests": [
-    "tests/test_experimental_notice.py::test_agents_and_foreign_origins_cannot_accept",
-    "tests/test_experimental_notice.py::test_absent_revoked_weak_session_and_persistence_failure_remain_unaccepted",
-    "tests/test_experimental_notice.py::test_bug_report_target_is_fixed_and_opens_only_on_explicit_authenticated_post",
-    "tests/test_experimental_notice.py::test_duplicate_acceptance_fields_are_rejected_over_actual_http"
-   ],
-   "note": "Actual HTTP refuses foreign origins, agent credentials, revoked sessions and duplicate acceptance fields; bug reports use a fixed target and acknowledgement cannot grant authority."
-  },
-  {
    "id": "route:fleet/onboard/bootstrap.py:manifest",
    "kind": "route",
    "source": "fleet/onboard/bootstrap.py:BootstrapServer.dispatch",
@@ -10581,7 +10551,7 @@
    "attacker": "attacker text becomes a command line, environment or working directory",
    "status": "covered",
    "tests": [
-    "tests/test_redteam_spawn.py::test_a_fix_line_is_shown_and_runs_only_when_asked_for_with_yes_and_never_through_a_shell"
+    "tests/test_redteam_spawn.py::test_a_fix_line_is_shown_and_runs_with_nothing_asked_and_never_through_a_shell"
    ],
    "note": ""
   },

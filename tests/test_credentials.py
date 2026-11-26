@@ -443,9 +443,24 @@ def _run(monkeypatch, capsys, argv, stdin=""):
 
 
 def test_set_reads_the_value_from_stdin_and_never_prints_it(isolated, monkeypatch, capsys):
-    code, out, err = _run(monkeypatch, capsys, ["set", "WIDGET_KEY", "--stdin"], f"{SECRET}\n")
+    code, out, err = _run(monkeypatch, capsys, ["set", "WIDGET_KEY"], f"{SECRET}\n")
     assert code == 0 and SECRET not in out + err
     assert credentials.get("WIDGET_KEY") == SECRET
+
+
+def test_set_on_a_terminal_is_refused_at_once_and_asks_nothing(isolated, monkeypatch, capsys):
+    class Terminal(io.StringIO):
+        def isatty(self):
+            return True
+
+        def readline(self, *_):
+            raise AssertionError("a terminal was read for an answer")
+
+    monkeypatch.setattr(sys, "stdin", Terminal(""))
+    monkeypatch.setattr("getpass.getpass", lambda *_: pytest.fail("a value was asked at a prompt"), raising=False)
+    code = credentials_cli.command(["set", "WIDGET_KEY"])
+    assert code == 1 and "stdin only" in capsys.readouterr().err
+    assert credentials.get("WIDGET_KEY") is None
 
 
 def test_list_names_each_credential_and_where_it_comes_from(isolated, monkeypatch, capsys):
@@ -467,9 +482,9 @@ def test_unset_and_path(isolated, monkeypatch, capsys):
 
 
 def test_a_refusal_is_a_message_and_status_1(isolated, monkeypatch, capsys):
-    code, _, _ = _run(monkeypatch, capsys, ["set", "WIDGET_KEY", "--stdin"], "two\nlines\n")
+    code, _, _ = _run(monkeypatch, capsys, ["set", "WIDGET_KEY"], "two\nlines\n")
     assert code == 0, "only the first line is the value"
-    code, _, err = _run(monkeypatch, capsys, ["set", "bad name", "--stdin"], "x")
+    code, _, err = _run(monkeypatch, capsys, ["set", "bad name"], "x")
     assert code == 1 and "credential name" in err
 
 

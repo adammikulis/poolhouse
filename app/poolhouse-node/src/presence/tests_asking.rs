@@ -5,7 +5,7 @@ use std::sync::atomic::Ordering;
 
 use super::card::{Draft, Generated, TICKET_FOR_MS};
 use super::firsts::SECRET_FOR_MS;
-use super::os::{self, Kind, OsPrompt, Tell, ASK_FOR_MS};
+use super::mode::ASK_FOR_MS;
 use super::tests::{person, person_aged, Age, Said, Scripted};
 use super::*;
 
@@ -144,115 +144,6 @@ fn a_ticket_is_spent_only_by_the_session_it_was_given_to() {
     firsts.spend_payload("demo/a", &ticket, &hash(b"payload"), 1).unwrap();
 }
 
-/// The notifications a prompt made, in place of the system's: what the person would have been told outside the dialog.
-type Told = std::sync::Arc<std::sync::Mutex<Vec<String>>>;
-
-fn recording() -> (Told, Tell) {
-    let told = Told::default();
-    let record = told.clone();
-    (told, std::sync::Arc::new(move |title: &str, body: &str| record.lock().unwrap().push(format!("{title}: {body}"))))
-}
-
-/// A stand-in for the system's dialog: a shell that says ``said`` on its standard error and exits with ``code``, the way `osascript` does when the person
-/// cancels (`User canceled`) or when the dialog could not be shown at all. It raises no dialog.
-#[cfg(unix)]
-fn stand_in_dialog(said: &str, code: i32) -> std::process::Child {
-    std::process::Command::new("/bin/sh").args(["-c", "printf '%s\\n' \"$0\" >&2; exit $1", said, &code.to_string()]).stderr(std::process::Stdio::piped()).spawn().unwrap()
-}
-
-#[cfg(unix)]
-#[test]
-fn the_moment_the_dialog_ends_is_noted_by_the_node_and_not_by_whoever_polls_next() {
-    let (_, tell) = recording();
-    let mut prompt = OsPrompt::start(stand_in_dialog("", 0), std::time::Duration::from_secs(30), Kind::Mac, tell.clone());
-    std::thread::sleep(std::time::Duration::from_millis(600));
-    assert_eq!(prompt.poll(), Some(true));
-    assert!(prompt.age_ms() >= 400, "the dialog ended 600 ms ago and nobody polled until now: {}", prompt.age_ms());
-    let mut prompt = OsPrompt::start(stand_in_dialog("", 126), std::time::Duration::from_secs(30), Kind::Pkexec, tell);
-    std::thread::sleep(std::time::Duration::from_millis(300));
-    assert_eq!(prompt.poll(), Some(false), "pkexec's 126 is a dismissed dialog");
-}
-
-#[cfg(unix)]
-#[test]
-fn a_dialog_that_could_not_be_shown_is_not_a_no_says_why_and_is_announced() {
-    let (told, tell) = recording();
-    let mut prompt = OsPrompt::start(stand_in_dialog("execution error: Can't open default scripting component. (-1750)", 1), std::time::Duration::from_secs(30), Kind::Mac, tell);
-    std::thread::sleep(std::time::Duration::from_millis(400));
-    assert_eq!(prompt.poll(), None, "a dialog that failed gave no answer, least of all the person's no");
-    let why = prompt.failed().expect("the failure is kept for the person and the asker");
-    assert!(why.contains("-1750") && why.contains("scripting component"), "the system's own words are said: {why}");
-    let told = told.lock().unwrap().clone();
-    assert!(told.len() == 1 && told[0].starts_with("Poolhouse could not ask you") && told[0].contains("-1750"), "the person is told outside the dialog: {told:?}");
-}
-
-#[cfg(unix)]
-#[test]
-fn only_the_dialogs_own_cancel_is_the_persons_no_and_nothing_is_announced_for_it() {
-    let (told, tell) = recording();
-    let mut prompt = OsPrompt::start(stand_in_dialog("execution error: User canceled. (-128)", 1), std::time::Duration::from_secs(30), Kind::Mac, tell);
-    std::thread::sleep(std::time::Duration::from_millis(400));
-    assert_eq!(prompt.poll(), Some(false), "the person pressed Cancel");
-    assert!(prompt.failed().is_none());
-    assert!(told.lock().unwrap().is_empty(), "the person knows they declined");
-}
-
-#[cfg(unix)]
-#[test]
-fn a_dialog_nobody_answered_is_ended_and_gives_no_answer_at_all() {
-    let (told, tell) = recording();
-    let slow = std::process::Command::new("/bin/sleep").arg("30").spawn().unwrap();
-    let mut prompt = OsPrompt::start(slow, std::time::Duration::from_millis(150), Kind::Mac, tell);
-    std::thread::sleep(std::time::Duration::from_millis(700));
-    assert_eq!(prompt.poll(), None, "time running out is not a no");
-    assert!(prompt.failed().is_none(), "and not a failure either: the node expires it itself");
-    assert!(told.lock().unwrap().is_empty());
-}
-
-#[test]
-fn each_systems_own_words_for_the_persons_no_are_the_only_no_and_every_other_end_is_a_failure() {
-    use os::{verdict, End::{Failed, No, Yes}};
-    assert_eq!(verdict(Kind::Mac, Some(0), ""), Yes);
-    assert_eq!(verdict(Kind::Mac, Some(1), "execution error: User canceled. (-128)"), No);
-    assert_eq!(verdict(Kind::Pkexec, Some(126), ""), No);
-    assert_eq!(verdict(Kind::Windows, Some(3), ""), No);
-    for (kind, code, said) in [
-        (Kind::Mac, Some(1), "execution error: User interaction is not allowed. (-60007)"),
-        (Kind::Mac, Some(1), ""),
-        (Kind::Mac, None, "killed"),
-        (Kind::Pkexec, Some(127), "Error getting authority: Error initializing authority"),
-        (Kind::Pkexec, Some(1), ""),
-        (Kind::Windows, Some(1), "Exception calling PromptForCredential"),
-        (Kind::Windows, Some(126), ""),
-    ] {
-        assert!(matches!(verdict(kind, code, said), Failed(_)), "{kind:?} {code:?} {said:?} is a dialog that failed and not a person who said no");
-    }
-    let Failed(why) = verdict(Kind::Pkexec, Some(127), "") else { panic!("127 fails") };
-    assert!(why.contains("no authentication agent") && why.contains("it said nothing"), "{why}");
-}
-
-#[test]
-fn the_dialog_makes_the_node_the_frontmost_application_and_carries_the_sentence_only_as_its_last_argument() {
-    let command = os::mac_dialog("poolhouse: allow \"x\"; rm -rf /");
-    let args: Vec<String> = command.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
-    assert_eq!(command.get_program(), "/usr/bin/osascript");
-    assert!(args.iter().any(|a| a == "tell current application to activate"), "a faceless program brings its dialog forward first: {args:?}");
-    let script = args[..args.len() - 2].join("\n");
-    assert!(script.contains("with administrator privileges with prompt (item 1 of argv)"), "{script}");
-    assert_eq!((args[args.len() - 2].as_str(), args[args.len() - 1].as_str()), ("--", "poolhouse allow x rm -rf /"), "the sentence is plain and never part of the script");
-}
-
-#[test]
-fn a_notification_carries_its_words_as_arguments_and_never_as_script() {
-    let command = super::announce::mac_notification("Poolhouse is waiting for you", "make the pool home");
-    let args: Vec<String> = command.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
-    assert_eq!(command.get_program(), "/usr/bin/osascript");
-    assert_eq!(args[args.len() - 3..], ["--", "make the pool home", "Poolhouse is waiting for you"]);
-    assert!(args.iter().any(|a| a.starts_with("display notification (item 1 of argv)")));
-    let windows = super::announce::windows_notification();
-    assert!(windows.get_args().all(|a| !a.to_string_lossy().contains("waiting")), "the words travel on standard input");
-}
-
 #[test]
 fn what_waits_for_the_person_is_reported_in_their_words_until_it_is_answered() {
     let (mut firsts, answer) = person();
@@ -269,22 +160,6 @@ fn what_waits_for_the_person_is_reported_in_their_words_until_it_is_answered() {
     *answer.lock().unwrap() = Some(true);
     firsts.settle(40);
     assert!(firsts.waiting(40).is_empty(), "answered, so nothing waits");
-}
-
-#[test]
-fn a_computer_with_no_prompt_asks_on_the_terminal_and_one_with_a_prompt_asks_with_it() {
-    let dir = tempfile::tempdir().unwrap();
-    assert_eq!(Mode::Os.presence_where(true, dir.path()).kind(), "os");
-    assert_eq!(Mode::Os.presence_where(false, dir.path()).kind(), "terminal", "never left with no way to ask");
-    assert!(Firsts::new(Mode::Os.presence_where(false, dir.path())).pool_key_claim() == crate::gov::keys::Claim::keystore_typed(), "what it makes counts as a typed yes");
-    assert!(Firsts::new(Mode::Os.presence_where(true, dir.path())).pool_key_claim() == crate::gov::keys::Claim::keystore_prompt());
-}
-
-#[test]
-fn an_administrators_group_is_found_among_the_groups_of_the_account() {
-    assert!(os::is_member(&[20, 80, 501], Some(80)));
-    assert!(!os::is_member(&[20, 501], Some(80)), "a standard account");
-    assert!(!os::is_member(&[80], None), "no such group");
 }
 
 #[test]
