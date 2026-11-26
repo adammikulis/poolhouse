@@ -28,7 +28,7 @@ def nat_notice(address: str) -> str:
     if not behind:
         return ""
     return (f"This WSL machine is on Windows' private network ({address}), so your other devices cannot find it or reach it. "
-            "Open Poolhouse from Windows, which carries the network for it, or run `python -m poolhouse.device_setup --yes` here: "
+            "Open Poolhouse from Windows, which carries the network for it, or run `python -m poolhouse.device_setup` here: "
             "it asks Windows once, switches WSL to mirrored networking and restarts WSL.")
 
 

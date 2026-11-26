@@ -1,8 +1,8 @@
 """Set this device up to join a pool, the same one command on macOS, Linux, Windows and WSL.
 
-    python -m poolhouse.device_setup [--yes] [--dry-run] [--wait SECONDS]
+    python -m poolhouse.device_setup [--dry-run] [--wait SECONDS]
 
-It lists every change this device needs, makes them only with `--yes`,
+It lists every change this device needs, makes them,
 and ends with READY, or NOT READY and the one fix. Per platform: Windows and WSL get inbound firewall rules (one Windows
 administrator prompt) and WSL gets mirrored networking in the Windows user's .wslconfig (the old file is kept; WSL then
 restarts, which ends this session, so run the same command again); every platform gets the node (a binary already
@@ -123,12 +123,9 @@ def survey(repo: Path) -> Needs:
     return Needs(kind, mode, changed, windows and device_host.firewall_missing(), node_source(repo, selected=runtime.selection_prefix(), cargo=shutil.which("cargo")))
 
 
-def confirmed(steps: list[str], *, yes: bool) -> bool:
-    """Show the steps; they are made only when the command said `--yes`. Nothing is asked and nothing waits."""
+def announce(steps: list[str]) -> None:
+    """Show the steps before they are made. Nothing is asked and nothing waits."""
     say("This will change on this device:\n" + "\n".join(f"  - {s}" for s in steps))
-    if not yes:
-        say("nothing was changed: pass --yes to make these changes")
-    return yes
 
 
 def prepare(needs: Needs) -> str:
@@ -164,14 +161,12 @@ def _setup(a) -> int:
         if a.dry_run:
             say("\n".join(f"  - {s}" for s in steps))
             return 0
-        if not confirmed(steps, yes=a.yes):
-            say("Nothing changed.")
-            return 1
+        announce(steps)
         if prepare(needs):
             return 0
         check = node_join_check.Check(state=default_state(), port=node_join.DEFAULT_PORT, beacon_port=node_join.DEFAULT_BEACON_PORT,
                                       wait_s=a.wait, binary=binary_of(needs, repo))
-        node_join.consent(check.port, check.beacon_port, yes=True)
+        node_join.consent(check.port, check.beacon_port)
         ok = node_join_check.walk(check)
         say(node_join_check.summary(check))
         return 0 if ok else 1
@@ -181,7 +176,6 @@ def _setup(a) -> int:
 
 
 GROUP = Group("poolhouse.device_setup", "Set this device up to join a pool: the same command on macOS, Linux, Windows and WSL.", run=_setup, options=[
-    flag("--yes", action="store_true", help="agree to the listed changes without being asked"),
     flag("--dry-run", action="store_true", help="list the changes and make none"),
     flag("--wait", type=float, default=90.0, help="seconds to wait for another device at each step that needs it"),
 ])

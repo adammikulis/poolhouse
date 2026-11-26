@@ -537,7 +537,7 @@ docs/agent-rules.md, "Agent profiles and names".
 
 ### Setting up a new device
 
-When the owner says to connect this device to the pool, do all of it with `python -m poolhouse.device_setup --yes`
+When the owner says to connect this device to the pool, do all of it with `python -m poolhouse.device_setup`
 (`--dry-run` lists the changes), ask the owner to type nothing, and follow `docs/windows-wsl.md`. Before telling the
 owner to set up another device, run `scripts/pool-check` (docs/pool-check.md) and fix what fails (real devices of a
 different operating system, kernel and network stack, joined through the real join path, PASS or FAIL per step). Two

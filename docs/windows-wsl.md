@@ -7,7 +7,7 @@ is press **Yes** on one Windows prompt (step 2), so tell him before it appears.
 There is one command, the same on every platform:
 
 ```sh
-python -m poolhouse.device_setup --yes
+python -m poolhouse.device_setup
 ```
 
 (from the repository root, with `PYTHONPATH=src` when Poolhouse is not installed; on Windows use `py` or `python`).
@@ -23,7 +23,7 @@ python -m poolhouse.device_setup --yes
 
 1. **Find out where you are.** Run `python -m poolhouse.device_setup --dry-run` and read the list. A WSL machine
    in the default NAT mode ends its list at "restart WSL".
-2. **Run it.** `python -m poolhouse.device_setup --yes`. On Windows or WSL, tell the owner just before: "A Windows
+2. **Run it.** `python -m poolhouse.device_setup`. On Windows or WSL, tell the owner just before: "A Windows
    prompt will appear; press Yes." That is the firewall step. If the prompt is declined it ends NOT READY and says
    to run again.
 3. **After a WSL restart** your session ends (`wsl --shutdown` stops WSL). The owner reopens the session; run the
@@ -42,7 +42,7 @@ python -m poolhouse.device_setup --yes
    | enrolled | policy differs, or the device already has members | both devices on policy `open`; see "Secure pools" |
    | converge | the board message did not cross | rerun with the other device up |
 5. **The Mac side.** The Mac must be on the same wifi or cable (not a guest network, not a VPN) with its node
-   running and policy `open`: from the Mac's checkout, `python -m poolhouse.device_setup --yes` (a Mac agent does
+   running and policy `open`: from the Mac's checkout, `python -m poolhouse.device_setup` (a Mac agent does
    this; it changes nothing on the Mac except starting the node and turning the network on). Run the Windows
    command within a minute or two of it; the join check waits 90 s at each step that needs the other device.
 6. **Confirm by exchanging a message.** The join check posts to the board `pool-check` and waits for the other
@@ -80,7 +80,7 @@ networkingMode=mirrored
 ```
 
 then in PowerShell run `wsl --shutdown` and start WSL again (Windows 11 22H2 or newer). Or run, on the WSL device,
-`python -m poolhouse.device_setup --yes`, which writes that setting (keeping the old file beside it), adds the Windows firewall
+`python -m poolhouse.device_setup`, which writes that setting (keeping the old file beside it), adds the Windows firewall
 rules and restarts WSL (`--dry-run` lists these first). If other devices still cannot dial it, allow inbound traffic to the WSL
 virtual machine in an administrator PowerShell: `Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -DefaultInboundAction Allow`.
 
@@ -88,7 +88,7 @@ The pool says how each member is reached: `poolhouse-pool members` has a `REACH`
 `reach_hint`. `direct`: this device dialed the member and it answered. `channel`: this device cannot dial it; it is reached over the
 connection it opened. `none`: no address answers and no connection is open (`no member can dial it yet: have it dial a member, or
 give it an address`). A WSL device in NAT mode that is not `direct` gets the fix as its hint: `this device looks like WSL2 behind NAT:
-set networkingMode=mirrored in .wslconfig and run wsl --shutdown, or run python -m poolhouse.device_setup --yes on it`. The same hints
+set networkingMode=mirrored in .wslconfig and run wsl --shutdown, or run python -m poolhouse.device_setup on it`. The same hints
 are in `poolhouse-doctor` and `poolhouse runtime status`.
 
 CI covers only the NAT case (a GitHub runner's WSL is in NAT mode); mirrored mode has not been run by the pool check

@@ -242,7 +242,6 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
   M.inPool = false;
   M.signInMessage = "";
   M.launchOnly = false;
-  M.noticeAccepted = false;
 
   /** Show one screen by name, and tell every component that is watching. */
   M.go = function (name, remember = true) {
@@ -251,8 +250,6 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
     }
     if (name === "pool" && ["sign-in", "first-run"].includes(M.route) && !available(M.requestedRoute)) name = available("studio") ? "studio" : available("chat") ? "chat" : "fit";
     if (IN_APP.includes(name) && !available(name)) name = available("studio") ? "studio" : available("chat") ? "chat" : "fit";
-    if ((IN_APP.includes(name) || name === "first-run") && M.noticeAccepted !== true
-        && customElements.get("experimental-notice")) name = "experimental-notice";
     if (IN_APP.includes(name)) {
       M.requestedRoute = name;
       if (remember && location.hash !== `#${name}`) history.pushState(null, "", `#${name}`);
@@ -389,7 +386,6 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
       M.requestedRoute = opened;
       const setup = await request("/ui/setup");
       if (!current()) return false;
-      M.noticeAccepted = setup.experimental_notice_accepted === true;
       M.group = setup.group || "";
       M.inPool = !!setup.needs_sign_in;
       const launched = (await request("/ui/session")).signed_in;

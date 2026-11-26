@@ -27,7 +27,7 @@ def test_it_reports_rather_than_changes(capsys):
     assert all(f.name and f.said for f in findings)
 
 
-@pytest.mark.parametrize('arguments', [[], ['--quiet'], ['--quiet', '--yes']])
+@pytest.mark.parametrize('arguments', [[], ['--quiet']])
 def test_setup_diagnostics_never_install_optional_agent_hooks(tmp_path, monkeypatch, arguments):
     from poolhouse import agent_hooks, setup
 
@@ -76,25 +76,23 @@ def test_an_architecture_is_only_claimed_when_the_names_were_read(monkeypatch, t
     assert found and found[0].good
 
 
-def test_nothing_is_run_without_being_asked(capsys, monkeypatch):
-    """A wizard that fixes things by itself is a wizard nobody can safely run twice."""
-    ran = []
-    monkeypatch.setattr(subprocess, "run", lambda *a, **k: ran.append(a))
-    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-
-    ask([Finding(name="a thing", good=False, said="wrong", fix=["rm", "-rf", "/"])])
-    assert ran == [], "a non-interactive run must offer, not act"
-    assert "fix: rm -rf /" in capsys.readouterr().out
-
-
-def test_a_fix_runs_only_when_it_is_wanted(capsys, monkeypatch):
+def test_a_fix_runs_without_any_flag_and_nothing_is_asked(capsys, monkeypatch):
     ran = []
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: ran.append(a[0]))
-    ask([Finding(name="a thing", good=False, said="wrong", fix=["echo", "yes"])], yes=True)
+    monkeypatch.setattr("builtins.input", lambda _prompt="": pytest.fail("nothing is asked"))
+    ask([Finding(name="a thing", good=False, said="wrong", fix=["echo", "yes"])])
     assert ran == [["echo", "yes"]]
+    assert "fix: echo yes" in capsys.readouterr().out
+
+
+def test_a_fix_that_needs_sudo_is_refused_at_once_with_the_reason(capsys, monkeypatch):
+    ran = []
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: ran.append(a[0]))
+    ask([Finding(name="a thing", good=False, said="wrong", fix=["sudo", "true"])])
+    assert ran == [] and "needs `sudo`" in capsys.readouterr().out
 
     ran.clear()
-    ask([Finding(name="a thing", good=True, said="fine", fix=["echo", "no"])], yes=True)
+    ask([Finding(name="a thing", good=True, said="fine", fix=["echo", "no"])])
     assert ran == [], "nothing is run to fix what is not broken"
 
 
@@ -183,8 +181,8 @@ def test_a_build_that_answers_every_flag_is_not_mentioned(tmp_path, monkeypatch)
 
 def test_a_missing_architecture_offers_the_build_fix(monkeypatch, tmp_path):
     """`poolhouse-serve build` is the fix for a release lagging master by an architecture --
-    `poolhouse-setup --yes` runs whatever a finding's `fix` names, so this is what makes
-    `--yes` actually get a missing architecture rather than just naming the gap."""
+    `poolhouse-setup` runs whatever a finding's `fix` names, so this is what makes
+    it actually gets a missing architecture rather than just naming the gap."""
     import poolhouse.setup as setup
     fake = tmp_path / "llama-server"
     fake.write_text("#!/bin/sh\necho usage\n")
@@ -637,6 +635,6 @@ def test_a_fix_naming_a_hostile_path_runs_as_one_argument_and_no_shell(tmp_path,
     marker = tmp_path / "executed"
     hostile = tmp_path / "a; touch executed; $(touch executed) `touch executed` & b"
     hostile.mkdir()
-    ask([Finding(name="a thing", good=False, said="wrong", fix=["ls", "-d", str(hostile)])], yes=True)
-    ask([Finding(name="a thing", good=False, said="wrong", fix=["pwd"], cwd=str(hostile))], yes=True)
+    ask([Finding(name="a thing", good=False, said="wrong", fix=["ls", "-d", str(hostile)])])
+    ask([Finding(name="a thing", good=False, said="wrong", fix=["pwd"], cwd=str(hostile))])
     assert not marker.exists() and not (hostile / "executed").exists() and not list(tmp_path.glob("**/executed"))

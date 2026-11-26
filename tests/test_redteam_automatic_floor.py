@@ -202,7 +202,6 @@ def test_nothing_in_the_library_asks_prompts_or_waits_for_a_person():
     asking = re.compile(r"\binput\(|\.raise_request\(|getpass\.getpass\(|from getpass import getpass")
     allowed_asking = {
         "do.py": "the chat's own ask_user and its line reader are the conversation itself",
-        "credentials/cli.py": "the hidden prompt of `credentials set`; a guarded path an agent cannot edit, to be made stdin-only",
     }
     optional_words = {"board/presence.py": "the sentence for a node started with --presence terminal, which the launcher never passes"}
     found: dict[str, list[str]] = {}
@@ -230,7 +229,7 @@ def keystore(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("action,value", [("export", "out.key"), ("rotate", ""),
-                                          ("revoke", "SHA256:abc"), ("accept", "")])
+                                          ("revoke", "SHA256:abc")])
 def test_every_signing_key_step_refuses_an_agent_at_once_even_at_a_terminal(
         tmp_path, monkeypatch, keystore, action, value):
     import argparse

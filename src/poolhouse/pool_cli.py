@@ -34,8 +34,6 @@ def parser() -> argparse.ArgumentParser:
             command.add_argument("--host", required=True, help="the device offering the pool")
             command.add_argument("--port", type=int, default=pool.DEFAULT_PORT)
             command.add_argument("--fingerprint", default="", help="the signed beacon's fingerprint for an open pool")
-        elif name == "listen":
-            command.add_argument("--yes", action="store_true", help="agree to turning the network on without being asked")
         elif name == "remove":
             command.add_argument("device")
         elif name == "members":
@@ -64,7 +62,7 @@ def execute(args: argparse.Namespace) -> Any:
             return pool.join(args.host, args.code or os.environ.get(JOIN_CODE_ENV, ""), port=args.port, fingerprint=args.fingerprint)
         case "listen":
             try:
-                node_join.consent(node_join.DEFAULT_PORT, node_join.DEFAULT_BEACON_PORT, yes=args.yes)
+                node_join.consent(node_join.DEFAULT_PORT, node_join.DEFAULT_BEACON_PORT)
             except node_join.PoolError as exc:
                 raise errors.Error(str(exc)) from exc
             return pool.listen(agreed=True)

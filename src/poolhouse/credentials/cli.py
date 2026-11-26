@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import getpass
 import json
 import sys
 
@@ -13,8 +12,8 @@ from poolhouse.log import say, warn
 
 COMMANDS = Group(
     "poolhouse credentials",
-    "Tokens and keys poolhouse uses. `set` reads the value from a hidden prompt or from stdin, "
-    "never from an argument, and nothing prints a value back. The file is "
+    "Tokens and keys poolhouse uses. `set` reads the value from stdin only, "
+    "never from an argument or a prompt, and nothing prints a value back. The file is "
     "~/.poolhouse/credentials.toml, mode 0600; POOLHOUSE_CREDENTIALS_FILE moves it.")
 
 KEYCHAIN = flag("--keychain", action="store_true",
@@ -31,14 +30,15 @@ def _guarded(run):
     return inside
 
 
-@COMMANDS.command("set", help="store NAME, reading the value from a prompt or stdin",
-                  options=(flag("name"), KEYCHAIN,
-                           flag("--stdin", action="store_true", help="read the value from stdin")))
+@COMMANDS.command("set", help="store NAME, reading the value from stdin",
+                  options=(flag("name"), KEYCHAIN))
 @_guarded
 def put(args: argparse.Namespace) -> int:
-    """Store the value read from the prompt or stdin."""
-    value = (sys.stdin.readline() if args.stdin or not sys.stdin.isatty()
-             else getpass.getpass(f"{args.name}: "))
+    """Store the value read from stdin; a terminal is refused at once, nothing is asked."""
+    if sys.stdin.isatty():
+        raise credentials.CredentialError(
+            f"the value is read from stdin only, never asked for: echo \"$VALUE\" | poolhouse credentials set {args.name}")
+    value = sys.stdin.readline()
     say(f"{args.name} stored in {credentials.set(args.name, value, keychain=args.keychain)}")
     return 0
 

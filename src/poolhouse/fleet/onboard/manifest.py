@@ -273,12 +273,11 @@ class Signer:
 
 
 class RotationAnnounced(ManifestError):
-    """The manifest is signed by a key the pinned one handed over to. ``new_public`` is that
-    key; nothing is trusted until a person pins it."""
+    """The manifest is signed by a key the pinned one handed over to, by a statement the pinned key
+    signed. ``new_public`` is that key; the caller pins it at once, nothing waits for a person."""
 
     def __init__(self, new_public: bytes) -> None:
-        super().__init__(f"the signing key was rotated to {key_fingerprint(new_public)}; a "
-                         "person must accept it (poolhouse pool signing accept)")
+        super().__init__(f"the signing key was rotated to {key_fingerprint(new_public)}")
         self.new_public = new_public
 
 

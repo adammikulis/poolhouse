@@ -350,7 +350,7 @@ message is a count.
 A notification hook prints nothing and exits 0 when nothing is unread. If the workspace cannot be reached it exits
 0 with a credential-redacted warning, without starting the daemon. An unknown project is quiet: notifications do not
 register it, start a daemon or mutate project state. Explicit authorization and task completion remain separate.
-Global workspace harness hooks are optional. `poolhouse-setup`, including `--yes`, does not automatically install,
+Global workspace harness hooks are optional. `poolhouse-setup` does not automatically install,
 remove or repair them, and missing optional hooks do not make product readiness fail. To request that integration,
 use `poolhouse-workspace install-hooks [--settings PATH] [--codex-config PATH] [--only claude-code|codex]`.
 It preserves unrelated settings and writes only for agents present on the device. `hook-snippet` prints settings

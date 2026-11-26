@@ -59,8 +59,7 @@ the profile directory that holds it.
 ## Commands
 
 ```
-poolhouse credentials set NAME            # hidden prompt, or stdin when it is not a terminal
-echo "$TOKEN" | poolhouse credentials set NAME --stdin
+echo "$TOKEN" | poolhouse credentials set NAME   # the value is read from stdin only; on a terminal it is refused at once
 poolhouse credentials set NAME --keychain # wrapped under the keystore master instead of plain in the file
 poolhouse credentials list [--json]       # name, whether set, which source; never a value
 poolhouse credentials unset NAME [--keychain]

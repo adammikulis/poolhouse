@@ -46,7 +46,7 @@ def test_every_row_names_a_command_that_exists():
 def test_a_row_is_about_the_word_either_spelling_names():
     assert Row("poolhouse-serve fit", "x").word == "serve"
     assert Row("poolhouse serve fit", "x").word == "serve"
-    assert Row("poolhouse device-setup [--yes]", "x").word == "device-setup"
+    assert Row("poolhouse device-setup", "x").word == "device-setup"
     assert Row("poolhouse runtime ensure\\|status", "x").word == "runtime"
     assert Row("poolhouse <command>", "x").word == ""
 

@@ -35,7 +35,7 @@ class SetupPage:
             self.gets.append(path)
         body = {'ok': True}
         if path == '/ui/setup':
-            body.update(needs_setup=True, name=self.name, experimental_notice_accepted=True, needs_setup_theme=self.needs_theme)
+            body.update(needs_setup=True, name=self.name, needs_setup_theme=self.needs_theme)
         elif path == '/ui/settings':
             body.update(settings={}, resolved_theme=PRESETS["dark" if self.needs_theme else self.theme],
                         theme_registry=list(PRESETS.values()))

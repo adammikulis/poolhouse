@@ -1,5 +1,5 @@
 use super::firsts::SECRET_FOR_MS;
-use super::os::{self, ASK_FOR_MS};
+use super::mode::ASK_FOR_MS;
 use super::*;
 
 /// A public key (the Ed25519 base point) for the first key to be.
@@ -70,30 +70,6 @@ pub(super) fn person() -> (Firsts, Said) {
 pub(super) fn person_aged() -> (Firsts, Said, Age) {
     let (answer, age) = (Said::default(), Age::default());
     (Firsts::new(Box::new(Scripted(answer.clone(), age.clone()))), answer, age)
-}
-
-#[test]
-fn the_windows_prompt_is_a_base64_of_a_utf16_script_and_the_sentence_is_not_in_its_arguments() {
-    assert_eq!((os::base64(b"M"), os::base64(b"Ma"), os::base64(b"Man"), os::base64(b"")), ("TQ==".into(), "TWE=".into(), "TWFu".into(), String::new()));
-    let command = os::windows_dialog();
-    let args: Vec<String> = command.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
-    assert_eq!(&args[..4], ["-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand"]);
-    assert!(command.get_envs().next().is_none(), "no environment carries the sentence");
-    let program = std::path::Path::new(command.get_program());
-    assert!(program.components().count() > 1 && program.ends_with("powershell.exe"), "the program is a place and not a name the search path resolves: {program:?}");
-}
-
-#[test]
-fn powershell_is_found_under_the_system_directory_the_system_reports_and_never_by_the_environment() {
-    let system = std::env::temp_dir();
-    assert_eq!(os::powershell_under(&system), system.join("WindowsPowerShell").join("v1.0").join("powershell.exe"));
-    // an environment variable names no place: a process that sets `SystemRoot` to a directory of its own does not change the program that is started
-    let before = os::windows_dialog().get_program().to_owned();
-    std::env::set_var("SystemRoot", std::env::temp_dir());
-    let after = os::windows_dialog().get_program().to_owned();
-    std::env::remove_var("SystemRoot");
-    assert_eq!(before, after, "the system directory is the one the system reports");
-    assert!(!std::path::Path::new(&after).starts_with(std::env::temp_dir()), "{after:?}");
 }
 
 #[test]
@@ -288,17 +264,7 @@ fn a_node_started_with_no_presence_asks_nobody_and_makes_the_yes_at_once() {
     for name in ["off", "none", "unattended", "yes", "test", ""] {
         assert!(Mode::parse(name).is_none(), "{name:?} is not a way to ask");
     }
-    assert!(Mode::parse("auto").is_some() && Mode::parse("os").is_some() && Mode::parse("terminal").is_some());
-}
-
-#[test]
-fn the_operating_systems_prompt_is_raised_only_for_the_account_real_state_directory() {
-    let dir = std::env::temp_dir().join(format!("presence-os-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let mut os = Os::new(&dir);
-    let refused = os.begin("poolhouse: allow the session demo/a to add the first person key to this computer?", "");
-    let _ = std::fs::remove_dir_all(&dir);
-    assert!(matches!(refused, Err(Error::Denied(_))), "a temporary state directory is not the account's own, so nothing is spawned");
+    assert!(Mode::parse("auto").is_some() && Mode::parse("os").is_none() && Mode::parse("terminal").is_some());
 }
 
 #[test]
@@ -334,11 +300,11 @@ fn only_the_accounts_own_node_directory_is_the_real_one() {
     let node = home.join(".poolhouse").join("node");
     std::fs::create_dir_all(node.join("x")).unwrap();
     std::fs::create_dir_all(home.join(".poolhouse").join("y")).unwrap();
-    let ok = os::is_the_real_state(&node, &home);
-    let decoy_in_node = os::is_the_real_state(&node.join("x"), &home);
-    let decoy_beside = os::is_the_real_state(&home.join(".poolhouse").join("y"), &home);
-    let root = os::is_the_real_state(&home.join(".poolhouse"), &home);
-    let elsewhere = os::is_the_real_state(&home, &home);
+    let ok = mode::is_the_real_state(&node, &home);
+    let decoy_in_node = mode::is_the_real_state(&node.join("x"), &home);
+    let decoy_beside = mode::is_the_real_state(&home.join(".poolhouse").join("y"), &home);
+    let root = mode::is_the_real_state(&home.join(".poolhouse"), &home);
+    let elsewhere = mode::is_the_real_state(&home, &home);
     let _ = std::fs::remove_dir_all(&home);
     assert!(ok && !decoy_in_node && !decoy_beside && !root && !elsewhere, "{ok} {decoy_in_node} {decoy_beside} {root} {elsewhere}");
 }

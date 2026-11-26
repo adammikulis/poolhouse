@@ -14,7 +14,7 @@ from .updates import GIT_URL, current_version
 WEB = Path(__file__).parent / "web"
 COMPONENTS_DIR = WEB / "components"
 #: the page, in the order the elements wire themselves up
-COMPONENTS = ("fleet-model", "experimental-notice", "vocabulary-model", "fleet-nav", "sign-in", "launch-needed", "startup-models", "pool-actions", "first-run", "fleet-benchmark", "pool-view",
+COMPONENTS = ("fleet-model", "vocabulary-model", "fleet-nav", "sign-in", "launch-needed", "startup-models", "pool-actions", "first-run", "fleet-benchmark", "pool-view",
               "output-token-slider", "chat-stream", "chat-markdown", "chat-view", "board-view", "projects-view", "wired-memory", "feature-flags", "models-library", "model-browser", "models-view", "theme-editor", "vocabulary-settings", "settings-view", "fit-model", "fit-view",
               "fit-charts", "rates-view", "telemetry-view",
               "workspace-jobs", "history-view", "tasks-view", "data-import", "data-discover", "data-view", "knowledge-view",
@@ -78,8 +78,8 @@ def render(parts: Sequence[str | Component] = COMPONENTS) -> str:
     names = {part.name if isinstance(part, Component) else part for part in parts}
     calculation = (f'<aside class="card wide calculation-notice" aria-label="Experimental software"><h1>{escape(notice_copy.TITLE)}</h1>'
                    + notice + f'<a href="{escape(GIT_URL + "/issues")}" target="_blank" rel="noopener noreferrer">Report bugs on GitHub</a></aside>') \
-        if "fit-view" in names and "experimental-notice" not in names else ""
+        if "fit-view" in names else ""
     shell = shell.replace("__CALCULATION_NOTICE__", calculation)
     shell = shell.replace("__RUNNING_VERSION__", escape(current_version() or "version unavailable"))
-    page = assemble(shell, components(parts)).replace("__EXPERIMENTAL_COPY__", notice).replace("__EXPERIMENTAL_TITLE__", escape(notice_copy.TITLE))
+    page = assemble(shell, components(parts))
     return page.replace("__VOCABULARY_DATA__", vocabulary.payload()).replace("__VOCAB__", vocabulary.default_vocabulary())
