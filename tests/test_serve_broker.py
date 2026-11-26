@@ -294,6 +294,42 @@ def test_a_broker_that_took_over_from_one_that_handed_over_owns_the_server_its_h
     assert pid_exists(successor.servers[first.port].pid)
 
 
+HANDING_OVER = """
+import sys
+from pathlib import Path
+from poolhouse.serve import LlamaServerBackend, ServerManager
+from poolhouse.serve.broker import Ask, Broker
+from poolhouse.serve.broker_lifecycle import retire
+
+binary, state, model, holder = sys.argv[1:5]
+broker = Broker(ServerManager(LlamaServerBackend(binary=Path(binary)), state_file=Path(state)),
+                idle_s=3600.0, room=lambda: None, scan=lambda: [])
+grant = broker.lease(Ask(purpose="chat", models=(model,), pid=int(holder), label="holder", spec={"context": 512}), timeout=30)
+assert retire(broker, carrying=True)
+print(grant.port, broker.servers[grant.port].pid, flush=True)
+"""
+
+
+def test_a_server_survives_the_exit_of_the_broker_that_handed_over(models, holders, llama_binary, tmp_path):
+    """A broker that started a server stops it as it exits; one that handed over must not, or the holders lose it and the
+    successor finds nothing to take in."""
+    holder = holders()
+    state = tmp_path / "servers.json"
+    done = subprocess.run([sys.executable, "-c", HANDING_OVER, str(llama_binary), str(state), models[0], str(holder.pid)],
+                          capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    port, pid = (int(word) for word in done.stdout.split())
+    try:
+        time.sleep(1.0)  # the exit hook has run by now
+        assert pid_exists(pid), "the broker took the server down with it as it exited"
+        successor = Broker(ServerManager(LlamaServerBackend(binary=llama_binary), state_file=state),
+                           idle_s=3600.0, room=lambda: None, scan=lambda: [])
+        successor.adopt()
+        assert {p for p, _ in successor.servers[port].holders.values()} == {holder.pid}
+    finally:
+        kill_process_tree(pid)
+
+
 def test_a_server_put_up_by_hand_is_held_by_itself_and_never_reaped(
         models, holders, llama_binary, tmp_path):
     """`poolhouse-serve up` records the server as its own owner; the broker never stops it."""

@@ -4,6 +4,7 @@ from __future__ import annotations
 from functools import wraps
 
 from poolhouse import maintenance
+from poolhouse.serve import exit_guard
 from poolhouse.serve.admission import tag_of
 
 
@@ -87,6 +88,10 @@ def retire(broker, *, carrying: bool = False) -> bool:
                 return False
             if carrying:
                 broker._write_held()
+                # a server this broker started is stopped by its exit hook (`exit_guard`) and its watchdog; the ones
+                # handed on must outlive it, for the successor takes them in
+                for held in broker.servers.values():
+                    exit_guard.release(held.pid)
             sealed = True
             return True
         finally:
