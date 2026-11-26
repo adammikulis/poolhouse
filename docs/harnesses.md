@@ -187,6 +187,11 @@ the same lease, window, permission profiles, workspace session and publication o
   launch and writes into a read-only `opencode.json` in the agent home (`OPENCODE_CONFIG`, with `XDG_*` inside the home). Nothing is pasted, no
   login is run and nothing waits. OpenCode's own traffic (update check, the model list, LSP downloads, sharing, the Claude Code file import) is off.
   Its permissions never ask: the plugin and the mount decide.
+- **Its server.** `opencode run` has no mode without a server, and its own private one (`--standalone`) listens on a port the operating system picks,
+  which a box that names the ports it opens cannot allow (the Seatbelt log showed the bind of port 0 denied). So the confined process runs
+  `opencode serve --hostname 127.0.0.1 --port N` and then `opencode run --server http://127.0.0.1:N`, with `N` chosen by the launcher and opened for the
+  box as `Net.only(bridge, listen=(N,))` (outbound, bind and inbound on that one loopback port and no other), and the server answers only to the bridge
+  token (`OPENCODE_PASSWORD`). The proof's loopback canaries stay denied.
 - **The gate.** A plugin written beside the config (`tool.execute.before` and `tool.execute.after`) runs the same client as Pi's extension
   (`poolhouse.harness_js`) and asks the parent's classifier over the session bridge before each tool call; a deny, or a hook that cannot be reached,
   throws, which OpenCode hands back to the model as the tool's error. The mutation checkpoint runs after each call and a failure stops the run.
@@ -239,7 +244,7 @@ poolhouse-delegate stop NAME
   attested on the live process, with a closed environment and the model reached only through the parent's bridge (the
   launcher's own words and limits: "What is not covered" below and docs/design-isolated-launcher.md). When each turn ends, and
   when the run ends, the launcher publishes the plain source the agent changed into the project and refuses everything else
-  at once (a workflow, a hook, a build or package file, a program, a hidden configuration file): the refusal is kept as a patch
+  at once (a workflow, a hook, a build or package file, a program, a hidden configuration file); build junk (bytecode caches, `.DS_Store`, cache and dependency folders) is neither published nor reported, and the box sets `PYTHONDONTWRITEBYTECODE` so Python writes none: the refusal is kept as a patch
   under `~/.poolhouse/isolation/refused/NAME/` and the lead gets one `isolation.report` message from the launcher's own
   identity, in the launcher's words (counts and causes, no name the agent chose). The same words end `result NAME`. An edit
   or a deletion of a file git does not hold (a draft of yours, a file an earlier run made) is published too: the launcher keeps

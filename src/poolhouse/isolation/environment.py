@@ -15,7 +15,7 @@ from poolhouse.isolation.spec import HARNESSES
 
 __all__ = ["ALWAYS", "BY_HARNESS", "INTERACTIVE", "MODEL_VARS", "OFFLINE", "WINDOW", "Inputs", "allowed", "environment"]
 
-ALWAYS = ("PATH", "HOME", "TMPDIR", "LANG", "POOLHOUSE_AGENT")
+ALWAYS = ("PATH", "HOME", "TMPDIR", "LANG", "POOLHOUSE_AGENT", "PYTHONDONTWRITEBYTECODE")
 """Set for every harness. ``POOLHOUSE_AGENT`` marks the tools the harness runs; no person check relies on it (3.5)."""
 INTERACTIVE = ("TERM", "COLORTERM", "NO_COLOR")
 """Taken from the person's terminal, and only in an interactive launch."""
@@ -40,8 +40,8 @@ CALLER_SET = ("CLAUDE_CODE_EXTRA_BODY", "CLAUDE_CODE_EFFORT_LEVEL")
 MIN_COMPACT_WINDOW = 100000
 """The window from which Claude Code is told to compact; the value `claude.MIN_COMPACT_WINDOW` carries today."""
 CODEX_KEY = "POOLHOUSE_API_KEY"
-OPENCODE_OFFLINE = {"OPENCODE_DISABLE_AUTOUPDATE": "true", "OPENCODE_DISABLE_MODELS_FETCH": "true", "OPENCODE_DISABLE_LSP_DOWNLOAD": "true",
-                    "OPENCODE_DISABLE_CLAUDE_CODE": "true", "OPENCODE_DISABLE_DEFAULT_PLUGINS": "true", "OPENCODE_DISABLE_TERMINAL_TITLE": "true"}
+OPENCODE_OFFLINE = {"OPENCODE_DISABLE_AUTOUPDATE": "true", "OPENCODE_DISABLE_MODELS_FETCH": "true", "OPENCODE_DISABLE_CLAUDE_CODE": "true",
+                    "OPENCODE_DISABLE_FILEWATCHER": "true"}
 """What keeps OpenCode from calling out to anything but the bridge, and from reading the person's Claude Code files."""
 
 BY_HARNESS: dict[str, tuple[str, ...]] = {
@@ -49,7 +49,7 @@ BY_HARNESS: dict[str, tuple[str, ...]] = {
                *WINDOW, *CALLER_SET),
     "codex": ("CODEX_HOME", CODEX_KEY),
     "pi": ("PI_CODING_AGENT_DIR", "PI_OFFLINE", "POOLHOUSE_NONINTERACTIVE"),
-    "opencode": ("OPENCODE_CONFIG", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", *OPENCODE_OFFLINE),
+    "opencode": ("OPENCODE_CONFIG", "OPENCODE_PASSWORD", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", *OPENCODE_OFFLINE),
 }
 """The variables a harness has besides the always set: the closed table of 3.4."""
 
@@ -100,8 +100,8 @@ def _pi(inputs: Inputs) -> dict[str, str]:
 
 def _opencode(inputs: Inputs) -> dict[str, str]:
     config = Path(inputs.home) / ".opencode-config"
-    return {"OPENCODE_CONFIG": str(config / "opencode.json"), "XDG_CONFIG_HOME": str(config), "XDG_DATA_HOME": str(Path(inputs.home) / "data"),
-            "XDG_CACHE_HOME": str(Path(inputs.home) / "cache"), "XDG_STATE_HOME": str(Path(inputs.home) / "state"), **OPENCODE_OFFLINE}
+    return {"OPENCODE_CONFIG": str(config / "opencode.json"), "OPENCODE_PASSWORD": inputs.token, "XDG_CONFIG_HOME": str(config),
+            "XDG_DATA_HOME": str(Path(inputs.home) / "data"), "XDG_CACHE_HOME": str(Path(inputs.home) / "cache"), "XDG_STATE_HOME": str(Path(inputs.home) / "state"), **OPENCODE_OFFLINE}
 
 
 def environment(inputs: Inputs) -> dict[str, str]:
@@ -109,7 +109,7 @@ def environment(inputs: Inputs) -> dict[str, str]:
     read from the process environment, so no variable of the launcher, the person's shell or a project reaches the harness."""
     names = allowed(inputs.harness, inputs.interactive)
     made = {"PATH": os.pathsep.join(inputs.path), "HOME": inputs.home, "TMPDIR": str(Path(inputs.home) / "tmp"), "LANG": "en_US.UTF-8",
-            "POOLHOUSE_AGENT": "1"}
+            "POOLHOUSE_AGENT": "1", "PYTHONDONTWRITEBYTECODE": "1"}
     if inputs.interactive:
         made.update({name: inputs.terminal[name] for name in INTERACTIVE if inputs.terminal.get(name)})
     made.update({"claude": _claude, "codex": _codex, "pi": _pi, "opencode": _opencode}[inputs.harness](inputs))

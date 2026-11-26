@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -229,3 +230,30 @@ def test_a_missing_binary_makes_the_backend_unavailable(monkeypatch, seatbelt):
     assert not state.ok and "/nonexistent/sandbox-exec" in state.reason
     with pytest.raises(sandbox.SandboxUnavailable):
         run(["/bin/echo", "x"], policy())
+
+
+LISTEN = """
+import socket
+try:
+    server = socket.socket()
+    server.bind(("127.0.0.1", {port}))
+    server.listen(1)
+    client = socket.create_connection(("127.0.0.1", {port}), timeout=3)
+    conn, _ = server.accept()
+    client.sendall(b"ping")
+    print("served", conn.recv(4).decode())
+except OSError as exc:
+    print("refused", exc.errno)
+"""
+
+
+def test_a_port_a_policy_lists_to_listen_on_is_bound_and_reached_and_no_other_is(tmp_path, seatbelt, listener):
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        mine = probe.getsockname()[1]
+    py = sys.executable
+    opened = run([py, "-c", LISTEN.format(port=mine)], policy(python=True, net=Net.only(listener.port, listen=(mine,))))
+    closed = run([py, "-c", LISTEN.format(port=mine)], policy(python=True, net=Net.only(listener.port)))
+    other = run([py, "-c", LISTEN.format(port=mine)], policy(python=True, net=Net.only(listener.port, listen=(mine + 1,))))
+    assert opened.stdout.strip() == "served ping"
+    assert closed.stdout.split()[0] == "refused" and other.stdout.split()[0] == "refused"

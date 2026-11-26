@@ -80,3 +80,9 @@ def test_the_confined_probe_sees_exactly_the_allow_list_whatever_the_launcher_ho
         assert set(w.profile.policy.env) <= allowed("claude") and not set(w.profile.policy.env) & set(HOSTILE)
         assert os.environ["GH_TOKEN"] == HOSTILE["GH_TOKEN"], "the launcher's own environment is untouched"
     assert Path(tmp_path).exists()
+
+
+def test_the_box_writes_no_bytecode():
+    for harness in ("claude", "codex", "pi", "opencode"):
+        made = environment(Inputs(harness, "/agent/home", path=("/usr/bin",), base_url="http://127.0.0.1:9", token="t", alias="m"))
+        assert made["PYTHONDONTWRITEBYTECODE"] == "1", harness

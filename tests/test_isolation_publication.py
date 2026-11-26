@@ -406,3 +406,20 @@ def test_the_launch_arguments_name_no_confirmation_prompt_or_wait():
         source = inspect.getsource(module)
         for banned in ("getpass", "input(", "confirm", "approve", "inbox", "sudo", "isatty"):
             assert banned not in source, (module.__name__, banned)
+
+
+def test_build_junk_is_dropped_silently_while_real_refusals_stay(project, tmp_path):
+    sink = Sink()
+    session = begin(project, tmp_path, sink)
+    for name in ("__pycache__/calc.cpython-314.pyc", "src/__pycache__/x.cpython-314.pyc", "calc.pyc", ".DS_Store", "src/.DS_Store",
+                 ".pytest_cache/v/cache/lastfailed", ".mypy_cache/a.json", ".ruff_cache/b", "node_modules/pkg/index.js"):
+        write(session, name, b"\x00\x01junk")
+    write(session, "src/app.py", "x = 2\n")
+    for name, data in CORPUS.items():
+        write(session, name, data)
+    turn = session.publish_turn()
+    assert sorted(turn.applied) == ["src/app.py"]
+    assert {each.path for each in turn.refused} == set(CORPUS), "only the real refusals are reported"
+    assert not publication.junk(".github/workflows/ci.yml") and not publication.junk(".git/hooks/pre-commit") and not publication.junk("package.json")
+    assert publication.junk("a/__pycache__/b.pyc") and publication.junk("x.pyc") and not publication.junk("src/pyc.py")
+    assert not [name for name in checkout_names(project) if "__pycache__" in name or name.endswith((".pyc", ".DS_Store"))]
