@@ -810,8 +810,10 @@ def serve(
     """Run a server for the duration of the block, yielding its ``ServerInfo``.
 
     ``roam``, ``escalate``, ``anyway``, ``iq``, ``on_event``, ``say`` and ``reason`` go to
-    :meth:`ServerManager.lease`.
+    :meth:`ServerManager.lease`. The keyword ``keep=True`` (not a spec field) leaves a server this block started up when it
+    ends, recorded under its own pid as `poolhouse-serve up` leaves one, so the next caller takes it warm; `poolhouse-serve down` ends it.
     """
+    keep = bool(spec_kwargs.pop("keep", False))
     manager = manager or default_manager()
     spec = ServerSpec(
         model=model,
@@ -824,7 +826,10 @@ def serve(
     try:
         yield info
     finally:
-        manager.release(info)
+        if keep and not info.adopted:
+            manager.detach(info)
+        else:
+            manager.release(info)
 
 
 def stop_all_servers() -> list[int]:

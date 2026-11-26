@@ -171,6 +171,32 @@ token file deleted when the launcher exits. The served alias and harness are rec
 (`whoami --model ALIAS --harness H`) once the serving endpoint reports that model; when it does not, the launcher
 says the model is not recorded.
 
+## OpenCode
+
+```
+poolhouse-opencode -- "fix the failing test in calc.py"        # opencode run MESSAGE, on the model served now
+poolhouse-opencode Qwen3.5-2B --permissions read-only --project ~/work/repo -- "explain this repo"
+```
+
+`launch_coding_agent(model, policy, project, harness="opencode", harness_args=["MESSAGE"], run_opencode=...)` is the same for a program. A launch is
+`opencode run --format json --model poolhouse/ALIAS MESSAGE`: print mode only, until the relay of L6 (an interactive launch has no entry point).
+It goes through the one door like the others (`isolation.prepare` then `Confinement.popen`; there is no second sandbox path), and its words are
+the same lease, window, permission profiles, workspace session and publication of the stage after each turn as Codex and Pi.
+
+- **The model.** The provider is `@ai-sdk/openai-compatible` at the model bridge's `/v1` with the bridge's token, which the launcher mints for the
+  launch and writes into a read-only `opencode.json` in the agent home (`OPENCODE_CONFIG`, with `XDG_*` inside the home). Nothing is pasted, no
+  login is run and nothing waits. OpenCode's own traffic (update check, the model list, LSP downloads, sharing, the Claude Code file import) is off.
+  Its permissions never ask: the plugin and the mount decide.
+- **The gate.** A plugin written beside the config (`tool.execute.before` and `tool.execute.after`) runs the same client as Pi's extension
+  (`poolhouse.harness_js`) and asks the parent's classifier over the session bridge before each tool call; a deny, or a hook that cannot be reached,
+  throws, which OpenCode hands back to the model as the tool's error. The mutation checkpoint runs after each call and a failure stops the run.
+- **The binary.** `poolhouse.opencode_install`: an `opencode` on PATH is used; with none, the newest release of the project is fetched once through the
+  net pipeline the llama.cpp build uses (checked against the sha256 GitHub reports for the asset, format-checked and scanned, unpacked by
+  `safenames.unpack`) into `<state>/tools/opencode/<tag>/`. A launch needs no install step; a fetch that cannot complete says why and starts nothing.
+- **Names it reads from a project** (`guard.harnesses.RECORDS["opencode"]`): `.opencode`, `opencode.json`, `opencode.jsonc`.
+
+Tests: `tests/test_opencode_harness.py`.
+
 ## A delegate
 
 `poolhouse-delegate` is how a lead session (a Claude Code or Codex session, or any registered session) hands a task to a
@@ -180,6 +206,7 @@ runs Claude Code through the isolated launcher on that same model.
 
 ```
 poolhouse-delegate start --task "list the python files here and say what each does" [--project DIR] [--name LABEL] [--edit] [--max-turns N] [--model ID] [--as AGENT]
+poolhouse-delegate warm [--model ID] [--edit]
 poolhouse-delegate status [NAME]
 poolhouse-delegate result NAME
 poolhouse-delegate stop NAME
@@ -189,6 +216,17 @@ poolhouse-delegate stop NAME
   names another), is named by the node and runs detached; `start` prints its name and returns at once. The model is the one
   served now with room for a coding session (`--model` names another; with none up the broker leases the default). Repeating
   a start that is still running returns the first; `--name` tells two agents on one task apart.
+- **Fast without setup.** Four things make the second delegate (and the first after `warm`) start in seconds, not minutes:
+  (1) `poolhouse-serve up` with no `--binary`, `--build`, `--draft` or `--spec` serves a model whose multi-token-prediction head
+  borrows its target's embeddings (a `shared` head, e.g. Qwen3.8-Flash-Next) on the fork build that loads it, with that head,
+  the same `Head` a harness session takes (`hub.heads_for`); the mainline `current` has no MTP graph for such a model and used to
+  serve it without one (`lifecycle_cli.fork_head`). (2) A server a delegate started is left up when it ends (`Want.keep`,
+  recorded under its own pid as `up` leaves one; `poolhouse-serve down` ends it) and the next delegate takes it as it stands.
+  (3) Claude Code's per-request attribution line is off (`CLAUDE_CODE_ATTRIBUTION_HEADER=0`, in `isolation.environment.OFFLINE`)
+  and a delegate's system prompt names neither the delegate nor anything else that differs between two of one lead's delegates
+  (`Delegate.message()` carries who it is and the task), so the server's prompt cache holds the shared prefix and a second delegate
+  prefills only what differs. (4) `warm` runs one trivial delegate task (`Reply with the single word ready`) so the prefix is in the
+  cache before the first real task; use `--edit` for the prompt of an editing delegate, whose tools differ.
 - **What it can do.** Read, Grep and Glob in `--project` (default: an empty scratch folder of its own), and two ways to the
   lead. It has no shell. A read-only delegate passes the classifier of the launched harnesses (`harnesshook`) and the SDK guard
   rails, and is not confined by the operating system: a read reaches any file the account can read that the classifier does not

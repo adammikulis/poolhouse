@@ -113,6 +113,18 @@ def start(args: argparse.Namespace) -> int:
     return 0
 
 
+WARM_TASK = "Reply with the single word ready. Use no tools."
+"""What `warm` hands a delegate: a task that costs the model nothing but the prompt every delegate of the lead shares."""
+
+
+@COMMANDS.command("warm", help="load the model and its shared prompt now, so the next delegate starts at once", options=[
+    option("model", help="the model (default: the one served on this machine now)"),
+    flag("--edit", action="store_true", help="warm the prompt of a delegate that edits the project (its tools differ)")])
+def warm(args: argparse.Namespace) -> int:
+    """Run a delegate on a trivial task: the server is leased and stays up, and its prompt cache holds the part every delegate shares."""
+    return start(argparse.Namespace(task=WARM_TASK, project="", name="warm", parent="", model=args.model, max_turns=1, edit=args.edit))
+
+
 def _view(name: str) -> tuple[str, str]:
     """``(state, detail)`` of ``name``: a process that is gone with no end written is a failure, said so."""
     row = store.status(name)

@@ -16,11 +16,10 @@ import argparse
 import json
 import shutil
 import sys
-import time
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
-from poolhouse import coding_policy, harnessing, isolation
+from poolhouse import harnessing, isolation
 from poolhouse.claude import DEFAULT_PORT, DEFAULT_SLOTS, alias_of
 from poolhouse.guard import harnesses
 from poolhouse.log import say
@@ -93,36 +92,10 @@ def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = sa
     if not binary:
         say("error: no `codex` on PATH; install Codex or pass --codex PATH")
         return 2
-    if args.on and args.model:
-        say("error: --on names a server already running; do not name a model as well")
+    if not harnessing.checked(args, "codex", say, interactive=not printing(extra)):
         return 2
-    try:
-        coding_policy.Policy(args.permissions, args.execution_mode)
-        asked, args.project = args.project, str(harnessing.check_project(args.project))
-        harnessing.admit(args, "codex", asked, interactive=not printing(extra))
-    except (OSError, RuntimeError, ValueError) as why:
-        say(f"error: {why}")
-        return 2
-    runner = run_codex or harnessing.terminal_runner
-    if args.on:
-        base_url = args.on.rstrip("/")
-        alias = alias_of(base_url, "")
-        if not alias:
-            say(f"error: {base_url} did not say what model it serves")
-            return 2
-        return _run(args, [binary, *extra], (base_url, alias, harnessing.window_of(base_url)), say, (runner, extras))
-    began = time.time()
-    try:
-        with harnessing.serving(
-                args.model or harnessing.default_model(),
-                harnessing.Want(args.port, args.slots, args.ctx, args.no_profile, args.draft), say, "codex"
-        ) as (base_url, config, found):
-            alias = alias_of(base_url, found)
-            say(f"codex on {base_url} as {alias!r}, up in {time.time() - began:.0f}s")
-            return _run(args, [binary, *extra], (base_url, alias, config.serving.slot_context), say, (runner, extras))
-    except ValueError as why:
-        say(f"error: {why}")
-        return 2
+    start = (run_codex or harnessing.terminal_runner, extras)
+    return harnessing.serve_and_run(args, "codex", say, lambda *got: alias_of(*got), lambda served: _run(args, [binary, *extra], served, say, start))
 
 
 def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, str, int], say: Callable[[str], None],
