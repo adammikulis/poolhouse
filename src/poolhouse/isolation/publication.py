@@ -29,7 +29,7 @@ from poolhouse.guard import runs_later
 from poolhouse.isolation import publish
 from poolhouse.isolation.publish import PublishRule
 
-__all__ = ["REASONS", "Basis", "Decision", "Refusal", "colliding", "decide", "fold", "patch_text", "token"]
+__all__ = ["REASONS", "Basis", "Decision", "Refusal", "colliding", "decide", "fold", "junk", "patch_text", "token"]
 
 REASONS = {
     **runs_later.CLASSES,
@@ -102,6 +102,13 @@ def colliding(paths: Collection[str]) -> set[str]:
             spellings.setdefault(fold(prefix), set()).add(prefix)
     bad = {key for key, spelled in spellings.items() if len(spelled) > 1}
     return {path for path in paths if any(fold("/".join(path.split("/")[:count])) in bad for count in range(1, len(path.split("/")) + 1))}
+
+
+def junk(path: str) -> bool:
+    """Whether a path is build junk no one wants published or reported: a bytecode file, a macOS folder note, or anything under a cache or dependency
+    folder the project already skips (`secretpaths.SKIP_DIRS`). A control or credential name, and anything in `.git`, is never junk."""
+    parts = path.split("/")
+    return ".git" not in parts and not _never(path) and (parts[-1] == ".DS_Store" or parts[-1].endswith((".pyc", ".pyo")) or any(part in secretpaths.SKIP_DIRS for part in parts[:-1]))
 
 
 def _never(path: str) -> str:
@@ -198,9 +205,9 @@ def _one(basis: Basis, change: Change, entries: dict[str, CaptureEntry], verdict
 
 def decide(basis: Basis, changes: Sequence[Change], protected: Sequence[tuple[bytes, str]] = ()) -> Decision:
     """The decision for ``changes`` of the stage in ``basis``; ``protected`` are the names the capture left out (a control path, a credential, a
-    special file) with their causes, which are refused by name and never read. A fact that cannot be read refuses the file."""
+    special file) with their causes, which are refused by name and never read. Build junk (`junk`) is dropped without a word. A fact that cannot be read refuses the file."""
     entries = {os.fsdecode(each.path): each for each in basis.result.entries}
-    ordered = sorted(changes, key=lambda change: change.path)
+    ordered = sorted((change for change in changes if not junk(os.fsdecode(change.path))), key=lambda change: change.path)
     left = [Refusal(os.fsdecode(name), why) for name, why in protected]
     environment = publish.environment_files(basis.project)
     if environment is None:

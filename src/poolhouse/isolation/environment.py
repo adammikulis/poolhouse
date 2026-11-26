@@ -15,7 +15,7 @@ from poolhouse.isolation.spec import HARNESSES
 
 __all__ = ["ALWAYS", "BY_HARNESS", "INTERACTIVE", "MODEL_VARS", "OFFLINE", "WINDOW", "Inputs", "allowed", "environment"]
 
-ALWAYS = ("PATH", "HOME", "TMPDIR", "LANG", "POOLHOUSE_AGENT")
+ALWAYS = ("PATH", "HOME", "TMPDIR", "LANG", "POOLHOUSE_AGENT", "PYTHONDONTWRITEBYTECODE")
 """Set for every harness. ``POOLHOUSE_AGENT`` marks the tools the harness runs; no person check relies on it (3.5)."""
 INTERACTIVE = ("TERM", "COLORTERM", "NO_COLOR")
 """Taken from the person's terminal, and only in an interactive launch."""
@@ -109,7 +109,7 @@ def environment(inputs: Inputs) -> dict[str, str]:
     read from the process environment, so no variable of the launcher, the person's shell or a project reaches the harness."""
     names = allowed(inputs.harness, inputs.interactive)
     made = {"PATH": os.pathsep.join(inputs.path), "HOME": inputs.home, "TMPDIR": str(Path(inputs.home) / "tmp"), "LANG": "en_US.UTF-8",
-            "POOLHOUSE_AGENT": "1"}
+            "POOLHOUSE_AGENT": "1", "PYTHONDONTWRITEBYTECODE": "1"}
     if inputs.interactive:
         made.update({name: inputs.terminal[name] for name in INTERACTIVE if inputs.terminal.get(name)})
     made.update({"claude": _claude, "codex": _codex, "pi": _pi, "opencode": _opencode}[inputs.harness](inputs))
