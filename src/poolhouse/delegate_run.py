@@ -201,7 +201,7 @@ def run(name: str) -> int:
         state = "failed" if answer.is_error else "done"
     except (KeyboardInterrupt, SystemExit):
         state, why = "stopped", "stopped by the lead"
-    except (Denied, NodeError, OSError, RuntimeError, ValueError, ImportError) as error:
+    except (Denied, NodeError, OSError, RuntimeError, ValueError, ImportError, harness.sdk().ClaudeSDKError) as error:   # the SDK's own errors: a server that went away ends the session this way
         why = f"{type(error).__name__}: {error}"
         say(why)
     row = _outcome(answer, why, began)

@@ -204,6 +204,25 @@ def test_a_run_that_fails_says_why_in_its_result_and_to_the_lead_and_no_answer_s
     assert "wired-memory limit" in said(capsys)
 
 
+def test_a_model_session_the_sdk_ends_with_an_error_is_a_failed_result_not_a_process_that_ended_without_one(lead_node, detached, monkeypatch, capsys):
+    """The second of two delegates in a row met a server that had gone: the SDK raised its own error type, which no handler named, so the run died
+    with its status still `working` and read as "ended without a result"."""
+    node, lead, _project = lead_node
+
+    def ended(rec, bridge, mine):
+        raise harness.sdk().ProcessError("Claude Code returned an error result: API Error: Connection refused (ECONNREFUSED)", exit_code=1)
+
+    monkeypatch.setattr(delegate_run, "converse", ended)
+    started("--task", "anything")
+    [name] = agent_names(node, lead)
+    assert delegate_run.run(name) == 1
+    row = store.result(name)
+    assert row["state"] == "failed" and "ECONNREFUSED" in row["error"]
+    assert store.status(name)["state"] == "failed"
+    [notice] = node.session(lead).read(inbox=True).entries
+    assert "failed:" in notice.text and "ECONNREFUSED" in notice.text
+
+
 def test_a_result_is_printed_inside_a_fence_with_control_characters_removed(lead_node, detached, capsys):
     node, lead, _project = lead_node
     started("--task", "anything")
