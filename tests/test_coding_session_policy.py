@@ -2,9 +2,15 @@
 from __future__ import annotations
 
 import pytest
+from test_fleet_ui_founded import (  # noqa: F401  (fixtures: a real node in a founded pool)
+    founded_node,
+    governed,
+)
 
 from poolhouse.fleet import conversation_graph
 from poolhouse.fleet.conversations import Conversations
+
+pytest_plugins = ("testfarm_kit",)  # the `node_binary` fixture
 
 
 @pytest.fixture
@@ -87,7 +93,7 @@ def test_old_records_are_refused_without_implicit_policy_adoption(sessions):
         store.get(first.id)
 
 
-def test_guarded_ui_api_round_trips_revision_and_rejects_replayed_changes(tmp_path):
+def test_guarded_ui_api_round_trips_revision_and_rejects_replayed_changes(tmp_path, governed):  # noqa: F811
     from launch_support import browser, signed
     from test_fleet_ui import Serving
 

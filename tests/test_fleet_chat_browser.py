@@ -5,15 +5,20 @@ import json
 
 import pytest
 from test_fleet_ui import Serving
+from test_fleet_ui_founded import (  # noqa: F401  (fixtures: a real node in a founded pool)
+    founded_node,
+    governed,
+)
 
 from poolhouse.fleet.conversations import Conversations
 from poolhouse.testing.canned import CANNED_HEADER, CANNED_HEADER_VALUE, canned_stream_reply, marked
 
+pytest_plugins = ("testfarm_kit",)  # the `node_binary` fixture
 pytestmark = pytest.mark.slow
 
 
 @pytest.fixture
-def chat_browser(tmp_path, browser_owner):
+def chat_browser(tmp_path, browser_owner, governed):  # noqa: F811
     served = Serving(tmp_path)
     try:
         served.ui.settings.setup_done = True

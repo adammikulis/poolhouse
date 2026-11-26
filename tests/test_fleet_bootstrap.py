@@ -4,14 +4,20 @@ from __future__ import annotations
 import pytest
 from test_fleet_initial_setup import initial
 from test_fleet_ui import Serving, no_release_lookup
+from test_fleet_ui_founded import (  # noqa: F401  (fixtures: a real node in a founded pool)
+    founded_node,
+    governed,
+)
 from test_workspace_board_ui import browser
 
+pytest_plugins = ("testfarm_kit",)  # the `node_binary` fixture
 __all__ = ["browser", "no_release_lookup"]
 
 
 @pytest.fixture
-def device(tmp_path):
+def device(tmp_path, governed):  # noqa: F811
     served = Serving(tmp_path, secure=False)
+    served.ui.gated = True  # a founded pool asks for a session, so an expired one is refused
     try:
         yield served
     finally:
@@ -30,7 +36,7 @@ DELAY_SESSION = """
       window.bootstrapFinished = true;
       return response;
     }
-    if (path === '/ui/room' || path === '/ui/workspace/jobs' || path === '/ui/members') {
+    if (path === '/ui/room' || path === '/ui/workspace/jobs' || path === '/ui/settings') {
       window.bootstrapRequests.push({path, negotiated:!!window.bootstrapFinished});
     }
     return request(path, options);
@@ -50,7 +56,7 @@ def test_delayed_ticket_redemption_orders_eager_requests_and_expiry_asks_for_the
         page.wait_for_function("() => window.bootstrapPending === true")
         cancelled = page.evaluate("""async () => {
           const control = new AbortController();
-          const pending = fleetModel.api('/ui/members', {signal:control.signal});
+          const pending = fleetModel.api('/ui/settings', {signal:control.signal});
           control.abort();
           try { await pending; return false; }
           catch (error) { return error.name === 'AbortError'; }
@@ -64,7 +70,7 @@ def test_delayed_ticket_redemption_orders_eager_requests_and_expiry_asks_for_the
             for session in device.ui.sessions._sessions.values():
                 session.expires_at = 0
         status = page.evaluate("""async () => {
-          const result = await fleetModel.api('/ui/members');
+          const result = await fleetModel.api('/ui/settings');
           fleetModel.refused(result);
           return result.status;
         }""")
