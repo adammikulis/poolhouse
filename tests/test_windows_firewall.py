@@ -6,7 +6,7 @@ for `powershell.exe` and records what it was given. Nothing here is a model.
 
 from __future__ import annotations
 
-import base64
+from pathlib import Path
 
 import pytest
 
@@ -16,25 +16,26 @@ from poolhouse.fleet.wsl_network import nat_notice
 
 
 class Windows:
-    """What PowerShell answers: the rules held now, the connection categories, and what an elevated prompt adds."""
+    """What PowerShell answers: the rules held now, the connection categories, and whether this shell is an administrator's."""
 
-    def __init__(self, held=(), categories="Private", grants=True):
-        self.held, self.categories, self.grants, self.sent = list(held), categories, grants, []
+    def __init__(self, held=(), categories="Private", admin=True):
+        self.held, self.categories, self.admin, self.sent = list(held), categories, admin, []
 
     def __call__(self, script: str) -> str:
         self.sent.append(script)
+        if "IsInRole" in script:
+            return "True" if self.admin else "False"
         if "Get-NetFirewallRule" in script:
             return "\n".join(self.held)
         if "Get-NetConnectionProfile" in script:
             return self.categories
-        if "-Verb RunAs" in script and self.grants:
+        if "New-NetFirewallRule" in script:
             self.held = [name for name, _, _ in firewall.rules()]
         return ""
 
-    def elevated(self) -> str:
-        (script,) = [s for s in self.sent if "-Verb RunAs" in s]
-        encoded = script.split("'-EncodedCommand','")[1].split("'")[0]
-        return base64.b64decode(encoded).decode("utf-16-le")
+    def added(self) -> str:
+        (script,) = [s for s in self.sent if "New-NetFirewallRule" in s]
+        return script
 
 
 def test_the_one_rule_is_the_daemons_port_and_there_is_no_beacon_rule():
@@ -42,28 +43,30 @@ def test_the_one_rule_is_the_daemons_port_and_there_is_no_beacon_rule():
     assert "UDP" not in firewall.line()
 
 
-def test_with_the_rule_held_nothing_is_asked_of_windows(capsys):
+def test_with_the_rule_held_nothing_is_added_and_nothing_is_said(capsys):
     windows = Windows(held=["Poolhouse"])
     assert firewall.ensure(windows) is True
-    assert not any("-Verb RunAs" in s for s in windows.sent) and capsys.readouterr().out == ""
+    assert not any("New-NetFirewallRule" in s for s in windows.sent) and capsys.readouterr().out == ""
 
 
-def test_a_missing_rule_is_added_by_one_elevated_prompt_that_says_so_first(capsys):
+def test_a_missing_rule_is_added_where_the_shell_is_already_an_administrators_and_no_prompt_is_raised(capsys):
     windows = Windows()
     assert firewall.ensure(windows) is True
-    assert "press Yes" in capsys.readouterr().out
-    added = windows.elevated()
+    added = windows.added()
     assert "-DisplayName 'Poolhouse'" in added and f"-Protocol TCP -LocalPort {DEFAULT_HTTP_PORT}" in added and "-Profile Private" in added
+    assert not any("RunAs" in s or "Start-Process" in s for s in windows.sent), "no administrator prompt is raised"
     assert firewall.missing(windows) == []
     again = Windows(held=["Poolhouse"])
     assert firewall.ensure(again) is True
-    assert not any("-Verb RunAs" in s for s in again.sent), "a rule that is held is not added again"
+    assert not any("New-NetFirewallRule" in s for s in again.sent), "a rule that is held is not added again"
 
 
-def test_a_prompt_that_was_declined_is_said_in_a_sentence_and_nothing_is_claimed(capsys):
-    windows = Windows(grants=False)
+def test_where_the_shell_is_not_an_administrators_the_rule_is_refused_at_once_with_the_reason_and_the_line_and_nothing_is_raised(capsys):
+    windows = Windows(admin=False)
     assert firewall.ensure(windows) is False
-    assert "open Poolhouse again and press Yes" in capsys.readouterr().err
+    said = capsys.readouterr().err
+    assert firewall.NOT_ELEVATED in said and firewall.line() in said
+    assert not any("New-NetFirewallRule" in s or "RunAs" in s or "Start-Process" in s for s in windows.sent), "nothing was added and no prompt was raised"
 
 
 def test_a_network_windows_calls_public_is_named_with_the_setting_to_change(capsys):
@@ -83,3 +86,10 @@ def test_a_wsl_machine_on_the_hyper_v_network_is_told_how_to_be_reached(address)
 @pytest.mark.parametrize("address", ["192.168.2.59", "10.0.0.4", "172.32.0.1", "", "not an address"])
 def test_a_machine_on_the_network_itself_is_not_told_anything(address):
     assert nat_notice(address) == ""
+
+
+def test_nothing_in_the_source_raises_a_windows_administrator_prompt():
+    root = Path(__file__).resolve().parent.parent
+    files = [*(root / "src" / "poolhouse").rglob("*.py"), *(root / "packaging").glob("*.ps1")]
+    raising = [str(f.relative_to(root)) for f in files if "-Verb RunAs" in f.read_text(encoding="utf-8", errors="replace")]
+    assert raising == [], "an administrator prompt waits for a person: decide by rule or refuse at once instead"

@@ -100,12 +100,15 @@ function Open-Firewall {
     $lines = ($missing | ForEach-Object {
         "netsh advfirewall firewall add rule name=`"$($_.Name)`" dir=in action=allow " +
         "protocol=$($_.Protocol) localport=$($_.Port)" }) -join " ; "
-    Write-Host "Letting the pool reach this machine (Windows asks for approval once)..."
-    try {
-        Start-Process powershell -Verb RunAs -Wait -ArgumentList "-NoProfile", "-Command", $lines
+    $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+        [Security.Principal.WindowsBuiltInRole]::Administrator)
+    if ($admin) {
+        Write-Host "Letting the pool reach this machine..."
+        cmd /c $lines
     }
-    catch {
-        Write-Host "Not approved. Other machines will not see this one until, as administrator:"
+    else {
+        Write-Host "Other machines will not see this one: only an administrator's PowerShell adds the firewall rules, and nothing here asks for one."
+        Write-Host "Run this once in an administrator prompt:"
         Write-Host "  $lines"
     }
 }

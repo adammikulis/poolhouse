@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import subprocess
 from pathlib import Path
 
@@ -91,11 +90,10 @@ def test_the_kind_of_machine_comes_from_the_platform_and_the_kernel(platform, ve
     assert device_host.host_kind(platform, version) == kind
 
 
-def test_the_firewall_script_covers_both_ports_and_the_vm_and_travels_encoded():
+def test_the_firewall_script_covers_both_ports_and_the_vm():
     script = device_host.rules_script()
     assert f"-LocalPort {node_join.DEFAULT_PORT}" in script and f"-LocalPort {node_join.DEFAULT_BEACON_PORT}" in script
     assert device_host.HYPERV_ID in script and "-Profile Private" in script
-    assert base64.b64decode(base64.b64encode(script.encode("utf-16-le"))).decode("utf-16-le") == script
 
 
 def test_a_dry_run_lists_the_changes_and_makes_none(monkeypatch, capsys):
@@ -130,12 +128,13 @@ def test_wsl_that_needs_mirroring_writes_the_config_and_restarts_before_anything
     assert any(p.name.startswith(".wslconfig.poolhouse-backup") for p in tmp_path.iterdir())
 
 
-def test_a_missing_firewall_rule_after_the_prompt_is_not_ready_with_the_fix(monkeypatch, capsys):
+def test_a_firewall_rule_that_could_not_be_added_is_not_ready_with_the_reason(monkeypatch, capsys):
     monkeypatch.setattr(device_setup, "survey", lambda repo: needs(kind="windows", firewall_missing=True))
     monkeypatch.setattr(device_host, "add_firewall", lambda: None)
     monkeypatch.setattr(device_host, "firewall_missing", lambda: True)
     assert device_setup.main([]) == 1
-    assert "NOT READY" in capsys.readouterr().err
+    said = capsys.readouterr().err
+    assert "NOT READY" in said and device_host.NOT_ELEVATED in said
 
 
 def test_joining_without_a_code_is_refused_before_the_node_is_asked(monkeypatch, capsys):
@@ -169,7 +168,6 @@ def test_every_command_the_host_runs_is_a_fixed_argv_with_no_input_from_outside(
     calls = _recorded(monkeypatch)
     device_host.restart_wsl()
     device_host.firewall_missing()
-    device_host.add_firewall()
     device_host.install_rust("windows")
     device_host.install_rust("linux")
     argvs = [argv for argv, _ in calls]
@@ -177,3 +175,13 @@ def test_every_command_the_host_runs_is_a_fixed_argv_with_no_input_from_outside(
     assert argvs[-1][:2] == ["sh", "-c"] and device_host.RUSTUP_URL in argvs[-1][2] and "--proto '=https'" in argvs[-1][2]
     assert argvs[-2][0] == "winget"
     assert all(not kwargs.get("shell") for _, kwargs in calls)
+
+
+def test_the_firewall_rules_are_added_where_the_shell_is_an_administrators_and_refused_at_once_with_the_reason_where_it_is_not(monkeypatch):
+    calls = _recorded(monkeypatch, stdout="False")
+    with pytest.raises(PermissionError, match="administrator's PowerShell"):
+        device_host.add_firewall()
+    assert len(calls) == 1 and "IsInRole" in calls[0][0][-1], "only the elevation was asked: no rule was added and no prompt was raised"
+    calls = _recorded(monkeypatch, stdout="True")
+    device_host.add_firewall()
+    assert "New-NetFirewallRule" in calls[-1][0][-1] and not any("RunAs" in part for argv, _ in calls for part in argv)

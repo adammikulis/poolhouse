@@ -145,7 +145,7 @@ class TestWhatNeedsRoot:
     """Starting at boot, before anyone logs in, needs administrator rights. Nothing in Poolhouse asks for a password or
     runs sudo, so that install is refused at once with the reason, and nothing is written or run."""
 
-    @pytest.mark.parametrize("platform", ["darwin", "linux"])
+    @pytest.mark.parametrize("platform", ["darwin", "linux", "win32"])
     def test_a_boot_install_is_refused_at_once_with_the_reason_and_runs_and_writes_nothing(self, monkeypatch, tmp_path, platform):
         from poolhouse.fleet import autostart
         from poolhouse.fleet.autostart_backends import NEEDS_ROOT

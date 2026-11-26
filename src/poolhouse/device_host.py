@@ -6,7 +6,6 @@ Nothing here opens a socket or prints a secret.
 
 from __future__ import annotations
 
-import base64
 import os
 import subprocess
 import sys
@@ -21,6 +20,9 @@ POWERSHELL = "powershell.exe"
 RUSTUP_URL = "https://sh.rustup.rs"
 TIMEOUT = 600
 
+NOT_ELEVATED = ("the Windows firewall rules need an administrator's PowerShell, and nothing in Poolhouse asks for one: run this from an administrator "
+                "PowerShell once, or add the rules there yourself")
+_ELEVATED = "([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)"
 _HYPERV_PRESENT = "(Get-Command Get-NetFirewallHyperVVMSetting -ErrorAction SilentlyContinue)"
 
 
@@ -65,9 +67,11 @@ def firewall_missing() -> bool:
 
 
 def add_firewall() -> None:
-    """Add the rules in an elevated PowerShell: one Windows administrator prompt."""
-    encoded = base64.b64encode(rules_script().encode("utf-16-le")).decode("ascii")
-    _powershell(f"Start-Process {POWERSHELL} -Verb RunAs -Wait -ArgumentList '-NoProfile','-EncodedCommand','{encoded}'")
+    """Add the rules where this PowerShell is already an administrator's (the rule that allows it); refuse at once with the reason (`PermissionError`)
+    where it is not: no administrator prompt is raised."""
+    if _powershell(_ELEVATED) != "True":
+        raise PermissionError(NOT_ELEVATED)
+    _powershell(rules_script())
 
 
 def wslconfig_path(kind: str) -> Path:

@@ -1,15 +1,15 @@
-"""Windows only: the inbound rule the daemon needs to be reached, added with the one administrator prompt.
+"""Windows only: the inbound rule the daemon needs to be reached, added where this shell is already an administrator's and refused at once, with the
+reason and the line to run, where it is not: no administrator prompt is ever raised.
 
 The rule is TCP for the daemon's port, on private networks. The Rust node's own ports are opened by `poolhouse.device_host`.
 """
 
 from __future__ import annotations
 
-import base64
 import subprocess
 from collections.abc import Callable
 
-from poolhouse.log import say, warn
+from poolhouse.log import warn
 
 from .onboard.lan import DEFAULT_HTTP_PORT
 
@@ -18,6 +18,10 @@ POWERSHELL = "powershell.exe"
 TIMEOUT_S = 300
 PUBLIC = (r"Windows treats this network as Public, which blocks your other devices from reaching Poolhouse here: "
           r"in Settings > Network & internet, open this network's properties and choose Private")
+
+NOT_ELEVATED = ("Windows lets only an administrator's PowerShell add the rule that lets your other devices reach Poolhouse, and nothing in Poolhouse asks for "
+                "one: run this line once in an administrator prompt")
+_ELEVATED = "([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)"
 
 Run = Callable[[str], str]
 
@@ -50,12 +54,15 @@ def missing(run: Run = powershell) -> list[tuple[str, str, int]]:
     return [rule for rule in rules() if rule[0] not in held]
 
 
+def elevated(run: Run = powershell) -> bool:
+    """Whether this PowerShell is an administrator's already."""
+    return run(_ELEVATED) == "True"
+
+
 def add(absent: list[tuple[str, str, int]], run: Run = powershell) -> None:
-    """Add ``absent`` in an elevated PowerShell: Windows asks the person once."""
-    adds = "; ".join(f"New-NetFirewallRule -DisplayName '{name}' -Direction Inbound -Action Allow -Profile Private -Protocol {proto} -LocalPort {port} | Out-Null"
-                     for name, proto, port in absent)
-    encoded = base64.b64encode(adds.encode("utf-16-le")).decode("ascii")
-    run(f"Start-Process {POWERSHELL} -Verb RunAs -Wait -ArgumentList '-NoProfile','-EncodedCommand','{encoded}'")
+    """Add ``absent`` in this PowerShell, which the caller found to be an administrator's."""
+    run("; ".join(f"New-NetFirewallRule -DisplayName '{name}' -Direction Inbound -Action Allow -Profile Private -Protocol {proto} -LocalPort {port} | Out-Null"
+                  for name, proto, port in absent))
 
 
 def public_only(run: Run = powershell) -> bool:
@@ -65,14 +72,17 @@ def public_only(run: Run = powershell) -> bool:
 
 
 def ensure(run: Run = powershell) -> bool:
-    """Make sure the rules are in place, asking Windows once; False, after saying what to do, when they are not."""
+    """Make sure the rules are in place: added where this shell is an administrator's, refused at once with the reason and the line to run where it is
+    not. False, after saying what to do, when they are not in place."""
     absent = missing(run)
+    if absent and not elevated(run):
+        warn(f"{NOT_ELEVATED}: {line()}")
+        return False
     if absent:
-        say("Windows will ask once to let your other devices reach Poolhouse: press Yes.")
         add(absent, run)
         absent = missing(run)
     if absent:
-        warn("Windows did not add the firewall rules, so your other devices cannot reach this one: open Poolhouse again and press Yes when Windows asks.")
+        warn(f"Windows did not add the firewall rules, so your other devices cannot reach this one: {NOT_ELEVATED}: {line()}")
         return False
     if public_only(run):
         warn(PUBLIC)

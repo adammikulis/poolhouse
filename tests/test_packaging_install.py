@@ -34,7 +34,7 @@ def test_the_windows_installer_opens_the_ports_the_daemon_and_the_rust_node_need
     rules = dict(re.findall(r'Name = "([^"]+)";\s+Protocol = "(?:TCP|UDP)"; Port = (\d+)', script))
     assert rules == {FIREWALL_RULE_HTTP: str(DEFAULT_HTTP_PORT), **{name: str(port) for name, _, port in RULES}}
     assert "Poolhouse discovery" not in script, "only the daemon port is opened"
-    assert "-Verb RunAs" in script, "the rules need an administrator's approval, once"
+    assert "RunAs" not in script and "IsInRole" in script, "the rules are added only where the shell is already an administrator's: no prompt is raised"
     assert "Get-NetFirewallRule" in script, "a rule already present is not added twice"
 
 

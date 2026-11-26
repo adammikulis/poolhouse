@@ -185,7 +185,7 @@ def _systemd_install(mode: str, argv: list[str], log_dir: Path) -> Autostart:
 
 # -- Windows -------------------------------------------------------------
 # Two Scheduled Tasks, the way `poolhouse-serve build --persist` keeps llama.cpp fresh:
-# LABEL at boot (as SYSTEM, needs an administrator once) and LOGIN_TASK at this user's
+# LABEL at boot (as SYSTEM: refused at once, as on macOS and Linux, since it needs an administrator) and LOGIN_TASK at this user's
 # logon (needs nothing). Both run a .cmd wrapper rather than the daemon directly, because a
 # task's /TR cannot redirect output and a daemon with no log is a daemon nobody can debug.
 # The Startup-folder .cmd is what older installs used for logon; it is still removed, and
@@ -235,21 +235,8 @@ def _windows_task_named(name: str) -> bool:
 
 
 def _windows_install(mode: str, argv: list[str], log_dir: Path, *, start_now: bool = True) -> Autostart:
-    quoted = _quote(argv)
     if mode == "boot":
-        command = (f'schtasks /Create /F /TN "{LABEL}" /TR "{quoted}" '
-                   f'/SC ONSTART /RL HIGHEST /RU SYSTEM')
-        try:
-            done = subprocess.run(
-                ["powershell", "-NoProfile", "-Command",
-                 f"Start-Process -Verb RunAs -Wait -FilePath cmd -ArgumentList '/c {command}'"],
-                capture_output=True, text=True, timeout=120)
-            if done.returncode == 0:
-                return Autostart(mode, installed=True)
-        except (OSError, subprocess.SubprocessError):
-            pass
-        return Autostart(mode, installed=False, command=command,
-                         note="Permission was not given, so it will not start at boot.")
+        return Autostart(mode, installed=False, note=NEEDS_ROOT)
 
     wrapper = _windows_wrapper(log_dir)
     wrapper.parent.mkdir(parents=True, exist_ok=True)

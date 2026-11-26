@@ -3,9 +3,9 @@
     python -m poolhouse.device_setup [--dry-run] [--wait SECONDS]
 
 It lists every change this device needs, makes them,
-and ends with READY, or NOT READY and the one fix. Per platform: Windows and WSL get inbound firewall rules (one Windows
-administrator prompt) and WSL gets mirrored networking in the Windows user's .wslconfig (the old file is kept; WSL then
-restarts, which ends this session, so run the same command again); every platform gets the node (a binary already
+and ends with READY, or NOT READY and the one fix. Per platform: Windows and WSL get inbound firewall rules (only where the shell is
+already an administrator's; otherwise refused at once with the reason, since nothing here raises an administrator prompt) and WSL gets
+mirrored networking in the Windows user's .wslconfig (the old file is kept; WSL then restarts, which ends this session, so run the same command again); every platform gets the node (a binary already
 present, else a cargo build, installing Rust first when cargo is missing), started with its network on, then the join check.
 Rerunning changes nothing that is already right. No secret is printed.
 """
@@ -99,7 +99,7 @@ def plan(needs: Needs, *, port: int = node_join.DEFAULT_PORT, beacon: int = node
     """Each change the setup will make on this device, one line each: what the single yes is for."""
     steps = []
     if needs.firewall_missing:
-        steps.append(f"add Windows inbound allow rules for TCP {port} and UDP {beacon} (one Windows administrator prompt: press Yes)")
+        steps.append(f"add Windows inbound allow rules for TCP {port} and UDP {beacon} (only where this shell is already an administrator's, else refused with the reason)")
     if needs.kind == "wsl" and needs.config_change:
         steps.append("write networkingMode=mirrored to the Windows user's .wslconfig (the old file is kept beside it): the recommended WSL setting, "
                      "because WSL then shares the Windows network, so other devices reach it directly and hear its beacons")
@@ -131,10 +131,9 @@ def announce(steps: list[str]) -> None:
 def prepare(needs: Needs) -> str:
     """Do the Windows-side changes; the restart message when WSL had to restart, else ''."""
     if needs.firewall_missing:
-        say("A Windows prompt will appear: press Yes.")
         device_host.add_firewall()
         if device_host.firewall_missing():
-            raise node_join.PoolError("the firewall rules were not added; run this again and press Yes on the Windows prompt")
+            raise node_join.PoolError("the firewall rules were not added: " + device_host.NOT_ELEVATED)
     if needs.kind == "wsl" and needs.config_change:
         say(f".wslconfig: {write_config(device_host.wslconfig_path('wsl'))}")
     if needs.restart_wsl:
