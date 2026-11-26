@@ -244,7 +244,7 @@ poolhouse-delegate stop NAME
   attested on the live process, with a closed environment and the model reached only through the parent's bridge (the
   launcher's own words and limits: "What is not covered" below and docs/design-isolated-launcher.md). When each turn ends, and
   when the run ends, the launcher publishes the plain source the agent changed into the project and refuses everything else
-  at once (a workflow, a hook, a build or package file, a program, a hidden configuration file): the refusal is kept as a patch
+  at once (a workflow, a hook, a build or package file, a program, a hidden configuration file); build junk (bytecode caches, `.DS_Store`, cache and dependency folders) is neither published nor reported, and the box sets `PYTHONDONTWRITEBYTECODE` so Python writes none: the refusal is kept as a patch
   under `~/.poolhouse/isolation/refused/NAME/` and the lead gets one `isolation.report` message from the launcher's own
   identity, in the launcher's words (counts and causes, no name the agent chose). The same words end `result NAME`. An edit
   or a deletion of a file git does not hold (a draft of yours, a file an earlier run made) is published too: the launcher keeps
