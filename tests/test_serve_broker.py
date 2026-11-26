@@ -270,6 +270,30 @@ def test_a_restarted_broker_keeps_a_live_holders_lease(broker, models, holders, 
     assert pid_exists(held.pid)
 
 
+def test_a_broker_that_took_over_from_one_that_handed_over_owns_the_server_its_holder_uses(
+        broker, models, holders, llama_binary, tmp_path):
+    """The broker that leased a server may be gone (it handed over to newer code); a server with a live holder is the
+    successor's, not an orphan the next start would stop."""
+    from poolhouse.serve.leases import orphaned, recorded_servers
+
+    a = holders()
+    first = broker.lease(ask(models[0], a.pid), timeout=30)
+    gone = subprocess.Popen([sys.executable, "-c", ""])
+    gone.wait(timeout=30)
+    state = tmp_path / "servers.json"
+    records = json.loads(state.read_text(encoding="utf-8"))
+    records[str(first.port)]["owner_pid"] = gone.pid
+    state.write_text(json.dumps(records), encoding="utf-8")
+    assert orphaned(recorded_servers(state)[first.port], strict=True)
+
+    successor = Broker(ServerManager(LlamaServerBackend(binary=llama_binary), state_file=state),
+                       idle_s=0.0, room=lambda: None, scan=lambda: [])
+    successor.adopt()
+    assert recorded_servers(state)[first.port]["owner_pid"] == os.getpid()
+    assert not orphaned(recorded_servers(state)[first.port], strict=True)
+    assert pid_exists(successor.servers[first.port].pid)
+
+
 def test_a_server_put_up_by_hand_is_held_by_itself_and_never_reaped(
         models, holders, llama_binary, tmp_path):
     """`poolhouse-serve up` records the server as its own owner; the broker never stops it."""

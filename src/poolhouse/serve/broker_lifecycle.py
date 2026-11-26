@@ -4,6 +4,7 @@ from __future__ import annotations
 from functools import wraps
 
 from poolhouse import maintenance
+from poolhouse.serve.admission import tag_of
 
 
 def _coordination_only(row) -> bool:
@@ -43,30 +44,49 @@ def admitted(method):
     return entered
 
 
-def retire(broker) -> bool:
+def _server_row(broker, row) -> bool:
+    """Whether ``row`` is the node's lease of a standing server this broker carries: held, bound to that server's port and
+    holding only its memory and its slot."""
+    if not isinstance(row, dict) or row.get('state') != 'held':
+        return False
+    held = next((h for h in broker.servers.values() if row.get('tag') == tag_of(h.port)), None)
+    resources = row.get('resources')
+    return held is not None and not held.loading and isinstance(resources, list) and bool(resources) and all(
+        isinstance(one, dict) and one.get('type') in ('memory_mb', 'model_slot') for one in resources)
+
+
+def retire(broker, *, carrying: bool = False) -> bool:
     """Drain idle owned caches, then seal; busy or uncertain work stays owned.
 
     Run under updater intent before its exclusive turn. The accounting reader
     lets nested normal GPU admission finish while new work is excluded.
+
+    With ``carrying`` the standing servers are not work: the holders of each are on disk (`Broker._write_held`) and the
+    broker that replaces this one takes the servers and their holders in again, so a broker running older code than the
+    selected runtime can be replaced while a server is up. A server still loading, a waiting ask, a claim, a core grant
+    and any call in flight stay owned.
     """
     with maintenance.read(existing=True), broker._cond:
         if broker._retiring:
             return True
-        if _busy(broker):
+        if _busy(broker, carrying):
             return False
         if broker._decision_hosts is not None and not broker._decision_hosts.drain_idle():
             return False
         broker._retiring = True
         sealed = False
         try:
-            if _busy(broker):
+            if _busy(broker, carrying):
                 return False
             listing = broker.table.listing()
             # Compute, serving and uninspectable rows matter, even on another board.
             if not isinstance(listing, dict) or not isinstance(listing.get("leases"), list):
                 raise RuntimeError("The broker cannot verify the device's active leases.")
-            if any(not _coordination_only(row) for row in listing['leases']):
+            if any(not _coordination_only(row) and not (carrying and _server_row(broker, row))
+                   for row in listing['leases']):
                 return False
+            if carrying:
+                broker._write_held()
             sealed = True
             return True
         finally:
@@ -75,6 +95,7 @@ def retire(broker) -> bool:
                 broker._cond.notify_all()
 
 
-def _busy(broker) -> bool:
-    return bool(broker._active_calls or broker.servers or broker.queue or broker.claims
+def _busy(broker, carrying: bool = False) -> bool:
+    servers = any(held.loading for held in broker.servers.values()) if carrying else bool(broker.servers)
+    return bool(broker._active_calls or servers or broker.queue or broker.claims
                 or broker.claim_waiters or broker.cores)

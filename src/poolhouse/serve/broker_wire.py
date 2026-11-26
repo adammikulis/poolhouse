@@ -23,7 +23,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, jobs, maintenance, optional, spawned
+from poolhouse import home, jobs, maintenance, optional, runtime_age, spawned
 from poolhouse.files import read_json, write_json
 from poolhouse.lock import Busy, only_one
 from poolhouse.log import say as say_out
@@ -132,6 +132,14 @@ class _Server(socketserver.ThreadingTCPServer):
         with self.broker._cond:
             self.broker._cond.notify_all()
 
+    def retiring(self, *, carrying: bool) -> bool:
+        """Seal the broker and stop serving when it has no work (`broker_lifecycle.retire`); whether it did."""
+        if not retire(self.broker, carrying=carrying):
+            return False
+        self.closing.set()
+        threading.Thread(target=self.shutdown, daemon=True).start()
+        return True
+
     def answer(self, body: dict[str, Any], *, connected: Any = None) -> dict[str, Any]:
         if body.get("token") != self.token:
             return {"ok": False, "error": "wrong broker token"}
@@ -142,11 +150,8 @@ class _Server(socketserver.ThreadingTCPServer):
         if op == "idle-retire":
             if connected is None or not connected():
                 raise PermissionError("Only a connected process may request idle broker retirement.")
-            if not retire(self.broker):
-                return {"ok": True, "retiring": False}
-            self.closing.set()
-            threading.Thread(target=self.shutdown, daemon=True).start()
-            return {"ok": True, "retiring": True}
+            # a broker older than the selected runtime hands over with its servers (``carrying``); any other keeps them
+            return {"ok": True, "retiring": self.retiring(carrying=bool(body.get("carrying")) and runtime_age.is_older())}
         if self.closing.is_set() and op != "status":
             raise RuntimeError("The broker is retiring; reconnect to its replacement.")
         if op == "decision":
@@ -389,9 +394,10 @@ def serve(*, idle_s: float = IDLE_S, quiet_s: float = QUIET_S, say=say_out,
 
 def _upkeep(broker: Broker, done: threading.Event, server: _Server, quiet_s: float) -> None:
     """Reap every second, take in servers started since the last look every
-    ``ADOPT_EVERY_S``, and stop the server once the broker's record is gone or it has had
-    nothing to supervise for ``quiet_s``."""
-    looked = busy = time.monotonic()
+    ``ADOPT_EVERY_S``, hand over when the selected runtime is newer than the code it runs
+    and nothing it holds is lost by that, and stop the server once the broker's record is
+    gone or it has had nothing to supervise for ``quiet_s``."""
+    looked = busy = checked = time.monotonic()
     while not done.wait(REAP_EVERY_S):
         broker.reap()
         now = time.monotonic()
@@ -401,6 +407,12 @@ def _upkeep(broker: Broker, done: threading.Event, server: _Server, quiet_s: flo
             looked = now
         if broker.supervising():
             busy = now
+        if now - checked >= ADOPT_EVERY_S:
+            checked = now
+            if runtime_age.is_older() and server.retiring(carrying=True):
+                broker.say("broker handing over: the selected runtime is newer than the code it runs; "
+                           "the next call starts one on the selected runtime and its holders are taken in")
+                return
         why = ("its record is gone" if _record().get("pid") != os.getpid()
                else f"nothing to supervise for {quiet_s:.0f}s" if now - busy >= quiet_s else "")
         if why:
@@ -479,6 +491,34 @@ def running() -> int | None:
     record = _answering()
     return int(record["pid"]) if record else None
 
+
+HANDOVER_WAIT_S = 15.0
+
+
+def replace_stale() -> str:
+    """Ask the machine's broker to hand over when it runs code older than the selected runtime, and wait for it to go.
+
+    One of ``"no broker"``, ``"current"`` (it runs the selected runtime), ``"gone"`` (it handed over; the next call starts
+    one on the selected runtime, which takes in the servers and their holders), or ``"busy"`` (it has work it cannot hand
+    over; a newer broker asks again by itself every ``ADOPT_EVERY_S`` and goes when that work ends, and one too old to know
+    that is kept until it is idle, like any other retirement).
+    """
+    record = _answering()
+    if record is None:
+        return "no broker"
+    if not runtime_age.is_older(record["pid"]):
+        return "current"
+    born = record.get("pid_started")
+    reply = _send(record, {"op": "idle-retire", "carrying": True, "pid": os.getpid()}, timeout=5.0,
+                  expected={"pid": record["pid"], "started": born} if born is not None else None)
+    if not reply.get("ok") or not reply.get("retiring"):
+        return "busy"
+    until = time.monotonic() + HANDOVER_WAIT_S
+    while pid_exists(record["pid"]) and started_at(record["pid"]) == born:
+        if time.monotonic() >= until:
+            return "busy"
+        time.sleep(0.1)
+    return "gone"
 
 
 def _checked(op: str, start: bool) -> dict[str, Any]:

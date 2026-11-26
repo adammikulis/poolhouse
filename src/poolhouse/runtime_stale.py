@@ -3,47 +3,25 @@
 `poolhouse runtime ensure` switches what the next start runs; it signals nothing, because a store
 writer is never killed. A daemon started before the switch keeps running the build it started
 with (the board daemon once ran an old build for hours). This names those processes, so
-`runtime status` can say so.
+`runtime status` can say so (`poolhouse.runtime_age` decides which they are).
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import NamedTuple
 
+from poolhouse.runtime_age import Running, older_than
 from poolhouse.serve import process
 
 __all__ = ["Running", "older_than", "running", "stale_lines"]
 
 MARKERS = ("poolhouse", "poolhouse")
 """A process is one of ours when a word of its command line holds one of these."""
-SLACK_S = 5.0
-"""A process that started within this long of the verification is not older than it."""
-
-
-class Running(NamedTuple):
-    """One process: its id, when it started (epoch seconds) and its command line."""
-
-    pid: int
-    started: float
-    argv: tuple[str, ...]
 
 
 def running() -> list[Running]:
     """Every readable process of ours (a command-line word names poolhouse or a poolhouse program), this one excluded."""
     return [Running(*row) for row in process.command_lines() if any(m in word for word in row[2] for m in MARKERS)]
-
-
-def older_than(procs: list[Running], prefix: Path, verified_at: float) -> list[Running]:
-    """The processes that began before ``verified_at`` and do not run from ``prefix`` (the selected runtime).
-
-    A host that replaced itself with `execve` keeps its start time but its command line names the
-    selected runtime's interpreter, so it is not listed.
-    """
-    if verified_at <= 0:
-        return []
-    inside = str(prefix)
-    return [p for p in procs if p.started + SLACK_S < verified_at and not any(inside in word for word in p.argv)]
 
 
 def stale_lines(prefix: Path, verified_at: float, procs: list[Running] | None = None) -> list[str]:

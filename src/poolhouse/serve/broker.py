@@ -44,7 +44,7 @@ from poolhouse.serve.broker_holds import MODEL_START, POLL_S, BrokerHolds
 from poolhouse.serve.broker_lifecycle import admitted
 from poolhouse.serve.decision_residents import DecisionResidents
 from poolhouse.serve.events import Caller, Growth
-from poolhouse.serve.leases import recorded_servers
+from poolhouse.serve.leases import orphaned, recorded_servers
 from poolhouse.serve.manager import ASKING, Measuring, ServerManager, Starting
 from poolhouse.serve.matching import model_matches
 from poolhouse.serve.ports import DEFAULT_HOST, free_port, port_is_free
@@ -744,6 +744,10 @@ class Broker(BrokerHolds):
                 holders = {f"recorded-{port}": (owner, "recorded owner")}
             if owner == pid:
                 holders[f"up-{port}"] = (pid, "poolhouse-serve up")
+            if holders and orphaned(entry, strict=True):
+                # the broker that leased it is gone (it handed over, or died) and processes still use it: it is
+                # this broker's now, not an orphan for the next start to stop
+                self.manager._take_over(port, entry, say=self.say)
             found.append(Held(port=port, model=str(entry.get("model") or ""), pid=pid,
                               ours=not entry.get("unmanaged"), purpose=str(was.get("purpose") or ""), idle_since=now, holders=holders,
                               records=why,

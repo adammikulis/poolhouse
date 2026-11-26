@@ -11,6 +11,7 @@ from pathlib import Path
 
 from poolhouse import runtime
 from poolhouse.files import read_json, write_json
+from poolhouse.runtime_age import MARK, verified_at
 from poolhouse.serve.process import running_within
 
 KEEP = 3
@@ -18,7 +19,6 @@ UNVERIFIED_GRACE_S = 3600.0
 STATE = "deploy.json"
 CREATED = "created.json"
 TOOL = "poolhouse-runtime"
-MARK = "verified.json"
 REJECTED = "rejected"
 
 
@@ -57,13 +57,6 @@ def mark_verified(chosen: runtime.Runtime, epoch: int = 0, extra: dict | None = 
     write_json(chosen.prefix / MARK, {"commit": chosen.commit, "version": chosen.version, "epoch": epoch,
                                       "identity": chosen.identity, "verified_at": time.time(), **(extra or {})})
     (chosen.prefix / MARK).chmod(0o600)
-
-
-def verified_at(prefix: Path) -> float:
-    """When a prefix passed its smoke, or 0.0 when it never did."""
-    row = read_json(prefix / MARK, {})
-    value = row.get("verified_at") if isinstance(row, dict) else None
-    return float(value) if isinstance(value, (int, float)) else 0.0
 
 
 def epoch_of(prefix: Path) -> int:
