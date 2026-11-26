@@ -36,7 +36,7 @@ INSTALLER = r'''#!/usr/bin/env python3
 """Installs poolhouse from one machine on this network, checking everything it takes.
 
 Read it before you run it. It makes no change except `pip install` of a file whose size
-and SHA-256 it has checked, and only after you agree (or --yes). --dry-run stops before pip.
+and SHA-256 it has checked. --dry-run stops before pip.
 """
 import argparse, base64, hashlib, http.client, json, ssl, subprocess, sys, tempfile
 from pathlib import Path
@@ -65,7 +65,6 @@ def fetch(path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--yes", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
     raw = fetch("manifest")
@@ -94,8 +93,6 @@ def main():
     if args.dry_run:
         print("dry run: files verified in", work)
         return
-    if not args.yes:
-        sys.exit("not installed: pass --yes to install %s with pip" % ", ".join(w.name for w in wheels))
     subprocess.check_call([sys.executable, "-m", "pip", "install", *map(str, wheels)])
 
 

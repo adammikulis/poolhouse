@@ -14,7 +14,7 @@
 # and `--thinking-levels off,low,medium,high,unlimited`: docs/bench.md, "Context and thinking levels".
 #
 # Read it first:  python -m poolhouse.bench queue docs/examples/qwen3.8-ladder.queue --dry-run
-# Run it with:    python -m poolhouse.bench queue docs/examples/qwen3.8-ladder.queue --yes --detach
+# Run it with:    python -m poolhouse.bench queue docs/examples/qwen3.8-ladder.queue --ceiling 600 --detach
 # After the restart (wired memory raised, nothing else resident) the same line with --resume skips
 # every step already kept and measures the models that did not fit before.
 #

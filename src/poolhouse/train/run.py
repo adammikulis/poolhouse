@@ -139,7 +139,7 @@ def plan_for(recipe_id: str, config: dict[str, Any], data: Path, *,
 
 def run(recipe_id: str, config: dict[str, Any], data: Path, out: Path,
         *, dry: bool = False, on_step: Any = None, export: bool = False,
-        merge: bool = False, quant: str = "Q8_0", yes: bool = False,
+        merge: bool = False, quant: str = "Q8_0",
         ceiling_min: float | None = None, say: Any = None,
         should_stop: Callable[[], bool] | None = None) -> dict[str, Any]:
     """Train ``recipe_id`` into ``out``, then its phases and its export; returns the result."""
@@ -160,7 +160,7 @@ def run(recipe_id: str, config: dict[str, Any], data: Path, out: Path,
         # A dry run is 20 steps and is never refused: it is how the estimate above becomes
         # a measurement, the same way a smoke bench run is never refused.
         if not dry:
-            lora.refuse_over_ceiling(fit, yes=yes)
+            lora.refuse_over_ceiling(fit)
 
     built = build(recipe_id, config, data, framework=config["framework"])
     if built.batches is None:
@@ -408,7 +408,6 @@ def _parser() -> Any:
     group.add_argument("--quant", default="Q8_0", help="the GGUF quantisation to end with")
     group.add_argument("--ceiling", type=float, default=None, metavar="MINUTES",
                       help="refuse a run estimated to take longer than this (default 30)")
-    group.add_argument("--yes", action="store_true", help="run past the ceiling")
     return ap
 
 
@@ -443,7 +442,7 @@ def main(argv: list[str] | None = None) -> int:
     previous = signal.signal(signal.SIGTERM, lambda *_: stopping.set())
     try:
         result = run(a.recipe, _config_of(a), Path(a.data), Path(a.out), dry=a.dry_run,
-                     export=a.export_gguf, merge=a.merge, quant=a.quant, yes=a.yes,
+                     export=a.export_gguf, merge=a.merge, quant=a.quant,
                      ceiling_min=a.ceiling, should_stop=stopping.is_set)
     except lora.OverCeiling as exc:
         warn(str(exc))

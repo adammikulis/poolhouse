@@ -180,9 +180,8 @@ class TestThePlan:
 
         assert fit.ceiling_min == CEILING_MIN and fit.over
         with pytest.raises(OverCeiling, match="ceiling"):
-            lora_mod.refuse_over_ceiling(fit, yes=False)
-        lora_mod.refuse_over_ceiling(fit, yes=True)
-        assert "--yes" in fit.refusal() and "--dry-run" in fit.refusal()
+            lora_mod.refuse_over_ceiling(fit)
+        assert "--yes" not in fit.refusal() and "--ceiling" in fit.refusal() and "--dry-run" in fit.refusal()
 
     def test_the_command_refuses_before_it_loads_anything(self, tmp_path, capsys):
         """Exit 5, the bench's own code for a refused estimate -- and no download: an 8B
@@ -198,7 +197,7 @@ class TestThePlan:
         config = validate("tool-calls", {"size": "e4b", "steps": 20})
         fit = plan_for("tool-calls", config, e4b_data(tmp_path))
         assert not fit.over
-        lora_mod.refuse_over_ceiling(fit, yes=False)
+        lora_mod.refuse_over_ceiling(fit)
 
     def test_a_measurement_replaces_the_estimate(self, tmp_path):
         config = validate("tool-calls", {"size": "e4b"})

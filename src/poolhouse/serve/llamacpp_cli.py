@@ -24,7 +24,7 @@ OPTIONS = [
               "upstream and switch to it once it passes the smoke test; ensure: update when upstream "
               "is ahead and the machine is idle, safe to schedule; rollback: back to the "
               "previous build; pin BUILD: stop tracking and use that build; list: the builds "
-              "held; prune: delete older good builds after asking"),
+              "held; prune: delete the older good builds"),
     flag("build", nargs="?", default="", help="the build to pin (see 'list')"),
     flag("--ref", default="master", metavar="BRANCH_TAG_OR_SHA",
          help="update: what to build (default master)"),
@@ -38,7 +38,6 @@ OPTIONS = [
     flag("--max-behind-hours", type=float, default=0.0, metavar="N",
          help="ensure: leave a build made less than N hours ago alone"),
     flag("--offline", action="store_true", help="status: skip the upstream check"),
-    option("yes", help="prune: do not ask before deleting"),
     option("json"),
 ]
 
@@ -145,11 +144,6 @@ def _prune(args, upstream, pipeline) -> int:
     doomed = llamacpp_state.prune_candidates(args.keep)
     if not doomed:
         say(f"nothing to prune: {args.keep} good builds are kept besides the active and previous ones")
-        return 0
-    for item in doomed:
-        say(f"would delete {item.path}")
-    if not args.yes:
-        say("nothing deleted: pass --yes to delete these builds")
         return 0
     for item in doomed:
         llamacpp_state.remove(item)

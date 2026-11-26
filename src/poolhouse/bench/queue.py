@@ -1,7 +1,7 @@
 """An evening's measurements as a file, run one at a time through the bench's own lock.
 
 A night of benching was a zsh script in a scratch directory: a `step()` function, `&&`
-between a smoke and the run it guards, a `--yes` typed onto the long ones, and a
+between a smoke and the run it guards, a `--ceiling` typed onto the long ones, and a
 `grep | tail` to keep the log readable. Nine of them were written in one evening
 (2026-09-02), each one a little different from the last, and none of them could say what
 was running or what was left. That is a queue file, and this is the thing that reads it:
@@ -352,13 +352,11 @@ def _stop_running(grace: float = 60.0) -> None:
         end_child(child, grace_s=grace)
 
 
-def _for_step(argv: list[str], *, yes: bool, ceiling: float) -> list[str]:
-    """The line as written, plus the go-ahead and the ceiling the queue was given -- but
-    only for a step that takes them, and never over what the line says itself."""
+def _for_step(argv: list[str], *, ceiling: float) -> list[str]:
+    """The line as written, plus the ceiling the queue was given -- but only for a step
+    that takes it, and never over what the line says itself."""
     args = _parsed(argv, where="queue")
     out = list(argv)
-    if yes and hasattr(args, "yes") and "--yes" not in out:
-        out.append("--yes")
     if ceiling and hasattr(args, "ceiling") and not any(
             a == "--ceiling" or a.startswith("--ceiling=") for a in out):
         out += ["--ceiling", str(ceiling)]
@@ -366,7 +364,7 @@ def _for_step(argv: list[str], *, yes: bool, ceiling: float) -> list[str]:
 
 
 def run_queue(path: str | Path, *, dry_run: bool = False, resume: bool = False,
-              yes: bool = False, ceiling: float = 0.0,
+              ceiling: float = 0.0,
               runner: Callable[[Sequence[str]], int] | None = None) -> int:
     """Run every step of the queue file at ``path``, one at a time. 0 unless a step failed.
 
@@ -381,7 +379,7 @@ def run_queue(path: str | Path, *, dry_run: bool = False, resume: bool = False,
         say(f"{where}: {total} step(s), "
             f"{sum(1 for s in steps if s.kind == 'smoke')} smoke/then pair(s)")
         for step in steps:
-            told = _for_step(step.argv, yes=yes, ceiling=ceiling)
+            told = _for_step(step.argv, ceiling=ceiling)
             say(f"  {step.n:>2}  {step.kind:<5}  python -m poolhouse.bench {' '.join(told)}"
                 + (f"    [label {step.label}]" if step.label else ""))
         say("nothing ran: --dry-run")
@@ -424,7 +422,7 @@ def run_queue(path: str | Path, *, dry_run: bool = False, resume: bool = False,
             say(f"--- {time.strftime('%H:%M:%S')} step {step.n}/{total}: "
                 f"python -m poolhouse.bench {' '.join(step.argv)}", flush=True)
             began = time.monotonic()
-            code = (runner or run_step)(_for_step(step.argv, yes=yes, ceiling=ceiling))
+            code = (runner or run_step)(_for_step(step.argv, ceiling=ceiling))
             step.seconds = time.monotonic() - began
             if code != 0:
                 step.why = f"exit {code}"

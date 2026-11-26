@@ -78,6 +78,15 @@ def test_the_installer_verifies_and_stops_before_pip_on_a_dry_run(offer):
     assert "verified poolhouse-0.2-py3-none-any.whl" in done.stdout
 
 
+def test_a_verified_installer_goes_on_to_pip_without_being_told_to(offer):
+    """Nothing waits for a person: the checks are the safeguard. The offered wheel here is not a real one,
+    so pip refuses it -- which shows the installer reached pip with no flag and no answer."""
+    done = run_installer(offer)
+    assert "verified poolhouse-0.2-py3-none-any.whl" in done.stdout
+    assert "--yes" not in done.stderr and "not installed" not in done.stderr
+    assert done.returncode != 0 and "pip" in (done.stderr + done.stdout).lower()
+
+
 def test_a_tampered_file_makes_the_installer_install_nothing(offer):
     (offer.share / "poolhouse-0.2-py3-none-any.whl").write_bytes(WHEEL[:-1] + b"X")
     done = run_installer(offer, "--dry-run")

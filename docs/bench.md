@@ -143,7 +143,7 @@ each model (at the same context when one is kept there), else a guess from its w
 disk, times the questions, the askings one load is measured with and the models, plus a load each,
 printed as `estimate:` lines that `history` reads back beside the actual. Over `--ceiling`
 minutes (30, or `POOLHOUSE_BENCH_CEILING`) it refuses with exit 5 and says what to shorten;
-`--yes` runs it anyway, and a `--smoke` is never refused. No more eight-hour tests.
+`--ceiling MINUTES` raises it, and a `--smoke` is never refused. No more eight-hour tests.
 
 Serve every model being compared with the **same context and the same number of slots**, or
 the comparison is of two configurations rather than two models: a model at 8k per slot is
@@ -287,7 +287,7 @@ the ones before it.
 A night of measurements is not one command, it is nine — a fairness sample, a knob matrix
 smoked one knob at a time, the hundred-question runs, the extraction runs, then the ranking
 and the report. That was a zsh script in a scratch directory, rewritten nine times in one
-evening (2026-09-02), with `&&` between each smoke and the run it guarded and a `--yes`
+evening (2026-09-02), with `&&` between each smoke and the run it guarded and a `--ceiling`
 typed onto every long line; nothing could say what was running or what was left.
 `python -m poolhouse.bench queue FILE` is that evening as a file:
 
@@ -304,7 +304,7 @@ show --rank docs/model-ranking.md
 
 ```
 python -m poolhouse.bench queue docs/examples/flash-next-restart.queue --dry-run
-python -m poolhouse.bench queue docs/examples/flash-next-restart.queue --yes --detach
+python -m poolhouse.bench queue docs/examples/flash-next-restart.queue --detach --ceiling 600
 python -m poolhouse.bench status          # step 3/9, what is left, and what it has kept so far
 python -m poolhouse.bench stop            # the queue, and the step inside it
 ```
@@ -320,8 +320,8 @@ nothing and measured as the default model.
 It is not a second scheduler. Each step is its own `python -m poolhouse.bench` process, so it brings
 the measuring lock, the estimate and the smoke it already has, and a step
 of a queue and a run started by hand still wait for each other; the queue holds no lock and
-is only the thing that waits. `--yes` and `--ceiling` are given once at the top and passed
-to every step that takes them (never to `show`), `--resume` skips every step whose label the
+is only the thing that waits. `--ceiling` is given once at the top and passed
+to every step that takes it (never to `show`), `--resume` skips every step whose label the
 runs store already holds since the queue started, `--detach` puts the whole evening in the
 background the way one run does — one log, named after the queue file — and `status` grows a
 `queue` block naming the step in flight, the tally so far and what is left. A step that

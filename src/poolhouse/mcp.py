@@ -282,7 +282,7 @@ _BENCH_FLAGS = frozenset({
     "--label-suffix", "--serve-mlock", "--serve-no-flash-attn", "--serve-mmproj", "--n-max",
     "--reasoning-budget", "--plain-only", "--resume", "--shortlist", "--shortlist-for",
     "--margin", "--smoke", "--sample", "--short", "--trace", "--no-trace", "--temperature",
-    "--top-p", "--top-k", "--min-p", "--n-predict", "--card", "--anyway", "--ceiling", "--yes",
+    "--top-p", "--top-k", "--min-p", "--n-predict", "--card", "--anyway", "--ceiling",
     "--no-smoke", "--per-question", "--no-queue", "--no-prefetch",
 })
 """The ``python -m poolhouse.bench`` subcommands and flags a tool may pass: none takes a path to run, a

@@ -210,17 +210,14 @@ def test_pin_stops_tracking_and_update_refuses_until_unpinned(site, pipe):
     assert cli(site, pipe, "pin", "--build", "b999-nothing") == 2
 
 
-def test_prune_keeps_three_good_builds_and_asks_before_deleting(site, pipe, monkeypatch, capsys):
+def test_prune_keeps_three_good_builds_and_deletes_the_rest_at_once(site, pipe, monkeypatch, capsys):
     names = []
     for number in range(100, 106):
         site.commit(number)
         names.append(run(site, pipe).build)
     assert [b.name for b in llamacpp_state.prune_candidates()] == names[:3]
-    monkeypatch.setattr("builtins.input", lambda _prompt="": "no")
+    monkeypatch.setattr("builtins.input", lambda _prompt="": pytest.fail("prune asks nothing"))
     assert cli(site, pipe, "prune") == 0
-    assert all((builds_dir() / n).is_dir() for n in names)
-    monkeypatch.setattr("builtins.input", lambda _prompt="": pytest.fail("--yes asks nothing"))
-    assert cli(site, pipe, "prune", "--yes") == 0
     assert [n for n in names if (builds_dir() / n).is_dir()] == names[3:]
     assert str((builds_dir() / names[0] / "llama-server").resolve()) not in sentinel.default().manifest.pins()
     assert llamacpp_state.active().name == names[-1]

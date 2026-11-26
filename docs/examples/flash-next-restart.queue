@@ -2,7 +2,7 @@
 # evening: every improvement smoked, compared on ten questions, then the hundred with
 # everything that held -- traces on throughout.
 #
-# Run it with:   python -m poolhouse.bench queue docs/examples/flash-next-restart.queue --detach --yes
+# Run it with:   python -m poolhouse.bench queue docs/examples/flash-next-restart.queue --detach --ceiling 600
 # Read it first: python -m poolhouse.bench queue docs/examples/flash-next-restart.queue --dry-run
 #
 # Two things the shell script did that a queue file does not: `poolhouse-serve down --port
@@ -23,8 +23,8 @@ then:  sweep ${BEST} --plain-only --also batch --also kinds --also summary --als
 smoke: sweep ${BEST} --plain-only --batch --kinds --summary --label-suffix=-all --smoke
 then:  sweep ${BEST} --plain-only --batch --kinds --summary --label-suffix=-all --sample 10
 
-# The hundred questions, in the shape that held. Over any sane ceiling: the queue's --yes
-# is the go-ahead, so it is given once at the top instead of typed onto every long line.
+# The hundred questions, in the shape that held. Over the default ceiling: the queue's --ceiling
+# is given once at the top instead of typed onto every long line.
 sweep ${BEST} --plain-only --batch --kinds --summary --label-suffix=-all
 
 # The conclusions, written down where they are read from

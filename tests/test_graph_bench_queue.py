@@ -73,7 +73,7 @@ def test_a_smoke_line_pairs_with_the_then_line_under_it(tmp_path):
     steps = q.read(a_queue(tmp_path, """
         smoke: sweep --serve raincoat-2b.gguf --smoke
         then:  sweep --serve raincoat-2b.gguf --sample 10
-        sweep --serve raincoat-2b.gguf --yes
+        sweep --serve raincoat-2b.gguf --ceiling 600
     """))
     assert [s.kind for s in steps] == ["smoke", "then", "step"]
     assert steps[0].argv[-1] == "--smoke" and steps[1].argv[-2:] == ["--sample", "10"]
@@ -174,17 +174,16 @@ def test_a_step_that_fails_on_its_own_does_not_stop_the_queue(tmp_path, capsys):
     assert "-- failed (0s): exit 3" in capsys.readouterr().out
 
 
-def test_the_go_ahead_and_the_ceiling_are_passed_to_every_step_that_takes_them(tmp_path):
-    """`--yes` once at the top of the file instead of typed onto every long line -- and
+def test_the_ceiling_is_passed_to_every_step_that_takes_one(tmp_path):
+    """`--ceiling` once at the top of the file instead of typed onto every long line -- and
     never onto `show`, which does not take one."""
     where = a_queue(tmp_path, "sweep --serve raincoat-2b.gguf\n"
-                              "sweep --serve raincoat-2b.gguf --yes --ceiling 5\n"
+                              "sweep --serve raincoat-2b.gguf --ceiling 5\n"
                               "show --rank ranking.md\n")
     fake = FakeBench()
-    assert q.run_queue(where, runner=fake, yes=True, ceiling=90.0) == 0
-    assert fake.calls[0] == ["sweep", "--serve", "raincoat-2b.gguf", "--yes",
-                             "--ceiling", "90.0"]
-    assert fake.calls[1] == ["sweep", "--serve", "raincoat-2b.gguf", "--yes", "--ceiling", "5"]
+    assert q.run_queue(where, runner=fake, ceiling=90.0) == 0
+    assert fake.calls[0] == ["sweep", "--serve", "raincoat-2b.gguf", "--ceiling", "90.0"]
+    assert fake.calls[1] == ["sweep", "--serve", "raincoat-2b.gguf", "--ceiling", "5"]
     assert fake.calls[2] == ["show", "--rank", "ranking.md"]
 
 
@@ -195,13 +194,13 @@ def test_dry_run_prints_the_steps_expanded_and_runs_none_of_them(tmp_path, capsy
         then:  sweep --serve ${{FX}} --label-suffix=-v2 --sample 10
     """)
     fake = FakeBench()
-    assert q.run_queue(where, runner=fake, dry_run=True, yes=True) == 0
+    assert q.run_queue(where, runner=fake, dry_run=True, ceiling=90.0) == 0
     assert fake.calls == []
     said = capsys.readouterr().out
     assert "2 step(s), 1 smoke/then pair(s)" in said
     assert f"python -m poolhouse.bench sweep --serve {FX} --label-suffix=-v2 --smoke" in said
     assert "[label Bellwether-12B-v2]" in said
-    assert "--yes" in said                                   # what would be added, shown
+    assert "--ceiling 90.0" in said                          # what would be added, shown
     assert "nothing ran: --dry-run" in said
     assert not q.state_file().exists()                       # and nothing was written down
 
@@ -296,17 +295,17 @@ def test_the_whole_queue_detaches_the_way_a_run_does(tmp_path, monkeypatch, caps
     monkeypatch.setattr(subprocess, "Popen",
                         lambda command, **kw: started.update(command=command, kw=kw)
                         or type("C", (), {"pid": 4343})())
-    argv = ["queue", str(where), "--detach", "--yes"]
+    argv = ["queue", str(where), "--detach", "--ceiling", "90"]
     assert bench.main(argv) == 0
 
     assert started["command"][:5] == [sys.executable, "-B", "-u", "-m", "poolhouse.bench"]
-    assert started["command"][5:] == ["queue", str(where), "--yes"]
+    assert started["command"][5:] == ["queue", str(where), "--ceiling", "90"]
     assert started["kw"]["start_new_session"] is True
     log = pathlib.Path(started["kw"]["stdout"].name)
     assert log.parent == bench.home_dir() / "logs" and "evening.queue" in log.name
 
     held = json.loads((bench.home_dir() / "measuring.json").read_text())
-    assert held["pid"] == 4343 and held["argv"] == ["queue", str(where), "--yes"]
+    assert held["pid"] == 4343 and held["argv"] == ["queue", str(where), "--ceiling", "90"]
 
     said = capsys.readouterr().out
     assert "python -m poolhouse.bench status" in said and "python -m poolhouse.bench stop" in said
@@ -336,7 +335,7 @@ def test_the_shipped_example_reads_as_the_evening_it_replaces(monkeypatch):
     assert all("--serve-draft" in s.argv and "auto" in s.argv for s in steps[:5])
     assert steps[0].argv[-1] == "--smoke" and steps[1].argv[-2:] == ["--sample", "10"]
     assert steps[4].label == steps[3].label == "Qwen3.8-Flash--all"
-    assert "--yes" not in steps[4].argv                      # the queue's --yes, given once
+    assert "--ceiling" not in steps[4].argv                  # the queue's --ceiling, given once
     assert "/Users/invented/.poolhouse/" in " ".join(steps[0].argv)   # ${HOME}, expanded
     assert steps[5].argv[1] == "--rank" and steps[6].argv[0] == "report"
 

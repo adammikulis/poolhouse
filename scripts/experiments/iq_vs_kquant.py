@@ -91,7 +91,7 @@ def command(config: dict[str, Any], cell: Cell, out_dir: Path) -> list[str]:
     seed = ["--serve-arg=-s", f"--serve-arg={config['seed']}"]
     common = ["--serve", model, "--serve-label", label(cell), "--no-profile", "--no-draft",
               "--context", str(config["context"]), "--kept", str(expand(config["store"])),
-              "--no-queue", "--yes"]
+              "--no-queue"]
     bench = [sys.executable, "-m", "poolhouse.bench.run"]
     if cell.task == "jevbench":
         spec = config["tasks"]["jevbench"]

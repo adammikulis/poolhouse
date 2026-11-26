@@ -551,12 +551,6 @@ def cmd_forget(args: Any) -> int:
         went = forget(args.kept, empty=True)
         say(f"{len(went)} empty run(s) removed" if went else "no empty runs")
     if args.label:
-        if not args.yes:
-            would = [r["key"] for r in bench.runs(args.kept, args.label)]
-            say("\n".join(would) if would else f"no run labelled {args.label!r}")
-            if would:
-                say(f"{len(would)} run(s) would go; pass --yes to delete them")
-            return 0
         went = forget(args.kept, label=args.label)
         say(f"{len(went)} run(s) labelled {args.label!r} removed")
     return 0
@@ -617,7 +611,7 @@ def cmd_queue(args: Any) -> int:
         llamacpp_note.announce()
     try:
         return run_queue(args.label, dry_run=args.dry_run, resume=args.resume,
-                         yes=args.yes, ceiling=args.ceiling)
+                         ceiling=args.ceiling)
     except QueueError as why:
         warn(f"error: {why}")
         return 2
@@ -654,12 +648,12 @@ COMMANDS.borrow(
 def _estimated(rest: Sequence[str]) -> int:
     """Print what ``python -m poolhouse.bench rest`` should take -- one ``estimate:`` line per model
     and the total, read from the runs kept in its store -- and return 5 when that is over
-    the ceiling and ``--yes`` was not given, with the refusal on stderr; 0 otherwise."""
+    the ceiling, with the refusal on stderr; 0 otherwise."""
     args = _parser().parse_args([a for a in rest if a not in ("--detach", "--no-queue")])
     guess = estimate(args, bench._kept(args.kept))
     for line in guess.lines():
         say(line, flush=True)
-    if guess.over and not getattr(args, "yes", False):
+    if guess.over:
         warn(guess.refusal())
         return 5
     return 0

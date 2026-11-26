@@ -15,7 +15,7 @@ trails master by days or weeks; the newest `bNNNN` tag is cut from master roughl
 | `rollback` | Back to the most recent earlier build that is still installed and still matches its pin. |
 | `pin BUILD` / `pin --off` | Makes BUILD active and stops tracking: `update` refuses until `pin --off`. |
 | `list` | The builds under `~/.poolhouse/llama.cpp/builds/`, which is active, previous or pinned, and the kept failures. |
-| `prune [--keep N] [--yes]` | Lists the good tracked builds beyond the newest 3 (never the active, previous or pinned one, never `failed/`) and deletes them only after you type `yes`. Nothing prunes on its own. |
+| `prune [--keep N]` | Deletes the good tracked builds beyond the newest 3 (never the active, previous or pinned one, never `failed/`) and says each. Nothing prunes on its own. |
 
 Exit codes: 0 done, 1 the new build failed its smoke test (the active build is unchanged), 2 an
 error (missing tool, unknown ref, pinned, upstream not reachable), 3 the source host needs approval.

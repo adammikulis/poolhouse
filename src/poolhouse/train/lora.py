@@ -16,7 +16,7 @@ What this module owns, end to end:
   the adapter*. `TorchStep.parameters` is the model's whole state dict, which for E4B is
   16G written every ``checkpoint_every`` steps; the adapter is ~80M.
 * ``plan`` -- what fits and what it will cost, before anything is downloaded, refused over
-  the same 30-minute ceiling the bench uses unless the caller said ``--yes``.
+  the same 30-minute ceiling the bench uses; ``--ceiling`` or the environment raises it.
 * ``merge`` / ``export_gguf`` / ``preflight_export`` -- the adapter folded back into the
   base, through ``poolhouse.gguf.export``, ending at a file ``poolhouse-serve up`` can load
   and ``poolhouse.serve.preflight`` has already agreed with.
@@ -59,7 +59,7 @@ PEFT_MISSING = (
     "works for a small base and needs ~128G of optimizer state for an 8B one."
 )
 
-# Over this many minutes a training run is refused unless --yes. The same rule and the same
+# Over this many minutes a training run is refused. The same rule and the same
 # number as `poolhouse.bench.estimate.CEILING_MIN`, kept here rather than imported so
 # that starting a fine-tune does not drag the whole bench package in: a training run is
 # hours where a bench run is minutes, which is exactly why it must be a decision.
@@ -95,7 +95,7 @@ ACT_BYTES_PER_TOKEN_PER_B = 70_000
 
 
 class OverCeiling(RuntimeError):
-    """The estimated wall clock is over the ceiling and nobody said ``--yes``."""
+    """The estimated wall clock is over the ceiling."""
 
 
 # -- the settings ------------------------------------------------------------------------
@@ -366,7 +366,7 @@ class Fit:
         return (f"error: estimated {span(self.seconds)}, over the {self.ceiling_min:g} min "
                 f"ceiling -- a fine-tune is hours, so it is a decision and not an accident. "
                 f"Train fewer steps (--set steps=N), raise the ceiling (--ceiling MINUTES, "
-                f"or {CEILING_ENV}), measure first (--dry-run), or pass --yes.")
+                f"or {CEILING_ENV}), or measure first (--dry-run).")
 
     def as_dict(self) -> dict[str, Any]:
         return {"base": self.base, "device": self.device, "batch": self.batch,
@@ -539,9 +539,9 @@ def summarise(report: Any) -> str:
     return "; ".join(f"{c.name}: {c.detail}" for c in report.checks if not c.ok)
 
 
-def refuse_over_ceiling(fit: Fit, *, yes: bool) -> None:
-    """Raise `OverCeiling` unless the run is short enough or somebody said ``--yes``."""
-    if fit.over and not yes:
+def refuse_over_ceiling(fit: Fit) -> None:
+    """Raise `OverCeiling` unless the run is short enough."""
+    if fit.over:
         raise OverCeiling(fit.refusal())
 
 

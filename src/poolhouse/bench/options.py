@@ -40,11 +40,9 @@ def checking() -> tuple[Option, ...]:
              help="refuse to start when the estimate -- seconds per question from "
                   "the runs kept of each model, else a guess from its weights, "
                   "times the questions, the askings and the models, plus a load each "
-                  "-- is over this many minutes, unless --yes (default: "
+                  "-- is over this many minutes (default: "
                   "%(default)s, or POOLHOUSE_BENCH_CEILING). A --smoke run is never "
                   "refused. No more eight-hour tests"),
-        flag("--yes", action="store_true",
-             help="run it even when the estimate is over --ceiling"),
         flag("--no-smoke", action="store_true",
              help=f"skip the {SMOKE}-question smoke a real run makes first on the "
                   f"real server and the real store, read back, before its own "
@@ -580,11 +578,9 @@ def forget_options() -> tuple[Option, ...]:
     """``forget``: delete kept runs, the empty ones or one label's."""
     return (
         flag("label", nargs="?", default="",
-             help="delete every run kept under this label (needs --yes)"),
+             help="delete every run kept under this label"),
         flag("--empty", action="store_true",
              help="delete every run that reads back as nothing"),
-        flag("--yes", action="store_true",
-             help="really delete a label's runs; without it they are only listed"),
         flag("--kept", default=str(bench.home_dir() / "runs.ladybug"),
              help="the store the runs are in (default: %(default)s)"),
     )
@@ -624,9 +620,6 @@ def queue_options() -> tuple[Option, ...]:
              help="skip every step whose label the runs store already holds "
                   "since this queue's start, so a queue stopped half-way does "
                   "not measure the first half again"),
-        flag("--yes", action="store_true",
-             help="the go-ahead, passed to every step that takes one, so a run "
-                  "over its ceiling is not refused into a log nobody is watching"),
         flag("--ceiling", type=float, default=0.0, metavar="MINUTES",
              help="pass this ceiling to every step that does not name its own "
                   "(default: each step's own)"),

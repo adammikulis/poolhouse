@@ -3,7 +3,7 @@
 `estimate` says, per model a command serves or measures, how long it should take: seconds
 per question from that model's newest kept run (at the same context when one is kept),
 else a guess from its weights, times the questions and the askings, plus a load per model
-served. Over `--ceiling` without ``--yes`` the run is refused; a smoke run never is. The
+served. Over `--ceiling` the run is refused; a smoke run never is. The
 ``estimate:`` lines are what `history` reads back, the total last.
 """
 
@@ -32,7 +32,7 @@ GUESS_S = 15.0
 GUESS_PER_GB_S = 0.7
 # A load nothing recorded: what a mid-sized model takes to come up from a warm page cache.
 GUESS_LOAD_S = 30.0
-# Over this many minutes a run is refused unless --yes; POOLHOUSE_BENCH_CEILING overrides.
+# Over this many minutes a run is refused; --ceiling or POOLHOUSE_BENCH_CEILING raises it.
 CEILING_MIN = 30.0
 CEILING_ENV = "POOLHOUSE_BENCH_CEILING"
 
@@ -102,8 +102,8 @@ class Estimate:
     def refusal(self) -> str:
         return (f"error: estimated {span(self.seconds)}, over the {self.ceiling_min:g} min "
                 f"ceiling -- no more eight-hour tests. Ask fewer questions (--sample N, "
-                f"--short), raise the ceiling (--ceiling MINUTES, or {CEILING_ENV}), or pass "
-                f"--yes to run it anyway.")
+                f"--short), or raise the ceiling (--ceiling MINUTES, or "
+                f"{CEILING_ENV}).")
 
 
 # What a served model reads and writes at, in tokens a second, when nothing has measured

@@ -72,7 +72,7 @@ def test_the_queue_announces_and_never_updates(monkeypatch):
     called = []
     monkeypatch.setattr(llamacpp_note, "announce", lambda *a, **k: called.append("announce"))
     monkeypatch.setattr(run, "run_queue", lambda *a, **k: 0)
-    args = argparse.Namespace(detach=False, label="evening.queue", dry_run=False, resume=False, yes=True, ceiling=0.0)
+    args = argparse.Namespace(detach=False, label="evening.queue", dry_run=False, resume=False, ceiling=0.0)
     assert run.cmd_queue(args) == 0 and called == ["announce"]
     args.dry_run = True
     run.cmd_queue(args)

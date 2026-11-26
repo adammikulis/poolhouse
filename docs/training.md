@@ -111,7 +111,7 @@ model turns, none of them kept).
 
 ```
 python -m poolhouse.train run --recipe tool-calls --size e4b --lora --export-gguf \
-    --data runs/caller/data --out runs/caller --set steps=1000 --yes
+    --data runs/caller/data --out runs/caller --set steps=1000 --ceiling 600
 ```
 
 A full fine-tune of an 8B model needs about 128G of optimizer state; `--lora` trains two
@@ -124,7 +124,7 @@ hold the adapter rather than a copy of the frozen base. Needs peft: `pip install
 
 What the run will cost is printed before a weight is loaded — parameters, resident
 gigabytes, tokens a step, seconds a step, wall clock — and a run estimated past 30 minutes
-is refused with exit 5 unless `--yes`, the same ceiling and the same code the bench uses.
+is refused with exit 5 over `--ceiling`, the same ceiling and the same code the bench uses.
 `--dry-run` trains 20 real steps, writes nothing, and replaces the estimate with a measured
 seconds-per-step. `--export-gguf` then merges the adapter into the base, converts through
 the managed llama.cpp checkout the served binary was built from, quantises, and preflights

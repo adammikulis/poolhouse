@@ -1471,7 +1471,7 @@ def test_empty_runs_are_skipped_named_and_forgotten(tmp_path, capsys):
     assert forget(store, empty=True) == []
 
 
-def test_forgetting_a_label_lists_first_and_deletes_only_with_yes(tmp_path, capsys):
+def test_forgetting_a_label_deletes_its_runs_at_once(tmp_path, capsys):
     import poolhouse.bench as bench
 
     store = tmp_path / "runs.ladybug"
@@ -1479,11 +1479,6 @@ def test_forgetting_a_label_lists_first_and_deletes_only_with_yes(tmp_path, caps
     save(store, [Row(label="other", question="hi")])
 
     assert bench._main(["forget", "tried", "--kept", str(store)]) == 0
-    said = capsys.readouterr().out
-    assert "bench:tried:" in said and "pass --yes" in said
-    assert len(runs(store)) == 2, "listed, not deleted"
-
-    assert bench._main(["forget", "tried", "--yes", "--kept", str(store)]) == 0
     assert "1 run(s) labelled 'tried' removed" in capsys.readouterr().out
     assert [r["label"] for r in runs(store)] == ["other"]
 
@@ -3514,7 +3509,7 @@ def test_the_estimate_is_seconds_per_question_from_the_kept_run_at_the_same_cont
     assert got.lines()[-1] == "estimate: 53 min in all for 1 model (over the ceiling)"
     assert history.parse_duration(got.lines()[-1].split(":", 1)[1]) == 53 * 60, \
         "what history reads back is the total and nothing added to it"
-    assert "over the 30 min ceiling" in got.refusal() and "--yes" in got.refusal()
+    assert "over the 30 min ceiling" in got.refusal() and "--yes" not in got.refusal()
     assert "--sample N" in got.refusal() and "POOLHOUSE_BENCH_CEILING" in got.refusal()
 
     # a real run smokes first: two more questions of every way; a server already up
@@ -3588,11 +3583,11 @@ def test_every_measuring_subcommand_estimates_its_own_shape(tmp_path, monkeypatc
     assert bench._parser().parse_args(["run", "x"]).ceiling == 0.5
 
 
-def test_main_refuses_over_the_ceiling_with_exit_5_and_serves_nothing_unless_yes(tmp_path,
+def test_main_refuses_over_the_ceiling_with_exit_5_and_serves_nothing_unless_raised(tmp_path,
                                                                                 monkeypatch,
                                                                                 capsys):
     """Adam, 2026-09-02: no more eight-hour tests. The rule is in the tool: over the
-    ceiling, said and refused before a download, a lock or a load; --yes runs it; a
+    ceiling, said and refused before a download, a lock or a load; a higher --ceiling runs it; a
     --smoke is never refused."""
     import poolhouse.bench as bench
 
@@ -3607,8 +3602,8 @@ def test_main_refuses_over_the_ceiling_with_exit_5_and_serves_nothing_unless_yes
                                         "no run kept (over the ceiling)")
     assert said.err.strip() == ("error: estimated 45 s, over the 0.5 min ceiling -- no more "
                                 "eight-hour tests. Ask fewer questions (--sample N, --short), "
-                                "raise the ceiling (--ceiling MINUTES, or "
-                                "POOLHOUSE_BENCH_CEILING), or pass --yes to run it anyway.")
+                                "or raise the ceiling (--ceiling MINUTES, or "
+                                "POOLHOUSE_BENCH_CEILING).")
     assert seen["models"] == [], "nothing was loaded"
     assert not (tmp_path / "home" / "measuring.lock").exists(), "the lock was never taken"
 
@@ -3623,7 +3618,7 @@ def test_main_refuses_over_the_ceiling_with_exit_5_and_serves_nothing_unless_yes
     assert seen["models"] == ["tiny.gguf"]
     assert "(a smoke run, never refused)" in capsys.readouterr().out
 
-    assert bench.main([*argv, "--yes"]) == 0
+    assert bench.main([*argv[:-1], "100"]) == 0
     assert seen["models"] == ["tiny.gguf", "tiny.gguf"]
     said = capsys.readouterr().out
     # the smoke kept a run of this model, so this estimate was measured, not guessed
@@ -3653,9 +3648,9 @@ def test_a_detached_run_is_estimated_in_the_terminal_and_a_refusal_never_detache
     assert said.out.startswith("estimate: 4 min (tiny 12 q x 1 asking x 15 s/q + load 30 s;")
     assert "over the 1 min ceiling" in said.err
 
-    assert bench.main([*argv, "--yes"]) == 0
+    assert bench.main([*argv[:-1], "60"]) == 0
     said = capsys.readouterr().out
-    assert len(started) == 1 and started[0][-1] == "--yes"
+    assert len(started) == 1 and started[0][-1] == "60"
     assert said.startswith("estimate: 4 min (tiny") and "measuring in the background" in said
 
 
