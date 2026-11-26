@@ -45,6 +45,7 @@ def plain_git(tmp_path, monkeypatch):
     empty.write_text("")
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(empty))
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "1")   # the installer a fix runs must leave no cache in the repository it inspects
     monkeypatch.setenv("GIT_AUTHOR_NAME", AUTHOR[0])
     monkeypatch.setenv("GIT_AUTHOR_EMAIL", AUTHOR[1])
     monkeypatch.setenv("GIT_COMMITTER_NAME", AUTHOR[0])
@@ -71,7 +72,8 @@ def make_repo(where: Path, *, hooks_dir: str = "scripts/hooks", commits: int = 1
     for name in ("no-real-names", "commit-msg", "pre-commit", "pre-push"):
         _script(where / hooks_dir / name, "exit 0\n")
     if hooks_dir == "scripts/hooks":
-        shutil.copy(REPO / "scripts" / "install-hooks.sh", where / "scripts" / "install-hooks.sh")
+        for installer in ("install-hooks.sh", "install-hooks.py", "envcheck.py", "../pyproject.toml"):   # the wrapper runs the Python installer, which imports envcheck
+            shutil.copy(REPO / "scripts" / installer, where / "scripts" / installer)
     (where / ".gitignore").write_text(".venv/\n")
     for n in range(commits):
         (where / f"note-{n}.txt").write_text(f"commit {n}\n")
@@ -103,8 +105,8 @@ def test_the_offered_fix_installs_them_and_the_next_look_is_good(tmp_path):
     found = hooks_of(repo)
     assert found.good
     assert found.said == "installed, from scripts/hooks"
-    assert str((repo / ".git" / "hooks" / "pre-commit").readlink()) == \
-        "../../scripts/hooks/pre-commit"
+    installed = (repo / ".git" / "hooks" / "pre-commit").read_text(encoding="utf-8")
+    assert f"exec sh {(repo / 'scripts' / 'hooks' / 'pre-commit').as_posix()}" in installed
 
 
 def test_an_untracked_wrapper_that_execs_the_shipped_script_counts_as_installed(tmp_path):

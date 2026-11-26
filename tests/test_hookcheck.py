@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from poolhouse import doctor, hookcheck
+from poolhouse.board import place
 from poolhouse.checks import ask
 
 pytest_plugins = ["node_kit"]
@@ -46,16 +47,22 @@ def make_repo(where: Path) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(f"#!/bin/sh\nexit 0\n# {name}\n")
         path.chmod(path.stat().st_mode | stat.S_IXUSR)
-    shutil.copy(ROOT / "scripts" / "install-hooks.sh", where / "scripts" / "install-hooks.sh")
+    for installer in ("install-hooks.sh", "install-hooks.py", "envcheck.py", "../pyproject.toml"):   # the wrapper runs the Python installer, which imports envcheck
+        shutil.copy(ROOT / "scripts" / installer, where / "scripts" / installer)
     git(where, "add", "scripts")
     git(where, "commit", "-q", "-m", "chore: scripts")
     return where
 
 
+def install_hooks(where: Path) -> None:
+    """Run the repository's own installer with this interpreter, which has the packages its preflight asks for."""
+    subprocess.run(["sh", "scripts/install-hooks.sh"], cwd=where, check=True, capture_output=True, env={**os.environ, "PYTHON": sys.executable})
+
+
 @pytest.fixture
 def repo(tmp_path):
     made = make_repo(tmp_path / "repo")
-    subprocess.run(["sh", "scripts/install-hooks.sh"], cwd=made, check=True, capture_output=True)
+    install_hooks(made)
     return made
 
 
@@ -167,7 +174,7 @@ def test_the_doctor_finding_offers_only_the_installer_and_leaves_config_for_a_pe
 # -- the SessionStart hook ------------------------------------------------------------
 
 @pytest.fixture
-def session(tmp_path, repo, workspace_node):
+def session(tmp_path, repo, workspace_node, monkeypatch):
     """The SessionStart hook of a repository that holds a copy of the real hook scripts, run against a real node."""
     for name in ("claude-session-start", "workspace_hook.py", "tree_watch.py"):
         shutil.copy(ROOT / "scripts" / "hooks" / name, repo / "scripts" / "hooks" / name)
@@ -181,11 +188,13 @@ def session(tmp_path, repo, workspace_node):
     fake.write_text(f"#!{sys.executable}\nimport json, sys\n"
                     f"open({str(calls)!r}, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\nprint('inbox line')\n")
     fake.chmod(0o700)
+    monkeypatch.delenv("POOLHOUSE_BOARD", raising=False)
+    workspace_node.board = place.resolve(workspace_node.client, repo)   # a notification only resolves an existing project, so the repository is one
     env = workspace_node.env(extra={"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}", "POOLHOUSE_RUNTIME_ENSURE": "off"})
 
     def start():
         return subprocess.run([sys.executable, str(repo / "scripts" / "hooks" / "claude-session-start")],
-                              input=json.dumps({"session_id": "native-1", "model": "claude-sonnet-5-5"}),
+                              input=json.dumps({"session_id": "native-1", "model": "claude-sonnet-5-5", "cwd": str(repo)}),
                               text=True, capture_output=True, timeout=60, env=env)
 
     def announced():
@@ -234,7 +243,7 @@ def test_a_config_value_with_a_newline_and_shell_punctuation_is_reported_and_its
 
 def test_a_repository_path_with_shell_punctuation_is_inspected_and_repaired_as_one_argument(tmp_path):
     odd = make_repo(tmp_path / "r; touch pwn; $(touch pwn)")
-    subprocess.run(["sh", "scripts/install-hooks.sh"], cwd=odd, check=True, capture_output=True)
+    install_hooks(odd)
     git(odd, "config", "core.sshCommand", "x")
     [problem] = hookcheck.inspect(odd)
     subprocess.run(shlex.split(problem.repair), check=True)
