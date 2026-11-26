@@ -14,7 +14,7 @@ from poolhouse import hub, limits as limits_mod, optional, platform
 from poolhouse.client import thinking
 from poolhouse.command import flag, option
 from poolhouse.log import say, warn
-from poolhouse.serve import build, holding, kvcache, ops, plan_cli, quant_guard, warm
+from poolhouse.serve import build, holding, kvcache, mtp, ops, plan_cli, quant_guard, warm
 from poolhouse.serve.backend import ServerFailed, ServerSpec, parse_context
 from poolhouse.serve.binary import BinaryNotFound
 from poolhouse.serve.fitted import fitted
@@ -301,6 +301,28 @@ OPTIONS_UP = [
 ]
 
 
+def fork_head(args: argparse.Namespace, model: str) -> None:
+    """Serve ``model`` with the head and build the harness serves it with, when only a fork loads it.
+
+    A head that borrows its target's embeddings is loaded by a fork build alone; the mainline
+    ``current`` has no multi-token-prediction graph for such a model and aborts or serves without. So an
+    ``up`` that named no binary, build, head or speculation takes the same `Head` a harness session
+    does (`hub.heads_for`, the head's build included), and says which. A head mainline loads is left to
+    `serve.mtp.plan`.
+    """
+    asked = ("binary", "build", "draft", "spec", "spec_tree", "embedding", "reranking")
+    if any(getattr(args, name, None) for name in asked) or not getattr(args, "mtp", True) or not mtp.enabled():
+        return
+    heads = [one for one in hub.heads_for(model) if one.build and one.spec_type == mtp.KIND]
+    head = hub.head_choice(model, "auto", heads=heads)
+    if head is None:
+        return
+    args.draft, args.spec, args.build = head.path, head.spec_type, head.build
+    if getattr(args, "spec_n_max", None) is None:
+        args.spec_n_max = head.depth
+    warn(f"MTP on: {head.serving()} (a fork build loads this head; the mainline build does not)")
+
+
 def cmd_up(args: argparse.Namespace) -> int:
     model = str(hub.located(args.model) or args.model)
     if model != str(args.model):
@@ -321,6 +343,7 @@ def cmd_up(args: argparse.Namespace) -> int:
                 warn(f"  {profile.note}")
 
     chosen = str(getattr(args, "binary", "") or "")
+    fork_head(args, model)
     manager = ops.manager_for(chosen, str(getattr(args, "build", "") or ""))
     extra = tuple(profile.extra_args) if profile is not None else ()
     manager.iq = str(getattr(args, "iq", "") or "")

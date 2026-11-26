@@ -28,21 +28,28 @@ OFFLINE = {
     "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING": "1",
     "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
     "CLAUDE_CODE_SKIP_FAST_MODE_ORG_CHECK": "1",
+    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
     "DISABLE_TELEMETRY": "1",
 }
-"""What keeps Claude Code from calling out to anything but the bridge."""
+"""What keeps Claude Code from calling out to anything but the bridge. The attribution header is a line at the start of the system
+prompt that changes with every request, so a local server's prompt cache never matched past it: without it a second session on the same
+server reuses the first one's prompt."""
 WINDOW = ("CLAUDE_CODE_MAX_CONTEXT_TOKENS", "CLAUDE_CODE_AUTO_COMPACT_WINDOW")
 CALLER_SET = ("CLAUDE_CODE_EXTRA_BODY", "CLAUDE_CODE_EFFORT_LEVEL")
 """Passed on only where the caller sets them."""
 MIN_COMPACT_WINDOW = 100000
 """The window from which Claude Code is told to compact; the value `claude.MIN_COMPACT_WINDOW` carries today."""
 CODEX_KEY = "POOLHOUSE_API_KEY"
+OPENCODE_OFFLINE = {"OPENCODE_DISABLE_AUTOUPDATE": "true", "OPENCODE_DISABLE_MODELS_FETCH": "true", "OPENCODE_DISABLE_LSP_DOWNLOAD": "true",
+                    "OPENCODE_DISABLE_CLAUDE_CODE": "true", "OPENCODE_DISABLE_DEFAULT_PLUGINS": "true", "OPENCODE_DISABLE_TERMINAL_TITLE": "true"}
+"""What keeps OpenCode from calling out to anything but the bridge, and from reading the person's Claude Code files."""
 
 BY_HARNESS: dict[str, tuple[str, ...]] = {
     "claude": ("CLAUDE_CONFIG_DIR", "CLAUDE_CODE_TMPDIR", "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", *MODEL_VARS, *OFFLINE,
                *WINDOW, *CALLER_SET),
     "codex": ("CODEX_HOME", CODEX_KEY),
     "pi": ("PI_CODING_AGENT_DIR", "PI_OFFLINE", "POOLHOUSE_NONINTERACTIVE"),
+    "opencode": ("OPENCODE_CONFIG", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", *OPENCODE_OFFLINE),
 }
 """The variables a harness has besides the always set: the closed table of 3.4."""
 
@@ -91,6 +98,12 @@ def _pi(inputs: Inputs) -> dict[str, str]:
     return {"PI_CODING_AGENT_DIR": str(Path(inputs.home) / ".pi-config"), "PI_OFFLINE": "1", "POOLHOUSE_NONINTERACTIVE": "1"}
 
 
+def _opencode(inputs: Inputs) -> dict[str, str]:
+    config = Path(inputs.home) / ".opencode-config"
+    return {"OPENCODE_CONFIG": str(config / "opencode.json"), "XDG_CONFIG_HOME": str(config), "XDG_DATA_HOME": str(Path(inputs.home) / "data"),
+            "XDG_CACHE_HOME": str(Path(inputs.home) / "cache"), "XDG_STATE_HOME": str(Path(inputs.home) / "state"), **OPENCODE_OFFLINE}
+
+
 def environment(inputs: Inputs) -> dict[str, str]:
     """The environment of a launch: the always set, the terminal names of an interactive launch and the harness's own table. Nothing is
     read from the process environment, so no variable of the launcher, the person's shell or a project reaches the harness."""
@@ -99,5 +112,5 @@ def environment(inputs: Inputs) -> dict[str, str]:
             "POOLHOUSE_AGENT": "1"}
     if inputs.interactive:
         made.update({name: inputs.terminal[name] for name in INTERACTIVE if inputs.terminal.get(name)})
-    made.update({"claude": _claude, "codex": _codex, "pi": _pi}[inputs.harness](inputs))
+    made.update({"claude": _claude, "codex": _codex, "pi": _pi, "opencode": _opencode}[inputs.harness](inputs))
     return {name: value for name, value in made.items() if name in names}

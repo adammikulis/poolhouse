@@ -198,7 +198,7 @@ def session(model: str, *, want: harnessing.Want | None = None, offline: bool = 
             leasing("this model's template refuses a system message after the first; serving "
                     f"with one that renders it instead ({patched.name})")
     with served(config, say=say, timeout=900.0, cache_reuse=256, warmup=False,
-                        chat_template_file=patched, roam=not taking,
+                        chat_template_file=patched, roam=not taking, keep=want.keep,
                         reason=f"the harness on {Path(found).name}") as base_url:
         alias = alias_of(base_url, found)
         say(f"the harness on {base_url} as {alias!r}")

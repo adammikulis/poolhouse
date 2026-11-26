@@ -313,6 +313,7 @@ The environment is an allow-list built by the launcher; `os.environ` is never co
 | Claude Code | `CLAUDE_CONFIG_DIR` and `CLAUDE_CODE_TMPDIR` inside the agent home, `ANTHROPIC_BASE_URL` (the bridge), `ANTHROPIC_AUTH_TOKEN` (the bridge token), the model variables, the offline variables and the window variables of `claude.py`, `CLAUDE_CODE_EXTRA_BODY` and `CLAUDE_CODE_EFFORT_LEVEL` where the caller sets them |
 | Codex | `CODEX_HOME` (an existing directory), the provider key variable set to the bridge token |
 | Pi | `PI_CODING_AGENT_DIR`, `PI_OFFLINE`, `POOLHOUSE_NONINTERACTIVE` |
+| OpenCode | `OPENCODE_CONFIG` and the four `XDG_*` homes inside the agent home, and the `OPENCODE_DISABLE_*` switches of `environment.OPENCODE_OFFLINE` (update, model list, LSP download, Claude Code import, default plugins, terminal title); the bridge token is in the read-only config file, not a variable |
 
 The table is closed. A variable it does not name does not exist for any harness, whatever the caller's environment, a project file
 or a grant holds: a toolchain grant contributes `PATH` entries and no variable, so a toolchain directory whose files name
