@@ -107,7 +107,7 @@ def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, st
                                                       families.for_model_id(alias).think_kwargs(False)),
                  f".opencode-config/{PLUGIN}": plugin({"hook": context.client_argv("hook"), "root": context.stage}),
                  f".opencode-config/{BRIEF}": run.brief}
-        return isolation.Rendering((binary, "run", "--format", "json", "--model", f"{PROVIDER}/{alias}", *extra), files)
+        return isolation.Rendering((binary, "run", "--standalone", "--format", "json", "--model", f"{PROVIDER}/{alias}", *extra), files)
 
     try:
         with harnessing.opened(args, "opencode", served, say) as run:

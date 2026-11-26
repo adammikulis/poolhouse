@@ -50,7 +50,7 @@ def test_opencode_run_is_confined_offline_and_points_at_the_bridge(monkeypatch, 
     said = []
     assert opencode.launch(["--on", "http://127.0.0.1:8080", "--project", str(project), "--", "fix it"], say=said.append,
                            run_opencode=run_opencode) == 0, said
-    assert seen["argv"] == [str(binary.resolve()), "run", "--format", "json", "--model", "poolhouse/local-model", "fix it"]
+    assert seen["argv"] == [str(binary.resolve()), "run", "--standalone", "--format", "json", "--model", "poolhouse/local-model", "fix it"]
     assert seen["env"]["OPENCODE_DISABLE_AUTOUPDATE"] == "true" and seen["env"]["OPENCODE_DISABLE_MODELS_FETCH"] == "true"
     assert set(seen["env"]) <= isolation.allowed("opencode")
     provider = seen["config"]["provider"]["poolhouse"]
