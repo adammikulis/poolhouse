@@ -38,8 +38,6 @@ impl Presence for Person {
         self.kind
     }
 
-    fn own_terminal(&self) -> bool { self.kind == "own-terminal" }
-
     fn begin(&mut self, what: &str, _terminal: &str) -> NodeResult<Box<dyn Asking>> {
         self.raised.fetch_add(1, Ordering::SeqCst);
         self.shown.lock().unwrap().push(what.into());
@@ -143,10 +141,10 @@ fn a_computer_lifts_only_the_block_named_in_its_own_confirmed_card() {
 }
 
 #[test]
-fn a_typed_yes_lift_card_names_the_same_user_program_limit() {
+fn a_lift_card_names_the_blocked_session_and_the_longest_name_still_fits() {
     let dir = tempfile::tempdir().unwrap();
     let mut node = node(dir.path());
-    let _prompt = at_the_prompt(&mut node, "own-terminal");
+    let _prompt = at_the_prompt(&mut node, "terminal");
     let person = person_session(&mut node);
     let holder = node.tokens.resolve(&person).unwrap().clone();
     let by = format!("{}/{}", holder.board, holder.name);
@@ -154,7 +152,7 @@ fn a_typed_yes_lift_card_names_the_same_user_program_limit() {
     node.answered.block("demo/agent_one", now).unwrap();
     let draft = ok(req(&mut node, "approval_lift_draft", "", &person, json!({"who": "demo/agent_one"})));
     let card = node.firsts.cards.get(&by, draft["card"].as_str().unwrap(), node.now_ms()).unwrap();
-    assert!(card.sentence.contains("A program running as you could answer this typed yes"));
+    assert!(card.sentence.contains("unblock demo/agent_one") && !card.sentence.contains("typed yes"));
     let longest = format!("{}/{}", "a".repeat(48), "b".repeat(48));
     node.answered.block(&longest, now).unwrap();
     let long = ok(req(&mut node, "approval_lift_draft", "", &person, json!({"who": longest})));

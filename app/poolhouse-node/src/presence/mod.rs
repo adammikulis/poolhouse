@@ -14,7 +14,6 @@ pub mod card;
 mod firsts;
 mod mode;
 pub mod terminal;
-pub mod tty;
 
 use serde_json::{json, Map, Value};
 
@@ -108,11 +107,6 @@ pub trait Presence: Send {
     fn kind(&self) -> &'static str;
     /// Open a prompt that says ``what``; ``terminal`` is the terminal device the asker named, which only a terminal prompt uses.
     fn begin(&mut self, what: &str, terminal: &str) -> Result<Box<dyn Asking>>;
-    /// Whether this presence asks only on the controlling terminal of the process that asks, which the node finds itself and the asker does not
-    /// name: a computer whose own node has no prompt of the system's to ask with (`os::can_prompt`).
-    fn own_terminal(&self) -> bool {
-        false
-    }
 }
 
 fn same(a: &str, b: &str) -> bool {
@@ -142,14 +136,7 @@ pub fn call(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) 
         if !person && !(matches!(purpose, Purpose::PoolKey | Purpose::Card) && may_ask(node, &holder)) {
             return Err(Error::Denied("Only the person's own session asks the person at this computer's prompt for that. An agent asks for a pool's change only where the computer shows the system's own dialog for the person's password or fingerprint; here the person runs the command in a terminal of their own.".into()));
         }
-        // Where the system has no prompt of its own the question is put on the terminal of the process that asks, which the node finds itself.
-        let terminal = if node.firsts.asks_on_own_terminal() {
-            node.asking.peer.pid.and_then(tty::of).map(|t| t.to_string_lossy().into_owned()).ok_or_else(|| {
-                Error::Denied("This computer asks you on your terminal, and this request does not come from a process that has one: run the command in a terminal of yours.".into())
-            })?
-        } else {
-            text(p, "terminal")?.to_string()
-        };
+        let terminal = text(p, "terminal")?.to_string();
         if matches!(purpose, Purpose::PoolKey | Purpose::Card) {
             if !text(p, "public")?.is_empty() {
                 return Err(Error::Invalid("A change names no key: the node makes the key a card enrols, and a card asks for no other.".into()));

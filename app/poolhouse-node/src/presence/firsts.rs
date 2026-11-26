@@ -137,11 +137,6 @@ impl Firsts {
         }).collect()
     }
 
-    /// Whether the presence of this node asks only on the controlling terminal of the process that asks.
-    pub fn asks_on_own_terminal(&self) -> bool {
-        self.presence.own_terminal()
-    }
-
     /// Open a prompt for ``by`` (`board/name`): nothing is made until the person says yes.
     /// ``bound`` is the public key (hex) the first key will be: the yes is for that key only, and the dialog shows its words (empty for a phone,
     /// whose key is made by the phone after the scan and shown on both screens then).

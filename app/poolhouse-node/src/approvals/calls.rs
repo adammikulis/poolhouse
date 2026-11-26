@@ -60,8 +60,7 @@ fn computer_lift(node: &mut Node, method: &str, token: &str, p: &Map<String, Val
         if !person && who != by { return Err(Error::Denied("An agent can request a lift only for its own session.".into())); }
         let (board, name) = who.split_once('/').ok_or_else(|| Error::Invalid("A blocked session has a board and name.".into()))?;
         if !crate::row::valid_name(board) || !crate::row::valid_name(name) { return Err(Error::Invalid("That blocked session cannot be shown on this computer.".into())); }
-        let warning = if node.firsts.asks_on_own_terminal() { " A program running as you could answer this typed yes." } else { "" };
-        let sentence = format!("Poolhouse - unblock {who}. This session may ask again.{warning}");
+        let sentence = format!("Poolhouse - unblock {who}. This session may ask again.");
         if !crate::presence::card::shows_whole(&sentence) { return Err(Error::Invalid(crate::presence::card::UNSHOWABLE.into())); }
         let ttl = crate::presence::card::CARD_FOR_MS + crate::presence::card::TICKET_FOR_MS;
         let (nonce, lift) = node.answered.offer_lift(who, &key, &authority, now, ttl)?;
