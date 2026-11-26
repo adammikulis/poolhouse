@@ -22,6 +22,7 @@ from poolhouse.client import families
 from poolhouse.guard import harnesses
 from poolhouse.log import say
 from poolhouse.serve import provenance
+from poolhouse.workspace import tools
 
 __all__ = ["INSTRUCTIONS", "config", "launch", "plugin"]
 
@@ -97,7 +98,7 @@ def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, st
     """Prove a confinement for ``command`` (``opencode`` and the message) and hand it to the runner."""
     _, alias, window = served
     binary, *extra = command
-    how = harnessing.Harness("opencode", binary, served, say)
+    how = harnessing.Harness("opencode", binary, served, say, workspace=tools.for_helper)
     opened: list[harnessing.Session] = []
 
     def render(context: isolation.Context) -> isolation.Rendering:

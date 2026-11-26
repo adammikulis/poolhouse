@@ -24,6 +24,7 @@ from poolhouse.claude import DEFAULT_PORT, DEFAULT_SLOTS, alias_of
 from poolhouse.guard import harnesses
 from poolhouse.log import say
 from poolhouse.serve import provenance
+from poolhouse.workspace import tools
 
 __all__ = ["FLAGS", "INSTRUCTIONS", "config_toml", "launch", "printing"]
 
@@ -104,7 +105,7 @@ def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, st
     home; its config and its instructions are written read-only, and its hooks and its workspace MCP server are clients of the session bridge."""
     runner, extras = start
     binary, *extra = command
-    how = harnessing.Harness("codex", binary, served, say, extras or {}, not printing(extra))
+    how = harnessing.Harness("codex", binary, served, say, extras or {}, not printing(extra), workspace=tools.for_helper)
     _, alias, window = served
     opened: list[harnessing.Session] = []
 

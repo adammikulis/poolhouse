@@ -15,6 +15,7 @@ from poolhouse.client import reported_models
 from poolhouse.guard import harnesses
 from poolhouse.log import say
 from poolhouse.serve import provenance
+from poolhouse.workspace import tools
 
 __all__ = ["INSTRUCTIONS", "launch", "main", "settings"]
 
@@ -113,7 +114,7 @@ def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, st
     window. The settings and the brief are written read-only inside the agent home, and the hooks are clients of the session bridge."""
     runner, extras = start
     binary, *extra = command
-    how = harnessing.Harness("claude", binary, served, say, extras or {}, not printing(extra))
+    how = harnessing.Harness("claude", binary, served, say, extras or {}, not printing(extra), workspace=tools.for_helper)
     brief = ""
 
     def render(context: isolation.Context) -> isolation.Rendering:

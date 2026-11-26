@@ -296,3 +296,8 @@ def workspace_task_credit(id: str) -> dict[str, Any]:
 def workspace_task_integrate(id: str) -> dict[str, Any]:
     """Gate, land and clean an exact independently accepted native task using existing authority."""
     return task_integration.integrate(_session(), limits.root(), id)
+
+
+def for_helper(helper: Any) -> Callable[[str, Mapping[str, Any]], Any]:
+    """The handler of a launch's session bridge: the workspace tools, run as ``helper``'s session."""
+    return lambda name, arguments: as_session(helper.session())(name, arguments)

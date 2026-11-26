@@ -25,17 +25,17 @@ from typing import Any
 from poolhouse import errors, lazy, serverkeys
 from poolhouse.client.health import reported_models
 from poolhouse.hub import local, room
-from poolhouse.serve import admission, exit_guard, grant, ledger
+from poolhouse.serve import admission, grant, ledger, stopping
 from poolhouse.serve.backend import Lease, LlamaServerBackend, ServerFailed, ServerInfo, ServerSpec
 from poolhouse.serve.binary import require_binary
-from poolhouse.serve.children import Children, Exit
+from poolhouse.serve.children import Children
 from poolhouse.serve.leases import lease_file
 from poolhouse.serve.policy import LocalPolicy, Policy
 from poolhouse.serve.ports import DEFAULT_HOST, free_port, port_is_free
 from poolhouse.serve.preflight import Preflight, Report
 from poolhouse.serve.weights import scaled_timeout, weight_of
 
-__all__ = ["AdmissionRefused", "Handle", "ModelNotFound", "fit", "resolve", "serve", "stop_all", "stop_server"]
+__all__ = ["AdmissionRefused", "Handle", "ModelNotFound", "fit", "resolve", "serve", "stop_all"]
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,7 @@ class Handle:
                 return
             self.closed = True
             _HANDLES.pop(self.port, None)
-            stop_server(_CHILDREN, self.port, self.pid, proc=self.info.process)
+            stopping.stop_server(_CHILDREN, self.port, self.pid, proc=self.info.process)
             _MINE.pop(str(self.port), None)
             _save()
 
@@ -168,16 +168,6 @@ def stop_all() -> list[int]:
         for handle in list(_HANDLES.values()):
             handle.close()
     return pids
-
-
-def stop_server(children: Children, port: int, pid: int | None, *, proc: Any = None, grace_s: float = 5.0) -> list[Exit]:
-    """End the server on ``port`` and everything of it that is left: its process tree (waited on when ``proc`` is ours), its
-    exit guard and its API key with the file it was handed in. The one way a server of this machine is stopped, the pool's
-    broker's included."""
-    ended = children.end(port, pid, proc=proc, grace_s=grace_s)
-    exit_guard.release(pid)
-    serverkeys.forget(port)
-    return ended
 
 
 def _start(backend: LlamaServerBackend, spec: ServerSpec, *, preflight: bool, timeout: float) -> ServerInfo:

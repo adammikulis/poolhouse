@@ -25,7 +25,7 @@ REPO = Path(__file__).resolve().parents[1]
 ROOT = REPO / "src" / "poolhouse"
 
 LAYERS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("core", ("activity", "coding_apply", "coding_policy", "coding_workspace", "coding_workspace_state", "executable_libraries", "agent_dependency", "agent_hooks", "asking", "authority", "session_identity", "briefing", "checks", "command", "command_capture", "contracts", "credentials", "data",
+    ("core", ("activity", "kdf", "lazy", "tolerant", "coding_apply", "coding_policy", "coding_workspace", "coding_workspace_state", "executable_libraries", "agent_dependency", "agent_hooks", "asking", "authority", "session_identity", "briefing", "checks", "command", "command_capture", "contracts", "credentials", "data",
               "entities", "errors", "extraction", "files", "files_windows", "gate", "geo", "gitstate",
               "home", "hook_bootstrap", "hook_diagnostics", "hookcheck", "http", "httpguard", "installed", "interventions", "features", "jobs", "json_objects", "jsonl", "keystore", "keystore_guard", "kvtype", "lan", "leasetable", "limits",
               "runtime", "runtime_age", "runtime_launchers", "runtime_git", "runtime_inputs", "runtime_bridges", "runtime_identity", "app_bundle", "macho", "node_signing", "disclaim",
@@ -38,7 +38,7 @@ LAYERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("model", ("client", "decide", "hub", "spec", "speech")),
     ("graph", ("graph",)),
     ("machine", ("doctor", "fleet", "serve", "setup", "studio")),
-    ("tools", ("coordination", "agent", "chat", "chatpolicy", "claude", "cli", "codex", "coding", "coding_actions", "decide_cli", "isolation", "pi_tools",
+    ("tools", ("core", "coordination", "agent", "chat", "chatpolicy", "claude", "cli", "codex", "coding", "coding_actions", "decide_cli", "isolation", "pi_tools",
                "delegate", "delegate_confined", "delegate_run", "delegate_store", "do", "guard", "harness", "harnessid", "harnessing", "harnesshook", "harnesspolicy", "mcp", "memory", "reputation", "roles", "rules",
                "api", "testfarm", "workspace", "pi", "opencode", "opencode_install", "harness_js", "features_cli", "board", "node_app", "device_host", "device_setup", "node_binary", "node_build", "node_join", "node_join_check", "pool_cli", "node_key", "node_launch", "node_permission", "node_supervise", "build_update", "runtime_await", "runtime_board", "runtime_cli", "runtime_coalesce", "runtime_deploy", "runtime_host", "runtime_stale", "runtime_source", "runtime_store", "runtime_trust", "runtime_unmerged")),
     ("experimental", ("backend", "bench", "datasheet", "draft", "gguf", "gym", "ingest", "redteam", "scrape", "sources", "surface",

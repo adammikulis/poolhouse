@@ -147,7 +147,7 @@ def converse(rec: store.Delegate, bridge: Any, mine: Any, say: Callable[[str], N
         alias = claude.alias_of(base_url, found)
         mine.record_model(alias, "poolhouse-agent", base_url)
         how = harnessing.Harness("claude", binary, (base_url, alias, config.serving.slot_context), say,
-                                 workspace=lead_only(bridge.ask, bridge.note), conversation="", verbs=session_verbs.LEAD)
+                                 workspace=lambda _helper: lead_only(bridge.ask, bridge.note), conversation="", verbs=session_verbs.LEAD)
         run = harnessing.Session(mine, Path(rec.source), brief_of(rec))
         with harnessing.confined(args, run, how, renderer(rec, binary)) as confinement:
             store.set_status(rec.name, "working", alias)

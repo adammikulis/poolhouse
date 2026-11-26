@@ -46,7 +46,6 @@ from poolhouse.serve.ports import DEFAULT_HOST
 from poolhouse.serve.recent import note
 from poolhouse.serve.serving import Config, Serving, drafted, said_cache, served, serving_params
 from poolhouse.windows_private import restrict as restrict_windows
-from poolhouse.workspace import tools
 
 WAIT_S = 0.0
 """Seconds a hook waits beyond its own thirty: none, because a hook decides a call at once and nothing waits for anyone."""
@@ -511,8 +510,8 @@ def rail_of(args: argparse.Namespace, name: str, stage: str) -> harnesshook.Rail
 @dataclasses.dataclass(frozen=True, slots=True)
 class Harness:
     """The harness a launch starts: its name, its binary, the model it was served (base URL, alias, window), the launcher's own lines, the
-    variables its caller sets (the effort and the extra body of a task) and whether it is interactive. ``workspace`` runs the verbs of the session
-    bridge (default: the workspace tools as the helper); ``conversation`` names the conversation whose stage a re-launch keeps (default: the
+    variables its caller sets (the effort and the extra body of a task) and whether it is interactive. ``workspace`` makes the handler that runs the verbs of the session
+    bridge from the helper; ``conversation`` names the conversation whose stage a re-launch keeps (default: the
     helper's own; none for a launch that is never resumed)."""
 
     name: str
@@ -521,7 +520,9 @@ class Harness:
     say: Callable[[str], None]
     extras: Mapping[str, str] = dataclasses.field(default_factory=dict)
     interactive: bool = False
-    workspace: Callable[[str, Mapping[str, Any]], Any] | None = None
+    _: dataclasses.KW_ONLY
+    workspace: Callable[[Any], Callable[[str, Mapping[str, Any]], Any]]
+    """Given the launch's helper identity, the handler that runs the verbs of the session bridge; the caller names it, so this module does not import the workspace."""
     conversation: str | None = None
     verbs: Mapping[str, session_verbs.Verb] = dataclasses.field(default_factory=lambda: session_verbs.VERBS)
     """The closed table of verbs the harness's tools are made from: the workspace's by default, or a delegate's two ways to its lead."""
@@ -545,7 +546,7 @@ def confined(args: argparse.Namespace, run: Session, how: Harness,
                               lambda name, fields: sandbox_run.HOOKS.events and sandbox_run.HOOKS.events(name, fields))
     plan = isolation.Plan(how.name, how.binary, str(run.cwd), coding_policy.Policy(args.permissions, args.execution_mode), base_url,
                           isolation.Lease.of(alias, window, args.slots), serverkeys.for_url(base_url), helper.name, decide,
-                          how.workspace or (lambda verb, arguments: tools.as_session(helper.session())(verb, arguments)), render, notice,
+                          how.workspace(helper), render, notice,
                           args.launch.grants, helper.name if how.conversation is None else how.conversation, dict(how.extras), how.interactive, how.verbs)
     confinement = isolation.prepare(plan)
     try:

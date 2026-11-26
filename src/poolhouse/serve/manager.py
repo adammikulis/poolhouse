@@ -16,7 +16,7 @@ from typing import Any
 
 import psutil
 
-from poolhouse import core, leasetable, serverkeys
+from poolhouse import leasetable, serverkeys
 from poolhouse.client import is_healthy, reported_models
 from poolhouse.client.chat import forget_server
 from poolhouse.client.health import serving_params
@@ -34,6 +34,7 @@ from poolhouse.serve import (
     mtp,
     provenance,
     quant_guard,
+    stopping,
     unmanaged,
 )
 from poolhouse.serve.admitting import Admitting
@@ -596,7 +597,7 @@ class ServerManager(Admitting):
 
         pid = self._recorded_pid(spec.port)
         emit(on_event, "stopping", port=spec.port, pid=pid)
-        core.stop_server(self.children, spec.port, pid)
+        stopping.stop_server(self.children, spec.port, pid)
         self._forget(spec.port)
 
         # kv_unified keeps the cache's stream count at 1 across the relaunch; any other
@@ -633,7 +634,7 @@ class ServerManager(Admitting):
         if info.adopted:
             logger.debug("not stopping %s: we adopted it", info.base_url)
             return
-        core.stop_server(self.children, info.port, info.pid, proc=info.process, grace_s=grace_s)
+        stopping.stop_server(self.children, info.port, info.pid, proc=info.process, grace_s=grace_s)
         self._forget(info.port)
 
     def detach(self, info: ServerInfo) -> None:
@@ -663,7 +664,7 @@ class ServerManager(Admitting):
         for entry in list(self._mine.values()):
             pid = entry.get("pid")
             if isinstance(pid, int) and pid_exists(pid):
-                stopped += [one.pid for one in core.stop_server(self.children, int(entry.get("port") or 0), pid,
+                stopped += [one.pid for one in stopping.stop_server(self.children, int(entry.get("port") or 0), pid,
                                                                  grace_s=grace_s)]
             self._given_back(entry)
         self.children.stop_all(grace_s=grace_s)

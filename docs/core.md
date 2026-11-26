@@ -23,7 +23,7 @@ request is sent: it would queue on the pool's node.
 
 The core and the pool's broker start a server the same way: both go through `LlamaServerBackend` (the binary found once per
 start and judged by the policy whichever route found it, the key handed over in a 0600 file, the listener checked to be the
-process just started before any key is sent) and both stop one through `core.stop_server`. What the broker keeps for itself is
+process just started before any key is sent) and both stop one through `serve.stopping.stop_server`. What the broker keeps for itself is
 the queue, the leases and the node's table.
 
 ## One memory ledger
