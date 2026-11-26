@@ -8,7 +8,7 @@ from poolhouse import coding_policy
 
 __all__ = ["HARNESSES", "Spec"]
 
-HARNESSES = ("claude", "codex", "pi")
+HARNESSES = ("claude", "codex", "pi", "opencode")
 """The coding harnesses Poolhouse launches (docs/harnesses.md)."""
 
 

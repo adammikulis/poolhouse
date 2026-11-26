@@ -171,6 +171,32 @@ token file deleted when the launcher exits. The served alias and harness are rec
 (`whoami --model ALIAS --harness H`) once the serving endpoint reports that model; when it does not, the launcher
 says the model is not recorded.
 
+## OpenCode
+
+```
+poolhouse-opencode -- "fix the failing test in calc.py"        # opencode run MESSAGE, on the model served now
+poolhouse-opencode Qwen3.5-2B --permissions read-only --project ~/work/repo -- "explain this repo"
+```
+
+`launch_coding_agent(model, policy, project, harness="opencode", harness_args=["MESSAGE"], run_opencode=...)` is the same for a program. A launch is
+`opencode run --format json --model poolhouse/ALIAS MESSAGE`: print mode only, until the relay of L6 (an interactive launch has no entry point).
+It goes through the one door like the others (`isolation.prepare` then `Confinement.popen`; there is no second sandbox path), and its words are
+the same lease, window, permission profiles, workspace session and publication of the stage after each turn as Codex and Pi.
+
+- **The model.** The provider is `@ai-sdk/openai-compatible` at the model bridge's `/v1` with the bridge's token, which the launcher mints for the
+  launch and writes into a read-only `opencode.json` in the agent home (`OPENCODE_CONFIG`, with `XDG_*` inside the home). Nothing is pasted, no
+  login is run and nothing waits. OpenCode's own traffic (update check, the model list, LSP downloads, sharing, the Claude Code file import) is off.
+  Its permissions never ask: the plugin and the mount decide.
+- **The gate.** A plugin written beside the config (`tool.execute.before` and `tool.execute.after`) runs the same client as Pi's extension
+  (`poolhouse.harness_js`) and asks the parent's classifier over the session bridge before each tool call; a deny, or a hook that cannot be reached,
+  throws, which OpenCode hands back to the model as the tool's error. The mutation checkpoint runs after each call and a failure stops the run.
+- **The binary.** `poolhouse.opencode_install`: an `opencode` on PATH is used; with none, the newest release of the project is fetched once through the
+  net pipeline the llama.cpp build uses (checked against the sha256 GitHub reports for the asset, format-checked and scanned, unpacked by
+  `safenames.unpack`) into `<state>/tools/opencode/<tag>/`. A launch needs no install step; a fetch that cannot complete says why and starts nothing.
+- **Names it reads from a project** (`guard.harnesses.RECORDS["opencode"]`): `.opencode`, `opencode.json`, `opencode.jsonc`.
+
+Tests: `tests/test_opencode_harness.py`.
+
 ## A delegate
 
 `poolhouse-delegate` is how a lead session (a Claude Code or Codex session, or any registered session) hands a task to a

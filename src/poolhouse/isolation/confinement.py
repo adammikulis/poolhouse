@@ -51,7 +51,7 @@ __all__ = ["Confinement", "Context", "Made", "Plan", "Rendering", "install_tree"
 CLIENT = "client.py"
 SYSTEM_ROOTS = frozenset({"/", "/usr", "/usr/local", "/opt", "/opt/homebrew", "/Library", "/System", "/bin", "/sbin"})
 """A directory that is a system tree, never a harness's own install tree."""
-HARNESS_DIRECTORIES = {"claude": ".claude-config", "codex": ".codex-home", "pi": ".pi-config"}
+HARNESS_DIRECTORIES = {"claude": ".claude-config", "codex": ".codex-home", "pi": ".pi-config", "opencode": ".opencode-config"}
 """Where each harness keeps what it writes, inside the agent home."""
 Decide = Callable[[str, dict[str, Any]], dict[str, Any]]
 

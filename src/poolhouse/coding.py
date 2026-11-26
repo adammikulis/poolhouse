@@ -10,12 +10,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from poolhouse import claude, codex, coding_policy, harnessing, pi
+from poolhouse import claude, codex, coding_policy, harnessing, opencode, pi
 from poolhouse.log import say as default_say
 
 __all__ = ["HARNESSES", "launch_coding_agent"]
 
-HARNESSES = {"pi": pi.launch, "codex": codex.launch, "claude": claude.launch}
+HARNESSES = {"pi": pi.launch, "codex": codex.launch, "claude": claude.launch, "opencode": opencode.launch}
 
 
 def launch_coding_agent(model: str, policy: coding_policy.Policy, project: str | Path, harness: str = "pi",
@@ -25,7 +25,7 @@ def launch_coding_agent(model: str, policy: coding_policy.Policy, project: str |
     ``model`` "" takes the coding default. Options: ``name`` overrides the workspace identity
     (``local-<model>-<harness>``); ``parent`` names the session that starts the agent (else the one of ``$POOLHOUSE_WORKSPACE_AGENT``); ``orders_from`` lists identities the agent obeys besides the
     person and the lead; ``harness_args`` go to the harness after ``--``; ``say`` receives the
-    launcher's lines; ``run_pi``, ``run_codex`` or ``run_claude`` is given the proved confinement (`poolhouse.isolation.Confinement`) and starts the
+    launcher's lines; ``run_pi``, ``run_codex``, ``run_claude`` or ``run_opencode`` is given the proved confinement (`poolhouse.isolation.Confinement`) and starts the
     harness with its ``popen``, the only way a harness starts; ``extras`` (Claude Code and Codex) are the variables the caller sets for the harness.
     A computer that cannot confine refuses before a model is leased, with the sentence of the first guarantee it cannot hold, and the return is 2.
     """

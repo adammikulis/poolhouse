@@ -15,6 +15,7 @@ import os
 import shutil
 import stat
 import sys
+import time
 import uuid
 from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
@@ -27,6 +28,7 @@ from poolhouse import (
     home,
     hub,
     isolation,
+    opencode_install,
     runtime,
     serverkeys,
 )
@@ -65,9 +67,11 @@ __all__ = [
     "agent_name_for",
     "binary_for",
     "check_project",
+    "checked",
     "config_for",
     "default_model",
     "parser",
+    "serve_and_run",
     "serving",
     "session_files",
     "window_of",
@@ -167,6 +171,8 @@ def binary_for(name: str) -> str:
         binary = Path(spec.origin).parent / "_bundled" / ("claude.exe" if os.name == "nt" else "claude")
         if binary.is_file() and os.access(binary, os.X_OK):
             return str(binary)
+    if name == "opencode":
+        return opencode_install.kept()
     return ""
 
 def admitted(found: str, ctx: int, say: Callable[[str], None], *, plan: Callable[..., object] | None = None, kv: str = KV) -> bool:
@@ -454,6 +460,44 @@ def admit(args: argparse.Namespace, harness: str, asked_project: str, *, interac
     hold. ``args.launch`` is what was decided."""
     args.launch = decided(args, asked_project)
     isolation.require_capable(isolation.Spec(harness, "", "", "", 0, project=args.project, interactive=interactive))
+
+
+def checked(args: argparse.Namespace, name: str, say: Callable[[str], None], *, interactive: bool) -> bool:
+    """What every launcher decides before it leases anything: ``--on`` and a model are not both named, the permissions are known, the project is
+    one this launch may use and this computer can confine. False, after one sentence said, when any does not hold; ``args.project`` and ``args.launch`` are set."""
+    if args.on and args.model:
+        say("error: --on names a server already running; do not name a model as well")
+        return False
+    try:
+        coding_policy.Policy(args.permissions, args.execution_mode)
+        asked, args.project = args.project, str(check_project(args.project))
+        admit(args, name, asked, interactive=interactive)
+    except (OSError, RuntimeError, ValueError) as why:
+        say(f"error: {why}")
+        return False
+    return True
+
+
+def serve_and_run(args: argparse.Namespace, name: str, say: Callable[[str], None], alias_of: Callable[[str, str], str],
+                  run: Callable[[tuple[str, str, int]], int]) -> int:
+    """The model half of a launch: the server already up at ``--on``, else a lease for the model asked for (or the default), held for the run.
+    ``run((base_url, alias, window))`` proves the confinement and starts the harness."""
+    if args.on:
+        base_url = args.on.rstrip("/")
+        alias = alias_of(base_url, "")
+        if not alias:
+            say(f"error: {base_url} did not say what model it serves")
+            return 2
+        return run((base_url, alias, window_of(base_url)))
+    began = time.time()
+    try:
+        with serving(args.model or default_model(), Want(args.port, args.slots, args.ctx, args.no_profile, args.draft), say, name) as (base_url, config, found):
+            alias = alias_of(base_url, found)
+            say(f"{name} on {base_url} as {alias!r}, up in {time.time() - began:.0f}s")
+            return run((base_url, alias, config.serving.slot_context))
+    except ValueError as why:
+        say(f"error: {why}")
+        return 2
 
 
 def rail_of(args: argparse.Namespace, name: str, stage: str) -> harnesshook.Rail:
