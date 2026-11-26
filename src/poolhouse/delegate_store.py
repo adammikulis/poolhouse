@@ -39,6 +39,11 @@ class Delegate:
         asked = "\0".join((self.lead, self.label, self.task, self.source, str(self.edit)))
         return hashlib.sha256(asked.encode()).hexdigest()[:16]
 
+    def message(self) -> str:
+        """What the model is told first: who it is and what is asked. Its system prompt names neither, so every delegate of one lead
+        starts with the same prompt and a server's prompt cache holds the part they share."""
+        return f"You are {self.name}.\nTask from {self.lead}:\n{self.task}"
+
 
 def folder(name: str) -> Path:
     """The owner-only folder of delegate ``name``; ValueError for a name no session has."""

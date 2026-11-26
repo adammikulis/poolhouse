@@ -28,9 +28,12 @@ OFFLINE = {
     "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING": "1",
     "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
     "CLAUDE_CODE_SKIP_FAST_MODE_ORG_CHECK": "1",
+    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
     "DISABLE_TELEMETRY": "1",
 }
-"""What keeps Claude Code from calling out to anything but the bridge."""
+"""What keeps Claude Code from calling out to anything but the bridge. The attribution header is a line at the start of the system
+prompt that changes with every request, so a local server's prompt cache never matched past it: without it a second session on the same
+server reuses the first one's prompt."""
 WINDOW = ("CLAUDE_CODE_MAX_CONTEXT_TOKENS", "CLAUDE_CODE_AUTO_COMPACT_WINDOW")
 CALLER_SET = ("CLAUDE_CODE_EXTRA_BODY", "CLAUDE_CODE_EFFORT_LEVEL")
 """Passed on only where the caller sets them."""

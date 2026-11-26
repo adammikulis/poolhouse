@@ -200,6 +200,8 @@ class Want:
     ctx: int = DEFAULT_CTX
     no_profile: bool = False
     draft: str = "auto"
+    keep: bool = False
+    """Leave a server this session started up when it ends, so the next session takes it warm (a delegate's)."""
 
 
 MIN_WINDOW = 65_536
@@ -320,7 +322,7 @@ def serving(model: str, want: Want, say: Callable[[str], None], by: str) -> Iter
             leasing("this model's template refuses a system message after the first; serving "
                     f"with one that renders it instead ({patched.name})")
     with served(config, say=say, timeout=900.0, cache_reuse=256, warmup=False, escalate=True,
-                chat_template_file=patched, roam=not taking, reason=f"{by} session on {Path(found).name}",
+                chat_template_file=patched, roam=not taking, keep=want.keep, reason=f"{by} session on {Path(found).name}",
                 on_event=lambda e: say(f"  {e.get('event')}: " + ", ".join(
                     f"{k}={v}" for k, v in e.items() if k != "event"))) as base_url:
         yield base_url, config, found

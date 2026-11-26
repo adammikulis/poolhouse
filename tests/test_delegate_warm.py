@@ -1,0 +1,106 @@
+"""A delegation starts fast without setup: the server it leased stays up for the next one, the prompt every delegate of a lead shares
+is the same text and carries no per-request line, and `warm` fills the server's prompt cache before the first task."""
+
+from __future__ import annotations
+
+import argparse
+import importlib
+import socket
+import time
+
+import pytest
+
+from poolhouse import (
+    delegate,
+    delegate_confined,
+    delegate_run,
+    delegate_store as store,
+    harness,
+    hub,
+)
+from poolhouse.serve import cli, holding, ops
+from poolhouse.serve.backend import LlamaServerBackend
+from poolhouse.serve.broker import Broker
+from poolhouse.serve.leases import lease_file, recorded_servers
+from poolhouse.serve.manager import ServerManager, serve
+from poolhouse.testing.canned import canned_binary
+
+pytest_plugins = ["serve_node"]
+
+MIB = 1024 * 1024
+iso_env = importlib.import_module("poolhouse.isolation.environment")
+
+
+def a_delegate(name: str, lead: str = "claude-lead", edit: bool = False) -> store.Delegate:
+    return store.Delegate(name, lead, "board", "read the tests", "/tmp/work", "Qwen3.8-Flash-Next-UD-IQ2_XS", "", "", edit)
+
+
+def test_the_attribution_line_that_changes_every_request_is_turned_off():
+    assert harness.environment("http://127.0.0.1:1", "model")["CLAUDE_CODE_ATTRIBUTION_HEADER"] == "0"
+    assert iso_env.OFFLINE["CLAUDE_CODE_ATTRIBUTION_HEADER"] == "0"
+
+
+def test_two_delegates_of_one_lead_start_from_the_same_system_prompt_and_differ_in_the_message():
+    one, two = a_delegate("claude-aaaaaa"), a_delegate("claude-bbbbbb")
+    for made in (lambda rec: delegate_confined.brief_of(rec),
+                 lambda rec: delegate_run.options(rec, delegate_run.Bridge(None, rec.lead, rec.name, lambda *_: None))["system_prompt"]["append"]):
+        assert made(one) == made(two)
+        assert "claude-aaaaaa" not in made(one)
+    assert one.message() != two.message() and "claude-aaaaaa" in one.message() and "read the tests" in one.message()
+
+
+def test_warm_hands_a_delegate_the_trivial_task_and_nothing_else(monkeypatch):
+    seen = []
+    monkeypatch.setattr(delegate, "start", lambda args: seen.append(args) or 0)
+    assert delegate.warm(argparse.Namespace(model="", edit=False)) == 0
+    assert seen[0].task == delegate.WARM_TASK and seen[0].max_turns == 1 and not seen[0].edit and not seen[0].project
+
+
+@pytest.fixture
+def machine(tmp_path, monkeypatch, serve_leases, named_context):
+    binary = canned_binary(tmp_path)
+    made = {}
+
+    def manager_for(binary_arg="", build=""):
+        if "m" not in made:
+            m = ServerManager(LlamaServerBackend(binary=binary), state_file=lease_file())
+            m._broker = Broker(m, room=lambda: 65536 * MIB, scan=lambda: [])
+            made["m"] = m
+        return made["m"]
+
+    monkeypatch.setattr(ops, "manager_for", manager_for)
+    monkeypatch.setattr(hub, "room", lambda: 65536 * MIB)
+    monkeypatch.setattr(hub, "total_memory", lambda: 64 * 1024 * MIB)
+    yield manager_for()
+    for hold in holding.holds():
+        holding.down([hold], manager=manager_for(), wait_s=20)
+    made["m"].stop_all()
+    cli.main(["down", "--orphans"])
+
+
+def listening(port: int) -> bool:
+    with socket.socket() as probe:
+        probe.settimeout(0.5)
+        return probe.connect_ex(("127.0.0.1", port)) == 0
+
+
+def a_model(tmp_path):
+    path = tmp_path / "Qwen3.8-27B-UD-Q4_K_XL.gguf"
+    with path.open("wb") as out:
+        out.write(b"GGUF" + b"\x00" * 64)
+        out.truncate(600 * MIB)
+    return str(path)
+
+
+def test_a_server_a_delegate_started_is_up_for_the_next_one_and_a_plain_lease_still_ends_with_its_block(machine, tmp_path):
+    model = a_model(tmp_path)
+    with serve(model, manager=machine, context=4096, keep=True) as kept:
+        port = kept.port
+    assert listening(port) and port in recorded_servers(lease_file())
+    assert cli.main(["down", str(port)]) == 0
+    with serve(model, manager=machine, context=4096) as plain:
+        gone = plain.port
+    deadline = time.monotonic() + 15
+    while listening(gone) and time.monotonic() < deadline:
+        time.sleep(0.2)
+    assert not listening(gone)
