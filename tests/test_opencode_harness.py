@@ -43,6 +43,7 @@ def test_opencode_run_is_confined_offline_and_points_at_the_bridge(monkeypatch, 
 
     def run_opencode(confinement):
         seen["argv"], seen["env"] = list(confinement.argv), dict(confinement.env)
+        seen["net"] = confinement.profile.policy.net
         seen["config"] = json.loads(Path(seen["env"]["OPENCODE_CONFIG"]).read_text())
         seen["plugin"] = Path(seen["env"]["OPENCODE_CONFIG"]).with_name(opencode.PLUGIN).read_text()
         return 0
@@ -50,7 +51,12 @@ def test_opencode_run_is_confined_offline_and_points_at_the_bridge(monkeypatch, 
     said = []
     assert opencode.launch(["--on", "http://127.0.0.1:8080", "--project", str(project), "--", "fix it"], say=said.append,
                            run_opencode=run_opencode) == 0, said
-    assert seen["argv"] == [str(binary.resolve()), "run", "--standalone", "--format", "json", "--model", "poolhouse/local-model", "fix it"]
+    sh, flag, script, name, program, port, *rest = seen["argv"]
+    assert (sh, flag, name, program) == ("/bin/sh", "-c", "opencode", str(binary.resolve()))
+    assert rest == ["--format", "json", "--model", "poolhouse/local-model", "fix it"]
+    assert '"$1" serve --hostname 127.0.0.1 --port "$2"' in script and 'run --server "http://127.0.0.1:$port"' in script and "--standalone" not in script
+    assert seen["net"].listen == (int(port),) and len(seen["net"].ports) == 1, "the model bridge and the server the launcher chose, no other port"
+    assert seen["env"]["OPENCODE_PASSWORD"] == provider_key(seen), "the server answers only to the bridge token"
     assert seen["env"]["OPENCODE_DISABLE_AUTOUPDATE"] == "true" and seen["env"]["OPENCODE_DISABLE_MODELS_FETCH"] == "true"
     assert set(seen["env"]) <= isolation.allowed("opencode")
     provider = seen["config"]["provider"]["poolhouse"]
@@ -59,6 +65,10 @@ def test_opencode_run_is_confined_offline_and_points_at_the_bridge(monkeypatch, 
     assert provider["options"]["apiKey"] != "local" and len(provider["options"]["apiKey"]) >= 32, "the bridge's token, minted for the launch"
     assert seen["config"]["autoupdate"] is False and seen["config"]["share"] == "disabled"
     assert "tool.execute.before" in seen["plugin"] and "client.py" in seen["plugin"] and "poolhouse.harnesshook" not in seen["plugin"]
+
+
+def provider_key(seen):
+    return seen["config"]["provider"]["poolhouse"]["options"]["apiKey"]
 
 
 def test_coding_agent_takes_opencode_by_name(monkeypatch, tmp_path):

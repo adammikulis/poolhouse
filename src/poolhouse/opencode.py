@@ -22,6 +22,7 @@ from poolhouse.client import families
 from poolhouse.guard import harnesses
 from poolhouse.log import say
 from poolhouse.serve import provenance
+from poolhouse.serve.ports import free_port
 
 __all__ = ["INSTRUCTIONS", "config", "launch", "plugin"]
 
@@ -71,6 +72,31 @@ def plugin(settings: dict[str, Any]) -> str:
 '''
 
 
+SERVE = """\
+"$1" serve --hostname 127.0.0.1 --port "$2" >/dev/null 2>&1 &
+server=$!
+tries=0
+until /usr/bin/nc -z 127.0.0.1 "$2" 2>/dev/null; do
+  tries=$((tries + 1))
+  if [ "$tries" -gt 300 ]; then echo "poolhouse: the OpenCode server did not start" >&2; kill "$server" 2>/dev/null; exit 1; fi
+  sleep 0.1
+done
+binary=$1 port=$2
+shift 2
+"$binary" run --server "http://127.0.0.1:$port" "$@"
+status=$?
+kill "$server" 2>/dev/null
+exit "$status"
+"""
+
+
+def argv_of(binary: str, port: int, alias: str, extra: Sequence[str]) -> tuple[str, ...]:
+    """The command line of one run. ``opencode run`` has no mode without a server, and its own private one (`--standalone`) listens on a port the
+    operating system picks, which the box (that names the ports it opens) cannot know. So the confined process starts ``opencode serve`` on ``port``,
+    the one the launcher chose and opened, and runs ``opencode run --server`` against it, behind the password the bridge token gives both."""
+    return ("/bin/sh", "-c", SERVE, "opencode", binary, str(port), "--format", "json", "--model", f"{PROVIDER}/{alias}", *extra)
+
+
 def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = say,
            run_opencode: Callable[[isolation.Confinement], int] | None = None, session_factory: Callable[..., Any] | None = None) -> int:
     """Run ``opencode run`` against a leased local model inside a proved confinement; the words after ``--`` are the message and OpenCode's own run options."""
@@ -102,12 +128,13 @@ def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, st
 
     def render(context: isolation.Context) -> isolation.Rendering:
         run = opened[0]
+        port = free_port()
         files = {f".opencode-config/{CONFIG}": config((context.base_url, alias, window), context.token,
                                                       (str(context.file(f".opencode-config/{PLUGIN}")), str(context.file(f".opencode-config/{BRIEF}"))),
                                                       families.for_model_id(alias).think_kwargs(False)),
                  f".opencode-config/{PLUGIN}": plugin({"hook": context.client_argv("hook"), "root": context.stage}),
                  f".opencode-config/{BRIEF}": run.brief}
-        return isolation.Rendering((binary, "run", "--standalone", "--format", "json", "--model", f"{PROVIDER}/{alias}", *extra), files)
+        return isolation.Rendering(argv_of(binary, port, alias, extra), files, listen=(port,))
 
     try:
         with harnessing.opened(args, "opencode", served, say) as run:

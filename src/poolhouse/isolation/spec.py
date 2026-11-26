@@ -32,6 +32,8 @@ class Spec:
     frozen: tuple[str, ...] = ()
     """Paths inside the agent home the launcher wrote and the harness reads: its settings, its hooks and its client. The home is writable, so these
     are refused a write one by one, and the harness cannot rewrite the gate it runs under."""
+    listen: tuple[int, ...] = ()
+    """Loopback ports the harness binds and reaches for a server of its own (`Rendering.listen`); no other port is added to the model's."""
 
     @property
     def read_only_stage(self) -> bool:

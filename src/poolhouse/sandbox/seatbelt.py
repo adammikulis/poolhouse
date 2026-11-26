@@ -214,7 +214,10 @@ def _network(policy: Policy) -> list[str]:
         return ['(allow network-outbound (remote ip "localhost:*"))',
                 '(allow network-bind (local ip "localhost:*"))',
                 '(allow network-inbound (local ip "localhost:*"))']
-    return [f'(allow network-outbound (remote ip "localhost:{p}"))' for p in net.ports]
+    return [*(f'(allow network-outbound (remote ip "localhost:{p}"))' for p in net.ports),
+            *(rule for p in net.listen for rule in (f'(allow network-outbound (remote ip "localhost:{p}"))',
+                                                    f'(allow network-bind (local ip "localhost:{p}"))',
+                                                    f'(allow network-inbound (local ip "localhost:{p}"))'))]
 
 
 def _gpu() -> list[str]:
