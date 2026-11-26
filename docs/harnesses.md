@@ -180,6 +180,7 @@ runs Claude Code through the isolated launcher on that same model.
 
 ```
 poolhouse-delegate start --task "list the python files here and say what each does" [--project DIR] [--name LABEL] [--edit] [--max-turns N] [--model ID] [--as AGENT]
+poolhouse-delegate warm [--model ID] [--edit]
 poolhouse-delegate status [NAME]
 poolhouse-delegate result NAME
 poolhouse-delegate stop NAME
@@ -189,6 +190,17 @@ poolhouse-delegate stop NAME
   names another), is named by the node and runs detached; `start` prints its name and returns at once. The model is the one
   served now with room for a coding session (`--model` names another; with none up the broker leases the default). Repeating
   a start that is still running returns the first; `--name` tells two agents on one task apart.
+- **Fast without setup.** Four things make the second delegate (and the first after `warm`) start in seconds, not minutes:
+  (1) `poolhouse-serve up` with no `--binary`, `--build`, `--draft` or `--spec` serves a model whose multi-token-prediction head
+  borrows its target's embeddings (a `shared` head, e.g. Qwen3.8-Flash-Next) on the fork build that loads it, with that head,
+  the same `Head` a harness session takes (`hub.heads_for`); the mainline `current` has no MTP graph for such a model and used to
+  serve it without one (`lifecycle_cli.fork_head`). (2) A server a delegate started is left up when it ends (`Want.keep`,
+  recorded under its own pid as `up` leaves one; `poolhouse-serve down` ends it) and the next delegate takes it as it stands.
+  (3) Claude Code's per-request attribution line is off (`CLAUDE_CODE_ATTRIBUTION_HEADER=0`, in `isolation.environment.OFFLINE`)
+  and a delegate's system prompt names neither the delegate nor anything else that differs between two of one lead's delegates
+  (`Delegate.message()` carries who it is and the task), so the server's prompt cache holds the shared prefix and a second delegate
+  prefills only what differs. (4) `warm` runs one trivial delegate task (`Reply with the single word ready`) so the prefix is in the
+  cache before the first real task; use `--edit` for the prompt of an editing delegate, whose tools differ.
 - **What it can do.** Read, Grep and Glob in `--project` (default: an empty scratch folder of its own), and two ways to the
   lead. It has no shell. A read-only delegate passes the classifier of the launched harnesses (`harnesshook`) and the SDK guard
   rails, and is not confined by the operating system: a read reaches any file the account can read that the classifier does not
