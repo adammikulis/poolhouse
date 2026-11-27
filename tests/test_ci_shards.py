@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 from pathlib import Path
@@ -175,8 +176,33 @@ def test_the_test_extra_and_the_install_lines_carry_the_timeout_plugin():
     assert "pytest-timeout" in next(s["run"] for s in macos if s.get("name") == "install test dependencies").split()
 
 
+def timeout_marks(source: str) -> list[ast.Call]:
+    """Every ``pytest.mark.timeout(...)`` the code of ``source`` calls, on a test or in ``pytestmark``."""
+    return [node for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.Call) and ast.unparse(node.func) == "pytest.mark.timeout"]
+
+
+def names_seconds(mark: ast.Call) -> bool:
+    """One positive whole number, and beside it at most ``func_only``, which says what the limit covers."""
+    return (len(mark.args) == 1 and isinstance(mark.args[0], ast.Constant) and type(mark.args[0].value) is int
+            and mark.args[0].value > 0 and all(word.arg == "func_only" for word in mark.keywords))
+
+
 def test_a_test_marked_for_a_longer_timeout_names_it_in_seconds():
-    marked = []
-    for path in sorted((REPO / "tests").glob("test_*.py")):
-        marked += re.findall(r"@pytest\.mark\.timeout\((\S*)\)", path.read_text(encoding="utf-8"))
-    assert marked and all(re.fullmatch(r"\d+", seconds) for seconds in marked)
+    marked = [(path.name, mark) for path in sorted((REPO / "tests").glob("test_*.py"))
+              for mark in timeout_marks(path.read_text(encoding="utf-8"))]
+    assert marked
+    assert [(name, mark.lineno) for name, mark in marked if not names_seconds(mark)] == []
+
+
+@pytest.mark.parametrize("arguments", ["", "'10m'", "TIMER", "0", "-1", "1.5", "True", "600, 'thread'",
+                                       "600, method='thread'", "seconds=600"])
+def test_a_timeout_that_is_not_one_number_of_seconds_is_refused(arguments):
+    marks = timeout_marks(f"pytestmark = [pytest.mark.slow, pytest.mark.timeout({arguments})]\n")
+    assert len(marks) == 1 and not names_seconds(marks[0])
+
+
+@pytest.mark.parametrize("arguments", ["600", "120, func_only=True"])
+def test_a_timeout_of_whole_seconds_is_accepted(arguments):
+    marks = timeout_marks(f"@pytest.mark.timeout({arguments})\ndef test_x():\n    pass\n")
+    assert len(marks) == 1 and names_seconds(marks[0])
