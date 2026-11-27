@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Refuse an edit under src/poolhouse that writes a routine the tree already has, or
-leaves a file over its line limit.
+"""Refuse an edit of a protected path, and report beside an edit under src/poolhouse what the
+merge gates will count in it: a routine the tree already has, a file over its line limit.
 
-Claude Code runs this before every Write, Edit, MultiEdit and NotebookEdit. A target inside
-the primary checkout is refused first (src/poolhouse/worktreerules.py). An exit code of 2 blocks
-the edit and hands the message back; a rule that is a suggestion rather than a certainty
-prints on stdout and lets the edit through. POOLHOUSE_GUARD=off disables it for a session.
+Claude Code runs this before every Write, Edit, MultiEdit and NotebookEdit. The protected paths
+(src/poolhouse/worktreerules.py) are refused with an exit code of 2, which blocks the edit and
+hands the message back. A code-quality finding never holds an edit back: it reaches the agent as
+context, and `scripts/budgets` decides at merge. POOLHOUSE_GUARD=off disables it for a session.
 
 Wire it in as a PreToolUse hook on Write|Edit|MultiEdit in a project's
 `.claude/settings.json`:
@@ -211,26 +211,35 @@ def load_duplicates():
     return module
 
 
-def check(tool: str, given: dict) -> int:
+def report(findings: list[str]) -> int:
+    """Tell the agent what the gates will count, beside the edit it made: the note decides nothing, so the edit goes ahead."""
+    if findings:
+        text = "\n".join(f"note: {finding}" for finding in findings)
+        text += "\n(poolhouse scripts/hooks/claude-edit-guard. The edit is not held back; `scripts/budgets` judges it before it merges.)"
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": text}}))
+    return ALLOWED
+
+
+def check(tool: str, given: dict) -> list[str]:
+    """What the merge gates would find in the file as the edit leaves it."""
     path = Path(given.get("file_path") or "")
     limits = line_limits()
     if path.suffix not in limits:
-        return ALLOWED
+        return []
     root = library_root(path)
     if root is None:
-        return ALLOWED
+        return []
     here = "/".join(path.parts[len(root.parts):])
     current = path.read_text(encoding="utf-8") if path.exists() else ""
     proposed = proposed_text(tool, given, current)
     if proposed is None or proposed == current:
-        return ALLOWED
+        return []
 
     outgrown = too_long(here, current, proposed, limits)
-    if outgrown:
-        return refuse(outgrown)
+    findings = [outgrown] if outgrown else []
 
     if path.suffix != ".py" or path.name.startswith("test_"):
-        return ALLOWED
+        return findings
 
     dup = load_duplicates()
     known = index_for(root, dup)
@@ -238,37 +247,36 @@ def check(tool: str, given: dict) -> int:
 
     for called, pattern, owner, instead in OWNED:
         if here != owner and re.search(pattern, fresh):
-            return refuse(f"`{called}` belongs to {owner}: {instead}")
+            findings.append(f"`{called}` belongs to {owner}: {instead}")
 
     if re.search(r"\bos\.(replace|rename)\s*\(", fresh) and re.search(r"json|\.json", fresh) \
             and here not in ("src/poolhouse/files.py", "src/poolhouse/jsonl/__init__.py"):
-        return refuse("a JSON file is written through `poolhouse.files.write_json`, which "
-                      "already does the temp file and the atomic os.replace.")
+        findings.append("a JSON file is written through `poolhouse.files.write_json`, which "
+                        "already does the temp file and the atomic os.replace.")
 
     if re.search(r"(Path\.home\(\)|expanduser\(\))", fresh) \
             and here != "src/poolhouse/home.py":
-        return refuse("a home directory is resolved in `poolhouse.home`: `state(...)` for "
-                      "`~/.poolhouse`, `cache(...)` for `~/.cache/poolhouse`, `user_home()` "
-                      "for the account's own, `expand(...)` for a path somebody named.")
+        findings.append("a home directory is resolved in `poolhouse.home`: `state(...)` for "
+                        "`~/.poolhouse`, `cache(...)` for `~/.cache/poolhouse`, `user_home()` "
+                        "for the account's own, `expand(...)` for a path somebody named.")
 
     try:
         tree = ast.parse(proposed)
     except SyntaxError:
-        return ALLOWED
+        return findings
     spans = changed_ranges(current, proposed)
     imports = dup.module_imports(tree)
-    advisory: list[str] = []
 
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or not touched(node, spans):
             continue
         if docstring_lines(node) > DOCSTRING_LINES:
-            return refuse(f"`{node.name}` has a {docstring_lines(node)}-line docstring. "
-                          f"AGENTS.md allows one line saying what it returns; the rest "
-                          f"belongs in the commit message.")
+            findings.append(f"`{node.name}` has a {docstring_lines(node)}-line docstring. "
+                            f"AGENTS.md allows one line saying what it returns; the rest "
+                            f"belongs in the commit message.")
         if params(node) > MAX_PARAMS:
-            return refuse(f"`{node.name}` takes {params(node)} parameters. Group them into "
-                          f"a dataclass, or the callers will each get their own order wrong.")
+            findings.append(f"`{node.name}` takes {params(node)} parameters. Group them into "
+                            f"a dataclass, or the callers will each get their own order wrong.")
         if node.name in dup.SKIP_NAMES or dup._dull(node) or dup.statements(node) < dup.FLOOR:
             continue
         sig = dup.signature(node, imports)
@@ -276,22 +284,20 @@ def check(tool: str, given: dict) -> int:
                      if not (one[0] == here and one[2] == node.name)]
         if elsewhere:
             first = elsewhere[0]
-            return refuse(f"`{node.name}` has the same body as `{first[2]}` at "
-                          f"{first[0]}:{first[1]}. Call that one, or move it somewhere "
-                          f"both callers can reach.")
+            findings.append(f"`{node.name}` has the same body as `{first[2]}` at "
+                            f"{first[0]}:{first[1]}. Call that one, or move it somewhere "
+                            f"both callers can reach.")
+            continue
         same_name = [one for one in known["defs"].get(node.name, [])
                      if one[0] != here and abs(one[2] - params(node)) <= 1]
         if same_name:
-            advisory.append(f"`{node.name}` already exists at "
+            findings.append(f"`{node.name}` already exists at "
                             f"{same_name[0][0]}:{same_name[0][1]} with a similar signature.")
 
     if "ArgumentParser(" in fresh and "ArgumentParser(" not in current and current:
-        advisory.append(f"{here} is gaining an ArgumentParser it did not have. A command "
+        findings.append(f"{here} is gaining an ArgumentParser it did not have. A command "
                         f"belongs in its package's cli module, reached from poolhouse.cli.")
-
-    for note in advisory:
-        print(f"note: {note}")
-    return ALLOWED
+    return findings
 
 
 PERSON_STORE = re.compile(r"(^|/)\.poolhouse/person(/|$)")
@@ -334,7 +340,7 @@ def main() -> int:
     if tool == "NotebookEdit":
         return ALLOWED
     try:
-        return check(tool, given)
+        return report(check(tool, given))
     except Exception as bad:
         print(f"note: claude-edit-guard did not run ({bad.__class__.__name__}: {bad})")
         return ALLOWED
