@@ -495,7 +495,7 @@ asked. No grant, rule or argument lifts a refusal.
 | A coding tool's own settings, which give it hooks, permissions, plugins or servers: the control names (`CONTROL_PREFIXES`: `.claude`, `.codex`, `.pi`, `.mcp.json`, `.poolhouse-project.json`, each as a whole folder or file) and the settings names of the harness records (`guard.harnesses.settings`: those and `.opencode`, `opencode.json`, `opencode.jsonc`), at any depth | never applied; reported. A control path is not read into the patch |
 | Credential name (`secretpaths`) | never applied; reported; never read into the patch |
 | Special file (a FIFO, a socket, a device), submodule, hard-linked file, a link the capture cannot carry (absolute, or leaving the tree) | never applied; reported by name |
-| A new or changed symlink that leads out of the project, or to a path of the rows above. It is followed as the filesystem follows it, through the links of the result tree and of the checkout, and a link another such link goes through is refused with it | never applied; reported |
+| A change that adds, changes or removes a symlink, after which a new link, or a link the checkout holds that it reroutes, would lead out of the project or to a path of the rows above. Each link is followed as the filesystem follows it, over every outcome of the publication (a changed path holds what it holds now or what the change makes it, since a change can be refused or end in a conflict), and again after each refusal until none follows | never applied; reported |
 | A path of the checkout that goes through a link, or that holds a link where the session started from none (4.4.3) | never written; reported |
 | Name collision: two paths equal under case or Unicode folding (APFS and NTFS fold) | never applied; reported |
 | A link to an environment folder of the project that the session removed or replaced (4.2 item 4) | nothing of it applied; reported |
@@ -578,8 +578,9 @@ that **the parent never deletes or overwrites a version of a file it has not ver
      started from), live (now) and result (the stage). Live equals result: nothing to do. Live equals base: continue. Otherwise it
      is a conflict: the live file stays, the agent's version is kept under the state root for the session and the path is named in
      the end-of-turn message.
-  2. **Prepare.** Write the result to a temporary name in the same directory (`O_EXCL`, `O_NOFOLLOW`), with the stage's mode and
-     the group and world write bits cleared, flush it and check its digest. Keep a descriptor to it.
+  2. **Prepare.** Write the result to a temporary name in the same directory (`O_EXCL`, `O_NOFOLLOW`), with the permissions of the file it replaces (the right to
+     run it added or removed as the stage says; a new file takes the stage's mode with the group and world write bits cleared; a person
+     who changed since the start whether the file runs makes it a conflict at step 1), flush it and check its digest. Keep a descriptor to it.
   3. **Swap.** Exchange the temporary name and the live name in one operation: `renameat2` with `RENAME_EXCHANGE` on Linux,
      `renamex_np` with `RENAME_SWAP` on macOS, `ReplaceFileW` with a backup name on Windows. The live name now holds the result;
      the temporary name holds the version that was live.

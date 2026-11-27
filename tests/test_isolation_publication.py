@@ -163,8 +163,8 @@ def test_a_link_that_stays_in_the_project_is_applied_and_one_that_leads_out_or_t
     session = begin(project, tmp_path, Sink())
     stage = session.stage.physical
     inside = {"src/alias.py": "app.py", "src/to_data": "../data/table.json", "src/.dotted": "app.py", "src/to_script": "../scripts/build.sh",
-              "data/up": "..", "src/folder": "../data", "src/dangling": "not-yet.py"}
-    out = {"to_settings": "opencode.json", "to_env": ".env", "through": "mine/x", "src/up": "..", "escape": "src/up/.."}
+              "data/up": "..", "src/folder": "../data", "src/dangling": "not-yet.py", "src/up": ".."}
+    out = {"to_settings": "opencode.json", "to_env": ".env", "through": "mine/x", "escape": "src/up/.."}
     for name, target in {**inside, **out, "outside": "../outside", "absolute": "/etc/hosts"}.items():
         (stage / name).symlink_to(target)
     turn = session.publish_turn()

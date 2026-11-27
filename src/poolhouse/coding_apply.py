@@ -36,7 +36,8 @@ NO_EXCHANGE = (errno.ENOTSUP, errno.EINVAL, errno.ENOSYS)
 class Edit:
     """One path of the change set: the digest of the base (``None`` when the path was absent), the result bytes and mode, or ``link``, the target
     of the relative symbolic link the result is; both ``None`` to delete. ``was_link`` says the base is a link, whose digest is that of its
-    target: a link found where the base is not one is refused. ``kept_first`` says that nothing but this call can give back the version an
+    target: a link found where the base is not one is refused. ``base_mode`` is the mode of the base file: a person who changed since whether
+    it runs keeps their version. ``kept_first`` says that nothing but this call can give back the version an
     overwrite or a deletion displaces, so it is kept first, and the change stops where it cannot be."""
 
     path: str
@@ -46,6 +47,7 @@ class Edit:
     link: str | None = None
     kept_first: bool = False
     was_link: bool = False
+    base_mode: int | None = None
 
     @property
     def result(self) -> str | None:
@@ -194,7 +196,7 @@ def _note(log: Path, record: dict) -> None:
         os.fsync(stream.fileno())
 
 
-def _prepare(target: Target) -> tuple[str, tuple[int, int]]:
+def _prepare(target: Target, mode: int) -> tuple[str, tuple[int, int]]:
     name = f"{TEMP}{uuid.uuid4().hex}"
     if target.edit.link is not None:
         os.symlink(target.edit.link, name, dir_fd=target.parent)
@@ -203,7 +205,7 @@ def _prepare(target: Target) -> tuple[str, tuple[int, int]]:
     descriptor = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=target.parent)
     try:
         os.write(descriptor, target.edit.data or b"")
-        os.fchmod(descriptor, target.edit.mode & 0o755)
+        os.fchmod(descriptor, mode)
         os.fsync(descriptor)
         info = os.fstat(descriptor)
     finally:
@@ -268,13 +270,34 @@ def _one(project: Path, edit: Edit, places: Places) -> Outcome:
         os.close(parent)
 
 
+def _mode(held: Held | None, edit: Edit) -> int:
+    """The permission bits the result gets: those of the file it replaces, so what the person set stays, with the right to run it added or
+    removed only where the edit says otherwise; the edit's own for a new file."""
+    if held is None or held.link:
+        return edit.mode & 0o755
+    live, runs = held.identity[4] & 0o777, bool(edit.mode & 0o111)
+    if runs == bool(live & 0o111):
+        return live
+    return live | (live & 0o444) >> 2 if runs else live & ~0o111
+
+
 def _same(held: Held | None, edit: Edit) -> bool:
     """Whether the live path already is the result: the same kind, the same bytes or target, and for a file the same say on running it."""
     if held is None:
         return edit.result is None
     if held.digest != edit.result or held.link != (edit.link is not None):
         return False
-    return held.link or bool(held.identity[4] & 0o111) == bool(edit.mode & 0o111)
+    return held.link or _mode(held, edit) == held.identity[4] & 0o777
+
+
+def _moved(held: Held | None, edit: Edit) -> bool:
+    """Whether the live path is no longer the version the edit starts from: its bytes or target, its kind, or whether the file runs."""
+    if (held.digest if held else None) != edit.base:
+        return True
+    if held is None:
+        return False
+    ran = edit.base_mode is not None and bool(held.identity[4] & 0o111) != bool(edit.base_mode & 0o111)
+    return held.link != edit.was_link or (ran and not held.link)
 
 
 def _apply(target: Target) -> Outcome:
@@ -289,13 +312,13 @@ def _apply(target: Target) -> Outcome:
             return Outcome(edit.path, "unchanged")
         if held is not None and held.link and not edit.was_link:
             return Outcome(edit.path, "refused")
-        if (held.digest if held else None) != edit.base or (held and held.link != edit.was_link):
+        if _moved(held, edit):
             return Outcome(edit.path, "conflict", kept=_keep(target))
         if held is not None and edit.kept_first and (stopped := _save(target, held)):
             return stopped
         if edit.result is None:
             return _delete(target, held)
-        temp, ours = _prepare(target)
+        temp, ours = _prepare(target, _mode(held, edit))
         _note(target.log, {"path": edit.path, "step": "prepared", "temp": temp, "base": edit.base, "result": edit.result})
         target.after(edit.path, "prepared")
         if held is None:

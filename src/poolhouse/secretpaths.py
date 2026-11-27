@@ -11,6 +11,7 @@ import fnmatch
 import os
 import re
 import time
+import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -96,8 +97,13 @@ def _normal(text: str, base: str) -> Path | None:
     return Path(os.path.normpath(path if path.is_absolute() else (Path(base) if base else Path.cwd()) / path))
 
 
+def _fold(text: str) -> str:
+    """A name as a filesystem that ignores case and Unicode form reads it (APFS opens `id_r\u017fa` as `id_rsa`)."""
+    return unicodedata.normalize("NFC", text).casefold()
+
+
 def _named(name: str) -> str:
-    low = name.lower()
+    low = _fold(name)
     if low in NAMES:
         return low
     if low.startswith(".env.") and low not in PLACEHOLDER_ENV:
@@ -108,7 +114,7 @@ def _named(name: str) -> str:
 
 
 def _run(parts: tuple[str, ...], entry: str) -> bool:
-    want = entry.lower().split("/")
+    want = _fold(entry).split("/")
     return any(parts[at:at + len(want)] == tuple(want) for at in range(len(parts) - len(want) + 1))
 
 
@@ -122,8 +128,8 @@ def _state(path: Path) -> str:
 
 
 def _rule(path: Path, directory: bool = False) -> str:
-    low = str(path).lower()
-    parts = tuple(p.lower() for p in path.parts)
+    low = _fold(str(path))
+    parts = tuple(_fold(p) for p in path.parts)
     for entry in HOME_DIRS:
         if _run(parts, entry):
             return entry
