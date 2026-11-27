@@ -32,7 +32,7 @@ LAYERS: tuple[tuple[str, tuple[str, ...]], ...] = (
               "lock", "ownership", "log", "loopback_window", "macauth", "maintenance", "maintenance_windows", "sealing",
               "markup", "sandbox",
               "deciders", "delegate_record", "delegate_testrun", "desktop", "devbranch", "media", "messages", "net", "node_health", "node_pool", "optional", "paths", "platform", "safenames", "redact", "sentinel",
-              "real_machine", "records", "caller", "private_path", "private_counters", "procscan", "protectedwrites", "safetext", "scopedflag", "secretpaths",
+              "real_machine", "records", "caller", "private_path", "private_counters", "procscan", "protectedshell", "protectedwrites", "safetext", "scopedflag", "secretpaths",
               "serverkeys", "spawned",
               "studio_launch", "subscribers", "taint", "telemetry", "tool_schema", "trees", "ui", "unix_socket", "units", "win32", "windows_private", "worktreerules")),
     ("model", ("client", "decide", "hub", "spec", "speech")),
