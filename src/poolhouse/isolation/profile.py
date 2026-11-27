@@ -85,7 +85,7 @@ def _digest(policy: Policy, grants: Sequence[Grant], spec: Spec) -> str:
     so a token the launcher minted is never in a digest."""
     body = {"harness": spec.harness, "name": policy.name, "read": policy.read, "write": policy.write, "exec": policy.exec,
             "net": [policy.net.mode.value, policy.net.ports, policy.net.listen], "env": sorted(policy.env), "strict": policy.strict,
-            "preferences": policy.preferences,
+            "preferences": policy.preferences, "user_records": policy.user_records,
             "deny_write": policy.deny_write, "unix_sockets": policy.unix_sockets, "signal_children": policy.signal_children,
             "limits": [policy.limits.processes, policy.limits.wall_seconds, policy.limits.cpu_seconds, policy.limits.file_bytes,
                        policy.limits.open_files], "gpu": policy.gpu,
@@ -107,7 +107,7 @@ def build(spec: Spec, grants: Sequence[Grant] = (), env: Mapping[str, str] | Non
     policy = Policy(f"coding-{spec.harness}", read=tuple(dict.fromkeys(readable)), write=tuple(writable),
                     exec=tuple(dict.fromkeys([*SYSTEM_EXEC, os.path.realpath(sys.executable), spec.install, *system_toolchain(), *runs,
                                               *_git_directory(), *spec.environments, *own])),
-                    net=Net.only(*ports, listen=spec.listen), env=dict(env or {}), strict=True, signal_children=True, preferences=PREFERENCES.get(spec.harness, ()),
+                    net=Net.only(*ports, listen=spec.listen), env=dict(env or {}), strict=True, signal_children=True, preferences=PREFERENCES.get(spec.harness, ()), user_records=True,
                     unix_sockets=(spec.session_socket,) if spec.session_socket else (),
                     deny_write=(*(str(Path(spec.stage) / name) for name in (*CONTROL_PREFIXES, GIT_DIRECTORY)), *spec.frozen),
                     limits=limits or Limits(wall_seconds=None, output_bytes=None, processes=fair_share()))

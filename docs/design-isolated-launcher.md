@@ -353,6 +353,9 @@ Facts found by running the harnesses under the existing profile on this Mac (5.6
 - **The session's own programs** (macOS): an editing session executes what lies in its writable stage and agent home, so a project's
   `scripts/test`, a script it wrote and a program it built run. It already ran them through a shell or an interpreter in the same box, so
   no file, network or process becomes reachable; a `read-only` or plan stage is executed from neither.
+- **User and group lookups** (macOS): the profile allows one lookup service (`com.apple.system.opendirectoryd.libinfo`), so `getpwuid`
+  and `getgrnam` answer as they do for any program of this account: names, ids and home folders, no password and no other directory
+  service, keychain or name resolver.
 - **The project's environments** (`.venv`, `venv`, `node_modules`) are linked into the stage and granted read and exec by their
   real paths (`Spec.environments`), never write, and their programs are on `PATH`. The link is not a change of the session; a link
   the session replaced is reported as any other file. Each folder passes the credential walk of a read grant
