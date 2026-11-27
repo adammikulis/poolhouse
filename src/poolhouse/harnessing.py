@@ -82,6 +82,8 @@ __all__ = [
 DEFAULT_CTX = 0
 DEFAULT_MODEL = "Qwen3.8-27B-UD-Q3_K_XL.gguf"
 """The model a session gets when the preferred one is not installed or does not fit: the dense 27B."""
+FORMER_DEFAULTS = ("Qwen3.8-27B-UD-Q4_K_XL.gguf", "Qwen3.8-27B-Q4_K_M.gguf")
+"""The 27B files that were `DEFAULT_MODEL` before, newest first: an install holding one of them and not `DEFAULT_MODEL` goes on using it."""
 PREFERRED_MODEL = "Qwen3.8-Flash-Next-UD-IQ2_XS"
 """The owner's coding model: used when it is installed and this machine holds it at `PREFERRED_WINDOW` (the larger Flash-Next quants are not named, so they are never the default)."""
 PREFERRED_WINDOW = 262_144
@@ -93,7 +95,8 @@ REPORT_CAP = 2**31 - 1
 
 def default_model(machine: MachineMemory | None = None) -> str:
     """The model a coding session or delegate takes when none is named: `PREFERRED_MODEL` when it is installed and
-    ``suggest.largest_fit`` rates it green at its full `PREFERRED_WINDOW` on ``machine`` (this one by default), else `DEFAULT_MODEL`."""
+    ``suggest.largest_fit`` rates it green at its full `PREFERRED_WINDOW` on ``machine`` (this one by default), else the first of
+    `DEFAULT_MODEL` and `FORMER_DEFAULTS` that is installed, else `DEFAULT_MODEL`."""
     for one in hub.installed_find(PREFERRED_MODEL, hub.discover(formats=("gguf",))):
         try:
             fit = suggest.largest_fit(one.path, machine)
@@ -101,7 +104,7 @@ def default_model(machine: MachineMemory | None = None) -> str:
             continue
         if fit.verdict == "green" and fit.context >= PREFERRED_WINDOW:
             return one.filename
-    return DEFAULT_MODEL
+    return next((name for name in (DEFAULT_MODEL, *FORMER_DEFAULTS) if hub.located(name)), DEFAULT_MODEL)
 
 
 def parser(name: str, what: str, port: int, slots: int) -> argparse.ArgumentParser:

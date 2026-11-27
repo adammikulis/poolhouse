@@ -191,10 +191,11 @@ CODING_QUERY = "Qwen3.8 27B"
 
 
 def _coding(rows: Sequence[object], search: bool, context: int) -> Pick:
-    """The downloaded Qwen3.8-27B for a coding agent (Q3_K_XL first); Flash-Next only when named."""
+    """The downloaded Qwen3.8-27B for a coding agent (Q3_K_XL first, then the Q4_K_XL that was preferred before); Flash-Next only when named."""
     found = [r for r in rows if CODING_MODEL.search(r.candidate.name)  # type: ignore[attr-defined]
              and not FLASH_NEXT.search(r.candidate.name)]  # type: ignore[attr-defined]
-    found.sort(key=lambda r: (r.verdict not in FITS, "Q3_K_XL" not in r.candidate.name))  # type: ignore[attr-defined]
+    found.sort(key=lambda r: (r.verdict not in FITS, "Q3_K_XL" not in r.candidate.name,  # type: ignore[attr-defined]
+                              "Q4_K_XL" not in r.candidate.name))  # type: ignore[attr-defined]
     for row in found:
         pick = _line(row)
         if _fits_context(pick, context):

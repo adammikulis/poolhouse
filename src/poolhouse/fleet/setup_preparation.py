@@ -6,6 +6,7 @@ import time
 from dataclasses import replace
 from pathlib import Path
 
+from poolhouse import harnessing
 from poolhouse.files import stat_signature
 from poolhouse.hub.probe import machine_memory
 from poolhouse.serve.broker import BrokerError
@@ -368,10 +369,20 @@ def choices_for(ui):
                                row['memory_gb'] is None, -(row['memory_gb'] or 0), row['model_id']))
     preferred = next((row for row in rows if row['running']), None)
     if preferred is None:
-        preferred = next((row for row in rows if row['fits_now'] is True), None)
+        preferred = _held_default(next((row for row in rows if row['fits_now'] is True), None), rows)
     if preferred is not None:
         preferred['recommended'] = True
     return {**current, 'models': rows, 'memory_estimated': True}
+
+
+def _held_default(preferred, rows):
+    """``preferred``, unless it is a default 27B and one is installed: then the installed one, one that fits first and in
+    `harnessing.default_model`'s order. A new default's name never turns an installed 27B into a recommended download."""
+    names = (harnessing.DEFAULT_MODEL, *harnessing.FORMER_DEFAULTS)
+    if preferred is None or preferred['file'] not in names:
+        return preferred
+    held = [row for row in rows if row['installed'] and row['file'] in names]
+    return min(held, key=lambda row: (row['fits_now'] is not True, names.index(row['file'])), default=preferred)
 
 
 def selected_model(ui, model_id):

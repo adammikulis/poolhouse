@@ -100,6 +100,12 @@ def test_automatic_and_coding_agents_choose_the_best_qwen_and_never_flash_next()
                               selection=localmodel.Selection(machine=BIG))
     assert named.name.startswith("Qwen3.8-Flash-Next")
 
+def test_an_upgraded_coding_agent_keeps_the_27b_that_served_before():
+    have = [info("Qwen3.8-27B (Q4_K_M)", 17, "qwen35"), info("Qwen3.8-27B (Q4_K_XL)", 18, "qwen35")]
+    pick = localmodel.choose(localmodel.AUTO, installed=have,
+                             selection=localmodel.Selection(machine=BIG, coding=True))
+    assert pick.ok and pick.name == "Qwen3.8-27B (Q4_K_XL)"
+
 def test_exact_downloaded_model_path_resolves_cache_symlinks_without_basename_fallback(tmp_path):
     snapshot=tmp_path/'snapshot'
     model=snapshot/'Qwen3.8-27B-Q4_K_M.gguf'
