@@ -444,7 +444,7 @@ def converse(rec: store.Delegate, bridge: Any, mine: Any, say: Callable[[str], N
         run = harnessing.Session(mine, Path(args.project), brief_of(rec))
         with harnessing.confined(args, run, how, renderer(rec, binary, served)) as confinement:
             store.set_status(rec.name, "working", alias)
-            seen.within(confinement.profile.stage, confinement.profile.refuses_write)
+            seen.within(confinement.profile.stage, confinement.profile.refuses_write, str(confinement.home))
             status, why, read = 1, "", False
             try:
                 with store.log_file(rec.name).open("ab") as errors:

@@ -154,7 +154,7 @@ def really_writes(path, content):
         with open(path, "w") as handle:
             handle.write(content)
     except OSError as why:
-        return reported("write", call, "error", inputs, error=str(why))
+        return reported("write", call, "error", inputs, error="Unable to write " + path)   # the words of the release for any failed write
     return reported("write", call, "completed", inputs, output="written")
 
 
@@ -177,6 +177,8 @@ if "mode:refused" in task:
         really_shells("mkdir .claude")
     if "tool:redirect" in task:
         really_shells("cd src && echo x > ../.git/planted")
+    if "tool:wrapped" in task:
+        really_shells("sh -c 'echo x > .git/wrapped'")
     if "tool:outside" in task:
         really_writes({project!r} + "/direct.py", "x = 1\\n")
     finish()
@@ -186,6 +188,8 @@ if "mode:ordinary-failures" in task:
     really_writes(cfg["root"] + "/src/feature.py", "x = 1\\n")
     call = asked("edit", file_path=cfg["root"] + "/src/feature.py")[0]
     reported("edit", call, "error", {{"path": "src/feature.py"}}, error="Could not find oldString in the file")
+    call = asked("edit", file_path=cfg["root"] + "/.claude/settings.json")[0]
+    reported("edit", call, "error", {{"path": ".claude/settings.json"}}, error="Could not find oldString in the file")
     really_shells("grep nothing-there src/feature.py")
     really_shells("echo 'Operation not permitted' > src/said.txt; cat src/said.txt; exit 1")
     really_shells("python3 -c 'import sys; print(\\"PermissionError: Operation not permitted .claude\\"); sys.exit(1)'")
@@ -703,7 +707,8 @@ def test_a_shell_call_that_writes_counts_as_trying_to_change_files_and_one_that_
 
 
 @pytest.mark.parametrize(("tool", "refused"), [("tool:write", ".claude/settings.local.json"), ("tool:shell", ".claude"),
-                                               ("tool:redirect", ".git/planted"), ("tool:outside", "direct.py")])
+                                               ("tool:redirect", ".git/planted"), ("tool:outside", "direct.py"),
+                                               ("tool:wrapped", ".git/wrapped")])
 def test_a_write_the_box_refuses_beside_an_applied_one_ends_partial_and_the_result_and_the_notice_say_it(editing, tool, refused):
     """Decided from the harness's tool events and the box's own limits: the stand-in's last words claim all of it was done."""
     run = ran(editing, f"refused-beside {tool}")

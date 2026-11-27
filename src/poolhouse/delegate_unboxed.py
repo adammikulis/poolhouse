@@ -135,6 +135,7 @@ def converse(rec: store.Delegate, bridge: Any, mine: Any, say: Callable[[str], N
 def _followed(rec: store.Delegate, binary: str, own: Path, model: tuple[Callable[[], int], str], say: Callable[[str], None]) -> harness.Answer:
     busy, alias = model
     seen = delegate_refusals.Writes(rec.workdir)
+    seen.within(rec.workdir, home=str(home.user_home()))
 
     def ran(part: Mapping[str, Any]) -> None:
         drain()   # the hook recorded the call before the harness could say how it ended

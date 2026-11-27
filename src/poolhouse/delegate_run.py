@@ -23,6 +23,7 @@ from poolhouse import (
     harness,
     lead_bridge,
     node_launch,
+    safetext,
 )
 from poolhouse.board import credentials
 from poolhouse.board.client import Client, NodeError
@@ -119,7 +120,7 @@ def run(name: str) -> int:
         why = f"{type(error).__name__}: {error}"
         say(why)
     found, refused = (answer.published, answer.refused_writes) if answer else (None, ())
-    row = {**_outcome(answer, why, began), "detail": changes(state, found, refused)}
+    row = safetext.utf8({**_outcome(answer, why, began), "detail": changes(state, found, refused)})   # the model's text reaches the board
     store.save_result(name, {**row, "state": state})
     store.set_status(name, state, why or row["detail"])
     say(f"{state}: {row['turns']} turn(s), {row['seconds']}s")

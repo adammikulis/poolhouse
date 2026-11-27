@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import unicodedata
+from typing import Any
 
-__all__ = ["escape"]
+__all__ = ["escape", "utf8"]
 
 _EDGE = "…"
 
@@ -15,6 +16,16 @@ def escape(text: str, limit: int = 60) -> str:
     as ``\\x1b`` or ``\\u202e``, cut with an ellipsis when long."""
     out = "".join(ch if _plain(ch) else _escape(ch) for ch in text)
     return out if len(out) <= limit else out[:limit - 1] + _EDGE
+
+
+def utf8(value: Any) -> Any:
+    """``value`` (text, or the text of the lists and mappings in it) with each lone surrogate, which no UTF-8 file or message can hold, written as
+    U+FFFD, as a JavaScript program writes it."""
+    if isinstance(value, str):
+        return value.encode("utf-16-le", "surrogatepass").decode("utf-16-le", "replace")
+    if isinstance(value, dict):
+        return {utf8(key): utf8(each) for key, each in value.items()}
+    return [utf8(each) for each in value] if isinstance(value, (list, tuple)) else value
 
 
 def _plain(ch: str) -> bool:
