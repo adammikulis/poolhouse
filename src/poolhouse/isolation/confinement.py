@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import IO, Any
 
 from poolhouse import activity, coding_policy, home as state_home
-from poolhouse.isolation import client as client_module
+from poolhouse.isolation import client as client_module, toolchain
 from poolhouse.isolation.attestation import attest
 from poolhouse.isolation.bounds import Bounds, Watch, derive
 from poolhouse.isolation.capability import require_capable
@@ -424,7 +424,8 @@ def prepare(plan: Plan) -> Confinement:
         bounds = plan.bounds or derive(stage)
         parts.watch = None if bounds is None else Watch(bounds, (stage, str(agent_home)))
         profile = build(spec, plan.grants, env, None if bounds is None else bounds.limits())
-        proved = run_proof(profile, Services(model.port, bridge.path, tuple(grant.subject for grant in plan.grants if grant.kind == "toolchain")))
+        granted = toolchain.runnable(grant.subject for grant in plan.grants if grant.kind == "toolchain")
+        proved = run_proof(profile, Services(model.port, bridge.path, granted))
     finally:
         if proved is None:
             _abandon(session, stack, scratch)
