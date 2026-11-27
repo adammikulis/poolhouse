@@ -323,11 +323,12 @@ the same lease, window, permission profiles, workspace session and publication o
   login is run and nothing waits. OpenCode's own traffic (update check, the model list, LSP downloads, sharing, the Claude Code file import) is off.
   Its permissions never ask: the plugin and the mount decide.
 - **Its server.** `opencode run` has no mode without a server, and its own private one (`--standalone`) listens on a port the operating system picks,
-  which a box that names the ports it opens cannot allow (the Seatbelt log showed the bind of port 0 denied). So the confined process runs
-  `opencode serve --hostname 127.0.0.1 --port N` and, once `/api/info` answers 200 (it answers 503 while the server starts, and `run` asks only once),
-  `opencode run --server http://127.0.0.1:N`, with `N` chosen by the launcher and opened for the
-  box as `Net.only(bridge, listen=(N,))` (outbound, bind and inbound on that one loopback port and no other), and the server answers only to the bridge
-  token (`OPENCODE_PASSWORD`). The proof's loopback canaries stay denied.
+  which the box cannot grant (the Seatbelt log showed the bind of port 0 denied). So the confined process runs
+  `opencode serve --hostname 127.0.0.1 --port 4096` and, once `/api/info` answers 200 (it answers 503 while the server starts, and `run` asks only
+  once), `opencode run --server http://127.0.0.1:4096`, and the server answers only to the bridge token (`OPENCODE_PASSWORD`). On macOS no port is
+  bound, since a rule that lets a box bind one lets it listen to the network: both processes load a file of the agent home first
+  (`BUN_INSPECT_PRELOAD`, `opencode.through_socket`) that puts the server on a Unix socket of the box and sends requests for that URL there. A Linux
+  box binds the port on its own loopback. The proof's loopback canaries stay denied.
 - **The gate.** A plugin (OpenCode 2's shape, a default export with `id` and `setup`: its `execute.before` and `execute.after` tool hooks and its
   `context` session hook) runs the same client as Pi's extension (`poolhouse.harness_js`) and asks the parent's classifier over the session bridge
   before each tool call; a deny, or a hook that cannot be reached, throws, which OpenCode hands back to the model as the tool's error. 2.4.2 loads a

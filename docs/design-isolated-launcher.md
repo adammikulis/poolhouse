@@ -318,7 +318,7 @@ The environment is an allow-list built by the launcher; `os.environ` is never co
 | Claude Code | `CLAUDE_CONFIG_DIR` and `CLAUDE_CODE_TMPDIR` inside the agent home, `ANTHROPIC_BASE_URL` (the bridge), `ANTHROPIC_AUTH_TOKEN` (the bridge token), the model variables, the offline variables and the window variables of `claude.py`, the shell bounds (`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`, `BASH_DEFAULT_TIMEOUT_MS`, `BASH_MAX_TIMEOUT_MS`, and `BASH_MAX_OUTPUT_LENGTH` from the served window; docs/limits.md), `CLAUDE_CODE_EXTRA_BODY` and `CLAUDE_CODE_EFFORT_LEVEL` where the caller sets them |
 | Codex | `CODEX_HOME` (an existing directory), the provider key variable set to the bridge token |
 | Pi | `PI_CODING_AGENT_DIR`, `PI_OFFLINE`, `POOLHOUSE_NONINTERACTIVE` |
-| OpenCode | `OPENCODE_CONFIG` and the four `XDG_*` homes inside the agent home, and the `OPENCODE_DISABLE_*` switches of `environment.OPENCODE_OFFLINE` (update, model list, Claude Code import, file watcher, the project's own OpenCode configuration), and `OPENCODE_PASSWORD` (the bridge token, the password of the server OpenCode runs on the one loopback port `Rendering.listen` names) |
+| OpenCode | `OPENCODE_CONFIG` and the four `XDG_*` homes inside the agent home, and the `OPENCODE_DISABLE_*` switches of `environment.OPENCODE_OFFLINE` (update, model list, Claude Code import, file watcher, the project's own OpenCode configuration), and `OPENCODE_PASSWORD` (the bridge token, the password of the server OpenCode runs, on a Unix socket on macOS: `Rendering.serves`) |
 
 The table is closed. A variable it does not name does not exist for any harness, whatever the caller's environment, a project file
 or a grant holds: a toolchain grant contributes `PATH` entries and no variable, so a toolchain directory whose files name
@@ -356,9 +356,13 @@ Facts found by running the harnesses under the existing profile on this Mac (5.6
 - **User and group lookups** (macOS): the profile allows one lookup service (`com.apple.system.opendirectoryd.libinfo`), so `getpwuid`
   and `getgrnam` answer as they do for any program of this account: names, ids and home folders, no password and no other directory
   service, keychain or name resolver.
-- **A window of loopback ports** (macOS, writable stage). VERIFIED on 25G70: Seatbelt's `localhost` matches the wildcard and the machine's
-  network address, so a rule that lets a box bind a port lets it listen to the network (OpenCode's own `Rendering.listen` port is such a rule:
-  an open item). The window therefore grants no bind. The launcher picks 128 ports of 41000 to 48999 that no socket holds, claims the block
+- **No box binds an address** (macOS). VERIFIED on 25G70: Seatbelt's `localhost` matches the wildcard and the machine's network address, and its
+  only other host is `*`, so a rule that lets a box bind a port lets it listen to the network. No profile holds such a rule, and an inbound rule,
+  which carries the bind with it, is followed by a refusal of the bind. The proof (P09) tries every port the profile names, on loopback and on
+  the wildcard. OpenCode's own server, which `run` talks to, listens on a Unix socket in a private folder of the launch (`Rendering.serves`,
+  `Spec.server`: sockets may be made there and no other file); a preload of both its processes (`opencode.through_socket`) puts the server on it
+  and sends requests for its URL there. A release that did not load it would be refused its bind, so the run would not start.
+- **A window of loopback ports** (macOS, writable stage), which grants no bind either. The launcher picks 128 ports of 41000 to 48999 that no socket holds, claims the block
   with a file lock, allows TCP to them and serving on them (`Net.accept`), refuses every bind of them, and serves a Unix socket on which it binds
   `127.0.0.1` or `::1` and passes the socket back (`isolation/ports.py`; `loopback_window.py`, the box's `sitecustomize.py`). UDP stays refused.
   What remains: a process outside that starts to listen on a port of a live window can be reached by that box over loopback.
@@ -375,7 +379,7 @@ Facts found by running the harnesses under the existing profile on this Mac (5.6
   is no boundary: the profile and publication are. A process the box detaches can send such frames and so hold off the no-progress
   limit; `poolhouse-delegate stop` ends the run, which keeps what it had changed as a patch.
 - **A delegate's shell** runs in this profile with no further grant: no network but the model bridge's port (which the shell, like
-  the harness, holds the token of), the session bridge's socket and the one loopback port OpenCode's own server listens on, and no
+  the harness, holds the token of), the session bridge's socket and the socket OpenCode's own server listens on, and no
   nested sandbox. The plugin runs each command under a program that ends it at its timeout. Its hooks are judged by their text
   alone (`harnesshook.confined_pre`), so nothing a hook or a tool result holds is run outside the box.
 
