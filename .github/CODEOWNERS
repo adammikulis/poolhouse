@@ -15,6 +15,7 @@
 /scripts/release-key @adammikulis
 /scripts/github-protection @adammikulis
 /scripts/github-protection-apply @adammikulis
+/scripts/dev-branch-rule @adammikulis
 /scripts/notices.py @adammikulis
 /release-please-config.json @adammikulis
 /.release-please-manifest.json @adammikulis

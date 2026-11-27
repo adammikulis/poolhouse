@@ -268,6 +268,17 @@ The check reports `ruleset.dev.rule` for a missing `deletion` or `non_fast_forwa
 
 Rollback: `gh api -X DELETE repos/$R/rulesets/$(gh api repos/$R/rulesets --jq '.[]|select(.name=="development")|.id')`
 
+### Pull requests on the current development branch
+
+The ruleset whose only ref is the development branch also requires a pull request (no approving review, because every
+agent signs in as the repository owner) and the checks `gates`, `privacy`, `licenses` and `lead-review`.
+`scripts/dev-branch-rule` prints that ruleset; `--apply` saves the one in force under the state root and changes it.
+An agent may run it: it takes no rule, check, branch or repository from its caller, keeps every rule already there,
+and refuses a ruleset that covers another ref, is not active or lets anyone else bypass. An agent may not edit it.
+Administrators may bypass the added rules only while merging a pull request, so a check broken on the base branch
+cannot block its own fix. `lead-review` records that the spawning agent reviewed the commit; it is no security
+boundary, since anything with the owner's sign-in can set it.
+
 ### Release tag ruleset
 
 A `v*` tag cannot be moved, re-pointed or deleted.
