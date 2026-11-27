@@ -179,8 +179,10 @@ class Policy:
     ``unix_namespaces`` separately grants bind/inbound/outbound in one private Darwin tree,
     without a process or listener count guarantee. ``deny_read`` freezes and hides protected
     trees; ``deny_write`` freezes them, including paths that do not yet exist. ``signal_children``
-    lets the process signal the processes it started (macOS only: the pid namespace of Linux has
-    no process outside the run to signal), and nothing else."""
+    lets the process signal the processes it started and every other process of its own
+    confinement, a grandchild or one that left its group among them (macOS only: the pid namespace
+    of Linux has no process outside the run to signal), and nothing else: not another run of the
+    same policy."""
 
     name: str = "policy"
     read: tuple[str, ...] = ()

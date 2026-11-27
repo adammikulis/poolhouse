@@ -29,6 +29,9 @@ from poolhouse.sandbox.run import fair_share
 
 __all__ = ["Profile", "build", "interpreter_reads", "search_path"]
 
+GIT_DIRECTORY = ".git"
+"""The stage's git directory, which the launcher reads again after the run (its index names what is captured): a session reads it, so `git diff` and
+`git status` work, and writes nothing in it, so a commit in the box fails."""
 PREFERENCES = {"codex": ("com.openai.codex",)}
 """The preference domains a harness reads on macOS (found by running it under the profile: Codex fails to start without its own domain, which it
 reads for the settings an administrator manages), and no other."""
@@ -79,21 +82,26 @@ def build(spec: Spec, grants: Sequence[Grant] = (), env: Mapping[str, str] | Non
     reads = [each for grant in grants if grant.kind in ("read", "toolchain") for each in (toolchain.reach(grant.subject) if grant.kind == "toolchain" else (grant.subject,))]
     runs = [each for grant in grants if grant.kind == "toolchain" for each in toolchain.reach(grant.subject)]
     writable = [spec.home] if spec.read_only_stage else [spec.stage, spec.home]
-    readable = [spec.stage, spec.install, *interpreter_reads(), *system_toolchain(), *_git_directory(), *reads,
+    readable = [spec.stage, spec.install, *interpreter_reads(), *system_toolchain(), *_git_directory(), *reads, *spec.environments,
                 *([spec.patches] if spec.patches else [])]
     ports = (spec.model_port, *([spec.proxy_port] if spec.proxy_port else []))
     policy = Policy(f"coding-{spec.harness}", read=tuple(dict.fromkeys(readable)), write=tuple(writable),
                     exec=tuple(dict.fromkeys([*SYSTEM_EXEC, os.path.realpath(sys.executable), spec.install, *system_toolchain(), *runs,
-                                              *_git_directory()])),
+                                              *_git_directory(), *spec.environments])),
                     net=Net.only(*ports, listen=spec.listen), env=dict(env or {}), strict=True, signal_children=True, preferences=PREFERENCES.get(spec.harness, ()),
                     unix_sockets=(spec.session_socket,) if spec.session_socket else (),
-                    deny_write=(*(str(Path(spec.stage) / name) for name in CONTROL_PREFIXES), *spec.frozen),
+                    deny_write=(*(str(Path(spec.stage) / name) for name in (*CONTROL_PREFIXES, GIT_DIRECTORY)), *spec.frozen),
                     limits=limits or Limits(wall_seconds=None, output_bytes=None, processes=fair_share()))
     return Profile(policy, spec.stage, spec.home, search_path(spec, grants), tuple(grants), _digest(policy, grants, spec), spec.harness,
                    spec.interactive, spec.read_only_stage)
 
 
 def search_path(spec: Spec, grants: Sequence[Grant] = ()) -> tuple[str, ...]:
-    """The directories of ``PATH`` a session runs with: the agent home's shims, the git it can run, the system, and each granted toolchain."""
-    return (str(Path(spec.home) / "bin"), *_git_directory(), *SYSTEM_EXEC,
-            *(str(Path(grant.subject) / "bin") for grant in grants if grant.kind == "toolchain"))
+    """The directories of ``PATH`` a session runs with: the agent home's shims, the programs of the project's environments, the git it can run,
+    the programs of Homebrew and `/usr/local`, those of Apple's command-line tools (ahead of `/usr/bin`, whose `python3` and `git` are shims that
+    ask a service the profile refuses), the system, and each granted toolchain."""
+    own = (Path(each) / (".bin" if Path(each).name == "node_modules" else "bin") for each in spec.environments)
+    trees = system_toolchain()
+    local = (*(each for each in trees if each.endswith("/bin")), *(f"{each}/usr/bin" for each in trees if each == toolchain.COMMAND_LINE_TOOLS))
+    return tuple(dict.fromkeys((str(Path(spec.home) / "bin"), *(str(each) for each in own if each.is_dir()), *_git_directory(), *local, *SYSTEM_EXEC,
+                                *(str(Path(grant.subject) / "bin") for grant in grants if grant.kind == "toolchain"))))

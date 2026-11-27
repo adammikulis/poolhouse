@@ -418,7 +418,7 @@ def prepare(plan: Plan) -> Confinement:
             _write(agent_home / name, text)
             frozen.append(str(agent_home / name))
         spec = Spec(plan.harness, stage, str(agent_home), install_tree(plan.binary), model.port, bridge.path, 0, session.patches, plan.project,
-                    plan.policy, plan.interactive, tuple(frozen), rendering.listen)
+                    plan.policy, plan.interactive, tuple(frozen), rendering.listen, session.reads)
         env = environment(Inputs(plan.harness, str(agent_home), search_path(spec, plan.grants), context.base_url, model.token, plan.lease.alias,
                                  plan.lease.window, plan.interactive, {}, plan.extras))
         bounds = plan.bounds or derive(stage)

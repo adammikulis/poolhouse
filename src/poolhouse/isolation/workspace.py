@@ -19,7 +19,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from poolhouse import activity, coding_apply, files, private_path
+from poolhouse import activity, coding_apply, files, private_path, secretpaths
 from poolhouse.activity import source_snapshot
 from poolhouse.activity.source_snapshot import Capture, CaptureEntry
 from poolhouse.coding_workspace import Stage, Workspace, between
@@ -33,8 +33,8 @@ from poolhouse.sandbox import process_tree
 __all__ = ["ENVIRONMENT_LINKS", "PATCHES_AT", "Launch", "Published", "Session", "Turn", "binds", "tally"]
 
 ENVIRONMENT_LINKS = (".venv", "venv", "node_modules")
-"""The ignored folders a project needs that a stage does not hold: each is linked into the stage when the person's own folder of that name is a real
-directory inside the project."""
+"""The ignored folders a project needs that a stage does not hold: each is linked into the stage, and read and run by the session, when the person's
+own folder of that name is a real directory inside the project that the credential walk of every read grant (`secretpaths.tree_hit`) passes."""
 PATCHES_AT = "/poolhouse/refused"
 """Where the Linux and WSL backends bind the session's patch directory inside the namespace, read-only."""
 KEPT_VERSION = 1
@@ -111,19 +111,36 @@ def binds(project: str | os.PathLike[str], stage: str, patches: str) -> tuple[tu
     return ((stage, os.path.realpath(project), True), (patches, PATCHES_AT, False))
 
 
-def environment_links(project: Path, stage: Path) -> tuple[tuple[str, toolchain.Resolved], ...]:
+def environment_links(project: Path, stage: Path, unread: list[tuple[str, str]] | None = None) -> tuple[tuple[str, toolchain.Resolved], ...]:
     """Link each environment folder of the project into the stage (a link to the person's own directory, which the profile reads and never writes).
-    A folder that is a link, or that resolves outside the project, gets nothing, and a name the stage already holds is left as it is."""
+    A folder that is a link, or that resolves outside the project, gets nothing, and a name the stage holds as anything but that link is left as it
+    is. A folder in which the credential walk finds a credential file, or that is too large for it to check, is neither linked nor read, and its name
+    and why are added to ``unread``. The walk does not enter `site-packages` or a nested environment (`secretpaths.SKIP_DIRS`), as for every grant."""
     root, made = Path(os.path.realpath(project)), []
     for name in ENVIRONMENT_LINKS:
         found = toolchain.resolve(root / name) if (root / name).is_dir() and not (root / name).is_symlink() else None
-        if found is None or not Path(found.path).is_relative_to(root) or os.path.lexists(stage / name):
-            if found is not None:
-                found.close()
+        if found is None:
             continue
-        (stage / name).symlink_to(found.path)
+        inside = Path(found.path).is_relative_to(root)
+        hit = secretpaths.tree_hit(Path(found.path), suffixes=False) if inside else None
+        if hit is not None and unread is not None:
+            unread.append((name, f"holds a credential file or is too large to check: {hit.rule}"))
+        if not inside or hit is not None or not _linked(stage / name, found.path):
+            found.close()
+            continue
         made.append((name, found))
     return tuple(made)
+
+
+def _is_link_to(path: Path, target: str) -> bool:
+    return path.is_symlink() and str(path.readlink()) == target
+
+
+def _linked(link: Path, target: str) -> bool:
+    """Make ``link`` a link to ``target`` when nothing has the name; whether the stage holds that link now (a kept stage already does)."""
+    if not os.path.lexists(link):
+        link.symlink_to(target)
+    return _is_link_to(link, target)
 
 
 def _tracked(root: Path) -> frozenset[str]:
@@ -150,7 +167,8 @@ class Session:
         self.held = frozenset(os.fsdecode(each.path) for each in workspace.initial.entries)
         self.decided: dict[bytes, tuple[bytes | None, bytes | None]] = {}
         self.escaped: set[bytes] = set()
-        self.links = environment_links(self.root, stage.physical)
+        self.unread: list[tuple[str, str]] = []
+        self.links = environment_links(self.root, stage.physical, self.unread)
         self.closed = False
 
     @classmethod
@@ -209,17 +227,23 @@ class Session:
         return binds(self.root, str(self.stage.physical), self.patches)
 
     def first_line(self) -> str:
-        """The first line of a session: how many files the working copy does not carry, each with its name and why (W3); empty when there are none."""
+        """The first line of a session: how many files the working copy does not carry, each with its name and why (W3), and the environment folders
+        the session does not read; empty when there are neither."""
         left = self.workspace.left_out()
         names = frozenset(os.fsdecode(name) for name, _ in left)
         listed = ", ".join(f"{publication.token(Refusal(os.fsdecode(name), 'special'), index, names)} ({why})" for index, (name, why) in enumerate(left, 1))
-        return f"{len(left)} file{'' if len(left) == 1 else 's'} left out of the working copy: {listed}" if left else ""
+        files_left = f"{len(left)} file{'' if len(left) == 1 else 's'} left out of the working copy: {listed}" if left else ""
+        folders = ", ".join(f"{name} ({why})" for name, why in self.unread)
+        return "; ".join(each for each in (files_left, f"not read by the session: {folders}" if folders else "") if each)
 
     def _news(self, captured: Capture, made: tuple[bytes, ...]) -> list[tuple[bytes, str]]:
-        """The names this turn adds to what the capture leaves out (a control path, a credential, a special file), each once for the session."""
+        """The names this turn adds to what the capture leaves out (a control path, a credential, a special file, an environment link the session removed or
+        replaced), each once for the session. A replaced link is found by looking at the stage: an ignore pattern for a folder hides what took its place."""
         controls = {fold(name) for name in CONTROL_PREFIXES}
         found = [(name, "control" if fold(os.fsdecode(name)).split("/")[0] in controls else "credential") for name in made]
-        found += [(name, "special") for name, why in captured.left_out if (name, why) not in self.base.left_out]
+        links = {os.fsencode(name): _is_link_to(self.stage.physical / name, held.path) for name, held in self.links}
+        found += [(name, "environment") for name, kept in links.items() if not kept]
+        found += [(name, "special") for name, why in captured.left_out if (name, why) not in self.base.left_out and name not in links]
         fresh = [(name, why) for name, why in found if name not in self.escaped]
         self.escaped.update(name for name, _ in fresh)
         if any(why == "control" for _, why in fresh) and self.launch.notice.events is not None:
@@ -254,7 +278,8 @@ class Session:
         self._advance(captured, settled)
         patch = self.kept.write(publication.patch_text(basis, refused)) if refused else None
         applied = tuple(each.path for each in done if each.state == "applied")
-        text = words(Result(len(applied), refused, patch, conflicts, restored, str(self.restores.directory)), self.held) if applied or refused or conflicts else ""
+        named = self.held | {name for name, _ in self.links}   # an environment link's name is the launcher's own (`ENVIRONMENT_LINKS`)
+        text = words(Result(len(applied), refused, patch, conflicts, restored, str(self.restores.directory)), named) if applied or refused or conflicts else ""
         pending = [*refused, *(Refusal(path, "conflict") for path in conflicts)]
         status = self.reports.send(pending, text) if pending else ""
         self.launch.log("isolation.publication", subject=self.launch.session, outcome="refused" if pending else "applied" if applied else "unchanged",

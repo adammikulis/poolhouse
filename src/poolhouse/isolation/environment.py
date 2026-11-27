@@ -11,12 +11,32 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from poolhouse.isolation.serving import IDLE_SECONDS
 from poolhouse.isolation.spec import HARNESSES
 
-__all__ = ["ALWAYS", "BY_HARNESS", "INTERACTIVE", "MODEL_VARS", "OFFLINE", "WINDOW", "Inputs", "allowed", "environment"]
+__all__ = ["ALWAYS", "BY_HARNESS", "INTERACTIVE", "MODEL_VARS", "OFFLINE", "SHELL", "SHELL_BOUNDS", "SHELL_DEFAULT_S", "SHELL_MAX_S", "WINDOW",
+           "Inputs", "allowed", "environment"]
 
-ALWAYS = ("PATH", "HOME", "TMPDIR", "LANG", "POOLHOUSE_AGENT", "PYTHONDONTWRITEBYTECODE")
-"""Set for every harness. ``POOLHOUSE_AGENT`` marks the tools the harness runs; no person check relies on it (3.5)."""
+SHELL = "/bin/zsh" if Path("/bin/zsh").exists() else "/bin/bash"
+"""The shell a harness runs its commands in: the system's, which every confinement reads and runs. zsh where there is one, since it passes over a
+startup file the profile does not read without a word."""
+SHELL_DEFAULT_S = IDLE_SECONDS
+"""Seconds a shell command of a confined session may run when it names no timeout: the project's one request timeout (`serving.IDLE_SECONDS`)."""
+SHELL_MAX_S = 600.0
+"""The longest timeout a shell command may ask for: Claude Code's own default maximum, set here so the delegate's no-progress limit knows it."""
+SHELL_BOUNDS = {
+    "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
+    "BASH_DEFAULT_TIMEOUT_MS": str(int(SHELL_DEFAULT_S * 1000)),
+    "BASH_MAX_TIMEOUT_MS": str(int(SHELL_MAX_S * 1000)),
+}
+"""How Claude Code runs a shell command: in the turn that asked for it, never in the background, and ended at its timeout."""
+OUTPUT_CAP = "BASH_MAX_OUTPUT_LENGTH"
+"""The characters of one command's output the model is given: the served window's count of tokens, so at the four bytes a token the session
+bridge allows a frame it is about a quarter of the window, and one command cannot fill it."""
+
+ALWAYS = ("PATH", "HOME", "TMPDIR", "SHELL", "LANG", "POOLHOUSE_AGENT", "PYTHONDONTWRITEBYTECODE", "GIT_CONFIG_NOSYSTEM")
+"""Set for every harness. ``POOLHOUSE_AGENT`` marks the tools the harness runs; no person check relies on it (3.5). ``GIT_CONFIG_NOSYSTEM``
+keeps git from the system's configuration: Homebrew's lies in its `etc`, which no session reads, and git ends with an error when it cannot."""
 INTERACTIVE = ("TERM", "COLORTERM", "NO_COLOR")
 """Taken from the person's terminal, and only in an interactive launch."""
 MODEL_VARS = ("ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL",
@@ -46,7 +66,7 @@ OPENCODE_OFFLINE = {"OPENCODE_DISABLE_AUTOUPDATE": "true", "OPENCODE_DISABLE_MOD
 
 BY_HARNESS: dict[str, tuple[str, ...]] = {
     "claude": ("CLAUDE_CONFIG_DIR", "CLAUDE_CODE_TMPDIR", "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", *MODEL_VARS, *OFFLINE,
-               *WINDOW, *CALLER_SET),
+               *WINDOW, *CALLER_SET, *SHELL_BOUNDS, OUTPUT_CAP),
     "codex": ("CODEX_HOME", CODEX_KEY),
     "pi": ("PI_CODING_AGENT_DIR", "PI_OFFLINE", "POOLHOUSE_NONINTERACTIVE"),
     "opencode": ("OPENCODE_CONFIG", "OPENCODE_PASSWORD", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", *OPENCODE_OFFLINE),
@@ -80,9 +100,10 @@ def allowed(harness: str, interactive: bool = False) -> frozenset[str]:
 def _claude(inputs: Inputs) -> dict[str, str]:
     home = inputs.home
     out = {"CLAUDE_CONFIG_DIR": str(Path(home) / ".claude-config"), "CLAUDE_CODE_TMPDIR": str(Path(home) / "tmp"),
-           "ANTHROPIC_BASE_URL": inputs.base_url.rstrip("/"), "ANTHROPIC_AUTH_TOKEN": inputs.token, **OFFLINE}
+           "ANTHROPIC_BASE_URL": inputs.base_url.rstrip("/"), "ANTHROPIC_AUTH_TOKEN": inputs.token, **OFFLINE, **SHELL_BOUNDS}
     out.update(dict.fromkeys(MODEL_VARS, inputs.alias))
     if inputs.context:
+        out[OUTPUT_CAP] = str(int(inputs.context))
         out[WINDOW[0]] = str(int(inputs.context))
         if inputs.context >= MIN_COMPACT_WINDOW:
             out[WINDOW[1]] = str(int(inputs.context))
@@ -108,8 +129,8 @@ def environment(inputs: Inputs) -> dict[str, str]:
     """The environment of a launch: the always set, the terminal names of an interactive launch and the harness's own table. Nothing is
     read from the process environment, so no variable of the launcher, the person's shell or a project reaches the harness."""
     names = allowed(inputs.harness, inputs.interactive)
-    made = {"PATH": os.pathsep.join(inputs.path), "HOME": inputs.home, "TMPDIR": str(Path(inputs.home) / "tmp"), "LANG": "en_US.UTF-8",
-            "POOLHOUSE_AGENT": "1", "PYTHONDONTWRITEBYTECODE": "1"}
+    made = {"PATH": os.pathsep.join(inputs.path), "HOME": inputs.home, "TMPDIR": str(Path(inputs.home) / "tmp"), "SHELL": SHELL,
+            "LANG": "en_US.UTF-8", "POOLHOUSE_AGENT": "1", "PYTHONDONTWRITEBYTECODE": "1", "GIT_CONFIG_NOSYSTEM": "1"}
     if inputs.interactive:
         made.update({name: inputs.terminal[name] for name in INTERACTIVE if inputs.terminal.get(name)})
     made.update({"claude": _claude, "codex": _codex, "pi": _pi, "opencode": _opencode}[inputs.harness](inputs))

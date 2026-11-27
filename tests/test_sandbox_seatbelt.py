@@ -9,6 +9,7 @@ import socket
 import subprocess
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,33 @@ def decoy(tmp_path, *parts: str):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(SECRET)
     return path
+
+
+SIGNALS = """
+import os, signal, subprocess, sys
+child = subprocess.Popen(["/bin/sh", "-c", "/bin/sleep 5 & echo $!; wait"], stdout=subprocess.PIPE, text=True)
+for name, pid in [("grandchild", int(child.stdout.readline())), *zip(("sibling", "outsider"), map(int, sys.argv[1:]))]:
+    try:
+        os.kill(pid, signal.SIGKILL)
+        print(name, "ended")
+    except PermissionError:
+        print(name, "shut")
+child.wait()
+"""
+
+
+def test_a_run_that_may_signal_its_own_signals_its_grandchildren_and_nothing_of_another_run_or_outside(tmp_path, seatbelt, processes):
+    base = Path(os.path.realpath(tmp_path))
+    held = replace(policy(read=[base], python=True), signal_children=True)
+    sibling, outsider = sandbox.spawn(["/bin/sleep", "60"], held, cwd=str(base)), processes()
+    try:
+        result = run([os.path.realpath(sys.executable), "-I", "-c", SIGNALS, str(sibling.process.pid), str(outsider.pid)], held, cwd=str(base))
+        assert result.stdout.split("\n")[:3] == ["grandchild ended", "sibling shut", "outsider shut"], result.stdout + result.stderr
+        assert sibling.process.poll() is None and outsider.poll() is None
+    finally:
+        sibling.process.kill()
+        sibling.process.wait()
+        sibling.release()
 
 
 def test_a_read_inside_the_allow_list_works(tmp_path, seatbelt):

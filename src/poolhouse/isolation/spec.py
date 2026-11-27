@@ -34,6 +34,9 @@ class Spec:
     are refused a write one by one, and the harness cannot rewrite the gate it runs under."""
     listen: tuple[int, ...] = ()
     """Loopback ports the harness binds and reaches for a server of its own (`Rendering.listen`); no other port is added to the model's."""
+    environments: tuple[str, ...] = ()
+    """The real paths of the project's environment folders the stage links (`workspace.environment_links`): read, run and on ``PATH``, never
+    written."""
 
     @property
     def read_only_stage(self) -> bool:

@@ -37,6 +37,7 @@ REASONS = {
     "control": "a control path of a coding tool, which no change applies",
     "credential": "a file named like a credential, which no change applies",
     "special": "a file the working copy cannot carry: a special file, a link out of the tree, a submodule or a hard-linked file",
+    "environment": "a link to an environment folder of the project that the session removed or replaced, of which nothing is applied",
     "link": "a link that is not new, or does not lead to plain source of this tree",
     "path": "a path of the checkout that goes through a link, so it is not written",
     "collision": "a name that folds to the same name as another on this filesystem",
@@ -47,7 +48,7 @@ REASONS = {
 """One sentence the parent writes for each cause of a refusal: the classes of the classifier, and the causes that are not about a file's class."""
 RULED = frozenset({"program", "data"})
 """The only causes a `publish` rule can lift: a file that is not governing and is not a link, a control name or a credential."""
-NO_CONTENT = frozenset({"control", "credential", "special", "unread"})
+NO_CONTENT = frozenset({"control", "credential", "special", "environment", "unread"})
 """Causes whose file is never read into a patch."""
 NAME = re.compile(r"[A-Za-z0-9._/-]{1,80}")
 LINK = b"120000"

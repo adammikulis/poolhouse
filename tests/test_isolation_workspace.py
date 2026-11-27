@@ -33,11 +33,13 @@ WRITER = textwrap.dedent("""
     stage = sys.argv[1]
     if os.fork() == 0:
         os.setsid()
+        # one open file overwritten in place: a writer ended between a truncation and its write would leave an empty file
+        held = os.open(os.path.join(stage, "src", "grow.py"), os.O_WRONLY | os.O_CREAT, 0o644)
+        os.pwrite(held, b"n = 0\\n", 0)
         print(os.getpid(), flush=True)
         count = 0
         while True:
-            with open(os.path.join(stage, "src", "grow.py"), "w") as stream:
-                stream.write("n = %d\\n" % count)
+            os.pwrite(held, b"n = %d\\n" % count, 0)
             count += 1
             time.sleep(0.005)
     time.sleep(600)

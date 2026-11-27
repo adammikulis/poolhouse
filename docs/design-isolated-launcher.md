@@ -308,9 +308,9 @@ The environment is an allow-list built by the launcher; `os.environ` is never co
 
 | For | Variables |
 |---|---|
-| Always | `PATH` (agent-home `bin` shims, then the toolchain directories the profile grants), `HOME` and `TMPDIR` (the agent home), `LANG`, `POOLHOUSE_AGENT` (a marker for the tools the harness runs; the person check never relies on it, 3.5) |
+| Always | `PATH` (agent-home `bin` shims, the programs of the project's environments, git, the `bin` of Homebrew and `/usr/local`, Apple's command-line tools, the system, then the granted toolchains), `HOME` and `TMPDIR` (the agent home), `SHELL` (the system's zsh), `LANG`, `PYTHONDONTWRITEBYTECODE`, `GIT_CONFIG_NOSYSTEM` (Homebrew's system configuration is not readable, and git ends with an error on it), `POOLHOUSE_AGENT` (a marker for the tools the harness runs; the person check never relies on it, 3.5) |
 | Interactive only | `TERM`, `COLORTERM`, `NO_COLOR` |
-| Claude Code | `CLAUDE_CONFIG_DIR` and `CLAUDE_CODE_TMPDIR` inside the agent home, `ANTHROPIC_BASE_URL` (the bridge), `ANTHROPIC_AUTH_TOKEN` (the bridge token), the model variables, the offline variables and the window variables of `claude.py`, `CLAUDE_CODE_EXTRA_BODY` and `CLAUDE_CODE_EFFORT_LEVEL` where the caller sets them |
+| Claude Code | `CLAUDE_CONFIG_DIR` and `CLAUDE_CODE_TMPDIR` inside the agent home, `ANTHROPIC_BASE_URL` (the bridge), `ANTHROPIC_AUTH_TOKEN` (the bridge token), the model variables, the offline variables and the window variables of `claude.py`, the shell bounds (`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`, `BASH_DEFAULT_TIMEOUT_MS`, `BASH_MAX_TIMEOUT_MS`, and `BASH_MAX_OUTPUT_LENGTH` from the served window; docs/limits.md), `CLAUDE_CODE_EXTRA_BODY` and `CLAUDE_CODE_EFFORT_LEVEL` where the caller sets them |
 | Codex | `CODEX_HOME` (an existing directory), the provider key variable set to the bridge token |
 | Pi | `PI_CODING_AGENT_DIR`, `PI_OFFLINE`, `POOLHOUSE_NONINTERACTIVE` |
 | OpenCode | `OPENCODE_CONFIG` and the four `XDG_*` homes inside the agent home, and the `OPENCODE_DISABLE_*` switches of `environment.OPENCODE_OFFLINE` (update, model list, Claude Code import, file watcher), and `OPENCODE_PASSWORD` (the bridge token, the password of the server OpenCode runs on the one loopback port `Rendering.listen` names) |
@@ -324,8 +324,10 @@ Facts found by running the harnesses under the existing profile on this Mac (5.6
 
 - Claude Code 2.1.308 starts, reads its settings from `--settings`, and tries `/tmp/claude-<uid>`; with no access to it the run
   stops with `EEXIST: file already exists, mkdir '/tmp/claude-501'`. `CLAUDE_CODE_TMPDIR` inside the agent home removes the need.
-- It needs `signal` to its own children (it sends `SIGTERM` to a child it started), granted as `(allow signal (target children))`;
-  VERIFIED that this still refuses a signal to the launcher and to an unrelated process of the same user.
+- It needs `signal` to the processes it started (it sends `SIGTERM` to a child, and a shell command's timeout reaches grandchildren),
+  granted as `(allow signal (target children))` and `(allow signal (target same-sandbox))`; VERIFIED on this Mac
+  (`tests/test_sandbox_seatbelt.py`) that a grandchild is then signalled and that another run of the same policy and an unrelated
+  process of the same user still are not. With the first rule alone a grandchild is refused.
 - It reads `/Library/Application Support/ClaudeCode/managed-settings.json` (refused inside the confinement), so the owner's managed
   sandbox settings (`docs/agent-sandbox.md`) never stack on this one.
 - Codex 0.163.0 refuses to start when `CODEX_HOME` does not exist. Its binary lives under the person's home
@@ -338,7 +340,20 @@ Facts found by running the harnesses under the existing profile on this Mac (5.6
 - Claude Code's built-in sandbox is off in the launcher's settings (it is today); `claude` is never given `sandbox.enabled`.
 - A shell inside the confinement needs a real `git`: Apple's `/usr/bin/git` is a shim that asks `xcode-select` through a Mach
   service the profile refuses. `PATH` puts the resolved git first; with only Apple's command-line developer tools installed, the profile reads and executes
-  `/Library/Developer/CommandLineTools/usr` (a system tree).
+  `/Library/Developer/CommandLineTools/usr` (a system tree). `/usr/bin/python3` is a shim of the same kind and does not run; the
+  command-line tools' `usr/bin` precedes `/usr/bin` on `PATH`.
+- **The stage's `.git` is read-only** (`profile.GIT_DIRECTORY`, a frozen name like the control names, with every ancestor): the
+  launcher reads its index after the run, so the box cannot write, remove, rename, link or redirect it. `git status` and
+  `git diff` work; a commit fails.
+- **The project's environments** (`.venv`, `venv`, `node_modules`) are linked into the stage and granted read and exec by their
+  real paths (`Spec.environments`), never write, and their programs are on `PATH`. The link is not a change of the session; a link
+  the session replaced is reported as any other file. Each folder passes the credential walk of a read grant
+  (`secretpaths.tree_hit`) or is neither linked nor read. The walk does not enter `site-packages` or a nested `node_modules`: a
+  credential file there is readable by the box, which can put what it reads only into its answer, its messages to its lead and the
+  source it publishes.
+- **A delegate's shell** runs in this profile with no further grant: no network but the model bridge's port (which the shell, like
+  the harness, holds the token of) and the session bridge's socket, no port to listen on, no nested sandbox. Its hooks are judged
+  by their text alone (`harnesshook.confined_pre`), so nothing a hook or a tool result holds is run outside the box.
 
 ### 3.5 Headless and interactive
 

@@ -147,7 +147,7 @@ def profile(policy: Policy, program: str, tag: str) -> str:
         f'(deny default (with message {quote("poolhouse-sandbox:" + tag)}))',
         "(allow process-fork)",
         "(allow signal (target self))",
-        *(["(allow signal (target children))"] if policy.signal_children else []),
+        *(["(allow signal (target children))", "(allow signal (target same-sandbox))"] if policy.signal_children else []),
         "(allow process-info* (target self))",
         "(allow process-info-pidinfo (target self))",
         "(deny process-info-pidinfo)",

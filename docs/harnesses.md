@@ -154,6 +154,31 @@ classifier's reasons (up to 700 characters) beside it. Code: `poolhouse.guard.ex
 `fetchlog` (the downloads of a session), `secretcmds`, `urlscan`; tests: `tests/test_harness_exec_chain.py` and
 `tests/test_harness_exec_chain_more.py`.
 
+### The shell in the box
+
+A delegate that edits (`poolhouse-delegate start --edit`) has `Read`, `Grep`, `Glob`, `Edit`, `Write` and `Bash`, and its commands and tests
+run inside the same Seatbelt profile as the harness, in the stage (a copy of the project). What a command has:
+
+- **The project's environments.** `.venv`, `venv` and `node_modules` of the project are linked into the stage, read and run, put on `PATH`
+  (`bin`, `node_modules/.bin`) and never written. Each passes the credential walk of every read grant first: one that holds a credential file
+  or is too large to check is not linked or read, and the session's first line names it. The walk does not enter `site-packages` or a nested
+  `node_modules`, so a credential file there is readable by the box; the box has no network, and what it reads can leave only in its answer,
+  its messages to its lead and the source it publishes. An editable install that points at the person's own checkout is not readable.
+- **Programs.** The system's, Homebrew's and `/usr/local`'s `bin` and Apple's command-line tools are on `PATH`. `/usr/bin/python3` does not
+  run (it is a shim that asks a service the profile refuses). git does not read the system configuration. A program file the session wrote
+  into the stage cannot be run (`sh script.sh` and `python file.py` can).
+- **git.** `.git` is read-only: `git status` and `git diff` work; `git add` and `git commit` fail.
+- **Time and output.** A command ends at its timeout (180 s unless it asks for another, at most 600 s), never runs in the background, and
+  the model is given at most as many characters of its output as the served window has tokens (docs/limits.md). The delegate's no-progress
+  limit does not count the time a command is within its timeout.
+- **Not there.** No network, no localhost port to open and none of this computer's to reach but the model bridge's, no Poolhouse node, no
+  nested sandbox and no real model. A test that needs one cannot run, and the brief tells the agent to name every test it could not run.
+- **Processes.** A command signals the processes of its own box (grandchildren and ones that left their group among them) and no other, and
+  every one of them ends with the session.
+
+A run that called an editing tool, or a shell line that asks to change files (`delegate_confined.writes`: a redirect, a program that changes
+files, an edit in place, a git command that changes the tree), and applied nothing ends `unapplied`.
+
 ### The workspace
 
 Every harness the isolated launcher starts (`poolhouse-claude`, `-codex`, `-pi`, `-opencode` and a delegate that edits) has two

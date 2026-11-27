@@ -58,9 +58,15 @@ def event(**row):
     print(json.dumps(row), flush=True)
 
 
-def said(text, tool=""):
-    content = [{{"type": "text", "text": text}}] + ([{{"type": "tool_use", "id": "t", "name": tool, "input": {{}}}}] if tool else [])
+def said(text, tool="", **asked):
+    content = [{{"type": "text", "text": text}}] + ([{{"type": "tool_use", "id": "t", "name": tool, "input": asked}}] if tool else [])
     event(type="assistant", message={{"id": text, "content": content, "usage": {{"input_tokens": 11, "output_tokens": 2}}}})
+
+
+def shell(command, seconds=0.0, **asked):
+    said(CANNED + " running " + command, "Bash", command=command, **asked)
+    time.sleep(seconds)
+    event(type="user", message={{"role": "user", "content": [{{"type": "tool_result", "tool_use_id": "t", "content": "ran"}}]}})
 
 
 def ended(text, error=False, subtype="success"):
@@ -69,6 +75,20 @@ def ended(text, error=False, subtype="success"):
 
 
 os.makedirs("src", exist_ok=True)
+if "mode:shell-writes-nothing" in task:
+    shell("echo x > .venv/planted")
+    ended(CANNED + " done and landed")
+    sys.exit(0)
+if "mode:shell-reads" in task:
+    shell("git diff --stat && python3 -m pytest -q tests/test_app.py")
+    ended(CANNED + " the tests pass")
+    sys.exit(0)
+if "mode:shell-slow" in task:
+    shell("sleep 5", 5.0, timeout=60000)
+    ended(CANNED + " waited for its command")
+    sys.exit(0)
+if "mode:shell-overdue" in task:
+    shell("sleep 120", 120.0, timeout=2000)
 if "mode:workflow-only" in task:
     os.makedirs(".github/workflows", exist_ok=True)
     open(".github/workflows/ci.yml", "w").write("name: ci\\n")
@@ -244,7 +264,7 @@ def test_an_edit_delegate_publishes_plain_source_refuses_the_rest_asks_its_lead_
     assert "sent to " in text.split("note=")[1].split(" | ")[0], "a note returns at once, told what it did"
     assert "no such verb" in text.split("generic=")[1].split(" | ")[0] and "no such verb" in text.split("inbox=")[1].split(" | ")[0], "the generic verbs are gone"
     assert text.split("hook=")[1].split(" | again=")[0] == "", "the answer reached the question, so the hook has nothing more to say"
-    assert "--strict-mcp-config" in text and "--tools Read,Grep,Glob,Edit,Write" in text and "--output-format stream-json --verbose" in text
+    assert "--strict-mcp-config" in text and "--tools Read,Grep,Glob,Edit,Write,Bash" in text and "--output-format stream-json --verbose" in text
     assert "Publication, in the launcher's words" in text and "Applied 1 file" in text and "Refused " in text
     assert (project / "src" / "feature.py").read_text() == "def feature():\n    return 1\n"
     assert not (project / ".github").exists() and not (project / "direct.py").exists()
@@ -339,7 +359,11 @@ def test_the_model_sees_the_two_lead_tools_and_the_harness_takes_no_other_server
                                 base_url="http://127.0.0.1:1", alias="m", window=8192)
     rendering = delegate_confined.renderer(rec, "/bin/claude")(context)
     argv = list(rendering.argv)
-    assert argv[argv.index("--tools") + 1] == "Read,Grep,Glob,Edit,Write" and "Bash" not in argv[argv.index("--tools") + 1]
+    assert argv[argv.index("--tools") + 1] == "Read,Grep,Glob,Edit,Write,Bash"
+    brief = rendering.files["session/brief.md"]
+    assert "You have no shell" not in brief and "name every test you could not run" in brief
+    for limit in ("no network", "no localhost port", "no Poolhouse node", "no nested sandbox", "no real model", "at most 600s"):
+        assert limit in brief, limit
     assert "--disallowedTools" not in argv, "no tool is offered and then hidden: the session's table has two"
     assert "--strict-mcp-config" in argv and argv[argv.index("--max-turns") + 1] == "7"
     assert argv[argv.index("--output-format") + 1] == "stream-json" and "--verbose" in argv and "--print" in argv
@@ -444,6 +468,25 @@ def test_a_resource_bound_that_ends_an_edit_delegate_leaves_it_failed_with_the_r
     node, lead, _project = editing
     reports = [e.text for e in node.session(lead).read(limit=100).entries if e.fields.get("subject") == "isolation.report"]
     assert any(PASSED in each for each in reports), reports
+
+
+def test_a_shell_command_within_its_timeout_is_not_counted_as_no_progress(editing, monkeypatch):
+    monkeypatch.setattr(delegate_confined, "NO_PROGRESS_S", 3.0)
+    run = ran(editing, "shell-slow")
+    assert run.status == 0 and run.row["state"] == "done" and "waited for its command" in run.row["text"], run.row
+
+
+def test_a_shell_command_past_its_timeout_no_longer_holds_the_run(editing, monkeypatch):
+    monkeypatch.setattr(delegate_confined, "NO_PROGRESS_S", 3.0)
+    began = time.monotonic()
+    run = ran(editing, "shell-overdue")
+    assert time.monotonic() - began < 90 and run.row["state"] == "failed" and "no progress" in run.row["error"], run.row
+
+
+@pytest.mark.parametrize(("mode", "state"), [("shell-writes-nothing", "unapplied"), ("shell-reads", "done")])
+def test_a_shell_call_that_writes_counts_as_trying_to_change_files_and_one_that_reads_does_not(editing, mode, state):
+    run = ran(editing, mode)
+    assert run.row["state"] == state and run.row["applied"] == [], run.row
 
 
 def test_a_harness_that_ends_while_its_child_holds_the_pipe_ends_the_run_and_the_child(editing):
