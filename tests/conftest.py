@@ -102,12 +102,15 @@ from signal_guard import signal_handlers_are_restored  # noqa: E402,F401  (an au
 from system_guard import no_system_probes  # noqa: E402,F401  (an autouse fixture)
 from testoptions import pytest_addoption  # noqa: E402,F401  (the suite's tier options)
 
+from poolhouse import loopback_window  # noqa: E402
 from poolhouse.http import Server  # noqa: E402
 from poolhouse.testing import live  # noqa: E402
 from poolhouse.testing.fakes import (  # noqa: E402
     LLAMA_SERVER_HELP as LLAMA_SERVER_HELP,
     fake_binary as fake_binary,
 )
+
+loopback_window.install()   # in a coding box the suite binds no port itself: the launcher binds one of the box's window and hands it over
 
 testslots.pin_slots_dir()
 """The machine-wide slot directory, fixed before the session moves ``HOME`` so every worker and

@@ -120,11 +120,14 @@ class NetMode(StrEnum):
 @dataclass(frozen=True, slots=True)
 class Net:
     """Network access: none, this machine's loopback, or loopback on the named ports only. ``listen`` are ports of the loopback the process may also
-    bind and accept on (a harness's own server, whose port the launcher chose); a port named there is reached as well, and no other is."""
+    bind and accept on (a harness's own server, whose port the launcher chose); a port named there is reached as well, and no other is. On macOS a
+    bind there is of any address of the machine, the wildcard included. ``accept`` are ports of the loopback the process reaches over TCP and serves
+    on only through a socket its parent bound and handed to it: it binds none of them (macOS only)."""
 
     mode: NetMode = NetMode.DENY
     ports: tuple[int, ...] = ()
     listen: tuple[int, ...] = ()
+    accept: tuple[int, ...] = ()
 
     @classmethod
     def deny(cls) -> Net:
@@ -135,15 +138,17 @@ class Net:
         return cls(NetMode.LOOPBACK)
 
     @classmethod
-    def only(cls, *ports: int, listen: tuple[int, ...] = ()) -> Net:
-        return cls(NetMode.PORTS, tuple(sorted(set(ports))), tuple(sorted(set(listen))))
+    def only(cls, *ports: int, listen: tuple[int, ...] = (), accept: tuple[int, ...] = ()) -> Net:
+        return cls(NetMode.PORTS, tuple(sorted(set(ports))), tuple(sorted(set(listen))), tuple(sorted(set(accept))))
 
     def __post_init__(self) -> None:
         if self.mode == NetMode.PORTS and not self.ports:
             raise PolicyError("net: ports mode names no port")
-        if self.mode != NetMode.PORTS and (self.ports or self.listen):
+        if self.mode != NetMode.PORTS and (self.ports or self.listen or self.accept):
             raise PolicyError(f"net: {self.mode} mode takes no ports")
-        for port in (*self.ports, *self.listen):
+        if set(self.accept) & {*self.ports, *self.listen}:
+            raise PolicyError("net: an accept port is also named to be bound or reached another way")
+        for port in (*self.ports, *self.listen, *self.accept):
             if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
                 raise PolicyError(f"net: {port!r} is not a port")
 

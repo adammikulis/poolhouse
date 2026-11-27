@@ -230,8 +230,12 @@ run inside the same Seatbelt profile as the harness, in the stage (a copy of the
   plugin runs each one under `delegate_confined.BOUNDED`, since OpenCode itself would move a command that overruns to the background. The model
   is given at most as many bytes of a tool's output as the served window has tokens (OpenCode's `tool_output`, docs/limits.md). The delegate's
   no-progress limit does not count the time a command is within its timeout.
-- **Not there.** No network, no localhost port to open and none of this computer's to reach but the model bridge's, no Poolhouse node, no
-  nested sandbox and no real model. A test that needs one cannot run, and the brief tells the agent to name every test it could not run.
+- **Loopback** (macOS, an editing delegate). Python serves and connects over TCP on `127.0.0.1` and `::1` within the box's own window of
+  ports: a bind of port 0 gets the next one. The box binds nothing itself; the launcher binds each socket and hands it over, so nothing the box
+  runs listens on another address. A program that is not Python, a Python started with `-I`, a Unix or UDP server and a fixed port outside
+  the window are refused.
+- **Not there.** No network, no other port of this computer to reach but the model bridge's, no Poolhouse node, no nested sandbox and no real
+  model. A test that needs one cannot run, and the brief tells the agent to name every test it could not run.
 - **Processes.** A command signals the processes of its own box (grandchildren and ones that left their group among them) and no other, and
   every one of them ends with the session.
 

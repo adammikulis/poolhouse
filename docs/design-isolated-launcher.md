@@ -356,6 +356,12 @@ Facts found by running the harnesses under the existing profile on this Mac (5.6
 - **User and group lookups** (macOS): the profile allows one lookup service (`com.apple.system.opendirectoryd.libinfo`), so `getpwuid`
   and `getgrnam` answer as they do for any program of this account: names, ids and home folders, no password and no other directory
   service, keychain or name resolver.
+- **A window of loopback ports** (macOS, writable stage). VERIFIED on 25G70: Seatbelt's `localhost` matches the wildcard and the machine's
+  network address, so a rule that lets a box bind a port lets it listen to the network (OpenCode's own `Rendering.listen` port is such a rule:
+  an open item). The window therefore grants no bind. The launcher picks 128 ports of 41000 to 48999 that no socket holds, claims the block
+  with a file lock, allows TCP to them and serving on them (`Net.accept`), refuses every bind of them, and serves a Unix socket on which it binds
+  `127.0.0.1` or `::1` and passes the socket back (`isolation/ports.py`; `loopback_window.py`, the box's `sitecustomize.py`). UDP stays refused.
+  What remains: a process outside that starts to listen on a port of a live window can be reached by that box over loopback.
 - **The project's environments** (`.venv`, `venv`, `node_modules`) are linked into the stage and granted read and exec by their
   real paths (`Spec.environments`), never write, and their programs are on `PATH`. The link is not a change of the session; a link
   the session replaced is reported as any other file. Each folder passes the credential walk of a read grant
@@ -1515,7 +1521,7 @@ claims in it are code reads, marked NOT RUN. Findings are fixed or named as acce
 | A23 | reach any loopback service other than the bridge: the node socket, the broker, the approval UI | only the bridge port is in the profile (VERIFIED); the model server's port is in none | `no_loopback_port_but_the_bridges_is_reachable` |
 | A24 | LAN, internet, IPv6, UDP, DNS, raw sockets | refused (VERIFIED) | the same |
 | A25 | `docker.sock`, `ssh-agent`, D-Bus, X11, `tmux`, abstract sockets | refused (VERIFIED on macOS; host paths absent on Linux) | `no_unix_or_abstract_socket_but_the_session_bridge_connects` |
-| A26 | bind a listener to expose the stage or take a reverse shell | bind refused (VERIFIED) | `no_loopback_port_but_the_bridges_is_reachable` |
+| A26 | bind a listener to expose the stage or take a reverse shell | bind refused (VERIFIED); a macOS window port is bound by the launcher on loopback alone | `no_loopback_port_but_the_bridges_is_reachable` |
 | A27 | bridge abuse: unknown routes, request smuggling, absolute-form targets, pipelining, slow bodies, oversize bodies, a different model, header injection | 6.1 | `the_model_bridge_serves_only_its_routes_and_pins_the_model` |
 | A28 | egress proxy abuse after a grant: SSRF to private ranges, DNS rebinding, CONNECT to other ports, wildcards, IP literals, redirects | 6.3 | `the_egress_proxy_refuses_private_ranges_rebinding_ports_wildcards_and_literals` |
 | A29 | use the model server as a deputy: tool routes, slot save, adapters, the server's key | the server's port is unreachable; the bridge allows five routes and strips two fields; the key stays in the parent | `the_model_bridge_serves_only_its_routes_and_pins_the_model` |

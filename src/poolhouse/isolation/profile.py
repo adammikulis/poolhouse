@@ -1,9 +1,10 @@
 """The profile of one confinement: the engine policy a launch runs under, and a digest of everything in it.
 
 `build` turns a `Spec` and the grants in force into one `sandbox.Policy`: the stage and the agent home are the only writable trees (the stage
-is read-only for `read-only` and for plan mode, and a session with a writable stage runs the programs in both), the harness's install tree, the interpreter, the system toolchain, the derived toolchain
-folders and the granted reads are readable, the control names are frozen in the stage, the network is the model bridge's port and the
-egress proxy's, and the one unix socket is the session bridge's. The same object runs the harness and the probe of the proof, so what the
+is read-only for `read-only` and for plan mode, and a session with a writable stage runs the programs in both), the harness's install tree, the
+interpreter, the system toolchain, the derived toolchain folders and the granted reads are readable, the control names are frozen in the stage,
+the network is the model bridge's port, the egress proxy's and, for an editing session, TCP within its own window of loopback ports, and the unix
+sockets are the session bridge's and the window's (`isolation.ports`). The same object runs the harness and the probe of the proof, so what the
 proof shows is what the harness gets (docs/design-isolated-launcher.md, 3.2, 5.2 and 8.1).
 """
 
@@ -84,7 +85,7 @@ def _digest(policy: Policy, grants: Sequence[Grant], spec: Spec) -> str:
     """A digest of what the policy grants and of the grants in force. The environment contributes the names it sets and never a value,
     so a token the launcher minted is never in a digest."""
     body = {"harness": spec.harness, "name": policy.name, "read": policy.read, "write": policy.write, "exec": policy.exec,
-            "net": [policy.net.mode.value, policy.net.ports, policy.net.listen], "env": sorted(policy.env), "strict": policy.strict,
+            "net": [policy.net.mode.value, policy.net.ports, policy.net.listen, policy.net.accept], "env": sorted(policy.env), "strict": policy.strict,
             "preferences": policy.preferences, "user_records": policy.user_records,
             "deny_write": policy.deny_write, "unix_sockets": policy.unix_sockets, "signal_children": policy.signal_children,
             "limits": [policy.limits.processes, policy.limits.wall_seconds, policy.limits.cpu_seconds, policy.limits.file_bytes,
@@ -107,8 +108,8 @@ def build(spec: Spec, grants: Sequence[Grant] = (), env: Mapping[str, str] | Non
     policy = Policy(f"coding-{spec.harness}", read=tuple(dict.fromkeys(readable)), write=tuple(writable),
                     exec=tuple(dict.fromkeys([*SYSTEM_EXEC, os.path.realpath(sys.executable), spec.install, *system_toolchain(), *runs,
                                               *_git_directory(), *spec.environments, *own])),
-                    net=Net.only(*ports, listen=spec.listen), env=dict(env or {}), strict=True, signal_children=True, preferences=PREFERENCES.get(spec.harness, ()), user_records=True,
-                    unix_sockets=(spec.session_socket,) if spec.session_socket else (),
+                    net=Net.only(*ports, listen=spec.listen, accept=spec.window), env=dict(env or {}), strict=True, signal_children=True, preferences=PREFERENCES.get(spec.harness, ()), user_records=True,
+                    unix_sockets=tuple(each for each in (spec.session_socket, spec.window_socket) if each),
                     deny_write=(*(str(Path(spec.stage) / name) for name in (*CONTROL_PREFIXES, GIT_DIRECTORY)), *spec.frozen),
                     limits=limits or Limits(wall_seconds=None, output_bytes=None, processes=fair_share()))
     return Profile(policy, spec.stage, spec.home, search_path(spec, grants), tuple(grants), _digest(policy, grants, spec), spec.harness,
