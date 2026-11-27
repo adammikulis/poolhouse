@@ -109,6 +109,24 @@ def test_opencode_plugin_denies_and_fails_closed(tmp_path):
     assert not (tmp_path / "x.py").exists()
 
 
+def test_the_opencode_plugin_adds_what_the_lead_sent_to_the_tool_result_of_either_shape(tmp_path):
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node is required to load the plugin")
+    said = ["/bin/sh", "-c", "cat > /dev/null; echo '{\"hookSpecificOutput\":{\"additionalContext\":\"[PLUMBING] from your lead\"}}'", "sh"]
+    (tmp_path / "said.mjs").write_text(opencode.plugin({"hook": said, "root": str(tmp_path)}))
+    driver = tmp_path / "driver.mjs"
+    driver.write_text(
+        'const hooks = await (await import("./said.mjs")).Poolhouse();\n'
+        'const built = {title:"read", output:"the file"}, served = {content:[{type:"text", text:"the answer"}]};\n'
+        'await hooks["tool.execute.after"]({}, built); await hooks["tool.execute.after"]({}, served);\n'
+        'console.log(JSON.stringify({built, served}));\n')
+    done = subprocess.run([node, str(driver)], capture_output=True, text=True, timeout=30, check=True)
+    seen = json.loads(done.stdout)
+    assert seen["built"]["output"] == "the file\n\n[PLUMBING] from your lead"
+    assert seen["served"] == {"content": [{"type": "text", "text": "the answer"}, {"type": "text", "text": "[PLUMBING] from your lead"}]}
+
+
 def test_opencode_names_are_in_the_closed_records():
     from poolhouse.guard import harnesses
 

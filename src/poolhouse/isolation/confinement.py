@@ -13,6 +13,7 @@ what the launch made. Nothing here asks, waits or reads a terminal.
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import select
 import shlex
@@ -29,7 +30,7 @@ from pathlib import Path
 from typing import IO, Any
 
 from poolhouse import activity, coding_policy, home as state_home
-from poolhouse.isolation import client as client_module, session_verbs
+from poolhouse.isolation import client as client_module
 from poolhouse.isolation.attestation import attest
 from poolhouse.isolation.capability import require_capable
 from poolhouse.isolation.environment import Inputs, environment
@@ -46,9 +47,11 @@ from poolhouse.isolation.workspace import Launch, Session, Turn
 from poolhouse.sandbox import Started, process_tree, spawn
 from poolhouse.sandbox.run import HOOKS
 
-__all__ = ["Confinement", "Context", "Made", "Plan", "Rendering", "install_tree", "prepare"]
+__all__ = ["SERVER", "Confinement", "Context", "Made", "Plan", "Rendering", "install_tree", "prepare"]
 
 CLIENT = "client.py"
+SERVER = "lead"
+"""The name of the one MCP server a harness has: its tools are `mcp__lead__ask` and `mcp__lead__note` (OpenCode: `lead_ask`, `lead_note`)."""
 SYSTEM_ROOTS = frozenset({"/", "/usr", "/usr/local", "/opt", "/opt/homebrew", "/Library", "/System", "/bin", "/sbin"})
 """A directory that is a system tree, never a harness's own install tree."""
 HARNESS_DIRECTORIES = {"claude": ".claude-config", "codex": ".codex-home", "pi": ".pi-config", "opencode": ".opencode-config"}
@@ -82,6 +85,16 @@ class Context:
     def hook(self, event: str) -> str:
         """The shell line a harness runs for a hook event."""
         return shlex.join(self.client_argv("hook", event))
+
+    def lead_server(self) -> dict[str, Any]:
+        """The ``mcpServers`` entry that is the harness's way to its lead: the bridge's client as a stdio MCP server, named `lead` (`SERVER`), with the
+        two tools `ask` and `note` and no other. Claude Code and Pi read it from a file of this shape, Codex and OpenCode from their own settings."""
+        command, *arguments = self.client_argv("mcp")
+        return {"command": command, "args": arguments}
+
+    def lead_servers(self) -> str:
+        """The JSON file (``{"mcpServers": {"lead": ...}}``) of a harness that reads one."""
+        return json.dumps({"mcpServers": {SERVER: self.lead_server()}})
 
     def file(self, name: str) -> Path:
         """Where the rendered file ``name`` is, inside the agent home."""
@@ -119,8 +132,6 @@ class Plan:
     conversation: str = ""
     extras: Mapping[str, str] = field(default_factory=dict)
     interactive: bool = False
-    verbs: Mapping[str, session_verbs.Verb] = field(default_factory=lambda: session_verbs.VERBS)
-    """The closed table of verbs the session has: the workspace's, or a delegate's two ways to its lead."""
 
 
 class Admission:
@@ -326,7 +337,7 @@ def _services(plan: Plan, session: Session, parts: Parts) -> tuple[ModelBridge, 
     answer = plan.decide(str(session.stage.physical))
     root = tempfile.mkdtemp(prefix="pp-", dir="/tmp")
     parts.scratch.append(root)
-    bridge = SessionBridge(Handlers(decide, plan.workspace, activity.record, _events), Terms(plan.policy.writable, plan.lease.window, verbs=plan.verbs), root=root, admit=parts.admission)
+    bridge = SessionBridge(Handlers(decide, plan.workspace, activity.record, _events), Terms(plan.lease.window), root=root, admit=parts.admission)
     bridge.start()
     parts.stack.append(bridge)
     return model, bridge

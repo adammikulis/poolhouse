@@ -24,7 +24,8 @@ from poolhouse.interventions import Call
 __all__ = ["CATALOG", "LEAD_TOOLS", "SHELL_TOOLS", "Decision", "confined_decision", "decide", "workspace_authority"]
 
 LEAD_TOOLS = ("mcp__lead__ask", "mcp__lead__note")
-"""A delegate's two tools (`poolhouse.delegate_run`): a message to the one session that started it, and the wait for its reply."""
+"""The two tools of an agent a session started (`poolhouse.lead_bridge`; a read-only delegate's are `poolhouse.delegate_run`): a message to the one
+session that started it, and the wait for its reply."""
 
 CATALOG: dict[str, str] = {
     **dict.fromkeys(LEAD_TOOLS, "safe"),

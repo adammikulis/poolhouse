@@ -198,17 +198,17 @@ def test_a_harness_that_is_not_inside_the_profile_is_ended_by_the_attestation(ri
 
 
 def test_the_bridge_acts_as_the_one_session_it_was_given_and_never_as_the_launcher(rig, tmp_path):
-    """Attack finding M2: the workspace handler and the rail are the helper made for this launch; a verb through the bridge is run as that helper."""
+    """Attack finding M2: the tool handler and the rail are the helper made for this launch; a call through the bridge is run as that helper."""
     seen = []
     given = plan(rig, hostile(rig, tmp_path), agent="helper-9-fresh")
     object.__setattr__(given, "workspace", lambda verb, arguments: seen.append(("helper-9-fresh", verb, dict(arguments))) or {"ok": 1})
     with isolation.prepare(given) as confinement:
         client = confinement.home / "bin" / launch.CLIENT
         socket_path = next(each for each in confinement.made.services if hasattr(each, "path")).path
-        done = subprocess.run([os.path.realpath(sys.executable), "-I", str(client), "--socket", socket_path, "--pid", str(os.getpid()), "workspace", "status"],
+        done = subprocess.run([os.path.realpath(sys.executable), "-I", str(client), "--socket", socket_path, "--pid", str(os.getpid()), "workspace", "note", "--text", "halfway"],
                               capture_output=True, text=True, timeout=30)
     assert done.returncode == 0, done.stderr
-    assert seen and seen[0][0] == "helper-9-fresh" and seen[0][0] != "lead"
+    assert seen and seen[0][0] == "helper-9-fresh" and seen[0][0] != "lead" and seen[0][1] == "note"
 
 
 def _calls(tree: ast.AST) -> list[str]:

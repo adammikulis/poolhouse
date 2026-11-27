@@ -28,6 +28,7 @@ from poolhouse import (
     home,
     hub,
     isolation,
+    lead_bridge,
     opencode_install,
     runtime,
     serverkeys,
@@ -37,7 +38,7 @@ from poolhouse.briefing import REQUIRED_BRIEFING
 from poolhouse.client import is_healthy
 from poolhouse.errors import Denied
 from poolhouse.hub.probe import MachineMemory
-from poolhouse.isolation import places, session_verbs
+from poolhouse.isolation import places
 from poolhouse.isolation.refusals import sentence
 from poolhouse.sandbox import run as sandbox_run
 from poolhouse.serve import admission, chat_template, leases, profile, suggest, wired
@@ -510,8 +511,8 @@ def rail_of(args: argparse.Namespace, name: str, stage: str) -> harnesshook.Rail
 @dataclasses.dataclass(frozen=True, slots=True)
 class Harness:
     """The harness a launch starts: its name, its binary, the model it was served (base URL, alias, window), the launcher's own lines, the
-    variables its caller sets (the effort and the extra body of a task) and whether it is interactive. ``workspace`` makes the handler that runs the verbs of the session
-    bridge from the helper; ``conversation`` names the conversation whose stage a re-launch keeps (default: the
+    variables its caller sets (the effort and the extra body of a task) and whether it is interactive. ``lead`` makes what the session
+    bridge has of the agent's lead from the helper; ``conversation`` names the conversation whose stage a re-launch keeps (default: the
     helper's own; none for a launch that is never resumed)."""
 
     name: str
@@ -521,11 +522,10 @@ class Harness:
     extras: Mapping[str, str] = dataclasses.field(default_factory=dict)
     interactive: bool = False
     _: dataclasses.KW_ONLY
-    workspace: Callable[[Any], Callable[[str, Mapping[str, Any]], Any]]
-    """Given the launch's helper identity, the handler that runs the verbs of the session bridge; the caller names it, so this module does not import the workspace."""
+    lead: Callable[[Any], lead_bridge.Reach] = lead_bridge.for_helper
+    """Given the launch's helper identity, what the session bridge has of its lead, the two tools `ask` and `note` and what the lead sent: by
+    default of the session that launched it."""
     conversation: str | None = None
-    verbs: Mapping[str, session_verbs.Verb] = dataclasses.field(default_factory=lambda: session_verbs.VERBS)
-    """The closed table of verbs the harness's tools are made from: the workspace's by default, or a delegate's two ways to its lead."""
 
 
 @contextlib.contextmanager
@@ -535,19 +535,19 @@ def confined(args: argparse.Namespace, run: Session, how: Harness,
     the rail's agent are ``run.session``: the fresh helper identity made for this launch, which is not the launcher's name (attack finding M2)."""
     base_url, alias, window = how.served
     helper, parent = run.session, getattr(run.session, "parent", None)
+    lead = how.lead(helper)
 
     def decide(stage: str) -> Callable[[str, dict], dict]:
-        # a call is the box's own words, judged as text; what the board tells the helper is read for the person's project, whose board it is
-        rail, project = rail_of(args, helper.name, stage), rail_of(args, helper.name, str(run.cwd))
+        rail = rail_of(args, helper.name, stage)   # a call is the box's own words, judged as text; after it the box is given what its lead sent
         return lambda event, payload: (harnesshook.confined_pre(payload, rail) if event == "pre" else harnesshook.stop(rail) if event == "stop"
-                                       else harnesshook.post(helper.name, project, board=helper.board))
+                                       else harnesshook.confined_post(lead.news()))
 
     notice = isolation.Notice(None if parent is None else isolation.Reporter(_post(parent)), getattr(parent, "name", ""), REPORT_CAP,
                               lambda name, fields: sandbox_run.HOOKS.events and sandbox_run.HOOKS.events(name, fields))
     plan = isolation.Plan(how.name, how.binary, str(run.cwd), coding_policy.Policy(args.permissions, args.execution_mode), base_url,
                           isolation.Lease.of(alias, window, args.slots), serverkeys.for_url(base_url), helper.name, decide,
-                          how.workspace(helper), render, notice,
-                          args.launch.grants, helper.name if how.conversation is None else how.conversation, dict(how.extras), how.interactive, how.verbs)
+                          lead.run, render, notice,
+                          args.launch.grants, helper.name if how.conversation is None else how.conversation, dict(how.extras), how.interactive)
     confinement = isolation.prepare(plan)
     try:
         yield confinement

@@ -24,7 +24,6 @@ from poolhouse.claude import DEFAULT_PORT, DEFAULT_SLOTS, alias_of
 from poolhouse.guard import harnesses
 from poolhouse.log import say
 from poolhouse.serve import provenance
-from poolhouse.workspace import tools
 
 __all__ = ["FLAGS", "INSTRUCTIONS", "config_toml", "launch", "printing"]
 
@@ -43,7 +42,7 @@ def _q(text: str) -> str:
 
 
 def config_toml(base_url: str, alias: str, window: int, hooks: tuple[str, str, float], mcp: Sequence[str] = ()) -> str:
-    """The ``config.toml`` for one run: provider, window, the (pre, post, wait) hooks, and the workspace MCP server (``mcp`` is its command line).
+    """The ``config.toml`` for one run: provider, window, the (pre, post, wait) hooks, and the MCP server `lead` (``mcp`` is its command line).
     Same input, same bytes."""
     pre, post, wait = hooks
     lines = [
@@ -58,7 +57,7 @@ def config_toml(base_url: str, alias: str, window: int, hooks: tuple[str, str, f
         "", "[shell_environment_policy]", 'inherit = "core"',
         "", "[features]", "hooks = true",
         "", "[features.code_mode]", "enabled = false",
-        'direct_only_tool_namespaces = ["mcp__workspace"]',
+        'direct_only_tool_namespaces = ["mcp__lead"]',
         "", f"[model_providers.{PROVIDER}]", 'name = "poolhouse"',
         f"base_url = {_q(base_url.rstrip('/') + '/v1')}", 'wire_api = "responses"', f"env_key = {_q(KEY_ENV)}",
         "", "[[hooks.PreToolUse]]", 'matcher = ".*"',
@@ -68,7 +67,7 @@ def config_toml(base_url: str, alias: str, window: int, hooks: tuple[str, str, f
         "", "[[hooks.PostToolUse.hooks]]", 'type = "command"', f"command = {_q(post)}", "timeout = 10",
     ]
     if mcp:
-        lines += ["", "[mcp_servers.workspace]", f"command = {_q(mcp[0])}", f"args = {json.dumps(list(mcp[1:]))}", "startup_timeout_sec = 30",
+        lines += ["", f"[mcp_servers.{isolation.SERVER}]", f"command = {_q(mcp[0])}", f"args = {json.dumps(list(mcp[1:]))}", "startup_timeout_sec = 30",
                   "required = true"]
     return "\n".join(lines) + "\n"
 
@@ -102,10 +101,10 @@ def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = sa
 def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, str, int], say: Callable[[str], None],
          start: tuple[Callable[[isolation.Confinement], int], Mapping[str, str] | None]) -> int:
     """Prove a confinement for ``command`` (``codex`` and its arguments) and hand it to the runner. This run's ``CODEX_HOME`` is inside the agent
-    home; its config and its instructions are written read-only, and its hooks and its workspace MCP server are clients of the session bridge."""
+    home; its config and its instructions are written read-only, and its hooks and its MCP server `lead` (ask and note) are clients of the session bridge."""
     runner, extras = start
     binary, *extra = command
-    how = harnessing.Harness("codex", binary, served, say, extras or {}, not printing(extra), workspace=tools.for_helper)
+    how = harnessing.Harness("codex", binary, served, say, extras or {}, not printing(extra))
     _, alias, window = served
     opened: list[harnessing.Session] = []
 
@@ -114,10 +113,7 @@ def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, st
         managed = run.session.managed_inbox
         config = config_toml(context.base_url, alias, window, (context.hook("pre"), context.hook("post"), harnessing.WAIT_S),
                              () if managed else context.client_argv("mcp"))
-        note = "" if managed else (
-            "\nUse the workspace MCP tools for inbox/send/thread/claim. They already carry your "
-            "assigned identity; never use shell workspace commands inside the coding sandbox.\n")
-        files = {".codex-home/config.toml": config, ".codex-home/AGENTS.md": run.brief + note}
+        files = {".codex-home/config.toml": config, ".codex-home/AGENTS.md": run.brief}
         return isolation.Rendering((binary, *FLAGS, "--cd", context.stage, *extra), files)
 
     try:

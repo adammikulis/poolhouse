@@ -1,7 +1,8 @@
-"""The confined side of the session bridge: the command a harness's hook runs, the workspace shim and Codex's stdio MCP server.
+"""The confined side of the session bridge: the command a harness's hook runs, and the two tools to the lead, `ask` and `note`, as a shell command
+and as the stdio MCP server of every harness.
 
     python -I -m poolhouse.isolation.client --socket PATH --pid PID hook pre|post|stop     (the event on standard input)
-    python -I -m poolhouse.isolation.client --socket PATH --pid PID workspace VERB [--name value ...]
+    python -I -m poolhouse.isolation.client --socket PATH --pid PID workspace ask --question TEXT | note --text TEXT
     python -I -m poolhouse.isolation.client --socket PATH --pid PID grant [KIND [SUBJECT]]
     python -I -m poolhouse.isolation.client --socket PATH --pid PID mcp
 
@@ -26,9 +27,8 @@ SOL_LOCAL = 0
 LOCAL_PEERPID = 0x002
 BLOCKED = 2
 REFUSED = 3
-USAGE = "usage: client --socket PATH --pid PID (hook EVENT | workspace VERB [--name value ...] | grant [KIND [SUBJECT]] | mcp)"
+USAGE = "usage: client --socket PATH --pid PID (hook EVENT | workspace VERB --name TEXT | grant [KIND [SUBJECT]] | mcp)"
 DENIED_HOOK = "poolhouse: the session bridge did not answer, so the call is blocked."
-YES = ("true", "1", "yes")
 
 
 class Impostor(OSError):
@@ -115,23 +115,11 @@ def _hook(sock: socket.socket, event: str, streams: Streams) -> int:
     return 0
 
 
-def _typed(kind: str, value: str) -> Any:
-    return {"whole": int, "number": float, "flag": lambda text: text.lower() in YES}.get(kind, str)(value)
-
-
-def _arguments(takes: dict[str, str], words: list[str], streams: Streams) -> dict[str, Any]:
-    """``--name value`` arguments as the verb's typed arguments; ``--name`` alone is true for a flag, a value ``-`` reads standard input."""
-    found: dict[str, Any] = {}
-    at = 0
-    while at < len(words):
-        name = words[at][2:] if words[at].startswith("--") else ""
-        if name not in takes:
-            raise ValueError(f"no argument {words[at][:40]!r}")
-        wants_value = takes[name] != "flag" or (at + 1 < len(words) and not words[at + 1].startswith("--"))
-        value = words[at + 1] if wants_value and at + 1 < len(words) else "true"
-        found[name] = _typed(takes[name], _data(streams) if value == "-" else value)
-        at += 2 if wants_value else 1
-    return found
+def _arguments(argument: str, words: list[str], streams: Streams) -> dict[str, str]:
+    """``--name TEXT`` as the verb's one argument; a text ``-`` reads standard input."""
+    if len(words) != 2 or words[0] != f"--{argument}":
+        raise ValueError(f"this verb takes --{argument} TEXT")
+    return {argument: _data(streams) if words[1] == "-" else words[1]}
 
 
 def _workspace(sock: socket.socket, verb: str, words: list[str], streams: Streams) -> int:
@@ -139,7 +127,7 @@ def _workspace(sock: socket.socket, verb: str, words: list[str], streams: Stream
     if verb not in tools:
         streams.err.write("Refused: no such verb.\n")
         return REFUSED
-    answer = call(sock, {"verb": "workspace", "name": verb, "arguments": _arguments(tools[verb]["takes"], words, streams)})
+    answer = call(sock, {"verb": "workspace", "name": verb, "arguments": _arguments(tools[verb]["argument"], words, streams)})
     if "result" not in answer:
         streams.err.write(f"{answer.get('refused') or answer.get('error', 'Refused.')}\n")
         return REFUSED
@@ -148,17 +136,10 @@ def _workspace(sock: socket.socket, verb: str, words: list[str], streams: Stream
 
 
 def _mcp_tools(sock: socket.socket) -> list[dict[str, Any]]:
-    kinds = {"text": "string", "whole": "integer", "number": "number", "flag": "boolean"}
-    return [{"name": each["tool"], "description": each["help"] or f"Run the workspace verb {name} through the session bridge.",
-             "inputSchema": {"type": "object", "additionalProperties": False, "required": each["needs"],
-                             "properties": {key: {"type": kinds[kind], **({"description": each["hints"][key]} if key in each["hints"] else {})}
-                                            for key, kind in each["takes"].items()}}}
+    return [{"name": name, "description": each["help"],
+             "inputSchema": {"type": "object", "additionalProperties": False, "required": [each["argument"]],
+                             "properties": {each["argument"]: {"type": "string", "description": each["hint"]}}}}
             for name, each in call(sock, {"verb": "tools"}).get("tools", {}).items()]
-
-
-def _verb_of(sock: socket.socket, tool: str) -> str:
-    """The verb of the session's table whose tool is named ``tool`` (empty when there is none)."""
-    return next((name for name, each in call(sock, {"verb": "tools"}).get("tools", {}).items() if each["tool"] == tool), "")
 
 
 def _mcp_reply(path: str, pid: int, message: dict[str, Any]) -> dict[str, Any] | None:
@@ -169,7 +150,7 @@ def _mcp_reply(path: str, pid: int, message: dict[str, Any]) -> dict[str, Any] |
         return None
     if method == "initialize":
         result: dict[str, Any] = {"protocolVersion": params.get("protocolVersion") or "2024-11-05", "capabilities": {"tools": {}},
-                                  "serverInfo": {"name": "poolhouse-workspace", "version": "0"}}
+                                  "serverInfo": {"name": "lead", "version": "0"}}
     elif method == "ping":
         result = {}
     elif method == "tools/list":
@@ -177,9 +158,10 @@ def _mcp_reply(path: str, pid: int, message: dict[str, Any]) -> dict[str, Any] |
             result = {"tools": _mcp_tools(sock)}
     elif method == "tools/call":
         with connect(path, pid) as sock:
-            answer = call(sock, {"verb": "workspace", "name": _verb_of(sock, str(params.get("name", ""))), "arguments": params.get("arguments") or {}})
+            answer = call(sock, {"verb": "workspace", "name": str(params.get("name", "")), "arguments": params.get("arguments") or {}})
         said = answer["result"] if "result" in answer else answer.get("refused") or answer.get("error", "Refused.")
-        result = {"content": [{"type": "text", "text": json.dumps(said, indent=1, default=str)}], "isError": "result" not in answer}
+        result = {"content": [{"type": "text", "text": said if isinstance(said, str) else json.dumps(said, indent=1, default=str)}],
+                      "isError": "result" not in answer}
     else:
         return {"jsonrpc": "2.0", "id": ident, "error": {"code": -32601, "message": "no such method"}}
     return {"jsonrpc": "2.0", "id": ident, "result": result}

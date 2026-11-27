@@ -37,7 +37,6 @@ def fixture_worker(root, cid, conversation, prompt, communication) -> None:
 
     from poolhouse import coding, harnessid, harnessing, isolation
     from poolhouse.isolation import confinement as launching
-    from poolhouse.workspace import tools
     from poolhouse.workspace.coding_turns import worker
     from tests.isolation_kit import MODEL, Canned
 
@@ -65,8 +64,7 @@ def fixture_worker(root, cid, conversation, prompt, communication) -> None:
         try:
             args = SimpleNamespace(permissions=role.permissions, execution_mode=role.execution_mode, protect=[], slots=1,
                                    launch=SimpleNamespace(grants=()))
-            how = harnessing.Harness("codex", sys.executable, (f"http://127.0.0.1:{server.server_port}", MODEL, 65536), lambda text: None,
-                                     workspace=tools.for_helper)
+            how = harnessing.Harness("codex", sys.executable, (f"http://127.0.0.1:{server.server_port}", MODEL, 65536), lambda text: None)
             run = harnessing.Session(session, Path(project).resolve(), "brief")
             render = lambda context: isolation.Rendering((sys.executable, "-I", "-c", program, *options["harness_args"]))  # noqa: E731
             with harnessing.confined(args, run, how, render) as confinement:

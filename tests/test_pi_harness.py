@@ -36,14 +36,18 @@ def test_pi_launch_is_offline_and_uses_the_policy_extension(monkeypatch, tmp_pat
 
     def run_pi(confinement):
         seen["command"], seen["env"] = list(confinement.argv), dict(confinement.env)
-        seen["extension"] = Path(seen["command"][seen["command"].index("--extension") + 1]).read_text()
+        seen["extensions"] = [seen["command"][at + 1] for at, word in enumerate(seen["command"]) if word == "--extension"]
+        seen["extension"] = Path(seen["extensions"][-1]).read_text()
+        seen["mcp"] = json.loads((confinement.config / "mcp.json").read_text())["mcpServers"]
         seen["models"] = json.loads((confinement.config / "models.json").read_text())["providers"]["poolhouse"]
         return 0
 
     assert pi.launch(["--on", "http://127.0.0.1:8080", "--project", str(project)], say=lambda _: None, run_pi=run_pi) == 0
     assert seen["command"][:5] == [str(binary.resolve()), "--provider", "poolhouse", "--model", "local-model"]
     assert seen["command"][seen["command"].index("--thinking") + 1] == "off"
-    assert "--no-session" in seen["command"] and "--no-mcp" in seen["command"]
+    assert "--no-session" in seen["command"] and "--no-extensions" in seen["command"]
+    assert "--no-approve" in seen["command"] and "--approve" not in seen["command"], "an untrusted project's .pi/mcp.json is not loaded"
+    assert seen["extensions"][0] == "builtin:mcp" and len(seen["extensions"]) == 2 and list(seen["mcp"]) == ["lead"], "MCP is on for the lead's server alone"
     assert 'pi.on("tool_call"' in seen["extension"] and "client.py" in seen["extension"] and "poolhouse.harnesshook" not in seen["extension"]
     assert "toolConfig" not in seen["extension"], "Pi's own tools run inside the box; no per-tool worker is started"
     assert seen["env"]["PI_OFFLINE"] == "1" and set(seen["env"]) <= isolation.allowed("pi")
@@ -86,6 +90,24 @@ def test_pi_extension_denies_writes_and_reports_exhausted_turns(tmp_path):
     assert rows[1]["state"] == {"aborted": True, "stopped": True}
     assert rows[1]["result"]["block"] and "poolhouse: read-only" in rows[1]["result"]["reason"]
     assert not (tmp_path / "output.py").exists()
+
+
+def test_pi_extension_adds_what_the_lead_sent_to_the_tool_result_and_leaves_a_nested_call_unasked(tmp_path):
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node is required by Pi")
+    said = ["/bin/sh", "-c", "cat > /dev/null; echo '{\"hookSpecificOutput\":{\"additionalContext\":\"[PLUMBING] from your lead\"}}'", "sh"]
+    (tmp_path / "said.mjs").write_text(pi.extension({"hook": said, "root": str(tmp_path)}))
+    driver = tmp_path / "driver.mjs"
+    driver.write_text(
+        'import extension from "./said.mjs";\n'
+        'const handlers={}; extension({on:(name,fn)=>handlers[name]=fn});\n'
+        'const own=handlers.tool_result({content:[{type:"text",text:"the file"}]},{});\n'
+        'const nested=handlers.tool_result({parentToolCallId:"p",content:[]},{});\n'
+        'console.log(JSON.stringify({own,nested:nested===undefined}));\n')
+    done = subprocess.run([node, str(driver)], capture_output=True, text=True, timeout=30, check=True)
+    assert json.loads(done.stdout) == {"own": {"content": [{"type": "text", "text": "the file"}, {"type": "text", "text": "[PLUMBING] from your lead"}]},
+                                       "nested": True}
 
 
 def test_pi_post_checkpoint_failure_stops_the_session(tmp_path):

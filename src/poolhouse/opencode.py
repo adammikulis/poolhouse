@@ -23,7 +23,6 @@ from poolhouse.guard import harnesses
 from poolhouse.log import say
 from poolhouse.serve import provenance
 from poolhouse.serve.ports import free_port
-from poolhouse.workspace import tools
 
 __all__ = ["INSTRUCTIONS", "config", "launch", "plugin"]
 
@@ -35,17 +34,17 @@ PLUGIN = "poolhouse-plugin.js"
 BRIEF = "poolhouse-brief.md"
 
 
-def config(served: tuple[str, str, int], token: str, files: tuple[str, str], thinking: dict[str, Any] | None = None) -> str:
+def config(served: tuple[str, str, int], token: str, files: tuple[str, str], lead: Sequence[str], thinking: dict[str, Any] | None = None) -> str:
     """The ``opencode.json`` of one run: the provider (the bridge's ``/v1`` and its token), the one model with its window, the plugin, no sharing and
     no update, and permissions that never ask (the classifier and the mount decide). ``served`` is the bridge's URL, the model's name and its window; ``files``
-    are the plugin and the brief, by path."""
+    are the plugin and the brief, by path; ``lead`` is the command of the MCP server `lead` (its tools reach OpenCode as `lead_ask` and `lead_note`)."""
     base_url, alias, window = served
     plugin_file, brief_file = files
     model: dict[str, Any] = {"name": alias, "tool_call": True, "reasoning": True, "limit": {"context": window, "output": min(window, 32768)}}
     if thinking:
         model["options"] = {"chat_template_kwargs": thinking}
     return json.dumps({
-        "$schema": "https://opencode.ai/config.json",
+        "$schema": "https://opencode.ai/config.json", "mcp": {isolation.SERVER: {"type": "local", "command": list(lead), "enabled": True}},
         "model": f"{PROVIDER}/{alias}", "small_model": f"{PROVIDER}/{alias}",
         "provider": {PROVIDER: {"npm": "@ai-sdk/openai-compatible", "name": "poolhouse",
                                 "options": {"baseURL": base_url.rstrip("/") + "/v1", "apiKey": token}, "models": {alias: model}}},
@@ -66,8 +65,13 @@ def plugin(settings: dict[str, Any]) -> str:
     const answer = result.hookSpecificOutput || {};
     if (answer.permissionDecision === "deny") throw new Error("poolhouse: " + (answer.permissionDecisionReason || "blocked by policy"));
   },
-  "tool.execute.after": async () => {
-    if (call("post", {}).failed) throw new Error("poolhouse: mutation checkpoint failed; stopped");
+  "tool.execute.after": async (_input, output) => {
+    const result = call("post", {});
+    if (result.failed) throw new Error("poolhouse: mutation checkpoint failed; stopped");
+    const said = result.hookSpecificOutput?.additionalContext;
+    if (!said) return;
+    if (Array.isArray(output.content)) output.content.push({type: "text", text: said});
+    else output.output = output.output ? output.output + "\\n\\n" + said : said;
   },
 });
 '''
@@ -124,15 +128,16 @@ def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, st
     """Prove a confinement for ``command`` (``opencode`` and the message) and hand it to the runner."""
     _, alias, window = served
     binary, *extra = command
-    how = harnessing.Harness("opencode", binary, served, say, workspace=tools.for_helper)
+    how = harnessing.Harness("opencode", binary, served, say)
     opened: list[harnessing.Session] = []
 
     def render(context: isolation.Context) -> isolation.Rendering:
         run = opened[0]
         port = free_port()
+        server = context.lead_server()
         files = {f".opencode-config/{CONFIG}": config((context.base_url, alias, window), context.token,
                                                       (str(context.file(f".opencode-config/{PLUGIN}")), str(context.file(f".opencode-config/{BRIEF}"))),
-                                                      families.for_model_id(alias).think_kwargs(False)),
+                                                      [server["command"], *server["args"]], families.for_model_id(alias).think_kwargs(False)),
                  f".opencode-config/{PLUGIN}": plugin({"hook": context.client_argv("hook"), "root": context.stage}),
                  f".opencode-config/{BRIEF}": run.brief}
         return isolation.Rendering(argv_of(binary, port, alias, extra), files, listen=(port,))

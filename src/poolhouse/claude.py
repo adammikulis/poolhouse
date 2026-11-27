@@ -15,7 +15,6 @@ from poolhouse.client import reported_models
 from poolhouse.guard import harnesses
 from poolhouse.log import say
 from poolhouse.serve import provenance
-from poolhouse.workspace import tools
 
 __all__ = ["INSTRUCTIONS", "launch", "main", "settings"]
 
@@ -114,14 +113,15 @@ def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, st
     window. The settings and the brief are written read-only inside the agent home, and the hooks are clients of the session bridge."""
     runner, extras = start
     binary, *extra = command
-    how = harnessing.Harness("claude", binary, served, say, extras or {}, not printing(extra), workspace=tools.for_helper)
+    how = harnessing.Harness("claude", binary, served, say, extras or {}, not printing(extra))
     brief = ""
 
     def render(context: isolation.Context) -> isolation.Rendering:
         files = {"session/settings.json": settings(context.hook("pre"), context.hook("post"), harnessing.WAIT_S, context.hook("stop")),
-                 "session/brief.md": brief}
+                 "session/brief.md": brief, "session/mcp.json": context.lead_servers()}
         return isolation.Rendering((binary, "--settings", str(context.file("session/settings.json")), "--append-system-prompt-file",
-                                    str(context.file("session/brief.md")), *extra), files)
+                                    str(context.file("session/brief.md")), "--mcp-config", str(context.file("session/mcp.json")),
+                                    "--strict-mcp-config", *extra), files)
 
     try:
         with harnessing.opened(args, "claude-code", served, say) as run:

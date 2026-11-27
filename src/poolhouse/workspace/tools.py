@@ -4,8 +4,6 @@ board; minting, revoking, releasing quarantine and running a note's command are 
 from __future__ import annotations
 
 from argparse import Namespace
-from collections.abc import Callable, Mapping
-from contextvars import ContextVar
 from typing import Any
 
 from poolhouse.board import session
@@ -25,7 +23,7 @@ from poolhouse.workspace import (
 )
 from poolhouse.workspace.files import read_source
 
-__all__ = ["HINTS", "NAMES", "as_session"]
+__all__ = ["HINTS", "NAMES"]
 
 HINTS = {
     "workspace_tasks": (True, False, True),
@@ -68,27 +66,9 @@ HINTS = {
 NAMES = tuple(HINTS)
 
 
-_ACTING: ContextVar[session.Session | None] = ContextVar("poolhouse_acting_session", default=None)
-
-
 def _session() -> session.Session:
-    """The calling agent's session on the board of its directory, or the one session `as_session` runs a tool for."""
-    return _ACTING.get() or session.connect()
-
-
-def as_session(acting: session.Session) -> Callable[[str, Mapping[str, Any]], Any]:
-    """The handler a session bridge calls to run workspace tool ``name`` with ``arguments`` as ``acting``: the one session the bridge holds,
-    whose token stays in this process (docs/design-isolated-launcher.md, 7). Only the tools of `NAMES` run, and nothing is read from the
-    environment of this process to say who is calling."""
-    def run(name: str, arguments: Mapping[str, Any]) -> Any:
-        if name not in NAMES:
-            raise ValueError("no such workspace tool")
-        held = _ACTING.set(acting)
-        try:
-            return globals()[name](**arguments)
-        finally:
-            _ACTING.reset(held)
-    return run
+    """The calling agent's session on the board of its directory."""
+    return session.connect()
 
 
 def _text(value: str) -> str:
@@ -296,8 +276,3 @@ def workspace_task_credit(id: str) -> dict[str, Any]:
 def workspace_task_integrate(id: str) -> dict[str, Any]:
     """Gate, land and clean an exact independently accepted native task using existing authority."""
     return task_integration.integrate(_session(), limits.root(), id)
-
-
-def for_helper(helper: Any) -> Callable[[str, Mapping[str, Any]], Any]:
-    """The handler of a launch's session bridge: the workspace tools, run as ``helper``'s session."""
-    return lambda name, arguments: as_session(helper.session())(name, arguments)

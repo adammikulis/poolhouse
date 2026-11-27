@@ -15,7 +15,6 @@ from poolhouse.client import families
 from poolhouse.guard import harnesses
 from poolhouse.log import say
 from poolhouse.serve import provenance
-from poolhouse.workspace import tools
 
 __all__ = ["INSTRUCTIONS", "extension", "launch", "models"]
 
@@ -30,6 +29,12 @@ def models(base_url: str, alias: str, window: int, max_output_tokens: int | None
              "contextWindow": window, "maxTokens": max_output_tokens if max_output_tokens is not None else window}
     return json.dumps({"providers": {"poolhouse": {"baseUrl": base_url.rstrip("/"),
         "api": "openai-completions", "apiKey": key, "models": [model]}}}, sort_keys=True)
+
+
+def mcp(context: isolation.Context) -> str:
+    """Pi's ``mcp.json`` (read from its agent directory): the one server `lead`, its two tools declared to the model directly as `mcp__lead__ask` and
+    `mcp__lead__note`, since Pi's default (`codemode`) leaves a tool out of the model's tool list."""
+    return json.dumps({"mcpServers": {isolation.SERVER: {**context.lead_server(), "exposure": "direct"}}})
 
 
 def extension(settings: dict[str, Any]) -> str:
@@ -59,12 +64,16 @@ def extension(settings: dict[str, Any]) -> str:
     const answer = result.hookSpecificOutput || {};
     if (answer.permissionDecision === "deny") return {block:true,reason:"poolhouse: " + (answer.permissionDecisionReason || "blocked by policy")};
   });
-  pi.on("tool_result", (_event, ctx) => {
+  pi.on("tool_result", (event, ctx) => {
+    if (event?.parentToolCallId) return;  // a nested call's result never reaches the model; its parent's does
     const result = call("post", {});
     if (result.failed) {
       console.log(JSON.stringify({type:"error",message:"Pi mutation checkpoint failed"}));
       ctx.abort(); ctx.shutdown();
+      return;
     }
+    const said = result.hookSpecificOutput?.additionalContext;
+    if (said) return {content: [...(event?.content || []), {type: "text", text: said}]};
   });
 }
 '''
@@ -109,18 +118,19 @@ def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, st
     """Prove a confinement for ``command`` (``pi`` and its arguments) and hand it to the runner."""
     _, alias, window = served
     binary, *extra = command
-    how = harnessing.Harness("pi", binary, served, say, workspace=tools.for_helper)
+    how = harnessing.Harness("pi", binary, served, say)
     opened: list[harnessing.Session] = []
 
     def render(context: isolation.Context) -> isolation.Rendering:
         run = opened[0]
         hook = context.file("session/poolhouse.ts")
         files = {".pi-config/models.json": models(context.base_url, alias, window, args.max_output_tokens, context.token),
+                 ".pi-config/mcp.json": mcp(context),
                  "session/poolhouse.ts": extension({"hook": context.client_argv("hook"), "root": context.stage, "maxTurns": args.max_turns,
                                                     "maxOutputTokens": args.max_output_tokens,
                                                     "thinking": families.for_model_id(alias).think_kwargs(args.effort != "off")})}
-        return isolation.Rendering((binary, "--provider", "poolhouse", "--model", alias, "--mode", "json", "--print", "--no-session", "--no-mcp",
-                                    "--no-skills", "--no-prompt-templates", "--no-extensions", "--extension", str(hook), "--append-system-prompt",
+        return isolation.Rendering((binary, "--provider", "poolhouse", "--model", alias, "--mode", "json", "--print", "--no-session",
+                                    "--no-approve", "--no-skills", "--no-prompt-templates", "--no-extensions", "--extension", "builtin:mcp", "--extension", str(hook), "--append-system-prompt",
                                     run.brief, "--thinking", args.effort, *extra), files)
 
     try:

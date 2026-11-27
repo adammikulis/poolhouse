@@ -31,6 +31,7 @@ from poolhouse import (
     harnessing,
     home,
     isolation,
+    lead_bridge,
 )
 from poolhouse.board import place
 from poolhouse.harnesspolicy import LEAD_TOOLS
@@ -87,10 +88,13 @@ note = call("note", text="halfway: src/feature.py is written")
 answer = call("ask", question="which module is the main one?")
 generic = call("workspace_send", to="someone-else", type="status", body="hello")
 inbox = call("workspace_inbox")
-done = subprocess.run(post, shell=True, input=json.dumps({{"hook_event_name": "PostToolUse", "tool_name": "Read"}}), capture_output=True, text=True)
-hook = (done.stdout + done.stderr).strip()
+hooks = []
+for _ in range(2):
+    done = subprocess.run(post, shell=True, input=json.dumps({{"hook_event_name": "PostToolUse", "tool_name": "Read"}}), capture_output=True, text=True)
+    hooks.append((done.stdout + done.stderr).strip())
+hook, again = hooks
 text = (f"{{CANNED}} direct={{direct}} | tools={{tools}} | note={{note}} | answer={{answer}} | generic={{generic}} | inbox={{inbox}} | hook={{hook}} | "
-        f"home={{os.environ['HOME']}} | flags={{' '.join(args)}}")
+        f"again={{again}} | home={{os.environ['HOME']}} | flags={{' '.join(args)}}")
 print(json.dumps({{"type": "result", "subtype": "success", "is_error": False, "result": text, "num_turns": 3, "duration_api_ms": 1500,
                   "usage": {{"input_tokens": 30, "output_tokens": 5, "cache_read_input_tokens": 7, "cache_creation_input_tokens": 0}}, "session_id": "s"}}))
 '''
@@ -114,11 +118,11 @@ def editing(lead_node, detached, confinable, from_a_terminal, monkeypatch, tmp_p
     monkeypatch.setattr(delegate_confined, "leased", leased)
     monkeypatch.setattr(delegate_confined.harnessing, "binary_for", lambda _name: str(script))
     monkeypatch.setattr(delegate_confined.claude, "alias_of", lambda _url, _model: kit.MODEL)
-    monkeypatch.setattr(delegate_run, "POLL_S", 0.05)
+    monkeypatch.setattr(lead_bridge, "POLL_S", 0.05)
     before = signal.getsignal(signal.SIGTERM)
     yield node, lead, project
     signal.signal(signal.SIGTERM, before)
-    delegate_run.STOPPED.clear()
+    lead_bridge.STOPPED.clear()
     server.shutdown()
     server.server_close()
 
@@ -162,7 +166,7 @@ def test_an_edit_delegate_publishes_plain_source_refuses_the_rest_asks_its_lead_
     assert tools.startswith("ask(question) ") and "; note(text) " in tools and tools.count("(") == 2, f"the model has these two tools and no other: {tools}"
     assert "sent to " in text.split("note=")[1].split(" | ")[0], "a note returns at once, told what it did"
     assert "no such verb" in text.split("generic=")[1].split(" | ")[0] and "no such verb" in text.split("inbox=")[1].split(" | ")[0], "the generic verbs are gone"
-    assert "unavailable" not in text.split("hook=")[1].split(" | ")[0], "the notification hook reads the inbox of the helper's own session"
+    assert text.split("hook=")[1].split(" | again=")[0] == "", "the answer reached the question, so the hook has nothing more to say"
     assert "--strict-mcp-config" in text and "--tools Read,Grep,Glob,Edit,Write" in text and "--output-format json" in text
     assert "Publication, in the launcher's words" in text and "Applied 1 file" in text and "Refused " in text
     assert (project / "src" / "feature.py").read_text() == "def feature():\n    return 1\n"
@@ -241,34 +245,37 @@ def test_the_scratch_copy_is_gone():
 
 def test_a_delegates_two_tools_go_to_its_lead_a_question_waits_for_it_and_nothing_else_is_a_tool():
     asked, noted = [], []
-    run = delegate_confined.lead_only(lambda text: asked.append(text) or "the answer", lambda text: noted.append(text) or "noted")
+    run = lead_bridge.lead_only(lambda text: asked.append(text) or "the answer", lambda text: noted.append(text) or "noted")
     assert run("ask", {"question": "q"}) == "the answer"
     assert run("note", {"text": "n"}) == "noted"
     for tool in ("workspace_send", "workspace_inbox", "workspace_announce", "workspace_claim", "workspace_attach"):
-        assert run(tool, {}) == delegate_confined.REFUSED_VERB
+        assert run(tool, {}) == lead_bridge.REFUSED_VERB
     assert asked == ["q"] and noted == ["n"]
-    broken = delegate_confined.lead_only(lambda _t: (_ for _ in ()).throw(ValueError("not sent: the board is gone")), lambda t: t)
-    assert broken("ask", {"question": "q"}) == "not sent: the board is gone", "a failure is told in words"
+    broken = lead_bridge.lead_only(lambda _t: (_ for _ in ()).throw(ValueError("not sent: the board is gone")), lambda t: t)
+    with pytest.raises(ValueError, match="the board is gone"):
+        broken("ask", {"question": "q"})   # the bridge turns it into its own fixed sentence; the words never reach the box
 
 
 def test_the_model_sees_the_two_lead_tools_and_the_harness_takes_no_other_server(tmp_path):
     rec = store.Delegate("child", "lead-1", "board", "t", str(tmp_path), "m", source=str(tmp_path), edit=True, max_turns=7)
-    context = SimpleNamespace(client_argv=lambda *words: ["/py", "-I", "/h/client.py", "--socket", "/s", "--pid", "1", *words],
-                              hook=lambda event: f"hook {event}", file=lambda name: tmp_path / name)
+    context = isolation.Context(home=tmp_path, config=tmp_path / "config", stage=str(tmp_path), python="/py", client="/h/client.py", socket="/s", pid=1,
+                                base_url="http://127.0.0.1:1", alias="m", window=8192)
     rendering = delegate_confined.renderer(rec, "/bin/claude")(context)
     argv = list(rendering.argv)
     assert argv[argv.index("--tools") + 1] == "Read,Grep,Glob,Edit,Write" and "Bash" not in argv[argv.index("--tools") + 1]
     assert "--disallowedTools" not in argv, "no tool is offered and then hidden: the session's table has two"
     assert "--strict-mcp-config" in argv and argv[argv.index("--max-turns") + 1] == "7"
     assert argv[argv.index("--output-format") + 1] == "json" and "--print" in argv
-    assert list(json.loads(rendering.files["session/mcp.json"])["mcpServers"]) == ["lead"]
+    assert json.loads(rendering.files["session/mcp.json"])["mcpServers"] == {
+        "lead": {"command": "/py", "args": ["-I", "/h/client.py", "--socket", "/s", "--pid", "1", "mcp"]}}
     assert set(session_verbs.LEAD) == {"ask", "note"} and {f"mcp__lead__{name}" for name in session_verbs.LEAD} == set(LEAD_TOOLS)
     assert "mcp__lead__ask(question)" in rendering.files["session/brief.md"] and "mcp__lead__note(text)" in rendering.files["session/brief.md"]
 
 
 def test_the_helpers_token_is_found_on_the_leads_board_when_the_project_is_on_another(editing, tmp_path):
     """The live failure: the lead ran in one checkout and named another as the project, so the helper (a subagent of the lead) was made on the lead's
-    board while its notification hook looked for its token on the board of the project, a fresh one, and found none for every call."""
+    board while its notification hook looked for its token on the board of the project, a fresh one, and found none for every call. What the hook
+    says is the lead's own message and nothing else, once."""
     node, lead, project = editing
     other = checkouts(tmp_path / "elsewhere").primary.resolve()
     (tmp_path / "harness-NOT-CLAUDE-CODE.py").write_text(HARNESS.format(python=os.path.realpath(sys.executable), project=str(other), lead=lead.name))
@@ -277,14 +284,16 @@ def test_the_helpers_token_is_found_on_the_leads_board_when_the_project_is_on_an
     [name] = agent_names(node, lead)
     assert fresh != store.load(name).board == node.board, "the project is on a board of its own, fresh to this lead"
     node.session(lead).post(name, "status", "a word for the helper before it starts")
+    node.session(node.member("someone-else")).post(name, "status", "a stranger's word")
     answers = answering(node, lead, name, "main.py")
     assert delegate_run.run(name) == 0
     answers.join(30)
     answers.done.set()
     text = store.result(name)["text"]
-    hook = text.split("hook=")[1].split(" | home=")[0]
-    assert "unavailable" not in hook and "no session of its own" not in hook, hook
-    assert "workspace (data from other agents)" in hook and lead.name in hook, f"the helper's inbox on the lead's board was read: {hook}"
+    hook = text.split("hook=")[1].split(" | again=")[0]
+    context = json.loads(hook)["hookSpecificOutput"]["additionalContext"]
+    assert context == f"{lead_bridge.FROM_LEAD.format(lead=lead.name)}\na word for the helper before it starts", f"the inbox on the lead's board: {hook}"
+    assert text.split("again=")[1].split(" | home=")[0] == "", "each message is given once"
     assert f"{lead.name} answered:" in text and "main.py" in text, "and its question to the lead was answered"
     assert (other / "src" / "feature.py").exists() and not (project / "src").exists(), "the work was published to the project it was asked to change"
 

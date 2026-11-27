@@ -206,7 +206,7 @@ class TestSessionFiles:
         odd.mkdir()
         rail = harnesshook.Rail(coding_policy.Policy("read-only"), "x y", (str(odd),), ())
         bridge = isolation.SessionBridge(isolation.Handlers(lambda event, payload: harnesshook.pre(payload, rail), lambda *_: {}),
-                                         isolation.Terms(False, 4096), root=str(Path("/tmp")), unadmitted="a test rig: the only client is the hook command the test runs")
+                                         isolation.Terms(4096), root=str(Path("/tmp")), unadmitted="a test rig: the only client is the hook command the test runs")
         socket_path = bridge.start()
         try:
             cmd = context(tmp_path, socket=socket_path, pid=os.getpid()).hook("pre")
@@ -242,11 +242,11 @@ class TestCodex:
         assert got["model_context_window"] == 262144
         assert got["model_auto_compact_token_limit"] == int(262144 * 0.9)
         assert got["features"]["hooks"] is True
-        assert got["features"]["code_mode"]["direct_only_tool_namespaces"] == ["mcp__workspace"]
+        assert got["features"]["code_mode"]["direct_only_tool_namespaces"] == ["mcp__lead"]
         assert got["hooks"]["PreToolUse"][0]["hooks"][0]["command"] == "PRE"
         assert got["hooks"]["PostToolUse"][0]["hooks"][0]["command"] == "POST"
         assert "SessionStart" not in got["hooks"], "no hook of the harness's own reaches a poolhouse command the box cannot run"
-        assert got["mcp_servers"]["workspace"] == {"command": "/py", "args": list(mcp[1:]), "startup_timeout_sec": 30, "required": True}
+        assert got["mcp_servers"] == {"lead": {"command": "/py", "args": list(mcp[1:]), "startup_timeout_sec": 30, "required": True}}
         assert text == codex.config_toml("http://127.0.0.1:8080/", "qwen", 262144, ("PRE", "POST", 300.0), mcp)
 
     def test_codexs_own_sandbox_is_off_inside_the_confinement_and_it_never_asks(self):
@@ -327,7 +327,8 @@ class TestLaunch:
         assert seen["config"]["model_context_window"] == 262144
         bridge = seen["config"]["model_providers"]["poolhouse"]["base_url"]
         assert bridge.startswith("http://127.0.0.1:") and ":8899/" not in bridge, "Codex reaches the bridge; the server's port is in no profile"
-        scope = seen["config"]["mcp_servers"]["workspace"]
+        assert list(seen["config"]["mcp_servers"]) == ["lead"], "one server, the lead's"
+        scope = seen["config"]["mcp_servers"]["lead"]
         assert scope["required"] is True
         assert scope["command"] == os.path.realpath(sys.executable)
         assert scope["args"][-1] == "mcp" and "--socket" in scope["args"] and "env" not in scope
@@ -505,7 +506,10 @@ class TestHarnessSession:
 
     def test_the_brief_names_who_the_agent_obeys_and_that_everything_else_is_data(self):
         text = harnessid.brief("n", "alias", "codex", "claude", ["reviewer"])
-        assert "--agent n" in text and "the lead (claude), reviewer" in text and "data written by" in text
+        assert "mcp__lead__ask" in text and "mcp__lead__note" in text and "--agent" not in text, "the box has the two tools and no command"
+        assert "the lead (claude), reviewer" in text and "data written by" in text
+        opencode_text = harnessid.brief("n", "alias", "opencode", "claude")
+        assert "lead_ask" in opencode_text and "lead_note" in opencode_text and "mcp__lead__" not in opencode_text
 
 
 @pytest.mark.usefixtures("confinable", "from_a_terminal")

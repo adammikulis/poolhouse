@@ -27,6 +27,7 @@ from poolhouse import (
     harnessid,
     harnesspolicy,
     jobs,
+    lead_bridge,
 )
 from poolhouse.guard import start as run_of
 from poolhouse.guard.hooks import sdk_guard
@@ -97,7 +98,7 @@ def test_a_blank_task_is_refused_with_the_reason(lead_node, detached, capsys):
 def bridge_of(node, lead, name="child"):
     child = node.member(name, harness="poolhouse-agent", parent=lead)
     states: list[tuple[str, str]] = []
-    return child, delegate_run.Bridge(node.session(child), lead.name, child.name, lambda s, d="": states.append((s, d))), states
+    return child, lead_bridge.Bridge(node.session(child), lead.name, child.name, lambda s, d="": states.append((s, d))), states
 
 
 def test_a_note_reaches_the_lead_labelled_as_data_from_the_delegate(lead_node):
@@ -113,7 +114,7 @@ def test_a_note_reaches_the_lead_labelled_as_data_from_the_delegate(lead_node):
 
 def test_a_question_waits_for_the_leads_answer_and_only_the_leads(lead_node, monkeypatch):
     node, lead, _project = lead_node
-    monkeypatch.setattr(delegate_run, "POLL_S", 0.05)
+    monkeypatch.setattr(lead_bridge, "POLL_S", 0.05)
     child, bridge, states = bridge_of(node, lead)
     other = node.member("someone-else")
     got: list[str] = []
@@ -132,19 +133,54 @@ def test_a_question_waits_for_the_leads_answer_and_only_the_leads(lead_node, mon
     assert [s for s, _d in states] == ["asking", "working"]
 
 
+def test_the_leads_messages_are_each_given_once_when_notifications_overlap_a_question_that_waits(lead_node, monkeypatch):
+    node, lead, _project = lead_node
+    monkeypatch.setattr(lead_bridge, "POLL_S", 0.05)
+    child, bridge, _states = bridge_of(node, lead)
+    node.session(lead).post(child.name, "status", "word-before")
+    given: list[str] = []
+    answered: list[str] = []
+    over = threading.Event()
+
+    def notifying() -> None:
+        while not over.is_set():
+            given.append(bridge.news())
+
+    notifiers = [threading.Thread(target=notifying, daemon=True) for _ in range(4)]
+    asking = threading.Thread(target=lambda: answered.append(bridge.ask("which file is main?")), daemon=True)
+    asking.start()
+    deadline = time.time() + 20
+    while not [e for e in node.session(lead).read(inbox=True).entries if e.fields["type"] == "question"] and time.time() < deadline:
+        time.sleep(0.05)
+    for each in notifiers:
+        each.start()
+    node.session(lead).post(child.name, "answer", "word-answer")
+    asking.join(20)
+    node.session(lead).post(child.name, "status", "word-after")
+    while "word-after" not in "".join(given) and time.time() < deadline:
+        time.sleep(0.05)
+    over.set()
+    for each in notifiers:
+        each.join(20)
+    told, everything = "".join(given), "".join(given) + "".join(answered)
+    assert answered and "word-answer" in answered[0] and "word-before" not in answered[0]
+    assert "word-answer" not in told, "a notification does not take the answer a question waits for"
+    assert [everything.count(word) for word in ("word-before", "word-answer", "word-after")] == [1, 1, 1]
+
+
 def test_a_question_ends_when_the_lead_ended_or_the_delegate_is_stopped(lead_node, monkeypatch):
     node, lead, _project = lead_node
-    monkeypatch.setattr(delegate_run, "POLL_S", 0.05)
+    monkeypatch.setattr(lead_bridge, "POLL_S", 0.05)
     _child, bridge, _states = bridge_of(node, lead)
     node.session(lead).retire(lead.name)
     assert "has ended and will not answer" in bridge.ask("anyone?")
-    delegate_run.STOPPED.set()
+    lead_bridge.STOPPED.set()
     try:
         _child2, stopping, _s = bridge_of(node, node.member("other-lead"), "child2")
         with pytest.raises(ValueError, match="being stopped"):
             stopping.ask("still there?")
     finally:
-        delegate_run.STOPPED.clear()
+        lead_bridge.STOPPED.clear()
 
 
 def plumbing(rec, bridge, mine):
@@ -155,7 +191,7 @@ def plumbing(rec, bridge, mine):
 
 def test_a_delegate_that_asks_gets_the_answer_finishes_and_tells_the_lead(lead_node, detached, monkeypatch, capsys):
     node, lead, _project = lead_node
-    monkeypatch.setattr(delegate_run, "POLL_S", 0.05)
+    monkeypatch.setattr(lead_bridge, "POLL_S", 0.05)
     monkeypatch.setattr(delegate_run, "converse", plumbing)
     started("--task", "name the main file")
     [name] = agent_names(node, lead)

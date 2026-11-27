@@ -44,7 +44,7 @@ from poolhouse.interventions import Call
 from poolhouse.keystore import ENV_NONINTERACTIVE
 from poolhouse.serve.process import kill_process_tree
 
-__all__ = ["FAILURES", "Rail", "confined_pre", "nudge", "post", "pre", "run"]
+__all__ = ["FAILURES", "Rail", "confined_post", "confined_pre", "nudge", "post", "pre", "run"]
 
 CLEANUP_RESERVE_S = 1.5
 NUDGE_S = hook_bootstrap.POST_SECONDS - CLEANUP_RESERVE_S
@@ -111,6 +111,14 @@ def confined_pre(payload: dict[str, Any], rail: Rail) -> dict[str, Any]:
     return _answer(HOOK_EVENTS["pre"], decision.action, f"poolhouse: {said}")
 
 
+def confined_post(said: str) -> dict[str, Any]:
+    """The PostToolUse answer for a harness in the isolated launcher's confinement: ``said``, what its lead sent it, added to the model's context,
+    and nothing when there is nothing. `post` names a workspace command to run, which the box does not have."""
+    if not said:
+        return {}
+    return {"hookSpecificOutput": {"hookEventName": HOOK_EVENTS["post"], "additionalContext": said}}
+
+
 def _reader_run(command, **kwargs):
     """Run the owned notification group under its wall-clock deadline."""
     process = platform.start_process(command, stdin=kwargs['stdin'], stdout=subprocess.PIPE,
@@ -126,13 +134,12 @@ def _reader_run(command, **kwargs):
     return subprocess.CompletedProcess(command, process.returncode, output, errors)
 
 
-def nudge(agent: str, rail: Rail | None = None, *, board: str = "") -> str:
-    """Return unread metadata and redacted advisory failure references. ``board`` is the board the agent's session is on, when that is not the
-    board of the project the rail names (a delegate's helper is made on the lead's board, whatever project it works on)."""
+def nudge(agent: str, rail: Rail | None = None) -> str:
+    """Return unread metadata and redacted advisory failure references."""
     try:
         timeout = min(NUDGE_S, max(0.05, hook_bootstrap.remaining() - CLEANUP_RESERVE_S))
         done = _reader_run(runtime.module_argv(NOTIFIER, Path(rail.roots[0]) if rail and rail.roots else Path.cwd(), agent,
-                            str(rail.roots[0] if rail and rail.roots else Path.cwd()), *([board] if board else [])), capture_output=True, text=True,
+                            str(rail.roots[0] if rail and rail.roots else Path.cwd())), capture_output=True, text=True,
                            timeout=timeout, check=False, stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired as error:
         partial = error.stdout or ""
@@ -154,10 +161,10 @@ def nudge(agent: str, rail: Rail | None = None, *, board: str = "") -> str:
     return text
 
 
-def post(agent: str, rail: Rail | None = None, *, board: str = "") -> dict[str, Any]:
+def post(agent: str, rail: Rail | None = None) -> dict[str, Any]:
     """Return bounded unread-message metadata and checkpoint diagnostics."""
     hook_bootstrap.stage("notification-reader")
-    text = nudge(agent, rail, board=board)
+    text = nudge(agent, rail)
     if not text:
         return {}
     return {"hookSpecificOutput": {"hookEventName": HOOK_EVENTS["post"],

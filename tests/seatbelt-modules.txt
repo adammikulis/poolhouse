@@ -56,3 +56,4 @@ test_coding_admission.py
 test_pi_harness.py
 test_opencode_harness.py
 test_delegate_confined.py
+test_lead_tools.py

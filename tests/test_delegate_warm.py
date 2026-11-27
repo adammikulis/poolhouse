@@ -17,6 +17,7 @@ from poolhouse import (
     delegate_store as store,
     harness,
     hub,
+    lead_bridge,
 )
 from poolhouse.serve import cli, holding, ops
 from poolhouse.serve.backend import LlamaServerBackend
@@ -43,7 +44,7 @@ def test_the_attribution_line_that_changes_every_request_is_turned_off():
 def test_two_delegates_of_one_lead_start_from_the_same_system_prompt_and_differ_in_the_message():
     one, two = a_delegate("claude-aaaaaa"), a_delegate("claude-bbbbbb")
     for made in (lambda rec: delegate_confined.brief_of(rec),
-                 lambda rec: delegate_run.options(rec, delegate_run.Bridge(None, rec.lead, rec.name, lambda *_: None))["system_prompt"]["append"]):
+                 lambda rec: delegate_run.options(rec, lead_bridge.Bridge(None, rec.lead, rec.name, lambda *_: None))["system_prompt"]["append"]):
         assert made(one) == made(two)
         assert "claude-aaaaaa" not in made(one)
     assert one.message() != two.message() and "claude-aaaaaa" in one.message() and "read the tests" in one.message()

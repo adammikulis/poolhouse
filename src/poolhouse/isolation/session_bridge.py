@@ -1,4 +1,4 @@
-"""The session bridge: hooks and workspace verbs run in the parent, and the confined command is a client of one channel
+"""The session bridge: hooks and the two tools to the lead run in the parent, and the confined command is a client of one channel
 (docs/design-isolated-launcher.md, 7).
 
 One parent-owned service per session on a unix socket in a directory of mode 0700 with a random name; the channel is the only endpoint a
@@ -50,6 +50,7 @@ MOST_FRAMES = 60
 MINUTE = 60.0
 BUSY = "That is more frames than a session sends in a minute."
 HOOK_FAILED = "The hook could not decide, so the call is blocked."
+NEWS_FAILED = "The lead's messages could not be read ({kind})."
 VERB_FAILED = "The workspace could not run {verb} ({kind})."
 """The fixed sentences of a failure: what failed and its kind, never a path, a name or a word the parent holds (the detail goes to the log)."""
 
@@ -57,8 +58,8 @@ VERB_FAILED = "The workspace could not run {verb} ({kind})."
 @dataclass(frozen=True, slots=True)
 class Handlers:
     """What the launcher closes into a bridge: ``hook`` decides one hook event with the launch's own rail (`harnesshook.pre`, `post` or
-    `stop`), ``workspace`` runs one workspace tool as the one session the bridge acts for, ``log`` writes an activity record and ``events``
-    tells the sentinel. The bridge imports none of them, so no import goes up."""
+    `stop`), ``workspace`` runs one of the two lead tools as the one session the bridge acts for, ``log`` writes an activity record and
+    ``events`` tells the sentinel. The bridge imports none of them, so no import goes up."""
 
     hook: Callable[[str, dict[str, Any]], dict[str, Any]]
     workspace: Callable[[str, Mapping[str, Any]], Any]
@@ -68,15 +69,9 @@ class Handlers:
 
 @dataclass(frozen=True, slots=True)
 class Terms:
-    """What the launcher fixes about the session the bridge serves: whether it may act in the workspace (a read-only or planning session may
-    only read) and the window the model serves, which bounds a frame."""
+    """What the launcher fixes about the session the bridge serves: the window the model serves, which bounds a frame."""
 
-    writable: bool
     window: int
-    claim_ttl_s: float = session_verbs.TTL_CAP
-    """The longest a claim or a heartbeat of the session may last: the workspace's configured `claim_ttl_s`, which the launcher passes in."""
-    verbs: Mapping[str, session_verbs.Verb] = field(default_factory=lambda: session_verbs.VERBS)
-    """The one closed table of the session: the workspace's (`VERBS`) or a delegate's two ways to its lead (`LEAD`)."""
 
 
 @dataclass(slots=True)
@@ -104,12 +99,11 @@ class SessionBridge:
             raise IsolationRefused(sentence("windows_network"))
         if admit is None and not unadmitted.strip():
             raise ValueError("a session bridge is made with an admit predicate, or with the reason it has none")
-        self.handlers, self.writable, self.limit, self.idle, self._admit = handlers, terms.writable, int(terms.window) * 4, idle, admit
-        self.unadmitted, self.claim_ttl_s, self.verbs = unadmitted.strip()[:200], float(terms.claim_ttl_s), terms.verbs
+        self.handlers, self.limit, self.idle, self._admit = handlers, int(terms.window) * 4, idle, admit
+        self.unadmitted = unadmitted.strip()[:200]
         self.budget = max(MOST_FRAMES, int(terms.window) // FRAME_TOKENS)
         self._times: deque[float] = deque()
         self._post = threading.Lock()
-        self._last_post: dict[str, Any] = {}
         self.directory = str(Path(os.path.realpath(root)) / ("ph-" + secrets.token_hex(8)))
         self.path = str(Path(self.directory) / "s")
         self.pid = os.getpid()
@@ -223,7 +217,7 @@ class SessionBridge:
             return self._refuse("unknown", "That is not a frame this bridge answers.")
         if verb == "tools":
             self._count("tools")
-            return {"tools": session_verbs.describe(self.verbs)}
+            return {"tools": session_verbs.describe()}
         return self._hook(frame) if verb == "hook" else self._workspace(frame)
 
     def _grant(self, frame: Mapping[str, Any]) -> dict[str, Any]:
@@ -240,36 +234,38 @@ class SessionBridge:
         event, payload = frame.get("event"), frame.get("payload")
         if event not in EVENTS or not isinstance(payload, dict):
             return self._refuse("hook", "That is not a hook event.")
-        if event == "post" and not self._post.acquire(blocking=False):   # one notification runs at a time; the rest are answered as the last was
+        # one notification runs at a time, and what one answers reaches the model once: a frame that overlaps it is answered empty
+        if event == "post" and not self._post.acquire(blocking=False):
             self._count("hook")
-            return {"answer": self._last_post}
+            return {"answer": {}}
         try:
             answer = self.handlers.hook(str(event), payload)
-        except FAILURES:
-            return self._refuse("hook", HOOK_FAILED)
+        except FAILURES as error:
+            if event != "post":
+                return self._refuse("hook", HOOK_FAILED)
+            with contextlib.suppress(*FAILURES):   # the detail is the parent's to read, in its log; a notification blocks nothing
+                self.handlers.log("isolation.hook_failed", subject="hook:post", outcome="failed",
+                                  meta={"kind": type(error).__name__, "detail": str(error)[:400]})
+            return self._refuse("hook", NEWS_FAILED.format(kind=type(error).__name__))
         finally:
             if event == "post":
                 self._post.release()
-        if event == "post":
-            self._last_post = answer if isinstance(answer, dict) else {}
         self._count("hook")
         return {"answer": answer}
 
     def _workspace(self, frame: Mapping[str, Any]) -> dict[str, Any]:
-        name = frame.get("name")
+        name = str(frame.get("name"))
         try:
-            verb, arguments = session_verbs.check(str(name), frame.get("arguments"), ttl_cap=self.claim_ttl_s, table=self.verbs)
+            arguments = session_verbs.check(name, frame.get("arguments"))
         except ValueError as why:
             return self._refuse("workspace", f"Refused: {why}.")
-        if verb.acts and not self.writable:
-            return self._refuse("workspace", "Refused: this session may only read the workspace.")
         try:
-            result = self.handlers.workspace(verb.tool, arguments)
+            result = self.handlers.workspace(name, arguments)
         except FAILURES as error:
             self._count("workspace_failed", refused=True)
             with contextlib.suppress(*FAILURES):   # the detail is the parent's to read, in its log
-                self.handlers.log("isolation.workspace_failed", subject=f"workspace:{verb.tool}", outcome="failed",
+                self.handlers.log("isolation.workspace_failed", subject=f"workspace:{name}", outcome="failed",
                                   meta={"kind": type(error).__name__, "detail": str(error)[:400]})
-            return {"error": VERB_FAILED.format(verb=str(name)[:40], kind=type(error).__name__)}
+            return {"error": VERB_FAILED.format(verb=name, kind=type(error).__name__)}
         self._count("workspace")
         return {"result": result}
