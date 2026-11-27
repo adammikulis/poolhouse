@@ -578,7 +578,7 @@ def test_up_refuses_a_flag_the_build_lacks_before_loading(tmp_path, monkeypatch,
 
     monkeypatch.setattr(lifecycle_cli, "_asked_spec", asked)
     monkeypatch.setattr(hub, "room", lambda: 1 << 40)
-    code = cli.main(["up", str(gguf), "--binary", str(binary), "--no-profile"])
+    code = cli.main(["up", str(gguf), "--binary", str(binary), "--no-profile", "--port", str(free_port())])
     err = capsys.readouterr().err
     assert code == 2
     assert "this llama-server has no --draft-max; it has --spec-draft-n-max" in err

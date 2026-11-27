@@ -7,6 +7,7 @@ memory together, and queues the requests sent to them.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import subprocess
 import sys
@@ -14,6 +15,7 @@ import time
 from pathlib import Path
 
 import pytest
+from machine_guard import stop_started
 
 from poolhouse import gate, limits
 from poolhouse.http import Options, request_json
@@ -80,12 +82,8 @@ def machine(tmp_path, monkeypatch):
         time.sleep(0.2)
     assert broker_wire.running() == daemon.pid
     yield
-    try:
-        for server in broker_wire.status()["servers"]:
-            if server["pid"]:
-                kill_process_tree(server["pid"])
-    except (OSError, ValueError, broker_wire.BrokerError):
-        pass
+    with contextlib.suppress(OSError, ValueError, broker_wire.BrokerError):
+        stop_started(broker_wire.status()["servers"])
     kill_process_tree(daemon.pid)
 
 
