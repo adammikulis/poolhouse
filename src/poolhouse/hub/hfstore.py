@@ -21,11 +21,14 @@ import secrets
 import stat
 from contextlib import ExitStack, suppress
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from poolhouse import files, hub
-from poolhouse.hub import remote
 from poolhouse.hub.naming import _SHARD
 from poolhouse.safenames import safe_filename, safe_join
+
+if TYPE_CHECKING:  # for the annotations only: the Hub client brings the network, which reading the cache does not need
+    from poolhouse.hub import remote
 
 COMMIT = re.compile(r"[a-f0-9]{40}")
 DIGEST = re.compile(r"[a-f0-9]{40}|[a-f0-9]{64}")
