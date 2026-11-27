@@ -35,6 +35,11 @@ FREE = ("query",)
 """The one text argument that is not a name and not shown to anyone: the words a search is for."""
 
 
+CLAIMED = ("branch", "port", "server")
+"""The claim kinds a confined session may name. The key of any other kind is a folder, which the parent resolves and runs git in; the session has
+no folder of the host's to name, and one it writes in its box must never be the parent's to run git in."""
+
+
 @dataclass(frozen=True, slots=True)
 class Verb:
     """One verb: the workspace tool that runs it, its arguments (name to type; a name in ``needs`` has no default), whether it acts, and the
@@ -54,13 +59,15 @@ class Verb:
     """What the tool is for, in the words a small model reads beside its name (empty: the generic sentence of the client)."""
     hints: Mapping[str, str] = field(default_factory=dict)
     """What each argument is, by name."""
+    only: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    """The values an argument is held to, by name, for an argument with a closed list of them."""
 
 
 VERBS: dict[str, Verb] = {
     "status": Verb("workspace_status", {}),
     "inbox": Verb("workspace_inbox", {"limit": WHOLE}),
     "thread": Verb("workspace_thread", {"root": TEXT, "limit": WHOLE}, ("root",)),
-    "who_owns": Verb("workspace_who_owns", {"kind": TEXT, "key": TEXT}, ("kind", "key")),
+    "who_owns": Verb("workspace_who_owns", {"kind": TEXT, "key": TEXT}, ("kind", "key"), only={"kind": CLAIMED}),
     "claims": Verb("workspace_claims", {"for_agent": TEXT, "kind": TEXT}),
     "notes_search": Verb("workspace_notes_search", {"query": TEXT, "kind": TEXT, "include_old": FLAG, "limit": WHOLE}, ("query",)),
     "note_get": Verb("workspace_note_get", {"note_id": TEXT}, ("note_id",)),
@@ -74,8 +81,8 @@ VERBS: dict[str, Verb] = {
     "ack": Verb("workspace_ack", {"seq": TEXT}, ("seq",), acts=True),
     "note_add": Verb("workspace_note_add", {"kind": TEXT, "title": TEXT, "body": TEXT, "source": TEXT}, ("kind", "title", "body"),
                      acts=True, lines=("title", "source"), bodies=("body",), kinds=("kind",)),
-    "claim": Verb("workspace_claim", {"kind": TEXT, "key": TEXT, "ttl_s": NUMBER}, ("kind", "key"), acts=True),
-    "release": Verb("workspace_release", {"kind": TEXT, "key": TEXT}, ("kind", "key"), acts=True),
+    "claim": Verb("workspace_claim", {"kind": TEXT, "key": TEXT, "ttl_s": NUMBER}, ("kind", "key"), acts=True, only={"kind": CLAIMED}),
+    "release": Verb("workspace_release", {"kind": TEXT, "key": TEXT}, ("kind", "key"), acts=True, only={"kind": CLAIMED}),
     "heartbeat": Verb("workspace_heartbeat", {"ttl_s": NUMBER}, acts=True),
     "attach": Verb("workspace_attach", {"to": TEXT, "text": TEXT, "name": TEXT, "note": TEXT, "reply_to": TEXT, "derived_from": TEXT},
                    ("to", "text"), acts=True, lines=("note",), bodies=("text",), always=("note",)),
@@ -128,6 +135,9 @@ def check(name: str, arguments: object, *, ttl_cap: float = TTL_CAP, table: Mapp
     ready = {each: _typed(each, value, verb.takes[each]) for each, value in arguments.items()}
     if "ttl_s" in ready:
         ready["ttl_s"] = max(0, min(ready["ttl_s"], ttl_cap))
+    for each, held in verb.only.items():
+        if each in ready and ready[each] not in held:
+            raise ValueError(f"the argument {each} is one of {', '.join(held)} here")
     for each in verb.kinds:
         if each in ready and reserved(str(ready[each])):
             raise ValueError("that kind of message is the launcher's")

@@ -42,6 +42,7 @@ from poolhouse.sandbox import run
 from poolhouse.workspace import tools
 from tests.confined_kit import repository
 from tests.isolation_kit import MODEL, Canned
+from tests.isolation_world import git
 from tests.sandbox_kit import policy
 
 pytest_plugins = ["node_kit", "tests.confined_kit"]
@@ -541,6 +542,23 @@ def test_the_table_puts_the_label_in_front_of_every_text_a_reader_will_read_and_
     assert set(session_verbs.VERBS) == {"status", "inbox", "thread", "who_owns", "claims", "notes_search", "note_get", "file", "file_search", "audit_verify",
                                         "reputation", "send", "announce", "ack", "note_add", "claim", "release", "heartbeat", "attach"}, (
         "the table is closed: no administration, grant, registration, path or task verb")
+
+
+@pytest.mark.parametrize("kind", ["worktree", "area", "file", "install"])
+def test_a_claim_that_names_a_folder_is_refused_to_a_boxed_session_and_no_git_runs_in_it(room, monkeypatch, tmp_path, kind):
+    """A claim key of a path kind is resolved, and read with git, by the parent: a boxed session names no folder (a real repository the key points
+    into, and git's own trace of what ran)."""
+    with tempfile.TemporaryDirectory(prefix="pc-", dir="/tmp") as made:
+        named = repository(Path(made).resolve() / "w")
+        git(named, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm", "x")
+        trace = tmp_path / "git-trace"
+        monkeypatch.setenv("GIT_TRACE", str(trace))
+        for verb in ("claim", "who_owns", "release"):
+            answer = said(room.path, {"verb": "workspace", "name": verb, "arguments": {"kind": kind, "key": f"{named}/src"}})
+            assert "refused" in answer, (verb, answer)
+        assert not trace.exists() or str(named) not in trace.read_text(), "git ran in a folder the box named"
+    assert not room.node.session(room.confined).claims()
+    assert "result" in said(room.path, {"verb": "workspace", "name": "claim", "arguments": {"kind": "branch", "key": "feature/x"}})
 
 
 HOSTILE_HOOKS = r"""
