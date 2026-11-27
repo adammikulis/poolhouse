@@ -152,7 +152,7 @@ def test_downloads_concurrent_exact_start_attaches_one_owned_row(store, monkeypa
         time.sleep(0.03)  # Expose the old gap between lookup and insertion.
         return original(**kwargs)
 
-    def run(row, key, autodownload):
+    def run(row, autodownload):
         owned.append(threading.current_thread())
         executions.append(row.id)
         running.set()

@@ -103,6 +103,8 @@ jobs:
         run: |
           binary=$(python scripts/testnode.py build)
           echo "DEV_TEST_NODE_BINARY=$binary" >> "$GITHUB_ENV"
+          # the native tests compile the crate with --offline, and its test dependencies are not part of the node build
+          cargo fetch --locked --manifest-path app/Cargo.toml
 
       # This shard's files; a test that outlasts 120 s fails alone and the run goes on. junit.xml
       # holds every test's time, which scripts/ci_shards.py record --junit turns into the durations file.
@@ -175,6 +177,8 @@ jobs:
         run: |
           binary=$(python scripts/testnode.py build)
           echo "DEV_TEST_NODE_BINARY=$binary" >> "$GITHUB_ENV"
+          # the native tests compile the crate with --offline, and its test dependencies are not part of the node build
+          cargo fetch --locked --manifest-path app/Cargo.toml
 
       - name: tests
         run: |
@@ -484,6 +488,8 @@ jobs:
         run: |
           binary=$(python scripts/testnode.py build)
           echo "DEV_TEST_NODE_BINARY=$binary" >> "$GITHUB_ENV"
+          # the native tests compile the crate with --offline, and its test dependencies are not part of the node build
+          cargo fetch --locked --manifest-path app/Cargo.toml
 
       # The checkout is the pull request merged into its base; the first parent is the base commit the change is measured from.
       - name: the tests the pull request reaches

@@ -3,6 +3,7 @@ import json
 
 import pytest
 from browser_expect import expect
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_studio_canvas_browser import studio_browser  # noqa: F401
 from test_studio_n8n import workflow
 from test_studio_n8n_browser import import_page, served  # noqa: F401

@@ -250,7 +250,8 @@ fn how_often_the_person_answered_never_refuses_a_request() {
 fn a_second_request_while_one_is_open_is_told_what_is_open_and_what_to_do() {
     let (mut firsts, _) = person();
     firsts.ask(Purpose::Key, "demo/a", KEY, "", 0).unwrap();
-    let Err(Error::Quota(said)) = firsts.ask(Purpose::Phone, "demo/a", "", "", 6) else { panic!("a second question of the same asker is refused while one is open") };
+    let Err(refused @ Error::Quota(_)) = firsts.ask(Purpose::Phone, "demo/a", "", "", 6) else { panic!("a second question of the same asker is refused while one is open") };
+    let said = refused.to_string();
     assert!(said.contains("your first person key") && !said.contains("minutes"), "it says what is waiting for the person, not for how long to wait: {said}");
 }
 

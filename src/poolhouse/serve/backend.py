@@ -769,12 +769,12 @@ class LlamaServerBackend(ServerBackend):
     def start(self, spec: ServerSpec, *, lease: Lease, timeout: float = 300.0,
               **starting: bool) -> ServerInfo:
         grant.require(lease, Lease)
-        token = _PINNED.set((self, self.binary))   # per start and per thread
-        try:
-            with self.preparing(spec, lease):
+        with self.preparing(spec, lease):   # a backend may install its binary here, so it is found only inside
+            token = _PINNED.set((self, self.binary))   # per start and per thread
+            try:
                 return self._start_native(spec, lease=lease, timeout=timeout, **starting)
-        finally:
-            _PINNED.reset(token)
+            finally:
+                _PINNED.reset(token)
 
     def _start_native(self, spec: ServerSpec, *, lease: Lease, timeout: float = 300.0,
               **starting: bool) -> ServerInfo:

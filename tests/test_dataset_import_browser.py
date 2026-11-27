@@ -4,6 +4,7 @@ import threading
 
 import pytest
 from browser_expect import expect
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_dataset_catalogue import REPO, remote as _remote
 from test_dataset_imports import served as _served
 from test_studio_canvas_browser import studio_browser as _studio_browser

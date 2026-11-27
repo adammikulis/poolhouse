@@ -6,6 +6,7 @@ import json
 
 import pytest
 from browser_expect import expect
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from studio_commands import studio_command
 from test_fleet_ui import Serving
 from test_studio_canvas_browser import studio_browser  # noqa: F401

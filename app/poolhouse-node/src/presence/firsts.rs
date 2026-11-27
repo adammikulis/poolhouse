@@ -22,6 +22,9 @@ use crate::gov::keys::Claim;
 /// How long what a yes makes (the one-time secret, a founding yes) is good for.
 pub(crate) const SECRET_FOR_MS: u64 = 10 * 60_000;
 
+/// How many prompts one asker has open at once (`Asker::asking` holds no more).
+const OPEN_ASKS_PER_ASKER: usize = 1;
+
 /// What the asker is told when the person's yes found nothing to answer for, or the computer could not make the secret a yes makes: failures of the
 /// node, which are not the person's no.
 const CARD_GONE: &str = "The person said yes, but the change it was for is no longer waiting (a change waits ten minutes): draft it again and ask again.";
@@ -116,10 +119,13 @@ impl Firsts {
     /// tell the person; it is never told to wait for a time to pass, because nothing is waiting for a time to pass.
     fn admit(&self, by: &str, now: u64) -> Result<()> {
         match self.askers.get(by).and_then(|a| a.asking.as_ref()) {
-            Some(open) => Err(crate::limits::floor(&format!(
-                "The person is already being asked: {} Answer that one, or let it end ({} seconds left), before asking for another.",
-                open.sentence, ASK_FOR_MS.saturating_sub(now.saturating_sub(open.started_ms)) / 1000
-            ))),
+            Some(open) => Err(crate::limits::refuse(
+                &format!(
+                    "The person is already being asked: {} Answer that one, or let it end ({} seconds left), before asking for another.",
+                    open.sentence, ASK_FOR_MS.saturating_sub(now.saturating_sub(open.started_ms)) / 1000
+                ),
+                OPEN_ASKS_PER_ASKER, "OPEN_ASKS_PER_ASKER", "presence/firsts.rs",
+            )),
             None => Ok(()),
         }
     }

@@ -851,9 +851,10 @@ no shape this repository has decided to live with. Budgets and red-team debt onl
   (`scripts/gates/refusal_stubs.py`, metric `refusal-stubs`) is a feature nobody built, refusing every caller for ever; it
   blocked every local coding harness until the isolated launcher replaces it. A feature that cannot be built yet is not
   merged behind a refusal: either its entry points do not exist, or it works. The metric only falls.
-- Writes are refused when they add a function whose body already exists elsewhere, a raw HTTP call, a docstring over
-  twelve lines, a signature over eight parameters, or a write that takes a file over its line limit or makes an
-  already-over file longer (`scripts/install-hooks.sh` installs the pre-commit chain).
+- A write is never held back for code quality. Claude Code's edit guard (`scripts/hooks/claude-edit-guard`) tells the
+  agent beside the edit when it adds a function whose body already exists elsewhere, a raw HTTP call, a docstring over
+  twelve lines or a signature over eight parameters, or takes a file over its line limit or makes an already-over file
+  longer; the gates judge it before the work merges (`scripts/install-hooks.sh` installs the pre-commit chain).
 
 ## 6. Models and GPU
 
