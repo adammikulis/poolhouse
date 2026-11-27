@@ -16,6 +16,7 @@ import time
 
 import psutil
 import pytest
+from machine_guard import stop_started
 
 from poolhouse.platform import end_child, exit_said
 from poolhouse.serve.process import kill_process_tree
@@ -213,8 +214,6 @@ def test_the_machine_s_broker_leaves_no_defunct_server_behind_a_kill_and_reports
         exits = broker_wire.status()["exits"]
         assert [(one["pid"], one["said"], one["expected"]) for one in exits] == [(pid, "killed by SIGKILL", False)]
     finally:
-        for one in broker_wire.status().get("servers", []):
-            if one["pid"]:
-                kill_process_tree(one["pid"])
+        stop_started(broker_wire.status().get("servers", []))
         kill_process_tree(daemon)
 

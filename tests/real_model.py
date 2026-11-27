@@ -23,11 +23,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from machine_guard import machine_servers
 
 from poolhouse.client import Client
 from poolhouse.guard import native
 from poolhouse.serve import LlamaServerBackend, ServerManager, ServerSpec, free_port
-from poolhouse.serve.process import every_server
 from tests.model_pins import pinned
 
 pytest_plugins = ["serve_node"]
@@ -133,7 +133,7 @@ def server_problem(account: Path) -> tuple[Path | None, str]:
 
 def computing() -> list[Any]:
     """The llama-servers running now; a defunct one (killed, its parent has not yet reaped it) computes nothing."""
-    return [one for one in every_server() if not (isinstance(one, dict) and one.get("defunct"))]
+    return [one for one in machine_servers() if not (isinstance(one, dict) and one.get("defunct"))]
 
 
 def busy_problem(running: list[Any]) -> str:
