@@ -70,10 +70,10 @@ ALLOWED: dict[str, str] = {
     "fleet/onboard/transfer.py": "files from members; a public address is refused at every "
                                  "connection and TLS is pinned to the member's certificate "
                                  "(fleet/onboard/lan.py)",
-    "fleet/onboard/join_code.py": "the join exchange with a device on this network, confirmed "
-                                "by a code and the certificate fingerprint (fleet/onboard/lan.py)",
-    "fleet/onboard/joining.py": "the join handshake with a daemon on this network, proved by the "
-                                "passphrase and the certificate fingerprint (fleet/onboard/lan.py)",
+    "fleet/launch_health.py": "one request to the daemon's loopback health endpoint, with a guard that refuses any other address and no redirects",
+    "isolation/egress_proxy.py": "the sandbox's own way out for the hosts a launch was granted; it resolves each and refuses blocked addresses",
+    "isolation/model_bridge.py": "forwards a sandboxed harness to the model server this launch leased or was pointed at",
+    "isolation/probe.py": "the sandbox check, run inside the box, asking the model bridge on loopback",
     "fleet/onboard/routes.py": "asks a member's address for its certificate; a public address "
                                "is refused first and only the pinned certificate counts "
                                "(fleet/onboard/lan.py)",
@@ -224,7 +224,7 @@ def test_a_sibling_module_named_like_a_library_is_not_the_library(tmp_path, sour
 def test_every_module_that_may_open_a_member_connection_checks_the_address_first():
     """The onboarding exemption is only as good as `require_local`: each module on the list for
     it calls it before it connects, and none builds a client that trusts the system store."""
-    for rel in ("fleet/onboard/transfer.py", "fleet/onboard/join_code.py", "fleet/onboard/joining.py"):
+    for rel in ("fleet/onboard/transfer.py",):
         source = (ROOT / rel).read_text(encoding="utf-8")
         assert "require_local" in source, rel
         assert "create_default_context" not in source, rel

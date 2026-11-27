@@ -1,6 +1,8 @@
 """The paths an agent's shell may not write (the guards, the hook settings, git's hooks and config, the harness record's
 code, the authority registry) or touch at all (the person folder and the session tokens), and the shell forms that
 reach them. Every refusal is automatic and immediate: it says why and what to do instead, and nothing waits for anyone.
+The person folder, the session tokens and the authority registry are protected everywhere; a caller that passes ``owns``
+(whether a path lies in Poolhouse's own repository) limits every other rule to that repository.
 Standard library only: the hook scripts load it by file through `worktreerules`."""
 
 from __future__ import annotations
@@ -24,12 +26,14 @@ GUARD_PATHS = (
     r"\.git/(hooks(/.*)?|config(\.worktree)?|worktrees/[^/]+/config\.worktree)",
     r"\.gitconfig", r"\.config/git/(config|hooks(/.*)?)", r"\.poolhouse/(authority\.json|authority-audit\.jsonl)")
 GUARDS = re.compile(r"(^|/)(" + "|".join(GUARD_PATHS) + ")$", re.I)
+REGISTRY = re.compile(r"(^|/)" + GUARD_PATHS[-1] + "$", re.I)
 SECRETS = re.compile(r"(^|/)\.poolhouse/(person|node/client|node/person)(/|$)", re.I)
 HELD = tuple(tuple(path.split("/")) for path in (
     "src/poolhouse/workspace/harness_ancestry.py", "scripts/hooks/harness-ancestry",
     "scripts/hooks/claude-harness-bind", "scripts/release-key", "src/poolhouse/credentials/__init__.py",
     ".git/hooks/pre-push", ".git/config", ".config/git/config", ".gitconfig"))
-MENTION = re.compile(r"\.git/hooks|\.poolhouse/(person|node/client|node/person|authority)", re.I)
+KEPT = re.compile(r"\.poolhouse/(person|node/client|node/person|authority)", re.I)
+MENTION = re.compile(r"\.git/hooks|" + KEPT.pattern, re.I)
 """What code run from a shell may not name: git's hooks, the owner's keys, the session tokens and the authority registry. Code that only names
 git's settings or a guard's file runs (a test or a document does); writing those by redirect, copy, edit in place or `git config` is refused."""
 
@@ -135,17 +139,18 @@ def _holds_a_guard(path: str) -> bool:
     return False
 
 
-def file_guarded(path: str, environ: Mapping[str, str] | None = None) -> bool:
-    """Whether ``path`` is itself protected: a guard, a hook setting, git's hooks or config, the authority registry."""
-    if GUARDS.search(path):
+def file_guarded(path: str, environ: Mapping[str, str] | None = None, owns: Callable[[str], bool] | None = None) -> bool:
+    """Whether ``path`` is itself protected: the authority registry, or (where ``owns`` reaches) a guard, a hook setting,
+    git's hooks or config."""
+    if REGISTRY.search(path) or any(path.casefold() in (f"{root}/authority.json", f"{root}/authority-audit.jsonl")
+                                    for root in _roots(environ or os.environ)):
         return True
-    return any(path.casefold() in (f"{root}/authority.json", f"{root}/authority-audit.jsonl")
-               for root in _roots(environ or os.environ))
+    return bool(GUARDS.search(path)) and (owns is None or owns(path))
 
 
-def guarded(path: str, environ: Mapping[str, str] | None = None) -> bool:
+def guarded(path: str, environ: Mapping[str, str] | None = None, owns: Callable[[str], bool] | None = None) -> bool:
     """Whether a write to ``path`` (a file, or a folder holding one) is refused to an agent: the guards, settings, git's hooks."""
-    return file_guarded(path, environ) or _holds_a_guard(path)
+    return file_guarded(path, environ, owns) or (_holds_a_guard(path) and (owns is None or owns(path)))
 
 
 def _flatten(command: str) -> str:
@@ -279,9 +284,12 @@ def _script_text(path: Path) -> str:
 class Shell:
     """What the command line being read knows: the working folder, the variables set so far and what it may do."""
 
-    def __init__(self, here: Path, environ: Mapping[str, str], released: Callable[[str], str]) -> None:
-        self.here, self.environ, self.released = here, environ, released
-        self.variables: dict[str, str] = {}
+    def __init__(self, here: Path, environ: Mapping[str, str], released: Callable[[str], str], owns: Callable[[str], bool] | None) -> None:
+        self.here, self.environ, self.released, self.owns, self.variables = here, environ, released, owns, dict[str, str]()
+
+    def repository(self, moved: str = "") -> bool:
+        """Whether the repository's rules apply to a command run in the working folder (or in ``moved`` from it)."""
+        return self.owns is None or self.owns(str(self.here / self.home(moved)))
 
     def move(self, folder: str, physical: bool = False) -> None:
         """Change the working folder as `cd` does: a step up (`..`) is taken in the name by default and, with ``physical``
@@ -325,7 +333,7 @@ class Shell:
     def guarded(self, words: list[str], deep: bool = False) -> str:
         """The first of ``words`` that names a guard (with ``deep``, also a folder holding one)."""
         test = guarded if deep else file_guarded
-        return self.hits(words, lambda p: test(p, self.environ))
+        return self.hits(words, lambda p: test(p, self.environ, self.owns))
 
     def landing(self, sources: list[str], dest: str) -> list[str]:
         """The files a copy of ``sources`` to ``dest`` writes: ``dest`` itself, or a file of each name inside a folder."""
@@ -337,7 +345,7 @@ class Shell:
     def lands_on(self, sources: list[str], dests: list[str]) -> str:
         """The first guard file that a copy or move of ``sources`` to ``dests`` writes, else an empty string."""
         written = [p for dest in dests for p in self.landing(sources, dest)]
-        return next((p for p in written if file_guarded(p, self.environ)), "")
+        return next((p for p in written if file_guarded(p, self.environ, self.owns)), "")
 
 
 def _transfer(args: list[str]) -> tuple[list[str], list[str]]:
@@ -352,7 +360,7 @@ def _copy_hit(verb: str, args: list[str], shell: Shell) -> str:
     """The first file a cp, install, ln, mv or dd writes that is a guard, else an empty string."""
     if verb == "dd":
         written = [p for a in args if a.startswith("of=") for p in shell.paths(a[3:])]
-        return next((p for p in written if file_guarded(p, shell.environ)), "")
+        return next((p for p in written if file_guarded(p, shell.environ, shell.owns)), "")
     return shell.lands_on(*_transfer(args))
 
 
@@ -487,7 +495,7 @@ def _code(verb: str, args: list[str], bodies: list[str], shell: Shell) -> str:
     scripts = [a for a in args if not a.startswith("-")]
     if scripts and not shell.guarded(scripts[:1]):
         texts.append(_script_text(shell.here / scripts[0]))
-    found = next((m.group(0) for t in texts for m in [MENTION.search(t)] if m), "")
+    found = next((m.group(0) for t in texts for m in [(MENTION if shell.repository() else KEPT).search(t)] if m), "")
     return f"code run from a shell names {found}: {REFUSED}; use the file tools for anything else." if found else ""
 
 
@@ -598,7 +606,7 @@ def _git_paths(args: list[str], shell: Shell) -> str:
 
 def _fetch(words: list[str], shell: Shell) -> str:
     text = " ".join(words)
-    if "api.github.com" in text and re.search(r"-X\s*(PUT|POST|PATCH|DELETE)|--request\s+(PUT|POST|PATCH|DELETE)|\s-d\b|--data", text):
+    if shell.repository() and "api.github.com" in text and re.search(r"-X\s*(PUT|POST|PATCH|DELETE)|--request\s+(PUT|POST|PATCH|DELETE)|\s-d\b|--data", text):
         return ("writing to the GitHub API by hand skips the low-right identity the agents hold: refused to an agent; "
                 "push and publish through `scripts/agent-identity`.")
     return _writes(words[0].rsplit("/", 1)[-1], words[1:], shell)
@@ -650,7 +658,7 @@ class Reader:
         """Why one command may not run: a redirection into a guard, a secret named, or a verb that writes one."""
         shell = self.shell
         words, written, read = _split_redirects(words)
-        if blocked := shell.hits(written, lambda p: guarded(p, shell.environ) or secret(p, shell.environ)):
+        if blocked := shell.hits(written, lambda p: guarded(p, shell.environ, shell.owns) or secret(p, shell.environ)):
             return f"a redirection would write {blocked}: {REFUSED}."
         if blocked := shell.hits(read, lambda p: secret(p, shell.environ)):
             return f"a redirection would read {blocked}, in the person folder or a session token: {NOT_READ}."
@@ -658,7 +666,7 @@ class Reader:
         if not rest:
             shell.variables.update(assigned)
             return ""
-        if any(GIT_ENV.match(name) for name in assigned):
+        if shell.repository() and any(GIT_ENV.match(name) for name in assigned):
             return "GIT_CONFIG_* changes where hooks run: refused to an agent, since the hooks are the last checks."
         mentioned = shell.hits([a for a in rest if "=" not in a or "/" in a], lambda p: secret(p, shell.environ))
         if mentioned and not self._message(rest, mentioned):
@@ -700,21 +708,22 @@ class Reader:
         if verb == "eval" and depth < DEPTH:
             return self.command(" ".join(args), depth + 1)
         if verb == "gh":
-            return _gh(args, shell)
+            return _gh(args, shell) if shell.repository() else ""
         if verb == "git":
-            return _git_config(args) or _git_paths(args, shell)
+            return (_git_config(args) if shell.repository(_git_sub(args)[2]) else "") or _git_paths(args, shell)
         if verb in FETCHERS or verb in ("http", "https", "xh"):
             return _fetch(rest, shell)
         script = _script_text(shell.here / rest[0]) if "/" in rest[0] and not shell.guarded(rest[:1]) else ""
         return _writes(verb, args, shell) or _code(verb, args, bodies, shell) or (
-            f"the script {rest[0]} names {m.group(0)}: {REFUSED}." if (m := MENTION.search(script)) else "")
+            f"the script {rest[0]} names {m.group(0)}: {REFUSED}." if (m := (MENTION if shell.repository() else KEPT).search(script)) else "")
 
 
-def refusal(command: str, cwd: str, released: Callable[[str], str], environ: Mapping[str, str] | None = None) -> str:
+def refusal(command: str, cwd: str, released: Callable[[str], str], environ: Mapping[str, str] | None = None,
+            owns: Callable[[str], bool] | None = None) -> str:
     """Why the shell ``command``, run from ``cwd``, may not run; an empty string when it may. A command past the bounds of
-    `MOST_COMMAND`, `MOST_EXPANSIONS` and `DEPTH` is refused, not read in part."""
+    `MOST_COMMAND`, `MOST_EXPANSIONS` and `DEPTH` is refused, not read in part. ``owns`` limits the repository's rules."""
     try:
-        return Reader(Shell(Path(cwd or Path.cwd()), environ or os.environ, released)).command(command)
+        return Reader(Shell(Path(cwd or Path.cwd()), environ or os.environ, released, owns)).command(command)
     except (TooComplex, RecursionError) as error:
         return f"the command {TOO_COMPLEX} ({error})."
 

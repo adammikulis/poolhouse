@@ -23,7 +23,7 @@ from poolhouse import activity, files, http, httpguard, sentinel
 from poolhouse.httpguard import Refused, TooLarge
 from poolhouse.net import observed, provenance, sniff
 from poolhouse.net.hold import discard, staging_dir
-from poolhouse.net.pipeline import Pipeline, bearer, default
+from poolhouse.net.pipeline import Pipeline, bearer, default, named
 from poolhouse.net.policy import host_of
 from poolhouse.net.scan import Outcome
 from poolhouse.safenames import safe_filename
@@ -239,7 +239,7 @@ def download(url: str, dest: Path | str, want: Want | None = None, pipeline: Pip
     next call resumes it); `ChecksumMismatch` or `Blocked` when the file failed a check and was deleted.
     """
     want = want or Want()
-    pipe = pipeline or default()
+    pipe = pipeline or named()
     final = Path(dest)
     name = safe_filename(final.name)
     if want.require_digest and not want.sha256:
@@ -268,7 +268,13 @@ def download(url: str, dest: Path | str, want: Want | None = None, pipeline: Pip
         hooks.phase("verifying")
     return _finish(pipe, staged, final, want, Arrival(url, shown.url, shown.status,
                        tuple(shown.redirects), shown.headers, host, hooks.phase,
-                       not pipe.policy.lists_every_host(), hooks.cancel))
+                       _vouched(pipe, (url, *shown.redirects, shown.url)), hooks.cancel))
+
+
+def _vouched(pipe: Pipeline, hops: tuple[str, ...]) -> bool:
+    """Whether a file that arrived over ``hops`` may be pinned as a pull: never through a policy that lists every host,
+    and through a ``person`` policy only when it names each hop."""
+    return not pipe.policy.lists_every_host() and (not pipe.policy.person or all(map(pipe.policy.named, hops)))
 
 
 @dataclass(frozen=True, slots=True)

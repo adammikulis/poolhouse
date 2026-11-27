@@ -10,11 +10,11 @@ import threading
 from dataclasses import replace
 from pathlib import Path
 
-from poolhouse import hub, limits as limits_mod, optional, platform
+from poolhouse import caller, hub, limits as limits_mod, optional, platform
 from poolhouse.client import thinking
 from poolhouse.command import flag, option
 from poolhouse.log import say, warn
-from poolhouse.serve import build, holding, kvcache, mtp, ops, plan_cli, quant_guard, warm
+from poolhouse.serve import build, guarded, holding, kvcache, mtp, ops, plan_cli, quant_guard, warm
 from poolhouse.serve.backend import ServerFailed, ServerSpec, parse_context
 from poolhouse.serve.binary import BinaryNotFound
 from poolhouse.serve.fitted import fitted
@@ -153,6 +153,7 @@ def _asked_spec(args: argparse.Namespace, model: str, extra: tuple[str, ...]) ->
 
 
 OPTIONS_UP = [
+    flag("--no-repin", action="store_true", help="never pin a changed local file again (a program passes it)"),
     flag("model", help="path to a .gguf file, or hf:owner/repo/file.gguf"),
     option("port", default=0,
            help="a port you would like. The broker picks the port and uses this one only "
@@ -413,6 +414,8 @@ def _lease(args: argparse.Namespace, spec: ServerSpec, manager: object, *, chose
     try:
         quant_guard.enforce(spec.model, gpu_layers=spec.n_gpu_layers,
                             asked=str(getattr(args, "iq", "") or ""), who="poolhouse-serve up")
+        if not (getattr(args, "no_repin", False) or caller.marked()):
+            guarded.pin_served(args.model, args.draft, args.mmproj)
         weight = holding.check_fits(spec, ask=str(ask))
         held = holding.up(
             spec, manager=manager, say=warn,

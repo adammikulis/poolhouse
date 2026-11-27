@@ -218,7 +218,7 @@ def serve_up(model: str, *, context: int = 0, draft: str = "",
         flag = str(one).split("=", 1)[0]
         if flag in _NOT_A_TOOL_ARGUMENT or flag.startswith(("--iq-", "--iq_")):
             raise ValueError(f"{flag} is not a tool argument: set it on the command line")
-    argv = ["up", _not_an_option(model, "model"), "--no-wait", "--parallel", "1"]
+    argv = ["up", _not_an_option(model, "model"), "--no-wait", "--parallel", "1", "--no-repin"]
     if context:
         argv += ["--context", str(context)]
     if draft:

@@ -2,8 +2,9 @@
 
 `decide` takes the immutable coding policy and tool call and returns allow or deny, at once: nothing waits for an answer. The
 destructive-action classifier labels the call; the permission profile decides what each label gets. A call
-the classifier cannot read is ``unsure`` and is denied with the reason. Text naming the launcher's session files, the
-state root or a protected action is denied in every profile.
+the classifier cannot read is ``unsure`` and is denied with the reason. Text naming the launcher's session files or
+the state root is denied in every profile. The chat agent's protected-action rules (`poolhouse.chatpolicy`) are not
+applied here: a command's words say nothing about what it does, and each protected command decides its own caller.
 """
 
 from __future__ import annotations
@@ -15,7 +16,6 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import coding_policy, worktreerules
-from poolhouse.chatpolicy import refusal_for
 from poolhouse.guard import fetchlog
 from poolhouse.guard.destructive import classify, reason_text
 from poolhouse.guard.shellscan import segments
@@ -77,15 +77,16 @@ def _primary_refusal(name: str, args: dict[str, Any] | None, cwd: str) -> str:
     """Why a write or git command in the primary checkout is refused, empty when it is not one."""
     if not args or not cwd:
         return ""
+    owns = worktreerules.project_rules(cwd)
     if name in SHELL_TOOLS:
-        return worktreerules.bash_refusal(_shell_line(name, args), cwd)
+        return worktreerules.bash_refusal(_shell_line(name, args), cwd, owns)
     if CATALOG.get(name) != "reversible":
         return ""
     paths = [str(args.get(key) or "") for key in ("file_path", "notebook_path", "path")]
     for value in args.values():
         if isinstance(value, str) and "*** Begin Patch" in value:
             paths += worktreerules.patch_paths(value)
-    return worktreerules.edit_refusal(paths, cwd)
+    return worktreerules.edit_refusal(paths, cwd, owns)
 
 
 def primary_decision(name: str, args: dict[str, Any] | None, cwd: str) -> Decision | None:
@@ -97,7 +98,7 @@ def primary_decision(name: str, args: dict[str, Any] | None, cwd: str) -> Decisi
 def decide(policy: coding_policy.Policy, call: Call, *, roots: Sequence[str] = (),
            protected: Sequence[str] = ()) -> Decision:
     """The decision for one tool call. ``protected`` are path strings no call may name."""
-    name, args = call.name, call.arguments
+    args = call.arguments
     if hit := _mentions(args, protected):
         return _denied("destructive", f"the call names {hit}, which belongs to the launcher")
     verdict = classify(call, roots=roots, catalog=CATALOG)
@@ -106,8 +107,6 @@ def decide(policy: coding_policy.Policy, call: Call, *, roots: Sequence[str] = (
         return _denied(verdict.label, f"{why}; an agent never opens one")
     if verdict.label == "safe":
         return Decision("allow", "safe", why)
-    if refusal := refusal_for(_shell_line(name, args)):
-        return _denied("destructive", f"{refusal[0]} is refused to an agent; the owner runs `{refusal[1]}` from a terminal outside the agent")
     if not policy.writable:
         return _denied(verdict.label, f"{policy.execution_mode}/{policy.permissions} runs no acting call: {why}")
     if verdict.label == "unsure" or (verdict.label == "destructive" and policy.permissions != coding_policy.YOLO):

@@ -128,7 +128,7 @@ def install(lease: Lease) -> Path:
         archive = Path(temporary) / 'download' / 'release.tar.gz'
         net.download(URL, archive, net.Want(sha256=ARCHIVE_SHA256, require_digest=True,
                      size=11573797, max_bytes=32 << 20,
-                     purpose='fixed Bonsai serving runtime'))
+                     purpose='fixed Bonsai serving runtime'), pipeline=net.default())
         entries = provider_archive.contents(archive, ARCHIVE_SHA256, PREFIX)
         promote(archive, stage / 'release.tar.gz')
         for name, entry in entries.items():

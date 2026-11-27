@@ -166,6 +166,7 @@ def test_a_first_use_pin_covers_the_path_and_bytes_it_was_made_for(tmp_path):
     path.write_bytes(gguf_bytes(extra=513))               # other bytes at the pinned path
     with pytest.raises(SentinelRefused, match="does not match its pin"):
         load(path)
+    assert path.exists() and sentinel.default().store.state_of("model", str(path)) == State.CLEAR, "a person's own file stays"
     copy = where("copy.gguf")
     copy.write_bytes(gguf_bytes(extra=512))               # the pinned bytes at another path: pinned as its own first use
     assert load(copy) == "" and pins()[str(copy)].source == "first-use"

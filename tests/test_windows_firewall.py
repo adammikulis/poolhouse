@@ -1,6 +1,6 @@
-"""The Windows firewall step of opening Poolhouse, and the sentence for a WSL machine the network cannot reach.
+"""The Windows firewall check at start, and the sentence for a WSL machine the network cannot reach.
 
-PowerShell does not run on the machines these tests run on, so the commands the step sends are the thing under test: `run` stands in
+PowerShell does not run on the machines these tests run on, so the commands the check sends are the thing under test: `run` stands in
 for `powershell.exe` and records what it was given. Nothing here is a model.
 """
 
@@ -16,62 +16,48 @@ from poolhouse.fleet.wsl_network import nat_notice
 
 
 class Windows:
-    """What PowerShell answers: the rules held now, the connection categories, and whether this shell is an administrator's."""
+    """What PowerShell answers: the rules held now and the connection categories, in a shell that is an administrator's."""
 
-    def __init__(self, held=(), categories="Private", admin=True):
-        self.held, self.categories, self.admin, self.sent = list(held), categories, admin, []
+    def __init__(self, held=(), categories="Private"):
+        self.held, self.categories, self.sent = list(held), categories, []
 
     def __call__(self, script: str) -> str:
         self.sent.append(script)
         if "IsInRole" in script:
-            return "True" if self.admin else "False"
+            return "True"
+        if "New-NetFirewallRule" in script:
+            self.held = [name for name, _, _ in firewall.rules()]
+            return ""
         if "Get-NetFirewallRule" in script:
             return "\n".join(self.held)
         if "Get-NetConnectionProfile" in script:
             return self.categories
-        if "New-NetFirewallRule" in script:
-            self.held = [name for name, _, _ in firewall.rules()]
         return ""
-
-    def added(self) -> str:
-        (script,) = [s for s in self.sent if "New-NetFirewallRule" in s]
-        return script
 
 
 def test_the_one_rule_is_the_daemons_port_and_there_is_no_beacon_rule():
     assert firewall.rules() == [("Poolhouse", "TCP", DEFAULT_HTTP_PORT)]
     assert "UDP" not in firewall.line()
+    assert "profile=private" in firewall.line(), "a public network gets no open port"
 
 
 def test_with_the_rule_held_nothing_is_added_and_nothing_is_said(capsys):
     windows = Windows(held=["Poolhouse"])
-    assert firewall.ensure(windows) is True
+    assert firewall.check(windows) is True
     assert not any("New-NetFirewallRule" in s for s in windows.sent) and capsys.readouterr().out == ""
 
 
-def test_a_missing_rule_is_added_where_the_shell_is_already_an_administrators_and_no_prompt_is_raised(capsys):
+def test_starting_never_adds_a_rule_even_in_an_administrators_shell_and_says_the_line_to_run(capsys):
     windows = Windows()
-    assert firewall.ensure(windows) is True
-    added = windows.added()
-    assert "-DisplayName 'Poolhouse'" in added and f"-Protocol TCP -LocalPort {DEFAULT_HTTP_PORT}" in added and "-Profile Private" in added
-    assert not any("RunAs" in s or "Start-Process" in s for s in windows.sent), "no administrator prompt is raised"
-    assert firewall.missing(windows) == []
-    again = Windows(held=["Poolhouse"])
-    assert firewall.ensure(again) is True
-    assert not any("New-NetFirewallRule" in s for s in again.sent), "a rule that is held is not added again"
-
-
-def test_where_the_shell_is_not_an_administrators_the_rule_is_refused_at_once_with_the_reason_and_the_line_and_nothing_is_raised(capsys):
-    windows = Windows(admin=False)
-    assert firewall.ensure(windows) is False
+    assert firewall.check(windows) is False
     said = capsys.readouterr().err
-    assert firewall.NOT_ELEVATED in said and firewall.line() in said
-    assert not any("New-NetFirewallRule" in s or "RunAs" in s or "Start-Process" in s for s in windows.sent), "nothing was added and no prompt was raised"
+    assert firewall.NOT_ADDED in said and firewall.line() in said
+    assert not any("New-NetFirewallRule" in s or "netsh" in s or "RunAs" in s or "Start-Process" in s for s in windows.sent)
 
 
 def test_a_network_windows_calls_public_is_named_with_the_setting_to_change(capsys):
     windows = Windows(held=["Poolhouse"], categories="Public")
-    assert firewall.ensure(windows) is False
+    assert firewall.check(windows) is False
     assert "choose Private" in capsys.readouterr().err
     assert firewall.public_only(Windows(categories="Public,Private")) is False
     assert firewall.public_only(Windows(categories="")) is False

@@ -1,8 +1,8 @@
 {
-  "ad-hoc-fakes": 53,
+  "ad-hoc-fakes": 52,
   "argument-parsers": 23,
   "atomic-writes": 0,
-  "broad-excepts": 148,
+  "broad-excepts": 147,
   "duplicate-bodies": 0,
   "entry-points": 22,
   "file-locks": 0,

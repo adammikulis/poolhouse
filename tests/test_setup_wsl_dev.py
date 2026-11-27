@@ -11,12 +11,13 @@ import pytest
 
 @pytest.mark.skipif(sys.version_info[:2] != (3, 13), reason="setup provisions Python 3.13")
 @pytest.mark.skipif(shutil.which("bash") is None, reason="bash is required")
-def test_setup_wsl_dev_persists_cuda_compiler_in_environment(tmp_path: Path) -> None:
+def test_setup_wsl_dev_writes_its_environment_in_state_and_changes_no_shell_file(tmp_path: Path) -> None:
     repo = Path(__file__).resolve().parents[1]
     home = tmp_path / "home"
     fake_bin = tmp_path / "bin"
     venv = tmp_path / "venv"
     home.mkdir()
+    (home / ".bashrc").write_text("# the person's own\n")
     fake_bin.mkdir()
 
     uname = fake_bin / "uname"
@@ -48,7 +49,6 @@ def test_setup_wsl_dev_persists_cuda_compiler_in_environment(tmp_path: Path) -> 
             "HOME": str(home),
             "PATH": f"{fake_bin}:/usr/bin:/bin",
             "POOLHOUSE_WSL_VENV": str(venv),
-            "BASHRC": str(home / ".bashrc"),
             "UV": str(uv),
             "UV_LOG": str(uv_log),
             "PYTHON_FOR_TEST": sys.executable,
@@ -57,7 +57,8 @@ def test_setup_wsl_dev_persists_cuda_compiler_in_environment(tmp_path: Path) -> 
             "POOLHOUSE_WINDOWS_USER": "no-such-user",
         }
     )
-    subprocess.run(
+    env.pop("POOLHOUSE_HOME", None)
+    done = subprocess.run(
         ["bash", str(repo / "scripts/setup-wsl-dev")],
         cwd=repo,
         env=env,
@@ -71,7 +72,10 @@ def test_setup_wsl_dev_persists_cuda_compiler_in_environment(tmp_path: Path) -> 
     nvcc.write_text("#!/bin/sh\necho 'Cuda compilation tools, release 13.0, V13.0.88'\n")
     nvcc.chmod(0o755)
 
-    config = home / ".config/poolhouse/wsl-dev.sh"
+    config = home / ".poolhouse/wsl-dev.sh"
+    assert (home / ".bashrc").read_text() == "# the person's own\n"
+    assert sorted(path.name for path in home.iterdir()) == [".bashrc", ".poolhouse"]
+    assert f". {config}" in done.stdout
     sourced = subprocess.run(
         [
             "bash",

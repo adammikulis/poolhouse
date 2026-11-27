@@ -89,13 +89,19 @@ class TestPolicy:
         assert (got.action, got.label) == ("deny", "unsure") and "runs no unsure call" in got.reason
         assert decide(coding_policy.Policy("guarded"), Call("Bash", None), roots=("/w",)).action == "deny"
 
-    def test_text_naming_the_launchers_files_or_a_person_only_action_is_denied_in_every_role(self):
-        for role in ("guarded", "guarded"):
+    def test_text_naming_the_launchers_files_is_denied_in_every_role(self):
+        for role in ("guarded", "yolo"):
             hit = decide(coding_policy.Policy(role), Call("Edit", {"file_path": "/state/harness/ab/settings.json", "old_string": "a",
                                         "new_string": "b"}), roots=("/state",), protected=("/state/harness/ab",))
             assert hit.action == "deny"
-            answer = decide(coding_policy.Policy(role), Call("Bash", {"command": "poolhouse-security approve-host evil.example"}))
-            assert answer.action == "deny" and "poolhouse-security approve-host" in answer.reason
+
+    @pytest.mark.parametrize("command", [
+        'git commit -m "fix role change"', 'git commit -m "turn off the sentinel mode flag in tests"',
+        'git commit -m "allow the new host in the proxy config"', 'git log --grep "release the quarantine"',
+        'grep -rn "disable the guard rails" docs'])
+    def test_a_coding_command_whose_words_name_a_chat_protected_action_is_not_refused_for_them(self, tmp_path, command):
+        got = decide(coding_policy.Policy("guarded"), Call("Bash", {"command": command}), roots=(str(tmp_path),))
+        assert got.action == "allow", got.reason
 
     def test_nothing_in_the_call_or_the_environment_changes_the_role(self, monkeypatch):
         for name in ("POOLHOUSE_ROLE", "POOLHOUSE_GUARD", "CLAUDE_ROLE"):
@@ -148,11 +154,10 @@ class TestHook:
                      env={"POOLHOUSE_ROLE": "guarded", "POOLHOUSE_GUARD": "off"})
         assert _verdict(done)["permissionDecision"] == "deny"
 
-    def test_a_hook_that_fails_blocks_the_call(self):
+    def test_a_hook_that_fails_internally_does_not_block_the_call_and_logs_it(self):
         done = _hook("pre", "not json", "--permissions", "guarded")
-        assert done.returncode == 2
-        assert _verdict(done)["permissionDecision"] == "deny"
-        assert "diagnostic=" in done.stdout
+        assert (done.returncode, done.stdout) == (0, "")
+        assert "did not block the call" in done.stderr and "diagnostic=" in done.stderr
 
     def test_the_post_hook_warns_without_blocking_when_nudge_is_missing(self, monkeypatch):
         monkeypatch.setenv("PATH", "/nonexistent")

@@ -15,7 +15,7 @@ import threading
 
 import pytest
 
-from poolhouse.checks import Finding, ask
+from poolhouse.checks import Finding
 from poolhouse.setup import BEHAVIOURS, explain, look, main
 
 
@@ -36,7 +36,7 @@ def test_setup_diagnostics_never_install_optional_agent_hooks(tmp_path, monkeypa
     monkeypatch.setenv('HOME', str(isolated))
     monkeypatch.setenv('CODEX_HOME', str(isolated / '.codex'))
     monkeypatch.setattr(setup, 'look', lambda: [Finding(name='runtime', good=True, said='ready')])
-    monkeypatch.setattr(agent_hooks, 'install_report', lambda: pytest.fail('changed optional agent settings'))
+    monkeypatch.setattr(agent_hooks, 'install', lambda *a, **k: pytest.fail('changed optional agent settings'))
     assert setup.main(arguments) == 0
     assert list(isolated.iterdir()) == []
 
@@ -44,7 +44,7 @@ def test_setup_diagnostics_never_install_optional_agent_hooks(tmp_path, monkeypa
 def test_runtime_readiness_never_requires_optional_agent_hook_settings(monkeypatch):
     from poolhouse import agent_hooks
 
-    monkeypatch.setattr(agent_hooks, 'findings', lambda: pytest.fail('optional harness became required readiness'))
+    monkeypatch.setattr(agent_hooks, 'targets', lambda *a, **k: pytest.fail('optional harness became required readiness'))
     findings = look()
     assert findings and all(isinstance(row, Finding) for row in findings)
 
@@ -76,24 +76,20 @@ def test_an_architecture_is_only_claimed_when_the_names_were_read(monkeypatch, t
     assert found and found[0].good
 
 
-def test_a_fix_runs_without_any_flag_and_nothing_is_asked(capsys, monkeypatch):
+@pytest.mark.parametrize("fix, root", [(["pip", "install", "poolhouse[store]"], False), (["sudo", "true"], False),
+                                       (["cmd", "/c", "netsh advfirewall firewall add rule"], True)])
+def test_setup_shows_a_fix_and_runs_none(capsys, monkeypatch, fix, root):
+    """Installers call `poolhouse-setup`, in an administrator's shell too: no firewall rule and no install happens by itself."""
+    import poolhouse.setup as setup
+
     ran = []
+    monkeypatch.setattr(setup, "look", lambda: [Finding(name="a thing", good=False, said="wrong", fix=fix, root=root)])
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: ran.append(a[0]))
     monkeypatch.setattr("builtins.input", lambda _prompt="": pytest.fail("nothing is asked"))
-    ask([Finding(name="a thing", good=False, said="wrong", fix=["echo", "yes"])])
-    assert ran == [["echo", "yes"]]
-    assert "fix: echo yes" in capsys.readouterr().out
-
-
-def test_a_fix_that_needs_sudo_is_refused_at_once_with_the_reason(capsys, monkeypatch):
-    ran = []
-    monkeypatch.setattr(subprocess, "run", lambda *a, **k: ran.append(a[0]))
-    ask([Finding(name="a thing", good=False, said="wrong", fix=["sudo", "true"])])
-    assert ran == [] and "needs `sudo`" in capsys.readouterr().out
-
-    ran.clear()
-    ask([Finding(name="a thing", good=True, said="fine", fix=["echo", "no"])])
-    assert ran == [], "nothing is run to fix what is not broken"
+    assert setup.main(["--quiet"]) == 1
+    out = capsys.readouterr().out
+    assert ran == [] and "fix" in out and fix[0] in out
+    assert ("as an administrator" in out) is root
 
 
 def test_it_never_asks_for_a_password():
@@ -268,7 +264,7 @@ def test_every_command_the_package_installs_is_looked_for_on_path(monkeypatch, t
     assert found and not found[0].good
     assert "poolhouse-store" in found[0].said
     assert "poolhouse-serve" not in found[0].said, "only what is missing is named"
-    assert found[0].fix == ["pip", "install", "-e", str(tmp_path)]
+    assert found[0].fix == [] and "pip" not in found[0].note, "nothing installs into the Python found on PATH"
 
     monkeypatch.setattr(shutil, "which", lambda name, *a, **k: f"/opt/bin/{name}")
     found = [f for f in setup.look() if f.name == "commands on PATH"]
@@ -293,8 +289,7 @@ def test_the_commands_are_read_from_the_install_and_the_checkouts_pyproject(monk
     assert names == sorted(set(names))
 
 
-def test_the_printed_report_names_the_missing_command_and_the_line(monkeypatch, capsys,
-                                                                   tmp_path):
+def test_the_printed_report_names_the_missing_command_and_offers_no_install(monkeypatch, capsys, tmp_path):
     import shutil
 
     import poolhouse.setup as setup
@@ -307,7 +302,7 @@ def test_the_printed_report_names_the_missing_command_and_the_line(monkeypatch, 
     assert setup.main(["--quiet"]) == 1
     out = capsys.readouterr().out
     assert "poolhouse-jobs" in out
-    assert f"fix: pip install -e {tmp_path}" in out
+    assert "pip install -e" not in out
 
 
 def test_the_models_finding_names_each_cache_and_its_size(monkeypatch, capsys, tmp_path):
@@ -627,14 +622,3 @@ def test_a_checkout_with_no_installed_metadata_reads_its_pyproject(monkeypatch, 
     monkeypatch.setattr(setup, "checkout", lambda: tmp_path)
     monkeypatch.setattr(setup, "distribution", not_installed)
     assert setup._scripts() == ["poolhouse-newthing"]
-
-
-def test_a_fix_naming_a_hostile_path_runs_as_one_argument_and_no_shell(tmp_path, monkeypatch):
-    """A path with shell metacharacters reaches the command as data: nothing it contains runs."""
-    monkeypatch.chdir(tmp_path)
-    marker = tmp_path / "executed"
-    hostile = tmp_path / "a; touch executed; $(touch executed) `touch executed` & b"
-    hostile.mkdir()
-    ask([Finding(name="a thing", good=False, said="wrong", fix=["ls", "-d", str(hostile)])])
-    ask([Finding(name="a thing", good=False, said="wrong", fix=["pwd"], cwd=str(hostile))])
-    assert not marker.exists() and not (hostile / "executed").exists() and not list(tmp_path.glob("**/executed"))

@@ -77,7 +77,8 @@ def test_unwritable_diagnostics_do_not_change_event_admission(monkeypatch, tmp_p
     assert harnesshook.run(["post", "--unsupported", "fixture"], io.StringIO("{}"), out) == 0
     assert "diagnostic storage unavailable" in capsys.readouterr().err
     assert "notification unavailable" in json.loads(out.getvalue())["hookSpecificOutput"]["additionalContext"]
-    assert harnesshook.run(["pre", "--unsupported", "fixture"], io.StringIO("{}"), io.StringIO()) == 2
+    assert harnesshook.run(["pre", "--unsupported", "fixture"], io.StringIO("{}"), io.StringIO()) == 0
+    assert "did not block the call" in capsys.readouterr().err
 
 
 def test_symlink_storage_is_refused_without_writing_the_target(monkeypatch, tmp_path):
