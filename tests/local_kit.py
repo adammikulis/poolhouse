@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,7 +18,8 @@ MODEL = "qwen3.8-27b"
 
 def build(node, monkeypatch) -> SimpleNamespace:
     """The node's board with the person's session, a lead (`task_authority` granted), a stranger and the saved-agent folder:
-    ``kit.worker(name, **fields)`` registers and saves a local agent started by the person."""
+    ``kit.worker(name, **fields)`` registers and saves a local agent started by the person, and ``kit.project(path)`` makes
+    ``path`` a git repository registered as a project of the board, which a local agent's project has to be."""
     monkeypatch.setattr(node_launch, "default_state", lambda: node.state)
     base = limits.root()
     kit = SimpleNamespace(node=node, base=base, person=person.on(node.client, node.board))
@@ -32,7 +34,13 @@ def build(node, monkeypatch) -> SimpleNamespace:
         la.save(base, agent)
         return agent
 
-    kit.worker = worker
+    def project(path: Path) -> Path:
+        path.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["git", "init", "-q", str(path)], check=True)
+        node.client.call("project_add", "", kit.lead.token, id=node.board, kind="git", path=str(path.resolve()))
+        return path
+
+    kit.worker, kit.project = worker, project
     return kit
 
 

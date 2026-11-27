@@ -14,6 +14,7 @@ from conftest import fake_binary, write_gguf
 
 from poolhouse.serve import admission, cli, holding, kvcache, lifecycle_cli, ops
 from poolhouse.serve.backend import LlamaServerBackend, ServerSpec
+from poolhouse.serve.broker_wire import spec_from, spec_to_json
 from poolhouse.serve.kvcache import DEFAULT_KV_CACHE, effective
 from poolhouse.serve.mlx_tree import MlxTreeBackend, kv_bytes
 from poolhouse.serve.preflight import draft_kv_estimate_bytes
@@ -192,6 +193,17 @@ class TestMlx:
         (weights / "config.json").write_text("{}")
         got = effective(ServerSpec(model=str(weights), cache_type_k="q3_K", cache_type_v="q3_K"))
         assert got.bits is None and "f16" in got.notes[0]
+
+    def test_the_tree_server_writes_the_one_record_table_only_when_the_spec_asks(self, tmp_path):
+        weights = tmp_path / "w"
+        weights.mkdir()
+        (weights / "config.json").write_text("{}")
+        parser = cli.COMMANDS.parser()
+        for flags, wanted in (([], False), (["--ngram-rows"], True)):
+            args = parser.parse_args(["up", str(weights), *flags])
+            asked = lifecycle_cli._asked_spec(args, str(weights), ())
+            argv = MlxTreeBackend().command(spec_from(spec_to_json(asked)))
+            assert ("--ngram-rows" in argv) is wanted
 
     def test_the_tree_server_is_told_the_bits_and_the_estimate_is_smaller(self, tmp_path):
         weights = tmp_path / "w"

@@ -136,7 +136,7 @@ def respond(base: Path, session: Callable[[], Session], req: Request, body: byte
         return bad or reply(200, _read(base, route))
     except Denied as err:
         return reply(403, {"error": plain.line(err, 200)})
-    except (ValueError, KeyError) as err:
+    except (ValueError, KeyError, isolation.IsolationRefused) as err:
         return reply(400, {"error": plain.line(err, 200)})
     except OSError as err:
         return reply(500, {"error": plain.line(err, 200)})

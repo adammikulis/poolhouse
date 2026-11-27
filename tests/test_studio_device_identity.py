@@ -16,7 +16,7 @@ from poolhouse.fleet.service_pool import Pool
 from poolhouse.fleet.studio_dispatch import DeviceDispatch
 
 
-def authorized_members():
+def authorized_members(_ui):
     own = tls.local().fingerprint
     return [Member.from_binding(row) for row in Pool().services() if row.fingerprint != own]
 

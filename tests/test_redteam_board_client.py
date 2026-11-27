@@ -45,6 +45,9 @@ def test_a_members_note_cannot_choose_the_command_a_verification_records(workspa
     me = workspace_node.member("author")
     allow(["true"])
     note = json.loads(workspace_node.cli("notes-add", "fact", "x", "y", "--verify-cmd", "true", "--json", who=me).stdout)
+    with pytest.raises(board_client.Denied, match="may not record a note verification"):
+        workspace_node.client.call("note_verify", workspace_node.board, me.token, note=note["id"], exit=0, out_sha="0" * 64)
+    workspace_node.allow(me, "note_verify")
     forged = workspace_node.client.call("note_verify", workspace_node.board, me.token, note=note["id"], exit=0, out_sha="0" * 64)
     assert forged["notes"][0]["last_verified"]["exit"] == 0
     with pytest.raises(board_client.Invalid):

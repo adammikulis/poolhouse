@@ -162,7 +162,7 @@ class MlxTreeBackend(ServerBackend):
                 "--kv-bits", str(kvcache.effective(spec).bits or 0)]
         if kind in ("dflash", "mtp"):
             argv += ["--drafter-model", str(spec.draft).removeprefix(PREFIX)]
-        return argv
+        return argv + [one for one in spec.extra_args if one == "--ngram-rows"]
 
     def start(self, spec: ServerSpec, *, lease: Lease, timeout: float = 300.0,
               **starting: bool) -> ServerInfo:

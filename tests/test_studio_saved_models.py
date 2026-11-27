@@ -164,13 +164,17 @@ def test_picker_route_includes_authorized_saved_checkpoints(saved, monkeypatch):
     registry, _, principal, _, root, _ = saved
     replies = []
     engine = SimpleNamespace(store=registry.store, authorize=lambda *args: True)
+    imported = {'id': 'dataset:imported', 'title': 'Imported'}
+    datasets = SimpleNamespace(resources=lambda asking: [imported] if asking is principal else [])
     handler = SimpleNamespace(path='/ui/studio/resources', method='GET',
                               _service=lambda: (engine, principal),
-                              ui=SimpleNamespace(runner=SimpleNamespace(files_root=root.parent), studio_saved_models=registry),
+                              ui=SimpleNamespace(runner=SimpleNamespace(files_root=root.parent), studio_saved_models=registry,
+                                                 studio_datasets=datasets),
                               send=lambda status, body: replies.append((status, body)))
     monkeypatch.setattr(studio_routes.hub, 'discover', lambda: [SimpleNamespace(id='installed-base')])
     assert studio_routes.StudioRoutes._studio(handler)
     assert replies[0][0] == 200
+    assert imported in replies[0][1]['datasets']
     models = replies[0][1]['models']
     assert models[0]['id'] == 'installed-base'
     assert models[1]['source'] == 'studio' and models[1]['id'].startswith('studio-output:')

@@ -80,7 +80,7 @@ def cmd_tree(args: argparse.Namespace) -> int:
     model = str(args.model)
     engine = Engine(EngineConfig(model=model.removeprefix(PREFIX), drafter=args.drafter,
                                  drafter_model=args.drafter_model, max_nodes=args.max_nodes,
-                                 kv_bits=args.kv_bits or None))
+                                 kv_bits=args.kv_bits or None, ngram_rows=args.ngram_rows))
     completer = TreeCompleter(engine, name=model, context=int(args.context), rule=args.accept)
     handler = Handler.configured(name="TreeServer", completer=completer)
     httpd = Server((DEFAULT_HOST, int(args.port)), handler)
@@ -110,6 +110,8 @@ COMMANDS = Group(
         flag("--kv-bits", type=int, default=DEFAULT_KV_BITS, metavar="BITS",
              help=f"bits the attention KV cache is stored in (default: {DEFAULT_KV_BITS}); "
                   "0 keeps f16. Recurrent layers keep their state as it is"),
+        flag("--ngram-rows", action="store_true",
+             help="write the checkpoint's n-gram table as one record a row and read that"),
         flag("--accept", default=DEFAULT_RULE, metavar="RULE",
              help=f"acceptance rule when sampling: lossless or ratio:theta=T "
                   f"(default: {DEFAULT_RULE})"),

@@ -11,7 +11,7 @@ from poolhouse.fleet import project_client
 from poolhouse.fleet.projects import ProjectRegistry, identity
 from poolhouse.net import git
 
-chat_browser = chat_fixtures.chat_browser
+chat_browser, founded_node, governed = chat_fixtures.chat_browser, chat_fixtures.founded_node, chat_fixtures.governed
 team = team_fixtures.team
 pytest_plugins = ['node_kit']
 pytestmark = pytest.mark.slow

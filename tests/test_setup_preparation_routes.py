@@ -188,6 +188,8 @@ def test_pool_context_change_invalidates_captured_execution_callback(preparing, 
     context = setup_context.bind(Router(preparing.device.ui, handler))
     assert context.current() is True
     with nodes(node_binary, 'another') as (other,):
-        found(other)                      # a node in a pool of its own: this device now reads that pool
-        monkeypatch.setattr('poolhouse.node_launch.default_state', lambda: other.state)
-        assert context.current() is False
+        found(other)                      # a node in a pool of its own
+        with monkeypatch.context() as moved:   # the node the daemon holds is now the one in that pool
+            moved.setattr(preparing.device.ui.pool, 'state', other.state)
+            assert context.current() is False
+        assert context.current() is True
