@@ -98,7 +98,7 @@ function Open-Firewall {
         -not (Get-NetFirewallRule -DisplayName $_.Name -ErrorAction SilentlyContinue) })
     if ($missing.Count -eq 0) { return }
     $lines = ($missing | ForEach-Object {
-        "netsh advfirewall firewall add rule name=`"$($_.Name)`" dir=in action=allow " +
+        "netsh advfirewall firewall add rule name=`"$($_.Name)`" dir=in action=allow profile=private " +
         "protocol=$($_.Protocol) localport=$($_.Port)" }) -join " ; "
     $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
         [Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -154,7 +154,7 @@ function Install-App {
                 ForEach-Object { Copy-Item $_.FullName -Destination $dest -Force }
         }
         else { Copy-Item -Path (Join-Path $tmp "out\*") -Destination $dest -Recurse -Force }
-        Add-ToPath $dest
+        Show-PathHint $dest
         Open-Firewall
         Write-Host ""
         Write-Host "Installed to $dest"
@@ -166,11 +166,10 @@ function Install-App {
     }
 }
 
-function Add-ToPath($dir) {
-    $path = [Environment]::GetEnvironmentVariable("Path", "User")
-    if ($path -notlike "*$dir*") {
-        [Environment]::SetEnvironmentVariable("Path", "$path;$dir", "User")
-        Write-Host "Added $dir to your PATH (open a new terminal to pick it up)."
+# Your PATH is yours: nothing here changes it.
+function Show-PathHint($dir) {
+    if ($env:Path -notlike "*$dir*") {
+        Write-Host "To run the commands by name, add $dir to your PATH."
     }
 }
 
@@ -247,7 +246,7 @@ function Install-Headless {
         # The ref decides how it keeps itself current: a tag follows releases, main follows main.
         if ($want -in @("main", "master")) { $script:track = $want }
     }
-    Add-ToPath $script:bin
+    Show-PathHint $script:bin
     Open-Firewall
 }
 
@@ -277,7 +276,7 @@ function Install-Dev {
     finally { Pop-Location }
     & (Join-Path $script:bin "python.exe") -c 'import sys; from pathlib import Path; from poolhouse.fleet.runtime_wheel import install_checkout; code, note = install_checkout(Path(sys.argv[1]), timeout=1800); print(note); raise SystemExit(code)' $src
     if ($LASTEXITCODE -ne 0) { throw "could not install the committed runtime from $src" }
-    Add-ToPath $script:bin
+    Show-PathHint $script:bin
     Open-Firewall
 }
 

@@ -1,7 +1,6 @@
-"""What the checkouts and the working state are in.
+"""What the checkouts and the working state are in. It runs nothing from a repository, installs nothing and changes nothing.
 
-`look_checkouts()` reads the repositories (hooks, working tree, branch, worktrees, the
-editable install), the bench store and the managed llama.cpp builds. Each is a `Finding`.
+`look_checkouts()` reads the repositories (hooks, working tree, branch, worktrees), the bench store and the managed llama.cpp builds. Each is a `Finding`.
 """
 
 from __future__ import annotations
@@ -15,8 +14,8 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from poolhouse import agent_hooks, checks, hook_diagnostics, hookcheck, node_pool, optional
-from poolhouse.checks import Finding, ask
+from poolhouse import hook_diagnostics, hookcheck, node_pool, optional
+from poolhouse.checks import Finding, show
 from poolhouse.command import Group, flag
 from poolhouse.home import state
 from poolhouse.log import say
@@ -26,7 +25,7 @@ from poolhouse.serve.build_report import manifest_of
 from poolhouse.serve.process import measuring, measuring_file
 
 __all__ = ["HOOKS", "STALE_BUILD_DAYS", "ahead_of", "bench_of", "builds_of",
-           "hooks_of", "install_of", "look_checkouts", "main", "repositories", "status_of",
+           "hooks_of", "look_checkouts", "main", "repositories", "status_of",
            "worktrees_of"]
 
 STALE_BUILD_DAYS = 14
@@ -44,8 +43,8 @@ def _git(repo: Path, *args: str, strip: bool = True) -> str:
     'no answer' rather than an error. ``strip=False`` keeps the leading space a porcelain
     status line carries -- stripped, ``" M note.txt"`` reads as ``"ote.txt"``."""
     try:
-        got = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True,
-                             timeout=30)
+        words, env = hookcheck.inert(repo)
+        got = subprocess.run([*words, *args], capture_output=True, text=True, timeout=30, env=env)
     except Exception:  # noqa: BLE001
         return ""
     if got.returncode != 0:
@@ -131,7 +130,7 @@ def _running_hooks(repo: Path) -> Finding:
 
 def status_of(repo: Path) -> Finding:
     """Clean, or what is not."""
-    lines = [ln for ln in _git(repo, "status", "--porcelain", strip=False).splitlines()
+    lines = [ln for ln in _git(repo, "status", "--porcelain", "--ignore-submodules=all", strip=False).splitlines()
              if ln.strip()]
     paths = [ln[3:].strip() for ln in lines]
     shown = ", ".join(paths[:6]) + (f" ... ({len(paths)} in all)" if len(paths) > 6 else "")
@@ -176,44 +175,6 @@ def worktrees_of(repo: Path) -> list[Finding]:
                  f"pinned on purpose or forgotten: whatever it measures is measured "
                  f"without the {n} commit(s) since, at {where}"))
     return out
-
-
-def install_of(repo: Path, *, checkout: Path | None = None,
-               python: Path | None = None) -> Finding | None:
-    """Where ``import poolhouse`` lands for this repository's interpreter: good only when
-    that is under ``checkout``, since a resolve into site-packages is a copy. None when
-    there is no checkout to compare with."""
-    if checkout is None:
-        return None
-    if python is None:
-        venv = repo / ".venv" / "bin" / "python"
-        python = venv if venv.exists() else Path(sys.executable)
-    try:
-        got = subprocess.run(
-            [str(python), "-c", "import poolhouse, poolhouse.graph.search as a; print(a.__file__)"],
-            capture_output=True, text=True, timeout=60)
-    except Exception as exc:  # noqa: BLE001
-        got = None
-        error = str(exc)
-    else:
-        error = (got.stderr.strip().splitlines() or [""])[-1]
-    fix = [str(python), "-m", "pip", "install", "-e", str(checkout)]
-    if got is None or got.returncode != 0:
-        return Finding(name=f"{repo.name}: editable install", good=False,
-                       said=f"{python}: import poolhouse fails -- {error or 'no output'}",
-                       fix=fix)
-    found = Path(got.stdout.strip())
-    try:
-        under = found.resolve().is_relative_to(checkout.resolve())
-    except (OSError, ValueError):
-        under = False
-    return Finding(
-        name=f"{repo.name}: editable install", good=under,
-        said=str(found),
-        fix=[] if under else fix,
-        note="" if under else
-             f"{python} imports a copy, not {checkout}: what is edited there is not "
-             "what runs here")
 
 
 def _measuring(home: Path) -> Finding | None:
@@ -369,17 +330,11 @@ def builds_of(current: Path, named: Path, *, stale_days: int = STALE_BUILD_DAYS)
 
 
 def look_checkouts(repos: list[Path] | None = None, *, bench_home: Path | None = None,
-                   current: Path | None = None, named: Path | None = None,
-                   checkout: Path | None = None) -> list[Finding]:
+                   current: Path | None = None, named: Path | None = None) -> list[Finding]:
     """The repositories and the working state, without changing a thing: hooks, the
-    working tree, the branch, worktrees, the editable install, the bench store, and the
-    managed llama.cpp builds."""
+    working tree, the branch, worktrees, the bench store and the managed llama.cpp builds."""
     out: list[Finding] = []
-    seen_python: set[Path] = set()
     repos = repositories(None) if repos is None else repos
-    if checkout is None:
-        checkout = next((r for r in repos if (r / "src" / "poolhouse").is_dir()),
-                        checks.checkout())
     for repo in repos:
         if not _git(repo, "rev-parse", "--show-toplevel"):
             out.append(Finding(name=f"{repo.name}: repository", good=False,
@@ -391,15 +346,6 @@ def look_checkouts(repos: list[Path] | None = None, *, bench_home: Path | None =
         out.append(status_of(repo))
         out.append(ahead_of(repo))
         out.extend(worktrees_of(repo))
-        venv = repo / ".venv" / "bin" / "python"
-        python = venv if venv.exists() else Path(sys.executable)
-        # By path, not resolved: a venv's python is a link to the same interpreter as
-        # sys.executable and imports from a different site-packages all the same.
-        if python not in seen_python:
-            seen_python.add(python)
-            found = install_of(repo, checkout=checkout, python=python)
-            if found is not None:
-                out.append(found)
     out.extend(bench_of(state("bench") if bench_home is None else bench_home))
     out.extend(builds_of(managed_current() if current is None else current,
                          managed_named() if named is None else named))
@@ -411,18 +357,18 @@ def _findings(args) -> int:
         return hook_diagnostics.inspect(args)
     say("poolhouse: the repositories and the working state\n")
     pool = node_pool.status()
-    findings = agent_hooks.findings() + node_pool.build_findings(pool) + node_pool.reach_findings(pool) + look_checkouts(
+    findings = node_pool.build_findings(pool) + node_pool.reach_findings(pool) + look_checkouts(
         repositories(args.repo) if args.repo else None,
         bench_home=Path(args.bench_home).expanduser() if args.bench_home else None)
-    ask(findings)
+    show(findings)
     return 0 if all(f.good for f in findings) else 1
 
 
 COMMAND = Group(
     "poolhouse-doctor",
     "Check what poolhouse-setup does not: the checkouts (hooks, working tree, branch, "
-    "worktrees, the editable install), the bench store (empty runs, a dead lock, a log "
-    "with no run) and the managed llama.cpp. Offers a fix for what has one; never pushes.",
+    "worktrees), the bench store (empty runs, a dead lock, a log "
+    "with no run) and the managed llama.cpp. Shows the fix for what has one and runs none; never pushes.",
     options=[flag("action", nargs="?", choices=("hooks",), help="inspect local hook failures"),
              flag("id", nargs="?", help="hook diagnostic ID; omitted lists recent failures"),
              flag("--repo", action="append", metavar="PATH",

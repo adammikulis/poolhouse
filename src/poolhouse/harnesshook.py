@@ -5,7 +5,8 @@ one hook event on stdin and writes the decision as JSON: the destructive-action 
 the role decide, at once: a call is allowed or denied with the reason, and nothing waits for anyone.
 ``post`` runs ``poolhouse-workspace nudge`` and passes what it prints on as context. The role,
 agent and paths are on the command line the launcher wrote, never read from the environment or
-from the call. Admission hook failures block calls; notification failures produce diagnostics.
+from the call. A real denial blocks a call. The hook's own failure allows it and is logged, except where a downloaded file could
+then run unnoticed or the call names a launcher file. Notification failures produce diagnostics.
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ from poolhouse import platform
 from poolhouse.errors import Denied
 from poolhouse.guard import fetchlog
 from poolhouse.harnesspolicy import (
+    SHELL_TOOLS,
     Decision,
     _shell_line,
     after_downloads,
@@ -75,11 +77,39 @@ class Rail:
     protected: Sequence[str] = ()
 
 
+def _recorded(error: BaseException) -> str:
+    """The reference under which an internal failure of the PreToolUse hook is recorded."""
+    return hook_diagnostics.record(error, 'pre', 'classification', metadata=hook_bootstrap.timings())
+
+
+def _logged(error: BaseException) -> str:
+    """Record an internal failure that blocks nothing, say so on stderr, and return its reference."""
+    said = _recorded(error)
+    sys.stderr.write(f"poolhouse: the hook failed internally and did not block the call: {said}\n")
+    return said
+
+
+def _unclassified(error: BaseException, payload: dict[str, Any], rail: Rail) -> Decision:
+    """The decision when classifying a call failed internally: allowed and logged. It stays denied when it names a
+    launcher file, or is a shell call of a session that downloaded files (or whose downloads cannot be read)."""
+    args = payload.get("tool_input")
+    text = json.dumps(args, ensure_ascii=False, default=str) if isinstance(args, dict) else ""
+    try:
+        downloaded = str(payload.get("tool_name", "")) in SHELL_TOOLS and bool(fetchlog.read(rail.agent))
+    except FAILURES:
+        downloaded = True
+    if downloaded or any(word and word in text for word in rail.protected):
+        return Decision("deny", "unsure", "the call could not be classified, and it names a launcher file or may run a "
+                                          f"downloaded one: {_recorded(error)}")
+    return Decision("allow", f"unclassified: {_logged(error)}", "")
+
+
 def pre(payload: dict[str, Any], rail: Rail) -> dict[str, Any]:
     """The PreToolUse answer for ``payload``: allow or deny with the reason, at once."""
     policy, agent, roots, protected = rail.policy, rail.agent, rail.roots, rail.protected
     event = HOOK_EVENTS["pre"]
     args = payload.get("tool_input")
+    fetched: Sequence[str] = ()
     try:
         name = str(payload.get("tool_name", ""))
         inputs = args if isinstance(args, dict) else None
@@ -91,14 +121,17 @@ def pre(payload: dict[str, Any], rail: Rail) -> dict[str, Any]:
     except Denied as error:
         decision = Decision('deny', 'destructive', hook_diagnostics.record(error, 'pre', 'classification', metadata=hook_bootstrap.timings()))
     except FAILURES as error:
-        decision = Decision("deny", "unsure", f"the call could not be classified: {hook_diagnostics.record(error, 'pre', 'classification', metadata=hook_bootstrap.timings())}")
+        decision = _unclassified(error, payload, rail)
     if decision.action == "deny":
         return _answer(event, "deny", f"poolhouse: {decision.reason}")
     reason = f"poolhouse: {decision.label}"
+    line = _shell_line(str(payload.get("tool_name", "")), args if isinstance(args, dict) else None)
     try:
-        fetchlog.note(agent, fetchlog.targets(_shell_line(str(payload.get("tool_name", "")), args if isinstance(args, dict) else None), roots, str(payload.get("cwd") or ""), fetched))
+        fetchlog.note(agent, fetchlog.targets(line, roots, str(payload.get("cwd") or ""), fetched))
     except FAILURES as error:
-        return _answer(event, "deny", f"poolhouse: a download could not be recorded: {hook_diagnostics.record(error, 'pre', 'classification', metadata=hook_bootstrap.timings())}")
+        if line:
+            return _answer(event, "deny", f"poolhouse: a download could not be recorded: {_recorded(error)}")
+        reason = f"poolhouse: unrecorded: {_logged(error)}"
     return _answer(event, 'allow', reason)
 
 
@@ -190,7 +223,8 @@ def _options(words: Sequence[str]) -> tuple[str, dict[str, list[str]]]:
 
 def run(argv: Sequence[str] | None = None, stdin: IO[str] | None = None,
         stdout: IO[str] | None = None) -> int:
-    """Read one hook event and write the answer; a failure exits 2, which blocks the call."""
+    """Read one hook event and write the answer. A PreToolUse event the hook cannot read allows the call and is logged;
+    any other failure, and an input nested too deep to read, exits 2, which blocks the call."""
     os.environ[ENV_NONINTERACTIVE] = "1"
     words = list(sys.argv[1:] if argv is None else argv)
     stage = "options"
@@ -210,6 +244,10 @@ def run(argv: Sequence[str] | None = None, stdin: IO[str] | None = None,
         hook_bootstrap.stage(stage)
         out = pre(payload, rail) if event == "pre" else stop(rail) if event == "stop" else post(agent, rail)
     except FAILURES as exc:
+        if (words[0] if words else "pre") == "pre" and not isinstance(exc, RecursionError):
+            _logged(exc)
+            hook_bootstrap.finish()
+            return 0
         return hook_bootstrap.failure(exc, words[0] if words else "pre", stage, stdout)
     if out:
         (stdout or sys.stdout).write(json.dumps(out, sort_keys=True) + "\n")

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from poolhouse.files import sha256_file
 from poolhouse.lock import pid_alive
 from poolhouse.sentinel import canary as canaries, observers
 from poolhouse.sentinel.canary import Baseline, Results
@@ -365,6 +366,19 @@ class Sentinel:
             self.handle(found)
         return self.mode == Mode.OBSERVE and found.event.kind != MISSING
 
+    def changed_digest(self, pin: Pin) -> str:
+        """The digest of ``pin``'s file when it can be read and is not what was pinned, else ''. Nothing is held; a file
+        unchanged since its last full verification is not hashed again."""
+        if self._verified_before(pin):
+            return ""
+        found = check_file(pin, deep=True)
+        if found is None:
+            self._remember(pin)
+            return ""
+        if found.event.kind not in ("integrity.content_changed", "integrity.link_retargeted"):
+            return ""
+        return str(found.event.evidence.get("sha256") or sha256_file(Path(pin.path)))
+
     def _stat_key(self, pin: Pin) -> tuple[str, int, int, int] | None:
         path = Path(pin.path)
         try:
@@ -398,7 +412,7 @@ class Sentinel:
             if self.store.state_of(pin.kind, pin.path) == State.QUARANTINED:
                 continue
             found = check_file(pin, deep=deep)
-            if pin.kind == "binary" and (found is None or found.event.kind != MISSING):
+            if (pin.kind == "binary" or pin.source in Manifest.SELF_MADE) and (found is None or found.event.kind != MISSING):
                 self._note_binary(pin, found)
             elif found is not None:
                 out.append(found)
@@ -413,7 +427,9 @@ class Sentinel:
 
     def _note_binary(self, pin: Pin, found: Finding | None) -> None:
         """A changed managed binary is logged once and never held: it is vetted before every run (`poolhouse.serve.binary_trust`), which
-        re-pins what something vouches for and replaces what nothing does, so a hold nobody could end would only stop serving."""
+        re-pins what something vouches for and replaces what nothing does, so a hold nobody could end would only stop serving. A
+        changed local file pinned when it was served is logged the same way: every start refuses it until a person serves it by
+        name (`poolhouse.serve.guarded`), so a hold would only move the person's own file away."""
         if found is None:
             self._noted_binaries.discard(pin.path)
         elif pin.path not in self._noted_binaries:

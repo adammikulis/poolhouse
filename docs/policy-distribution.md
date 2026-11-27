@@ -34,7 +34,7 @@ specified in a note, not built.
 | 8 | Claims before mutating; no stealing a live claim | code (`claims`, harness reserve) | a | code; hard |
 | 9 | Named-file staging, no `git add -A`/`commit -a` | `claude-bash-guard` | b | packaged bash guard |
 | 10 | No commit by an agent in the primary checkout; worktrees beside, not inside | `primary-only`, `worktreerules` | b | packaged guard; dev branch derived |
-| 11 | No editable install of a live runtime | `worktreerules.INSTALL`, `doctor` | a/b | guard + doctor |
+| 11 | No editable install of a live runtime | `worktreerules.INSTALL` | a/b | guard |
 | 12 | `main`, tags, force, ref deletion are the owner's; opener is the owner's | bash guard + `pre-push` | b, **hard** | packaged `pre-push` and bash guard |
 | 13 | Agents push the dev branch themselves; fetch before and after | `pre-push`, prose | b/e | `pre-push` plus block text |
 | 14 | Landing queue: <10 commits/branch, <=20 behind, ~10 worktrees, finish before starting | prose | b (numbers d) | `policy check landing` (reads git; tighten-only numbers) |
@@ -145,7 +145,7 @@ at import of the policy package).
 | `claims.no-steal` | A live claim is not taken; recovery is verified | `claims.py` |
 | `serve.broker-only` | Compute is leased from the broker; no server by hand | `serve.grant`, bash guard |
 | `test.no-live-no-keystore` | Tests do not call paid/public endpoints or the real keystore | pytest plugin |
-| `runtime.immutable` | No editable install behind a live runtime | guard, doctor |
+| `runtime.immutable` | No editable install behind a live runtime | guard |
 | `policy.tamper-protected` | Policy files, lock, hook wiring and generated blocks are not agent-writable | edit guard, bash guard, `ratchet` |
 
 Membership is the owner's decision (open question 9). Hard rules with `scope = uses:*` bind a

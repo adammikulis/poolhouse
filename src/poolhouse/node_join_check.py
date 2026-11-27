@@ -83,8 +83,9 @@ def firewall_fix(port: int, beacon_port: int) -> str:
                 f'-Profile Private -Protocol TCP -LocalPort {port}; New-NetFirewallRule -DisplayName "Poolhouse node discovery" -Direction Inbound '
                 f'-Action Allow -Profile Private -Protocol UDP -LocalPort {beacon_port}')
     if is_wsl():
-        return (f"in an administrator PowerShell on Windows: Set-NetFirewallHyperVVMSetting -Name '{HYPERV_ID}' -DefaultInboundAction Allow "
-                f"(or add inbound allow rules for TCP {port} and UDP {beacon_port}); then `wsl --shutdown` and start WSL again")
+        rules = "; ".join(f"New-NetFirewallHyperVRule -Name Poolhouse-{proto}-{number} -DisplayName Poolhouse-{proto}-{number} -Direction Inbound -Action Allow "
+                          f"-Profiles Private -VMCreatorId '{HYPERV_ID}' -Protocol {proto} -LocalPorts {number}" for proto, number in (("TCP", port), ("UDP", beacon_port)))
+        return f"in an administrator PowerShell on Windows: {rules}; then `wsl --shutdown` and start WSL again"
     return f"sudo ufw allow {port}/tcp && sudo ufw allow {beacon_port}/udp (or the same in the firewall you use)"
 
 

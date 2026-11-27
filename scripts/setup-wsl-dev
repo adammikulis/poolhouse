@@ -2,13 +2,13 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
-VENV="${POOLHOUSE_WSL_VENV:-$HOME/.venvs/poolhouse-dev}"
+STATE="${POOLHOUSE_HOME:-$HOME/.poolhouse}"
+VENV="${POOLHOUSE_WSL_VENV:-$STATE/wsl-dev-venv}"
 UV="${UV:-$(command -v uv || true)}"
 if [[ -z "$UV" && -x "$HOME/.local/bin/uv" ]]; then
   UV="$HOME/.local/bin/uv"
 fi
-BASHRC="${BASHRC:-$HOME/.bashrc}"
-CONFIG="$HOME/.config/poolhouse/wsl-dev.sh"
+CONFIG="$STATE/wsl-dev.sh"
 
 case "$(uname -r)" in
   *[Mm]icrosoft*) ;;
@@ -101,13 +101,7 @@ ENV
 chmod 600 "$tmp"
 mv -f -- "$tmp" "$CONFIG"
 
-source_line='[ -f "$HOME/.config/poolhouse/wsl-dev.sh" ] && . "$HOME/.config/poolhouse/wsl-dev.sh"'
-touch "$BASHRC"
-if ! grep -Fqx "$source_line" "$BASHRC"; then
-  printf '\n%s\n' "$source_line" >> "$BASHRC"
-fi
-
 printf 'Installed poolhouse with all supported extras and test dependencies in %s\n' "$VENV"
 printf 'Installed CUDA-matched torchaudio and exposed the bundled ffmpeg executable in %s/bin.\n' "$VENV"
-printf 'Opened shells will use source at %s and scan configured Windows model caches.\n' "$ROOT"
-printf 'Run: source %s\n' "$BASHRC"
+printf 'No shell file was changed. To use source at %s and scan the Windows model caches in this shell, run:\n' "$ROOT"
+printf '  . %q\n' "$CONFIG"

@@ -33,17 +33,31 @@ from poolhouse.http import Server
 
 pytest_plugins = ["tests.confined_kit"]
 
+SERVING = '''
+    held = socket.socket()
+    held.bind(("127.0.0.1", int(args[args.index("--port") + 1])))
+    held.listen()
+    asked = 0
+    while True:
+        connection = held.accept()[0]
+        connection.recv(65536)
+        asked += 1
+        said = b"200 OK" if asked > starting else b"503 Service Unavailable"
+        if asked > starting:
+            open(os.path.join(os.environ["HOME"], "tmp", "ready"), "w").close()
+        connection.sendall(b"HTTP/1.1 " + said + b"\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n")
+        connection.close()
+'''
+"""What a stand-in's `serve` does, as OpenCode 2.4.2 starts: it listens at once, answers 503 ``starting`` times and 200 from then on."""
+
 HARNESS = '''#!{python}
 # NOT A MODEL and NOT OPENCODE: it holds the port as `serve`; as `run` it writes one file and, only when `hooked`, calls the parent as the plugin does.
 import json, os, socket, subprocess, sys
 args = sys.argv[1:]
 if args[0] == "serve":
-    held = socket.socket()
-    held.bind(("127.0.0.1", int(args[args.index("--port") + 1])))
-    held.listen()
-    while True:
-        held.accept()[0].close()
-plugin = open(json.load(open(os.environ["OPENCODE_CONFIG"]))["plugin"][0].removeprefix("file://")).read()
+    starting = 0{serving}
+folder = json.load(open(os.environ["OPENCODE_CONFIG"]))["plugins"][0]
+plugin =open(os.path.join(folder, "index.js")).read()
 hook = json.loads(plugin.split("const cfg = ", 1)[1].split(";\\n", 1)[0])["hook"]
 if {hooked}:
     subprocess.run([*hook, "post"], input=json.dumps({{"loaded": True}}), capture_output=True, text=True, check=True)
@@ -73,7 +87,9 @@ def test_opencode_run_is_confined_offline_and_points_at_the_bridge(monkeypatch, 
         seen["argv"], seen["env"] = list(confinement.argv), dict(confinement.env)
         seen["net"] = confinement.profile.policy.net
         seen["config"] = json.loads(Path(seen["env"]["OPENCODE_CONFIG"]).read_text())
-        seen["plugin"] = Path(seen["env"]["OPENCODE_CONFIG"]).with_name(opencode.PLUGIN).read_text()
+        [folder] = seen["config"]["plugins"]
+        seen["folder"] = (Path(folder).relative_to(seen["env"]["HOME"]).as_posix(), sorted(each.name for each in Path(folder).iterdir()))
+        seen["plugin"] = (Path(folder) / "index.js").read_text()
         return 0
 
     said = []
@@ -82,7 +98,8 @@ def test_opencode_run_is_confined_offline_and_points_at_the_bridge(monkeypatch, 
     sh, flag, script, name, program, port, *rest = seen["argv"]
     assert (sh, flag, name, program) == ("/bin/sh", "-c", "opencode", str(binary.resolve()))
     assert rest == ["--format", "json", "--model", "poolhouse/local-model", "fix it"]
-    assert '"$1" serve --hostname 127.0.0.1 --port "$2"' in script and 'run --server "http://127.0.0.1:$port"' in script and "--standalone" not in script
+    assert '"$1" serve --print-logs --log-level warn --hostname 127.0.0.1 --port "$2" >&2 &' in script
+    assert 'run --server "http://127.0.0.1:$port"' in script and "--standalone" not in script
     assert seen["net"].listen == (int(port),) and len(seen["net"].ports) == 1, "the model bridge and the server the launcher chose, no other port"
     assert seen["env"]["OPENCODE_PASSWORD"] == provider_key(seen), "the server answers only to the bridge token"
     assert seen["env"]["OPENCODE_DISABLE_AUTOUPDATE"] == "true" and seen["env"]["OPENCODE_DISABLE_MODELS_FETCH"] == "true"
@@ -95,6 +112,80 @@ def test_opencode_run_is_confined_offline_and_points_at_the_bridge(monkeypatch, 
     assert seen["config"]["autoupdate"] is False and seen["config"]["share"] == "disabled"
     assert 'ctx.tool.hook("execute.before", before)' in seen["plugin"]
     assert "client.py" in seen["plugin"] and "poolhouse.harnesshook" not in seen["plugin"]
+    assert seen["folder"] == ("bin/poolhouse-plugin", ["index.js"]), "OpenCode loads a configured plugin only from a folder, and the box holds bin whole"
+
+
+# NOT A MODEL and NOT OPENCODE: as `serve` it says a marked line on each of its outputs and holds the port; as `run` it tries to change the plugin.
+MEDDLER = '''#!{python}
+import json, os, socket, subprocess, sys
+args = sys.argv[1:]
+if args[0] == "serve":
+    print("PLUMBING server stdout", flush=True)
+    print("PLUMBING level=WARN failed to load plugin", file=sys.stderr, flush=True)
+    starting = 0{serving}
+folder =json.load(open(os.environ["OPENCODE_CONFIG"]))["plugins"][0]
+hook = json.loads(open(os.path.join(folder, "index.js")).read().split("const cfg = ", 1)[1].split(";\\n", 1)[0])["hook"]
+subprocess.run([*hook, "post"], input=json.dumps({{"loaded": True}}), capture_output=True, text=True, check=True)
+found = []
+for name, change in (("entry", lambda: open(os.path.join(folder, "index.js"), "w")), ("chmod", lambda: os.chmod(os.path.join(folder, "index.js"), 0o600)),
+                     ("second-entry", lambda: open(os.path.join(folder, "server.js"), "w")), ("typed-entry", lambda: open(os.path.join(folder, "server.ts"), "w")),
+                     ("package", lambda: open(os.path.join(folder, "package.json"), "w")), ("moved", lambda: os.rename(folder, folder + "-aside")),
+                     ("home-moved", lambda: os.rename(os.path.dirname(folder), os.path.dirname(folder) + "-aside")),
+                     ("control", lambda: open(os.path.join(os.environ["HOME"], "tmp", "control"), "w"))):
+    try:
+        change()
+        found.append(name + "=changed")
+    except PermissionError:
+        found.append(name + "=refused")
+print(" ".join(found), flush=True)
+'''
+
+
+# NOT A MODEL and NOT OPENCODE: its server is ready only at the fourth question; as `run` it says whether the server was ready when it started.
+EAGER = '''#!{python}
+import os, socket, sys
+args = sys.argv[1:]
+if args[0] == "serve":
+    starting = 3{serving}
+print("ready" if os.path.exists(os.path.join(os.environ["HOME"], "tmp", "ready")) else "too-early", flush=True)
+'''
+
+
+def stood_in(monkeypatch, tmp_path, code):
+    """One launch of the marked program ``code`` in the harness's place, run to its end: its status, the launcher's lines and its two outputs."""
+    binary = tmp_path / "opencode-NOT-OPENCODE"
+    binary.write_text(code.format(python=os.path.realpath(sys.executable), serving=SERVING))
+    binary.chmod(0o755)
+    project = repository(tmp_path / "project")
+    run = harnessing.Session(SimpleNamespace(name="coding-test", parent=None, managed_inbox=False), project, "trusted role brief")
+
+    @contextmanager
+    def opened(*_args, **_kwargs):
+        yield run
+
+    monkeypatch.setattr(opencode.harnessing, "binary_for", lambda _: str(binary.resolve()))
+    monkeypatch.setattr(opencode, "alias_of", lambda *_: "local-model")
+    monkeypatch.setattr(opencode.harnessing, "window_of", lambda _: 49152)
+    monkeypatch.setattr(opencode.harnessing, "opened", opened)
+    out, err, said = io.BytesIO(), io.BytesIO(), []
+    status = opencode.launch(["--on", "http://127.0.0.1:8080", "--project", str(project), "--", "fix it"], say=said.append,
+                             run_opencode=lambda confinement: confinement.run(None, out, err))
+    return status, said, out.getvalue().decode(), err.getvalue().decode()
+
+
+@pytest.mark.usefixtures("confinable", "from_a_terminal")
+def test_the_server_is_heard_on_the_error_output_and_the_box_lets_a_run_neither_change_the_plugin_nor_add_an_entry(monkeypatch, tmp_path):
+    status, said, out, err = stood_in(monkeypatch, tmp_path, MEDDLER)
+    assert status == 0, (said, err)
+    assert out.split() == ["entry=refused", "chmod=refused", "second-entry=refused", "typed-entry=refused", "package=refused", "moved=refused",
+                           "home-moved=refused", "control=changed"], "only `run` writes the events"
+    assert "PLUMBING server stdout" in err and "failed to load plugin" in err, "a load failure reaches the run's error output"
+
+
+@pytest.mark.usefixtures("confinable", "from_a_terminal")
+def test_run_starts_only_once_the_server_says_it_is_ready(monkeypatch, tmp_path):
+    _status, said, out, err = stood_in(monkeypatch, tmp_path, EAGER)
+    assert out == "ready\n", (said, out, err)
 
 
 def provider_key(seen):
@@ -318,7 +409,7 @@ def test_a_download_that_does_not_match_its_digest_installs_nothing(releases):
 @pytest.mark.parametrize(("hooked", "status"), [(False, 2), (True, 0)])
 def test_a_launch_whose_plugin_never_reported_publishes_nothing_and_says_so(monkeypatch, tmp_path, hooked, status):
     binary = tmp_path / "opencode-NOT-OPENCODE"
-    code = HARNESS.format(python=os.path.realpath(sys.executable), hooked=hooked)
+    code = HARNESS.format(python=os.path.realpath(sys.executable), serving=SERVING, hooked=hooked)
     binary.write_text(code)
     binary.chmod(0o755)
     project = repository(tmp_path / "project")

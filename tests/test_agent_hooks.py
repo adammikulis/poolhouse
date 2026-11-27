@@ -1,4 +1,4 @@
-"""The nudge hooks written into Claude Code's and Codex's settings, and the check that they are there."""
+"""The nudge hooks: written only when asked, only into one project's own settings, and never required."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from node_kit import node_binary, workspace_node  # noqa: F401
 
 from poolhouse import agent_hooks, authority
 from poolhouse.caller import AgentRefused
-from poolhouse.workspace import hooks_cli, onboard
+from poolhouse.workspace import cli, hooks_cli, onboard
 
 CODEX_BEFORE = '''model = "gpt-6.1-sol"
 
@@ -20,18 +20,13 @@ CODEX_BEFORE = '''model = "gpt-6.1-sol"
 hooks = true
 multi_agent = true
 
-[mcp_servers.docs]
-url = "https://example.invalid/mcp"
-
 [[hooks.PostToolUse]]
 matcher = ".*"
 
 [[hooks.PostToolUse.hooks]]
 type = "command"
-command = "python -m poolhouse.harnesshook post --agent codex"
+command = "other-notice"
 timeout = 30
-
-[hooks.state]
 
 [hooks.state."fixture-existing-trust"]
 trusted_hash = "fixture-preserved-record"
@@ -39,6 +34,8 @@ trusted_hash = "fixture-preserved-record"
 [agents]
 max_threads = 32
 '''
+USERS_OWN = {".claude/settings.json": '{"model": "mine"}\n', ".claude.json": "{}\n", ".codex/config.toml": 'model = "mine"\n',
+             ".gitconfig": "[user]\n", ".zshrc": "# mine\n"}
 
 
 @pytest.fixture(autouse=True)
@@ -50,24 +47,95 @@ def machine(monkeypatch, tmp_path):
     monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "state"))
     for name in (*authority.DELEGATING, "POOLHOUSE_NONINTERACTIVE"):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr(agent_hooks.shutil, "which", lambda name: f"/bin/{name}")
+    for name, text in USERS_OWN.items():
+        path = tmp_path / "home" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    (tmp_path / "project").mkdir()
     return tmp_path
+
+
+def user_files(machine):
+    home = machine / "home"
+    return {str(path.relative_to(home)): path.read_text() for path in home.rglob("*") if path.is_file()}
 
 
 def commands(data, event):
     return [h["command"] for g in data["hooks"][event] for h in g["hooks"]]
 
 
+def asked(project, *only):
+    return argparse.Namespace(project=str(project), only=list(only), agent="")
+
+
+def test_install_writes_the_projects_own_local_settings_and_nothing_of_the_users(machine):
+    project = machine / "project"
+    done = agent_hooks.install(project)
+    real = project.resolve()
+    assert {agent: path for agent, (path, _) in done.items()} == {"claude-code": real / ".claude" / "settings.local.json",
+                                                                   "codex": real / ".codex" / "config.toml"}
+    assert sorted(str(p.relative_to(project)) for p in project.rglob("*") if p.is_file()) == [".claude/settings.local.json", ".codex/config.toml"]
+    assert user_files(machine) == USERS_OWN
+    claude = json.loads((real / ".claude" / "settings.local.json").read_text())
+    assert commands(claude, "Stop") == ["poolhouse-workspace nudge --agent claude --hook stop"]
+    codex = tomllib.loads((real / ".codex" / "config.toml").read_text())
+    assert codex["features"] == {"hooks": True} and commands(codex, "PostToolUse") == ["poolhouse-workspace codex-hook"]
+
+
+@pytest.mark.parametrize("where", ["home", "above-home", "global-folder", "missing"])
+def test_a_folder_that_is_not_a_project_is_refused_and_nothing_is_written(machine, where):
+    project = {"home": machine / "home", "above-home": machine, "global-folder": machine / "home" / ".claude",
+               "missing": machine / "absent"}[where]
+    with pytest.raises(ValueError):
+        agent_hooks.install(project)
+    assert user_files(machine) == USERS_OWN and not (machine / "absent").exists()
+
+
+@pytest.mark.parametrize("link", [".claude", ".codex", ".claude/settings.local.json", ".codex/config.toml"])
+def test_a_project_link_into_the_users_settings_is_refused_before_either_file_is_written(machine, link):
+    project = machine / "project"
+    target = machine / "home" / link.replace("settings.local.json", "settings.json")
+    (project / link).parent.mkdir(parents=True, exist_ok=True)
+    (project / link).symlink_to(target)
+    with pytest.raises(ValueError, match="is a link"):
+        agent_hooks.install(project)
+    assert user_files(machine) == USERS_OWN
+    assert not [p for p in project.rglob("*") if p.is_file() and not p.is_symlink()]
+
+
+@pytest.mark.parametrize("link, target", [(".claude/settings.local.json", "made-by-install.json"),
+                                          (".codex/config.toml", "made-by-install.toml"),
+                                          (".claude", "other-folder"), (".claude/settings.local.json", "kept.json")])
+def test_a_committed_link_inside_the_project_is_refused_and_its_target_is_neither_made_nor_changed(machine, link, target):
+    project = machine / "project"
+    (project / "kept.json").write_text("{}")
+    (project / link).parent.mkdir(parents=True, exist_ok=True)
+    (project / link).symlink_to(project / target)
+    with pytest.raises(ValueError, match="is a link"):
+        agent_hooks.install(project)
+    assert sorted(p.name for p in project.rglob("*") if p.is_file() and not p.is_symlink()) == ["kept.json"]
+    assert (project / "kept.json").read_text() == "{}" and not (project / "other-folder").exists()
+
+
+@pytest.mark.parametrize("variable, agent, folder", [("CLAUDE_CONFIG_DIR", "claude-code", ".claude"), ("CODEX_HOME", "codex", ".codex")])
+def test_a_relocated_user_settings_folder_is_never_written_even_inside_a_project(machine, monkeypatch, variable, agent, folder):
+    monkeypatch.setenv(variable, str(machine / "project" / folder))
+    with pytest.raises(ValueError, match="user's own"):
+        agent_hooks.install(machine / "project", (agent,))
+    assert not (machine / "project" / folder).exists()
+
+
 def test_claude_hooks_are_idempotent_keep_other_hooks_and_replace_earlier_nudges(machine):
-    path = machine / "settings.json"
+    path = machine / "project" / ".claude" / "settings.local.json"
+    path.parent.mkdir()
     path.write_text(json.dumps({"model": "x", "hooks": {
         "PostToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "other-tool"}]},
                         {"matcher": "*", "hooks": [{"type": "command", "command": "poolhouse-workspace nudge --agent old --hook post"}]}],
         "Stop": [{"hooks": [{"type": "command", "command": "keep-me"},
                             {"type": "command", "command": "poolhouse-workspace nudge --agent old --hook stop"}]}]}}))
-    assert agent_hooks.install_claude(path) == ["PostToolUse", "Stop", "UserPromptSubmit"]
+    agent_hooks.install(machine / "project", ("claude-code",))
     first = path.read_text()
-    agent_hooks.install_claude(path)
+    agent_hooks.install(machine / "project", ("claude-code",))
     assert path.read_text() == first
     data = json.loads(first)
     assert data["model"] == "x"
@@ -75,33 +143,42 @@ def test_claude_hooks_are_idempotent_keep_other_hooks_and_replace_earlier_nudges
     assert commands(data, "Stop") == ["keep-me", "poolhouse-workspace nudge --agent claude --hook stop"]
     assert commands(data, "UserPromptSubmit") == ["poolhouse-workspace nudge --agent claude --hook prompt"]
     assert data["hooks"]["PostToolUse"][-1]["matcher"] == "*"
+    assert not (machine / "project" / ".codex").exists()
 
 
-def test_codex_hooks_keep_other_settings_and_replace_fixed_actor_notifications(machine):
-    path = machine / "config.toml"
+def test_codex_hooks_keep_other_settings_and_a_second_run_changes_nothing(machine):
+    path = machine / "project" / ".codex" / "config.toml"
+    path.parent.mkdir()
     path.write_text(CODEX_BEFORE)
-    assert agent_hooks.install_codex(path) == [event for event, _, _ in agent_hooks.CODEX_EVENTS]
+    done = agent_hooks.install(machine / "project", ("codex",))
+    assert done["codex"][1] == [event for event, _, _ in agent_hooks.CODEX_EVENTS]
     text = path.read_text()
-    assert "poolhouse.harnesshook post" not in text
     data = tomllib.loads(text)
+    before = tomllib.loads(CODEX_BEFORE)
     assert data["model"] == "gpt-6.1-sol" and data["agents"] == {"max_threads": 32}
-    assert data["hooks"]["state"] == tomllib.loads(CODEX_BEFORE)["hooks"]["state"]
-    assert commands(data, "Stop") == ["poolhouse-workspace codex-hook"]
-    assert commands(data, "UserPromptSubmit") == ["poolhouse-workspace codex-hook"]
-    assert commands(data, "PostToolUse") == ["poolhouse-workspace codex-hook"]
+    assert data["hooks"]["state"] == before["hooks"]["state"] and data["features"] == before["features"]
+    assert commands(data, "PostToolUse") == ["other-notice", "poolhouse-workspace codex-hook"]
     for event, _, _ in agent_hooks.CODEX_EVENTS:
-        assert data['hooks'][event][0]['hooks'][0]['timeout'] == (3 if event == 'SessionEnd' else 5)
-    agent_hooks.install_codex(path)
+        assert data['hooks'][event][-1]['hooks'][0]['timeout'] == (3 if event == 'SessionEnd' else 5)
+    agent_hooks.install(machine / "project", ("codex",))
     assert path.read_text() == text
 
 
-def test_codex_hooks_write_the_post_hook_when_no_launcher_hook_nudges(machine):
-    path = machine / "config.toml"
-    assert agent_hooks.install_codex(path) == [event for event, _, _ in agent_hooks.CODEX_EVENTS]
-    data = tomllib.loads(path.read_text())
-    assert data["features"] == {"hooks": True}
-    assert data["hooks"]["PostToolUse"][0]["matcher"] == ".*"
-    assert commands(data, "PostToolUse") == ["poolhouse-workspace codex-hook"]
+def test_codex_turns_the_hooks_feature_on(machine):
+    path = machine / "project" / ".codex" / "config.toml"
+    path.parent.mkdir()
+    path.write_text('[features]\nhooks = false\nshell_snapshot = true\n')
+    agent_hooks.install(machine / "project", ("codex",))
+    assert tomllib.loads(path.read_text())["features"] == {"hooks": True, "shell_snapshot": True}
+
+
+def test_a_file_that_cannot_be_read_as_settings_leaves_both_files_untouched(machine):
+    path = machine / "project" / ".codex" / "config.toml"
+    path.parent.mkdir()
+    path.write_text("model = [unclosed\n")
+    with pytest.raises(ValueError):
+        agent_hooks.install(machine / "project")
+    assert path.read_text() == "model = [unclosed\n" and not (machine / "project" / ".claude").exists()
 
 
 @pytest.mark.parametrize("assigned", ["", "codex-fixture"])
@@ -125,43 +202,27 @@ def test_codex_context_limits_only_apply_to_events_the_native_host_supports(assi
         assert len(handlers) == 1
 
 
-def test_codex_turns_the_hooks_feature_on_and_replaces_an_earlier_notify_nudge(machine):
-    path = machine / "config.toml"
-    path.write_text('notify = ["poolhouse-workspace", "nudge", "--agent", "codex"]\nmodel = "m"\n\n'
-                    '[features]\nhooks = false\nshell_snapshot = true\n')
-    agent_hooks.install_codex(path)
-    data = tomllib.loads(path.read_text())
-    assert "notify" not in data and data["model"] == "m"
-    assert data["features"] == {"hooks": True, "shell_snapshot": True}
-    path.write_text('[features]\nshell_snapshot = true\n')
-    agent_hooks.install_codex(path)
-    assert tomllib.loads(path.read_text())["features"] == {"hooks": True, "shell_snapshot": True}
+def test_the_command_needs_a_project_and_writes_nothing_without_one(machine, monkeypatch):
+    monkeypatch.chdir(machine / "project")
+    with pytest.raises(SystemExit) as stopped:
+        cli.main(["install-hooks"])
+    assert stopped.value.code == 2
+    assert user_files(machine) == USERS_OWN and not list((machine / "project").iterdir())
 
 
-def test_a_codex_config_that_is_not_toml_is_left_untouched(machine):
-    path = machine / "config.toml"
-    path.write_text("model = [unclosed\n")
-    with pytest.raises(ValueError):
-        agent_hooks.install_codex(path)
-    assert path.read_text() == "model = [unclosed\n"
-
-
-def test_install_writes_only_the_agents_on_this_machine(machine, monkeypatch):
-    (machine / "home" / ".claude").mkdir(parents=True)
-    monkeypatch.setattr(agent_hooks.shutil, "which", lambda name: None)
-    assert list(agent_hooks.install()) == ["claude-code"]
-    assert not (machine / "home" / ".codex").exists()
-    assert agent_hooks.paths()["claude-code"].is_file()
-
-
-def test_install_names_every_agent_it_is_told_to(machine):
-    where = {"claude-code": machine / "a.json", "codex": machine / "b.toml"}
-    assert set(agent_hooks.install(where=where)) == {"claude-code", "codex"}
-    assert agent_hooks.install_report()[0].startswith("claude-code: message-board hooks (PostToolUse, Stop")
+def test_the_command_says_what_it_wrote_and_why_it_refused(machine, capsys, monkeypatch):
+    monkeypatch.setattr(authority, "refuse_agent", lambda *a, **k: None)
+    assert hooks_cli.install(asked(machine / "project")) == 0
+    out = capsys.readouterr().out
+    assert "claude-code: PostToolUse, Stop, UserPromptSubmit" in out and "codex: SessionStart, SubagentStart" in out
+    assert "settings.local.json" in out and "trusts" in out
+    assert hooks_cli.install(asked(machine / "home")) == 1
+    assert "not written" in capsys.readouterr().err and user_files(machine) == USERS_OWN
 
 
 def test_the_install_command_follows_the_registry(machine, monkeypatch, workspace_node):  # noqa: F811
-    args = argparse.Namespace(settings=str(machine / "s.json"), codex_config="", only=[], agent="")
+    args = asked(machine / "project", "claude-code")
+    written = machine / "project" / ".claude" / "settings.local.json"
     monkeypatch.setenv("POOLHOUSE_HOME", str(workspace_node.state.parent))
     monkeypatch.setenv("POOLHOUSE_BOARD", workspace_node.board)
     lead = workspace_node.member("hooks-lead")
@@ -170,142 +231,41 @@ def test_the_install_command_follows_the_registry(machine, monkeypatch, workspac
     monkeypatch.setenv("POOLHOUSE_WORKSPACE_AGENT", lead.name)
     with pytest.raises(AgentRefused, match="held back from agents"):
         hooks_cli.install(args)
-    assert not (machine / "s.json").exists()
+    assert not written.exists()
     assert [r["action"] for r in authority.audit_rows() if r["event"] == "refused"] == ["workspace install-hooks"]
     authority_kit.delegate(["workspace.setup"])
     assert hooks_cli.install(args) == 0
-    assert (machine / "s.json").is_file()
+    assert written.is_file()
     assert [r["agent"] for r in authority.audit_rows() if r["event"] == "authority.use"] == [lead.name]
 
 
 def test_the_install_command_runs_directly_for_a_process_with_no_agent_marker_even_when_the_gate_is_held_back(
         machine, monkeypatch, workspace_node):  # noqa: F811
-    args = argparse.Namespace(settings=str(machine / "s.json"), codex_config="", only=[], agent="")
     monkeypatch.setenv("POOLHOUSE_HOME", str(workspace_node.state.parent))
     authority.set_state(["workspace.setup"], authority.PERSON, by="lead")
-    assert hooks_cli.install(args) == 0
-    assert (machine / "s.json").is_file()
+    assert hooks_cli.install(asked(machine / "project", "claude-code")) == 0
+    assert (machine / "project" / ".claude" / "settings.local.json").is_file()
     (row,) = [r for r in authority.audit_rows() if r["event"] == "ran"]
     assert row["who"].startswith("user ")
 
 
-def test_findings_say_missing_stale_and_current_per_agent(machine):
-    where = {"claude-code": machine / "a.json", "codex": machine / "b.toml"}
-    missing = agent_hooks.findings(where)
-    assert [f.name for f in missing] == ["claude-code: message-board hooks", "codex: message-board hooks"]
-    assert not any(f.good for f in missing) and "PostToolUse missing" in missing[0].said
-    assert all(f.fix == ["poolhouse-workspace", "install-hooks"] for f in missing)
-    agent_hooks.install(where=where)
-    assert all(f.good for f in agent_hooks.findings(where))
-    where["claude-code"].write_text(where["claude-code"].read_text().replace("--agent claude", "--agent old"))
-    stale = agent_hooks.findings(where)
-    assert not stale[0].good and "PostToolUse stale" in stale[0].said and stale[1].good
-    where["codex"].write_text(where["codex"].read_text().replace("hooks = true", "hooks = false"))
-    assert "the hooks feature is off" in agent_hooks.findings(where)[1].said
-
-
-def test_findings_report_an_unreadable_file_and_a_missing_binary(machine, monkeypatch):
-    where = {"claude-code": machine / "a.json"}
-    where["claude-code"].write_text("{broken")
-    assert "cannot be read" in agent_hooks.findings(where)[0].said
-    agent_hooks.install_claude(machine / "ok.json")
-    monkeypatch.setattr(agent_hooks.shutil, "which", lambda name: None)
-    found = agent_hooks.findings({"claude-code": machine / "ok.json"})
-    assert "poolhouse-workspace is not on PATH" in found[0].said
-
-
-def test_the_workspace_doctor_carries_the_hook_findings(machine, workspace_node):  # noqa: F811
+def test_the_workspace_doctor_does_not_look_for_hooks(machine, workspace_node):  # noqa: F811
     session = workspace_node.session(workspace_node.member("doctor"))
-    hooks = [f for f in onboard.doctor(session) if "message-board hooks" in f.what]
-    assert [f.ok for f in hooks] == [False, False]
-    assert all("missing" in f.what and f.fix == "poolhouse-workspace install-hooks" for f in hooks)
-
-
-def test_the_install_command_writes_both_agents_into_named_files(machine, capsys, monkeypatch):
-    monkeypatch.setattr(authority, "refuse_agent", lambda *a, **k: None)
-    args = argparse.Namespace(settings=str(machine / "s.json"), codex_config=str(machine / "c.toml"), only=[], agent="")
-    assert hooks_cli.install(args) == 0
-    out = capsys.readouterr().out
-    assert "claude-code: PostToolUse, Stop, UserPromptSubmit" in out and "codex: SessionStart, SubagentStart" in out
-    assert (machine / "s.json").is_file() and (machine / "c.toml").is_file()
-    args.only = ["codex"]
-    assert hooks_cli.install(args) == 0
-    assert "claude-code" not in capsys.readouterr().out
-
-
-def test_codex_preserves_pretool_security_and_unknown_post_hooks(machine):
-    path = machine / "config.toml"
-    path.write_text(CODEX_BEFORE + "\n[[hooks.PreToolUse]]\n[[hooks.PreToolUse.hooks]]\n" +
-                    'type = "command"\ncommand = "security-check"\n' +
-                    '\n[[hooks.PostToolUse]]\n[[hooks.PostToolUse.hooks]]\n' +
-                    'type = "command"\ncommand = "other-notice"\n')
-    agent_hooks.install_codex(path)
-    data = tomllib.loads(path.read_text())
-    assert commands(data, "PreToolUse") == ["security-check"]
-    assert commands(data, "PostToolUse") == ["other-notice", "poolhouse-workspace codex-hook"]
-
-
-def test_codex_preserves_pre_and_custom_post_containing_owned_marker(machine):
-    path = machine / "config.toml"
-    pre = 'guard-tool --note "poolhouse.harnesshook post"'
-    exact_pre = 'python -m poolhouse.harnesshook post --agent codex'
-    post = 'other-notice --note "poolhouse.harnesshook post"'
-    path.write_text(CODEX_BEFORE + '\n[[hooks.PreToolUse]]\n[[hooks.PreToolUse.hooks]]\n' +
-                    'type = "command"\ncommand = ' + json.dumps(pre) + '\n' +
-                    '\n[[hooks.PreToolUse.hooks]]\ntype = "command"\ncommand = ' + json.dumps(exact_pre) + '\n' +
-                    '\n[[hooks.PostToolUse]]\n[[hooks.PostToolUse.hooks]]\n' +
-                    'type = "command"\ncommand = ' + json.dumps(post) + '\n')
-    agent_hooks.install_codex(path)
-    text = path.read_text()
-    data = tomllib.loads(text)
-    assert commands(data, "PreToolUse") == [pre, exact_pre]
-    assert commands(data, "PostToolUse") == [post, "poolhouse-workspace codex-hook"]
-    agent_hooks.install_codex(path)
-    assert path.read_text() == text
-
-
-def test_codex_replaces_owned_post_with_quoted_interpreter_path(machine):
-    path = machine / "config.toml"
-    command = '"/private/tmp/runtime with spaces/bin/python" -m poolhouse.harnesshook post --agent codex'
-    path.write_text('[[hooks.PostToolUse]]\n[[hooks.PostToolUse.hooks]]\ntype = "command"\ncommand = ' + json.dumps(command) + '\n')
-    agent_hooks.install_codex(path)
-    assert commands(tomllib.loads(path.read_text()), "PostToolUse") == ["poolhouse-workspace codex-hook"]
-
-
-def test_migrate_owned_stop_command_preserves_unrelated_hooks_and_trust(machine):
-    path = machine / 'config.toml'
-    other = '\n[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype="command"\ncommand="unrelated-stop"\n'
-    old = agent_hooks.codex_hooks().replace(
-        '[[hooks.SubagentStop]]',
-        '[[hooks.Stop.hooks]]\ntype="command"\ncommand="poolhouse-workspace codex-stop"\ntimeout=5\n\n[[hooks.SubagentStop]]')
-    path.write_text(CODEX_BEFORE + other + '\n' + old)
-    before = tomllib.loads(path.read_text())['hooks']['state']
-    agent_hooks.install_codex(path)
-    after = tomllib.loads(path.read_text())
-    assert commands(after, 'Stop') == ['unrelated-stop', 'poolhouse-workspace codex-hook']
-    assert after['hooks']['state'] == before
-    assert all(item.good for item in agent_hooks.findings({'codex': path}) if item.name.startswith('codex:'))
+    found = onboard.doctor(session)
+    assert found and all(f.ok for f in found), [f.what for f in found if not f.ok]
+    assert not [f for f in found if "hooks" in f.what]
 
 
 @pytest.mark.parametrize('foreign', ['echo "poolhouse-workspace nudge"',
     'poolhouse-workspace nudge --agent claude --hook post && foreign-tool',
     '/foreign/poolhouse-workspace nudge --agent claude --hook post',
-    'other-tool --note "claude-nudge.sh"', 'echo "poolhouse.codex_lifecycle"',
-    'sh ~/.poolhouse/hooks/claude-nudge.sh', 'python -m poolhouse.codex_lifecycle', 'python3 -m poolhouse.codex_lifecycle'])
+    'other-tool --note "claude-nudge.sh"', 'sh ~/.poolhouse/hooks/claude-nudge.sh'])
 def test_install_preserves_foreign_commands_that_only_mention_owned_hooks(machine, foreign):
-    path = machine / 'settings.json'
+    path = machine / 'project' / '.claude' / 'settings.local.json'
+    path.parent.mkdir()
     path.write_text(json.dumps({'hooks': {'PostToolUse': [{'hooks': [{'type': 'command', 'command': foreign}]}]}}))
-    agent_hooks.install_claude(path)
+    agent_hooks.install(machine / 'project', ('claude-code',))
     assert commands(json.loads(path.read_text()), 'PostToolUse') == [foreign, agent_hooks.command('claude', 'post')]
-
-
-def test_install_preserves_foreign_notify_argv_that_mentions_our_binary(machine):
-    path = machine / 'config.toml'
-    original = 'notify = ["foreign-notifier", "poolhouse-workspace", "nudge"]\n'
-    path.write_text(original + CODEX_BEFORE)
-    agent_hooks.install_codex(path)
-    assert path.read_text().startswith(original)
-    assert tomllib.loads(path.read_text())['notify'] == ['foreign-notifier', 'poolhouse-workspace', 'nudge']
 
 
 @pytest.mark.parametrize('foreign', ['poolhouse-workspace nudge --hook unknown',
@@ -313,12 +273,3 @@ def test_install_preserves_foreign_notify_argv_that_mentions_our_binary(machine)
     'poolhouse-workspace codex-hook --assigned own extra', '"unterminated poolhouse-workspace nudge'])
 def test_unknown_or_malformed_command_shapes_are_not_owned(foreign):
     assert not agent_hooks._own(foreign)
-
-
-def test_notify_data_inside_a_foreign_table_is_preserved(machine):
-    path = machine / 'config.toml'
-    foreign = '[mcp_servers.plugin]\nnotify = ["poolhouse-workspace", "nudge", "--agent", "codex"]\n'
-    path.write_text(foreign)
-    agent_hooks.install_codex(path)
-    assert path.read_text().startswith(foreign)
-    assert tomllib.loads(path.read_text())['mcp_servers']['plugin']['notify'][0] == 'poolhouse-workspace'

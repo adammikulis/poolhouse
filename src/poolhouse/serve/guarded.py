@@ -25,7 +25,7 @@ from poolhouse.serve.leases import recorded_servers
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["Armed", "SentinelRefused", "arm", "blocked", "caller_blocked", "file_of", "register",
+__all__ = ["Armed", "SentinelRefused", "arm", "blocked", "caller_blocked", "file_of", "pin_served", "register",
            "report", "start", "unmanaged_seen", "verify"]
 
 
@@ -170,6 +170,27 @@ def _first_use(node: Sentinel, digest: str, vouched: bool) -> str:
     return "first-use"
 
 
+def pin_served(*models: object) -> None:
+    """A person serves these files by name: each one that changed since it was pinned, and was not downloaded, is pinned
+    as it is now, and that is said. A signed list that names a file still refuses other bytes. Nothing another device, a page, a
+    model or Poolhouse itself chose comes here (`poolhouse-serve up` is the one caller)."""
+    node = sentinel.armed()
+    if node.mode == sentinel.Mode.OFF:
+        return
+    for model in models:
+        path = file_of(model) if model else None
+        pin = node.manifest.pin_of(path) if path is not None and not blocked(path) else None
+        if pin is None or pin.source in node.manifest.DOWNLOADED or not (digest := node.changed_digest(pin)):
+            continue
+        said = _by_manifest(node, Path(pin.path), digest, path.name)
+        source = _first_use(node, digest, bool(said))
+        node.manifest.pin_verified(pin.path, pin.kind, digest, source=source, digest_from="computed")
+        logger.warning("%s changed since it was pinned: serving it pins it again as it is now (sha256 %s, was %s)",
+                       path.name, digest[:12], pin.sha256[:12])
+        node.bus.emit(Event("model.repinned", Severity.NOTICE, "serve", f"model:{pin.path}",
+                            {"name": path.name, "sha256": digest, "was": pin.sha256, "source": source}, node.clock()))
+
+
 def parts_of(spec: Any) -> tuple[object, ...]:
     """What a start reads from disk and so verifies: the weights, the draft unless its head is embedded,
     the projector, the chat template and the static lookup cache."""
@@ -205,6 +226,9 @@ def verify(model: object, *, state_file: Path, stop: Callable[[int], Any]) -> st
         node.bus.emit(Event("model.pinned_first_use", Severity.NOTICE, "serve", f"model:{path}",
                             {"name": name, "manifest": said, "source": source}, node.clock()))
         return said
+    if pin.source in node.manifest.SELF_MADE and node.mode != sentinel.Mode.OBSERVE and node.changed_digest(pin):
+        raise SentinelRefused(f"{name} does not match its pin: it changed since it was served; `poolhouse-serve up {path}`, "
+                              f"run by a person, pins it again as it is")
     if not node.verify_before_load(path, cached=True):
         raise SentinelRefused(f"{name} does not match its pin and is quarantined by "
                               f"sentinel; the file was moved aside")

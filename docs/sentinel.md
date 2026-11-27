@@ -386,7 +386,9 @@ Armed (tests: `tests/test_publisher_trust.py`, `tests/test_supply_chain_pins.py`
   tuning flags of `serve/downloads.py` (`LLAMA_FLAGS`), so `-m`, `--model`, `-md`, `--mmproj`, `--lora`, `--control-vector`,
   `--chat-template-file`, `--lookup-cache-static`, `-mv`, `-Hf` and any flag not on the list are refused; the child's `LLAMA_ARG_`
   repository, URL and token variables are removed. A start verifies the weights, the draft, the projector, the chat template and
-  the static lookup cache (`guarded.parts_of`). `sentinel baseline --pin FILE --kind model` is refused to an agent at once, and a pin counts
+  the static lookup cache (`guarded.parts_of`). A local file pinned when it was first served and changed since is refused to every start, and is not moved aside; a person who
+  runs `poolhouse-serve up PATH` on it pins it again, with a warning and the event `model.repinned` (a run marked as an agent's, a
+  `serve_up` tool, another device's lease and Poolhouse's own choice never do). `sentinel baseline --pin FILE --kind model` is refused to an agent at once, and a pin counts
   as vouching for another file's bytes only when it came from a pull, a person, or a signed list.
 
 * **Pinned at pull.** Every model file (`gguf`, `safetensors`) that `net.download` or `net.accept` keeps

@@ -3,8 +3,8 @@
 Status: prepared 2026-10-08; installed enforcement is unverified. The owner decided agents run under an operating
 system sandbox. This document is the target profile for each harness, what each option closes,
 how our workflows behave under it, and the order in which the owner checks it. Machine settings are
-a person's (AGENTS.md section 1): an agent runs `scripts/agent-sandbox prepare`, and the person
-installs what it staged.
+never written by Poolhouse: `scripts/agent-sandbox prepare` stages the profiles in Poolhouse's own state
+folder and installs nothing.
 
 Every claim about sandbox behaviour is **PREDICTED** unless marked **VERIFIED**. The generated Codex configuration
 has no read-deny rules; the installed Claude Code and sandbox-runtime wrappers have not been verified. Path-based
@@ -214,20 +214,18 @@ VERIFIED from an agent; each sandboxed result is PREDICTED until the owner's ste
 | hooks reading the transcript (`~/.claude/projects`) | unaffected: hooks run unsandboxed | PREDICTED (documented behaviour) | |
 | Agent writes `~/.claude/projects/...` | refused | PREDICTED | |
 
-## Acceptance steps for the owner
+## Acceptance steps
 
-Do these at your own terminal, in order. Steps 1 to 3 run no sandbox.
+Poolhouse writes no harness's settings, user-wide (`~/.claude`, `~/.codex`) or machine-wide (`/etc`, `/Library`), and prints no
+command that would. `prepare` writes only `<state>/agent-sandbox/staging`. Where this document names a managed or installed file, that
+profile is not delivered by anything here; passing the staged file to one launched session is not built and unverified.
 
-1. `scripts/agent-sandbox prepare` in the primary checkout. Expect the staged directory, three
-   file lines with 12-character digests, and one `sudo sh -c '...'` line.
+1. `scripts/agent-sandbox prepare` in the primary checkout. Expect the staged directory and three
+   file lines with 12-character digests.
 2. Read `~/.poolhouse/agent-sandbox/staging/claude-managed-settings.json`. Expect
    `allowUnsandboxedCommands: false` and the worktree paths you use.
-3. Run the printed `sudo` line. Expect `claude-managed-settings.json: OK` (and two more `OK`),
-   no other output.
-4. `scripts/agent-sandbox status`. Expect three `match` lines under `staged for device ...`.
-5. Start `claude` in the primary checkout, run `/sandbox`. Expect the sandbox on and shown as
-   admin-required (settings from managed policy).
-6. In that session ask for `scripts/agent-sandbox probe` (a Bash call). Expect every line `PASS`
+3. `scripts/agent-sandbox status`. Expect the same three file lines under `staged for device ...`.
+4. In a session running under that profile, ask for `scripts/agent-sandbox probe` (a Bash call). Expect every line `PASS`
    and `the checks passed` only when every required check ran and passed. A `FAIL`, `SKIP`,
    missing check or inconclusive check cannot establish confinement; use an unsandboxed control to distinguish a
    sandbox denial from ordinary filesystem permissions.

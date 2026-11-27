@@ -45,7 +45,7 @@ from tests import isolation_kit as kit
 pytest_plugins = ["node_kit", "delegate_kit", "tests.confined_kit"]
 CANNED = "[CANNED RESPONSE, NOT A MODEL]"
 HARNESS = '''#!{python}
-# NOT A MODEL and NOT OPENCODE: a program standing in for the harness inside the real confinement. As `serve` it only holds the port; as `run` it does
+# NOT A MODEL and NOT OPENCODE: a program standing in for the harness inside the real confinement. As `serve` it only says it is ready; as `run` it does
 # what a delegate's model would do with its tools (writes files, runs commands, asks its lead, tries what it must not), calls the parent's hooks as
 # the plugin does and prints the events the real harness prints. Every word it says is marked.
 import json, os, socket, subprocess, sys, time
@@ -58,10 +58,13 @@ if args[0] == "serve":
     held.bind(("127.0.0.1", int(args[args.index("--port") + 1])))
     held.listen()
     while True:
-        held.accept()[0].close()
+        connection = held.accept()[0]
+        connection.recv(65536)
+        connection.sendall(b"HTTP/1.1 200 OK\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n")   # ready, as OpenCode's server says once it is
+        connection.close()
 task = sys.stdin.read()
 config = json.load(open(os.environ["OPENCODE_CONFIG"]))
-plugin = open(config["plugin"][0].removeprefix("file://")).read()
+plugin = open(os.path.join(config["plugins"][0], "index.js")).read()
 cfg = json.loads(plugin.split("const cfg = ", 1)[1].split(";\\n", 1)[0])
 server = config["mcp"]["lead"]["command"]
 calls = [0]
@@ -491,7 +494,8 @@ def test_the_model_sees_only_the_delegates_tools_and_opencode_is_bounded_by_its_
     assert config["mcp"]["lead"]["command"] == ["/py", "-I", "/h/client.py", "--socket", "/s", "--pid", "1", "mcp"]
     assert config["mcp"]["lead"]["timeout"] == int(lead_bridge.tool_timeout() * 1000) and lead_bridge.tool_timeout() > lead_bridge.ask_wait()
     assert config["provider"]["poolhouse"]["options"]["baseURL"] == "http://127.0.0.1:1/v1", "the bridge, never the server"
-    plugin = rendering.files[".opencode-config/poolhouse-plugin.js"]
+    assert config["plugins"] == [str(tmp_path / "home" / opencode.PLUGIN)], "the plugin's folder, by path"
+    plugin = rendering.files[f"{opencode.PLUGIN}/{opencode.ENTRY}"]
     settings = json.loads(plugin.split("const cfg = ", 1)[1].split(";\n", 1)[0])
     assert settings["shell"]["most"] == 600.0 and settings["shell"]["argv"][:2] == ["/py", "-I"]
     assert rendering.files["session/bounded.py"] == delegate_confined.BOUNDED
@@ -512,7 +516,7 @@ def test_every_delegate_of_one_lead_starts_with_the_same_prompt_whatever_differs
         return json.loads(rendering.files[".opencode-config/opencode.json"])["agents"][opencode.AGENT]["system"]
 
     assert prompt(one) == prompt(two) and str(tmp_path) not in prompt(one) and "child-1" not in prompt(one)
-    plugin = one.files[".opencode-config/poolhouse-plugin.js"]
+    plugin = one.files[f"{opencode.PLUGIN}/{opencode.ENTRY}"]
     fixed = json.loads(plugin.split("const cfg = ", 1)[1].split(";\n", 1)[0])["fixed"]
     assert fixed == [[str(tmp_path / "one" / "stage"), "."], [str(tmp_path / "one" / "home"), "$HOME"]]
 

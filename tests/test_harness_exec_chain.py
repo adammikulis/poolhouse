@@ -603,6 +603,7 @@ class TestTheVerdict:
         assert "forbidden" not in outside.public()
 
     def test_every_reason_at_unsure_or_above_is_listed_worst_first(self, world):
+        (world.proj / "conftest.py").write_text("import pytest  # a file with more in it than the write leaves\n" * 20, encoding="utf-8")
         got = decide(coding_policy.Policy("guarded"), Call("Write", {"file_path": str(world.proj / "conftest.py"), "content": "x = 1"}), roots=world.roots)
         assert "empties it" in got.reason and "runs when the project is built or tested" in got.reason
         assert got.reason.index("empties it") < got.reason.index("runs when the project")

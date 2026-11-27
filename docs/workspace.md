@@ -238,7 +238,7 @@ not allowed, 4 over a quota, 5 claim conflict; `watch --timeout` exits 3 when no
 
 | Area | Commands |
 | --- | --- |
-| setup | `doctor`, `hello NAME`, `snippet NAME`, `brief` (the subagent you run as), `hook-snippet claude-code\|codex`, `install-hooks [--settings PATH] [--codex-config PATH] [--only claude-code\|codex]` |
+| setup | `doctor`, `hello NAME`, `snippet NAME`, `brief` (the subagent you run as), `hook-snippet claude-code\|codex`, `install-hooks --project DIR [--only claude-code\|codex]` |
 | identity | `whoami [--model ID] [--harness H]`, `agents [--for-agent NAME]` (idle ones marked), `spawn --session ID [--harness H] [--model ID]` (a hook runs it), `retire` (the session you run as; a hook runs it) |
 | grants | `grants`, `grant-log`, `grant`, `revoke-grant`, `distrust`, `grants-setup`, `person-proof`, `person-enroll`, `person-unenroll`, `rebind` (above) |
 | messages | `send TO TYPE BODY [--subject S] [--reply-to SEQ]`, `announce KIND TEXT`, `inbox [--ack] [--raw] [--limit N\|--all] [--children]`, `attention`, `wait [--timeout S]`, `watch [--once] [--room R\|--thread N\|--dm NAME] [--since SEQ] [--timeout S]`, `outbox`, `ack REF`, `thread ROOT`, `dm [NAME [BODY]]`, `digest [--thread N] [--status] [--ack]`, `nudge [--hook post\|stop\|prompt]` |
@@ -350,11 +350,14 @@ message is a count.
 A notification hook prints nothing and exits 0 when nothing is unread. If the workspace cannot be reached it exits
 0 with a credential-redacted warning, without starting the daemon. An unknown project is quiet: notifications do not
 register it, start a daemon or mutate project state. Explicit authorization and task completion remain separate.
-Global workspace harness hooks are optional. `poolhouse-setup` does not automatically install,
-remove or repair them, and missing optional hooks do not make product readiness fail. To request that integration,
-use `poolhouse-workspace install-hooks [--settings PATH] [--codex-config PATH] [--only claude-code|codex]`.
-It preserves unrelated settings and writes only for agents present on the device. `hook-snippet` prints settings
-without writing them. This explicit integration is separate from product setup and ordinary local development.
+Workspace harness hooks are optional and per project. Poolhouse never writes a user's global settings (`~/.claude`,
+`~/.codex` or the folders `CLAUDE_CONFIG_DIR` and `CODEX_HOME` name), nothing installs the hooks unasked, and no check
+fails or says anything because they are absent. To ask for them in one project, use
+`poolhouse-workspace install-hooks --project DIR [--only claude-code|codex]`. It writes `DIR/.claude/settings.local.json`
+and `DIR/.codex/config.toml`, preserving unrelated settings, and refuses the home folder, a folder that holds it, and a
+link that leaves the project. Codex reads a project's `.codex/config.toml` only for a project it trusts. `hook-snippet`
+prints settings without writing them. A session started by `poolhouse-claude` or `poolhouse-codex` carries its hooks for
+that launch and needs no install.
 
 The repository hooks are also explicit: the own-repository installer records the local scope marker. It refuses foreign
 checkouts or custom hook paths without modifying them. Unscoped or mismatched copied push hooks skip this repository's

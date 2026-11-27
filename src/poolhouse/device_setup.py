@@ -5,8 +5,9 @@
 It lists every change this device needs, makes them,
 and ends with READY, or NOT READY and the one fix. Per platform: Windows and WSL get inbound firewall rules (only where the shell is
 already an administrator's; otherwise refused at once with the reason, since nothing here raises an administrator prompt) and WSL gets
-mirrored networking in the Windows user's .wslconfig (the old file is kept; WSL then restarts, which ends this session, so run the same command again); every platform gets the node (a binary already
-present, else a cargo build, installing Rust first when cargo is missing), started with its network on, then the join check.
+mirrored networking, which is a line in the Windows user's .wslconfig that this never writes (it says what to add; where the line is there already
+WSL restarts, which ends this session, so run the same command again); every platform gets the node (a binary already
+present, else a cargo build; this never installs Rust), started with its network on, then the join check.
 Rerunning changes nothing that is already right. No secret is printed.
 """
 
@@ -14,7 +15,6 @@ from __future__ import annotations
 
 import shutil
 import sys
-import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -26,90 +26,76 @@ from poolhouse.node_launch import default_state
 SECTION = "[wsl2]"
 SETTING = "networkingMode"
 WANTED = "mirrored"
-BACKUP_SUFFIX = ".poolhouse-backup"
+WSL_FIX = ("add networkingMode=mirrored under [wsl2] in the Windows user's %UserProfile%\\.wslconfig (Poolhouse never writes that file), "
+           "run `wsl --shutdown`, then run this again")
+RUST_FIX = "Rust is not installed here, and Poolhouse never installs it: install it from https://rustup.rs, then run this again"
 OFFSITE_DIRECTORIES = ("bundle", "dist")
 
 
-def mirrored_config(text: str) -> tuple[str, bool]:
-    """``text`` of a .wslconfig with `networkingMode=mirrored` under [wsl2], and whether that changed it."""
-    lines = text.splitlines()
-    section = next((i for i, line in enumerate(lines) if line.strip().lower() == SECTION), None)
-    if section is None:
-        body = text.rstrip("\n")
-        return (body + "\n\n" if body else "") + f"{SECTION}\n{SETTING}={WANTED}\n", True
-    end = next((i for i in range(section + 1, len(lines)) if lines[i].strip().startswith("[")), len(lines))
-    for i in range(section + 1, end):
-        key, _, value = lines[i].partition("=")
-        if key.strip().lower() == SETTING.lower():
-            if value.strip().lower() == WANTED:
-                return text, False
-            lines[i] = f"{SETTING}={WANTED}"
-            return "\n".join(lines) + "\n", True
-    lines.insert(section + 1, f"{SETTING}={WANTED}")
-    return "\n".join(lines) + "\n", True
-
-
-def write_config(path: Path, *, now: float | None = None) -> str:
-    """Make ``path`` mirrored, keeping the old file beside it; `unchanged`, `created` or the backup's name."""
-    old = path.read_text(encoding="utf-8") if path.is_file() else ""
-    new, changed = mirrored_config(old)
-    if not changed:
-        return "unchanged"
-    kept = ""
-    if path.is_file():
-        stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(time.time() if now is None else now))
-        kept = path.with_name(f"{path.name}{BACKUP_SUFFIX}-{stamp}")
-        shutil.copy2(path, kept)
-    path.write_text(new, encoding="utf-8")
-    return kept.name if kept else "created"
+def is_mirrored(text: str) -> bool:
+    """Whether ``text`` of a .wslconfig sets `networkingMode=mirrored` under [wsl2]."""
+    inside = False
+    for line in text.splitlines():
+        if line.strip().startswith("["):
+            inside = line.strip().lower() == SECTION
+            continue
+        key, _, value = line.partition("=")
+        if inside and key.strip().lower() == SETTING.lower():
+            return value.strip().lower() == WANTED
+    return False
 
 
 @dataclass(frozen=True)
 class Source:
-    """Where the node binary comes from: `runtime`, `found`, `build` (cargo is here) or `rustup` (it is not)."""
+    """Where the node binary comes from: `runtime`, `found`, `build` (cargo is here) or `missing` (it is not)."""
     kind: str
     path: str = ""
 
 
 def node_source(repo: Path, *, selected: Path | None, cargo: str | None) -> Source:
-    """The first of: the selected runtime's node, a release binary already in the repository, a cargo build, installing Rust."""
+    """The first of: the selected runtime's node, a release binary already in the repository, a cargo build; else Rust is missing."""
     if selected is not None and node_binary.location(selected).is_file():
         return Source("runtime", str(node_binary.location(selected)))
     for folder in (repo / "app" / "target" / "release", *(repo / name for name in OFFSITE_DIRECTORIES)):
         if (folder / node_binary.name()).is_file():
             return Source("found", str(folder / node_binary.name()))
-    return Source("build") if cargo else Source("rustup")
+    return Source("build") if cargo else Source("missing")
 
 
 @dataclass(frozen=True)
 class Needs:
-    """What this device lacks: the kind of machine, its WSL networking mode, a .wslconfig edit, firewall rules, a node."""
+    """What this device lacks: the kind of machine, its WSL networking mode, the .wslconfig setting, firewall rules, a node."""
     kind: str
     mode: str
-    config_change: bool
+    mirrored_set: bool
     firewall_missing: bool
     source: Source
 
     @property
     def restart_wsl(self) -> bool:
-        return self.kind == "wsl" and (self.mode == "nat" or self.config_change)
+        return self.kind == "wsl" and self.mode == "nat" and self.mirrored_set
+
+    @property
+    def config_missing(self) -> bool:
+        return self.kind == "wsl" and self.mode == "nat" and not self.mirrored_set
 
 
 def plan(needs: Needs, *, port: int = node_join.DEFAULT_PORT, beacon: int = node_join.DEFAULT_BEACON_PORT) -> list[str]:
-    """Each change the setup will make on this device, one line each: what the single yes is for."""
+    """Each change the setup will make on this device, one line each, or the one it stops at."""
     steps = []
     if needs.firewall_missing:
         steps.append(f"add Windows inbound allow rules for TCP {port} and UDP {beacon} (only where this shell is already an administrator's, else refused with the reason)")
-    if needs.kind == "wsl" and needs.config_change:
-        steps.append("write networkingMode=mirrored to the Windows user's .wslconfig (the old file is kept beside it): the recommended WSL setting, "
-                     "because WSL then shares the Windows network, so other devices reach it directly and hear its beacons")
+    if needs.config_missing:
+        steps.append(f"stop: {WSL_FIX}")
+        return steps
     if needs.restart_wsl:
         steps.append("restart WSL (mirrored networking takes effect then), which ends this session; run the same command again afterwards")
         return steps
     steps.append({"runtime": "use the node of the selected runtime", "found": f"use the node binary at {needs.source.path}",
                   "build": "build the node with cargo (a few minutes)",
-                  "rustup": "install Rust with the standard installer, then build the node"}[needs.source.kind])
-    steps.append(f"start the node with its network on (TCP {port}, UDP discovery {beacon}), and run the join check")
+                  "missing": f"stop: {RUST_FIX}"}[needs.source.kind])
+    if needs.source.kind != "missing":
+        steps.append(f"start the node with its network on (TCP {port}, UDP discovery {beacon}), and run the join check")
     return steps
 
 
@@ -119,8 +105,8 @@ def survey(repo: Path) -> Needs:
     windows = kind in ("windows", "wsl")
     mode = node_join_check.wsl_mode(node_join_check.route_address()) if kind == "wsl" else "mirrored"
     config = device_host.wslconfig_path(kind) if kind == "wsl" else None
-    changed = bool(config) and mirrored_config(config.read_text(encoding="utf-8") if config.is_file() else "")[1]
-    return Needs(kind, mode, changed, windows and device_host.firewall_missing(), node_source(repo, selected=runtime.selection_prefix(), cargo=shutil.which("cargo")))
+    mirrored = config is not None and config.is_file() and is_mirrored(config.read_text(encoding="utf-8"))
+    return Needs(kind, mode, mirrored, windows and device_host.firewall_missing(), node_source(repo, selected=runtime.selection_prefix(), cargo=shutil.which("cargo")))
 
 
 def announce(steps: list[str]) -> None:
@@ -134,8 +120,8 @@ def prepare(needs: Needs) -> str:
         device_host.add_firewall()
         if device_host.firewall_missing():
             raise node_join.PoolError("the firewall rules were not added: " + device_host.NOT_ELEVATED)
-    if needs.kind == "wsl" and needs.config_change:
-        say(f".wslconfig: {write_config(device_host.wslconfig_path('wsl'))}")
+    if needs.config_missing:
+        raise node_join.PoolError(WSL_FIX)
     if needs.restart_wsl:
         say("Restarting WSL; run the same command again afterwards.")
         device_host.restart_wsl()
@@ -144,10 +130,10 @@ def prepare(needs: Needs) -> str:
 
 
 def binary_of(needs: Needs, repo: Path) -> Path | None:
-    """The node binary for this device, installing Rust and building when it is not already there."""
-    if needs.source.kind == "rustup":
-        device_host.install_rust(needs.kind)
-    if needs.source.kind in ("rustup", "build"):
+    """The node binary for this device, building it when it is not already there."""
+    if needs.source.kind == "missing":
+        raise node_join.PoolError(RUST_FIX)
+    if needs.source.kind == "build":
         return node_binary.build(repo)
     return Path(needs.source.path)
 
