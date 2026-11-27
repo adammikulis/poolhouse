@@ -5,7 +5,12 @@ import http.server
 import threading
 
 import pytest
-from test_fleet_chat_browser import chat_browser  # noqa: F401  (the daemon and page fixture)
+from node_kit import node_binary  # noqa: F401  (the founded node the daemon fixture reads)
+from test_fleet_chat_browser import (  # noqa: F401  (the daemon and page fixture)
+    chat_browser,
+    founded_node,
+    governed,
+)
 
 pytestmark = pytest.mark.slow
 

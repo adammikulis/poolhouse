@@ -88,9 +88,9 @@ def validate_project(project: dict) -> None:
             raise ProjectError(f"Invalid project {field}")
 
 
-def members() -> list[Member]:
-    """Every other compute service the node currently authorizes in this device's pool."""
-    return Member.discover()
+def members(ui) -> list[Member]:
+    """Every compute service other than the one of the daemon that serves ``ui`` that the node of its pool currently authorizes."""
+    return Member.discover(pool=ui.pool, identity=getattr(ui, "studio_identity", lambda: None)())
 
 
 def available(ui) -> dict:
@@ -98,7 +98,7 @@ def available(ui) -> dict:
     if ui.projects:
         projects = [{**p, "is_self": True, "member": "", "state": "available"}
                     for p in ui.projects.list()]
-    for member in members():
+    for member in members(ui):
         if member.beacon and ui.projects and member.beacon.machine == ui.projects.machine:
             continue
         try:
@@ -151,7 +151,7 @@ def route(request) -> bool:
             request.send(200, {"ok": True})
         elif len(suffix) == 2 and suffix[1] == "checkout" and method == "POST":
             selected = request.body().get("member")
-            selected_members = [p for p in members() if p.base_url == selected]
+            selected_members = [p for p in members(ui) if p.base_url == selected]
             if len(selected_members) != 1:
                 raise ProjectError("Choose a currently authenticated pool device")
             result = receive(selected_members[0], suffix[0], ui.root / "project-checkouts")

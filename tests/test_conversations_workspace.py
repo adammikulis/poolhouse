@@ -13,7 +13,7 @@ from poolhouse.fleet import extension_routes
 from poolhouse.workspace import board_page, fleet_routes
 from poolhouse.workspace.agent_display import describe
 
-chat_browser = chat_fixtures.chat_browser
+chat_browser, founded_node, governed = chat_fixtures.chat_browser, chat_fixtures.founded_node, chat_fixtures.governed
 pytest_plugins = ['node_kit']
 pytestmark = pytest.mark.slow
 

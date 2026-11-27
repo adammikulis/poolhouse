@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import http.client
 import json
+import re
 import subprocess
 import sys
 import threading
@@ -15,9 +16,12 @@ import pytest
 from local_kit import MODEL, answers, team, waited  # noqa: F401
 from node_kit import node_binary, workspace_node  # noqa: F401
 
-from poolhouse import private_path, roles
-from poolhouse.board import credentials
+from poolhouse import isolation, private_path, roles
+from poolhouse.board import credentials, place
+from poolhouse.board.client import Denied
 from poolhouse.files import read_json, write_json
+from poolhouse.isolation import IsolationRefused
+from poolhouse.isolation.refusals import SENTENCES
 from poolhouse.testing.fakes import reply_from
 from poolhouse.workspace import (
     inbound,
@@ -28,8 +32,19 @@ from poolhouse.workspace import (
     localstart as ls,
     localtools,
 )
+from tests.isolation_kit import without_a_sandbox
+from tests.sandbox_kit import AbsentBackend
 
 GB = 10**9
+
+
+def unconfinable(monkeypatch) -> str:
+    """Make this a computer that cannot confine a coding agent (its sandbox backend is absent) and return the sentence such a
+    computer is told: one of the shipped ones, chosen by the platform."""
+    without_a_sandbox(monkeypatch, AbsentBackend)
+    sentence = isolation.capability().enforcement_error
+    assert sentence in SENTENCES.values()
+    return sentence
 
 
 # -- the model ----------------------------------------------------------------------------
@@ -128,6 +143,9 @@ def test_start_refuses_a_project_of_another_board(kit, tmp_path, monkeypatch):
     project = tmp_path / "elsewhere"
     project.mkdir()
     subprocess.run(["git", "init", "-q", str(project)], check=True)
+    with pytest.raises(Denied, match="not part of a project"):
+        ls.start(kit.person, ls.Ask(project=str(project)), base=kit.base, pick=PICK, spawn=sleeper)
+    assert place.resolve(kit.node.client, project) != kit.node.board
     with pytest.raises(ValueError, match="another board"):
         ls.start(kit.person, ls.Ask(project=str(project)), base=kit.base, pick=PICK, spawn=sleeper)
     assert la.names(kit.base) == []
@@ -139,9 +157,22 @@ def test_start_and_stop_refuse_a_process_an_agent_started(kit):
     done = kit.node.cli("agent", "stop", "local-x", env={"CLAUDECODE": "1"})
     assert done.returncode == 3
     unmarked = kit.node.cli("agent", "start")
-    assert unmarked.returncode == 2 and "refused to an agent" not in unmarked.stderr, "no marker, no refusal here"
-    assert "isolated session permissions" in unmarked.stderr
+    assert "refused to an agent" not in unmarked.stderr, "no marker, no refusal here"
+    report = isolation.capability()
+    if report.can_start:   # admitted: it goes on to choose its model, and no test downloads one
+        assert unmarked.returncode == 1 and "is downloaded for a coding agent" in unmarked.stderr, unmarked.stderr
+    else:
+        assert unmarked.returncode == 2 and report.enforcement_error in unmarked.stderr, unmarked.stderr
     assert kit.node.cli("agent", "list").returncode == 0
+
+
+def test_a_coding_start_at_a_terminal_on_a_computer_that_cannot_confine_says_why_in_one_line(kit, monkeypatch, capsys):
+    from poolhouse.workspace import cli
+
+    sentence = unconfinable(monkeypatch)
+    assert cli.main(["agent", "start"]) == 2
+    assert capsys.readouterr().err.strip() == f"workspace: {sentence}"
+    assert la.names(kit.base) == []
 
 # -- the loop ----------------------------------------------------------------------------
 class Script:
@@ -420,8 +451,7 @@ def served(kit, monkeypatch):
     monkeypatch.setattr(ls.jobs, "detach", sleeper)
     monkeypatch.setattr(ls.lp, "admit", lambda *_: ("", ""))
     listener = localroute.serve(kit.base)
-    listener.project = kit.base.parent / "project"
-    listener.project.mkdir()
+    listener.project = kit.project(kit.base.parent / "project")
     listener.start()
     yield listener
     listener.stop()
@@ -452,12 +482,15 @@ def post(served, route, body, **how):
     return request(port, "POST", f"/agents/{route}", data, h)
 
 
-def test_start_and_stop_need_the_persons_session_origin_and_json(served):
+def test_start_and_stop_need_the_persons_session_origin_and_json(served, kit):
     assert post(served, "start", {}, cookie=False)[0] == 401
     assert post(served, "start", {}, origin=False)[0] == 403
     assert post(served, "start", {}, ctype="text/plain")[0] == 400
-    closed = post(served, "start", {})
-    assert closed[0] == 400 and b"isolated session permissions" in closed[1]
+    with pytest.MonkeyPatch.context() as bare:
+        sentence = unconfinable(bare)
+        closed = post(served, "start", {})
+    assert closed[0] == 400 and json.loads(closed[1]) == {"error": sentence}, closed
+    assert la.names(kit.base) == []
     own = post(served, "start", {"profile": "chat"})
     assert own[0] == 200, own[1]
     status, _ = request(served.port, "POST", "/agents/start", {}, {
@@ -629,8 +662,9 @@ def test_start_refuses_a_context_that_does_not_fit_before_registering_anything(k
     from poolhouse.workspace import localprofile as lp
     monkeypatch.setattr(lp, "admit", lambda model, ctx: ("too big", "poolhouse-serve memory --apply"))
     before = sorted(a.name for a in kit.person.agents(True))
+    project = str(kit.project(tmp_path / "repository"))
     with pytest.raises(ls.Unavailable, match="memory --apply"):
-        ls.start(kit.person, ls.Ask(profile="chat", ctx=262144, project=str(tmp_path)), base=kit.base, pick=PICK, spawn=sleeper)
+        ls.start(kit.person, ls.Ask(profile="chat", ctx=262144, project=project), base=kit.base, pick=PICK, spawn=sleeper)
     assert sorted(a.name for a in kit.person.agents(True)) == before
 
 
@@ -673,12 +707,13 @@ def test_native_coding_start_refuses_before_model_registration_or_queue_effects(
     for owner, name in ((localmodel, "choose"), (ls.lp, "admit"), (ls, "_register"),
                         (ls.jobs, "detach"), (ls.issuepump, "configure_and_start")):
         monkeypatch.setattr(owner, name, forbidden)
+    sentence = unconfinable(monkeypatch)
     before = {a.name for a in kit.person.agents(True)}
     files = sorted(kit.base.rglob("*"))
     ask = ls.Ask(name="queue-worker", profile="coding", harness=harness,
                  project=str(tmp_path), repo="sample/project")
     for _ in range(2):
-        with pytest.raises(ValueError, match="isolated session permissions"):
+        with pytest.raises(IsolationRefused, match=re.escape(sentence)):
             ls.start(kit.session(kit.lead), ask, base=kit.base)
     assert {a.name for a in kit.person.agents(True)} == before
     assert sorted(kit.base.rglob("*")) == files
@@ -704,24 +739,34 @@ def test_coding_entrypoint_uses_worker(kit, monkeypatch):
     assert seen == [(kit.base, 'local-qwen')]
 
 
+def records_besides_status(kit, name):
+    """Every file of the local agents but the status file of ``name``, which a worker writes to say that and why it ended."""
+    status = la.Status(kit.base, name).path
+    return {p: p.read_bytes() for p in la.folder(kit.base).rglob("*") if p.is_file() and p != status}
+
+
 @pytest.mark.redteam
-def test_native_task_refuses_before_history_checkpoint_or_artifact_effects(kit, monkeypatch, tmp_path):
-    from poolhouse.workspace import task_coding
+@pytest.mark.parametrize("harness", ["pi", "claude"])
+def test_native_task_refuses_before_history_checkpoint_or_artifact_effects(kit, monkeypatch, tmp_path, harness):
+    from poolhouse.workspace import localslot, task_coding, task_runtime, task_worker
 
     def forbidden(*args, **kwargs):
         pytest.fail("native task reached an effect")
-    for owner, name in ((task_coding, "Conversations"), (task_coding, "TaskManager"),
-                        (task_coding.git, "head")):
+    for owner, name in ((localloop.hub, "located"), (localloop.harnessing, "config_for"), (localloop, "serve"),
+                        (localslot, "acquire"), (task_worker, "assigned"), (task_runtime, "execute"),
+                        (task_coding, "Conversations"), (task_coding, "TaskManager"), (task_coding.git, "head")):
         monkeypatch.setattr(owner, name, forbidden)
-    agent = la.Agent("local-qwen", "model.gguf", identity=kit.lead.name, board=kit.node.board,
-                     profile="coding", project=str(tmp_path))
-    task = {'id': 'task-1', 'title': 'Task', 'description': 'Work', 'acceptance': ['Checks pass']}
-    before = sorted(tmp_path.rglob("*"))
+    project = tmp_path / "checkout"
+    project.mkdir()
+    agent = kit.worker("local-qwen", profile="coding", harness=harness, project=str(project))
+    sentence = unconfinable(monkeypatch)
+    before = records_besides_status(kit, agent.name)
     for _ in range(2):
-        with pytest.raises(ValueError, match="isolated session permissions"):
-            task_coding.perform(kit.session(kit.lead), kit.base, agent, task,
-                                task_coding.Run(tmp_path, lambda: False, forbidden))
-    assert sorted(tmp_path.rglob("*")) == before
+        with pytest.raises(IsolationRefused, match=re.escape(sentence)):
+            task_worker.run(kit.base, agent.name)
+    assert list(project.iterdir()) == []
+    assert records_besides_status(kit, agent.name) == before
+    assert not la.status_of(kit.base, agent.name).get("lease")
 
 
 def test_stopping_a_started_worker_preserves_its_session(kit):
@@ -736,17 +781,21 @@ def test_stopping_a_started_worker_preserves_its_session(kit):
 @pytest.mark.redteam
 @pytest.mark.parametrize("profile,harness", [("coding", "pi"), ("coding", "claude"),
                                              ("coding", "codex"), ("chat", "pi")])
-def test_saved_native_worker_cannot_lease_or_execute_even_when_paused_or_labeled_chat(kit, profile, harness):
+def test_saved_native_worker_cannot_lease_or_execute_even_when_paused_or_labeled_chat(kit, monkeypatch, profile, harness):
     agent = kit.worker("local-qwen", profile=profile, harness=harness)
     ls.pause(kit.base, agent.name, True)
     def forbidden(*args, **kwargs):
         pytest.fail("native worker reached an effect")
-    settings = localloop.Settings(serve=forbidden, execute=forbidden)
-    before = {p: p.read_bytes() for p in la.folder(kit.base).rglob("*") if p.is_file()}
+    for owner, name in ((localloop.hub, "located"), (localloop.harnessing, "config_for"), (localloop, "serve")):
+        monkeypatch.setattr(owner, name, forbidden)
+    sentence = unconfinable(monkeypatch)
+    settings = localloop.Settings(execute=forbidden)   # the shipped lease, which is what refuses
+    before = records_besides_status(kit, agent.name)
     for _ in range(2):
-        with pytest.raises(ValueError, match="isolated session permissions"):
-            localloop.run(kit.base, agent.name, settings)
-    assert {p: p.read_bytes() for p in la.folder(kit.base).rglob("*") if p.is_file()} == before
+        assert localloop.run(kit.base, agent.name, settings) == 1
+        ended = la.status_of(kit.base, agent.name)
+        assert ended["state"] == "failed" and sentence in ended["detail"] and ended["lease"] == {}
+    assert records_besides_status(kit, agent.name) == before
 
 
 def test_paused_own_chat_worker_keeps_tasks_queued_until_resume(kit):
