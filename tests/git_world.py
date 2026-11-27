@@ -100,10 +100,12 @@ class World:
         """The environment of a command run for ``who``."""
         return self.node.env(who, {"POOLHOUSE_DEV_BRANCH": DEV})
 
-    def install_hook(self) -> None:
-        """Install the repository's pre-push hook; it checks a push made with the ``AGENT_PUSH`` environment."""
+    def install_push_check(self) -> None:
+        """Run the explicit push check (``scripts/hooks/pushed``, docs/landing.md) as this project's pre-push hook; the
+        repository's own ``scripts/hooks/pre-push`` guards refs only and never starts it."""
         hooks = Path(git(self.proj.root, "rev-parse", "--path-format=absolute", "--git-common-dir")) / "hooks"
         hooks.mkdir(exist_ok=True)
         hook = hooks / "pre-push"
-        hook.write_text("#!/bin/sh\nexec sh " + shlex.quote((ROOT / "scripts/hooks/pre-push").as_posix()) + ' "$@"\n', encoding="utf-8")
+        command = shlex.join([Path(sys.executable).as_posix(), (ROOT / "scripts/hooks/pushed").as_posix(), DEV])
+        hook.write_text(f"#!/bin/sh\nexec {command}\n", encoding="utf-8")
         hook.chmod(0o755)
