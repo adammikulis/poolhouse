@@ -964,12 +964,11 @@ time with the page's server down for the Ollama half.
   mlx-community snapshot on the 128 GB Mac lacks table shards 2 to 6. After
   `poolhouse-models pull` of that revision, time a 4,096-token fresh prefill with the table
   cold, both ways.
-- [ ] **llama.cpp's own source does not read table rows ahead on macOS.** `llama_prefetch`
-  (`src/llama-mmap.cpp`) is empty there and `GET_ROWS` runs on one thread, which costs about
-  7.6 s of table reads per 4,096 fresh tokens against 0.55 s with the read-ahead
-  (docs/serving.md, "The n-gram table"). The `unsloth` build serving Flash-Next reads ahead.
-  The patch compiles the Linux `madvise(MADV_WILLNEED)` branch for `__APPLE__`; check a head
-  build with a timed fresh prefill before and after.
+- [x] **llama.cpp's own source did not read table rows ahead on macOS.** Upstream compiles the
+  `madvise(MADV_WILLNEED)` branch of `llama_prefetch` for macOS since `b9f3599fb`
+  (2026-10-13); the tracked build and the verified pin are past it, so Poolhouse carries no
+  patch. A served model's fresh prefill on such a build is still untimed (docs/serving.md,
+  "The n-gram table").
 - [ ] **On an M4 the verify pass costs 4.1x one token at 16 nodes.** Measured on 27B 4-bit:
   the dense MLP's quantized matmul grows from 22 ms to 91 ms between 1 and 16 nodes, the
   DeltaNet mixer from 12 to 46, attention from 4 to 13. A small-M 4-bit matmul kernel that
