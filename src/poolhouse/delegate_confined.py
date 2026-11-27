@@ -1,14 +1,13 @@
 """A delegate: OpenCode in the isolated launcher's confinement, and the two tools it reaches its lead by.
 
-A platform with a sandbox runs every delegate here, in the confined stage of its folder behind a proved profile (`poolhouse.isolation`); one with none
-runs it in `poolhouse.delegate_unboxed`. One that edits has a shell besides the file tools; when it ends the launcher publishes its whole change but
-`.git`, coding tools' settings, credentials and links that lead out, which it refuses at once, keeps as a patch and reports to the lead in its own
-`isolation.report` message. One that only reads has read, glob and grep on a read-only stage and publishes nothing. Either reaches its lead by two
-tools over the session bridge and nothing else (`ask(question)` waits, `note(text)` returns at once), each message labelled as data twice.
+A platform with a sandbox runs every delegate here, in the confined stage of its folder behind a proved profile (`poolhouse.isolation`). One that
+edits has a shell; the launcher publishes its change but what it refuses at once (`.git`, tools' settings, credentials, links that lead out). Each
+reaches its lead by two tools over the session bridge (`ask`, `note`). A run that ends in an error, reaches its limit of turns, runs without
+poolhouse's plugin (`poolhouse.opencode`) or shows no progress for `NO_PROGRESS_S` publishes nothing more: its changes are kept as a patch.
 
-``opencode run --format json`` prints one JSON line per event, so the status carries the turns and the last tool while it runs, and poolhouse's plugin
-(`poolhouse.opencode`) tells the parent of every tool call before it runs. A run that ends in an error, reaches its limit of turns, runs without that
-plugin, or shows no progress for `NO_PROGRESS_S` outside the timeout of a shell command publishes nothing more: its changes are kept as a patch.
+A self-checked delegate (`poolhouse.delegate_review`) holds that confinement and publishes nothing from it, not at a turn the box says has ended,
+until a reviewer accepts. Each review, fix and continuation (`poolhouse.delegate_resume`) is a confinement of its own over the same project, given
+the held change first; what a fix or a continued pass changed is carried back, and none of those ever publishes.
 """
 
 from __future__ import annotations
@@ -18,16 +17,23 @@ import contextlib
 import json
 import os
 import queue
+import shutil
 import subprocess
+import tempfile
 import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
+from dataclasses import dataclass, field, replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from poolhouse import (
     claude,
+    delegate_candidate,
     delegate_refusals,
+    delegate_resume,
+    delegate_review,
     delegate_store as store,
     harness,
     harnessing,
@@ -40,10 +46,12 @@ from poolhouse.briefing import REQUIRED_BRIEFING
 from poolhouse.errors import Denied
 from poolhouse.isolation.environment import SHELL, SHELL_DEFAULT_S, SHELL_MAX_S
 from poolhouse.isolation.serving import IDLE_SECONDS
+from poolhouse.isolation.workspace import Turn
 from poolhouse.log import say as log
 from poolhouse.workspace import nudge_fence
 
-__all__ = ["NO_PROGRESS_S", "STOPPED_WHY", "Hooks", "Stopped", "Stream", "admit", "converse", "follow", "tools_of", "unsandboxable"]
+__all__ = ["HELD", "NO_PROGRESS_S", "STOPPED_WHY", "Hooks", "Stopped", "Stream", "admit", "converse", "follow", "held", "tools_of", "unsandboxable",
+           "work_pass"]
 
 READ_TOOLS = ("read", "glob", "grep")
 EDIT_TOOLS = ("edit", "write", "shell")
@@ -133,13 +141,18 @@ def permissions(tools: tuple[str, ...]) -> list[dict[str, str]]:
     return [{"action": "*", "resource": "*", "effect": "deny"}, *({"action": each, "resource": "*", "effect": "allow"} for each in allowed)]
 
 
-def arguments(rec: store.Delegate) -> argparse.Namespace:
+def tier(rec: store.Delegate) -> str:
+    """The tier the work of ``rec`` runs under: the one the lead named, else the guarded profile for one that edits and the read-only one (whose
+    stage nothing writes) for one that reads."""
+    return rec.permissions or ("guarded" if rec.edit else "read-only")
+
+
+def arguments(rec: store.Delegate, permissions_of: str = "") -> argparse.Namespace:
     """The launcher's arguments of a delegate: the default reach, its folder (the project, or the repository of its own), the session it is a
-    subagent of, and the guarded profile for one that edits, the read-only one (whose stage nothing writes) for one that reads."""
+    subagent of, and the tier of its work (`tier`), or of one pass of it."""
     folder = str(Path(rec.workdir).resolve())
     return harnessing.parser("opencode", "OpenCode", claude.DEFAULT_PORT, claude.DEFAULT_SLOTS).parse_args(
-        ["--sandbox", "--project", folder, "--as", rec.lead, "--name", rec.label, "--permissions",
-         rec.permissions or ("guarded" if rec.edit else "read-only")])
+        ["--sandbox", "--project", folder, "--as", rec.lead, "--name", rec.label, "--permissions", permissions_of or tier(rec)])
 
 
 def unsandboxable() -> str:
@@ -170,6 +183,8 @@ class Hooks:
     def __init__(self, moved: Callable[[], None] = lambda: None,
                  answered: Callable[[str, str, Mapping[str, Any], bool], None] = lambda *_: None) -> None:
         self.loaded, self.tried, self.tool, self.moved, self.answered = False, False, "", moved, answered
+        self.calls = 0
+        """The tool calls the box was let make."""
         self._shells: dict[str, float] = {}
         """The shell calls that have no result yet, by id: when the time each may take is over."""
         self._lock = threading.Lock()
@@ -189,6 +204,7 @@ class Hooks:
         self.tool = name
         self.tried = self.tried or name in EDITING or (name == SHELL_TOOL and delegate_refusals.writes(str(asked.get("command") or "")))
         denied = said.get("hookSpecificOutput", {}).get("permissionDecision") == "deny"
+        self.calls += not denied
         self.answered(call, name, asked, denied)
         if name == SHELL_TOOL and not denied:
             with self._lock:
@@ -277,17 +293,6 @@ class Stopped(SystemExit):
     def __init__(self, answer: harness.Answer) -> None:
         super().__init__(143)
         self.answer = answer
-
-
-def _published(rec: store.Delegate, confinement: isolation.Confinement, answer: harness.Answer,
-               seen: delegate_refusals.Writes) -> harness.Answer:
-    """``answer`` with what the publications of a delegate that edits came to, as data and in the launcher's words, and the writes it was refused."""
-    if rec.edit:
-        answer.published = confinement.published()
-        answer.refused_writes = seen.refused(answer.published.applied)
-        if said := confinement.said():
-            answer.text += "\n\nPublication, in the launcher's words:\n" + nudge_fence.clean("\n".join(said))
-    return answer
 
 
 def _chunks(pipe: int) -> queue.Queue[bytes]:
@@ -391,38 +396,113 @@ def brief_of(rec: store.Delegate) -> str:
         did="did" if rec.edit else "found")
 
 
-def renderer(rec: store.Delegate, binary: str, served: tuple[str, str, int]) -> Callable[[isolation.Context], isolation.Rendering]:
-    """What OpenCode needs written in its home before it starts, and its command line: a config whose one agent has this brief and these tools, the
-    plugin (which offers the model no other tool, keeps what differs from launch to launch, the stage and the home, out of the prompt, and ends each
-    shell command at its timeout) and, for one that edits, the program that ends them. It prints one JSON line per event."""
+def work_pass(rec: store.Delegate) -> delegate_review.Pass:
+    """The first pass of ``rec``: its task, its prompt, its tools and its tier."""
+    return delegate_review.Pass("work", 0, rec.message(), brief_of(rec), tools_of(rec.edit), tier(rec), rec.max_turns)
+
+
+def renderer(rec: store.Delegate, binary: str, served: tuple[str, str, int],
+             ask: delegate_review.Pass | None = None) -> Callable[[isolation.Context], isolation.Rendering]:
+    """What OpenCode needs written in its home before it starts, and its command line: a config whose one agent has the prompt and the tools of the
+    pass ``ask`` (by default the work's), the plugin (which offers the model no other tool, keeps what differs from launch to launch, the stage and the
+    home, out of the prompt, and ends each shell command at its timeout) and, for one with a shell, the program that ends them. It prints one JSON
+    line per event."""
     def render(context: isolation.Context) -> isolation.Rendering:
-        tools = tools_of(rec.edit)
-        settings: dict[str, Any] = {"tools": list(tools), "fixed": [[context.stage, "."], [str(context.home), "$HOME"]]}
+        made = ask or work_pass(rec)
+        settings: dict[str, Any] = {"tools": list(made.tools), "fixed": [[context.stage, "."], [str(context.home), "$HOME"]]}
         files: dict[str, str] = {}
-        if rec.edit:
+        if "shell" in made.tools:
             files["session/bounded.py"] = BOUNDED
             settings["shell"] = {"argv": [context.python, "-I", str(context.file("session/bounded.py"))], "program": SHELL,
                                  "default": SHELL_DEFAULT_S, "most": SHELL_MAX_S}
-        agent = {"mode": "primary", "system": brief_of(rec), "permissions": permissions(tools)}
-        return opencode.rendering(context, opencode.Setup(served, "", "", (), agent=agent), (binary, "--title", "delegate"), settings, files)
+        agent = {"mode": "primary", "system": made.brief, "permissions": permissions(made.tools)}
+        command = (binary, *(("--session", made.session) if made.session else ()), "--title", "delegate")
+        return opencode.rendering(context, opencode.Setup(served, "", "", (), agent=agent), command, settings, files)
 
     return render
 
 
 def converse(rec: store.Delegate, bridge: Any, mine: Any, say: Callable[[str], None] = log) -> harness.Answer:
-    """The task on the model, in the confinement: the model leased, the confinement proved, OpenCode started in it and read to its end, the last turn
-    published. For a delegate that edits, the answer carries what the publications came to, and its text ends with them in the launcher's words. A run
-    that failed publishes nothing more and keeps what it had changed as a patch. A stop ends the processes of the session, publishes nothing more, keeps the patch and raises
-    `Stopped` with what the run had come to.
+    """The task on the model, in the confinement: the model leased, the confinement proved, OpenCode started in it and read to its end, continued
+    when something outside the task broke it off, self-checked when the record asks for it, and then published. For a delegate that edits, the answer
+    carries what the publications came to, and its text ends with them in the launcher's words. A run that failed, and one the self-check did not
+    accept, publishes nothing and keeps what it had changed as a patch. A stop ends the processes of the session, publishes nothing more, keeps the
+    patch and raises `Stopped` with what the run had come to.
     ``bridge`` has the two ways to the lead (`ask`, `note`), what the lead sent (`news`) and whether a question waits (`asking`); ``mine`` is the
     delegate's own session."""
     binary = harnessing.binary_for("opencode", pinned=True) or opencode_install.ensure()
-    args = arguments(rec)
-    args.launch = isolation.decide_launch(isolation.Arguments(), project=args.project)   # a folder the lead named had its widening decided at `start`
     store.set_status(rec.name, "loading", rec.model)
-    with leased(rec.model, say) as (base_url, config, found):
-        alias = claude.alias_of(base_url, found)
-        mine.record_model(alias, "poolhouse-agent", base_url)
+    taken = delegate_resume.Model(lambda: leased(rec.model, say), lambda model: told(rec, mine, model))
+    with taken as model, tempfile.TemporaryDirectory(prefix="poolhouse-delegate-talk-") as talk:
+        return _Boxed(rec, bridge, mine, say, binary, model, Path(talk).resolve()).run()
+
+
+def told(rec: store.Delegate, mine: Any, model: delegate_resume.Model) -> None:
+    """Record the model a run has leased: on its session and in its record."""
+    mine.record_model(model.alias, "poolhouse-agent", model.url)
+    store.keep(rec.name, run={"served": delegate_review.served(model.found, model.alias, model.serving)})
+
+
+HELD = "nothing is published until the self-check has accepted the work"
+
+
+def held(box: isolation.Confinement) -> Callable[[], None]:
+    """Nothing of ``box`` is published until the returned call releases it: not at a turn the box says has ended, and not when it is closed."""
+    session = box.session
+    session.publish_turn = lambda: Turn(deferred=HELD)
+
+    def release() -> None:
+        del session.publish_turn
+
+    return release
+
+
+NOT_FOR_REVIEW = "this review has no way to the lead: end with your verdict"
+UNASKED = lead_bridge.Reach(lead_bridge.lead_only(lambda _text: NOT_FOR_REVIEW, lambda _text: NOT_FOR_REVIEW), lambda: "")
+"""What a review's confinement has of the lead: neither tool, and none of the messages the worker is to be given."""
+
+
+@dataclass(slots=True)
+class _Opened:
+    """The proved confinement of one pass: ``go(before)`` calls ``before``, starts the harness and reads it to its end."""
+
+    box: isolation.Confinement
+    go: Callable[..., delegate_review.Ran]
+    hooks: Hooks
+
+
+@dataclass
+class _Boxed:
+    """The passes of one delegate, each in a confinement over its folder: the work, whose confinement holds the change, and each review, fix and
+    continuation (`delegate_review.Bench`). ``talk`` is where the conversation of a pass broken off is held."""
+
+    rec: store.Delegate
+    bridge: Any
+    mine: Any
+    say: Callable[[str], None]
+    binary: str
+    model: delegate_resume.Model
+    talk: Path
+    last: harness.Answer | None = None
+    """The answer of the last pass whose changes can be published."""
+    writes: list[delegate_refusals.Writes] = field(default_factory=list)
+    """What each pass whose changes can be published wrote and was refused."""
+    used: list[harness.Usage] = field(default_factory=list)
+    tried: bool = False
+    box: isolation.Confinement | None = None
+    """The work's confinement, which holds the change."""
+
+    @property
+    def window(self) -> int:
+        return self.model.window
+
+    @contextlib.contextmanager
+    def _confined(self, ask: delegate_review.Pass, helper: Any, bridge: Any, *, keep: bool = False) -> Iterator[_Opened]:
+        """The confinement of the pass ``ask`` as session ``helper``, proved, for the block; ``bridge`` is its way to the lead (None for a review),
+        and with ``keep`` a run that is stopped or breaks off keeps what it changed as a patch."""
+        rec, say = self.rec, self.say
+        args = arguments(rec, ask.tier)
+        args.launch = isolation.decide_launch(isolation.Arguments(), project=args.project)   # a folder the lead named had its widening decided at `start`
         seen = delegate_refusals.Writes(args.project)
         stream = Stream(seen.ran)
         hooks = Hooks(answered=seen.asked)
@@ -433,36 +513,157 @@ def converse(rec: store.Delegate, bridge: Any, mine: Any, say: Callable[[str], N
         def over() -> str:
             if stream.finished and not hooks.loaded:
                 return opencode.UNGUARDED
-            if rec.max_turns is not None and stream.reason == "tool-calls" and stream.finished >= rec.max_turns:
-                return f"the run reached its limit of {rec.max_turns} turn(s) with more to do, so it was ended"
+            if ask.max_turns is not None and stream.reason == "tool-calls" and stream.finished >= ask.max_turns:
+                return f"the run reached its limit of {ask.max_turns} turn(s) with more to do, so it was ended"
             return ""
 
         hooks.moved = progress
-        served = (base_url, alias, config.serving.slot_context)
-        how = harnessing.Harness("opencode", binary, served, say, lead=lambda _helper: lead_bridge.reach(lambda: bridge), conversation="",
-                                 observe=hooks.heard)
-        run = harnessing.Session(mine, Path(args.project), brief_of(rec))
-        with harnessing.confined(args, run, how, renderer(rec, binary, served)) as confinement:
-            store.set_status(rec.name, "working", alias)
-            seen.within(confinement.profile.stage, confinement.profile.refuses_write, str(confinement.home))
-            status, why, read = 1, "", False
+        reach = UNASKED if bridge is None else lead_bridge.reach(lambda: bridge)
+        url, alias = self.model.url, self.model.alias
+        served = (url, alias, self.model.window)
+        how = harnessing.Harness("opencode", self.binary, served, say, lead=lambda _helper: reach, conversation="", observe=hooks.heard)
+        run = harnessing.Session(helper, Path(args.project), ask.brief)
+        with harnessing.confined(args, run, how, renderer(rec, self.binary, served, ask)) as box:
+            def go(before: Callable[[], None] = lambda: None) -> delegate_review.Ran:
+                store.set_phase(rec.name, ask.phase, ask.round)
+                store.set_status(rec.name, "working", alias)
+                seen.within(box.profile.stage, box.profile.refuses_write, str(box.home))
+                status, why, read = 1, "", False
+                try:
+                    before()
+                    with store.log_file(rec.name).open("ab") as errors:
+                        process = box.popen(stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors)
+                        follow(box, process, ask.message.encode(), stream,
+                               (progress, lambda: bool(bridge and bridge.asking) or hooks.running(), over))
+                    status, read = process.returncode, True
+                except (SystemExit, KeyboardInterrupt) as stop:
+                    box.close(publish=False, keep_patch=keep)
+                    raise Stopped(stream.answer(status, STOPPED_WHY)) from stop
+                except (Denied, OSError, RuntimeError, ValueError) as error:
+                    why, read = f"{type(error).__name__}: {error}", True
+                    say(why)
+                finally:
+                    if not read:   # an error nothing here names is on its way out: closed now, so that leaving the block publishes nothing
+                        box.close(publish=False, keep_patch=keep)
+                passed = box.passed()
+                answer = stream.answer(status, passed or why)   # a resource bound is why, whatever ended after it
+                answer.tried = hooks.tried
+                outside = delegate_resume.broke(stream.error, status, why, passed, url) if answer.is_error and rec.resumes else ""
+                return delegate_review.Ran(answer, hooks.calls, outside)
+
+            if bridge is not None:
+                self.writes.append(seen)
+            yield _Opened(box, go, hooks)
+
+    def _ran(self, ask: delegate_review.Pass, opened: _Opened, before: Callable[[], None] = lambda: None) -> delegate_review.Ran:
+        """Run the pass in its open confinement and keep it in the record, however it ended; the conversation of one broken off is held."""
+        began = time.time()
+        try:
+            ran = opened.go(before)
+        except Stopped as stop:
+            self.used.append(stop.answer.spent)
+            delegate_review.noted(self.rec.name, ask, delegate_review.Ran(stop.answer, opened.hooks.calls), began)
+            raise
+        self.used.append(ran.answer.spent)
+        if ask.phase != "review":
+            self.last = ran.answer
+        if ran.broke:
+            shutil.rmtree(self.talk / "data", ignore_errors=True)
             try:
-                with store.log_file(rec.name).open("ab") as errors:
-                    process = confinement.popen(stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors)
-                    follow(confinement, process, rec.message().encode(), stream,
-                           (progress, lambda: bridge.asking or hooks.running(), over))
-                status, read = process.returncode, True
-            except (SystemExit, KeyboardInterrupt) as stop:
-                confinement.close(publish=False, keep_patch=True)
-                raise Stopped(_published(rec, confinement, stream.answer(status, STOPPED_WHY), seen)) from stop
-            except (Denied, OSError, RuntimeError, ValueError) as error:
-                why, read = f"{type(error).__name__}: {error}", True
-                say(why)
-            finally:
-                if not read:   # an error nothing here names is on its way out: closed now, so that leaving the block publishes nothing
-                    confinement.close(publish=False, keep_patch=True)
-            answer = stream.answer(status, confinement.passed() or why)   # a resource bound is why, whatever ended after it
-            answer.tried = hooks.tried
-            if answer.is_error:
-                confinement.close(publish=False, keep_patch=True)
-    return _published(rec, confinement, answer, seen)
+                delegate_resume.carry_conversation(opened.box.home / "data", self.talk / "data")
+            except OSError as why:
+                self.say(f"the conversation could not be held: {why}")
+                ran = delegate_review.Ran(replace(ran.answer, spent=replace(ran.answer.spent, session_id="")), ran.calls, ran.broke)
+        delegate_review.noted(self.rec.name, ask, ran, began)
+        return ran
+
+    def _resumed(self, ask: delegate_review.Pass, ran: delegate_review.Ran) -> delegate_review.Ran:
+        return delegate_resume.carried_on(self.rec, ask, ran, self._beside, lambda: delegate_resume.waited(self.model, self.say))
+
+    def run(self) -> harness.Answer:
+        """The work, continued when it is broken off, its self-check when the record asks for one, and the publication of what stands. Whatever
+        ends this without a finished and, where asked for, accepted work closes the held confinement with nothing published."""
+        work, outcome = work_pass(self.rec), None
+        try:
+            with self._confined(work, self.mine, self.bridge, keep=True) as opened:
+                self.box = opened.box
+                release = held(opened.box) if self.rec.review_rounds else None
+                publish = False
+                try:
+                    latest = self._resumed(work, self._ran(work, opened)).answer
+                    if release is not None and not latest.is_error:
+                        latest, outcome = delegate_review.looped(self.rec, self, work, latest)
+                    publish = not latest.is_error and (outcome is None or outcome.accepted)
+                    if publish and release is not None:
+                        release()
+                finally:
+                    if not publish:   # failed, not accepted, stopped, or an error on its way out
+                        opened.box.close(publish=False, keep_patch=True)
+        except (SystemExit, KeyboardInterrupt) as stop:
+            said = getattr(stop, "answer", None) if self.last is None else replace(self.last, is_error=True, why=STOPPED_WHY)
+            raise Stopped(self._came_to(said or harness.Answer("", harness.Usage(), is_error=True, why=STOPPED_WHY), None)) from stop
+        return self._came_to(latest, outcome)
+
+    def change(self) -> str:
+        """The held change as it stands, as text; empty for a delegate that only reads."""
+        if not self.rec.edit:
+            return ""
+        captured, _made = delegate_candidate.staged(self.box)
+        base = self.box.session.base
+        return delegate_candidate.diff(delegate_candidate.edits(base.directory, captured.directory, delegate_candidate.changed(base, captured)))
+
+    def run_pass(self, ask: delegate_review.Pass) -> delegate_review.Ran:
+        """A review or a fix, continued when it is broken off."""
+        return self._resumed(ask, self._beside(ask))
+
+    def _beside(self, ask: delegate_review.Pass) -> delegate_review.Ran:
+        """One run of a pass in a confinement of its own that publishes nothing, on the project with the held change and, for a continuation, the
+        conversation it takes up. A review is given no change of an instruction or settings file, so none of the work's own words instruct it. The
+        changes of any other pass are carried into the held stage when it ends without an error or is broken off from outside. A pass whose
+        confinement cannot be made failed."""
+        reviewing = ask.phase == "review"
+        helper = SimpleNamespace(name=f"{self.rec.name}.{ask.phase}{ask.round}.{ask.attempt}", parent=getattr(self.mine, "parent", None))
+        try:
+            captured, _made = delegate_candidate.staged(self.box)
+            changes = delegate_candidate.changed(self.box.session.base, captured)
+            if reviewing:
+                changes = tuple(each for each in changes if not delegate_candidate.instructs(os.fsdecode(each.path)))
+            with self._confined(ask, helper, None if reviewing else self.bridge) as opened:
+                box, start = opened.box, []
+                held(box)   # never released
+
+                def before() -> None:
+                    if left := delegate_candidate.carry(changes, captured.directory, Path(box.profile.stage)):
+                        raise RuntimeError(f"{len(left)} changed file(s) could not be carried into this pass's copy of the project")
+                    if ask.session:
+                        delegate_resume.carry_conversation(self.talk / "data", box.home / "data")
+                    start.append(delegate_candidate.staged(box)[0])
+
+                ran = self._ran(ask, opened, before)
+                if not reviewing:
+                    self.tried = self.tried or ran.answer.tried
+                if not reviewing and start and (ran.broke or not ran.answer.is_error):
+                    after, _made = delegate_candidate.staged(box)
+                    delta = delegate_candidate.changed(start[0], after)
+                    if left := delegate_candidate.carry(delta, after.directory, Path(self.box.profile.stage)):
+                        ran = delegate_review.Ran(replace(ran.answer, is_error=True,
+                                                          why=f"{len(left)} file(s) it changed could not be carried into the held work"), ran.calls)
+                box.close(publish=False)
+                return ran
+        except (Denied, OSError, RuntimeError, ValueError) as error:
+            why = f"{type(error).__name__}: {error}"
+            self.say(why)
+            return delegate_review.Ran(harness.Answer("", harness.Usage(), is_error=True, why=why))
+
+    def _came_to(self, answer: harness.Answer, outcome: delegate_review.Outcome | None) -> harness.Answer:
+        """``answer`` with what every pass spent, what the publications came to and the writes that were refused."""
+        answer = replace(answer, spent=delegate_review.spent(self.used) if self.used else answer.spent, review=outcome,
+                         tried=answer.tried or self.tried)
+        if self.rec.edit and self.box is not None:
+            answer.published = self.box.published()
+            applied = answer.published.applied
+            answer.refused_writes = tuple({each.path: each for seen in self.writes for each in seen.refused(applied)}.values())
+            said = self.box.said()
+            if said and (outcome is None or outcome.accepted):
+                answer.text += "\n\nPublication, in the launcher's words:\n" + nudge_fence.clean("\n".join(said))
+        return answer

@@ -56,8 +56,10 @@ def said(capsys) -> str:
     return seen.out + seen.err
 
 
-def started(*words: str) -> int:
-    return delegate.main(["start", *words])
+def started(*words: str, checked: bool = False) -> int:
+    """`poolhouse-delegate start` on ``words``; unless ``checked``, of one attempt with no self-check, which is what a test of a single run reads."""
+    plain = () if checked else ("--no-review", "--resumes", "0")
+    return delegate.main(["start", *words, *plain])
 
 
 def agent_names(node, lead):

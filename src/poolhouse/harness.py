@@ -91,6 +91,8 @@ class Answer:
     """For a delegate that edits, the writes it was refused (`delegate_refusals.Refused`)."""
     wrote: bool = False
     """For a delegate with no sandbox, whether any writing call went through."""
+    review: Any = None
+    """For a delegate whose work was self-checked, what that came to (`delegate_review.Outcome`); None for one that was not."""
 
 
 class Harness:

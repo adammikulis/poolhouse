@@ -1,4 +1,5 @@
-"""What a delegate leaves under the state root: its record, its status, its result and its log, one owner-only folder each."""
+"""What a delegate leaves under the state root: its record, its status, its result, its log and its grading record, one owner-only folder each.
+Nothing removes a folder: `stop` and the end of a run remove the working copies they made, never what is recorded."""
 
 from __future__ import annotations
 
@@ -9,13 +10,16 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, safetext
+from poolhouse import home, lock, safetext
 from poolhouse.board.names import valid_name
 from poolhouse.files import read_json, write_json
 
-__all__ = ["Delegate", "finished", "folder", "load", "log_file", "names", "result", "save", "save_result", "set_progress", "set_status", "status"]
+__all__ = ["Delegate", "finished", "folder", "graded", "keep", "load", "log_file", "names", "result", "save", "save_result", "set_phase",
+           "set_progress", "set_status", "status"]
 
-ENDED = ("done", "partial", "unapplied", "failed", "stopped")
+ENDED = ("done", "partial", "unapplied", "rejected", "failed", "stopped")
+PROGRESS = ("turns", "tool", "phase", "round")
+"""What a status keeps when its state changes."""
 _STATUS = threading.Lock()
 """Held while the status is read and written again: the runner writes progress while a question marks the state from another thread."""
 
@@ -40,10 +44,18 @@ class Delegate:
     """The tier the lead chose: `read-only`, `guarded` or `yolo`."""
     sandboxed: bool = True
     """Whether this computer sandboxes it; without a sandbox it works on the folder itself under its tier's rules."""
+    kind: str = ""
+    """The kind of task, as the lead named it; empty in a record made before there were kinds."""
+    review_rounds: int = 0
+    """The self-check rounds its work may take before delivery (`delegate_review`); 0 is none, which is also what an older record holds."""
+    commit: str = ""
+    """The commit the project was at when it was started; empty for a folder that is no git project."""
+    resumes: int = 0
+    """The attempts to continue a pass that something outside its task broke off (`delegate_resume`); 0 is none, which an older record holds."""
 
     def key(self) -> str:
         """The same lead asking the same thing of the same folder, in the same tier, is the same delegate."""
-        asked = "\0".join((self.lead, self.label, self.task, self.source, str(self.edit), self.permissions))
+        asked = "\0".join((self.lead, self.label, self.task, self.source, str(self.edit), self.permissions, str(self.review_rounds)))
         return hashlib.sha256(asked.encode()).hexdigest()[:16]
 
     def message(self) -> str:
@@ -89,15 +101,16 @@ def names() -> list[str]:
 
 
 def status(name: str) -> dict[str, Any]:
-    """What the runner last wrote: ``state`` (starting, loading, working, asking, done, partial, unapplied, failed or stopped), ``detail``,
-    ``beat`` and, once a run has said something, its ``turns`` and last ``tool``."""
+    """What the runner last wrote: ``state`` (starting, loading, working, asking, done, partial, unapplied, rejected, failed or stopped),
+    ``detail``, ``beat``, the ``phase`` (work, review or fix) and its ``round`` and, once a run has said something, its ``turns`` and last
+    ``tool``."""
     found = read_json(home.state("delegates", name) / "status.json", {}) if valid_name(name) else {}
     return found if isinstance(found, dict) else {}
 
 
 def set_status(name: str, state: str, detail: str = "") -> None:
     with _STATUS:
-        progress = {key: value for key, value in status(name).items() if key in ("turns", "tool")}
+        progress = {key: value for key, value in status(name).items() if key in PROGRESS}
         write_json(folder(name) / "status.json", safetext.utf8({**progress, "state": state, "detail": detail, "beat": time.time()}))
 
 
@@ -105,6 +118,36 @@ def set_progress(name: str, turns: int, tool: str) -> None:
     """The turns a run has taken and the last tool it called; its state stays as it is."""
     with _STATUS:
         write_json(folder(name) / "status.json", safetext.utf8({**status(name), "turns": turns, "tool": tool, "beat": time.time()}))
+
+
+def set_phase(name: str, phase: str, round_: int) -> None:
+    """The pass that runs now: its phase and, for a review or a fix, its round."""
+    with _STATUS:
+        held = {key: value for key, value in status(name).items() if key not in ("turns", "tool")}
+        write_json(folder(name) / "status.json", safetext.utf8({**held, "phase": phase, "round": round_, "beat": time.time()}))
+
+
+def graded(name: str) -> dict[str, Any]:
+    """The grading record of ``name``: ``run``, what was asked, served and came of it, and ``grades``, one list of entries in one shape for the
+    self-check's rounds (``kind`` "self-check") and the grades others gave (``kind`` "grade"). Empty parts for a run that has none."""
+    found = read_json(home.state("delegates", name) / "grading.json", None) if valid_name(name) else None
+    found = found if isinstance(found, dict) else {}
+    run, grades = found.get("run"), found.get("grades")
+    return {"run": run if isinstance(run, dict) else {}, "grades": grades if isinstance(grades, list) else []}
+
+
+def keep(name: str, *, run: dict[str, Any] | None = None, phase: dict[str, Any] | None = None, grade: dict[str, Any] | None = None) -> None:
+    """Add to the grading record of ``name``: fields of its ``run``, one ``phase`` of it that has ended, one ``grade`` entry. Entries are only
+    ever added; the runner and a grader may write at once."""
+    here = folder(name)
+    with lock.only_one(here / "grading.lock", timeout=60, announce=lambda _line: None):
+        held = graded(name)
+        held["run"].update(run or {})
+        if phase is not None:
+            held["run"]["phases"] = [*held["run"].get("phases", []), phase]
+        if grade is not None:
+            held["grades"].append(grade)
+        write_json(here / "grading.json", safetext.utf8(held))
 
 
 def save_result(name: str, row: dict[str, Any]) -> None:
