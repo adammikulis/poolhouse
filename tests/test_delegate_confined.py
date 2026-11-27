@@ -13,6 +13,7 @@ import contextlib
 import json
 import os
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -30,6 +31,7 @@ from poolhouse import (
     delegate_confined,
     delegate_run,
     delegate_store as store,
+    harness,
     harnessing,
     home,
     isolation,
@@ -733,6 +735,26 @@ def test_commands_and_edits_that_merely_fail_are_no_refused_write(editing):
     assert run.row["state"] == "done" and run.row["refused_writes"] == [] and "refused by" not in run.told, run.row
 
 
+def test_a_delegate_in_the_worktree_made_for_it_is_confined_there_and_its_change_is_committed_to_its_branch(editing):
+    node, lead, project = editing
+
+    def said_by(*words):
+        argv = ["git", "-C", str(project), "-c", "user.name=t", "-c", "user.email=t@example.invalid", *words]
+        return subprocess.run(argv, check=True, capture_output=True, text=True).stdout
+
+    said_by("add", "-A")
+    said_by("commit", "--allow-empty", "-qm", "start")
+    assert started("--task", "mode:clean", "--project", str(project), "--edit", tree=True) == 0
+    [name] = agent_names(node, lead)
+    tree = Path(store.load(name).workdir)
+    assert tree != project and tree.is_dir()
+    assert delegate_run.run(name) == 0, store.result(name)
+    row = store.result(name)
+    assert row["applied"] == ["src/feature.py"] and row["tree"]["branch"] == f"delegate/{name}", row
+    assert said_by("show", "--name-only", "--format=", row["tree"]["commit"]).split() == ["src/feature.py"]
+    assert not tree.exists() and not (project / "src").exists()
+
+
 def test_a_harness_that_ends_while_its_child_holds_the_pipe_ends_the_run_and_the_child(editing):
     began = time.monotonic()
     run = ran(editing, "orphan")
@@ -754,3 +776,10 @@ def test_the_wait_for_the_model_and_for_the_lead_is_not_counted_as_no_progress(e
     row = store.result(name)
     assert "model=200" in row["text"] and "main.py" in row["text"], row
     assert row["model_seconds"] >= 3, "the time the model server had the turn"
+
+
+def test_an_edit_run_that_could_not_test_does_not_end_as_plainly_done():
+    applied = isolation.workspace.Published(applied=("src/app.py",))
+    tested = harness.Answer("done", harness.Usage(), published=applied)
+    untested = harness.Answer("done", harness.Usage(), published=applied, untested="`python -m pytest` failed")
+    assert delegate_run.ended(tested) == "done" and delegate_run.ended(untested) == "partial"

@@ -1,4 +1,4 @@
-"""The process behind one delegate: the model session on the lead's task and the two tools that reach the lead.
+"""The process behind one delegate: the model's sessions on the lead's task (the work and its self-check) and the two tools that reach the lead.
 
 ``python -m poolhouse.delegate_run NAME`` is what `poolhouse-delegate start` detaches. It hands the task to `poolhouse.delegate_confined` (OpenCode
 in the isolated launcher's confinement), or on a computer that cannot sandbox it to `poolhouse.delegate_unboxed`, writes the result and tells the
@@ -17,8 +17,10 @@ from typing import Any
 
 from poolhouse import (
     delegate_confined,
+    delegate_grade,
     delegate_refusals,
     delegate_store as store,
+    delegate_tree,
     delegate_unboxed,
     harness,
     lead_bridge,
@@ -41,24 +43,30 @@ def converse(rec: store.Delegate, bridge: lead_bridge.Bridge, mine: HarnessSessi
 
 
 def ended(answer: harness.Answer) -> str:
-    """The state a run that gave ``answer`` ended in. A run that edits is `done` only when all it changed was applied and no write of it was
-    refused: `unapplied` when it tried to change files and nothing was applied (with no sandbox, no writing call went through), `partial` when some
-    changes were made and others were not."""
+    """The state a run that gave ``answer`` ended in: `rejected` when its self-check did not accept the work. Else a run that edits is `done` only
+    when all it changed was applied and no write of it was refused: `unapplied` when it tried to change files and nothing was applied (with no
+    sandbox, no writing call went through), `partial` when some changes were made and others were not."""
     if answer.is_error:
         return "failed"
+    if answer.review is not None and not answer.review.accepted:
+        return "rejected"
     found, refused = answer.published, bool(answer.refused_writes)
     if found is None:
         return ("partial" if answer.wrote else "unapplied") if refused else "done"
     kept_back = bool(found.refused or found.conflicts or found.deferred or refused)
     if not found.applied and (kept_back or answer.tried):
         return "unapplied"
-    return "partial" if kept_back else "done"
+    return "partial" if kept_back or (answer.untested and found.applied) else "done"
 
 
-def changes(state: str, found: Any, refused: Sequence[delegate_refusals.Refused] = ()) -> str:
-    """What became of a run's changes, in this process's words, from the publications' counts and the writes it was refused; empty when there is
-    nothing to warn of."""
+def changes(state: str, found: Any, refused: Sequence[delegate_refusals.Refused] = (), review: Any = None) -> str:
+    """What became of a run's changes, in this process's words, from the publications' counts, the writes it was refused and what its self-check
+    came to; empty when there is nothing to warn of."""
     writes = delegate_refusals.said(refused)
+    if state == "rejected":
+        held = "nothing was applied to the project" if found is not None else review.where or "the answer is not accepted"
+        kept = f"; kept patches: {', '.join(found.patches)}" if found is not None and found.patches else ""
+        return "; ".join(each for each in (review.said(), held, writes) if each) + kept
     if state == "done" or (found is None and not writes):
         return ""
     where = "applied to the project" if found is not None else "made in the folder"
@@ -76,6 +84,7 @@ def _outcome(answer: harness.Answer | None, why: str, began: float) -> dict[str,
     found = answer.published if answer else None
     published = {name: list(getattr(found, name, ())) for name in ("applied", "refused", "conflicts", "withheld", "patches", "runs_later")}
     published["refused_writes"] = [dataclasses.asdict(each) for each in (answer.refused_writes if answer else ())]
+    published["review"] = dataclasses.asdict(answer.review) if answer and answer.review else None
     return {**published, "text": answer.text if answer else "", "error": why, "turns": spent.turns, "input_tokens": spent.input_tokens,
             "output_tokens": spent.output_tokens, "cache_read_tokens": spent.cache_read_tokens,
             "cache_creation_tokens": spent.cache_creation_tokens, "model_seconds": spent.seconds,
@@ -86,10 +95,14 @@ def _tell(bridge: lead_bridge.Bridge, state: str, row: dict[str, Any]) -> None:
     """The lead's notice that the delegate ended: the start of the result, and the command that prints all of it."""
     said = str(row["text"] or row["error"])
     short = said if len(said) <= nudge_fence.MESSAGE_CHARS // 2 else said[: nudge_fence.MESSAGE_CHARS // 2] + "..."
-    parts = [str(row["error"] if row["text"] else ""), str(row["detail"]), short]   # why and what was not applied come first, so a cut never drops them
+    review = row.get("review") or {}
+    still = "".join(f"open finding: {each['what'][:100]}\n" for each in ([] if review.get("accepted") else review.get("findings", []))[:3])
+    checked = f"self-check accepted in round {review['rounds']} of {review['allowed']}" if review.get("accepted") else still.strip()
+    parts = [str(row["error"] if row["text"] else ""), str(row["detail"]), checked, short]   # why and what was not applied first: a cut never drops them
     body = "\n".join(each for each in parts if each)
+    waiting = " (review waiting)" if (row.get("tree") or {}).get("commit") else ""
     try:
-        bridge.post("status", f"{state}: {body}\nall of it: poolhouse-delegate result {bridge.name}", subject=f"delegate {state}")
+        bridge.post("status", f"{state}: {body}\nall of it: poolhouse-delegate result {bridge.name}", subject=f"delegate {state}{waiting}")
     except ValueError as why:
         say(f"the lead was not told: {why}")
 
@@ -112,6 +125,7 @@ def run(name: str) -> int:
     bridge = lead_bridge.Bridge(mine.session(), rec.lead, name, lambda state, detail="": store.set_status(name, state, detail))
     began, answer, why, state = time.time(), None, "", "failed"
     try:
+        delegate_grade.started(rec)
         answer = converse(rec, bridge, mine)
         state, why = ended(answer), answer.why
     except (KeyboardInterrupt, SystemExit) as stop:
@@ -120,13 +134,21 @@ def run(name: str) -> int:
         why = f"{type(error).__name__}: {error}"
         say(why)
     found, refused = (answer.published, answer.refused_writes) if answer else (None, ())
-    row = safetext.utf8({**_outcome(answer, why, began), "detail": changes(state, found, refused)})   # the model's text reaches the board
+    detail = changes(state, found, refused, answer.review if answer else None)
+    if answer and answer.untested:   # first, so a cut notice never drops it
+        detail = "; ".join(each for each in (f"untested: the sandbox could not start the project's tests ({answer.untested})", detail) if each)
+    row = safetext.utf8({**_outcome(answer, why, began), "detail": detail})   # the model's text reaches the board
+    row["phases"] = store.graded(name)["run"].get("phases", [])
+    if rec.branch:   # commit what stands to its branch, keep a patch of anything else, and remove the worktree
+        state, said, row["tree"] = delegate_tree.settled(rec, state, found.applied if found else ())
+        row["detail"] = "; ".join(each for each in (said, row["detail"]) if each)
     store.save_result(name, {**row, "state": state})
+    delegate_grade.ended(name, state, row)
     store.set_status(name, state, why or row["detail"])
     say(f"{state}: {row['turns']} turn(s), {row['seconds']}s")
     _tell(bridge, state, row)
     mine.revoke()
-    if rec.workdir != rec.source:
+    if rec.workdir != rec.source and not rec.branch:
         shutil.rmtree(rec.workdir, ignore_errors=True)
     return 0 if state == "done" else 1
 

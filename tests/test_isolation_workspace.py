@@ -4,6 +4,7 @@ patch directory under the real Seatbelt, and the Linux bind hook. Real processes
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import textwrap
@@ -12,10 +13,10 @@ import time
 import pytest
 
 from poolhouse import sandbox
-from poolhouse.isolation import workspace
+from poolhouse.isolation import toolchain, workspace
 from poolhouse.isolation.workspace import PATCHES_AT
 from poolhouse.sandbox import Policy, bubblewrap, process_tree
-from tests.isolation_world import Sink, begin, make_project, private_storage, write
+from tests.isolation_world import Sink, begin, linked_worktree, make_project, private_storage, write
 from tests.sandbox_kit import policy as sandbox_policy, running, seatbelt  # noqa: F401
 
 
@@ -125,6 +126,100 @@ def test_the_environment_folders_are_linked_into_the_stage_and_read_only_by_exac
     assert set(session.reads) == {str((project / ".venv").resolve()), str((project / "node_modules").resolve())}
     assert not session.publish_turn().applied, "a link to an ignored folder is not source content and no capture sees it"
     assert session.first_line() == ""
+
+
+def environments(root, home="/usr/bin"):
+    (root / ".venv" / "bin").mkdir(parents=True)
+    (root / ".venv" / "pyvenv.cfg").write_text(f"home = {home}\n")
+    (root / "node_modules").mkdir()
+
+
+def linked(project, tmp_path):
+    """What a launch in ``project`` links, by name, with the folder each link leads to, and the session's first line."""
+    session = begin(project, tmp_path, Sink())
+    try:
+        found = {name: held.path for name, held in session.links}
+        assert set(session.reads) == set(found.values())
+        assert {name: str((session.stage.physical / name).readlink()) for name in found} == found
+        return found, session.first_line()
+    finally:
+        session.discard(None, stalled=1.0)
+
+
+def test_a_worktree_with_no_environment_of_its_own_borrows_the_main_checkouts_and_declares_its_interpreter(project, tmp_path, monkeypatch):
+    account = tmp_path / "account"
+    interpreter = account / ".pyenv" / "versions" / "3.99.0"
+    (interpreter / "bin").mkdir(parents=True)
+    (interpreter / "bin" / "python3").write_text("#!/bin/sh\n")
+    (interpreter / "bin" / "python3").chmod(0o755)
+    monkeypatch.setattr(toolchain.home, "user_home", lambda: account.resolve())
+    environments(project, home=str(interpreter.resolve() / "bin"))
+    worktree = linked_worktree(project, tmp_path / "worktree")
+    found, _ = linked(worktree, tmp_path)
+    assert found == {".venv": str((project / ".venv").resolve()), "node_modules": str((project / "node_modules").resolve())}
+    assert toolchain.declared(worktree) == [str(interpreter.resolve())], "the borrowed environment's interpreter is declared"
+    assert not os.path.lexists(worktree / ".venv") and not os.path.lexists(worktree / "node_modules"), "nothing is made in the worktree"
+    (worktree / "venv").mkdir()
+    found, _ = linked(worktree, tmp_path)
+    assert found == {"venv": str(worktree / "venv"), "node_modules": str((project / "node_modules").resolve())}, "its own Python environment is used"
+
+
+def test_a_worktrees_own_link_never_chooses_the_folder_it_borrows(project, tmp_path):
+    environments(project)
+    worktree = linked_worktree(project, tmp_path / "worktree")
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    (worktree / ".venv").symlink_to(foreign)
+    found, _ = linked(worktree, tmp_path)
+    assert found[".venv"] == str((project / ".venv").resolve()), "the link is not followed: git's records choose the folder"
+
+
+@pytest.mark.parametrize("forgery", ["a pointer into another worktree's records", "no record back", "a record back to another folder",
+                                     "another common directory", "a linked git directory", "a linked environment",
+                                     "an environment that holds a credential", "a repository inside the folder"])
+def test_only_a_worktree_git_shows_both_ways_is_given_the_main_checkouts_environment(project, tmp_path, forgery):
+    environments(project)
+    worktree = linked_worktree(project, tmp_path / "worktree")
+    assert linked(worktree, tmp_path)[0], "the genuine worktree borrows"
+    records = project / ".git" / "worktrees" / "worktree"
+    target = worktree
+    if forgery == "a pointer into another worktree's records":
+        target = tmp_path / "attacker"
+        target.mkdir()
+        (target / ".git").write_text(f"gitdir: {records.resolve()}\n")
+        (target / "README.md").write_text("# forged\n")
+    elif forgery == "no record back":
+        (records / "gitdir").unlink()
+    elif forgery == "a record back to another folder":
+        (records / "gitdir").write_text(f"{tmp_path.resolve() / 'elsewhere' / '.git'}\n")
+    elif forgery == "another common directory":
+        other = make_project(tmp_path / "other")
+        (records / "commondir").write_text(f"{(other / '.git').resolve()}\n")
+    elif forgery == "a linked git directory":
+        (tmp_path / "alias").symlink_to(project / ".git")
+        (worktree / ".git").write_text(f"gitdir: {tmp_path.resolve() / 'alias' / 'worktrees' / 'worktree'}\n")
+    elif forgery == "a linked environment":
+        shutil.move(project / ".venv", tmp_path / "moved-venv")
+        (project / ".venv").symlink_to(tmp_path / "moved-venv")
+        shutil.rmtree(project / "node_modules")
+    elif forgery == "an environment that holds a credential":
+        (project / ".venv" / "credentials.json").write_text('{"canary": "NOT-A-REAL-CREDENTIAL"}\n')
+        shutil.rmtree(project / "node_modules")
+    else:
+        inner = worktree / "inner"
+        records = inner / ".git" / "worktrees" / "forged"
+        records.mkdir(parents=True)
+        (records / "gitdir").write_text(f"{worktree / '.git'}\n")
+        (records / "commondir").write_text("../..\n")
+        environments(inner)
+        (worktree / ".git").write_text(f"gitdir: {records}\n")
+    try:
+        found, line = linked(target, tmp_path)
+    except (OSError, RuntimeError):
+        return   # a folder whose git records are forged may not be staged at all, which gives it nothing either
+    assert found == {}, f"{forgery}: {found}"
+    if forgery == "an environment that holds a credential":
+        assert ".venv (holds a credential file" in line, line
 
 
 def test_the_restore_directory_is_in_no_grant_of_the_launchers_profile(project, tmp_path):
