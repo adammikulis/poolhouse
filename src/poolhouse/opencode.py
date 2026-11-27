@@ -3,9 +3,10 @@
 The launcher leases the model, proves a confinement (`poolhouse.isolation`) and starts ``opencode run`` inside it with a config of its own in the
 agent home, so the person's ``~/.config/opencode`` is never read or changed. The provider is the bridge's OpenAI-compatible URL with the bridge's
 token (minted for the launch, never asked of a person); OpenCode's own network traffic (update checks, the model list, LSP downloads) is switched
-off. A plugin written read-only beside the config asks the parent's classifier over the session bridge before each tool call and after it, as
-Pi's extension does. OpenCode starts without a plugin it cannot load and says so only in its own log, so a run whose plugin never reported publishes
-nothing. The binary is the pinned release (`poolhouse.opencode_install`), fetched once.
+off. A plugin written read-only in a folder of its own asks the parent's classifier over the session bridge before each tool call and after it, as
+Pi's extension does. OpenCode starts without a plugin it cannot load and says so only in a warning of its server, so the server's warnings go to the
+run's error output (a delegate's log), and a run whose plugin never reported publishes nothing. The binary is the pinned release
+(`poolhouse.opencode_install`), fetched once.
 """
 
 from __future__ import annotations
@@ -15,7 +16,6 @@ import json
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 from poolhouse import harness_js, harnessing, isolation, lead_bridge, opencode_install
@@ -34,16 +34,20 @@ PROVIDER = "poolhouse"
 AGENT = "poolhouse"
 """The agent of a run that brings its own (`Setup.agent`)."""
 CONFIG = "opencode.json"
-PLUGIN = "poolhouse-plugin.js"
+PLUGIN = "bin/poolhouse-plugin"
+"""The plugin's folder in the agent home: OpenCode loads a configured plugin only from a folder (a path to a file is dropped with a warning), and
+reads its `ENTRY`. It lies under ``bin``, which the box holds read-only as a whole, so a run cannot put a second entry beside ours."""
+ENTRY = "index.js"
 BRIEF = "poolhouse-brief.md"
 UNGUARDED = "OpenCode ran without poolhouse's plugin reporting, so its tool calls were not judged; nothing more it changed is published"
 
 
 @dataclass(frozen=True, slots=True)
 class Setup:
-    """What one run's ``opencode.json`` is made from: the bridge's URL, the model's name and its window (``served``) and its token; the plugin's
-    path; the command of the MCP server `lead` (its tools reach OpenCode as `lead_ask` and `lead_note`); the model's thinking switches; and either
-    the launcher's brief, by path, or an ``agent`` of the run's own (its system prompt and its permission rules), which every request then uses."""
+    """What one run's ``opencode.json`` is made from: the bridge's URL, the model's name and its window (``served``) and its token; the path of the
+    plugin's folder; the command of the MCP server `lead` (its tools reach OpenCode as `lead_ask` and `lead_note`); the model's thinking switches;
+    and either the launcher's brief, by path, or an ``agent`` of the run's own (its system prompt and its permission rules), which every request then
+    uses."""
 
     served: tuple[str, str, int]
     token: str
@@ -59,7 +63,7 @@ def config(setup: Setup) -> str:
     many bytes as the window holds tokens (a quarter of it, so one call cannot fill it), and permissions that never ask (the classifier and the mount
     decide)."""
     base_url, alias, window = setup.served
-    model: dict[str, Any] = {"name": alias, "tool_call": True, "reasoning": True, "limit": {"context": window, "output": min(window, 32768)}}
+    model: dict[str, Any] = {"name": alias, "tool_call": True, "limit": {"context": window, "output": min(window, 32768)}}
     if setup.thinking:
         model["options"] = {"chat_template_kwargs": dict(setup.thinking)}
     made: dict[str, Any] = {
@@ -68,7 +72,7 @@ def config(setup: Setup) -> str:
         "model": f"{PROVIDER}/{alias}", "small_model": f"{PROVIDER}/{alias}",
         "provider": {PROVIDER: {"npm": "@ai-sdk/openai-compatible", "name": "poolhouse",
                                 "options": {"baseURL": base_url.rstrip("/") + "/v1", "apiKey": setup.token}, "models": {alias: model}}},
-        "enabled_providers": [PROVIDER], "plugin": [Path(setup.plugin).as_uri()], "share": "disabled", "autoupdate": False}
+        "enabled_providers": [PROVIDER], "plugins": [setup.plugin], "share": "disabled", "autoupdate": False}   # a path, to a folder
     if window:
         made["tool_output"] = {"max_bytes": window, "max_lines": window}
     if setup.agent is None:
@@ -144,10 +148,14 @@ export default {
 SERVE = """\
 PATH="${1%/*}:$PATH"
 export PATH
-"$1" serve --hostname 127.0.0.1 --port "$2" >/dev/null 2>&1 &
+# The server's warnings and errors (a plugin it could not load among them) go to the run's error output; `run` alone writes the events.
+"$1" serve --print-logs --log-level warn --hostname 127.0.0.1 --port "$2" >&2 &
 server=$!
+# It listens before it is ready and answers 503 until it is, and `run` asks it only once: `run` starts when it says it is ready. The password
+# reaches curl on its input, never on a command line.
 tries=0
-until /usr/bin/nc -z 127.0.0.1 "$2" 2>/dev/null; do
+until [ "$(printf 'user = "opencode:%s"\\n' "$OPENCODE_PASSWORD" |
+  /usr/bin/curl -q -s -o /dev/null -w '%{http_code}' --noproxy '*' --max-time 5 -K - "http://127.0.0.1:$2/api/info")" = 200 ]; do
   tries=$((tries + 1))
   if [ "$tries" -gt 300 ]; then echo "poolhouse: the OpenCode server did not start" >&2; kill "$server" 2>/dev/null; exit 1; fi
   sleep 0.1
@@ -175,10 +183,10 @@ def rendering(context: isolation.Context, setup: Setup, command: Sequence[str], 
     plugin and lead server are this launch's), the plugin with ``settings`` over the client command and the stage, and ``files``."""
     binary, *extra = command
     alias, port, server = setup.served[1], free_port(), context.lead_server()
-    made = Setup((context.base_url, alias, setup.served[2]), context.token, str(context.file(f".opencode-config/{PLUGIN}")),
+    made = Setup((context.base_url, alias, setup.served[2]), context.token, str(context.file(PLUGIN)),
                  [server["command"], *server["args"]], families.for_model_id(alias).think_kwargs(False), setup.brief, setup.agent)
     written = {f".opencode-config/{CONFIG}": config(made),
-               f".opencode-config/{PLUGIN}": plugin({"hook": context.client_argv("hook"), "root": context.stage, **settings}), **files}
+               f"{PLUGIN}/{ENTRY}": plugin({"hook": context.client_argv("hook"), "root": context.stage, **settings}), **files}
     return isolation.Rendering(argv_of(binary, port, alias, extra), written, listen=(port,))
 
 
