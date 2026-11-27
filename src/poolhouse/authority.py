@@ -76,7 +76,7 @@ MEANS: dict[str, str] = {
     "runtime.deploy-unmerged": "deploy an independently reviewed exact source commit on this device",
     "isolation.grant": "launch a coding agent with a wider reach than the default (a folder, a toolchain, a host, a file to publish, in place)",
 }
-"""What a lead agent may do without asking the person while a gate is delegated."""
+"""What an agent may do without asking the person while a gate is delegated."""
 
 PROD_DELEGATED = frozenset({"workspace.setup", "workspace.model", "workspace.agents"})
 PRESETS = ("dev", "prod")

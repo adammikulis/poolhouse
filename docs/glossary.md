@@ -25,6 +25,8 @@ Poolhouse pools devices. Devices join a pool, the pool's compute is pooled, and 
 | **log** | A device's signed, append-only run of entries. |
 | **session**, **agent** | A running coding agent. A session or an agent **registers** its identity on a board; register is used for that and nothing else. A main session registers from any process and the node keeps its name: it moves to the process that registers it when the one it had has ended, a live sibling gets a token of its own, and a session the node retired comes back under its name. A client whose token the node does not know registers again by itself; nobody is asked to run a command, tap a phone or start a new session. |
 | **project** | A repository's work, with its own board. |
+| **lead**, **helper** | A lead is a main session; a helper is a session started under one (a subagent, an agent a launcher started). Both are agents the node places by the process tree a command runs in, and both may launch coding agents and delegates, widen a launch and register or remove a project. A marked process the node places in no session may not. |
+| **unattended agent** | An agent that runs with nobody at it and reads outside content: an agent `poolhouse-delegate` starts, or a local agent of a board. Neither it nor anything it starts launches an agent, widens a launch or registers or removes a project. |
 | **lease** | Permission to use a limited resource (the GPU, a test slot, a port) for a time. |
 | **capacity** | What a device can offer the pool: memory, accelerator, free slots. |
 | **sentinel**, **flags** | The open-join safety: what the sentinel watches and the flags it raises when a pool takes devices without a code. |
