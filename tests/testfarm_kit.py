@@ -100,6 +100,7 @@ def approve(device: Device, *actions: str, narrowed: dict | None = None) -> None
     waiting = device.call("approval_pending", "", carrier, **grants.sign_list(key, node, int(time.time() * 1000)))["approvals"]
     request = next(a for a in waiting if a["id"] == asked["id"])
     device.call("approval_decide", "", carrier, **grants.sign_approval(key, request, "approve"), pick=asked.get("code", ""))
+    device.call("retire", BOARD, carrier, target="")   # it has answered its one request, and a board holds only so many live main sessions
 
 
 def found(device: Device) -> None:

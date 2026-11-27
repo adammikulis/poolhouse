@@ -31,6 +31,7 @@ pub use stop::{signal_stop, stop_event_name, watch_stop};
 pub(in crate::sys) use acl::current_principal;
 pub(in crate::sys) use pipe::endpoint_of;
 
+const ERROR_ACCESS_DENIED: i32 = 5;
 const ERROR_LOCK_VIOLATION: u32 = 33;
 const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
 const DETACHED_PROCESS: u32 = 0x0000_0008;
@@ -74,13 +75,21 @@ pub fn sync_dir(_path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Move ``from`` over ``to`` in one step and write it through to disk.
+/// Move ``from`` over ``to`` in one step and write it through to disk. ``MoveFileExW`` refuses a target that is open, and a board's
+/// log is replaced while the node holds it: the standard library's rename then takes its place with POSIX semantics, and the flush
+/// of the moved file writes the new name through.
 pub fn replace_file(from: &Path, to: &Path) -> Result<()> {
-    let (from, to) = (wide(from), wide(to));
+    let (wide_from, wide_to) = (wide(from), wide(to));
     // SAFETY: both are NUL-ended and live for the call.
-    if unsafe { MoveFileExW(from.as_ptr(), to.as_ptr(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) } == 0 {
-        return Err(std::io::Error::last_os_error().into());
+    if unsafe { MoveFileExW(wide_from.as_ptr(), wide_to.as_ptr(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) } != 0 {
+        return Ok(());
     }
+    let refused = std::io::Error::last_os_error();
+    if refused.raw_os_error() != Some(ERROR_ACCESS_DENIED) {
+        return Err(refused.into());
+    }
+    std::fs::rename(from, to)?;
+    OpenOptions::new().write(true).open(to)?.sync_all()?;
     Ok(())
 }
 

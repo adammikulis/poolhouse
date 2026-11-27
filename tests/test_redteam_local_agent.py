@@ -39,7 +39,9 @@ def test_an_injection_in_a_persons_task_gets_a_model_that_obeys_it_nothing_beyon
         waited(lambda: (st := status_of(kit)).get("ignored") or st.get("tasks"))
     assert sent and {a.name for a in kit.person.agents(True)} == {*before, rig.identity}
     assert la.load(kit.base, "local-t").role == roles.DEFAULT
-    assert all(n.kind in ("tool_call", "plan") for n in rig.asked)
+    told = [str(m.get("content")) for m in (model.seen[-1][0] if model.seen else []) if m.get("role") == "tool"]
+    assert len(told) == (len(obeyed) - 1 if model.calls else 0), "held before the model, or every call it obeyed with was answered"
+    assert all("blocked by the" in answer and " rail: " in answer for answer in told), told   # refused at once, none ran
 
 
 def test_no_tool_the_model_is_offered_starts_stops_or_widens_an_agent(kit):  # noqa: F811
