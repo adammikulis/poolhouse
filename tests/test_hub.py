@@ -244,6 +244,31 @@ def test_a_listing_says_what_is_already_downloaded(monkeypatch, capsys):
     assert said.index("ON THIS MACHINE") > said.index("TOO BIG"), "largest first"
 
 
+def test_a_lookup_table_read_from_disk_is_not_counted_against_the_room(tmp_path, monkeypatch, capsys):
+    """A build whose gathered table stays on the SSD was listed "TOO BIG" while the planner served it. The header here is a real GGUF
+    tensor table written by the test; a build that is not downloaded has no header to read, so it only may fit."""
+    from test_serve_fit import IQ4_NL, with_tensors
+
+    import poolhouse.hub as hub
+
+    here = with_tensors(tmp_path / "thing-Q4-00001-of-00001.gguf", {"general.architecture": "qwen4exp"},
+                        [("per_layer_token_embd.weight", IQ4_NL, (160, 4096))])
+    table = 160 * 4096 // 32 * 18
+    monkeypatch.setattr(hub, "files", lambda repo, **kw: [("Q4/thing-Q4-00001-of-00001.gguf", 1_000_000),
+                                                          ("Q5/thing-Q5-00001-of-00001.gguf", 1_100_000),
+                                                          ("BF16/thing-BF16-00001-of-00001.gguf", 5_000_000)])
+    monkeypatch.setattr(hub, "room", lambda: 800_000)
+    monkeypatch.setattr(hub, "on_disk", lambda: {here.name: 1_000_000})
+    monkeypatch.setattr(hub, "weight_paths", lambda *a, **k: [here])
+    assert 1_000_000 - table < 800_000 * 0.95 < 1_000_000
+
+    assert hub.main(["files", "maker/thing-GGUF"]) == 0
+    rows = {line.split()[1]: line for line in capsys.readouterr().out.splitlines() if line.split()[1:2] in (["Q4"], ["Q5"], ["BF16"])}
+    assert "ON THIS MACHINE  fits (" in rows["Q4"] and "lookup table read from disk" in rows["Q4"]
+    assert "may fit" in rows["Q5"] and "TOO BIG" not in rows["Q5"]
+    assert "TOO BIG" in rows["BF16"]
+
+
 def test_a_partly_downloaded_build_says_so(monkeypatch, capsys):
     """An interrupted fetch is not the same as having it, and looks identical on disk."""
     import poolhouse.hub as hub
