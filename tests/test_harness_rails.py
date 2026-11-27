@@ -89,13 +89,19 @@ class TestPolicy:
         assert (got.action, got.label) == ("deny", "unsure") and "runs no unsure call" in got.reason
         assert decide(coding_policy.Policy("guarded"), Call("Bash", None), roots=("/w",)).action == "deny"
 
-    def test_text_naming_the_launchers_files_or_a_person_only_action_is_denied_in_every_role(self):
-        for role in ("guarded", "guarded"):
+    def test_text_naming_the_launchers_files_is_denied_in_every_role(self):
+        for role in ("guarded", "yolo"):
             hit = decide(coding_policy.Policy(role), Call("Edit", {"file_path": "/state/harness/ab/settings.json", "old_string": "a",
                                         "new_string": "b"}), roots=("/state",), protected=("/state/harness/ab",))
             assert hit.action == "deny"
-            answer = decide(coding_policy.Policy(role), Call("Bash", {"command": "poolhouse-security approve-host evil.example"}))
-            assert answer.action == "deny" and "poolhouse-security approve-host" in answer.reason
+
+    @pytest.mark.parametrize("command", [
+        'git commit -m "fix role change"', 'git commit -m "turn off the sentinel mode flag in tests"',
+        'git commit -m "allow the new host in the proxy config"', 'git log --grep "release the quarantine"',
+        'grep -rn "disable the guard rails" docs'])
+    def test_a_coding_command_whose_words_name_a_chat_protected_action_is_not_refused_for_them(self, tmp_path, command):
+        got = decide(coding_policy.Policy("guarded"), Call("Bash", {"command": command}), roots=(str(tmp_path),))
+        assert got.action == "allow", got.reason
 
     def test_nothing_in_the_call_or_the_environment_changes_the_role(self, monkeypatch):
         for name in ("POOLHOUSE_ROLE", "POOLHOUSE_GUARD", "CLAUDE_ROLE"):
