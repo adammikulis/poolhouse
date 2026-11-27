@@ -275,7 +275,8 @@ def pull(ref: str, dest: str | Path | None = None, on_progress: Report | None = 
     down; files already complete are kept. Raises `NotFound`, `GatedRepo`, `NotEnoughSpace`, `ChecksumMismatch`
     (bytes that are not the listed sha256, deleted and fetched once more first), `DigestChanged`, `NotAllowed` or
     `Cancelled`; a cancelled or failed pull leaves ``<file>.part`` for the next pull to continue. ``trust`` says who
-    asked (`admission.Trust`, the process's by default); nobody is asked.
+    asked (`admission.Trust`, the process's by default); nobody is asked. The vision projector the same commit
+    lists comes with a GGUF build; one that cannot be fetched is said in the log.
     """
     run = _Run(on_progress, cancel, admission.checked(trust))
     run.check()
@@ -297,7 +298,19 @@ def pull(ref: str, dest: str | Path | None = None, on_progress: Report | None = 
             raise
         return _snapshot_files(parsed, files, dest, run)
     folder = _bring(parsed, chosen, dest, run)
+    if not chosen[0].companion:
+        _projector(parsed, dest, run)
     return folder / chosen[0].path
+
+
+def _projector(parsed: remote.Ref, dest: str | Path | None, run: _Run) -> None:
+    """Fetch the projector ``parsed``'s commit lists, if any; the model stands without it."""
+    try:
+        found = remote.projector(remote.listing(parsed.repo, parsed.commit, check=run.check))
+        if found is not None:
+            _bring(parsed, [found], dest, run)
+    except (OSError, remote.RemoteError, http.ServerError, net.Blocked) as exc:
+        logger.warning("the vision projector of %s was not fetched, so it reads no pictures until it is pulled again: %s", parsed.repo, exc)
 
 
 @dataclass(frozen=True, slots=True)

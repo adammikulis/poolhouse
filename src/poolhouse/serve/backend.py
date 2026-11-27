@@ -20,7 +20,7 @@ from typing import Any
 from poolhouse import errors, home, serverkeys
 from poolhouse.client import families, wait_for_health
 from poolhouse.platform import end_child, process_group_kwargs
-from poolhouse.serve import confined as confinement, exit_guard, grant, kvcache, startup
+from poolhouse.serve import confined as confinement, exit_guard, grant, kvcache, projector, startup
 from poolhouse.serve.binary import child_env, require_binary, vetted
 from poolhouse.serve.downloads import LLAMA_FLAGS, clean_env, unlisted_flag
 from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
@@ -245,6 +245,7 @@ class ServerSpec:
     # documents, so it never shares a server with chat or embedding.
     reranking: bool = False
     mmproj: str | Path | None = None
+    vision: bool = True   # False: with no `mmproj` named, the projector the model ships is not loaded
     flash_attn: bool = True
     jinja: bool = True
     api_key: str = field(default="", repr=False)
@@ -424,6 +425,7 @@ class ServerInfo:
     """What multi-token prediction the server was started with: ``embedded``, a head's file
     name, or "" for none; ``mtp_note`` says which and why."""
     mtp_note: str = ""
+    mmproj: str = ""   # the file name of the vision projector a fresh start loaded
     # The ``Popen`` for a server this process started, for whoever stops it to wait on.
     # Never serialised: it is not a value, and it is None for an adopted server.
     process: Any = field(default=None, repr=False, compare=False)
@@ -784,9 +786,7 @@ class LlamaServerBackend(ServerBackend):
         ``starting`` takes ``check_flags``, ``preflight`` and ``warmup_request``, each
         ``True`` unless passed otherwise.
         """
-        spec = self.resolved_draft(self.resolved_model(spec))
-        if spec.mmproj:
-            spec = replace(spec, mmproj=fetched(spec.mmproj, "projector"))
+        spec = projector.on_disk(self.resolved_draft(self.resolved_model(spec)), asked=spec.model, fetch=fetched)
         spec, yarn_said = self.resolved_context(spec)
         if yarn_said:
             logger.warning(yarn_said)

@@ -51,9 +51,9 @@ BEHAVIOURS = (
         why="a mistyped name is a download, not an error"),
     Behaviour(
         name="a vision projector",
-        does="comes down with the model when it is asked for by `hf:` reference, and "
-             "`--mmproj auto` picks the most precise one shipped beside the weights",
-        setting="--mmproj PATH, or leave it out to serve as a text model",
+        does="comes down with the model when it is pulled, and is loaded with it when the "
+             "memory holds it beside the model, taking the most precise one shipped",
+        setting="--mmproj PATH to name another, --mmproj none to serve as a text model",
         why="without one a multimodal model ignores an image in silence -- nothing errors, "
             "and the answer is confidently about nothing"),
     Behaviour(

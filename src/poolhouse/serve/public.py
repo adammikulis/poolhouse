@@ -41,18 +41,19 @@ def _served(h: Hold) -> Served:
 
 
 def up(model: str, *, context: int = 0, parallel: int = 0, wait: bool = True,
-       reason: str = "") -> Served:
+       reason: str = "", mmproj: str = "") -> Served:
     """Lease a server of ``model`` (a path, a file name found in the Hub cache, or ``hf:owner/repo/file.gguf``).
 
     ``context`` is tokens across all slots (0 for the largest this machine holds safely for the model and the slots)
     and ``parallel`` the slots (0 for one). With ``wait``
     this returns when the server is ready; without, it returns at once with state ``queued`` when memory is
     short. ``reason`` is one line saying why, kept in the lease's record. Raises `poolhouse.Error` when the
-    request is refused, saying what would fit.
+    request is refused, saying what would fit. ``mmproj`` names the vision projector (a path, an ``hf:`` reference or
+    ``auto``), or ``none`` for text only; left empty, the one the model ships is loaded when the memory holds it.
     """
     found = str(hub.located(model) or model)
     asked = ServerSpec(model=found)
-    spec_in = ServerSpec(model=found, context=context or asked.context, parallel=parallel or asked.parallel)
+    spec_in = ServerSpec(model=found, context=context or asked.context, parallel=parallel or asked.parallel, mmproj=mmproj or None)
     manager = ops.manager_for()
     spec = fitted(ops.resolve_spec(spec_in, manager=manager).spec)[0]
     weight = holding.check_fits(spec, ask=model)

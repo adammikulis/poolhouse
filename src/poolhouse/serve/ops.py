@@ -31,6 +31,7 @@ from poolhouse.serve import (
     measuring as measuring_mod,
     preflight as preflight_mod,
     profile as profile_mod,
+    projector,
     reclaim as reclaim_mod,
     tensors as tensors_mod,
 )
@@ -375,15 +376,15 @@ def alongside(model: str, asked: str, prefix: str, *, best: bool = False) -> str
     if reference.startswith("hf:"):
         return beside("/".join(reference[3:].split("/")[:2]), prefix, best=best)
     # A Hub cache keeps one folder per revision, and a sharded download puts the weights in
-    # a per-quantisation subfolder with the projector at the snapshot root: beside the file,
-    # then the directory above, then every revision of the same repository.
+    # a per-quantisation subfolder with the projector at the revision's root. A projector
+    # comes from the model's own revision; a draft head from any revision.
     where = home.expand(reference).parent
     places: list[tuple[Path, str]] = [(where, f"{prefix}*.gguf"),
                                       (where.parent, f"{prefix}*.gguf")]
-    for parent in where.parents:
-        if parent.name == "snapshots":
-            places.append((parent, f"*/**/{prefix}*.gguf"))
-            break
+    revision = next((each for each in (where, *where.parents) if each.parent.name == "snapshots"), None)
+    if revision is not None:
+        places.append((revision, f"**/{prefix}*.gguf") if prefix.startswith("mmproj")
+                      else (revision.parent, f"*/**/{prefix}*.gguf"))
     for here, pattern in places:
         found = sorted(here.glob(pattern))
         if found:
@@ -402,9 +403,7 @@ def drafted(model: str, asked: str, *, borrows: bool | None = None,
     """
     if asked.lower() != "auto":
         return asked
-    from poolhouse.hub import choose_head
-
-    chosen = choose_head(model, binary=binary, borrows=borrows)
+    chosen = hub.choose_head(model, binary=binary, borrows=borrows)
     warn(f"draft head: {chosen.path or 'none'} -- {chosen.why}")
     return chosen.path
 
@@ -427,11 +426,9 @@ def _binary_of(manager: ServerManager) -> Path | None:
 
 def _head_for(spec: ServerSpec, manager: ServerManager) -> tuple[str, list[str]]:
     """The draft head 'auto' picks for ``spec``, and the lines saying why."""
-    from poolhouse.hub import choose_head
-
     # The chooser is told which binary will serve: a head that borrows its target's
     # embeddings loads only under a named fork build.
-    chosen = choose_head(str(spec.model), binary=_binary_of(manager))
+    chosen = hub.choose_head(str(spec.model), binary=_binary_of(manager))
     build_said = "a fork build" if chosen.borrows else "mainline"
     notes = [f"draft head: {chosen.path} -- {chosen.why} (serving with {build_said})"
              if chosen.path else f"no draft head served -- {chosen.why}"]
@@ -450,6 +447,8 @@ def resolve_spec(spec: ServerSpec, *, manager: ServerManager) -> Resolved:
         draft, said = _head_for(spec, manager)
         notes += said
     asked_mmproj = str(spec.mmproj or "")
+    if asked_mmproj.lower() == projector.NONE:
+        spec, asked_mmproj = replace(spec, mmproj=None, vision=False), ""
     seeing = alongside(str(spec.model), asked_mmproj, "mmproj-", best=True)
     # A head implements one method and says which in its name.
     kind = str(spec.spec_type or "")
@@ -477,7 +476,10 @@ def preflight(spec: ServerSpec, *, manager: ServerManager) -> Any:
         return report_for(spec, limit_bytes=hub.room())
     binary = manager.backend.binary
     # a draft named by hf: file is fetched and served by path, exactly as start() does
-    return preflight_mod.Preflight(LlamaServerBackend.resolved_draft(spec), binary=binary,
+    seen = projector.chosen(spec)
+    if seen.note:
+        warn(seen.note)
+    return preflight_mod.Preflight(LlamaServerBackend.resolved_draft(seen.spec), binary=binary,
                                    limit_bytes=hub.room())
 
 

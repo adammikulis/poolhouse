@@ -68,7 +68,7 @@ def entry(spec: ServerSpec, *, backend: str, lease: str, est_mb: int,  # noqa: P
     base = {
         "port": spec.port, "pid": None, "backend": backend, "model": str(spec.model), "owner_pid": os.getpid(),
         "pending": info is None, "device": admission.device_of(spec), "lease": lease, "est_mb": est_mb,
-        "embedding": bool(spec.embedding), "mmproj": bool(spec.mmproj),
+        "embedding": bool(spec.embedding), "mmproj": bool(spec.mmproj or (info is not None and info.mmproj)),
         "context": int(spec.context), "parallel": int(spec.parallel or 1),
     }
     if info is not None:

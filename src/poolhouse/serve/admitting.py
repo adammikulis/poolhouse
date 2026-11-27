@@ -55,7 +55,7 @@ class Admitting:
         def backend_for(self, spec: ServerSpec) -> ServerBackend: ...
 
     def _admitted(self, spec: ServerSpec, *, on_event: Event | None = None,
-                  reuse: bool = False, load_s: float = 0.0) -> Lease | ServerInfo:
+                  reuse: bool = False, load_s: float = 0.0, shared: ServerSpec | None = None) -> Lease | ServerInfo:
         """The record for a server about to start, written once the machine's ledger and the node have given it the memory and the
         slot; or, with ``reuse``, the running server that already serves ``spec``.
 
@@ -78,7 +78,8 @@ class Admitting:
             while True:
                 with ledger.reserving(self.state_file):
                     records = recorded_servers(self.state_file)
-                    found, loading = (self._compatible(spec, records, on_event) if reuse
+                    # ``shared`` is ``spec`` without a projector this start added: what a running server must serve
+                    found, loading = (self._compatible(shared or spec, records, on_event) if reuse
                                       else (None, False))
                     if found is not None:
                         return found

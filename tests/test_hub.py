@@ -440,11 +440,12 @@ class TestFetch:
             server.point(monkeypatch)
             got = hub.fetch("hf:maker/thing-GGUF/thing-00001-of-00002.gguf")
         assert sorted(server.downloads) == [
+            "maker/thing-GGUF/mmproj-F32.gguf",   # the projector of the same commit comes with the build
             "maker/thing-GGUF/thing-00001-of-00002.gguf",
             "maker/thing-GGUF/thing-00002-of-00002.gguf"]
         assert got.name == "thing-00001-of-00002.gguf" and got.is_file()
         assert got.with_name("thing-00002-of-00002.gguf").is_file()
-        assert not got.with_name("mmproj-F32.gguf").exists()
+        assert got.with_name("mmproj-F32.gguf").is_file()
 
     def test_an_unsharded_reference_downloads_just_the_one_file(self, monkeypatch):
         import poolhouse.hub as hub

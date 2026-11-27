@@ -32,6 +32,7 @@ from poolhouse.serve import (
     ledger,
     llamacpp_provider,
     mtp,
+    projector,
     provenance,
     quant_guard,
     stopping,
@@ -413,16 +414,27 @@ class ServerManager(Admitting):
                 f"{measurement_said(held)}. Loading a second model onto it would spoil "
                 f"that measurement and this one. Wait for it to finish, stop it with "
                 f"'python -m poolhouse.bench stop', or pass --anyway to load beside it.")
+        asked = spec
+        seen = projector.chosen(spec, held_mb=ledger.taken(recorded_servers(self.state_file), besides=spec.port))
+        spec, picked = seen.spec, seen.picked
+        if seen.note:
+            (self.say or logger.warning)(f"port {spec.port}: {seen.note}")
+        if picked:
+            try:
+                guarded.verify(spec.mmproj, state_file=self.state_file, stop=self.reclaim)
+            except guarded.SentinelRefused as refused:
+                (self.say or logger.warning)(f"port {spec.port}: serving without the vision projector: {refused}")
+                spec, picked = replace(spec, mmproj=None, vision=False), False
         for part in guarded.parts_of(spec):
             if part:
                 guarded.verify(part, state_file=self.state_file, stop=self.reclaim)
         emit(on_event, "loading", port=spec.port, model=Path(str(spec.model)).name,
               slots=max(1, int(spec.parallel or 1)))
-        admitted = self._admitted(spec, on_event=on_event, reuse=reuse, load_s=timeout)
+        admitted = self._admitted(spec, on_event=on_event, reuse=reuse, load_s=timeout, shared=asked)
         if isinstance(admitted, ServerInfo):
             return admitted
         try:
-            info = self.backend_for(spec).start(spec, lease=admitted, timeout=timeout, **starting)
+            info = self._started(spec, admitted, picked, timeout=timeout, **starting)
         except (ServerFailed, UnknownFlag) as why:
             if spec.mtp is not True:
                 raise
@@ -431,14 +443,27 @@ class ServerManager(Admitting):
             note = f"MTP off: the server would not start with it ({str(why).splitlines()[0]})"
             note += "; docs/serving.md, 'Multi-token prediction', has the one-command check"
             (self.say or logger.warning)(f"port {spec.port}: {note}; starting without")
-            info = replace(self.backend_for(spec).start(spec, lease=admitted, timeout=timeout,
-                                                        **starting), mtp_note=note)
+            info = replace(self._started(spec, admitted, picked, timeout=timeout, **starting), mtp_note=note)
         else:
             if spec.mtp is True:
                 info = replace(info, mtp=Path(str(spec.draft)).name if spec.draft else "embedded",
                                mtp_note=f"MTP on: {spec.spec_type}")
         emit(on_event, "ready", port=spec.port, load_s=info.load_s, warmup_s=info.warmup_s)
         return info
+
+    def _started(self, spec: ServerSpec, admitted: Lease, picked: bool, **starting: Any) -> ServerInfo:
+        """The server of ``spec``, naming the projector it loaded; one that will not start with a projector ``picked`` by default starts without."""
+        backend = self.backend_for(spec)
+        try:
+            info = backend.start(spec, lease=admitted, **starting)
+        except (ServerFailed, UnknownFlag) as why:
+            if not picked:
+                raise
+            (self.say or logger.warning)(f"port {spec.port}: the server would not start with the vision projector ({str(why).splitlines()[0]}); "
+                                         "starting without it, so it reads no pictures")
+            spec = replace(spec, mmproj=None, vision=False)
+            info = backend.start(spec, lease=admitted, **starting)
+        return replace(info, mmproj=Path(str(spec.mmproj)).name) if spec.mmproj else info
 
     def _slots_shortfall(self, spec: ServerSpec) -> ServerSpec | None:
         """The settings actually running on ``spec.port``, if the only way they disagree with

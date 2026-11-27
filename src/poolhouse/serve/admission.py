@@ -20,6 +20,7 @@ from poolhouse import hub
 from poolhouse.serve import kvcache
 from poolhouse.serve.backend import ServerFailed, ServerSpec
 from poolhouse.serve.preflight import (
+    MMPROJ_FACTOR,
     RUNTIME_ALLOWANCE_BYTES,
     _kv_estimate_bytes,
     draft_kv_estimate_bytes,
@@ -107,7 +108,7 @@ def estimate_bytes(spec: ServerSpec) -> int:
         kv += recurrent_state_bytes(meta) * max(1, spec.parallel)
     except (OSError, ValueError, struct.error):
         kv = 0
-    return (weights + _size(spec.draft) + _size(spec.mmproj) + kv
+    return (weights + _size(spec.draft) + int(_size(spec.mmproj) * MMPROJ_FACTOR) + kv
             + draft_kv_estimate_bytes(spec) + RUNTIME_ALLOWANCE_BYTES)
 
 

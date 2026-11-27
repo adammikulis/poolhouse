@@ -97,7 +97,7 @@ def _on_gpu(backend: str) -> bool:
 
 
 def _mib(text: str) -> int:
-    return int(round(float(text) * _MIB))
+    return round(float(text) * _MIB)
 
 
 @dataclass(frozen=True, slots=True)

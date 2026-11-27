@@ -205,6 +205,12 @@ client = slot(serving, index=request_number, n_predict=16384)
 crowded = replace(serving, slots=4, slot_context=32768)   # four conversations at once
 ```
 
+A model that ships a vision projector is served with it. A pull of a GGUF build fetches the
+projector of the same commit, and a start that names none loads the one of the model's own
+revision when the memory holds it beside the model. Otherwise the server starts as text only
+and says so. `--mmproj PATH` names another and `--mmproj none` declines it. llama.cpp serves
+a model with a projector without context shift and without `--cache-reuse`.
+
 A serving holds one slot unless it is asked for more, and that slot gets the whole context.
 `slots=N` divides the same memory between N conversations, each with its own KV cache. A
 lone slot is given the model's own trained window when the room allows it, read off the

@@ -14,11 +14,23 @@ from poolhouse import caller, hub, limits as limits_mod, optional, platform
 from poolhouse.client import thinking
 from poolhouse.command import flag, option
 from poolhouse.log import say, warn
-from poolhouse.serve import build, guarded, holding, kvcache, mtp, ops, plan_cli, quant_guard, warm
+from poolhouse.serve import (
+    build,
+    guarded,
+    holding,
+    kvcache,
+    mtp,
+    ops,
+    plan_cli,
+    projector,
+    quant_guard,
+    warm,
+)
 from poolhouse.serve.backend import ServerFailed, ServerSpec, parse_context
 from poolhouse.serve.binary import BinaryNotFound
 from poolhouse.serve.fitted import fitted
 from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
+from poolhouse.serve.leases import lease_file, recorded_servers
 from poolhouse.serve.ops import Refused
 from poolhouse.serve.profile import ASK, WORKLOADS, profile_for, resolved
 from poolhouse.serve.quant_guard import BlockedQuant
@@ -200,10 +212,10 @@ OPTIONS_UP = [
               "fork kept beside 'current' rather than replacing it, e.g. a fork whose "
               "fixes have not reached mainline yet. Ignored if --binary is also given"),
     flag("--mmproj", default="", metavar="PATH_OR_AUTO",
-         help="the vision projector, so the model can read a picture -- a path, an hf: "
-              "reference, or 'auto' to take the most precise one shipped with the "
-              "weights. An hf: model already pulls a projector by itself, so 'auto' is "
-              "for choosing a better one than it would: a projector is a fraction of "
+         help="the vision projector, so the model can read a picture. Left out, the one "
+              "shipped with the model is loaded when the memory holds it beside the model; "
+              "'none' serves text only. A path or an hf: reference names another, and "
+              "'auto' takes the most precise one shipped: a projector is a fraction of "
               "the weights and carries all of the seeing, so quantising it is a false "
               "economy"),
     flag("--spec", default="", metavar="TYPE",
@@ -415,7 +427,7 @@ def _lease(args: argparse.Namespace, spec: ServerSpec, manager: object, *, chose
         quant_guard.enforce(spec.model, gpu_layers=spec.n_gpu_layers,
                             asked=str(getattr(args, "iq", "") or ""), who="poolhouse-serve up")
         if not (getattr(args, "no_repin", False) or caller.marked()):
-            guarded.pin_served(args.model, args.draft, args.mmproj)
+            guarded.pin_served(args.model, args.draft, "" if args.mmproj.lower() == projector.NONE else args.mmproj)
         weight = holding.check_fits(spec, ask=str(ask))
         held = holding.up(
             spec, manager=manager, say=warn,
@@ -461,8 +473,11 @@ def _lease(args: argparse.Namespace, spec: ServerSpec, manager: object, *, chose
     say(f"  KV cache {kept.said}" + "".join(f"  ({note})" for note in kept.notes))
     if kept.draft_said:
         say(f"  the draft's own cache stored as {kept.draft_said}")
-    if spec.mmproj:
-        say(f"  reading pictures with {str(spec.mmproj).rsplit('/', 1)[-1]}")
+    entry = recorded_servers(lease_file()).get(held.port)
+    if seeing := spec.mmproj or (entry and entry.get("mmproj") and projector.shipped(spec.model)):
+        say(f"  reading pictures with {Path(str(seeing)).name}")
+    elif unseeing := projector.without(spec, entry, adopted=held.adopted):
+        say(f"  {unseeing}")
     if spec.spec_type:
         say(f"  guessing ahead by {spec.spec_type}")
     for line in filter(None, (told, thinking.policy())):

@@ -23,7 +23,13 @@ from poolhouse.hub import header
 from poolhouse.hub.probe import MachineMemory
 from poolhouse.serve.kvcache import DEFAULT_KV_CACHE, flash_attention_likely
 from poolhouse.serve.largest import contexts, largest_context, trained_window
-from poolhouse.serve.preflight import _head_kv_per_token, _kv_estimate_bytes, recurrent_state_bytes
+from poolhouse.serve.preflight import (
+    MMPROJ_FACTOR,
+    _head_kv_per_token,
+    _kv_estimate_bytes,
+    recurrent_state_bytes,
+)
+from poolhouse.serve.projector import shipped
 from poolhouse.serve.weights import resident_of
 from poolhouse.ui.verdict import THRESHOLDS, verdict_of
 
@@ -37,9 +43,6 @@ COMPUTE_PER_TOKEN = 4800
 COMPUTE_BASE = (30 * MIB, 20 * MIB, 32 * MIB, 160 * MIB)
 """Compute-buffer fit at ``-ub 512`` with flash attention: bytes per context token, and a base
 of ``30 MiB + 20 MiB`` per GiB of weights, held between 32 and 160 MiB."""
-MMPROJ_FACTOR = 1.5
-"""A projector's worst-case memory over its file size (784 MiB file, 1165 MiB estimated)."""
-
 YELLOW_AT = THRESHOLDS.yellow_at
 RED_AT = THRESHOLDS.red_at
 """A placement turns yellow at this share of the memory it goes in, and red at this one; the
@@ -71,6 +74,7 @@ class Setup:
     mmproj: str | Path | None = None
     draft: str | Path | None = None
     mmproj_bytes: int = 0
+    vision: bool = True
     draft_bytes: int = 0
     draft_cache_type: str = DEFAULT_KV
     draft_kv_bytes: int = 0
@@ -243,9 +247,9 @@ def draft_cache_bytes(head: Mapping[str, object], use: Setup) -> int:
 def _sizes(path: Path, use: Setup) -> Setup:
     """``use`` with the projector and draft sizes filled in from their files."""
     projector = Path(use.mmproj) if use.mmproj else None
-    if projector is None and not use.mmproj_bytes:
-        beside = [m for m in hub.discover(formats=("gguf",)) if m.path == path]
-        projector = beside[0].mmproj if beside else None
+    if projector is None and use.vision and not use.mmproj_bytes:
+        beside = shipped(path)
+        projector = Path(beside) if beside else None
     draft_kv = use.draft_kv_bytes
     if use.draft and not draft_kv:
         draft_kv = draft_cache_bytes(read_meta(use.draft), use)

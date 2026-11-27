@@ -23,6 +23,7 @@ from poolhouse.hub.probe import MachineMemory, machine_memory
 from poolhouse.platform import is_apple_silicon
 from poolhouse.serve import estimate as est
 from poolhouse.serve.largest import PAD, capacity, contexts, largest_context, trained_window
+from poolhouse.serve.projector import shipped
 from poolhouse.serve.weights import resident_of
 from poolhouse.units import human_bytes
 
@@ -295,10 +296,9 @@ def suggest(model: str | Path, machine: MachineMemory | None = None, *, goal: st
 def fit_model(model: str | Path, machine: MachineMemory | None, want: Want) -> Suggestion:
     """`suggest` for everything ``want`` can say: slots, cache type and a draft head."""
     path = est._locate(model)
-    shown = [m for m in hub.discover(formats=("gguf",)) if m.path == path]
-    mm = shown[0].mmproj if shown and shown[0].mmproj else None
+    mm = shipped(path)
     return suggest_meta(est.read_meta(path), resident_of(path), machine,
-                        replace(want, mmproj_bytes=want.mmproj_bytes or (est._bytes_of(mm) if mm else 0)))
+                        replace(want, mmproj_bytes=want.mmproj_bytes or (est._bytes_of(Path(mm)) if mm else 0)))
 
 
 def largest_fit(model: str | Path, machine: MachineMemory | None = None, *, slots: int = 1,
