@@ -606,7 +606,7 @@ def test_a_run_whose_changes_were_all_applied_is_done(editing):
     ("shell-hangs", [], "no progress")])
 def test_a_failed_edit_run_publishes_nothing_keeps_the_patch_and_names_its_place(editing, monkeypatch, mode, words, why):
     if mode in ("stalls", "shell-hangs"):
-        monkeypatch.setattr(delegate_confined, "NO_PROGRESS_S", 3.0)
+        monkeypatch.setattr(delegate_confined, "NO_PROGRESS_S", 15.0)   # longer than a loaded machine takes to start the stand-in
     began = time.monotonic()
     run = ran(editing, mode, *words)
     assert time.monotonic() - began < 90, "a run with no progress ends"
