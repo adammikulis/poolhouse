@@ -1,12 +1,12 @@
 //! Devices for the network tests: each a real node with a real TLS listener on loopback.
 
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use poolhouse_node::beacon::BeaconConfig;
 use poolhouse_node::net::{Net, NetConfig};
-use poolhouse_node::node::Node;
+use poolhouse_node::node::{Node, INSTANCE_LOCK};
 use serde_json::{json, Value};
 use tempfile::TempDir;
 
@@ -62,6 +62,20 @@ impl Dev {
 
     pub fn addr(&self) -> SocketAddr {
         format!("127.0.0.1:{}", self.net.port).parse().unwrap()
+    }
+
+    /// Stop the listener and the node, and hand back the state directory once the node has released it. Another thread may still be
+    /// dropping the node when no reference to it is left, so this waits on the instance lock itself, which that drop releases last.
+    pub fn stop(self) -> TempDir {
+        let Dev { dir, node, net, .. } = self;
+        net.shutdown();
+        drop(net);
+        drop(node);
+        let path = dir.path().join(INSTANCE_LOCK);
+        let (released, wait) = mpsc::channel();
+        std::thread::spawn(move || released.send(poolhouse_node::sys::lock(&path).map(drop)));
+        wait.recv_timeout(Duration::from_secs(35)).expect("node did not shut down").unwrap();
+        dir
     }
 
     pub fn call(&self, method: &str, board: &str, token: &str, params: Value) -> Value {

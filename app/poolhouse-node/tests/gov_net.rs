@@ -28,21 +28,6 @@ fn status_of(dev: &Dev, id: &str) -> String {
     format!("{:?}", dev.node.lock().unwrap().members.gov().unwrap().status(id))
 }
 
-/// Stop the listener and wait for its node ownership to be released before reopening its state.
-fn stop_device(dev: Dev) -> tempfile::TempDir {
-    let Dev { dir, node, net, .. } = dev;
-    let weak = std::sync::Arc::downgrade(&node);
-    net.shutdown();
-    drop(net);
-    drop(node);
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(35);
-    while weak.upgrade().is_some() {
-        assert!(std::time::Instant::now() < deadline, "node did not shut down");
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    }
-    dir
-}
-
 
 // -- founding and joining ------------------------------------------------------------------------------------------------
 
@@ -115,7 +100,7 @@ fn a_fresh_node_is_the_unfounded_pool_of_one_and_needs_no_signer_to_exist() {
     assert_eq!(admit["error"]["say"], "This device is not in a pool yet; make one, or join one.", "it admits nobody");
     let propose = a.call("pool_propose", "", &a.token, json!({"kind": "remove", "body": {"fingerprint": "ab".repeat(32)}}));
     assert_eq!(propose["error"]["say"], "This device is not in a pool yet; make one, or join one.");
-    let dir = stop_device(a);
+    let dir = a.stop();
     let reopened = Node::open(dir.path());
     assert!(reopened.is_ok(), "a fresh state directory opens again as it was");
 }
@@ -146,7 +131,7 @@ fn a_removal_signed_on_one_node_is_the_acts_of_a_pool_and_survives_a_restart() {
     a.node.lock().unwrap().enrol_device(&victim.der, "ghost", "join-code", false).unwrap();
     a.ok("member_remove", "", &a.token, json!({"fingerprint": victim.fingerprint()}));
     sync(&b);
-    let dir = stop_device(a);
+    let dir = a.stop();
     let reopened = poolhouse_node::node::Node::open(dir.path()).unwrap();
     assert_eq!(reopened.members.get(&victim.fingerprint()).map(|d| d.status), Some(poolhouse_node::membership::Status::Revoked));
     assert!(reopened.members.gov().is_some());
@@ -424,17 +409,25 @@ fn a_cloned_state_directory_has_no_keystore_bound_key_and_signs_no_delegate_admi
     let (a, b, _) = pool_of_three();
     a.ok("pool_propose", "", &a.token, json!({"kind": "delegate", "body": {"fingerprint": b.fp()}}));
     sync(&b);
+    for d in [&a, &b] {
+        pass(d, HELD);
+    }
+    b.node.lock().unwrap().rig_bind_device_key();
+    assert!(b.node.lock().unwrap().can_admit(false).is_ok(), "the delegate itself, its key the keystore's, signs an admit");
     let copy = tempfile::tempdir().unwrap();
     copy_dir(b.dir.path(), copy.path());
     let clone = poolhouse_node::node::Node::open(copy.path()).unwrap();
+    assert!(clone.members.gov().unwrap().state().roster.delegates.contains_key(&b.fp()), "the copy holds the delegation");
     assert!(clone.can_admit(false).is_err(), "the copy holds the files, not a keystore");
 }
 
+/// A copy that keeps permissions, as ``cp -a`` does: a node refuses a credential directory that others can enter.
 fn copy_dir(from: &std::path::Path, to: &std::path::Path) {
     for entry in std::fs::read_dir(from).unwrap().flatten() {
         let target = to.join(entry.file_name());
         if entry.file_type().unwrap().is_dir() {
             std::fs::create_dir_all(&target).unwrap();
+            std::fs::set_permissions(&target, entry.metadata().unwrap().permissions()).unwrap();
             copy_dir(&entry.path(), &target);
         } else if entry.file_name() != "node.sock" {
             let _ = std::fs::copy(entry.path(), &target);

@@ -95,10 +95,7 @@ fn authorized_service_key_renews_after_rotation_and_actual_node_restart_without_
     let service = certificate(); let original = bind(&dev,&service,"service");
     let old = dev.ok("service_draft","","",json!({"cert":service.cert,"endpoint":"https://127.0.0.1:8770"}));
     dev.node.lock().unwrap().host("pool").unwrap().board.rotate().unwrap();
-    let Dev { dir, node, net, .. } = dev;
-    let stopped = std::sync::Arc::downgrade(&node);
-    net.shutdown(); drop(node); drop(net);
-    kit::netkit::eventually("the old node released its instance",poolhouse_node::peer::IO_TIMEOUT.as_secs(),||stopped.upgrade().is_none());
+    let dir = dev.stop();
     let mut node = poolhouse_node::node::Node::open(dir.path()).unwrap();
     assert_eq!(kit::req(&mut node,"service_bind","","",prepared(&service,&old))["ok"],false);
     let draft = kit::req(&mut node,"service_draft","","",json!({"cert":service.cert,"endpoint":"https://127.0.0.1:8770"}));
