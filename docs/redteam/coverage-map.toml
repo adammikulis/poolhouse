@@ -1554,6 +1554,13 @@ tests = ["tests/test_keystore.py",
 note = "refusal, rate ceiling, background process, other-purpose key, label collision, master in no file or log"
 
 [[group]]
+match = ["keystore:guard/unboxed.py:<module>"]
+status = "covered"
+count = 1
+tests = ["tests/test_delegate_unsandboxed_blocks.py::test_a_read_of_a_common_credential_store_is_refused"]
+note = "the module only names the credential-store commands it refuses, opens no keystore and holds no secret; a call that reads a common credential store is refused"
+
+[[group]]
 match = ["keystore:installed.py:<module>"]
 status = "covered"
 count = 1
