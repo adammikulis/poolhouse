@@ -78,10 +78,11 @@ def test_rerun_executes_nothing_when_already_isolated_or_nothing_is_selected(tmp
     assert seen == []
 
 
-def test_a_state_root_with_shell_punctuation_still_builds_verifies_and_installs_launchers(world, tmp_path, monkeypatch):  # noqa: F811
+def test_a_state_root_with_shell_punctuation_still_builds_verifies_and_installs_launchers(world, workspace_node, tmp_path, monkeypatch):  # noqa: F811
     repo, _, _ = world
     odd = tmp_path / HOSTILE
-    odd.mkdir()
+    (odd / "state").mkdir(mode=0o700, parents=True)
+    (odd / "state" / "node").symlink_to(workspace_node.state)  # the same real node and agent, reached through the hostile state root
     monkeypatch.setenv("POOLHOUSE_HOME", str(odd / "state"))
     launchers = odd / "bin"
     launchers.mkdir(mode=0o700)
