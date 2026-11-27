@@ -93,11 +93,6 @@ REFUSE = [
      r"--unmanaged|--no-queue)\b",
      "`poolhouse-serve up` is a lease and no flag skips the broker. Drop the flag: "
      "`poolhouse-serve up MODEL --context N` (add --no-wait to return while it is queued)."),
-    (r"\bfind\b[^|;]*\.gguf|\bls\b[^|;]*\*\.gguf",
-     "Do not hunt for GGUFs with find/ls. `poolhouse-models find <words>` searches the Hub "
-     "and `poolhouse-models files <repo>` lists what is already on this machine -- a Hub "
-     "cache is symlinks into blobs/, so `ls -l` reports 79 bytes for a 46G shard and reading "
-     "that as 'not downloaded' nearly re-fetched 87G."),
     (r"\bhuggingface-cli\s+download\b|\bhf\s+download\b",
      "Do not download by hand. `poolhouse-serve up hf:owner/repo/file` fetches on first use, "
      "into the same cache, and `poolhouse-models files <repo>` says what is already here."),
