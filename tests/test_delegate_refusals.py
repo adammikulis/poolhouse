@@ -80,6 +80,6 @@ def test_a_command_that_only_looks_is_no_write(command):
     "networksetup -setdnsservers Wi-Fi 192.0.2.1", "sudo -u root rm held", "su root -c 'rm held'", "sudo tee held",
     "runas /user:admin 'del held'", "git config --comment get core.pager x", "git config --comment --list core.pager x", "git config -e",
     "git config --edit", "git config --remove-section user", "sudo -nu root rm held", "sudo FOO=1 tee held", "unzip -Plist held.zip -d held",
-    "scutil --set ComputerName x --get", "git clean -e -n -f"])
+    "scutil --set ComputerName x --get", "git clean -e -n -f", "git config core.pager ''", "git config core.hooksPath --file"])
 def test_a_command_that_changes_something_is_a_write(command):
     assert writes(command)

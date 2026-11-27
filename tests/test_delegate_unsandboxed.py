@@ -219,7 +219,8 @@ def test_a_denied_write_that_is_let_through_afterwards_is_not_reported(unsandbox
     "chmod 600 ~/.ssh/id_ed25519", "mv ~/.ssh/config held", "cp held ~/.ssh/authorized_keys", "sed -i s/a/b/ ~/.aws/credentials",
     "curl -sSo OUTSIDE https://example.test/x", "curl --output=OUTSIDE https://example.test/x", "su -c 'rm OUTSIDE'", "sudo -u root rm OUTSIDE",
     "git config --global --comment get core.sshCommand x", "git config --global --remove-section user", "sudo -nu root rm OUTSIDE",
-    "sudo FOO=1 tee OUTSIDE", "unzip -Plist a.zip -d /etc", "git clean -e -n -f /etc"])
+    "sudo FOO=1 tee OUTSIDE", "unzip -Plist a.zip -d /etc", "git clean -e -n -f /etc", "git config --global -tbool http.sslVerify false",
+    "git config --global core.pager ''"])
 def test_a_shell_write_the_blocks_deny_however_it_is_wrapped_is_a_refused_write(unsandboxed, command):
     node, lead, project, _outside = unsandboxed
     _name, row = ran(node, lead, "--task", f"mode:call:{command}", "--project", str(project), "--edit", state="unapplied")

@@ -49,15 +49,11 @@ UNDONE = frozenset({"patch", "ruby", "unzip"})
 VALUED = "ughpCrtUDRT"
 """The letters of the options of `sudo` and its like that take a value, attached or the next word."""
 VALUED_LONG = frozenset({"--user", "--group", "--host", "--prompt", "--chdir", "--role", "--type", "--other-user", "--chroot", "--command-timeout"})
-CONFIG_READS = frozenset({"--get", "--get-all", "--get-regexp", "--get-urlmatch", "--get-color", "--get-colorbool", "--list"})
-CONFIG_WRITES = frozenset({"--add", "--replace-all", "--unset", "--unset-all", "--rename-section", "--remove-section", "--edit"})
-CONFIG_VALUED = frozenset({"--file", "--blob", "--type", "--default", "--comment", "--value", "--url"})
-CONFIG_LONG = CONFIG_READS | CONFIG_WRITES | CONFIG_VALUED | {"--global", "--system", "--local", "--worktree", "--show-origin", "--show-scope",
-                                                               "--null", "--name-only", "--includes", "--fixed-value", "--all", "--append",
-                                                               "--regexp", "--bool", "--int", "--bool-or-int", "--path", "--expiry-date"}
-"""The long options of `git config`, which git takes by any beginning that names only one."""
-CONFIG_VERBS = frozenset({"get", "list", "set", "unset", "rename-section", "remove-section", "edit"})
-"""The subcommands of `git config`, read as one only as its first word."""
+CONFIG_PLAIN = frozenset({"--get", "--get-all", "--get-regexp", "--list", "-l", "--global", "--system", "--local", "--worktree", "--show-origin",
+                          "--show-scope", "--name-only", "--null", "-z", "--includes", "--no-includes"})
+"""The options of `git config` that take no value and change nothing: the only ones a call recognised as a read may have."""
+GIT_VALUED = ("-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--attr-source", "--super-prefix")
+"""The options before git's subcommand that take the next word."""
 LOOKS = ("-get", "-list", "-show", "-print", "-version", "-help")
 """How the options of `networksetup` and `systemsetup` that only read begin."""
 LEAD = ("mcp__lead__ask", "mcp__lead__note")
@@ -422,43 +418,48 @@ def _global(words: tuple[str, ...], plain: list[str], here: str | None, ground: 
     return ""
 
 
-def _config(after: list[str]) -> tuple[bool, set[str], str]:
-    """Of the words after `git config`: whether they only read, the long names of their options and the file they name. Values are never read as
-    options or as subcommands; what cannot be told apart counts as a change."""
-    flags: set[str] = set()
-    plain: list[str] = []
-    named, words = "", iter(after)
-    for word in words:
-        if word == "--":
-            plain += words
-        elif word.startswith("--"):
-            option, equals, value = word.partition("=")
-            begun = [each for each in CONFIG_LONG if each.startswith(option)]
-            option = begun[0] if option not in CONFIG_LONG and len(begun) == 1 else option
-            flags.add(option)
-            if option in CONFIG_VALUED:
-                value = value if equals else next(words, "")
-                named = value if option == "--file" else named
-        elif word.startswith("-") and len(word) > 1:
-            for index, letter in enumerate(word[1:], 1):
-                if letter == "f":
-                    named = word[index + 1:] or next(words, "")
-                    break
-                flags.add({"l": "--list", "e": "--edit"}.get(letter, f"-{letter}"))
-        else:
-            plain.append(word)
-    if after and after[0] in CONFIG_VERBS:
-        return after[0] in ("get", "list"), flags, named
-    return not flags & CONFIG_WRITES and bool(flags & CONFIG_READS or len(plain) < 2), flags, named
+def _config_reads(after: list[str]) -> bool:
+    """Whether the words after `git config` are one of the forms known to read: the subcommand `get` or `list`, or options that take no value and
+    then at most the key (none for a listing). Anything else counts as a change; nothing is guessed from what an option might mean."""
+    if after[:1] in (["get"], ["list"]):
+        return True
+    at = next((index for index, word in enumerate(after) if word not in CONFIG_PLAIN), len(after))
+    keys = after[at:]
+    return len(keys) <= (0 if {"--list", "-l"} & set(after[:at]) else 1) and not any(word.startswith("-") for word in keys)
+
+
+def _config_files(after: list[str]) -> list[str]:
+    """Every word after `git config` that may be the file it is given: the value of `--file` by any beginning of its name, and what follows an `f`
+    in a word of short options."""
+    found = []
+    for at, word in enumerate(after):
+        option, equals, value = word.partition("=")
+        if len(option) > 2 and "--file".startswith(option):
+            found += [value] if equals else after[at + 1:at + 2]
+        elif re.match(r"-[^-]", word) and "f" in word:
+            attached = word.partition("f")[2]
+            found += [attached] if attached else after[at + 1:at + 2]
+    return found
+
+
+def _config_changes(after: list[str], ground: Ground, here: str | None, tree: str) -> Effect:
+    """The effect of a `git config` not known to read, in the repository at ``tree``: refused when it names the user's or the computer's
+    configuration, or a file outside the project."""
+    if any(len(word) > 2 and ("--global".startswith(word) or "--system".startswith(word)) for word in after):
+        return Effect(f"git config {GLOBAL}", "git-config")
+    named = [_written(each, _place(tree, here, ground), ground) for each in _config_files(after)]
+    return next((each for each in named if each.why), named[0] if named else Effect(wrote=str(PurePath(tree) / ".git")))
 
 
 def _git(rest: list[str], ground: Ground, here: str | None) -> Iterator[Effect]:
     sub, after, moved = "", [], ""
     at = 0
     while at < len(rest):
-        if rest[at] in ("-C", "-c", "--git-dir", "--work-tree", "--namespace"):
+        if rest[at] in GIT_VALUED:
             moved = rest[at + 1] if rest[at] in ("-C", "--git-dir", "--work-tree") and at + 1 < len(rest) else moved
             at += 2
+        elif rest[at].startswith(("--git-dir=", "--work-tree=")):
+            moved, at = rest[at].partition("=")[2], at + 1
         elif rest[at].startswith("-"):
             at += 1
         else:
@@ -468,7 +469,7 @@ def _git(rest: list[str], ground: Ground, here: str | None) -> Iterator[Effect]:
     short = {c for w in flags if re.fullmatch(r"-[A-Za-z]+", w) for c in w[1:]}
     plain = [w for w in after if not w.startswith("-")]
     tree = _place(moved or ".", here, ground) or moved or ground.root
-    reading, set_by, named = _config(after) if sub == "config" else (False, set(), "")
+    reading = sub == "config" and _config_reads(after)
     # `-e` of `git clean` takes the next word, so an `-n` there is a pattern and nothing is only tried
     looks = reading or (sub == "clean" and ("n" in _letters(after, "e") or "--dry-run" in flags))
     if sub == "push" and (flags & {"--force", "--force-with-lease", "--force-if-includes", "--mirror", "--delete", "--prune"} or short & {"f", "d"}
@@ -478,15 +479,11 @@ def _git(rest: list[str], ground: Ground, here: str | None) -> Iterator[Effect]:
     if sub == "push":   # whatever else refuses it, a push changes the remote
         yield Effect(wrote="git-push")
         return
-    if sub == "config":
-        if not reading and set_by & {"--global", "--system"}:
-            yield Effect(f"git config {GLOBAL}", "git-config")
+    if sub == "config" and not reading:
+        changed = _config_changes(after, ground, here, tree)
+        yield changed
+        if changed.why:
             return
-        if not reading and named:
-            yield _written(named, here, ground)
-            return
-        if not reading:
-            yield Effect(wrote=str(PurePath(tree) / ".git"))
     if moved and sub in GIT_WRITES and (effect := _written(moved, here, ground)).why:
         yield replace(effect, wrote="") if looks else effect
         return

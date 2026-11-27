@@ -195,7 +195,11 @@ GIT_CONFIG_CHANGES = [
     "git config -f{home}/notes/gitconfig core.pager x", "git config --global --remove-section user", "git config --global --rename-section user x",
     "git config --global --edit", "git config --global -e", "git config --global --unset user.name", "git config --glob user.name x",
     "git config --global --remove-sec user", "git config set --global user.name x", "git config unset --global user.name",
-    "git config remove-section --global user", "git config edit --global"]
+    "git config remove-section --global user", "git config edit --global",
+    "git config --global -tbool http.sslVerify false", "git config --global core.hooksPath --file", "git config --global core.pager ''",
+    'git config --global core.pager ""', "git config -f {home}/notes/gitconfig core.pager ''", "git config --global --type bool core.bare true",
+    "git --config-env core.x=HOME config --global core.pager x", "git --attr-source HEAD config --global core.pager x",
+    "git --git-dir={home}/notes/.git config core.pager x", "git config --sys core.pager x"]
 
 
 @pytest.mark.parametrize("command", GIT_CONFIG_CHANGES)
@@ -206,6 +210,6 @@ def test_a_change_of_gits_global_configuration_is_refused_however_its_options_ar
 @pytest.mark.parametrize("command", [
     "git config --global user.name", "git config --global --get user.name", "git config get --global user.name", "git config list --global",
     "git config --global --list", "git config --global -l", "git config --global --show-origin --get-regexp user",
-    "git config --global --type bool core.bare"])
+    "git config --global --show-origin --get user.name", "git config --system --get-all core.pager", "git config core.pager ''"])
 def test_a_read_of_gits_global_configuration_is_not_refused(ground, command):
     assert not judged(ground, "Bash", command=command)
