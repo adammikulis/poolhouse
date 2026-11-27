@@ -27,6 +27,7 @@ from pathlib import Path
 import pytest
 
 from poolhouse import coding_policy, harnesshook, isolation, opencode, sandbox
+from poolhouse.isolation import history
 from poolhouse.isolation.notices import Notice
 from poolhouse.isolation.reports import Reporter
 from tests.isolation_kit import MODEL, Canned
@@ -297,6 +298,15 @@ def test_the_preflight_reports_at_once_in_the_brief_and_in_the_result_what_the_b
     assert said in confinement.untested + " ".join(confinement.said()) and "python -m pytest --collect-only" in confinement.untested, (out, confinement.said())
     assert posted and said in posted[0][3], "the launching session is told before the harness starts"
     assert said in config[0] and "THE BRIEF" in config[0], config
+
+
+def test_the_preflight_finds_an_index_that_names_an_object_the_stage_lacks_which_status_and_diff_do_not_show(box, monkeypatch):
+    """The stage as it was before its trees left out credential names: the index keeps `HEAD`'s entry for one, and its bytes are not there."""
+    monkeypatch.setattr(history, "_leave_out", lambda *_: None)
+    fresh_worktree(box)
+    out, _, confinement = shelled(box, "git status --short >/dev/null && git diff HEAD --stat >/dev/null && echo 'status and diff work'\n")
+    said = " ".join(confinement.said())
+    assert "status and diff work" in out and "git does not show the project" in said and "write-tree" in said and ".env" in said, (out, said)
 
 
 def test_a_project_with_no_usable_environment_is_told_so_in_the_brief_and_in_the_result(box):

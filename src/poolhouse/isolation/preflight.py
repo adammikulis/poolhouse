@@ -23,6 +23,11 @@ __all__ = ["Findings", "checks", "run"]
 GIT = "git status --short >/dev/null && git diff --stat >/dev/null"
 HISTORY = f"{GIT} && git diff HEAD --stat >/dev/null && git log -1 --format=%h >/dev/null && git show --name-status HEAD >/dev/null"
 """What a project with a commit is checked for: its history too."""
+SNAPSHOT = ('t=$(mktemp -d "${TMPDIR:-/tmp}/snapshot.XXXXXX") && git init -q --bare "$t" && '
+            'printf \'%s\\n\' "$PWD/.git/objects" > "$t/objects/info/alternates" && cp .git/index "$t/index" && '
+            'git --git-dir="$t" --work-tree=. write-tree >/dev/null; s=$?; rm -rf "$t"; exit $s')
+"""Writes the tree of a copy of the stage's index in a repository of its own that borrows the stage's objects, as a tool's snapshot of the
+working copy does: every object the index names must be there (`isolation.history`). Neither status nor diff reads them all."""
 SAID = 300
 """The characters of a failed check's own last words a finding repeats."""
 
@@ -93,4 +98,5 @@ def run(profile: Profile, committed: bool) -> Findings:
     checked for git alone."""
     stage = Path(profile.stage)
     untested = [] if profile.read_only else [why for _, command in checks(stage) if (why := _failed(profile, command))]
-    return Findings("; ".join(untested), _failed(profile, HISTORY if committed else GIT))
+    git = [why for command in (HISTORY if committed else GIT, SNAPSHOT) if (why := _failed(profile, command))]
+    return Findings("; ".join(untested), "; ".join(git))
