@@ -163,12 +163,12 @@ def stood_in(monkeypatch, tmp_path, code):
     def opened(*_args, **_kwargs):
         yield run
 
-    monkeypatch.setattr(opencode.harnessing, "binary_for", lambda _: str(binary.resolve()))
+    monkeypatch.setattr(opencode.harnessing, "binary_for", lambda _, **__: str(binary.resolve()))
     monkeypatch.setattr(opencode, "alias_of", lambda *_: "local-model")
     monkeypatch.setattr(opencode.harnessing, "window_of", lambda _: 49152)
     monkeypatch.setattr(opencode.harnessing, "opened", opened)
     out, err, said = io.BytesIO(), io.BytesIO(), []
-    status = opencode.launch(["--on", "http://127.0.0.1:8080", "--project", str(project), "--", "fix it"], say=said.append,
+    status = opencode.launch(["--sandbox", "--on", "http://127.0.0.1:8080", "--project", str(project), "--", "fix it"], say=said.append,
                              run_opencode=lambda confinement: confinement.run(None, out, err))
     return status, said, out.getvalue().decode(), err.getvalue().decode()
 

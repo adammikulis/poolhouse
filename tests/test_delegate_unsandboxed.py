@@ -253,9 +253,13 @@ def own_environment(monkeypatch):
     ("guarded", "Bash", {"command": "rm -rf build"}, "deny"), ("guarded", "Write", {"file_path": "a.py"}, "allow"),
     ("read-only", "Write", {"file_path": "a.py"}, "deny"), ("read-only", "Read", {"file_path": "a.py"}, "allow"),
     ("read-only", "mcp__lead__ask", {"question": "which?"}, "allow"),
+    ("guarded", "Write", {"file_path": "new.py", "content": "x = 1\n"}, "allow"),
+    ("guarded", "Write", {"file_path": "held.py", "content": "x = 1\n"}, "deny"),
 ])
 def test_the_hook_applies_the_blocks_in_every_tier_and_the_classifier_below_yolo(tmp_path, own_environment, case):
     tier, name, given, decision = case
+    (tmp_path / "project").mkdir()
+    (tmp_path / "project" / "held.py").write_text("the file a small write would empty\n")
     code, answer, calls = answered(tmp_path, tier, name, **given)
     assert (code, answer) == (0, decision) and name in calls
 

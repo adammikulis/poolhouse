@@ -8,9 +8,8 @@ OpenCode, in the `read-only` tier unless the lead chooses another: it reads and 
 reaches the lead through two tools. With `--edit` (the `guarded` tier) or `--permissions` it also changes the project and
 runs a shell. It runs in the isolated launcher's confinement (`poolhouse.delegate_confined`): its whole change is published
 into the project when it ends, except `.git`, coding tools' settings, credentials and links that lead out, which are
-refused at once and kept as a patch. On a platform that has no sandbox it runs on the folder itself under its tier's
-rules, with a warning (`poolhouse.delegate_unboxed`); a computer whose sandbox cannot be used refuses it with the reason.
-Nothing here waits on a person: a refusal is immediate and says why.
+refused at once and kept as a patch. On a platform that has no sandbox it runs on the folder itself, with a warning
+(`poolhouse.delegate_unboxed`); a sandbox that cannot be used refuses it. Nothing waits on a person: a refusal says why.
 """
 
 from __future__ import annotations

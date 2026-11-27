@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import IO, Any
 
-from poolhouse import coding_policy, harnesspolicy
+from poolhouse import coding_policy, harnesspolicy, home
 from poolhouse.errors import Denied
 from poolhouse.guard import unboxed
 from poolhouse.interventions import Call
@@ -31,7 +31,9 @@ def judge(tier: str, ground: unboxed.Ground, name: str, args: dict[str, Any]) ->
         return why
     if tier == coding_policy.YOLO:
         return ""
-    decision = harnesspolicy.decide(coding_policy.Policy(tier), Call(name, args), roots=(ground.root, ground.scratch))
+    # the delegate names files from its folder: the classifier is given whole paths, so a new file is not judged as one that may be there
+    held = {key: str(Path(ground.root) / home.expand(args[key])) for key in ("file_path", "path") if isinstance(args.get(key), str)}
+    decision = harnesspolicy.decide(coding_policy.Policy(tier), Call(name, {**args, **held}), roots=(ground.root, ground.scratch))
     return decision.reason if decision.action == "deny" else ""
 
 

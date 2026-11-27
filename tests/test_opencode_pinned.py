@@ -394,5 +394,5 @@ def test_a_delegate_on_a_platform_with_no_sandbox_runs_the_pinned_release_on_the
     assert ran.status == 0 and ran.row["state"] == "done", (ran.row, ran.log[-4000:])
     assert [name for name, _ in judged(ran)[0]] == ["Write", "Write", "Bash"], (ran.heard, ran.log[-4000:])
     results = offered(served)[1]
-    assert "poolhouse: " in results[1] and not outside.exists() and "x = 1" in results[2]
+    assert "poolhouse: " in results[1] and not outside.exists() and "x = 1" in results[2], (results, ran.log[-4000:])
     assert (delegated.project / "made.py").read_text() == "x = 1\n"
