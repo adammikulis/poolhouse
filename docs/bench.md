@@ -530,3 +530,56 @@ not directly comparable. `compare` does the same for its two runs. At the start 
 `sweep`, `python -m poolhouse.bench` prints `llama.cpp: build N, M behind master (age)` and a warning when
 the build is over 24 hours old and behind; it never updates the build
 (docs/llama-cpp-tracking.md, "Keeping up to date").
+
+## Quantisations of one model, compared here
+
+`quants` asks whether a build, IQ ones in particular, does worse on this machine than charts made elsewhere
+suggest. It runs from a checkout, as every bench command does (the wheel leaves the bench out, so an installed
+`poolhouse-bench` is a launcher left over from an older runtime and fails on import):
+
+```
+PYTHONPATH=src python -m poolhouse.bench quants plan --set qwen3.8-27b
+PYTHONPATH=src python -m poolhouse.bench quants build-tool
+PYTHONPATH=src python -m poolhouse.bench quants fidelity --set qwen3.8-27b
+PYTHONPATH=src python -m poolhouse.bench quants tasks --set qwen3.8-27b --items HumanEval.jsonl.gz --items mbpp.jsonl
+PYTHONPATH=src python -m poolhouse.bench quants speed --set qwen3.8-27b
+PYTHONPATH=src python -m poolhouse.bench quants report --set qwen3.8-27b
+```
+
+The comparisons are in `docs/experiments/quants-qwen3.8.json`: `qwen3.8-27b` against BF16,
+`qwen3.8-flash-next` and `qwen3.8-flash-next-round2` against UD-Q4_K_XL. `--only NAME,NAME` narrows one, and
+`--model NAME=PATH` (repeated), `--reference NAME` and `--versus IQ,K` compare any local files. `plan` and `report`
+load nothing; nothing here downloads a model. `plan` names each file that is missing, or here as an older
+revision than the published one, with the command that fetches it, and the disk and time each part needs.
+
+- **fidelity.** llama-server returns probabilities only for tokens it generates and refuses `echo`, so the fixed
+  text is scored by llama.cpp's `llama-perplexity`, which `build-tool` compiles from the active build's commit
+  with the server's sandboxed build. For each domain (code, prose; copied once from this checkout into the bench's
+  home, hash kept) the reference and each build write their log probabilities with the served cache, each build on
+  Metal and again with no layer and no operation on the GPU (`-ngl 0 --device none --no-op-offload`). Reported
+  per block of 64 tokens: the KL divergence from the reference, how often the top token agrees, Metal against the
+  CPU on the same file, and the divergence Metal adds over the CPU. The default is 8 chunks of 1024 tokens per
+  domain, whose second halves are scored (8176 tokens). The run holds the broker's `gpu-training` claim. The
+  files of log probabilities (about 2 GB each) are removed once compared.
+- **tasks.** HumanEval (164 items, `HumanEval.jsonl.gz` from `openai/human-eval`) and MBPP (974 items,
+  `mbpp.jsonl` from `google-research/google-research`) as files you name; each is graded by its own tests in the
+  deny-default sandbox with no network. Greedy, one slot, thinking off, no draft head, no profile, q8_0 cache.
+  Results are kept every 25 items and a rerun asks only what is missing. With 10% of items differing between two
+  builds, 80% power to separate 3 points needs 873 items asked of both and 5 points 314; the 164 HumanEval items alone
+  give an interval of about 5 points either way.
+- **speed.** Prefill and decode of one stream at 512 and 16384 tokens, five repeats, each a fresh lease, the order
+  turned each time. Each cell records the share of the file in the page cache before the load. It does not start
+  on a busy machine (`--anyway` overrides), and a repeat that found the machine busy is kept, marked contended and
+  left out of the interval.
+
+**Cache types.** Every part runs with the served q8_0 K and V cache (`--kv`). `--cache-of NAME --caches
+TYPE,TYPE` makes one build's file under each type the thing compared, the first being the reference, with
+`--ctx` for a long scored window (about 1 MB of memory a scored token), `tasks --long-context TOKENS` and
+`--draft PATH` (a draft head, its cache taking the same type). It is not one of the prepared runs.
+
+Every figure comes with its count and a 95% interval: bootstrap over blocks, or over the items two builds both
+answered (`bench.intervals.difference`), Wilson for one pass rate, Student's t over speed repeats. Two builds
+whose difference has an interval holding zero are reported as ones that cannot be told apart, which is not the
+same as equal. Flash-Next has no
+full-precision reference that fits: divergence from UD-Q4_K_XL says how close a build is to that larger quant, not
+what it lost, and favours a build that errs the way the reference does.
