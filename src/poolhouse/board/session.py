@@ -5,7 +5,9 @@ from __future__ import annotations
 import os
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -523,6 +525,19 @@ def _kept_model(node: Client, name: str) -> str:
     return ""
 
 
+_ONLY_EXISTING: ContextVar[bool] = ContextVar("poolhouse_only_existing_sessions", default=False)
+
+
+@contextmanager
+def only_existing() -> Iterator[None]:
+    """In this block `revive` registers nothing, so connecting finds a session and its kept token or none at all."""
+    held = _ONLY_EXISTING.set(True)
+    try:
+        yield
+    finally:
+        _ONLY_EXISTING.reset(held)
+
+
 def revive(node: Client, where: str, *, strict: bool = False, named: str = "") -> Session | None:
     """The main session this process runs in, registered on ``where`` again from the native session id its harness set, or None when it runs in
     none (a subagent, a Codex thread and a process of no harness have no native main session to register).
@@ -533,7 +548,7 @@ def revive(node: Client, where: str, *, strict: bool = False, named: str = "") -
     has never seen the session the node names it after the model it claims: ``named`` is the name the caller expects, and the session is then
     registered with the model the node recorded for that name on another board, so it comes back under that name.
     """
-    if os.environ.get(SUBAGENT_ENV, "").strip() or os.environ.get("CODEX_THREAD_ID", "").strip():
+    if _ONLY_EXISTING.get() or os.environ.get(SUBAGENT_ENV, "").strip() or os.environ.get("CODEX_THREAD_ID", "").strip():
         return None
     refused: Denied | None = None
     model = _kept_model(node, named) if named else ""

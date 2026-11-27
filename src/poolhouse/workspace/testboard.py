@@ -48,8 +48,9 @@ def acting() -> sessions.Session | None:
     """The session of the identity the harness assigned this process or of the native session that started it, or None when it has neither."""
     if not agent_process():
         return None
-    opened = guarded("session", sessions.connect)
-    return opened if opened is not None and guarded("session", lambda: opened.name) else None
+    with sessions.only_existing():   # running tests makes no identity or token
+        opened = guarded("session", sessions.connect)
+        return opened if opened is not None and guarded("session", lambda: opened.name) else None
 
 
 def identity(s: sessions.Session) -> dict[str, str]:
