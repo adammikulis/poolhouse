@@ -240,14 +240,17 @@ the same lease, window, permission profiles, workspace session and publication o
   Its permissions never ask: the plugin and the mount decide.
 - **Its server.** `opencode run` has no mode without a server, and its own private one (`--standalone`) listens on a port the operating system picks,
   which a box that names the ports it opens cannot allow (the Seatbelt log showed the bind of port 0 denied). So the confined process runs
-  `opencode serve --hostname 127.0.0.1 --port N` and then `opencode run --server http://127.0.0.1:N`, with `N` chosen by the launcher and opened for the
+  `opencode serve --hostname 127.0.0.1 --port N` and, once `/api/info` answers 200 (it answers 503 while the server starts, and `run` asks only once),
+  `opencode run --server http://127.0.0.1:N`, with `N` chosen by the launcher and opened for the
   box as `Net.only(bridge, listen=(N,))` (outbound, bind and inbound on that one loopback port and no other), and the server answers only to the bridge
   token (`OPENCODE_PASSWORD`). The proof's loopback canaries stay denied.
-- **The gate.** A plugin written beside the config (OpenCode 2's shape, a default export with `id` and `setup`: its `execute.before` and
-  `execute.after` tool hooks and its `context` session hook) runs the same client as Pi's extension (`poolhouse.harness_js`) and asks the
-  parent's classifier over the session bridge before each tool call; a deny, or a hook that cannot be reached, throws, which OpenCode hands back to
-  the model as the tool's error. OpenCode logs a plugin it cannot load and runs on without it, so the plugin reports itself to the parent before
-  the first request to the model, and a run in which it never reported publishes nothing more and says so (`opencode.UNGUARDED`).
+- **The gate.** A plugin (OpenCode 2's shape, a default export with `id` and `setup`: its `execute.before` and `execute.after` tool hooks and its
+  `context` session hook) runs the same client as Pi's extension (`poolhouse.harness_js`) and asks the parent's classifier over the session bridge
+  before each tool call; a deny, or a hook that cannot be reached, throws, which OpenCode hands back to the model as the tool's error. 2.4.2 loads a
+  configured plugin only from a folder (it drops a path to a file with a warning), so the config names `bin/poolhouse-plugin/` in the agent home,
+  whose entry is `index.js`; the box holds `bin` read-only as a whole, so a run cannot change it or add a second entry. OpenCode logs a plugin it
+  cannot load and runs on without it, so the server's warnings and errors go to the run's error output (a delegate's log), the plugin reports itself
+  to the parent before the first request to the model, and a run in which it never reported publishes nothing more and says so (`opencode.UNGUARDED`).
 - **The binary.** `poolhouse.opencode_install` runs one release, `VERSION` (v2.4.2), and no other: an `opencode` on PATH is not used
   (`--opencode PATH` names one explicitly). It is fetched once through the net pipeline the llama.cpp build uses (checked against the sha256
   GitHub reports for the asset, format-checked and scanned, unpacked by `safenames.unpack`) into `<state>/tools/opencode/<VERSION>/bin/`, with
@@ -257,7 +260,8 @@ the same lease, window, permission profiles, workspace session and publication o
 - **Names it would read from a project** (`guard.harnesses.RECORDS["opencode"]`): `.opencode`, `opencode.json`, `opencode.jsonc`. A launch turns that
   off (`OPENCODE_DISABLE_PROJECT_CONFIG`), so a project's settings and plugins replace neither the permissions nor Poolhouse's plugin.
 
-Tests: `tests/test_opencode_harness.py`.
+Tests: `tests/test_opencode_harness.py`, and `tests/test_opencode_pinned.py`, which runs the pinned binary where it is kept (and skips with the reason
+elsewhere) against a marked plumbing server.
 
 ## A delegate
 
