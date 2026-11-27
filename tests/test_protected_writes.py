@@ -421,7 +421,7 @@ def test_the_hook_settings_and_wiring_stay_open_to_the_file_tools_of_an_agent():
                  "scripts/hooks/workspace_hook.py", "scripts/hooks/a-hook-added-next-year", ".codex/config.toml", ".mcp.json"):
         assert not protectedwrites.guarded(f"/r/{path}"), path
     for path in ("scripts/hooks/harness-ancestry", "scripts/hooks/claude-harness-bind",
-                 "src/poolhouse/workspace/harness_ancestry.py", "scripts/release-key"):
+                 "src/poolhouse/workspace/harness_ancestry.py", "scripts/release-key", "scripts/dev-branch-rule"):
         assert protectedwrites.guarded(f"/r/{path}"), path
 
 

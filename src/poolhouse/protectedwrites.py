@@ -21,7 +21,7 @@ __all__ = ["TooComplex", "command_texts", "guarded", "holds_secret", "other_agen
 GUARD_PATHS = (
     r"src/poolhouse/workspace/harness_ancestry\.py",
     r"scripts/hooks/(claude-harness-bind|harness-ancestry)",
-    r"scripts/(release-key|github-protection-apply|github-protection|agent-identity)", r"src/poolhouse/credentials/.*",
+    r"scripts/(release-key|github-protection-apply|github-protection|dev-branch-rule|agent-identity)", r"src/poolhouse/credentials/.*",
     r"\.git/(refs/remotes/.*|packed-refs)",
     r"\.git/(hooks(/.*)?|config(\.worktree)?|worktrees/[^/]+/config\.worktree)",
     r"\.gitconfig", r"\.config/git/(config|hooks(/.*)?)", r"\.poolhouse/(authority\.json|authority-audit\.jsonl)")
