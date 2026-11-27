@@ -17,10 +17,9 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import hub
-from poolhouse.serve import kvcache
+from poolhouse.serve import kvcache, projector
 from poolhouse.serve.backend import ServerFailed, ServerSpec
 from poolhouse.serve.preflight import (
-    MMPROJ_FACTOR,
     RUNTIME_ALLOWANCE_BYTES,
     _kv_estimate_bytes,
     draft_kv_estimate_bytes,
@@ -108,7 +107,7 @@ def estimate_bytes(spec: ServerSpec) -> int:
         kv += recurrent_state_bytes(meta) * max(1, spec.parallel)
     except (OSError, ValueError, struct.error):
         kv = 0
-    return (weights + _size(spec.draft) + int(_size(spec.mmproj) * MMPROJ_FACTOR) + kv
+    return (weights + _size(spec.draft) + _size(spec.mmproj) + kv
             + draft_kv_estimate_bytes(spec) + RUNTIME_ALLOWANCE_BYTES)
 
 
@@ -128,7 +127,7 @@ def pending_serves(spec: ServerSpec, entry: Mapping[str, Any]) -> bool:
             and held >= max(1, int(spec.parallel or 1))
             and bool(entry.get("embedding")) == bool(spec.embedding)
             and bool(entry.get("reranking")) == bool(spec.reranking)
-            and not (spec.mmproj and not entry.get("mmproj")))
+            and not projector.unlike(spec, entry))
 
 
 def differences(spec: ServerSpec, entry: Mapping[str, Any], mismatches: list[str]) -> list[str]:
@@ -154,9 +153,7 @@ def differences(spec: ServerSpec, entry: Mapping[str, Any], mismatches: list[str
         if asked and (not loaded or Path(asked).resolve() != Path(loaded).resolve()):
             out.append(f"{field}: asked for {Path(str(asked)).name}, the server runs "
                        f"{Path(str(loaded)).name if loaded else 'none'}")
-    if spec.mmproj and not entry.get("mmproj"):
-        out.append("mmproj: a vision projector was asked for and the server runs none")
-    return out
+    return out + projector.unlike(spec, entry)
 
 
 def compatible(spec: ServerSpec, entry: Mapping[str, Any], mismatches: list[str]) -> bool:

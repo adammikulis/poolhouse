@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from poolhouse import errors, home, http, hub, lock, net
-from poolhouse.hub import admission, hfstore, remote
+from poolhouse.hub import admission, hfstore, naming, remote
 from poolhouse.hub.remote import GatedRepo, NotFound, RemoteFile
 from poolhouse.net.download import staged_part
 from poolhouse.units import human_bytes
@@ -299,14 +299,16 @@ def pull(ref: str, dest: str | Path | None = None, on_progress: Report | None = 
         return _snapshot_files(parsed, files, dest, run)
     folder = _bring(parsed, chosen, dest, run)
     if not chosen[0].companion:
-        _projector(parsed, dest, run)
+        _projector(parsed, chosen[0].name, dest, run)
     return folder / chosen[0].path
 
 
-def _projector(parsed: remote.Ref, dest: str | Path | None, run: _Run) -> None:
-    """Fetch the projector ``parsed``'s commit lists, if any; the model stands without it."""
+def _projector(parsed: remote.Ref, model: str, dest: str | Path | None, run: _Run) -> None:
+    """Fetch the projector of ``model`` that ``parsed``'s commit lists, if any; the model stands without it."""
     try:
-        found = remote.projector(remote.listing(parsed.repo, parsed.commit, check=run.check))
+        listed = remote.listing(parsed.repo, parsed.commit, check=run.check)
+        names = [one.name for one in listed if one.path.lower().endswith(".gguf")]
+        found = remote.projector([one for one in listed if naming.projector_fits(one.name, model, names)])
         if found is not None:
             _bring(parsed, [found], dest, run)
     except (OSError, remote.RemoteError, http.ServerError, net.Blocked) as exc:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import sys
+from collections.abc import Iterable
 from pathlib import Path
 
 WEIGHT_SUFFIXES = (".gguf", ".safetensors", ".bin", ".pt", ".onnx")
@@ -97,6 +98,20 @@ def base_words(name: str | Path) -> tuple[str, ...]:
             break
     words = (w for w in re.split(r"[-_. ]+", text.lower()) if w)
     return tuple(w for w in words if w not in _NOT_THE_MODEL)
+
+
+def _core(name: str | Path) -> str:
+    """The words of `base_words` run together, without those that only say a file is a projector."""
+    return "".join(word for word in base_words(name) if word not in ("mmproj", "model"))
+
+
+def projector_fits(projector: str | Path, model: str | Path, shelf: Iterable[str]) -> bool:
+    """Whether the projector file belongs to ``model``: one whose name names a model must name this one; a plain `mmproj-F16.gguf` belongs only
+    where the files ``shelf`` holds beside it are builds of one model."""
+    named = _core(projector)
+    if named:
+        return named in _core(model)
+    return len({_core(each) for each in shelf if not aside(Path(each).name)}) <= 1
 
 
 def iq_on_metal(name: str, platform: str | None = None) -> bool:

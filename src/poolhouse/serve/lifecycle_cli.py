@@ -213,11 +213,12 @@ OPTIONS_UP = [
               "fixes have not reached mainline yet. Ignored if --binary is also given"),
     flag("--mmproj", default="", metavar="PATH_OR_AUTO",
          help="the vision projector, so the model can read a picture. Left out, the one "
-              "shipped with the model is loaded when the memory holds it beside the model; "
-              "'none' serves text only. A path or an hf: reference names another, and "
-              "'auto' takes the most precise one shipped: a projector is a fraction of "
-              "the weights and carries all of the seeing, so quantising it is a false "
-              "economy"),
+              "shipped with the model is loaded when it fits beside the memory servers are "
+              "admitted against, and never with --cache-reuse. 'auto' asks for pictures: "
+              "the most precise projector shipped, counted as the server's memory; prompt "
+              "reuse and context shift are then off. A path or an hf: reference names "
+              "another, 'none' serves text only. A server somebody holds is never "
+              "restarted to add or remove one"),
     flag("--spec", default="", metavar="TYPE",
          help="how to guess ahead: an ngram-* kind needs no second model at all, "
               "proposing tokens it has already seen in the prompt, which suits work "
@@ -478,11 +479,8 @@ def _lease(args: argparse.Namespace, spec: ServerSpec, manager: object, *, chose
     say(f"  KV cache {kept.said}" + "".join(f"  ({note})" for note in kept.notes))
     if kept.draft_said:
         say(f"  the draft's own cache stored as {kept.draft_said}")
-    entry = recorded_servers(lease_file()).get(held.port)
-    if seeing := spec.mmproj or (entry and entry.get("mmproj") and projector.shipped(spec.model)):
-        say(f"  reading pictures with {Path(str(seeing)).name}")
-    elif unseeing := projector.without(spec, entry, adopted=held.adopted):
-        say(f"  {unseeing}")
+    if pictures := projector.said(spec, recorded_servers(lease_file()).get(held.port), adopted=held.adopted):
+        say(f"  {pictures}")
     if spec.spec_type:
         say(f"  guessing ahead by {spec.spec_type}")
     for line in filter(None, (told, thinking.policy())):

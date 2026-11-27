@@ -23,7 +23,7 @@ from poolhouse import leasetable
 from poolhouse.client import is_healthy, reported_models
 from poolhouse.client.health import refuses_key, serving_params
 from poolhouse.node_health import Refused
-from poolhouse.serve import admission, ledger, node_memory, unmanaged
+from poolhouse.serve import admission, ledger, node_memory, projector, unmanaged
 from poolhouse.serve.backend import Lease, ServerBackend, ServerInfo, ServerSpec
 from poolhouse.serve.events import Event, emit
 from poolhouse.serve.leases import merge_state, orphaned, recorded_servers
@@ -51,7 +51,7 @@ class Admitting:
         def _load(self) -> dict: ...
         def _write(self, state: dict) -> None: ...
         def _save(self) -> None: ...
-        def _pending(self, spec: ServerSpec, *, lease: str = "", est_mb: int = 0) -> Lease: ...
+        def _pending(self, spec: ServerSpec, *, lease: str = "", est_mb: int = 0, spare_mb: int = 0) -> Lease: ...
         def backend_for(self, spec: ServerSpec) -> ServerBackend: ...
 
     def _admitted(self, spec: ServerSpec, *, on_event: Event | None = None,
@@ -68,8 +68,10 @@ class Admitting:
         told = self.say or logger.info
         began = time.monotonic()
         memory_until = began + admission.wait_s()
-        wanted = admission.estimate_bytes(spec)
+        wanted = admission.estimate_bytes(shared or spec)
         need = -(-wanted // admission.MIB)
+        # a projector ``spec`` holds that ``shared`` does not is kept beside the memory servers are admitted against
+        spare = -(-projector.held_bytes(spec.mmproj) // admission.MIB) if shared and spec.mmproj and not shared.mmproj else 0
         ledger.never_fits(spec.model, need)
         asked: dict | None = None
         reserved = handed = False
@@ -78,7 +80,6 @@ class Admitting:
             while True:
                 with ledger.reserving(self.state_file):
                     records = recorded_servers(self.state_file)
-                    # ``shared`` is ``spec`` without a projector this start added: what a running server must serve
                     found, loading = (self._compatible(shared or spec, records, on_event) if reuse
                                       else (None, False))
                     if found is not None:
@@ -86,14 +87,14 @@ class Admitting:
                     if not loading or time.monotonic() - began >= load_s:
                         room, said = ledger.fits(records, need, besides=spec.port)
                         if not reserved and room:
-                            self._pending(spec, lease="", est_mb=need)
+                            self._pending(spec, lease="", est_mb=need, spare_mb=spare)
                             reserved = True
                         if reserved:
                             asked = asked or node_memory.ask(self.table, spec, wanted, pid=os.getpid(),
                                                            ttl_s=int(load_s) + admission.KEEP_S)
                             if asked["state"] == "held":
                                 handed = True
-                                return self._pending(spec, lease=asked["id"], est_mb=need)
+                                return self._pending(spec, lease=asked["id"], est_mb=need, spare_mb=spare)
                             waiting = f"waiting for memory -- {node_memory.said(self.table, wanted)}"
                         else:
                             waiting = f"waiting for memory -- {said}"

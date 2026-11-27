@@ -71,12 +71,14 @@ from poolhouse.serve.matching import model_matches, serving_mismatch
 from poolhouse.serve.mlx_tree import MlxTreeBackend
 from poolhouse.serve.mlxref import is_mlx
 from poolhouse.serve.ports import DEFAULT_HOST, free_port, port_is_free, reclaim_port
+from poolhouse.serve.preflight import PreflightFailed
 from poolhouse.serve.process import (
     kill_process_tree,
     measuring,
     pid_exists,
     self_or_ancestor,
 )
+from poolhouse.serve.projecting import Projecting
 from poolhouse.serve.python_engines import ENGINES
 from poolhouse.serve.slotdump import default_slot_save_path
 from poolhouse.serve.weights import resident_of, scaled_timeout, weight_of
@@ -150,7 +152,7 @@ class Starting:
                 "warmup_request": self.warmup_request}
 
 
-class ServerManager(Admitting):
+class ServerManager(Admitting, Projecting):
     """Leases model servers, one per (model, port), shared across this machine."""
 
     def __init__(
@@ -414,27 +416,22 @@ class ServerManager(Admitting):
                 f"{measurement_said(held)}. Loading a second model onto it would spoil "
                 f"that measurement and this one. Wait for it to finish, stop it with "
                 f"'python -m poolhouse.bench stop', or pass --anyway to load beside it.")
-        asked = spec
-        seen = projector.chosen(spec, held_mb=ledger.taken(recorded_servers(self.state_file), besides=spec.port))
-        spec, picked = seen.spec, seen.picked
-        if seen.note:
-            (self.say or logger.warning)(f"port {spec.port}: {seen.note}")
-        if picked:
-            try:
-                guarded.verify(spec.mmproj, state_file=self.state_file, stop=self.reclaim)
-            except guarded.SentinelRefused as refused:
-                (self.say or logger.warning)(f"port {spec.port}: serving without the vision projector: {refused}")
-                spec, picked = replace(spec, mmproj=None, vision=False), False
+        asked, spare = spec, starting.pop("spare", False)
+        spec, picked, shared = self._projected(spec, spare)
         for part in guarded.parts_of(spec):
             if part:
                 guarded.verify(part, state_file=self.state_file, stop=self.reclaim)
         emit(on_event, "loading", port=spec.port, model=Path(str(spec.model)).name,
               slots=max(1, int(spec.parallel or 1)))
-        admitted = self._admitted(spec, on_event=on_event, reuse=reuse, load_s=timeout, shared=asked)
+        admitted = self._admitted(spec, on_event=on_event, reuse=reuse, load_s=timeout, shared=shared)
         if isinstance(admitted, ServerInfo):
             return admitted
         try:
             info = self._started(spec, admitted, picked, timeout=timeout, **starting)
+        except projector.Fetched as got:   # chosen, verified and admitted again with the model's file, as any model on this machine
+            self._forget(spec.port)
+            return self._launch(replace(asked, model=got.model), timeout=timeout, on_event=on_event, anyway=anyway, reuse=reuse,
+                                spare=spare, **starting)
         except (ServerFailed, UnknownFlag) as why:
             if spec.mtp is not True:
                 raise
@@ -456,14 +453,14 @@ class ServerManager(Admitting):
         backend = self.backend_for(spec)
         try:
             info = backend.start(spec, lease=admitted, **starting)
-        except (ServerFailed, UnknownFlag) as why:
+        except (ServerFailed, UnknownFlag, PreflightFailed) as why:
             if not picked:
                 raise
-            (self.say or logger.warning)(f"port {spec.port}: the server would not start with the vision projector ({str(why).splitlines()[0]}); "
-                                         "starting without it, so it reads no pictures")
+            self._tell(spec, f"the server would not start with the vision projector ({str(why).splitlines()[0]}); starting without it, so it reads "
+                             "no pictures")
             spec = replace(spec, mmproj=None, vision=False)
             info = backend.start(spec, lease=admitted, **starting)
-        return replace(info, mmproj=Path(str(spec.mmproj)).name) if spec.mmproj else info
+        return replace(info, mmproj=str(spec.mmproj)) if spec.mmproj else info
 
     def _slots_shortfall(self, spec: ServerSpec) -> ServerSpec | None:
         """The settings actually running on ``spec.port``, if the only way they disagree with
@@ -471,8 +468,8 @@ class ServerManager(Admitting):
         or for nothing answering at all -- an escalation is a repair for one specific
         mismatch, not a second way to adopt."""
         base_url = f"http://{DEFAULT_HOST}:{spec.port}"
-        if not is_healthy(base_url, timeout=1.0):
-            return None
+        if projector.unlike(spec, self._load().get(str(spec.port)) or {}) or not is_healthy(base_url, timeout=1.0):
+            return None   # a server somebody holds is never relaunched to add or take away its pictures
         models = reported_models(base_url)
         params = serving_params(base_url)
         loaded_file = params.model if params else None
@@ -612,7 +609,9 @@ class ServerManager(Admitting):
             )
 
         live, prompts = slots_on(run)
-        room_bytes = int(room) if room is not None else machine_room()
+        entry = self._load().get(str(spec.port)) or {}
+        spec = projector.kept(spec, entry)
+        room_bytes = (int(room) if room is not None else machine_room()) - projector.held_bytes(spec.mmproj)
         plan = plan_for(spec, new_slots=new_slots, per_slot=per_slot, live=live,
                         room_bytes=room_bytes)
 
@@ -637,7 +636,7 @@ class ServerManager(Admitting):
         resolved_timeout = (
             timeout if timeout is not None else scaled_timeout(weight_of(spec.model)))
         info = self._launch(new_spec, timeout=resolved_timeout, on_event=on_event,
-                            anyway=anyway)
+                            anyway=anyway, spare=bool(entry.get("spare_mb")))
         # recorded now, not after every restore: a restore failure below must not leave a
         # live, healthy process this manager has forgotten it started
         self._record(new_spec, info)
@@ -713,7 +712,7 @@ class ServerManager(Admitting):
 
     # ------------------------------------------------------------------ state file
 
-    def _pending(self, spec: ServerSpec, *, lease: str = "", est_mb: int = 0) -> Lease:
+    def _pending(self, spec: ServerSpec, *, lease: str = "", est_mb: int = 0, spare_mb: int = 0) -> Lease:
         """Write the server down before it exists, and hand the backend the proof.
 
         The record carries the port, the model, this process as owner with no pid yet and the node's lease of the memory and
@@ -721,7 +720,8 @@ class ServerManager(Admitting):
         and gives the lease back if it never does. Between the two, a port that looks unrecorded is one this
         manager is starting on -- never one it may kill.
         """
-        self._mine[str(spec.port)] = ledger.entry(spec, backend=self.backend_for(spec).name, lease=lease, est_mb=est_mb)
+        self._mine[str(spec.port)] = ledger.entry(spec, backend=self.backend_for(spec).name, lease=lease, est_mb=est_mb,
+                                                  extra={"spare_mb": spare_mb})
         self._save()
         return Lease(port=spec.port, owner_pid=os.getpid(), state_file=str(self.state_file),
                      stop_on_exit=self.stop_on_exit)
@@ -736,7 +736,7 @@ class ServerManager(Admitting):
             extra={"mtp": info.mtp, "cache_type_k": kept.k, "cache_type_v": kept.v, "kv_cache": kept.said,
                    "kv_notes": list(kept.notes), "draft": str(spec.draft or "") if drafting else "",
                    "spec_type": spec.spec_type if drafting else "",
-                   "chat_template_file": str(spec.chat_template_file or ""), "mtp_note": info.mtp_note,
+                   "chat_template_file": str(spec.chat_template_file or ""), "mtp_note": info.mtp_note, "spare_mb": pending.get("spare_mb", 0),
                    **({"iq_warning": iq.name} if iq is not None else {})})
         forget_server(info.base_url)
         if info.process is not None:

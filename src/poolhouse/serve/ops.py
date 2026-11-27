@@ -22,6 +22,7 @@ from poolhouse.client import is_healthy, reported_models
 from poolhouse.client.counters import Speculative, read_speculative
 from poolhouse.client.health import serving_params
 from poolhouse.fleet.serving import Serving
+from poolhouse.hub import naming
 from poolhouse.log import warn
 from poolhouse.serve import (
     broker_wire,
@@ -386,7 +387,11 @@ def alongside(model: str, asked: str, prefix: str, *, best: bool = False) -> str
         places.append((revision, f"**/{prefix}*.gguf") if prefix.startswith("mmproj")
                       else (revision.parent, f"*/**/{prefix}*.gguf"))
     for here, pattern in places:
-        found = sorted(here.glob(pattern))
+        found = sorted(each for each in here.glob(pattern) if each.is_file())   # a link whose bytes are gone is no file
+        if prefix.startswith("mmproj") and found:   # a projector is another model's unless its name, or the one model beside it, says so
+            shelf = revision.rglob("*.gguf") if revision else [*where.glob("*.gguf"), *here.glob("*.gguf")]
+            names = [each.name for each in shelf]
+            found = [each for each in found if naming.projector_fits(each.name, reference, names)]
         if found:
             return str(min(found, key=lambda f: _precision(f.name)) if best else found[0])
     return ""

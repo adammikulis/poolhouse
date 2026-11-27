@@ -239,9 +239,9 @@ def info_fields(body: dict[str, Any]) -> dict[str, Any]:
 
 
 def spec_to_json(spec: ServerSpec) -> dict[str, Any]:
-    """A spec as it crosses the wire."""
+    """A spec as it crosses the wire; ``vision`` goes only when False, so a broker that does not know it reads every other spec."""
     return {f.name: str(v) if isinstance(v, Path) else v
-            for f in dataclasses.fields(spec) if f.name != "process"
+            for f in dataclasses.fields(spec) if f.name != "process" and not (f.name == "vision" and spec.vision)
             for v in [getattr(spec, f.name)]}
 
 

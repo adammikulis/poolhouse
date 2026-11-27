@@ -122,6 +122,7 @@ class Want:
     max_verdict: str = "green"
     reserve_bytes: int | None = None
     mmproj_bytes: int = 0
+    vision: bool = True
     slots: int = 1
     kv: str = est.DEFAULT_KV
     draft: str = ""
@@ -296,7 +297,7 @@ def suggest(model: str | Path, machine: MachineMemory | None = None, *, goal: st
 def fit_model(model: str | Path, machine: MachineMemory | None, want: Want) -> Suggestion:
     """`suggest` for everything ``want`` can say: slots, cache type and a draft head."""
     path = est._locate(model)
-    mm = shipped(path)
+    mm = shipped(path) if want.vision else ""
     return suggest_meta(est.read_meta(path), resident_of(path), machine,
                         replace(want, mmproj_bytes=want.mmproj_bytes or (est._bytes_of(Path(mm)) if mm else 0)))
 
@@ -314,8 +315,17 @@ def largest_fit(model: str | Path, machine: MachineMemory | None = None, *, slot
     llama.cpp; `escalate` grows a server): ``parallel`` is that, `Suggestion.lease` the
     arguments for a server, `slots_that_fit` how many the memory would hold.
     """
-    return fit_model(model, _empty(machine), Want("long-context", "yellow", slots=slots, kv=kv,
-                                                  draft=str(draft or "")))
+    return fit_model(model, _empty(machine), _longest(slots, kv, draft))
+
+
+def largest_text_fit(model: str | Path, machine: MachineMemory | None = None, *, slots: int = 1,
+                     kv: str = est.DEFAULT_KV, draft: str | Path = "") -> Suggestion:
+    """`largest_fit` for a server that loads no vision projector."""
+    return fit_model(model, _empty(machine), replace(_longest(slots, kv, draft), vision=False))
+
+
+def _longest(slots: int, kv: str, draft: str | Path) -> Want:
+    return Want("long-context", "yellow", slots=slots, kv=kv, draft=str(draft or ""))
 
 
 def largest_fit_meta(found: Mapping[str, object], weights_bytes: int, machine: MachineMemory | None = None,

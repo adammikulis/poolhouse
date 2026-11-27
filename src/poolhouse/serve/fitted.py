@@ -12,10 +12,10 @@ from pathlib import Path
 
 from poolhouse.hub import installed_for
 from poolhouse.hub.probe import MachineMemory
-from poolhouse.serve import estimate as est, kvcache, mlxfit
+from poolhouse.serve import estimate as est, kvcache, mlxfit, projector
 from poolhouse.serve.backend import ServerSpec
 from poolhouse.serve.mlxref import is_mlx
-from poolhouse.serve.suggest import Suggestion, largest_fit
+from poolhouse.serve.suggest import Suggestion, largest_fit, largest_text_fit
 from poolhouse.units import human_bytes
 
 __all__ = ["fit_note", "fitted", "reusing_installed"]
@@ -56,7 +56,8 @@ def fitted(spec: ServerSpec, machine: MachineMemory | None = None) -> tuple[Serv
         raise ValueError(f"no context to fit for {path.name}: it is not a GGUF file on this machine, so its window "
                          "is not known until it is fetched (`poolhouse-models pull`); pass a context")
     head = str(spec.draft or "")
-    got = largest_fit(path, machine, slots=slots, kv=kv, draft=head if Path(head).is_file() else "")
+    fit = largest_fit if projector.counted(spec) else largest_text_fit
+    got = fit(path, machine, slots=slots, kv=kv, draft=head if Path(head).is_file() else "")
     return replace(spec, context=got.context * slots), fit_note(got, slots)
 
 

@@ -270,8 +270,6 @@ _CACHE_BYTES = {
 # it is in the GGUF's metadata. Not measured per model; a fixed floor so the fit check is
 # conservative rather than reporting a load that just barely fails as one that just fits.
 RUNTIME_ALLOWANCE_BYTES = 512 * 1024 * 1024
-MMPROJ_FACTOR = 1.5
-"""A projector's worst-case memory over its file size (784 MiB file, 1165 MiB estimated)."""
 
 
 def _per_layer(value: object, n_layer: int) -> list[float]:
@@ -502,7 +500,6 @@ def draft_kv_estimate_bytes(
 
 def _fit_check(weights_bytes: int, draft_bytes: int, mmproj_bytes: int, kv_bytes: int,
               limit_bytes: int) -> Check:
-    mmproj_bytes = int(mmproj_bytes * MMPROJ_FACTOR)   # what the projector takes loaded, as the admission estimate counts it
     total = weights_bytes + draft_bytes + mmproj_bytes + kv_bytes + RUNTIME_ALLOWANCE_BYTES
     pieces = (f"weights {human_bytes(weights_bytes)}"
               + (f", draft {human_bytes(draft_bytes)}" if draft_bytes else "")

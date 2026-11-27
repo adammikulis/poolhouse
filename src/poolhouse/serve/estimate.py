@@ -23,13 +23,8 @@ from poolhouse.hub import header
 from poolhouse.hub.probe import MachineMemory
 from poolhouse.serve.kvcache import DEFAULT_KV_CACHE, flash_attention_likely
 from poolhouse.serve.largest import contexts, largest_context, trained_window
-from poolhouse.serve.preflight import (
-    MMPROJ_FACTOR,
-    _head_kv_per_token,
-    _kv_estimate_bytes,
-    recurrent_state_bytes,
-)
-from poolhouse.serve.projector import shipped
+from poolhouse.serve.preflight import _head_kv_per_token, _kv_estimate_bytes, recurrent_state_bytes
+from poolhouse.serve.projector import MMPROJ_FACTOR, shipped
 from poolhouse.serve.weights import resident_of
 from poolhouse.ui.verdict import THRESHOLDS, verdict_of
 

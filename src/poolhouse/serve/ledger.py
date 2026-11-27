@@ -65,10 +65,12 @@ def entry(spec: ServerSpec, *, backend: str, lease: str, est_mb: int,  # noqa: P
           info: ServerInfo | None = None, holder: str = "", extra: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """The record of a server in the ledger: written when its memory is reserved (no ``info``: ``pending``) and
     again, with the process and where it answers, once it is up. ``extra`` is what only the caller knows (cache settings, notes)."""
+    # a server this start launched says which projector it loaded; before that, and for one adopted, the spec does
+    seeing = str((info.mmproj if info is not None and not info.adopted else spec.mmproj) or "")
     base = {
         "port": spec.port, "pid": None, "backend": backend, "model": str(spec.model), "owner_pid": os.getpid(),
         "pending": info is None, "device": admission.device_of(spec), "lease": lease, "est_mb": est_mb,
-        "embedding": bool(spec.embedding), "mmproj": bool(spec.mmproj or (info is not None and info.mmproj)),
+        "embedding": bool(spec.embedding), "mmproj": bool(seeing), "projector": seeing,
         "context": int(spec.context), "parallel": int(spec.parallel or 1),
     }
     if info is not None:

@@ -245,7 +245,7 @@ class ServerSpec:
     # documents, so it never shares a server with chat or embedding.
     reranking: bool = False
     mmproj: str | Path | None = None
-    vision: bool = True   # False: with no `mmproj` named, the projector the model ships is not loaded
+    vision: bool = True   # False: no projector by default. `mmproj="auto"` asks for pictures, also beside `cache_reuse`
     flash_attn: bool = True
     jinja: bool = True
     api_key: str = field(default="", repr=False)
@@ -425,7 +425,7 @@ class ServerInfo:
     """What multi-token prediction the server was started with: ``embedded``, a head's file
     name, or "" for none; ``mtp_note`` says which and why."""
     mtp_note: str = ""
-    mmproj: str = ""   # the file name of the vision projector a fresh start loaded
+    mmproj: str = ""   # the vision projector file a fresh start loaded
     # The ``Popen`` for a server this process started, for whoever stops it to wait on.
     # Never serialised: it is not a value, and it is None for an adopted server.
     process: Any = field(default=None, repr=False, compare=False)

@@ -48,8 +48,8 @@ def up(model: str, *, context: int = 0, parallel: int = 0, wait: bool = True,
     and ``parallel`` the slots (0 for one). With ``wait``
     this returns when the server is ready; without, it returns at once with state ``queued`` when memory is
     short. ``reason`` is one line saying why, kept in the lease's record. Raises `poolhouse.Error` when the
-    request is refused, saying what would fit. ``mmproj`` names the vision projector (a path, an ``hf:`` reference or
-    ``auto``), or ``none`` for text only; left empty, the one the model ships is loaded when the memory holds it.
+    request is refused, saying what would fit. ``mmproj="auto"`` asks for pictures (prompt reuse is then off), a path or
+    ``hf:`` reference names a projector and ``"none"`` serves text only; left empty, the shipped one is loaded if it fits.
     """
     found = str(hub.located(model) or model)
     asked = ServerSpec(model=found)

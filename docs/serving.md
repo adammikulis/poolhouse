@@ -206,10 +206,25 @@ crowded = replace(serving, slots=4, slot_context=32768)   # four conversations a
 ```
 
 A model that ships a vision projector is served with it. A pull of a GGUF build fetches the
-projector of the same commit, and a start that names none loads the one of the model's own
-revision when the memory holds it beside the model. Otherwise the server starts as text only
-and says so. `--mmproj PATH` names another and `--mmproj none` declines it. llama.cpp serves
-a model with a projector without context shift and without `--cache-reuse`.
+projector of the same commit. A start that names none loads the one of the model's own
+revision when it fits in the memory no server is admitted against, so a server that fits
+without it is never turned away by it. A projector belongs to a model when its file name names
+that model, or when it is a plain `mmproj-F16.gguf` beside builds of one model only.
+
+llama.cpp serves a model with a projector without prompt reuse (`--cache-reuse`) and context
+shift. A lease that asks for prompt reuse, as the coding launchers do, therefore gets no
+projector unless it asks for pictures:
+
+| Ask | `poolhouse-serve up` | `ph.serve.up` and `ServerSpec` |
+|---|---|---|
+| pictures, with prompt reuse off | `--mmproj auto` | `mmproj="auto"` |
+| a projector of your choice | `--mmproj PATH` | `mmproj="PATH"` |
+| text only | `--mmproj none` | `mmproj="none"` |
+| the default | nothing | nothing |
+
+A projector asked for is counted as the server's memory. A server somebody holds is never
+restarted to add or remove one: a lease that differs gets a server of its own when there is
+room. A start that cannot have the default projector serves text only and says why.
 
 A serving holds one slot unless it is asked for more, and that slot gets the whole context.
 `slots=N` divides the same memory between N conversations, each with its own KV cache. A
