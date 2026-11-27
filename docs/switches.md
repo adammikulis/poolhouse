@@ -15,7 +15,7 @@ Classes
 - **C, plain config**: a path, a name, a limit, an address; no safety consequence.
 - **D, opt-in speed-up**: faster when set and off by default. The decision column says why it stays off or why it was turned on.
 
-Counts: A 32, B 34, C 119, D 6 (a variable name counts once, a row naming no variable counts once; a name is in one class only).
+Counts: A 32, B 34, C 120, D 6 (a variable name counts once, a row naming no variable counts once; a name is in one class only).
 
 ## A: opt-in safety
 
@@ -85,6 +85,7 @@ Not a variable but a switch: `CLAUDECODE`, `POOLHOUSE_AGENT` and `POOLHOUSE_NONI
 | `POOLHOUSE_WSL_DISTRO`, `POOLHOUSE_WSL_NETWORK`, `POOLHOUSE_WSL_VENV`, `POOLHOUSE_WINDOWS_PYTHON`, `POOLHOUSE_WINDOWS_USER`, `POOLHOUSE_DEV_BRANCH`, `POOLHOUSE_DEV_ROOT`, `POOLHOUSE_DEV_VENV`, `POOLHOUSE_LINUX_IMAGE`, `POOLHOUSE_LINUX_PLATFORM`, `POOLHOUSE_LINUX_REBUILD`, `POOLHOUSE_LINUX_SINGLE`, `POOLHOUSE_LINUX_VOLUME`, `POOLHOUSE_GYM_FILES_ROOT`, `POOLHOUSE_GYM_PYTHON`, `POOLHOUSE_GYM_PYTHONS`, `POOLHOUSE_FILES_ROOT`, `POOLHOUSE_JOB_DIR`, `POOLHOUSE_JOB_ID`, `POOLHOUSE_OUT` | ports, WSL and Linux test-container shapes, worlds and job files |
 | `POOLHOUSE_TREES_MAX_AHEAD`, `POOLHOUSE_TREES_REPEAT_MIN` | the post-commit hook's commit threshold and its minutes between runs |
 | `POOLHOUSE_TEST_HOLDER_MANIFEST`, `POOLHOUSE_TEST_HOLDER_ROLE_BANK`, `POOLHOUSE_TEST_ROLE_CONTROL_REPORT`, `POOLHOUSE_TEST_ROLE_IMPORT_REPORT`, `POOLHOUSE_FROZEN_BINARY`, `POOLHOUSE_FROZEN_CODING_BINARY`, `POOLHOUSE_ACCEPTANCE_DECIDE_CACHE`, `POOLHOUSE_ACCEPTANCE_DECISION_DEVICE`, `POOLHOUSE_ACCEPTANCE_VISION` | inputs of the test kernel and the acceptance runs |
+| `POOLHOUSE_PRISM_ARCHIVE` | the pinned Bonsai runtime archive the inspection test reads; `scripts/test` fetches it on Apple Silicon and sets it, and a value already set is kept (`scripts/testarchive.py`) |
 
 ## D: opt-in speed-ups
 

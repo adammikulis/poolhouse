@@ -58,6 +58,7 @@ import gaterun
 import gatescope
 import queue_doctor
 import testapp
+import testarchive
 import testcommand
 import testextras
 import testhistory
@@ -672,6 +673,19 @@ def build_node(files: list[str] | None = None) -> int:
     return 0
 
 
+def fetch_archive(files: list[str] | None) -> int:
+    """Fetch the pinned archive the run's tests inspect, before anything is stamped, and name it for pytest; 4 when it cannot be had, but
+    in a coding box, which has no network, the test that inspects it is skipped."""
+    try:
+        testarchive.supply(ROOT, files, testreuse_key.import_facts(reuse_store().folder), say=lambda text: print(text, file=sys.stderr, flush=True))
+    except (testarchive.FetchError, OSError) as error:
+        print(f"test: {error}", file=sys.stderr)
+        if not sandbox.confined():
+            return 4
+        print("test: a coding sandbox has no network: the test that inspects the archive is skipped", file=sys.stderr)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Parse the tier and run it."""
     argv = sys.argv[1:] if argv is None else argv
@@ -727,7 +741,7 @@ def main(argv: list[str] | None = None) -> int:
         return testtime.check(ROOT, args.update, args.allow_increase)
     if args.tier == "record":
         testprelude.begin(args, rest, ROOT)
-        return build_node() or record(args)          # takes its own lease: a nested one would wait on itself
+        return build_node() or fetch_archive(None) or record(args)          # takes its own lease: a nested one would wait on itself
     if args.tier != "gate" and not os.environ.get("DEV_TEST_JOB"):
         try:
             testselectors.validate(rest, ROOT)
@@ -739,8 +753,10 @@ def main(argv: list[str] | None = None) -> int:
         return follow(argv, args)
     command = pytest_command(args.workers, *TIER_FLAGS.get(args.tier, []), *rest)
     doctor_admits(testprelude.begin(args, rest, ROOT, reused_files(command)))
-    if args.tier != "gate" and (failed := build_node(testselectors.native_files(rest, ROOT))):
-        return failed
+    if args.tier != "gate":
+        named = testselectors.native_files(rest, ROOT)
+        if failed := build_node(named) or fetch_archive(named):
+            return failed
     if args.tier == "quick":
         return quick(args, rest)
     if args.tier == "gate":
