@@ -4,10 +4,12 @@ write, connect to and start."""
 from __future__ import annotations
 
 import os
+import shutil
 import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -260,28 +262,57 @@ def test_a_missing_binary_makes_the_backend_unavailable(monkeypatch, seatbelt):
         run(["/bin/echo", "x"], policy())
 
 
-LISTEN = """
+BINDS = """
 import socket
-try:
-    server = socket.socket()
-    server.bind(("127.0.0.1", {port}))
-    server.listen(1)
-    client = socket.create_connection(("127.0.0.1", {port}), timeout=3)
-    conn, _ = server.accept()
-    client.sendall(b"ping")
-    print("served", conn.recv(4).decode())
-except OSError as exc:
-    print("refused", exc.errno)
+def tried(name, call):
+    try:
+        call()
+    except PermissionError:
+        print("shut", name)
+    else:
+        print("OPEN", name)
+for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM):
+    for host in ("127.0.0.1", "0.0.0.0"):
+        for port in (0, {port}):
+            tried("%s %d %d" % (host, port, kind), lambda: socket.socket(socket.AF_INET, kind).bind((host, port)))
+tried("a listen with no bind", lambda: socket.socket().listen(1))
 """
 
 
-def test_a_port_a_policy_lists_to_listen_on_is_bound_and_reached_and_no_other_is(tmp_path, seatbelt, listener):
+def test_no_network_a_policy_can_name_lets_a_process_bind_or_listen_on_an_address(tmp_path, seatbelt, listener):
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         mine = probe.getsockname()[1]
-    py = sys.executable
-    opened = run([py, "-c", LISTEN.format(port=mine)], policy(python=True, net=Net.only(listener.port, listen=(mine,))))
-    closed = run([py, "-c", LISTEN.format(port=mine)], policy(python=True, net=Net.only(listener.port)))
-    other = run([py, "-c", LISTEN.format(port=mine)], policy(python=True, net=Net.only(listener.port, listen=(mine + 1,))))
-    assert opened.stdout.strip() == "served ping"
-    assert closed.stdout.split()[0] == "refused" and other.stdout.split()[0] == "refused"
+    for net in (Net.deny(), Net.loopback(), Net.only(listener.port, mine), Net.only(listener.port, accept=(mine,))):
+        out = run([sys.executable, "-c", BINDS.format(port=mine)], policy(python=True, net=net)).stdout
+        assert "OPEN" not in out and out.count("shut ") == 9, (net, out)
+
+
+NAMESPACE = """
+import os, socket, sys
+folder = sys.argv[1]
+server = socket.socket(socket.AF_UNIX)
+server.bind(folder + "/server")
+server.listen(1)
+client = socket.socket(socket.AF_UNIX)
+client.connect(folder + "/server")
+server.accept()[0].close()
+print("served")
+for name, call in (("file", lambda: open(folder + "/file", "w")), ("link", lambda: os.symlink("/etc/hosts", folder + "/link")),
+                   ("removed", lambda: os.unlink(folder + "/server")), ("renamed", lambda: os.rename(folder + "/server", folder + "/other"))):
+    try:
+        call()
+        print("OPEN", name)
+    except PermissionError:
+        print("shut", name)
+"""
+
+
+def test_a_unix_namespace_lets_a_process_serve_on_its_sockets_and_make_no_other_file(tmp_path, seatbelt):
+    folder = os.path.realpath(tempfile.mkdtemp(prefix="pp-", dir="/tmp"))
+    try:
+        held = replace(policy(python=True), unix_namespaces=(folder,))
+        done = run([sys.executable, "-c", NAMESPACE, folder], held)
+        assert done.stdout.split("\n")[:5] == ["served", "shut file", "shut link", "shut removed", "shut renamed"], done.stdout + done.stderr
+    finally:
+        shutil.rmtree(folder)

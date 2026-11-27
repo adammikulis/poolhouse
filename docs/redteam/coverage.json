@@ -1,10 +1,10 @@
 {
- "surfaces": 895,
+ "surfaces": 896,
  "by_status": {
   "covered": 569,
   "partial": 187,
   "uncovered": 51,
-  "n/a": 88,
+  "n/a": 89,
   "unmapped": 0
  },
  "by_kind": {
@@ -68,7 +68,7 @@
    "covered": 7,
    "partial": 3,
    "uncovered": 0,
-   "n/a": 32,
+   "n/a": 33,
    "unmapped": 0
   },
   "mcp-tool": {
@@ -4803,6 +4803,16 @@
    "id": "listener:isolation/probe.py:p09.bind",
    "kind": "listener",
    "source": "isolation/probe.py:p09.bind",
+   "trust": "anything that can connect to the address",
+   "attacker": "an unauthenticated or cross-origin client reaches the port",
+   "status": "n/a",
+   "tests": [],
+   "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
+  },
+  {
+   "id": "listener:isolation/probe.py:p09.listen",
+   "kind": "listener",
+   "source": "isolation/probe.py:p09.listen",
    "trust": "anything that can connect to the address",
    "attacker": "an unauthenticated or cross-origin client reaches the port",
    "status": "n/a",

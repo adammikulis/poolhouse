@@ -5,11 +5,11 @@ model; no configuration of the person's is written.
 
 With ``--sandbox``, which runs ``opencode run MESSAGE`` only, the launcher proves a confinement (`poolhouse.isolation`) and starts the pinned release
 (`poolhouse.opencode_install`, fetched once) inside it with a config of its own in the agent home, so the person's ``~/.config/opencode`` is never
-read. The provider is the bridge's OpenAI-compatible URL with the bridge's token (minted for the launch, never asked of a person); OpenCode's own
-network traffic (update checks, the model list, LSP downloads) is switched off. A plugin written read-only in a folder of its own asks the parent's
-classifier over the session bridge before each tool call and after it, as Pi's extension does. OpenCode starts without a plugin it cannot load and
-says so only in a warning of its server, so the server's warnings go to the run's error output (a delegate's log), and a run whose plugin never
-reported publishes nothing.
+read. The provider is the bridge's URL with its token, minted for the launch; OpenCode's own network traffic (update checks, the model list, LSP
+downloads) is switched off, and its server listens on a Unix socket on macOS, where the box binds no address (`through_socket`). A plugin written
+read-only in a folder of its own asks the parent's classifier over the session bridge before each tool call and after it, as Pi's extension does.
+OpenCode starts without a plugin it cannot load and says so only in a warning of its server, so the server's warnings go to the run's error output (a
+delegate's log), and a run whose plugin never reported publishes nothing.
 """
 
 from __future__ import annotations
@@ -39,7 +39,6 @@ from poolhouse.guard import harnesses
 from poolhouse.isolation.serving import IDLE_SECONDS
 from poolhouse.log import say
 from poolhouse.serve import provenance
-from poolhouse.serve.ports import free_port
 
 __all__ = ["AGENT", "INSTRUCTIONS", "UNGUARDED", "Setup", "config", "launch", "plugin", "rendering"]
 
@@ -161,9 +160,41 @@ export default {
 '''
 
 
+SERVER_PORT = 4096
+"""The port in the URL of a run's own server. In a box on macOS nothing binds it: the server listens on a Unix socket (`through_socket`) and the URL
+is only its name. A box on Linux has a loopback of its own, where the server binds it."""
+SOCKET_PRELOAD = "bin/poolhouse-server.js"
+"""The file of `through_socket` in the agent home, under ``bin``, which the box holds read-only."""
+
+THROUGH = r'''import http from "node:http";
+delete process.env.BUN_INSPECT_PRELOAD;   // for this process only: nothing it starts loads this
+const url = `http://127.0.0.1:${port}/`;
+const listen = http.Server.prototype.listen;
+http.Server.prototype.listen = function (options, ...rest) {
+  if (options?.port !== port) return listen.call(this, options, ...rest);
+  this.address = () => ({address: "127.0.0.1", family: "IPv4", port});
+  return listen.call(this, {path: socket}, ...rest);
+};
+const reach = globalThis.fetch;
+globalThis.fetch = Object.assign((input, init) => {
+  const to = String(input?.url ?? input);
+  return reach(input, to.startsWith(url) ? {...init, unix: socket} : init);
+}, reach);
+'''
+
+
+def through_socket(path: str) -> str:
+    """What both OpenCode processes of a run in a box that binds no address load before their own code: the server asked to listen on `SERVER_PORT`
+    listens on the Unix socket ``path`` instead, and a request for that URL goes there. OpenCode takes no socket for ``--hostname``, so this is the
+    one thing of it that is changed. A release that did not load it would try to bind the port, which the box refuses, so the run would not start."""
+    return f"const socket = {json.dumps(path)};\nconst port = {SERVER_PORT};\n" + THROUGH
+
+
 SERVE = """\
 PATH="${1%/*}:$PATH"
 export PATH
+# $3 is the Unix socket the server listens on where the box binds no address, and $4 what both OpenCode processes load to use it.
+if [ -n "$3" ]; then BUN_INSPECT_PRELOAD=$4; export BUN_INSPECT_PRELOAD; fi
 # The server's warnings and errors (a plugin it could not load among them) go to the run's error output; `run` alone writes the events.
 "$1" serve --print-logs --log-level warn --hostname 127.0.0.1 --port "$2" >&2 &
 server=$!
@@ -171,13 +202,13 @@ server=$!
 # reaches curl on its input, never on a command line.
 tries=0
 until [ "$(printf 'user = "opencode:%s"\\n' "$OPENCODE_PASSWORD" |
-  /usr/bin/curl -q -s -o /dev/null -w '%{http_code}' --noproxy '*' --max-time 5 -K - "http://127.0.0.1:$2/api/info")" = 200 ]; do
+  /usr/bin/curl -q -s -o /dev/null -w '%{http_code}' --noproxy '*' ${3:+--unix-socket "$3"} --max-time 5 -K - "http://127.0.0.1:$2/api/info")" = 200 ]; do
   tries=$((tries + 1))
   if [ "$tries" -gt 300 ]; then echo "poolhouse: the OpenCode server did not start" >&2; kill "$server" 2>/dev/null; exit 1; fi
   sleep 0.1
 done
 binary=$1 port=$2
-shift 2
+shift 4
 "$binary" run --server "http://127.0.0.1:$port" "$@"
 status=$?
 kill "$server" 2>/dev/null
@@ -185,12 +216,14 @@ exit "$status"
 """
 
 
-def argv_of(binary: str, port: int, alias: str, extra: Sequence[str]) -> tuple[str, ...]:
+def argv_of(binary: str, alias: str, extra: Sequence[str], socket: str = "", preload: str = "") -> tuple[str, ...]:
     """The command line of one run. ``opencode run`` has no mode without a server, and its own private one (`--standalone`) listens on a port the
-    operating system picks, which the box (that names the ports it opens) cannot know. So the confined process starts ``opencode serve`` on ``port``,
-    the one the launcher chose and opened, and runs ``opencode run --server`` against it, behind the password the bridge token gives both. The
-    binary's own folder leads ``PATH``: the ripgrep kept beside it is the one the search tools run."""
-    return ("/bin/sh", "-c", SERVE, "opencode", binary, str(port), "--format", "json", "--model", f"{PROVIDER}/{alias}", *extra)
+    operating system picks, which the box cannot grant. So the confined process starts ``opencode serve`` on `SERVER_PORT` and runs ``opencode run
+    --server`` against it, behind the password the bridge token gives both; with ``socket`` and ``preload`` (the file of `through_socket`) the two
+    meet on that Unix socket and no port is bound. The binary's own folder leads ``PATH``: the ripgrep kept beside it is the one the search tools
+    run."""
+    return ("/bin/sh", "-c", SERVE, "opencode", binary, str(SERVER_PORT), socket, preload, "--format", "json", "--model", f"{PROVIDER}/{alias}",
+            *extra)
 
 
 def rendering(context: isolation.Context, setup: Setup, command: Sequence[str], settings: Mapping[str, Any],
@@ -198,18 +231,23 @@ def rendering(context: isolation.Context, setup: Setup, command: Sequence[str], 
     """What a run of ``command`` (the binary and ``run``'s own words) needs written in its home: the config of ``setup`` (its bridge's URL, token,
     plugin and lead server are this launch's), the plugin with ``settings`` over the client command and the stage, and ``files``."""
     binary, *extra = command
-    alias, port, server = setup.served[1], free_port(), context.lead_server()
+    alias, server = setup.served[1], context.lead_server()
     made = Setup((context.base_url, alias, setup.served[2]), context.token, str(context.file(PLUGIN)),
                  [server["command"], *server["args"]], families.for_model_id(alias).think_kwargs(False), setup.brief, setup.agent)
     written = {f".opencode-config/{CONFIG}": config(made),
                f"{PLUGIN}/{ENTRY}": plugin({"hook": context.client_argv("hook"), "root": context.stage, **settings}), **files}
+    preload = ""
+    if context.server_socket:
+        written[SOCKET_PRELOAD] = through_socket(context.server_socket)
+        preload = str(context.file(SOCKET_PRELOAD))
 
     def noted(lacks: str) -> dict[str, str]:
         """The config again, with what the box lacks at the end of the agent's own system prompt."""
         agent = {**made.agent, "system": f"{made.agent['system']}{lacks}\n"}
         return {f".opencode-config/{CONFIG}": config(replace(made, agent=agent))}
 
-    return isolation.Rendering(argv_of(binary, port, alias, extra), written, listen=(port,), noted=noted if made.agent else None)
+    return isolation.Rendering(argv_of(binary, alias, extra, context.server_socket, preload), written, serves=True,
+                               noted=noted if made.agent else None)
 
 
 OWN = ("$schema", "model", "small_model", "provider", "tool_output", "instructions")
